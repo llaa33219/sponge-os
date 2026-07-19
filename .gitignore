@@ -1,0 +1,33 @@
+# Agent session state (opencode).
+.omo/
+
+# Project-local scratch space (qt6 host tools symlink, distfiles cache).
+/var/
+
+# Build artifacts.
+/build/
+/out/
+
+# Vendored Genode subtree: upstream covers /build, /contrib, /depot via
+# genode/.gitignore; add what upstream does not cover.
+genode/var/
+
+# Editor / IDE.
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Tags databases.
+tags
+TAGS
+GPATH
+GRTAGS
+GSYMS
+GTAGS
+
+# Local run artifacts.
+/run/var/
+/run/*.log

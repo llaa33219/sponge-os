@@ -1,0 +1,107 @@
+#
+# \brief  Sponge DE boot scenario (Phase 3 — visual verification)
+# \author Sponge OS contributors
+# \date   2026
+#
+# Boots sponge-de on base-linux with fb_sdl + nitpicker.
+# Opens a single Qt Widgets window. Requires DISPLAY=:0.
+#
+
+assert {[have_spec linux]}
+
+build { core lib/ld init timer server/report_rom server/nitpicker driver/framebuffer/sdl sponge-de lib/libc lib/libm lib/stdcxx lib/mesa lib/mesa_gpu-softpipe lib/egl lib/softpipe lib/libdrm lib/expat lib/qt6_component lib/vfs lib/vfs_pipe lib/vfs_gpu lib/rom_filter lib/zlib lib/libpng }
+
+create_boot_directory
+
+install_config {
+config
++ parent-provides
+  + service ROM
+  + service PD
+  + service CPU
+  + service LOG
+  + service IRQ
+  + service IO_MEM
+  + service IO_PORT
+
++ default | caps: 200 | ram: 4M
++ default-route
+  + any-service
+    + parent
+    + any-child
+
++ start timer
+  + provides | + service Timer
+
++ start report_rom | ram: 2M
+  + provides
+    + service Report
+    + service ROM
+
++ start nitpicker | ram: 8M
+  + provides
+    + service Gui
+    + service Capture
+    + service Event
+  + route
+    + service Report | + child report_rom
+    + service Timer | + child timer
+    + any-service
+      + parent
+      + any-child
+  + config
+    + capture
+    + event
+    + domain default | layer: 1 | content: client | label: no
+                     | hover: always | focus: click | width: 1024 | height: 768
+    + default-policy | domain: default
+    + background | color: #1e1e2e
+
++ start fb_sdl | ld: no | ram: 32M
+  + config | buffered: yes | width: 1024 | height: 768
+  + route
+    + service Timer | + child timer
+    + service Capture | + child nitpicker
+    + service Event | + child nitpicker
+    + any-service
+      + parent
+      + any-child
+
++ start sponge-de | caps: 300 | ram: 128M
+  + config
+    + vfs
+      + dir dev
+        + log
+        + inline rtc | : 2018-01-01 00:01
+      + dir pipe | + pipe
+      + tar qt6_dejavusans.tar
+      + tar qt6_libqgenode.tar
+    + libc | stdout: /dev/log | stderr: /dev/log | pipe: /pipe | rtc: /dev/rtc
+  + route
+    + service Gui | + child nitpicker
+    + service Report | label: shape | + child report_rom
+    + service ROM | label: mesa_gpu.lib.so | + parent | label: mesa_gpu-softpipe.lib.so
+    + any-service
+      + parent
+      + any-child
+- }
+
+build_boot_image [build_artifacts]
+
+#
+# Qt6 shared libraries and runtime tars are built by separate cmake targets.
+# Copy them into the boot directory.
+#
+foreach lib { libQt6Core.lib.so libQt6Gui.lib.so libQt6Widgets.lib.so \
+              libqgenode.lib.so \
+              qt6_libqgenode.tar qt6_dejavusans.tar } {
+	set src "bin/$lib"
+	set dst "[run_dir]/genode/$lib"
+	if {[file exists $src] && ![file exists $dst]} {
+		exec cp -L $src $dst
+	}
+}
+
+append qemu_args " -nographic "
+
+run_genode_until forever

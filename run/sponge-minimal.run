@@ -1,0 +1,52 @@
+#
+# \brief  Sponge OS minimal boot scenario
+# \author Sponge OS contributors
+# \date   2026
+#
+# Boots the system with `init` and a minimal set of Sponge OS components.
+# Phase 1 milestone target (see docs/09-roadmap.md).
+#
+# Kernel-agnostic: runs on base-linux (developer feedback, no QEMU) and
+# base-sel4 (production target, QEMU). Select via build.conf KERNEL=.
+# Real Sponge OS images target base-sel4 (docs/03-architecture.md §2.4).
+#
+
+#
+# Build — the binaries that go into the boot image.
+#
+build { core lib/ld init vct }
+
+#
+# Boot image — config delivered to init, plus binaries.
+#
+create_boot_directory
+
+install_config {
+config
++ parent-provides
+  + service LOG
+  + service PD
+  + service CPU
+  + service ROM
+
++ default-route
+  + any-service
+    + parent
+    + any-child
++ default | caps: 200 | ram: 8M
+
++ start vct
+  + config
+    + args
+      + arg version
+- }
+
+
+build_boot_image [build_artifacts]
+
+#
+# Run — boot in QEMU and watch for the expected vct output.
+#
+append qemu_args " -nographic -m 1G "
+
+run_genode_until {.*Sponge OS codename:.*Archaeocyte.*} 30
