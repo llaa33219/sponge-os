@@ -1,0 +1,38 @@
+#
+# \brief  Sponge OS vct help scenario
+# \author Sponge OS contributors
+# \date   2026
+#
+# Verifies that `vct help` prints the command summary.
+# Kernel-agnostic: runs on base-linux and base-sel4.
+#
+
+build { core lib/ld init vct }
+
+create_boot_directory
+
+install_config {
+config
++ parent-provides
+  + service LOG
+  + service PD
+  + service CPU
+  + service ROM
+
++ default-route
+  + any-service
+    + parent
+    + any-child
++ default | caps: 200 | ram: 8M
+
++ start vct
+  + config
+    + args
+      + arg help
+- }
+
+build_boot_image [build_artifacts]
+
+append qemu_args " -nographic -m 1G "
+
+run_genode_until {.*vct — Very Convenient Tool.*} 30

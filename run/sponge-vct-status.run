@@ -1,0 +1,78 @@
+#
+# \brief  Sponge OS vct status scenario
+# \author Sponge OS contributors
+# \date   2026
+#
+# Verifies that `vct status` reads the live init state report via a
+# sub-init + report_rom relay (the standard Genode pattern). The state
+# report is enabled on the nested `system` init, routed to the sibling
+# report_rom, and consumed by vct as a ROM module labelled "state".
+#
+# Kernel-agnostic: runs on base-linux and base-sel4.
+#
+
+build { core lib/ld init timer server/report_rom vct }
+
+create_boot_directory
+
+install_config {
+config
++ parent-provides
+  + service LOG
+  + service PD
+  + service CPU
+  + service ROM
+  + service IO_MEM
+  + service IRQ
+
++ default-route
+  + any-service
+    + parent
+    + any-child
++ default | caps: 200 | ram: 8M
+
++ start timer
+  + provides | + service Timer
+
++ start report_rom | ram: 4M
+  + provides
+    + service Report
+    + service ROM
+  + config | verbose: yes
+    + policy | label_suffix: state | report: system -> state
+
++ start system | caps: 400 | ram: 32M
+  + binary init
+  + config
+    + parent-provides
+      + service ROM
+      + service CPU
+      + service PD
+      + service LOG
+      + service Timer
+      + service Report
+    + default-route
+      + any-service
+        + parent
+        + any-child
+    + report | init_ram: yes | child_ram: yes | child_caps: yes | delay_ms: 1000
+    + default | caps: 200 | ram: 8M
+    + start vct
+      + config
+        + args
+          + arg status
+  + route
+    + service ROM | label_last: state | + child report_rom
+    + service Report | + child report_rom
+    + service Timer | + child timer
+    + any-service
+      + parent
+      + any-child
+
+- }
+
+build_boot_image [build_artifacts]
+
+append qemu_args " -nographic -m 1G "
+
+run_genode_until {.*(components:|env: connected).* } 30

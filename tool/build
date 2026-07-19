@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+#
+# tool/build — Sponge OS build wrapper (launcher).
+#
+# Thin shim that delegates to the canonical Mojo implementation in
+# tool/build.mojo. If Mojo is not installed, prints install guidance.
+#
+# Usage (unchanged from the original):
+#   ./tool/build prepare
+#   ./tool/build list
+#   ./tool/build run <scenario>
+#   ./tool/build help
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+MOJO_FILE="$SCRIPT_DIR/build.mojo"
+
+if ! command -v mojo >/dev/null 2>&1; then
+    cat >&2 <<EOF
+[sponge-build] mojo SDK not found on PATH.
+
+The canonical Sponge OS tooling is written in Mojo (Modular's language).
+Install the Mojo SDK to use this wrapper:
+
+  https://docs.modular.com/mojo/manual/get-started/
+
+Once installed, run directly:
+  mojo $MOJO_FILE "$@"
+EOF
+    exit 127
+fi
+
+exec mojo "$MOJO_FILE" "$@"
+

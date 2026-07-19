@@ -1,0 +1,37 @@
+# Sponge OS default theme
+# Mocha-inspired dark palette
+# See docs/10-theme-format.md for the format specification.
+
+[meta]
+version = 1
+
+[colors]
+panel_bg       = #1e1e2e
+panel_text     = #cdd6f4
+accent         = #89b4fa
+separator      = #45475a
+window_bg      = #313244
+window_border  = #45475a
+title_text     = #cdd6f4
+error          = #f38ba8
+success        = #a6e3a1
+warning        = #f9e2af
+
+[fonts]
+default_family = DejaVu Sans
+default_size   = 11
+title_family   = DejaVu Sans
+title_size     = 12
+
+[layout]
+panel_position = top
+panel_height   = 28
+padding        = 8
+margin         = 4
+launcher_width = 48
+icon_size      = 24
+
+[window]
+border_radius = 6
+border_width  = 1
+shadow_radius = 8

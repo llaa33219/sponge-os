@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+#
+# tool/check-compile — quick sanity check for a Sponge OS component (launcher).
+#
+# Thin shim that delegates to the canonical Mojo implementation in
+# tool/check_compile.mojo. If Mojo is not installed, prints install guidance.
+#
+# Usage:
+#   ./tool/check-compile src/vct
+#   ./tool/check-compile src/sponge-de
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+MOJO_FILE="$SCRIPT_DIR/check_compile.mojo"
+
+if ! command -v mojo >/dev/null 2>&1; then
+    cat >&2 <<EOF
+[sponge-check] mojo SDK not found on PATH.
+
+The canonical Sponge OS tooling is written in Mojo (Modular's language).
+Install the Mojo SDK to use this wrapper:
+
+  https://docs.modular.com/mojo/manual/get-started/
+
+Once installed, run directly:
+  mojo $MOJO_FILE "$@"
+EOF
+    exit 127
+fi
+
+exec mojo "$MOJO_FILE" "$@"

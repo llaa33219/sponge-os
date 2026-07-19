@@ -1,0 +1,155 @@
+# 05 - Sponge DE Design
+
+> This document describes the design direction and principles of Sponge
+> DE, the default desktop environment of Sponge OS. It is not a concrete
+> implementation checklist; it defines direction.
+
+---
+
+## 1. Design Goals
+
+Sponge DE pursues these goals at the same time:
+
+1. **Lightweight** — runs fast in Genode's constrained resource
+   environment.
+2. **Intuitive** — usable by everyday users without Genode knowledge.
+3. **Customizable** — easy for users to compose their own environment.
+4. **Gradually separable** — starts as a single component, can be split
+   into modules over time.
+
+These goals are consistent with the three philosophies in `AGENTS.md`.
+
+---
+
+## 2. Technology Stack
+
+- **Framework**: Qt (using the Qt port that runs on Genode).
+- **Rendering**: Qt's paint system initially, with GPU acceleration as
+  a future option.
+- **Input**: through Genode's `Input` session, translated into Qt
+  events.
+- **Window management**: runs on top of Genode's `nitpicker` (the
+  window compositor).
+
+> **Minimize Qt module dependencies** — link only the modules that are
+> actually needed (Qt Widgets, QtCore, QtGui, ...), not the whole of
+> Qt (see `AGENTS.md` §3.4).
+>
+> ✅ **UI toolkit choice (locked):** Sponge DE uses **Qt Widgets** for
+> the initial releases. Qt Quick may be revisited later if a use case
+> calls for it.
+
+---
+
+## 3. Module Layout (Inside the Initial Single Component)
+
+The initial Sponge DE starts as a single Genode component, but internally
+keeps the following modules loosely separated. This sets things up to
+split each module into its own component later.
+
+```
+sponge-de (single component)
+├── panel/        # top or bottom panel
+├── launcher/     # app-launch entry point (a simple menu at first)
+├── notifications/# notification display
+├── windows/      # window management helpers (nitpicker glue)
+├── settings/     # user settings (GUI version of vct config)
+└── theme/        # theme loading and application
+```
+
+> `sponge_launcher` has its own component directory ready, but it will
+> start out integrated into Sponge DE; splitting it off is considered
+> after Sponge DE stabilizes. See `AGENTS.md` §3.4.
+
+---
+
+## 4. Theme System
+
+Visual elements are not hardcoded in the source. They live in theme
+files (see `AGENTS.md` §3.4). Initial design direction:
+
+- **Theme format**: simple INI-style key-value text (see
+  `docs/10-theme-format.md` for the concrete specification). JSON or YAML
+  may be reconsidered as complexity grows.
+- **Storage location**: two layers — the user settings directory
+  (`~/.config/sponge/theme` or its Genode VFS counterpart) and the
+  system default (`repos/sponge/src/sponge-de/themes/default.theme`).
+- **Application**: loaded at Sponge DE start. `vct theme apply` can
+  reapply the theme at runtime (through the `sponge_themed` backend).
+- **Scope**: colors, fonts, spacing, icon set, panel position and size.
+- **Parser skeleton**: `repos/sponge/src/sponge-de/theme/theme_loader.{h,cc}`
+  implements the INI parser and data model for Phase 5. It is not yet
+  wired into the build or applied to Qt widgets; integration is pending.
+
+User-customized themes take priority over the system default, but
+upgrades do not silently overwrite user changes
+(see `docs/02-philosophy.md` §3.4).
+
+---
+
+## 5. User Scenarios
+
+How Sponge DE should present itself to an everyday user:
+
+### 5.1 Right After Boot
+
+- A clean wallpaper and a minimal panel.
+- Genode terminology (`init`, `nitpicker`, and the like) is not visible.
+- The panel contains the launcher, system tray, and clock — nothing
+  more.
+- A "first-time user guide" is optional and not forced.
+
+### 5.2 Launching an App
+
+- Click the launcher icon on the panel, or press `Meta` to open the
+  launcher.
+- The app list is generated automatically from packages installed
+  through `vct install`.
+- One click runs the app. Internally:
+  - Sponge DE asks `sponge_launcher` (or the integrated module).
+  - The launcher asks `sponge_pkgd` for the app's component
+    information.
+  - `sponge_pkgd` asks `init` to start the component.
+
+### 5.3 Changing Settings
+
+- Settings can be changed from Sponge DE's settings GUI or from
+  `vct config` on the CLI. Both paths use the same
+  `sponge_configd` backend, so they stay consistent.
+- Changes apply immediately, or the user is told clearly when a restart
+  is required.
+
+### 5.4 Control for Advanced Users
+
+- `vct leitzentrale` opens the Leitzentrale window for direct
+  manipulation of the system component tree.
+- This is not hidden, but it is placed somewhere a beginner would not
+  click. A "this mode directly edits the system's detailed
+  configuration — continue?" confirmation dialog is shown.
+
+---
+
+## 6. Lightweight Strategy
+
+How Sponge DE stays light under Genode's resource constraints:
+
+1. **Minimal Qt module linking**: link only what is needed.
+2. **Lazy loading**: modules that are not in use (for example, the
+   settings screen) load on demand.
+3. **Minimal static assets**: the default theme ships only the bare
+   minimum.
+4. **Simple rendering**: avoid complex shaders and animations at first.
+5. **Apply component separation gradually**: keep the single-component
+   memory advantage at first, and split later when needed.
+
+---
+
+## 7. Open Design Questions
+
+- How to split roles exactly between `nitpicker` and Sponge DE
+  (who is responsible for window placement?).
+- Notification backend design: reuse Genode's standard notification
+  service, or build a Sponge-native notification daemon.
+- Priority and timing of multi-monitor support.
+
+These items are settled by experiments in the prototype phase.
