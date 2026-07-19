@@ -1,62 +1,101 @@
 # 08 - Development Guide
 
-> The environment, build steps, testing approach, and workflow needed to
-> develop Sponge OS.
+> How to develop, build, run, and test Sponge OS against the vendored
+> Genode tree.
+>
+> The **environment contract** (what is vendored, what is pinned, what
+> is git-ignored, and the manual fallback for every automated step)
+> lives in [`docs/11-environment.md`](11-environment.md). This document
+> is the workflow on top of that contract.
 
 ---
 
 ## 1. Prerequisites
 
-### 1.1 Genode Source Tree
+### 1.1 The Vendored Genode Tree
 
-Sponge OS is designed to live under the `repos/` directory of a Genode
-source tree. To build it:
+Sponge OS no longer depends on an external Genode checkout. The
+repository carries Genode 26.05 inside it as a `git subtree` at
+`genode/`, pinned to upstream commit
+`492a51024217fe74ccee1ebdfb81be97046b43eb` (the
+`codeberg.org/genodelabs/genode` tag `26.05^{}`). Every patch we have
+applied on top is recorded in the patch ledger in
+[`docs/11-environment.md`](11-environment.md) §4. The bridge into
+Sponge OS is the committed relative symlink
+`genode/repos/sponge -> ../../repos/sponge`, which lets the Genode
+build system discover `repos/sponge/` from inside the vendored tree
+without any per-developer wiring.
 
-1. Check out the Genode source tree. The canonical location is now
-   [Codeberg](https://codeberg.org/genodelabs/genode); GitHub is archived
-   as of May 2026.
-   ```bash
-   git clone https://codeberg.org/genodelabs/genode.git
-   cd genode
-   git checkout main   # Genode master branch is named 'main' on Codeberg
-   ```
-2. Install the Genode toolchain. The fastest path on Arch/CachyOS is
-   the `genode-toolchain-bin` AUR package (maintained by a Genode Labs
-   employee). On other distros, download the official prebuilt tarball
-   from <https://genode.org/download/tool-chain> and extract with
-   `sudo tar xPf` so it lands in `/usr/local/genode/tool/<VERSION>/`.
-3. Symlink Sponge OS into Genode's `repos/`:
-   ```bash
-   ln -s /path/to/sponge-os/repos/sponge /path/to/genode/repos/sponge
-   ```
-   The path to `sponge-os` MUST NOT contain spaces. Genode's build
-   system resolves symlinks via `realpath` and then passes the result
-   through shell `find`, which breaks on paths containing spaces.
+Two facts that come out of this:
 
-   The Genode source tree MUST live in a stable, non-temp directory
-   (e.g. `$HOME/genode`). `/tmp` and similar are periodically swept by
-   `systemd-tmpfiles` and will silently destroy the multi-GB tree, the
-   `contrib/` ports cache, and the incremental build cache.
+- **No `git clone genode`.** A contributor only ever clones
+  `sponge-os`. The full Genode 26.05 source tree comes with it
+  (~50 MB working tree, ~150 MB with the subtree's git history).
+- **No `ln -s repos/sponge`.** The symlink is committed. Moving the
+  clone to a different path under a different home directory just
+  works.
 
-> **Note for the early stage**: Sponge OS runs on both `base-linux`
-> (fast developer feedback, no QEMU) and `base-sel4` (production
-> target, QEMU). The kernel switch is the `KERNEL=` variable in
-> `build/etc/build.conf`. Both paths are verified by
-> `make run/sponge-minimal`.
+### 1.2 The Genode Toolchain
 
-### 1.2 Build Tools
+The Genode toolchain is **not** vendored. Genode's build system
+enforces a hard `$(error)` if the compiler does not report exactly the
+expected version (`GCC 14.2.0`, `binutils 2.44`), so installing the
+toolchain out of band is non-negotiable.
 
-- The **Genode toolchain** (GCC 14.2.0, binutils 2.44). Genode's build
-  system enforces a hard `$(error)` if the compiler does not report
-  exactly the expected version; system gcc/clang will not work.
-- GNU Make.
-- The **Mojo SDK** (Modular's language). All host-side tooling under
-  `tool/` is written in Mojo. Install as a Python package with
-  `uv add mojo --prerelease allow`, or see
-  [`tool/README.md`](../tool/README.md) for tool-by-tool usage and
-  <https://mojolang.org/install/> for the official guide.
-- For development on Linux with `base-linux`, the extra packages it
-  requires.
+Install once per machine:
+
+```bash
+# Arch / CachyOS: AUR (maintained by a Genode Labs employee)
+yay -S genode-toolchain-bin
+
+# Every other distro: official prebuilt tarball
+wget https://genode.org/files/tool-chain/genode-toolchain-25.05.tar.xz
+sudo tar xPf genode-toolchain-25.05.tar.xz
+ls /usr/local/genode/tool/25.05/bin/genode-x86-gcc    # sanity check
+ls -l /usr/local/genode/tool/current                 # must point at 25.05
+```
+
+The `-P` flag to `tar` is load-bearing: it preserves the absolute
+paths inside the archive (`./usr/local/genode/...`) so the toolchain
+ends up exactly where the Genode build system expects. Without `-P`,
+you get a stray `genode/` directory in the cwd and a confusing build
+error.
+
+There is **no 26.05 toolchain tarball**. Genode uses a 2-year
+toolchain cycle, and 25.05 is the official pairing for 26.05. See
+[`docs/11-environment.md`](11-environment.md) §3 for the full pin
+table and the rationale.
+
+### 1.3 Host Packages
+
+```bash
+# Arch
+sudo pacman -S tcl expect qemu-system-x86 cmake ninja make rpcsvc-proto
+# Debian / Ubuntu
+sudo apt install tcl expect qemu-system-x86 cmake ninja-build build-essential libc-dev-bin
+```
+
+`tcl` and `expect` are needed by Genode's run tool; `cmake` and
+`ninja` are needed for the seL4 kernel build and the Qt6 library
+build; `qemu-system-x86` is needed for any non-base-linux run;
+`rpcgen` (from `rpcsvc-proto` / `libc-dev-bin`) is needed by the
+`libc` port's prepare step.
+
+### 1.4 Mojo SDK (host-side tooling only)
+
+The host-side tooling under `tool/` is written in Mojo
+([`tool/README.md`](../tool/README.md) for tool-by-tool usage).
+The dependency is declared in the committed `pyproject.toml` and
+pinned in `uv.lock`, so installing it is:
+
+```bash
+uv sync
+.venv/bin/mojo --version
+```
+
+Mojo runs only on the host developer machine. Nothing under
+`repos/sponge/src/` ever links Mojo; the language boundary is
+"Mojo for the host, C++ for Genode".
 
 ---
 
@@ -65,80 +104,134 @@ source tree. To build it:
 ```
 sponge-os/
 ├── README.md              # User-facing introduction
-├── AGENTS.md              # Contribution guidelines (top of this document hierarchy)
-├── docs/                  # Design documents
+├── AGENTS.md              # Contribution guidelines (top of doc hierarchy)
+├── docs/                  # Design documents (incl. this file and 11-environment.md)
+├── genode/                # Vendored Genode 26.05 (git subtree, pinned)
+│   ├── repos/             # Upstream Genode repos
+│   │   └── sponge -> ../../repos/sponge  # committed relative symlink
+│   └── tool/, etc/, ...   # Genode's own helpers
 ├── repos/
-│   └── sponge/            # Genode repo (symlinkable into genode/repos/sponge)
-│       ├── src/           # Component sources
+│   └── sponge/            # The Sponge OS repo (Genode repo convention)
+│       ├── src/           # Component sources (vct, sponge-de, sponge_launcher)
 │       ├── lib/           # Shared libraries
-│       └── include/sponge/ # Shared headers
-├── tool/                  # Build and development helper scripts (Mojo)
-└── run/                   # Genode run scripts (scenario definitions)
+│       ├── include/sponge/# Shared headers
+│       ├── tool/          # Sponge-owned compiler wrappers (genode-x86-{gcc,g++}-wrapper)
+│       └── run/           # Relative symlinks → ../../../run/ (one per .run scenario)
+├── tool/                  # Build and dev helpers (Mojo: build, check-compile, ...)
+├── run/                   # Genode run scenarios (sponge-minimal, sponge-de, ...)
+└── var/                   # Local caches (git-ignored): qt6 host tools, distfiles
 ```
 
-For the purpose of each directory, see `AGENTS.md` §2.
+For the meaning of each directory and which paths are git-ignored, see
+`AGENTS.md` §2 and [`docs/11-environment.md`](11-environment.md) §2.
 
 ---
 
 ## 3. Build
 
-### 3.1 Integrated Genode Build (Recommended)
+### 3.1 One-command flow (default)
 
-Create a Genode build directory, point it at base-linux + Sponge OS,
-and run the minimal scenario:
+The wrapper script does the whole setup. After `toolchain + clone +
+uv sync` are done (§1):
 
 ```bash
-cd /path/to/genode
-./tool/create_builddir x86_64
+./tool/build prepare               # writes genode/build/x86_64/etc/build.conf
+./tool/build ports                 # fetches all third-party port sources
+./tool/build run sponge-minimal    # builds and runs the minimal scenario
+```
+
+Each of those commands has a manual equivalent below. Per AGENTS.md
+§1.1 the **automation is the default**, the **control door is always
+open**, so the manual form is the canonical reference and the wrapper
+just glues it together.
+
+### 3.2 Manual flow (the canonical reference)
+
+The wrapper calls into the Genode build system as follows. Run these
+from the repo root unless noted.
+
+```bash
+# 1. Create the build directory inside the vendored tree.
+cd genode && ./tool/create_builddir x86_64
 cd build/x86_64
 
-# Switch from the default pc/nova target to base-linux for fast feedback.
+# 2. Switch the kernel from the default pc/nova target to base-linux
+#    for the fastest developer feedback.
 sed -i 's/^#KERNEL ?= nova/KERNEL ?= linux/' etc/build.conf
 sed -i 's/^BOARD ?= pc/BOARD ?= linux/'    etc/build.conf
 
-# Register Sponge OS as a repository.
+# 3. Register Sponge OS as a repository.
 echo 'REPOSITORIES += $(GENODE_DIR)/repos/sponge' >> etc/build.conf
 
-# Build + run the minimal scenario on the Linux host (no QEMU needed).
-make run/sponge-minimal
+# 4. Enable parallel builds (the build system does not default to it).
+echo "MAKE += -j$(nproc)" >> etc/build.conf
+
+# 5. Fetch the third-party port sources (one-time cost, ~8.5 GB).
+#    prepare_port skips ports that are already prepared.
+cd ../..
+./tool/ports/prepare_port libc stdcxx mesa zlib libpng expat libdrm \
+                          x86emu qoost qt6_api qt6_base sel4 sel4_tools grub2
+
+# 6. Build and install the Qt6 host tools into var/qt6-host-tools
+#    (~6.0 GB build tree under genode/contrib/qt6-host-*, one-time).
+#    tool_chain_qt6 is a makefile, not an executable; it fetches the
+#    qt6-host port itself. The INSTALL_LOCATION/SUDO overrides keep
+#    the install inside the repository. import-qt6.inc points at this
+#    directory by default (patch #3 in docs/11-environment.md).
+cd genode
+make -f tool/tool_chain_qt6 build MAKE_JOBS=$(nproc)
+make -f tool/tool_chain_qt6 install \
+    INSTALL_LOCATION="$PWD/../var/qt6-host-tools" SUDO=
+cd ..
+
+# 7. Build + run the minimal scenario on the Linux host (no QEMU needed).
+make -C genode/build/x86_64 run/sponge-minimal
 ```
 
-Expected output ends with:
+The `./tool/build prepare` wrapper does steps 1 to 4; `./tool/build ports`
+does step 5; `./tool/build run <scenario>` does step 7.
+
+Expected output (base-linux, no QEMU) ends with:
 
 ```
 Genode 26.05
 [init -> vct] vct (0.0.1-pre-alpha / Archaeocyte) starting
-[init -> vct] === Sponge OS status ===
+[init -> vct] vct 0.0.1-pre-alpha
+[init -> vct] Sponge OS codename: Archaeocyte
 Run script execution successful.
 ```
 
-### 3.2 Per-Component Verification (Development)
+### 3.3 Per-component verification (development)
 
 To check whether a specific component's structure is complete
 (presence of `target.mk`, `main.cc`, etc.), use `tool/check-compile`:
 
 ```bash
 ./tool/check-compile src/vct
+./tool/check-compile src/sponge-de
 ```
 
 This script only checks file presence; it does not compile anything.
 For real compilation feedback, run the Genode build directly:
 
 ```bash
-cd /path/to/genode/build/x86_64
-make vct                  # build just the vct binary
+make -C genode/build/x86_64 vct                 # build just the vct binary
+make -C genode/build/x86_64 sponge-de           # build the DE (needs Qt6 deps)
 ```
 
-### 3.3 Build Cache
+### 3.4 Build cache
 
 The Genode build system supports incremental builds. Components that
-have not changed are not recompiled.
+have not changed are not recompiled, and the Qt6 host tools installed
+at `var/qt6-host-tools/` plus the prepared port sources in
+`genode/contrib/` are reused across runs.
 
-### 3.4 Kernel Selection
+### 3.5 Kernel selection
 
-`build/etc/build.conf` exposes `KERNEL` and `BOARD`. The default for
-Sponge OS development is `linux`/`linux`, which boots Genode's `core`
-as a Linux ELF process — fastest iteration. Other values:
+`genode/build/x86_64/etc/build.conf` exposes `KERNEL` and `BOARD`.
+The default written by `./tool/build prepare` is `linux`/`linux`,
+which boots Genode's `core` as a Linux ELF process and skips the
+microkernel build. Other values:
 
 | `KERNEL` | Use |
 |---|---|
@@ -147,55 +240,72 @@ as a Linux ELF process — fastest iteration. Other values:
 | `hw`     | Genode's own microkernel. Requires QEMU for x86_64. |
 | `nova`   | NOVA hypervisor. |
 
-### 3.5 Building for `base-sel4` (Production Target)
+`BOARD` is the per-kernel board flavor; `pc` for seL4, `linux` for
+the Linux dev target, etc.
+
+### 3.6 Building for `base-sel4` (production target)
 
 Switching to seL4 is a one-line `KERNEL`/`BOARD` change in
-`build/etc/build.conf`, but it pulls in three ports and a handful of
-host-side Python modules that the seL4 kernel build needs.
+`etc/build.conf`, but it pulls in three extra ports and a handful of
+host-side Python modules that the seL4 kernel build needs. The full
+one-time setup:
 
-**One-time setup:**
-
-1. Install the seL4 kernel build's Python dependencies. Use `uv`
-   consistently for all Python package work in Sponge OS:
-   ```bash
-   uv pip install --python <venv-python> future jinja2 ply six lxml pyfdt jsonschema
-   ```
-2. Fetch the seL4 kernel, seL4 tools, and grub2 bootloader ports. The
-   bootloader is required because `base-sel4` boots from a GRUB ISO:
-   ```bash
-   cd $HOME/genode
-   ./tool/ports/prepare_port sel4 sel4_tools grub2
-   ```
-3. Switch `build/x86_64/etc/build.conf`:
-   ```makefile
-   KERNEL ?= sel4
-   BOARD  ?= pc
-   ```
-   (In a headless server, also comment out `QEMU_OPT += -display sdl`
-   so QEMU does not require an X display. The run scenario's own
-   `-nographic` arg handles the rest.)
-
-**Run:**
 ```bash
-cd $HOME/genode/build/x86_64
-make run/sponge-minimal
+# 1. Install the seL4 build's Python deps (uv-managed).
+uv pip install future jinja2 ply six lxml pyfdt jsonschema
+
+# 2. Fetch the seL4 kernel, seL4 tools, and grub2 bootloader ports.
+#    grub2 is required because base-sel4 boots from a GRUB ISO.
+#    './tool/build ports' prepares the full set (sel4 included) and
+#    skips anything already prepared.
+./tool/build ports
+# (manual equivalent: cd genode && ./tool/ports/prepare_port sel4 sel4_tools grub2)
+
+# 3. Switch the kernel in genode/build/x86_64/etc/build.conf:
+#       KERNEL ?= sel4
+#       BOARD  ?= pc
+#    On a headless server also comment out `QEMU_OPT += -display sdl`
+#    so QEMU does not require an X display. Run scripts that need
+#    keyboard input pass `-nographic` themselves.
+
+# 4. Run the scenario.
+./tool/build run sponge-minimal
 ```
 
 Expected output (QEMU):
+
 ```
 Genode 26.05
 699 MiB RAM and 523288 caps assigned to init
 [init -> vct] vct (0.0.1-pre-alpha / Archaeocyte) starting
-[init -> vct] === Sponge OS status ===
+[init -> vct] vct — Very Convenient Tool
+[init -> vct] version: 0.0.1-pre-alpha (Archaeocyte)
 Run script execution successful.
 ```
 
-**seL4-specific RAM requirement.** `base-sel4` on QEMU needs **at least
-1 GiB** of guest RAM. seL4 reserves a SKIM window (Meltdown mitigation)
-and its own kernel structures; with 256 MiB the kernel fails at boot
-with `seL4 failed assertion 'load_paddr' at boot_sys.c:120` because it
-cannot find a contiguous physical region large enough for the ~30 MiB
-boot module. The scenario file sets `-m 1G` accordingly.
+**seL4-specific RAM requirement.** `base-sel4` on QEMU needs **at
+least 1 GiB** of guest RAM. seL4 reserves a SKIM window (Meltdown
+mitigation) plus its own kernel structures; with 256 MiB the kernel
+fails at boot with `seL4 failed assertion 'load_paddr' at
+boot_sys.c:120` because it cannot find a contiguous physical region
+large enough for the ~30 MiB boot module. The scenario file sets
+`-m 1G` accordingly.
+
+### 3.7 Why Qt6 needs special handling (one paragraph)
+
+The Qt6 cross-build invokes CMake, whose compiler introspection leaks
+host include paths (`/usr/include`, `/usr/local/include`) into the
+build and breaks it against Genode headers. The Sponge-side fix is
+patch #4 in the patch ledger (see
+[`docs/11-environment.md`](11-environment.md) §4): the Qt6 cmake
+invocation runs through Sponge-owned wrappers under
+`repos/sponge/tool/` that strip leaked host `-I/-isystem` paths,
+clear `CMAKE_*_IMPLICIT_INCLUDE_DIRECTORIES`, and disable the
+`system_doubleconversion` / `system_md4c` Qt features that pull in
+unavailable third-party dependencies. The wrappers themselves are
+Sponge-owned files at `repos/sponge/tool/`, not upstream patches.
+They exist because the previous host location (`/tmp/opencode/bin/`)
+was `tmpfiles`-swept.
 
 ---
 
@@ -213,8 +323,16 @@ Scenarios:
 | Scenario | Purpose | Status |
 |---|---|---|
 | `run/sponge-minimal.run` | Minimum Sponge OS boot (init + vct) | ✅ base-linux, ✅ base-sel4 |
-| `run/sponge-de-minimal.run` | Sponge DE single-window demo | planned |
-| `run/sponge-vct-commands.run` | Automated test of vct's basic commands | planned |
+| `run/sponge-vct-help.run` | `vct help` prints the command summary | ✅ |
+| `run/sponge-vct-version.run` | `vct version` prints the version | ✅ |
+| `run/sponge-vct-status.run` | `vct status` reads live init state through a sub-init + `report_rom` relay | ✅ |
+| `run/sponge-vct-component-list.run` | `vct component list` lists the live component tree | ✅ |
+| `run/sponge-de.run` | Sponge DE single-window demo (nitpicker + fb_sdl + sponge-de) | 🟡 (Phase 3 in progress) |
+
+The source-of-truth `.run` files live in `run/`. The same files are
+discoverable through `repos/sponge/run/` via **committed relative
+symlinks** (one per scenario) so the Genode repo discovery picks them
+up regardless of which directory the build was launched from.
 
 ### 4.1 Anatomy of a working run script
 
@@ -257,7 +375,8 @@ build_boot_image [build_artifacts]
 append qemu_args " -nographic -m 1G "
 
 # 4. run_genode_until matches a regex in the boot log within N seconds.
-run_genode_until {.*=== Sponge OS status ===.*} 30
+#    (sponge-minimal.run matches the vct codename line.)
+run_genode_until {.*Sponge OS codename:.*Archaeocyte.*} 30
 ```
 
 For how to write run scripts in general, see the
@@ -266,36 +385,55 @@ For how to write run scripts in general, see the
 ### 4.2 Running a scenario
 
 ```bash
-cd /path/to/genode/build/x86_64
-make run/sponge-minimal
+./tool/build run <scenario>
+# Manual equivalent:
+make -C genode/build/x86_64 run/<scenario>
 ```
 
 The run tool builds the requested binaries, stages the boot directory
-under `var/run/<scenario>/`, runs the kernel (`./core` for base-linux),
-and watches the log for the success regex. On success it prints
+under `genode/build/x86_64/var/run/<scenario>/`, runs the kernel
+(`./core` for base-linux, QEMU for base-sel4 / base-hw), and watches
+the log for the success regex. On success it prints
 `Run script execution successful.` and exits 0.
+
+### 4.3 Kernel matrix
+
+The same `sponge-minimal.run` boots on both kernels:
+
+| Kernel | Driver | RAM minimum | Notes |
+|---|---|---|---|
+| `linux` | `./core` directly (no QEMU) | 8 MiB for the default route | Fastest iteration. `core` runs as a Linux ELF process; no QEMU, no kernel build. |
+| `sel4`  | QEMU (`-nographic -m 1G`) | 1 GiB guest RAM | Production target. Requires `prepare_port sel4 sel4_tools grub2` plus the seven Python modules (`§3.6`). |
+| `hw`    | QEMU | 128 MiB | Genode's own microkernel. Not yet wired into Sponge OS scenarios. |
+| `nova`  | QEMU | 256 MiB | NOVA hypervisor. Not yet wired into Sponge OS scenarios. |
 
 ---
 
 ## 5. Testing
 
-### 5.1 Automated Tests
+### 5.1 Automated tests
 
 The verification logic embedded in Genode's run scripts is the default
 testing tool. A `run/*.run` file uses `run_script` and pattern matching
-(`expect`) to verify the expected output.
+(`expect`) to verify the expected output. The four vct command
+scenarios (`sponge-vct-help.run`, `sponge-vct-version.run`,
+`sponge-vct-status.run`, `sponge-vct-component-list.run`) all rely on
+this.
 
-### 5.2 Component Unit Tests
+### 5.2 Component unit tests
 
 Logic that is unit-testable (for example, vct's argument parser) is
 extracted into separate headers so it can be tested outside Genode. A
 unit-test framework has not been chosen yet (see `docs/09-roadmap.md`).
 
-### 5.3 Manual Verification
+### 5.3 Manual verification
 
-- Boot success.
+- Boot success: the log shows the scenario's success regex (for
+  `sponge-minimal`, the `Sponge OS codename: Archaeocyte` line)
+  followed by `Run script execution successful.`
 - `vct --help` output verification.
-- (Sponge DE) check that the window appears.
+- (Sponge DE) check that the window appears on the SDL framebuffer
+  output.
 
 ---
 
@@ -319,7 +457,8 @@ Summary of `AGENTS.md` §4:
 
 (Excerpt from `AGENTS.md` §3)
 
-- **C++ standard**: follow the version Genode supports (C++17 recommended).
+- **C++ standard**: follow the version Genode supports (C++17
+  recommended).
 - **Naming**: classes in `PascalCase`, functions in `snake_case`,
   members in `snake_case_`.
 - **Header guards**: `#pragma once`.
@@ -328,6 +467,15 @@ Summary of `AGENTS.md` §4:
 - **Exceptions**: none (Genode builds with exceptions disabled).
   Constructor failures are propagated through explicit initialization
   patterns.
+- **Genode namespace**: `size_t`, `addr_t`, `uint32_t` etc. are NOT in
+  the global namespace on real Genode. Always qualify as
+  `Genode::size_t`, `Genode::addr_t`. A standalone test harness that
+  `using`'s them into global scope will produce code that fails on
+  the real framework.
+- **Component entry points**: `Component::construct` and (if
+  overridden) `Component::stack_size` are declared exactly as the
+  framework expects. `stack_size` returns `Genode::size_t`, not bare
+  `size_t`.
 - **Prohibited**: type bypass, empty catch, monolithic components,
   capability bypass.
 
@@ -364,6 +512,9 @@ Summary of `AGENTS.md` §4:
 - Does the documentation match the code?
 - Are tests included?
 - Did the number of user steps grow (a convenience regression)?
+- For patches against the vendored `genode/` tree, is the patch
+  recorded in [`docs/11-environment.md`](11-environment.md) §4 with a
+  reason and a "drop when" note?
 
 ---
 
@@ -375,6 +526,9 @@ Summary of `AGENTS.md` §4:
   `docs/04-components.md`.
 - Design changes update the relevant `docs/` first
   (see `AGENTS.md` §4.1).
+- Changes to the vendored tree, the third-party port set, or the
+  environment contract are documented in
+  [`docs/11-environment.md`](11-environment.md).
 
 ---
 
@@ -386,6 +540,11 @@ Summary of `AGENTS.md` §4:
 - (Planned) `vct --verbose` will print backend communication in
   detail.
 - (Planned) Leitzentrale will show component state in real time.
+- For `base-sel4` boot failures, see the `-m 1G` lesson in §3.6 and
+  the SKIM-window explanation in
+  [`docs/11-environment.md`](11-environment.md) §7.2.
+- For Qt6 build failures, see the patch-ledger entry for patch #4 in
+  [`docs/11-environment.md`](11-environment.md) §4.
 
 For difficult debugging issues, first re-read the principles in
 `AGENTS.md` §5 "AI Agent-Specific Guidelines" and

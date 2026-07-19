@@ -1,11 +1,13 @@
 # run/ — Genode run scenarios
 
 Each `.run` file in this directory defines one boot scenario. The
-Genode build system runs it like this:
+Genode build system runs it like this (the wrapper script does the
+same thing):
 
 ```bash
-cd /path/to/genode/build/<target>
-make run/sponge-minimal
+./tool/build run sponge-minimal
+# Manual equivalent:
+make -C genode/build/x86_64 run/sponge-minimal
 ```
 
 A scenario defines:
