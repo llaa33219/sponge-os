@@ -1,0 +1,27 @@
+#!/bin/bash
+ARGS=()
+i=0
+while [ $i -lt $# ]; do
+    i=$((i+1))
+    arg="${!i}"
+    case "$arg" in
+        -isystem)
+            i=$((i+1)); next="${!i}"
+            case "$next" in /usr/include*|/usr/local/include*) continue ;; esac
+            ARGS+=("-isystem" "$next")
+            ;;
+        -isystem/usr/include*|-isystem/usr/local/include*)
+            ;;
+        -I/usr/include*|-I/usr/local/include*)
+            ;;
+        -I)
+            i=$((i+1)); next="${!i}"
+            case "$next" in /usr/include*|/usr/local/include*) continue ;; esac
+            ARGS+=("-I" "$next")
+            ;;
+        *)
+            ARGS+=("$arg")
+            ;;
+    esac
+done
+exec /usr/local/genode/tool/25.05/bin/genode-x86-gcc "${ARGS[@]}"
