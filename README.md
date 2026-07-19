@@ -79,6 +79,8 @@ The repository currently contains:
 - ✅ vct and Sponge DE component scaffolds
 - ✅ vct boots as a real Genode component on base-linux (Genode 26.05)
 - ✅ vct boots as a real Genode component on base-sel4 (seL4, the production target)
+- ✅ Genode 26.05 vendored at `genode/` (pinned to upstream commit
+  `492a510242`); one `git clone sponge-os` brings the whole build
 - 🔜 IPC interface definitions between components
 - 🔜 A minimum working demo
 
@@ -111,6 +113,7 @@ All detailed documentation lives in [`docs/`](docs/).
 - [08 - Development Guide](docs/08-development.md)
 - [09 - Roadmap](docs/09-roadmap.md)
 - [10 - Theme Format](docs/10-theme-format.md)
+- [11 - Development Environment & Reproducibility](docs/11-environment.md)
 
 Contributors and AI agents must read [`AGENTS.md`](AGENTS.md) first.
 

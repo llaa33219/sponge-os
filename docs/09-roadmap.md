@@ -83,7 +83,8 @@ feedback target). Production images target base-sel4.
   ```
   Genode 26.05
   [init -> vct] vct (0.0.1-pre-alpha / Archaeocyte) starting
-  [init -> vct] === Sponge OS status ===
+  [init -> vct] vct 0.0.1-pre-alpha
+  [init -> vct] Sponge OS codename: Archaeocyte
   Run script execution successful.
   ```
 - [x] The `base-sel4` (seL4 microkernel) build is also green. Verified
@@ -92,29 +93,32 @@ feedback target). Production images target base-sel4.
   Genode 26.05
   699 MiB RAM and 523288 caps assigned to init
   [init -> vct] vct (0.0.1-pre-alpha / Archaeocyte) starting
-  [init -> vct] === Sponge OS status ===
+  [init -> vct] vct — Very Convenient Tool
+  [init -> vct] version: 0.0.1-pre-alpha (Archaeocyte)
   Run script execution successful.
   ```
 
 ### Verification Scenario
 
 ```
-$ cd /path/to/genode/build/x86_64
-$ make run/sponge-minimal
+$ ./tool/build run sponge-minimal
+# Manual equivalent:
+$ make -C genode/build/x86_64 run/sponge-minimal
 ...
 genode build completed
 spawn ./core
 Genode 26.05
 [init -> vct] vct (0.0.1-pre-alpha / Archaeocyte) starting
-[init -> vct] === Sponge OS status ===
+[init -> vct] vct 0.0.1-pre-alpha
+[init -> vct] Sponge OS codename: Archaeocyte
 
 Run script execution successful.
 ```
 
 ### Lessons captured during Phase 1
 
-These were discovered the hard way; see `docs/08-development.md` for
-full details.
+These were discovered the hard way; see `docs/08-development.md` and
+[`docs/11-environment.md`](11-environment.md) for full details.
 
 - The Sponge OS source path MUST NOT contain spaces — Genode's
   `realpath` + `find` chain breaks otherwise.
@@ -125,10 +129,12 @@ full details.
   `init.xsd`, `ld.lib.so`, and the component binaries are all staged.
 - Real Genode does not expose `size_t` / `addr_t` in the global
   namespace. Always qualify as `Genode::size_t`, `Genode::addr_t`.
-- The Genode source tree MUST live in a stable, non-temp directory.
-  `/tmp` (and similar) is periodically swept by `systemd-tmpfiles` and
-  will silently destroy the multi-GB tree, the `contrib/` ports, and
-  the build cache. Use `$HOME/genode` (see `docs/08-development.md`).
+- The Genode source tree is **vendored** at `genode/`. There is no
+  `$HOME/genode` to keep alive anymore: a clean clone of `sponge-os`
+  brings the whole tree, and `genode/build/`, `genode/contrib/`, and
+  `genode/depot/` are all git-ignored. See
+  [`docs/11-environment.md`](11-environment.md) for the
+  reproducibility contract and the patch ledger.
 - `base-sel4` requires `prepare_port` for `sel4 sel4_tools grub2` plus
   seven Python modules (`future jinja2 ply six lxml pyfdt jsonschema`)
   on the host before the kernel build will succeed.

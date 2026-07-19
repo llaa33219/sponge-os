@@ -1,0 +1,478 @@
+# 11 - Development Environment & Reproducibility
+
+> The single source of truth for the development environment contract.
+> Read this once, follow the bootstrap section, and you have a build
+> that is bit-for-bit identical to every other Sponge OS developer's
+> build.
+
+---
+
+## 1. Purpose
+
+Sponge OS does not float. Every byte of Genode that compiles into a
+Sponge OS image is **vendored**, **pinned by commit**, and **carried
+inside this repository**. Reproducibility is a hard requirement, not a
+nice-to-have: a contributor on a clean machine must reach the same boot
+log as everyone else, and "Genode released a new version" must never be
+a surprise.
+
+How it got this way. Before the restructure, Sponge OS used an
+**external, mutable** Genode checkout at `/home/luke/genode`. The
+checkout had **five uncommitted patches** that never made it into a
+reviewable place. The compiler wrappers that scope the Qt6 build away
+from the host `/usr/include` headers lived in `/tmp/opencode/bin/`, a
+directory that `systemd-tmpfiles` happily sweeps on every reboot. The
+run scripts under `repos/sponge/run/` were absolute symlinks to
+`/home/luke/sponge-os/run/`, which silently breaks the moment any
+contributor's home directory is named differently. The repository
+itself was not under version control at all, so the project's history
+was "whatever happened to be on disk". The documentation pointed at
+Genode's floating `main` branch. Every one of those failure modes is
+now gone, replaced by a single git tree that pins everything that
+matters and rejects anything that drifts.
+
+The restructure is captured in the following commits on the `main`
+branch:
+
+| Commit  | Subject |
+|---------|---------|
+| `faf6772787` | chore(repo): initial import (pre-vendoring baseline) |
+| `894fa063ca` | docs(agents): replace external-Genode policy with vendored-subtree policy |
+| `976a487b3c` | feat(genode): vendor Genode 26.05 as git subtree at genode/ |
+| `4831b2db0d` | fix(genode): stdcxx port: replace dead gcc mirror with ftp.gnu.org |
+| `80356d3f08` | build(genode): disable qttools in qt6 host-tools build |
+| `69dde3ae96` | build(genode): parameterize QT_TOOLS_DIR with repo-local default |
+| `595d5fc4f6` | fix(genode): qt6 cmake build: block host-header leakage via sponge-owned wrappers |
+| `70900e8528` | feat(tool): add sponge-owned compiler wrappers + wire repos/sponge into vendored tree |
+| `6afb6f6b34` | fix(run): replace absolute run-script symlinks with relative ones |
+
+---
+
+## 2. Repository Layout
+
+The repository root is `sponge-os/`. Everything below lives inside it.
+
+```
+sponge-os/
+├── README.md                   # User-facing introduction
+├── AGENTS.md                   # Contribution guidelines (top of doc hierarchy)
+├── docs/                       # All detailed documentation (including this file)
+├── genode/                     # Vendored Genode 26.05 (git subtree, pinned)
+│   ├── repos/                  # Upstream Genode repositories
+│   │   ├── base                # base, base-linux, base-hw, base-sel4, base-nova, ...
+│   │   ├── os                  # init, drivers, services
+│   │   ├── libports            # libc, stdcxx, qt6_*, mesa, libpng, zlib, ...
+│   │   ├── gems                # nitpicker, scout, leitzentrale, ...
+│   │   ├── ports               # third-party port recipes (.port/.hash files)
+│   │   └── sponge -> ../../repos/sponge   # relative symlink (committed)
+│   ├── tool/                   # Genode's own build helpers (create_builddir, ports/...)
+│   ├── contrib/                # NOT vendored; populated by tool/ports/prepare_port
+│   ├── depot/                  # NOT vendored; build output staging area
+│   ├── build/                  # NOT vendored; per-target build directories
+│   └── Makefile, etc/, ...     # upstream Genode 26.05 contents
+├── repos/
+│   └── sponge/                 # Sponge OS repository (Genode repo convention)
+│       ├── src/                # Component sources
+│       │   ├── vct/            # System management CLI
+│       │   ├── sponge-de/      # Desktop environment
+│       │   └── sponge_launcher/# Launcher
+│       ├── lib/                # Shared libraries
+│       ├── include/sponge/     # Shared headers
+│       ├── tool/               # Sponge-owned compiler wrappers (Genode build hooks)
+│       └── run/                # Relative symlinks to ../../../run/ (one per scenario)
+├── tool/                       # Sponge-owned host-side tooling (Mojo)
+├── run/                        # Genode run scenarios (.run files)
+└── var/                        # Local caches (git-ignored): qt6 host tools, distfiles
+```
+
+Two layout facts deserve attention:
+
+- `genode/repos/sponge` is a **committed relative symlink** to
+  `../../repos/sponge`. It is the bridge that lets Genode's build
+  system find Sponge OS components without a contributor ever having
+  to wire anything up by hand. Because the symlink is relative, the
+  whole tree is movable: cloning `sponge-os` to a path with any name
+  under any home directory just works.
+- `genode/build/`, `genode/contrib/`, and `genode/depot/` are all
+  excluded by `genode/.gitignore` (which covers `/build`, `/contrib`,
+  and `/depot` already). `genode/var/` is added by the root
+  `.gitignore` so the qt6 host-tools cache and any per-subtree scratch
+  space stay out of version control. The root `.gitignore` also covers
+  `/var/`.
+
+---
+
+## 3. Pinned Versions
+
+Every piece of the build that has a version has a pin, and every pin
+has a source. No exceptions.
+
+| Component | Version | Pin / Fingerprint | Source / Upgrade Path |
+|-----------|---------|-------------------|------------------------|
+| **Genode OS Framework** | 26.05 | upstream commit `492a51024217fe74ccee1ebdfb81be97046b43eb` (`codeberg.org/genodelabs/genode` tag `26.05^{}`) | vendored at `genode/` via `git subtree`; upgrade via `git subtree pull --prefix=genode` (recorded as a dedicated commit) |
+| **Genode toolchain** | 25.05 (GCC 14.2.0, binutils 2.44) | `/usr/local/genode/tool/25.05/`, with `/usr/local/genode/tool/current -> 25.05` | external; installed by `sudo tar xPf genode-toolchain-25.05.tar.xz` from <https://genode.org/download/tool-chain> (or `genode-toolchain-bin` AUR on Arch/CachyOS). **No 26.05 toolchain tarball was published**; 25.05 is the official pairing. Genode uses a 2-year toolchain cycle. |
+| **Qt6** | 6.8.3 | `qt6_base` port (`qt6_base.hash = 67348e71a70138daef52b157470f5796f758507f`) and `qt6_api` port (`qt6_api.hash = 55bfba5647db8f93f91a61a61ee0548de108348c`) | host tools produced by `make -f tool/tool_chain_qt6 build` + `install INSTALL_LOCATION=<repo>/var/qt6-host-tools SUDO=` (build tree ~6.0 GB under `genode/contrib/qt6-host-*`, installed tools ~80 MB at `var/qt6-host-tools`), referenced by `QT_TOOLS_DIR ?= $(abspath $(GENODE_DIR)/../var/qt6-host-tools)` in `genode/repos/libports/lib/import/import-qt6.inc` (Sponge patch #3) |
+| **QEMU** | 11.0.2 | host package | managed by the operating-system package manager; no Sponge-side pinning needed |
+| **GNU Make** | system package | n/a | managed by the operating-system package manager |
+| **Mojo SDK** | pinned by `uv.lock` (currently 1.0.0b2) | `pyproject.toml` + `uv.lock` (committed); `uv sync` materializes the project-local `.venv` | used by host-side tooling under `tool/`; not used at runtime inside Genode |
+| **Python modules (seL4 kernel build)** | as-needed | `future jinja2 ply six lxml pyfdt jsonschema` | `uv pip install future jinja2 ply six lxml pyfdt jsonschema` into the same `.venv`; only required when `KERNEL ?= sel4` |
+| **CMake + Ninja** | system package | n/a | required for the seL4 kernel build and for the Qt6 library build |
+| **Tcl / expect** | system package | n/a | required by Genode's run tool to drive the QEMU interaction |
+
+The pin on Genode is the **single most important** number in this
+document. The commit `492a51024217fe74ccee1ebdfb81be97046b43eb` is the
+upstream tag `26.05^{}` from <https://codeberg.org/genodelabs/genode>
+(Genode's canonical home on Codeberg; GitHub is archived as of May
+2026). Every patch listed in §4 sits on top of this commit and nothing
+else. Bumping to 26.06, when it ships, is a deliberate `git subtree
+pull --prefix=genode` whose commit message records the upstream bump.
+
+---
+
+## 4. Patch Ledger
+
+The vendored tree at `genode/` is **Genode 26.05 pristine** plus the
+Sponge-specific commits listed below. Each row gives the commit
+subject, the SHA-short prefix you see in `git log`, the **what**, the
+**where**, the **why**, and a note on how to drop the patch when
+upstream absorbs the fix.
+
+| # | Commit | Subject | What / Where | Why | Drop When |
+|---|--------|---------|--------------|-----|-----------|
+| 1 | `4831b2db0d` | fix(genode): stdcxx port: replace dead gcc mirror with ftp.gnu.org | `genode/repos/libports/ports/stdcxx.port`: `URL(gcc)` switched from `http://ftp.fu-berlin.de/...` to `https://ftp.gnu.org/gnu/gcc/...`; `.hash` updated to match | The `ftp.fu-berlin.de` mirror stopped serving the GCC tarball, so `prepare_port stdcxx` failed at the download step on a fresh machine. | Upstream updates the `stdcxx.port` URL itself, which would re-bump the hash. |
+| 2 | `80356d3f08` | build(genode): disable qttools in qt6 host-tools build | `genode/tool/tool_chain_qt6`: `BUILD_qttools=ON` switched to `OFF` | `qttools` is unneeded for the Core/Gui/Widgets-only DE Sponge OS builds, and was the failing part of the host-tools build on a fresh machine. | Sponge OS gains a Qt tools dependency (Designer, Linguist, …) at which point upstream's default is fine. |
+| 3 | `69dde3ae96` | build(genode): parameterize QT_TOOLS_DIR with repo-local default | `genode/repos/libports/lib/import/import-qt6.inc`: `QT_TOOLS_DIR ?= $(abspath $(GENODE_DIR)/../var/qt6-host-tools)` | Upstream hardcodes `/usr/local/genode/tool/25.05/qt6.8.3`, which does not exist when the host tools are built from source into the repo-local cache. | Upstream parameterizes `QT_TOOLS_DIR`. |
+| 4 | `595d5fc4f6` | fix(genode): qt6 cmake build: block host-header leakage via sponge-owned wrappers | `genode/repos/libports/src/qt6/base/target.mk` (cmake invocation): compiler pointed at the wrappers `repos/sponge/tool/genode-x86-{gcc,g++}-wrapper` (via `$(GENODE_DIR)`), which strip leaked host `-I/-isystem /usr/include` and `/usr/local/include` paths; clear `CMAKE_C_IMPLICIT_INCLUDE_DIRECTORIES` / `CMAKE_CXX_IMPLICIT_INCLUDE_DIRECTORIES`; add `-D__GNUCLIKE_BUILTIN_STDARG` and `-include sys/cdefs.h` for FreeBSD-derived libc headers; use qtbase's bundled `md4c` include; disable `system_doubleconversion`, `system_md4c`, `textmarkdownreader`, `textmarkdownwriter` Qt features | CMake's compiler introspection leaked host include paths into the Qt6 cross-build, breaking it against Genode headers, and the disabled features pulled in third-party dependencies that are not available on the Genode side. | Upstream either fixes the cmake invocation to never see host headers, or Sponge OS no longer uses Qt6 (unlikely). |
+| 5 | `70900e8528` | feat(tool): add sponge-owned compiler wrappers + wire repos/sponge into vendored tree | new files `repos/sponge/tool/genode-x86-gcc-wrapper` and `genode-x86-g++-wrapper` (the bash filter scripts patch #4 leans on); `genode/repos/sponge` relative symlink to `../../repos/sponge` | The wrappers used to live in `/tmp/opencode/bin/` (a `tmpfiles`-swept path). Reboot wiped them and broke the build with a generic "no such compiler" error. Putting them under version control makes them part of the reproducible environment. | Never (these are Sponge-owned artifacts, not upstream patches). |
+
+A patch is **never** silently absorbed into Sponge OS. When a row in
+this table becomes obsolete, the corresponding commit is reverted (or
+the patch is dropped by re-running `git subtree pull`) in its own
+commit on `main`, the patch ledger row is removed, and the commit
+message says so.
+
+---
+
+## 5. Third-Party Ports
+
+Genode builds against a set of third-party C/C++ libraries. The source
+trees for those libraries are **NOT vendored**. Genode's
+`tool/ports/prepare_port` script fetches them on demand and verifies
+them by SHA-256. The hash files live next to the `.port` files and
+travel with the vendored Genode tree.
+
+The full port set that a Sponge OS build pulls in, with the SHA-256
+fingerprint of each:
+
+| Port | Fingerprint | Origin | Notes |
+|------|-------------|--------|-------|
+| `qt6-host` | `59fffed65168110202f765ac56d4434ba21b0f14` | `https://download.qt.io/archive/qt/6.8/6.8.3/single/qt-everywhere-src-6.8.3.tar.xz` | The Qt6 source tree used to build the host tools (`qmake`, `moc`, `rcc`, …) into `var/qt6-host-tools/`. ~6.0 GB on disk after build. |
+| `qt6_base` | `67348e71a70138daef52b157470f5796f758507f` | `https://codeberg.org/cproc/qt6_base.git` @ `issue5873` | The cross-compiled Qt6 base modules. |
+| `qt6_api` | `55bfba5647db8f93f91a61a61ee0548de108348c` | `https://codeberg.org/cproc/qt6_api.git` @ `issue5854_2` | The Genode-side Qt6 API stubs. |
+| `libc` | `d6a3665f0d2778ce8928c66302f1694cdc0d8480` | Genode-internal | The minimal libc used by userland components. |
+| `stdcxx` | `41f7b34917a64abd5f045066a0072654b39a7b39` | `https://ftp.gnu.org/gnu/gcc/gcc-14.2.0/gcc-14.2.0.tar.xz` | libstdc++ headers and runtime. **Current** post-patch fingerprint; the superseded pre-patch fingerprint was `8ea10de2dbbbf60f50e5fc6be1ed0fc5c781f4db` (mirrored from `ftp.fu-berlin.de`). |
+| `mesa` | `3bc576bbd58d2df375b56c010ab9ee0c431569d1` | Mesa upstream | Used by the `mesa_gpu-softpipe` library that sponge-de links. |
+| `sel4` | `54809b28d155db2e1ab83120937bde016a56fcb9` | `https://github.com/seL4/seL4` | The seL4 microkernel source. |
+| `sel4_tools` | `820e7e64ff2ef5dacbdedf71c33927fb2de2884f` | `https://github.com/seL4/seL4_tools` | Build infrastructure for seL4 (`elfloader-tool`, `ramdisk.cmake`, ...). |
+| `grub2` | `eb7172dee270fbd9f1bc862d46725fd1fb21d1ea` | GNU GRUB upstream | The bootloader used to produce the `base-sel4` ISO image. |
+| `libpng` | `0be8174fb4e22b291eeb4a7d48473ffb1b3dd7d2` | libpng upstream | Pulled in by Sponge DE's image-loading path. |
+| `zlib` | `7012a4d3c0949afdcac1c6567cfda7f84163e0a1` | zlib upstream | Pulled in transitively by libpng and others. |
+| `expat` | `9e709d49f9245c0df1849e9a89879c38010e1192` | libexpat upstream | XML parsing. |
+| `libdrm` | `9859ccc883beb4b97ce02ba028a3661a43701001` | libdrm upstream | Direct Rendering Manager userspace library. |
+| `x86emu` | `8a1c3aa1d592fd3e5a1b0798471f8364870b79ae` | x86emu upstream | x86 instruction emulator used by the `softpipe` software rasterizer. |
+| `qoost` | `014d68ce23644076c30c2dc03ee70c8fa04698d7` | qoost upstream | QtObjectSystemTester-style helpers used by some libports components. |
+
+Populated by:
+
+```bash
+./tool/build ports           # Sponge-side alias (preferred)
+# or, manually:
+cd genode && ./tool/ports/prepare_port <port-name>
+```
+
+What does and does not go through `prepare_port`:
+
+- `genode/contrib/` (the downloaded sources, ~8.5 GB total for the
+  full port set above) is **git-ignored**. It is rebuilt on demand by
+  `prepare_port` against the SHA-256 fingerprints in the table.
+- `genode/build/` (the build artifacts, ~6.7 GB for a full base-linux
+  build, more for base-sel4 with a debug seL4) is **git-ignored**.
+- The Qt6 host-tools build tree (`var/qt6-host-tools/`, ~6.0 GB) lives
+  under the **root** `var/`, which is also git-ignored. It is built
+  once by `genode/tool/tool_chain_qt6` and reused across builds.
+
+The git-ignore covers the three big non-source directories:
+
+- `genode/.gitignore`: `/build`, `/contrib`, `/depot`, plus
+  `/repos/{allwinner,imx,riscv,rpi,world,zynq}` (irrelevant upstream
+  BSPs).
+- root `.gitignore`: `/var/`, `/build/`, `/out/`, `genode/var/`, plus
+  agent and editor scratch files.
+
+---
+
+## 6. What is Deliberately NOT Vendored
+
+Three categories of artifact stay outside the repository on purpose.
+Each one is recoverable from a public source by SHA-256 (or by
+distribution package manager), so losing the local copy is recoverable
+but not free.
+
+1. **Genode third-party port sources (`genode/contrib/`).** These
+   total ~8.5 GB on disk. They are pinned by upstream `.port` /
+   `.hash` files and re-fetched by `./tool/build ports` (or
+   `genode/tool/ports/prepare_port`). Vendoring them would bloat the
+   repo by an order of magnitude for no reproducibility gain. The
+   SHA-256 hash IS the reproducibility contract.
+
+2. **The Genode toolchain (`/usr/local/genode/tool/25.05/`).**
+   External to the repo. The compiler version is enforced by Genode's
+   build system via a hard `$(error)` if `$(CC)` reports the wrong
+   version. There is no 26.05 toolchain tarball; Genode uses a 2-year
+   toolchain cycle and the 25.05 release is the official pairing for
+   26.05. Install once per machine from
+   <https://genode.org/download/tool-chain> (Arch users: the
+   `genode-toolchain-bin` AUR package is maintained by a Genode Labs
+   employee).
+
+3. **QEMU and other host packages** (`qemu-system-x86_64` 11.0.2, GNU
+   Make, Tcl/expect, cmake, ninja). These come from the operating
+   system package manager. Pinning host-package versions is the job of
+   the developer's distro, not this repository.
+
+4. **The Mojo SDK** (`pyproject.toml` + `uv.lock`, `uv sync`). Mojo is a
+   host-only language used by `tool/*.mojo`. The exact release is pinned
+   by the committed `uv.lock` (currently 1.0.0b2) and materialized into
+   a project-local `.venv`; it never touches Genode.
+
+---
+
+## 7. Bootstrap From a Clean Machine
+
+Every step is reproducible. The exact ordered sequence, in one place:
+
+### 7.1 base-linux target (developer feedback, no QEMU)
+
+1. **Install the Genode toolchain 25.05.** Pick the path your distro
+   prefers:
+   ```bash
+   # Arch / CachyOS: AUR
+   yay -S genode-toolchain-bin
+   # Every other distro: download from genode.org
+   wget https://genode.org/files/tool-chain/genode-toolchain-25.05.tar.xz
+   sudo tar xPf genode-toolchain-25.05.tar.xz
+   ls /usr/local/genode/tool/25.05/bin/genode-x86-gcc   # sanity check
+   ls -l /usr/local/genode/tool/current                # should point at 25.05
+   ```
+   The `-P` flag to `tar` is load-bearing: it preserves the absolute
+   paths inside the archive (e.g. `./usr/local/genode/...`), so the
+   toolchain ends up exactly where the Genode build system looks for
+   it. Without `-P`, you get a `genode/` directory in your current
+   working directory and a very confusing build error.
+
+2. **Install host packages** (Tcl/expect for the Genode run tool,
+   `qemu-system-x86_64` for non-base-linux runs, `rpcgen` for the
+   `libc` port's prepare step, plus build essentials):
+   ```bash
+   # Arch
+   sudo pacman -S tcl expect qemu-system-x86 cmake ninja make rpcsvc-proto
+   # Debian / Ubuntu
+   sudo apt install tcl expect qemu-system-x86 cmake ninja-build build-essential libc-dev-bin
+   ```
+   (`rpcsvc-proto` / `libc-dev-bin` provide `rpcgen`. Without it,
+   `prepare_port libc` fails during its header-generation step.)
+
+3. **Clone Sponge OS**:
+   ```bash
+   git clone https://<sponge-os-origin>.git ~/sponge-os
+   cd ~/sponge-os
+   ```
+   The clone path can contain almost anything **except spaces** (see
+   §8 / Phase 1 lessons in `docs/09-roadmap.md`).
+
+4. **Install the Mojo SDK** for the host-side tools under `tool/`.
+   The dependency is declared in the committed `pyproject.toml` and
+   pinned in `uv.lock`, so:
+   ```bash
+   uv sync
+   .venv/bin/mojo --version
+   ```
+
+5. **Prepare a Genode build directory.** The wrapper script does this
+   with one command:
+   ```bash
+   ./tool/build prepare
+   ```
+   which calls `genode/tool/create_builddir x86_64` against the
+   vendored tree, then updates `genode/build/x86_64/etc/build.conf`:
+   it switches the generated `#KERNEL ?= nova` / `BOARD ?= pc` template
+   lines to `KERNEL ?= linux` / `BOARD ?= linux` **in place** (the
+   template's own `ifdef` blocks read those variables before any
+   appended content would take effect), and appends a marker-delimited
+   managed block with `REPOSITORIES += sponge/libports/gems` and
+   `MAKE += -j<nproc>`. The manual equivalent is:
+   ```bash
+   cd genode && ./tool/create_builddir x86_64
+   cd build/x86_64
+   sed -i 's/^#KERNEL ?= nova/KERNEL ?= linux/' etc/build.conf
+   sed -i 's/^BOARD ?= pc/BOARD ?= linux/'            etc/build.conf
+   echo 'REPOSITORIES += $(GENODE_DIR)/repos/sponge'   >> etc/build.conf
+   echo 'REPOSITORIES += $(GENODE_DIR)/repos/libports' >> etc/build.conf
+   echo 'REPOSITORIES += $(GENODE_DIR)/repos/gems'     >> etc/build.conf
+   echo "MAKE += -j$(nproc)"                           >> etc/build.conf
+   ```
+
+6. **Prepare the third-party ports** for a full Sponge OS build:
+   ```bash
+   ./tool/build ports
+   ```
+   which runs `prepare_port` for `libc stdcxx mesa zlib libpng expat
+   libdrm x86emu qoost qt6_api qt6_base sel4 sel4_tools grub2`
+   (idempotent; already-prepared ports are skipped). The manual
+   equivalent is `cd genode && ./tool/ports/prepare_port <names...>`.
+   This populates `genode/contrib/` (git-ignored) with the sources
+   listed in §5. (`qt6-host` is not in this list: the host-tools build
+   in the next step fetches it itself.)
+
+7. **Build and install the Qt6 host tools** into `var/qt6-host-tools/`:
+   ```bash
+   cd genode
+   make -f tool/tool_chain_qt6 build MAKE_JOBS=$(nproc)
+   make -f tool/tool_chain_qt6 install \
+       INSTALL_LOCATION="$PWD/../var/qt6-host-tools" SUDO=
+   cd ..
+   ```
+   (`tool_chain_qt6` is a makefile, not an executable script. The
+   `install` target defaults to `/usr/local/...` with `sudo`; the
+   overrides above keep everything inside the repository.)
+   This is a one-time cost (~6.0 GB build tree under
+   `genode/contrib/qt6-host-*`). After it finishes,
+   `var/qt6-host-tools/bin/qmake` and
+   `var/qt6-host-tools/libexec/moc` exist. `import-qt6.inc` finds them
+   via the `QT_TOOLS_DIR` default set in patch #3.
+
+8. **Run the minimal scenario**:
+   ```bash
+   ./tool/build run sponge-minimal
+   ```
+   This is equivalent to:
+   ```bash
+   make -C genode/build/x86_64 run/sponge-minimal
+   ```
+   On `base-linux`, the run tool spawns `./core` directly (no QEMU).
+   Expected output ends with:
+   ```
+   Genode 26.05
+   [init -> vct] vct (0.0.1-pre-alpha / Archaeocyte) starting
+   [init -> vct] vct 0.0.1-pre-alpha
+   [init -> vct] Sponge OS codename: Archaeocyte
+   Run script execution successful.
+   ```
+
+### 7.2 base-sel4 target (production kernel, QEMU)
+
+Steps 1 to 4 are identical to §7.1. From step 5:
+
+5. **Same `prepare` step** (the managed block in `etc/build.conf`
+   defaults to `KERNEL ?= linux`).
+
+6. **Switch to seL4** in `genode/build/x86_64/etc/build.conf`:
+   ```makefile
+   KERNEL ?= sel4
+   BOARD  ?= pc
+   ```
+   On a headless server also comment out `QEMU_OPT += -display sdl`
+   so QEMU does not require an X display. Run scripts that need
+   keyboard input pass `-nographic` themselves.
+
+7. **Install the seL4 build's Python and C toolchain deps**:
+   ```bash
+   uv pip install future jinja2 ply six lxml pyfdt jsonschema
+   ```
+   These are the seven modules the seL4 cmake build imports. Without
+   them, the kernel build fails very early with an unhelpful
+   `ModuleNotFoundError: No module named 'ply'`.
+
+8. **Prepare the seL4-specific ports** plus the bootloader:
+   ```bash
+   ./tool/build ports
+   (`prepare_port` skips anything already prepared; the manual
+   equivalent is `./tool/ports/prepare_port sel4 sel4_tools grub2`)
+   ```
+
+9. **Run the minimal scenario on seL4 / QEMU**:
+   ```bash
+   ./tool/build run sponge-minimal
+   ```
+   Expected QEMU output ends with:
+   ```
+   Genode 26.05
+   699 MiB RAM and 523288 caps assigned to init
+   [init -> vct] vct (0.0.1-pre-alpha / Archaeocyte) starting
+   [init -> vct] vct — Very Convenient Tool
+   [init -> vct] version: 0.0.1-pre-alpha (Archaeocyte)
+   Run script execution successful.
+   ```
+
+**Why `-m 1G`?** The run script's `append qemu_args " -nographic -m 1G "`
+is not decorative. `base-sel4` on QEMU needs at least **1 GiB of
+guest RAM**. seL4 reserves a SKIM window (Meltdown mitigation) plus
+its own kernel structures; with 256 MiB the kernel fails at boot with
+`seL4 failed assertion 'load_paddr' at boot_sys.c:120` because it
+cannot find a contiguous physical region large enough for the
+~30 MiB boot module. 1 GiB is the smallest QEMU RAM size that leaves
+enough contiguous physical memory below 1 GiB.
+
+---
+
+## 8. Environment Variables & Build Knobs
+
+The knobs that affect a Sponge OS build, grouped by who sets them.
+
+| Knob | Set By | Default | Purpose |
+|------|--------|---------|---------|
+| `GENODE_DIR` | `create_builddir`-generated `etc/build.conf` | absolute path of the `genode/` vendored tree | Every Genode build rule eventually resolves to `$(GENODE_DIR)/...`. The tool wrappers under `repos/sponge/tool/` and the `import-qt6.inc` makefile both rely on it. |
+| `QT_TOOLS_DIR` | `import-qt6.inc` (patch #3) | `$(abspath $(GENODE_DIR)/../var/qt6-host-tools)` | Tells the Qt6 cross-build where to find the host `qmake`, `moc`, `rcc`, etc. Override on the make command line or in `etc/build.conf` if you keep the host tools elsewhere. |
+| `KERNEL` | `etc/build.conf` | `linux` (set by `./tool/build prepare`) | One of `linux`, `sel4`, `hw`, `nova`. `linux` skips the microkernel build entirely (no QEMU needed for the run). `sel4` triggers the cmake kernel build and QEMU. |
+| `BOARD` | `etc/build.conf` | `linux` (set by `./tool/build prepare`) | Board flavor for the chosen kernel. For seL4 the meaningful value is `pc`; for the Linux dev target it is `linux`. |
+| `REPOSITORIES` | `etc/build.conf` | `["base", "os", "demo", "ports", "libports", ...]` | Genode repo list, **in shadowing order**. The front-most repo wins when two repos declare the same path. `./tool/build prepare` appends `sponge/libports/gems` so Sponge OS components, the Qt6 libs, and the Leitzentrale source are all visible. |
+| `MAKE += -j<N>` | `etc/build.conf` (added by `prepare`) | `-j$(nproc)` | Parallel build. |
+| `QEMU_OPT` | `etc/build.conf` | platform-dependent | QEMU flag pass-through. Headless servers want `# QEMU_OPT += -display sdl`. |
+| `QEMU_ARGS` | run scripts | per-scenario | Per-scenario QEMU args. The run scripts in `run/` append `-nographic -m 1G` for seL4 scenarios; `sponge-de.run` appends only `-nographic` because it needs the SDL framebuffer. |
+| `CONTRIB_DIR` | Genode build system | `genode/contrib/` | Where `prepare_port` drops fetched sources. |
+| `BUILD_DIR` | Genode build system | `genode/build/x86_64` | Build artifact output root. |
+
+### 8.1 Order of repo shadowing
+
+`REPOSITORIES` is a **list, and order matters**. The Genode build
+system picks the first match it finds for any `<lib>` or `<src>`
+reference, so the Sponge OS repo must be listed after the upstream
+repos whose files it overrides (currently nothing) and before any
+repos whose files Sponge OS wants to override (currently also nothing).
+The `./tool/build prepare` step appends `sponge/libports/gems` to the
+list in the right order; do not reorder it manually without a reason.
+
+### 8.2 Why `make -j$(nproc)` is set by `prepare`
+
+The Genode build system does not default to parallel builds; it
+expects each developer to set their own `MAKE` flag. A cold rebuild of
+the base tree is the difference between a coffee break and lunch, so
+`prepare` sets `-j$(nproc)` (the host CPU count). Override per-run by
+passing `MAKE=` on the command line.
+
+---
+
+## 9. References
+
+- Genode OS Framework: <https://genode.org>
+- Genode documentation: <https://genode.org/documentation>
+- Genode 26.05 source (canonical): <https://codeberg.org/genodelabs/genode>
+- Genode toolchain download: <https://genode.org/download/tool-chain>
+- Genode run framework:
+  <https://genode.org/documentation/developer-resources/run>
+- This document is referenced by:
+  - `AGENTS.md` §5.2 (vendoring rules)
+  - `docs/08-development.md` (the development flow, which points here
+    for the environment contract)
+  - `docs/09-roadmap.md` Phase 1 lessons (which now point at the
+    vendored tree)
