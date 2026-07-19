@@ -3,27 +3,43 @@
 # tool/build — Sponge OS build wrapper (launcher).
 #
 # Thin shim that delegates to the canonical Mojo implementation in
-# tool/build.mojo. If Mojo is not installed, prints install guidance.
+# tool/build.mojo. Resolution order for the mojo binary:
+#   1. mojo on PATH
+#   2. <repo>/.venv/bin/mojo (repo-local uv/venv install)
+# If neither exists, prints install guidance and exits 127.
 #
 # Usage (unchanged from the original):
 #   ./tool/build prepare
+#   ./tool/build ports
 #   ./tool/build list
 #   ./tool/build run <scenario>
+#   ./tool/build run --manual <scenario>
 #   ./tool/build help
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 MOJO_FILE="$SCRIPT_DIR/build.mojo"
+VENV_MOJO="$REPO_ROOT/.venv/bin/mojo"
 
-if ! command -v mojo >/dev/null 2>&1; then
+if command -v mojo >/dev/null 2>&1; then
+    MOJO_BIN="mojo"
+elif [ -x "$VENV_MOJO" ]; then
+    MOJO_BIN="$VENV_MOJO"
+else
     cat >&2 <<EOF
-[sponge-build] mojo SDK not found on PATH.
+[sponge-build] mojo SDK not found on PATH and no repo-local install at
+$VENV_MOJO.
 
 The canonical Sponge OS tooling is written in Mojo (Modular's language).
 Install the Mojo SDK to use this wrapper:
 
   https://docs.modular.com/mojo/manual/get-started/
+
+Or install it into this repository's virtualenv (pinned by uv.lock):
+
+  uv sync
 
 Once installed, run directly:
   mojo $MOJO_FILE "$@"
@@ -31,5 +47,4 @@ EOF
     exit 127
 fi
 
-exec mojo "$MOJO_FILE" "$@"
-
+exec "$MOJO_BIN" "$MOJO_FILE" "$@"
