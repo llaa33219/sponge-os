@@ -1,6 +1,10 @@
 # Agent session state (opencode).
 .omo/
 
+# Python virtualenv for the Mojo host tools (uv-managed; pyproject.toml
+# and uv.lock are committed, the environment itself is not).
+.venv/
+
 # Project-local scratch space (qt6 host tools symlink, distfiles cache).
 /var/
 
