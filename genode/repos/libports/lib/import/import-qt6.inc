@@ -1,4 +1,6 @@
-QT_TOOLS_DIR = /usr/local/genode/tool/25.05/qt6.8.3
+# Sponge OS: default to the repo-local cache (git-ignored). Override on the
+# make command line or in etc/build.conf if the tools live elsewhere.
+QT_TOOLS_DIR ?= $(abspath $(GENODE_DIR)/../var/qt6-host-tools)
 
 ifeq ($(filter-out $(SPECS),arm),)
 QT_PLATFORM = genode-arm-g++
