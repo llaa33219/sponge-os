@@ -1,0 +1,246 @@
+/*
+ * \brief  Kernel backend for virtual machines
+ * \author Stefan Kalkowski
+ * \author Benjamin Lamowski
+ * \date   2015-02-10
+ */
+
+/*
+ * Copyright (C) 2015-2023 Genode Labs GmbH
+ *
+ * This file is part of the Genode OS framework, which is distributed
+ * under the terms of the GNU Affero General Public License version 3.
+ */
+
+#include <cpu/vcpu_state_virtualization.h>
+#include <util/mmio.h>
+
+#include <hw/spec/arm_64/memory_map.h>
+#include <map_local.h>
+#include <kernel/cpu.h>
+#include <kernel/vcpu.h>
+#include <kernel/main.h>
+
+#include <spec/arm_v8/hypervisor.h>
+
+using Genode::addr_t;
+using Kernel::Cpu;
+using Kernel::Vcpu;
+
+
+static Genode::Vcpu_state & host_context(Cpu &cpu)
+{
+	static Genode::Constructible<Genode::Vcpu_state>
+		host_context[Board::NR_OF_CPUS];
+
+	if (!host_context[cpu.id().value].constructed()) {
+		host_context[cpu.id().value].construct();
+		Genode::Vcpu_state &c = *host_context[cpu.id().value];
+		c.sp_el1    = cpu.stack_start();
+		c.ip        = (addr_t)&Kernel::main_handle_kernel_entry;
+		c.pstate    = 0;
+		Cpu::Spsr::Sp::set(c.pstate, 1); /* select non-el0 stack pointer */
+		Cpu::Spsr::El::set(c.pstate, Cpu::Current_el::EL1);
+		Cpu::Spsr::F::set(c.pstate, 1);
+		Cpu::Spsr::I::set(c.pstate, 1);
+		Cpu::Spsr::A::set(c.pstate, 1);
+		Cpu::Spsr::D::set(c.pstate, 1);
+		c.fpcr      = Cpu::Fpcr::read();
+		c.fpsr      = 0;
+		c.sctlr_el1 = Cpu::Sctlr_el1::read();
+		c.actlr_el1 = Cpu::Actlr_el1::read();
+		c.vbar_el1  = Cpu::Vbar_el1::read();
+		c.cpacr_el1 = Cpu::Cpacr_el1::read();
+		c.ttbr0_el1 = Cpu::Ttbr0_el1::read();
+		c.ttbr1_el1 = Cpu::Ttbr1_el1::read();
+		c.tcr_el1   = Cpu::Tcr_el1::read();
+		c.mair_el1  = Cpu::Mair_el1::read();
+		c.amair_el1 = Cpu::Amair_el1::read();
+	}
+	return *host_context[cpu.id().value];
+}
+
+
+Board::Vcpu_context::Vm_irq::Vm_irq(unsigned const irq, Kernel::Cpu &cpu)
+:
+	Kernel::Irq { irq, cpu.irq_pool(), cpu.pic() },
+	_cpu        { cpu }
+{ }
+
+
+void Board::Vcpu_context::Vm_irq::handle(Vcpu &vcpu, unsigned irq) {
+	vcpu.inject_irq(irq); }
+
+
+void Board::Vcpu_context::Vm_irq::occurred()
+{
+	Vcpu *vcpu = dynamic_cast<Vcpu*>(&_cpu.current_context());
+	if (!vcpu) Genode::raw("VM interrupt while VM is not runnning!");
+	else     handle(*vcpu, _id);
+}
+
+
+Board::Vcpu_context::Maintainance_irq::Maintainance_irq(Kernel::Cpu &cpu)
+:
+	Board::Vcpu_context::Vm_irq(Board::VT_MAINTAINANCE_IRQ, cpu)
+{
+	//FIXME Irq::enable only enables caller cpu
+	cpu.pic().unmask(_id, cpu.id());
+}
+
+
+Board::Vcpu_context::Virtual_timer_irq::Virtual_timer_irq(Kernel::Cpu &cpu)
+:
+	irq(Board::VT_TIMER_IRQ, cpu)
+{ }
+
+
+void Board::Vcpu_context::Virtual_timer_irq::enable() { irq.enable(); }
+
+
+void Board::Vcpu_context::Virtual_timer_irq::disable()
+{
+	irq.disable();
+	asm volatile("msr cntv_ctl_el0, xzr");
+	asm volatile("msr cntkctl_el1,  %0" :: "r" (0b11));
+}
+
+
+Vcpu::Vcpu(Cpu                    &cpu,
+           Board::Vcpu_state      &state,
+           Kernel::Signal_context &context,
+           Identity               &id)
+:
+	Kernel::Object { *this },
+	Kernel::Cpu_context(cpu, Scheduler::Group_id::BACKGROUND),
+	_state(state),
+	_context(context),
+	_id(id),
+	_vcpu_context(cpu)
+{
+	state.with_state([&] (auto &state) {
+		state.id_aa64isar0_el1 = Cpu::Id_aa64isar0_el1::read();
+		state.id_aa64isar1_el1 = Cpu::Id_aa64isar1_el1::read();
+		state.id_aa64mmfr0_el1 = Cpu::Id_aa64mmfr0_el1::read();
+		state.id_aa64mmfr1_el1 = Cpu::Id_aa64mmfr1_el1::read();
+		state.id_aa64mmfr2_el1 = /* FIXME Cpu::Id_aa64mmfr2_el1::read(); */ 0;
+
+		Cpu::Clidr_el1::access_t clidr = Cpu::Clidr_el1::read();
+		for (unsigned i = 0; i < 7; i++) {
+			unsigned level = clidr >> (i*3) & 0b111;
+
+			if (level == Cpu::Clidr_el1::NO_CACHE) break;
+
+			if ((level == Cpu::Clidr_el1::INSTRUCTION_CACHE) ||
+			    (level == Cpu::Clidr_el1::SEPARATE_CACHE)) {
+				Cpu::Csselr_el1::access_t csselr = 0;
+				Cpu::Csselr_el1::Instr::set(csselr, 1);
+				Cpu::Csselr_el1::Level::set(csselr, level);
+				Cpu::Csselr_el1::write(csselr);
+				state.ccsidr_inst_el1[level] = Cpu::Ccsidr_el1::read();
+			}
+
+			if (level != Cpu::Clidr_el1::INSTRUCTION_CACHE) {
+				Cpu::Csselr_el1::write(Cpu::Csselr_el1::Level::bits(level));
+				state.ccsidr_data_el1[level] = Cpu::Ccsidr_el1::read();
+			}
+		}
+
+		/* once constructed, exit with a startup exception */
+		_pause_vcpu();
+		state.exception_type = Genode::VCPU_EXCEPTION_STARTUP;
+		_context.submit(1);
+	});
+}
+
+
+Vcpu::~Vcpu()
+{
+	_id.id.with_result([&] (auto const id) {
+		Cpu::Vttbr_el2::access_t vttbr_el2 =
+			Cpu::Vttbr_el2::Ba::masked((Cpu::Vttbr_el2::access_t)_id.table);
+		Cpu::Vttbr_el2::Asid::set(vttbr_el2, id);
+		Hypervisor::invalidate_tlb(vttbr_el2);
+	}, [] (auto&) { /* no ID, do nothing */ });
+}
+
+
+void Vcpu::exception(Genode::Cpu_state&)
+{
+	_state.with_state([&] (auto &state) {
+		switch (state.exception_type) {
+		case Cpu::IRQ_LEVEL_EL0: [[fallthrough]];
+		case Cpu::IRQ_LEVEL_EL1: [[fallthrough]];
+		case Cpu::FIQ_LEVEL_EL0: [[fallthrough]];
+		case Cpu::FIQ_LEVEL_EL1:
+			_interrupt();
+			break;
+		case Cpu::SYNC_LEVEL_EL0: [[fallthrough]];
+		case Cpu::SYNC_LEVEL_EL1: [[fallthrough]];
+		case Cpu::SERR_LEVEL_EL0: [[fallthrough]];
+		case Cpu::SERR_LEVEL_EL1:
+			pause();
+			_context.submit(1);
+			break;
+		default:
+			Genode::raw("Exception vector: ", (void*)state.exception_type,
+			            " not implemented!");
+		};
+
+		if (_cpu().pic().ack_virtual_irq(_vcpu_context.ic_context))
+			inject_irq(Board::VT_MAINTAINANCE_IRQ);
+		_vcpu_context.vtimer_irq.disable();
+	});
+}
+
+
+void Vcpu::proceed()
+{
+	_state.with_state([&] (auto &state) {
+		if (state.timer.irq) _vcpu_context.vtimer_irq.enable();
+
+		_cpu().pic().insert_virtual_irq(_vcpu_context.ic_context,
+		                                state.irqs.virtual_irq);
+
+		/*
+		 * the following values have to be enforced by the hypervisor
+		 */
+		Cpu::Vttbr_el2::access_t vttbr_el2 =
+			Cpu::Vttbr_el2::Ba::masked((Cpu::Vttbr_el2::access_t)_id.table);
+		addr_t guest      = Hw::Mm::el2_addr(&state);
+		addr_t ic_context = Hw::Mm::el2_addr(&_vcpu_context.ic_context);
+		addr_t host       = Hw::Mm::el2_addr(&host_context(_cpu()));
+
+		_id.id.with_result([&] (auto const id) {
+			Cpu::Vttbr_el2::Asid::set(vttbr_el2, id);
+			Hypervisor::switch_world(guest, host, ic_context, vttbr_el2);
+		}, [] (auto&) { /* no ID, do nothing */ });
+	});
+}
+
+
+void Vcpu::run()
+{
+	if (_scheduled != ACTIVE) Cpu_context::_activate();
+	_scheduled = ACTIVE;
+}
+
+
+void Vcpu::pause()
+{
+	if (_cpu().id() != Cpu::executing_id()) {
+		Genode::error("vCPU pause called from remote core.");
+		return;
+	}
+	_pause_vcpu();
+}
+
+
+void Vcpu::inject_irq(unsigned irq)
+{
+	_state.with_state([&] (auto &state) {
+		state.irqs.last_irq = irq;
+		pause();
+		_context.submit(1);
+	});
+}

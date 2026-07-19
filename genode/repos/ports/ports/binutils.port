@@ -1,0 +1,15 @@
+LICENSE   := GPLv2
+VERSION   := 2.44
+DOWNLOADS := binutils.archive
+
+URL(binutils) := http://ftp.fu-berlin.de/gnu/binutils/binutils-$(VERSION).tar.xz
+SHA(binutils) := ce2017e059d63e67ddb9240e9d4ec49c2893605035cd60e92ad53177f4377237
+SIG(binutils) := ${URL(binutils)}.sig
+KEY(binutils) := GNU
+DIR(binutils) := src/noux-pkg/binutils
+
+PATCHES   := $(addprefix ${DIR(binutils)}/patches/, \
+                         $(shell cat $(REP_DIR)/${DIR(binutils)}/patches/series))
+PATCH_OPT := -p1 -d ${DIR(binutils)}
+
+HASH_INPUT += $(REP_DIR)/${DIR(binutils)}/patches/series

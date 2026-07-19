@@ -1,0 +1,89 @@
+create_boot_directory
+
+import_from_depot [depot_user]/src/[base_src] \
+                  [depot_user]/pkg/[drivers_interactive_pkg] \
+                  [depot_user]/src/init \
+                  [depot_user]/src/libc \
+                  [depot_user]/src/vfs \
+                  [depot_user]/src/nitpicker \
+                  [depot_user]/src/gui_fb \
+                  [depot_user]/raw/ttf-bitstream-vera-minimal
+
+install_config {
+config
++ parent-provides
+  + service ROM
+  + service IRQ
+  + service IO_MEM
+  + service IO_PORT
+  + service PD
+  + service RM
+  + service CPU
+  + service LOG
+
++ default-route
+  + any-service
+    + parent
+    + any-child
+
++ default | caps: 100 | ram: 1M
+
++ start timer
+  + provides | + service Timer
+
++ start drivers | caps: 1500 | ram: 64M | managing_system: yes
+  + binary init
+  + route
+    + service ROM | label: config | + parent | label: drivers.config
+    + service Timer               | + child timer
+    + service Capture             | + child nitpicker
+    + service Event               | + child nitpicker
+    + any-service                 | + parent
+
++ start nitpicker | ram: 4M
+  + provides
+    + service Gui
+    + service Capture
+    + service Event
+  + config | focus: rom
+    + capture
+    + event
+    + domain default | layer: 2 | content: client | label: no | hover: always
+                     | width: 1024 | height: 768
+    + default-policy | domain: default
+
++ start gui_fb | ram: 4M
+  + provides
+    + service Framebuffer
+    + service Input
+  + config
+  + route
+    + service Gui | + child nitpicker
+    + any-service
+      + parent
+      + any-child
+
++ start font_vfs | ram: 4M
+  + binary vfs
+  + provides | + service File_system
+  + config
+    + vfs
+      + rom VeraMono.ttf
+      + dir font | + ttf regular | path: /VeraMono.ttf | size_px: 48 | cache: 128K
+    + default-policy | root: /font
+
++ start test-text_painter | ram: 2M
+  + config
+    + vfs | + dir font | + fs
+-
+}
+
+build { server/vfs test/text_painter lib/vfs_ttf }
+
+set fd [open [run_dir]/genode/focus w]
+puts $fd "focus | label: gui_fb ->\n-"
+close $fd
+
+build_boot_image [build_artifacts]
+
+run_genode_until forever

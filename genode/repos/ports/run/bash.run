@@ -1,0 +1,134 @@
+create_boot_directory
+
+import_from_depot [depot_user]/src/[base_src] \
+                  [depot_user]/pkg/[drivers_interactive_pkg] \
+                  [depot_user]/pkg/terminal \
+                  [depot_user]/src/init \
+                  [depot_user]/src/posix \
+                  [depot_user]/src/ncurses \
+                  [depot_user]/src/vim \
+                  [depot_user]/src/bash \
+                  [depot_user]/src/coreutils \
+                  [depot_user]/src/vfs \
+                  [depot_user]/src/vfs_pipe \
+                  [depot_user]/src/nitpicker \
+                  [depot_user]/src/fs_rom
+
+# write default vimrc file
+set vimrc_fd [open [run_dir]/genode/vimrc w]
+puts $vimrc_fd {
+set noloadplugins
+set hls
+set nocompatible
+set laststatus=2
+set noswapfile
+set viminfo=}
+close $vimrc_fd
+
+install_config {
+config | verbose: yes
++ parent-provides
+  + service ROM
+  + service LOG
+  + service RM
+  + service CPU
+  + service PD
+  + service IRQ
+  + service IO_PORT
+  + service IO_MEM
+
++ default-route
+  + any-service
+    + parent
+    + any-child
+
++ default | caps: 100 | ram: 1M
++ start timer
+  + provides | + service Timer
+
++ start drivers | caps: 1500 | ram: 64M | managing_system: yes
+  + binary init
+  + route
+    + service ROM | label: config | + parent | label: drivers.config
+    + service Timer               | + child timer
+    + service Capture             | + child nitpicker
+    + service Event               | + child nitpicker
+    + any-service                 | + parent
+
++ start nitpicker | ram: 4M
+  + provides
+    + service Gui
+    + service Capture
+    + service Event
+  + config | focus: rom
+    + capture
+    + event
+    + domain default | layer: 2 | content: client | label: no | hover: always
+    + default-policy | domain: default
+
++ start terminal | caps: 110 | ram: 6M
+  + provides | + service Terminal
+  + route
+    + service ROM | label: config | + parent | label: terminal.config
+    + service Gui                 | + child nitpicker
+    + any-service
+      + parent
+      + any-child
+
++ start vfs | caps: 120 | ram: 30M
+  + provides | + service File_system
+  + config
+    + policy | label_prefix: vfs_rom | root: /
+    + default-policy | root: / | writeable: yes
+    + vfs
+      + tar coreutils.tar
+      + tar vim.tar
+      + tar bash.tar
+      + dir home  | + ram
+      + dir share | + dir vim | + rom vimrc
+      + dir tmp   | + ram
+      + dir pipe  | + pipe
+      + dir dev
+        + zero
+        + null
+        + terminal
+        + inline rtc | : 2018-01-01 00:01
+
++ start vfs_rom | ram: 30M
+  + binary fs_rom
+  + provides | + service ROM
+  + config
+  + route
+    + service File_system | + child vfs
+    + any-service         | + parent
+
++ start /bin/bash | caps: 1000 | ram: 30M
+  + config | ld_verbose: yes
+  | + libc | pipe: /pipe | rtc: /dev/rtc
+  |        | stdin:  /dev/terminal
+  |        | stdout: /dev/terminal
+  |        | stderr: /dev/terminal
+  | + vfs | + fs
+  | + arg bash
+  | + env TERM | : screen
+  | + env PATH | : /bin
+  + route
+    + service File_system                 | + child vfs
+    + service ROM | label_suffix: .lib.so | + parent
+    + service ROM | label_last: /bin/bash | + child vfs_rom
+    + service ROM | label_prefix: /bin    | + child vfs_rom
+    + any-service
+      + parent
+      + any-child
+-
+}
+
+set fd [open [run_dir]/genode/focus w]
+puts $fd "focus | label: terminal -> \ | domain: default\n-"
+close $fd
+
+build { lib/ld lib/libc lib/vfs lib/posix test/fork test/execve }
+
+build_boot_image [build_artifacts]
+
+run_genode_until forever

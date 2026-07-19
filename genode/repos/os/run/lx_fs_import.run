@@ -1,0 +1,99 @@
+assert {[have_spec linux]}
+
+lappend depot_archives [depot_user]/src/[base_src]
+lappend depot_archives [depot_user]/src/init
+lappend depot_archives [depot_user]/src/vfs
+lappend depot_archives [depot_user]/src/vfs_import
+
+set build_components { }
+
+if { [have_cmd_switch --autopilot] } {
+	lappend depot_archives [depot_user]/src/lx_fs
+} else {
+	lappend build_components server/lx_fs
+}
+
+create_boot_directory
+
+install_config {
+config
++ parent-provides
+  + service ROM
+  + service IRQ
+  + service IO_MEM
+  + service IO_PORT
+  + service PD
+  + service RM
+  + service CPU
+  + service LOG
+
++ default-route
+  + any-service
+    + parent
+    + any-child
+
++ resource RAM | preserve: 200M
++ resource CAP | preserve: 1000
+
++ start timer | caps: 100 | ram: 1M
+  + provides | + service Timer
+
++ start import_lx_fs | caps: 220 | ram: 8M | ld: no
+  + binary lx_fs
+  + provides | + service File_system
+  + config
+    + policy | label_prefix: import_showcase -> | root: / | writeable: yes
+  + route
+    + any-service
+      + parent
+      + any-child
+
++ start import_showcase | caps: 100 | ram: 4M
+  + binary vfs
+  + provides | + service File_system
+  + config
+  | + vfs
+  |   + fs
+  |   + import | overwrite: false
+  |     + dir test-existing-file      | + inline a_file | : Hello Friend!
+  |     + dir test-file               | + inline foo    | : bar
+  |     + dir test-existing-directory | + inline foo    | : bar
+  + route
+    + service File_system | + child import_lx_fs
+    + any-service
+      + parent
+      + any-child
+-
+}
+
+import_from_depot $depot_archives
+
+if { [llength $build_components] > 0 } {
+	build $build_components
+}
+
+build_boot_image [build_artifacts]
+
+## Create files before genode is run
+exec mkdir -p [run_dir]/genode/test-existing-file
+exec echo "This file already exist." > [run_dir]/genode/test-existing-file/a_file
+exec mkdir -p [run_dir]/genode/test-existing-directory
+
+append qemu_args " -nographic "
+
+run_genode_until "Warning: skipping copy of file /test-existing-file/a_file, OPEN_ERR_EXISTS" 20
+
+set created_file { [run_dir]/genode/test-file/foo }
+
+if { [file exists $created_file] == 1 } {
+	puts { "Imported file not found." }
+	exit 1
+}
+
+set created_file_in_dir { [run_dir]/genode/test-existing-directory/foo }
+
+if { [file exists $created_file] == 1 } {
+	puts { "Imported file not found." }
+	exit 1
+}
+

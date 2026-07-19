@@ -1,0 +1,345 @@
+#
+# \brief  rudimentary x86 virtual-machine monitor interface test
+# \author Alexander Boettcher
+# \author Benjamin Lamowski
+# \date   2018-08-26
+
+assert {[have_spec x86]}
+
+proc check_qemu_version {qemu_version qemu_min qemu_max} {
+	set version_min_list [split $qemu_min ".-"]
+	set version_min_list_len [llength $version_min_list]
+
+	set version_max_list [split $qemu_max ".-"]
+	set version_max_list_len [llength $version_max_list]
+
+	set version_list [split $qemu_version ".-"]
+	set version_list_len [llength $version_list]
+
+	set cmp 0
+	set cmp_min 0
+	set cmp_max 0
+	set i 0
+
+	foreach number $version_list {
+		set min 0
+		set max 0
+		if { $i < $version_min_list_len } { set min [lindex $version_min_list $i] }
+		if { $i < $version_max_list_len } { set max [lindex $version_max_list $i] }
+
+		set cmp     [expr {$cmp  + $number * pow(1000, $version_list_len - $i) }]
+		set cmp_min [expr {$cmp_min + $min * pow(1000, $version_list_len - $i) }]
+		set cmp_max [expr {$cmp_max + $max * pow(1000, $version_list_len - $i) }]
+
+		incr i
+	}
+
+	return [expr {($cmp_min < $cmp) && ($cmp < $cmp_max)}]
+}
+
+set guest_fault_address 0xfffffff0
+append qemu_args " -accel kvm -cpu host"
+
+if { [have_cmd_switch --autopilot] } {
+	assert {!([have_spec x86_32] && ![have_include power_on/qemu])} \
+		"Nightly x86 32-bit test machine has no vmx support."
+
+	assert {!([have_include power_on/qemu] && [have_spec sel4])}
+
+	assert {[have_spec nova] || [have_spec foc] || [have_spec sel4] || [have_spec hw]}
+}
+
+if { [have_include power_on/qemu] } {
+	if {[regexp -- {-accel kvm -cpu host} $qemu_args dummy]} {
+
+		catch {exec cat /proc/cpuinfo | grep AMD | grep vendor_id } host_cpu
+		if {[regexp -- {AMD} $host_cpu dummy]} {
+			# the initial AMD NPT fault on Qemu is page size aligned
+			set guest_fault_address 0xfffff000
+		}
+
+	} else {
+		# Qemu TCG SVM is broken after $qemu_good_old and until before $qemu_good_new
+
+		catch {exec qemu-system-x86_64 --version} qemu_version
+		set qemu_version [regexp -inline {version[ ][0-9]+\.[0-9]+[\.0-9]*} $qemu_version]
+		set qemu_version [regexp -inline {[0-9]+\.[0-9]+[\.0-9]*} $qemu_version]
+
+		set qemu_good_old "6.0.1"
+		set qemu_good_new "100.0.0-unknown"
+
+		# Beginning with 6.1.0 the initial NPT fault is missing and actually
+		# no guest memory is mapped by our test VMM. Nevertheless something
+		# is executed by Qemu ???
+		if {[check_qemu_version $qemu_version $qemu_good_old $qemu_good_new]} {
+			puts "\nYour Qemu version '$qemu_version' is not working with AMD SVM virtualisation"
+			puts "Known good Qemu versions are until $qemu_good_old and starting with $qemu_good_new\n"
+			exit 1
+		}
+
+		# only AMD CPUs have Qemu TCG virtualization support
+		append qemu_args " -cpu EPYC"
+	}
+}
+
+
+# ia32_tsc_aux with rdtscp
+set test_rdtscp [expr [have_spec nova] || [have_spec hw]]
+
+build { core init timer lib/ld test/vmm_x86 }
+
+create_boot_directory
+
+install_config {
+config | verbose: yes | prio_levels: 2
++ parent-provides
+  + service ROM
+  + service IRQ
+  + service IO_MEM
+  + service IO_PORT
+  + service PD
+  + service RM
+  + service CPU
+  + service LOG
+  + service VM
+
++ default-route
+  + service VM | + parent
+  + any-service
+    + parent
+    + any-child
+
++ default | caps: 100 | ram: 1M
+
++ start timer
+  + provides | + service Timer
+
++ start vmm | caps: 2048 | ram: 256M | priority: -1
+  + binary test-vmm_x86
+-
+}
+
+#
+# Generate artificial platform info to allow for executing the scenario on
+# base-linux
+#
+proc platform_info_linux { } { return {
+platform_info
++ kernel nova
++ acpi | revision: 2 | rsdt: 0x2ffe20c5
++ affinity-space | width: 1 | height: 1
++ boot
++ hardware
+  + features | svm: true | vmx: true
+  + tsc | invariant: false | freq_khz: 2555589
+  + cpus
+    + cpu
+          id:       0
+          package:  0
+          core:     0
+          thread:   0
+          family:   0x10
+          model:    0x2
+          stepping: 0x3
+          platform: 0x0
+          patch:    0x0
+-
+} }
+
+if {[have_spec linux]} {
+	set fd [open [run_dir]/genode/platform_info w]
+	puts $fd [platform_info_linux]
+	close $fd
+}
+
+build_boot_image [build_artifacts]
+
+append qemu_args " -smp 2 -nographic "
+
+#run_genode_until {.*vcpu 1 : 7\. vm exit -.*\n} 20
+#run_genode_until forever
+run_genode_until "vmm test finished" 40
+
+set output_saved $output
+grep_output {^\[init -> vmm\] vcpu 0 :.*}
+set output_0 $output
+unify_output {\[init -> vmm\] vcpu 0 : [0-9]+} "vcpu 0 : XX"
+# transform INTEL HLT to AMD HLT number
+unify_output "vcpu 0 : XX. vm exit - reason 0xc" "vcpu 0 : XX. vm exit - reason 0x78"
+# AMD with NPT
+unify_output "vcpu 0 : XX. vm exit - reason 0xfc handled by 'ep'" ""
+# AMD w/o NPT
+unify_output "vcpu 0 : XX. vm exit - reason 0x4e handled by 'ep'" ""
+# Intel with EPT
+unify_output "vcpu 0 : XX. vm exit - reason 0x30 handled by 'ep'" ""
+unify_output "vcpu 0 : XX. vm exit -  guest fault address: $guest_fault_address" ""
+unify_output "vcpu 0 : XX. vm exit - resume vcpu" ""
+# remove rdtscp output from unified output, some kernel don't support tsc_aux
+unify_output {vcpu 0 : XX. vm exit -  rdtscp.* dx 0x[0-9a-f]+} ""
+# remove rdtscp exit on kernels not supporting it */
+if {!$test_rdtscp} {
+	# AMD RDTSCP exit
+	unify_output "vcpu 0 : XX. vm exit - reason 0x87 handled by 'ep'" ""
+}
+trim_lines
+set output_0 $output
+
+set output $output_saved
+grep_output {^\[init -> vmm\] vcpu 1 :.*}
+unify_output {\[init -> vmm\] vcpu 1 : [0-9]+} "vcpu 1 : XX"
+# transform INTEL HLT to AMD HLT number
+unify_output "vcpu 1 : XX. vm exit - reason 0xc" "vcpu 1 : XX. vm exit - reason 0x78"
+# AMD with NPT
+unify_output "vcpu 1 : XX. vm exit - reason 0xfc handled by 'ep'" ""
+# AMD w/o NPT
+unify_output "vcpu 1 : XX. vm exit - reason 0x4e handled by 'ep'" ""
+# Intel with EPT
+unify_output "vcpu 1 : XX. vm exit - reason 0x30 handled by 'ep'" ""
+unify_output "vcpu 1 : XX. vm exit -  guest fault address: $guest_fault_address" ""
+unify_output "vcpu 1 : XX. vm exit - resume vcpu" ""
+# remove rdtscp output from unified output, some kernel don't support tsc_aux
+unify_output {vcpu 1 : XX. vm exit -  rdtscp.* dx 0x[0-9a-f]+} ""
+# remove rdtscp exit on kernels not supporting it */
+if {!$test_rdtscp} {
+	# AMD RDTSCP exit
+	unify_output "vcpu 1 : XX. vm exit - reason 0x87 handled by 'ep'" ""
+}
+trim_lines
+set output_1 $output
+
+set output $output_saved
+grep_output {^\[init -> vmm\] vcpu 2 :.*}
+unify_output {\[init -> vmm\] vcpu 2 : [0-9]+} "vcpu 2 : XX"
+# transform INTEL HLT to AMD HLT number
+unify_output "vcpu 2 : XX. vm exit - reason 0xc" "vcpu 2 : XX. vm exit - reason 0x78"
+# AMD with NPT
+unify_output "vcpu 2 : XX. vm exit - reason 0xfc handled by 'second ep'" ""
+# AMD w/o NPT
+unify_output "vcpu 2 : XX. vm exit - reason 0x4e handled by 'second ep'" ""
+# Intel with EPT
+unify_output "vcpu 2 : XX. vm exit - reason 0x30 handled by 'second ep'" ""
+unify_output "vcpu 2 : XX. vm exit -  guest fault address: $guest_fault_address" ""
+unify_output "vcpu 2 : XX. vm exit - resume vcpu" ""
+# remove rdtscp output from unified output, some kernel don't support tsc_aux
+unify_output {vcpu 2 : XX. vm exit -  rdtscp.* dx 0x[0-9a-f]+} ""
+# remove rdtscp exit on kernels not supporting it */
+if {!$test_rdtscp} {
+	# AMD RDTSCP exit
+	unify_output "vcpu 2 : XX. vm exit - reason 0x87 handled by 'second ep'" ""
+}
+trim_lines
+set output_2 $output
+
+set output $output_saved
+grep_output {^\[init -> vmm\] vcpu 3 :.*}
+unify_output {\[init -> vmm\] vcpu 3 : [0-9]+} "vcpu 3 : XX"
+# transform INTEL HLT to AMD HLT number
+unify_output "vcpu 3 : XX. vm exit - reason 0xc" "vcpu 3 : XX. vm exit - reason 0x78"
+# AMD with NPT
+unify_output "vcpu 3 : XX. vm exit - reason 0xfc handled by 'second ep'" ""
+# AMD w/o NPT
+unify_output "vcpu 3 : XX. vm exit - reason 0x4e handled by 'second ep'" ""
+# Intel with EPT
+unify_output "vcpu 3 : XX. vm exit - reason 0x30 handled by 'second ep'" ""
+unify_output "vcpu 3 : XX. vm exit -  guest fault address: $guest_fault_address" ""
+unify_output "vcpu 3 : XX. vm exit - resume vcpu" ""
+# remove rdtscp output from unified output, some kernel don't support tsc_aux
+unify_output {vcpu 3 : XX. vm exit -  rdtscp.* dx 0x[0-9a-f]+} ""
+# remove rdtscp exit on kernels not supporting it */
+if {!$test_rdtscp} {
+	# AMD RDTSCP exit
+	unify_output "vcpu 3 : XX. vm exit - reason 0x87 handled by 'second ep'" ""
+}
+trim_lines
+set output_3 $output
+
+if {$test_rdtscp} {
+	set output $output_saved
+	grep_output {^\[init -> vmm\] vcpu [0-9]+ :.*rdtscp cx.*}
+	unify_output {\[init -> vmm\] vcpu 0 : [0-9]+} "vcpu 0 : XX"
+	unify_output {\[init -> vmm\] vcpu 1 : [0-9]+} "vcpu 1 : XX"
+	unify_output {\[init -> vmm\] vcpu 2 : [0-9]+} "vcpu 2 : XX"
+	unify_output {\[init -> vmm\] vcpu 3 : [0-9]+} "vcpu 3 : XX"
+	set output [lsort -stride 13 -index 1 $output]
+	unify_output "vcpu" "\nvcpu"
+	set output_rdtscp $output
+}
+
+puts "\ncomparing output ..."
+
+if {$test_rdtscp} {
+	puts $output_rdtscp
+	puts ""
+	set output $output_rdtscp
+	compare_output_to {
+	vcpu 0 : XX. vm exit - rdtscp cx guest=0xaffe0000 host=0x0 dx 0xff00
+	vcpu 1 : XX. vm exit - rdtscp cx guest=0xaffe0001 host=0x0 dx 0xff00
+	vcpu 2 : XX. vm exit - rdtscp cx guest=0xaffe0002 host=0x1 dx 0xff00
+	vcpu 3 : XX. vm exit - rdtscp cx guest=0xaffe0003 host=0x1 dx 0xff00
+	}
+}
+
+puts $output_0
+set output $output_0
+compare_output_to {
+[init -> vmm] vcpu 0 : created
+vcpu 0 : XX. vm exit - reason 0xfe handled by 'ep'
+vcpu 0 : XX. vm exit - reason 0x78 handled by 'ep'
+vcpu 0 : XX. vm exit -  halting vCPU - guest called HLT - ip=0xff81
+}
+
+puts $output_1
+set output $output_1
+compare_output_to {
+[init -> vmm] vcpu 1 : created
+vcpu 1 : XX. vm exit - reason 0xfe handled by 'ep'
+vcpu 1 : XX. vm exit - reason 0x78 handled by 'ep'
+vcpu 1 : XX. vm exit -  halting vCPU - guest called HLT - ip=0xff81
+vcpu 1 : XX. vm exit - reason 0xff handled by 'ep'
+vcpu 1 : XX. vm exit -  due to pause() request - ip=0xff81
+vcpu 1 : XX. vm exit - reason 0x78 handled by 'ep'
+vcpu 1 : XX. vm exit -  halting vCPU - guest called HLT - ip=0xff81
+vcpu 1 : XX. vm exit - reason 0xff handled by 'ep'
+vcpu 1 : XX. vm exit -  due to pause() request - ip=0xff81
+vcpu 1 : XX. vm exit - reason 0xff handled by 'ep'
+vcpu 1 : XX. vm exit -  due to pause() request - ip=0xff83
+vcpu 1 : XX. vm exit - reason 0x78 handled by 'ep'
+vcpu 1 : XX. vm exit -  halting vCPU - guest called HLT - ip=0xff85
+vcpu 1 : XX. vm exit - reason 0xff handled by 'ep'
+vcpu 1 : XX. vm exit -  due to pause() request - ip=0xff85
+}
+
+puts $output_2
+set output $output_2
+compare_output_to {
+[init -> vmm] vcpu 2 : created
+vcpu 2 : XX. vm exit - reason 0xfe handled by 'second ep'
+vcpu 2 : XX. vm exit - reason 0x78 handled by 'second ep'
+vcpu 2 : XX. vm exit -  halting vCPU - guest called HLT - ip=0xff81
+vcpu 2 : XX. vm exit - reason 0xff handled by 'second ep'
+vcpu 2 : XX. vm exit -  due to pause() request - ip=0xff81
+vcpu 2 : XX. vm exit - reason 0xff handled by 'second ep'
+vcpu 2 : XX. vm exit - reason 0x78 handled by 'second ep'
+vcpu 2 : XX. vm exit -  halting vCPU - guest called HLT - ip=0xff81
+vcpu 2 : XX. vm exit - reason 0xff handled by 'second ep'
+vcpu 2 : XX. vm exit -  due to pause() request - ip=0xff81
+vcpu 2 : XX. vm exit - reason 0xff handled by 'second ep'
+vcpu 2 : XX. vm exit - reason 0x78 handled by 'second ep'
+vcpu 2 : XX. vm exit -  halting vCPU - guest called HLT - ip=0xff82
+vcpu 2 : XX. vm exit - reason 0xff handled by 'second ep'
+vcpu 2 : XX. vm exit -  due to pause() request - ip=0xff82
+}
+
+puts $output_3
+set output $output_3
+compare_output_to {
+[init -> vmm] vcpu 3 : created
+vcpu 3 : XX. vm exit - reason 0xfe handled by 'second ep'
+vcpu 3 : XX. vm exit - reason 0x78 handled by 'second ep'
+vcpu 3 : XX. vm exit -  halting vCPU - guest called HLT - ip=0xff81
+}
+
+set output $output_saved
+grep_output {(Error)}
+compare_output_to {}
+

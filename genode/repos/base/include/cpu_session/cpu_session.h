@@ -1,0 +1,172 @@
+/*
+ * \brief  CPU (processing time) manager session interface
+ * \author Christian Helmuth
+ * \date   2006-06-27
+ */
+
+/*
+ * Copyright (C) 2006-2017 Genode Labs GmbH
+ *
+ * This file is part of the Genode OS framework, which is distributed
+ * under the terms of the GNU Affero General Public License version 3.
+ */
+
+#ifndef _INCLUDE__CPU_SESSION__CPU_SESSION_H_
+#define _INCLUDE__CPU_SESSION__CPU_SESSION_H_
+
+#include <util/attempt.h>
+#include <cpu_session/capability.h>
+#include <cpu_thread/cpu_thread.h>
+#include <base/rpc_args.h>
+#include <session/session.h>
+#include <dataspace/capability.h>
+#include <pd_session/pd_session.h>
+
+namespace Genode {
+
+	struct Cpu_session;
+	struct Cpu_session_client;
+
+	using Thread_capability = Capability<Cpu_thread>;
+}
+
+
+struct Genode::Cpu_session : Session
+{
+	/**
+	 * \noapi
+	 */
+	static const char *service_name() { return "CPU"; }
+
+	/*
+	 * A CPU session consumes a dataspace capability for the session-object
+	 * allocation, its session capability, the capability of the 'Native_cpu'
+	 * RPC interface, and a capability for the trace-control dataspace.
+	 */
+	static constexpr unsigned CAP_QUOTA = 6;
+	static constexpr size_t   RAM_QUOTA = 36*1024;
+
+	using Client = Cpu_session_client;
+
+	enum { PRIORITY_LIMIT = 1 << 16 };
+	enum { DEFAULT_PRIORITY = 0 };
+
+	using Name = String<32>;
+
+	virtual ~Cpu_session() { }
+
+	using Create_thread_error  = Alloc_error;
+	using Create_thread_result = Attempt<Thread_capability, Create_thread_error>;
+
+	/**
+	 * Create a new thread
+	 *
+	 * \param pd        protection domain where the thread will be executed
+	 * \param name      name for the thread
+	 * \param affinity  CPU affinity, referring to the session-local
+	 *                  affinity space
+	 * \param utcb      base of the UTCB that will be used by the thread
+	 * \return          capability representing the new thread
+	 */
+	virtual Create_thread_result create_thread(Capability<Pd_session> pd,
+	                                           Name const            &name,
+	                                           Affinity::Location     affinity,
+	                                           addr_t                 utcb = 0) = 0;
+
+	/**
+	 * Kill an existing thread
+	 *
+	 * \param thread  capability of the thread to kill
+	 */
+	virtual void kill_thread(Thread_capability thread) = 0;
+
+	/**
+	 * Register default signal handler for exceptions
+	 *
+	 * This handler is used for all threads that have no explicitly installed
+	 * exception handler.
+	 *
+	 * On Linux, this exception is delivered when the process triggers
+	 * a SIGCHLD. On other platforms, this exception is delivered on
+	 * the occurrence of CPU exceptions such as division by zero.
+	 */
+	virtual void exception_sigh(Signal_context_capability) = 0;
+
+	/**
+	 * Return affinity space of CPU nodes available to the CPU session
+	 *
+	 * The dimension of the affinity space as returned by this method
+	 * represent the physical CPUs that are available.
+	 */
+	virtual Affinity::Space affinity_space() const = 0;
+
+	/**
+	 * Translate generic priority value to kernel-specific priority levels
+	 *
+	 * \param pf_prio_limit  number of priorities used for the kernel, should
+	 *                       be power of 2
+	 * \param prio           generic priority value as used by the CPU
+	 *                       session interface
+	 * \param inverse        order of platform priorities, if true
+	 *                       'pf_prio_limit-1' corresponds to the highest
+	 *                       priority, otherwise it refers to the
+	 *                       lowest priority.
+	 * \return               platform-specific priority value
+	 */
+	static unsigned scale_priority(unsigned pf_prio_limit, unsigned prio,
+	                               bool inverse = true)
+	{
+		/*
+		 * Generic priority values are (0 is highest, 'PRIORITY_LIMIT-1'
+		 * is lowest. On platforms where priority levels are defined
+		 * the other way round, we have to invert the priority value.
+		 */
+		prio = inverse ? Cpu_session::PRIORITY_LIMIT-1 - prio : prio;
+
+		/* scale value to platform priority range 0..pf_prio_limit-1 */
+		return (prio*pf_prio_limit)/Cpu_session::PRIORITY_LIMIT;
+	}
+
+	/**
+	 * Request trace control dataspace
+	 *
+	 * The trace-control dataspace is used to propagate tracing
+	 * control information from core to the threads of a CPU session.
+	 *
+	 * The trace-control dataspace is accounted to the CPU session.
+	 */
+	virtual Dataspace_capability trace_control() = 0;
+
+
+	/*****************************************
+	 ** Access to kernel-specific interface **
+	 *****************************************/
+
+	/**
+	 * Common base class of kernel-specific CPU interfaces
+	 */
+	struct Native_cpu;
+
+	/**
+	 * Return capability to kernel-specific CPU operations
+	 */
+	virtual Capability<Native_cpu> native_cpu() = 0;
+
+
+	/*********************
+	 ** RPC declaration **
+	 *********************/
+
+	GENODE_RPC(Rpc_create_thread, Create_thread_result, create_thread,
+	           Capability<Pd_session>, Name const &, Affinity::Location, addr_t);
+	GENODE_RPC(Rpc_kill_thread, void, kill_thread, Thread_capability);
+	GENODE_RPC(Rpc_exception_sigh, void, exception_sigh, Signal_context_capability);
+	GENODE_RPC(Rpc_affinity_space, Affinity::Space, affinity_space);
+	GENODE_RPC(Rpc_trace_control, Dataspace_capability, trace_control);
+	GENODE_RPC(Rpc_native_cpu, Capability<Native_cpu>, native_cpu);
+
+	GENODE_RPC_INTERFACE(Rpc_create_thread, Rpc_kill_thread, Rpc_exception_sigh,
+	                     Rpc_affinity_space, Rpc_trace_control, Rpc_native_cpu);
+};
+
+#endif /* _INCLUDE__CPU_SESSION__CPU_SESSION_H_ */

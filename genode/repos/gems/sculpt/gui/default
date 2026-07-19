@@ -1,0 +1,41 @@
+config | focus: rom
++ capture | managed: yes
++ event
++ report | hover: yes | focus: yes | clicked: yes | keystate: no | panorama: yes
+
++ background | color: #000000
+
++ domain overlay        | layer: 0 | content: client | label: no | hover: always | focus: transient
++ domain pointer        | layer: 1 | content: client | label: no | origin: pointer
++ domain lock           | layer: 2 | content: client | label: no | hover: always | focus: click
++ domain leitzentrale   | layer: 3 | content: client | label: no | hover: always | focus: click
++ domain slides         | layer: 4 | content: client | label: no | hover: always | focus: click
++ domain touch_keyboard | layer: 5 | content: client | label: no | hover: always | focus: transient
++ domain default        | layer: 6 | color: #052944              | hover: always | focus: click
++ domain decorator      | layer: 6 | content: client | label: no | hover: always | focus: transient
++ domain desktop        | layer: 6 | content: client | label: no | hover: always | focus: click | input: always
++ domain follow_touch   | layer: 6 | content: client | label: no | hover: always | focus: transient | origin: pointer | width: 720 | height: 960
++ domain background     | layer: 7 | content: client | label: no | hover: always | focus: transient
+
++ policy | label: wm -> wm -> decorator  | domain: decorator
++ policy | label: lock_screen            | domain: lock
++ policy | label: slides                 | domain: slides
++ policy | label: backdrop               | domain: background
++ policy | label: leitzentrale           | domain: leitzentrale
++ policy | label_prefix: wm              | domain: desktop
++ policy | label_prefix: themed_wm       | domain: desktop
++ policy | label_prefix: touch_keyboard  | domain: touch_keyboard
++ policy | label_prefix: follow_touch    | domain: follow_touch
++ policy | label_prefix: overlay         | domain: overlay
++ policy | label_prefix: pointer         | domain: pointer
+
++ default-policy | domain: default
+
++ global-key KEY_RESTART   | label: global_keys -> input
++ global-key KEY_DASHBOARD | label: global_keys -> input
++ global-key KEY_CAPSLOCK  | label: global_keys -> input
++ global-key KEY_NUMLOCK   | label: global_keys -> input
++ global-key KEY_SCREEN    | label: wm -> wm -> decorator
++ global-key KEY_SCREEN    | label: themed_wm -> wm -> decorator
++ global-key KEY_PRINT     | label: screenshot -> keys -> input
+-

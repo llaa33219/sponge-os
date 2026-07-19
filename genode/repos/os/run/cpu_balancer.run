@@ -1,0 +1,138 @@
+build {
+	core init timer lib/ld
+	server/cpu_balancer app/cpu_burner app/top server/dynamic_rom
+}
+
+assert {[have_include power_on/qemu]}
+assert {[have_spec nova] || [have_spec sel4]} \
+	"foc in principle supports migration, but due to bug #4357 foc is not tested"
+
+
+set cpu_width  4
+set cpu_height 1
+set report_config "yes"
+set use_trace "yes"
+
+proc report_rom_start_node { } { return {
++ start report_rom | ram: 1M
+  + binary report_rom
+  + provides
+    + service Report
+    + service ROM
+  + config | verbose: yes
+  + route
+    + any-service
+      + parent
+} }
+
+if {$report_config != "yes"} { proc report_rom_start_node { } { } }
+
+
+create_boot_directory
+
+import_from_depot [depot_user]/src/report_rom \
+                  [depot_user]/src/shim
+
+install_config {
+config | prio_levels: 2 | verbose: yes
++ affinity-space | width: } $cpu_width { | height: } $cpu_height {
+
++ parent-provides
+  + service LOG
+  + service CPU
+  + service ROM
+  + service PD
+  + service IO_MEM  | . timer on some kernels
+  + service IO_PORT | . timer on some kernels
+  + service IRQ     | . timer on some kernels
+  + service TRACE
+
++ default-route
+  + service LOG | + parent
+  + service PD  | + parent
+  + service ROM | + parent
+
++ default | caps: 100 | ram: 1M
+
++ start timer
+  + provides | + service Timer
+  + route | + any-service | + parent
+
+} [report_rom_start_node] {
+
++ start dynamic_rom | ram: 4M
+  + provides | + service ROM
+  + config | verbose: yes
+  | + rom cpu_balancer.config
+  |   + inline
+  |   | + config
+  |   |   |      interval_us: 2000000
+  |   |   |      report:      } $report_config {
+  |   |   |      trace:       } $use_trace {
+  |   |   |      verbose:     no
+  |   |   |
+  |   |   + component | label: cpu_burner | default_policy: none
+  |   |     x thread signal handler | policy: pin | xpos: 1 | ypos: 0
+  |   |     x thread signal handler | policy: max-utilize
+  |   |     + thread burn_0x0       | policy: round-robin
+  |   |     + thread burn_1x0       | policy: round-robin
+  |   + sleep | milliseconds: 2000
+  |   + inline
+  |   | + config
+  |   |   |      interval_us: 2000000
+  |   |   |      report:      } $report_config {
+  |   |   |      trace:       } $use_trace {
+  |   |   |      verbose:     no
+  |   |   |
+  |   |   + component | label: cpu_burner | default_policy: none
+  |   |     + thread signal handler | policy: pin | xpos: 1 | ypos: 0
+  |   |     x thread signal handler | policy: max-utilize
+  |   |     + thread burn_0x0       | policy: round-robin
+  |   |     + thread burn_1x0       | policy: round-robin
+  |   |     + thread not_existent   | policy: round-robin
+  |   + sleep | milliseconds: 2000
+  + route
+    + service Timer | + child timer
+    + any-service   | + parent
+
++ start cpu_balancer | caps: 120 | ram: 2M
+  + provides
+    + service PD
+    + service CPU
+  + route
+    + service ROM | label: config | + child dynamic_rom | label: cpu_balancer.config
+    + service Timer               | + child timer
+    + service Report              | + child report_rom
+    + any-service                 | + parent
+
++ start cpu_burner | priority: -1 | caps: 120 | ram: 3M
+  + binary shim
+  + affinity | xpos: 1 | ypos: 0 | width: 2 | height: 1
+  + config | percent: 95
+  + route
+    + service PD  | unscoped_label: cpu_burner | + parent | . by shim binary
+    + service CPU | unscoped_label: cpu_burner | + parent
+
+    + service PD  | + child cpu_balancer | label: cpu_burner | . by child of shim
+    + service CPU | + child cpu_balancer | label: cpu_burner
+
+    + service ROM | label: binary | + parent | label: cpu_burner
+    + service Timer               | + child timer
+    + service LOG                 | + parent
+    + service ROM                 | + parent
+
+x start top | ram: 2M
+  + route
+    + service Timer | + child timer
+    + service CPU   | + child cpu_balancer
+    + service TRACE | + parent | label:
+    + any-service   | + parent
+-
+}
+
+build_boot_image [build_artifacts]
+
+append qemu_args " -nographic"
+append qemu_args " -smp [expr $cpu_width * $cpu_height],cores=$cpu_width,threads=$cpu_height"
+
+run_genode_until {.*thread [|] xpos: [1-9] [|] ypos: 0 [|] name: signal handler [|] policy: pin.*\n} 60

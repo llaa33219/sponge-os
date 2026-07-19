@@ -1,0 +1,139 @@
+/*
+ * \brief  Allocator for anonymous memory used by libc
+ * \author Norman Feske
+ * \date   2012-05-18
+ */
+
+/*
+ * Copyright (C) 2012-2019 Genode Labs GmbH
+ *
+ * This file is part of the Genode OS framework, which is distributed
+ * under the terms of the GNU Affero General Public License version 3.
+ */
+
+#ifndef _LIBC__INTERNAL__MEM_ALLOC_H_
+#define _LIBC__INTERNAL__MEM_ALLOC_H_
+
+/* Genode includes */
+#include <base/ram_allocator.h>
+#include <base/allocator_avl.h>
+#include <base/env.h>
+#include <util/list.h>
+#include <rm_session/rm_session.h>
+
+/* libc-internal includes */
+#include <internal/types.h>
+
+namespace Libc {
+
+	struct Mem_alloc
+	{
+		using Size_at_error  = Allocator_avl::Size_at_error;
+		using Size_at_result = Allocator_avl::Size_at_result;
+
+		virtual void *alloc(size_t size, Align) = 0;
+		virtual void free(void *ptr) = 0;
+		virtual Size_at_result size_at(void const *ptr) const = 0;
+	};
+
+	/**
+	 * Return singleton instance of the memory allocator
+	 */
+	Mem_alloc *mem_alloc(bool executable = false);
+
+	class Mem_alloc_impl : public Mem_alloc
+	{
+		private:
+
+			enum {
+				MIN_CHUNK_SIZE =    4*1024,  /* in machine words */
+				MAX_CHUNK_SIZE = 1024*1024
+			};
+
+			using Range = Region_map::Range;
+
+			struct Dataspace : List<Dataspace>::Element
+			{
+				Ram_dataspace_capability cap;
+				Range range;
+
+				Dataspace(Ram_dataspace_capability cap, Range range)
+				: cap(cap), range(range) { }
+			};
+
+			class Dataspace_pool : public List<Dataspace>
+			{
+				private:
+
+					Ram_allocator *_ram;          /* RAM session for backing store */
+					Env::Local_rm *_local_rm;     /* region map of address space   */
+					bool const     _executable;   /* whether to allocate executable dataspaces */
+
+				public:
+
+					/**
+					 * Constructor
+					 */
+					Dataspace_pool(Ram_allocator *ram, Env::Local_rm *rm,
+					               bool executable)
+					:
+						_ram(ram), _local_rm(rm), _executable(executable)
+					{ }
+
+					/**
+					 * Destructor
+					 */
+					~Dataspace_pool();
+
+					/**
+					 * Expand dataspace by specified size
+					 *
+					 * \param size      number of bytes to add to the dataspace pool
+					 * \param md_alloc  allocator to expand. This allocator is also
+					 *                  used for meta data allocation (only after
+					 *                  being successfully expanded).
+					 * \throw           Region_map::Invalid_dataspace,
+					 *                  Region_map::Region_conflict
+					 * \return          0 on success or negative error code
+					 */
+					int expand(size_t size, Range_allocator *alloc);
+
+					void reassign_resources(Ram_allocator *ram,
+					                        Env::Local_rm *rm)
+					{
+						_ram = ram, _local_rm = rm;
+					}
+			};
+
+			Mutex  mutable _mutex;
+			Dataspace_pool _ds_pool;      /* list of dataspaces */
+			Allocator_avl  _alloc;        /* local allocator    */
+			size_t         _chunk_size;
+
+			/**
+			 * Try to allocate block at our local allocator
+			 *
+			 * \return true on success
+			 *
+			 * This function is a utility used by 'alloc' to avoid
+			 * code duplication.
+			 */
+			bool _try_local_alloc(size_t size, void **out_addr);
+
+		public:
+
+			Mem_alloc_impl(Env::Local_rm &rm, Ram_allocator &ram,
+			               bool executable = false)
+			:
+				_ds_pool(&ram, &rm, executable),
+				_alloc(0),
+				_chunk_size(MIN_CHUNK_SIZE)
+			{ }
+
+			void *alloc(size_t, Align) override;
+			void free(void *) override;
+			Size_at_result size_at(void const *) const override;
+	};
+}
+
+#endif /* _LIBC__INTERNAL__MEM_ALLOC_H_ */

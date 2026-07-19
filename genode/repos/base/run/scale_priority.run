@@ -1,0 +1,88 @@
+assert {[have_spec foc] || [have_spec nova] || [have_spec sel4]}
+
+set start_at_zero "yes"
+set inverse "yes"
+if {[have_spec nova]} {          # nova has priorities 64..1
+	set prio_levels_log2 6
+	set start_at_zero "no"
+} elseif {[have_spec foc] } {    # foc has priorities 127..0
+	set prio_levels_log2 7
+} elseif {[have_spec sel4] } {   # sel4 has priorities 255..0
+	set prio_levels_log2 8
+}
+
+set prio_levels [expr 1 << $prio_levels_log2]
+
+#
+# Build
+#
+
+build { core init timer lib/ld test/scale_priority app/dummy }
+
+
+#
+# Configure and assemble boot image
+#
+
+create_boot_directory
+
+install_config {
+config | prio_levels: } [set prio_levels] {
++ parent-provides
+  + service ROM
+  + service IRQ
+  + service IO_MEM
+  + service IO_PORT
+  + service PD
+  + service RM
+  + service CPU
+  + service LOG
+  + service TRACE
+
++ default-route
+  + service TRACE | + parent | label:
+  + any-service
+    + parent
+    + any-child
+
++ default | caps: 1000 | ram: 10M
++ start timer
+  + provides | + service Timer
+
++ start highest | priority: 0
+  + binary dummy
+  + config
+    + log
+    + sleep_forever
+
++ start second highest | priority: -1
+  + binary dummy
+  + config
+    + log
+    + sleep_forever
+
++ start lowest | priority: -} [expr $prio_levels-1] {
+  + binary dummy
+  + config
+    + log
+    + sleep_forever
+
++ start second lowest | priority: -} [expr $prio_levels-2] {
+  + binary dummy
+  + config
+    + log
+    + sleep_forever
+
++ start test-scale_priority
+  + config
+           prio_levels_log2: } [set prio_levels_log2] {
+           inverse:          } [set inverse] {
+           start_at_zero:    } [set start_at_zero] {
+-
+}
+
+build_boot_image [build_artifacts]
+
+append qemu_args " -nographic "
+
+run_genode_until "exited with exit value 0" 20

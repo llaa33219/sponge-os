@@ -1,0 +1,109 @@
+#
+# Build
+#
+
+#
+# The size of the result buffers in the fast-time-polling test
+#
+proc fast_polling_buf_size  { } {
+
+	if {[expr [have_board pbxa9]        && [have_spec foc]]} { return 40000000 }
+	if {[expr [have_board imx53_qsb_tz] && [have_spec hw]]}  { return 40000000 }
+	if {[expr [have_board rpi]          && [have_spec hw]]}  { return 40000000 }
+	if {[expr [have_board virt_qemu_riscv]   && [have_spec hw]]}  { return 15000000 }
+	return 80000000
+}
+
+#
+# Wether the platform allows for timeouts that trigger with a precision < 50 milliseconds
+#
+proc precise_timeouts { } { return "yes" }
+
+#
+# Wether the platform allows for a timestamp that has a precision < 1 millisecond
+#
+proc precise_time { } { return "yes" }
+
+#
+# Wether the platform allows for a 'Timer::Connection::elapsed_ms'
+# implementation that has a precision < 2 ms
+#
+proc precise_ref_time { } { return "yes" }
+
+build { core init lib/ld driver/platform timer/hpet test/timeout app/top server/report_rom driver/acpi}
+
+#
+# Boot image
+#
+
+create_boot_directory
+
+install_config {
+config | prio_levels: 4
++ parent-provides
+  + service ROM
+  + service IRQ
+  + service IO_MEM
+  + service IO_PORT
+  + service PD
+  + service RM
+  + service CPU
+  + service LOG
+  + service TRACE
+
++ default-route
+  + any-service
+    + parent
+    + any-child
+
++ default | caps: 100
+
++ start hpet_timer | ram: 10M
+  + provides | + service Timer
+
++ start test | ram: 250M | priority: -1
+  + binary test-timeout
+  + config
+           precise_time:          } [precise_time] {
+           precise_ref_time:      } [precise_ref_time] {
+           precise_timeouts:      } [precise_timeouts] {
+           fast_polling_buf_size: } [fast_polling_buf_size] {
+
++ start top | ram: 20M | priority: -2
+  + route
+    + service TRACE | + parent | label:
+    + any-service
+      + parent
+      + any-child
+
++ start drivers_reports | caps: 100 | ram: 2M
+  + binary report_rom
+  + provides
+    + service Report
+    + service ROM
+  + config | verbose: no
+    + policy | label:  pci_decode -> system | report: acpi -> acpi
+    + policy | label:  platform -> devices  | report: pci_decode -> devices
+    + policy | label:  usb_hid -> report    | report: usb -> devices
+
++ start acpi | caps: 350 | ram: 4M
+  + route
+    + service Report | + child drivers_reports
+    + any-service
+      + parent
+      + any-child
+-
+}
+
+build_boot_image [build_artifacts]
+
+#
+# Execution
+#
+
+append qemu_args "-nographic "
+
+run_genode_until forever
+run_genode_until "child \"test\" exited with exit value.*\n" 900
+grep_output {\[init\] child "test" exited with exit value}
+compare_output_to {[init] child "test" exited with exit value 0}

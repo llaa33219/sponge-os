@@ -1,0 +1,464 @@
+/*
+ * \brief  Data structure for tracking the state of imported archives
+ * \author Norman Feske
+ * \date   2018-01-11
+ */
+
+/*
+ * Copyright (C) 2017 Genode Labs GmbH
+ *
+ * This file is part of the Genode OS framework, which is distributed
+ * under the terms of the GNU Affero General Public License version 3.
+ */
+
+#ifndef _IMPORT_H_
+#define _IMPORT_H_
+
+/* Genode includes */
+#include <util/list_model.h>
+#include <base/registry.h>
+#include <base/allocator.h>
+
+#include "types.h"
+
+namespace Depot_download_manager { struct Import; }
+
+
+class Depot_download_manager::Import
+{
+	public:
+
+		struct Download : List_model<Download>::Element
+		{
+			struct Progress
+			{
+				uint64_t total_bytes;
+				uint64_t downloaded_bytes;
+
+				static Progress from_node(Node const &node)
+				{
+					return { .total_bytes      = node.attribute_value("total", 0ULL),
+					         .downloaded_bytes = node.attribute_value("now",   0ULL) };
+				}
+
+				void gen_attr(Generator &g) const
+				{
+					g.attribute("total", total_bytes);
+					g.attribute("now",   downloaded_bytes);
+				}
+
+				unsigned percent() const
+				{
+					if (total_bytes == 0)
+						return 0;
+
+					return unsigned((downloaded_bytes*100)/total_bytes);
+				}
+			};
+
+			Url const url;
+
+			Progress progress { };
+
+			bool complete = false;
+
+			Download(Url const &url) : url(url) { };
+
+			static Url url_from_node(Node const &node)
+			{
+				return node.attribute_value("url", Url());
+			}
+
+			void update(Node const &node)
+			{
+				progress = Progress::from_node(node);
+				complete = node.attribute_value("finished", false);
+			}
+
+			bool matches(Node const &node) const
+			{
+				return url_from_node(node) == url;
+			}
+
+			static bool type_matches(Node const &node)
+			{
+				return node.has_type("fetch") && url_from_node(node).valid();
+			}
+		};
+
+	private:
+
+		struct Item
+		{
+			Registry<Item>::Element _element;
+
+			Archive::Path const path;
+
+			bool const require_verify;
+
+			enum State {
+				DOWNLOAD_IN_PROGRESS,
+				DOWNLOAD_COMPLETE,
+				DOWNLOAD_UNAVAILABLE,
+				VERIFICATION_IN_PROGRESS,
+				VERIFICATION_FAILED,
+				VERIFIED,
+				BLESSED,   /* verification deliberately skipped */
+				STAGED,
+				EXTRACTED,
+				COMMITTED, /* renamed from extract/<version> to <version> */
+				MALFORMED  /* archive could not be extracted */
+			};
+
+			State state = DOWNLOAD_IN_PROGRESS;
+
+			Download::Progress progress { };
+
+			bool in_progress() const
+			{
+				return state == DOWNLOAD_IN_PROGRESS
+				    || state == DOWNLOAD_COMPLETE
+				    || state == VERIFICATION_IN_PROGRESS
+				    || state == VERIFIED
+				    || state == BLESSED
+				    || state == STAGED
+				    || state == EXTRACTED;
+			}
+
+			Item(Registry<Item> &registry, Archive::Path const &path,
+			     Require_verify require_verify)
+			:
+				_element(registry, *this), path(path),
+				require_verify(require_verify.value)
+			{ }
+
+			char const *state_text() const
+			{
+				switch (state) {
+				case DOWNLOAD_IN_PROGRESS:     return "download";
+				case DOWNLOAD_COMPLETE:        return "fetched";
+				case DOWNLOAD_UNAVAILABLE:     return "unavailable";
+				case VERIFICATION_IN_PROGRESS: return "verify";
+				case VERIFICATION_FAILED:      return "corrupted";
+				case VERIFIED:                 return "stage";
+				case BLESSED:                  return "stage";  /* prepare extraction */
+				case STAGED:                   return "extract";
+				case EXTRACTED:                return "finalize";
+				case COMMITTED:                return "committed";
+				case MALFORMED:                return "malformed";
+				};
+				return "";
+			}
+		};
+
+		Allocator &_alloc;
+
+		bool const _pubkey_known;
+
+		Registry<Item> _items { };
+
+		void _for_each_item(Item::State state, auto const &fn) const
+		{
+			_items.for_each([&] (Item const &item) {
+				if (item.state == state)
+					fn(item.path); });
+		}
+
+		/**
+		 * Return true if at least one item is in the given 'state'
+		 */
+		bool _item_state_exists(Item::State state) const
+		{
+			bool result = false;
+			_items.for_each([&] (Item const &item) {
+				if (!result && item.state == state)
+					result = true; });
+			return result;
+		}
+
+		static Archive::Path _depdendency_path(Node const &item)
+		{
+			return item.attribute_value("path", Archive::Path());
+		}
+
+		static Archive::Path _index_path(Node const &item)
+		{
+			return Path(item.attribute_value("user",    Archive::User()), "/index/",
+			            item.attribute_value("version", Archive::Version()));
+		}
+
+		static Archive::Path _image_path(Node const &item)
+		{
+			return Path(item.attribute_value("user", Archive::User()), "/image/",
+			            item.attribute_value("name", Archive::Name()));
+		}
+
+		static Archive::Path _image_index_path(Node const &item)
+		{
+			return Path(item.attribute_value("user", Archive::User()), "/image/index");
+		}
+
+		static void _for_each_missing_depot_path(Node const &dependencies,
+		                                         Node const &index,
+		                                         Node const &image,
+		                                         Node const &image_index,
+		                                         auto const &fn)
+		{
+			dependencies.for_each_sub_node("missing", [&] (Node const &item) {
+				fn(_depdendency_path(item), Require_verify::from_node(item)); });
+
+			index.for_each_sub_node("missing", [&] (Node const &item) {
+				fn(_index_path(item), Require_verify::from_node(item)); });
+
+			image.for_each_sub_node("missing", [&] (Node const &item) {
+				fn(_image_path(item), Require_verify::from_node(item)); });
+
+			image_index.for_each_sub_node("missing", [&] (Node const &item) {
+				fn(_image_index_path(item), Require_verify::from_node(item)); });
+		}
+
+		void _transition(Item::State from, Item::State to)
+		{
+			_items.for_each([&] (Item &item) {
+				if (item.state == from)
+					item.state = to; });
+		}
+
+		void _transition(Archive::Path const &archive, Item::State from, Item::State to)
+		{
+			_items.for_each([&] (Item &item) {
+				if (item.state == from && item.path == archive)
+					item.state = to; });
+		}
+
+		void _with_downloading_item(Url const &current_user_url, Url const &url, auto const &fn)
+		{
+			_items.for_each([&] (Item &item) {
+				if (item.state != Item::DOWNLOAD_IN_PROGRESS)
+					return;
+
+				Url const item_url(current_user_url, "/", Archive::download_file_path(item.path));
+				if (url == item_url)
+					fn(item);
+			});
+		}
+
+	public:
+
+		static void for_each_present_depot_path(Node const &dependencies,
+		                                        Node const &index,
+		                                        Node const &image,
+		                                        Node const &image_index,
+		                                        auto const &fn)
+		{
+			dependencies.for_each_sub_node("present", [&] (Node const &item) {
+				fn(_depdendency_path(item)); });
+
+			index.for_each_sub_node("index", [&] (Node const &item) {
+				fn(_index_path(item)); });
+
+			image.for_each_sub_node("image", [&] (Node const &item) {
+				fn(_image_path(item)); });
+
+			image_index.for_each_sub_node("present", [&] (Node const &item) {
+				fn(_image_index_path(item)); });
+		}
+
+		/**
+		 * Constructor
+		 *
+		 * \param user          depot origin to use for the import
+		 * \param dependencies  information about '<missing>' archives
+		 * \param index         information about '<missing>' index files
+		 *
+		 * The import constructor considers only those '<missing>' sub nodes as
+		 * items that match the 'user'. The remaining sub nodes are imported in
+		 * a future iteration.
+		 */
+		Import(Allocator           &alloc,
+		       Archive::User const &user,
+		       Pubkey_known  const pubkey_known,
+		       Node          const &dependencies,
+		       Node          const &index,
+		       Node          const &image,
+		       Node          const &image_index)
+		:
+			_alloc(alloc), _pubkey_known(pubkey_known.value)
+		{
+			_for_each_missing_depot_path(dependencies, index, image, image_index,
+				[&] (Archive::Path const &path, Require_verify require_verify) {
+					if (Archive::user(path) == user)
+						new (alloc) Item(_items, path, require_verify); });
+		}
+
+		~Import()
+		{
+			_items.for_each([&] (Item &item) { destroy(_alloc, &item); });
+		}
+
+		bool downloads_in_progress() const
+		{
+			return _item_state_exists(Item::DOWNLOAD_IN_PROGRESS);
+		}
+
+		bool completed_downloads_available() const
+		{
+			return _item_state_exists(Item::DOWNLOAD_COMPLETE);
+		}
+
+		bool unverified_archives_available() const
+		{
+			return _item_state_exists(Item::VERIFICATION_IN_PROGRESS);
+		}
+
+		bool verified_or_blessed_archives_available() const
+		{
+			return _item_state_exists(Item::VERIFIED)
+			    || _item_state_exists(Item::BLESSED);
+		}
+
+		bool staged_archives_available() const
+		{
+			return _item_state_exists(Item::STAGED);
+		}
+
+		bool extracted_archives_available() const
+		{
+			return _item_state_exists(Item::EXTRACTED);
+		}
+
+		bool committed_archives_available() const
+		{
+			return _item_state_exists(Item::COMMITTED);
+		}
+
+		void for_each_download(auto const &fn) const
+		{
+			_for_each_item(Item::DOWNLOAD_IN_PROGRESS, fn);
+		}
+
+		void for_each_unverified_archive(auto const &fn) const
+		{
+			_for_each_item(Item::VERIFICATION_IN_PROGRESS, fn);
+		}
+
+		void for_each_verified_or_blessed_archive(auto const &fn) const
+		{
+			_for_each_item(Item::VERIFIED, fn);
+			_for_each_item(Item::BLESSED,  fn);
+		}
+
+		void for_each_staged_archive(auto const &fn) const
+		{
+			_for_each_item(Item::STAGED, fn);
+		}
+
+		void for_each_extracted_archive(auto const &fn) const
+		{
+			_for_each_item(Item::EXTRACTED, fn);
+		}
+
+		void for_each_failed_archive(auto const &fn) const
+		{
+			_for_each_item(Item::DOWNLOAD_UNAVAILABLE, fn);
+			_for_each_item(Item::VERIFICATION_FAILED, fn);
+			_for_each_item(Item::MALFORMED, fn);
+		}
+
+		void all_downloads_completed()
+		{
+			_transition(Item::DOWNLOAD_IN_PROGRESS, Item::DOWNLOAD_COMPLETE);
+		}
+
+		void download_complete(Url const &current_user_url, Url const &url)
+		{
+			_with_downloading_item(current_user_url, url, [&] (Item &item) {
+				item.state = Item::DOWNLOAD_COMPLETE; });
+		}
+
+		void download_progress(Url const &current_user_url, Url const &url,
+		                       Download::Progress progress)
+		{
+			_with_downloading_item(current_user_url, url, [&] (Item &item) {
+				item.progress = progress; });
+		}
+
+		void all_remaining_downloads_unavailable()
+		{
+			_transition(Item::DOWNLOAD_IN_PROGRESS, Item::DOWNLOAD_UNAVAILABLE);
+		}
+
+		void verify_or_bless_all_downloaded_archives()
+		{
+			_items.for_each([&] (Item &item) {
+				if (item.state == Item::DOWNLOAD_COMPLETE) {
+
+					/*
+					 * If verification is not required, still verify whenever
+					 * a depot user's public key exists. This way, verifiable
+					 * archives referred to by non-verified archives end up in
+					 * verified form in the depot.
+					 */
+					if (item.require_verify || _pubkey_known)
+						item.state = Item::VERIFICATION_IN_PROGRESS;
+					else
+						item.state = Item::BLESSED;
+				}
+			});
+		}
+
+		void archive_verified(Archive::Path const &archive)
+		{
+			_transition(archive, Item::VERIFICATION_IN_PROGRESS, Item::VERIFIED);
+		}
+
+		void archive_verification_failed(Archive::Path const &archive)
+		{
+			_transition(archive, Item::VERIFICATION_IN_PROGRESS, Item::VERIFICATION_FAILED);
+		}
+
+		void all_verified_or_blessed_archives_staged()
+		{
+			_transition(Item::VERIFIED, Item::STAGED);
+			_transition(Item::BLESSED,  Item::STAGED);
+		}
+
+		void all_staged_archives_extracted()
+		{
+			_transition(Item::STAGED, Item::EXTRACTED);
+		}
+
+		void all_staged_archives_malformed()
+		{
+			_transition(Item::STAGED, Item::MALFORMED);
+		}
+
+		void all_extracted_archives_committed()
+		{
+			_transition(Item::EXTRACTED, Item::COMMITTED);
+		}
+
+		void report(Generator &g) const
+		{
+			_items.for_each([&] (Item const &item) {
+				g.node("archive", [&] () {
+					g.attribute("path",  item.path);
+					g.attribute("state", item.state_text());
+
+					if (item.state == Item::DOWNLOAD_IN_PROGRESS)
+						item.progress.gen_attr(g);
+				});
+			});
+		}
+
+		bool in_progress() const
+		{
+			bool result = false;
+			_items.for_each([&] (Item const &item) {
+				result |= item.in_progress(); });
+
+			return result;
+		}
+};
+
+#endif /* _IMPORT_H_ */

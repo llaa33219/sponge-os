@@ -1,0 +1,79 @@
+assert {[have_spec x86]}
+
+set path_microcode "[exec [genode_dir]/tool/ports/current --no-print-directory microcode_intel]/src/app/intel/intel-ucode"
+set microcode_files [glob -nocomplain -dir $path_microcode *-*-*]
+
+if {[have_cmd_switch --autopilot]} {
+
+	assert {![have_include power_on/qemu]} \
+		"Autopilot mode is not supported on this platform."
+
+	# platform_info data about CPUs on other kernels missing
+	assert {[have_spec nova]}
+
+	if { [have_spec x86_64] } {
+		copy_file $path_microcode/06-3c-03 bin/micro.code
+	} else {
+		copy_file $path_microcode/06-17-06 bin/micro.code
+	}
+}
+
+assert {[file exists bin/micro.code]} {
+	Missing bin/micro.code file for your target machine.
+	Please select for your target CPU the microcode patch located in $path_microcode/xx-xx-xx.
+	and copy it to bin/micro.code. xx-xx-xx stands for your target CPU, family-model-stepping
+}
+
+proc apply_microcode { } { return true }
+
+build { core lib/ld init test/microcode }
+
+create_boot_directory
+
+install_config {
+config
++ parent-provides
+  + service LOG
+  + service PD
+  + service CPU
+  + service ROM
++ default-route | + any-service | + parent
++ default | caps: 50
++ start test-microcode | ram: 10M
+-
+}
+
+foreach file $microcode_files {
+	copy_file $file bin/ }
+
+
+set microcode_files [glob -tails -dir bin {[0-9,a-f][0-9,a-f]-[0-9,a-f][0-9,a-f]-[0-9,a-f][0-9,a-f]}]
+
+build_boot_image [list {*}[build_artifacts] {*}$microcode_files]
+
+
+append qemu_args "-nographic "
+append qemu_args "-smp 4 "
+
+run_genode_until "microcode check done" 30
+
+# cleanup
+if {[have_cmd_switch --autopilot]} {
+	file delete -force bin/micro.code
+	foreach file $microcode_files {
+	  file delete bin/$file
+	}
+}
+
+# check results
+grep_output {\[init -\> test-microcode}
+
+# no errors please
+set filtered_output $output
+grep_output {Error: }
+compare_output_to {}
+
+# no warnings please
+set output $filtered_output
+grep_output {Warning: }
+compare_output_to {}

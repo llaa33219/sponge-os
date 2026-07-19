@@ -1,0 +1,244 @@
+/*
+ * \brief   Thread facility
+ * \author  Martin Stein
+ * \author  Stefan Kalkowski
+ * \date    2012-02-12
+ */
+
+/*
+ * Copyright (C) 2012-2017 Genode Labs GmbH
+ *
+ * This file is part of the Genode OS framework, which is distributed
+ * under the terms of the GNU Affero General Public License version 3.
+ */
+
+/* core includes */
+#include <platform_thread.h>
+#include <platform_pd.h>
+#include <rm_session_component.h>
+#include <map_local.h>
+
+/* base-internal includes */
+#include <base/internal/native_utcb.h>
+#include <base/internal/capability_space.h>
+
+/* kernel includes */
+#include <kernel/pd.h>
+#include <kernel/main.h>
+
+using namespace Core;
+
+
+addr_t Platform_thread::Utcb::_attach(Local_rm &local_rm)
+{
+	addr_t start = 0;
+	ds.with_result(
+		[&] (Ram::Allocation const &allocation) {
+			Region_map::Attr attr { };
+			attr.writeable = true;
+			local_rm.attach(allocation.cap, attr).with_result(
+				[&] (Local_rm::Attachment &a) {
+					a.deallocate = false;
+					start = addr_t(a.ptr); },
+				[&] (Local_rm::Error) {
+					error("failed to attach UTCB of new thread within core"); });
+		},
+		[&] (Ram::Error) { });
+
+	return start;
+}
+
+
+void Platform_thread::_init() { }
+
+
+Weak_ptr<Address_space>& Platform_thread::address_space() {
+	return _address_space; }
+
+
+Platform_thread::Platform_thread(Platform_pd              &pd,
+                                 Rpc_entrypoint           &ep,
+                                 Ram_allocator            &ram,
+                                 Local_rm                 &local_rm,
+                                 Label              const &label,
+                                 unsigned           const  priority,
+                                 Affinity::Location const  location,
+                                 addr_t                 /* utcb */)
+:
+	_label(label),
+	_pd(pd),
+	_pager(nullptr),
+	_utcb(ep, ram, local_rm),
+	_group_id(_priority_to_group(priority)),
+	_main_thread(!pd._thread_associated),
+	_location(location),
+	_kobj(_kobj.CALLED_FROM_CORE, pd.kernel_pd(),
+	      _location.xpos(), _group_id, _label.string())
+{
+	_utcb.ds.with_result([&] (auto &) {
+		_address_space = pd.weak_ptr();
+		pd._thread_associated = true;
+	}, [] (Alloc_error) { });
+}
+
+
+Platform_thread::~Platform_thread()
+{
+	/* detach UTCB of main threads */
+	if (_main_thread) {
+		Locked_ptr<Address_space> locked_ptr(_address_space);
+		if (locked_ptr.valid())
+			locked_ptr->flush(user_utcb_main_thread(), sizeof(Native_utcb),
+			                  Address_space::Core_local_addr{0});
+	}
+}
+
+
+void Platform_thread::affinity(Affinity::Location const &)
+{
+	/* yet no migration support, don't claim wrong location, e.g. for tracing */
+}
+
+
+Affinity::Location Platform_thread::affinity() const { return _location; }
+
+
+void Platform_thread::start(void * const ip, void * const sp)
+{
+	/* attach UTCB in case of a main thread */
+	if (_main_thread) {
+
+		Locked_ptr<Address_space> locked_ptr(_address_space);
+		if (!locked_ptr.valid()) {
+			error("unable to start thread in invalid address space");
+			return;
+		};
+		Platform_pd &pd = static_cast<Platform_pd&>(*locked_ptr);
+		if (!pd.map(user_utcb_main_thread(), _utcb.phys_addr,
+		            sizeof(Native_utcb), Hw::PAGE_FLAGS_UTCB)) {
+			error("failed to attach UTCB");
+			return;
+		}
+	}
+
+	/* initialize thread registers */
+	_kobj->regs->ip = reinterpret_cast<addr_t>(ip);
+	_kobj->regs->sp = reinterpret_cast<addr_t>(sp);
+
+	Native_utcb &utcb = *Thread::myself()->utcb();
+
+	/* reset capability counter */
+	utcb.cap_cnt(0);
+	utcb.cap_add(Capability_space::capid(_kobj.cap()));
+	if (_main_thread) {
+		utcb.cap_add(Capability_space::capid(_pd.parent()));
+		utcb.cap_add(Capability_space::capid(_utcb.ds_cap()));
+	}
+
+	Kernel::thread_start(*_kobj, *(Native_utcb*)_utcb.core_addr);
+}
+
+
+void Platform_thread::pager(Pager_object &po)
+{
+	using namespace Kernel;
+
+	po.with_pager([&] (Core_platform_thread &pt) {
+		thread_pager(*_kobj, *pt._kobj,
+		             Capability_space::capid(po.cap())); });
+	_pager = &po;
+}
+
+
+Core::Pager_object &Platform_thread::pager()
+{
+	if (_pager)
+		return *_pager;
+
+	ASSERT_NEVER_CALLED;
+}
+
+
+Thread_state Platform_thread::state()
+{
+	Cpu_state cpu { };
+	Kernel::thread_cpu_state_get(*_kobj, cpu);
+
+	auto state = [&] () -> Thread_state::State
+	{
+		using Exception_state = Kernel::Thread::Exception_state;
+		switch (exception_state()) {
+		case Exception_state::NO_EXCEPTION: return Thread_state::State::VALID;
+		case Exception_state::MMU_FAULT:    return Thread_state::State::PAGE_FAULT;
+		case Exception_state::EXCEPTION:    return Thread_state::State::EXCEPTION;
+		}
+		return Thread_state::State::UNAVAILABLE;
+	};
+
+	return {
+		.state = state(),
+		.cpu   = cpu
+	};
+}
+
+
+void Platform_thread::state(Thread_state thread_state)
+{
+	Kernel::thread_cpu_state_set(*_kobj, thread_state.cpu);
+}
+
+
+void Platform_thread::restart()
+{
+	Kernel::thread_restart(Capability_space::capid(_kobj.cap()));
+}
+
+
+void Platform_thread::fault_resolved(Untyped_capability cap, bool resolved)
+{
+	Kernel::thread_pager_signal_ack(Capability_space::capid(cap), *_kobj, resolved);
+}
+
+
+Core_platform_thread::Core_platform_thread(Label const &label,
+                                           Native_utcb &utcb,
+                                           Affinity::Location const location)
+:
+	_label(label),
+	_utcb(utcb),
+	_location(location),
+	_kobj(_kobj.CALLED_FROM_CORE, _location.xpos(), _label.string())
+{
+	/*
+	 * All non-core threads use the typical dataspace/rm_session
+	 * mechanisms to allocate and attach its UTCB.
+	 * But for the very first core threads, we need to use plain
+	 * physical and virtual memory allocators to create/attach its
+	 * UTCBs. Therefore, we've to allocate and map those here.
+	 */
+	platform().ram_alloc().try_alloc(sizeof(Native_utcb)).with_result(
+		[&] (Range_allocator::Allocation &utcb_phys) {
+			map_local((addr_t)utcb_phys.ptr, (addr_t)&_utcb,
+			          sizeof(Native_utcb) / PAGE_SIZE);
+			utcb_phys.deallocate = false;
+		},
+		[&] (Alloc_error) {
+			error("failed to allocate UTCB for core/kernel thread!");
+		});
+}
+
+
+void Core_platform_thread::start(void * const ip, void * const sp)
+{
+	/* initialize thread registers */
+	_kobj->regs->ip = reinterpret_cast<addr_t>(ip);
+	_kobj->regs->sp = reinterpret_cast<addr_t>(sp);
+
+	Native_utcb &utcb = *Thread::myself()->utcb();
+
+	/* reset capability counter */
+	utcb.cap_cnt(0);
+	utcb.cap_add(Capability_space::capid(_kobj.cap()));
+
+	Kernel::thread_start(*_kobj, _utcb);
+}

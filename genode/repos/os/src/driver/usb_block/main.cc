@@ -1,0 +1,1042 @@
+/*
+ * \brief  Usb session to Block session translator
+ * \author Josef Soentgen
+ * \author Sebastian Sumpf
+ * \author Stefan Kalkowski
+ * \date   2016-02-08
+ */
+
+/*
+ * Copyright (C) 2016-2024 Genode Labs GmbH
+ *
+ * This file is part of the Genode OS framework, which is distributed
+ * under the terms of the GNU Affero General Public License version 3.
+ */
+
+/* Genode includes */
+#include <base/allocator_avl.h>
+#include <base/attached_ram_dataspace.h>
+#include <base/attached_rom_dataspace.h>
+#include <base/component.h>
+#include <base/log.h>
+#include <base/heap.h>
+#include <base/sleep.h>
+#include <block/request_stream.h>
+#include <block/session_map.h>
+#include <os/reporter.h>
+#include <timer_session/connection.h>
+#include <usb_session/device.h>
+#include <root/root.h>
+
+/* local includes */
+#include <cbw_csw.h>
+
+
+namespace Usb {
+	using namespace Block;
+	using Response = Block::Request_stream::Response;
+
+	struct No_device {};
+	struct Io_error  {};
+	class  Block_driver;
+	struct Block_session_component;
+	using Session_space = Id_space<Block_session_component>;
+	struct Main;
+}
+
+
+/*********************************************************
+ ** USB Mass Storage (BBB) Block::Driver implementation **
+ *********************************************************/
+
+class Usb::Block_driver
+{
+	private:
+
+		enum State {
+			ALT_SETTING,
+			RESET,
+			INQUIRY,
+			CHECK_MEDIUM,
+			READ_CAPACITY,
+			REPORT,
+			READY,
+			SENSE_RECOVERY,
+			RECOVER_READY,
+		} _state { ALT_SETTING };
+
+		enum Usb_request : uint8_t {
+			BULK_GET_MAX_LUN = 0xfe,
+			BULK_RESET       = 0xff
+		};
+
+		/* see USB MSC Section 3.1 Bulk-Only Mass Storage Reset */
+		struct Reset : Device::Urb
+		{
+			using P  = Device::Packet_descriptor;
+			using Rt = P::Request_type;
+
+			Reset(Device &dev, Interface &iface)
+			:
+				Device::Urb(dev, BULK_RESET,
+				            Rt::value(P::Recipient::IFACE, P::Type::CLASS,
+				                      P::Direction::IN),
+				            0, iface.index().number, 0ul, 1'000ul) {}
+		};
+
+		Env        &_env;
+		Entrypoint &_ep;
+		Allocator  &_alloc;
+
+		Connection _session { _env };
+		Device     _device  { _session, _alloc, _env.rm() };
+
+		/*
+		 * We have to decide which contructor to use
+		 * for the Usb::Interface dependent on configuration values.
+		 * Therefore, we use a pattern of constructible + reference here
+		 */
+		Constructible<Interface> _iface_memory_holder {};
+		Interface               &_interface;
+
+		Endpoint _ep_in  { _interface, Endpoint::Direction::IN,
+		                   Endpoint::Type::BULK };
+		Endpoint _ep_out { _interface, Endpoint::Direction::OUT,
+		                   Endpoint::Type::BULK };
+
+		Interface::Alt_setting _alt_setting { _device, _interface };
+		Constructible<Reset> _reset {};
+
+		using String = Genode::String<64>;
+
+		Block::sector_t _block_count  { 0 };
+		uint32_t        _block_size   { 0 };
+
+		String _vendor  {};
+		String _product {};
+
+		Reporter _reporter { _env, "devices" };
+
+		bool     _writeable    { false };
+		bool     _force_cmd_16 { false };
+		uint8_t  _active_lun   { 0     };
+		uint32_t _active_tag   { 0     };
+		bool     _reset_device { false };
+		bool     _verbose_scsi { false };
+
+		bool     _omit_synchronize_cache { false };
+
+		uint32_t _new_tag() { return ++_active_tag % 0xffffffu; }
+
+		enum Tag : uint32_t {
+			INQ_TAG = 0x01,
+			RDY_TAG = 0x02,
+			CAP_TAG = 0x04,
+			REQ_TAG = 0x08,
+			SS_TAG  = 0x10
+		};
+
+		void _report_device()
+		{
+			if (!_reporter.enabled())
+				return;
+
+			Reporter::Result const result =
+				_reporter.generate([&] (Generator &g) {
+					g.node("device", [&] () {
+						g.attribute("vendor",      _vendor);
+						g.attribute("product",     _product);
+						g.attribute("block_count", _block_count);
+						g.attribute("block_size",  _block_size);
+						g.attribute("writeable",   _writeable);
+					});
+				});
+
+			if (result.failed())
+				warning("Could not report block device");
+		}
+
+		Interface& _construct_interface(Node const &cfg)
+		{
+			using Type  = Interface::Type;
+			using Index = Interface::Index;
+
+			enum { INVALID = 256 };
+			enum {
+				ICLASS_MASS_STORAGE = 8,
+				ISUBCLASS_SCSI      = 6,
+				IPROTO_BULK_ONLY    = 80
+			};
+
+			static constexpr size_t PACKET_STREAM_BUF_SIZE = 2 * (1UL << 20);
+
+			/* if interface is set by config, we assume user knows what to do */
+			uint16_t _iface = cfg.attribute_value<uint16_t>("interface",
+			                                                INVALID);
+			uint8_t  _alt   = cfg.attribute_value<uint8_t>("alt_setting", 0);
+
+			if (_iface < INVALID)
+				_iface_memory_holder.construct(_device,
+				                               Index{ (uint8_t)_iface, _alt },
+				                               PACKET_STREAM_BUF_SIZE);
+			else
+				_iface_memory_holder.construct(_device,
+				                               Type{ ICLASS_MASS_STORAGE,
+				                                     ISUBCLASS_SCSI,
+				                                     IPROTO_BULK_ONLY },
+				                               PACKET_STREAM_BUF_SIZE);
+			return *_iface_memory_holder;
+		}
+
+		void _no_write(Byte_range_ptr&) { }
+		void _no_read(Const_byte_range_ptr const&) { }
+
+		void _inquiry(Byte_range_ptr &dst) {
+			Inquiry inq(dst, INQ_TAG, _active_lun, _verbose_scsi); }
+
+		void _inquiry_result(Const_byte_range_ptr const &src)
+		{
+			using Response = Scsi::Inquiry_response;
+
+			Response r(src, _verbose_scsi);
+			char v[Response::Vid::ITEMS+1];
+			char p[Response::Pid::ITEMS+1];
+
+			if (!r.sbc())
+				warning("Device does not use SCSI "
+				        "Block Commands and may not work");
+
+			r.get_id<Response::Vid>(v, sizeof(v));
+			r.get_id<Response::Pid>(p, sizeof(p));
+			_vendor  = String(v);
+			_product = String(p);
+		}
+
+		void _unit_ready(Byte_range_ptr &dst) {
+			Test_unit_ready r(dst, RDY_TAG, _active_lun, _verbose_scsi); }
+
+		void _sense(Byte_range_ptr &dst) {
+			Request_sense r(dst, REQ_TAG, _active_lun, _verbose_scsi); }
+
+		void _sense_result(Const_byte_range_ptr const &src)
+		{
+			using namespace Scsi;
+
+			Request_sense_response r(src, _verbose_scsi);
+
+			uint8_t const asc = r.read<Request_sense_response::Asc>();
+			uint8_t const asq = r.read<Request_sense_response::Asq>();
+
+			enum { MEDIUM_NOT_PRESENT         = 0x3a,
+			       NOT_READY_TO_READY_CHANGE  = 0x28,
+			       POWER_ON_OR_RESET_OCCURRED = 0x29,
+			       LOGICAL_UNIT_NOT_READY     = 0x04 };
+
+			switch (asc) {
+			case MEDIUM_NOT_PRESENT:
+				warning("Medium not present!");
+				_medium_state.state = Medium_state::WAIT;
+				return;
+			case NOT_READY_TO_READY_CHANGE:  /* asq == 0x00 */
+			case POWER_ON_OR_RESET_OCCURRED: /* asq == 0x00 */
+				warning("Medium not ready yet - try again");
+				_medium_state.state = Medium_state::WAIT;
+				return;
+			case LOGICAL_UNIT_NOT_READY:
+				/* initializing command required */
+				if (asq == 2) {
+					_medium_state.state = Medium_state::START_STOP;
+					return;
+				}
+				/* initializing in progress */
+				if (asq == 1) {
+					_medium_state.state = Medium_state::WAIT;
+					return;
+				}
+				[[fallthrough]];
+			default:
+				if (asc || asq)
+					error("Request_sense_response asc: ",
+					      Hex(asc), " asq: ", Hex(asq));
+			};
+		}
+
+		void _start_stop(Byte_range_ptr &dst) {
+			Start_stop r(dst, SS_TAG, _active_lun, _verbose_scsi); }
+
+		void _capacity(Byte_range_ptr &dst)
+		{
+			if (_force_cmd_16)
+				Read_capacity_16 r(dst, CAP_TAG, _active_lun, _verbose_scsi);
+			else
+				Read_capacity_10 r(dst, CAP_TAG, _active_lun, _verbose_scsi);
+		}
+
+		void _capacity_result(Const_byte_range_ptr const &src)
+		{
+			if (_force_cmd_16) {
+				Scsi::Capacity_response_16 r(src, _verbose_scsi);
+				_block_count = r.last_block() + 1;
+				_block_size  = r.block_size();
+			} else {
+				Scsi::Capacity_response_10 r(src, _verbose_scsi);
+				if (r.last_block() < ~(uint32_t)0U) {
+					_block_count = r.last_block() + 1;
+					_block_size  = r.block_size();
+				}
+			}
+		}
+
+		void _block_write(Byte_range_ptr &dst)
+		{
+			if (_block_cmd.constructed())
+				memcpy(dst.start, _block_cmd->address, dst.num_bytes);
+		}
+
+		void _block_read(Const_byte_range_ptr const &src)
+		{
+			if (_block_cmd.constructed())
+				memcpy(_block_cmd->address, src.start, src.num_bytes);
+		}
+
+		void _block_command(Byte_range_ptr &dst)
+		{
+			if (!_block_cmd.constructed())
+				return;
+
+			Operation const &op = _block_cmd->block_request.operation;
+			uint64_t  const  n  = (uint32_t) op.block_number;
+			uint16_t  const  c  = (uint16_t) op.count;
+
+			switch (op.type) {
+			case Operation::Type::READ:
+			{
+				if (_force_cmd_16)
+					Read_16 r(dst, _active_tag, _active_lun,
+					          n, c, _block_size, _verbose_scsi);
+				else
+					Read_10 r(dst, _active_tag, _active_lun,
+					          (uint32_t)n, c, _block_size, _verbose_scsi);
+				break;
+			}
+			case Operation::Type::WRITE:
+			{
+				if (_force_cmd_16)
+					Write_16 w(dst, _active_tag, _active_lun,
+					           n, c, _block_size, _verbose_scsi);
+				else
+					Write_10 w(dst, _active_tag, _active_lun,
+					           (uint32_t)n, c, _block_size, _verbose_scsi);
+				break;
+			}
+			case Operation::Type::SYNC:
+			{
+				/* ignore SYNC request as it already failed once */
+				if (_omit_synchronize_cache)
+					break;
+
+				/* ignore synchronize region and flush all logical blocks */
+				if (_force_cmd_16)
+					Synchronize_cache_16 s(dst, _active_tag, _active_lun,
+					                       0, 0, _verbose_scsi);
+				else
+					Synchronize_cache_10 s(dst, _active_tag, _active_lun,
+					                       0, 0, _verbose_scsi);
+				break;
+			}
+			default:
+				/* other operations are handled elsewhere */
+				break;
+			}
+		}
+
+		struct Scsi_command
+		{
+			using Desc = Interface::Packet_descriptor;
+			using Urb  = Interface::Urb;
+
+			Block_driver &drv;
+
+			void (Block_driver::*cmd)   (Byte_range_ptr&);
+			void (Block_driver::*read)  (Const_byte_range_ptr const&);
+			void (Block_driver::*write) (Byte_range_ptr&);
+
+			uint32_t tag;
+			size_t   size;
+			bool     in;
+
+			enum Cmdstate {
+				CBW,
+				DATA,
+				CSW,
+				DONE,
+				PROTOCOL_ERROR
+			} state { CBW };
+
+			Constructible<Urb> urb { };
+
+			Scsi_command(Block_driver &drv,
+			             void (Block_driver::*cmd)(Byte_range_ptr&),
+			             void (Block_driver::*read)(Const_byte_range_ptr const&),
+			             void (Block_driver::*write)(Byte_range_ptr&),
+			             uint32_t tag,
+			             size_t   size,
+			             bool     in = true)
+			:
+				drv(drv), cmd(cmd), read(read),
+				write(write), tag(tag), size(size), in(in) {}
+
+			void produce_out_content(Byte_range_ptr &dst)
+			{
+				if (state == CBW) {
+					(drv.*cmd)(dst);
+					return;
+				}
+				(drv.*write)(dst);
+			}
+
+			void consume_in_result(Const_byte_range_ptr const &src)
+			{
+				if (state == DATA) {
+					(drv.*read)(src);
+					return;
+				}
+
+				Csw csw(src);
+				if (csw.sig() != Csw::SIG) {
+					error("CSW signature does not match: ",
+					      Hex(csw.sig(), Hex::PREFIX, Hex::PAD));
+					state = PROTOCOL_ERROR;
+					return;
+				}
+
+				if (!((csw.tag() & tag) && csw.sts() == Csw::PASSED)) {
+					warning("SCSI command failure, expected tag=", tag,
+					        ", got tag=", csw.tag(), " status=", csw.sts());
+					state = PROTOCOL_ERROR;
+					return;
+				}
+			}
+
+			void completed(Desc::Return_value ret)
+			{
+				switch (ret) {
+				case Desc::OK:        break;
+				case Desc::NO_DEVICE: throw No_device();
+				default:              throw Io_error();
+				};
+
+				switch (state) {
+				case CBW:  state = (size) ? DATA : CSW; break;
+				case DATA: state = CSW;  break;
+				case CSW:  state = DONE; break;
+				default: ;
+				};
+				urb.destruct();
+			}
+
+			bool process(State next_state)
+			{
+				if (state == PROTOCOL_ERROR)
+					return false;
+
+				Cmdstate s = state;
+
+				if (!urb.constructed())
+					switch (state) {
+					case CBW:  urb.construct(drv._interface, drv._ep_out,
+					                         Desc::BULK, Cbw::LENGTH, 0);  break;
+					case DATA: urb.construct(drv._interface,
+					                         in ? drv._ep_in : drv._ep_out,
+					                         Desc::BULK, size, 0); break;
+					case CSW:  urb.construct(drv._interface, drv._ep_in,
+					                         Desc::BULK, Csw::LENGTH, 0);  break;
+					default: break;
+					};
+
+				drv._interface.update_urbs<Urb>(
+					[this] (Urb &, Byte_range_ptr &dst) {
+						produce_out_content(dst); },
+					[this] (Urb &, Const_byte_range_ptr &src) {
+						consume_in_result(src); },
+					[this] (Urb&,
+					        Interface::Packet_descriptor::Return_value r) {
+						completed(r); });
+
+				if (state == DONE) drv._state = next_state;
+				return s != state;
+			}
+
+			bool done()    { return state == DONE; }
+			bool failure() { return state == PROTOCOL_ERROR; }
+		};
+
+		struct Medium_state
+		{
+			enum State {
+				TEST, SENSE, START_STOP, WAIT, READY
+			} state { TEST };
+
+			Constructible<Scsi_command> cmd {};
+
+			Block_driver &drv;
+
+			Timer::Connection timer { drv._env };
+
+			Medium_state(Block_driver &drv) : drv(drv) {}
+
+			bool process(Block_driver::State next)
+			{
+				State s = state;
+
+				if (!cmd.constructed())
+					switch (state) {
+					case TEST:
+						cmd.construct(drv,
+						              &Block_driver::_unit_ready,
+						              &Block_driver::_no_read,
+						              &Block_driver::_no_write, RDY_TAG, 0);
+						break;
+					case SENSE:
+						cmd.construct(drv,
+						              &Block_driver::_sense,
+						              &Block_driver::_sense_result,
+						              &Block_driver::_no_write, REQ_TAG,
+						              Scsi::Request_sense_response::LENGTH);
+						break;
+					case START_STOP:
+						cmd.construct(drv,
+						              &Block_driver::_start_stop,
+						              &Block_driver::_no_read,
+						              &Block_driver::_no_write, SS_TAG, 0);
+						break;
+					case WAIT:
+						timer.msleep(1000);
+						state = TEST;
+						return true;
+					default: return false;
+					};
+
+				bool ret = cmd->process(CHECK_MEDIUM);
+
+				if (cmd->done() || cmd->failure()) {
+					switch (state) {
+					case TEST:
+						state = (cmd->done()) ? READY : SENSE;
+						if (cmd->done()) drv._state = next;
+						break;
+					case START_STOP:
+						if (cmd->done()) state = WAIT;
+						break;
+					default: ;
+					};
+					cmd.destruct();
+				}
+
+				return ret || s != state;
+			}
+
+			bool done() { return state == READY; }
+		};
+
+		struct Block_command
+		{
+			Scsi_command cmd;
+			Request      block_request;
+			void * const address;
+			size_t       size;
+
+			bool finished = false;
+			bool failed   = false;
+
+			Session_space::Id session_id;
+
+			Block_command(Block_driver &drv, Request request,
+			              void *addr, size_t sz, uint32_t tag,
+			              Session_space::Id session_id)
+			:
+				cmd(drv,
+				    &Block_driver::_block_command,
+				    &Block_driver::_block_read,
+				    &Block_driver::_block_write,
+				    tag, sz,
+				    request.operation.type == Block::Operation::Type::READ),
+				block_request(request), address(addr), size(sz),
+				session_id(session_id)
+			{
+				if (!address && !size
+				    && request.operation.type != Block::Operation::Type::SYNC)
+					cmd.state = Scsi_command::DONE;
+			}
+
+			Block_command(const Block_command&)  = delete;
+			void operator=(const Block_command&) = delete;
+
+			bool process(State next_state)
+			{
+				/*
+				 * The commando was already marked as finished from
+				 * the outside, so do not process it any further.
+				 */
+				if (finished)
+					return false;
+
+				bool ret = cmd.process(next_state);
+				if (cmd.done() || cmd.failure())
+					finished = true;
+
+				failed = cmd.failure();
+
+				block_request.success = cmd.done();
+				return ret;
+			}
+		};
+
+		Scsi_command _inquiry_cmd { *this,
+		                            &Block_driver::_inquiry,
+		                            &Block_driver::_inquiry_result,
+		                            &Block_driver::_no_write, INQ_TAG,
+		                            Scsi::Inquiry_response::LENGTH };
+
+		Medium_state _medium_state { *this };
+
+		Scsi_command _capacity_10_cmd { *this,
+		                                &Block_driver::_capacity,
+		                                &Block_driver::_capacity_result,
+		                                &Block_driver::_no_write, CAP_TAG,
+		                                Scsi::Capacity_response_10::LENGTH };
+
+		Scsi_command _capacity_16_cmd { *this,
+		                                &Block_driver::_capacity,
+		                                &Block_driver::_capacity_result,
+		                                &Block_driver::_no_write, CAP_TAG,
+		                                Scsi::Capacity_response_16::LENGTH };
+
+		Constructible<Scsi_command> _sense_recovery { };
+		Constructible<Block_command> _block_cmd { };
+
+		bool _capacity(State next_state)
+		{
+			if (!_force_cmd_16) {
+				bool ret = _capacity_10_cmd.process(next_state);
+				if (!_capacity_10_cmd.done() || _block_count)
+					return ret;
+				_force_cmd_16 = true;
+				_state = READ_CAPACITY;
+			}
+			return _capacity_16_cmd.process(next_state);
+		}
+
+	public:
+
+		void completed(Device::Packet_descriptor::Return_value ret)
+		{
+			using Desc = Device::Packet_descriptor;
+
+			switch (ret) {
+			case Desc::OK:        break;
+			case Desc::NO_DEVICE: throw No_device();
+			default:              throw Io_error();
+			};
+
+			switch (_state) {
+			case ALT_SETTING:
+				if (_reset_device) _reset.construct(_device, _interface);
+				_state = _reset_device ? RESET : INQUIRY;
+				return;
+			case RESET:
+				_reset.destruct();
+				_state = INQUIRY;
+				return;
+			default:
+				warning("Control URB received after initialization");
+			};
+		}
+
+		void apply_config(Node const &node)
+		{
+			_writeable    = node.attribute_value("writeable",    false);
+			_active_lun   = node.attribute_value<uint8_t>("lun",     0);
+			_reset_device = node.attribute_value("reset_device", false);
+			_verbose_scsi = node.attribute_value("verbose_scsi", false);
+
+			_reporter.enabled(node.attribute_value("report", false));
+		}
+
+		bool handle_io()
+		{
+			using Urb   = Device::Urb;
+			using Value = Device::Packet_descriptor::Return_value;
+
+			auto out = [] (Urb&, Byte_range_ptr&) { };
+			auto in  = [] (Urb&, Const_byte_range_ptr&) { };
+			auto cpl = [this] (Urb&, Value r) { completed(r); };
+
+			switch (_state) {
+			case ALT_SETTING: [[fallthrough]];
+			case RESET:          return _device.update_urbs<Urb>(out, in, cpl);
+			case INQUIRY:        return _inquiry_cmd.process(CHECK_MEDIUM);
+			case CHECK_MEDIUM:   return _medium_state.process(READ_CAPACITY);
+			case READ_CAPACITY:  return _capacity(REPORT);
+			case SENSE_RECOVERY:
+				if (!_sense_recovery.constructed())
+					_sense_recovery.construct(*this,
+					              &Block_driver::_sense,
+					              &Block_driver::_sense_result,
+					              &Block_driver::_no_write, REQ_TAG,
+					              Scsi::Request_sense_response::LENGTH);
+
+				return _sense_recovery->process(RECOVER_READY);
+			case RECOVER_READY:
+				_sense_recovery.destruct();
+				/* reset failed state incase READY is processed again */
+				_block_cmd->failed = false;
+				_state = READY;
+				return true;
+			case REPORT: _report_device(); _state = READY; [[fallthrough]];
+			case READY:
+				if (_block_cmd.constructed()) {
+					bool const ret = _block_cmd->process(READY);
+					if (_block_cmd->failed) {
+						using Type = Block::Operation::Type;
+						_omit_synchronize_cache =
+							_block_cmd->block_request.operation.type == Type::SYNC;
+						_state = SENSE_RECOVERY;
+						/* force processing after the recovery detour */
+						_block_cmd->finished = true;
+						return true;
+					}
+					return ret;
+				}
+			};
+
+			return false;
+		}
+
+		bool device_ready() { return _state == READY; }
+
+		Block_driver(Env &env, Allocator &alloc, Signal_context_capability sigh,
+		             Node const &config)
+		:
+			_env(env), _ep(env.ep()), _alloc(alloc),
+			_interface(_construct_interface(config))
+		{
+			_device.sigh(sigh);
+			_interface.sigh(sigh);
+
+			apply_config(config);
+			handle_io();
+		}
+
+
+		/*******************************************
+		 ** interface to Block_session_component  **
+		 *******************************************/
+
+		Block::Session::Info info() const
+		{
+			return { .block_size  = _block_size,
+				.block_count = _block_count,
+				.align_log2  = log2(_block_size, 0u),
+				.writeable   = _writeable };
+		}
+
+		Response submit(Request                 const &block_request,
+		                Request_stream::Payload const &payload,
+		                Session_space::Id              session_id)
+		{
+			if (_state != READY)
+				return Response::REJECTED;
+
+			using Type = Operation::Type;
+
+			/*
+			 * Check if there is already a request pending and wait
+			 * until it has finished as we do not queue in this driver
+			 * and there should only be one CBW pending at a time.
+			 *
+			 * In case a finished CBW failed as denoted in the corresponding
+			 * CSW we issue REQUEST_SENSE as it seems to be expected by
+			 * devices.
+			 *
+			 * (Note PHASE_ERROR is currently not handled in this driver and
+			 * would warrant a bulk-reset.)
+			 */
+			if (_block_cmd.constructed())
+				return Response::RETRY;
+
+			Operation const &op = block_request.operation;
+
+			/* range check */
+			block_number_t const last = op.block_number + op.count;
+			if (last > _block_count)
+				return Response::REJECTED;
+
+			/* we only support 32-bit block numbers in 10-Cmd mode */
+			if (!_force_cmd_16 && last >= ~0U)
+				return Response::REJECTED;
+
+			void * addr = nullptr;
+			size_t size = 0;
+			payload.with_content(block_request, [&](void *a, size_t sz) {
+				addr = a; size = sz; });
+
+			_block_cmd.construct(*this, block_request, addr, size, _new_tag(), session_id);
+
+			/*
+			 * These operations are currently handled as successful NOP:
+			 *
+			 * - TRIM is currently not supported
+			 * - SYNC is omitted if a previous attempt already failed
+			 */
+			if (_block_cmd.constructed() &&
+			    (block_request.operation.type == Type::TRIM
+			  || (block_request.operation.type == Type::SYNC && _omit_synchronize_cache))) {
+				_block_cmd->block_request.success = true;
+				_block_cmd->finished = true;
+				return Response::ACCEPTED;
+			}
+
+			return Response::ACCEPTED;
+		}
+
+		template <typename FUNC>
+		void with_completed(Session_space::Id session_id, FUNC const &fn)
+		{
+			if (_block_cmd.constructed() &&
+			    _block_cmd->session_id == session_id &&
+			    _block_cmd->finished) {
+				fn(_block_cmd->block_request);
+				_block_cmd.destruct();
+			}
+		}
+
+		bool request_pending() const { return _block_cmd.constructed(); }
+};
+
+
+struct Usb::Block_session_component : Rpc_object<Block::Session>
+{
+	Env &_env;
+
+	Session_space::Element const _elem;
+
+	Attached_ram_dataspace _ram_ds;
+	Request_stream         _request_stream;
+
+	Block_session_component(Session_space             &space,
+	                        uint16_t                   session_id_value,
+	                        Env                       &env,
+	                        size_t                     ds_size,
+	                        Signal_context_capability  sigh,
+	                        Block::Constrained_view    view,
+	                        Block::Session::Info       info)
+	:
+		_env(env),
+		_elem(*this, space, Session_space::Id { .value = session_id_value }),
+		_ram_ds(env.ram(), env.rm(), ds_size),
+		_request_stream(env.rm(), _ram_ds.cap(), env.ep(), sigh, info, view)
+	{
+		_env.ep().manage(*this);
+	}
+
+	~Block_session_component() { _env.ep().dissolve(*this); }
+
+	bool pending { false };
+
+	Info info() const override { return _request_stream.info(); }
+
+	Capability<Tx> tx_cap() override { return _request_stream.tx_cap(); }
+
+	Session_space::Id session_id() const { return _elem.id(); }
+
+	void with_request_stream(auto const &fn) {
+		fn(_request_stream); }
+};
+
+
+struct Usb::Main : Rpc_object<Typed_root<Block::Session>>
+{
+	Env &env;
+	Heap heap { env.ram(), env.rm() };
+
+	Sliced_heap _sliced_heap { env.ram(), env.rm() };
+
+	Attached_rom_dataspace config { env, "config" };
+
+	using Session_space = Id_space<Block_session_component>;
+	Session_space _sessions { };
+
+	using Session_map = Block::Session_map<>;
+	Session_map _session_map { };
+
+	Signal_handler<Main> config_handler { env.ep(), *this,
+	                                      &Main::update_config };
+	Signal_handler<Main> io_handler     { env.ep(), *this, &Main::handle};
+
+	Block_driver driver { env, heap, io_handler, config.node() };
+
+	enum State { INIT, ANNOUNCED } state { INIT };
+
+	void update_config()
+	{
+		config.update();
+		driver.apply_config(config.node());
+	}
+
+	void handle()
+	{
+		try {
+			for (;;) {
+				bool progress = false;
+
+				while (driver.handle_io()) ;
+
+				if (!driver.device_ready())
+					return;
+
+				if (state == INIT) {
+					env.parent().announce(env.ep().manage(*this));
+					state = ANNOUNCED;
+				}
+
+				/* ack and release possibly pending packet */
+				auto ack_request_fn = [&] (Block_session_component &block_session,
+				                           Request_stream          &request_stream) {
+					request_stream.try_acknowledge([&] (Request_stream::Ack &ack) {
+
+						driver.with_completed(block_session.session_id(),
+							[&] (Block::Request &request) {
+
+								ack.submit(request);
+								progress = true;
+
+								block_session.pending = false;
+							}); });
+					request_stream.wakeup_client_if_needed();
+				};
+				_sessions.for_each<Block_session_component>(
+					[&] (Block_session_component &block_session) {
+						if (block_session.pending)
+							block_session.with_request_stream(
+								[&] (Request_stream &request_stream) {
+									ack_request_fn(block_session, request_stream);
+								}); });
+
+				/* submit request */
+				auto submit_request_fn = [&] (Block_session_component &block_session,
+				                              Request_stream          &request_stream) {
+					request_stream.with_requests([&] (Request request) {
+
+						Response response = Response::RETRY;
+						request_stream.with_payload(
+							[&] (Request_stream::Payload const &payload) {
+								response = driver.submit(request, payload,
+								                         block_session.session_id());
+							});
+
+						if (response != Response::RETRY) {
+							progress = true;
+							block_session.pending = true;
+						}
+						return response;
+					});
+				};
+				if (!driver.request_pending())
+					_session_map.for_each_index([&] (Session_map::Index index) {
+						Session_space::Id const session_id { .value = index.value };
+						_sessions.apply<Block_session_component>(session_id,
+							[&] (Block_session_component &block_session) {
+								block_session.with_request_stream(
+									[&] (Request_stream &request_stream) {
+										return submit_request_fn(block_session,
+										                         request_stream);
+									}); }); });
+
+				if (!progress)
+					break;
+			}
+		} catch (Io_error&) {
+			error("An unrecoverable USB error occured, will halt!");
+			sleep_forever();
+		} catch (No_device&) {
+			warning("The device has vanished, will halt.");
+			sleep_forever();
+		}
+	}
+
+
+	/*****************************
+	 ** Block session interface **
+	 *****************************/
+
+	Root::Result session(Root::Session_args const &args, Affinity const &) override
+	{
+		size_t const ds_size =
+			Arg_string::find_arg(args.string(), "tx_buf_size").ulong_value(0);
+
+		Ram_quota const ram_quota = ram_quota_from_args(args.string());
+
+		if (ds_size >= ram_quota.value) {
+			warning("communication buffer size exceeds session quota");
+			return Session_error::INSUFFICIENT_RAM;
+		}
+
+		Block::Constrained_view view =
+			Block::Constrained_view::from_args(args.string());
+		view.writeable = driver.info().writeable && view.writeable;
+
+		Session_map::Index new_session_id { 0u };
+
+		if (!_session_map.alloc().convert<bool>(
+			[&] (Session_map::Alloc_ok ok) {
+				new_session_id = ok.index;
+				return true;
+			},
+			[&] (Session_map::Alloc_error) {
+				return false; }))
+			return Session_error::DENIED;
+
+		try {
+			Block_session_component *session =
+				new (_sliced_heap) Block_session_component(_sessions,
+				                                           new_session_id.value,
+				                                           env, ds_size, io_handler,
+				                                           view, driver.info());
+			return { session->cap() };
+		} catch (...) {
+			_session_map.free(new_session_id);
+			return Session_error::DENIED;
+		}
+	}
+
+	void upgrade(Genode::Session_capability, Root::Upgrade_args const&) override { }
+
+	void close(Genode::Session_capability cap) override
+	{
+		bool found = false;
+		Session_space::Id session_id { .value = 0 };
+
+		_sessions.for_each<Block_session_component>(
+			[&] (Block_session_component &session) {
+				if (!(cap == session.cap()))
+					return;
+
+				found = true;
+				session_id = session.session_id();
+			});
+
+		if (found)
+			_sessions.apply<Block_session_component>(session_id,
+				[&] (Block_session_component &session) {
+					Session_map::Index const index =
+						Session_map::Index::from_id(session_id.value);
+					_session_map.free(index);
+					destroy(_sliced_heap, &session); });
+	}
+
+	Main(Env &env) : env(env) { config.sigh(config_handler); }
+};
+
+
+void Component::construct(Genode::Env &env) { static Usb::Main main(env); }

@@ -1,0 +1,117 @@
+assert {[have_board pc]}
+
+if {[have_cmd_switch --autopilot]} {
+	assert {[have_include power_on/qemu]} \
+		"Autopilot mode is not supported on this platform."
+}
+
+create_boot_directory
+import_from_depot [depot_user]/src/[base_src] \
+                  [depot_user]/pkg/test_usb_host-[board] \
+                  [depot_user]/src/report_rom \
+                  [depot_user]/src/usb_block \
+                  [depot_user]/src/init
+
+build { app/block_tester }
+
+install_config {
+config | verbose: yes
++ parent-provides
+  + service ROM
+  + service IRQ
+  + service IO_MEM
+  + service IO_PORT
+  + service PD
+  + service RM
+  + service CPU
+  + service LOG
+
++ default-route
+  + any-service
+    + parent
+    + any-child
+
++ default | caps: 100 | ram: 1M
+
++ start timer
+  + provides | + service Timer
+
++ start report_rom
+  + provides
+    + service Report
+    + service ROM
+  + config | verbose: yes
+    + default-policy | report: usb -> usb -> devices
+
++ start usb | caps: 1500 | ram: 32M | managing_system: yes
+  + binary init
+  + provides | + service Usb
+  + route
+    + service ROM | label: config | + parent | label: drivers.config
+    + service Report              | + child report_rom
+    + service Timer               | + child timer
+    + any-service                 | + parent
+
++ start usb_block | ram: 4M
+  + provides | + service Block
+  + config | report: yes | writeable: no
+  + route
+    + service Usb    | + child usb
+    + service Report | + child report_rom
+    + any-service
+      + parent
+      + any-child
+
++ start block_tester | ram: 64M
+  + config | verbose: no | report: no | log: yes | stop_on_error: no
+  | + tests
+  |   + sequential
+  |                length:    8M
+  |                size:      1M
+  |                io_buffer: 8M
+  |                batch:     4
+  |   x sequential | . enable 'writeable: yes' at usb_block for write test
+  |                write:     yes
+  |                start:     4000
+  |                length:    2M
+  |                size:      1M
+  |                io_buffer: 8M
+  |                batch:     4
+  + route
+    + service Block | + child usb_block
+    + any-service
+      + parent
+      + any-child
+-
+}
+
+#
+# Define USB host controller config
+#
+set fd [open [run_dir]/genode/usb_host.config w]
+puts $fd {
+config | bios_handoff: no | + policy | label: usb_block -> | + device usb-1-2
+-
+}
+close $fd
+
+build_boot_image [build_artifacts]
+
+#
+# Execute test case
+#
+set disk_image "bin/test.img"
+set cmd "dd if=/dev/zero of=$disk_image bs=1M count=16"
+if {[have_include "power_on/qemu"]} {
+	puts "creating disk image:\n$cmd"
+	catch { exec sh -c $cmd }
+}
+
+#
+# Qemu opts for EHCI
+#
+append qemu_args " -nographic -M pc -boot order=d "
+append qemu_args " -drive if=none,id=disk,file=$disk_image,format=raw "
+append qemu_args " -device usb-ehci,id=ehci -device usb-storage,bus=ehci.0,drive=disk "
+
+run_genode_until {.*child "block_tester" exited with exit value 0.*} 100

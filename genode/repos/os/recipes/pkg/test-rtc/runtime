@@ -1,0 +1,37 @@
+runtime | ram: 32M | caps: 1000 | binary: init
+
++ requires | + timer
+
++ fail    | after_seconds: 20
++ succeed | : --- RTC test finished ---
++ fail    | : *Error:
+
++ content
+  + rom | label: ld.lib.so
+  + rom | label: pc_rtc
+  + rom | label: test-rtc
+
++ config | prio_levels: 2 | verbose: yes
+  + parent-provides
+    + service ROM
+    + service IRQ
+    + service IO_MEM
+    + service IO_PORT
+    + service PD
+    + service RM
+    + service CPU
+    + service LOG
+    + service Timer
+
+  + default-route
+    + any-service
+      + parent
+      + any-child
+
+  + default | caps: 100 | ram: 1M
+
+  + start pc_rtc | priority: -1
+    + provides | + service Rtc
+
+  + start test-rtc | priority: -1
+-

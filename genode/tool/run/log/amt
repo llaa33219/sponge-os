@@ -1,0 +1,139 @@
+##
+# Get output of the target machine via Intel AMT's SoL feature
+#
+# \param --log-amt-host       network address of target machine
+# \param --log-amt-password   AMT password for target machine
+# \param --log-amt-filter     Sanitize output by piping it through a filter
+# \param --log-amt-skip-test  Skip AMT SOL availability test
+# \param --amtterm-tls        use TLS for amtterm
+# \param --meshcmd-tls        use TLS for meshcmd
+#
+
+source [genode_dir]/tool/run/log.inc
+source [genode_dir]/tool/run/amt.inc
+
+
+proc log_amt_host { } {
+	return [cmd_arg_first --log-amt-host ""]
+}
+
+
+proc log_amt_password { } {
+	return [cmd_arg_first --log-amt-password ""]
+}
+
+proc log_amt_filter { } {
+	return [cmd_arg_first --log-amt-filter ""]
+}
+
+proc log_amt_timeout { } {
+	return [cmd_arg_first --log-amt-timeout "30"]
+}
+
+proc log_amt_skip_test { } {
+	return [have_cmd_switch --log-amt-skip-test]
+}
+
+
+##
+# Log output of the test machine using Intel's AMT
+#
+proc run_log { wait_for_re timeout_value } {
+	global output_spawn_id
+
+	if {![is_amt_available [log_amt_host] [log_amt_password]]} {
+		set exit_result 1
+		return false
+	}
+
+	set amt_tool [cmd_arg --amt-tool "default"]
+
+	# Check that SOL is correctly configured if wsman is available
+	if {![log_amt_skip_test] && ( $amt_tool == "wsman" || $amt_tool == "default" )} {
+		if {[have_installed wsman]} {
+			puts "Test for working AMT SOL redirection service ..."
+			set redir_state [exec wsman get http://intel.com/wbem/wscim/1/amt-schema/1/AMT_RedirectionService -h [log_amt_host] -P 16992 -u admin -p [log_amt_password]]
+			set redir_state [regexp -inline {ListenerEnabled.*ListenerEnabled} $redir_state]
+
+			if {![regexp {ListenerEnabled>true} $redir_state]} {
+				puts "  Warning: AMT_RedirectionService listener is disabled - serial output will not be available"
+				puts "           Use wsman to enable the listener service, e.g.:"
+				puts "  wsman put http://intel.com/wbem/wscim/1/amt-schema/1/AMT_RedirectionService -h [log_amt_host] -P 16992 -u admin -p <your-intel-me-amt-password> -k ListenerEnabled=true"
+				puts ""
+			}
+		} else {
+			puts " Warning: could not check AMT SOL redirection service because of missing wsman tool, --amt-tool==$amt_tool"
+		}
+	}
+
+	if {$wait_for_re == "forever"} {
+		set timeout -1
+	} else {
+		set timeout [expr $timeout_value + [log_amt_timeout]]
+	}
+	set exit_result 1
+
+	#
+	# prepare command
+	#
+	if {[have_installed meshcmd] && ( $amt_tool == "meshcmd" )} {
+		set tls_arg ""
+		if { [have_cmd_switch --meshcmd-tls] } {
+			set tls_arg "--tls"
+		}
+
+		set amt_cmd "meshcmd amtterm $tls_arg --host [log_amt_host] --password [log_amt_password]"
+		set amt_log ".*Connected"
+	} else {
+		#
+		# password via environment variable for amtterm will not show up in logs
+		#
+		set ::env(AMT_PASSWORD) [log_amt_password]
+
+		set amtterm_cert ""
+		if { [have_cmd_switch --amtterm-tls] } {
+			if {![file exists [log_amt_host].cert] || [file size [log_amt_host].cert] == "0"} {
+				puts "Warning: machine cerificate [log_amt_host].cert required."
+				puts "         Use 'openssl(1)' to acquire the cerificate and place it in your build directory, .e.g:"
+				puts "  openssl s_client -connect [log_amt_host]:16993 < /dev/null 2> /dev/null | openssl x509 > [log_amt_host].cert"
+				return false
+			}
+			set amtterm_cert "-C [log_amt_host].cert"
+		}
+
+		set amt_cmd "amtterm $amtterm_cert -u admin -v [log_amt_host]"
+		set amt_log ".*session authentication"
+	}
+
+	if {[have_cmd_switch --log-amt-filter]} {
+		set amt_cmd "$amt_cmd | [log_amt_filter]"
+	}
+
+	#
+	# grab output
+	#
+	lassign [retry 30 "/bin/sh -c \"$amt_cmd\"" "$amt_log" 2] retry_output output_spawn_id
+
+	if {$retry_output == ""} {
+		puts stderr "Aborting, AMT SOL not accessible"
+		return false
+	}
+
+	set kernel_msg [run_boot_string]
+
+	expect {
+		-i $output_spawn_id $kernel_msg { }
+		eof         {
+			puts stderr "Aborting, received EOF"
+			return false
+		}
+		timeout     {
+			puts stderr "Boot process timed out"
+			close -i $output_spawn_id; wait
+			return false
+		}
+	}
+
+	wait_for_output $wait_for_re $timeout_value $output_spawn_id
+	return true
+}

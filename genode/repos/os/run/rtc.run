@@ -1,0 +1,83 @@
+create_boot_directory
+
+proc rtc_src { } {
+	if {[have_board linux]} { return "linux_rtc" }
+	if {[have_board pc]}    { return "pc_rtc" }
+	return "dummy_rtc"
+}
+
+import_from_depot [depot_user]/src/[base_src] \
+                  [depot_user]/src/init \
+                  [depot_user]/src/report_rom \
+                  [depot_user]/src/[rtc_src]
+
+proc rtc_driver_start_attr { } { if {[have_board linux]} { return "| ld: no" } }
+
+# RTC setting tested on Qemu only
+proc test_update { } { return [have_include power_on/qemu] }
+
+append rtc_start_nodes_with_update {
++ start } [rtc_src] { | priority: -1 } [rtc_driver_start_attr] {
+  + provides | + service Rtc
+  + config | allow_setting_rtc: true | verbose: yes
+  + route
+    + service ROM | label: set_rtc | + child report_rom
+    + any-service                  | + parent
++ start report_rom | ram: 1M
+  + provides
+    + service Report
+    + service ROM
+  + config | verbose: yes
+    + policy | label_suffix: set_rtc | report: test-rtc -> set_rtc
++ start test-rtc | priority: -1
+  + config | set_rtc: yes | year: 2069 | month:  12 | day:   31
+                          | hour: 23   | minute: 55 | second: 0
+}
+
+append rtc_start_nodes_without_update {
++ start } [rtc_src] { | priority: -1 } [rtc_driver_start_attr] {
+  + provides | + service Rtc
+  + config
++ start test-rtc | priority: -1
+  + config
+}
+
+if {[test_update]} {
+	set rtc_start_nodes $rtc_start_nodes_with_update
+} else {
+	set rtc_start_nodes $rtc_start_nodes_without_update
+}
+
+install_config {
+config | prio_levels: 2 | verbose: yes
++ parent-provides
+  + service ROM
+  + service IRQ
+  + service IO_MEM
+  + service IO_PORT
+  + service PD
+  + service RM
+  + service CPU
+  + service LOG
+
++ default-route
+  + any-service
+    + parent
+    + any-child
+
++ default | caps: 100 | ram: 1M
+
++ start timer
+  + provides | + service Timer
+
+} $rtc_start_nodes {
+-
+}
+
+build { test/rtc }
+
+build_boot_image [build_artifacts]
+
+append qemu_args " -nographic  "
+
+run_genode_until ".*--- RTC test finished ---.*\n" 60

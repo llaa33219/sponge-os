@@ -1,0 +1,40 @@
+The C library of the Genode OS Framework is based on the code of FreeBSD. The
+original code is available at the official FreeBSD website.
+
+:FreeBSD website: [http://www.freebsd.org]
+
+Currently, the libc supports the x86_32, x86_64 and ARM architectures. Support
+for other architectures is planned as future addition.
+
+Usage
+-----
+
+Before the libc is ready to use, the original FreeBSD source codes must be
+downloaded and integrated with the Genode build system. The tool 'prepare_port'
+automates this task. Please make sure to have Subversion installed. Then issue
+the following command:
+
+! ./tool/ports/prepare_port libc
+
+To use the libc in your application, add 'libc' to the 'LIBS' declaration in
+your build-description file. This declaration will make the libc headers
+available for the include path of your target and link the C library. When
+building, make sure that the 'libports' repository is included in your build
+configuration ('<build-dir>/etc/build.conf').
+
+Limitations
+-----------
+
+The current version of the C library is not entirely thread-safe.
+In particular, the 'FILE' stream API ('fopen', 'fread', ...) must not be
+used from multiple threads.
+
+The back end does not cover all features of FreeBSD. If an unsupported
+functions is called (see 'dummies.cc'), you will see an message in your debug
+output:
+! <function-name> called, not yet implemented!
+
+Some of the back-end functions implemented in the other files have
+dummy semantics but have to remain quiet because they are called from low-level
+libc code.
+

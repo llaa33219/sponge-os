@@ -1,0 +1,45 @@
+runtime | ram: 18M | caps: 400 | binary: init
+
++ requires
+  + gui
+  + timer
+  + event
+  + file_system | label: font | writeable: no
+
++ config
+  + parent-provides
+    + service PD
+    + service CPU
+    + service ROM
+    + service LOG
+    + service Gui
+    + service Timer
+    + service File_system
+    + service Event
+
+  + start touch_keyboard | caps: 300 | ram: 14M
+    + binary touch_keyboard
+    + config
+    |        min_width:  720
+    |        min_height: 480
+    |        opaque:     yes
+    |        background: #3e3e43
+    + route
+      + service ROM         | label: layout         | + parent | label: touch_keyboard_layout.config
+      + service File_system | label_prefix: font -> | + parent | identity: font
+      + any-service                                 | + parent
+
++ content
+  + rom | label: touch_keyboard
+  + rom | label: touch_keyboard_layout.config
+  + rom | label: dialog.lib.so
+  + rom | label: ld.lib.so
+  + rom | label: libc.lib.so
+  + rom | label: libm.lib.so
+  + rom | label: vfs.lib.so
+  + rom | label: sandbox.lib.so
+  + rom | label: menu_view
+  + rom | label: menu_view_style.tar
+  + rom | label: libpng.lib.so
+  + rom | label: zlib.lib.so
+-

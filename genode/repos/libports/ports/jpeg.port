@@ -1,0 +1,10 @@
+LICENSE   := JPEG
+VERSION   := v9d
+DOWNLOADS := jpeg.archive
+
+URL(jpeg) := http://www.ijg.org/files/jpegsrc.$(VERSION).tar.gz
+SHA(jpeg) := 2303a6acfb6cc533e0e86e8a9d29f7e6079e118b9de3f96e07a71a11c082fa6a
+DIR(jpeg) := src/lib/jpeg
+
+DIRS := include/jpeg
+DIR_CONTENT(include/jpeg) := src/lib/jpeg/*.h

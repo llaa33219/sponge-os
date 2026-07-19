@@ -1,0 +1,20 @@
+LICENSE     := BSD-3-Clause
+VERSION     := 2.11
+DOWNLOADS   := wpa_supplicant.archive
+
+#
+# wpa_supplicant sources
+#
+URL(wpa_supplicant) := https://w1.fi/releases/wpa_supplicant-2.11.tar.gz
+SHA(wpa_supplicant) := 912ea06f74e30a8e36fbb68064d6cdff218d8d591db0fc5d75dee6c81ac7fc0a
+DIR(wpa_supplicant) := src/app/wpa_supplicant
+
+#
+# Patches
+#
+PATCHES := $(addprefix patches/,$(notdir $(wildcard $(REP_DIR)/patches/wpa*.patch)))
+
+# WPA supplicant
+PATCH_OPT(patches/wpa_supplicant.patch) := -p1 -d ${DIR(wpa_supplicant)}
+
+# vi: set ft=make :

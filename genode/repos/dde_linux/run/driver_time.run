@@ -1,0 +1,58 @@
+assert {[have_spec arm_64] || [have_spec x86_64]}
+
+set use_top 0
+
+set build_components { core init timer lib/ld test/driver_time }
+
+append_if $use_top build_components { app/top }
+
+build $build_components
+
+create_boot_directory
+
+append config {
+config | verbose: yes | prio_levels: 4
+
++ parent-provides
+  + service CPU
+  + service IO_MEM
+  + service IO_PORT
+  + service IRQ
+  + service LOG
+  + service PD
+  + service RM
+  + service ROM
+  + service TRACE
+
++ default-route
+  + any-service
+    + parent
+    + any-child
+
++ default | caps: 100 | ram: 1M
+
++ start timer
+  + provides | + service Timer
+
++ start test-driver_time | ram: 2M | priority: -1}
+
+append_if $use_top config {
+
++ start top | ram: 2M
+  + config | period_ms: 40000
+  + route
+    + service TRACE | + parent | label:
+    + any-service
+      + parent
+      + any-child}
+
+append config {
+-}
+
+install_config $config
+
+build_boot_image [build_artifacts]
+
+append qemu_args "-nographic "
+
+run_genode_until forever

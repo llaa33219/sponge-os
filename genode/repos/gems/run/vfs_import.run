@@ -1,0 +1,102 @@
+if {[have_cmd_switch --autopilot]} {
+	assert {![have_board virt_qemu_riscv]} \
+		"Autopilot mode is not supported on this platform."
+}
+
+build { app/sequence server/vfs lib/libc lib/vfs lib/vfs_import test/libc }
+
+create_boot_directory
+
+import_from_depot \
+	[depot_user]/src/[base_src] \
+	[depot_user]/src/coreutils \
+	[depot_user]/src/init \
+	[depot_user]/src/fs_rom \
+	[depot_user]/src/libc \
+	[depot_user]/src/posix \
+
+install_config {
+config | verbose: yes
++ parent-provides
+  + service ROM
+  + service LOG
+  + service RM
+  + service CPU
+  + service PD
+  + service IRQ
+  + service IO_MEM
+  + service IO_PORT
+
++ default-route | + any-service | + parent
+
++ default | caps: 200 | ram: 2M
+
++ start timer
+  + provides | + service Timer
+
++ start vfs | ram: 4M
+  + provides | + service File_system
+  + config
+    + vfs
+      + ram
+      + tar coreutils.tar
+    + default-policy | root: / | writeable: yes
+
++ start vfs_rom | ram: 10M
+  + binary fs_rom
+  + provides | + service ROM
+  + config
+  + route
+    + service File_system | + child vfs
+    + any-service         | + parent
+
++ start test | caps: 500 | ram: 1G
+  + binary sequence
+  + config
+  | + start /bin/true | caps: 500
+  |   + config
+  |     + libc | stdin: /dev/null | stdout: /dev/log | stderr: /dev/log
+  |     + vfs
+  |       + dir fs  | + fs
+  |       + dir dev | + log
+  |                 | + null
+  |       + ram
+  |       + import | overwrite: yes
+  |         + dir fs
+  |           + symlink link | target: test
+  |           + inline test | : Hello, this is Genode!
+  | + start /bin/true | caps: 500
+  |   + config
+  |     + libc | stdin: /dev/null | stdout: /dev/log | stderr: /dev/log
+  |     + vfs
+  |       + dir fs  | + fs
+  |       + dir dev | + log
+  |                 | + null
+  |       + ram
+  |       + import | overwrite: yes
+  |         + dir fs
+  |           + symlink link | target: test
+  |           + inline test | : Hello world!
+  | + start /bin/cat | caps: 500
+  |   + config
+  |     + libc | stdin: /dev/null | stdout: /dev/log | stderr: /dev/log | rtc: /dev/null
+  |     + vfs
+  |       + dir fs  | + fs | writeable: no
+  |       + dir dev | + log
+  |                 | + null
+  |     + arg cat | : /fs/link
+  + route
+    + service File_system                 | + child vfs
+    + service ROM | label_suffix: .lib.so | + parent
+    + service ROM | label_prefix: /bin    | + child vfs_rom
+    + any-service
+      + parent
+      + any-child
+-
+}
+
+build_boot_image [build_artifacts]
+
+append qemu_args " -nographic "
+
+run_genode_until {Hello world!.{0,7}\n} 30

@@ -1,0 +1,15 @@
+runtime | ram: 12M | caps: 200 | binary: nitpicker
+
++ requires
+  + timer
+  + report
+
++ provides
+  + gui
+  + capture
+  + event
+
++ content
+  + rom | label: ld.lib.so
+  + rom | label: nitpicker
+-

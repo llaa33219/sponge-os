@@ -1,0 +1,105 @@
+create_boot_directory
+
+import_from_depot [depot_user]/src/[base_src] \
+                  [depot_user]/pkg/[drivers_interactive_pkg] \
+                  [depot_user]/src/init \
+                  [depot_user]/src/dynamic_rom \
+                  [depot_user]/src/nitpicker \
+                  [depot_user]/src/demo
+
+install_config {
+config
++ parent-provides
+  + service ROM
+  + service CPU
+  + service PD
+  + service RM
+  + service LOG
+  + service IRQ
+  + service IO_MEM
+  + service IO_PORT
+
++ default | caps: 100 | ram: 1M
+
++ default-route
+  + any-service
+    + parent
+    + any-child
+
++ start timer
+  + provides | + service Timer
+
++ start drivers | caps: 1500 | ram: 64M | managing_system: yes
+  + binary init
+  + route
+    + service ROM | label: config | + parent | label: drivers.config
+    + service Timer               | + child timer
+    + service Capture             | + child nitpicker
+    + service Event               | + child nitpicker
+    + any-service                 | + parent
+
++ start nitpicker
+  + provides
+    + service Gui
+    + service Capture
+    + service Event
+  + config
+    + capture
+    + event
+    + domain pointer | layer: 1 | content: client | label: no | origin: pointer
+    + domain default | layer: 3 | content: client | label: no | focus: click | hover: always
+    + policy | label_prefix: pointer | domain: pointer
+    + default-policy                 | domain: default
+
++ start pointer
+  + route
+    + service Gui | + child nitpicker
+    + any-service
+      + parent
+      + any-child
+
++ start dynamic_rom | ram: 4M
+  + provides | + service ROM
+  + config | verbose: yes
+    + rom gui_fader.config
+      + inline | description: initial state  | + config
+      + sleep  | milliseconds: 500
+      + inline | description: make visible   | + config | alpha: 255
+      + sleep  | milliseconds: 3000
+      + inline | description: reduce alpha   | + config | alpha: 120
+      + sleep  | milliseconds: 3000
+      + inline | description: make invisible | + config | alpha: 0
+      + sleep  | milliseconds: 2000
+      + empty
+
++ start gui_fader | ram: 8M
+  + provides | + service Gui
+  + route
+    + service ROM | label: config | + child dynamic_rom | label: gui_fader.config
+    + service Gui                 | + child nitpicker
+    + any-service
+      + parent
+      + any-child
+
++ start scout | ram: 16M
+  + route
+    + service Gui | + child gui_fader
+    + any-service
+      + parent
+      + any-child
+
++ start scout2 | ram: 16M
+  + binary scout
+  + route
+    + service Gui | + child nitpicker
+    + any-service
+      + parent
+      + any-child
+-
+}
+
+build { server/gui_fader }
+
+build_boot_image [build_artifacts]
+
+run_genode_until forever

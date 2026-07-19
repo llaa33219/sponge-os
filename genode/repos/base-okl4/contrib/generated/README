@@ -1,0 +1,4 @@
+This directory and its subdirectories contain machine-generated code,
+produced when building the OKL4 kernel with its native Scons build environment.
+It is not part of the Genode project and remains under the licence of the OKL4
+kernel.

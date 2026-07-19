@@ -1,0 +1,45 @@
+noux_build.patch
+
+diff --git a/gdb/configure b/gdb/configure
+--- a/gdb/configure
++++ b/gdb/configure
+@@ -20969,7 +20969,7 @@ sigjmp_buf env;
+   return 0;
+ }
+ _ACEOF
+-if ac_fn_c_try_compile "$LINENO"; then :
++if ac_fn_c_try_link "$LINENO"; then :
+   gdb_cv_func_sigsetjmp=yes
+ else
+   gdb_cv_func_sigsetjmp=no
+diff --git a/gdbsupport/scoped_ignore_signal.h b/gdbsupport/scoped_ignore_signal.h
+--- a/gdbsupport/scoped_ignore_signal.h
++++ b/gdbsupport/scoped_ignore_signal.h
+@@ -22,6 +22,8 @@
+ 
+ #include <signal.h>
+ 
++#undef HAVE_SIGPROCMASK
++
+ /* RAII class used to ignore a signal in a scope.  If sigprocmask is
+    supported, then the signal is only ignored by the calling thread.
+    Otherwise, the signal disposition is set to SIG_IGN, which affects
+diff --git a/gnulib/config.in b/gnulib/config.in
+--- a/gnulib/config.in
++++ b/gnulib/config.in
+@@ -1492,6 +1492,7 @@
+ /* Define to 1 on Solaris. */
+ #undef _LCONV_C99
+ 
++#if 0
+ /* The _Noreturn keyword of C11.  */
+ #ifndef _Noreturn
+ # if (defined __cplusplus \
+@@ -1521,6 +1522,7 @@
+ #  define _Noreturn
+ # endif
+ #endif
++#endif
+ 
+ 
+ /* Define to 1 in order to get the POSIX compatible declarations of socket

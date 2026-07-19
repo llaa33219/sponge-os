@@ -1,0 +1,696 @@
+/*
+ * \brief  Intel IOMMU implementation
+ * \author Johannes Schlatow
+ * \date   2023-08-15
+ */
+
+/*
+ * Copyright (C) 2023 Genode Labs GmbH
+ *
+ * This file is part of the Genode OS framework, which is distributed
+ * under the terms of the GNU Affero General Public License version 3.
+ */
+
+#ifndef _SRC__DRIVERS__PLATFORM__INTEL__IO_MMU_H_
+#define _SRC__DRIVERS__PLATFORM__INTEL__IO_MMU_H_
+
+/* Genode includes */
+#include <os/attached_mmio.h>
+#include <util/register_set.h>
+#include <base/allocator.h>
+#include <base/attached_ram_dataspace.h>
+
+/* Platform-driver includes */
+#include <device.h>
+#include <io_mmu.h>
+
+/* local includes */
+#include <intel/managed_root_table.h>
+#include <intel/report_helper.h>
+#include <intel/page_table.h>
+#include <intel/domain_allocator.h>
+#include <intel/default_mappings.h>
+#include <intel/invalidator.h>
+#include <intel/irq_remap_table.h>
+#include <intel/fault_handler.h>
+#include <page_table_allocator.h>
+
+namespace Intel {
+	using namespace Genode;
+	using namespace Driver;
+
+	/**
+	 * We use a 4KB interrupt remap table since kernels (nova, hw) do not
+	 * support more than 256 interrupts anyway. We can thus reuse the
+	 * context-table allocator.
+	 */
+	using Irq_table = Irq_remap_table<12>;
+	using Irq_allocator = Irq_table::Irq_allocator;
+
+	class Io_mmu;
+	class Io_mmu_factory;
+}
+
+
+class Intel::Io_mmu : private Attached_mmio<0x800>,
+                      public  Driver::Io_mmu,
+                      public  Fault_handler
+{
+	public:
+
+		using Table_allocator = Page_table_allocator;
+
+		friend class Register_invalidator;
+
+		/* Use derived domain class to store reference to buffer registry */
+		class Domain : public Driver::Io_mmu::Domain,
+		               public Registered_translation_table
+		{
+			private:
+
+				friend class Intel::Io_mmu;
+
+				using L4_table = Level_4_translation_table;
+				using L3_table = Level_3_translation_table;
+
+				bool     const _level_4;
+				bool     const _coherent_page_walk;
+				uint32_t const _supported_page_sizes;
+
+				Table_allocator  &_talloc;
+				Domain_id   const _domain_id;
+				Irq_allocator    &_irq_allocator;
+
+				addr_t _table_phys {
+					_level_4 ?  _talloc.construct<L4_table>()
+					         :  _talloc.construct<L3_table>() };
+
+				void _with_table(addr_t pa, auto const &fn) const
+				{
+					if (_level_4)
+						_talloc.with_table<L4_table>(pa,
+							[&] (auto &t) { fn(t); },
+							[&] () { });
+					else
+						_talloc.with_table<L3_table>(pa,
+							[&] (auto &t) { fn(t); },
+							[&] () { });
+				}
+
+				void _with_table(auto const &fn) const {
+					_with_table(_table_phys, fn); }
+
+			public:
+
+				Result add_range(Range const &, addr_t const,
+				                 Dataspace_capability const) override;
+				void remove_range(Range const &) override;
+
+				Cost costs(Dma_address_list &) override;
+
+				addr_t virt_addr(addr_t pa) const override
+				{
+					addr_t va { 0 };
+					_with_table(pa, [&] (auto &t) { va = (addr_t)&t; });
+					return va;
+				}
+
+				Domain(Domain_id                   domain_id,
+				       Table_allocator            &table_allocator,
+				       Irq_allocator              &irq_allocator,
+				       Translation_table_registry &table_registry,
+				       bool                        level_4,
+				       bool                        coherent_page_walk,
+				       uint32_t                    supported_page_sizes)
+				:
+					Registered_translation_table(table_registry),
+					_level_4(level_4),
+					_coherent_page_walk(coherent_page_walk),
+					_supported_page_sizes(supported_page_sizes),
+					_talloc(table_allocator),
+					_domain_id(domain_id),
+					_irq_allocator(irq_allocator) { }
+
+				~Domain() override
+				{
+					if (_level_4)
+						_talloc.destruct<L4_table>(_table_phys);
+					else
+						_talloc.destruct<L3_table>(_table_phys);
+				}
+		};
+
+	private:
+
+		static
+		Irq_table & _irq_table_virt(Table_allocator &alloc, addr_t phys)
+		{
+			addr_t va { 0 };
+
+			alloc.with_table<Irq_table>(phys,
+				[&] (Irq_table &t) { va = (addr_t)&t; },
+				[&] ()             { /* never reached */ });
+
+				/**
+				 * Dereferencing is save because _irq_table_phys is never 0
+				 * (allocator throws exception) and with_table() thus always sets
+				 * a valid virtual address.
+				 */
+				return *(Irq_table*)va;
+		}
+
+
+		Env                     &_env;
+		bool                     _verbose          { false };
+
+		Translation_table_registry &_table_registry;
+		Table_allocator            &_table_allocator;
+
+		const addr_t             _irq_table_phys   {
+			_table_allocator.construct<Irq_table>() };
+
+		Irq_table               &_irq_table        {
+			_irq_table_virt(_table_allocator, _irq_table_phys) };
+
+		Irq_allocator            _irq_allocator    { };
+
+		Report_helper            _report_helper    { _table_registry };
+		Domain_allocator        &_domain_allocator;
+		Allocator               &_domain_slab;
+
+		Domain_id _default_domain { _domain_allocator.alloc(_max_domain()) };
+
+		/**
+		 * For a start, we keep a distinct root table for every hardware unit.
+		 *
+		 * This doubles RAM requirements for allocating page tables when devices
+		 * in the scope of different hardware units are used in the same session,
+		 * yet simplifies the implementation. In order to use a single root table
+		 * for all hardware units, we'd need to have a single Io_mmu object
+		 * controlling all hardware units. Otherwise, the session component will
+		 * create separate Domain objects that receive identical modification
+		 * instructions.
+		 *
+		 * The default root table holds default mappings (e.g. reserved memory)
+		 * that needs to be accessible even if devices have not been acquired yet.
+		 */
+		Managed_root_table            _managed_root_table;
+		Default_mappings              _default_mappings;
+
+		bool                          _remap_irqs { false };
+
+		Constructible<Irq_connection> _fault_irq          { };
+		Signal_handler<Io_mmu>        _fault_handler      {
+			_env.ep(), *this, &Io_mmu::_handle_faults };
+
+		Constructible<Register_invalidator> _register_invalidator { };
+		Constructible<Queued_invalidator>   _queued_invalidator   { };
+
+		/**
+		 * Registers
+		 */
+
+		struct Version : Register<0x0, 32>
+		{
+			struct Minor : Bitfield<0, 4> { };
+			struct Major : Bitfield<4, 4> { };
+		};
+
+		struct Capability : Register<0x8, 64>
+		{
+			/* enhanced set root table pointer support */
+			struct Esrtps : Bitfield<63,1> { };
+
+			/* enhanced set irq table pointer support */
+			struct Esirtps : Bitfield<62,1> { };
+
+			/* number of fault-recording registers (n-1) */
+			struct Nfr : Bitfield<40,8> { };
+
+			struct Page_1GB : Bitfield<35,1> { };
+			struct Page_2MB : Bitfield<34,1> { };
+
+			/* fault recording register offset */
+			struct Fro : Bitfield<24,10> { };
+
+			struct Sagaw_5_level : Bitfield<11,1> { };
+			struct Sagaw_4_level : Bitfield<10,1> { };
+			struct Sagaw_3_level : Bitfield< 9,1> { };
+
+			struct Caching_mode : Bitfield<7,1> { };
+
+			struct Rwbf    : Bitfield<4,1> { };
+
+			struct Domains : Bitfield<0,3> { };
+
+		};
+
+		struct Extended_capability : Register<0x10, 64>
+		{
+			/* IOTLB register offset */
+			struct Iro : Bitfield<8,10> { };
+
+			/* interrupt remapping support */
+			struct Ir  : Bitfield<3,1> { };
+
+			/* queued-invalidation support */
+			struct Qi  : Bitfield<1,1> { };
+
+			struct Page_walk_coherency : Bitfield<0,1> { };
+		};
+
+		struct Global_command : Register<0x18, 32>
+		{
+			struct Enable : Bitfield<31,1> { };
+
+			/* set root table pointer */
+			struct Srtp   : Bitfield<30,1> { };
+
+			/* write-buffer flush */
+			struct Wbf    : Bitfield<27,1> { };
+
+			/* queued invalidation enable */
+			struct Qie    : Bitfield<26,1> { };
+
+			/* interrupt remapping enable */
+			struct Ire    : Bitfield<25,1> { };
+
+			/* set interrupt remap table pointer */
+			struct Sirtp  : Bitfield<24,1> { };
+
+			/* compatibility format interrupts */
+			struct Cfi    : Bitfield<23,1> { };
+		};
+
+		struct Global_status : Register<0x1c, 32>
+		{
+			struct Enabled : Bitfield<31,1> { };
+
+			/* root table pointer status */
+			struct Rtps  : Bitfield<30,1> { };
+
+			/* write-buffer flush status */
+			struct Wbfs  : Bitfield<27,1> { };
+
+			/* queued invalidation enable status */
+			struct Qies  : Bitfield<26,1> { };
+
+			/* interrupt remapping enable status */
+			struct Ires  : Bitfield<25,1> { };
+
+			/* interrupt remapping table pointer status */
+			struct Irtps : Bitfield<24,1> { };
+
+			/* compatibility format interrupts */
+			struct Cfis  : Bitfield<23,1> { };
+		};
+
+		struct Root_table_address : Register<0x20, 64>
+		{
+			struct Mode    : Bitfield<10, 2> { enum { LEGACY = 0x00 }; };
+			struct Address : Bitfield<12,52> { };
+		};
+
+		struct Irq_table_address : Register<0xB8, 64>
+		{
+			struct Size    : Bitfield< 0, 4> { };
+			struct Address : Bitfield<12,52> { };
+
+			/* not using extended interrupt mode (x2APIC) */
+		};
+
+		struct Invalidation_queue_error : Register<0xb0,32>
+		{ };
+
+		struct Fault_status : Register<0x34, 32>
+		{
+			/* fault record index */
+			struct Fri : Bitfield<8,8> { };
+
+			/* invalidation time-out error */
+			struct Ite : Bitfield<6,1> { };
+
+			/* invalidation completion error */
+			struct Ice : Bitfield<5,1> { };
+
+			/* invalidation queue error */
+			struct Iqe : Bitfield<4,1> { };
+
+			/* primary pending fault */
+			struct Pending : Bitfield<1,1> { };
+
+			/* primary fault overflow */
+			struct Overflow : Bitfield<0,1> { };
+		};
+
+		struct Fault_event_control : Register<0x38, 32>
+		{
+			struct Mask : Bitfield<31,1> { };
+		};
+
+		struct Fault_event_data : Register<0x3c, 32>
+		{ };
+
+		struct Fault_event_address : Register<0x40, 32>
+		{ };
+
+		/* IOTLB registers may be at offsets 0 to 1024*16 */
+		struct All_registers : Register_array<0x0, 64, 256, 64>
+		{ };
+
+		struct Fault_record_hi : Genode::Register<64>
+		{
+			static unsigned offset() { return 1; }
+
+			struct Fault  : Bitfield<63,1> { };
+			struct Type1  : Bitfield<62,1> { };
+
+			/* address type */
+			struct At     : Bitfield<60,2> { };
+
+			struct Pasid  : Bitfield<40,10> { };
+			struct Reason : Bitfield<32, 8> { };
+
+			/* PASID present */
+			struct Pp     : Bitfield<31,1> { };
+
+			/* execute permission requested */
+			struct Exe    : Bitfield<30,1> { };
+
+			/* privilege mode requested */
+			struct Priv   : Bitfield<29,1> { };
+			struct Type2  : Bitfield<28,1> { };
+			struct Source : Bitfield<0,16> { };
+
+			struct Type   : Bitset_2<Type1, Type2>
+			{
+				enum {
+					WRITE_REQUEST  = 0x0,
+					READ_REQUEST   = 0x1,
+					PAGE_REQUEST   = 0x2,
+					ATOMIC_REQUEST = 0x3
+				};
+			};
+		};
+
+		struct Fault_record_lo : Genode::Register<64>
+		{
+			static unsigned offset() { return 0; }
+
+			struct Info : Bitfield<12,52> { };
+		};
+
+		Domain_id _max_domain() {
+			return (1 << (4 + read<Capability::Domains>()*2)) - 1; }
+
+		template <typename BIT>
+		void _global_command(bool set)
+		{
+			Global_status::access_t  status = read<Global_status>();
+			Global_command::access_t cmd    = status;
+
+			/* keep status bits but clear one-shot bits */
+			Global_command::Srtp::clear(cmd);
+			Global_command::Sirtp::clear(cmd);
+
+			if (set) {
+				BIT::set(cmd);
+				BIT::set(status);
+			} else {
+				BIT::clear(cmd);
+				BIT::clear(status);
+			}
+
+			/* write command */
+			write<Global_command>(cmd);
+
+			/* wait until command completed */
+			while (read<Global_status>() != status);
+		}
+
+		template <typename BITFIELD>
+		unsigned long _offset()
+		{
+			/* BITFIELD denotes registers offset counting 128-bit as one register */
+			unsigned offset = read<BITFIELD>();
+
+			/* return 64-bit register offset */
+			return offset*2;
+		}
+
+		template <typename OFFSET_BITFIELD>
+		void write_offset_register(unsigned index, All_registers::access_t value) {
+			write<All_registers>(value, _offset<OFFSET_BITFIELD>() + index); }
+
+		template <typename OFFSET_BITFIELD>
+		All_registers::access_t read_offset_register(unsigned index) {
+			return read<All_registers>(_offset<OFFSET_BITFIELD>() + index); }
+
+		template <typename REG>
+		REG::access_t read_fault_record(unsigned index) {
+			return read_offset_register<Capability::Fro>(index*2 + REG::offset()); }
+
+		void clear_fault_record(unsigned index) {
+			write_offset_register<Capability::Fro>(index*2 + Fault_record_hi::offset(),
+			                                       Fault_record_hi::Fault::bits(1));
+		}
+
+		void _handle_faults();
+
+		bool _enable_irq_remapping();
+
+		/* utility methods used on boot and resume */
+		void _init();
+		void _enable_translation();
+
+		/**
+		 * Io_mmu interface
+		 */
+
+		void _enable() override
+		{
+			/* IOMMU gets enabled already after default mappings are complete */
+
+			if (_verbose)
+				log("enabled IOMMU ", name());
+		}
+
+		void _disable() override
+		{
+			/**
+			 * Ideally, we would block all DMA here, however, we must preserve
+			 * some default mappings to allow access to reserved memory.
+			 */
+
+			if (_verbose)
+				log("no enabled device for IOMMU ", name(), " anymore");
+		}
+
+		/**
+		 * Some broken BIOSes messes up the ACPI table. In consequence, we may
+		 * try accessing invalid DMAR units. We only check for this to log an
+		 * error as a hint to the user to disable VT-d.
+		 *
+		 * See #2700
+		 */
+		bool _broken_device()
+		{
+			return read<Capability>()          == ~(Capability::access_t)0 ||
+			       read<Extended_capability>() == ~(Extended_capability::access_t)0 ||
+			       read<Capability>()          ==  (Capability::access_t)0 ||
+			       read<Extended_capability>() ==  (Extended_capability::access_t)0;
+		}
+
+		Default_mappings::Translation_levels _sagaw_to_levels()
+		{
+			using Levels = Default_mappings::Translation_levels;
+
+			if (read<Capability::Sagaw_4_level>())
+				return Levels::LEVEL4;
+
+			if (!read<Capability::Sagaw_3_level>() && read<Capability::Sagaw_5_level>())
+				error("IOMMU requires 5-level translation tables (not implemented)");
+
+			return Levels::LEVEL3;
+		}
+
+		const uint32_t _supported_page_sizes {
+			read<Capability::Page_1GB>() << 30 |
+			read<Capability::Page_2MB>() << 21 | 1u << 12 };
+
+	public:
+
+		Managed_root_table & root_table() { return _managed_root_table; }
+
+		void generate(Generator &) const override;
+
+		Invalidator & invalidator();
+
+		bool     coherent_page_walk()   const { return read<Extended_capability::Page_walk_coherency>(); }
+		bool     caching_mode()         const { return read<Capability::Caching_mode>(); }
+		uint32_t supported_page_sizes() const { return _supported_page_sizes; }
+
+		void flush_write_buffer();
+
+		/**
+		 * Fault_handler interface
+		 */
+
+		bool iq_error() override;
+		void handle_faults() override;
+
+		/**
+		 * Io_mmu suspend/resume interface
+		 */
+		void resume() override;
+
+		/**
+		 * Io_mmu interface for default mappings
+		 */
+		void add_default_range(Range const &, addr_t);
+		void default_mappings_complete();
+
+		void apply_default_mappings(Pci::Bdf const &bdf) {
+			_default_mappings.copy_stage2(_managed_root_table, bdf); }
+
+		/**
+		 * Io_mmu interface for IRQ remapping
+		 */
+		void unmap_irq(Pci::Bdf const &bdf, unsigned idx) override
+		{
+			if (!_remap_irqs)
+				return;
+
+			if (_irq_table.unmap(_irq_allocator, bdf, idx))
+				invalidator().invalidate_irq(idx, false);
+		}
+
+		Irq_info map_irq(Pci::Bdf   const &bdf,
+		                 Irq_info   const &info,
+		                 Irq_config const &config) override
+		{
+			if (!_remap_irqs)
+				return info;
+
+			return _irq_table.map(_irq_allocator, bdf, info, config, [&] (unsigned idx) {
+				if (caching_mode())
+					invalidator().invalidate_irq(idx, false);
+				else
+					flush_write_buffer();
+			});
+		}
+
+		/**
+		 * Io_mmu interface
+		 */
+
+		Driver::Io_mmu::Domain & create_domain() override
+		{
+			if (!read<Capability::Sagaw_3_level>() &&
+			    !read<Capability::Sagaw_4_level>() &&
+			    read<Capability::Sagaw_5_level>())
+				error("IOMMU requires 5-level translation tables (not implemented)");
+
+			return *new (_domain_slab)
+				Intel::Io_mmu::Domain(_domain_allocator.alloc(_max_domain()),
+				                      _table_allocator,
+				                      _irq_allocator, _table_registry,
+				                      read<Capability::Sagaw_4_level>(),
+				                      coherent_page_walk(),
+				                      supported_page_sizes());
+		}
+
+		void destroy_domain(Driver::Io_mmu::Domain &domain) override
+		{
+			Domain &intel_domain = static_cast<Domain&>(domain);
+			_domain_allocator.free(intel_domain._domain_id),
+			destroy(_domain_slab, &intel_domain);
+		}
+
+
+		void enregister(Device const &device,
+		                Driver::Io_mmu::Domain &domain) override;
+
+		void deregister(Device const &device,
+		                Driver::Io_mmu::Domain &domain) override;
+
+		void iotlb_flush(Driver::Io_mmu::Domain &domain) override;
+
+		/**
+		 * Constructor/Destructor
+		 */
+
+		Io_mmu(Env                            &env,
+		       Io_mmu_devices                 &io_mmu_devices,
+		       Device_model                   &devices,
+		       Device::Name             const &name,
+		       Device::Io_mem::Range           range,
+		       Translation_table_registry     &table_registry,
+		       Table_allocator                &table_allocator,
+		       Domain_allocator               &domain_allocator,
+		       Allocator                      &domain_slab,
+		       unsigned                        irq_number);
+
+		~Io_mmu()
+		{
+			_domain_allocator.free(_default_domain);
+			_table_allocator.destruct<Irq_table>(_irq_table_phys);
+		}
+};
+
+
+class Intel::Io_mmu_factory : public Driver::Io_mmu_factory
+{
+	private:
+
+		using Table_allocator = Page_table_allocator;
+
+		Genode::Env &_env;
+
+		Translation_table_registry _table_registry { };
+		Table_allocator _table_allocator;
+
+		Domain_allocator _domain_allocator { };
+
+		Tslab<Io_mmu::Domain, 4096-Sliced_heap::meta_data_size()> _domain_slab;
+
+	public:
+
+		Io_mmu_factory(Genode::Env &env, Sliced_heap &md_alloc,
+		               Registry<Driver::Io_mmu_factory> &registry)
+		:
+			Driver::Io_mmu_factory(registry, Device::Type { "intel_iommu" }),
+			_env(env),
+			_table_allocator(env.ram(), env.rm(), env.pd(), md_alloc),
+			_domain_slab(md_alloc)
+		{ }
+
+		void create(Allocator &alloc, Io_mmu_devices &io_mmu_devices,
+		            Device const &device, Device_model &devices) override
+		{
+			using Range = Device::Io_mem::Range;
+
+			unsigned irq_number { 0 };
+			device.for_each_irq([&] (unsigned idx, unsigned nbr,
+			                         Irq_session::Polarity, Irq_session::Trigger, bool)
+			{
+				if (idx == 0)
+					irq_number = nbr;
+			});
+
+			device.for_each_io_mem([&] (unsigned idx, Range range, Device::Pci_bar, bool)
+			{
+				try {
+					if (idx == 0)
+						new (alloc) Intel::Io_mmu(_env, io_mmu_devices,
+						                          devices, device.name(),
+						                          range, _table_registry, _table_allocator,
+						                          _domain_allocator, _domain_slab, irq_number);
+				} catch (...) {
+					error("Intel::Io_mmu failed to initialize - ", device.name());
+				}
+			});
+		}
+};
+
+#endif /* _SRC__DRIVERS__PLATFORM__INTEL__IO_MMU_H_ */

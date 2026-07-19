@@ -1,0 +1,327 @@
+/*
+ * \brief   Kernel object identities and references
+ * \author  Stefan Kalkowski
+ * \date    2012-11-30
+ */
+
+/*
+ * Copyright (C) 2012-2025 Genode Labs GmbH
+ *
+ * This file is part of the Genode OS framework, which is distributed
+ * under the terms of the GNU Affero General Public License version 3.
+ */
+
+#ifndef _CORE__KERNEL__OBJECT_H_
+#define _CORE__KERNEL__OBJECT_H_
+
+/* Genode includes */
+#include <base/tslab.h>
+#include <util/avl_tree.h>
+#include <util/bit_allocator.h>
+#include <util/list.h>
+
+/* core includes */
+#include <types.h>
+#include <kernel/core_interface.h>
+#include <kernel/interface.h>
+
+namespace Kernel {
+
+	/*
+	 * Forward declarations
+	 */
+
+	class Pd;
+	class Irq;
+	class Thread;
+	class Signal_context;
+	class Signal_receiver;
+	class Vcpu;
+
+	/**
+	 * Base class of all Kernel objects
+	 */
+	class Object;
+
+	/**
+	 * An object identity helps to distinguish different capability owners
+	 * that reference a Kernel object
+	 */
+	class Object_identity;
+
+	/**
+	 * An object identity reference is the in-kernel representation
+	 * of a PD local capability. It references an object identity and is
+	 * associated with a protection domain.
+	 */
+	class Object_identity_reference;
+
+	/**
+	 * A tree of object identity references to retrieve the capabilities
+	 * of one PD fastly.
+	 */
+	class Object_identity_reference_tree;
+
+	using Object_identity_reference_list
+		= Genode::List<Object_identity_reference>;
+
+	using Object_identity_list
+		= Genode::List<Kernel::Object_identity>;
+
+	/**
+	 * This class represents kernel object's identities including the
+	 * corresponding object identity reference for core
+	 */
+	template <typename T> class Core_object_identity;
+
+	/**
+	 * This class represents a kernel object, it's identity, and the
+	 * corresponding object identity reference for core
+	 */
+	template <typename T> class Core_object;
+
+	enum { CAP_SLAB_SIZE = 2 * Genode::PAGE_SIZE };
+
+	using Cap_slab = Genode::Tslab<Object_identity_reference, CAP_SLAB_SIZE>;
+}
+
+
+class Kernel::Object : private Object_identity_list
+{
+	private:
+
+		enum Type { THREAD, PD, SIGNAL_RECEIVER, SIGNAL_CONTEXT, IRQ, VCPU };
+
+		/*
+		 * Noncopyable
+		 */
+		Object(Object const &)              = delete;
+		Object &operator = (Object const &) = delete;
+
+		Type  const _type;
+		void *const _obj;
+
+	public:
+
+		struct Cannot_cast_to_type : Genode::Exception { };
+
+		using Object_identity_list::remove;
+		using Object_identity_list::insert;
+
+		Object(Thread &obj);
+		Object(Irq &obj);
+		Object(Signal_receiver &obj);
+		Object(Signal_context &obj);
+		Object(Pd &obj);
+		Object(Vcpu &obj);
+
+		~Object();
+
+		template <typename T>
+		T *obj() const;
+};
+
+
+class Kernel::Object_identity : public Object_identity_list::Element,
+                                public Kernel::Object_identity_reference_list
+{
+	private:
+
+		/*
+		 * Noncopyable
+		 */
+		Object_identity(Object_identity const &);
+		Object_identity &operator = (Object_identity const &);
+
+		Object * _object = nullptr;
+
+	public:
+
+		Object_identity(Object &object);
+		~Object_identity();
+
+		template <typename KOBJECT>
+		KOBJECT * object() { return _object->obj<KOBJECT>(); }
+
+		void invalidate();
+};
+
+
+class Kernel::Object_identity_reference
+:
+	public Genode::Avl_node<Kernel::Object_identity_reference>,
+	public Genode::List<Kernel::Object_identity_reference>::Element
+{
+	private:
+
+		/*
+		 * Noncopyable
+		 */
+		Object_identity_reference(Object_identity_reference const &);
+		Object_identity_reference &operator = (Object_identity_reference const &);
+
+		Object_identity *_identity;
+		Pd              &_pd;
+		unsigned short   _in_utcbs;
+		capid_t    const _capid;
+
+		friend class Object_identity_reference_tree;
+
+
+		/**********************
+		 ** Lookup functions **
+		 **********************/
+
+		Object_identity_reference * _find(Pd &pd);
+		Object_identity_reference * _find(capid_t capid);
+
+	public:
+
+		Object_identity_reference(Object_identity *oi, Pd &pd);
+		~Object_identity_reference();
+
+		/***************
+		 ** Accessors **
+		 ***************/
+
+		template <typename KOBJECT>
+		KOBJECT * object()
+		{
+			return _identity ? _identity->object<KOBJECT>() : nullptr;
+		}
+
+		void factory(void * dst, Pd &pd, auto const &fn)
+		{
+			if (!_identity)
+				return;
+			fn(*Genode::construct_at<Object_identity_reference>(dst, _identity,
+			                                                    pd));
+		}
+
+		Pd &    pd()     { return _pd;    }
+		capid_t capid()  { return _capid; }
+
+		void add_to_utcb()      { _in_utcbs++; }
+		void remove_from_utcb() { _in_utcbs--; }
+		bool in_utcb()          { return _in_utcbs > 0; }
+
+		void invalidate();
+
+		auto with_in_pd(Pd &pd, auto const &found_fn, auto const &failed_fn)
+		{
+			auto *oir = _find(pd);
+			if (oir) found_fn(*oir);
+			else     failed_fn();
+
+		}
+
+		/************************
+		 ** Avl_node interface **
+		 ************************/
+
+		bool higher(Object_identity_reference * oir) const {
+			return oir->_capid > _capid; }
+};
+
+
+class Kernel::Object_identity_reference_tree
+:
+	private Genode::Avl_tree<Kernel::Object_identity_reference>
+{
+	private:
+
+		friend class Object_identity_reference;
+
+		Object_identity_reference * _find(capid_t id);
+
+	public:
+
+		~Object_identity_reference_tree()
+		{
+			while (Object_identity_reference *oir = first())
+				oir->~Object_identity_reference();
+		}
+
+		template <typename KOBJECT>
+		auto with(capid_t id, auto const &found_fn, auto const &failed_fn)
+		{
+			Object_identity_reference *oir = _find(id);
+			KOBJECT *kobj = (oir) ? oir->object<KOBJECT>() : nullptr;
+			if (kobj) return found_fn(*kobj);
+			else      return failed_fn();
+		}
+
+		auto with(capid_t id, auto const &found_fn, auto const &failed_fn)
+		{
+			Object_identity_reference *oir = _find(id);
+			if (oir) return found_fn(*oir);
+			else     return failed_fn();
+		}
+};
+
+
+template <typename T>
+class Kernel::Core_object_identity : public Object_identity,
+                                     public Object_identity_reference
+{
+	public:
+
+		/**
+		 * Constructor used for objects other than the Core PD
+		 */
+		Core_object_identity(Pd &core_pd,
+		                     T  &object)
+		:
+			Object_identity(object.kernel_object()),
+			Object_identity_reference(this, core_pd)
+		{ }
+
+		/**
+		 * Constructor used for Core PD object
+		 */
+		Core_object_identity(T &core_pd)
+		:
+			Object_identity(core_pd.kernel_object()),
+			Object_identity_reference(this, core_pd)
+		{ }
+
+		capid_t core_capid() { return capid(); }
+
+		static capid_t syscall_create(Genode::Constructible<Core_object_identity<T>> &t,
+		                              capid_t const cap) {
+			return (capid_t)core_call(Core_call_id::OBJECT_CREATE, (Call_arg)&t,
+			                          (Call_arg)cap); }
+
+		static void syscall_destroy(Genode::Constructible<Core_object_identity<T>> &t) {
+			core_call(Core_call_id::OBJECT_DESTROY, (Call_arg)&t); }
+};
+
+
+template <typename T>
+class Kernel::Core_object : public T, Kernel::Core_object_identity<T>
+{
+	public:
+
+		/**
+		 * Constructor used for objects other than the Core PD
+		 */
+		Core_object(Pd &core_pd, auto &&... args)
+		:
+			T(args...),
+			Core_object_identity<T>(core_pd, *static_cast<T*>(this))
+		{ }
+
+		/**
+		 * Constructor used for Core PD object
+		 */
+		Core_object(auto &&... args)
+		:
+			T(args...),
+			Core_object_identity<T>(*static_cast<T*>(this))
+		{ }
+
+		using Kernel::Core_object_identity<T>::core_capid;
+		using Kernel::Core_object_identity<T>::capid;
+};
+
+#endif /* _CORE__KERNEL__OBJECT_H_ */

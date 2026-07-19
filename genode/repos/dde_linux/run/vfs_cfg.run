@@ -1,0 +1,117 @@
+if {[have_cmd_switch --autopilot]} {
+	assert {![have_board virt_qemu_riscv]}  \
+		"Autopilot mode is not supported on this platform."
+}
+
+assert {![have_spec arm_v6]}
+
+create_boot_directory
+import_from_depot [depot_user]/src/[base_src] \
+                  [depot_user]/src/dynamic_rom \
+                  [depot_user]/src/init \
+                  [depot_user]/src/nic_router \
+                  [depot_user]/src/ping \
+                  [depot_user]/src/vfs \
+                  [depot_user]/src/vfs_lxip
+
+install_config {
+config | verbose: yes
+
++ parent-provides
+  + service CPU
+  + service IO_MEM
+  + service IO_PORT
+  + service IRQ
+  + service LOG
+  + service PD
+  + service RM
+  + service ROM
+
++ default-route
+  + any-service
+    + parent
+    + any-child
+
++ default | caps: 100 | ram: 1M
+
++ start timer
+  + provides | + service Timer
+
++ start ping_1 | ram: 8M
+  + binary ping
+  + config
+    | interface:  10.0.2.3/24
+    | gateway:    10.0.2.1
+    | dst_ip:     10.0.2.2
+    | period_sec: 1
+    | verbose:    no
+    | count:      3
+  + route
+    + service Nic | + child nic_router
+    + any-service
+      + parent
+      + any-child
+
++ start ping_2 | ram: 8M
+  + binary ping
+  + config
+    | interface:  10.0.2.4/24
+    | gateway:    10.0.2.1
+    | dst_ip:     10.0.2.55
+    | period_sec: 1
+    | verbose:    no
+    | count:      3
+  + route
+    + service Nic | + child nic_router
+    + any-service
+      + parent
+      + any-child
+
++ start nic_router | caps: 200 | ram: 10M
+  + provides
+    + service Nic
+    + service Uplink
+  + config | verbose_domain_state: yes
+  | + default-policy | domain: default
+  | + domain default | interface: 10.0.2.1/24
+  |   + dhcp-server | ip_first: 10.0.2.2 | ip_last: 10.0.2.2
+
++ start dynamic_rom | ram: 4M
+  + provides | + service ROM
+  + config | verbose: yes
+  | + rom socket_fs.config
+  |   + inline | description: static
+  |     + config
+  |       + vfs
+  |         + lxip
+  |           | ip_addr:    10.0.2.55
+  |           | netmask:    255.255.255.0
+  |           | gateway:    10.0.2.1
+  |           | nameserver: 8.8.8.8
+  |   + sleep | milliseconds: 2500
+  |   + inline | description: dynamic
+  |     + config
+  |       + vfs | + lxip | mtu: 1000 | dhcp: yes
+  |   + sleep | milliseconds: 2500
+
++ start socket_fs | caps: 200 | ram: 32M
+  + binary vfs
+  + provides | + service File_system
+  + route
+    + service ROM | label: config | + child dynamic_rom | label: socket_fs.config
+    + service Nic                 | + child nic_router
+    + any-service
+      + parent
+      + any-child
+-}
+
+build_boot_image [build_artifacts]
+
+append done_string ".*\"ping_.\" exited with exit value 0.*\n"
+append done_string ".*\"ping_.\" exited with exit value 0.*\n"
+
+append qemu_args " -nographic "
+
+run_genode_until $done_string 60
+
+# vi: set ft=tcl :

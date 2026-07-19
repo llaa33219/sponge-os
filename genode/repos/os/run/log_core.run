@@ -1,0 +1,102 @@
+assert {![have_spec linux]}
+
+if {[have_cmd_switch --autopilot]} {
+	assert {[have_include power_on/qemu]} \
+		"Autopilot mode is not supported on this platform."
+}
+
+proc log_service { } {
+	if { [have_cmd_switch --autopilot] } { return log }
+	return ram
+}
+
+if {[have_spec nova]} {
+	proc kernel_output { } { return "logmem" }
+}
+
+build {
+	core init timer lib/ld lib/libc lib/vfs
+	server/file_terminal server/terminal_log app/log_core
+}
+
+create_boot_directory
+
+proc kernel_start_node { } { return {
++ start log_kernel | ram: 10M
+  + binary log_core
+  + config | period_ms: 2000
+  + route
+    + service ROM | unscoped_label: log_core  | + parent
+    + service ROM | unscoped_label: ld.lib.so | + parent
+    + service ROM | label: log                | + parent | label: kernel_log
+    + service Timer                           | + child timer
+    + service PD                              | + parent
+    + service CPU                             | + parent
+    + service LOG                             | + parent
+} }
+
+if {![have_spec nova]} { proc kernel_start_node { } { } }
+
+
+install_config {
+config
++ parent-provides
+  + service CPU
+  + service IO_MEM
+  + service IO_PORT
+  + service IRQ
+  + service LOG
+  + service PD
+  + service ROM
+
++ default-route | + any-service | + parent
+
++ default | caps: 100 | ram: 1M
+
++ start timer
+  + provides | + service Timer
+
++ start file_terminal | ram: 3M
+  + binary file_terminal
+  + provides | + service Terminal
+  + config
+  | + default-policy | filename: log
+  | + vfs
+  |   + dir dev | + log
+  |   + log | label: log_core
+  | + libc | stdout: /dev/log
+  + route | + any-service | + parent
+
++ start terminal_log
+  + provides | + service LOG
+  + config
+  + route
+    + service Terminal | + child file_terminal
+    + service Timer    | + child timer
+    + any-service      | + parent
+
++ start log_core | ram: 10M
+  + config | period_ms: 2000
+  + route
+    + service ROM | unscoped_label: log_core  | + parent
+    + service ROM | unscoped_label: ld.lib.so | + parent
+    + service ROM | label: log                | + parent | label: core_log
+    + service Timer                           | + child timer
+    + service LOG | label: log                | + child terminal_log
+    + service PD                              | + parent
+    + service CPU                             | + parent
+    + service LOG                             | + parent
+
+} [kernel_start_node] {
+-
+}
+
+build_boot_image [build_artifacts]
+
+append qemu_args " -nographic "
+
+if { [have_cmd_switch --autopilot] } {
+	run_genode_until {.*\[log_core -> log] \[.*\n} 20
+} else {
+	run_genode_until forever
+}

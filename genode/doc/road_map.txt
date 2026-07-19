@@ -1,0 +1,178 @@
+
+                             ========
+                             Road Map
+                             ========
+
+
+Herein, we lay out our plans for evolving Genode. Progress in addition to this
+planning will very much depend on the degree of community support the project
+will receive. The
+[https://genode.org/about/challenges - Challenges] page collects some of our
+ideas to advance Genode in various further directions.
+
+The road map is not fixed. If there is commercial interest of pushing the
+Genode technology to a certain direction, we are willing to revisit our plans.
+
+
+Review of 2025
+##############
+
+We dedicated the four releases
+([https://genode.org/documentation/release-notes/25.02 - 25.02],
+[https://genode.org/documentation/release-notes/25.05 - 25.05],
+[https://genode.org/documentation/release-notes/25.08 - 25.08],
+[https://genode.org/documentation/release-notes/25.11 - 25.11])
+of the past year to the maxim "rigidity, clarity, performance".
+
+The year got kicked off with SIMD-based graphics optimizations, which
+made Genode well usable in multi-monitor and rotated-screen setups.
+In terms of code rigidity, we were able to proudly announce the elimination
+of C++ exceptions from the base framework by mid of the year. This was made
+possible by embracing
+[https://genode.org/documentation/release-notes/25.05#Return_values_expressed_via_sum_types - sum types]
+as error-propagation technique.
+Thanks to this tireless reconstruction work, we have now gained the luxury of
+knowing that Genode's base system has left no error condition unconsidered.
+Over the course of the year, this new level of rigidity proliferated into the
+realms of our custom "base-hw" kernel, the virtualization interface, and a
+growing number of further components.
+
+On the account of clarity, the most prominent development has been the
+introduction of a new
+[https://genode.org/documentation/release-notes/25.08#Consideration_of_a_lean_alternative_to_XML - "human-inclined data"]
+(HID) syntax for the configuration and state reporting of components. Besides
+crafting the code for parsing, generating, and working with the new format,
+the most delicate challenge had been the planning of a smooth migration path
+from our time-tested use of XML to the new format. In Autumn, we reported
+success in that department by offering a special
+[https://genode.org/documentation/release-notes/25.11#Human-inclined_data__HID__processing - flavor of Sculpt OS]
+capable of seamlessly using the new format.
+Thanks to the experience and feedback gathered while driving this version
+day to day with joy, it quickly became clear that there is no going back.
+
+Among the many performance-oriented topics of the year, the results of two
+long-term developments stood out: the holistic revision of the
+[https://genode.org/documentation/release-notes/25.08#Block-storage_stack_renovations - block-storage]
+stack as well as our new
+[https://genode.org/documentation/release-notes/25.08#Kernel_scheduling_for_fairness_and_low_latency - CPU scheduler]
+specifically designed for fairness and low latency.
+Further highlights of 2025 had been the experimental
+[https://genodians.org/alex-ab/2025-11-02-sculpt-multi-kernel - multi-kernel]
+version of Sculpt OS that gives users the choice between 5 different kernels,
+the adoption of the Goa SDK for projects hosted at the community-maintained
+[https://genode.org/documentation/release-notes/25.11#Genode-world_using_the_Goa_SDK - Genode-world]
+repository, and the frictionless update of all Linux-based device drivers to
+Linux 6.12.
+
+
+2026 - Building bridges
+#######################
+
+After a year of pruning and nurturing, it is time again for branching out.
+Our annual [https://genode.org/community/mailing-lists - public]
+road-map discussion was
+[https://lists.genode.org/mailman3/hyperkitty/list/users@lists.genode.org/thread/JMGMUML3KBFEXHJCEZBW5SQURNK7KRZI/ - started]
+with the suggestion of "building bridges" as guiding theme for the year.
+Bridges to other open-source projects. Bridges to a variety of programming
+languages. Bridges to new user demographies. Bridges for the interoperability
+of applications.
+
+The suggestion was met with overly positive resonance. Great sympathy with
+[https://www.qubes-os.org/ - Qubes OS] was voiced multiple times.
+Others highlighted the potential of Genode in headless scenarios at data centers,
+servers, or as VM host. When contemplating these directions, the opinionated
+Leitzentrale UI of Sculpt OS is not a natural element but may rather stand in
+the way. A sensible way for building bridges would make the underlying
+architecture and feature set of Sculpt OS useful for Genode-based systems of
+different personalities. So this year, we will see the split of Sculpt OS into
+reusable parts, thereby opening up a new playground for drawing connections to
+other communities and projects.
+
+The move of Genode to the HID format comes with the natural desire to implement
+HID parsers for a variety of programming languages. As a matter of honor, those
+languages should best become available for Genode in the process. So by the
+end of the year, we will have taken HID to languages that we love, and have
+taken those languages to Genode.
+This ambition goes hand in hand with a stepwise approach towards running the
+Goa SDK self-hosted on Genode.
+
+Besides the "bridges" main theme, the schedule sketched below carries forward
+several topics of 2025 like IPv6 or improving the flexibility of USB. It also
+plans for the update of the arsenal of Linux-based drivers, VirtualBox, the
+Chromium engine, and Qt6.
+
+
+Milestones for 2026
+###################
+
+February - Release 26.02
+========================
+
+* Migration from GitHub to Codeberg (all but Genode's main repository)
+* Human-inclined data (HID) format used by default
+  * Documentation, grammar, test bench for parser implementations
+  * Schema validation
+  * Conversion of Genode's packages, configurations, run scripts
+* Client-budgeted allocation of DMA buffers
+* Window-manager support for touch input
+* Port of Git at Genode World
+
+
+May - Release 26.05
+===================
+
+* Migration from GitHub to Codeberg (Genode's main repository)
+* Sculpt 26.04
+  * HID by default, deprecating XML
+  * Cryptographically protected user profiles and system configuration
+  * Native Goa SDK, restricted to Genode API and POSIX
+* Revisited "Genode Foundations" and "Genode Applications" books
+* Features of Sculpt OS usable as regular framework functionality
+  (install, deploy, device detection, driver management)
+* Pluggable USB host-controller drivers
+* IPv6 for virtual machines
+* VirtualBox 7
+* DDE-Linux-based PC drivers updated to version 6.18 LTS
+* Updated Qt6 and Chromium engine
+* Goa SDK
+  * Support for automated testing
+  * GnuPG replaced by Sequoia
+* Custom base-hw kernel
+  * System control (power and thermal management)
+  * Performance optimizations (e.g., tagged TLBs)
+
+
+August - Release 26.08
+======================
+
+* Dynamically reconfigurable VFS
+* GUI access as virtual file system
+* DDE-Linux-based ARM drivers updated to version 6.18 LTS
+* Intel Arrow Lake notebooks, BE2xx wifi, Xe-LPG+ graphics
+* Tracing infrastructure for libc performance analysis
+* Sculpt OS
+  * Native Goa SDK, support for 3rd-party APIs
+  * Sketch of a capability-based desktop environment
+  * On-screen documentation
+  * Remotely administrable headless VM host
+
+
+November - Release 26.11
+========================
+
+* Pre-boot platform discovery and sanitation
+* IPv6 for native Genode components
+* USB access-control at USB-interface granularity
+* Sculpt 26.10
+  * Removed XML support
+  * Interactive USB-device management
+  * Base-hw kernel by default
+  * Goa-SDK publishing support
+  * Streamlined VM deployment
+  * Port of file-manager application
+  * Showcasing a guest OS as alternative administrative user interface
+* Genode World
+  * MESA and other 3rd-party components maintained as Goa projects
+  * Ports of popular server applications
+* Libc optimizations (allocator, file-system access)
+

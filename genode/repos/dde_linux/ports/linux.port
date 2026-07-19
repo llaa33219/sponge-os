@@ -1,0 +1,37 @@
+LICENSE   := GPLv2
+VERSION   := 6.18.19
+DOWNLOADS := linux.archive
+
+URL(linux) := https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-$(VERSION).tar.xz
+SHA(linux) := eaaf78271cd07c68ad9c4c9a70c72718b33abbd716239d82bac96b1751eb090c
+DIR(linux) := src/linux
+
+#
+# Patches
+#
+PATCH_FILES := \
+               arm64_disable_jump_label.patch \
+               i2c_hid_timeout.patch \
+               i2c_hid_configure.patch \
+               kernel_types.patch \
+               lxip_checksum_32.patch \
+               lxip_ip_config.patch \
+               usb_net_cdc_ncm.patch \
+               usb_net_pinephone.patch \
+               usb_net_smsc95xx.patch \
+               workqueue_deadlock.patch \
+               r8169_disable_irq_coalescing.patch \
+               iwlwifi_break_busy_loop.patch \
+               iwlwifi_enable_irq_before_pnvm.patch \
+               iwlwifi_limit_rx_bufs.patch \
+               i915_memcpy_32bit.patch \
+               i915_meteorlake.patch \
+               i915_dsb.patch \
+               i915_shmem_folio.patch \
+               i915_min_alignment.patch \
+               audio_distinguish_irq.patch \
+               audio_hda_bus_repsonse.patch \
+               audio_hp_jack_event_sleep.patch \
+               audio_sof_timeouts.patch
+
+PATCHES += $(addprefix patches/,$(PATCH_FILES))

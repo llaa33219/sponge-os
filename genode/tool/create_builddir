@@ -1,0 +1,138 @@
+#!/usr/bin/make -f
+
+#
+# \brief  Prepare Genode build directory
+# \author Christian Helmuth, Norman Feske
+# \date   2008-08-14
+#
+
+MAKEOVERRIDES =
+
+PLATFORM = $(MAKECMDGOALS)
+
+PLATFORMS = arm_v6 arm_v7a arm_v8a riscv x86_32 x86_64
+
+usage:
+	@echo
+	@echo "Tool for preparing Genode build directories"
+	@echo
+	@echo "usage:"
+	@echo
+	@echo "  create_builddir <platform> [BUILD_DIR=<build-dir>]"
+	@echo
+	@echo "  <platform>   can be:"
+	@$(foreach PLAT,$(PLATFORMS), \
+	   echo "                  '$(PLAT)'";)
+	@echo
+	@echo "  The definition of BUILD_DIR is optional. If specified,"
+	@echo "  <build-dir> is the location of the build directory to create."
+	@echo "  If not specified, the build directory will be created at"
+	@echo "  <genode-dir>/build/<platform>."
+	@echo
+
+#
+# Determine Genode base directory based on the known location of the
+# 'create_builddir' tool within the Genode source tree
+#
+GENODE_DIR := $(realpath $(dir $(MAKEFILE_LIST))/..)
+
+#
+# Define default location of the build directory if not explicitly specified
+#
+BUILD_DIR ?= $(GENODE_DIR)/build/$(PLATFORM)
+
+#
+# Sanity checks
+#
+ifneq ($(PLATFORM),)
+   #
+   # Check if platform is unknown
+   #
+   ifeq ($(filter $(PLATFORM),$(PLATFORMS)),)
+      $(error Bad platform argument '$(PLATFORM)')
+   endif
+
+   #
+   # Check if build directory exists already
+   #
+   ifneq ($(wildcard $(BUILD_DIR)),)
+      $(error Build directory '$(BUILD_DIR)' already exists)
+   endif
+endif
+
+SHELL := bash
+
+
+#
+# Convert GENODE_DIR to an absolute directory because the user
+# may have specified a '~'-relative location or a pwd-relative
+# location.
+#
+GENODE_ABS_DIR := $(realpath $(shell echo $(GENODE_DIR)))
+
+#
+# Define absolute path to the contrib directory as written to the
+# 'etc/build.conf' file. We use 'abs_path' instead of 'realpath' because the
+# contrib directory may not exist when the build directory is created. In this
+# case, 'realpath' would return an empty string.
+#
+ifeq ($(CONTRIB_DIR),)
+CONTRIB_ABS_DIR := $$(GENODE_DIR)/contrib
+else
+CONTRIB_ABS_DIR := $(abspath $(shell echo $(CONTRIB_DIR)))
+endif
+
+$(BUILD_DIR)/etc:
+	@mkdir -p $@
+
+BUILD_CONF_X86      := run_x86    run_boot_dir repos_x86    repos
+BUILD_CONF_ARM_V6   := run_arm_v6 run_boot_dir repos_arm_v6 repos
+BUILD_CONF_ARM_V7   := run_arm_v7 run_boot_dir repos_arm_v7 repos
+BUILD_CONF(arm_v6)  := $(BUILD_CONF_ARM_V6)
+BUILD_CONF(arm_v7a) := $(BUILD_CONF_ARM_V7)
+BUILD_CONF(arm_v8a) := run_arm_v8 run_boot_dir repos_arm_v8 repos
+BUILD_CONF(riscv)   := run_riscv  run_boot_dir repos_riscv  repos
+BUILD_CONF(x86_32)  := run_x86_32 $(BUILD_CONF_X86)
+BUILD_CONF(x86_64)  := run_x86_64 $(BUILD_CONF_X86)
+
+message: $(BUILD_DIR)/etc/build.conf
+$(BUILD_DIR)/etc/build.conf:
+	@echo "GENODE_DIR  := $(GENODE_ABS_DIR)" > $@
+	@echo 'BASE_DIR    := $$(GENODE_DIR)/repos/base' >> $@
+	@echo 'CONTRIB_DIR := $(CONTRIB_ABS_DIR)' >> $@
+	@echo >> $@
+	@for i in make_j ccache run; do \
+		cat $(GENODE_DIR)/tool/builddir/build.conf/$$i; done >> $@
+	@for i in ${BUILD_CONF(${PLATFORM})}; do \
+		cat $(GENODE_DIR)/tool/builddir/build.conf/$$i; done >> $@
+
+message: $(BUILD_DIR)/Makefile
+$(BUILD_DIR)/Makefile:
+	@ln -sf $(GENODE_ABS_DIR)/tool/builddir/build.mk $@
+
+$(BUILD_DIR)/etc/build.conf: $(BUILD_DIR)/etc
+$(BUILD_DIR)/etc/specs.conf: $(BUILD_DIR)/etc
+
+#
+# SPECS definitions
+#
+
+SPECS(arm_v6)  := arm_v6
+SPECS(arm_v7a) := arm_v7a
+SPECS(arm_v8a) := arm_v8a
+SPECS(riscv)   := riscv
+SPECS(x86_32)  := x86_32
+SPECS(x86_64)  := x86_64
+
+ifneq (${SPECS(${PLATFORM})},)
+message: $(BUILD_DIR)/etc/specs.conf
+$(BUILD_DIR)/etc/specs.conf:
+	@echo "SPECS += ${SPECS(${PLATFORM})}" > $@
+endif
+
+$(PLATFORM): message
+message:
+	@echo "Successfully created build directory at $(BUILD_DIR)."
+	@echo "Please adjust $(BUILD_DIR)/etc/build.conf according to your needs."
+
+.PHONY: $(PLATFORM)

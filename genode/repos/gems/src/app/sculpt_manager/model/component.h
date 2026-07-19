@@ -1,0 +1,239 @@
+/*
+ * \brief  Representation of a component
+ * \author Norman Feske
+ * \date   2019-02-25
+ */
+
+/*
+ * Copyright (C) 2019 Genode Labs GmbH
+ *
+ * This file is part of the Genode OS framework, which is distributed
+ * under the terms of the GNU Affero General Public License version 3.
+ */
+
+#ifndef _MODEL__COMPONENT_H_
+#define _MODEL__COMPONENT_H_
+
+#include <types.h>
+#include <model/connection.h>
+#include <depot/archive.h>
+#include <blueprint.h>
+
+namespace Sculpt { struct Component; }
+
+
+struct Sculpt::Component : Noncopyable
+{
+	using Path    = Depot::Archive::Path;
+	using Name    = Depot::Archive::Name;
+	using Info    = String<100>;
+	using Service = Start_name;
+
+	Allocator &_alloc;
+
+	/* defined at construction time */
+	Name   const name;
+	Path   const path;
+	Verify const verify;
+	Info   const info;
+
+
+	/* defined when blueprint arrives */
+	uint64_t ram  { };
+	size_t   caps { };
+
+	Affinity::Space const affinity_space;
+	Affinity::Location    affinity_location { 0, 0,
+	                                          affinity_space.width(),
+	                                          affinity_space.height() };
+	Priority priority = Priority::DEFAULT;
+
+	bool monitor        { false };
+	bool wait           { false };
+	bool wx             { false };
+	bool system_control { false };
+
+	struct Blueprint_info
+	{
+		bool known;
+		bool pkg_avail;
+		bool content_complete;
+
+		bool uninstalled()     const { return known && !pkg_avail; }
+		bool ready_to_deploy() const { return known && pkg_avail &&  content_complete; }
+		bool incomplete()      const { return known && pkg_avail && !content_complete; }
+	};
+
+	Blueprint_info blueprint_info { };
+
+	List_model<Connection> connect { };
+
+	Connection pd_connection { String<10>("<pd/>") };
+
+	void _update_connections_from_node(Node const &node)
+	{
+		connect.update_from_node(node,
+
+			/* create */
+			[&] (Node const &conn) -> Connection & {
+				return *new (_alloc) Connection(conn); },
+
+			/* destroy */
+			[&] (Connection &e) { destroy(_alloc, &e); },
+
+			/* update */
+			[&] (Connection &, Node const &) { }
+		);
+	}
+
+	struct Construction_info : Interface
+	{
+		struct With : Interface { virtual void with(Component const &) const = 0; };
+
+		virtual void _with_construction(With const &) const = 0;
+
+		template <typename FN>
+		void with_construction(FN const &fn) const
+		{
+			struct _With : With {
+				FN const &_fn;
+				_With(FN const &fn) : _fn(fn) { }
+				void with(Component const &c) const override { _fn(c); }
+			};
+			_with_construction(_With(fn));
+		}
+	};
+
+	struct Construction_action : Interface
+	{
+		virtual void new_construction(Path const &pkg, Verify, Info const &) = 0;
+
+		struct Apply_to : Interface { virtual void apply_to(Component &) = 0; };
+
+		virtual void _apply_to_construction(Apply_to &) = 0;
+
+		template <typename FN>
+		void apply_to_construction(FN const &fn)
+		{
+			struct _Apply_to : Apply_to {
+				FN const &_fn;
+				_Apply_to(FN const &fn) : _fn(fn) { }
+				void apply_to(Component &c) override { _fn(c); }
+			} apply_fn(fn);
+
+			_apply_to_construction(apply_fn);
+		}
+
+		virtual void discard_construction() = 0;
+		virtual void launch_construction() = 0;
+		virtual void trigger_pkg_download() = 0;
+	};
+
+	Component(Allocator &alloc, Name const &name, Path const &path,
+	          Verify verify, Info const &info, Affinity::Space const space)
+	:
+		_alloc(alloc), name(name), path(path), verify(verify), info(info),
+		affinity_space(space)
+	{ }
+
+	~Component()
+	{
+		_update_connections_from_node(Node());
+	}
+
+	void try_apply_blueprint(Node const &blueprint)
+	{
+		blueprint_info = { };
+
+		blueprint.for_each_sub_node([&] (Node const &pkg) {
+
+			if (path != pkg.attribute_value("path", Path()))
+				return;
+
+			if (pkg.has_type("missing")) {
+				blueprint_info.known = true;
+				return;
+			}
+
+			pkg.with_optional_sub_node("runtime", [&] (Node const &runtime) {
+
+				ram  = runtime.attribute_value("ram", Number_of_bytes());
+				caps = runtime.attribute_value("caps", 0UL);
+
+				runtime.with_optional_sub_node("requires", [&] (Node const &req) {
+					_update_connections_from_node(req); });
+			});
+
+			blueprint_info = {
+				.known            = true,
+				.pkg_avail        = !blueprint_missing(blueprint, path),
+				.content_complete = !blueprint_rom_missing(blueprint, path)
+			};
+		});
+	}
+
+	void gen_priority(Generator &g) const
+	{
+		g.attribute("priority", (int)priority);
+	}
+
+	void gen_system_control(Generator &g) const
+	{
+		if (system_control)
+			g.attribute("managing_system", "yes");
+	}
+
+	void gen_affinity(Generator &g) const
+	{
+		bool const all_cpus = affinity_space.width()  == affinity_location.width()
+		                   && affinity_space.height() == affinity_location.height();
+
+		/* omit <affinity> node if all CPUs are used by the component */
+		if (all_cpus)
+			return;
+
+		g.node("affinity", [&] {
+			g.attribute("xpos",   affinity_location.xpos());
+			g.attribute("ypos",   affinity_location.ypos());
+			g.attribute("width",  affinity_location.width());
+			g.attribute("height", affinity_location.height());
+		});
+	}
+
+	void gen_monitor(Generator &g) const
+	{
+		if (monitor)
+			g.node("monitor", [&] {
+				g.attribute("wait", wait ? "yes" : "no");
+				g.attribute("wx", wx ? "yes" : "no");
+			});
+	}
+
+	void gen_pd_cpu_connection(Generator &g) const
+	{
+		/* by default pd connection goes to parent if nothing is specified */
+		if (!pd_connection.selected_service.constructed())
+			return;
+
+		/*
+		 * Until PD & CPU gets merged, enforce on Sculpt that PD and CPU connections
+		 * go to the same server.
+		 */
+		g.node(Sculpt::Service::node_type(pd_connection.required), [&] {
+			pd_connection.selected_service->generate(g); });
+		g.node("cpu", [&] {
+			pd_connection.selected_service->generate(g); });
+	}
+
+	bool all_connections_defined() const
+	{
+		bool result = true;
+		connect.for_each([&] (Connection const &conn) {
+			if (!conn.selected_service.constructed())
+				result = false; });
+
+		return result;
+	}
+};
+
+#endif /* _MODEL__COMPONENT_H_ */

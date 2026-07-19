@@ -1,0 +1,83 @@
+source ${genode_dir}/repos/os/run/assert_nic.inc
+
+proc test_timeout { } {
+	if {[have_spec sel4] && [have_board pc]} { return 60 }
+	return 30
+}
+
+proc dst_ip { } {
+	if {[expr ![have_include power_on/qemu]]} {
+		return "10.0.0.2"
+	} else {
+		return "10.0.2.2"
+	}
+}
+
+build { server/nic_uplink app/ping }
+
+create_boot_directory
+
+import_from_depot [depot_user]/src/[base_src] \
+                  [depot_user]/pkg/[drivers_nic_pkg] \
+                  [depot_user]/src/init
+
+append config {
+
+config
++ parent-provides
+  + service ROM
+  + service IRQ
+  + service IO_PORT
+  + service IO_MEM
+  + service PD
+  + service RM
+  + service CPU
+  + service LOG
+
++ start timer | caps: 100 | ram: 1M
+  + provides | + service Timer
+  + route | + any-service | + parent
+
++ start drivers | caps: 1200 | ram: 32M | managing_system: yes
+  + binary init
+  + route
+    + service ROM | label: config | + parent | label: drivers.config
+    + service Uplink              | + child nic_uplink
+    + service Timer               | + child timer
+    + any-service                 | + parent
+
++ start nic_uplink | caps: 100 | ram: 1M
+  + provides
+    + service Uplink
+    + service Nic
+  + config | verbose: yes
+  + route
+    + service Timer | + child timer
+    + any-service   | + parent
+
++ start ping_1 | caps: 100 | ram: 8M
+  + binary ping
+  + config | dst_ip: } [dst_ip] { | period_sec: 1 | count: 3
+  + route
+    + service Nic   | + child nic_uplink
+    + service Timer | + child timer
+    + any-service   | + parent
+
++ start ping_2 | caps: 100 | ram: 8M
+  + binary ping
+  + config | dst_ip: } [dst_ip] { | period_sec: 1 | count: 3
+  + route
+    + service Nic   | + child nic_uplink
+    + service Timer | + child timer
+    + any-service   | + parent
+-
+}
+
+install_config $config
+
+build_boot_image [build_artifacts]
+
+append qemu_args " -nographic "
+append_qemu_nic_args
+
+run_genode_until "child \"ping_.\" exited with exit value 0.*child \"ping_.\" exited with exit value 0.*\n" [test_timeout]

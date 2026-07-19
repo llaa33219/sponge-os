@@ -1,0 +1,124 @@
+/dts-v1/;
+
+/ {
+	compatible = "linux,dummy-virt";
+	#address-cells = <0x02>;
+	#size-cells = <0x02>;
+	interrupt-parent = <&gic>;
+
+	cpus {
+		#address-cells = <0x01>;
+		#size-cells = <0x00>;
+
+		cpu@0 {
+			compatible    = "arm,cortex-a53";
+			reg           = <0x00>;
+			device_type   = "cpu";
+			enable-method = "psci";
+		};
+
+		cpu@1 {
+			compatible    = "arm,cortex-a53";
+			reg           = <0x01>;
+			device_type   = "cpu";
+			enable-method = "psci";
+		};
+
+		cpu@2 {
+			compatible    = "arm,cortex-a53";
+			reg           = <0x02>;
+			device_type   = "cpu";
+			enable-method = "psci";
+		};
+
+		cpu@3 {
+			compatible    = "arm,cortex-a53";
+			reg           = <0x03>;
+			device_type   = "cpu";
+			enable-method = "psci";
+		};
+	};
+
+	psci {
+		compatible    = "arm,psci-1.0";
+		method        = "hvc";
+		cpu_suspend   = <0xc4000001>;
+		cpu_off       = <0xc4000002>;
+		cpu_on        = <0xc4000003>;
+	};
+
+	timer {
+		interrupts = <0x01 0x0d 0x04 0x01 0x0e 0x04 0x01 0x0b 0x04 0x01 0x0a 0x04>;
+		compatible = "arm,armv8-timer", "arm,armv7-timer";
+		always-on;
+	};
+
+	clocks {
+
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		clk_24mhz: clk@0 {
+			compatible = "fixed-clock";
+			clock-output-names = "clk24mhz";
+			clock-frequency = <0x16e3600>;
+			#clock-cells = <0x00>;
+			reg = <0>;
+		};
+	};
+
+	pl011@9000000 {
+		interrupts = <0x00 0x01 0x04>;
+		compatible = "arm,pl011", "arm,primecell";
+		clock-names = "uartclk", "apb_pclk";
+		reg = <0x00 0x9000000 0x00 0x1000>;
+		clocks = <&clk_24mhz>, <&clk_24mhz>;
+	};
+
+	memory@40000000 {
+		reg = <0x00 0x40000000 0x00 0x8000000>;
+		device_type = "memory";
+	};
+
+	chosen {
+		/*bootargs = "rdinit=/bin/sh console=hvc0 earlycon=pl011,0x9000000";*/
+		bootargs = "init=/sbin/init ip=dhcp console=hvc0";
+		linux,initrd-start = <0x42000000>;
+		linux,initrd-end   = <0x420aa539>;
+		stdout-path = "/pl011@9000000";
+	};
+
+	gic: intc@8000000 {
+		compatible = "arm,gic-v3";
+		reg = <0x00 0x8000000 0x00 0x10000>,
+		      <0x00 0x80a0000 0x00 0xf60000>;
+		ranges;
+		#address-cells = <0x02>;
+		#redistributor-regions = <0x01>;
+		interrupt-controller;
+		#interrupt-cells = <0x03>;
+		#size-cells = <0x02>;
+	};
+
+
+	virtio_mmio@a000000 {
+		interrupts = <0x00 0x10 0x01>;
+		compatible = "virtio,mmio";
+		dma-coherent;
+		reg = <0x00 0xa000000 0x00 0x200>;
+	};
+
+	virtio_mmio@a000200 {
+		interrupts = <0x00 0x11 0x01>;
+		compatible = "virtio,mmio";
+		dma-coherent;
+		reg = <0x00 0xa000200 0x00 0x200>;
+	};
+
+	virtio_mmio@a000400 {
+		interrupts = <0x00 0x12 0x01>;
+		compatible = "virtio,mmio";
+		dma-coherent;
+		reg = <0x00 0xa000400 0x00 0x200>;
+	};
+};

@@ -1,0 +1,170 @@
+#!/usr/bin/expect
+
+##
+# Reset the target machine or rather run the scenario with Qemu
+#
+
+
+##
+#
+#
+proc board_qemu_args { } {
+
+	set qemu_args_file [file join "board" [board] "qemu_args"]
+
+	set repo [repository_contains $qemu_args_file]
+
+	if {$repo == ""} {
+		return ""
+	}
+
+	set fh [open [file join $repo $qemu_args_file] "RDONLY"]
+	set file_content [read $fh]
+	close $fh
+
+	##
+	# Each line is appended to qemu_args.
+	#
+	set qemu_args ""
+	foreach line [split $file_content "\n"] {
+			# general arguments
+			append qemu_args " $line"
+	}
+
+	return $qemu_args
+}
+
+##
+# Execute scenario using Qemu
+#
+proc run_power_on { } {
+	global qemu_args
+	global qemu
+	global qemu_spawn_id
+
+	# save original qemu_args to support retrying
+	set original_qemu_args $qemu_args
+
+	#
+	# Back out on platforms w/o Qemu support
+	#
+	if {![is_qemu_available]} { return 0 }
+
+	if {[have_spec x86_32]} { set qemu "qemu-system-i386" }
+	if {[have_spec x86_64]} { set qemu "qemu-system-x86_64" }
+	if {[have_spec arm]}    { set qemu "qemu-system-arm" }
+	if {[have_spec arm_64]} { set qemu "qemu-system-aarch64" }
+	if {[have_spec riscv]}  { set qemu "qemu-system-riscv64" }
+
+	#
+	# Only the x86_64 variant of Qemu provides the emulation of hardware
+	# virtualization features used by NOVA. So let's always stick to this
+	# variant of Qemu when working with NOVA even when operating in 32bit.
+	#
+	if {[have_spec nova]} { set qemu "qemu-system-x86_64" }
+
+	#
+	# Redirect serial output to stdio, but only when no explicit configuration
+	# of serial interfaces is specified in the run script.
+	# The 'mon' prefix enables the access to the qemu console.
+	#
+	if {![regexp -- {-serial} $qemu_args dummy]} {
+
+		#
+		# In the raspi3 model the first UART is never used as
+		# log output, but the second
+		#
+		if {[have_board rpi3]} { append qemu_args " -serial null " }
+		append qemu_args " -serial mon:stdio "
+	}
+
+	# on x86, we support booting via pxe or iso/disk image
+	if {[have_board pc]} {
+
+		if {[regexp -- {-m\s+} $qemu_args dummy]} {
+			# can be -m 1024 or -m 1024G or -m size=1024G
+			set qemu_ram [regexp -inline {\-m\s+\S+} $qemu_args]
+			if {![regexp {([0-9]+)([MG]?)} $qemu_ram dummy qemu_ram ram_unit]} {
+				puts "Cannot parse memory argument ($qemu_ram)\n"
+				exit 1
+			}
+
+			if { $ram_unit == "G" } {
+				set qemu_ram [expr {$qemu_ram*1024}] }
+
+			if {[have_spec okl4]} {
+				if {$qemu_ram < 800} {
+					puts "Configured memory ($qemu_ram) for OKL4 on Qemu must be at least 800M\n"
+					exit 1
+				}
+			}
+		} else {
+			##
+			# append memory argument if not present, 800M is a sane default because:
+			# - 800M is minimum for OKL4
+			# - 768M is required for certain test cases (#3387)
+			#
+			append qemu_args " -m 800 "
+		}
+
+		if {[have_include "load/tftp"]} {
+			append qemu_args " -boot n -tftp [run_dir] -bootp boot/pulsar -no-reboot -no-shutdown "
+		} else {
+		if {[have_include "image/iso"]} {
+			append qemu_args " -cdrom [run_dir].iso "
+		} else {
+		if {[have_include "image/disk"]} {
+			append qemu_args " -drive format=raw,file=[run_dir].img "
+		} else {
+		if {[have_include "image/uefi"]} {
+			set uefi_firmware "/usr/share/ovmf/OVMF.fd"
+			if {![file exists $uefi_firmware]} {
+				puts "'$uefi_firmware' uefi image missing. Please install a ovmf package matching your qemu version."
+				exit -3
+			}
+			append qemu_args " --bios $uefi_firmware -net none -drive format=raw,file=[run_dir].img "
+
+			# limit boot resolution in Qemu to 1920x1080
+			append qemu_args " -device VGA,vgamem_mb=8 "
+		} else {
+			puts "Aborting, cannot execute Qemu without a ISO or disk image"
+			exit -4
+		} } } }
+	}
+
+	# on ARM/RISC-V, we supply the boot image as kernel
+	if {[have_spec arm] || [have_spec arm_v8] || [have_spec riscv]} {
+		append qemu_args " -kernel [run_dir]/boot/[kernel_specific_binary image.elf] " }
+
+	set board_qemu_args [board_qemu_args]
+
+	##
+	# remove any -m arguments from qemu args if specified by board_qemu_args
+	# note, that we must not match/remove -machine, but allow -m size=1G,slots=3,maxmem=4G
+	if {[regexp -- {-m\s+} $board_qemu_args dummy]} {
+		regsub -all {\-m\s+\S+} $qemu_args "" qemu_args }
+
+	##
+	# let user override any netdev
+	#
+	if {[regexp -- {-netdev\s+user,id=(\w+)} $qemu_args dummy netdev]} {
+		regsub -all "\\-netdev\\s+user,id=$netdev\\S*" $board_qemu_args "" board_qemu_args }
+
+	##
+	# If -cpu is specified by qemu_args, remove -cpu from board_qemu_args to
+	# support overwriting it, e.g. used for virtualization scenarios
+	#
+	if {[regexp -- {-cpu\s+} $qemu_args dummy]} {
+		regsub -all {\-cpu\s+\S*} $board_qemu_args "" board_qemu_args }
+
+	# append custom board-specific qemu_args
+	append qemu_args " $board_qemu_args"
+
+	eval spawn $qemu $qemu_args
+	set qemu_spawn_id $spawn_id
+
+	# restore original qemu_args to support retrying
+	set qemu_args $original_qemu_args
+
+	return true
+}

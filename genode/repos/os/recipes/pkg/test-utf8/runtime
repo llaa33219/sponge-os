@@ -1,0 +1,14 @@
+runtime | ram: 1M | caps: 100 | binary: test-utf8
+
++ requires | + timer
+
++ fail    | after_seconds: 30
++ succeed | exit: 0
++ fail    | : *Error:
+
++ content
+  + rom | label: ld.lib.so
+  + rom | label: test-utf8
+
++ config
+-

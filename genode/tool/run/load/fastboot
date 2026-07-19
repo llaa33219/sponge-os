@@ -1,0 +1,79 @@
+##
+# Load image to target hardware via Fastboot
+#
+# \param --load-fastboot-device      Specify device serial number
+#                                    or path to device port
+#
+
+source [genode_dir]/tool/run/load.inc
+
+proc load_fastboot_device { } { return [cmd_arg --load-fastboot-device ""] }
+
+
+proc check_fastboot_supported { } {
+
+	if {![have_installed fastboot]} {
+		puts stderr "Missing installation of fastboot utility"
+		exit -1 }
+
+	if {![have_spec arm] && ![have_spec arm_64]} {
+		puts stderr "Fastboot not supported on this CPU architecture"
+		exit -1 }
+}
+
+
+proc run_load { } {
+	global load_spawn_id
+
+	check_fastboot_supported
+
+	if {![have_include "image/uboot"]} {
+		puts stderr "Cannot load via fastboot without a u-boot image"
+	}
+
+	set device [load_fastboot_device]
+	set uimg [file join [run_dir] boot uImage]
+
+	# show boot log up to the life sign of U-boot's fastboot driver
+	puts stderr "Waiting for U-boot's fastboot driver message"
+	spawn /bin/sh -c "[log_serial_cmd]"
+	set timeout 60
+	set boot_loader_failed false
+	expect {
+		-re {.*musb-hdrc.*\n} { }
+		eof {
+			puts stderr "Aborting, boot log received EOF"
+			set boot_loader_failed true
+		}
+		timeout {
+			puts stderr "Loading of boot loader timed out"
+			set boot_loader_failed true
+		}
+	}
+	close
+	if {$boot_loader_failed} {
+		return false }
+
+	puts stderr "U-boot fastboot driver is up"
+
+	set fastboot_cmd [list fastboot]
+	if {$device != ""} {
+		lappend fastboot_cmd -s $device }
+	lappend fastboot_cmd boot $uimg
+
+	eval spawn {*}$fastboot_cmd
+
+	set load_spawn_id $spawn_id
+	set timeout 80
+	expect {
+		{[fF]inished. [tT]otal time:}  { return true; }
+		eof     {
+			puts stderr "Fastboot command process died unexpectedly"
+			return false
+		}
+		timeout {
+			puts stderr "Loading timed out"
+			return false
+		}
+	}
+}

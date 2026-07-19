@@ -1,0 +1,89 @@
+assert {![have_spec linux]}
+
+if {[have_cmd_switch --autopilot]} {
+	assert {[have_spec x86]} \
+		"Autopilot mode is not supported on this platform."
+}
+
+create_boot_directory
+
+import_from_depot [depot_user]/src/[base_src] \
+                  [depot_user]/pkg/[drivers_nic_pkg] \
+                  [depot_user]/src/nic_router \
+                  [depot_user]/src/init \
+                  [depot_user]/src/report_rom
+
+build { app/sntp_client }
+
+install_config {
+config
++ parent-provides
+  + service ROM
+  + service IRQ
+  + service IO_MEM
+  + service IO_PORT
+  + service PD
+  + service RM
+  + service CPU
+  + service LOG
+
++ default-route
+  + any-service
+    + parent
+    + any-child
+
++ default | caps: 100 | ram: 1M
+
++ start timer
+  + provides | + service Timer
+
++ start report_rom
+  + provides
+    + service Report
+    + service ROM
+  + config | verbose: yes
+    + policy | label_suffix: set_rtc | report: sntp_client -> set_rtc
+
++ start drivers | caps: 1200 | ram: 32M | managing_system: yes
+  + binary init
+  + route
+    + service ROM | label: config | + parent | label: drivers.config
+    + service Timer               | + child timer
+    + service Uplink              | + child nic_router
+    + any-service                 | + parent
+
++ start nic_router | caps: 200 | ram: 10M
+  + provides
+    + service Nic
+    + service Uplink
+  + config | verbose_domain_state: yes
+    + policy | label_prefix: sntp_client | domain: downlink
+    + policy | label_prefix: drivers | domain: uplink
+    + domain uplink
+      + nat | domain: downlink | tcp-ports: 16384 | udp-ports: 16384 | icmp-ids: 16384
+    + domain downlink | interface: 10.0.3.1/24
+      + dhcp-server | ip_first: 10.0.3.2 | ip_last: 10.0.3.2 | dns_config_from: uplink
+      + tcp  | dst: 0.0.0.0/0 | + permit-any | domain: uplink
+      + udp  | dst: 0.0.0.0/0 | + permit-any | domain: uplink
+      + icmp | dst: 0.0.0.0/0 | domain: uplink
+
++ start sntp_client | ram: 8M
+  + config | verbose: no | dst_addr: pool.ntp.org | period_min: 1
+  + route
+    + service Nic | + child nic_router
+    + any-service
+      + parent
+      + any-child
+-
+}
+
+build_boot_image [build_artifacts]
+
+append qemu_args "  -nographic "
+append_qemu_nic_args
+
+set done_string {report_rom\]   set_rtc | year.*?\n}
+
+run_genode_until $done_string 90
+set serial_id [output_spawn_id]
+run_genode_until $done_string 70 $serial_id

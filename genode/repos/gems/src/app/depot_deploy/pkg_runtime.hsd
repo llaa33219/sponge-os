@@ -1,0 +1,85 @@
+schema runtime
+
++ type any       | : .*
++ type positive  | : \d*[1-9]\d*
++ type num_bytes | : \d+[GMK]?
++ type bool      | : yes|no
+
++ attr ram    | type: num_bytes
++ attr caps   | type: positive
++ attr binary | type: any | default:
++ attr config | type: any | default:
+
++ category service
+  + node audio_in
+  + node audio_out
+  + node fs
+    + attr name      | type: any  | default:
+    + attr writeable | type: bool | default:
+  + node file_system | . deprecated, use 'fs' instead
+    + attr label     | type: any  | default:
+    + attr writeable | type: bool | default:
+  + node framebuffer
+  + node input
+  + node event
+  + node log
+  + node nic      | + attr name  | type: any | default:
+                  | + attr label | type: any | default: | . deprecated, use 'name'
+  + node uplink   | + attr name  | type: any | default:
+                  | + attr label | type: any | default: | . deprecated, use 'name'
+  + node block    | + attr name  | type: any | default:
+                  | + attr label | type: any | default: | . deprecated, use 'name'
+  + node gui      | + attr name  | type: any | default:
+                  | + attr label | type: any | default: | . deprecated, use 'name'
+  + node report   | + attr name  | type: any | default:
+                  | + attr label | type: any | default: | . deprecated, use 'name'
+  + node rom      | + attr name  | type: any | default:
+                  | + attr label | type: any | default: | . deprecated, use 'name'
+  + node terminal | + attr name  | type: any | default:
+                  | + attr label | type: any | default: | . deprecated, use 'name'
+  + node gpu
+  + node usb
+  + node timer
+  + node pd
+  + node cpu
+  + node rtc
+  + node rm
+  + node capture
+  + node play
+  + node record
+  + node dma      | + attr name  | type: any | default:
+                  | + attr label | type: any | default: | . deprecated, use 'name'
+  + node platform | + attr name  | type: any | default:
+                  | + attr label | type: any | default: | . deprecated, use 'name'
+  + node pin_state
+  + node pin_control
+  + node io_mem
+  + node io_port
+  + node irq
+  + node trace
+  + node vm
+
++ node requires
+  + node | category: service
+
++ node provides
+  + node | category: service
+
++ node content
+  + node rom
+    + attr name  | type: any | default:
+    + attr label | type: any | default: | . deprecated, use 'name' instead
+    + attr as    | type: any | default:
+
++ node config  | + anything
+
++ node succeed
+  + attr after_seconds | type: positive | default:
+  + attr exit          | type: any      | default:
+  + quote
+
++ node fail
+  + attr after_seconds | type: positive | default:
+  + attr exit          | type: any      | default:
+  + quote
+-

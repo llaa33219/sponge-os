@@ -1,0 +1,77 @@
+source ${genode_dir}/repos/os/run/assert_qemu_nic.inc
+
+create_boot_directory
+
+import_from_depot [depot_user]/src/[base_src] \
+                  [depot_user]/pkg/[drivers_nic_pkg]
+
+build { app/ping server/nic_router init }
+
+install_config {
+config
++ parent-provides
+  + service ROM
+  + service IRQ
+  + service IO_MEM
+  + service IO_PORT
+  + service PD
+  + service RM
+  + service CPU
+  + service LOG
+
++ default-route
+  + any-service
+    + parent
+    + any-child
+
++ default | caps: 200 | ram: 1M
+
++ start timer
+  + provides | + service Timer
+
++ start drivers | caps: 1100 | ram: 32M | managing_system: yes
+  + binary init
+  + route
+    + service ROM | label: config | + parent | label: drivers.config
+    + service Timer               | + child timer
+    + service Uplink              | + child nic_router
+    + any-service                 | + parent
+
++ start nic_router | ram: 10M
+  + provides
+    + service Nic
+    + service Uplink
+  + config
+    + policy | label_prefix: ping    | domain: downlink
+    + policy | label_prefix: drivers | domain: uplink
+    + domain uplink | use_arp: no | verbose_packets: yes
+      + nat | domain: downlink | icmp-ids: 100
+    + domain downlink | interface: 10.0.3.1/24
+      + icmp | dst: 10.0.2.2/24 | domain: uplink
+
++ start ping | ram: 8M
+  + config
+  |        interface:  10.0.3.2/24
+  |        gateway:    10.0.3.1
+  |        dst_ip:     10.0.2.2
+  |        period_sec: 1
+  |        count:      2
+  + route
+    + service Nic | + child nic_router
+    + any-service
+      + parent
+      + any-child
+-
+}
+
+build_boot_image [build_artifacts]
+
+append qemu_args " -nographic "
+append_qemu_nic_args
+
+set done_string ".*child \"ping\" exited with exit value 0.*\n"
+
+run_genode_until $done_string 60
+
+grep_output { ARP }
+compare_output_to {}

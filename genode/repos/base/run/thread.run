@@ -1,0 +1,36 @@
+build { core init lib/ld test/thread }
+
+create_boot_directory
+
+#
+# We skip pause-resume test on platforms where this functionality is not
+# supported.
+#
+proc pause_resume_supported { } {
+	if {[have_spec pistachio]} { return false }
+	if {[have_spec linux]}     { return false }
+	if {[have_spec fiasco]}    { return false }
+	return true
+}
+
+install_config {
+config | prio_levels: 2
++ parent-provides
+  + service LOG
+  + service CPU
+  + service ROM
+  + service PD
+
++ default-route | + any-service | + parent
+
++ start test-thread | caps: 2000 | ram: 10M
+  + config | pause_resume: } [pause_resume_supported] {
+-
+}
+
+build_boot_image [build_artifacts]
+
+append qemu_args "-nographic "
+
+run_genode_until {.*test completed successfully.*\n} 60
+

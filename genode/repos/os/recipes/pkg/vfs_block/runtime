@@ -1,0 +1,13 @@
+runtime | ram: 4M | caps: 100 | binary: vfs_block
+
++ provides | + block
+
++ requires | + file_system | writeable: yes
+
++ config
+
++ content
+  + rom | label: ld.lib.so
+  + rom | label: vfs.lib.so
+  + rom | label: vfs_block
+-

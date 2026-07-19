@@ -1,0 +1,137 @@
+#
+# \brief  Example for hosting the genode.org website on Genode
+# \author Norman Feske
+# \date   2012-08-16
+#
+# This run script uses the lighttpd web server to host the genode.org website.
+# When executed the first time, the genode.org website is downloaded to
+# 'bin/genode_org/website'. When the web server is up, you may point your web
+# browser to http://localhost:5555
+#
+
+create_boot_directory
+import_from_depot [depot_user]/src/[base_src] \
+                  [depot_user]/pkg/[drivers_nic_pkg] \
+                  [depot_user]/src/init \
+                  [depot_user]/src/nic_router \
+                  [depot_user]/src/libc \
+                  [depot_user]/src/libssh \
+                  [depot_user]/src/lighttpd \
+                  [depot_user]/src/openssl \
+                  [depot_user]/src/pcre \
+                  [depot_user]/src/posix \
+                  [depot_user]/src/vfs \
+                  [depot_user]/src/vfs_lwip \
+                  [depot_user]/src/zlib
+
+install_config {
+config
++ parent-provides
+  + service ROM
+  + service LOG
+  + service RM
+  + service CPU
+  + service PD
+  + service IRQ
+  + service IO_PORT
+  + service IO_MEM
+
++ default-route
+  + any-service
+    + parent
+    + any-child
+
++ default | caps: 100 | ram: 1M
+
++ start timer
+  + provides | + service Timer
+
++ start nic | caps: 1200 | ram: 32M | managing_system: yes
+  + binary init
+  + route
+    + service ROM | label: config | + parent | label: drivers.config
+    + service Timer               | + child timer
+    + service Uplink              | + child nic_router
+    + any-service                 | + parent
+
++ start nic_router | caps: 200 | ram: 10M
+  + provides
+    + service Nic
+    + service Uplink
+  + config | verbose_domain_state: yes
+    + policy | label_prefix: lighttpd | domain: downlink
+    + policy | label_prefix: nic      | domain: uplink
+    + domain uplink
+      + nat | domain: downlink | tcp-ports: 16384 | udp-ports: 16384 | icmp-ids: 16384
+      + tcp-forward | port: 80 | domain: downlink | to: 10.0.3.2
+    + domain downlink | interface: 10.0.3.1/24
+      + dhcp-server | ip_first: 10.0.3.2 | ip_last: 10.0.3.2
+
++ start lighttpd | caps: 1000 | ram: 1G
+  + config
+  | + libc | stdin: /dev/null | stdout: /dev/log | stderr: /dev/log
+  |        | socket: /socket  | rtc: /dev/rtc
+  | + arg lighttpd
+  | + arg -f | : /etc/lighttpd/lighttpd.conf
+  | + arg -D
+  | + vfs
+  |   + dir dev
+  |     + log
+  |     + null
+  |     + inline rtc | : 2018-01-01 00:01
+  |   + dir socket | + lwip | dhcp: yes
+  |   + tar genode_org.tar
+  + route
+    + service Nic | + child nic_router
+    + any-service
+      + parent
+      + any-child
+-
+}
+
+#
+# Create TAR archive containting the web-server configuration and the
+# website content.
+#
+
+# lighttpd configuration
+exec mkdir -p bin/genode_org/etc/lighttpd
+set fd [open "bin/genode_org/etc/lighttpd/lighttpd.conf" w]
+puts $fd {
+server.port                    = 80
+server.document-root           = "/website"
+server.event-handler           = "select"
+server.network-backend         = "write"
+server.max-keep-alive-requests = 0
+index-file.names               = ( "index", "index.html", "index.htm" )
+mimetype.assign                = (
+                                   ".png"  => "image/png",
+                                   ".jpg"  => "image/jpeg",
+                                   ".jpeg" => "image/jpeg",
+                                   ".gif"  => "image/gif",
+                                   ".css"  => "text/css",
+                                   ".html" => "text/html",
+                                   ".htm"  => "text/html",
+                                   ""      => "text/html",
+                                 ) }
+close $fd
+
+# mirror of genode.org website
+if {![file exists bin/genode_org/website/index]} {
+	puts "mirroring genode.org website to bin/genode_org/website..."
+	exec mkdir -p bin/genode_org/website
+
+	# ignore wget errors
+	catch {
+		exec wget -nH -Lrc -P bin/genode_org/website https://genode.org
+	}
+}
+
+exec tar cfv bin/genode_org.tar -h -C bin/genode_org .
+
+build_boot_image { genode_org.tar }
+
+append qemu_args " -nographic "
+append_qemu_nic_args "hostfwd=tcp::5555-:80"
+
+run_genode_until forever

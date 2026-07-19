@@ -1,0 +1,31 @@
+config | focus: rom
+
++ capture
++ event
++ report | hover: yes | focus: yes | clicked: yes | keystate: no
+
++ background | color: #000000
+
++ domain overlay        | layer: 0 | label: no | content: client | hover: always | focus: transient
++ domain pointer        | layer: 0 | label: no | content: client | origin: pointer
++ domain invisible      | layer: 1 | xpos:  10000
++ domain leitzentrale   | layer: 1 | label: no | content: client | hover: always | focus: transient
++ domain touch_keyboard | layer: 2 | label: no | content: client | hover: always | focus: transient | ypos:  960
++ domain background     | layer: 4 | label: no | content: client | hover: always | focus: transient
++ domain default        | layer: 3 | label: no | content: client | hover: always | focus: transient | width: 720 | height: 960
++ domain follow_touch   | layer: 3 | label: no | content: client | hover: always | focus: transient | width: 720 | height: 960 | origin: pointer
++ domain camera         | layer: 2 | label: no | content: client | hover: always | focus: transient | xpos:  120 | ypos:   120
+
++ policy | label: leitzentrale           | domain: leitzentrale
++ policy | label_prefix: pointer ->      | domain: invisible
++ policy | label_prefix: touch_keyboard  | domain: touch_keyboard
++ policy | label_prefix: follow_touch    | domain: follow_touch
++ policy | label_prefix: camera          | domain: camera
++ policy | label_prefix: overlay         | domain: overlay
++ policy | label_prefix: backdrop        | domain: background
++ default-policy                         | domain: default
+
++ global-key KEY_DASHBOARD | label: global_keys -> input
++ global-key KEY_PRINT     | label: screenshot -> keys -> input
++ global-key KEY_POWER     | label: leitzentrale
+-

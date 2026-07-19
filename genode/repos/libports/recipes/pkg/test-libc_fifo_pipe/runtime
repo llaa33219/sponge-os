@@ -1,0 +1,124 @@
+runtime | ram: 64M | caps: 1000 | binary: init
+
++ fail    | after_seconds: 120
++ succeed | : [fifo-pipe-test] --- test succeeded ---
+
++ content
+  + rom | label: fs_rom
+  + rom | label: ld.lib.so
+  + rom | label: libc.lib.so
+  + rom | label: report_rom
+  + rom | label: test-libc_fifo_pipe
+  + rom | label: vfs
+  + rom | label: vfs.lib.so
+  + rom | label: vfs_pipe.lib.so
+
++ config | verbose: no
+  + parent-provides
+    + service CPU
+    + service LOG
+    + service PD
+    + service RM
+    + service ROM
+    + service Timer
+
+  + default-route
+    + any-service
+      + parent
+      + any-child
+
+  + default | caps: 128
+
+  + start vfs | ram: 4M
+    + provides | + service File_system
+    + config
+      + vfs
+      | + pipe
+      |   + fifo upstream
+      |   + fifo downstream
+      + policy
+      |        label_prefix: fifo-pipe-test -> in ->
+      |        root:         /.upstream/in
+      |        writeable:    yes
+      + policy
+      |        label_prefix: fifo-pipe-test -> out ->
+      |        root:         /.downstream/out
+      |        writeable:    no
+      + default-policy | root: / | writeable: yes
+
+  + start ram_fs | ram: 2M
+    + binary vfs
+    + provides | | + service File_system
+    + config
+      + vfs
+      | + inline init_template
+      |   + config | verbose: no
+      |     + parent-provides
+      |     | + service CPU
+      |     | + service File_system
+      |     | + service LOG
+      |     | + service PD
+      |     | + service RM
+      |     | + service ROM
+      |     | + service Timer
+      |     + default | caps: 120
+      |     + start echo | ram: 3M
+      |       + binary test-libc_fifo_pipe
+      |       + config | type: echo
+      |       | + vfs
+      |       | | + dir dev
+      |       | |   + fs | label: downstream -> /
+      |       | |   + fs | label: upstream -> /
+      |       | |   + log
+      |       | + libc
+      |       |        stdin:  /dev/upstream
+      |       |        stdout: /dev/downstream
+      |       |        stderr: /dev/log
+      |       + route
+      |         + any-service
+      |           + parent
+      |           + any-child
+      + policy | label_prefix: fs_rom -> | root: / | writeable: no
+
+  + start fs_rom | ram: 2M
+    + provides | + service ROM
+    + route
+      + service File_system | + child ram_fs
+      + any-service
+        + parent
+        + any-child
+
+  + start report_rom | ram: 2M
+    + provides
+      + service ROM
+      + service Report
+    + config | verbose: no
+      + policy | label: init.config | report: init.config
+
+  + start fifo-pipe-test | caps: 150 | ram: 8M
+    + binary test-libc_fifo_pipe
+    + config | iterations: 15
+    | + vfs
+    | | + dir ro | + rom test-data.bin
+    | | + dir dev
+    | |   + dir send-pipe    | + fs | label: in -> /
+    | |   + dir receive-pipe | + fs | label: out -> /
+    | |   + log
+    | + libc | stdout: /dev/log | stderr: /dev/log
+    + route
+      + service File_system                 | + child vfs
+      + service Report | label: init.config | + child report_rom | label: init.config
+      + service ROM | label: init_template  | + child fs_rom | label: init_template
+      + service ROM | label: test-data.bin  | + parent | label: init
+      + any-service
+        + parent
+        + any-child
+
+  + start init | caps: 250 | ram: 16M
+    + route
+      + service ROM | label: config | + child report_rom | label: init.config
+      + service File_system         | + child vfs
+      + any-service
+        + parent
+        + any-child
+-

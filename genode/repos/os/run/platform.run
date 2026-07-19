@@ -1,0 +1,142 @@
+assert {[have_board pbxa9]}
+
+create_boot_directory
+
+import_from_depot [depot_user]/src/[base_src] \
+                  [depot_user]/src/init \
+                  [depot_user]/src/fs_report \
+                  [depot_user]/src/fs_rom \
+                  [depot_user]/src/platform \
+                  [depot_user]/src/report_rom \
+                  [depot_user]/src/vfs_import \
+                  [depot_user]/src/vfs
+
+build { test/platform }
+
+install_config {
+config
++ parent-provides
+  + service ROM
+  + service IRQ
+  + service IO_MEM
+  + service PD
+  + service RM
+  + service CPU
+  + service LOG
+
++ default-route | + any-service | + parent
+
++ default | caps: 100 | ram: 1M
+
++ start timer | ram: 10M
+  + provides | + service Timer
+
++ start report_fs | ram: 2M
+  + binary vfs
+  + provides | + service File_system
+  + config
+    + vfs
+    | + ram
+    | + import
+    |   + inline config  | + config | + default-policy
+    |   + inline devices | + devices | + device dummy
+    |
+    + policy | label_prefix: fs_report ->     | root: / | writeable: yes
+    + policy | label_prefix: report_fs_rom -> | root: /
+
++ start fs_report
+  + provides | + service Report
+  + config | + vfs | + fs
+  + route
+    + service File_system | + child report_fs
+    + any-service         | + parent
+
++ start report_fs_rom | ram: 3M
+  + binary fs_rom
+  + provides | + service ROM
+  + route
+    + service File_system | + child report_fs
+    + any-service         | + parent
+
++ start report_rom | ram: 3M
+  + provides
+    + service ROM
+    + service Report
+  + config | verbose: no
+  + route | + any-service | + parent
+
++ start platform | managing_system: yes
+  + provides
+    + service Dma
+    + service Platform
+  + route
+    + service ROM | label: config  | + child report_fs_rom
+    + service ROM | label: devices | + child report_fs_rom
+    + service Report               | + child report_rom
+    + any-service                  | + parent
+
++ start test-platform | ram: 2M
+  + route
+    + service Report | label: config  | + child fs_report | label: config
+    + service Report | label: devices | + child fs_report | label: devices
+    + service Dma                     | + child platform
+    + service Platform                | + child platform
+    + any-service                     | + parent
+-
+}
+
+
+build_boot_image [build_artifacts]
+
+append qemu_args "-nographic "
+
+set good_string {
+[init -> test-platform] devices | version: 1
+[init -> test-platform] + device 0 | type: dummy-device | used: false
+[init -> test-platform]   + io_mem | phys_addr: 0x40000000 | size: 0x1000
+[init -> test-platform]   + irq | number: 32
+[init -> test-platform] + device 1 | type: dummy-device | used: false
+[init -> test-platform]   + io_mem | phys_addr: 0x40001000 | size: 0x1000
+[init -> test-platform]   + irq | number: 33
+[init -> test-platform] + device 2 | type: dummy-device | used: false
+[init -> test-platform]   + io_mem | phys_addr: 0x40002000 | size: 0x1000
+[init -> test-platform]   + irq | number: 34
+[init -> test-platform] -
+[init -> test-platform] devices | version: 2
+[init -> test-platform] + device 0 | type: dummy-device | used: true
+[init -> test-platform]   + io_mem | phys_addr: 0x40000000 | size: 0x1000
+[init -> test-platform]   + irq | number: 32
+[init -> test-platform] + device 1 | type: dummy-device | used: true
+[init -> test-platform]   + io_mem | phys_addr: 0x40001000 | size: 0x1000
+[init -> test-platform]   + irq | number: 33
+[init -> test-platform] -
+[init -> test-platform] devices | version: 3
+[init -> test-platform] -
+[init -> test-platform] devices | version: 4
+[init -> test-platform] + device 0 | type: dummy-device | used: false
+[init -> test-platform]   + io_mem | phys_addr: 0x40000000 | size: 0x1000
+[init -> test-platform]   + irq | number: 32
+[init -> test-platform] + device 1 | type: dummy-device | used: false
+[init -> test-platform]   + io_mem | phys_addr: 0x40001000 | size: 0x1000
+[init -> test-platform]   + irq | number: 33
+[init -> test-platform] + device 2 | type: dummy-device | used: false
+[init -> test-platform]   + io_mem | phys_addr: 0x40002000 | size: 0x1000
+[init -> test-platform]   + irq | number: 34
+[init -> test-platform] + device 3 | type: dummy-device | used: false
+[init -> test-platform]   + io_mem | phys_addr: 0x40003000 | size: 0x1000
+[init -> test-platform]   + irq | number: 35
+[init -> test-platform] -
+[init -> test-platform] devices | version: 5
+[init -> test-platform] -
+[init -> test-platform] devices | version: 6
+[init -> test-platform] + device 0 | type: dummy-device | used: false
+[init -> test-platform]   + io_mem | phys_addr: 0x40000100 | size: 0x1000
+[init -> test-platform]   + irq | number: 32
+[init -> test-platform] -
+[init -> test-platform] Found next valid device of dummy type
+[init -> test-platform] Test has ended!
+}
+
+run_genode_until "Test has ended!.*\n" 100
+grep_output  "init -> test-platform"
+compare_output_to $good_string

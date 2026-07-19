@@ -1,0 +1,38 @@
+/*
+ * \brief  HW-specific part of the PD session interface
+ * \author Stefan Kalkowski
+ * \date   2017-06-12
+ */
+
+/*
+ * Copyright (C) 2017 Genode Labs GmbH
+ *
+ * This file is part of the Genode OS framework, which is distributed
+ * under the terms of the GNU Affero General Public License version 3.
+ */
+
+#ifndef _INCLUDE__HW_NATIVE_PD__HW_NATIVE_PD_H_
+#define _INCLUDE__HW_NATIVE_PD__HW_NATIVE_PD_H_
+
+#include <base/rpc.h>
+#include <pd_session/pd_session.h>
+
+
+struct Genode::Pd_session::Native_pd : Interface
+{
+	using Upgrade_result = Attempt<Ok, Alloc_error>;
+
+	virtual Upgrade_result upgrade_cap_slab() = 0;
+	virtual size_t avail_cap_slab() = 0;
+
+
+	/*********************
+	 ** RPC declaration **
+	 *********************/
+
+	GENODE_RPC(Rpc_upgrade_cap_slab, Upgrade_result, upgrade_cap_slab);
+	GENODE_RPC(Rpc_avail_cap_slab, size_t, avail_cap_slab);
+	GENODE_RPC_INTERFACE(Rpc_upgrade_cap_slab, Rpc_avail_cap_slab);
+};
+
+#endif /* _INCLUDE__HW_NATIVE_PD__HW_NATIVE_PD_H_ */

@@ -1,0 +1,4 @@
+config
++ vfs | + ram
++ default-policy | root: / | writeable: yes
+-

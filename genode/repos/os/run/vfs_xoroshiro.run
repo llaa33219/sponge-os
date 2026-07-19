@@ -1,0 +1,77 @@
+build { lib/vfs_xoroshiro lib/vfs_jitterentropy }
+
+create_boot_directory
+
+import_from_depot \
+	[depot_user]/src/[base_src] \
+	[depot_user]/src/coreutils \
+	[depot_user]/src/init \
+	[depot_user]/src/fs_rom \
+	[depot_user]/src/libc \
+	[depot_user]/src/vfs \
+	[depot_user]/src/posix
+
+install_config {
+config | verbose: yes
++ parent-provides
+  + service ROM
+  + service LOG
+  + service RM
+  + service CPU
+  + service PD
+  + service IRQ
+  + service IO_MEM
+  + service IO_PORT
+
++ default-route | + any-service | + parent
+
++ default | caps: 100 | ram: 1M
+
++ start timer
+  + provides | + service Timer
+
++ start vfs | ram: 4M
+  + provides | + service File_system
+  + config
+    + vfs
+      + ram
+      + tar coreutils.tar
+    + default-policy | root: / | writeable: yes
+
++ start vfs_rom | ram: 10M
+  + binary fs_rom
+  + provides | + service ROM
+  + config
+  + route
+    + service File_system | + child vfs
+    + any-service         | + parent
+
++ start /bin/dd | caps: 500 | ram: 16M
+  + config
+  | + libc | stdin: /dev/null | stdout: /dev/log | stderr: /dev/log | rtc: /dev/null
+  | + vfs
+  | | + dir dev
+  | |   + log
+  | |   + null
+  | |   + jitterentropy entropy
+  | |   + xoroshiro random | seed_path: /dev/entropy
+  | + arg dd
+  | + arg if=/dev/random
+  | + arg of=/dev/null
+  | + arg bs=1M
+  | + arg count=128
+  + route
+    + service File_system                 | + child vfs
+    + service ROM | label_suffix: .lib.so | + parent
+    + service ROM | label_last: /bin/dd   | + child vfs_rom
+    + any-service
+      + parent
+      + any-child
+-
+}
+
+build_boot_image [build_artifacts]
+
+append qemu_args " -nographic "
+
+run_genode_until "child .* exited with exit value 0.*\n" 20

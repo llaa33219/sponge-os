@@ -1,0 +1,32 @@
+A USB webcam app using libuvc
+
+Behaviour
+---------
+
+The app requests an USB session for accessing the webcam and a GUI session in
+order to render the camera into.
+
+Configuration
+-------------
+
+! <config width="640" height="480" format="yuv" fps="30">
+!   <vfs>
+!     <dir name="dev"> <log/> <inline name="rtc">2018-01-01 00:01</inline> </dir>
+!     <dir name="pipe"> <pipe/> </dir>
+!  </vfs>
+!  <libc stdout="/dev/log" stderr="/dev/log" rtc="/dev/rtc" pipe="/pipe"/>
+! </conifg>
+
+The camera mode can be configured via the following optional config attributes.
+
+:width/height: frame size
+  (default is 640x480)
+
+:format: currently "yuv" (YUY2) and "mjpeg" (MJPG) formats are supported
+  (default is auto selection/detection)
+
+:fps: frame interval in frames-per-second
+  (default is auto selection/detection)
+
+In case there is no suitable mode present, the app will dump the camera
+supported formats during startup.

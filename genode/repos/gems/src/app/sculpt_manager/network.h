@@ -1,0 +1,163 @@
+/*
+ * \brief  Sculpt network management
+ * \author Norman Feske
+ * \date   2018-04-30
+ */
+
+/*
+ * Copyright (C) 2018 Genode Labs GmbH
+ *
+ * This file is part of the Genode OS framework, which is distributed
+ * under the terms of the GNU Affero General Public License version 3.
+ */
+
+#ifndef _NETWORK_H_
+#define _NETWORK_H_
+
+/* Genode includes */
+#include <base/attached_rom_dataspace.h>
+#include <os/reporter.h>
+
+/* local includes */
+#include <model/board_info.h>
+#include <view/network_widget.h>
+#include <runtime.h>
+#include <keyboard_focus.h>
+#include <managed_config.h>
+
+namespace Sculpt { struct Network; }
+
+
+struct Sculpt::Network : Noncopyable
+{
+	Env &_env;
+
+	Allocator &_alloc;
+
+	struct Action : Interface
+	{
+		virtual void network_config_changed() = 0;
+		virtual void wifi_connect_enter() = 0;
+	};
+
+	struct Info : Interface
+	{
+		virtual bool ap_list_hovered() const = 0;
+	};
+
+	Action     &_action;
+	Info const &_info;
+
+	using Wlan_config_policy = Network_widget::Wlan_config_policy;
+
+	Nic_state _nic_state { };
+
+	Access_point::Bssid _selected_ap { };
+
+	Wpa_passphrase wpa_passphrase { };
+
+	Rom_handler<Network> _wlan_accesspoints_rom {
+		_env, "report -> wifi/accesspoints", *this, &Network::_handle_wlan_accesspoints };
+
+	Rom_handler<Network> _wlan_state_rom {
+		_env, "report -> wifi/state", *this, &Network::_handle_wlan_state };
+
+	Rom_handler<Network> _network_state_rom {
+		_env, "report -> network/state", *this, &Network::_handle_network_state };
+
+	Access_points _access_points { };
+
+	Wifi_connection _wifi_connection = Wifi_connection::disconnected_wifi_connection();
+
+	bool ready() const { return _nic_state.ready(); }
+
+	void handle_key_press(Codepoint);
+
+	void _handle_wlan_accesspoints(Node const &);
+	void _handle_wlan_state(Node const &);
+	void _handle_network_state(Node const &);
+
+	Wlan_config_policy _wlan_config_policy = Wlan_config_policy::MANAGED;
+
+	Managed_config<Network> _wlan_config {
+		_env, _alloc, "config", "child/wifi", *this, &Network::_handle_wlan_config };
+
+	void _handle_wlan_config(Node const &config)
+	{
+		Wlan_config_policy const orig_policy = _wlan_config_policy;
+		_wlan_config_policy = config.has_type("empty") || config.attribute_value("managed", false)
+		                    ? Wlan_config_policy::MANAGED : Wlan_config_policy::MANUAL;
+
+		if (_wlan_config_policy == Wlan_config_policy::MANUAL) {
+			_action.network_config_changed();
+			return;
+		}
+
+		if (orig_policy != _wlan_config_policy) { /* manual -> managed */
+			if (_wifi_connection.connected())
+				wifi_connect(_wifi_connection.bssid);
+			else
+				wifi_disconnect();
+		}
+	}
+
+	void wifi_connect(Access_point::Bssid bssid)
+	{
+		_access_points.for_each([&] (Access_point const &ap) {
+			if (ap.bssid != bssid)
+				return;
+
+			_wifi_connection.ssid  = ap.ssid;
+			_wifi_connection.bssid = ap.bssid;
+			_wifi_connection.state = Wifi_connection::CONNECTING;
+
+			_wlan_config.generate([&] (Generator &g) {
+
+				g.attribute("scan_interval", 10U);
+				g.attribute("update_quality_interval", 30U);
+
+				g.attribute("verbose", false);
+				g.attribute("log_level", "error");
+
+				g.node("network", [&]() {
+					g.attribute("ssid", ap.ssid);
+
+					if (!ap.wpa_protected())
+						return;
+
+					using P = Access_point::Protection;
+					bool const wpa3 = ap.protection == P::WPA3_PSK;
+
+					g.attribute("protection", wpa3 ? "WPA3" : "WPA2");
+					String<128> const psk(wpa_passphrase);
+					g.attribute("passphrase", psk);
+				});
+			});
+		});
+	}
+
+	void wifi_disconnect()
+	{
+		/*
+		 * Reflect state change immediately to the user interface even
+		 * if the wifi driver will take a while to perform the disconnect.
+		 */
+		_wifi_connection = Wifi_connection::disconnected_wifi_connection();
+
+		_wlan_config.generate([&] (Generator &g) {
+
+			g.attribute("scan_interval", 10U);
+			g.attribute("update_quality_interval", 30U);
+
+			g.attribute("verbose", false);
+			g.attribute("log_level", "error");
+		});
+	}
+
+	Network(Env &env, Allocator &alloc, Action &action, Info const &info)
+	:
+		_env(env), _alloc(alloc), _action(action), _info(info)
+	{ }
+};
+
+#endif /* _NETWORK_H_ */

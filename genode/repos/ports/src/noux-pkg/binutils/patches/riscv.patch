@@ -1,0 +1,25 @@
+riscv: always enable shared library support
+
+From: Sebastian Sumpf <sebastian.sumpf@genode-labs.com>
+
+
+---
+ ld/emulparams/elf32lriscv-defs.sh |    5 +++++
+ 1 file changed, 5 insertions(+)
+
+diff --git a/ld/emulparams/elf32lriscv-defs.sh b/ld/emulparams/elf32lriscv-defs.sh
+index 01655616..70a369ec 100644
+--- a/ld/emulparams/elf32lriscv-defs.sh
++++ b/ld/emulparams/elf32lriscv-defs.sh
+@@ -27,6 +27,11 @@ case "$target" in
+ esac
+ 
+ IREL_IN_PLT=
++
++# always enable shared library support
++GENERATE_SHLIB_SCRIPT=yes
++GENERATE_PIE_SCRIPT=yes
++
+ TEXT_START_ADDR=0x10000
+ MAXPAGESIZE="CONSTANT (MAXPAGESIZE)"
+ COMMONPAGESIZE="CONSTANT (COMMONPAGESIZE)"

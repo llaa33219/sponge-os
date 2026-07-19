@@ -1,0 +1,82 @@
+assert {[have_spec linux]}
+
+build {
+	core init timer lib/ld lib/vfs server/lx_fs server/vfs app/sequence
+	app/tresor_init_trust_anchor app/tresor_init app/tresor_check
+	lib/vfs_tresor_crypto_aes_cbc lib/vfs_tresor_trust_anchor lib/vfs_jitterentropy
+	lib/libc lib/libcrypto }
+
+create_boot_directory
+
+install_config {
+config | verbose: yes
++ parent-provides
+  + service PD
+  + service ROM
+  + service LOG
+  + service CPU
+
++ start timer | caps: 100 | ram: 1M
+  + provides | + service Timer
+  + route | + any-service | + parent
+
++ start lx_fs | ld: no | caps: 100 | ram: 2M
+  + provides | + service File_system
+  + config
+    + default-policy | root: / | writeable: yes
+  + route | + any-service | + parent
+
++ start vfs | caps: 120 | ram: 16M
+  + provides | + service File_system
+  + config
+  | + vfs
+  |   + dir ta_storage | + fs
+  |   + dir dev
+  |     + jitterentropy
+  |     + tresor_trust_anchor tresor_trust_anchor | storage_dir: /ta_storage
+  | + default-policy | root: /dev/tresor_trust_anchor | writeable: yes
+  + route
+    + service File_system | + child lx_fs
+    + any-service         | + parent
+
++ start sequence | caps: 200 | ram: 128M
+  + config
+  | + start tresor_init_trust_anchor | ram: 4M
+  |   + config | passphrase: foobar | trust_anchor_dir: /trust_anchor
+  |     + vfs | + dir trust_anchor | + fs | label: ta -> /
+  | + start tresor_init | ram: 4M
+  |   + config
+  |     + block-io | type: vfs | path: /tresor.img
+  |     + crypto               | path: /crypto
+  |     + trust-anchor         | path: /trust_anchor
+  |     + vfs
+  |       + fs | buffer_size: 1M
+  |       + tresor_crypto_aes_cbc crypto
+  |       + dir trust_anchor | + fs | label: ta -> /
+  |     + virtual-block-device | max_lvl: 2 | degree: 64 | num_leaves: 512
+  |     + free-tree | max_lvl: 2 | degree: 64 | num_leaves: 2048
+  | + start tresor_check | caps: 100 | ram: 4M
+  |   + config
+  |     + block-io | type: vfs | path: /tresor.img
+  |     + crypto               | path: /crypto
+  |     + trust-anchor         | path: /trust_anchor
+  |     + vfs
+  |       + fs | buffer_size: 1M
+  |       + tresor_crypto_aes_cbc crypto
+  |       + dir trust_anchor | + fs | label: ta -> /
+  + route
+    + service File_system | label_suffix: ta -> / | + child vfs
+    + service File_system                         | + child lx_fs
+    + any-service                                 | + parent
+-
+}
+
+exec rm -rf bin/tresor.img
+exec truncate -s 32M bin/tresor.img
+
+append boot_modules [build_artifacts]
+lappend boot_modules tresor.img
+
+build_boot_image $boot_modules
+
+run_genode_until {.*child "sequence" exited with exit value 0.*\n} 240

@@ -1,0 +1,13 @@
+LICENSE   := BSD
+VERSION   := 3.4.1
+DOWNLOADS := jitterentropy.archive
+
+NAME(jitterentropy) := jitterentropy-$(VERSION).tar.gz
+URL(jitterentropy)  := https://github.com/smuellerDD/jitterentropy-library/archive/refs/tags/v$(VERSION).tar.gz
+SHA(jitterentropy)  := 33352369092b5a0d1463c720f5a8a3e870dbd63502ea57692e7da84a65c0c5c3
+DIR(jitterentropy)  := src/lib/jitterentropy
+
+PATCHES := src/lib/jitterentropy/jitterentropy.patch
+
+DIRS := include/jitterentropy
+DIR_CONTENT(include/jitterentropy) := $(addprefix src/lib/jitterentropy/,jitterentropy.h)

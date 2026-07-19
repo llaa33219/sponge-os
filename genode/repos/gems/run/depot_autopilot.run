@@ -1,0 +1,952 @@
+#
+# Integration of Depot Autopilot into a Run-tool-based test infrastructure
+#
+# For a detailed documentation of the user interface and the features of this
+# Run script please see _repos/gems/src/app/depot_autopilot/README_.
+#
+
+
+##############################################################
+## Local copies of run tool procedures with small adaptions ##
+##                                                          ##
+## FIXME: Adapt original and remove local copies            ##
+##############################################################
+
+proc autopilot_wait_for_output { wait_for_re timeout_value running_spawn_id } {
+	global output
+	global run_genode_failed
+
+	if {$wait_for_re == "forever"} {
+		set timeout -1
+		interact {
+			\003 {
+				send_user "Expect: 'interact' received 'strg+c' and was cancelled\n";
+				exit
+			}
+			-i $running_spawn_id
+		}
+	} else {
+		set timeout $timeout_value
+	}
+
+	set platform_msg [run_boot_string]
+	if {$platform_msg eq ""} {
+		set platform_msg "undefined platform command startup string sequence"
+	}
+
+	expect {
+		-i $running_spawn_id $platform_msg { puts stderr "Error: platform rebooted unexpectedly"; exit -4 }
+		-i $running_spawn_id -re $wait_for_re { }
+
+		# sel4
+		-i $running_spawn_id -re {Error: ~Cnode - not implemented.*?\n} {
+			puts stderr "Error: Core presumably went out of resources";
+			set run_genode_failed 1
+			return
+		}
+		# pistachio kernel fault
+		-i $running_spawn_id -re {--- "KD# Exception caught" ---.*?\n} {
+			puts stderr "Error: Kernel fault";
+			set run_genode_failed 1
+			return
+		}
+		# sel4 unknown fault caught by core
+		-i $running_spawn_id -re {Error: unexpected exception during fault.*?stopped.*?\n} {
+			puts stderr "Error: Unknown fault";
+			set run_genode_failed 1
+			return
+		}
+		# can happen, for instance, on socat TCP-timeout
+		eof {
+			puts stderr "Error: Spawned process died unexpectedly";
+			set run_genode_failed 1
+			return
+		}
+		timeout {
+			puts stderr "Error: Test execution timed out";
+			set run_genode_failed 1
+			return
+		}
+	}
+	append output $expect_out(buffer)
+}
+
+proc autopilot_create_tar_from_depot_binaries { archive_path args } {
+
+	# filter out api and src archives from requested depot content
+	set content {}
+	foreach subdir [_collect_from_depot $args] {
+		if {[regexp [_depot_archive_versioned_path_pattern] $subdir dummy user type]} {
+			if {$type == "src"} continue;
+			if {$type == "api"} continue;
+		}
+		lappend content $subdir
+	}
+
+	check_for_missing_depot_archives
+
+	if {[llength $content] == 0} {
+		puts stderr "Error: no content for depot.tar"
+		exit -1
+	}
+
+	eval "exec tar cf $archive_path -T /dev/null -C [depot_dir] [lsort -unique $content]"
+}
+
+proc autopilot_run_genode_until {{wait_for_re forever} {timeout_value 0} {running_spawn_id -1}} {
+	#
+	# If a running_spawn_id is specified, wait for the expected output
+	#
+	if {$running_spawn_id != -1} {
+		autopilot_wait_for_output $wait_for_re $timeout_value $running_spawn_id
+		return;
+	}
+
+	set retry 3
+	while { $retry != 0 } {
+
+		if {![run_power_cycle]} {
+			puts "Power cycle step failed, retry."
+			sleep 3
+			incr retry -1;
+			continue
+		}
+
+		if {![run_load]} {
+			puts "Load step failed, retry."
+
+			# kill the spawned load process if there is one
+			if {[load_spawn_id] != -1} {
+				kill_spawned [load_spawn_id]
+			}
+
+			incr retry -1;
+			continue;
+		}
+
+		if {![run_log $wait_for_re $timeout_value]} {
+			puts "Log step failed, retry."
+			incr retry -1;
+			continue;
+		}
+
+		return;
+	}
+
+	puts stderr "Boot process failed 3 times in series. I give up!";
+	exit -1;
+}
+
+
+########################
+## Utility procedures ##
+########################
+
+
+
+#
+# Whether the run script is used interactively
+#
+proc interactive {} {
+	return [expr ![have_cmd_switch --autopilot]]
+}
+
+
+#
+# Get value of an environment variable
+#
+proc get_env_var { var_name default_value } {
+	if {[info exists ::env($var_name)]} {
+		return $::env($var_name)
+	}
+	return $default_value
+}
+
+#
+# Check if archives are available without doing anything with them
+#
+proc check_archives_available { args } {
+
+	# filter out api and src archives from requested depot content
+	set content {}
+	foreach subdir [_collect_from_depot $args] {
+		if {[regexp [_depot_archive_versioned_path_pattern] $subdir dummy user type]} {
+			if {$type == "src"} continue;
+			if {$type == "api"} continue;
+		}
+		lappend content $subdir
+	}
+
+	check_for_missing_depot_archives
+}
+
+#
+# Return routes for boot modules that shall overlay the test-depot content
+#
+proc single_test_module_routes { } {
+
+	global test_modules
+	set result ""
+	foreach module $test_modules {
+		append result {
+		    + service ROM | label_last: } $module { | + parent}
+	}
+	return $result
+}
+
+#
+# Return autopilot start-nodes for the test packages that shall be run
+#
+proc test_pkgs_start_nodes { } {
+
+	global test_pkgs
+
+	set result ""
+	foreach test_pkg $test_pkgs {
+		if {[skip_test $test_pkg]} {
+			append result {
+			  | + start } $test_pkg { | skip: yes }
+		} else {
+			set pkg "[depot_user]/pkg/$test_pkg/[_current_depot_archive_version pkg $test_pkg]"
+			append result {
+			  | + start } $test_pkg { | pkg: } $pkg
+		}
+	}
+	return $result
+}
+
+
+#
+# Prepare to call run_genode_until (again, with a changed setup)
+#
+proc prepare_to_run_genode { } {
+
+	global output
+	global qemu_args
+	global previous_results
+	global previous_time_ms
+	global previous_succeeded
+	global previous_failed
+	global previous_skipped
+	global test_pkgs
+	global test_srcs
+	global test_builds
+	global test_modules
+	global test_repeat
+	global last_test_pkg
+	global run_genode_failed
+	global serial_id
+	global timeout
+	global initial_qemu_args
+
+	# reset the QEMU arguments to the value when the run script was entered
+	set qemu_args $initial_qemu_args
+
+	# compose list of the package archives to add to the depot archive
+	set depot_tar_pkg_archives ""
+	foreach test_pkg $test_pkgs {
+		if {![skip_test $test_pkg]} {
+			append depot_tar_pkg_archives " [depot_user]/pkg/$test_pkg "
+		}
+	}
+
+	# compose list of the source archives to add to the depot archive
+	set depot_tar_src_archives ""
+	foreach test_src $test_srcs {
+		if {![skip_test $test_src]} {
+			append depot_tar_src_archives " [depot_user]/src/$test_src "
+		}
+	}
+
+	# compose list of the archives to import to the boot directory
+	set import_archives ""
+	append import_archives {
+		} [depot_user] {/src/} [base_src] {
+		} [depot_user] {/src/report_rom
+		} [depot_user] {/src/fs_rom
+		} [depot_user] {/src/vfs
+		} [depot_user] {/src/init
+		} [depot_user] {/src/depot_query
+	}
+
+	# check existance of all required archives at once
+	set all_archives [concat $depot_tar_pkg_archives \
+	                         $depot_tar_src_archives \
+	                         $import_archives]
+	if {[interactive]} {
+		check_archives_available {*}$all_archives
+	} else {
+		check_archives_available {*}$import_archives
+	}
+
+	# create the depot archive in the boot directory
+	create_boot_directory
+	autopilot_create_tar_from_depot_binaries [run_dir]/genode/depot.tar \
+	                                         {*}$depot_tar_pkg_archives
+	set depot_tar_wo_src_size [file size [run_dir]/genode/depot.tar]
+	append_src_and_api_depot_packages_to_tar [run_dir]/genode/depot.tar \
+	                                         {*}$depot_tar_src_archives
+	set depot_tar_size [file size [run_dir]/genode/depot.tar]
+	puts "Depot archive has a size of $depot_tar_size bytes \
+	      ($depot_tar_wo_src_size bytes without sources)"
+
+	set quoted_previous_results {}
+	foreach line [split $previous_results "\n"] {
+		append quoted_previous_results "\n  |   : $line" }
+	append quoted_previous_results "\n  |"
+
+	#
+	# Install the root-init config
+	#
+	append config {
+		config | prio_levels: 2
+		+ parent-provides
+		  + service ROM
+		  + service IRQ
+		  + service IO_PORT
+		  + service IO_MEM
+		  + service PD
+		  + service RM
+		  + service CPU
+		  + service LOG
+		  + service TRACE
+
+		+ default-route
+		  + any-service
+		    + parent
+		    + any-child
+
+		+ default | caps: 200 | ram: 2M
+
+		+ start timer | priority: 0
+		  + provides | + service Timer
+
+		+ start report_rom | priority: -1 | ram: 2M
+		  + binary report_rom
+		  + provides
+		    + service Report
+		    + service ROM
+		  + config | verbose: no
+		    + policy | label: depot_autopilot -> blueprint | report: depot_query -> blueprint
+		    + policy | label: depot_autopilot -> state     | report: dynamic -> state
+		    + policy | label: depot_deploy -> deploy       | report: depot_autopilot -> deploy
+		    + policy | label: depot_deploy -> depot        | report: empty
+		    + policy | label: depot_deploy -> blueprint    | report: depot_query -> blueprint
+		    + policy | label: depot_query -> query         | report: depot_deploy -> query
+		    + policy | label: dynamic -> config            | report: depot_deploy -> runtime
+
+		+ start vfs | priority: -1 | ram: 16M
+		  + provides | + service File_system
+		  + config
+		    + vfs
+		      + dir depot     | + tar depot.tar
+		      + dir gcov_data | + ram
+		    + policy | label_prefix: depot_query -> depot             | root: /depot
+		    + policy | label_prefix: fs_rom ->                        | root: /depot
+		    + policy | label_prefix: dynamic -> gcov -> gcov -> depot | root: /depot
+		    + policy | label_suffix: -> gcov_data -> /                | root: /gcov_data
+		                                                              | writeable: yes
+		+ start fs_rom | priority: -1 | caps: 300 | ram: 32M
+		  + provides | + service ROM
+		+ start depot_query | priority: -1 | ram: 3M
+		  + config | query: rom
+		    + vfs | + dir depot | + fs | label: depot -> /
+		  + route
+		    + service ROM | label: query | + child report_rom
+		    + any-service
+		      + parent
+		      + any-child
+
+		+ start depot_autopilot | priority: -1 | ram: 8M
+		  + provides | + service LOG
+		  + config | repeat: } $test_repeat { | children_label_prefix: dynamic
+		  | + previous-results
+		  |                    time_sec:  } [expr ($previous_time_ms + 999) / 1000] {
+		  |                    succeeded: } $previous_succeeded {
+		  |                    skipped:   } $previous_skipped {
+		  |                    failed:    } $previous_failed {
+		  |} "$quoted_previous_results" [test_pkgs_start_nodes] {
+		  |
+		  + route
+		    + service PD  | unscoped_label: depot_autopilot | + parent
+		    + service CPU | unscoped_label: depot_autopilot | + parent
+		    + service LOG | unscoped_label: depot_autopilot | + parent | label: test
+		    + service ROM | unscoped_label: depot_autopilot | + parent
+		    + service ROM | unscoped_label: ld.lib.so       | + parent
+		    + service ROM    | label: state                 | + child report_rom
+		    + service ROM    | label: blueprint             | + child report_rom
+		    + service Report | label: deploy                | + child report_rom
+		    + service Timer                                 | + child timer
+
+		+ start depot_deploy
+		  + config | arch: } [depot_spec] { | blueprint_buffer: 750K
+		  | + static
+		  |   + report
+		  |   + parent-provides
+		  |     + service ROM
+		  |     + service CPU
+		  |     + service PD
+		  |     + service LOG
+		  |     + service RM
+		  |     + service Timer
+		  |     + service TRACE
+		  |     + service File_system
+		  | + common_routes
+		  |   } [single_test_module_routes] {
+		  |   + service ROM | label_last: ld.lib.so                | + parent
+		  |   + service ROM | label_last: init                     | + parent
+		  |   + service CPU                                        | + parent
+		  |   + service PD                                         | + parent
+		  |   + service LOG                                        | + parent
+		  |   + service Timer                                      | + parent
+		  |   + service RM                                         | + parent
+		  |   + service TRACE                                      | + parent
+		  |   + service File_system | label: gcov -> depot -> /    | + parent
+		  |   + service File_system | label_suffix: gcov_data -> / | + parent
+		  + route
+		    + service ROM    | label: deploy    | + child report_rom
+		    + service ROM    | label: depot     | + child report_rom
+		    + service ROM    | label: blueprint | + child report_rom
+		    + service Report | label: query     | + child report_rom
+		    + service Report | label: runtime   | + child report_rom
+		    + any-service                       | + parent
+
+		+ start dynamic | caps: 8000 | ram: 286M | priority: -1
+		  + binary init
+		  + route
+		    } [single_test_module_routes] {
+		    + service ROM | label_last: ld.lib.so   | + parent
+		    + service ROM | label_last: init        | + parent
+		    + service ROM | label: config           | + child report_rom
+		    + service ROM                           | + child fs_rom
+		    + service LOG | unscoped_label: dynamic | + parent
+		    + service LOG                           | + child depot_autopilot
+		    + service Timer                         | + child timer
+		    + any-service
+		      + parent
+		      + any-child
+		-
+	}
+
+	# strip tabs used for indentation
+	set config [string map {"\t" ""} $config]
+
+	install_config $config
+
+
+	#
+	# Create the rest of the boot modules
+	#
+
+	set build_components { app/depot_autopilot app/depot_deploy }
+	append build_components $test_builds
+	build $build_components
+
+	import_from_depot {*}$import_archives
+
+
+	#
+	# Build boot image from boot modules
+	#
+
+	build_boot_image [list {*}[build_artifacts] {*}$test_modules]
+
+	set last_test_pkg ""
+	set run_genode_failed 0
+	set serial_id -1
+	set timeout 40
+
+	append qemu_args " -nographic "
+}
+
+
+#
+# Initialize variables that accumulate test results for possible reboots
+#
+proc init_previous_results {} {
+	global previous_results_on_exit
+	global previous_results
+	global previous_time_ms
+	global previous_succeeded
+	global previous_failed
+	global previous_skipped
+
+	set previous_results_on_exit 1
+	set previous_results         ""
+	set previous_time_ms         0
+	set previous_succeeded       0
+	set previous_failed          0
+	set previous_skipped         0
+}
+
+
+#
+# Whether a test shall be skipped or not
+#
+proc skip_test { test } {
+	global skip_test
+	if {![info exists skip_test($test)]} {
+		return 0
+	}
+	return $skip_test($test)
+}
+
+
+#
+# Whether all given archives and the archives they depend on are available
+#
+proc archives_available { archives } {
+
+	global _missing_depot_archives
+	set buf $_missing_depot_archives
+	set _missing_depot_archives ""
+	_collect_from_depot $archives
+	set result [expr [llength $_missing_depot_archives] == 0]
+	set _missing_depot_archives $buf
+	return $result
+}
+
+
+#
+# Initialize variables that can be configured via the user interface
+#
+proc init_test_setting {} {
+
+	global test_pkgs
+	global test_srcs
+	global test_builds
+	global test_modules
+	global test_repeat
+	global default_test_pkgs
+	global default_test_srcs
+
+	#
+	# Initialize the lists of test package-archives, source-archives,
+	# build-targets, and boot-modules to be considered by the run script
+	#
+	set test_pkgs    [get_env_var TEST_PKGS    "default"]
+	set test_srcs    [get_env_var TEST_SRCS    "default"]
+	set test_builds  [get_env_var TEST_BUILDS  ""]
+	set test_modules [get_env_var TEST_MODULES ""]
+	set test_repeat  [get_env_var TEST_REPEAT  "false"]
+
+	set nr_of_tests_to_run 0
+
+	# initialize list of test package archives
+	if {$test_pkgs == "default"} {
+		set test_pkgs $default_test_pkgs
+	}
+	foreach test_pkg $test_pkgs {
+		if {[skip_test $test_pkg]} {
+			continue
+		}
+		incr nr_of_tests_to_run
+		if {[interactive]} {
+			continue
+		}
+		if {[archives_available [depot_user]/pkg/$test_pkg]} {
+			continue
+		}
+		set test_pkgs [lsearch -all -inline -not -exact \
+		                       $test_pkgs $test_pkg]
+
+		puts stderr "Warning: remove test package of \"$test_pkg\" because of\
+		             missing archives"
+	}
+	# initialize list of test source archives
+	if {$test_srcs == "default"} {
+		set test_srcs $default_test_srcs
+	}
+	foreach test_src $test_srcs {
+		if {[skip_test $test_src]} {
+			continue
+		}
+		if {[interactive]} {
+			continue
+		}
+		if {[archives_available [depot_user]/src/$test_src]} {
+			continue
+		}
+		set test_srcs [lsearch -all -inline -not -exact \
+		                       $test_srcs $test_src]
+
+		puts stderr "Warning: remove test source of \"$test_src\" because of\
+		             missing archives"
+	}
+	puts "Number of tests to run: $nr_of_tests_to_run"
+}
+
+
+#
+# Overwrite exit procedure to ensure to always print a results overview
+#
+rename exit run_tool_exit
+proc exit {{status 0}} {
+
+	global previous_results_on_exit
+	global previous_results
+	global previous_time_ms
+	global previous_succeeded
+	global previous_failed
+	global previous_skipped
+
+	if {![info exists previous_results_on_exit] || \
+	    ![info exists previous_results] || \
+	    ![info exists previous_time_ms] || \
+	    ![info exists previous_succeeded] || \
+	    ![info exists previous_failed] || \
+	    ![info exists previous_skipped]} \
+	{
+		init_previous_results
+	}
+	if {$previous_results_on_exit != 0} {
+		set previous_time_sec      [expr $previous_time_ms / 1000]
+		set previous_time_sec_frac [expr $previous_time_ms - $previous_time_sec * 1000]
+		set previous_results_list  [split $previous_results "\n"]
+		puts ""
+		puts "Failed to let Depot Autopilot finish!"
+		puts "Result overview simulated by run script:"
+		puts ""
+		puts "\[init -> test] --- Finished after $previous_time_sec.$previous_time_sec_frac sec ---"
+		puts "\[init -> test] "
+		foreach previous_result $previous_results_list {
+			puts "\[init -> test] $previous_result"
+		}
+		puts "\[init -> test] "
+		puts "\[init -> test] succeeded: $previous_succeeded failed: $previous_failed skipped: $previous_skipped"
+		puts "\[init -> test] "
+	}
+	run_tool_exit $status
+}
+
+
+##################
+## Main routine ##
+##################
+
+#
+# Check platform support
+#
+assert {[have_spec x86]     ||
+        [have_spec arm_v6]  ||
+        [have_spec arm_v7a] ||
+        [have_spec arm_v8a] ||
+        [have_spec riscv]}
+
+#
+# Default list of test package-archives
+#
+# Was obtained by issuing:
+#
+# ! cd <GENODE_DIR>/repos
+# ! find . -type d -wholename *recipes/pkg/test-* -printf '%f\n' | sort
+#
+set default_test_pkgs {
+	test-spark
+	test-spark_exception
+	test-spark_secondary_stack
+	test-alarm
+	test-black_hole
+	test-blit
+	test-callable
+	test-clipboard
+	test-depot_extract
+	test-depot_query_index
+	test-ds_ownership
+	test-dynamic_config
+	test-entrypoint
+	test-expat
+	test-fault_detection
+	test-file_vault
+	test-file_vault_no_entropy
+	test-fs_packet
+	test-fs_report
+	test-fs_rom_update
+	test-fs_rom_update_fs
+	test-fs_rom_update_ram
+	test-fs_tool
+	test-hid
+	test-init
+	test-init_loop
+	test-ldso
+	test-libc
+	test-libc_alarm
+	test-libc_connect_lwip
+	test-libc_connect_lxip
+	test-libc_connect_vfs_server_lwip
+	test-libc_connect_vfs_server_lxip
+	test-libc_execve
+	test-libc_fifo_pipe
+	test-libc_fork
+	test-libc_getenv
+	test-libc_kqueue
+	test-libc_pipe
+	test-libc_udp_unreachable_lwip
+	test-libc_udp_unreachable_lxip
+	test-libc_vfs
+	test-libc_vfs_audit
+	test-libc_vfs_block
+	test-libc_vfs_fs
+	test-libc_vfs_fs_chained
+	test-libc_vfs_ram
+	test-log
+	test-mmio
+	test-new_delete
+	test-nic_loopback
+	test-part_block_gpt
+	test-part_block_mbr
+	test-path
+	test-pipe_read_ready
+	test-pthread
+	test-ram_fs_chunk
+	test-read_only_rom
+	test-reconstructible
+	test-registry
+	test-report_rom
+	test-resource_request
+	test-resource_yield
+	test-rm_fault
+	test-rm_fault_no_nox
+	test-rm_nested
+	test-rm_stress
+	test-rom_filter
+	test-sandbox
+	test-sanitizer
+	test-sequence
+	test-signal
+	test-slab
+	test-stack_smash
+	test-stdcxx
+	test-synced_interface
+	test-tcp_bulk_lwip
+	test-tcp_bulk_lxip
+	test-terminal_crosslink
+	test-timer
+	test-tls
+	test-token
+	test-trace
+	test-trace_buffer
+	test-trace_logger
+	test-utf8
+	test-vfs_block
+	test-vfs_stress_fs
+	test-vfs_stress_ram
+	test-weak_ptr
+	test-xml_generator
+	test-xml_node
+	gcov
+}
+
+#
+# Default list of test source-archives
+#
+set default_test_srcs {
+	test-xml_generator
+}
+
+#
+# Whether the platform supports non-executable dataspaces
+#
+proc non_executable_supported { } {
+	if {[have_spec hw]   && [have_spec x86_64]} { return true }
+	if {[have_spec hw]   && [have_spec arm]}    { return true }
+	if {[have_spec nova] && [have_spec x86_64]} { return true }
+	if {[have_spec foc]  && [have_spec x86_64]} { return true }
+	if {[have_spec foc]  && [have_spec arm]}    { return true }
+	if {[have_spec sel4] && [have_spec arm]}    { return true }
+	return false
+}
+
+proc skip_test_if { condition test } {
+
+	global skip_test
+	if {$condition} {
+		set skip_test($test) true
+	}
+}
+
+#
+# Whether to skip a test - if undefined for a test, the test is not skipped
+#
+
+#
+# pbxa9 and zynq_qemu don't support jitterentropy
+#
+skip_test_if [expr  ([have_board pbxa9] || [have_board zynq_qemu])] test-file_vault
+skip_test_if [expr !([have_board pbxa9] || [have_board zynq_qemu])] test-file_vault_no_entropy
+
+# rpi has a quite limited amount of RAM
+if {[have_board rpi]} {
+	set skip_test(gcov)                              true
+	set skip_test(test-depot_extract)                true
+	set skip_test(test-file_vault)                   true
+	set skip_test(test-file_vault_no_entropy)        true
+	set skip_test(test-libc_connect_lwip)            true
+	set skip_test(test-libc_connect_lxip)            true
+	set skip_test(test-libc_connect_vfs_server_lwip) true
+	set skip_test(test-libc_connect_vfs_server_lxip) true
+	set skip_test(test-libc_udp_unreachable_lxip)    true
+	set skip_test(test-spark)                        true
+	set skip_test(test-spark_exception)              true
+	set skip_test(test-spark_secondary_stack)        true
+	set skip_test(test-tcp_bulk_lwip)                true
+	set skip_test(test-tcp_bulk_lxip)                true
+}
+
+set skip_test(test-fault_detection) [expr [have_spec pistachio] || [have_spec fiasco]]
+set skip_test(test-fs_packet)       [expr ![interactive] && [have_include "power_on/qemu"]]
+set skip_test(test-libc)            [expr [have_spec sel4] || [have_board rpi] || [have_board imx53_qsb_tz]]
+set skip_test(test-read_only_rom)   [expr [have_board linux]]
+set skip_test(test-rm_fault)        [expr [have_board linux] || ![non_executable_supported]]
+set skip_test(test-rm_fault_no_nox) [expr [have_board linux] || ![skip_test test-rm_fault]]
+set skip_test(test-rm_nested)       [expr [have_board linux] || [have_spec pistachio]]
+set skip_test(test-slab)            [expr ![interactive] && [have_include "power_on/qemu"]]
+set skip_test(test-spark_exception) [expr [have_spec arm]]
+set skip_test(test-tcp_bulk_lwip)   [expr ![have_spec x86] && ![have_include "power_on/qemu"]]
+set skip_test(test-tcp_bulk_lxip)   [expr ![have_spec x86] && ![have_include "power_on/qemu"]]
+
+if {[have_spec foc]} {
+	set skip_test(test-entrypoint)    [have_board pbxa9]
+	set skip_test(test-libc)          [have_board pbxa9]
+	set skip_test(test-tcp_bulk_lxip) [have_board pbxa9]
+	# foc on pbxa9 caps RAM at 256 MiB - skip tests with excessive RAM demand
+	skip_test_if [have_board pbxa9] test-file_vault
+	skip_test_if [have_board pbxa9] test-file_vault_no_entropy
+}
+if {[have_spec riscv]} {
+	set skip_test(gcov)                              true
+	set skip_test(test-libc_connect_lxip)            true
+	set skip_test(test-libc_connect_vfs_server_lxip) true
+	set skip_test(test-libc_udp_unreachable_lxip)    true
+	set skip_test(test-rm_fault_no_nox)              true
+	set skip_test(test-spark)                        true
+	set skip_test(test-spark_exception)              true
+	set skip_test(test-spark_secondary_stack)        true
+	set skip_test(test-tcp_bulk_lxip)                true
+	set skip_test(test-trace_logger)                 true
+	set skip_test(test-xml_generator)                true
+	set skip_test(test-file_vault)                   true
+	set skip_test(test-depot_extract)                true
+}
+
+#
+# FIXME
+#
+# When doing the libc_getenv test on autopilot+foc+x86 and one of the
+# subsequent tests crashes the system so it gets rebooted by the run script,
+# the system doesn't come up again. It gets stuck after core initialization.
+#
+set skip_test(test-libc_getenv) [expr ![interactive] && [have_spec foc] && [have_spec x86]]
+
+# remember initial qemu args in case we have to re-boot later
+set initial_qemu_args ""
+if {[info exists qemu_args]} {
+	set initial_qemu_args $qemu_args
+}
+
+# initialize global variables
+init_test_setting
+init_previous_results
+
+# generic preparation for each system boot
+prepare_to_run_genode
+
+while {1} {
+
+	# check whether the system is already running
+	if {$serial_id == -1} {
+
+		# boot the system and wait for the depot autopilot to come up
+		autopilot_run_genode_until {test\] --- .*?\n} $timeout
+		set serial_id [output_spawn_id]
+		set nr_of_tests_this_boot 0
+
+		# if the system didn't even boot, exit (prints previous results)
+		if {$run_genode_failed} {
+			exit -1
+		}
+	} else {
+
+		# wait for the next step of the depot autopilot
+		set init_time_ms [clock clicks -millisec]
+		autopilot_run_genode_until {test\] --- .*?\n} $timeout $serial_id
+		set previous_time_ms [expr $previous_time_ms + [expr ([clock clicks -millisec] - $init_time_ms)] ]
+		set serial_id [output_spawn_id]
+
+		# remove last test from list and check if we have to reboot the system
+		set test_pkgs [lsearch -all -inline -not -exact $test_pkgs $last_test_pkg]
+		if {$run_genode_failed} {
+
+			# shut-down running system
+			kill_spawned $serial_id
+			run_power_off
+
+			# remember result of last test
+			if {$previous_results != ""} {
+				append previous_results \012
+			}
+			append previous_results { } [format {%-31s %-6s  %7s} $last_test_pkg "failed " "$timeout.00"] {  reboot}
+			incr previous_failed
+
+			# prepare system re-boot
+			prepare_to_run_genode
+			continue
+		}
+	}
+	# if the autopilot finished all tests, evaluate its return value
+	if {[regexp {test\] --- Finished} $output]} {
+		set output ""
+		run_genode_until {child "depot_autopilot" exited with exit value.*?\n} 10 $serial_id
+		set previous_results_on_exit 0
+		grep_output {^\[init\] }
+		compare_output_to {[init] child "depot_autopilot" exited with exit value 0}
+		exit 0
+	}
+	# if the autopilot started a new test, set a new timeout
+	if {[regexp {test\] --- Run} $output]} {
+
+		# if we ran and finished another test beforehand, parse its result
+		if {$last_test_pkg != ""} {
+
+			# remember result of last test in case the system must be restartet
+			set status ""
+			set last_test_result ""
+			foreach line [split $output "\n"] {
+
+				# strip trailing escape sequence generated by 'Genode::log'
+				regsub {[\033].*$} $line "" line
+
+				regexp {test\] ( test-[^ ]+ +(ok|failed|skipped).*$)} \
+				       $line ignored last_test_result status
+			}
+
+			if {$status == "failed"} {
+				incr previous_failed
+			} elseif {$status == "skipped"} {
+				incr previous_skipped
+			} elseif {$status == "ok"} {
+				incr previous_succeeded
+			} else {
+				puts "Error: malformed test result"
+				puts $status
+				exit -1
+			}
+			if {$previous_results != ""} {
+				append previous_results \012
+			}
+			append previous_results $last_test_result
+			incr nr_of_tests_this_boot
+		}
+		# if the Autopilot is currently repeating, reset repeat-influenced variables
+		if {[llength $test_pkgs] == 0} {
+			init_test_setting
+			init_previous_results
+		}
+		# determine timeout for the next timeout
+		set min_timeout 30
+		regexp {test\] --- Run "(.*?)" \(max ([0-9]*?) } $output ignore last_test_pkg min_timeout
+		set timeout [expr $min_timeout + 30]
+
+		set output ""
+	}
+}

@@ -1,0 +1,18 @@
+deploy | info: webcam example
+
++ option board   | required: yes
++ option sculpt  | required: yes
++ option managed | required: yes
+
++ child internal | ram: 64M | pkg: usb_webcam
+  + connect | + usb | + child usb
+  + provides
+    + capture
+    + report
+
++ child external | ram: 64M | pkg: usb_webcam
+  + connect | + usb | + child usb
+  + provides
+    + capture
+    + report
+-

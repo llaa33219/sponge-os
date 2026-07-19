@@ -1,0 +1,78 @@
+assert {[have_spec arm_v7] || ![have_spec arm]}
+
+build {
+	core lib/ld init timer lib/vfs lib/libc
+	server/vfs_block
+	server/vfs
+	lib/vfs_rump
+	lib/vfs_import
+	test/libc_vfs
+}
+
+#
+# Check used commands
+#
+set mkfs [installed_command mkfs.vfat]
+set dd   [installed_command dd]
+
+#
+# Build FAT-file-system image
+#
+catch { exec $dd if=/dev/zero of=bin/fs.raw bs=1M count=16 }
+catch { exec $mkfs -F16 bin/fs.raw }
+
+create_boot_directory
+
+install_config {
+config
++ parent-provides
+  + service ROM
+  + service IRQ
+  + service IO_MEM
+  + service IO_PORT
+  + service PD
+  + service RM
+  + service CPU
+  + service LOG
+
++ default-route
+  + any-service
+    + parent
+    + any-child
+
++ default | caps: 100 | ram: 1M
+
++ start timer
+  + provides | + service Timer
+
++ start vfs_block | ram: 30M
+  + provides | + service Block
+  + config
+    + default-policy | root: / | file: fs.raw | block_size: 512 | writeable: yes
+    + vfs
+      + ram
+      + import | + rom fs.raw
+
++ start vfs | caps: 200 | ram: 30M
+  + provides | + service File_system
+  + config
+    + vfs | + rump | fs: msdos | ram: 8M
+    + default-policy | root: / | writeable: yes
+
++ start test-libc_vfs | ram: 4M
+  + config
+    + libc | stdout: /dev/log
+    + vfs
+      + dir dev | + log
+      + fs
+-
+}
+
+build_boot_image [list {*}[build_artifacts] fs.raw]
+
+append qemu_args "  -nographic "
+
+run_genode_until {.*child "test-libc_vfs" exited with exit value 0.*} 60
+
+exec rm -f bin/fs.raw
+puts "\nTest succeeded\n"

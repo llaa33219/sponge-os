@@ -1,0 +1,74 @@
+LICENSE   := MIT
+DOWNLOADS := ffi.archive
+VERSION   := 3.2.1
+
+URL(ffi) := https://github.com/libffi/libffi/archive/v$(VERSION).tar.gz
+SHA(ffi) := 96d08dee6f262beea1a18ac9a3801f64018dc4521895e9198d029d6850febe23
+DIR(ffi) := src/lib/ffi
+
+$(call check_tool,sed)
+
+DIRS := include/ffi/spec/x86_32 include/ffi/spec/x86_64 \
+        include/ffi/spec/arm include/ffi/spec/arm_64
+
+DIR_CONTENT(include/ffi/spec/x86_32) := src/lib/ffi/src/x86/ffitarget.h
+DIR_CONTENT(include/ffi/spec/x86_64) := src/lib/ffi/src/x86/ffitarget.h
+DIR_CONTENT(include/ffi/spec/arm)    := src/lib/ffi/src/arm/ffitarget.h
+DIR_CONTENT(include/ffi/spec/arm_64) := src/lib/ffi/src/aarch64/ffitarget.h
+
+gen_inc   := ffi.h
+
+gen_files := $(addprefix include/ffi/spec/x86_32/,$(gen_inc)) \
+             $(addprefix include/ffi/spec/x86_64/,$(gen_inc)) \
+             $(addprefix include/ffi/spec/arm/,$(gen_inc)) \
+             $(addprefix include/ffi/spec/arm_64/,$(gen_inc))
+
+default: $(gen_files)
+
+$(gen_files): _dirs
+
+subst_x86_32 := \
+	"@TARGET@/X86" \
+	"@HAVE_LONG_DOUBLE@/0" \
+	"@HAVE_LONG_DOUBLE_VARIANT@/0" \
+	"@FFI_EXEC_TRAMPOLINE_TABLE@/0"
+
+subst_x86_64 := \
+	"@TARGET@/X86_64" \
+	"@HAVE_LONG_DOUBLE@/1" \
+	"@HAVE_LONG_DOUBLE_VARIANT@/0" \
+	"@FFI_EXEC_TRAMPOLINE_TABLE@/0"
+
+subst_ARM := \
+	"@TARGET@/ARM" \
+	"@HAVE_LONG_DOUBLE@/0" \
+	"@HAVE_LONG_DOUBLE_VARIANT@/0" \
+	"@FFI_EXEC_TRAMPOLINE_TABLE@/0"
+
+subst_ARM_64 := \
+	"@TARGET@/AARCH64" \
+	"@HAVE_LONG_DOUBLE@/0" \
+	"@HAVE_LONG_DOUBLE_VARIANT@/0" \
+	"@FFI_EXEC_TRAMPOLINE_TABLE@/0"
+
+apply_substitutions = $(VERBOSE)for i in $(2); do sed -i "s/$$i/g" $(1); done
+
+include/ffi/spec/x86_32/ffi.h:
+	@$(MSG_GENERATE)$@
+	$(VERBOSE)cp src/lib/ffi/include/ffi.h.in $@
+	$(call apply_substitutions,$@,$(subst_x86_32))
+
+include/ffi/spec/x86_64/ffi.h:
+	@$(MSG_GENERATE)$@
+	$(VERBOSE)cp src/lib/ffi/include/ffi.h.in $@
+	$(call apply_substitutions,$@,$(subst_x86_64))
+
+include/ffi/spec/arm/ffi.h:
+	@$(MSG_GENERATE)$@
+	$(VERBOSE)cp src/lib/ffi/include/ffi.h.in $@
+	$(call apply_substitutions,$@,$(subst_ARM))
+
+include/ffi/spec/arm_64/ffi.h:
+	@$(MSG_GENERATE)$@
+	$(VERBOSE)cp src/lib/ffi/include/ffi.h.in $@
+	$(call apply_substitutions,$@,$(subst_ARM_64))

@@ -1,0 +1,13 @@
+runtime | ram: 64M | caps: 800 | binary: test-slab
+
++ requires | + timer
+
++ fail    | after_seconds: 50
++ succeed | : Test done
+
++ content
+  + rom | label: ld.lib.so
+  + rom | label: test-slab
+
++ config
+-

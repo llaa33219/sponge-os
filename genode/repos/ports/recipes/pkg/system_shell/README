@@ -1,0 +1,3 @@
+Unix runtime that allows the user to inspect reports (mounted at /report),
+manipulate the system state (mounted at /model), and access a 'target' file
+system (mounted at /rw).

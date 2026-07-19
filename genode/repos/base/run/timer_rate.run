@@ -1,0 +1,45 @@
+build { core init timer lib/ld test/timer_rate }
+
+create_boot_directory
+
+install_config {
+config | prio_levels: 2
++ parent-provides
+  + service ROM
+  + service IRQ
+  + service IO_MEM
+  + service IO_PORT
+  + service PD
+  + service RM
+  + service CPU
+  + service LOG
+
++ default-route
+  + any-service
+    + parent
+    + any-child
+
++ default | caps: 100
+
++ start timer | priority: 0 | ram: 1M
+  + provides | + service Timer
+
++ start test | priority: -1 | ram: 10M
+  + binary test-timer_rate
+  + config
+           max_abs_error_pc:     5
+           measure_duration_us:  3000000
+           min_good_bad_diff_us: 10
+-
+}
+
+build_boot_image [build_artifacts]
+
+append qemu_args "  -nographic"
+
+run_genode_until "child \"test\" exited with exit value.*\n" 120
+
+grep_output {\[init\] child "test" exited with exit value}
+
+compare_output_to {[init] child "test" exited with exit value 0}
+

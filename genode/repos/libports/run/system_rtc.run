@@ -1,0 +1,73 @@
+assert {[have_spec x86]}
+assert {[have_include power_on/qemu] || [have_spec linux]}
+
+create_boot_directory
+
+import_from_depot [depot_user]/src/[base_src] \
+                  [depot_user]/src/init \
+                  [depot_user]/src/vfs \
+                  [depot_user]/src/libc \
+                  [depot_user]/src/posix \
+                  [depot_user]/pkg/system_rtc-[board]
+
+install_config {
+config | prio_levels: 2 | verbose: yes
++ parent-provides
+  + service ROM
+  + service IRQ
+  + service IO_MEM
+  + service IO_PORT
+  + service PD
+  + service RM
+  + service CPU
+  + service LOG
+
++ default-route
+  + any-service
+    + parent
+    + any-child
+
++ default | caps: 100 | ram: 1M
+
++ start timer
+  + provides | + service Timer
+
++ start system_rtc | caps: 400 | ram: 6M | priority: -1
+  + binary init
+  + provides
+    + service Rtc
+    + service Report
+  + route
+    + service ROM | label: config | + parent | label: system_rtc.config
+    + service Timer               | + child timer
+    + any-service                 | + parent
+
++ start test-system_rtc | priority: -1
+  + config
+  + route
+    + service Report | + child system_rtc
+    + service Rtc    | + child system_rtc
+    + service Timer  | + child timer
+    + any-service    | + parent
+
++ start test-libc_rtc | caps: 150 | ram: 4M
+  + config
+  | + libc | stdout: /dev/log | stderr: /dev/log | rtc: /dev/rtc
+  | + vfs
+  |   + dir dev
+  |     + log
+  |     + rtc
+  + route
+    + service Rtc   | + child system_rtc
+    + service Timer | + child timer
+    + any-service   | + parent
+-
+}
+
+build { test/system_rtc test/libc_rtc }
+
+build_boot_image [build_artifacts]
+
+append qemu_args " -nographic  "
+
+run_genode_until ".*--- system RTC test finished ---.*\n" 60

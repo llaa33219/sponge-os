@@ -1,0 +1,101 @@
+#
+# \brief  Test for the TCP terminal
+# \author Norman Feske
+# \date   2011-09-08
+#
+
+assert {![have_spec linux]}
+
+create_boot_directory
+
+import_from_depot [depot_user]/src/[base_src] \
+                  [depot_user]/pkg/[drivers_nic_pkg] \
+                  [depot_user]/src/init \
+                  [depot_user]/src/libc \
+                  [depot_user]/src/nic_router \
+                  [depot_user]/src/vfs \
+                  [depot_user]/src/vfs_lwip \
+                  [depot_user]/src/vfs_pipe \
+                  [depot_user]/src/test-terminal_echo
+
+build { server/tcp_terminal }
+
+install_config {
+config | verbose: yes
++ parent-provides
+  + service ROM
+  + service IRQ
+  + service IO_MEM
+  + service IO_PORT
+  + service PD
+  + service RM
+  + service CPU
+  + service LOG
+
++ default-route
+  + any-service
+    + parent
+    + any-child
+
++ default | caps: 100 | ram: 1M
+
++ start timer
+  + provides | + service Timer
+
++ start drivers | caps: 1000 | ram: 32M | managing_system: yes
+  + binary init
+  + route
+    + service ROM | label: config | + parent | label: drivers.config
+    + service Timer               | + child timer
+    + service Uplink              | + child nic_router
+    + any-service                 | + parent
+
++ start nic_router | caps: 200 | ram: 10M
+  + provides
+    + service Nic
+    + service Uplink
+  + config | verbose_domain_state: yes
+    + policy | label_prefix: tcp_terminal | domain: downlink
+    + policy | label_prefix: drivers      | domain: uplink
+    + domain uplink
+      + nat | domain: downlink | tcp-ports: 16384 | udp-ports: 16384 | icmp-ids: 16384
+:     + tcp-forward | port: 8888 | domain: downlink | to: 10.0.3.2
+    + domain downlink | interface: 10.0.3.1/24
+      + dhcp-server | ip_first: 10.0.3.2 | ip_last: 10.0.3.2
+        + dns-server | ip: 8.8.8.8
+        + dns-server | ip: 1.1.1.1
+      + tcp  | dst: 0.0.0.0/0 | + permit-any | domain: uplink
+      + udp  | dst: 0.0.0.0/0 | + permit-any | domain: uplink
+      + icmp | dst: 0.0.0.0/0 | domain: uplink
+
++ start tcp_terminal | caps: 200 | ram: 8M
+  + provides | + service Terminal
+  + config
+  | + policy | label_prefix: test-terminal_echo | port: 8888
+  | + vfs
+  |   + dir dev    | + log
+  |   + dir socket | + lwip | dhcp: yes
+  |   + dir pipe   | + pipe
+  | + libc | stdout: /dev/log | socket: /socket | pipe: /pipe
+  + route
+    + service Nic | + child nic_router
+    + any-service
+      + parent
+      + any-child
+
++ start test-terminal_echo
+-
+}
+
+build_boot_image [build_artifacts]
+
+append qemu_args " -nographic "
+append_qemu_nic_args "hostfwd=tcp::5555-:8888"
+
+run_genode_until forever
+
+#
+# Now, connect via 'telnet localhost 5555'
+#
+
+# vi: set ft=tcl :

@@ -1,0 +1,82 @@
+/*
+ * \brief   Kernel backend for threads - cache maintainance
+ * \author  Stefan Kalkowski
+ * \date    2021-06-24
+ */
+
+/*
+ * Copyright (C) 2021 Genode Labs GmbH
+ *
+ * This file is part of the Genode OS framework, which is distributed
+ * under the terms of the GNU Affero General Public License version 3.
+ */
+
+/* base-hw core includes */
+#include <platform_pd.h>
+#include <kernel/pd.h>
+#include <kernel/thread.h>
+
+using namespace Kernel;
+
+
+static void for_cachelines(addr_t                     base,
+                           size_t const               size,
+                           Kernel::Thread            &thread,
+                           Kernel::Pd                &pd,
+                           auto const                &fn)
+{
+	/**
+	 * sanity check that only one small page is affected,
+	 * because we only want to lookup one page in the page tables
+	 * to limit execution time within the kernel
+	 */
+	if (Hw::trunc_page(base) != Hw::trunc_page(base+size-1)) {
+		Genode::raw(thread, " tried to make cross-page region cache coherent ",
+		            (void*)base, " ", size);
+		return;
+	}
+
+	/**
+	 * Lookup whether the page is backed and writeable,
+	 * and if so make the memory coherent in between I-, and D-cache
+	 */
+	pd.with_table([&] (Hw::Page_table &tab, Hw::Page_table_translator &ptt) {
+		addr_t phys = 0;
+		tab.lookup(base, phys, ptt).with_result(
+			[&] (Genode::Ok) { fn(base, size); },
+			[&] (Hw::Page_table_error) {
+			Genode::warning(thread, " tried to do cache maintainance at ",
+			                "unallowed address ", (void*)base);
+		});
+	});
+}
+
+
+void Kernel::Thread::_call_cache_coherent(addr_t const addr,
+                                          size_t const size)
+{
+	for_cachelines(addr, size, *this, _pd, [] (addr_t addr, size_t size) {
+		Board::Cpu::cache_coherent_region(addr, size); });
+}
+
+
+void Kernel::Thread::_call_cache_clean_invalidate(addr_t const addr,
+                                                  size_t const size)
+{
+	for_cachelines(addr, size, *this, _pd, [] (addr_t addr, size_t size) {
+		Board::Cpu::cache_clean_invalidate_data_region(addr, size); });
+}
+
+
+void Kernel::Thread::_call_cache_invalidate(addr_t const addr,
+                                            size_t const size)
+{
+	for_cachelines(addr, size, *this, _pd, [] (addr_t addr, size_t size) {
+		Board::Cpu::cache_invalidate_data_region(addr, size); });
+}
+
+
+size_t Kernel::Thread::_call_cache_line_size()
+{
+	return Board::Cpu::cache_line_size();
+}

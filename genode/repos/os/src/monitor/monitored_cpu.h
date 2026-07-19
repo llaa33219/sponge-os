@@ -1,0 +1,43 @@
+/*
+ * \brief  Monitored CPU session
+ * \author Norman Feske
+ * \date   2023-05-09
+ */
+
+/*
+ * Copyright (C) 2023 Genode Labs GmbH
+ *
+ * This file is part of the Genode OS framework, which is distributed
+ * under the terms of the GNU Affero General Public License version 3.
+ */
+
+#ifndef _MONITORED_CPU_H_
+#define _MONITORED_CPU_H_
+
+/* Genode includes */
+#include <base/rpc_client.h>
+#include <cpu_session/connection.h>
+
+/* local includes */
+#include <inferior_pd.h>
+#include <monitored_native_cpu.h>
+
+namespace Monitor { struct Monitored_cpu_session; }
+
+
+struct Monitor::Monitored_cpu_session : Monitored_rpc_object<Cpu_session>
+{
+	using Monitored_rpc_object::Monitored_rpc_object;
+
+	void _with_cpu_arg(Capability<Cpu_session> cpu_cap,
+	                   auto const &monitored_fn, auto const &direct_fn)
+	{
+		if (cpu_cap == cap()) {
+			error("attempt to pass invoked capability as RPC argument");
+			return;
+		}
+		with_monitored<Monitored_cpu_session>(_ep, cpu_cap, monitored_fn, direct_fn);
+	}
+};
+
+#endif /* _MONITORED_CPU_H_ */

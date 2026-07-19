@@ -1,0 +1,286 @@
+/*
+ * \brief  Utilities for generating structured data
+ * \author Norman Feske
+ * \date   2018-01-11
+ */
+
+/*
+ * Copyright (C) 2017 Genode Labs GmbH
+ *
+ * This file is part of the Genode OS framework, which is distributed
+ * under the terms of the GNU Affero General Public License version 3.
+ */
+
+#ifndef _XML_H_
+#define _XML_H_
+
+/* Genode includes */
+#include <util/callable.h>
+#include <base/attached_rom_dataspace.h>
+#include <base/log.h>
+
+/* local includes */
+#include "types.h"
+
+namespace Sculpt {
+
+	template <typename T>
+	static T _attribute_value(Node const &node, char const *attr_name)
+	{
+		return node.attribute_value(attr_name, T{});
+	}
+
+	template <typename T>
+	static T _attribute_value(Node const &node, char const *sub_node_type, auto &&... args)
+	{
+		return node.with_sub_node(sub_node_type,
+			[&] (Node const &n) { return _attribute_value<T>(n, args...); },
+			[&]                 { return T{}; });
+	}
+
+	/**
+	 * Query attribute value from XML sub node
+	 *
+	 * The list of arguments except for the last one refer to XML path into the
+	 * XML structure. The last argument denotes the queried attribute name.
+	 */
+	template <typename T>
+	static T query_attribute(Node const &node, auto &&... args)
+	{
+		return _attribute_value<T>(node, args...);
+	}
+
+	struct Rom_data : Noncopyable, Interface
+	{
+		protected:
+
+			using With_node = Callable<void, Node const &>;
+
+			virtual void _with_node(With_node::Ft const &) const = 0;
+
+		public:
+
+			virtual bool valid() const = 0;
+
+			void with_node(auto const &fn) const { _with_node( With_node::Fn { fn } ); }
+	};
+
+	template <typename T>
+	class Rom_handler : public Rom_data
+	{
+		private:
+
+			Attached_rom_dataspace _rom;
+
+			T &_obj;
+
+			void (T::*_member) (Node const &);
+
+			Signal_handler<Rom_handler> _handler;
+
+			void _handle()
+			{
+				_rom.update();
+				(_obj.*_member)(_rom.node());
+			}
+
+			void _with_node(With_node::Ft const &fn) const override { fn(_rom.node()); }
+
+		public:
+
+			Rom_handler(Env &env, Session_label const &label,
+			            T &obj, void (T::*member)(Node const &))
+			:
+				_rom(env, label.string()), _obj(obj), _member(member),
+				_handler(env.ep(), *this, &Rom_handler::_handle)
+			{
+				_rom.sigh(_handler);
+				_handler.local_submit();
+			}
+
+			bool valid() const override { return !_rom.node().has_type("empty"); }
+	};
+
+
+	/*
+	 * Helpers for generating names nodes
+	 */
+
+	static inline void gen_named_node(Generator &g,
+	                                  char const *type, char const *name, auto const &fn)
+	{
+		g.node(type, [&] {
+			g.attribute("name", name);
+			fn();
+		});
+	}
+
+	static inline void gen_named_node(Generator &g, char const *type, char const *name)
+	{
+		g.node(type, [&] { g.attribute("name", name); });
+	}
+
+	static inline void gen_named_node(Generator &g,
+	                                  char const *type, auto const &name, auto const &fn)
+	{
+		gen_named_node(g, type, name.string(), fn);
+	}
+
+	static inline void gen_named_node(Generator &g, char const *type, auto const &name)
+	{
+		gen_named_node(g, type, name.string());
+	}
+
+
+	/*
+	 * Helpers for generating init configurations
+	 */
+
+	template <typename SESSION>
+	static inline void gen_service_node(Generator &g, auto const &fn)
+	{
+		gen_named_node(g, "service", SESSION::service_name(), fn);
+	}
+
+	template <typename SESSION>
+	static inline void gen_parent_service(Generator &g)
+	{
+		gen_named_node(g, "service", SESSION::service_name());
+	};
+
+	template <typename SESSION>
+	static inline void gen_parent_route(Generator &g)
+	{
+		gen_named_node(g, "service", SESSION::service_name(), [&] {
+			g.node("parent", [&] { }); });
+	}
+
+	static inline void gen_parent_rom_route(Generator      &g,
+	                                        Rom_name const &name,
+	                                        auto     const &label)
+	{
+		gen_service_node<Rom_session>(g, [&] {
+			g.attribute("label_last", name);
+			g.node("parent", [&] {
+				g.attribute("label", label); });
+		});
+	}
+
+	static inline void gen_parent_rom_route(Generator &g, Rom_name const &name)
+	{
+		gen_parent_rom_route(g, name, name);
+	}
+
+	template <typename SESSION>
+	static inline void gen_provides(Generator &g)
+	{
+		g.node("provides", [&] {
+			gen_named_node(g, "service", SESSION::service_name()); });
+	}
+
+	static inline void gen_common_start_content(Generator       &g,
+	                                            Rom_name  const &name,
+	                                            Cap_quota const  caps,
+	                                            Ram_quota const  ram,
+	                                            Priority  const  priority)
+	{
+		g.attribute("name", name);
+		g.attribute("caps", caps.value);
+		g.attribute("priority", (int)priority);
+		gen_named_node(g, "resource", "RAM", [&] {
+			g.attribute("quantum", String<64>(Number_of_bytes(ram.value))); });
+	}
+
+
+	/*
+	 * Helpers for generating deploy configurations
+	 */
+
+	static inline void connect_parent_rom(Generator &g,
+	                                      Rom_name const &name,
+	                                      auto     const &label)
+	{
+		gen_named_node(g, "rom", name, [&] {
+			g.node("parent", [&] { g.attribute("label", label); }); });
+	}
+
+	static inline void connect_parent_rom(Generator &g, Rom_name const &name)
+	{
+		gen_named_node(g, "rom", name, [&] {
+			g.node("parent", [&] { g.attribute("label", name); }); });
+	}
+
+	static inline void connect_report(Generator &g)
+	{
+		g.node("report", [&] { gen_named_node(g, "child", "report"); });
+	}
+
+	static inline void connect_platform(Generator &g, auto const &label)
+	{
+		g.node("dma", [&] {
+			gen_named_node(g, "child", "platform", [&] {
+				g.attribute("label", label); }); });
+		g.node("platform", [&] {
+			gen_named_node(g, "child", "platform", [&] {
+				g.attribute("label", label); }); });
+	}
+
+	static inline void connect_event(Generator &g, auto const &label)
+	{
+		g.node("event", [&] {
+			gen_named_node(g, "child", "event_filter",
+				[&] { g.attribute("label", label); }); });
+	}
+
+	static inline void connect_capture(Generator &g)
+	{
+		g.node("capture", [&] { gen_named_node(g, "child", "gui"); });
+	}
+
+	static inline void connect_pin_control(Generator &g, auto const &name, auto const &label)
+	{
+		gen_named_node(g, "pin_control", name, [&] {
+			gen_named_node(g, "child", "platform", [&] {
+				g.attribute("label", label); }); });
+	}
+
+	static inline void connect_i2c(Generator &g)
+	{
+		g.node("i2c", [&] { gen_named_node(g, "child", "platform"); });
+	}
+
+	static inline void connect_config_rom(Generator &g, Rom_name const &name, Rom_name const &label)
+	{
+		gen_named_node(g, "rom", name, [&] {
+			gen_named_node(g, "child", "model", [&] {
+				g.attribute("label", label); }); });
+	}
+
+	static inline void connect_report_rom(Generator &g, Rom_name const &name, Rom_name const &report_rom)
+	{
+		gen_named_node(g, "rom", name, [&] {
+			gen_named_node(g, "child", "report", [&] {
+				g.attribute("label", report_rom); }); });
+	}
+
+	static inline void connect_fs(Generator &g, Server_name const &server)
+	{
+		g.node("fs", [&] { gen_named_node(g, "child", server); });
+	}
+
+	static inline void gen_child_attr(Generator         &g,
+	                                  Child_name  const &name,
+	                                  Binary_name const &binary,
+	                                  Cap_quota   const  caps,
+	                                  Ram_quota   const  ram,
+	                                  Priority    const  priority)
+	{
+		g.attribute("name",   name);
+		g.attribute("binary", binary);
+		g.attribute("ram",    String<64>(Num_bytes { ram.value }));
+		g.attribute("caps",   caps.value);
+		g.attribute("priority", (int)priority);
+	}
+}
+
+#endif /* _XML_H_ */

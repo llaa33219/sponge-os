@@ -1,0 +1,12 @@
+This directory contains library-description files.  Each _<libname>.mk_ file
+contains the instructions for building the library _<libname>_. The .mk files
+are never used directly but they are implicitely processed by the build
+system.
+
+Libraries implementing one interface may have specialized implementations for
+different CPU architectures. Such architecture-specific _<libname>.mk_ files
+are located in corresponding _spec/_ subdirectories. For example, the .mk
+files of ARM-specific library variants reside in the _spec/arm/_ subdirectory.
+The build system automatically finds the appropriate _<libname>.mk_ file by
+evaluating the 'SPECS' build-configuration variable. Whenever the 'SPECS'
+variable contains 'arm', the build system considers the _spec/arm/_ directory.

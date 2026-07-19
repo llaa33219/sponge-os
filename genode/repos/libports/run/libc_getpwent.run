@@ -1,0 +1,119 @@
+build {
+	core init lib/ld lib/libc lib/vfs lib/posix lib/libm
+	app/sequence server/vfs test/libc_getpwent
+}
+
+create_boot_directory
+
+install_config {
+config
++ parent-provides
+  + service CPU
+  + service LOG
+  + service PD
+  + service RM
+  + service ROM
+
++ default-route
+  + any-service
+    + parent
+    + any-child
+
++ default | caps: 128
+
++ start fs | ram: 4M
+  + binary vfs
+  + provides | + service File_system
+  + config
+    + vfs | + log | label: log
+    + default-policy | root: / | writeable: yes
+
++ start test | caps: 1000 | ram: 4M
+  + binary sequence
+  + config
+    + start root
+    | + binary test-libc_getpwent
+    | + config
+    |   + vfs | + fs
+    |   + libc | stdout: /log | stderr: /log
+    |   + arg test-libc_getpwent
+    |   + env HOME | : /home-from-getenv
+    + start alice
+    | + binary test-libc_getpwent
+    | + config
+    |   + vfs | + fs
+    |   + libc | stdout: /log | stderr: /log
+    |     + passwd alice | uid: 1 | home: /home/alice
+    + start bob
+      + binary test-libc_getpwent
+      + config
+        + vfs | + fs
+        + libc | stdout: /log | stderr: /log
+          + passwd bob | uid: 2 | home: /root
+-
+}
+
+build_boot_image [build_artifacts]
+
+append qemu_args " -nographic "
+
+run_genode_until "child .* exited with exit value 0.*\n" 20
+
+grep_output {\[init -\> fs -\> log\] }
+
+compare_output_to {
+[init -> fs -> log] [getpwent] user:root uid:0 home:/
+[init -> fs -> log] [getpwent] NULL
+[init -> fs -> log] [getpwent] NULL
+[init -> fs -> log] [getpwent_r] user:root uid:0 home:/
+[init -> fs -> log] [getpwent_r] NULL
+[init -> fs -> log] [getpwent_r] NULL
+[init -> fs -> log] [getpwnam root] user:root uid:0 home:/
+[init -> fs -> log] [getpwnam alice] NULL
+[init -> fs -> log] [getpwnam bob] NULL
+[init -> fs -> log] [getpwnam_r root] user:root uid:0 home:/
+[init -> fs -> log] [getpwnam_r alice] NULL
+[init -> fs -> log] [getpwnam_r bob] NULL
+[init -> fs -> log] [getpwuid 0] user:root uid:0 home:/
+[init -> fs -> log] [getpwuid 1] NULL
+[init -> fs -> log] [getpwuid 2] NULL
+[init -> fs -> log] [getpwuid_r 0] user:root uid:0 home:/
+[init -> fs -> log] [getpwuid_r 1] NULL
+[init -> fs -> log] [getpwuid_r 2] NULL
+[init -> fs -> log] [getpwent] user:alice uid:1 home:/home/alice
+[init -> fs -> log] [getpwent] NULL
+[init -> fs -> log] [getpwent] NULL
+[init -> fs -> log] [getpwent_r] user:alice uid:1 home:/home/alice
+[init -> fs -> log] [getpwent_r] NULL
+[init -> fs -> log] [getpwent_r] NULL
+[init -> fs -> log] [getpwnam root] NULL
+[init -> fs -> log] [getpwnam alice] user:alice uid:1 home:/home/alice
+[init -> fs -> log] [getpwnam bob] NULL
+[init -> fs -> log] [getpwnam_r root] NULL
+[init -> fs -> log] [getpwnam_r alice] user:alice uid:1 home:/home/alice
+[init -> fs -> log] [getpwnam_r bob] NULL
+[init -> fs -> log] [getpwuid 0] NULL
+[init -> fs -> log] [getpwuid 1] user:alice uid:1 home:/home/alice
+[init -> fs -> log] [getpwuid 2] NULL
+[init -> fs -> log] [getpwuid_r 0] NULL
+[init -> fs -> log] [getpwuid_r 1] user:alice uid:1 home:/home/alice
+[init -> fs -> log] [getpwuid_r 2] NULL
+[init -> fs -> log] [getpwent] user:bob uid:2 home:/root
+[init -> fs -> log] [getpwent] NULL
+[init -> fs -> log] [getpwent] NULL
+[init -> fs -> log] [getpwent_r] user:bob uid:2 home:/root
+[init -> fs -> log] [getpwent_r] NULL
+[init -> fs -> log] [getpwent_r] NULL
+[init -> fs -> log] [getpwnam root] NULL
+[init -> fs -> log] [getpwnam alice] NULL
+[init -> fs -> log] [getpwnam bob] user:bob uid:2 home:/root
+[init -> fs -> log] [getpwnam_r root] NULL
+[init -> fs -> log] [getpwnam_r alice] NULL
+[init -> fs -> log] [getpwnam_r bob] user:bob uid:2 home:/root
+[init -> fs -> log] [getpwuid 0] NULL
+[init -> fs -> log] [getpwuid 1] NULL
+[init -> fs -> log] [getpwuid 2] user:bob uid:2 home:/root
+[init -> fs -> log] [getpwuid_r 0] NULL
+[init -> fs -> log] [getpwuid_r 1] NULL
+[init -> fs -> log] [getpwuid_r 2] user:bob uid:2 home:/root
+}

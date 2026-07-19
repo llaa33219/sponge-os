@@ -1,0 +1,28 @@
+build { core init lib/ld test/cpu_scheduler }
+
+create_boot_directory
+
+install_config {
+config
++ parent-provides
+  + service LOG
+  + service RM
+  + service PD
+  + service CPU
+  + service ROM
+
++ default-route | + any-service | + parent
+
++ start test-cpu_scheduler | caps: 100 | ram: 10M
+-
+}
+
+build_boot_image [build_artifacts]
+
+append qemu_args " -nographic"
+
+run_genode_until "child .test-cpu_scheduler. exited with exit value .*\n" 10
+
+grep_output {child .test-cpu_scheduler. exited with exit value}
+
+compare_output_to { [init] child "test-cpu_scheduler" exited with exit value 0 }

@@ -1,0 +1,2588 @@
+/*
+ * \brief  Sculpt system manager for a phone
+ * \author Norman Feske
+ * \date   2022-05-20
+ *
+ * Based on repos/gems/src/app/sculpt_manager/main.cc
+ */
+
+/*
+ * Copyright (C) 2022 Genode Labs GmbH
+ *
+ * This file is part of the Genode OS framework, which is distributed
+ * under the terms of the GNU Affero General Public License version 3.
+ */
+
+/* Genode includes */
+#include <base/component.h>
+#include <base/heap.h>
+#include <base/attached_rom_dataspace.h>
+#include <os/reporter.h>
+#include <gui_session/connection.h>
+#include <vm_session/vm_session.h>
+#include <timer_session/connection.h>
+#include <io_port_session/io_port_session.h>
+#include <event_session/event_session.h>
+#include <capture_session/capture_session.h>
+#include <gpu_session/gpu_session.h>
+#include <pin_state_session/pin_state_session.h>
+#include <pin_control_session/pin_control_session.h>
+
+/* local includes */
+#include <model/runtime_state.h>
+#include <model/child_exit_state.h>
+#include <model/sculpt_version.h>
+#include <model/file_operation_queue.h>
+#include <model/index_update_queue.h>
+#include <model/presets.h>
+#include <model/screensaver.h>
+#include <managed_config.h>
+#include <drivers.h>
+#include <gui.h>
+#include <storage.h>
+#include <network.h>
+#include <deploy.h>
+#include <graph.h>
+#include <vfs.h>
+#include <view/selectable_title_bar.h>
+#include <view/device_controls_widget.h>
+#include <view/device_power_widget.h>
+#include <view/modem_power_widget.h>
+#include <view/pin_widget.h>
+#include <view/dialpad_widget.h>
+#include <view/current_call_widget.h>
+#include <view/outbound_widget.h>
+#include <view/software_tabs_widget.h>
+#include <view/software_presets_widget.h>
+#include <view/software_options_widget.h>
+#include <view/software_add_widget.h>
+#include <view/software_update_widget.h>
+#include <view/software_version_widget.h>
+#include <view/download_status_widget.h>
+#include <view/conditional_float_widget.h>
+#include <view/runtime_diag.h>
+#include <runtime/touch_keyboard.h>
+#include <dialog/distant_runtime.h>
+
+namespace Sculpt { struct Main; }
+
+
+struct Sculpt::Main : Input_event_handler,
+                      Runtime_config_generator,
+                      Storage_device::Action,
+                      Ap_selector_widget::Action,
+                      Network::Action,
+                      Network::Info,
+                      Graph::Action,
+                      Dir_query::Action,
+                      Component::Construction_info,
+                      Device_controls_widget::Action,
+                      Device_power_widget::Action,
+                      Modem_power_widget::Action,
+                      Pin_widget::Action,
+                      Dialpad_widget::Action,
+                      Current_call_widget::Action,
+                      Network_widget::Action,
+                      Ram_fs_widget::Action,
+                      Software_presets_widget::Action,
+                      Software_options_widget::Action,
+                      Software_update_widget::Action,
+                      Software_add_widget::Action,
+                      Screensaver::Action,
+                      Drivers::Action,
+                      Enabled_options::Action
+{
+	Env &_env;
+
+	Heap _heap { _env.ram(), _env.rm() };
+
+	Sculpt_version const _sculpt_version { _env };
+
+	Vfs _vfs { _env, _heap };
+
+	Build_info const _build_info =
+		Build_info::from_node(Attached_rom_dataspace(_env, "build_info").node());
+
+	bool const _phone_hardware = (_build_info.board == "pinephone");
+
+	Registry<Child_state> _child_states { };
+
+	void _with_child(auto const &name, auto const &fn)
+	{
+		_child_states.for_each([&] (Child_state &child) {
+			if (child.attr.name == name)
+				fn(child); });
+
+		_child_states.for_each([&] (Child_state &) { }); /* restore orig. order */
+	}
+
+	Input::Seq_number_generator _seq_number_generator { };
+
+	Gui::Connection _gui { _env, "input" };
+
+	bool _gui_mode_ready = false;  /* becomes true once the graphics driver is up */
+
+	Gui::Root _gui_root { _env, _heap, *this, _seq_number_generator };
+
+	Signal_handler<Main> _input_handler {
+		_env.ep(), *this, &Main::_handle_input };
+
+	void _handle_input()
+	{
+		_gui.input.for_each_event([&] (Input::Event const &ev) {
+			handle_input_event(ev); });
+	}
+
+
+	/***********************
+	 ** Device management **
+	 ***********************/
+
+	Managed_config<Main> _system_config {
+		_env, _heap, "system", "system", *this, &Main::_handle_system_config };
+
+	struct System
+	{
+		bool storage_stage;
+
+		using State = String<32>;
+
+		State state;
+
+		using Power_profile = String<32>;
+
+		Power_profile power_profile;
+
+		unsigned brightness;
+
+		static System from_node(Node const &node)
+		{
+			return System {
+				.storage_stage = node.attribute_value("storage", false),
+				.state         = node.attribute_value("state",   State()),
+				.power_profile = node.attribute_value("power_profile", Power_profile()),
+				.brightness    = node.attribute_value("brightness", 0u),
+			};
+		}
+
+		void generate(Generator &g, Screensaver const &screensaver) const
+		{
+			if (state.length() > 1)
+				g.attribute("state", state);
+
+			if (power_profile.length() > 1) {
+				if (power_profile == "performance" && !screensaver.display_enabled())
+					g.attribute("power_profile", "economic");
+				else
+					g.attribute("power_profile", power_profile);
+			}
+
+			g.attribute("brightness", brightness);
+		}
+
+		bool operator != (System const &other) const
+		{
+			return (other.storage_stage != storage_stage)
+			    || (other.state         != state)
+			    || (other.power_profile != power_profile)
+			    || (other.brightness    != brightness);
+		}
+
+	} _system { };
+
+	void _update_managed_system_config()
+	{
+		_system_config.generate([&] (Generator &g) {
+			_system.generate(g, _screensaver); }); }
+
+	void _handle_system_config(Node const &node)
+	{
+		_system = System::from_node(node);
+		_update_managed_system_config();
+	}
+
+
+	/**********************
+	 ** Device discovery **
+	 **********************/
+
+	Board_info::Soc _soc {
+		.fb    = _phone_hardware,  /* immediately activated */
+		.touch = _phone_hardware,
+		.wifi  = false, /* activated at second driver stage */
+		.usb   = false,
+		.mmc   = false,
+		.modem = false, /* depends on presence of battery */
+		.nic   = false,
+
+		.fb_on_dedicated_cpu = false
+	};
+
+	Drivers _drivers { _env, _heap, *this };
+
+	Board_info::Options _driver_options { };
+
+	/**
+	 * Drivers::Action
+	 */
+	void handle_device_plug_unplug() override
+	{
+		_handle_storage_devices();
+		network_config_changed();
+		generate_runtime_config();
+	}
+
+	void _enter_second_driver_stage()
+	{
+		/*
+		 * At the first stage, we start only the drivers needed for the
+		 * bare-bones GUI functionality needed to pick up a call. Once the GUI
+		 * is up, we can kick off the start of the remaining drivers.
+		 */
+
+		if (_system.storage_stage)
+			return;
+
+		_system.storage_stage = true;
+
+		if (_phone_hardware) {
+			_soc.mmc = true;
+			_drivers.update_soc(_soc);
+			_update_soc_feature_selection();
+		}
+	}
+
+	Signal_handler<Main> _gui_mode_handler {
+		_env.ep(), *this, &Main::_handle_gui_mode };
+
+	void _handle_gui_mode();
+
+	bool _verbose_modem = false;
+
+	Rom_handler<Main> _config { _env, "config", *this, &Main::_handle_config };
+
+	void _handle_config(Node const &config)
+	{
+		_handle_storage_devices();
+
+		_verbose_modem = config.attribute_value("verbose_modem", false);
+	}
+
+	Screensaver _screensaver { _env, *this };
+
+	/**
+	 * Screensaver::Action interface
+	 */
+	void screensaver_changed() override
+	{
+		bool const orig_display_enabled = _driver_options.display;
+		_driver_options.display = _screensaver.display_enabled();
+		_drivers.update_options(_driver_options);
+
+		using Value  = String<8>;
+
+		auto for_each_conditional_driver = [&] (auto const &fn)
+		{
+			_deploy._dict.for_each([&] (auto const &child) {
+				if (child.attr.disable == "while_blanked")
+					fn(child.name); });
+		};
+
+		if (orig_display_enabled && !_driver_options.display)
+			_vfs.edit("/model/option/board", [&] (Hid_edit &edit) {
+				for_each_conditional_driver([&] (Start_name const &name) {
+					edit.adjust({ "option | + child ", name, " | : enabled" }, Value(),
+						[&] (Value const &) { return "no"; }); }); });
+
+		if (!orig_display_enabled && _driver_options.display)
+			_vfs.edit("/model/option/board", [&] (Hid_edit &edit) {
+				for_each_conditional_driver([&] (Start_name const &name) {
+					edit.adjust({ "option | + child ", name, " | : enabled" }, Value(),
+						[&] (Value const &) { return "yes"; }); }); });
+
+		generate_runtime_config();
+	}
+
+	Rom_handler<Main> _leitzentrale_rom {
+		_env, "leitzentrale", *this, &Main::_handle_leitzentrale };
+
+	void _handle_leitzentrale(Node const &leitzentrale)
+	{
+		_leitzentrale_visible = leitzentrale.attribute_value("enabled", false);
+
+		/* disable automatic blanking while the application runtime is visible */
+		_screensaver.blank_after_some_time(_leitzentrale_visible);
+
+		_update_window_layout();
+	}
+
+
+	/***************************
+	 ** Configuration loading **
+	 ***************************/
+
+	Prepare_version _prepare_version   { 0 };
+	Prepare_version _prepare_completed { 0 };
+
+	bool _prepare_in_progress() const
+	{
+		return _prepare_version.value != _prepare_completed.value;
+	}
+
+
+	/*************
+	 ** Storage **
+	 *************/
+
+	void _handle_storage_devices()
+	{
+		auto with_storage_devices = [&] (auto const &fn)
+		{
+			_with_mmc_devices([&] (Drivers::Storage_devices::Driver const &mmc) {
+				fn( { .usb  = { .present = false, .report = Node() },
+				      .ahci = { .present = false, .report = Node() },
+				      .nvme = { .present = false, .report = Node() },
+				      .mmc  = mmc }); });
+		};
+
+		Storage_target const orig_target = _storage._selected_target;
+
+		bool total_progress = false;
+		for (bool progress = true; progress; total_progress |= progress) {
+			progress = false;
+			with_storage_devices([&] (Drivers::Storage_devices const &devices) {
+				_config.with_node([&] (Node const &config) {
+					progress = _storage.update(config, devices).progressed; }); });
+		}
+
+		if (orig_target != _storage._selected_target)
+			_restart_from_storage_target();
+
+		if (total_progress) {
+			generate_runtime_config();
+			_generate_dialog();
+		}
+	}
+
+	/**
+	 * Storage_device::Action
+	 */
+	void storage_device_discovered() override { _handle_storage_devices(); }
+
+	Vfs::Handler<Main> _mmc_devices {
+		_vfs, "/report/mmc/block_devices", *this, &Main::_handle_mmc_devices };
+
+	void _handle_mmc_devices(Node const &) { handle_device_plug_unplug(); }
+
+	void _with_mmc_devices(auto const &fn) const
+	{
+		_mmc_devices.with_node([&] (Node const &node) {
+			fn({ .present = _runtime_state.present_in_runtime("mmc"), .report = node }); });
+	}
+
+	Storage _storage { _env, _heap, *this };
+
+	void _restart_from_storage_target()
+	{
+		/* trigger loading of the configuration from the sculpt partition */
+		_prepare_version.value++;
+
+		_download_queue.reset();
+
+		_deploy.reset(_vfs);
+
+		_bump_depot_version();
+		_query_depot();
+
+		generate_runtime_config();
+	}
+
+
+	/*************
+	 ** Network **
+	 *************/
+
+	Network _network { _env, _heap, *this, *this };
+
+	Access_point::Bssid _selected_bssid { };
+
+	/**
+	 * Network::Action interface
+	 */
+	void network_config_changed() override
+	{
+		_generate_dialog();
+	}
+
+	/**
+	 * Network::Action interface
+	 */
+	void wifi_connect_enter() override { wifi_connect(_selected_bssid); }
+
+	/**
+	 * Network::Info interface
+	 */
+	bool ap_list_hovered() const override
+	{
+		/*
+		 * For now always report false so that scan-results
+		 * will always be presented.
+		 */
+		return false;
+	}
+
+	/**
+	 * Network_widget::Action
+	 */
+	void nic_target(Network_widget::Target const target) override
+	{
+		using Target = Network_widget::Target;
+		using Value  = String<8>;
+
+		auto disable_if_unused = [&] (auto const &name, Target driver)
+		{
+			if (_runtime_state.present_in_runtime(name) && driver != target)
+				_vfs.edit("/model/option/board", [&] (Hid_edit &edit) {
+					edit.adjust({ "option | + child ", name, " | : enabled" }, Value(),
+						[&] (Value const &) { return "no"; }); });
+		};
+
+		disable_if_unused("wifi",       Target::WIFI);
+		disable_if_unused("mobile",     Target::MOBILE);
+		disable_if_unused("modem_diag", Target::MOBILE);
+		disable_if_unused("usb",        Target::MOBILE);
+
+		auto enable_if_targeted = [&] (auto const &name, Target driver)
+		{
+			if (driver == target && !_runtime_state.present_in_runtime(name))
+				_vfs.edit("/model/option/board", [&] (Hid_edit &edit) {
+					edit.adjust({ "option | + child ", name, " | : enabled" }, Value(),
+						[&] (Value const &) { return "yes"; }); });
+		};
+
+		enable_if_targeted("wifi",       Target::WIFI);
+		enable_if_targeted("mobile",     Target::MOBILE);
+		enable_if_targeted("modem_diag", Target::MOBILE);
+		enable_if_targeted("usb",        Target::MOBILE);
+	}
+
+	/**
+	 * Ap_selector_widget::Action
+	 */
+	void wifi_connect(Access_point::Bssid const &bssid) override
+	{
+		_selected_bssid = bssid;
+		_network.wifi_connect(bssid);
+	}
+
+	/**
+	 * Ap_selector_widget::Action
+	 */
+	void wifi_disconnect() override
+	{
+		_selected_bssid = { };
+		_network.wifi_disconnect();
+	}
+
+
+	/************
+	 ** Update **
+	 ************/
+
+	Rom_handler<Main> _update_state_rom {
+		_env, "report -> update/state", *this, &Main::_handle_update_state };
+
+	Managed_config<Main> _install {
+		_env, _heap, "install", "install", *this, &Main::_handle_install };
+
+	void _handle_install(Node const &)
+	{
+		/* enable update component when manually managing /config/install */
+		if (!_install.managed)
+			generate_runtime_config();
+	}
+
+	void _handle_update_state(Node const &);
+
+	bool _update_needed() const
+	{
+		return !_install.managed || _download_queue.any_active_download();
+	}
+
+	/**
+	 * Condition for spawning the update subsystem
+	 */
+	bool _update_running() const
+	{
+		return _storage._selected_target.valid()
+		    && !_prepare_in_progress()
+		    && _network.ready()
+		    && _update_needed();
+	}
+
+	Download_queue _download_queue { _heap };
+
+	File_operation_queue _file_operation_queue { _heap };
+
+	Fs_tool_version _fs_tool_version { 0 };
+
+	Index_update_queue _index_update_queue {
+		_heap, _file_operation_queue, _download_queue };
+
+	void _update_install()
+	{
+		if (_install.managed)
+			_install.generate([&] (Generator &g) {
+				g.attribute("arch", _build_info.arch);
+				_download_queue.gen_install_entries(g); });
+	}
+
+
+	/*****************
+	 ** Depot query **
+	 *****************/
+
+	unsigned _depot_query_version { };
+
+	Depot::Archive::User _image_index_user = _build_info.depot_user;
+
+	Depot::Archive::User _index_user = _build_info.depot_user;
+
+	Expanding_reporter _depot_query_reporter { _env, "query", "child/depot_query"};
+
+	bool _software_tab_watches_depot()
+	{
+		if (!_software_title_bar.selected())
+			return false;
+
+		return _software_tabs_widget.hosted.add_selected()
+		    || _software_tabs_widget.hosted.update_selected();
+	}
+
+	void _query_depot()
+	{
+		_depot_query_version++;
+		_depot_query_reporter.generate([&] (Generator &g) {
+			g.attribute("arch",    _build_info.arch);
+			g.attribute("version", _depot_query_version);
+
+			if (_software_tab_watches_depot() || !_scan_rom.valid())
+				g.node("scan", [&] {
+					g.attribute("users", "yes"); });
+
+			if (_software_tab_watches_depot() || !_image_index_rom.valid())
+				g.node("index", [&] {
+					g.attribute("user",    _index_user);
+					g.attribute("version", _sculpt_version);
+					g.attribute("content", "yes");
+				});
+
+			if (_software_tab_watches_depot() || !_image_index_rom.valid())
+				g.node("image_index", [&] {
+					g.attribute("os",    "sculpt");
+					g.attribute("board", _build_info.board);
+					g.attribute("user",  _image_index_user);
+				});
+
+			_runtime_state.with_construction([&] (Component const &component) {
+				g.node("blueprint", [&] {
+					g.attribute("pkg", component.path); }); });
+		});
+	}
+
+	Rom_handler<Main> _depot_query_blueprint_rom {
+		_env, "report -> depot_query/blueprint", *this, &Main::_handle_depot_query_blueprint };
+
+	void _handle_depot_query_blueprint(Node const &blueprint)
+	{
+		if (blueprint.attribute_value("version", 0U) != _depot_query_version)
+			return;
+
+		_runtime_state.apply_to_construction([&] (Component &component) {
+			component.try_apply_blueprint(blueprint); });
+
+		_generate_dialog();
+	}
+
+
+	/******************
+	 ** Browse index **
+	 ******************/
+
+	Rom_handler<Main> _index_rom {
+		_env, "report -> depot_query/index", *this, &Main::_handle_index };
+
+	void _handle_index(Node const &)
+	{
+		bool const software_add_widget_shown = _software_title_bar.selected()
+		                                    && _software_tabs_widget.hosted.add_selected();
+		if (software_add_widget_shown)
+			_generate_dialog();
+	}
+
+	/**
+	 * Software_add_widget::Action interface
+	 */
+	void query_index(Depot::Archive::User const &user) override
+	{
+		_index_user = user;
+		_query_depot();
+	}
+
+
+	/************
+	 ** Deploy **
+	 ************/
+
+	Rom_handler<Main> _scan_rom {
+		_env, "report -> depot_query/scan", *this, &Main::_handle_scan };
+
+	void _handle_scan(Node const &)
+	{
+		_generate_dialog();
+		_software_update_widget.hosted.sanitize_user_selection();
+		_software_add_widget.hosted.sanitize_user_selection();
+	}
+
+	Rom_handler<Main> _image_index_rom {
+		_env, "report -> depot_query/image_index", *this, &Main::_handle_image_index };
+
+	void _handle_image_index(Node const &) { _generate_dialog(); }
+
+	Options _options { _heap };
+	Presets _presets { _heap };
+
+	Rom_handler<Main> _model_listing_rom {
+		_env, "report -> model_query/listing", *this,
+		&Main::_handle_model_listing };
+
+	void _handle_model_listing(Node const &listing)
+	{
+		listing.for_each_sub_node("dir", [&] (Node const &dir) {
+
+			Path const dir_path = dir.attribute_value("path", Path());
+
+			/* iterate over <file> nodes */
+
+			if (dir_path == "/option")  _options.update_from_node(dir);
+			if (dir_path == "/presets") _presets.update_from_node(dir);
+		});
+
+		_generate_dialog();
+	}
+
+	Deploy _deploy { _heap };
+
+	Rom_handler<Main> _deploy_handler {
+		_env, "model -> deploy", *this, &Main::_handle_deploy };
+
+	Expanding_reporter _managed_option { _env, "option", "option/managed" };
+
+	void _handle_deploy(Node const &deploy)
+	{
+		if (!_deploy.apply_deploy(deploy).progressed)
+			return;
+
+		_deploy.watch_options(_vfs, *this);
+	}
+
+	/**
+	 * Enabled_options::Action
+	 */
+	void deploy_option_changed(Options::Name const &name, Node const &node) override
+	{
+		_deploy.apply_option(name, node);
+	}
+
+	Managed_config<Main> _managed_depot_version {
+		_env, _heap, "depot", "depot_version", *this, &Main::_handle_depot_version };
+
+	struct Depot_version { unsigned value; } _depot_version { };
+
+	void _handle_depot_version(Node const &node)
+	{
+		_depot_version.value = node.attribute_value("version", 0u);
+	}
+
+	void _bump_depot_version()
+	{
+		_managed_depot_version.generate([&] (Generator &g) {
+			g.attribute("version", _depot_version.value + 1); });
+	}
+
+
+	/************
+	 ** Global **
+	 ************/
+
+	Area _screen_size { };
+
+	bool _leitzentrale_visible = false;
+
+	Fb_connectors::Name _hovered_display { };
+
+	Color const _background_color { 62, 62, 67, 255 };
+
+	Affinity::Space _affinity_space { 1, 1 };
+
+	Sim_pin _sim_pin { };
+
+	Modem_state _modem_state { };
+
+	Current_call _current_call { };
+
+	Dialed_number _dialed_number { };
+
+	Power_state _power_state { };
+
+	enum class Section { NONE, DEVICE, PHONE, STORAGE, NETWORK, SOFTWARE };
+
+	Section _selected_section { Section::NONE };
+
+	using Title_bar = Selectable_title_bar<Section>;
+
+	struct Software_status_widget : Widget<Float>
+	{
+		void view(Scope<Float> &s, Main const &main, Allocator &alloc) const
+		{
+			s.sub_scope<Vbox>([&] (Scope<Float, Vbox> &s) {
+
+				if (main._diagnostics_available()) {
+
+					Hosted<Float, Vbox, Titled_frame> diag { Id { "Diagnostics" } };
+					s.widget(diag, Titled_frame::Attr { .min_ex = 40 }, [&] {
+
+						if (main._network_missing())
+							s.sub_scope<Left_annotation>("network needed for installation");
+
+						s.as_new_scope([&] (Scope<> &s) {
+							view_runtime_diag(s, alloc, main._cached_init_config); });
+					});
+				}
+
+				main._update_state_rom.with_node([&] (Node const &state) {
+
+					bool const download_in_progress =
+						main._update_running() && state.attribute_value("progress", false);
+
+					if (download_in_progress || main._download_queue.any_failed_download()) {
+						Hosted<Float, Vbox, Download_status_widget> download_status { Id { "Download" } };
+						s.widget(download_status, state, main._download_queue);
+					}
+				});
+			});
+		}
+	};
+
+
+	/*
+	 * Device section
+	 */
+
+	Hosted<Vbox, Title_bar> _device_title_bar {
+		Id { "Device" }, _selected_section, Section::DEVICE };
+
+	Conditional_widget<Device_controls_widget>
+		_device_controls_widget { Id { "device_controls" } };
+
+	Conditional_widget<Device_power_widget>
+		_device_power_widget { Id { "device_power" } };
+
+	/*
+	 * Phone section
+	 */
+
+	Hosted<Vbox, Title_bar> _phone_title_bar {
+		Id { "Phone" }, _selected_section, Section::PHONE };
+
+	Conditional_widget<Modem_power_widget>
+		_modem_power_widget { Id { "modem_power" } };
+
+	Conditional_widget<Pin_widget>
+		_pin_widget { Id { "pin" } };
+
+	Conditional_widget<Dialpad_widget>
+		_dialpad_widget { Id { "dialpad" } };
+
+	Conditional_widget<Current_call_widget>
+		_current_call_widget { Id { "call" } };
+
+	Conditional_widget<Outbound_widget>
+		_outbound_widget { Id { "outbound" } };
+
+	/*
+	 * Storage section
+	 */
+
+	Hosted<Vbox, Title_bar> _storage_title_bar {
+		Id { "Storage" }, _selected_section, Section::STORAGE };
+
+	struct Storage_widget : Widget<Frame>
+	{
+		Hosted<Frame, Mmc_devices_widget> _mmc_devices;
+
+		Storage_widget(auto &&... args) : _mmc_devices(Id { "devices" }, args...) { }
+
+		void view(Scope<Frame> &s) const { s.widget(_mmc_devices); }
+
+		void click(auto &&... args) { _mmc_devices.propagate(args...); }
+		void clack(auto &&... args) { _mmc_devices.propagate(args...); }
+
+		void reset_operation() { _mmc_devices.reset_operation(); }
+	};
+
+	Conditional_widget<Storage_widget> _storage_widget {
+		Conditional_widget<Storage_widget>::Attr { .centered = true },
+		Id { "storage dialog" }, _storage._storage_devices, _storage._selected_target };
+
+	/*
+	 * Network section
+	 */
+
+	Hosted<Vbox, Title_bar> _network_title_bar  {
+		Id { "Network" }, _selected_section, Section::NETWORK };
+
+	Conditional_widget<Network_widget>
+		_network_widget { Conditional_widget<Network_widget>::Attr { .centered = true },
+		                  Id { "net settings" } };
+
+	Hosted<Frame, Vbox, Frame, Vbox, Ap_selector_widget>
+		_wifi_widget { Id { "wifi" },
+		               _network._access_points, _network._wifi_connection,
+		               _network._wlan_config_policy, _network.wpa_passphrase };
+
+	/*
+	 * Software section
+	 */
+
+	Hosted<Vbox, Title_bar> _software_title_bar {
+		Id { "Software" }, _selected_section, Section::SOFTWARE };
+
+	Conditional_widget<Software_tabs_widget>
+		_software_tabs_widget { Id { "software_tabs" } };
+
+	Conditional_widget<Software_presets_widget>
+		_software_presets_widget { Id { "software_presets" } };
+
+	Conditional_widget<Software_options_widget>
+		_software_options_widget { Id { "software_options" }, _runtime_state,
+		                           _deploy.enabled_options, _options };
+
+	Conditional_widget<Software_add_widget>
+		_software_add_widget { Id { "software_add" }, _build_info, _sculpt_version,
+		                       _network._nic_state, _index_update_queue,
+		                       _index_rom, _download_queue,
+		                       _cached_init_config, _dir_query,
+		                       *this, _scan_rom };
+
+	Conditional_widget<Software_update_widget>
+		_software_update_widget { Id { "software_update" }, _build_info,
+		                          _network._nic_state, _download_queue,
+		                          _index_update_queue, _file_operation_queue,
+		                          _scan_rom };
+
+	Conditional_widget<Software_version_widget>
+		_software_version_widget { Id { "software_version" } };
+
+	Conditional_widget<Software_status_widget>
+		_software_status_widget { Id { "software_status" } };
+
+	Conditional_widget<Graph>
+		_graph { Id { "graph" },
+		         _runtime_state, _cached_init_config, _storage._selected_target,
+		         _popup.state };
+
+	void _view_main_dialog(Scope<> &s, Allocator &alloc) const
+	{
+		/* skip generating the dialog at boot time */
+		if (!_gui_mode_ready)
+			return;
+
+		s.sub_scope<Vbox>([&] (Scope<Vbox> &s) {
+
+			s.widget(_device_title_bar, [&] (auto &s) {
+				_device_title_bar.view_status(s, _power_state.summary()); });
+
+			s.widget(_device_controls_widget, _device_title_bar.selected(),
+			         _power_state, _mic_state, _audio_volume);
+
+			s.widget(_device_power_widget, _device_title_bar.selected(), _power_state);
+
+			if (_power_state.modem_present()) {
+
+				s.widget(_phone_title_bar, [&] (auto &s) {
+
+					auto phone_status_message = [&] () -> String<128>
+					{
+						if (!_modem_state.ready() || !_modem_state.pin_ok())
+							return _modem_state.power_message();
+
+						return "ready";
+					};
+					_phone_title_bar.view_status(s, phone_status_message());
+				});
+
+				s.widget(_modem_power_widget, _phone_title_bar.selected(),
+				         _modem_state);
+
+				s.widget(_pin_widget, _phone_title_bar.selected()
+				                   && _modem_state.ready()
+				                   && _modem_state.pin_required(), _sim_pin);
+
+				s.widget(_outbound_widget, _phone_title_bar.selected()
+				                        && _modem_state.ready()
+				                        && _modem_state.pin_ok());
+
+				s.widget(_dialpad_widget, _phone_title_bar.selected()
+				                      && _modem_state.ready()
+				                      && _modem_state.pin_ok(),
+				         _dialed_number);
+
+				s.widget(_current_call_widget, _phone_title_bar.selected()
+				                            && _modem_state.ready()
+				                            && _modem_state.pin_ok(),
+				         _dialed_number, _current_call);
+			}
+
+			s.widget(_storage_title_bar, [&] (auto &s) {
+				_storage_title_bar.view_status(s, " "); });
+
+			s.widget(_storage_widget, _storage_title_bar.selected());
+
+			s.widget(_network_title_bar, [&] (auto &s) {
+
+				auto const enabled = Network_widget::Enabled::from_runtime(_runtime_state);
+
+				auto network_status_message = [&]
+				{
+					bool const ready = _network._nic_state.ready();
+
+					if (!enabled.any()) return "disconnected";
+					if (enabled.nic)    return ready ? "LAN"    : "LAN ...";
+					if (enabled.wifi)   return ready ? "WLAN"   : "WLAN ...";
+					if (enabled.mobile) return ready ? "mobile" : "mobile ...";
+
+					return "off";
+				};
+
+				_network_title_bar.view_status(s, network_status_message());
+			});
+
+			_drivers.with_board_info([&] (Board_info const &board_info) {
+				Network_widget::Avail avail = {
+					.nic    = board_info.soc.nic,
+					.wifi   = board_info.wifi_avail(),
+					.usb    = false,
+					.mobile = board_info.soc.modem };
+				auto enabled = Network_widget::Enabled::from_runtime(_runtime_state);
+				s.widget(_network_widget, _network_title_bar.selected(),
+				         _network._nic_state, avail, enabled,
+					[&] (Scope<Frame, Vbox, Frame, Vbox> &s) {
+						if (enabled.wifi)
+							s.widget(_wifi_widget, Ap_selector_widget::Attr {
+								.selected = _selected_bssid });
+					});
+			});
+
+			s.widget(_software_title_bar, [&] (auto &s) {
+				_software_title_bar.view_status(s, _software_status_message()); });
+
+			s.widget(_software_tabs_widget, _software_title_bar.selected(),
+			         _storage._selected_target, _presets, _software_status_available());
+
+			s.widget(_graph, _software_title_bar.selected()
+			              && _software_tabs_widget.hosted.runtime_selected(), *this);
+
+			s.widget(_software_presets_widget, _software_title_bar.selected()
+			                                && _software_tabs_widget.hosted.presets_selected()
+			                                && _storage._selected_target.valid(),
+			         _presets);
+
+			s.widget(_software_options_widget, _software_title_bar.selected()
+			                                && _software_tabs_widget.hosted.options_selected()
+			                                && _storage._selected_target.valid());
+
+			{
+				using Attr = Software_add_widget::Attr;
+				s.widget(_software_add_widget, _software_title_bar.selected()
+				                            && _software_tabs_widget.hosted.add_selected()
+				                            && _storage._selected_target.valid(),
+				         Attr { .visible_frames     = true,
+				                .left_aligned_items = false });
+			}
+
+			_image_index_rom.with_node([&] (Node const &image_index) {
+				s.widget(_software_update_widget, _software_title_bar.selected()
+				                               && _software_tabs_widget.hosted.update_selected()
+				                               && _storage._selected_target.valid(),
+				         image_index);
+			});
+
+			s.widget(_software_version_widget, _software_title_bar.selected()
+			                                && _software_tabs_widget.hosted.update_selected()
+			                                && !_touch_keyboard.visible,
+			         _build_info);
+
+			s.widget(_software_status_widget, _software_title_bar.selected()
+			                               && _software_tabs_widget.hosted.status_selected(),
+			         *this, alloc);
+
+			/*
+			 * Whenever the touch keyboard is visible, enforce some space at
+			 * the bottom of the dialog by using a vertical stack of empty
+			 * labels.
+			 */
+			if (_touch_keyboard.visible)
+				s.sub_scope<Vbox>([&] (Scope<Vbox, Vbox> &s) {
+					for (unsigned i = 0; i < 15; i++)
+						s.sub_scope<Vgap>(); });
+		});
+	}
+
+	void _update_touch_keyboard_visibility()
+	{
+		/* detect need for touch keyboard */
+		bool const orig_touch_keyboard_visible = _touch_keyboard.visible;
+
+		_touch_keyboard.visible = touch_keyboard_needed();
+
+		if (orig_touch_keyboard_visible != _touch_keyboard.visible)
+			_update_window_layout();
+	}
+
+	void _generate_dialog()
+	{
+		_update_touch_keyboard_visibility();
+
+		_main_view.refresh();
+	}
+
+	Rom_handler<Main> _runtime_state_rom {
+		_env, "report -> state", *this, &Main::_handle_runtime_state };
+
+	void _handle_runtime_state(Node const &);
+
+	Runtime_state _runtime_state { _heap };
+
+	/**
+	 * Component::Construction_info interface
+	 */
+	void _with_construction(Component::Construction_info::With const &fn) const override
+	{
+		_runtime_state.with_construction([&] (Component const &c) { fn.with(c); });
+	}
+
+	/**
+	 * Component::Construction_action interface
+	 */
+	void new_construction(Component::Path const &pkg, Verify verify,
+	                      Component::Info const &info) override
+	{
+		(void)_runtime_state.new_construction(pkg, verify, info, _affinity_space);
+		_query_depot();
+	}
+
+	void _apply_to_construction(Component::Construction_action::Apply_to &fn) override
+	{
+		_runtime_state.apply_to_construction([&] (Component &c) { fn.apply_to(c); });
+	}
+
+	/**
+	 * Component::Construction_action interface
+	 */
+	void trigger_pkg_download() override
+	{
+		_runtime_state.apply_to_construction([&] (Component &c) {
+			_download_queue.add(c.path, c.verify); });
+
+		/* incorporate new download-queue content into update */
+		_update_install();
+
+		generate_runtime_config();
+	}
+
+	/**
+	 * Component::Construction_action interface
+	 */
+	void discard_construction() override { _runtime_state.reset_construction(); }
+
+	/**
+	 * Component::Construction_action interface
+	 */
+	void launch_construction()  override
+	{
+		_vfs.edit("/model/deploy", [&] (Hid_edit &edit) {
+			edit.append("deploy", [&] (Generator &g) {
+				_runtime_state.gen_construction(g); }); });
+
+		_runtime_state.reset_construction();
+	}
+
+	void _generate_runtime_config(Generator &) const;
+	void _generate_managed_option(Generator &) const;
+
+	/**
+	 * Runtime_config_generator interface
+	 */
+	void generate_runtime_config() override
+	{
+		_managed_option.generate([&] (Generator &g) {
+			_generate_managed_option(g); });
+	}
+
+
+	/********************
+	 ** Touch keyboard **
+	 ********************/
+
+	struct Touch_keyboard : Noncopyable
+	{
+		/*
+		 * Spawn the leitzentrale touch keyboard only after the basic GUI is up
+		 * beacuse the touch keyboard is not needed to pick up a call.
+		 */
+		bool started = false;
+
+		/*
+		 * Updated and evaluated by 'generate_dialog'
+		 */
+		bool visible = false;
+
+		Touch_keyboard_attr attr;
+
+		Touch_keyboard(Touch_keyboard_attr attr) : attr(attr) { };
+
+		void gen_child_node(Generator &g) const
+		{
+			if (started)
+				gen_touch_keyboard(g, attr);
+		}
+	};
+
+	Touch_keyboard _touch_keyboard {
+		{ .min_width  = 720,
+		  .min_height = 480,
+		  .alpha      = Alpha::OPAQUE,
+		  .background = _background_color } };
+
+	bool _depot_user_selection_visible() const
+	{
+		if (!_software_title_bar.selected())
+			return false;
+
+		return _software_tabs_widget.hosted.update_selected()
+		    || _software_tabs_widget.hosted.add_selected();
+	}
+
+	bool _software_add_widget_has_keyboard_focus() const
+	{
+		return _software_title_bar.selected()
+		    && _software_tabs_widget.hosted.add_selected()
+		    && _software_add_widget.hosted.keyboard_needed();
+	}
+
+	bool _software_update_widget_has_keyboard_focus() const
+	{
+		return _software_title_bar.selected()
+		    && _software_tabs_widget.hosted.update_selected()
+		    && _software_update_widget.hosted.keyboard_needed();
+	}
+
+	bool _network_widget_has_keyboard_focus() const
+	{
+		return _network_title_bar.selected()
+		    && _runtime_state.present_in_runtime("wifi")
+		    && _wifi_widget.need_keyboard_focus_for_passphrase(_selected_bssid);
+	}
+
+	/**
+	 * Condition for controlling the visibility of the touch keyboard
+	 */
+	bool touch_keyboard_needed() const
+	{
+		return _software_add_widget_has_keyboard_focus()
+		    || _software_update_widget_has_keyboard_focus()
+		    || _network_widget_has_keyboard_focus();
+	}
+
+
+	/****************************************
+	 ** Cached model of the runtime config **
+	 ****************************************/
+
+	/*
+	 * Even though the runtime configuration is generated by the sculpt
+	 * manager, we still obtain it as a separate ROM session to keep the GUI
+	 * part decoupled from the lower-level runtime configuration generator.
+	 */
+	Rom_handler<Main> _init_config_rom {
+		_env, "runtime_config", *this, &Main::_handle_init_config };
+
+	Runtime_config _cached_init_config { _heap };
+
+	void _handle_init_config(Node const &init_config)
+	{
+		if (_cached_init_config.update_from_node(init_config).stalled())
+			return;
+
+		bool download_added = false;
+		_cached_init_config.for_each_missing_pkg([&] (Depot::Archive::Path const &path) {
+			if (_download_queue.add(path, Verify { true }).progressed)
+				download_added = true; });
+
+		if (download_added)
+			_update_install();
+
+		bool const reconfigure_runtime =
+			_dir_query.update(_heap, _cached_init_config).runtime_reconfig_needed;
+
+		_generate_dialog(); /* update graph */
+
+		if (reconfigure_runtime || download_added)
+			generate_runtime_config();
+	}
+
+
+	/****************************
+	 ** Interactive operations **
+	 ****************************/
+
+	Dialog::Distant_runtime _dialog_runtime { _env };
+
+	struct Main_dialog : Dialog::Top_level_dialog
+	{
+		Main &_main;
+
+		Main_dialog(Main &main) : Top_level_dialog("main"), _main(main) { }
+
+		void view(Scope<> &s) const override { _main._view_main_dialog(s, _main._heap); }
+
+		void click(Clicked_at const &at) override { _main._click(at); }
+		void clack(Clacked_at const &at) override { _main._clack(at); }
+		void drag (Dragged_at const &at) override { _main._drag(at); }
+
+	} _main_dialog { *this };
+
+	Dialog::Distant_runtime::View
+		_main_view { _dialog_runtime, _main_dialog,
+		             { .opaque      = true,
+		               .background  = _background_color } };
+
+	void _click(Clicked_at const &at)
+	{
+		auto for_each_title_bar = [&] (auto const &fn)
+		{
+			fn(_device_title_bar);
+			fn(_phone_title_bar);
+			fn(_storage_title_bar);
+			fn(_network_title_bar);
+			fn(_software_title_bar);
+		};
+
+		/* toggle sections */
+		for_each_title_bar([&] (auto &title_bar) {
+			title_bar.propagate(at, [&] {
+				_selected_section = title_bar.selected()
+				                  ? Section::NONE : title_bar.value; }); });
+
+		_device_controls_widget .propagate(at, *this);
+		_device_power_widget    .propagate(at, *this);
+		_modem_power_widget     .propagate(at, *this);
+		_pin_widget             .propagate(at, _sim_pin, *this);
+		_dialpad_widget         .propagate(at, *this);
+		_storage_widget         .propagate(at, *this);
+
+		_network_widget.propagate(at, *this,
+			[&] (Clicked_at const &at) {
+				if (_runtime_state.present_in_runtime("wifi"))
+					_wifi_widget.propagate(at, _selected_bssid, *this);
+		});
+
+		_software_presets_widget.propagate(at, _presets);
+		_software_update_widget .propagate(at, *this);
+		_software_add_widget    .propagate(at, *this);
+		_current_call_widget    .propagate(at, *this);
+		_software_options_widget.propagate(at, *this);
+		_graph                  .propagate(at, *this);
+
+		_software_tabs_widget.propagate(at, [&] {
+
+			/* refresh list of depot users */
+			_query_depot();
+		});
+
+		_update_touch_keyboard_visibility();
+	}
+
+	void _clack(Clacked_at const &at)
+	{
+		_device_power_widget    .propagate(at, *this);
+		_storage_widget         .propagate(at, *this);
+		_software_presets_widget.propagate(at, _presets, *this);
+		_software_add_widget    .propagate(at, *this);
+		_graph                  .propagate(at, *this, *this);
+
+		_update_touch_keyboard_visibility();
+	}
+
+	void _drag(Dragged_at const &at)
+	{
+		_device_controls_widget.propagate(at, *this);
+	}
+
+	/**
+	 * Input_event_handler interface
+	 */
+	void handle_input_event(Input::Event const &ev) override
+	{
+		Dialog::Event::Seq_number const seq_number { _seq_number_generator.value() };
+		_dialog_runtime.route_input_event(seq_number, ev);
+
+		bool need_generate_dialog = false;
+
+		ev.handle_press([&] (Input::Keycode key, Codepoint code) {
+
+			need_generate_dialog = true;
+
+			if (_software_add_widget_has_keyboard_focus())
+				_software_add_widget.hosted.handle_key(code, *this);
+
+			else if (_software_update_widget_has_keyboard_focus())
+				_software_update_widget.hosted.handle_key(code, *this);
+
+			else if (_network_widget_has_keyboard_focus())
+				_network.handle_key_press(code);
+
+			/* handle volume up/down buttons */
+			{
+				bool const volume_up   = (key == Input::KEY_VOLUMEUP);
+				bool const volume_down = (key == Input::KEY_VOLUMEDOWN);
+
+				unsigned level = _audio_volume.value;
+
+				if (volume_up)   level = min(level + 10, 100u);
+				if (volume_down) level = (level >= 10 ? level - 10 : 0);
+
+				if (volume_up || volume_down) {
+					select_volume_level(level);
+					_selected_section = Section::DEVICE;
+				}
+			}
+
+			if (key == Input::KEY_POWER)
+				_screensaver.force_toggle();
+		});
+
+		if (need_generate_dialog)
+			_generate_dialog();
+	}
+
+	void _update_window_layout(Node const &, Node const &);
+
+	void _update_window_layout()
+	{
+		_decorator_margins.with_node([&] (Node const &decorator_margins) {
+			_window_list.with_node([&] (Node const &window_list) {
+				_update_window_layout(decorator_margins, window_list); }); });
+	}
+
+	void _handle_window_layout_or_decorator_margins(Node const &)
+	{
+		_update_window_layout();
+	}
+
+	Rom_handler<Main> _window_list {
+		_env, "window_list", *this, &Main::_handle_window_layout_or_decorator_margins };
+
+	Rom_handler<Main> _decorator_margins {
+		_env, "decorator_margins", *this, &Main::_handle_window_layout_or_decorator_margins };
+
+	template <size_t N>
+	void _with_window(Node const &window_list, String<N> const &match, auto const &fn)
+	{
+		window_list.for_each_sub_node("window", [&] (Node const &win) {
+			if (win.attribute_value("label", String<N>()) == match)
+				fn(win); });
+	}
+
+	Expanding_reporter _wm_focus       { _env, "focus",          "wm_focus" };
+	Expanding_reporter _window_layout  { _env, "window_layout",  "window_layout" };
+	Expanding_reporter _resize_request { _env, "resize_request", "resize_request" };
+
+	void _reset_storage_widget_operation()
+	{
+		_storage_widget.hosted.reset_operation();
+	}
+
+	/*
+	 * Fs_dialog::Action interface
+	 */
+	void toggle_inspect_view(Storage_target const &) override { }
+
+	void use(Storage_target const &target) override
+	{
+		Storage_target const orig_target = _storage._selected_target;
+
+		_storage._selected_target = target;
+		_software_update_widget.hosted.reset();
+		_download_queue.reset();
+
+		if (orig_target != _storage._selected_target)
+			_restart_from_storage_target();
+
+		generate_runtime_config();
+	}
+
+	/*
+	 * Storage_device_widget::Action interface
+	 */
+	void format(Storage_target const &target) override
+	{
+		_storage.format(target);
+		generate_runtime_config();
+	}
+
+	void cancel_format(Storage_target const &target) override
+	{
+		_storage.cancel_format(target);
+		_reset_storage_widget_operation();
+		generate_runtime_config();
+	}
+
+	void expand(Storage_target const &target) override
+	{
+		_storage.expand(target);
+		generate_runtime_config();
+	}
+
+	void cancel_expand(Storage_target const &target) override
+	{
+		_storage.cancel_expand(target);
+		_reset_storage_widget_operation();
+		generate_runtime_config();
+	}
+
+	void check(Storage_target const &target) override
+	{
+		_storage.check(target);
+		generate_runtime_config();
+	}
+
+	void toggle_default_storage_target(Storage_target const &target) override
+	{
+		_storage.toggle_default_storage_target(target);
+		generate_runtime_config();
+	}
+
+	void reset_ram_fs() override
+	{
+		_deploy.reset_ram_fs(_vfs);
+	}
+
+	/*
+	 * Graph::Action interface
+	 */
+	void grant_resource_request(Start_name const &name) override
+	{
+		using Request = Runtime_state::Resource_request;
+		_runtime_state.for_each_resource_request([&] (Start_name const &n, Request req) {
+			if (n == name)
+				_deploy.assign_resources(_vfs, _cached_init_config, name,
+				                         req.ram.wanted(), req.caps.wanted());
+		});
+	}
+
+	/*
+	 * Graph::Action interface
+	 */
+	void remove_deployed_component(Start_name const &name) override
+	{
+		_cached_init_config.with_component(name, [&] (Runtime_config::Component const &c) {
+
+			bool const option = (c.option.length() > 1);
+
+			auto const path = option ? Path { "/model/option/", c.option }
+			                         : Path { "/model/deploy" };
+
+			_vfs.edit(path, [&] (Hid_edit &edit) {
+				edit.remove({ option ? "option" : "deploy", " | : child ", name });
+			});
+
+		}, [&] { warning("attempt to remove unknown child '", name, "'"); });
+	}
+
+	/*
+	 * Graph::Action interface
+	 */
+	void restart_deployed_component(Start_name const &name) override
+	{
+		_cached_init_config.with_component(name, [&] (Runtime_config::Component const &c) {
+
+			if (c.option == "managed") {
+				_with_child(name, [&] (Child_state &child) {
+					child.trigger_restart();
+					generate_runtime_config();
+				});
+				return;
+			}
+
+			bool const option = (c.option.length() > 1);
+
+			auto const path = option ? Path { "/model/option/", c.option }
+			                         : Path { "/model/deploy" };
+
+			_vfs.edit(path, [&] (Hid_edit &edit) {
+				edit.adjust({ option ? "option" : "deploy", " | + child | : version" },
+				            0u, [&] (unsigned v) { return v + 1; }); });
+
+		}, [&] { warning("attempt to restart unknown child '", name, "'"); });
+	}
+
+	/*
+	 * Graph::Action interface
+	 */
+	void open_popup_dialog(Rect) override { }
+
+	Hosted<Ram_fs_widget> _ram_fs_widget { Id { "ram_fs" } };
+
+	/*
+	 * Graph::Action interface
+	 */
+	void view_child_dialog(Scope<> &s) const override
+	{
+		Start_name const selected = _cached_init_config.selected();
+
+		if (selected == "ram_fs")
+			s.widget(_ram_fs_widget, _storage._selected_target, _storage._ram_fs_state);
+	}
+
+	/*
+	 * Graph::Action interface
+	 */
+	void click_child_dialog(Clicked_at const &at) override
+	{
+		_ram_fs_widget.propagate(at, _storage._selected_target, *this);
+	}
+
+	/*
+	 * Graph::Action interface
+	 */
+	void clack_child_dialog(Clacked_at const &at) override
+	{
+		_ram_fs_widget.propagate(at, *this);
+	}
+
+	bool _network_missing() const {
+		return _update_needed() && !_network._nic_state.ready(); }
+
+	bool _diagnostics_available() const {
+		return _cached_init_config.any_stalled() || _network_missing(); }
+
+	bool _software_status_available() const
+	{
+		return _diagnostics_available()
+		    || _update_running()
+		    || _download_queue.any_failed_download();
+	}
+
+	char const *_software_status_message() const
+	{
+		if (_update_running())
+			return "install ...";
+
+		if (_diagnostics_available())
+			return "!";
+
+		return " ";
+	}
+
+	/**
+	 * Software_presets_dialog::Action interface
+	 */
+	void load_deploy_preset(Presets::Info::Name const &name) override
+	{
+		_download_queue.remove_inactive_downloads();
+
+		_vfs.copy({ "/model/presets/", name }, "/model/deploy");
+	}
+
+	/**
+	 * Dir_query::Action interface
+	 */
+	void queried_dir_response() override
+	{
+		_generate_dialog();
+	}
+
+	/**
+	 * Component_add_widget::Action interface
+	 */
+	void query_directory(Dir_query::Query const &query) override
+	{
+		if (_dir_query.update_query(_env, *this, _child_states, query).runtime_reconfig_needed)
+			generate_runtime_config();
+	}
+
+	Dir_query _dir_query { _env, _heap, *this };
+
+	/**
+	 * Popup_options_widget::Action interface
+	 */
+	void enable_option(Options::Name const &name) override
+	{
+		_vfs.edit("/model/deploy", [&] (Hid_edit &edit) {
+			edit.append("deploy", [&] (Generator &g) {
+				g.node("option", [&] { g.attribute("name", name); }); }); });
+	}
+
+	/**
+	 * Popup_options_widget::Action interface
+	 */
+	void disable_option(Options::Name const &name) override
+	{
+		_vfs.edit("/model/deploy", [&] (Hid_edit &edit) {
+			edit.remove({ "deploy | : option ", name }); });
+	}
+
+	/**
+	 * Depot_users_dialog::Action interface
+	 */
+	void add_depot_url(Depot_url const &depot_url) override
+	{
+		using Content = File_operation_queue::Content;
+
+		_file_operation_queue.new_small_file(Path("/rw/depot/", depot_url.user, "/download"),
+		                                     Content { depot_url.download });
+
+		if (!_file_operation_queue.any_operation_in_progress())
+			_file_operation_queue.schedule_next_operations();
+
+		generate_runtime_config();
+	}
+
+	/**
+	 * Software_update_dialog::Action interface
+	 */
+	void query_image_index(Depot::Archive::User const &user) override
+	{
+		_image_index_user = user;
+		_query_depot();
+	}
+
+	/**
+	 * Software_update_dialog::Action interface
+	 */
+	void trigger_image_download(Path const &path, Verify verify) override
+	{
+		_download_queue.remove_inactive_downloads();
+		_download_queue.add(path, verify);
+		_update_install();
+		generate_runtime_config();
+	}
+
+	/**
+	 * Software_update_dialog::Action interface
+	 */
+	void update_image_index(Depot::Archive::User const &user, Verify verify) override
+	{
+		_download_queue.remove_inactive_downloads();
+		_index_update_queue.remove_inactive_updates();
+		_index_update_queue.add(Path(user, "/image/index"), verify);
+		generate_runtime_config();
+	}
+
+	/**
+	 * Software_update_dialog::Action interface
+	 */
+	void install_boot_image(Path const &path) override
+	{
+		_file_operation_queue.copy_all_files(Path("/rw/depot/", path), "/rw/boot");
+
+		if (!_file_operation_queue.any_operation_in_progress())
+			_file_operation_queue.schedule_next_operations();
+
+		generate_runtime_config();
+	}
+
+	/**
+	 * Software_add_dialog::Action interface
+	 */
+	void update_sculpt_index(Depot::Archive::User const &user, Verify verify) override
+	{
+		_download_queue.remove_inactive_downloads();
+		_index_update_queue.remove_inactive_updates();
+		_index_update_queue.add(Path(user, "/index/", _sculpt_version), verify);
+		generate_runtime_config();
+	}
+
+
+	/***********
+	 ** Audio **
+	 ***********/
+
+	Mic_state _mic_state = Mic_state::PHONE;
+
+	Audio_volume _audio_volume { .value = 75 };
+
+	Expanding_reporter _audio_config { _env, "config", "audio_config" };
+
+	struct Audio_config
+	{
+		bool earpiece, speaker, mic, modem;
+
+		Audio_volume audio_volume;
+
+		bool operator != (Audio_config const &other) const
+		{
+			return (earpiece           != other.earpiece)
+			    || (speaker            != other.speaker)
+			    || (mic                != other.mic)
+			    || (modem              != other.modem)
+			    || (audio_volume.value != other.audio_volume.value);
+		}
+
+		void generate(Generator &g) const
+		{
+			g.node("earpiece", [&] {
+				g.attribute("volume", earpiece ? 100 : 0);
+			});
+			g.node("speaker", [&] {
+				g.attribute("volume", speaker  ? audio_volume.value : 0);
+			});
+			g.node("mic", [&] {
+				g.attribute("volume", mic ? 80 : 0);
+			});
+			g.node("codec", [&]() {
+				g.attribute("target", modem ? "modem" : "soc");
+			});
+		}
+	};
+
+	Audio_config _curr_audio_config { };
+
+	void _generate_audio_config()
+	{
+		auto mic_enabled = [&]
+		{
+			switch (_mic_state) {
+			case Mic_state::OFF:   return false;
+			case Mic_state::PHONE: return _current_call.active();
+			case Mic_state::ON:    return true;
+			}
+			return false;
+		};
+
+		Audio_config const new_config {
+
+			.earpiece = true,
+
+			/* enable speaker for the ring tone when no call is active */
+			.speaker  = !_current_call.active() || _current_call.speaker,
+
+			/* enable microphone during call */
+			.mic = mic_enabled(),
+
+			/* set codec target during call */
+			.modem = _current_call.active(),
+
+			.audio_volume = _audio_volume
+		};
+
+		if (new_config != _curr_audio_config) {
+			_curr_audio_config = new_config;
+			_audio_config.generate([&] (Generator &g) {
+				_curr_audio_config.generate(g); });
+		}
+	}
+
+	/**
+	 * Device_controls_widget::Action interface
+	 */
+	void select_volume_level(unsigned level) override
+	{
+		_audio_volume.value = level;
+		_generate_audio_config();
+	}
+
+	/**
+	 * Device_controls_widget::Action interface
+	 */
+	void select_mic_policy(Mic_state const &policy) override
+	{
+		_mic_state = policy;
+		_generate_audio_config();
+	}
+
+
+	/**********************
+	 ** Device functions **
+	 **********************/
+
+	Rom_handler<Main> _power_rom {
+		_env, "report -> platform/power", *this, &Main::_handle_power };
+
+	bool _update_soc_feature_selection()
+	{
+		Board_info::Soc const orig_soc = _soc;
+
+		/* wifi and mobile data depends on the presence of a battery */
+		_soc.modem = _power_state.modem_present() && _modem_state.ready();
+		_soc.wifi  = _power_state.wifi_present();
+
+		bool const changed = (orig_soc != _soc);
+		if (changed)
+			_drivers.update_soc(_soc);
+
+		return changed;
+	}
+
+	void _handle_power(Node const &power)
+	{
+		Power_state const orig_power_state = _power_state;
+		_power_state = Power_state::from_node(power);
+
+		bool regenerate_dialog = false;
+
+		if (_system.storage_stage && _update_soc_feature_selection())
+			regenerate_dialog = true;
+
+		if (orig_power_state.summary() != _power_state.summary())
+			regenerate_dialog = true;
+
+		if (_device_title_bar.selected())
+			regenerate_dialog = true;
+
+		if (regenerate_dialog)
+			_generate_dialog();
+	}
+
+	/**
+	 * Device_controls_widget::Action interface
+	 */
+	void select_brightness_level(unsigned level) override
+	{
+		_system.brightness = level;
+		_update_managed_system_config();
+	}
+
+	/**
+	 * Device_power_widget::Action interface
+	 */
+	void activate_performance_power_profile() override
+	{
+		_system.power_profile = "performance";
+		_update_managed_system_config();
+	}
+
+	/**
+	 * Device_power_widget::Action interface
+	 */
+	void activate_economic_power_profile() override
+	{
+		_system.power_profile = "economic";
+		_update_managed_system_config();
+	}
+
+	/**
+	 * Device_power_widget::Action interface
+	 */
+	void trigger_device_reboot() override
+	{
+		_system.state = "reset";
+		_update_managed_system_config();
+	}
+
+	/**
+	 * Device_power_widget::Action interface
+	 */
+	void trigger_device_off() override
+	{
+		_system.state = "poweroff";
+		_update_managed_system_config();
+	}
+
+
+	/***********
+	 ** Phone **
+	 ***********/
+
+	Expanding_reporter _modem_config { _env, "config", "modem_config" };
+
+	enum class Modem_config_power { ANY, OFF, ON };
+
+	Modem_config_power _modem_config_power { Modem_config_power::ANY };
+
+	/*
+	 * State that influences the modem configuration, used to detect the
+	 * need for configuraton updates.
+	 */
+	struct Modem_config
+	{
+		Modem_config_power modem_power;
+		Modem_state        modem_state;
+		Sim_pin            sim_pin;
+		Current_call       current_call;
+
+		bool operator != (Modem_config const &other) const
+		{
+			return (modem_power  != other.modem_power)
+			    || (modem_state  != other.modem_state)
+			    || (sim_pin      != other.sim_pin)
+			    || (current_call != other.current_call);
+		}
+
+		void generate(Generator &g) const
+		{
+			switch (modem_power) {
+			case Modem_config_power::OFF: g.attribute("power", "off"); break;
+			case Modem_config_power::ON:  g.attribute("power", "on");  break;
+			case Modem_config_power::ANY: break;
+			}
+
+			bool const supply_pin = modem_state.pin_required()
+			                     && sim_pin.suitable_for_unlock()
+			                     && sim_pin.confirmed;
+			if (supply_pin)
+				g.attribute("pin", String<10>(sim_pin));
+
+			g.node("ring", [&] {
+				g.append_quoted("AT+QLDTMF=5,\"4,3,6,#,D,3\",1"); });
+
+			current_call.gen_modem_config(g);
+		}
+	};
+
+	Modem_config _curr_modem_config { };
+
+	Rom_handler<Main> _modem_state_rom {
+		_env, "report -> modem/state", *this, &Main::_handle_modem_state };
+
+	void _handle_modem_state(Node const &modem_state)
+	{
+		if (_verbose_modem)
+			log("modem state: ", modem_state);
+
+		Modem_state const orig_modem_state = _modem_state;
+
+		bool regenerate_dialog = false;
+
+		_modem_state = Modem_state::from_node(modem_state);
+
+		/* update condition of "Mobile data" network option */
+		if (orig_modem_state.ready() != _modem_state.ready())
+			regenerate_dialog = true;
+
+		_current_call.update(_modem_state);
+
+		if (_modem_state.pin_rejected())
+			_sim_pin = Sim_pin { };
+
+		bool const configured_current_call_out_of_date =
+			(_current_call != _curr_modem_config.current_call);
+
+		bool const modem_state_changed = (orig_modem_state != _modem_state);
+
+		if (configured_current_call_out_of_date || modem_state_changed) {
+			_generate_modem_config();
+			regenerate_dialog = true;
+		}
+
+		if (regenerate_dialog)
+			_generate_dialog();
+	}
+
+	void _generate_modem_config()
+	{
+		Modem_config const new_config {
+			.modem_power  = _modem_config_power,
+			.modem_state  = _modem_state,
+			.sim_pin      = _sim_pin,
+			.current_call = _current_call,
+		};
+
+		if (new_config != _curr_modem_config) {
+
+			_curr_modem_config = new_config;
+
+			_modem_config.generate([&] (Generator &g) {
+
+				if (_verbose_modem)
+					g.attribute("verbose", "yes");
+
+				_curr_modem_config.generate(g);
+			});
+		}
+
+		/* update audio config as it depends on the current call state */
+		_generate_audio_config();
+	}
+
+	/**
+	 * Modem_power_widget::Action interface
+	 */
+	void modem_power(bool enabled) override
+	{
+		_modem_config_power = enabled ? Modem_config_power::ON
+		                              : Modem_config_power::OFF;
+
+		/* forget pin and call state when powering off the modem */
+		if (!enabled) {
+			_sim_pin      = { };
+			_current_call = { };
+		}
+
+		_generate_modem_config();
+	}
+
+	/**
+	 * Pin_widget::Action interface
+	 */
+	void append_sim_pin_digit(Sim_pin::Digit d) override
+	{
+		_sim_pin.append_digit(d);
+	}
+
+	/**
+	 * Pin_widget::Action interface
+	 */
+	void remove_last_sim_pin_digit() override
+	{
+		_sim_pin.remove_last_digit();
+	}
+
+	/**
+	 * Pin_widget::Action interface
+	 */
+	void confirm_sim_pin() override
+	{
+		if (_sim_pin.suitable_for_unlock())
+			_sim_pin.confirmed = true;
+		_generate_modem_config();
+	}
+
+	/**
+	 * Dialpad_widget::Action interface
+	 */
+	void append_dial_digit(Dialed_number::Digit d) override
+	{
+		if (_current_call.canceled())
+			_current_call = { };
+
+		_dialed_number.append_digit(d);
+	}
+
+	/**
+	 * Current_call_dialog::Action interface
+	 */
+	void remove_last_dial_digit() override
+	{
+		if (_current_call.canceled())
+			_current_call = { };
+
+		_dialed_number.remove_last_digit();
+	}
+
+	/**
+	 * Current_call_dialog::Action interface
+	 */
+	void accept_incoming_call() override
+	{
+		_current_call.accept();
+		_generate_modem_config();
+	}
+
+	/**
+	 * Current_call_dialog::Action interface
+	 */
+	void reject_incoming_call() override
+	{
+		_current_call.reject();
+		_generate_modem_config();
+	}
+
+	/**
+	 * Current_call_dialog::Action interface
+	 */
+	void hang_up() override
+	{
+		_current_call.reject();
+		_generate_modem_config();
+	}
+
+	/**
+	 * Current_call_dialog::Action interface
+	 */
+	void toggle_speaker() override
+	{
+		_current_call.toggle_speaker();
+		_generate_modem_config();
+	}
+
+	/**
+	 * Current_call_dialog::Action interface
+	 */
+	void initiate_call() override
+	{
+		if (_dialed_number.suitable_for_call()) {
+			_current_call.initiate(Number(_dialed_number));
+			_generate_modem_config();
+		}
+	}
+
+	/**
+	 * Current_call_dialog::Action interface
+	 */
+	void cancel_initiated_call() override
+	{
+		_current_call.cancel();
+		_generate_modem_config();
+	}
+
+
+	/**********************************
+	 ** Display driver configuration **
+	 **********************************/
+
+	Fb_connectors _fb_connectors { };
+
+	Fb_config _fb_config_model { };
+
+	/**
+	 * Fb_widget::Action interface
+	 */
+	void select_fb_mode          (Fb_connectors::Name const &,
+	                              Fb_connectors::Connector::Mode::Id const &) override { }
+	void disable_fb_connector    (Fb_connectors::Name const &)           override { }
+	void toggle_fb_merge_discrete(Fb_connectors::Name const &)           override { }
+	void swap_fb_connector       (Fb_connectors::Name const &)           override { }
+	void fb_brightness           (Fb_connectors::Name const &, unsigned) override { }
+	void fb_rotation             (Fb_connectors::Name const &, Fb_connectors::Orientation::Rotate) override { }
+	void fb_toggle_flip          (Fb_connectors::Name const &) override { }
+
+
+	Popup _popup { };
+
+	Main(Env &env) : _env(env)
+	{
+		_wifi_widget._max_visible_aps = 20;
+
+		_driver_options.display = true;
+		_drivers.update_options(_driver_options);
+		_drivers.update_soc(_soc);
+
+		_gui.input.sigh(_input_handler);
+		_gui.info_sigh(_gui_mode_handler);
+		_handle_gui_mode();
+
+		_system_config.with_node([&] (Node const &system) {
+			_system = System::from_node(system); });
+
+		_update_managed_system_config();
+
+		_init_config_rom.with_node([&] (Node const &config) {
+			config.with_optional_sub_node("affinity-space", [&] (Node const &node) {
+				_affinity_space = Affinity::Space(node.attribute_value("width",  1U),
+				                                  node.attribute_value("height", 1U)); }); });
+
+		_generate_modem_config();
+		generate_runtime_config();
+		_generate_dialog();
+	}
+};
+
+
+bool Sculpt::Runtime_config::hidden_from_graph(Start_name const &name)
+{
+	return name == "blueprint_query"
+	    || name == "clipboard"
+	    || name == "depot_query"
+	    || name == "depot_rom"
+	    || name == "depot_rw"
+	    || name == "dir_query"
+	    || name == "dynamic_depot_rom"
+	    || name == "editor"
+	    || name == "event_filter"
+	    || name == "font"
+	    || name == "fb"
+	    || name == "fs_query"
+	    || name == "fs_tool"
+	    || name == "global_keys"
+	    || name == "gui_focus"
+	    || name == "leitzentrale"
+	    || name == "manager_keyboard"
+	    || name == "model"
+	    || name == "model_query"
+	    || name == "modem_diag"
+	    || name == "numlock_remap"
+	    || name == "touch"
+	    || name == "pointer"
+	    || name == "public_rw"
+	    || name == "report"
+	    || name == "report_logger"
+	    || name == "runtime_view"
+	    || name == "update";
+}
+
+
+void Sculpt::Main::_update_window_layout(Node const &decorator_margins,
+                                         Node const &window_list)
+{
+	/* skip window-layout handling (and decorator activity) while booting */
+	if (!_gui_mode_ready)
+		return;
+
+	struct Decorator_margins
+	{
+		unsigned top = 0, bottom = 0, left = 0, right = 0;
+
+		Decorator_margins(Node const &node)
+		{
+			node.with_optional_sub_node("floating", [&] (Node const &floating) {
+				top    = floating.attribute_value("top",    0U);
+				bottom = floating.attribute_value("bottom", 0U);
+				left   = floating.attribute_value("left",   0U);
+				right  = floating.attribute_value("right",  0U);
+			});
+		}
+	};
+
+	Decorator_margins const margins { decorator_margins };
+
+	using Label = String<128>;
+	Label const main_view_label     ("runtime_view -> main");
+	Label const touch_keyboard_label("touch_keyboard");
+
+	/*
+	 * Take presence of main view as trigger for second driver stage.
+	 *
+	 * Once after the basic GUI is up, spawn storage drivers and touch keyboard.
+	 */
+	if (!_system.storage_stage) {
+		_with_window(window_list, main_view_label, [&] (Node const &) {
+			_enter_second_driver_stage();
+			_touch_keyboard.started = true;
+			generate_runtime_config();
+		});
+	}
+
+	auto win_size = [&] (Node const &win) {
+		return Area(win.attribute_value("width",  0U),
+		            win.attribute_value("height", 0U)); };
+
+	auto generate_within_screen_boundary = [&] (auto const &fn)
+	{
+		_resize_request.generate([&] (Generator &resize_generator) {
+			_window_layout.generate([&] (Generator &g) {
+				g.node("boundary", [&] {
+					g.attribute("width",  _screen_size.w);
+					g.attribute("height", _screen_size.h);
+					fn(g, resize_generator); }); }); });
+	};
+
+	generate_within_screen_boundary([&] (Generator &g, Generator &) {
+
+		auto gen_window = [&] (Node const &win, Rect rect) {
+			if (rect.valid()) {
+				g.node("window", [&] {
+					g.attribute("id",     win.attribute_value("id", 0UL));
+					g.attribute("xpos",   rect.x1());
+					g.attribute("ypos",   rect.y1());
+					g.attribute("width",  rect.w());
+					g.attribute("height", rect.h());
+					g.attribute("title",  win.attribute_value("label", Label()));
+				});
+			}
+		};
+
+		_with_window(window_list, touch_keyboard_label, [&] (Node const &win) {
+			if (!_leitzentrale_visible)
+				return;
+
+			Area  const size = win_size(win);
+			Point const pos  = _touch_keyboard.visible
+			                 ? Point(0, int(_screen_size.h) - int(size.h))
+			                 : Point(0, int(_screen_size.h));
+
+			gen_window(win, Rect(pos, size));
+		});
+
+		_with_window(window_list, main_view_label, [&] (Node const &win) {
+			Area  const size = win_size(win);
+			Point const pos(_leitzentrale_visible ? 0 : int(size.w), 0);
+			gen_window(win, Rect(pos, size));
+		});
+	});
+}
+
+
+void Sculpt::Main::_handle_gui_mode()
+{
+	bool capture_present = false;
+	_gui.with_info_node([&](Node const &info) {
+		capture_present = info.has_sub_node("capture"); });
+
+	_screensaver.display_driver_ready(capture_present);
+
+	_gui.panorama().with_result(
+		[&] (Gui::Rect const rect) {
+			_gui_mode_ready = true;
+			_screen_size = rect.area;
+			_main_view.min_width  = _screen_size.w;
+			_main_view.min_height = _screen_size.h;
+		},
+		[&] (Gui::Undefined) { }
+	);
+
+	generate_runtime_config();
+	_update_window_layout();
+}
+
+
+void Sculpt::Main::_handle_update_state(Node const &update_state)
+{
+	_download_queue.apply_update_state(update_state);
+	_download_queue.remove_completed_downloads();
+
+	_index_update_queue.apply_update_state(update_state);
+
+	bool const installation_complete =
+		!update_state.attribute_value("progress", false);
+
+	if (installation_complete) {
+		_bump_depot_version();
+		_query_depot();
+	}
+
+	_generate_dialog();
+}
+
+
+void Sculpt::Main::_handle_runtime_state(Node const &state)
+{
+	_runtime_state.update_from_state_report(state);
+
+	bool reconfigure_runtime = false;
+	bool regenerate_dialog   = false;
+
+	_deploy.manage_resource_requests(_vfs, _runtime_state, _cached_init_config);
+
+	/* check for completed storage operations */
+	_storage._storage_devices.for_each([&] (Storage_device &device) {
+
+		device.for_each_partition([&] (Partition &partition) {
+
+			Storage_target const target { device.driver, device.port, partition.number };
+
+			if (partition.check_in_progress) {
+				String<64> name(target.label(), ".e2fsck");
+				Child_exit_state exit_state(state, name);
+
+				if (exit_state.exited) {
+					if (exit_state.code != 0)
+						error("file-system check failed");
+					if (exit_state.code == 0)
+						log("file-system check succeeded");
+
+					partition.check_in_progress = 0;
+					reconfigure_runtime = true;
+					_reset_storage_widget_operation();
+				}
+			}
+
+			if (partition.format_in_progress) {
+				String<64> name(target.label(), ".mke2fs");
+				Child_exit_state exit_state(state, name);
+
+				if (exit_state.exited) {
+					if (exit_state.code != 0)
+						error("file-system creation failed");
+
+					partition.format_in_progress = false;
+					partition.file_system.type = File_system::EXT2;
+
+					if (partition.whole_device())
+						device.rediscover();
+
+					reconfigure_runtime = true;
+					_reset_storage_widget_operation();
+				}
+			}
+
+			/* respond to completion of file-system resize operation */
+			if (partition.fs_resize_in_progress) {
+				Child_exit_state exit_state(state, Start_name(target.label(), ".resize2fs"));
+				if (exit_state.exited) {
+					partition.fs_resize_in_progress = false;
+					reconfigure_runtime = true;
+					device.rediscover();
+					_reset_storage_widget_operation();
+				}
+			}
+
+		}); /* for each partition */
+
+		/* respond to failure of part_block */
+		if (device.discovery_in_progress()) {
+			Child_exit_state exit_state(state, device.part_block_child_name());
+			if (!exit_state.responsive) {
+				error(device.part_block_child_name(), " got stuck");
+				device.state = Storage_device::RELEASED;
+				reconfigure_runtime = true;
+			}
+		}
+
+		/* respond to completion of GPT relabeling */
+		if (device.relabel_in_progress()) {
+			Child_exit_state exit_state(state, device.relabel_child_name());
+			if (exit_state.exited) {
+				device.rediscover();
+				reconfigure_runtime = true;
+				_reset_storage_widget_operation();
+			}
+		}
+
+		/* respond to completion of GPT expand */
+		if (device.gpt_expand_in_progress()) {
+			Child_exit_state exit_state(state, device.expand_child_name());
+			if (exit_state.exited) {
+
+				/* kick off resize2fs */
+				device.for_each_partition([&] (Partition &partition) {
+					if (partition.gpt_expand_in_progress) {
+						partition.gpt_expand_in_progress = false;
+						partition.fs_resize_in_progress  = true;
+					}
+				});
+
+				reconfigure_runtime = true;
+				_reset_storage_widget_operation();
+			}
+		}
+
+	}); /* for each device */
+
+	/* handle failed initialization of USB-storage devices */
+	_storage._storage_devices.usb_storage_devices.for_each([&] (Usb_storage_device &dev) {
+		Child_exit_state exit_state(state, dev.driver);
+		if (exit_state.exited) {
+			dev.discard_usb_block();
+			reconfigure_runtime = true;
+			regenerate_dialog   = true;
+		}
+	});
+
+	/* remove prepare subsystem when finished */
+	{
+		Child_exit_state exit_state(state, "prepare");
+		if (exit_state.exited) {
+			_prepare_completed = _prepare_version;
+
+			/* trigger update and deploy */
+			reconfigure_runtime = true;
+			_query_depot();
+		}
+	}
+
+	/* schedule pending file operations to new fs_tool instance */
+	{
+		Child_exit_state exit_state(state, "fs_tool");
+
+		if (exit_state.exited) {
+
+			Child_exit_state::Version const expected_version(_fs_tool_version.value);
+
+			if (exit_state.version == expected_version) {
+
+				_file_operation_queue.schedule_next_operations();
+				_fs_tool_version.value++;
+				reconfigure_runtime = true;
+
+				/* try to proceed after the first step of an depot-index update */
+				unsigned const orig_download_count = _index_update_queue.download_count;
+				_index_update_queue.try_schedule_downloads();
+				if (_index_update_queue.download_count != orig_download_count)
+					_update_install();
+
+				/* update depot-user selection after adding new depot URL */
+				if (_depot_user_selection_visible())
+					_query_depot();
+			}
+		}
+	}
+
+	/* upgrade RAM and cap quota on demand */
+	state.for_each_sub_node("child", [&] (Node const &child) {
+
+		bool reconfiguration_needed = false;
+		_child_states.for_each([&] (Child_state &child_state) {
+			if (child_state.apply_child_state_report(child))
+				reconfiguration_needed = true; });
+
+		if (reconfiguration_needed) {
+			reconfigure_runtime = true;
+			regenerate_dialog   = true;
+		}
+	});
+
+	if (_software_title_bar.selected() && _software_tabs_widget.hosted.options_selected())
+		regenerate_dialog = true;
+
+	if (regenerate_dialog)
+		_generate_dialog();
+
+	if (reconfigure_runtime)
+		generate_runtime_config();
+}
+
+
+void Sculpt::Main::_generate_managed_option(Generator &g) const
+{
+	_storage.gen_child_nodes(g);
+	_storage.gen_child_nodes(g);
+	_dir_query.gen_child_nodes(g);
+
+	/*
+	 * Load configuration and update depot config on the sculpt partition
+	 */
+	if (_storage._selected_target.valid() && _prepare_in_progress())
+		g.node("child", [&] {
+			gen_prepare_child_content(g, _prepare_version); });
+
+	/*
+	 * Spawn chroot instances for accessing '/depot' and '/public'. The
+	 * chroot instances implicitly refer to the 'default_fs_rw'.
+	 */
+	if (_storage._selected_target.valid()) {
+
+		auto chroot = [&] (Child_name const &name, Path const &path, Writeable w) {
+			g.node("child", [&] {
+				gen_chroot_child_content(g, name, path, w); }); };
+
+		if (_update_running()) {
+			chroot("depot_rw",  "/depot",  WRITEABLE);
+			chroot("public_rw", "/public", WRITEABLE);
+		}
+	}
+
+	/* execute file operations */
+	if (_storage._selected_target.valid())
+		if (_file_operation_queue.any_operation_in_progress())
+			g.node("child", [&] {
+				gen_fs_tool_child_content(g, _fs_tool_version,
+				                          _file_operation_queue); });
+
+	if (_update_running())
+		g.node("child", [&] {
+			gen_update_child_content(g); });
+
+	if (_system.storage_stage) /* touch keyboard not needed at earliest boot stage */
+		_touch_keyboard.gen_child_node(g);
+
+}
+
+
+void Component::construct(Genode::Env &env)
+{
+	static Sculpt::Main main(env);
+}
+

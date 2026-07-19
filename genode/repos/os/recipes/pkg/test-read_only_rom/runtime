@@ -1,0 +1,44 @@
+runtime | ram: 32M | caps: 1000 | binary: init
+
++ succeed | after_seconds: 20
++ fail    | : *ROM dataspace modified
++ fail    | : *requests resources
+
++ content
+  + rom | label: ld.lib.so
+  + rom | label: test-immutable_rom
+  + rom | label: vfs
+  + rom | label: vfs.lib.so
+  + rom | label: cached_fs_rom
+
++ config
+  + parent-provides
+    + service ROM
+    + service PD
+    + service RM
+    + service CPU
+    + service LOG
+
+  + default-route
+    + any-service
+      + parent
+      + any-child
+
+  + default | caps: 100
+
+  + start vfs | ram: 2M
+    + provides | + service File_system
+    + config
+      + vfs | + inline test | : DONT TOUCH
+      + default-policy | root: /
+
+  + start cached_fs_rom | ram: 10M
+    + provides | + service ROM
+
+  + start test-immutable_rom | ram: 2M
+    + route
+      + service ROM | label: test | + child cached_fs_rom
+      + any-service
+        + parent
+        + any-child
+-

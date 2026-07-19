@@ -1,0 +1,22 @@
+config | verbose: yes
+
++ parent-provides
+  + service ROM
+  + service PD
+  + service RM
+  + service CPU
+  + service LOG
+  + service IO_MEM
+  + service IO_PORT
+  + service IRQ
+  + service Gui
+  + service Timer
+  + service Block
+  + service Report
+  + service Dma
+  + service Platform
+
++ default-route | + any-service | + parent
+
++ default | caps: 100
+-

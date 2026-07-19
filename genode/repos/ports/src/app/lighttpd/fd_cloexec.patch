@@ -1,0 +1,34 @@
+--- src/app/lighttpd/src/fdevent.c
++++ src/app/lighttpd/src/fdevent.c
+@@ -11,6 +11,9 @@
+ #include <errno.h>
+ #include <fcntl.h>
+ 
++#undef FD_CLOEXEC
++#undef F_DUPFD_CLOEXEC
++
+ #include "ck.h"
+ #define force_assert(x) ck_assert(x)
+ 
+--- src/app/lighttpd/src/server.c
++++ src/app/lighttpd/src/server.c
+@@ -1397,6 +1397,8 @@
+ }
+ #endif
+ 
++#undef FD_CLOEXEC
++
+ __attribute_cold__
+ __attribute_noinline__
+ static int server_main_setup (server * const srv, int argc, char **argv) {
+--- src/app/lighttpd/src/configfile.c
++++ src/app/lighttpd/src/configfile.c
+@@ -1795,6 +1795,8 @@
+   #endif
+ }
+ 
++#undef FD_CLOEXEC
++
+ int config_log_error_open(server *srv) {
+     /* logs are opened after preflight check (srv->srvconf.preflight_check)
+      * and after dropping privileges instead of being opened during config

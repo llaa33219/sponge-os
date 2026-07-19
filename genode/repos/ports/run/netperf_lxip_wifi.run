@@ -1,0 +1,31 @@
+#
+# \brief  Test using netperf with the wifi driver
+# \author Alexander Boettcher
+# \date   2013-07-08
+#
+
+assert {[have_spec x86]}
+
+assert {![have_include power_on/qemu]}
+assert {![have_include power_on/linux]}
+
+if {[have_cmd_switch --autopilot] && [have_spec x86_32]} {
+	assert {[have_spec foc] || [have_spec nova]} {
+		Autopilot mode is not supported on this platform.
+
+		Netperf WIFI running with non-ACPI kernel on native x86_32 test
+		machine is not supported because of wrong interrupt number in
+		pci config space (should be 11 instead 10).
+	}
+}
+
+# network configuration
+set use_nic_bridge      0
+set use_wifi_driver     1
+set use_usb_driver      0
+set use_lxip            1
+
+set wifi_ssid           $::env(GENODE_WIFI_SSID)
+set wifi_psk            $::env(GENODE_WIFI_PSK)
+
+source ${genode_dir}/repos/ports/run/netperf.inc

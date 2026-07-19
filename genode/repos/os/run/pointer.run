@@ -1,0 +1,216 @@
+assert {[have_spec linux]}
+
+build {
+	core init timer lib/ld
+	driver/framebuffer
+	server/report_rom
+	server/dynamic_rom
+	server/nitpicker
+	app/pointer
+	test/pointer
+	test/nitpicker
+}
+
+create_boot_directory
+
+install_config {
+config
++ parent-provides
+  + service ROM
+  + service IRQ
+  + service IO_MEM
+  + service IO_PORT
+  + service PD
+  + service CPU
+  + service LOG
+
++ default | caps: 100 | ram: 1M
+
++ start timer
+  + provides | + service Timer
+  + route
+    + service ROM | + parent
+    + service CPU | + parent
+    + service PD  | + parent
+    + service LOG | + parent
+
++ start fb_sdl | ld: no | ram: 32M
+  + config | buffered: yes | width: 1280 | height: 720 | depth: 16
+  + route
+    + service ROM     | + parent
+    + service CPU     | + parent
+    + service PD      | + parent
+    + service LOG     | + parent
+    + service Timer   | + child timer
+    + service Capture | + child nitpicker
+    + service Event   | + child nitpicker
+
++ start report_rom_nitpicker
+  + binary report_rom
+  + provides
+    + service Report
+    + service ROM
+  + config
+    + policy | label: pointer -> hover | report: nitpicker -> hover
+    + policy | label: pointer -> xray  | report: null
+  + route
+    + service ROM | + parent
+    + service CPU | + parent
+    + service PD  | + parent
+    + service PD  | + parent
+    + service LOG | + parent
+
++ start nitpicker | ram: 4M
+  + provides
+    + service Gui
+    + service Capture
+    + service Event
+  + config
+  | + capture
+  | + event
+  | + report | focus: yes | hover: yes | xray:  yes
+  |
+  | + domain pointer | layer: 1 | content: client | label:  no | origin: pointer
+  | + domain default | layer: 3 | content: client | label: yes | hover: always | focus: click
+  |
+  | + policy | label_prefix: pointer | domain: pointer
+  | + default-policy                 | domain: default
+  |
+  | + background | color: #00426f | . indigo
+  + route
+    + service ROM    | + parent
+    + service CPU    | + parent
+    + service PD     | + parent
+    + service LOG    | + parent
+    + service Timer  | + child timer
+    + service Report | + child report_rom_nitpicker
+
++ start shape-arrow | ram: 2M
+  + binary test-pointer
+  + config | shape: arrow
+  + route
+    + service PD                    | + parent
+    + service ROM                   | + parent
+    + service CPU                   | + parent
+    + service LOG                   | + parent
+    + service Report | label: shape | + child pointer | label: test-label-arrow -> shape
+
++ start shape-blade | ram: 2M
+  + binary test-pointer
+  + config | shape: blade
+  + route
+    + service PD                    | + parent
+    + service ROM                   | + parent
+    + service CPU                   | + parent
+    + service LOG                   | + parent
+    + service Report | label: shape | + child pointer | label: test-label-blade -> shape
+
++ start shape-bladex | ram: 2M
+  + binary test-pointer
+  + config | shape: bladex
+  + route
+    + service PD                    | + parent
+    + service ROM                   | + parent
+    + service CPU                   | + parent
+    + service LOG                   | + parent
+    + service Report | label: shape | + child pointer | label: test-label-bladex -> shape
+
++ start shape-smiley-config
+  + binary dynamic_rom
+  + provides | + service ROM
+  + config
+  | + rom smiley.config
+  |   + inline | description: smiley | + config | shape: smiley
+  |   + sleep  | milliseconds: 800
+  |   + inline | description: smiley | + config | shape: empty
+  |   + sleep  | milliseconds: 800
+  |   + inline | description: yelims | + config | shape: yelims
+  |   + sleep  | milliseconds: 800
+  |   + inline | description: yelims | + config | shape: invisible
+  |   + sleep  | milliseconds: 800
+  + route
+    + service ROM   | + parent
+    + service CPU   | + parent
+    + service PD    | + parent
+    + service LOG   | + parent
+    + service Timer | + child timer
+
++ start shape-smiley | ram: 2M
+  + binary test-pointer
+  + route
+    + service ROM | label: config   | + child shape-smiley-config | label: smiley.config
+    + service Report | label: shape | + child pointer | label: test-label-smiley -> shape
+    + service ROM                   | + parent
+    + service CPU                   | + parent
+    + service PD                    | + parent
+    + service LOG                   | + parent
+
++ start pointer
+  + provides | + service Report
+  + config | shapes: yes | verbose: no
+  + route
+    + service PD                 | + parent
+    + service LOG                | + parent
+    + service Gui                | + child nitpicker
+    + service ROM | label: xray  | + child report_rom_nitpicker
+    + service ROM | label: hover | + child report_rom_nitpicker
+    + service ROM                | + parent
+    + service CPU                | + parent
+
++ start test-no-match | ram: 2M
+  + binary testnit
+  + route
+    + service LOG   | + parent
+    + service PD    | + parent
+    + service CPU   | + parent
+    + service ROM   | + parent
+    + service Timer | + child timer
+    + service Gui   | + child nitpicker
+
++ start test-label-smiley | ram: 2M
+  + binary testnit
+  + route
+    + service LOG   | + parent
+    + service PD    | + parent
+    + service CPU   | + parent
+    + service ROM   | + parent
+    + service Timer | + child timer
+    + service Gui   | + child nitpicker
+
++ start test-label-arrow | ram: 2M
+  + binary testnit
+  + route
+    + service LOG   | + parent
+    + service PD    | + parent
+    + service CPU   | + parent
+    + service ROM   | + parent
+    + service Timer | + child timer
+    + service Gui   | + child nitpicker
+
++ start test-label-blade | ram: 2M
+  + binary testnit
+  + route
+    + service PD    | + parent
+    + service LOG   | + parent
+    + service CPU   | + parent
+    + service ROM   | + parent
+    + service Timer | + child timer
+    + service Gui   | + child nitpicker
+
++ start test-label-bladex | ram: 2M
+  + binary testnit
+  + route
+    + service PD    | + parent
+    + service LOG   | + parent
+    + service CPU   | + parent
+    + service ROM   | + parent
+    + service Timer | + child timer
+    + service Gui   | + child nitpicker
+-
+}
+
+build_boot_image [build_artifacts]
+
+run_genode_until forever
+
+# vi: set ft=tcl :

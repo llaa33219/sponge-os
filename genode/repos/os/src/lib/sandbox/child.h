@@ -1,0 +1,805 @@
+/*
+ * \brief  Child representation
+ * \author Norman Feske
+ * \date   2010-05-04
+ */
+
+/*
+ * Copyright (C) 2010-2017 Genode Labs GmbH
+ *
+ * This file is part of the Genode OS framework, which is distributed
+ * under the terms of the GNU Affero General Public License version 3.
+ */
+
+#ifndef _LIB__SANDBOX__CHILD_H_
+#define _LIB__SANDBOX__CHILD_H_
+
+/* Genode includes */
+#include <base/log.h>
+#include <base/child.h>
+#include <os/session_requester.h>
+#include <os/session_policy.h>
+#include <sandbox/sandbox.h>
+
+/* local includes */
+#include <types.h>
+#include <verbose.h>
+#include <report.h>
+#include <name_registry.h>
+#include <service.h>
+#include <utils.h>
+#include <route_model.h>
+
+namespace Sandbox { class Child; }
+
+class Sandbox::Child : Child_policy, Routed_service::Wakeup
+{
+	public:
+
+		using Version = String<80>;
+
+		/**
+		 * Exception types
+		 */
+		struct Child_name_is_not_unique : Exception { };
+		struct Missing_name_attribute   : Exception { };
+
+		/**
+		 * Unique ID of the child, solely used for diagnostic purposes
+		 */
+		struct Id { unsigned value; };
+
+		using With_node = Callable<void, Node const &>;
+
+		struct Default_route_accessor : Interface
+		{
+			virtual void _with_default_route(With_node::Ft const &) = 0;
+
+			void with_default_route(auto const &fn)
+			{
+				_with_default_route(With_node::Fn { fn });
+			}
+		};
+
+		struct Default_quota_accessor : Interface
+		{
+			virtual Cap_quota default_caps() = 0;
+			virtual Ram_quota default_ram()  = 0;
+		};
+
+		template <typename QUOTA>
+		struct Resource_limit_accessor : Interface
+		{
+			/*
+			 * The argument is unused. It exists solely as an overload selector.
+			 */
+			virtual QUOTA resource_limit(QUOTA const &) const = 0;
+		};
+
+		using Ram_limit_accessor = Resource_limit_accessor<Ram_quota>;
+		using Cap_limit_accessor = Resource_limit_accessor<Cap_quota>;
+		using Cpu_limit_accessor = Resource_limit_accessor<Cpu_quota>;
+
+		enum class Sample_state_result { CHANGED, UNCHANGED };
+
+		using Pd_intrinsics = Genode::Sandbox::Pd_intrinsics;
+
+		template <typename PD_SESSION>
+		static void with_pd_intrinsics(Pd_intrinsics &pd_intrinsics,
+		                               Capability<Pd_session> cap, PD_SESSION &pd,
+		                               auto const &fn)
+		{
+			pd_intrinsics.with_intrinsics(cap, pd, Pd_intrinsics::With_intrinsics::Fn { fn });
+		}
+
+		struct Heartbeat_alarm_trigger : Interface { virtual void trigger_heartbeat_alarm() = 0; };
+
+	private:
+
+		friend class Child_registry;
+
+		Env &_env;
+
+		Allocator &_alloc;
+
+		Verbose const &_verbose;
+
+		Id const _id;
+
+		enum class State {
+
+			/*
+			 * States modelling the child's boostrap phase
+			 */
+			INITIAL, RAM_INITIALIZED, ALIVE,
+
+			/*
+			 * The child is present in the config model but its bootstrapping
+			 * permanently failed.
+			 */
+			STUCK,
+
+			/*
+			 * The child must be restarted because a fundamental dependency
+			 * changed. While the child is in this state, it is still
+			 * referenced by the config model.
+			 */
+			RESTART_SCHEDULED,
+
+			/*
+			 * The child is no longer referenced by config model and can
+			 * safely be destructed.
+			 */
+			ABANDONED
+		};
+
+		State _state = State::INITIAL;
+
+		Report_update_trigger   &_report_update_trigger;
+		Heartbeat_alarm_trigger &_heartbeat_alarm_trigger;
+
+		List_element<Child> _list_element;
+
+		Reconstructible<Buffered_node> _start_node;
+
+		Constructible<Route_model> _route_model { };
+
+		void _construct_route_model_from_start_node(Node const &start)
+		{
+			_route_model.destruct();
+
+			start.with_sub_node("route",
+				[&] (Node const &route) {
+					_route_model.construct(_alloc, route); },
+				[&] {
+					_default_route_accessor.with_default_route([&] (Node const &node) {
+						_route_model.construct(_alloc, node); });
+				});
+		}
+
+		/*
+		 * Version attribute of the start node, used to force child restarts.
+		 */
+		Version _version { _start_node->attribute_value("version", Version()) };
+
+		bool _uncertain_dependencies = false;
+
+		/*
+		 * True if the binary is loaded with ld.lib.so
+		 */
+		bool const _use_ld = _start_node->attribute_value("ld", true);
+
+		Default_route_accessor &_default_route_accessor;
+		Default_quota_accessor &_default_quota_accessor;
+		Ram_limit_accessor     &_ram_limit_accessor;
+		Cap_limit_accessor     &_cap_limit_accessor;
+
+		Name_registry &_name_registry;
+
+		/**
+		 * Read name from node and check for name confict with other children
+		 *
+		 * \throw Missing_name_attribute
+		 */
+		static Name _name_from_node(Node const &start_node)
+		{
+			Name const name = start_node.attribute_value("name", Name());
+			if (name.valid())
+				return name;
+
+			warning("missing 'name' attribute in '<start>' entry");
+			throw Missing_name_attribute();
+		}
+
+		using Name = String<64>;
+		Name const _unique_name { _name_from_node(*_start_node) };
+
+		static Binary_name _binary_from_node(Node const &start_node,
+		                                     Name const &unique_name)
+		{
+			return start_node.with_sub_node("binary",
+				[]  (Node const &node) { return node.attribute_value("name", Name()); },
+				[&]                    { return unique_name; });
+		}
+
+		/* updated on configuration update */
+		Binary_name _binary_name { _binary_from_node(*_start_node, _unique_name) };
+
+		/* initialized in constructor, updated by 'apply_config' */
+		struct Heartbeat
+		{
+			bool     enabled;
+			unsigned restart_after_skipped;
+
+			static Heartbeat from_start_node(Node const &node)
+			{
+				return node.with_sub_node("heartbeat",
+					[&] (Node const &node) -> Heartbeat {
+						return { true, node.attribute_value("restart_after_skipped", 0u) }; },
+					[&] {
+						return Heartbeat { }; });
+			}
+
+			bool restart_needed(unsigned skipped) const
+			{
+				return restart_after_skipped && (skipped > restart_after_skipped);
+			}
+
+		} _heartbeat;
+
+		/*
+		 * Number of skipped heartbeats when last checked
+		 *
+		 * This variable is used for the triggering of state-report updates
+		 * due to heartbeat events.
+		 */
+		unsigned _last_skipped_heartbeats = 0;
+
+		/* return true if heartbeat tracking is active */
+		bool _heartbeat_expected() const
+		{
+			/* don't expect heartbeats from a child that is not yet complete */
+			return _heartbeat.enabled && (_state == State::ALIVE);
+		}
+
+		/**
+		 * Resources assigned to the child
+		 */
+		struct Resources
+		{
+			long      prio_levels_log2;
+			long      priority;
+			Affinity  affinity;
+			Ram_quota assigned_ram_quota;
+			Cap_quota assigned_cap_quota;
+
+			Ram_quota effective_ram_quota() const
+			{
+				return Genode::Child::effective_quota(assigned_ram_quota);
+			}
+
+			Cap_quota effective_cap_quota() const
+			{
+				/* capabilities consumed by 'Genode::Child' */
+				Cap_quota const effective =
+					Genode::Child::effective_quota(assigned_cap_quota);
+
+				/* capabilities additionally consumed by init */
+				enum {
+					STATIC_COSTS = 1  /* possible heap backing-store
+					                     allocation for session object */
+					             + 1  /* buffered start node */
+					             + 2  /* dynamic ROM for config */
+					             + 2  /* dynamic ROM for session requester */
+				};
+
+				if (effective.value < STATIC_COSTS)
+					return Cap_quota{0};
+
+				return Cap_quota{effective.value - STATIC_COSTS};
+			}
+		};
+
+		static
+		Resources _resources_from_start_node(Node const &start_node, Prio_levels prio_levels,
+		                                     Affinity::Space const &affinity_space,
+		                                     Cap_quota default_cap_quota,
+		                                     Ram_quota default_ram_quota)
+		{
+			Number_of_bytes const default_ram { default_ram_quota.value };
+
+			Number_of_bytes ram { start_node.attribute_value("ram", default_ram) };
+
+			size_t caps { start_node.attribute_value("caps", default_cap_quota.value) };
+
+			start_node.for_each_sub_node("resource", [&] (Node const &rsc) {
+
+				using Name = String<8>;
+				Name const name = rsc.attribute_value("name", Name());
+
+				if (name == "RAM") ram  = rsc.attribute_value("quantum", ram);
+				if (name == "CAP") caps = rsc.attribute_value("quantum", 0UL);
+			});
+
+			return Resources { log2(prio_levels.value, 0u),
+			                   priority_from_node(start_node, prio_levels),
+			                   Affinity(affinity_space,
+			                            affinity_location_from_node(affinity_space, start_node)),
+			                   Ram_quota { ram },
+			                   Cap_quota { caps } };
+		}
+
+		Resources _resources;
+
+		Ram_quota _configured_ram_quota() const;
+		Cap_quota _configured_cap_quota() const;
+
+		Pd_intrinsics &_pd_intrinsics;
+
+		void _with_pd_intrinsics(auto const &fn)
+		{
+			_child.with_pd(
+				[&] (Pd_session &child_pd) {
+					with_pd_intrinsics(_pd_intrinsics, _child.pd_session_cap(),
+					                   child_pd, fn); },
+				[&] { });
+		}
+
+		Capability<Pd_session> _ref_pd_cap { }; /* defined by 'init' */
+
+		using Local_service = Genode::Sandbox::Local_service_base;
+
+		Registry<Parent_service> &_parent_services;
+		Registry<Routed_service> &_child_services;
+		Registry<Local_service>  &_local_services;
+
+		struct Inline_config_rom_service : Abandonable, Dynamic_rom_session::Content_producer
+		{
+			using Service = Genode::Local_service<Dynamic_rom_session>;
+
+			Child &_child;
+
+			Dynamic_rom_session _session { _child._env.ep().rpc_ep(),
+			                               _child._env.ram(), _child._env.rm(),
+			                               *this };
+
+			Service::Single_session_factory _factory { _session };
+			Service                         _service { _factory };
+
+			Inline_config_rom_service(Child &child) : _child(child) { }
+
+			/**
+			 * Dynamic_rom_session::Content_producer interface
+			 */
+			Result produce_content(Byte_range_ptr const &dst) override
+			{
+				return Generator::generate(dst, "config", [&] (Generator &g) {
+					_child._start_node->with_optional_sub_node("config",
+						[&] (Node const &config) {
+							g.node_attributes(config);
+							Generator::Max_depth const max_depth { 20 };
+							if (!g.append_node_content(config, max_depth))
+								warning(_child.name(), ": config structure exceeds max depth");
+						});
+					return Ok();
+				}).convert<Result>([&] (size_t)         { return Ok(); },
+				                   [&] (Buffer_error e) { return e; });
+			}
+
+			void trigger_update() { _session.trigger_update(); }
+
+			Service &service() { return _service; }
+		};
+
+		Constructible<Inline_config_rom_service> _config_rom_service { };
+
+		Session_requester _session_requester;
+
+		/**
+		 * CPU-session priority parameters
+		 */
+		long const _prio_levels_log2 { _resources.prio_levels_log2 };
+		long const _priority         { _resources.priority };
+
+		/**
+		 * If set to true, the child is allowed to do system management,
+		 * e.g., constrain physical RAM allocations.
+		 */
+		bool const _managing_system {
+			_start_node->attribute_value("managing_system", false) };
+
+		/**
+		 * Resource request initiated by the child
+		 */
+		struct Requested_resources
+		{
+			Ram_quota const ram;
+			Cap_quota const caps;
+
+			Requested_resources(Parent::Resource_args const &args)
+			:
+				ram (ram_quota_from_args(args.string())),
+				caps(cap_quota_from_args(args.string()))
+			{ }
+		};
+
+		Constructible<Requested_resources> _requested_resources { };
+
+		Genode::Child _child { _env.rm(), _env.ep().rpc_ep(), *this };
+
+		struct Pd_accessor : Routed_service::Pd_accessor
+		{
+			Genode::Child &_child;
+
+			Pd_accessor(Genode::Child &child) : _child(child) { }
+
+			void _with_pd(With_pd::Ft const &fn) override { _child.with_pd(fn, [&] { }); }
+			Pd_session_capability pd_cap() const override { return _child.pd_session_cap(); }
+
+		} _pd_accessor { _child };
+
+		struct Ram_accessor : Routed_service::Ram_accessor
+		{
+			Genode::Child &_child;
+
+			Ram_accessor(Genode::Child &child) : _child(child) { }
+
+			void _with_ram(With_ram::Ft const &fn) override { _child.with_pd(fn, [&] { }); }
+			Pd_session_capability ram_cap()  const override { return _child.pd_session_cap(); }
+
+		} _ram_accessor { _child };
+
+		/**
+		 * Async_service::Wakeup callback
+		 */
+		void wakeup_async_service() override
+		{
+			_session_requester.trigger_update();
+		}
+
+		enum class Route_state { VALID, MISMATCH, UNAVAILABLE };
+
+		/**
+		 * Return whether the policy results in the current route of the session
+		 *
+		 * This method is used to check if a policy change affects an existing
+		 * client session of a child, i.e., to determine whether the child must
+		 * be restarted.
+		 */
+		Route_state _route_valid(Session_state const &s)
+		{
+			Route_state result = Route_state::UNAVAILABLE;
+
+			with_route(s.service().name(), s.client_label(),
+				[&] (Child_policy::Route const &route) {
+					bool const valid = (s.service() == route.service)
+					                && (route.label == s.label());
+					result = valid ? Route_state::VALID : Route_state::MISMATCH;
+				}, [&] { });
+
+			return result;
+		}
+
+		static void _with_provides_sub_node(Node const &start_node, auto const &fn)
+		{
+			start_node.with_sub_node("provides", [&] (Node const &node) { fn(node); },
+			                                     [&] { fn(Node()); });
+		}
+
+		/**
+		 * Return true if service is provided by this child
+		 */
+		bool _provided_by_this(Routed_service const &service) const
+		{
+			return service.has_id_space(_session_requester.id_space());
+		}
+
+		/**
+		 * Return true if service of specified <provides> sub node is known
+		 */
+		bool _service_exists(Node const &node) const
+		{
+			bool exists = false;
+			_child_services.for_each([&] (Routed_service const &service) {
+				if (_provided_by_this(service) &&
+				    service.name() == node.attribute_value("name", Service::Name()))
+					exists = true; });
+
+			return exists && !abandoned() && !restart_scheduled();
+		}
+
+		void _add_service(Node const &service)
+		{
+			Service::Name const name =
+				service.attribute_value("name", Service::Name());
+
+			if (_verbose.enabled())
+				log("  provides service ", name);
+
+			new (_alloc)
+				Routed_service(_child_services, this->name(),
+				               _pd_accessor, _ram_accessor,
+				               _session_requester.id_space(),
+				               _child.session_factory(),
+				               name, *this);
+		}
+
+		/*
+		 * Exit state of the child set when 'exit()' is executed
+		 * and reported afterwards through the state report.
+		 */
+
+		bool _exited     { false };
+		int  _exit_value { -1 };
+
+		/**
+		 * Return true if it's safe to call the PD for requesting resource
+		 * information
+		 */
+		bool _pd_alive() const
+		{
+			return !abandoned() && !restart_scheduled() && !_exited;
+		}
+
+		void _with_pd(auto const &fn) const
+		{
+			if (_pd_alive())
+				_child.with_pd(fn, [] { });
+		}
+
+		void _destroy_services();
+
+		struct Sampled_state
+		{
+			Ram_info ram;
+			Cap_info caps;
+
+			static Sampled_state from_pd(Pd_session &pd)
+			{
+				return { .ram  = Ram_info::from_pd(pd),
+				         .caps = Cap_info::from_pd(pd) };
+			}
+
+			bool operator != (Sampled_state const &other) const
+			{
+				return (ram != other.ram) || (caps != other.caps);
+			}
+
+		} _sampled_state { };
+
+		void _abandon_services()
+		{
+			_child_services.for_each([&] (Routed_service &service) {
+				if (service.has_id_space(_session_requester.id_space()))
+					service.abandon(); });
+		}
+
+		void _schedule_restart()
+		{
+			_state = State::RESTART_SCHEDULED;
+			_abandon_services();
+		}
+
+	public:
+
+		/**
+		 * Constructor
+		 *
+		 * \param alloc               allocator solely used for configuration-
+		 *                            dependent allocations. It is not used for
+		 *                            allocations on behalf of the child's
+		 *                            behavior.
+		 *
+		 * \param ram_limit_accessor  interface for querying the available
+		 *                            RAM, used for dynamic RAM balancing at
+		 *                            runtime.
+		 *
+		 * \throw Allocator::Out_of_memory  could not buffer the start node
+		 */
+		Child(Env                      &env,
+		      Allocator                &alloc,
+		      Verbose            const &verbose,
+		      Id                        id,
+		      Report_update_trigger    &report_update_trigger,
+		      Heartbeat_alarm_trigger  &,
+		      Node               const &start_node,
+		      Default_route_accessor   &default_route_accessor,
+		      Default_quota_accessor   &default_quota_accessor,
+		      Name_registry            &name_registry,
+		      Ram_limit_accessor       &ram_limit_accessor,
+		      Cap_limit_accessor       &cap_limit_accessor,
+		      Prio_levels               prio_levels,
+		      Affinity::Space const    &affinity_space,
+		      Registry<Parent_service> &parent_services,
+		      Registry<Routed_service> &child_services,
+		      Registry<Local_service>  &local_services,
+		      Pd_intrinsics            &pd_intrinsics);
+
+		virtual ~Child();
+
+		/**
+		 * Return true if the child has the specified name
+		 */
+		bool has_name(Child_policy::Name const &str) const { return str == name(); }
+
+		bool has_version(Version const &version) const { return version == _version; }
+
+		Ram_quota ram_quota() const { return _resources.assigned_ram_quota; }
+		Cap_quota cap_quota() const { return _resources.assigned_cap_quota; }
+
+		void try_start()
+		{
+			if (_state == State::INITIAL) {
+				_child.initiate_env_pd_session();
+				_state = State::RAM_INITIALIZED;
+			}
+
+			/*
+			 * Update the state if async env sessions have brought the child to
+			 * life. Otherwise, we would wrongly call 'initiate_env_sessions()'
+			 * another time.
+			 */
+			if (_state == State::RAM_INITIALIZED && _child.active())
+				_state = State::ALIVE;
+
+			if (_state == State::RAM_INITIALIZED) {
+				_child.initiate_env_sessions();
+
+				if (_child.active())
+					_state = State::ALIVE;
+				else
+					_uncertain_dependencies = true;
+			}
+		}
+
+		/*
+		 * Mark child as to be removed because its was dropped from the
+		 * config model. Either <start> node disappeared or 'restart_scheduled'
+		 * was handled.
+		 */
+		void abandon()
+		{
+			_state = State::ABANDONED;
+			_abandon_services();
+		}
+
+		void destroy_services();
+
+		void close_all_sessions() { _child.close_all_sessions(); }
+
+		bool abandoned() const { return _state == State::ABANDONED; }
+
+		bool restart_scheduled() const { return _state == State::RESTART_SCHEDULED; }
+
+		bool stuck() const { return _state == State::STUCK; }
+
+		bool env_sessions_closed() const { return _child.env_sessions_closed(); }
+
+		enum Apply_config_result { PROVIDED_SERVICES_CHANGED, NO_SIDE_EFFECTS };
+
+		/**
+		 * Apply new configuration to child
+		 *
+		 * \throw Allocator::Out_of_memory  unable to allocate buffer for new
+		 *                                  config
+		 */
+		Apply_config_result apply_config(Node const &start_node);
+
+		bool uncertain_dependencies() const { return _uncertain_dependencies; }
+
+		/**
+		 * Validate that the routes of all existing sessions remain intact
+		 *
+		 * The child may become scheduled for restart or get stuck.
+		 */
+		void evaluate_dependencies();
+
+		/* common code for upgrading RAM and caps */
+		template <typename QUOTA, typename LIMIT_ACCESSOR>
+		void _apply_resource_upgrade(QUOTA &, QUOTA, LIMIT_ACCESSOR const &);
+
+		template <typename QUOTA, typename CHILD_AVAIL_QUOTA_FN>
+		void _apply_resource_downgrade(QUOTA &, QUOTA, QUOTA,
+                                       CHILD_AVAIL_QUOTA_FN const &);
+
+		void apply_upgrade();
+		void apply_downgrade();
+
+		void heartbeat()
+		{
+			if (_heartbeat_expected())
+				_child.heartbeat();
+
+			unsigned const skipped_heartbeats = _child.skipped_heartbeats();
+
+			if (_last_skipped_heartbeats != skipped_heartbeats) {
+
+				if (_heartbeat.restart_needed(skipped_heartbeats)) {
+					_schedule_restart();
+					_heartbeat_alarm_trigger.trigger_heartbeat_alarm();
+				}
+
+				_report_update_trigger.trigger_report_update();
+			}
+
+			_last_skipped_heartbeats = skipped_heartbeats;
+
+		}
+
+		unsigned skipped_heartbeats() const
+		{
+			return _heartbeat_expected() ? _child.skipped_heartbeats() : 0;
+		}
+
+		void report_state(Generator &, Report_detail const &) const;
+
+		Sample_state_result sample_state();
+
+
+		/****************************
+		 ** Child-policy interface **
+		 ****************************/
+
+		Child_policy::Name name() const override { return _unique_name; }
+
+		Pd_account &ref_account() override
+		{
+			Pd_account *_ref_account_ptr = nullptr;
+			_with_pd_intrinsics([&] (Pd_intrinsics::Intrinsics &intrinsics) {
+				_ref_account_ptr = &intrinsics.ref_pd; });
+			return *_ref_account_ptr;
+		}
+
+		Capability<Pd_account> ref_account_cap() const override { return _ref_pd_cap; }
+
+		Ram_allocator &session_md_ram() override { return _env.ram(); }
+
+		void init(Pd_session &, Pd_session_capability) override;
+
+		Id_space<Parent::Server> &server_id_space() override {
+			return _session_requester.id_space(); }
+
+		void _with_route(Service::Name const &, Session_label const &,
+		                 With_route::Ft const &, With_no_route::Ft const &) override;
+
+		void     filter_session_args(Service::Name const &, char *, size_t) override;
+		Affinity filter_session_affinity(Affinity const &) override;
+		void     announce_service(Service::Name const &) override;
+		void     resource_request(Parent::Resource_args const &) override;
+
+		void exit(int exit_value) override
+		{
+			bool propagate = false;
+			_start_node->with_optional_sub_node("exit", [&] (Node const &node) {
+				propagate = node.attribute_value("propagate", false); });
+
+			if (propagate) {
+				_env.parent().exit(exit_value);
+				return;
+			}
+
+			/*
+			 * Trigger a new report for exited children so that any management
+			 * component may react upon it.
+			 */
+			_exited     = true;
+			_exit_value = exit_value;
+
+			_child.close_all_sessions();
+
+			_report_update_trigger.trigger_immediate_report_update();
+
+			/*
+			 * Print a message as the exit is not handled otherwise. There are
+			 * a number of automated tests that rely on this message. It is
+			 * printed by the default implementation of 'Child_policy::exit'.
+			 */
+			Child_policy::exit(exit_value);
+		}
+
+		void session_state_changed() override
+		{
+			_report_update_trigger.trigger_report_update();
+		}
+
+		bool initiate_env_sessions() const override { return false; }
+
+		void _with_address_space(Pd_session &, With_address_space_fn const &fn) override
+		{
+			_with_pd_intrinsics([&] (Pd_intrinsics::Intrinsics &intrinsics) {
+				fn.call(intrinsics.address_space); });
+		}
+
+		void start_initial_thread(Capability<Cpu_thread> cap, addr_t ip) override
+		{
+			_pd_intrinsics.start_initial_thread(cap, ip);
+		}
+
+		void yield_response() override
+		{
+			apply_downgrade();
+			_report_update_trigger.trigger_report_update();
+		}
+};
+
+#endif /* _LIB__SANDBOX__CHILD_H_ */

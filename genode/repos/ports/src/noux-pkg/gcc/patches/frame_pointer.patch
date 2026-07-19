@@ -1,0 +1,22 @@
+frame_pointer.patch
+
+From: Christian Prochaska <christian.prochaska@genode-labs.com>
+
+
+---
+ gcc/configure.ac |    2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/gcc/configure.ac b/gcc/configure.ac
+index 42c2bc318..7e273d8d6 100644
+--- a/gcc/configure.ac
++++ b/gcc/configure.ac
+@@ -2301,7 +2301,7 @@ linux* | gnu* | darwin[[8912]]* | cygwin* | mingw*)
+   enable_frame_pointer=no
+   ;;
+ *)
+-  enable_frame_pointer=yes
++  enable_frame_pointer=no
+   ;;
+ esac
+ ])

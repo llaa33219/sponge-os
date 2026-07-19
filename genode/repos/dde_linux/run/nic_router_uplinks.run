@@ -1,0 +1,162 @@
+assert {[have_spec x86]}
+assert {[have_spec nova] || [have_spec sel4] || [have_spec hw] || [have_spec foc]}
+assert {![have_include power_on/qemu]}
+
+proc wifi_ssid {} {
+	return "$::env(GENODE_WIFI_SSID2)" }
+
+proc wifi_psk {} {
+	return "$::env(GENODE_WIFI_PSK2)" }
+
+create_boot_directory
+import_from_depot [depot_user]/src/[base_src] \
+                  [depot_user]/pkg/pc_wifi \
+                  [depot_user]/src/acpi \
+                  [depot_user]/src/dynamic_rom \
+                  [depot_user]/src/init \
+                  [depot_user]/src/pc_nic \
+                  [depot_user]/src/nic_router \
+                  [depot_user]/src/pci_decode \
+                  [depot_user]/src/platform \
+                  [depot_user]/src/report_rom \
+                  [depot_user]/src/pc_rtc
+
+build { app/ping server/nic_router test/nic_router_uplinks }
+
+install_config {
+config
+
++ parent-provides
+  + service CPU
+  + service IO_MEM
+  + service IO_PORT
+  + service IRQ
+  + service LOG
+  + service PD
+  + service RM
+  + service ROM
+
++ default-route
+  + any-service
+    + parent
+    + any-child
+
++ default | caps: 100 | ram: 1M
+
++ start timer
+  + provides | + service Timer
+
++ start pc_rtc
+  + provides | + service Rtc
+
++ start report_rom | caps: 200 | ram: 4M
+  + provides
+    + service ROM
+    + service Report
+  + config
+    + policy | label: pci_decode -> system | report: acpi -> acpi
+    + policy | label: platform -> devices  | report: pci_decode -> devices
+    + policy | label: router -> config     | report: test -> router_config
+    + policy | label: test -> ping_result  | report: ping -> result
+
++ start acpi | caps: 250 | ram: 4M
+
++ start pci_decode | caps: 350 | ram: 2M
+  + route
+    + service ROM    | label: system | + child report_rom
+    + service Report                 | + child report_rom
+    + any-service
+      + parent
+
++ start platform | caps: 100 | ram: 2M | managing_system: yes
+  + provides
+    + service Dma
+    + service Platform
+  + config
+    + policy | label_prefix: wifi | info: yes | + pci | class: WIFI
+    + policy | label_prefix: nic  | info: yes | + pci | class: ETHERNET
+  + route
+    + service ROM | label: devices | + child report_rom
+    + any-service
+      + parent
+      + any-child
+
++ start nic | caps: 250 | ram: 8M
+  + binary pc_nic
+  + route
+    + service Uplink | + child router
+    + any-service
+      + parent
+      + any-child
+
++ start wifi_config_rom | ram: 4M
+  + binary dynamic_rom
+  + provides | + service ROM
+  + config
+    + rom wifi_config
+      + inline | description: CONNECT
+        + wifi_config
+          + network
+            | ssid: } [wifi_ssid] {
+            | protection: WPA2
+            | passphrase: } [wifi_psk] {
+      + sleep | milliseconds: 600000 | . 10 minutes
+
++ start wifi | caps: 600 | ram: 32M
+  + config | ld_verbose: no
+  | + vfs
+  |   + dir dev
+  |     + jitterentropy random
+  |     + jitterentropy urandom
+  |     + log
+  |     + null
+  |     + rtc
+  |   + dir config | + ram
+  |   + dir firmware | + tar wifi_firmware.tar
+  | + libc | stdout: /dev/null | stderr: /dev/null | rtc: /dev/rtc
+  + route
+    + service ROM    | label: wifi.lib.so       | + parent | label: pc_wifi.lib.so
+    + service ROM    | label: wifi_firmware.tar | + parent | label: pc_wifi_firmware.tar
+    + service ROM    | label: wifi_config       | + child wifi_config_rom
+    + service Report                            | + child report_rom
+    + service Rtc                               | + child pc_rtc
+    + service Uplink                            | + child router
+    + any-service
+      + parent
+      + any-child
+
++ start router | caps: 200 | ram: 10M
+  + binary nic_router
+  + provides
+    + service Nic
+    + service Uplink
+  + route
+    + service ROM | label: config | + child report_rom
+    + any-service
+      + parent
+      + any-child
+
++ start test | caps: 200
+  + binary test-nic_router_uplinks
+  + route
+    + service ROM    | label: ping_result | + child report_rom
+    + service Report                      | + child report_rom
+    + any-service
+      + parent
+      + any-child
+
++ start ping | ram: 8M
+  + config | dst_ip: 1.1.1.1 | period_sec: 1 | report: yes | count: 999
+  + route
+    + service Report | + child report_rom
+    + service Nic    | + child router
+    + any-service
+      + parent
+      + any-child
+-}
+
+build_boot_image [build_artifacts]
+
+run_genode_until "child \"test\" exited with exit value.*\n" 300
+grep_output {\[init\] child "test" exited with exit value}
+compare_output_to {[init] child "test" exited with exit value 0}

@@ -1,0 +1,153 @@
+This driver is for Intel i915 compatible graphic cards.
+
+Default behaviour
+~~~~~~~~~~~~~~~~~
+
+When no configuration is provided to the driver, it will enable all connectors
+with attached displays and allocate one shared framebuffer for all displays
+(see non-discrete mode below). It will use the highest resolution as provided
+by the BIOS or EDID information. For each discrete connector a separate
+Capture connection will be requested labeled according to the connector name.
+When newly connected displays are detected by the driver, the new connectors
+are enabled and another Capture session labeled according to the connector
+will be requested.
+
+By default, on hotplug of a display, the current config of the driver will be
+re-parsed and re-applied. This behaviour can be disabled by
+
+! config | apply_on_hotplug: no
+! -
+
+Configuration
+~~~~~~~~~~~~~
+
+To present all available connectors and their possible resolutions to the user,
+the driver is able to deliver a corresponding report, which can be enabled
+in the configuration as follows:
+
+! config
+! + report | connectors: yes
+! -
+
+The exported report has the following format:
+
+! connectors
+! + merge mirror
+!   + connector eDP-1 | connected: yes | brightness: 50 | width_mm: 290 | height_mm: 170
+!   | + mode
+!   | |      width:     1920
+!   | |      height:    1080
+!   | |      hz:        60
+!   | |      id:        1
+!   | |      preferred: yes
+!   | |      used:      yes
+!   | |      width_mm:  288
+!   | |      height_mm: 165
+!
+!   ...
+!
+!   + connector DP-1 | connected: yes | display_name: ACME 123 | width_mm: 280 | height_mm: 160
+!   | + mode
+!   | |      width:     1920
+!   | |      height:    1200
+!   | |      hz:        60
+!   | |      id:        1
+!   | |      preferred: yes
+!   | |      width_mm:  280
+!   | |      height_mm: 160
+!   | + mode
+!   | |      width:     1920
+!   | |      height:    1080
+!   | |      hz:        60
+!   | |      id:        2
+!   | |      used:      yes
+!   | |      width_mm:  278
+!   | |      height_mm: 158
+!   | + mode
+!   | |      width:  1280
+!   | |      height: 1024
+!   | |      hz:     60
+!   | |      id:     3
+!   | + mode
+!   | |      width:  1024
+!   | |      height: 768
+!   | |      hz:     60
+!   | |      id:     4
+!
+!   ...
+!
+!   + connector HDMI-A-1 | connected: no
+
+If available, the EDID display name is reported via 'display_name'.
+The physical dimension of the display is reported as 'width_mm' and 'height_mm'
+in millimeter per connector and if available, also per mode. The values can
+be used as input to DPI calculations. The currently used mode of the connector
+is tagged in the report explicitly.
+
+Each of the connectors can be configured a specific mode and
+whether it should be enabled or not. This looks like the following:
+
+config
++ connector eDP-1 | enabled: yes | width: 1920 | height: 1080 | hz: 60 | brightness: 75 | rotate: 0 | flip: no
++ connector DP-1  | enabled: yes | mode:  2
+-
+
+The resolution can be configured exactly by setting the 'mode' attribute
+to one of the 'id' values of the reported modes or by setting the
+width/height/hz attributes. In the latter case the driver will take the first
+matching mode out of multiple matching modes potentially.
+
+The brightness value is in percent and takes effect only if supported by
+the hardware.
+
+The supported rotate values are 0, 90, 180 and 270 degree. The rotation is done
+by the CPU. Connectors in the merge node have to have the same rotate and flip
+value configured, otherwise the rotation and flipping is ignored.
+
+The maximal physical resolution across all connectors can be restricted by:
+
+! config | max_width: 2560 | max_height: 1440
+! -
+
+Note: All larger modes still will be reported, but are marked as unusable
+      by an additional attribute 'usable' set to 'no'.
+
+The amount of memory used by the driver for the accounting of its available
+buffer space is set by:
+
+! config | max_framebuffer_memory: 64M
+! -
+
+The default and minimal value is '64M' and suffices for resolutions of at
+least '3840x2160'. How much actual memory is used depends on the configured
+resolution.
+
+
+Non-discrete usage of connectors
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Mirrored usage of connectors can be achieved by moving those connectors into
+a sub node called 'merge' of the configuration. For all those connectors,
+exactly one and the same framebuffer will be used internally by the driver.
+The driver will allocate the framebuffer large enough to accommodate all
+non-discrete connectors. If some of the modes of the connectors are smaller,
+than only a subset of the content will be visible on those displays.
+
+! connectors
+! + connector eDP-1
+! + connector DP-1
+! + merge mirror
+!   + connector HDMI-A-1
+!   + connector VGA-1
+! -
+
+Note: If connectors are configured as non-discrete, they will also be
+      reported inside a separate 'merge' node.
+
+Additionally, the virtual resolution for non-discrete connectors may be
+restricted via:
+
+! + merge mirror | width: 1024 | height: 768
+
+Thereby, the driver will open a Genode capture session to the
+GUI multiplexer with this limited dimension.

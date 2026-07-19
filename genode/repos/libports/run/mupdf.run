@@ -1,0 +1,115 @@
+build {
+	lib/libc lib/libm lib/vfs lib/openjpeg lib/freetype lib/libpng lib/zlib
+	lib/jbig2dec lib/mupdf lib/jpeg app/pdf_view
+}
+
+create_boot_directory
+
+import_from_depot \
+	[depot_user]/pkg/[drivers_interactive_pkg] \
+	[depot_user]/pkg/motif_wm \
+	[depot_user]/src/[base_src] \
+	[depot_user]/src/init \
+	[depot_user]/src/nitpicker
+
+install_config {
+config
++ parent-provides
+  + service ROM
+  + service IRQ
+  + service IO_MEM
+  + service IO_PORT
+  + service PD
+  + service RM
+  + service CPU
+  + service LOG
+
++ default-route
+  + service Gui | + child wm
+  + any-service
+    + parent
+    + any-child
+
++ default | caps: 100 | ram: 1M
+
++ start timer
+  + provides | + service Timer
+
++ start drivers | caps: 1500 | ram: 64M | managing_system: yes
+  + binary init
+  + route
+    + service ROM | label: config | + parent | label: drivers.config
+    + service Timer               | + child timer
+    + service Capture             | + child nitpicker
+    + service Event               | + child nitpicker
+    + any-service                 | + parent
+
++ start nitpicker | ram: 4M
+  + provides
+    + service Gui
+    + service Capture
+    + service Event
+  + config | focus: rom
+    + capture
+    + event
+    + domain pointer | layer: 1 | content: client | label: no | origin: pointer
+    + domain default | layer: 2 | content: client | label: no | hover: always
+                                                    width: 1024 | height: 768
+    + policy | label_prefix: pointer | domain: pointer
+    + default-policy                 | domain: default
+
++ start pointer
+  + route
+    + service Gui | + child nitpicker
+    + any-service
+      + parent
+      + any-child
+
++ start wm | caps: 1000 | ram: 32M
+  + binary init
+  + provides
+    + service Gui
+    + service Report
+    + service ROM
+  + route
+    + service ROM | label: config | + parent | label: wm.config
+    + service Gui | + child nitpicker
+    + any-service
+      + parent
+      + any-child
+
++ start pdf_view | caps: 256 | ram: 1G
+  + config
+    + libc | stdout: /dev/log | stderr: /dev/log
+    + vfs
+      + rom test.pdf
+      + dir dev | + log
+-
+}
+
+#
+# Download test PDF file
+#
+if {![file exist bin/test.pdf]} {
+	set pdf_url "http://genode-labs.com/publications/genode-fpga-graphics-2009.pdf"
+	catch { exec wget $pdf_url -O bin/test.pdf }
+}
+
+if {![file exist bin/test.pdf]} {
+	puts stderr "Could not download test PDF from '$pdf_url'"
+	exit 1
+}
+
+#
+# Pin the nitpicker focus to the window manager by providing a static focus ROM
+#
+set fd [open [run_dir]/genode/focus w]
+puts $fd "focus | label: wm -> focus\n-"
+close $fd
+
+build_boot_image [list {*}[build_artifacts] test.pdf]
+
+append qemu_args " -m 800"
+
+run_genode_until forever
+

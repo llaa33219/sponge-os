@@ -1,0 +1,25 @@
+deploy | info: simple desktop environment
+
++ option board   | required: yes
++ option sculpt  | required: yes
++ option managed | required: yes
+
++ option recall_fs
++ option window_manager
++ option black_hole
++ option system_shell
+
++ child wm_backdrop | pkg: sticks_blue_backdrop | priority: bg
+  + connect | + gui | + child gui | label: backdrop
+  + config
+    + libc
+    + vfs
+      + rom genode_logo.png
+      + rom grid.png
+      + rom sticks_blue.png
+    + fill | color: #223344
+    + image | png: sticks_blue.png | alpha: 200 | scale: zoom | anchor: bottom_left
+    + image | png: grid.png        | alpha: 200 | tiled: yes
+    + image | png: genode_logo.png | alpha: 150 | anchor: bottom_right
+                                     xpos: -20 | ypos: -20
+-

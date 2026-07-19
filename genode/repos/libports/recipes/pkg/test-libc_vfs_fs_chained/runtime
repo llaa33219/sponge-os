@@ -1,0 +1,61 @@
+runtime | ram: 32M | caps: 1000 | binary: init
+
++ fail    | after_seconds: 30
++ succeed | : child "test-libc_vfs" exited with exit value 0
++ fail    | : [test-libc_vfs] Error:
+
++ content
+  + rom | label: ld.lib.so
+  + rom | label: libc.lib.so
+  + rom | label: vfs.lib.so
+  + rom | label: vfs
+  + rom | label: test-libc_vfs
+
++ config
+  + parent-provides
+    + service ROM
+    + service PD
+    + service RM
+    + service CPU
+    + service LOG
+
+  + default-route
+    + any-service
+      + parent
+      + any-child
+
+  + default | caps: 100
+
+  + start vfs1 | ram: 12M
+    + binary vfs
+    + provides | + service File_system
+    + config
+      + vfs | + ram
+      + default-policy | root: / | writeable: yes
+
+  + start vfs2 | ram: 12M
+    + binary vfs
+    + provides | + service File_system
+    + config
+    | + vfs | | + fs
+    | + default-policy | root: / | writeable: yes
+    + route
+      + service File_system | + child vfs1
+      + any-service
+        + parent
+        + any-child
+
+  + start test-libc_vfs | ram: 4M
+    + config
+    | + iterations | value: 1
+    | + write-read | size: 1M | buffer_size: 8K
+    | + vfs
+    | | + dir tmp | + fs
+    | | + dir dev | + log
+    | + libc | stdout: /dev/log | cwd: /tmp
+    + route
+      + service File_system | + child vfs2
+      + any-service
+        + parent
+        + any-child
+-

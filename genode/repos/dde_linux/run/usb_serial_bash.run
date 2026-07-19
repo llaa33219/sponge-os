@@ -1,0 +1,167 @@
+assert {![have_board linux]}
+
+if {[have_cmd_switch --autopilot]} {
+	assert {[have_include power_on/qemu] && [have_board pc]} \
+		"Autopilot mode is not supported on this platform."
+}
+
+create_boot_directory
+import_from_depot [depot_user]/src/[base_src] \
+                  [depot_user]/pkg/test_usb_host-[board] \
+                  [depot_user]/src/bash \
+                  [depot_user]/src/coreutils \
+                  [depot_user]/src/fs_rom \
+                  [depot_user]/src/init \
+                  [depot_user]/src/libc \
+                  [depot_user]/src/ncurses \
+                  [depot_user]/src/posix \
+                  [depot_user]/src/report_rom \
+                  [depot_user]/src/terminal_crosslink \
+                  [depot_user]/src/vfs \
+                  [depot_user]/src/vfs_pipe \
+                  [depot_user]/src/vim \
+                  [depot_user]/src/usb_serial
+
+# write default vimrc file
+set _fd [open [run_dir]/genode/vimrc w]
+puts $_fd {
+set noloadplugins
+set hls
+set nocompatible
+set laststatus=2
+set noswapfile
+set viminfo=}
+close $_fd
+
+build { driver/usb_serial }
+
+install_config {
+config
+
++ parent-provides
+  + service CPU
+  + service IO_MEM
+  + service IO_PORT
+  + service IRQ
+  + service LOG
+  + service PD
+  + service RM
+  + service ROM
+
++ default-route
+  + any-service
+    + parent
+    + any-child
+
++ default | caps: 100 | ram: 1M
+
++ start timer
+  + provides
+    + service Timer
+
++ start report_rom | caps: 120 | ram: 2M
+  + provides
+    + service Report
+    + service ROM
+  + config | verbose: no
+    + default-policy | report: usb -> usb -> devices
+  + route
+    + any-service
+      + parent
+
++ start terminal_crosslink
+  + provides | + service Terminal
+  + config | buffer: 32K
+
++ start usb | caps: 1500 | ram: 32M | managing_system: yes
+  + binary init
+  + provides | + service Usb
+  + route
+    + service ROM    | label: config | + parent | label: drivers.config
+    + service Report                 | + child report_rom
+    + service Timer                  | + child timer
+    + any-service                    | + parent
+
++ start usb_serial | caps: 180 | ram: 11M
+  + config
+  + route
+    + service ROM      | label: report | + child report_rom
+    + service Terminal                 | + child terminal_crosslink
+    + service Usb                      | + child usb
+    + service Timer                    | + child timer
+    + any-service                      | + parent
+
++ start vfs | caps: 120 | ram: 30M
+  + provides | + service File_system
+  + config
+  | + vfs
+  |   + tar coreutils.tar
+  |   + tar vim.tar
+  |   + tar bash.tar
+  |   + dir home | + ram
+  |   + dir share
+  |     + dir vim
+  |       + rom vimrc
+  |   + dir tmp | + ram
+  |   + dir dev
+  |     + inline rtc | : 2018-01-01 00:01
+  |     + log
+  |     + null
+  |     + terminal
+  |     + zero
+  |   + dir pipe
+  |     + pipe
+  | + policy | label_prefix: vfs_rom | root: /
+  | + default-policy | root: / | writeable: yes
+  + route
+    + service Terminal | + child terminal_crosslink
+    + any-service
+      + parent
+      + any-child
+
++ start vfs_rom | ram: 30M
+  + binary fs_rom
+  + provides | + service ROM
+  + config
+  + route
+    + service File_system | + child vfs
+    + any-service         | + parent
+
++ start /bin/bash | caps: 1000 | ram: 30M
+  + config | ld_verbose: yes
+  | + libc | stdin:  /dev/terminal | stdout: /dev/terminal | stderr: /dev/terminal
+  |        | rtc: /dev/rtc | pipe:   /pipe
+  | + vfs | + fs
+  | + arg bash
+  | + env PATH | : /bin
+  | + env TERM | : screen
+  + route
+    + service ROM         | label_last: /bin/bash | + child vfs_rom
+    + service ROM         | label_prefix: /bin    | + child vfs_rom
+    + service ROM         | label_suffix: .lib.so | + parent
+    + service File_system                         | + child vfs
+    + any-service
+      + parent
+      + any-child
+-}
+
+#
+# Define USB host controller config
+#
+set fd [open [run_dir]/genode/usb_host.config w]
+puts $fd {
+config | bios_handoff: no
+  + policy | label_prefix: usb_serial
+    | + device | vendor_id: 0x067b | product_id: 0x2303 | . Prolific PL2303
+    | + device | vendor_id: 0x0557 | product_id: 0x2008 | . Prolific PL2303
+    | + device | vendor_id: 0x0403 | product_id: 0x6001 | . FTDI FT232
+-}
+close $fd
+
+build_boot_image [build_artifacts]
+
+append qemu_args " -nographic "
+append qemu_args " -device nec-usb-xhci,id=xhci"
+append qemu_args " -device usb-serial,chardev=serial0,bus=xhci.0"
+
+run_genode_until forever

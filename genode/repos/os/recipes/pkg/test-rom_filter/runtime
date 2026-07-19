@@ -1,0 +1,105 @@
+runtime | ram: 32M | caps: 1000 | binary: init
+
++ requires | + timer
+
++ fail | after_seconds: 20
++ fail | : *Error:
++ succeed
+  : [rom_logger] ROM 'generated':
+  : [rom_logger]   config | color: transparent
+  : [rom_logger]   + fallback
+  : [rom_logger]   -
+  : [rom_logger] ROM 'generated':
+  : [rom_logger]   config | color: transparent
+  : [rom_logger]   + fallback
+  : [rom_logger]   -
+  : [rom_logger] ROM 'generated':
+  : [rom_logger]   config | color: yellow
+  : [rom_logger]   + xray_enabled
+  : [rom_logger]   -
+  : [rom_logger] ROM 'generated':
+  : [rom_logger]   config | message: system locked | color: transparent
+  : [rom_logger]   + fallback
+  : [rom_logger]   -
+  : [dynamic_rom] xray: change (finished)
+
++ content
+  + rom | label: ld.lib.so
+  + rom | label: rom_filter
+  + rom | label: rom_logger
+  + rom | label: dynamic_rom
+
++ config
+  + parent-provides
+    + service ROM
+    + service PD
+    + service LOG
+    + service CPU
+    + service IRQ
+    + service IO_MEM
+    + service IO_PORT
+    + service Timer
+
+  + default-route
+    + any-service
+      + parent
+      + any-child
+
+  + default | caps: 100
+
+  + start dynamic_rom | ram: 4M
+    + provides | + service ROM
+    + config | verbose: yes
+      + rom xray
+        + sleep | milliseconds: 1000
+        + inline | description: disable X-ray mode
+        | + xray | enabled: no
+        + sleep | milliseconds: 1000
+        + inline | description: enable X-ray mode
+        | + xray | enabled: yes
+        |   + style | color: yellow
+        + sleep | milliseconds: 1000
+        + inline | description: leave X-ray mode undefined
+        | + xray
+        |   + details
+        |     . undefined
+        |     + message | reason: error | . not selected
+        |     + message | reason: no access | text: system locked
+        + sleep | milliseconds: 1000
+        + inline | description: finished
+
+  + start rom_filter | ram: 4M
+    + provides | + service ROM
+    + config | verbose: no
+    | + input xray_enabled | rom: xray | node: xray | | + attribute enabled
+    | + input color | rom: xray | node: xray | default: transparent
+    |   .
+    |   . test fallback to default value
+    |   .
+    |   + node | type: style
+    |     + attribute color
+    | + input diagnostic_message | rom: xray | node: xray
+    |   + node | type: details
+    |     + node | type: message | attribute: reason | value: no access
+    |       + attribute text
+    | + output | node: config
+    |   + attribute message | input: diagnostic_message
+    |   + attribute color | input: color
+    |   + if
+    |     + has_value | input: xray_enabled | value: yes
+    |     + then
+    |     | + inline
+    |     |   + xray_enabled
+    |     + else
+    |       + inline
+    |         + fallback
+    + route
+      + service ROM | label: xray | + child dynamic_rom
+      + any-service               | + parent
+
+  + start rom_logger | ram: 1M
+    + config | rom: generated
+    + route
+      + service ROM | label: generated | + child rom_filter
+      + any-service                    | + parent
+-

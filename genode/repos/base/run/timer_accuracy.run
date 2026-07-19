@@ -1,0 +1,77 @@
+build { core init timer lib/ld test/timer_accuracy }
+
+create_boot_directory
+
+install_config {
+config | prio_levels: 2
++ parent-provides
+  + service ROM
+  + service IRQ
+  + service IO_MEM
+  + service IO_PORT
+  + service PD
+  + service RM
+  + service CPU
+  + service LOG
+
++ default-route
+  + any-service
+    + parent
+    + any-child
+
++ default | caps: 100
+
++ start timer | priority: 0 | ram: 1M
+  + provides | + service Timer
+
++ start test-timer_accuracy | priority: -1 | ram: 10M
+-
+}
+
+build_boot_image [build_artifacts]
+
+append qemu_args "  -nographic"
+
+if {[have_cmd_switch --autopilot]} {
+	assert {![have_spec nova] && ![have_include power_on/qemu]} {
+		NOVA requires a CPU with invariant TSC support, which is by default not
+		supported. KVM has support by explicitly enabling this feature, but by
+		now the nightly test machines is not permitted to use KVM
+
+		append qemu_args " -accel kvm -cpu host,migratable=no,+invtsc"
+
+		Autopilot mode is not supported on this platform.
+	}
+}
+
+set err_cnt      0
+set test_timeout 20
+set rounds       9
+
+# wait for initial tic
+run_genode_until {\[init -> test-timer_accuracy\].*\n} $test_timeout
+set serial_id [output_spawn_id]
+
+# measure the delays between the following tics
+for {set i 1} {$i <= $rounds} {incr i} {
+	set start_time($i) [clock milliseconds]
+	run_genode_until {\[init -> test-timer_accuracy\].*\n} $test_timeout $serial_id
+	set end_time($i) [clock milliseconds]
+}
+# print results and count errors
+foreach i [lsort [array names start_time]] {
+	set class "Good:"
+	set test_result [expr $end_time($i) - $start_time($i)]
+	set host_result [expr $i * 1000]
+	set result_diff [expr abs($test_result - $host_result)]
+	if {[expr $result_diff > 500]} {
+		set class "Bad: "
+		set err_cnt [expr $err_cnt + 1]
+	}
+	puts "$class round $i, host measured $host_result ms, test measured $test_result ms"
+}
+# check the error count
+if {[expr $err_cnt > 0]} {
+	puts "Test failed because of $err_cnt errors"
+	exit -1
+}

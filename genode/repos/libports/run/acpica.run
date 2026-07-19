@@ -1,0 +1,252 @@
+assert {[have_spec hw] || [have_spec nova] || [have_spec sel4]}
+
+assert {[have_spec x86]}
+
+if { [have_cmd_switch --autopilot] } {
+
+	# Test mimic of sending power down request works solely with Qemu
+	assert {[have_include power_on/qemu]} \
+		"Autopilot mode is not supported on this platform."
+}
+
+set build_components {
+	driver/acpi
+	server/event_dump
+	app/pci_decode
+	app/acpica
+}
+
+build $build_components
+
+create_boot_directory
+
+import_from_depot [depot_user]/src/[base_src] \
+                  [depot_user]/src/acpi_event \
+                  [depot_user]/src/dynamic_rom \
+                  [depot_user]/src/event_filter \
+                  [depot_user]/src/init \
+                  [depot_user]/src/pc_usb_host \
+                  [depot_user]/src/platform \
+                  [depot_user]/src/ps2 \
+                  [depot_user]/src/report_rom \
+                  [depot_user]/src/usb_hid
+
+set config {
+config
++ parent-provides
+  + service IRQ
+  + service ROM
+  + service LOG
+  + service RM
+  + service PD
+  + service CPU
+  + service IO_MEM
+  + service IO_PORT
+
++ default-route
+  + any-service
+    + parent
+    + any-child
+
++ start timer | caps: 100 | ram: 2M
+  + provides
+    + service Timer
+
++ start drivers_reports | caps: 100 | ram: 2M
+  + binary report_rom
+  + provides
+    + service Report
+    + service ROM
+  + config | verbose: no
+    + policy | label: pci_decode -> system | report: acpi -> acpi
+    + policy | label: platform -> devices  | report: pci_decode -> devices
+    + policy | label: usb_hid -> report    | report: usb -> devices
+
++ start acpi | caps: 350 | ram: 6M
+  + route
+    + service Report | + child drivers_reports
+    + any-service
+      + parent
+      + any-child
+
++ start pci_decode | caps: 350 | ram: 2M
+  + route
+    + service ROM | label: system | + child drivers_reports
+    + service Report              | + child drivers_reports
+    + any-service
+      + parent
+      + any-child
+
++ start platform | caps: 400 | managing_system: yes | ram: 4M
+  + provides
+    + service Dma
+    + service Platform
+  + config
+  | + policy | label_prefix: ps2             | + device ps2
+  | + policy | label_prefix: usb | info: yes | + pci | class: USB
+  | + policy | label_prefix: acpica          | + device acpi
+  + route
+    + service ROM | label: devices | + child drivers_reports
+    + any-service
+      + parent
+      + any-child
+
++ start ps2 | caps: 100 | ram: 2M
+  + config | verbose_keyboard: no | verbose_mouse: no | verbose_scancodes: no
+  + route
+    + service Dma      | + child platform
+    + service Platform | + child platform
+    + service Timer    | + child timer
+    + service Event    | + child event_filter | label: ps2
+    + any-service      | + parent
+
++ start usb | caps: 200 | ram: 20M
+  + binary pc_usb_host
+  + provides | + service Usb
+  + config | bios_handoff: no
+  | + report | devices: yes
+  | + policy | label_prefix: usb_hid
+  |   + device | class: 0x3
+  + route
+    + service Report | + child drivers_reports
+    + any-service
+      + parent
+      + any-child
+
++ start usb_hid | caps: 140 | ram: 10M
+  + route
+    + service ROM | label: report | + child drivers_reports
+    + service Event               | + child event_filter | label: usb
+    + service Usb                 | + child usb
+    + any-service
+      + parent
+      + any-child
+
++ start event_filter | caps: 100 | ram: 2M
+  + provides | + service Event
+  + config
+  | + output
+  | | + merge
+  | |   + input ps2
+  | |   + input acpi
+  | |   + input usb
+  | + policy | label: ps2  | input: ps2
+  | + policy | label: acpi | input: acpi
+  | + policy | label: usb  | input: usb
+  + route
+    + service Event | + child event_dump
+    + any-service   | + parent
+
++ start event_dump | caps: 100 | ram: 1M
+  + provides | + service Event
+  + route
+    + service Timer | + child timer
+    + any-service   | + parent
+
++ start acpica | caps: 400 | ram: 8M
+  + config
+  |        ld_verbose:       yes
+  |        reset:            yes
+  |        poweroff:         yes
+  |        report:           yes
+  |        report_period_ms: 0
+  |        verbose:          yes
+  |        poll_reg:         yes
+  + route
+    + service ROM | label: system | + child dynamic_rom
+    + service Report              | + child acpi_state
+    + any-service
+      + parent
+      + any-child
+
++ start acpi_state | caps: 100 | ram: 2M
+  + binary report_rom
+  + provides
+    + service ROM
+    + service Report
+  + config | verbose: yes
+    + policy | label: acpi_event -> acpi_ac      | report: acpica -> acpi_ac
+    + policy | label: acpi_event -> acpi_battery | report: acpica -> acpi_battery
+    + policy | label: acpi_event -> acpi_ec      | report: acpica -> acpi_ec
+    + policy | label: acpi_event -> acpi_fixed   | report: acpica -> acpi_fixed
+    + policy | label: acpi_event -> acpi_lid     | report: acpica -> acpi_lid
+    + policy | label: acpi_event -> acpi_hid     | report: acpica -> acpi_hid
+  + route
+    + any-service
+      + parent
+
++ start acpi_event | caps: 100 | ram: 2M
+  + config
+  | + map | acpi: ec | value: 25 | to_key: KEY_VENDOR
+  |   .
+  |   . example mapping - adapt to your target notebook !!!
+  |   . 145 is default if nothing specified
+  |   .
+  | + map | acpi: ec      | value: 20        | to_key: KEY_BRIGHTNESSUP
+  | + map | acpi: ec      | value: 21        | to_key: KEY_BRIGHTNESSDOWN
+  | + map | acpi: fixed   | value: 0         | to_key: KEY_POWER | as: PRESS_RELEASE
+  | + map | acpi: lid     | value: CLOSED    | to_key: KEY_SLEEP | as: PRESS_RELEASE
+  | + map | acpi: lid     | value: OPEN      | to_key: KEY_SLEEP | as: PRESS_RELEASE
+  | + map | acpi: ac      | value: ONLINE    | to_key: KEY_WAKEUP
+  | + map | acpi: ac      | value: OFFLINE   | to_key: KEY_SLEEP
+  | + map | acpi: battery | value: 0         | to_key: KEY_BATTERY
+  | + map | acpi: hid     | value: 0x4000000 | to_key: KEY_FN_F4
+  + route
+    + service ROM | label: acpi_ac      | + child acpi_state
+    + service ROM | label: acpi_battery | + child acpi_state
+    + service ROM | label: acpi_ec      | + child acpi_state
+    + service ROM | label: acpi_fixed   | + child acpi_state
+    + service ROM | label: acpi_lid     | + child acpi_state
+    + service ROM | label: acpi_hid     | + child acpi_state
+    + service Event                     | + child event_filter | label: acpi
+    + any-service                       | + parent
+
++ start dynamic_rom | caps: 100 | ram: 4M
+  + provides | + service ROM
+  + config | verbose: yes
+    + rom system
+      + inline | description:  set system state to 'normal'   | + system | state: normal
+      + sleep  | milliseconds: 5000
+      x inline | description:  set system state to 'reset'    | + system | state: reset
+      x sleep  | milliseconds: 5000
+      x inline | description:  set system state to 'poweroff' | + system | state: poweroff
+      x sleep  | milliseconds: 500
+-
+}
+
+install_config $config
+
+# non PCI devices for the platform driver, e.g. ps2/pit
+file copy [select_from_repositories board/[board]/devices] [run_dir]/genode/devices
+
+build_boot_image [build_artifacts]
+
+append qemu_args "-nographic "
+
+if {![have_include "power_on/qemu"]} {
+	run_genode_until forever
+	exit 0
+}
+
+run_genode_until {\[init -\> acpi_state.*\n} 30
+
+set spawn_id $qemu_spawn_id
+
+sleep 1
+
+# send Ctrl-a+c to enter Qemu's monitor mode
+send "\x01\x63"
+
+# wait for monitor to become ready
+run_genode_until {(qemu)} 20 $spawn_id
+
+
+for {set i 0} {$i < 3} {incr i} {
+
+	sleep 1
+	send "system_powerdown\n"
+	run_genode_until {.*key count: 0.*} 3 $spawn_id
+}
+
+puts "\nTest succeeded\n"
+exit 0

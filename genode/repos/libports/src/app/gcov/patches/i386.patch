@@ -1,0 +1,43 @@
+i386.patch
+
+From: Christian Prochaska <christian.prochaska@genode-labs.com>
+
+
+---
+ gcc/config/i386/i386.h |    4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/gcc/config/i386/i386.h b/gcc/config/i386/i386.h
+index 26e15d2..e0b0469 100644
+--- a/gcc/config/i386/i386.h
++++ b/gcc/config/i386/i386.h
+@@ -2455,6 +2455,7 @@ constexpr wide_int_bitmask PTA_LUJIAZUI = PTA_64BIT | PTA_MMX | PTA_SSE | PTA_SS
+ constexpr wide_int_bitmask PTA_YONGFENG = PTA_LUJIAZUI | PTA_AVX | PTA_AVX2 | PTA_F16C
+   | PTA_FMA | PTA_SHA | PTA_LZCNT;
+ 
++#if 0
+ #ifndef GENERATOR_FILE
+ 
+ #include "insn-attr-common.h"
+@@ -2477,6 +2478,7 @@ extern unsigned int const pta_size;
+ extern unsigned int const num_arch_names;
+ #endif
+ 
++#endif
+ #endif
+ 
+ extern enum processor_type ix86_tune;
+@@ -2964,11 +2966,13 @@ extern void debug_dispatch_window (int);
+ 
+ #define TARGET_SUPPORTS_WIDE_INT 1
+ 
++#if 0
+ #if !defined(GENERATOR_FILE) && !defined(IN_LIBGCC2)
+ extern enum attr_cpu ix86_schedule;
+ 
+ #define NUM_X86_64_MS_CLOBBERED_REGS 12
+ #endif
++#endif
+ 
+ /* __builtin_eh_return can't handle stack realignment, so disable MMX/SSE
+    in 32-bit libgcc functions that call it.  */

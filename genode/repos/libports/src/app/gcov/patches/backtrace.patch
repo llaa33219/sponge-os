@@ -1,0 +1,92 @@
+backtrace.patch
+
+From: Christian Prochaska <christian.prochaska@genode-labs.com>
+
+
+---
+ gcc/diagnostic-show-locus.cc |    2 ++
+ gcc/diagnostic.cc            |   14 ++++++++++----
+ 2 files changed, 12 insertions(+), 4 deletions(-)
+
+diff --git a/gcc/diagnostic-show-locus.cc b/gcc/diagnostic-show-locus.cc
+index ceccc0b..04b7efd 100644
+--- a/gcc/diagnostic-show-locus.cc
++++ b/gcc/diagnostic-show-locus.cc
+@@ -24,7 +24,9 @@ along with GCC; see the file COPYING3.  If not see
+ #include "version.h"
+ #include "demangle.h"
+ #include "intl.h"
++#if 0
+ #include "backtrace.h"
++#endif
+ #include "diagnostic.h"
+ #include "diagnostic-color.h"
+ #include "gcc-rich-location.h"
+diff --git a/gcc/diagnostic.cc b/gcc/diagnostic.cc
+index 6ffd623..42cf02c 100644
+--- a/gcc/diagnostic.cc
++++ b/gcc/diagnostic.cc
+@@ -29,7 +29,9 @@ along with GCC; see the file COPYING3.  If not see
+ #include "version.h"
+ #include "demangle.h"
+ #include "intl.h"
++#if 0
+ #include "backtrace.h"
++#endif
+ #include "diagnostic.h"
+ #include "diagnostic-color.h"
+ #include "diagnostic-url.h"
+@@ -628,7 +630,7 @@ static const char * const bt_stop[] =
+ };
+ 
+ /* A callback function passed to the backtrace_full function.  */
+-
++#if 0
+ static int
+ bt_callback (void *data, uintptr_t pc, const char *filename, int lineno,
+ 	     const char *function)
+@@ -708,7 +710,7 @@ bt_err_callback (void *data ATTRIBUTE_UNUSED, const char *msg, int errnum)
+   fprintf (stderr, "%s%s%s\n", msg, errnum == 0 ? "" : ": ",
+ 	   errnum == 0 ? "" : xstrerror (errnum));
+ }
+-
++#endif
+ /* Check if we've met the maximum error limit, and if so fatally exit
+    with a message.
+    FLUSH indicates whether a diagnostic_context::finish call is needed.  */
+@@ -773,13 +775,17 @@ diagnostic_context::action_after_output (diagnostic_t diag_kind)
+ 	/* The context might have had diagnostic_finish called on
+ 	   it at this point.  */
+ 
++#if 0
+ 	struct backtrace_state *state = NULL;
+ 	if (diag_kind == DK_ICE)
+ 	  state = backtrace_create_state (NULL, 0, bt_err_callback, NULL);
++#endif
+ 	int count = 0;
++#if 0
+ 	if (state != NULL)
+ 	  backtrace_full (state, 2, bt_callback, bt_err_callback,
+ 			  (void *) &count);
++#endif
+ 
+ 	if (m_abort_on_error)
+ 	  real_abort ();
+@@ -2333,7 +2339,7 @@ fancy_abort (const char *file, int line, const char *function)
+       fnotice (stderr, diagnostic_kind_text[DK_ICE]);
+       fnotice (stderr, "in %s, at %s:%d", function, trim_filename (file), line);
+       fputc ('\n', stderr);
+-
++#if 0
+       /* Attempt to print a backtrace.  */
+       struct backtrace_state *state
+ 	= backtrace_create_state (NULL, 0, bt_err_callback, NULL);
+@@ -2341,7 +2347,7 @@ fancy_abort (const char *file, int line, const char *function)
+       if (state != NULL)
+ 	backtrace_full (state, 2, bt_callback, bt_err_callback,
+ 			(void *) &count);
+-
++#endif
+       /* We can't call warn_if_plugins or emergency_dump_function as these
+ 	 rely on GCC state that might not be initialized, or might be in
+ 	 use by another thread.  */

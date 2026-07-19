@@ -1,0 +1,1056 @@
+The 'nic_router' component can be used to achieve a controlled mediation
+between multiple NIC and Uplink sessions on network or transport level.
+Sessions are assigned to router domains. The rules configured by the user then
+mediate between these domains. This is a brief overview of the features thereby
+provided:
+
+* Acting as hub among NIC and Uplink sessions of the same domain,
+* routing of IPv4-based UDP and TCP according to destination IP address & port,
+* routing of ICMPv4 and IPv4 according to destination IP address,
+* port forwarding for IPv4-based UDP and TCP,
+* NAPT for IPv4-based UDP, TCP and ICMPv4 echo,
+* forwarding of ICMPv4 "Destination Unreachable" according to the UDP, TCP or
+  ICMPv4 echo connection it refers to,
+* acting as ICMPv4 echo server per domain
+* acting as DHCPv4 server or client per domain,
+* provide per-domain network statistics via a report session,
+* print out header information for each packet received or sent,
+* and be fully re-configurable at runtime.
+
+
+Functional description
+======================
+
+
+Interfaces and domains
+~~~~~~~~~~~~~~~~~~~~~~
+
+The NIC router acts as server for both Genode's NIC and Uplink service. For
+both services it can manage an arbitrary number of clients at a time.
+Furthermore, the NIC router can itself request multiple NIC sessions and act as
+client at them. Among these types of network sessions at the router, there are
+some minor differences regarding the roles when initializing the session,
+determining a MAC address or communicating the link state. However, each
+network session at the router, regardless of its type, is an "interface" (like
+a network interface in Linux-based systems) and in all regards except the
+mentioned subtleties treated the same as other interfaces.
+
+The behavior of the router regarding interfaces is ultimately controlled
+through the router's configuration. An interface that uses a NIC session that
+is requested by the router (subsequently called NIC client) can be created
+using the '<nic-client>' tag with an optional attribute for the session label:
+
+! <nic-client               ... />
+! <nic-client label="wifi"  ... />
+! <nic-client label="wired" ... />
+
+An interface that uses a NIC or Uplink session provided by the NIC router
+(subsequently called NIC server respectively Uplink server) is created whenever
+a client requests a session of one of the two service types at the router
+(given the session arguments are valid).
+
+New interfaces, although having a network session established, remain dead ends
+towards the router (all packets are dropped by the router) as long as they are
+not assigned a router domain. A domain is a set of router rules that is applied
+as a whole to all interfaces assigned to that domain. Domains can be created by
+using the '<domain>' tag with a unique name:
+
+! <domain name="default"    ...>...<domain/>
+! <domain name="servers"    ...>...<domain/>
+! <domain name="home_net"   ...>...<domain/>
+! <domain name="travel_net" ...>...<domain/>
+
+The assignment of NIC clients to domains is controlled through the 'domain'
+attribute in the '<nic-client>' tag:
+
+! <nic-client                    domain="home_net" />
+! <nic-client label="mobile"     domain="travel_net" />
+! <nic-client label="nic_bridge" domain="home_net" />
+
+The assignment of NIC and Uplink servers is controlled through the tags
+'<policy>' and '<default-policy>' that are known from other Genode components:
+
+! <default-policy                domain="default" />
+! <policy label_prefix="vbox_"   domain="servers" />
+! <policy label_suffix="_server" domain="servers" />
+! <policy label="nic -> "        domain="home_net" />
+! <policy label="wifi -> "       domain="public" />
+
+Each of these tags applies to all NIC and Uplink servers whose session label
+matches. A domain can be assigned any number of interfaces and interfaces of
+different types.
+
+Besides defining the router rules for assigned interfaces, domains have a
+second purpose. All interfaces assigned the same domain are assumed to be in
+the same IPv4 subnet. So, from the router's perspective, each domain is a
+distinct IPv4 subnet. At each domain the router is represented through an
+IPv4 identity local to the corresponding IPv4 subnet.
+
+Besides being an IPv4 peer at each domain. The router is also a hub at each
+domain: If a network packet must be sent at a domain, it is always sent at all
+interfaces assigned that domain. If a network packet from a domain addresses a
+host in the same IPv4 subnet and it's not the routers IPv4 peer in that domain,
+the packet is again sent at all interfaces assigned that domain
+
+A good analogy would be that interfaces assigned a single domain are like
+network cables that are all plugged into the same hub device. There's an
+additional cable going away from the hub device that directly leads to the
+routers IPv4 peer in the subnet.
+
+A domain enters an IPv4 subnet by receing an IPv4 configuration for the routers
+IPv4 peer in that subnet. This configuration can be obtained statically or
+dynamically using DHCP. A static configuration is applied if an 'interface'
+attribute is found in the '<domain>' tag:
+
+! <domain name="servers" interface="10.0.2.55/24" />
+
+The attribute defines the IPv4 address of the routers peer and the address
+prefix length of the corresponding subnet. If the attribute is missing the
+domain automatically sends DHCP requests at all assigned interfaces in order
+to obtain a dynamic IPv4 configuration (Section [Configuring DHCP client
+functionality]).
+
+Additionaly, the optional 'gateway' attribute can be set for a domain:
+
+! <domain name="home_lan" interface="10.0.2.55/24" gateway="10.0.2.1" />
+
+It defines the standard gateway of the subnet behind this domain. If a packet
+shall be routed to this domain and its final IP destination does not match
+the subnet, its Ethernet destination is set to the MAC address of the gateway.
+If a gateway isn't given for a domain, such packets get dropped. If a gateway
+is given for a domain without an 'interface' attribute, this gateway
+configuration is not getting effective.
+
+For each domain, the routing of packets from this domain can be configured
+individually by adding subtags to the corresponding domain tag. There are
+multiple types of subtags expressing different types of routing rules. The
+following table gives a brief overview over the different subtags and their
+meaning:
+
+ Subtag                     | Description
+---------------------------------------------------------------
+ <tcp-forward port="X" />   | Port forwarding for TCP port X *
+---------------------------------------------------------------
+ <udp-forward port="X" />   | Port forwarding for UDP port X *
+---------------------------------------------------------------
+ <tcp dst="X">              | Routing TCP packets that target
+    <permit-any />          | IP range X *
+ </tcp>                     |
+---------------------------------------------------------------
+ <udp dst="X">              | Routing UDP packets that target
+    <permit-any />          | IP range X *
+ </udp>                     |
+---------------------------------------------------------------
+ <tcp dst="X">              | Routing TCP packets that target
+    <permit port="Y" />     | IP range X and port Y or Z *
+    <permit port="Z" />     |
+ </tcp>                     |
+---------------------------------------------------------------
+ <udp dst="X">              | Routing UDP packets that target
+    <permit port="Y" />     | IP range X and port Y or Z *
+    <permit port="Z" />     |
+ </udp>                     |
+---------------------------------------------------------------
+ <ip dst="X" />             | Routing IP packets that target
+                            | IP range X
+---------------------------------------------------------------
+ <icmp dst="X" />           | Routing ICMP packets that target
+                            | IP range X
+
+A detailed explanation of the different routing rules is given in the
+following sections of this document. For all rules marked with a star, the
+router also keeps track of corresponding TCP connections and UDP
+pseudo-connections. With these so-called link states, corresponding reply
+packets are automatically routed back. The user doesn't have to add an
+additional back-routing rule for that.
+
+Now having this variety of ways of routing a packet, it is absolutely legal
+that for one packet the domain may contain multiple rules that are applicable.
+And additionally, there may even be a link state that fits. The router's
+choice, however, is always deterministic. It follows this priority scheme:
+
+:For TCP and UDP:
+
+1) Domain-local IP traffic
+2) Link states
+3) Port forwarding rules
+4) Longest prefix match amongst TCP respectively UDP rules
+   4.1) Subrule that permits any port
+   4.2) Subrules that permit specific ports
+5) Longest prefix match amongst IP rules
+
+:For ICMP "Echo":
+
+1) Domain-local IP traffic
+2) Link states
+3) Longest prefix match amongst ICMP rules
+4) Longest prefix match amongst IP rules
+
+:For ICMP "Destination Unreachable" with embedded UDP, TCP or ICMP "Echo":
+
+1) Domain-local IP traffic
+2) Link states
+3) Longest prefix match amongst IP rules
+
+:For IP with unsupported transport-layer protocol:
+
+1) Domain-local IP traffic
+2) Longest prefix match amongst IP rules
+
+
+IP rules
+~~~~~~~~
+
+These are examples for IP rules:
+
+! <ip dst="10.0.2.0/24"     domain="intranet"  />
+! <ip dst="192.168.1.18/32" domain="my_server" />
+! <ip dst="0.0.0.0/0"       domain="default"    />
+
+IP rules only apply to IPv4 packets from interfaces of the surrounding
+domain. The 'dst' attribute is compared with the IP destination of the packet.
+The rule with the longest prefix match is taken. The packet is then routed to
+the domain given in the rule.
+
+IP rules work pretty simple. They merely affect the Ethernet header of a
+packet and they don't imply link-state tracking. This has consequences. First,
+IP rules do not automatically route back reply packets from the remote side.
+If you like to enable bidirectional communication via IP rules, both domains
+must have an appropriate rule in their domain tag. And second, IP rules do not
+consider a NAT configuration (Section [Configuring NAT]). As this could lead
+to unexpected leakage of local IP addresses and ports, you should use the
+combination of IP rules and NAT only with great care.
+
+
+ICMP rules
+~~~~~~~~~~
+
+These are examples for ICMP rules:
+
+! <icmp dst="10.0.2.0/24"     domain="intranet"  />
+! <icmp dst="192.168.1.18/32" domain="my_server" />
+! <icmp dst="0.0.0.0/0"       domain="default"    />
+
+ICMP rules only apply to ICMP "Echo" packets from interfaces of the surrounding
+domain. The 'dst' attribute is compared with the IP destination of the packet.
+The rule with the longest prefix match is taken. The packet is then routed to
+the domain given in the rule.
+
+For bidirectional traffic, you'll need only one ICMP rule describing the
+client-to-server direction. The server-sided domain doesn't need a rule as the
+router correlates replies to the client-sided rule (and only those) via a link
+state (Section [Link states]) that was created at the clients initial request.
+
+ICMP rules consider whether the router shall apply NAT (Section [Configuring
+NAT]) for the client side. If this is the case, source IP and ICMP query ID
+are replaced by the router's IP identity and a free ICMP query ID at the
+server-sided domain. Also the corresponding link state takes this in account
+to change back the destination of the replies.
+
+The router also forwards ICMP errors. This is described in section
+[Link states].
+
+
+TCP and UDP rules
+~~~~~~~~~~~~~~~~~
+
+TCP and UDP rules must always be accompanied by one or more port permission
+rules to get effective:
+
+! <tcp dst="192.168.1.18/32">
+!    <permit port="70" domain="gopher_servers" />
+!    <permit port="80" domain="http_servers" />
+! </tcp>
+! <udp dst="10.0.2.0/24">
+!    <permit-any domain="default" />
+! </udp>
+
+TCP rules only apply to TCP packets and UDP rules only to UDP packets from
+interfaces of the surrounding domain. The 'dst' attribute is compared with the
+IP destination of the packet. The rule with the longest prefix match is taken.
+If the rule contains a 'permit-any' subrule or a 'permit' subrule whose 'port'
+attribute matches the destination port of the packet, the packet is routed to
+the domain given in the subrule.
+
+For bidirectional traffic, you'll need only one TCP or UDP rule describing the
+client-to-server direction. The server-sided domain doesn't need a rule as the
+router correlates replies to the client-sided rule (and only those) via a link
+state (Section [Link states]) that was created at the clients initial request.
+
+TCP and UDP rules consider whether the router shall apply NAT
+(Section [Configuring NAT]) for the client side. If this is the case, source
+IP and port are replaced by the router's IP identity and a free port at the
+server-sided domain. Also the corresponding link state takes this in account
+to change back the destination of the replies.
+
+
+Port-forwarding rules
+~~~~~~~~~~~~~~~~~~~~~
+
+These are examples for port-forwarding rules:
+
+! <tcp-forward port="80" domain="http_servers" to="192.168.1.18" to_port="1234" />
+! <udp-forward port="69" domain="tftp_servers" to="192.168.2.23" />
+
+Port-forwarding rules only apply to packets that come from interfaces of the
+surrounding domain and are addressed to the router's IP identity at this domain
+(Section [Basics]). Amongst those, 'tcp-forward' rules only apply to the TCP
+packets and 'udp-forward' rules only to the UDP packets. The 'port' attribute
+is compared with the packet's destination port. If a matching rule is found,
+the IP destination of the packet is changed to the value of the 'to' attribute.
+If the 'to_port' attribute is set and not zero, the packet's destination port
+is changed to the attribute value. Then, the packet is routed to the domain
+given in the rule. Note that the router accepts only system and registered
+ports other than zero (1 to 49151) for port forwarding.
+
+For bidirectional traffic, you'll need only one port-forwarding rule
+describing the client-to-server direction. The server-sided domain doesn't
+need a rule as the router correlates replies to the client-sided rule (and
+only those) via a link state (Section [Link states]) that was created at the
+clients initial request.
+
+It's in the nature of port forwarding that it comes along with NAT for the
+server side. However, the router only translates the server IP. The port
+remains unchanged. For the client side, port-forwarding rules apply NAT only
+when configured (Section [Configuring NAT]). If this is the case, client IP
+and port are translated.
+
+
+Link states
+~~~~~~~~~~~
+
+Each time a packet gets routed by using a TCP, UDP, ICMP or port-forwarding
+rule, the router creates a link state. From then on, all packets that belong
+to the exchange this first packet initiated and come from one of the two
+involved domains are routed by the link state and not by a rule. The costs for
+the link state are paid by the interface that sent the first packet.
+
+If a link state exists for a packet, it is unambiguously correlated either
+through source IP and port plus destination IP and port or, for ICMP, through
+source and destination IP plus ICMP query ID. This is also the case if the
+transfer includes NAT no matter of what kind or for which side.
+
+It is desirable to discard a link state as soon as it is not needed anymore.
+The more precise this is done, the more efficient can interfaces use their
+resources (ports, RAM), and the less is the risk for DoS attacks. Therefore,
+the NIC router keeps track of the idle time of a link. Idle time means the
+time passed since the last packet was routed using that link regardless of
+the direction or content of that packet. The amount of idle time at which
+the NIC router shall discard a link state can be configured in the <config>
+tag of the router for each link type separately:
+
+! <config udp_idle_timeout_sec="30"
+!         tcp_idle_timeout_sec="50"
+!         icmp_idle_timeout_sec="5">
+
+This would set the maximum ICMP idle time to 5, the maximum UDP idle time to
+30 and the maximum TCP idle time to 50 seconds. You should choose these values
+with care. If they are too low, replies that normally need no routing rule may
+get lost. If it is too high, link states are held longer than necessary.
+
+For UDP and ICMP link states, this timeout is the only condition that leads to
+a discard. This is better known as hole punching. It allows peers to keep
+alive a UDP or ICMP pseudo-connection through the router by frequently sending
+empty packets. The need for such a pseudo-connection arises from the router's
+demand to support NAT for UDP and ICMP transfers and the consequence of
+keeping the corresponding mapping information.
+
+The lifetime management of TCP link states, in contrast, is more complex. In
+addition to the common timeout, they may be discarded also after the router
+observed the four-way termination handshake of TCP plus a duration of two
+times the maximum segment lifetime. The maximum segment lifetime can be be set
+in the <config> tag too:
+
+! <config tcp_max_segm_lifetime_sec="20">
+
+As long as there is a link state for a connection, the router also forwards
+ICMP "Destination Unreachable" packets that contain a packet of this
+connection embedded in their payload. The embedded packet is adapted according
+to the NAT configuration of the link state as well as the outer IPv4 packet
+that contains the ICMP.
+
+
+Configuring NAT
+~~~~~~~~~~~~~~~
+
+In contrast to routing rules that affect packets coming from their domain,
+NAT rules affect packets that go to their domain:
+
+! <domain name="home_lan" interface="10.0.2.55/24">
+!    <nat domain="http_client" tcp-ports="6" />
+! </domain>
+
+This would tell the router to apply NAT for the HTTP client when it speaks to
+the home LAN. This means, it affects all packets from the HTTP client that get
+routed to the home LAN by using a UDP, TCP, or port-forwarding rule
+respectively a corresponding link state. If this is the case, the packet's
+source IP address is changed to "10.0.2.55" and the source port is replaced by
+a free source port of the router. When saying "free source port" this actually
+means a port that the router currently doesn't use at the destination domain.
+So, at each domain, the router has two complete port spaces for source NAT
+available. One for UDP and one for TCP. Each port space contains the IANA
+dynamic port range 49152 to 65535.
+
+As you can see, the NAT rule also has a 'tcp-ports' attribute. It restricts how
+many TCP source ports of the home LAN the HTTP client may use at a time. The
+same goes also for UDP:
+
+! <nat domain="tftp_client" udp-ports="13" />
+
+And even combined:
+
+! <nat domain="intranet" tcp-ports="43" udp-ports="21" />
+
+The same goes for ICMP query IDs:
+
+! <nat domain="intranet" tcp-ports="43" udp-ports="21" icmp-ids="102" />
+
+If one of the port or ID attributes is not set, this means that no port or ID
+shall be used for this protocol which effectively disables it. Thus, at least
+one of these attributes must be set for the NAT rule to be sensible.
+Restricting the port usage is necessary to avoid that a client can run
+Denial-of-Service attacks against the destination domain by occupying all of
+its ports or IDs.
+
+
+Configuring ICMP-Echo-server functionality
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The ICMP-Echo-server functionality of the router has the following
+configuration attributes (default values shown):
+
+! <config icmp_echo_server="yes">
+!    <domain icmp_echo_server="yes" ... />
+! </config>
+
+The icmp_echo_server attribute configures whether the router answers ICMP Echo
+requests that address the router. The <config> value affects all domains
+without a <domain> local value.
+
+
+Configuring DHCP server functionality
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+One can configure the NIC router to act as DHCP server at interfaces of a
+domain by adding the <dhcp> tag to the configuration of the domain like
+this:
+
+! <domain name="vbox" interface="10.0.1.1/24">
+!
+!     <dhcp-server ip_first="10.0.1.80"
+!                  ip_last="10.0.1.100"
+!                  ip_lease_time_sec="3600">
+!
+!         <dns-domain name="genodians.org" />
+!         <dns-server ip="8.8.8.8" />
+!         <dns-server ip="1.1.1.1" />
+!         ...
+!
+!     </dhcp-server>
+!     ...
+!
+! </domain>
+
+or like this:
+
+! <domain name="vbox" interface="10.0.1.1/24">
+!
+!     <dhcp-server ip_first="10.0.1.80"
+!                  ip_last="10.0.1.100"
+!                  ip_lease_time_sec="3600"
+!                  dns_config_from="home_lan" />
+!     ...
+!
+! </domain>
+
+The mandatory attributes 'ip_first' and 'ip_last' define the available IPv4
+address range while the optional attribute 'ip_lease_time_sec' defines the
+lifetime of an IPv4 address assignment in seconds. The IPv4 address range must
+be in the subnet defined by the 'interface' attribute of the <domain> tag and
+must not cover the IPv4 address given by this attribute.
+
+The <dns-domain> sub-tag from the first example statically provides a DNS
+domain name that shall be propagated by the DHCP server through a DHCP option
+15 entry to its clients.
+
+The <dns-server> sub-tags from the first example statically provide a list of
+DNS server addresses that shall be propagated by the DHCP server through a DHCP
+option 6 entry to its clients. These addresses might be of any IP subnet. The
+addresses in the DHCP option 6 entry in the DHCP replies will have the same
+order as the <dns-server> tags in the configuration.
+
+The 'dns_config_from' attribute from the second example takes effect only when
+the <dhcp-server> tag does not contain any <dns-domain> or <dns-server>
+sub-tags. The attribute states the domain from whose IP config to take the DNS
+domain name and the list of DNS server addresses that shall be propagated. Note
+that the order of DNS server adresses is not altered thereby. This is useful in
+scenarios where these addresses must be obtained dynamically through the DHCP
+client of another domain.
+
+There is an additional feature the router implements together with the
+'dns_config_from' functionality. If a domain has a DHCP server with a
+'dns_config_from' value that denominates another valid domain, the link state
+of all interfaces, where the router is a NIC session server, at the first
+domain becomes bound to the validity of the IP config of the second domain.
+
+One motivation for having this feature is to optimize the network boot-up time
+of application clients of the NIC router by preventing DHCP re-attempt
+timeouts. Such timeouts would occur because clients attempt DHCP as soon as
+their interface goes up and without the extra feature, the DHCP server would
+potentially not be ready yet.
+
+But this feature is not only an optimization. It also implies that whenever the
+domain denominated by 'dns_config_from' receives a new IP config with a new DNS
+configuration, application clients are poked via a link state "down-up"
+sequence to re-request DHCP and thereby update their DNS configuration. I.e. it
+enables dynamic DNS config propagation.
+
+However, please be aware this feature is limited to applications that connect
+directly and via a NIC session client to the NIC router. This is due to two
+technical limitations. First, the router can't control the link state at
+interfaces where he acts as NIC session client or Uplink session server. And
+second, the router can't ensure that link state changes reach the client if
+there are intermediate network components like a NIC bridge.
+
+The lifetime of an IP address assignment that was yet only offered to the
+client can be configured for all domains in the <config> tag of the router:
+
+! <config dhcp_offer_timeout_sec="6">
+
+The timeout 'ip_lease_time_sec' is applied only when the offer is acknowledged
+by the client in time.
+
+
+Configuring DHCP client functionality
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+If the attribute 'interface' is not set in a 'domain' tag, the router tries to
+dynamically receive and maintain an IP configuration for that domain by using
+DHCP in the client role at all interfaces that connect to the domain. In the
+DHCP discover phase, the router simply chooses the first DHCP offer that
+arrives. So, no comparison of different DHCP offers is done. In the DHCP
+request phase, the server is expected to provide an IP address, a gateway, a
+subnet mask, and an IP lease time to the router. If anything substantial goes
+wrong during a DHCP exchange, the router discards the outcome of the exchange
+and goes back to the DHCP discover phase. At any time where there is no valid
+IP configuration present at a domain, the domain does only act as DHCP client
+and all other router functionality is disabled for the domain. A domain cannot
+act as DHCP client and DHCP server at once. So, a 'domain' tag must either
+have an 'interface' attribute or must not contain a 'dhcp-server' tag.
+
+The timeouts when waiting for the reply of DHCP discover messages and for DHCP
+request messages can be configured for all domains in the <config> tag of the
+router:
+
+! <config dhcp_discover_timeout_sec="10"
+!         dhcp_request_timeout_sec="6">
+
+
+Configuring reporting functionality
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The NIC router can be configured to send reports about its state.
+
+Configuration example (shows default values of attributes):
+
+! <config>
+!    <report bytes="yes"
+!            stats="yes"
+!            dropped_fragm_ipv4="yes"
+!            quota="yes"
+!            config="yes"
+!            config_triggers="no"
+!            link_state="yes"
+!            link_state_triggers="no"
+!            interval_sec="5"/>
+! </config>
+
+If the 'report' tag is not available, no reports are send.
+A complete state report of the NIC router is structured the following way
+(example):
+
+! <state>
+!   <ram quota="15715577" used="7589888" shared="16384"/>
+!   <cap quota="431" used="184" shared="4"/>
+!
+!   <domain name="domain_1" rx_bytes="17597" tx_bytes="7788"
+!           ipv4="100.200.0.10/24" gw="100.200.0.1">
+!
+!     <dns-domain name="genodians.org"/>
+!     <dns ip="100.200.0.8"/>
+!     <dns ip="1.1.1.1"/>
+!     <dns ip="8.8.8.8"/>
+!     ...
+!
+!     <interface label="component_1 -> nic_session" link_state="true">
+!       <ram-quota used="458752" limit="658613" avail="199861"/>
+!       <cap-quota used="4" limit="7" avail="3"/>
+!
+!       <udp-links>
+!         <opening value="5"/>
+!         <open value="10"/>
+!         <closing value="3"/>
+!         <closed value="21"/>
+!         <refused_for_ram value="2"/>
+!         <refused_for_ports value="1"/>
+!         <dissolved_timeout_opening value="1"/>
+!         <dissolved_timeout_open value="2"/>
+!         <dissolved_timeout_closing value="4"/>
+!         <dissolved_timeout_closed value="9"/>
+!         <dissolved_no_timeout value="1"/>
+!         <destroyed value="1"/>
+!       </udp-links>
+!       <tcp-links> ... </tcp-links>
+!       <icmp-links> ... </icmp-links>
+!
+!       <dhcp-allocations>
+!         <alive value="2"/>
+!         <destroyed value="4"/>
+!       </dhcp-allocations>
+!       <arp-waiters> ... </arp-waiters>
+!       <dropped-fragm-ipv4 value="3"/>
+!
+!     </interface>
+!     <interface ...> ... </interface>
+!     ...
+!
+!     <udp-links>
+!       <refused_for_ram value="3"/>
+!       <refused_for_ports value="10"/>
+!       <destroyed value="237"/>
+!     </udp-links>
+!     <tcp-links> ... </tcp-links>
+!     <icmp-links> ... </icmp-links>
+!
+!     <dhcp-allocations>
+!       <destroyed value="16"/>
+!     </dhcp-allocations>
+!     <arp-waiters> ... </arp-waiters>
+!     <dropped-fragm-ipv4 value="1"/>
+!
+!   </domain>
+!   <domain ...> ... </domain>
+!   ...
+!
+! </state>
+
+The attributes of the <report> tag correspond to the report content as
+described below:
+
+'bytes'
+
+A boolean value that controls whether the attributes 'rx_bytes' and 'tx_bytes'
+of the <domain> tag in the state report are generated. These attributes
+provide the number of bytes that were sent respectively recieved at all
+interfaces of that domain beginning with the creation of the domain.
+
+'stats'
+
+A boolean value that controls whether the subtags <udp-links>, <tcp-links>,
+<icmp-links>, <dhcp-allocations>, and <arp-waiters> are generated in the tags
+<domain> and <interface>. In the <interface> tag, these subtags provide further
+subtags <opening>, <open>, <closing>, <closed> that provide the number of links
+of the protocol type that are currently in the denominated protocol state (a
+missing subtag denominates a number of 0).
+
+Furthermore, there are subtags <dissolved_*> that provide the number of links
+of the protocol type that were already dissolved by the router (i.e., they are
+already non-effective) but that weren't destructed so far. Thereby, the
+different <dissolved_*> tags group the links according to the reason why they
+have been dissolved (<dissolved_no_timeout> thereby means that the protocol
+itself terminated the connection).
+
+The <destroyed> subtag can occur in <*-links> subtags in both the <interface>
+and the <domain> tag. It shows the number of links of the protocol type that
+once existed but were already destroyed. In case of the <interface> tag, the
+corresponding interface still exists at that domain. Once the interface gets
+destroyed or disconnected from the domain, the number is transferred to the
+<destroyed> subtag in the <*-links> subtag in the <domain> tag. I.e. the
+<destroyed> subtags in <*-links> subtags in the <domain> tag provide the number
+of destroyed links that can't be correlated anymore to any interface of the
+domain.
+
+The same applies for the <refused_*> subtags of <*-links> tags. They show the
+number of links that couldn't be established through the router because of the
+lack of a certain quota. Thereby, <refused_for_ram> refers to a lack of RAM
+quota at the source interface of the link. The <refused_for_ports>, at the
+other hand, refers to a lack of UDP/TCP-NAT-ports respectively ICMP-NAT-IDs at
+the target domain (see section [Configuring NAT]).
+
+The subtags <arp-waiters>, and <dhcp-allocations> list the number of still
+active (<active> subtag) and already destroyed (<destroyed> subtag) objects for
+pending ARP requests respectively DHCP-address allocations at an interface when
+in an <interface> tag. When in a <domain> tag, they only list the number of
+already destroyed objects of these types that can't be correlated anymore to
+any interface of the domain.
+
+'dropped-fragm-ipv4'
+
+A boolean value that controls whether the subtag <dropped-fragm-ipv4> is
+generated in the tags <interface> and <domain>. When in an <interface> tag, the
+value shows the number of packets that were dropped at the corresponding
+interface because they were fragmented IPv4 (which is not supported). When in a
+<domain> tag, the value refers to the number of dropped fragmented IPv4 packets
+that can't be correlated to any interface of the domain anymore.
+
+'quota'
+
+A boolean value that controls whether the subtags <ram> and <cap> of the
+<state> tag and the subtags <ram-quota> and <cap-quota> of the <interface>
+tag are generated.
+
+The former two show the capability quota respectively RAM quota of the router
+that isn't accounted to any of the interfaces connected to the router (i.e.,
+the routers "own" quota). The 'quota' attribute denotes the total amount of
+quota available to the router, the 'used' attribute the part of the total
+amount of quota that is currently spent or in use, and the 'shared' attribute
+the part of the spent quota that, although it was spent for interface-specific
+things, can't be accounted to one interface for technical reasons.
+
+The subtags <ram-quota> and <cap-quota> in the <interface> tag, however, show
+the capability quota respectively RAM quota accounted to that interface. The
+'limit' and 'used' attributes are equal to the 'quota' and 'used' attributes of
+the <ram> and <cap> subtags of the <state> tag. The 'avail' attribute contains
+simply the 'limit' value minus the 'used' value.
+
+'config'
+
+A boolean value that controls whether the attributes 'ipv4' and 'gw' of the
+<domain> tag and the subtags <dns> and <dns-domain> in the <domain> tag are
+generated. The attribute 'ipv4' contains the current IPv4 address of the router
+in this domain suffixed by the length of the subnet prefix in bits. The 'gw'
+attribute contains the IPv4 address of the gateway in this domain. Each <dns>
+subtag of a <domain> tag shows the IPv4 address of a DNS server known to this
+domain. The <dns> subtags have the same order that the addresses had in the
+DHCP option 6 entry of the DHCP reply that the router received and that led to
+the current IPv4 configuration of the domain. The <dns-domain> subtag of the
+<domain> tag states the DNS domain name of this domain if any.
+
+'config_triggers'
+
+A boolean value that controls whether to enforce sending a report each time the
+state that is controlled through the 'config' attribute of the <report> tag
+changes. I.e., whenever the IP configuration of any domain has changed.
+
+'link_state'
+
+A boolean value that controls whether the attribute 'link_state' of the
+<interface> tag is generated. The 'link_state' attribute shows the current real
+link state of the interface. Note, that in case of a NIC server, this is not
+necessarily the same value as the one that the session client sees. For more
+information on that, refer to [Behavior regarding the NIC-session link state].
+
+'link_state_triggers'
+
+A boolean value that controls whether to enforce sending a report whenever the
+real link state (see description of the 'link_state' attribute) of any
+interface at the router has changed. Note that whenever an interface is created
+or destroyed this is considered a change of its real link state.
+
+'interval_sec'
+
+Defines the interval in seconds in which to unconditionally send a report.
+Must not be 0.
+
+
+Verbosity
+~~~~~~~~~
+
+This is how you can configure the routers verbosity on its environment LOG
+session (default values shown):
+
+! <config verbose="no">
+
+Whether to log router decisions and optional hints.
+
+! <config verbose_packets="no" ... >
+!     <domain verbose_packets="no" ... />
+! </config>
+
+Whether to log most important protocol header fields of each packet that is
+received or sent (ETH, IPv4, ARP, UDP, TCP, DHCP, ICMP). The <config> value
+affects all domains without a <domain> local value.
+
+! <config verbose_packet_drop="no" ... >
+!     <domain verbose_packet_drop="no" ... />
+! </config>
+
+Whether to log each packet drop and the rational behind it. The <config> value
+affects all domains without a <domain> local value.
+
+! <config verbose_domain_state="no">
+
+Whether to log most important changes in the state of a domain (number of
+interfaces assigned, current IPv4 config).
+
+
+Tracing
+~~~~~~~
+
+You can use Genode's TRACE service to capture all packets that traverse the
+router. This requires a monitor component such as the trace-recorder component
+that provides and activates a corresponding trace buffer and trace policy.
+More precisely, packet tracing is realised via the 'trace_eth_packet()' hook
+that needs to be implemented by the trace policy. Note that packet tracing must
+also be enabled in the router configuration.
+
+This is how you can configure whether to trace packets (default values shown):
+
+! <config trace_packets="no">
+!     <domain trace_packets="no" ... />
+! </config>
+
+If enabled, 'trace_eth_packet()' is called for every packet received or sent by
+the router. The attribute in the <domain> tag applies only for packets
+received and sent by that domain. The attribute in the <config> tag sets the
+default value for all <domain> tags without a local setting.
+
+
+Other configuration attributes
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+ICMP response to dropped fragmented IPv4
+----------------------------------------
+
+The NIC router can notify the sender of a fragmented IPv4 that was dropped by
+the router (because fragmented IPv4 isn't supported) via an ICMP type-3
+(destination unreachable) packet. This is the attribute that controls this
+functionality:
+
+! <config icmp_type_3_code_on_fragm_ipv4="4">
+
+If not set, the value of the attribute defaults to "no" which results in not
+sending the above mentioned packets on dropped fragmented IPv4 (i.e.,
+fragmented IPv4 gets dropped silently). If the value is set to a number in the
+range from 0 to 15, the above mentioned ICMP responses are sent and the value
+indicates which value the ICMP code field should have in the responses. If the
+value is set to something else than "no" or a number in the range from 0 to 15,
+the router prints a warning to the log and assumes value "no".
+
+
+Maximum number of packets handled per signal
+--------------------------------------------
+
+If possible, the NIC router normally handles multiple packets from an interface
+per signal. However, if one interface has a high packet rate and a big buffer,
+this can lead to starvation of the other interfaces. Thus, the maximum number
+of packets handled per signal is limited by default. This limit can be
+configured as follows (default value shown):
+
+! <config max_packets_per_signal="50">
+
+When set to zero, the limit is deactivated, meaning that the router always
+handles all available packets of an interface.
+
+
+Configuring ARP
+---------------
+
+By default, the NIC router requests required IP-to-MAC address resolutions at a
+domain using ARP. However this may be a problem in certain environments, e.g.,
+when being connected to an LTE modem that doesn't forward ARP. In order to
+deal with such scenarios, one can disable ARP requests at a domain by setting
+the flag 'use_arp' to 'no' (default is 'yes'):
+
+! <config ... >
+!     <domain use_arp="no" ... />
+! <config/>
+
+Whenever the NIC router has to send a packet at a domain with 'use_arp="no"',
+it will set the destination MAC-address of the packet to equal the source
+MAC-address of the packet (instead of requesting the destination MAC-address
+via ARP). This behavior was observed in common Linux-based systems at network
+interfaces with the 'NOARP' flag set.
+
+If ARP is enabled, however, one can configure the request timeout through the
+following attribute (default value shown):
+
+! <config arp_request_timeout_sec="10">
+
+When the router does not receive a reply for a sent ARP request within this
+timeout, the packets that were waiting for the reply and the ARP request state
+are dropped in order to re-use the resources. Note that this is also the
+rate-limit for the router sending ARP requests for one IP address at one
+domain.
+
+Behavior regarding the NIC-session link state
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+At NIC servers, the NIC router applies a feedback-driven state machine for the
+link state in order to ensure that clients recognize state transitions. This
+means that the NIC router guarantees that a new link state remains fixed until
+the client has read it using the corresponding RPC at the NIC-session
+interface. If, in the meantime, further "up" and "down" edges occur, they are
+memorized and executed as soon as the former state has been read by the client.
+Such postponed link state edges are merged in a way that they result in two
+contrary edges at a max. The following diagrams demonstrate this:
+
+
+! client reads:      0         1      0       1    0          1
+!                         _____        _______           _________________
+! client link state: ____|     |______|       |_________|
+!                         _       __________             _________________
+! real link state:   ____| |_____|          |___________|
+!
+!                    time --->
+
+
+! client reads:      0          1      0     1                0     1
+!                         ______        _____________          _____
+! client link state: ____|      |______|             |________|     |_____
+!                         _   _______________________   _   _   _
+! real link state:   ____| |_|                       |_| |_| |_| |________
+!
+!                    time --->
+
+
+! client reads:      0            1      0          1           0     1
+!                         ________              _________        __________
+! client link state: ____|        |____________|         |______|
+!                         _   __                _________   _   ___________
+! real link state:   ____| |_|  |______________|         |_| |_|
+!
+!                    time --->
+
+
+Examples
+========
+
+
+Scripted scenarios
+~~~~~~~~~~~~~~~~~~
+
+In-action examples of how to use the router are provided through the following
+automated run scripts:
+
+* libports/run/nic_router.run          (basic functionality)
+* dde_linux/run/nic_router_uplinks.run (dynamically switching between wifi and wired driver)
+* os/run/ping_nic_router.run           (ICMP routing)
+* os/run/nic_router_disable_arp.run    ('use_arp' configuration flag)
+* os/run/nic_router_dhcp_unmanaged.run (DHCP + link states without a manager)
+* os/run/nic_router_dhcp_managed.run   (DHCP + link states with a manager)
+* os/run/nic_router_flood.run          (client misbehaving on protocol level)
+* os/run/nic_router_stress.run         (client misbehaving on session level)
+
+The rest of this section will list and explain some smaller configuration
+snippets. The environment for these examples shall be as follows. There are two
+virtual subnets 192.168.1.0/24 and 192.168.2.0/24 that connect as Virtnet A and
+B to the router. The standard gateway of the virtual networks is the NIC router
+with IP 192.168.*.1 . The NIC driver connects the machine with your home
+network 10.0.2.0/24 and has an Uplink session to the NIC router.  Your home
+network is connected to the internet through its standard gateway 10.0.2.1 .
+
+
+Connecting local networks
+-------------------------
+
+Let's assume we simply want the virtual networks and the home network to be
+able to talk to each other. Furthermore, the virtual networks shall be able to
+use the internet connection of your home network. The router would have the
+following configuration:
+
+! <policy label_prefix="virtnet_a" domain="virtnet_a" />
+! <policy label_prefix="virtnet_b" domain="virtnet_b" />
+! <policy label_prefic="nic"       domain="home_lan"  />
+!
+! <domain name="home_lan" interface="10.0.2.55/24" gateway="10.0.2.1">
+!    <ip dst="192.168.1.0/24" domain="virtnet_a"/>
+!    <ip dst="192.168.2.0/24" domain="virtnet_b"/>
+! </domain>
+!
+! <domain name="virtnet_a" interface="192.168.1.1/24">
+!    <ip dst="192.168.2.0/24" domain="virtnet_b"/>
+!    <ip dst="0.0.0.0/0"      domain="home_lan"/>
+! </domain>
+!
+! <domain name="virtnet_b" interface="192.168.2.1/24">
+!    <ip dst="192.168.1.0/24" domain="virtnet_a"/>
+!    <ip dst="0.0.0.0/0"      domain="home_lan"/>
+! </domain>
+
+IP packets from Virtnet A and the home LAN that target an IP address
+192.168.2.* are routed to Virtnet B. IP packets from Virtnet B and the home LAN
+that target an IP address 192.168.1.* are routed to Virtnet A. Packets that are
+addressed to hosts in the same local network should never reach the router as
+they can be transmitted directly. If there's a packet from one of the virtual
+networks that doesn't target 192.168.1.* or 192.168.2.*, the IP 0.0.0.0/0 rules
+route them to the home LAN. If these packets target an IP 10.0.2.*, the router
+sends them directly to the host in your home network. Otherwise, the router
+sends them to your gateway 10.0.2.1 . Note that none of the packets is modified
+on layer 2 or higher, so, no NAT is done by the router to hide the virtual
+networks.
+
+
+Clients in a private network
+----------------------------
+
+Now we have some clients in Virtnet A that like to talk to the internet as
+well as to the home network. We want them to be hidden via NAT when they do so
+and to be limited to HTTP+TLS/SSL and IMAP+TLS/SSL when talking to the
+internet. The router would have the following configuration:
+
+! <policy label_prefix="virtnet_a" domain="virtnet_a" />
+! <policy label_prefix="virtnet_b" domain="virtnet_b" />
+! <policy label_prefic="nic"       domain="home_lan"  />
+!
+! <domain name="home_lan" interface="10.0.2.55/24" gateway="10.0.2.1">
+!    <nat domain="virtnet_a" tcp_ports="1000" udp_ports="1000">
+! </domain>
+!
+! <domain name="virtnet_a" interface="192.168.1.1/24">
+!    <tcp dst="10.0.2.0/24"><permit-any domain="home_lan" /></tcp>
+!    <udp dst="10.0.2.0/24"><permit-any domain="home_lan" /></udp>
+!    <tcp dst="0.0.0.0/0">
+!       <permit port="443" domain="home_lan" />
+!       <permit port="993" domain="home_lan" />
+!    </tcp>
+! </domain>
+
+From the packets that come from Virtnet A, those that target an IP 10.0.2.* are
+routed to the home LAN without inspecting the port. At the home LAN, the router
+notices that it shall apply NAT for Virtnet A. It replaces the source IP with
+10.0.2.55 and allocates a free source port of the home LAN for the exchange. On
+replies to Virtnet-A packets from the home network, the router translates IP
+and port back using the corresponding link state. For packets from Virtnet A
+that target other IPs, only the 0.0.0.0/0 rule applies and only if the packet
+targets TCP port 443 or 993. Both ports route the packet to the home LAN where,
+again, NAT is applied and the packets are sent to the gateway 10.0.2.1 .
+
+
+Servers in a private network
+----------------------------
+
+In this example, we assume that the NIC router has to request a NIC session at
+a NIC bridge instance in order to reach the NIC driver (the driver serves the
+NIC bridge) and gain access to the home LAN. Furthermore, there are three
+servers in Virtnet A. An HTTP server at port 80 with IP 192.168.1.2, a GOPHER
+server at port 70 with IP 192.168.1.3, and a TFTP server at port 69 with IP
+192.168.1.4 . Now, you want the servers (and only them) to be reachable to the
+home network via the router's IP and to the internet via your gateway. The
+router would have the following configuration:
+
+! <policy label_prefix="virtnet_a" domain="virtnet_a" />
+! <policy label_prefix="virtnet_b" domain="virtnet_b" />
+! <nic-client                      domain="home_lan"  />
+!
+! <domain name="home_lan" interface="10.0.2.55/24" gateway="10.0.2.1">
+!    <tcp-forward port="80" domain="virtnet_a" to="192.168.1.2" />
+!    <tcp-forward port="70" domain="virtnet_a" to="192.168.1.3" />
+!    <udp-forward port="69" domain="virtnet_a" to="192.168.1.4" to_port="2048"/>
+! </domain>
+!
+! <domain name="virtnet_a" interface="192.168.1.1/24" />
+! <domain name="virtnet_b" interface="192.168.1.1/24" />
+
+Amongst the packets that come from the home LAN, only those that are addressed
+to 10.0.2.55 and TCP port 80, TCP port 70, or UDP port 69 are forwarded.
+All these packets are forwarded to Virtnet A. But beforehand, their IP
+destination is adapted. TCP-port-80 packets are redirected to 192.168.1.2,
+TCP-port-70 packets to 192.168.1.3, and UDP-port-69 packets to
+192.168.1.4:2048.
+
+Amongst the packets that come from Virtnet A, only those that match a link
+state at the home LAN are forwarded, because the Virtnet-A domain contains no
+rules. Thus, Virtnet A can only talk to the home LAN in the context of
+TCP-connections or UDP pseudo-connections that were opened by clients behind
+the home LAN. The servers IP addresses never leave Virtnet A.

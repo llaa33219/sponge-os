@@ -1,0 +1,14 @@
+runtime | ram: 10M | caps: 500 | binary: test-signal
+
++ requires | + timer
+
++ fail    | after_seconds: 60
++ succeed | : --- Signalling test finished ---
++ fail    | : *Error:
+
++ content
+  + rom | label: ld.lib.so
+  + rom | label: test-signal
+
++ config
+-

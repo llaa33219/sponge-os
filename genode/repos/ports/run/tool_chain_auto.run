@@ -1,0 +1,225 @@
+if {[have_cmd_switch --autopilot]} {
+	assert {![have_include power_on/qemu]} \
+		"Running tool-chain auto test in autopilot on Qemu is not recommended."
+}
+
+assert {![have_spec pistachio]}
+assert {![have_spec sel4]}
+assert {![have_board imx53_qsb_tz]}
+assert {![have_board rpi]}
+assert {!([have_spec foc] && [have_board imx6q_sabrelite])}
+assert {!([have_spec foc] && [have_board imx7d_sabre])}
+
+create_boot_directory
+
+import_from_depot [depot_user]/src/[base_src] \
+                  [depot_user]/src/init \
+                  [depot_user]/src/posix \
+                  [depot_user]/src/bash \
+                  [depot_user]/src/coreutils \
+                  [depot_user]/src/findutils \
+                  [depot_user]/src/grep \
+                  [depot_user]/src/sed \
+                  [depot_user]/src/gnumake \
+                  [depot_user]/src/which \
+                  [depot_user]/src/tclsh \
+                  [depot_user]/src/vfs \
+                  [depot_user]/src/pcre \
+                  [depot_user]/src/vfs_pipe \
+                  [depot_user]/src/libc \
+                  [depot_user]/src/stdcxx \
+                  [depot_user]/src/cached_fs_rom \
+                  [depot_user]/src/zlib
+
+set cc_march ""
+set tool_chain_timeout  600
+
+if {[have_spec arm]} {
+	set binutils     "binutils_arm"
+	set gcc          "gcc_arm"
+	set tool_prefix  "genode-arm-"
+	set boot_timeout 350
+	set arch         "arm_v7a"
+}
+
+if {[have_spec arm_64]} {
+	set binutils     "binutils_arm_64"
+	set gcc          "gcc_arm_64"
+	set tool_prefix  "genode-aarch64-" 
+	set boot_timeout 350
+	set arch         "arm_v8a"
+}
+
+if {[have_spec x86]} {
+	set binutils     "binutils_x86"
+	set gcc          "gcc_x86"
+	set tool_prefix  "genode-x86-"
+	set boot_timeout 250
+	set arch         "x86_64"
+}
+
+set build_components { core lib/ld lib/vfs lib/vfs_pipe lib/libc server/vfs }
+
+#
+# Build packages only once
+#
+set pkgs "$binutils $gcc"
+
+foreach pkg $pkgs {
+	lappend_if [expr ![file exists bin/$pkg]] build_components noux-pkg/$pkg }
+
+build $build_components
+
+# write default .bash_profile file
+set bash_profile_fd [open bin/bash_profile w]
+puts $bash_profile_fd {
+ln -s a /home/b ; rm /home/b    # regression test for issue #4219
+echo 'creating build directory...'
+mkdir -p "/home/build"
+cp -r /genode/depot /home/build
+}
+puts $bash_profile_fd "/genode/tool/depot/create DEPOT_DIR=/home/build/depot \
+      test/bin/$arch/zlib CROSS_DEV_PREFIX=$tool_prefix && exit 234"
+close $bash_profile_fd
+
+
+exec mkdir -p [depot_dir]/test
+exec $genode_dir/tool/depot/create DEPOT_DIR=[depot_dir] test/src/zlib
+exec tar cvf bin/genode.tar -C $genode_dir tool repos/base \
+             repos/libports/recipes/src/zlib \
+             repos/libports/recipes/api
+exec tar rvf bin/genode.tar -C [depot_dir]/.. [file tail [depot_dir]]/test
+exec rm -rf [depot_dir]/test
+
+
+proc mounted_tar_archives { } {
+	global binutils gcc
+
+	set archives "bash coreutils grep sed findutils make which $binutils $gcc tclsh"
+
+	set result {}
+	foreach archive $archives { append result "\n    | + tar $archive.tar" }
+	return $result
+}
+
+
+proc prefixed_nm { } {
+	global tool_prefix
+	return "${tool_prefix}nm"
+}
+
+
+install_config {
+config | verbose: yes
++ parent-provides
+  + service ROM
+  + service LOG
+  + service RM
+  + service CPU
+  + service PD
+  + service IO_PORT
+  + service IO_MEM
+  + service IRQ
+
++ default-route
+  + any-service
+    + parent
+    + any-child
+
++ default | caps: 100 | ram: 1M
+
++ start timer
+  + provides | + service Timer
+
++ start vfs | caps: 200 | ram: 124M
+  + provides | + service File_system
+  + config
+    + vfs} [mounted_tar_archives] {
+    | + dir dev
+    |   + zero
+    |   + log
+    |   + inline rtc | : 2030-01-01 00:01
+    | + dir pipe | + pipe
+    | + dir home
+    |   + ram
+    |   + rom .bash_profile | label: bash_profile | binary: no
+    | + dir genode | + tar genode.tar
+    | + dir tmp    | + ram
+    | + dir usr
+    |   + dir bin
+    |     + symlink make  | target: /bin/make
+    |     + symlink mkdir | target: /bin/mkdir
+    |     + symlink echo  | target: /bin/echo
+    |     + symlink tclsh | target: /bin/tclsh
+    | + dir bin
+    |   + symlink nm | target: } [prefixed_nm] {
+    |   + symlink sh | target: bash
+    + default-policy | root: / | writeable: yes
+
++ start vfs_rom | ram: 60M
+  + binary cached_fs_rom
+  + provides | + service ROM
+  + config
+  + route
+    + service File_system | + child vfs
+    + any-service         | + parent
+
++ start /bin/bash | caps: 2000 | ram: 300M
+  + config | ld_verbose: yes
+  | + libc | stdin:  /dev/null | stdout: /dev/log | stderr: /dev/log
+  |        | rtc:    /dev/rtc  | pipe:   /pipe
+  |        | + stack | size: 256K
+  | + vfs
+  |   + fs | buffer_size: 2M
+  |   + dir dev | + null
+  | + env HOME | : /home
+  | + env PATH | : /bin
+  | + arg /bin/bash
+  | + arg --login
+  + route
+    + service File_system | + child vfs
+    + service ROM | label_suffix: .lib.so           | + parent
+    + service ROM | label_last: /bin/bash           | + child vfs_rom
+    + service ROM | label_prefix: /genode/tool      | + child vfs_rom
+    + service ROM | label_prefix: /bin              | + child vfs_rom
+    + service ROM | label_prefix: /usr/bin          | + child vfs_rom
+    + service ROM | label_prefix: /libexec          | + child vfs_rom
+    + service ROM | label_prefix: /x86_64-pc-elf    | + child vfs_rom
+    + service ROM | label_prefix: /arm-none-eabi    | + child vfs_rom
+    + service ROM | label_prefix: /aarch64-none-elf | + child vfs_rom
+    + any-service
+      + parent
+      + any-child
+-
+}
+
+build_boot_image [list {*}[build_artifacts] bash_profile genode.tar $binutils.tar $gcc.tar]
+
+append qemu_args " -nographic -m 800 "
+
+# wait until Noux started
+run_genode_until {.*\[init -> vfs\] creating build directory\.\.\..*\n} $boot_timeout
+set run_id [output_spawn_id]
+
+puts "--- start of time measurement ---"
+set time_start [ clock seconds ]
+
+run_genode_until {.*"/bin/bash".* exited with exit value 234.*\n} $tool_chain_timeout $run_id
+
+puts "--- end of time measurement ---"
+set time_end [ clock seconds ]
+
+# cleanup created tars
+exec rm -f bin/genode.tar
+
+# print infos about run
+set git_info "unknown"
+catch { set git_info [exec git --git-dir=$genode_dir/.git describe ] }
+
+puts "Testing \" [ clock format $time_start -format "%Y-%m-%d %H:%M:%S"], commit: ($git_info)\" in : "
+puts "Testing \"all\" in printf.wv:"
+puts "! PERF: runtime [expr $time_end - $time_start ] seconds ok"
+
+puts "Test succeeded"
+
+# vi: set ft=tcl :

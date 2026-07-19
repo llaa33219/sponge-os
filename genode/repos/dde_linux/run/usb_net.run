@@ -1,0 +1,120 @@
+#
+# \brief  Test for using the lwIP TCP/IP stack over USB
+# \author Sebastian Sumpf
+# \date   2012-07-06
+#
+# This test case executes a small HTTP server, it has been used on PandaBoard
+# hardware only, though it should execute but not do anything on other hardware
+#
+
+assert {![have_spec arm_v6]}
+
+create_boot_directory
+import_from_depot [depot_user]/src/[base_src] \
+                  [depot_user]/pkg/test_usb_host-[board] \
+                  [depot_user]/src/usb_net \
+                  [depot_user]/src/nic_router \
+                  [depot_user]/src/libc \
+                  [depot_user]/src/vfs \
+                  [depot_user]/src/vfs_lwip \
+                  [depot_user]/src/init
+
+build { test/lwip/http_srv }
+
+install_config {
+config
+
++ parent-provides
+  + service CPU
+  + service IO_MEM
+  + service IO_PORT
+  + service IRQ
+  + service LOG
+  + service PD
+  + service RM
+  + service ROM
+
++ default-route
+  + any-service
+    + parent
+    + any-child
+
++ default | caps: 200 | ram: 1M
+
++ start timer
+  + provides
+    + service Timer
+
++ start usb | caps: 1500 | ram: 32M | managing_system: yes
+  + binary init
+  + provides | + service Usb
+  + route
+    + service ROM   | label: config | + parent | label: drivers.config
+    + service Timer                 | + child timer
+    + any-service                   | + parent
+
++ start usb_net | ram: 20M
+  + config | mac: 02:00:00:00:01:01
+  | + device | vendor_id: 0x0b95 | product_id: 0x1790 | mac: 02:00:00:00:01:01 | . AX88179A
+  |   . RTL8156 cannot handle mac address setting
+  + route
+    + service Timer  | + child timer
+    + service Uplink | + child nic_router
+    + service Usb    | + child usb
+    + any-service    | + parent
+
++ start nic_router | caps: 200 | ram: 10M
+  + provides
+    + service Nic
+    + service Uplink
+  + config | verbose_domain_state: yes
+    + policy | label_prefix: test-lwip_httpsrv | domain: downlink
+    + policy | label_prefix: usb_net | domain: uplink
+    + domain uplink
+      + nat | domain: downlink | tcp-ports: 16384
+      + tcp-forward | port: 443 | domain: downlink | to: 10.0.3.2
+      + tcp-forward | port:  80 | domain: downlink | to: 10.0.3.2
+    + domain downlink | interface: 10.0.3.1/24
+      + dhcp-server | ip_first: 10.0.3.2 | ip_last: 10.0.3.2
+
++ start test-lwip_httpsrv | caps: 120 | ram: 6M
+  + config
+  | + vfs
+  |   + dir dev | + log
+  |   + dir socket | + lwip | dhcp: yes
+  | + libc | stdout: /dev/log | stderr: /dev/log | socket: /socket
+  + route
+    + service Nic   | + child nic_router
+    + service Timer | + child timer
+    + any-service | + parent
+-}
+
+#
+# Define USB host controller config
+#
+set fd [open [run_dir]/genode/usb_host.config w]
+puts $fd {
+config | bios_handoff: no
+  + policy | label_prefix: usb_net
+    | + device | vendor_id: 0x0b95 | product_id: 0x1790 | . AX88179A
+    | + device | vendor_id: 0x0bda | product_id: 0x8156 | . RTL8156
+-}
+close $fd
+
+build_boot_image [build_artifacts]
+
+proc usb_bus {} {
+	return "$::env(BUS)" }
+
+proc usb_device {} {
+	return "$::env(DEVICE)" }
+
+
+append qemu_args "  -nographic"
+append qemu_args { -usb -device nec-usb-xhci,id=xhci \
+                   -device usb-host,hostbus=[usb_bus],hostaddr=[usb_device],bus=xhci.0 }
+
+
+run_genode_until forever
+
+# vi: set ft=tcl :

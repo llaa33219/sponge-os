@@ -1,0 +1,9 @@
+TARGET  := sculpt_manager
+SRC_CC  := $(notdir $(wildcard $(PRG_DIR)/*.cc))
+SRC_CC  += $(addprefix view/,   $(notdir $(wildcard $(PRG_DIR)/view/*.cc)))
+SRC_CC  += $(addprefix dialog/, $(notdir $(wildcard $(PRG_DIR)/dialog/*.cc)))
+SRC_CC  += dialog.cc
+LIBS    += base vfs
+INC_DIR += $(PRG_DIR)
+
+vpath dialog.cc $(REP_DIR)/src/lib/dialog

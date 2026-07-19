@@ -1,0 +1,131 @@
+source ${genode_dir}/repos/os/run/assert_qemu_nic.inc
+
+proc num_ping_rounds { } {
+	if {[have_spec sel4] && [have_spec x86]} {
+		return 10
+	}
+	if {[have_spec okl4] || [have_spec pistachio]} {
+		return 10
+	}
+	return 30
+}
+
+proc good_dst_ip { } { return "10.0.2.2" }
+proc bad_dst_ip  { } { return "10.0.0.123" }
+
+create_boot_directory
+
+import_from_depot [depot_user]/src/[base_src] \
+                  [depot_user]/pkg/[drivers_nic_pkg] \
+                  [depot_user]/src/init \
+                  [depot_user]/src/report_rom
+
+build { app/ping test/net_flood server/nic_router server/dynamic_rom }
+
+install_config {
+config | prio_levels: 4
++ parent-provides
+  + service ROM
+  + service IRQ
+  + service IO_MEM
+  + service IO_PORT
+  + service PD
+  + service RM
+  + service CPU
+  + service LOG
+
++ default-route
+  + any-service
+    + parent
+    + any-child
+
++ start timer | caps: 100 | ram: 1M | priority: 0
+  + provides | + service Timer
+
++ start drivers | caps: 1200 | ram: 32M | managing_system: yes | priority: 0
+  + binary init
+  + route
+    + service Timer               | + child timer
+    + service Uplink              | + child nic_router
+    + service ROM | label: config | + parent | label: drivers.config
+    + any-service                 | + parent
+
++ start nic_router | caps: 200 | ram: 10M | priority: -1
+  + provides
+    + service Nic
+    + service Uplink
+  + config
+  |        verbose:                   no
+  |        verbose_packets:           no
+  |        verbose_packet_drop:       yes
+  |        verbose_domain_state:      yes
+  |        dhcp_discover_timeout_sec: 1
+  |        tcp_idle_timeout_sec:      3600
+  |        udp_idle_timeout_sec:      3600
+  |        icmp_idle_timeout_sec:     3600
+  |
+  | + policy | label_prefix: net_clients | domain: net_clients
+  | + policy | label_prefix: drivers     | domain: uplink
+  | + domain uplink | interface: 10.0.2.15/24 | gateway: 10.0.2.2 | verbose_packets: no
+  |   + nat | domain: net_clients | udp-ports: 16384 | tcp-ports: 16384 | icmp-ids: 16384
+  | + domain net_clients | interface: 10.0.1.1/24
+  |   + dhcp-server | ip_first: 10.0.1.100 | ip_last: 10.0.1.200
+  |   + icmp | dst: 0.0.0.0/0 | domain: uplink
+  |   + udp  | dst: 0.0.0.0/0 | + permit-any | domain: uplink
+  |   + tcp  | dst: 0.0.0.0/0 | + permit-any | domain: uplink
+  + route
+    + service Timer  | + child timer
+    + service Report | + child report_rom
+    + any-service    | + parent
+
++ start report_rom | caps: 100 | ram: 1M | priority: -1
+  + provides
+    + service Report
+    + service ROM
+  + config | verbose: yes
+
++ start dynamic_rom | caps: 100 | ram: 4M | priority: -1
+  + provides | + service ROM
+  + config
+    + rom net_clients.config
+      + inline | + config | . give the drivers time to come up
+      + sleep | milliseconds: 5000
+      + inline
+      | + config
+      |   + parent-provides
+      |     + service ROM
+      |     + service PD
+      |     + service CPU
+      |     + service LOG
+      |     + service Nic
+      |     + service Timer
+      |   + default-route | + any-service | + parent
+      |   + start tcp_flood  | caps: 100 | ram: 8M
+      |     + binary test-net_flood
+      |     + config | dst_ip: } [bad_dst_ip]  { | protocol: tcp  | verbose: no
+      |   + start udp_flood  | caps: 100 | ram: 8M
+      |     + binary test-net_flood
+      |     + config | dst_ip: } [bad_dst_ip]  { | protocol: udp  | verbose: no
+      |   + start icmp_flood | caps: 100 | ram: 8M
+      |     + binary test-net_flood
+      |     + config | dst_ip: } [bad_dst_ip]  { | protocol: icmp | verbose: no
+      |   + start ping       | caps: 100 | ram: 8M
+      |     + config | dst_ip: } [good_dst_ip] { | period_sec: 2 | count: 999
+      + sleep | milliseconds: 3600000
+
++ start net_clients | caps: 1000 | ram: 200M | priority: -2
+  + binary init
+  + route
+    + service ROM | label: config | + child dynamic_rom | label: net_clients.config
+    + any-service
+      + parent
+      + any-child
+-
+}
+
+build_boot_image [build_artifacts]
+
+append qemu_args " -nographic "
+append_qemu_nic_args
+
+run_genode_until ".*ping\] 64 bytes from 10\.0\.2\.2: icmp_seq=[num_ping_rounds] .*\n" 125

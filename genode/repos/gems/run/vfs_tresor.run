@@ -1,0 +1,225 @@
+assert {[have_spec linux]}
+
+set dd [installed_command dd]
+
+create_boot_directory
+
+proc tresor_image_name { } { return "vfs_tresor_block.img" }
+
+proc tresor_image_size_mb { } { return 4 }
+
+proc local_tresor_image { } { return bin/[tresor_image_name] }
+
+proc autopilot_tresor_image { } { return /tmp/[tresor_image_name].[exec id -un] }
+
+import_from_depot [depot_user]/src/ncurses \
+                  [depot_user]/src/bash \
+                  [depot_user]/src/coreutils
+
+build {
+	core
+	timer
+	init
+	lib/ld
+	lib/vfs_tresor
+	lib/vfs_tresor_crypto_aes_cbc
+	lib/vfs_tresor_crypto_memcopy
+	lib/vfs_tresor_trust_anchor
+	lib/vfs_import
+	lib/vfs_jitterentropy
+	lib/vfs_pipe
+	lib/vfs
+	lib/libc
+	lib/libm
+	lib/posix
+	lib/libcrypto
+	test/vfs_stress
+	test/libc
+	server/log_terminal
+	server/report_rom
+	server/fs_rom
+	server/lx_fs
+	server/vfs
+	app/tresor_init_trust_anchor
+	app/tresor_init
+	app/sequence
+}
+
+install_config {
+config | verbose: yes
++ parent-provides
+  + service ROM
+  + service IRQ
+  + service IO_MEM
+  + service IO_PORT
+  + service PD
+  + service RM
+  + service CPU
+  + service LOG
+
++ default-route
+  + any-service
+    + parent
+    + any-child
+
++ default | caps: 100 | ram: 1M
+
++ start timer
+  + provides | + service Timer
+
++ start log_terminal | caps: 110 | ram: 2M
+  + provides | + service Terminal
+
++ start lx_fs | ld: no | ram: 4M
+  + provides | + service File_system
+  + config
+    + default-policy | root: / | writeable: yes
+
++ start vfs_tresor_trust_anchor | caps: 120 | ram: 16M
+  + binary vfs
+  + provides | + service File_system
+  + config
+    + vfs
+    | + ram
+    | + dir dev
+    |   + jitterentropy
+    |   + tresor_trust_anchor tresor_trust_anchor | storage_dir: /
+    + default-policy | root: /dev/tresor_trust_anchor | writeable: yes
+
++ start sequence | caps: 3000 | ram: 300M
+  + config
+  | + start tresor_init_trust_anchor
+  |   + config | passphrase: foobar | trust_anchor_dir: /trust_anchor
+  |     + vfs | + dir trust_anchor | + fs | label: tresor_trust_anchor -> /
+  |
+  | + start tresor_init
+  |   + config
+  |     + block-io | type: vfs | path: /} [tresor_image_name] {
+  |     + crypto | path: /crypto
+  |     + trust-anchor | path: /trust_anchor
+  |     + vfs
+  |       + fs | label: tresor_block_io -> / | buffer_size: 1M
+  |       + tresor_crypto_aes_cbc crypto
+  |       + dir trust_anchor
+  |         + fs | label: tresor_trust_anchor -> /
+  |     + virtual-block-device | max_lvl: 2 | degree: 64 | num_leaves: 512
+  |     + free-tree | max_lvl: 2 | degree: 64 | num_leaves: 2048
+  |
+  | + start init | caps: 1600
+  |   + config | verbose: yes
+  |     + parent-provides
+  |       + service ROM
+  |       + service PD
+  |       + service RM
+  |       + service CPU
+  |       + service LOG
+  |       + service Nic
+  |       + service Timer
+  |       + service File_system
+  |       + service Terminal
+  |     + default-route | + any-service | + parent
+  |     + default | caps: 100
+  |     + start vfs_tresor | caps: 200 | ram: 16M
+  |     | + binary vfs
+  |     | + provides | + service File_system
+  |     | + config
+  |     |   + vfs
+  |     |   | + fs | buffer_size: 1M | label: tresor_block_io -> /
+  |     |   | + tresor_crypto_aes_cbc tresor_crypto
+  |     |   | + dir ta | + fs | buffer_size: 1M | label: tresor_trust_anchor -> /
+  |     |   | + dir dev
+  |     |   |   + tresor tresor
+  |     |   |            debug:        no
+  |     |   |            verbose:      yes
+  |     |   |            block:        /} [tresor_image_name] {
+  |     |   |            crypto:       /tresor_crypto
+  |     |   |            trust_anchor: /ta
+  |     |   + default-policy | root: /dev | writeable: yes
+  |     + start vfs | caps: 120 | ram: 30M
+  |     | + provides | + service File_system
+  |     | + config
+  |     |   + vfs
+  |     |   | + tar coreutils.tar
+  |     |   | + tar bash.tar
+  |     |   | + dir home | + ram
+  |     |   | + dir share
+  |     |   | + dir tmp  | + ram
+  |     |   | + dir dev
+  |     |   |   + zero
+  |     |   |   + null
+  |     |   |   + terminal
+  |     |   |   + dir pipe | + pipe
+  |     |   |   + inline rtc | : 2018-01-01 00:01
+  |     |   + policy | label_prefix: vfs_rom | root: /
+  |     |   + default-policy | root: / | writeable: yes
+  |     | + route
+  |     |   + service Terminal | + parent | label: log_terminal
+  |     |   + service Timer    | + child timer
+  |     |   + any-service      | + parent
+  |     + start vfs_rom | ram: 30M
+  |     | + binary fs_rom
+  |     | + provides | + service ROM
+  |     | + config
+  |     | + route
+  |     |   + service File_system | + child vfs
+  |     |   + any-service         | + parent
+  |     + start /bin/bash | caps: 1000 | ram: 64M
+  |       + config | ld_verbose: yes
+  |       | + libc | stdin:  /dev/terminal | stdout: /dev/terminal
+  |       |        | stderr: /dev/terminal | rtc:    /dev/rtc
+  |       |        | pipe:   /dev/pipe
+  |       | + vfs
+  |       |   + fs | label: shell | buffer_size: 1M
+  |       |   + dir dev | + fs | label: tresor | buffer_size: 1M
+  |       |   + rom .profile | label: vfs_tresor.sh
+  |       | + arg  bash | : --login
+  |       | + env TERM | : screen
+  |       | + env HOME | : /
+  |       | + env PATH | : /bin
+  |       + route
+  |         + service File_system | label: shell  | + child vfs        | label: /
+  |         + service File_system | label: tresor | + child vfs_tresor | label: /
+  |         + service ROM | label_suffix: .lib.so | + parent
+  |         + service ROM | label_last: /bin/bash | + child vfs_rom
+  |         + service ROM | label_prefix: /bin    | + child vfs_rom
+  |         + any-service
+  |           + parent
+  |           + any-child
+  + route
+    + service Terminal                                             | + child log_terminal
+    + service File_system | label_suffix: tresor_block_io -> /     | + child lx_fs
+    + service File_system | label_suffix: tresor_trust_anchor -> / | + child vfs_tresor_trust_anchor
+    + service Timer                                                | + child timer
+    + any-service                                                  | + parent
+-
+}
+
+set shell_script "run/vfs_tresor.sh"
+set repo "[repository_contains $shell_script]"
+exec cp $repo/$shell_script bin/
+
+exec rm -rf [local_tresor_image]
+if { [have_cmd_switch --autopilot] } {
+
+	exec rm -rf [autopilot_tresor_image]
+	catch { exec $dd if=/dev/urandom of=[autopilot_tresor_image] bs=1M count=[tresor_image_size_mb] }
+	exec ln -sf -T [autopilot_tresor_image] [local_tresor_image]
+
+} else {
+
+	catch { exec $dd if=/dev/urandom of=[local_tresor_image] bs=1M count=[tresor_image_size_mb] }
+}
+
+set boot_modules [build_artifacts]
+append  boot_modules { vfs_tresor.sh }
+lappend boot_modules [tresor_image_name]
+
+build_boot_image $boot_modules
+
+run_genode_until {.*"/bin/bash".* exited with exit value 0.*\n} 120
+
+if { [have_cmd_switch --autopilot] } {
+
+	exec rm -rf [local_tresor_image]
+	exec rm -rf [autopilot_tresor_image]
+}

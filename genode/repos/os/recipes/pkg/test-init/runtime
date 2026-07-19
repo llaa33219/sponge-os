@@ -1,0 +1,62 @@
+runtime | ram: 64M | caps: 3000 | binary: init
+
++ requires | + timer
+
++ fail    | after_seconds: 332
++ succeed | : child "test-init" exited with exit value 0
++ fail    | : list model not empty at destruction time
+
++ content
+  + rom | label: ld.lib.so
+  + rom | label: test-init
+  + rom | label: dummy
+  + rom | label: report_rom
+  + rom | label: test-init.config
+
++ config | prio_levels: 2
+  + parent-provides
+    + service ROM
+    + service CPU
+    + service PD
+    + service LOG
+    + service IRQ
+    + service IO_MEM
+    + service IO_PORT
+    + service Timer
+
+  + default-route
+    + any-service
+      + parent
+      + any-child
+
+  + default | caps: 100
+
+  + start report_rom | priority: -1 | ram: 2M
+    + provides
+      + service ROM
+      + service Report
+    + config | verbose: no
+      + policy | label: init -> config     | report: test-init -> init.config
+      + policy | label: test-init -> state | report: init -> state
+
+  + start test-init | priority: -1 | ram: 4M
+    + provides | + service LOG
+    + route
+      + service Report              | + child report_rom
+      + service ROM | label: state  | + child report_rom
+      + service ROM | label: config | + parent | label: test-init.config
+      + any-service                 | + parent
+
+  + start init | caps: 2000 | priority: -1 | ram: 16M
+    + binary init
+    + route
+      + service ROM | label: config | + child report_rom
+      + service Report              | + child report_rom
+      + service LOG                 | + child test-init
+      + service ROM | label: another_dummy
+      | .
+      | . alias for the binary as requested by the binary-name update test
+      | .
+      | + parent | label: dummy
+      + any-service | + parent
+-

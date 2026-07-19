@@ -1,0 +1,138 @@
+#
+# \brief  Test for using the lwIP TCP/IP stack
+# \author Norman Feske
+# \date   2011-05-22
+#
+# This test case executes a small HTTP server on Genode running on qemu. When
+# the HTTP server is up, a HTTP request to the server is performed using
+# 'lynx'. The response is validated against a known pattern.
+#
+# The test uses qemu's "-netdev user" option, redirecting Genode's port 80 to the
+# host's port 5555. Consequently, it cannot be executed on non-qemu test
+# environments (i.e., the test won't work with the Linux version of Genode).
+#
+
+#
+# TODO: Add support for Linux via user-level networking (using the
+#       tun/tap proxy driver at os/src/driver/nic/linux)
+#
+
+assert {![have_board linux]}
+assert {![have_board imx53_qsb_tz]}
+assert {![have_board rpi3]}
+assert {![have_board rpi]}
+
+assert {[have_recipe pkg/[drivers_nic_pkg]]} \
+	"Recipe for 'pkg/[drivers_nic_pkg]' not available."
+
+if {[have_cmd_switch --autopilot]} {
+	assert {![have_board virt_qemu_riscv]} \
+		"Autopilot mode is not supported on this platform."
+}
+
+set lynx [installed_command lynx]
+
+create_boot_directory
+
+import_from_depot [depot_user]/src/[base_src] \
+                  [depot_user]/pkg/[drivers_nic_pkg] \
+                  [depot_user]/src/init \
+                  [depot_user]/src/nic_router \
+                  [depot_user]/src/libc \
+                  [depot_user]/src/vfs_lwip \
+                  [depot_user]/src/vfs
+
+install_config {
+config | verbose: yes | prio_levels: 2
++ parent-provides
+  + service ROM
+  + service IRQ
+  + service IO_MEM
+  + service IO_PORT
+  + service PD
+  + service RM
+  + service CPU
+  + service LOG
+
++ default-route
+  + any-service
+    + parent
+    + any-child
+
++ default | caps: 100 | ram: 1M
+
++ start timer
+  + provides | + service Timer
+
++ start drivers | caps: 1200 | ram: 32M | managing_system: yes | priority: -1
+  + binary init
+  + route
+    + service ROM | label: config | + parent | label: drivers.config
+    + service Timer               | + child timer
+    + service Uplink              | + child nic_router
+    + any-service                 | + parent
+
++ start nic_router | caps: 200 | ram: 10M
+  + provides
+    + service Nic
+    + service Uplink
+  + config | verbose_domain_state: yes | dhcp_discover_timeout_sec: 1
+    + policy | label_prefix: test-lwip_httpsrv | domain: downlink
+    + policy | label_prefix: drivers           | domain: uplink
+    + domain uplink
+      + nat | domain: downlink | tcp-ports: 16384 | udp-ports: 16384 | icmp-ids: 16384
+      + tcp-forward | port: 443 | domain: downlink | to: 10.0.3.2
+      + tcp-forward | port: 80  | domain: downlink | to: 10.0.3.2
+    + domain downlink | interface: 10.0.3.1/24
+      + dhcp-server | ip_first: 10.0.3.2 | ip_last: 10.0.3.2
+      + tcp  | dst: 0.0.0.0/0 | + permit-any | domain: uplink
+      + udp  | dst: 0.0.0.0/0 | + permit-any | domain: uplink
+      + icmp | dst: 0.0.0.0/0 | domain: uplink
+
++ start test-lwip_httpsrv | caps: 130 | ram: 8M | priority: -1
+  + config
+  | + vfs
+  |   + dir dev    | + log
+  |   + dir socket | + lwip | dhcp: yes
+  | + libc | stdout: /dev/log | stderr: /dev/log | socket: /socket
+  + route
+    + service Nic | + child nic_router
+    + any-service
+      + parent
+      + any-child
+-
+}
+
+build { test/lwip/http_srv }
+
+build_boot_image [build_artifacts]
+
+#
+# Qemu config
+#
+append qemu_args "  -nographic "
+append_qemu_nic_args "hostfwd=tcp::5555-:80"
+
+if {[have_include "power_on/qemu"]} {
+	run_genode_until {.*Start the server loop.*\n} 30
+	set uri "http://localhost:5555/"
+} else {
+	set match_string "nic_router. .uplink. dynamic IP config: interface .*\n"
+	run_genode_until $match_string 30
+	regexp $match_string $output ip_addr
+	regexp {[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+} $ip_addr ip_addr
+	set uri "http://$ip_addr:80/"
+}
+
+puts "http server is up, try to query website $uri"
+
+set website [exec $lynx -dump $uri]
+
+puts "response:\n$website"
+
+if {![regexp {Welcome to our lwIP HTTP server!} $website dummy]} {
+	puts stderr "Query returned unexpected website"
+	exit 2;
+}
+
+# vi: set ft=tcl :

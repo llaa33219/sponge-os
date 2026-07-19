@@ -1,0 +1,328 @@
+/*
+ * \brief  Platform-device interface
+ * \author Stefan Kalkowski
+ * \author Norman Feske
+ * \date   2020-04-15
+ */
+
+/*
+ * Copyright (C) 2020-2021 Genode Labs GmbH
+ *
+ * This file is part of the Genode OS framework, which is distributed
+ * under the terms of the GNU Affero General Public License version 3.
+ */
+
+#ifndef _INCLUDE__PLATFORM_SESSION__DEVICE_H_
+#define _INCLUDE__PLATFORM_SESSION__DEVICE_H_
+
+#include <util/mmio.h>
+#include <util/string.h>
+#include <base/rpc.h>
+#include <base/exception.h>
+#include <io_mem_session/client.h>
+#include <irq_session/client.h>
+#include <io_port_session/client.h>
+#include <platform_session/connection.h>
+
+class Platform::Device : Interface, Noncopyable
+{
+	public:
+
+		template <size_t> struct Mmio;
+		struct Irq;
+		struct Io_port_range;
+
+		using Name = Platform::Session::Device_name;
+		using Alloc_msi_result = Platform::Device_interface::Alloc_msi_result;
+		using Msi_handle = Platform::Device_interface::Msi_handle;
+
+	private:
+
+		using Range = Device_interface::Range;
+
+		::Platform::Connection &_platform;
+
+		Capability<Device_interface> _cap;
+
+		Name _name;
+
+		Irq_session_capability _irq(unsigned index)
+		{
+			return _cap.call<Device_interface::Rpc_irq>(index);
+		}
+
+		Io_mem_session_capability _io_mem(unsigned index, Range &range)
+		{
+			return _cap.call<Device_interface::Rpc_io_mem>(index, range);
+		}
+
+		Io_port_session_capability _io_port_range(unsigned index)
+		{
+			return _cap.call<Device_interface::Rpc_io_port_range>(index);
+		}
+
+		Env::Local_rm &_rm() { return _platform._env.rm(); }
+
+		Alloc_msi_result _msi_alloc(Signal_context_capability sigh, bool msix)
+		{
+			return _platform.retry(Ram_quota{4096}, Cap_quota{2},
+				[&] { return _cap.call<Device_interface::Rpc_msi_alloc>(sigh, msix); });
+		}
+
+		void _msi_free(Msi_handle handle) {
+			_cap.call<Device_interface::Rpc_msi_free>(handle); }
+
+	public:
+
+		struct Index { unsigned value; };
+
+		explicit Device(Connection &platform)
+		:
+			_platform(platform), _cap(platform.acquire_device()),
+			_name()
+		{ }
+
+		struct Type { String<64> name; };
+
+		Device(Connection &platform, Type type)
+		:
+			_platform(platform), _cap(), _name()
+		{
+			auto ret = platform.device_by_type(type.name.string());
+			_cap  = ret.cap;
+			_name = ret.name;
+		}
+
+		Device(Connection &platform, Name name)
+		:
+			_platform(platform), _cap(platform.acquire_device(name)),
+			_name(name)
+		{ }
+
+		~Device() { _platform.release_device(_cap); }
+
+		Name const &name() { return _name; }
+};
+
+
+template <Genode::size_t SIZE>
+class Platform::Device::Mmio : Range, Attached_dataspace, public Genode::Mmio<SIZE>
+{
+	private:
+
+		Dataspace_capability _ds_cap(Device &device, unsigned id)
+		{
+			Io_mem_session_client io_mem(device._io_mem(id, *this));
+			return io_mem.dataspace();
+		}
+
+		addr_t _local_addr()
+		{
+			return (addr_t)Attached_dataspace::local_addr<char>() + Range::start;
+		}
+
+	public:
+
+		struct Index { unsigned value; };
+
+		Mmio(Device &device, Index index)
+		:
+			Attached_dataspace(device._rm(), _ds_cap(device, index.value)),
+			Genode::Mmio<SIZE>({(char *)_local_addr(), size()})
+		{ }
+
+		explicit Mmio(Device &device) : Mmio(device, Index { 0 }) { }
+
+		size_t size() const { return Range::size; }
+
+		template <typename T>
+		T *local_addr() { return reinterpret_cast<T *>(_local_addr()); }
+
+		Dataspace_capability cap() { return Attached_dataspace::cap(); }
+};
+
+
+class Platform::Device::Irq : Noncopyable
+{
+	public:
+
+		struct Index { unsigned value; };
+
+		enum class Type { IRQ, MSI, MSIX };
+
+	private:
+
+		Device &_device;
+
+		Type _type;
+
+		Constructible<Irq_session_client> _irq { };
+		Constructible<Msi_handle> _msi_handle { };
+
+		Type _determine_type()
+		{
+			Type ret = Type::IRQ;
+
+			bool found_device = false;
+
+			_device._platform.with_node([&] (Node const &devnodes) {
+				bool msix = false;
+				bool msi  = false;
+				devnodes.with_optional_sub_node("device", [&] (Node const &devnode) {
+
+					if (found_device)
+						return;
+
+					/*
+					 * Assume only one device in case the device is unnamed.
+					 *
+					 * In case there are multiple devices specified in the
+					 * policy the most significant must be the first. In
+					 * return only the first one is evaluated in CLASS policies.
+					 */
+					Device::Name const name = devnode.attribute_value("name", Device::Name());
+					if (name != _device.name() && _device.name().valid())
+						return;
+
+					msix |= !!devnode.attribute_value("msi_x", 0u);
+					msi  |= !!devnode.attribute_value("msi",  0u);
+
+					found_device = true;
+				});
+
+				if (msi)  ret = Type::MSI;
+				if (msix) ret = Type::MSIX;
+			});
+
+			return ret;
+		}
+
+		void _set_irq_sigh(Signal_context_capability sigh)
+		{
+			if (_type == Type::IRQ) {
+				if (_irq.constructed()) _irq->sigh(sigh);
+				return;
+			}
+
+			if (_msi_handle.constructed()) {
+				error("cannot replace signal-handler for ",
+				      (_type == Type::MSIX) ? "MSI-X" : "MSI");
+				return;
+			}
+
+			_device._msi_alloc(sigh, _type == Type::MSIX).with_result(
+				[&] (Msi_handle handle) {
+					_msi_handle.construct(handle);
+				},
+				[&] (Alloc_error) {
+					error("could not allocate ",
+					      (_type == Type::MSIX) ? "MSI-X" : "MSI");
+				}
+			);
+		}
+
+	public:
+
+		Irq(Device &device)
+		:
+			_device(device), _type(_determine_type())
+		{
+			if (_type == Type::IRQ)
+				_irq.construct(device._irq(0));
+		}
+
+		Irq(Device &device, Index index)
+		:
+			_device(device), _type(Type::IRQ)
+		{
+			_irq.construct(device._irq(index.value));
+		}
+
+		Irq(Device &device, Type type)
+		:
+			_device(device), _type(type)
+		{
+			if (_type == Type::IRQ)
+				_irq.construct(device._irq(0));
+		}
+
+		~Irq()
+		{
+			if (_msi_handle.constructed())
+				_device._msi_free(*_msi_handle);
+		}
+
+		/**
+		 * Acknowledge interrupt
+		 *
+		 * This method must be called by a non-MSI interrupt handler.
+		 */
+		void ack()
+		{
+			if (_irq.constructed())
+				_irq->ack_irq();
+		}
+
+		/**
+		 * Register interrupt signal handler
+		 *
+		 * The call of this method implies a one-time trigger of the interrupt
+		 * handler once the driver component becomes receptive to signals. This
+		 * artificial interrupt signal alleviates the need to place an explicit
+		 * 'Irq::ack' respectively a manual call of the interrupt handler
+		 * routine during the driver initialization.
+		 *
+		 * Furthermore, this artificial interrupt reforces drivers to be robust
+		 * against spurious interrupts.
+		 */
+		void sigh(Signal_context_capability sigh)
+		{
+			_set_irq_sigh(sigh);
+
+			/* trigger initial interrupt */
+			if (sigh.valid())
+				Signal_transmitter(sigh).submit();
+		}
+
+		/**
+		 * Register interrupt signal handler
+		 *
+		 * This call omits the one-time trigger of the interrupt
+		 * handler for ported drivers that cannot handle it sufficiently.
+		 */
+		void sigh_omit_initial_signal(Signal_context_capability sigh)
+		{
+			_set_irq_sigh(sigh);
+		}
+};
+
+
+class Platform::Device::Io_port_range : Noncopyable
+{
+	private:
+
+		Io_port_session_client _io_port_range;
+
+	public:
+
+		struct Index  { unsigned value; };
+
+		Io_port_range(Device &device, Index index)
+		: _io_port_range(device._io_port_range(index.value)) { }
+
+		explicit Io_port_range(Device &device)
+		: Io_port_range(device, Index { 0 }) { }
+
+		uint8_t  inb(uint16_t addr) { return _io_port_range.inb(addr); };
+		uint16_t inw(uint16_t addr) { return _io_port_range.inw(addr); };
+		uint32_t inl(uint16_t addr) { return _io_port_range.inl(addr); };
+
+		void outb(uint16_t addr, uint8_t  value) {
+			_io_port_range.outb(addr, value); };
+		void outw(uint16_t addr, uint16_t value) {
+			_io_port_range.outw(addr, value); };
+		void outl(uint16_t addr, uint32_t value) {
+			_io_port_range.outl(addr, value); };
+};
+
+#endif /* _INCLUDE__PLATFORM_SESSION__DEVICE_H_ */

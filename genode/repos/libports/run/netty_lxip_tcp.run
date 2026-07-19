@@ -1,0 +1,14 @@
+# Network echo test (lxip, TCP)
+#
+# Example test command
+#
+#   dd if=/dev/urandom bs=736 count=10 | xxd -plain | tr -d '\n' | nc 10.0.2.55 80
+#
+
+proc ipstack         { } { return lxip }
+proc protocol        { } { return tcp }
+proc use_dynamic_rom { } { return false }
+
+source ${genode_dir}/repos/libports/run/netty.inc
+
+# vi: set ft=tcl :

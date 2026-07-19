@@ -1,0 +1,40 @@
+#
+# \brief  Test if global static constructors in hybrid applications and
+#         host shared libs get called
+# \author Christian Prochaska
+# \date   2011-11-24
+#
+
+build { core init lib/ld test/lx_hybrid_ctors }
+
+create_boot_directory
+
+install_config {
+config
++ parent-provides
+  + service ROM
+  + service CPU
+  + service PD
+  + service LOG
+
++ default-route | + any-service | + parent
++ default | caps: 100 | ram: 1M
+
++ start test-lx_hybrid_ctors | ld: no
+-
+}
+
+build_boot_image [build_artifacts]
+
+run_genode_until {child "test-lx_hybrid_ctors" exited with exit value 0.*\n} 10
+
+grep_output {\[init -\> test-lx_hybrid_ctors\]}
+
+compare_output_to {
+	[init -> test-lx_hybrid_ctors] Global static constructor of host library called.
+	[init -> test-lx_hybrid_ctors] Global static constructor of Genode application called.
+	[init -> test-lx_hybrid_ctors] --- lx_hybrid global static constructor test ---
+	[init -> test-lx_hybrid_ctors] --- returning from main ---
+}
+
+# vi: set ft=tcl :

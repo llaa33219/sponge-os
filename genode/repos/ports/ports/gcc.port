@@ -1,0 +1,55 @@
+LICENSE   := GPLv3
+VERSION   := 14.2.0
+DOWNLOADS := gcc.archive
+
+URL(gcc)  := http://ftp.fu-berlin.de/gnu/gcc/gcc-$(VERSION)/gcc-$(VERSION).tar.xz
+SHA(gcc)  := a7b39bc69cbf9e25826c5a60ab26477001f7c08d85cec04bc0e29cabed6f3cc9
+SIG(gcc)  := ${URL(gcc)}.sig
+KEY(gcc)  := GNU
+DIR(gcc)  := src/noux-pkg/gcc
+
+PATCHES   := $(addprefix ${DIR(gcc)}/patches/, \
+                         $(shell cat $(REP_DIR)/${DIR(gcc)}/patches/series))
+PATCH_OPT := -p1 -d ${DIR(gcc)}
+
+HASH_INPUT += $(REP_DIR)/${DIR(gcc)}/patches/series
+
+AUTOCONF_VERSION = 2.69
+
+AUTOCONF_VERSION_STRING = "autoconf (GNU Autoconf) $(AUTOCONF_VERSION)"
+ifneq ($(shell autoconf -V | grep $(AUTOCONF_VERSION_STRING)),)
+  AUTOCONF = autoconf
+else
+  ifneq ($(shell which autoconf$(AUTOCONF_VERSION)),)
+    AUTOCONF = autoconf$(AUTOCONF_VERSION)
+  else
+    ifneq ($(shell which autoconf-$(AUTOCONF_VERSION)),)
+      AUTOCONF = autoconf-$(AUTOCONF_VERSION)
+    else
+      $(error Need to have 'autoconf' version $(AUTOCONF_VERSION) installed)
+    endif
+  endif
+endif
+
+$(call check_tool,autogen)
+
+# for 'aclocal' command
+$(call check_tool,automake)
+
+download_prerequisites: _dirs
+	$(VERBOSE)cd ${DIR(gcc)}; contrib/download_prerequisites
+
+# The 'isl' prerequisite needs a patch too
+_patch: download_prerequisites
+
+default: _patch
+	@#
+	@# Re-generate configure scripts
+	@#
+	$(VERBOSE)cd ${DIR(gcc)}; autogen Makefile.def
+	$(VERBOSE)cd ${DIR(gcc)}/isl; aclocal; $(AUTOCONF)
+	$(VERBOSE)cd ${DIR(gcc)}/libgcc; $(AUTOCONF)
+	$(VERBOSE)cd ${DIR(gcc)}/libstdc++-v3; $(AUTOCONF)
+	$(VERBOSE)cd ${DIR(gcc)}/gcc; $(AUTOCONF)
+	$(VERBOSE)cd ${DIR(gcc)}; $(AUTOCONF)
+	$(VERBOSE)touch $@

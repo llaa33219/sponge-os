@@ -1,0 +1,38 @@
+runtime | ram: 16M | caps: 1000 | binary: init
+
++ fail    | after_seconds: 300
++ succeed | : child "gcov" exited with exit value 0
+
++ content
+  + rom | label: gcov
+  + rom | label: gmp.lib.so
+  + rom | label: ld.lib.so
+  + rom | label: libc.lib.so
+  + rom | label: libm.lib.so
+  + rom | label: posix.lib.so
+  + rom | label: stdcxx.lib.so
+  + rom | label: vfs.lib.so
+  + rom | label: zlib.lib.so
+
++ config
+  + parent-provides
+    + service LOG
+    + service PD
+    + service CPU
+    + service ROM
+    + service File_system
+
+  + default-route | + any-service | + parent
+
+  + start gcov | caps: 500 | ram: 10M
+    + config
+      + arg gcov
+      + arg --genode-autopilot
+      + arg --function-summaries
+      + arg --demangled-names
+      + vfs
+      | + dir dev | + log
+      | + fs | label: depot -> /
+      | + fs | label: gcov_data -> /
+      + libc | stdout: /dev/log | stderr: /dev/log
+-

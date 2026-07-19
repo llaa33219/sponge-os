@@ -1,0 +1,191 @@
+create_boot_directory
+
+import_from_depot [depot_user]/src/[base_src] \
+                  [depot_user]/pkg/[drivers_interactive_pkg] \
+                  [depot_user]/pkg/terminal \
+                  [depot_user]/pkg/motif_wm \
+                  [depot_user]/src/init \
+                  [depot_user]/src/nitpicker \
+                  [depot_user]/src/report_rom \
+                  [depot_user]/src/libc \
+                  [depot_user]/src/vfs \
+                  [depot_user]/src/fs_rom \
+                  [depot_user]/src/posix \
+                  [depot_user]/src/ncurses \
+                  [depot_user]/src/clipboard \
+                  [depot_user]/src/vim
+
+install_config {
+config | verbose: yes
++ parent-provides
+  + service ROM
+  + service LOG
+  + service RM
+  + service CPU
+  + service PD
+  + service IRQ
+  + service IO_PORT
+  + service IO_MEM
++ default-route
+  + any-service
+    + parent
+    + any-child
++ default | caps: 100 | ram: 1M
+
++ start timer
+  + provides | + service Timer
+
++ start drivers | caps: 1500 | ram: 64M | managing_system: yes
+  + binary init
+  + route
+    + service ROM | label: config | + parent | label: drivers.config
+    + service Timer               | + child timer
+    + service Capture             | + child nitpicker
+    + service Event               | + child nitpicker
+    + any-service                 | + parent
+
++ start report_rom
+  + provides
+    + service Report
+    + service ROM
+  + config | verbose: no
+    + policy | label:  clipboard -> focus | report: nitpicker -> focus
+
++ start nitpicker | ram: 4M
+  + provides
+    + service Gui
+    + service Capture
+    + service Event
+  + config | focus: rom
+    + capture
+    + event
+    + report | focus: yes | . interpreted by clipboard
+    + domain pointer | layer: 1 | content: client | label: no | origin: pointer
+    + domain default | layer: 2 | content: client | label: no | hover:  always
+    + policy | label_prefix: pointer | domain: pointer
+    + default-policy                 | domain: default
+  + route
+    + service Report | + child report_rom
+    + any-service
+      + parent
+      + any-child
+
++ start pointer | ram: 2M
+  + route
+    + service Gui | + child nitpicker
+    + any-service
+      + parent
+      + any-child
+
++ start clipboard | ram: 2M
+  + provides
+    + service ROM
+    + service Report
+  + config | verbose: yes | match_labels: yes
+    + default-policy | domain: default
+  + route
+    + service ROM | label: focus | + child report_rom
+    + any-service
+      + parent
+      + any-child
+
++ start wm | caps: 1000 | ram: 32M
+  + binary init
+  + provides
+    + service Gui
+    + service Report
+    + service ROM
+  + route
+    + service ROM    | label: config         | + parent | label: wm.config
+    + service ROM    | label_last: clipboard | + child clipboard
+    + service Report | label_last: clipboard | + child clipboard
+    + service Gui                            | + child nitpicker
+    + any-service
+      + parent
+      + any-child
+
++ start terminal | caps: 110 | ram: 6M
+  + provides | + service Terminal
+  + config | copy: yes | paste: yes
+  | + initial | width: 800 | height: 600
+  | + vfs
+  |   + rom VeraMono.ttf
+  |   + dir fonts
+  |     + dir monospace | + ttf regular | path: /VeraMono.ttf | size_px: 16
+  + route
+    + service ROM    | label: clipboard | + child wm
+    + service Report | label: clipboard | + child wm
+    + service Gui                       | + child wm | label: terminal
+    + any-service
+      + parent
+      + any-child
+
++ start vfs | caps: 120 | ram: 5M
+  + provides | + service File_system
+  + config
+    + policy | label_prefix: vfs_rom | root: /
+    + default-policy | root: / | writeable: yes
+    + vfs
+      + tar vim.tar
+      + dir dev
+        + terminal
+        + inline rtc | : 2018-01-01 00:01
+
++ start vfs_rom | ram: 5M
+  + binary fs_rom
+  + provides | + service ROM
+  + config
+  + route
+    + service File_system | + child vfs
+    + any-service         | + parent
+
++ start /bin/vim | caps: 150 | ram: 10M
+  + config
+  | + libc | stdin: /dev/terminal | stdout: /dev/terminal | stderr: /dev/terminal
+  |        | rtc: /dev/rtc
+  | + vfs | + fs
+  | + env TERM | : screen
+  | + arg /bin/vim
+  | + arg --noplugin
+  |   .
+  |   . Deactivate the loading of plugins.
+  |   . Otherwise, vim will attempt to use a sub shell for pattern matching.
+  |   .
+  | + arg -n
+  |   .
+  |   . Do not use swap file. Any attempt to create of would fail because we
+  |   . are on a read-only file system.
+  |   .
+  | + arg -N
+  |   .
+  |   . Use the nocompatible mode, which is much nicer than the plain vi mode.
+  |   .
+  | + arg --cmd | : set laststatus=2
+  |   .
+  |   . Permanently display status bar
+  |   .
+  | + arg --cmd | : set hls
+  |   .
+  |   . Enable highlighted search results
+  |   .
+  + route
+    + service File_system                 | + child vfs
+    + service ROM | label_suffix: .lib.so | + parent
+    + service ROM | label_last: /bin/vim  | + child vfs_rom
+    + any-service
+      + parent
+      + any-child
+-
+}
+
+set fd [open [run_dir]/genode/focus w]
+puts $fd "focus | label: wm -> focus | domain: default\n-"
+close $fd
+
+copy_file [genode_dir]/repos/gems/recipes/raw/motif_wm/wm.config [run_dir]/genode/
+
+build { server/wm server/clipboard server/terminal }
+
+build_boot_image [build_artifacts]
+
+run_genode_until forever

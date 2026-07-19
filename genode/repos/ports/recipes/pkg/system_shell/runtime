@@ -1,0 +1,32 @@
+runtime | ram: 108M | caps: 1100 | binary: init | config: system_shell.config
++ requires
+  + gui
+  + timer
+  + fs model  | writeable: yes
+  + fs report | writeable: no
+  + fs target | writeable: yes
+  + fs font   | writeable: no
+  + rom    vimrc
+  + rom    clipboard
+  + report clipboard
+  + rm
++ content
+  + rom system_shell.config
+  + rom ld.lib.so
+  + rom libc.lib.so
+  + rom libm.lib.so
+  + rom init
+  + rom vfs
+  + rom vfs_pipe.lib.so
+  + rom cached_fs_rom
+  + rom terminal
+  + rom posix.lib.so
+  + rom ncurses.lib.so
+  + rom bash-minimal.tar
+  + rom coreutils-minimal.tar
+  + rom vim-minimal.tar
+  + rom vim_syntax.tar
+  + rom tclsh.tar
+  + rom hid.tar
+  + rom vfs.lib.so
+-

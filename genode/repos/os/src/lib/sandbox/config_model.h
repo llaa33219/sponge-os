@@ -1,0 +1,293 @@
+/*
+ * \brief  Internal model of the configuration
+ * \author Norman Feske
+ * \date   2021-04-01
+ */
+
+/*
+ * Copyright (C) 2021 Genode Labs GmbH
+ *
+ * This file is part of the Genode OS framework, which is distributed
+ * under the terms of the GNU Affero General Public License version 3.
+ */
+
+#ifndef _CONFIG_MODEL_H_
+#define _CONFIG_MODEL_H_
+
+/* Genode includes */
+#include <util/list_model.h>
+
+/* local includes */
+#include <heartbeat.h>
+
+namespace Sandbox {
+
+	struct Parent_provides_model;
+	struct Start_model;
+	struct Service_model;
+	struct Config_model;
+}
+
+
+struct Sandbox::Parent_provides_model : Noncopyable
+{
+	struct Factory : Interface, Noncopyable
+	{
+		virtual Parent_service &create_parent_service(Service::Name const &) = 0;
+	};
+
+	Allocator     &_alloc;
+	Verbose const &_verbose;
+	Factory       &_factory;
+
+	struct Service_node : Noncopyable, List_model<Service_node>::Element
+	{
+		Parent_service &service;
+
+		Service_node(Factory &factory, Service::Name const &name)
+		:
+			service(factory.create_parent_service(name))
+		{ }
+
+		~Service_node()
+		{
+			/*
+			 * The destruction of the 'Parent_service' is deferred to the
+			 * handling of abandoned entries of the 'Registry<Parent_service>'.
+			 */
+			service.abandon();
+		}
+
+		static bool type_matches(Node const &) { return true; }
+
+		bool matches(Node const &node) const
+		{
+			return node.attribute_value("name", Service::Name()) == service.name();
+		};
+	};
+
+	List_model<Service_node> _model { };
+
+	Parent_provides_model(Allocator &alloc, Verbose const &verbose, Factory &factory)
+	:
+		_alloc(alloc), _verbose(verbose), _factory(factory)
+	{ }
+
+	~Parent_provides_model()
+	{
+		update_from_node(Node());
+	}
+
+	void update_from_node(Node const &node)
+	{
+		bool first_log = true;
+
+		auto create = [&] (Node const &node) -> Service_node &
+		{
+			Service::Name const name = node.attribute_value("name", Service::Name());
+
+			if (_verbose.enabled()) {
+				if (first_log)
+					log("parent provides");
+
+				log("  service \"", name, "\"");
+				first_log = false;
+			}
+
+			return *new (_alloc) Service_node(_factory, name);
+		};
+
+		auto destroy = [&] (Service_node &node) { Genode::destroy(_alloc, &node); };
+
+		auto update = [&] (Service_node &, Node const &) { };
+
+		try {
+			_model.update_from_node(node, create, destroy, update);
+		} catch (...) {
+			error("unable to apply complete configuration");
+		}
+	}
+};
+
+
+struct Sandbox::Start_model : Noncopyable
+{
+	/*
+	 * The 'Start_model' represents both '<alias>' nodes and '<start>' nodes
+	 * because both node types share the same name space.
+	 */
+
+	using Name    = Child_policy::Name;
+	using Version = Child::Version;
+
+	static char const *start_type() { return "start"; }
+	static char const *alias_type() { return "alias"; }
+
+	struct Factory : Interface
+	{
+		class Creation_failed : Exception { };
+
+		virtual bool ready_to_create_child(Name const &, Version const &) const = 0;
+
+		/*
+		 * \throw Creation_failed
+		 */
+		virtual Child &create_child(Node const &start) = 0;
+
+		virtual void update_child(Child &child, Node const &start) = 0;
+
+		/*
+		 * \throw Creation_failed
+		 */
+		virtual Alias &create_alias(Name const &) = 0;
+
+		virtual void destroy_alias(Alias &) = 0;
+	};
+
+	Name    const _name;
+	Version const _version;
+
+	Factory &_factory;
+
+	bool _alias = false;
+
+	struct { Child *_child_ptr = nullptr; };
+	struct { Alias *_alias_ptr = nullptr; };
+
+	void _reset()
+	{
+		if (_child_ptr) _child_ptr->abandon();
+		if (_alias_ptr) _factory.destroy_alias(*_alias_ptr);
+
+		_child_ptr = nullptr;
+		_alias_ptr = nullptr;
+	}
+
+	bool matches(Node const &node) const
+	{
+		return _name    == node.attribute_value("name",    Name())
+		    && _version == node.attribute_value("version", Version());
+	}
+
+	Start_model(Factory &factory, Node const &node)
+	:
+		_name(node.attribute_value("name", Name())),
+		_version(node.attribute_value("version", Version())),
+		_factory(factory)
+	{ }
+
+	~Start_model() { _reset(); }
+
+	void update_from_node(Node const &node)
+	{
+		/* handle case where the node keeps the name but changes the type */
+
+		bool const orig_alias = _alias;
+		_alias = node.has_type("alias");
+		if (orig_alias != _alias)
+			_reset();
+
+		/* create alias or child depending of the node type */
+
+		if (_alias) {
+
+			if (!_alias_ptr)
+				_alias_ptr = &_factory.create_alias(_name);
+
+		} else {
+
+			if (!_child_ptr && _factory.ready_to_create_child(_name, _version))
+				_child_ptr = &_factory.create_child(node);
+		}
+
+		/* update */
+
+		if (_alias_ptr)
+			_alias_ptr->update(node);
+
+		if (_child_ptr)
+			_factory.update_child(*_child_ptr, node);
+	}
+
+	void apply_child_restart(Node const &node)
+	{
+		if (_child_ptr && _child_ptr->restart_scheduled()) {
+
+			/* tear down */
+			_child_ptr->abandon();
+			_child_ptr = nullptr;
+
+			/* respawn */
+			update_from_node(node);
+		}
+	}
+
+	void trigger_start_child()
+	{
+		if (_child_ptr)
+			_child_ptr->try_start();
+	}
+};
+
+
+struct Sandbox::Service_model : Interface, Noncopyable
+{
+	struct Factory : Interface, Noncopyable
+	{
+		virtual Service_model &create_service(Node const &) = 0;
+		virtual void destroy_service(Service_model &) = 0;
+	};
+
+	virtual void update_from_node(Node const &) = 0;
+
+	virtual bool matches(Node const &) = 0;
+};
+
+
+class Sandbox::Config_model : Noncopyable
+{
+	private:
+
+		struct Config_node;
+
+		List_model<Config_node> _model { };
+
+		struct Parent_provides_node;
+		struct Default_route_node;
+		struct Default_node;
+		struct Affinity_space_node;
+		struct Start_node;
+		struct Report_node;
+		struct Resource_node;
+		struct Heartbeat_node;
+		struct Service_node;
+
+	public:
+
+		using Version = State_reporter::Version;
+
+		void update_from_node(Node                     const &,
+		                      Allocator                      &,
+		                      Reconstructible<Verbose>       &,
+		                      Version                        &,
+		                      Preservation                   &,
+		                      Constructible<Buffered_node>   &,
+		                      Cap_quota                      &,
+		                      Ram_quota                      &,
+		                      Prio_levels                    &,
+		                      Constructible<Affinity::Space> &,
+		                      Start_model::Factory           &,
+		                      Parent_provides_model::Factory &,
+		                      Service_model::Factory         &,
+		                      State_reporter                 &,
+		                      Heartbeat                      &);
+
+		void apply_children_restart(Node const &);
+
+		/*
+		 * Call 'Child::try_start' for each child in start-node order
+		 */
+		void trigger_start_children();
+};
+
+#endif /* _CONFIG_MODEL_H_ */

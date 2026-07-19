@@ -1,0 +1,93 @@
+assert {[have_recipe pkg/[drivers_interactive_pkg]]} \
+	"Recipe for 'pkg/[drivers_interactive_pkg]' not available."
+
+if {[have_cmd_switch --autopilot]} {
+	assert {![have_spec linux] && ![have_board virt_qemu_riscv]} \
+		"Autopilot mode is not supported on this platform."
+}
+
+create_boot_directory
+import_from_depot [depot_user]/src/[base_src] \
+                  [depot_user]/pkg/[drivers_interactive_pkg] \
+                  [depot_user]/src/nitpicker \
+                  [depot_user]/src/gui_fb \
+                  [depot_user]/src/init
+build { test/fb_bench }
+
+install_config {
+config
++ parent-provides
+  + service ROM
+  + service IRQ
+  + service IO_MEM
+  + service IO_PORT
+  + service PD
+  + service RM
+  + service CPU
+  + service LOG
+
++ default-route
+  + any-service
+    + parent
+    + any-child
+
++ default | caps: 100
+
++ start timer | ram: 1M
+  + provides | + service Timer
+
++ start drivers | caps: 1500 | ram: 120M | managing_system: yes
+  + binary init
+  + route
+    + service ROM | label: config | + parent | label: drivers.config
+    + service Timer               | + child timer
+    + service Capture             | + child nitpicker
+    + service Event               | + child nitpicker
+    + any-service                 | + parent
+
++ start nitpicker | ram: 4M
+  + provides
+    + service Gui
+    + service Capture
+    + service Event
+  + config | focus: rom
+    + capture
+    + event
+    + domain default | layer: 1 | width: 1024 | height: 768
+    + default-policy | domain: default
+  + route
+    + any-service
+      + parent
+      + any-child
+
++ start gui_fb | ram: 5M
+  + provides
+    + service Framebuffer
+    + service Input
+  + config
+  + route
+    + service Gui | + child nitpicker
+    + any-service
+      + parent
+      + any-child
+
++ start test-fb_bench | ram: 72M | caps: 150
+  .
+  . We need this big amount of RAM because the VESA driver reports a
+  . large buffer on some hardware and the test mirrors this buffer in
+  . RAM.
+  .
+  + config
+-
+}
+
+set fd [open [run_dir]/genode/focus w]
+puts $fd "focus | label: gui_fb -> | domain: default"
+close $fd
+
+build_boot_image [build_artifacts]
+
+# disable QEMU graphic to enable testing on our machines without SDL and X
+append qemu_args "-nographic "
+
+run_genode_until {.*--- Framebuffer benchmark finished ---.*\n} 40

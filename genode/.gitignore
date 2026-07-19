@@ -1,0 +1,16 @@
+*~
+*.orig
+*.swp
+*.rej
+
+/build
+/contrib
+/depot
+/public
+/repos/allwinner
+/repos/imx
+/repos/riscv
+/repos/rpi
+/repos/world
+/repos/zynq
+
