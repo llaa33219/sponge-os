@@ -76,6 +76,9 @@ sponge-os/
 ├── README.md                  # User-facing introduction (short)
 ├── AGENTS.md                  # This file
 ├── docs/                      # All detailed documentation
+├── genode/                    # Vendored Genode source tree (git subtree, see §5.2)
+│   ├── repos/                 # Upstream Genode repositories (base, os, libports, ...)
+│   └── repos/sponge -> ../../repos/sponge  # Relative symlink wiring Sponge in
 ├── repos/
 │   └── sponge/                # The Sponge OS repository itself (Genode repo convention)
 │       ├── src/               # Component sources
@@ -83,14 +86,18 @@ sponge-os/
 │       │   ├── sponge-de/     # Desktop environment
 │       │   └── sponge_launcher/ # Launcher
 │       ├── lib/               # Shared libraries
+│       ├── tool/              # Sponge-owned build helpers (compiler wrappers, ...)
 │       └── include/sponge/    # Shared headers
 ├── tool/                      # Build and development scripts
-└── run/                       # Genode run scripts (scenario definitions)
+├── run/                       # Genode run scripts (scenario definitions)
+└── var/                       # Local caches (git-ignored): qt6 host tools, distfiles
 ```
 
-The Genode build system assumes a `repos/<name>/` layout. This repository
-is designed to be placed (or symlinked) under a Genode source tree's
-`repos/` directory. See `docs/08-development.md` for details.
+The Genode build system assumes a `repos/<name>/` layout. The vendored
+tree at `genode/` satisfies this via the committed relative symlink
+`genode/repos/sponge -> ../../repos/sponge`, so no external Genode
+checkout is ever required. See `docs/08-development.md` for the build
+flow and `docs/11-environment.md` for the full environment contract.
 
 ---
 
@@ -173,9 +180,14 @@ When adding a new feature (subcommand) to vct, you **must** follow these:
 - The hard boundary is "runs on the host developer machine" (Mojo) vs
   "runs inside Genode" (C++). Never write OS components in Mojo; Genode
   only targets C++.
-- Tool scripts MUST NOT mutate Genode source-tree state directly. They
-  may print the next manual step (`tool/build prepare`, `tool/build run`)
-  or modify Sponge-owned files only (`tool/version_bump`).
+- Tool scripts MAY automate setup steps against the **vendored** tree at
+  `genode/` (creating build directories, writing `etc/build.conf`,
+  running `prepare_port`) because that tree is part of this repository.
+  Tool scripts MUST NOT create, modify, or delete anything **outside**
+  the repository (e.g. an external Genode checkout, `/usr/local`,
+  another home-directory path). Every automated step must also be
+  documented as a manual step in `docs/08-development.md` (control
+  escape hatch).
 - Always follow the `mojo-syntax` skill (`modular/skills@mojo-syntax`)
   for current syntax — Mojo evolves rapidly and pretrained patterns go
   stale.
@@ -227,11 +239,30 @@ Claims like "user-friendly" must be backed by code. Specifically:
 measure how many commands or clicks complete a task, check whether the
 user must know Genode terminology, and put those numbers in the PR body.
 
-### 5.2 Genode Is an External Dependency
+### 5.2 Genode Is Vendored, Pinned, and Never Re-implemented
 
-This repository does not fork or re-implement Genode. Use Genode upstream
-as a dependency, and keep only Sponge OS-specific code in this repo.
-Do not depend on Genode internal headers or private APIs.
+This repository **vendors** the Genode source tree at `genode/` via
+`git subtree`, pinned to an upstream release (currently **26.05**,
+upstream commit `492a510242`). Rationale: reproducibility and stability
+must not depend on an external, mutable checkout.
+
+Rules:
+
+- **Pin, don't float.** The vendored tree tracks a specific upstream
+  release. Upgrades are deliberate (`git subtree pull --prefix=genode`),
+  recorded in the commit message, and verified before merging.
+- **Local patches are first-class.** Any Sponge-specific change to the
+  vendored tree is an ordinary commit on top of the subtree, and MUST be
+  recorded in the patch ledger in `docs/11-environment.md` (what, where,
+  why, and how to drop it when upstream absorbs the fix).
+- **Do not re-implement Genode.** Vendoring is not a fork in spirit:
+  keep Sponge OS-specific code in `repos/sponge/`, keep patches to the
+  vendored tree minimal, and do not depend on Genode internal headers
+  or private APIs from Sponge components.
+- **Third-party port sources** (`genode/contrib/`) are NOT vendored.
+  They are pinned by upstream `.port`/`.hash` files (SHA-256) and
+  re-fetched via `tool/ports/prepare_port`. The exact port set and
+  fingerprints are documented in `docs/11-environment.md`.
 
 ### 5.3 Caution With Automated Code Generation
 
