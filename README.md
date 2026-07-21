@@ -121,4 +121,12 @@ Contributors and AI agents must read [`AGENTS.md`](AGENTS.md) first.
 
 ## License
 
-Not yet decided. Will be chosen during early development.
+Sponge OS's own code (everything under `repos/sponge/`, `tool/`, `run/`,
+`docs/`, and the other top-level files of this repository) is licensed
+under the [Apache License 2.0](LICENSE).
+
+The Genode OS Framework vendored at `genode/` is upstream Genode source
+and remains under its own license (GPLv2 with a linking exception; see
+`genode/COPYING` and the headers of the individual files). Nothing in
+this repository relicenses the vendored tree — the Apache 2.0 grant
+applies only to Sponge OS-specific code.
