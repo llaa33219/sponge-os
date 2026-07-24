@@ -56,6 +56,17 @@ A scenario defines:
   dependency from staged `pkg_*.xml` metadata ROMs and returns the
   4-step install plan (docs/06-vct.md §5.2). Kernel-agnostic.
 
+- `sponge-pkg-install.run` — Phase 4b: `vct install hello` actually
+  starts the `hello` component under a nested `pkg_runtime` init.
+  `sponge_pkgd` regenerates pkg_runtime's config (relayed as its `config`
+  ROM by `report_rom`); pkg_runtime starts hello, verified by the
+  payload's boot marker. Kernel-agnostic.
+
+- `sponge-pkg-remove.run` — Phase 4b: full install→remove lifecycle.
+  The `pkg_seq_probe` component drives the channel (vct is short-lived),
+  installs hello, removes it, and confirms both results; verified by a
+  PASS marker. Kernel-agnostic.
+
 ## Planned additions
 
 - A base-sel4 interactive GUI scenario (visible desktop under QEMU),

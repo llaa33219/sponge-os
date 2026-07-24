@@ -15,7 +15,7 @@ using namespace Sponge::Vct;
 PkgClient::PkgClient(Genode::Env &env) : _env(env) { }
 
 
-bool PkgClient::_result_matches(char const *pkg) const
+bool PkgClient::_result_matches(char const *op, char const *pkg) const
 {
 	if (!_result_rom.valid())
 		return false;
@@ -26,10 +26,10 @@ bool PkgClient::_result_matches(char const *pkg) const
 		if (!r.has_type("result"))
 			return false;
 
-		/* Freshness: the result must answer THIS package. report_rom is
+		/* Freshness: the result must answer THIS request. report_rom is
 		 * fresh each boot, so matching on pkg+op is sufficient to reject
-		 * any stale different-package answer. */
-		if (r.attribute_value("op",  Genode::String<32>()) != Genode::String<32>("explain"))
+		 * any stale answer for a different package or operation. */
+		if (r.attribute_value("op",  Genode::String<32>()) != Genode::String<32>(op))
 			return false;
 		if (r.attribute_value("pkg", Genode::String<128>()) != Genode::String<128>(pkg))
 			return false;
@@ -42,20 +42,17 @@ bool PkgClient::_result_matches(char const *pkg) const
 }
 
 
-bool PkgClient::request_explain(char const *pkg)
+bool PkgClient::request(char const *op, char const *pkg)
 {
-	/* Publish the request. sponge_pkgd's signal handler picks it up,
-	 * resolves, and writes the result that report_rom relays back. */
 	_request_reporter.generate_xml([&](Genode::Xml_generator &g) {
-		g.attribute("op",  "explain");
+		g.attribute("op",  op);
 		g.attribute("pkg", pkg);
 	});
 
-	/* Poll the result ROM (same idiom as InitStateReader in init_state.cc). */
 	_timer.msleep(200);
 	for (unsigned i = 0; i < 60; ++i) {
 		_result_rom.update();
-		if (_result_matches(pkg))
+		if (_result_matches(op, pkg))
 			return true;
 		_timer.msleep(100);
 	}

@@ -55,6 +55,10 @@ int CommandRouter::dispatch(Args const &args)
 		InstallCommand c { _env };
 		return c.execute(args);
 	}
+	if (Genode::strcmp(cmd, "remove") == 0) {
+		RemoveCommand c { _env };
+		return c.execute(args);
+	}
 
 	Genode::warning("vct: unknown subcommand '", cmd,
 	                "' — falling back to help");
