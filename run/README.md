@@ -36,9 +36,26 @@ A scenario defines:
 - `sponge-vct-component-list.run` — Phase 2: `vct component list` lists
   the running components from the live init state report. Kernel-agnostic.
 
+- `sponge-de.run` — Phase 3: interactive Sponge DE demo (panel + themed
+  demo window) on base-linux with fb_sdl + nitpicker. Opens an SDL
+  window on the host display and accepts host mouse/keyboard. Ends on
+  the `sponge-de: panel and window shown` marker; replace the final
+  `run_genode_until` with `run_genode_until forever` for interactive
+  viewing.
+
+- `sponge-de-test.run` — Phase 3: automated, headless GUI verification.
+  No framebuffer driver and no host display: the `sponge_de_probe`
+  component reads nitpicker's composited pixels via a Capture session
+  (window rendering check) and injects a synthetic click via the Event
+  service (input round-trip check), then logs `sponge-de-probe: PASS`.
+  Kernel-agnostic.
+
 ## Planned additions
 
-- `sponge-de-minimal.run` — single-window Sponge DE demo (Phase 3).
+- A base-sel4 interactive GUI scenario (visible desktop under QEMU),
+  wiring the `drivers_interactive-pc` driver set (vesa_fb, ps2,
+  usb_hid, event_filter, platform, acpi, pci_decode). Phase 3 itself is
+  already covered on both kernels by the headless `sponge-de-test.run`.
 
 For how to write a run script, see the
 [Genode run framework](https://genode.org/documentation/developer-resources/run)

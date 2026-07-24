@@ -1,15 +1,16 @@
 #
-# \brief  Sponge DE boot scenario (Phase 3 — visual verification)
+# \brief  Sponge DE boot scenario (Phase 3 — panel + window)
 # \author Sponge OS contributors
 # \date   2026
 #
 # Boots sponge-de on base-linux with fb_sdl + nitpicker.
-# Opens a single Qt Widgets window. Requires DISPLAY=:0.
+# Shows the themed panel and one demo window. Requires a host display
+# (DISPLAY or WAYLAND_DISPLAY) for the SDL window.
 #
 
 assert {[have_spec linux]}
 
-build { core lib/ld init timer server/report_rom server/nitpicker driver/framebuffer/sdl sponge-de lib/libc lib/libm lib/stdcxx lib/mesa lib/mesa_gpu-softpipe lib/egl lib/softpipe lib/libdrm lib/expat lib/qt6_component lib/vfs lib/vfs_pipe lib/vfs_gpu lib/rom_filter lib/zlib lib/libpng }
+build { core lib/ld init timer server/report_rom server/nitpicker driver/framebuffer/sdl sponge-de qt6/base lib/libc lib/libm lib/stdcxx lib/mesa lib/mesa_gpu-softpipe lib/egl lib/softpipe lib/libdrm lib/expat lib/qt6_component lib/vfs lib/vfs_pipe lib/vfs_gpu lib/rom_filter lib/zlib lib/libpng }
 
 create_boot_directory
 
@@ -52,8 +53,15 @@ config
   + config
     + capture
     + event
-    + domain default | layer: 1 | content: client | label: no
-                     | hover: always | focus: click | width: 1024 | height: 768
+    + domain panel | layer: 1 | content: client | label: no
+                   | hover: always | focus: click | ypos: 0 | height: 28
+    + domain demo | layer: 2 | content: client | label: no
+                  | hover: always | focus: click
+                  | xpos: 192 | ypos: 172 | width: 640 | height: 480
+    + domain default | layer: 3 | content: client | label: no
+                     | hover: always | focus: click | ypos: 28 | height: -28
+    + policy | label_prefix: sponge-de -> Sponge Panel | domain: panel
+    + policy | label_prefix: sponge-de -> Sponge DE Demo | domain: demo
     + default-policy | domain: default
     + background | color: #1e1e2e
 
@@ -80,6 +88,7 @@ config
   + route
     + service Gui | + child nitpicker
     + service Report | label: shape | + child report_rom
+    + service ROM | label: default.theme | + parent
     + service ROM | label: mesa_gpu.lib.so | + parent | label: mesa_gpu-softpipe.lib.so
     + any-service
       + parent
@@ -102,6 +111,42 @@ foreach lib { libQt6Core.lib.so libQt6Gui.lib.so libQt6Widgets.lib.so \
 	}
 }
 
+#
+# The qt6_dejavusans.tar raw recipe is depot-only, so for a source build we
+# mirror its content here: qt/lib/fonts/DejaVuSans.ttf taken from the
+# qt6_base port sources (see repos/libports/recipes/raw/qt6_dejavusans/).
+#
+set dejavu_dst "[run_dir]/genode/qt6_dejavusans.tar"
+if {![file exists $dejavu_dst]} {
+	set dejavu_src [glob -nocomplain "${genode_dir}/contrib/qt6_base-*/src/lib/qt6_base/src/3rdparty/wasm/DejaVuSans.ttf"]
+	if {[llength $dejavu_src] == 0} {
+		error "DejaVuSans.ttf not found in the qt6_base port sources"
+	}
+	set staging "[run_dir]/dejavusans-staging"
+	file mkdir "$staging/qt/lib/fonts"
+	file copy -force [lindex $dejavu_src 0] "$staging/qt/lib/fonts/DejaVuSans.ttf"
+	exec tar -cf $dejavu_dst -C $staging qt
+	file delete -force $staging
+}
+
+#
+# The default theme is staged as a ROM module (system theme layer,
+# docs/10-theme-format.md §7). sponge-de opens it as the "default.theme"
+# ROM session routed to the parent above.
+#
+set theme_src "${genode_dir}/repos/sponge/src/sponge-de/themes/default.theme"
+set theme_dst "[run_dir]/genode/default.theme"
+if {[file exists $theme_src] && ![file exists $theme_dst]} {
+	exec cp -L $theme_src $theme_dst
+}
+
 append qemu_args " -nographic "
 
-run_genode_until forever
+#
+# Automated verification: sponge-de logs this marker once the panel and
+# the demo window are visible on nitpicker. For interactive viewing on
+# the host display (control escape hatch), replace the line below with:
+#
+#     run_genode_until forever
+#
+run_genode_until {.*sponge-de: panel and window shown.*} 60

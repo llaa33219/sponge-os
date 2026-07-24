@@ -1,0 +1,174 @@
+#
+# \brief  Sponge DE headless GUI verification scenario (Phase 3)
+# \author Sponge OS contributors
+# \date   2026
+#
+# Boots nitpicker + sponge-de WITHOUT any framebuffer driver or host
+# display, plus the sponge_de_probe component that proves:
+#   (a) sponge-de's window is actually rendered into nitpicker's
+#       composited screen (Capture-session pixel check), and
+#   (b) synthetic pointer input injected into nitpicker reaches the
+#       sponge-de widget (Event-session injection -> report round-trip).
+#
+# Kernel-agnostic (like run/sponge-minimal.run): runs on base-linux
+# (core runs natively, no QEMU) and base-sel4 (QEMU). There is no
+# fb_sdl here — the probe itself is nitpicker's only capture client, so
+# it defines the panorama and reads back the composited pixels.
+#
+# Control escape hatch (AGENTS.md §1.1): to view the desktop on the
+# host display, use run/sponge-de.run instead — it wires fb_sdl + an
+# SDL window and accepts host mouse/keyboard.
+#
+
+build { core lib/ld init timer server/report_rom server/nitpicker \
+         sponge-de test/sponge_de_probe \
+         qt6/base lib/libc lib/libm lib/stdcxx lib/mesa \
+         lib/mesa_gpu-softpipe lib/egl lib/softpipe lib/libdrm lib/expat \
+         lib/qt6_component lib/vfs lib/vfs_pipe lib/vfs_gpu lib/rom_filter \
+         lib/zlib lib/libpng }
+
+create_boot_directory
+
+install_config {
+config
++ parent-provides
+  + service ROM
+  + service PD
+  + service CPU
+  + service LOG
+  + service IRQ
+  + service IO_MEM
+  + service IO_PORT
+
++ default | caps: 200 | ram: 4M
++ default-route
+  + any-service
+    + parent
+    + any-child
+
++ start timer
+  + provides | + service Timer
+
++ start report_rom | ram: 2M
+  + provides
+    + service Report
+    + service ROM
+  + config
+    + policy | label: sponge_de_probe -> sponge_de_input | report: sponge-de -> input
+
++ start nitpicker | ram: 8M
+  + provides
+    + service Gui
+    + service Capture
+    + service Event
+  + route
+    + service Report | + child report_rom
+    + service Timer | + child timer
+    + any-service
+      + parent
+      + any-child
+  + config
+    + capture
+    + event
+    + domain panel | layer: 1 | content: client | label: no
+                   | hover: always | focus: click | ypos: 0 | height: 28
+    + domain demo | layer: 2 | content: client | label: no
+                  | hover: always | focus: click
+                  | xpos: 192 | ypos: 172 | width: 640 | height: 480
+    + domain default | layer: 3 | content: client | label: no
+                     | hover: always | focus: click | ypos: 28 | height: -28
+    + policy | label_prefix: sponge-de -> Sponge Panel | domain: panel
+    + policy | label_prefix: sponge-de -> Sponge DE Demo | domain: demo
+    + default-policy | domain: default
+    + background | color: #1e1e2e
+
++ start sponge-de | caps: 300 | ram: 128M
+  + config
+    + vfs
+      + dir dev
+        + log
+        + inline rtc | : 2018-01-01 00:01
+      + dir pipe | + pipe
+      + tar qt6_dejavusans.tar
+      + tar qt6_libqgenode.tar
+    + libc | stdout: /dev/log | stderr: /dev/log | pipe: /pipe | rtc: /dev/rtc
+  + route
+    + service Gui | + child nitpicker
+    + service Report | label: shape | + child report_rom
+    + service Report | label: input | + child report_rom
+    + service ROM | label: default.theme | + parent
+    + service ROM | label: mesa_gpu.lib.so | + parent | label: mesa_gpu-softpipe.lib.so
+    + any-service
+      + parent
+      + any-child
+
++ start sponge_de_probe | caps: 100 | ram: 16M
+  + route
+    + service Capture | + child nitpicker
+    + service Event   | + child nitpicker
+    + service Timer   | + child timer
+    + service ROM     | label: sponge_de_input | + child report_rom
+    + any-service
+      + parent
+      + any-child
+- }
+
+build_boot_image [build_artifacts]
+
+#
+# Qt6 shared libraries and runtime tars are built by separate cmake targets.
+# Copy them into the boot directory.
+#
+foreach lib { libQt6Core.lib.so libQt6Gui.lib.so libQt6Widgets.lib.so \
+              libqgenode.lib.so \
+              qt6_libqgenode.tar qt6_dejavusans.tar } {
+	set src "bin/$lib"
+	set dst "[run_dir]/genode/$lib"
+	if {[file exists $src] && ![file exists $dst]} {
+		exec cp -L $src $dst
+	}
+}
+
+#
+# The qt6_dejavusans.tar raw recipe is depot-only, so for a source build we
+# mirror its content here: qt/lib/fonts/DejaVuSans.ttf taken from the
+# qt6_base port sources (see repos/libports/recipes/raw/qt6_dejavusans/).
+#
+set dejavu_dst "[run_dir]/genode/qt6_dejavusans.tar"
+if {![file exists $dejavu_dst]} {
+	set dejavu_src [glob -nocomplain "${genode_dir}/contrib/qt6_base-*/src/lib/qt6_base/src/3rdparty/wasm/DejaVuSans.ttf"]
+	if {[llength $dejavu_src] == 0} {
+		error "DejaVuSans.ttf not found in the qt6_base port sources"
+	}
+	set staging "[run_dir]/dejavusans-staging"
+	file mkdir "$staging/qt/lib/fonts"
+	file copy -force [lindex $dejavu_src 0] "$staging/qt/lib/fonts/DejaVuSans.ttf"
+	exec tar -cf $dejavu_dst -C $staging qt
+	file delete -force $staging
+}
+
+#
+# The default theme is staged as a ROM module (system theme layer,
+# docs/10-theme-format.md §7). sponge-de opens it as the "default.theme"
+# ROM session routed to the parent above.
+#
+set theme_src "${genode_dir}/repos/sponge/src/sponge-de/themes/default.theme"
+set theme_dst "[run_dir]/genode/default.theme"
+if {[file exists $theme_src] && ![file exists $theme_dst]} {
+	exec cp -L $theme_src $theme_dst
+}
+
+#
+# Harmless on base-linux (core runs natively); required for base-sel4/
+# QEMU to avoid opening a graphical QEMU window.
+#
+append qemu_args " -nographic "
+
+#
+# Automated verification: the probe logs this marker once it has
+# confirmed both the pixel render and the input round-trip. On timeout
+# (probe did not reach PASS) the run tool errors out — that is the FAIL
+# path. The timeout is generous because Qt's first paint under the
+# software (softpipe) Mesa is slow.
+#
+run_genode_until {.*sponge-de-probe: PASS.*} 180
