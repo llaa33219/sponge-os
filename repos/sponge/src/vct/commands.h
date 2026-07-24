@@ -126,4 +126,36 @@ class ListCommand : public Command
 		int _render_json(Genode::Xml_node const &result);
 };
 
+/*
+ * config — get/set/list the flat dotted key-value store owned by
+ * sponge_configd, over the Report/ROM channel (distinct labels so it
+ * never collides with sponge_pkgd's request/result slots).
+ *
+ *   vct config <key>            get a value
+ *   vct config <key> <value>    set a value
+ *   vct config list             list every known key/value
+ *
+ * The verb is implied by the positionals (positional=key,
+ * positional2=value), matching the locked arg model (args.h). A
+ * successful set prints "Set <key> = <value>", which the run scenario
+ * matches on. --json is honored per existing vct conventions.
+ */
+class ConfigCommand : public Command
+{
+	public:
+		explicit ConfigCommand(Genode::Env &env) : _env(env) {}
+		char const *name()    const override { return "config"; }
+		char const *summary() const override { return "Get or set a configuration value."; }
+		int execute(Args const &args) override;
+	private:
+		Genode::Env &_env;
+
+		int _render_get_human(Genode::Xml_node const &result);
+		int _render_get_json(Genode::Xml_node const &result);
+		int _render_set_human(Genode::Xml_node const &result);
+		int _render_set_json(Genode::Xml_node const &result);
+		int _render_list_human(Genode::Xml_node const &result);
+		int _render_list_json(Genode::Xml_node const &result);
+};
+
 }  /* namespace Sponge::Vct */

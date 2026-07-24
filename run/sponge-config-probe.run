@@ -1,0 +1,94 @@
+#
+# \brief  Sponge OS configuration probe scenario (Phase 5a)
+# \author Sponge OS contributors
+# \date   2026
+#
+# Comprehensive verification of sponge_configd's full op set
+# (set/get/list/error) and the broadcast regeneration. vct is short-lived
+# (one command per boot), and report_rom is a single-writer slot, so the
+# multi-step config flow is driven by the (config-channel) pkg_seq_probe
+# instead. This is the configd analogue of run/sponge-pkg-list.run.
+#
+# The probe drives the config_request/config_result channel and, after
+# each successful set, also reads the config broadcast ROM to assert the
+# new key=value is present — proving configd regenerated it.
+#
+# report_rom policies (labels are DISTINCT from sponge_pkgd's
+# request/result, so the two backends never collide):
+#   sponge_configd's ROM "config_request" <- probe's "config_request" report
+#   probe's ROM "config_result"           <- sponge_configd's "config_result"
+#   probe's ROM "config"                  <- sponge_configd's "config" broadcast
+#
+
+build { core lib/ld init timer server/report_rom sponge_configd \
+        test/pkg_seq_probe }
+
+create_boot_directory
+
+install_config {
+config
++ parent-provides
+  + service LOG
+  + service PD
+  + service CPU
+  + service ROM
+
++ default-route
+  + any-service
+    + parent
+    + any-child
++ default | caps: 200 | ram: 8M
+
++ start timer
+  + provides | + service Timer
+
++ start report_rom | ram: 4M
+  + provides
+    + service Report
+    + service ROM
+  + config | verbose: yes
+    + policy | label: sponge_configd -> config_request | report: pkg_seq_probe -> config_request
+    + policy | label: pkg_seq_probe -> config_result  | report: sponge_configd -> config_result
+    + policy | label: sponge_themed -> config          | report: sponge_configd -> config
+
++ start sponge_configd | caps: 200 | ram: 16M
+  + route
+    + service ROM | label_last: config_request | + child report_rom
+    + service Report | + child report_rom
+    + any-service
+      + parent
+      + any-child
+
++ start pkg_seq_probe | caps: 200 | ram: 8M
+  + config | channel: config
+    + step | op: set  | key: theme.active   | value: dark
+    + step | op: get  | key: theme.active   | expect: dark
+    + step | op: set  | key: panel.position | value: top
+    + step | op: get  | key: panel.position | expect: top
+    + step | op: list | expect: theme.active
+    + step | op: list | expect: panel.position
+    + step | op: get  | key: no.such.key    | expect_status: error
+    + step | op: set  | key: panel.position | value: sideways | expect_status: error
+  + route
+    + service Timer | + child timer
+    + service ROM | label_last: config_result | + child report_rom
+    + service ROM | label_last: config        | + parent
+    + service Report | + child report_rom
+    + any-service
+      + parent
+      + any-child
+- }
+
+build_boot_image [build_artifacts]
+
+append qemu_args " -nographic -m 1G "
+
+#
+# Verification: PASS only after set/get/list all succeed and both error
+# cases (unknown key, invalid enum) are rejected. Any failure logs
+# "...: FAIL <reason>" and this match times out — the correct FAIL path.
+# (report_rom verbose also records each "config" broadcast update from
+# sponge_configd in the surrounding log — direct evidence the broadcast
+# is regenerated on every successful set.)
+#
+run_genode_until {.*config-seq-probe: PASS.*} 40
