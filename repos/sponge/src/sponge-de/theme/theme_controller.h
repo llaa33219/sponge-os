@@ -63,6 +63,7 @@ namespace Sponge::Sponge_DE {
 
 class PanelWidget;
 class Main;
+class LauncherMenuView;
 
 class ThemeController : public QObject
 {
@@ -84,6 +85,7 @@ class ThemeController : public QObject
 		 * restyle() on each whenever a new theme is applied. */
 		void attach_panel(PanelWidget *panel);
 		void attach_main(Main *main);
+		void attach_launcher(LauncherMenuView *launcher);
 
 		/* True once at least one themed report has been applied. */
 		bool live_applied() const { return _live_applied; }
@@ -106,8 +108,9 @@ class ThemeController : public QObject
 
 		Sponge_DE::Theme::Theme _theme;       /* currently applied (GUI-thread owned) */
 
-		PanelWidget *_panel { nullptr };
-		Main         *_main  { nullptr };
+		PanelWidget       *_panel    { nullptr };
+		Main               *_main     { nullptr };
+		LauncherMenuView   *_launcher { nullptr };
 
 		bool     _live         { false };
 		bool     _live_applied { false };

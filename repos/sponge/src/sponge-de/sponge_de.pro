@@ -16,18 +16,29 @@ CONFIG   += c++2a
 QT_CONFIG -= permissions
 
 # $$PWD            — component-root includes ("theme/theme_loader.h", ...)
-# $$PWD/../../include — Sponge shared headers (<sponge/version.h>)
+# $$PWD/../../include — Sponge shared headers (<sponge/version.h>,
+#                       <sponge/backend_client.h>)
+# $$PWD/../../lib/src/sponge_backend_client — shared Report/ROM client
+#     source compiled directly into sponge-de (qmake simplicity; the
+#     same sources are also packaged as the sponge_backend_client.lib.a
+#     used by vct and other plain Genode components).
 INCLUDEPATH += $$PWD \
-               $$PWD/../../include
+               $$PWD/../../include \
+               $$PWD/../../lib/src/sponge_backend_client
 
 SOURCES  += main.cc \
             sponge_de_main.cc \
             panel/panel_widget.cc \
+            launcher/launcher_controller.cc \
+            launcher/launcher_menu_view.cc \
             theme/theme_loader.cc \
-            theme/theme_controller.cc
+            theme/theme_controller.cc \
+            ../../lib/src/sponge_backend_client/backend_client.cc
 
 HEADERS  += sponge_de_main.h \
             panel/panel_widget.h \
+            launcher/launcher_controller.h \
+            launcher/launcher_menu_view.h \
             theme/theme_loader.h \
             theme/theme_qt.h \
             theme/theme_controller.h

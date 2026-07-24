@@ -23,6 +23,7 @@ class QTimer;
 namespace Sponge::Sponge_DE {
 
 namespace Theme { struct Theme; }
+class LauncherMenuView;
 
 class PanelWidget : public QWidget
 {
@@ -38,6 +39,13 @@ class PanelWidget : public QWidget
 		 */
 		void restyle(Theme::Theme const &theme);
 
+		/*
+		 * Attach the launcher popup. Owned externally (constructed by
+		 * main.cc next to the LauncherController), shown/hidden by
+		 * the launcher button click.
+		 */
+		void set_launcher_view(LauncherMenuView *view) { _launcher_view = view; }
+
 	private:
 
 		void _apply_style(Theme::Theme const &theme);
@@ -45,6 +53,8 @@ class PanelWidget : public QWidget
 		/* Owned through Qt's parent-child mechanism. */
 		QLabel *_clock_label;
 		QTimer *_clock_timer;
+
+		LauncherMenuView *_launcher_view { nullptr };
 };
 
 }  /* namespace Sponge::Sponge_DE */
