@@ -40,6 +40,8 @@ uses; `report_rom` is the decoupling layer.
   the components) via the `runtime` Expanding_reporter.
 - `remove` (4b): drops the package and its now-unused dependencies,
   regenerates the config so the nested init abandons the child.
+- `list` (4c): emits the installed set (name-sorted, matching the config
+  generator's order) so callers see exactly what will be regenerated.
 - Emits a structured `<result>` (ok/error) per request.
 
 ## Runtime config generation (Phase 4b)

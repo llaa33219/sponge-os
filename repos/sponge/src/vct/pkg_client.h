@@ -42,6 +42,9 @@ class PkgClient
 		 * structured <result/>. */
 		bool request(char const *op, char const *pkg);
 
+		/* No-package overload for ops that take none (currently `list`). */
+		bool request(char const *op);
+
 		/* Structured result from the last request. Only valid to call
 		 * when request() returned true. */
 		Genode::Xml_node result_xml() const { return _result_rom.xml(); }

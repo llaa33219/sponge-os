@@ -213,6 +213,7 @@ class Sponge::Pkgd::Main
 		void _do_explain(Genode::String<128> const &pkg);
 		void _do_install(Genode::String<128> const &pkg);
 		void _do_remove(Genode::String<128> const &pkg);
+		void _do_list();
 
 		/* ---- resolution ---- */
 		void _resolve(char const *root);
@@ -237,6 +238,7 @@ class Sponge::Pkgd::Main
 		                        Genode::String<64> const *added, unsigned num_added);
 		void _report_remove_ok(Genode::String<128> const &pkg,
 		                       Genode::String<64> const *removed, unsigned num_removed);
+		void _report_list_ok();
 		void _report_error(char const *op, Genode::String<128> const &pkg,
 		                   char const *message);
 
@@ -541,6 +543,12 @@ void Sponge::Pkgd::Main::_handle_request()
 			return;
 		_last_request_sig = sig;
 
+		/* `list` takes no package; every other op requires one. */
+		if (Genode::strcmp(op.string(), "list") == 0) {
+			_do_list();
+			return;
+		}
+
 		if (Genode::strcmp(pkg.string(), "") == 0) {
 			_report_error(op.string(), pkg, "no package specified in request");
 			return;
@@ -578,6 +586,12 @@ void Sponge::Pkgd::Main::_do_explain(Genode::String<128> const &pkg)
 	}
 
 	_report_ok(pkg);
+}
+
+
+void Sponge::Pkgd::Main::_do_list()
+{
+	_report_list_ok();
 }
 
 
@@ -926,6 +940,41 @@ void Sponge::Pkgd::Main::_report_remove_ok(Genode::String<128> const &pkg,
 		g.node("components_removed", [&] {
 			for (unsigned i = 0; i < num_removed; ++i)
 				g.node("component", [&] { g.attribute("name", removed[i]); });
+		});
+	});
+}
+
+
+void Sponge::Pkgd::Main::_report_list_ok()
+{
+	/* Name-sorted, matching the config generator's ordering, so `list`
+	 * is a faithful view of exactly what pkgd will regenerate. */
+	unsigned order[MAX_PACKAGES] { };
+	for (unsigned i = 0; i < _num_installed; ++i) order[i] = i;
+	for (unsigned i = 0; i < _num_installed; ++i) {
+		unsigned best { i };
+		for (unsigned j = i + 1; j < _num_installed; ++j)
+			if (Genode::strcmp(_installed[order[j]].name.string(),
+			                   _installed[order[best]].name.string()) < 0)
+				best = j;
+		if (best != i) {
+			unsigned tmp = order[i]; order[i] = order[best]; order[best] = tmp;
+		}
+	}
+
+	_result_reporter.generate_xml([&](Genode::Xml_generator &g) {
+		g.attribute("status", "ok");
+		g.attribute("op",     "list");
+		g.attribute("count",  _num_installed);
+
+		g.node("packages", [&] {
+			for (unsigned n = 0; n < _num_installed; ++n) {
+				Package const &p = _installed[order[n]];
+				g.node("package", [&] {
+					g.attribute("name",    p.name);
+					g.attribute("version", p.version);
+				});
+			}
 		});
 	});
 }

@@ -67,9 +67,13 @@ config
       + any-child
 
 + start pkg_seq_probe | caps: 200 | ram: 8M
+  + config
+    + step | op: install | pkg: hello
+    + step | op: remove  | pkg: hello
   + route
     + service Timer | + child timer
     + service ROM | label_last: result | + child report_rom
+    + service ROM | label_last: config | + parent
     + service Report | + child report_rom
     + any-service
       + parent

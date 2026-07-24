@@ -67,6 +67,15 @@ A scenario defines:
   installs hello, removes it, and confirms both results; verified by a
   PASS marker. Kernel-agnostic.
 
+- `sponge-pkg-list.run` — Phase 4c: the `pkg_seq_probe` installs hello,
+  then issues a `list` request and asserts hello appears in the result,
+  verifying the installed-set inspection path. Kernel-agnostic.
+
+- `sponge-pkg-manual.run` — Phase 4c: `vct install hello --manual`
+  renders the install step-by-step (explain→steps→execute) and still
+  starts hello under pkg_runtime; verified by hello's marker. Kernel-
+  agnostic.
+
 ## Planned additions
 
 - A base-sel4 interactive GUI scenario (visible desktop under QEMU),

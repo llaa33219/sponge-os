@@ -1,0 +1,98 @@
+#
+# \brief  Sponge OS package list scenario (Phase 4c)
+# \author Sponge OS contributors
+# \date   2026
+#
+# Verifies `vct list` reports the installed set. The pkg_seq_probe
+# installs hello, then issues a `list` request and asserts hello appears
+# in the result (vct is short-lived, so the probe drives the channel).
+# This closes the inspectability loop: list is a faithful view of what
+# sponge_pkgd will regenerate into pkg_runtime.
+#
+# Topology is run/sponge-pkg-remove.run with a different probe config.
+#
+
+build { core lib/ld init timer server/report_rom sponge_pkgd pkg_hello \
+        test/pkg_seq_probe }
+
+create_boot_directory
+
+install_config {
+config
++ parent-provides
+  + service LOG
+  + service PD
+  + service CPU
+  + service ROM
+
++ default-route
+  + any-service
+    + parent
+    + any-child
++ default | caps: 200 | ram: 8M
+
++ start timer
+  + provides | + service Timer
+
++ start report_rom | ram: 4M
+  + provides
+    + service Report
+    + service ROM
+  + config | verbose: no
+    + policy | label: sponge_pkgd -> request      | report: pkg_seq_probe -> request
+    + policy | label: pkg_seq_probe -> result     | report: sponge_pkgd -> result
+    + policy | label: pkg_runtime -> config       | report: sponge_pkgd -> runtime
+
++ start sponge_pkgd | caps: 200 | ram: 16M
+  + route
+    + service ROM | label_last: request | + child report_rom
+    + service Report | + child report_rom
+    + any-service
+      + parent
+      + any-child
+
++ start pkg_runtime | caps: 400 | ram: 32M
+  + binary init
+  + route
+    + service ROM | label: config | + child report_rom
+    + any-service
+      + parent
+      + any-child
+
++ start pkg_seq_probe | caps: 200 | ram: 8M
+  + config
+    + step | op: install | pkg: hello
+    + step | op: list    | expect: hello
+  + route
+    + service Timer | + child timer
+    + service ROM | label_last: result | + child report_rom
+    + service ROM | label_last: config | + parent
+    + service Report | + child report_rom
+    + any-service
+      + parent
+      + any-child
+- }
+
+set staged_pkgs { hello ncurses nano }
+foreach pkg $staged_pkgs {
+	set src "${genode_dir}/../pkg/$pkg/metadata.xml"
+	set dst "[run_dir]/genode/pkg_$pkg.xml"
+	if {![file exists $src]} {
+		error "package metadata not found: $src"
+	}
+	exec cp -L $src $dst
+}
+
+set index_fh [open "[run_dir]/genode/pkg_index.xml" w]
+puts $index_fh "<packages>"
+foreach pkg $staged_pkgs {
+	puts $index_fh "  <pkg name=\"$pkg\"/>"
+}
+puts $index_fh "</packages>"
+close $index_fh
+
+build_boot_image [build_artifacts]
+
+append qemu_args " -nographic -m 1G "
+
+run_genode_until {.*pkg-seq-probe: PASS.*} 40
