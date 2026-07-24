@@ -50,6 +50,12 @@ A scenario defines:
   service (input round-trip check), then logs `sponge-de-probe: PASS`.
   Kernel-agnostic.
 
+- `sponge-pkg-explain.run` — Phase 4a: end-to-end package-explain flow.
+  `vct install nano --explain` writes a request report that `report_rom`
+  relays to `sponge_pkgd`, which resolves the package + its `ncurses`
+  dependency from staged `pkg_*.xml` metadata ROMs and returns the
+  4-step install plan (docs/06-vct.md §5.2). Kernel-agnostic.
+
 ## Planned additions
 
 - A base-sel4 interactive GUI scenario (visible desktop under QEMU),

@@ -1,0 +1,31 @@
+<!--
+  nano — a realistic package with one dependency and three sessions.
+
+  This is the shape a typical GUI application has (docs/12-package-format.md
+  §4.3). It depends on the "ncurses" library and declares Gui, Input, and
+  File_system sessions with their default routes.
+
+  `vct install nano --explain` produces its 4-step plan from this file plus
+  the expanded ncurses dependency.
+-->
+<package>
+  <name>nano</name>
+  <version>6.4</version>
+  <description>Small, friendly text editor.</description>
+
+  <binary>nano</binary>
+  <quota ram="48M" caps="600"/>
+
+  <launcher category="Editors"/>
+
+  <dependencies>
+    <pkg>ncurses</pkg>
+  </dependencies>
+
+  <sessions>
+    <session name="Gui"         default-route="nitpicker"/>
+    <session name="Input"       default-route="input_drv"/>
+    <session name="File_system" default-route="vfs"
+             readonly="yes" subpath="/app/nano"/>
+  </sessions>
+</package>

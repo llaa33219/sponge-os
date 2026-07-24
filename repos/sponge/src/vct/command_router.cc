@@ -51,6 +51,10 @@ int CommandRouter::dispatch(Args const &args)
 		HelpCommand c { _env };
 		return c.execute(args);
 	}
+	if (Genode::strcmp(cmd, "install") == 0) {
+		InstallCommand c { _env };
+		return c.execute(args);
+	}
 
 	Genode::warning("vct: unknown subcommand '", cmd,
 	                "' — falling back to help");
