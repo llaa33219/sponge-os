@@ -59,3 +59,21 @@ bool PkgClient::request(char const *op, char const *pkg)
 
 	return false;
 }
+
+
+bool PkgClient::request(char const *op)
+{
+	_request_reporter.generate_xml([&](Genode::Xml_generator &g) {
+		g.attribute("op", op);
+	});
+
+	_timer.msleep(200);
+	for (unsigned i = 0; i < 60; ++i) {
+		_result_rom.update();
+		if (_result_matches(op, ""))
+			return true;
+		_timer.msleep(100);
+	}
+
+	return false;
+}

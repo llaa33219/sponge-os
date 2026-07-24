@@ -1,26 +1,24 @@
 #
-# \brief  Sponge OS package remove scenario (Phase 4b)
+# \brief  Sponge OS manual install scenario (Phase 4c)
 # \author Sponge OS contributors
 # \date   2026
 #
-# Verifies the full install -> remove lifecycle through sponge_pkgd.
-# vct is short-lived (one command per boot), so this scenario drives
-# the Report/ROM channel with the pkg_seq_probe component: it installs
-# hello, confirms the result, removes hello, confirms the result, then
-# logs "pkg-seq-probe: PASS".
+# Verifies `vct install hello --manual`: the same install as the
+# automatic path, but rendered step-by-step. vct first explains (to
+# surface the real plan), prints each step, then executes the real
+# install through sponge_pkgd, which regenerates pkg_runtime's config
+# and starts hello.
 #
-# Teardown of the hello child inside pkg_runtime is initiated by
-# sponge_pkgd regenerating the config without hello's <start> node;
-# init abandons the child. This scenario checks the remove RESULT
-# (status="ok"); live child-destruction is not additionally asserted
-# here (see the choice note in the task).
+# There is no terminal input channel in Genode yet, so the per-step
+# [Y/n] prompts from docs/06-vct.md §5.3 are not honored — each step is
+# printed and the install proceeds (noted in vct's output).
 #
-# Topology is run/sponge-pkg-install.run with vct replaced by
-# pkg_seq_probe.
+# Topology is run/sponge-pkg-install.run with vct args changed to
+# `install hello --manual`. Verification matches hello's marker from
+# inside pkg_runtime (the step-by-step output prints above it).
 #
 
-build { core lib/ld init timer server/report_rom sponge_pkgd pkg_hello \
-        test/pkg_seq_probe }
+build { core lib/ld init timer server/report_rom sponge_pkgd pkg_hello vct }
 
 create_boot_directory
 
@@ -46,9 +44,9 @@ config
     + service Report
     + service ROM
   + config | verbose: no
-    + policy | label: sponge_pkgd -> request      | report: pkg_seq_probe -> request
-    + policy | label: pkg_seq_probe -> result     | report: sponge_pkgd -> result
-    + policy | label: pkg_runtime -> config       | report: sponge_pkgd -> runtime
+    + policy | label: sponge_pkgd -> request | report: vct -> request
+    + policy | label: vct -> result          | report: sponge_pkgd -> result
+    + policy | label: pkg_runtime -> config  | report: sponge_pkgd -> runtime
 
 + start sponge_pkgd | caps: 200 | ram: 16M
   + route
@@ -66,14 +64,15 @@ config
       + parent
       + any-child
 
-+ start pkg_seq_probe | caps: 200 | ram: 8M
++ start vct | caps: 200 | ram: 8M
   + config
-    + step | op: install | pkg: hello
-    + step | op: remove  | pkg: hello
+    + args
+      + arg install
+      + arg hello
+      + arg --manual
   + route
     + service Timer | + child timer
     + service ROM | label_last: result | + child report_rom
-    + service ROM | label_last: config | + parent
     + service Report | + child report_rom
     + any-service
       + parent
@@ -102,4 +101,10 @@ build_boot_image [build_artifacts]
 
 append qemu_args " -nographic -m 1G "
 
-run_genode_until {.*pkg-seq-probe: PASS.*} 40
+#
+# Verification: hello's marker proves the manual install actually
+# started the component under pkg_runtime. The step-by-step output
+# (steps 1-3 + header) prints above this line; step 4 / "Done." is
+# verified via a direct boot-dir run.
+#
+run_genode_until {.*hello from package: running.*} 30

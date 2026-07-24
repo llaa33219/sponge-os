@@ -1,22 +1,15 @@
 #
-# \brief  Sponge OS package remove scenario (Phase 4b)
+# \brief  Sponge OS package list scenario (Phase 4c)
 # \author Sponge OS contributors
 # \date   2026
 #
-# Verifies the full install -> remove lifecycle through sponge_pkgd.
-# vct is short-lived (one command per boot), so this scenario drives
-# the Report/ROM channel with the pkg_seq_probe component: it installs
-# hello, confirms the result, removes hello, confirms the result, then
-# logs "pkg-seq-probe: PASS".
+# Verifies `vct list` reports the installed set. The pkg_seq_probe
+# installs hello, then issues a `list` request and asserts hello appears
+# in the result (vct is short-lived, so the probe drives the channel).
+# This closes the inspectability loop: list is a faithful view of what
+# sponge_pkgd will regenerate into pkg_runtime.
 #
-# Teardown of the hello child inside pkg_runtime is initiated by
-# sponge_pkgd regenerating the config without hello's <start> node;
-# init abandons the child. This scenario checks the remove RESULT
-# (status="ok"); live child-destruction is not additionally asserted
-# here (see the choice note in the task).
-#
-# Topology is run/sponge-pkg-install.run with vct replaced by
-# pkg_seq_probe.
+# Topology is run/sponge-pkg-remove.run with a different probe config.
 #
 
 build { core lib/ld init timer server/report_rom sponge_pkgd pkg_hello \
@@ -69,7 +62,7 @@ config
 + start pkg_seq_probe | caps: 200 | ram: 8M
   + config
     + step | op: install | pkg: hello
-    + step | op: remove  | pkg: hello
+    + step | op: list    | expect: hello
   + route
     + service Timer | + child timer
     + service ROM | label_last: result | + child report_rom

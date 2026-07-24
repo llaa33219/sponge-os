@@ -53,7 +53,7 @@ src/vct/
 ├── args.{h,cc}          # Config-ROM argument parser (<args><arg/>...</args>)
 ├── command.h            # Command interface (execute takes Args const &)
 ├── command_router.{h,cc}# Subcommand dispatch (Args.subcommand -> Command)
-├── commands.{h,cc}      # Help/Version/Status/ComponentList/Install/Remove
+├── commands.{h,cc}      # Help/Version/Status/ComponentList/Install/Remove/List
 ├── init_state.{h,cc}    # InitStateReader: live init state report parser
 ├── pkg_client.{h,cc}    # PkgClient: Report/ROM client for sponge_pkgd
 └── README.md            # this file

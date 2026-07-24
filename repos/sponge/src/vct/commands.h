@@ -65,8 +65,10 @@ class ComponentListCommand : public Command
 /*
  * install — resolves a package via sponge_pkgd (Report/ROM channel).
  * --explain previews the plan; a plain `vct install <pkg>` executes it
- * (sponge_pkgd regenerates the pkg_runtime config). --manual remains a
- * Phase 4c placeholder that warns and exits non-zero rather than fake it.
+ * (sponge_pkgd regenerates the pkg_runtime config). --manual executes
+ * the same install but renders each step individually (no interactive
+ * [Y/n] is possible yet — Genode has no terminal input channel — so
+ * each step is printed and the install proceeds).
  */
 class InstallCommand : public Command
 {
@@ -82,6 +84,8 @@ class InstallCommand : public Command
 		int _render_explain_json(Genode::Xml_node const &result);
 		int _render_install_human(Genode::Xml_node const &result);
 		int _render_install_json(Genode::Xml_node const &result);
+		void _render_manual_plan(Genode::Xml_node const &explain_result);
+		void _render_manual_done(Genode::Xml_node const &install_result);
 };
 
 /*
@@ -95,6 +99,25 @@ class RemoveCommand : public Command
 		explicit RemoveCommand(Genode::Env &env) : _env(env) {}
 		char const *name()    const override { return "remove"; }
 		char const *summary() const override { return "Remove an installed Sponge OS package."; }
+		int execute(Args const &args) override;
+	private:
+		Genode::Env &_env;
+
+		int _render_human(Genode::Xml_node const &result);
+		int _render_json(Genode::Xml_node const &result);
+};
+
+/*
+ * list — prints the installed package set (the exact view of what
+ * sponge_pkgd will regenerate into pkg_runtime). Empty set prints a
+ * clean "no packages installed" message.
+ */
+class ListCommand : public Command
+{
+	public:
+		explicit ListCommand(Genode::Env &env) : _env(env) {}
+		char const *name()    const override { return "list"; }
+		char const *summary() const override { return "List installed Sponge OS packages."; }
 		int execute(Args const &args) override;
 	private:
 		Genode::Env &_env;
