@@ -158,13 +158,29 @@ Every new component must:
 
 Items still unsettled at the early design stage:
 
-- The IDL style for backend RPC interface headers (Genode's IDL tool
-  vs hand-written headers).
-- The communication path between vct / Sponge DE and the backends
-  (direct RPC vs an intermediate router).
 - The exact boundary of Leitzentrale integration (whether vct only
   spawns the leitzentrale component, or whether there is deeper
   integration).
+
+### Settled in Phase 4 (kept for the record)
+
+- **IDL style for backend interfaces** — settled: no IDL tool, no
+  hand-written RPC stubs. Backend communication uses Report/ROM
+  sessions bridged by `report_rom` (the same capability-based IPC the
+  rest of the system already uses). The "(RPC)" arrows in
+  `docs/03-architecture.md` §4.1 and `docs/06-vct.md` §7 read as
+  "capability IPC", which Report/ROM sessions are.
+- **Communication path vct / Sponge DE ↔ backends** — settled: direct,
+  no intermediate router. `report_rom` itself is the decoupling layer:
+  vct writes a request report, the backend answers with a result
+  report, both relayed as ROMs. Rationale: vct is already a ROM-poll
+  client (`src/vct/init_state.cc`), report_rom is already wired in
+  every scenario, structured results (the `--explain` plan, `--json`
+  payloads) travel as text natively, and the signal-driven model fits
+  the long-lived GUI caller (sponge-de) without blocking. Known
+  limitation: report_rom is a single-writer slot, so concurrent callers
+  would collide; a request-id plus a backend-side mutex is deferred to
+  the phase where concurrent callers actually appear.
 
 These items will be settled by experiments during the early prototype
 phase.
