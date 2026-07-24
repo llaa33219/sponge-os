@@ -25,10 +25,10 @@ Phase 3: Sponge DE single window  ✅ done (headless verification on nitpicker)
 Phase 4: Package management (sponge_pkgd)  ✅ done
    |
    v
-Phase 5: Integration and automation layer  🟡 current
+Phase 5: Integration and automation layer  ✅ done
    |
    v
-Phase 6: Leitzentrale integration
+Phase 6: Leitzentrale integration  🟡 current
    |
    v
 Phase 7: Alpha — first usable version
@@ -278,11 +278,20 @@ and Sponge DE share the same backends is verified.
 
 ### Completion Criteria
 
-- [ ] Sponge DE panel and launcher implemented.
-- [ ] Configuration management through the `sponge_configd` backend.
-- [ ] Theme system through the `sponge_themed` backend.
-- [ ] Sponge DE and vct read and write the same configuration
-  (consistency verified).
+- [x] Sponge DE panel and launcher implemented (themed panel with
+  clock + launcher menu populated from sponge_pkgd's `installed`
+  broadcast; verified by `run/sponge-launcher.run`). Click-to-launch
+  deferred — needs a start-on-demand lifecycle (documented).
+- [x] Configuration management through the `sponge_configd` backend
+  (flat key-value store, validation, broadcast config report;
+  `vct config get/set/list`; `run/sponge-config*.run`).
+- [x] Theme system through the `sponge_themed` backend (watches
+  configd, resolves theme content, republishes; sponge-de live-reloads
+  via the ThemeController; `run/sponge-theme.run`).
+- [x] Sponge DE and vct read and write the same configuration
+  (consistency verified: `vct config`/`theme apply` writes through
+  configd → themed → sponge-de; the theme_probe asserts the 3-way
+  value match plus the pixel repaint).
 - [x] Theme file format defined and a default theme shipped.
 
 ### Progress Notes
@@ -354,18 +363,15 @@ These stages get fleshed out in a separate document after Alpha.
 
 ## 11. Current Focus
 
-Phase 0–4 are complete. Phase 4 was closed by `sponge_pkgd`: packages
-are described by `docs/12-package-format.md` metadata in `pkg/`, and
-`vct install/remove/list` drive a nested `pkg_runtime` init through the
-Report/ROM channel (`run/sponge-pkg-{explain,install,remove,list,
-manual}.run` all green).
+Phase 0–5 are complete. Phase 5 closed the integration layer: vct and
+Sponge DE share the `sponge_configd` / `sponge_themed` / `sponge_pkgd`
+backends over the Report/ROM channel, with consistency proven by
+probe-driven scenarios (`run/sponge-theme.run`'s 3-way match,
+`run/sponge-launcher.run`).
 
-Next up: Phase 5 (integration and automation layer — Sponge DE panel
-and launcher, `sponge_configd` configuration backend, `sponge_themed`
-theme backend, and vct/Sponge DE configuration consistency). The theme
-format (`docs/10-theme-format.md`), default theme, and runtime theme
-loading in sponge-de are already done; the pkgd backend is ready to
-answer launcher queries.
+Next up: Phase 6 (Leitzentrale integration — `vct leitzentrale` opens
+Sculpt's Leitzentrale as a window, plus the synchronization strategy
+between Leitzentrale changes and `sponge_configd`).
 
 Deferred follow-ups (not blockers):
 
