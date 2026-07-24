@@ -28,6 +28,7 @@
 
 #include "panel/panel_widget.h"
 #include "sponge_de_main.h"
+#include "theme/theme_controller.h"
 #include "theme/theme_loader.h"
 
 using namespace Sponge::Sponge_DE;
@@ -45,37 +46,26 @@ void Libc::Component::construct(Libc::Env &env)
 		QApplication app(argc, const_cast<char **>(argv));
 
 		/*
-		 * Load the system theme (best-effort). A missing or malformed
-		 * theme never blocks the desktop: the Theme struct carries the
-		 * compiled-in defaults, so the panel and windows always come up
-		 * (automation is the default), while the ROM module remains the
-		 * inspectable, replaceable customization point (control).
+		 * ThemeController owns the live theme pipeline. In live mode it
+		 * watches sponge_themed's "theme" report and re-styles the panel
+		 * and window in place when it changes; in fallback mode (no
+		 * sponge_themed, e.g. run/sponge-de-test.run) it reads
+		 * default.theme once. Either way, initial() is the theme used to
+		 * construct the widgets below.
 		 */
-		Theme::Theme theme;
-		try {
-			Genode::Attached_rom_dataspace rom(env, "default.theme");
-			if (rom.valid()) {
-				Theme::ThemeLoader loader;
-				bool const clean = loader.load(rom.local_addr<char const>(),
-				                               rom.size(), theme);
-				Genode::log("sponge-de: theme loaded: default.theme",
-				            clean ? "" : " (with warnings, see above)");
-			} else {
-				Genode::warning("sponge-de: default.theme invalid, using built-in defaults");
-			}
-		} catch (Genode::Rom_connection::Rom_connection_failed) {
-			Genode::warning("sponge-de: default.theme ROM unavailable, using built-in defaults");
-		}
+		ThemeController theme_ctrl(env);
 
-		app.setFont(QFont(theme.default_font().family.string(),
-		                  (int)theme.default_font().size));
+		app.setFont(QFont(theme_ctrl.initial().default_font().family.string(),
+		                  (int)theme_ctrl.initial().default_font().size));
 
-		PanelWidget panel(theme);
+		PanelWidget panel(theme_ctrl.initial());
 		panel.show();
+		theme_ctrl.attach_panel(&panel);
 		Genode::log("sponge-de: panel shown");
 
-		Main main_window(env, theme);
+		Main main_window(env, theme_ctrl.initial());
 		main_window.show();
+		theme_ctrl.attach_main(&main_window);
 		Genode::log("sponge-de: window shown");
 
 		/* Marker matched by run/sponge-de.run for automated verification. */

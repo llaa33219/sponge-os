@@ -29,6 +29,12 @@ class Main : public QWidget
 
 		Main(Genode::Env &env, Theme::Theme const &theme, QWidget *parent = nullptr);
 
+		/*
+		 * Re-apply colors/fonts from a new theme (GUI thread only,
+		 * invoked by ThemeController after a live theme reload).
+		 */
+		void restyle(Theme::Theme const &theme);
+
 	protected:
 
 		/*
@@ -60,6 +66,7 @@ class Main : public QWidget
 		Genode::Reporter _input_report;
 
 		void _report_press(QPoint pos);
+		void _apply_style(Theme::Theme const &theme);
 };
 
 }  /* namespace Sponge::Sponge_DE */

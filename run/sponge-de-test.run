@@ -96,6 +96,7 @@ config
     + service Gui | + child nitpicker
     + service Report | label: shape | + child report_rom
     + service Report | label: input | + child report_rom
+    + service Report | label: applied_theme | + child report_rom
     + service ROM | label: default.theme | + parent
     + service ROM | label: mesa_gpu.lib.so | + parent | label: mesa_gpu-softpipe.lib.so
     + any-service

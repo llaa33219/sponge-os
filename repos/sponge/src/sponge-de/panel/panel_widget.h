@@ -30,7 +30,17 @@ class PanelWidget : public QWidget
 
 		explicit PanelWidget(Theme::Theme const &theme, QWidget *parent = nullptr);
 
+		/*
+		 * Re-apply colors/geometry from a new theme. Called on the GUI
+		 * thread by ThemeController after a live theme reload — never
+		 * from the ROM signal handler. Rebuilding the widget stylesheet
+		 * and calling update() repaints without recreating the window.
+		 */
+		void restyle(Theme::Theme const &theme);
+
 	private:
+
+		void _apply_style(Theme::Theme const &theme);
 
 		/* Owned through Qt's parent-child mechanism. */
 		QLabel *_clock_label;

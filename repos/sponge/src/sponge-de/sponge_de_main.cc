@@ -72,14 +72,7 @@ Main::Main(Genode::Env &env, Theme::Theme const &theme, QWidget *parent)
 	 */
 	setGeometry(0, 0, 640, 480);
 
-	/* Styling entirely from the theme (AGENTS.md §3.4). */
-	setStyleSheet(QStringLiteral(
-		"QWidget { background-color: %1; color: %2; }"
-		"QPushButton { background-color: %3; color: %1; border-radius: 6px; padding: 6px 12px; }"
-		"QPushButton:pressed { background-color: %2; color: %1; }")
-		.arg(Theme::to_css(theme.window_bg()),
-		     Theme::to_css(theme.title_text()),
-		     Theme::to_css(theme.accent())));
+	_apply_style(theme);
 
 	auto *layout = new QVBoxLayout(this);
 
@@ -127,6 +120,25 @@ void Main::_report_press(QPoint pos)
 	(void)_input_report.generate_xml([&](Genode::Xml_generator &g) {
 		g.attribute("press", buf, (Genode::size_t)(n > 0 ? n : 0));
 	});
+}
+
+
+void Main::_apply_style(Theme::Theme const &theme)
+{
+	setStyleSheet(QStringLiteral(
+		"QWidget { background-color: %1; color: %2; }"
+		"QPushButton { background-color: %3; color: %1; border-radius: 6px; padding: 6px 12px; }"
+		"QPushButton:pressed { background-color: %2; color: %1; }")
+		.arg(Theme::to_css(theme.window_bg()),
+		     Theme::to_css(theme.title_text()),
+		     Theme::to_css(theme.accent())));
+}
+
+
+void Main::restyle(Theme::Theme const &theme)
+{
+	_apply_style(theme);
+	update();
 }
 
 

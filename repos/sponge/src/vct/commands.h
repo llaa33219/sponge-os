@@ -158,4 +158,35 @@ class ConfigCommand : public Command
 		int _render_list_json(Genode::Xml_node const &result);
 };
 
+/*
+ * theme — apply the active desktop theme.
+ *
+ *   vct theme apply <name>
+ *
+ * This is the convenient, intent-level entry point for the one-way theme
+ * pipeline (vct -> sponge_configd -> sponge_themed -> sponge-de). It writes
+ * theme.active=<name> into the configuration store through the SAME
+ * Report/ROM channel as `vct config theme.active <name>` (it is the
+ * automation-default path over the identical backend); `vct config` is the
+ * always-open control door that reaches the same key directly.
+ *
+ * Arg mapping (locked args.h model): subcommand="theme",
+ * positional="apply", positional2=<name>. So `vct theme apply light`.
+ *
+ * The theme is resolved by sponge_themed from a staged <name>.theme ROM
+ * module; an unknown name keeps the previous theme (never fatal).
+ */
+class ThemeCommand : public Command
+{
+	public:
+		explicit ThemeCommand(Genode::Env &env) : _env(env) {}
+		char const *name()    const override { return "theme"; }
+		char const *summary() const override { return "Apply a desktop theme (vct theme apply <name>)."; }
+		int execute(Args const &args) override;
+	private:
+		Genode::Env &_env;
+
+		void _print_help(Args const &args);
+};
+
 }  /* namespace Sponge::Vct */

@@ -23,9 +23,11 @@ INCLUDEPATH += $$PWD \
 SOURCES  += main.cc \
             sponge_de_main.cc \
             panel/panel_widget.cc \
-            theme/theme_loader.cc
+            theme/theme_loader.cc \
+            theme/theme_controller.cc
 
 HEADERS  += sponge_de_main.h \
             panel/panel_widget.h \
             theme/theme_loader.h \
-            theme/theme_qt.h
+            theme/theme_qt.h \
+            theme/theme_controller.h

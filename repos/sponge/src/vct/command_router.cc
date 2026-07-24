@@ -67,6 +67,10 @@ int CommandRouter::dispatch(Args const &args)
 		ConfigCommand c { _env };
 		return c.execute(args);
 	}
+	if (Genode::strcmp(cmd, "theme") == 0) {
+		ThemeCommand c { _env };
+		return c.execute(args);
+	}
 
 	Genode::warning("vct: unknown subcommand '", cmd,
 	                "' — falling back to help");
