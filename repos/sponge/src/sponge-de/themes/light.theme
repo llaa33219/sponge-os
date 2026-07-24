@@ -1,0 +1,37 @@
+# Sponge OS light theme
+# Latte-inspired light palette (visibly distinct from the Mocha default).
+# See docs/10-theme-format.md for the format specification.
+
+[meta]
+version = 1
+
+[colors]
+panel_bg       = #e6e9ef
+panel_text     = #4c4f69
+accent         = #1e66f5
+separator      = #bcc0cc
+window_bg      = #eff1f5
+window_border  = #bcc0cc
+title_text     = #4c4f69
+error          = #d20f39
+success        = #40a02b
+warning        = #df8e1d
+
+[fonts]
+default_family = DejaVu Sans
+default_size   = 11
+title_family   = DejaVu Sans
+title_size     = 12
+
+[layout]
+panel_position = top
+panel_height   = 28
+padding        = 8
+margin         = 4
+launcher_width = 48
+icon_size      = 24
+
+[window]
+border_radius = 6
+border_width  = 1
+shadow_radius = 8

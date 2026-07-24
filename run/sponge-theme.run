@@ -1,0 +1,212 @@
+#
+# \brief  Sponge OS theme pipeline scenario (Phase 5b)
+# \author Sponge OS contributors
+# \date   2026
+#
+# End-to-end verification of the one-way theme pipeline
+#   vct-write -> sponge_configd -> sponge_themed -> sponge-de
+# driven by the theme_probe component, which asserts a THREE-WAY value
+# match: configd's broadcast "config" ROM, sponge_themed's resolved
+# "theme" ROM, and sponge-de's "applied_theme" report all agree, after a
+# default->light transition. An optional Capture pixel check confirms the
+# demo window background actually repainted.
+#
+# Topology (base-linux, kernel-agnostic in shape):
+#
+#   init
+#   + timer
+#   + report_rom     (relays every Report<->ROM hop below)
+#   + nitpicker      (Gui/Capture/Event; probe's capture defines the panorama)
+#   + sponge_configd (owns theme.active; broadcasts the whole store)
+#   + sponge_themed  (configd broadcast -> resolves <name>.theme -> theme report)
+#   + sponge-de      (watches themed's theme report -> live re-style;
+#                     publishes applied_theme)
+#   + theme_probe    (drives config_request, asserts the 3-way match)
+#
+# report_rom policies (full labels include the child-name prefix):
+#   configd's   ROM "config_request"   <- theme_probe's "config_request"
+#   probe's     ROM "config_result"    <- configd's "config_result"
+#   probe's     ROM "config"           <- configd's "config" broadcast
+#   themed's    ROM "config"           <- configd's "config" broadcast
+#   sponge-de's ROM "theme"            <- themed's "theme"
+#   probe's     ROM "theme"            <- themed's "theme"
+#   probe's     ROM "sponge_de_applied"<- sponge-de's "applied_theme"
+#
+
+build { core lib/ld init timer server/report_rom server/nitpicker \
+        sponge_configd sponge_themed sponge-de test/theme_probe \
+        qt6/base lib/libc lib/libm lib/stdcxx lib/mesa \
+        lib/mesa_gpu-softpipe lib/egl lib/softpipe lib/libdrm lib/expat \
+        lib/qt6_component lib/vfs lib/vfs_pipe lib/vfs_gpu lib/rom_filter \
+        lib/zlib lib/libpng }
+
+create_boot_directory
+
+install_config {
+config
++ parent-provides
+  + service ROM
+  + service PD
+  + service CPU
+  + service LOG
+  + service IRQ
+  + service IO_MEM
+  + service IO_PORT
+
++ default | caps: 200 | ram: 4M
++ default-route
+  + any-service
+    + parent
+    + any-child
+
++ start timer
+  + provides | + service Timer
+
++ start report_rom | ram: 4M
+  + provides
+    + service Report
+    + service ROM
+  + config | verbose: no
+    + policy | label: sponge_configd -> config_request | report: theme_probe -> config_request
+    + policy | label: theme_probe -> config_result | report: sponge_configd -> config_result
+    + policy | label: theme_probe -> config | report: sponge_configd -> config
+    + policy | label: sponge_themed -> config | report: sponge_configd -> config
+    + policy | label: sponge-de -> theme | report: sponge_themed -> theme
+    + policy | label: theme_probe -> theme | report: sponge_themed -> theme
+    + policy | label: theme_probe -> sponge_de_applied | report: sponge-de -> applied_theme
+
++ start nitpicker | ram: 8M
+  + provides
+    + service Gui
+    + service Capture
+    + service Event
+  + route
+    + service Report | + child report_rom
+    + service Timer | + child timer
+    + any-service
+      + parent
+      + any-child
+  + config
+    + capture
+    + event
+    + domain panel | layer: 1 | content: client | label: no
+                   | hover: always | focus: click | ypos: 0 | height: 28
+    + domain demo | layer: 2 | content: client | label: no
+                  | hover: always | focus: click
+                  | xpos: 192 | ypos: 172 | width: 640 | height: 480
+    + domain default | layer: 3 | content: client | label: no
+                     | hover: always | focus: click | ypos: 28 | height: -28
+    + policy | label_prefix: sponge-de -> Sponge Panel | domain: panel
+    + policy | label_prefix: sponge-de -> Sponge DE Demo | domain: demo
+    + default-policy | domain: default
+    + background | color: #1e1e2e
+
++ start sponge_configd | caps: 200 | ram: 16M
+  + route
+    + service ROM | label_last: config_request | + child report_rom
+    + service Report | + child report_rom
+    + any-service
+      + parent
+      + any-child
+
++ start sponge_themed | caps: 200 | ram: 8M
+  + route
+    + service ROM | label_last: config | + child report_rom
+    + service ROM | label_last: default.theme | + parent
+    + service ROM | label_last: light.theme   | + parent
+    + service Report | + child report_rom
+    + any-service
+      + parent
+      + any-child
+
++ start sponge-de | caps: 300 | ram: 128M
+  + config
+    + theme | source: themed
+    + vfs
+      + dir dev
+        + log
+        + inline rtc | : 2018-01-01 00:01
+      + dir pipe | + pipe
+      + tar qt6_dejavusans.tar
+      + tar qt6_libqgenode.tar
+    + libc | stdout: /dev/log | stderr: /dev/log | pipe: /pipe | rtc: /dev/rtc
+  + route
+    + service Gui | + child nitpicker
+    + service Report | label: shape | + child report_rom
+    + service Report | label: input | + child report_rom
+    + service Report | label: applied_theme | + child report_rom
+    + service ROM | label: theme | + child report_rom
+    + service ROM | label: mesa_gpu.lib.so | + parent | label: mesa_gpu-softpipe.lib.so
+    + any-service
+      + parent
+      + any-child
+
++ start theme_probe | caps: 200 | ram: 16M
+  + route
+    + service Capture | + child nitpicker
+    + service Timer | + child timer
+    + service ROM | label_last: config_result | + child report_rom
+    + service ROM | label_last: config | + child report_rom
+    + service ROM | label_last: theme | + child report_rom
+    + service ROM | label_last: sponge_de_applied | + child report_rom
+    + service Report | + child report_rom
+    + any-service
+      + parent
+      + any-child
+- }
+
+build_boot_image [build_artifacts]
+
+#
+# Qt6 shared libraries and runtime tars (built by separate cmake targets).
+#
+foreach lib { libQt6Core.lib.so libQt6Gui.lib.so libQt6Widgets.lib.so \
+              libqgenode.lib.so \
+              qt6_libqgenode.tar qt6_dejavusans.tar } {
+	set src "bin/$lib"
+	set dst "[run_dir]/genode/$lib"
+	if {[file exists $src] && ![file exists $dst]} {
+		exec cp -L $src $dst
+	}
+}
+
+#
+# qt6_dejavusans.tar raw recipe is depot-only; mirror its content here from
+# the qt6_base port sources (same as run/sponge-de-test.run).
+#
+set dejavu_dst "[run_dir]/genode/qt6_dejavusans.tar"
+if {![file exists $dejavu_dst]} {
+	set dejavu_src [glob -nocomplain "${genode_dir}/contrib/qt6_base-*/src/lib/qt6_base/src/3rdparty/wasm/DejaVuSans.ttf"]
+	if {[llength $dejavu_src] == 0} {
+		error "DejaVuSans.ttf not found in the qt6_base port sources"
+	}
+	set staging "[run_dir]/dejavusans-staging"
+	file mkdir "$staging/qt/lib/fonts"
+	file copy -force [lindex $dejavu_src 0] "$staging/qt/lib/fonts/DejaVuSans.ttf"
+	exec tar -cf $dejavu_dst -C $staging qt
+	file delete -force $staging
+}
+
+#
+# Theme files staged as ROM modules for sponge_themed to resolve by name.
+# Both the Mocha default and the light theme are staged so the probe can
+# exercise a real default -> light transition.
+#
+foreach theme { default light } {
+	set theme_src "${genode_dir}/repos/sponge/src/sponge-de/themes/${theme}.theme"
+	set theme_dst "[run_dir]/genode/${theme}.theme"
+	if {[file exists $theme_src] && ![file exists $theme_dst]} {
+		exec cp -L $theme_src $theme_dst
+	}
+}
+
+append qemu_args " -nographic "
+
+#
+# Verification: PASS only after the probe's 3-way consistency check for the
+# default->light transition succeeds. Any hop disagreeing (or a configd
+# rejection) logs "...: FAIL <reason>" and this match times out — the
+# correct FAIL path. The generous timeout covers Qt's slow first paint
+# under the software (softpipe) Mesa.
+#
+run_genode_until {.*theme-probe: PASS.*} 240

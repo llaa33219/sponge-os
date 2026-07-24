@@ -46,19 +46,7 @@ PanelWidget::PanelWidget(Theme::Theme const &theme, QWidget *parent)
 	 */
 	setWindowTitle(QStringLiteral("Sponge Panel"));
 
-	QScreen *screen = QGuiApplication::primaryScreen();
-	int const width = screen ? screen->geometry().width() : 1024;
-	setGeometry(0, 0, width, (int)theme.panel_height());
-	setFixedSize(width, (int)theme.panel_height());
-
-	/* Styling entirely from the theme. */
-	setStyleSheet(QStringLiteral(
-		"QWidget { background-color: %1; color: %2; border: none; }"
-		"QPushButton { background-color: %3; color: %1; border-radius: 4px; }"
-		"QPushButton:pressed { background-color: %2; color: %1; }")
-		.arg(Theme::to_css(theme.panel_bg()),
-		     Theme::to_css(theme.panel_text()),
-		     Theme::to_css(theme.accent())));
+	_apply_style(theme);
 
 	auto *layout = new QHBoxLayout(this);
 	int const pad = (int)theme.padding();
@@ -90,4 +78,28 @@ PanelWidget::PanelWidget(Theme::Theme const &theme, QWidget *parent)
 	_clock_timer->start(1000);
 	_clock_label->setText(QTime::currentTime().toString(QStringLiteral("HH:mm")));
 	layout->addWidget(_clock_label);
+}
+
+
+void PanelWidget::restyle(Theme::Theme const &theme)
+{
+	_apply_style(theme);
+	update();
+}
+
+
+void PanelWidget::_apply_style(Theme::Theme const &theme)
+{
+	QScreen *screen = QGuiApplication::primaryScreen();
+	int const width = screen ? screen->geometry().width() : 1024;
+	setGeometry(0, 0, width, (int)theme.panel_height());
+	setFixedSize(width, (int)theme.panel_height());
+
+	setStyleSheet(QStringLiteral(
+		"QWidget { background-color: %1; color: %2; border: none; }"
+		"QPushButton { background-color: %3; color: %1; border-radius: 4px; }"
+		"QPushButton:pressed { background-color: %2; color: %1; }")
+		.arg(Theme::to_css(theme.panel_bg()),
+		     Theme::to_css(theme.panel_text()),
+		     Theme::to_css(theme.accent())));
 }

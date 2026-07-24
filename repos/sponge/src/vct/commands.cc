@@ -49,6 +49,7 @@ int HelpCommand::execute(Args const &args)
 		Genode::log("  vct config <key>          설정 값 조회");
 		Genode::log("  vct config <key> <value>  설정 값 변경");
 		Genode::log("  vct config list           전체 설정 키 목록");
+		Genode::log("  vct theme apply <name>    바탕화면 테마 적용");
 		Genode::log("  vct leitzentrale          전문가 제어 창 열기  (계획됨)");
 		Genode::log("");
 		Genode::log("공통 옵션: --explain, --manual, --json, --verbose, --lang ko");
@@ -65,12 +66,13 @@ int HelpCommand::execute(Args const &args)
 		Genode::log("  vct config <key>          Get a configuration value");
 		Genode::log("  vct config <key> <value>  Set a configuration value");
 		Genode::log("  vct config list           List all configuration keys");
+		Genode::log("  vct theme apply <name>    Apply a desktop theme");
 		Genode::log("  vct leitzentrale          Open the Leitzentrale expert window (planned)");
 		Genode::log("");
 		Genode::log("Common flags: --explain, --manual, --json, --verbose, --lang ko");
 	}
 
-	Genode::warning("not implemented: full subcommand set (Phase 4+). status, version, help, component list, install (--explain/--manual/plain), remove, list, and config work today.");
+	Genode::warning("not implemented: full subcommand set (Phase 4+). status, version, help, component list, install (--explain/--manual/plain), remove, list, config, and theme apply work today.");
 	return 0;
 }
 
@@ -1099,5 +1101,96 @@ int ConfigCommand::_render_list_json(Genode::Xml_node const &result)
 	Genode::log("{\"command\":\"config\",\"op\":\"list\","
 	            "\"status\":\"success\",\"keys\":",
 	            Genode::String<512>(buf), "}");
+	return 0;
+}
+
+
+/* ===================== ThemeCommand ===================== */
+
+void ThemeCommand::_print_help(Args const &args)
+{
+	if (args.lang == "ko") {
+		Genode::log("사용법: vct theme apply <이름>");
+		Genode::log("바탕화면 테마를 적용합니다.");
+		Genode::log("");
+		Genode::log("예: vct theme apply light");
+		Genode::log("");
+		Genode::log("테마는 sponge_themed 가 <이름>.theme ROM 에서 해석합니다.");
+		Genode::log("알 수 없는 이름이면 이전 테마가 유지됩니다 (치명적 오류 아님).");
+		Genode::log("같은 설정을 직접 제어하려면: vct config theme.active <이름>");
+		return;
+	}
+
+	Genode::log("Usage: vct theme apply <name>");
+	Genode::log("Apply a desktop theme.");
+	Genode::log("");
+	Genode::log("Example: vct theme apply light");
+	Genode::log("");
+	Genode::log("The theme is resolved by sponge_themed from a <name>.theme ROM.");
+	Genode::log("An unknown name keeps the previous theme (never fatal).");
+	Genode::log("For direct control of the same key: vct config theme.active <name>");
+}
+
+
+int ThemeCommand::execute(Args const &args)
+{
+	char const *const verb = args.positional.string();
+
+	if (Genode::strcmp(verb, "--help") == 0 || Genode::strcmp(verb, "-h") == 0) {
+		_print_help(args);
+		return 0;
+	}
+
+	if (Genode::strcmp(verb, "apply") != 0) {
+		Genode::warning("vct: unknown theme subcommand '", verb,
+		                "' — expected 'apply'");
+		_print_help(args);
+		return 1;
+	}
+
+	char const *const name = args.positional2.string();
+	if (Genode::strcmp(name, "") == 0) {
+		Genode::warning("vct: theme apply requires a theme name");
+		_print_help(args);
+		return 1;
+	}
+
+	/*
+	 * Reuse the config backend path: write theme.active=<name>. This is
+	 * the automation-default path over the exact same Report/ROM channel
+	 * as `vct config theme.active <name>`; configd validates the key,
+	 * sponge_themed resolves it, sponge-de applies it live.
+	 */
+	PkgClient client { _env, "config_request", "config_result" };
+	if (!client.config_set("theme.active", name)) {
+		if (args.json)
+			Genode::log("{\"command\":\"theme\",\"op\":\"apply\",\"name\":\"", name,
+			            "\",\"status\":\"error\","
+			            "\"error\":\"sponge_configd did not answer\"}");
+		else
+			Genode::warning("vct: sponge_configd did not answer for theme '", name, "'");
+		return 1;
+	}
+
+	Genode::Xml_node const result = client.result_xml();
+	Genode::String<32> const status =
+		result.attribute_value("status", Genode::String<32>());
+
+	if (status != Genode::String<32>("ok")) {
+		Genode::String<256> const err =
+			result.attribute_value("error", Genode::String<256>());
+		if (args.json)
+			Genode::log("{\"command\":\"theme\",\"op\":\"apply\",\"name\":\"", name,
+			            "\",\"status\":\"error\",\"error\":\"", err, "\"}");
+		else
+			Genode::log("theme: error: ", err);
+		return 1;
+	}
+
+	if (args.json)
+		Genode::log("{\"command\":\"theme\",\"op\":\"apply\",\"name\":\"", name,
+		            "\",\"status\":\"success\"}");
+	else
+		Genode::log("Applied theme: ", name);
 	return 0;
 }
