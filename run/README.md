@@ -50,6 +50,13 @@ A scenario defines:
   service (input round-trip check), then logs `sponge-de-probe: PASS`.
   Kernel-agnostic.
 
+- `sponge-wm.run` — Sponge DE on the upstream window-management stack
+  (wm + window_layouter + decorator). The panel bypasses the wm to a
+  fixed nitpicker domain; app windows route through the wm and get
+  decorated, movable frames. `wm_probe` verifies the decoration
+  pipeline and injects a synthetic title-bar drag, confirming the
+  window actually moves (`wm-probe: PASS`). Headless.
+
 - `sponge-pkg-explain.run` — Phase 4a: end-to-end package-explain flow.
   `vct install nano --explain` writes a request report that `report_rom`
   relays to `sponge_pkgd`, which resolves the package + its `ncurses`
