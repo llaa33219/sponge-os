@@ -1,0 +1,18 @@
+<!--
+  ncurses — terminal rendering library used by many console applications.
+
+  A pure library package: it has no dependencies, no launcher entry, and
+  declares no sessions of its own (it only needs the parent-provided
+  LOG/ROM/PD/CPU/Timer sessions). It exists so that dependent packages
+  such as "nano" can name it under <dependencies>.
+-->
+<package>
+  <name>ncurses</name>
+  <version>6.4</version>
+  <description>Terminal rendering library used by many console applications.</description>
+
+  <binary>ncurses</binary>
+  <quota ram="16M" caps="300"/>
+
+  <dependencies/>
+</package>

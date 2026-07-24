@@ -62,4 +62,24 @@ class ComponentListCommand : public Command
 		Genode::Env &_env;
 };
 
+/*
+ * install — resolves a package via sponge_pkgd (Report/ROM channel).
+ * Phase 4a implements the --explain preview only; actual installation
+ * (Phase 4b) and --manual (Phase 4c) warn and exit non-zero rather
+ * than fake success.
+ */
+class InstallCommand : public Command
+{
+	public:
+		explicit InstallCommand(Genode::Env &env) : _env(env) {}
+		char const *name()    const override { return "install"; }
+		char const *summary() const override { return "Install a Sponge OS package."; }
+		int execute(Args const &args) override;
+	private:
+		Genode::Env &_env;
+
+		int _render_human(Genode::Xml_node const &result);
+		int _render_json(Genode::Xml_node const &result);
+};
+
 }  /* namespace Sponge::Vct */

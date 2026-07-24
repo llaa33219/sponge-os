@@ -1,0 +1,28 @@
+<!--
+  hello — the smallest possible Sponge OS package.
+
+  GUI-free: it only writes to LOG and reads the user's terminal via a
+  File_system session. It has no dependencies and registers a launcher
+  entry under "Utilities".
+
+  This file is the canonical example of docs/12-package-format.md §4.2.
+-->
+<package>
+  <name>hello</name>
+  <version>1.0</version>
+  <description>Prints hello to the log. The smallest possible Sponge OS package.</description>
+
+  <binary>hello</binary>
+  <quota ram="8M" caps="256"/>
+
+  <launcher category="Utilities"/>
+
+  <dependencies/>
+
+  <sessions>
+    <session name="File_system"
+             default-route="vfs"
+             readonly="yes"
+             subpath="/app/hello"/>
+  </sessions>
+</package>

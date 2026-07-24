@@ -1,0 +1,125 @@
+#
+# \brief  Sponge OS package explain scenario (Phase 4a)
+# \author Sponge OS contributors
+# \date   2026
+#
+# End-to-end verification of the first package-management slice:
+# `vct install nano --explain` produces the 4-step plan
+# (docs/06-vct.md §5.2) from real package metadata, through the
+# sponge_pkgd backend, over the Report/ROM channel.
+#
+# Topology (flat, kernel-agnostic like run/sponge-minimal.run):
+#
+#   init
+#   + timer            (vct's poll loop sleeps against this)
+#   + report_rom       (relays request/result reports as ROMs)
+#   + sponge_pkgd      (watches request ROM, resolves, writes result report)
+#   + vct              (writes request report, polls result ROM, renders plan)
+#
+# report_rom policies (full labels include the child-name prefix,
+# docs/04-components.md §5):
+#   sponge_pkgd's ROM "request"  <- vct's "request" report
+#   vct's ROM "result"           <- sponge_pkgd's "result" report
+#
+# Each package metadata file is staged as a boot ROM module named
+# pkg_<name>.xml (like the theme staging in run/sponge-de-test.run).
+# sponge_pkgd opens pkg_<name>.xml via a ROM session routed to the
+# parent (init serves boot modules by name).
+#
+
+build { core lib/ld init timer server/report_rom sponge_pkgd vct }
+
+create_boot_directory
+
+install_config {
+config
++ parent-provides
+  + service LOG
+  + service PD
+  + service CPU
+  + service ROM
+
++ default-route
+  + any-service
+    + parent
+    + any-child
++ default | caps: 200 | ram: 8M
+
++ start timer
+  + provides | + service Timer
+
++ start report_rom | ram: 4M
+  + provides
+    + service Report
+    + service ROM
+  + config | verbose: yes
+    + policy | label: sponge_pkgd -> request | report: vct -> request
+    + policy | label: vct -> result          | report: sponge_pkgd -> result
+
++ start sponge_pkgd | caps: 200 | ram: 16M
+  + route
+    + service ROM | label_last: request | + child report_rom
+    + service Report | + child report_rom
+    + any-service
+      + parent
+      + any-child
+
++ start vct | caps: 200 | ram: 8M
+  + config
+    + args
+      + arg install
+      + arg nano
+      + arg --explain
+  + route
+    + service Timer | + child timer
+    + service ROM | label_last: result | + child report_rom
+    + service Report | + child report_rom
+    + any-service
+      + parent
+      + any-child
+- }
+
+#
+# Stage package metadata as ROM boot modules (pkg_<name>.xml).
+# Done BEFORE build_boot_image so every boot_dir plugin (linux dir,
+# elf/iso image) picks them up. sponge_pkgd opens them by this label.
+#
+set staged_pkgs { hello ncurses nano }
+foreach pkg $staged_pkgs {
+	set src "${genode_dir}/../pkg/$pkg/metadata.xml"
+	set dst "[run_dir]/genode/pkg_$pkg.xml"
+	if {![file exists $src]} {
+		error "package metadata not found: $src"
+	}
+	exec cp -L $src $dst
+}
+
+#
+# Generate the package index (pkg_index.xml), a derived boot-module
+# manifest listing every staged package. Genode boot modules are not
+# enumerable and a request for a missing module is a fatal ROM-session
+# denial under the base Env policy, so sponge_pkgd consults this index
+# to know which pkg_<name>.xml modules exist before opening any. It is
+# generated from the same set staged above (never hand-edited), so it
+# stays a faithful view of pkg/ — not the per-system runtime index that
+# docs/12-package-format.md §5.3 rules out.
+#
+set index_fh [open "[run_dir]/genode/pkg_index.xml" w]
+puts $index_fh "<packages>"
+foreach pkg $staged_pkgs {
+	puts $index_fh "  <pkg name=\"$pkg\"/>"
+}
+puts $index_fh "</packages>"
+close $index_fh
+
+build_boot_image [build_artifacts]
+
+append qemu_args " -nographic -m 1G "
+
+#
+# Verification: the plan footer appears only after all four explain
+# steps have rendered (docs/06-vct.md §5.2). On any resolution error,
+# vct prints "install: error:" instead and this match times out — the
+# correct FAIL path.
+#
+run_genode_until {.*Re-run without --explain to execute.*} 30
