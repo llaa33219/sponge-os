@@ -1,0 +1,97 @@
+#
+# \brief  Sponge OS configuration scenario (Phase 5a)
+# \author Sponge OS contributors
+# \date   2026
+#
+# End-to-end verification of the configuration backend slice:
+# `vct config theme.active dark` stores a value through sponge_configd
+# over the Report/ROM channel (distinct labels so it never collides
+# with sponge_pkgd's request/result slots), and vct renders the set
+# success line.
+#
+# Topology (flat, kernel-agnostic like run/sponge-minimal.run):
+#
+#   init
+#   + timer            (vct's poll loop sleeps against this)
+#   + report_rom       (relays config_request/config_result/config)
+#   + sponge_configd   (watches config_request ROM, validates+stores,
+#                       writes config_result report + config broadcast)
+#   + vct              (writes config_request report, polls
+#                       config_result ROM, renders the value)
+#
+# report_rom policies (full labels include the child-name prefix,
+# docs/04-components.md §5). The labels are DISTINCT from sponge_pkgd's
+# request/result so the two backends share report_rom without colliding:
+#   sponge_configd's ROM "config_request"  <- vct's "config_request" report
+#   vct's ROM "config_result"              <- sponge_configd's "config_result"
+#   <watcher>'s ROM "config"               <- sponge_configd's "config" broadcast
+#
+# The broadcast policy is wired so configd's store is exposed as a ROM
+# for future watchers (sponge_themed, sponge-de). configd regenerates it
+# on every successful set (and once at startup with the defaults).
+#
+
+build { core lib/ld init timer server/report_rom sponge_configd vct }
+
+create_boot_directory
+
+install_config {
+config
++ parent-provides
+  + service LOG
+  + service PD
+  + service CPU
+  + service ROM
+
++ default-route
+  + any-service
+    + parent
+    + any-child
++ default | caps: 200 | ram: 8M
+
++ start timer
+  + provides | + service Timer
+
++ start report_rom | ram: 4M
+  + provides
+    + service Report
+    + service ROM
+  + config | verbose: no
+    + policy | label: sponge_configd -> config_request | report: vct -> config_request
+    + policy | label: vct -> config_result             | report: sponge_configd -> config_result
+    + policy | label: sponge_themed -> config          | report: sponge_configd -> config
+
++ start sponge_configd | caps: 200 | ram: 16M
+  + route
+    + service ROM | label_last: config_request | + child report_rom
+    + service Report | + child report_rom
+    + any-service
+      + parent
+      + any-child
+
++ start vct | caps: 200 | ram: 8M
+  + config
+    + args
+      + arg config
+      + arg theme.active
+      + arg dark
+  + route
+    + service Timer | + child timer
+    + service ROM | label_last: config_result | + child report_rom
+    + service Report | + child report_rom
+    + any-service
+      + parent
+      + any-child
+- }
+
+build_boot_image [build_artifacts]
+
+append qemu_args " -nographic -m 1G "
+
+#
+# Verification: vct prints "Set theme.active = dark" once sponge_configd
+# has accepted the set and echoed the value back. On any validation
+# error (unknown key / invalid enum), vct prints "config: error:"
+# instead and this match times out — the correct FAIL path.
+#
+run_genode_until {.*Set theme\.active = dark.*} 30

@@ -46,7 +46,9 @@ int HelpCommand::execute(Args const &args)
 		Genode::log("  vct install <pkg>         패키지 설치 (--manual: 단계별 출력)");
 		Genode::log("  vct remove <pkg>          패키지 제거");
 		Genode::log("  vct list                  설치된 패키지 목록");
-		Genode::log("  vct config <key> [val]    설정 조회/변경  (계획됨)");
+		Genode::log("  vct config <key>          설정 값 조회");
+		Genode::log("  vct config <key> <value>  설정 값 변경");
+		Genode::log("  vct config list           전체 설정 키 목록");
 		Genode::log("  vct leitzentrale          전문가 제어 창 열기  (계획됨)");
 		Genode::log("");
 		Genode::log("공통 옵션: --explain, --manual, --json, --verbose, --lang ko");
@@ -60,13 +62,15 @@ int HelpCommand::execute(Args const &args)
 		Genode::log("  vct install <pkg>         Install a package (--manual: step-by-step)");
 		Genode::log("  vct remove <pkg>          Remove an installed package");
 		Genode::log("  vct list                  List installed packages");
-		Genode::log("  vct config <key> [val]    Get or set a config option (planned)");
+		Genode::log("  vct config <key>          Get a configuration value");
+		Genode::log("  vct config <key> <value>  Set a configuration value");
+		Genode::log("  vct config list           List all configuration keys");
 		Genode::log("  vct leitzentrale          Open the Leitzentrale expert window (planned)");
 		Genode::log("");
 		Genode::log("Common flags: --explain, --manual, --json, --verbose, --lang ko");
 	}
 
-	Genode::warning("not implemented: full subcommand set (Phase 4+). status, version, help, component list, install (--explain/--manual/plain), remove, and list work today.");
+	Genode::warning("not implemented: full subcommand set (Phase 4+). status, version, help, component list, install (--explain/--manual/plain), remove, list, and config work today.");
 	return 0;
 }
 
@@ -843,6 +847,257 @@ int ListCommand::_render_json(Genode::Xml_node const &result)
 	buf[pos] = 0;
 
 	Genode::log("{\"command\":\"list\",\"status\":\"success\",\"packages\":",
+	            Genode::String<512>(buf), "}");
+	return 0;
+}
+
+
+/* ===================== ConfigCommand ===================== */
+
+int ConfigCommand::execute(Args const &args)
+{
+	char const *const key = args.positional.string();
+
+	/* `vct config list` — no key/value. */
+	if (Genode::strcmp(key, "list") == 0) {
+		PkgClient client { _env, "config_request", "config_result" };
+		if (!client.config_list()) {
+			if (args.json)
+				Genode::log("{\"command\":\"config\",\"op\":\"list\","
+				            "\"status\":\"error\","
+				            "\"error\":\"sponge_configd did not answer\"}");
+			else
+				Genode::warning("vct: sponge_configd did not answer for list");
+			return 1;
+		}
+		return args.json ? _render_list_json(client.result_xml())
+		                 : _render_list_human(client.result_xml());
+	}
+
+	if (Genode::strcmp(key, "") == 0) {
+		Genode::warning("vct: config requires a key or 'list'");
+		Genode::log("Usage: vct config <key> [<value>] | vct config list");
+		return 1;
+	}
+
+	char const *const value = args.positional2.string();
+	PkgClient client { _env, "config_request", "config_result" };
+
+	/* No value -> get; value present -> set. */
+	if (Genode::strcmp(value, "") == 0) {
+		if (!client.config_get(key)) {
+			if (args.json)
+				Genode::log("{\"command\":\"config\",\"op\":\"get\",\"key\":\"", key,
+				            "\",\"status\":\"error\","
+				            "\"error\":\"sponge_configd did not answer\"}");
+			else
+				Genode::warning("vct: sponge_configd did not answer for '", key, "'");
+			return 1;
+		}
+		return args.json ? _render_get_json(client.result_xml())
+		                 : _render_get_human(client.result_xml());
+	}
+
+	if (!client.config_set(key, value)) {
+		if (args.json)
+			Genode::log("{\"command\":\"config\",\"op\":\"set\",\"key\":\"", key,
+			            "\",\"value\":\"", value,
+			            "\",\"status\":\"error\","
+			            "\"error\":\"sponge_configd did not answer\"}");
+		else
+			Genode::warning("vct: sponge_configd did not answer for '", key, "'");
+		return 1;
+	}
+
+	return args.json ? _render_set_json(client.result_xml())
+	                 : _render_set_human(client.result_xml());
+}
+
+
+int ConfigCommand::_render_get_human(Genode::Xml_node const &result)
+{
+	Genode::String<32> const status =
+		result.attribute_value("status", Genode::String<32>());
+
+	if (status != Genode::String<32>("ok")) {
+		Genode::String<256> const err =
+			result.attribute_value("error", Genode::String<256>());
+		Genode::log("config: error: ", err);
+		return 1;
+	}
+
+	Genode::String<128> const key =
+		result.attribute_value("key", Genode::String<128>());
+	Genode::String<128> const val =
+		result.attribute_value("value", Genode::String<128>());
+	Genode::log(key, " = ", val);
+	return 0;
+}
+
+
+int ConfigCommand::_render_get_json(Genode::Xml_node const &result)
+{
+	Genode::String<32> const status =
+		result.attribute_value("status", Genode::String<32>());
+	Genode::String<128> const key =
+		result.attribute_value("key", Genode::String<128>());
+
+	if (status != Genode::String<32>("ok")) {
+		Genode::String<256> const err =
+			result.attribute_value("error", Genode::String<256>());
+		Genode::log("{\"command\":\"config\",\"op\":\"get\",\"key\":\"", key,
+		            "\",\"status\":\"error\",\"error\":\"", err, "\"}");
+		return 1;
+	}
+
+	Genode::String<128> const val =
+		result.attribute_value("value", Genode::String<128>());
+	Genode::log("{\"command\":\"config\",\"op\":\"get\",\"key\":\"", key,
+	            "\",\"value\":\"", val, "\",\"status\":\"success\"}");
+	return 0;
+}
+
+
+int ConfigCommand::_render_set_human(Genode::Xml_node const &result)
+{
+	Genode::String<32> const status =
+		result.attribute_value("status", Genode::String<32>());
+
+	if (status != Genode::String<32>("ok")) {
+		Genode::String<256> const err =
+			result.attribute_value("error", Genode::String<256>());
+		Genode::log("config: error: ", err);
+		return 1;
+	}
+
+	Genode::String<128> const key =
+		result.attribute_value("key", Genode::String<128>());
+	Genode::String<128> const val =
+		result.attribute_value("value", Genode::String<128>());
+	Genode::log("Set ", key, " = ", val);
+	return 0;
+}
+
+
+int ConfigCommand::_render_set_json(Genode::Xml_node const &result)
+{
+	Genode::String<32> const status =
+		result.attribute_value("status", Genode::String<32>());
+	Genode::String<128> const key =
+		result.attribute_value("key", Genode::String<128>());
+	Genode::String<128> const val =
+		result.attribute_value("value", Genode::String<128>());
+
+	if (status != Genode::String<32>("ok")) {
+		Genode::String<256> const err =
+			result.attribute_value("error", Genode::String<256>());
+		Genode::log("{\"command\":\"config\",\"op\":\"set\",\"key\":\"", key,
+		            "\",\"value\":\"", val,
+		            "\",\"status\":\"error\",\"error\":\"", err, "\"}");
+		return 1;
+	}
+
+	Genode::log("{\"command\":\"config\",\"op\":\"set\",\"key\":\"", key,
+	            "\",\"value\":\"", val, "\",\"status\":\"success\"}");
+	return 0;
+}
+
+
+int ConfigCommand::_render_list_human(Genode::Xml_node const &result)
+{
+	Genode::String<32> const status =
+		result.attribute_value("status", Genode::String<32>());
+
+	if (status != Genode::String<32>("ok")) {
+		Genode::String<256> const err =
+			result.attribute_value("error", Genode::String<256>());
+		Genode::log("config: error: ", err);
+		return 1;
+	}
+
+	unsigned count { 0 };
+	result.with_optional_sub_node("keys",
+		[&](Genode::Xml_node const &keys) {
+			keys.for_each_sub_node("key", [&](Genode::Xml_node const &) {
+				++count;
+			});
+		});
+
+	if (count == 0) {
+		Genode::log("No configuration keys.");
+		return 0;
+	}
+
+	Genode::log("Configuration keys:");
+	Genode::log("KEY               VALUE");
+	Genode::log("---------------   -----");
+	result.with_optional_sub_node("keys",
+		[&](Genode::Xml_node const &keys) {
+			keys.for_each_sub_node("key", [&](Genode::Xml_node const &k) {
+				Genode::String<64> const name =
+					k.attribute_value("name", Genode::String<64>());
+				Genode::String<128> const val =
+					k.attribute_value("value", Genode::String<128>());
+				Genode::log(name, "   ", val);
+			});
+		});
+
+	return 0;
+}
+
+
+int ConfigCommand::_render_list_json(Genode::Xml_node const &result)
+{
+	Genode::String<32> const status =
+		result.attribute_value("status", Genode::String<32>());
+
+	if (status != Genode::String<32>("ok")) {
+		Genode::String<256> const err =
+			result.attribute_value("error", Genode::String<256>());
+		Genode::log("{\"command\":\"config\",\"op\":\"list\","
+		            "\"status\":\"error\",\"error\":\"", err, "\"}");
+		return 1;
+	}
+
+	char buf[512] { };
+	Genode::size_t pos { 0 };
+	if (pos + 1 < sizeof(buf)) buf[pos++] = '[';
+	bool first { true };
+	result.with_optional_sub_node("keys",
+		[&](Genode::Xml_node const &keys) {
+			keys.for_each_sub_node("key", [&](Genode::Xml_node const &k) {
+				if (!first && pos + 2 < sizeof(buf)) {
+					buf[pos++] = ','; buf[pos++] = ' ';
+				}
+				first = false;
+				if (pos + 2 < sizeof(buf)) buf[pos++] = '{';
+
+				Genode::String<64> const name =
+					k.attribute_value("name", Genode::String<64>());
+				Genode::String<128> const val =
+					k.attribute_value("value", Genode::String<128>());
+
+				if (pos + 12 < sizeof(buf)) {
+					const char *p = "\"name\":\"";
+					while (*p && pos + 1 < sizeof(buf)) buf[pos++] = *p++;
+				}
+				char const *s = name.string();
+				while (*s && pos + 1 < sizeof(buf)) buf[pos++] = *s++;
+				if (pos + 14 < sizeof(buf)) {
+					const char *p = "\",\"value\":\"";
+					while (*p && pos + 1 < sizeof(buf)) buf[pos++] = *p++;
+				}
+				s = val.string();
+				while (*s && pos + 1 < sizeof(buf)) buf[pos++] = *s++;
+				if (pos + 2 < sizeof(buf)) { buf[pos++] = '"'; buf[pos++] = '}';
+				}
+			});
+		});
+	if (pos + 1 < sizeof(buf)) buf[pos++] = ']';
+	buf[pos] = 0;
+
+	Genode::log("{\"command\":\"config\",\"op\":\"list\","
+	            "\"status\":\"success\",\"keys\":",
 	            Genode::String<512>(buf), "}");
 	return 0;
 }
