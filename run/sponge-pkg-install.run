@@ -1,0 +1,125 @@
+#
+# \brief  Sponge OS package install scenario (Phase 4b)
+# \author Sponge OS contributors
+# \date   2026
+#
+# Verifies that `vct install hello` actually starts a real running
+# component under a nested pkg_runtime init, via the sponge_pkgd
+# backend. The flow:
+#
+#   vct --[Report request(install,hello)]--> report_rom --> sponge_pkgd
+#   sponge_pkgd resolves hello, adds it to the installed set, and
+#   regenerates the pkg_runtime <config> via its "runtime" report.
+#   report_rom relays that config to pkg_runtime's "config" ROM.
+#   pkg_runtime (a child init) diffs the config and starts hello.
+#   sponge_pkgd answers vct; vct prints the install summary.
+#
+# Topology (kernel-agnostic):
+#
+#   init
+#   + timer
+#   + report_rom     (3 policies: request, result, pkg_runtime config)
+#   + sponge_pkgd    (owns pkg_runtime's config via "runtime" report)
+#   + pkg_runtime    (binary init; config ROM <- report_rom "runtime")
+#   + vct            (args: install hello)
+#
+# report_rom policies (full labels include the child-name prefix,
+# docs/04-components.md §5):
+#   sponge_pkgd's ROM "request"  <- vct's "request" report
+#   vct's ROM "result"           <- sponge_pkgd's "result" report
+#   pkg_runtime's ROM "config"   <- sponge_pkgd's "runtime" report
+#
+
+build { core lib/ld init timer server/report_rom sponge_pkgd pkg_hello vct }
+
+create_boot_directory
+
+install_config {
+config
++ parent-provides
+  + service LOG
+  + service PD
+  + service CPU
+  + service ROM
+
++ default-route
+  + any-service
+    + parent
+    + any-child
++ default | caps: 200 | ram: 8M
+
++ start timer
+  + provides | + service Timer
+
++ start report_rom | ram: 4M
+  + provides
+    + service Report
+    + service ROM
+  + config | verbose: no
+    + policy | label: sponge_pkgd -> request | report: vct -> request
+    + policy | label: vct -> result          | report: sponge_pkgd -> result
+    + policy | label: pkg_runtime -> config  | report: sponge_pkgd -> runtime
+
++ start sponge_pkgd | caps: 200 | ram: 16M
+  + route
+    + service ROM | label_last: request | + child report_rom
+    + service Report | + child report_rom
+    + any-service
+      + parent
+      + any-child
+
++ start pkg_runtime | caps: 400 | ram: 32M
+  + binary init
+  + route
+    + service ROM | label: config | + child report_rom
+    + any-service
+      + parent
+      + any-child
+
++ start vct | caps: 200 | ram: 8M
+  + config
+    + args
+      + arg install
+      + arg hello
+  + route
+    + service Timer | + child timer
+    + service ROM | label_last: result | + child report_rom
+    + service Report | + child report_rom
+    + any-service
+      + parent
+      + any-child
+- }
+
+#
+# Stage package metadata + the derived index (same scheme as
+# run/sponge-pkg-explain.run). The hello binary is a build artifact
+# (TARGET := hello in src/pkg_hello) and is staged by build_boot_image.
+#
+set staged_pkgs { hello ncurses nano }
+foreach pkg $staged_pkgs {
+	set src "${genode_dir}/../pkg/$pkg/metadata.xml"
+	set dst "[run_dir]/genode/pkg_$pkg.xml"
+	if {![file exists $src]} {
+		error "package metadata not found: $src"
+	}
+	exec cp -L $src $dst
+}
+
+set index_fh [open "[run_dir]/genode/pkg_index.xml" w]
+puts $index_fh "<packages>"
+foreach pkg $staged_pkgs {
+	puts $index_fh "  <pkg name=\"$pkg\"/>"
+}
+puts $index_fh "</packages>"
+close $index_fh
+
+build_boot_image [build_artifacts]
+
+append qemu_args " -nographic -m 1G "
+
+#
+# Verification: the hello payload logs this marker once pkg_runtime
+# starts it. If install or config generation fails, the marker never
+# appears and the run times out — the correct FAIL path.
+#
+run_genode_until {.*hello from package: running.*} 30

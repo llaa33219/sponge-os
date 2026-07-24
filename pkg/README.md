@@ -23,7 +23,9 @@ Conventions:
 - One directory per package, named exactly as `<name>` declares.
 - `metadata.xml` is the only file `sponge_pkgd` parses.
 - Any other file under the directory is payload (staged into the boot
-  image under `/pkg/<name>/...`). Phase 4a ships metadata only.
+  image under `/pkg/<name>/...`). `hello`'s payload component lives at
+  `repos/sponge/src/pkg_hello` (binary `hello`); `ncurses`/`nano` are
+  metadata-only explain samples in Phase 4.
 
 ## How a package is consumed
 

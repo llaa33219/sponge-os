@@ -64,9 +64,9 @@ class ComponentListCommand : public Command
 
 /*
  * install — resolves a package via sponge_pkgd (Report/ROM channel).
- * Phase 4a implements the --explain preview only; actual installation
- * (Phase 4b) and --manual (Phase 4c) warn and exit non-zero rather
- * than fake success.
+ * --explain previews the plan; a plain `vct install <pkg>` executes it
+ * (sponge_pkgd regenerates the pkg_runtime config). --manual remains a
+ * Phase 4c placeholder that warns and exits non-zero rather than fake it.
  */
 class InstallCommand : public Command
 {
@@ -74,6 +74,27 @@ class InstallCommand : public Command
 		explicit InstallCommand(Genode::Env &env) : _env(env) {}
 		char const *name()    const override { return "install"; }
 		char const *summary() const override { return "Install a Sponge OS package."; }
+		int execute(Args const &args) override;
+	private:
+		Genode::Env &_env;
+
+		int _render_explain_human(Genode::Xml_node const &result);
+		int _render_explain_json(Genode::Xml_node const &result);
+		int _render_install_human(Genode::Xml_node const &result);
+		int _render_install_json(Genode::Xml_node const &result);
+};
+
+/*
+ * remove — drops an installed package (and its now-unused dependencies)
+ * via sponge_pkgd, which regenerates the pkg_runtime config so the
+ * nested init abandons the child.
+ */
+class RemoveCommand : public Command
+{
+	public:
+		explicit RemoveCommand(Genode::Env &env) : _env(env) {}
+		char const *name()    const override { return "remove"; }
+		char const *summary() const override { return "Remove an installed Sponge OS package."; }
 		int execute(Args const &args) override;
 	private:
 		Genode::Env &_env;

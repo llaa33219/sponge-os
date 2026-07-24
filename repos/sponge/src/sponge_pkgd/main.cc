@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: LicenseRef-SpongeOS-Proprietary
  *
- * sponge_pkgd — package backend daemon (Phase 4a).
+ * sponge_pkgd — package backend daemon (Phase 4a/4b).
  *
  * A long-lived, signal-driven Genode component. It watches a "request"
  * ROM (relayed by report_rom from vct's request report), resolves the
@@ -14,10 +14,17 @@
  * image as a ROM module named "pkg_<name>.xml" and opened here via
  * Attached_rom_dataspace.
  *
- * This slice (4a) implements only the "explain" operation: it produces
- * the install plan but performs no side effects. Actual component
- * installation is Phase 4b; the empty "installed" set below is the seam
- * for 4b's reuse check.
+ * Operations:
+ *   - explain (4a): produce the install plan, no side effects.
+ *   - install (4b): resolve, add to the installed set, regenerate the
+ *     pkg_runtime config (a nested init that hosts the components).
+ *   - remove  (4b): drop the package (and now-unused deps), regenerate.
+ *
+ * The pkg_runtime config is emitted via a second Expanding_reporter
+ * ("runtime") that report_rom relays as pkg_runtime's "config" ROM.
+ * The generator is deterministic (sorted start nodes, fixed attribute
+ * order, no volatile fields) so init's config-diff leaves unchanged
+ * children running across unrelated installs.
  */
 
 #include <base/attached_rom_dataspace.h>
@@ -75,6 +82,10 @@ struct Sponge::Pkgd::Package
 
 	bool valid { false };  /* required fields present */
 
+	/* Set during resolution: true when this package is already in the
+	 * installed set (explain marks it "already present, reused"). */
+	bool reused { false };
+
 	/* Comma-joined session names, e.g. "Gui, Input, File_system".
 	 * Built at result-generation time for the explain step 2 line. */
 	Genode::String<128> requires_sessions() const
@@ -128,8 +139,28 @@ class Sponge::Pkgd::Main
 		/* Result report: report_rom relays this to vct's "result" ROM. */
 		Genode::Expanding_reporter _result_reporter { _env, "result", "result" };
 
+		/*
+		 * Runtime config report: report_rom relays this to the nested
+		 * pkg_runtime init's "config" ROM. pkgd owns the ENTIRE
+		 * pkg_runtime config and regenerates it on every install/remove.
+		 * init diffs the new config against the live tree, so unchanged
+		 * children are not restarted even though the report is whole.
+		 */
+		Genode::Expanding_reporter _runtime_reporter { _env, "config", "runtime" };
+
 		Genode::Signal_handler<Main> _request_handler {
 			_env.ep(), *this, &Main::_handle_request };
+
+		/*
+		 * De-duplication of the request ROM. ROM signals can be
+		 * delivered more than once for the same content (e.g. once on
+		 * session setup, once on relay), and install/remove mutate
+		 * state — so a naive re-process would turn a real install into
+		 * a no-op re-install and make vct observe an empty result. We
+		 * skip any request whose op|pkg|seq signature matches the last
+		 * one we already handled.
+		 */
+		Genode::String<160> _last_request_sig { };
 
 		/*
 		 * Known-package set, loaded once from the pkg_index.xml boot
@@ -163,9 +194,25 @@ class Sponge::Pkgd::Main
 		bool               _ok    { false };
 		Genode::String<256> _error { };
 
+		/*
+		 * Installed state. Phase 4 keeps this in memory only (no
+		 * persistence); the state->config path is a pure function so a
+		 * future FS-backed store can replace it without touching the
+		 * generator. _roots are explicitly-installed package names;
+		 * _installed is the full transitive closure (roots + deps).
+		 * On remove, unused deps are GC'd by re-deriving _installed
+		 * from the surviving _roots.
+		 */
+		Package            _installed[MAX_PACKAGES] { };
+		unsigned           _num_installed           { 0 };
+		Genode::String<64> _roots[MAX_PACKAGES]     { };
+		unsigned           _num_roots               { 0 };
+
 		/* ---- request handling ---- */
 		void _handle_request();
 		void _do_explain(Genode::String<128> const &pkg);
+		void _do_install(Genode::String<128> const &pkg);
+		void _do_remove(Genode::String<128> const &pkg);
 
 		/* ---- resolution ---- */
 		void _resolve(char const *root);
@@ -175,8 +222,21 @@ class Sponge::Pkgd::Main
 		bool _load_package(char const *name, Package &out);
 		void _parse_package(Genode::Xml_node const &pkg, char const *name, Package &out);
 
+		/* ---- installed-set management ---- */
+		bool _installed_contains(char const *name) const;
+		void _add_root(char const *name);
+		void _sync_installed_from_roots();
+
+		/* ---- runtime-config generation (deterministic) ---- */
+		void _generate_runtime_config();
+
 		/* ---- result generation ---- */
 		void _report_ok(Genode::String<128> const &pkg);
+		void _report_install_ok(Genode::String<128> const &pkg,
+		                        Package const &root,
+		                        Genode::String<64> const *added, unsigned num_added);
+		void _report_remove_ok(Genode::String<128> const &pkg,
+		                       Genode::String<64> const *removed, unsigned num_removed);
 		void _report_error(char const *op, Genode::String<128> const &pkg,
 		                   char const *message);
 
@@ -416,9 +476,10 @@ void Sponge::Pkgd::Main::_visit(char const *name)
 	if (_contains(_done, _num_done, name))
 		return;
 
-	/* Phase 4a: the installed set is empty. 4b will consult the live init
-	 * tree here and return early for already-present components. */
-	/* if (_contains(_installed, _num_installed, name)) return; */
+	/* Already-installed packages are reused, never re-installed
+	 * (docs/12 §6.1). The resolver still loads their metadata so the
+	 * explain plan can show their sessions, but marks them reused. */
+	bool const reused = _installed_contains(name);
 
 	if (_contains(_visiting, _num_visiting, name)) {
 		_error = _cycle_message(_visiting, _num_visiting, name);
@@ -429,6 +490,8 @@ void Sponge::Pkgd::Main::_visit(char const *name)
 	Package p { };
 	if (!_load_package(name, p))
 		return;
+
+	p.reused = reused;
 
 	if (_num_visiting < MAX_PACKAGES)
 		_visiting[_num_visiting++] = Genode::String<64>(name);
@@ -470,6 +533,13 @@ void Sponge::Pkgd::Main::_handle_request()
 		                                         Genode::String<32>());
 		Genode::String<128> const pkg = req.attribute_value("pkg",
 		                                         Genode::String<128>());
+		Genode::String<16>  const seq = req.attribute_value("seq",
+		                                         Genode::String<16>());
+
+		Genode::String<160> const sig(op, "|", pkg, "|", seq);
+		if (sig == _last_request_sig)
+			return;
+		_last_request_sig = sig;
 
 		if (Genode::strcmp(pkg.string(), "") == 0) {
 			_report_error(op.string(), pkg, "no package specified in request");
@@ -478,6 +548,14 @@ void Sponge::Pkgd::Main::_handle_request()
 
 		if (Genode::strcmp(op.string(), "explain") == 0) {
 			_do_explain(pkg);
+			return;
+		}
+		if (Genode::strcmp(op.string(), "install") == 0) {
+			_do_install(pkg);
+			return;
+		}
+		if (Genode::strcmp(op.string(), "remove") == 0) {
+			_do_remove(pkg);
 			return;
 		}
 
@@ -500,6 +578,230 @@ void Sponge::Pkgd::Main::_do_explain(Genode::String<128> const &pkg)
 	}
 
 	_report_ok(pkg);
+}
+
+
+/* ===================== installed-set management ===================== */
+
+bool Sponge::Pkgd::Main::_installed_contains(char const *name) const
+{
+	for (unsigned i = 0; i < _num_installed; ++i)
+		if (Genode::strcmp(_installed[i].name.string(), name) == 0)
+			return true;
+	return false;
+}
+
+
+void Sponge::Pkgd::Main::_add_root(char const *name)
+{
+	for (unsigned i = 0; i < _num_roots; ++i)
+		if (Genode::strcmp(_roots[i].string(), name) == 0)
+			return;
+	if (_num_roots < MAX_PACKAGES)
+		_roots[_num_roots++] = Genode::String<64>(name);
+}
+
+
+/*
+ * Rebuild _installed as the transitive closure of all installed roots.
+ * Called after every install/remove so unused deps are garbage-collected
+ * on remove. Each root is re-resolved (metadata is static); the union is
+ * de-duplicated by name. Order within _installed does not matter because
+ * the config generator sorts by name.
+ */
+void Sponge::Pkgd::Main::_sync_installed_from_roots()
+{
+	Package fresh[MAX_PACKAGES] { };
+	unsigned num_fresh { 0 };
+
+	for (unsigned r = 0; r < _num_roots; ++r) {
+		_resolve(_roots[r].string());
+		if (!_ok)
+			continue;
+
+		for (unsigned j = 0; j < _num_plan; ++j) {
+			Package const &p = _plan[j];
+			bool present { false };
+			for (unsigned k = 0; k < num_fresh; ++k)
+				if (Genode::strcmp(fresh[k].name.string(), p.name.string()) == 0) {
+					present = true;
+					break;
+				}
+			if (!present && num_fresh < MAX_PACKAGES)
+				fresh[num_fresh++] = p;
+		}
+	}
+
+	for (unsigned i = 0; i < num_fresh && i < MAX_PACKAGES; ++i)
+		_installed[i] = fresh[i];
+	_num_installed = num_fresh;
+}
+
+
+void Sponge::Pkgd::Main::_do_install(Genode::String<128> const &pkg)
+{
+	char const *const name = pkg.string();
+
+	_resolve(name);
+	if (!_ok) {
+		_report_error("install", pkg, _error.string());
+		return;
+	}
+
+	Package const &root = _plan[_num_plan > 0 ? _num_plan - 1 : 0];
+
+	/* Snapshot the installed names before the change, to report exactly
+	 * what this install added. */
+	Genode::String<64> before[MAX_PACKAGES] { };
+	unsigned num_before { 0 };
+	for (unsigned i = 0; i < _num_installed && i < MAX_PACKAGES; ++i)
+		before[num_before++] = _installed[i].name;
+
+	_add_root(name);
+	_sync_installed_from_roots();
+	_generate_runtime_config();
+
+	Genode::String<64> added[MAX_PACKAGES] { };
+	unsigned num_added { 0 };
+	for (unsigned i = 0; i < _num_installed && i < MAX_PACKAGES; ++i) {
+		Genode::String<64> const &n = _installed[i].name;
+		bool was { false };
+		for (unsigned b = 0; b < num_before; ++b)
+			if (Genode::strcmp(before[b].string(), n.string()) == 0) {
+				was = true;
+				break;
+			}
+		if (!was && num_added < MAX_PACKAGES)
+			added[num_added++] = n;
+	}
+
+	_report_install_ok(pkg, root, added, num_added);
+}
+
+
+void Sponge::Pkgd::Main::_do_remove(Genode::String<128> const &pkg)
+{
+	char const *const name = pkg.string();
+
+	if (!_installed_contains(name)) {
+		_report_error("remove", pkg,
+		              Genode::String<128>("package not installed: ", name).string());
+		return;
+	}
+
+	/* Snapshot before, to report what removal dropped. */
+	Genode::String<64> before[MAX_PACKAGES] { };
+	unsigned num_before { 0 };
+	for (unsigned i = 0; i < _num_installed && i < MAX_PACKAGES; ++i)
+		before[num_before++] = _installed[i].name;
+
+	/* Drop the root; re-derive the closure so unused deps are GC'd. */
+	for (unsigned i = 0; i < _num_roots; ++i) {
+		if (Genode::strcmp(_roots[i].string(), name) == 0) {
+			_roots[i] = _roots[_num_roots - 1];
+			_num_roots--;
+			break;
+		}
+	}
+	_sync_installed_from_roots();
+	_generate_runtime_config();
+
+	Genode::String<64> removed[MAX_PACKAGES] { };
+	unsigned num_removed { 0 };
+	for (unsigned b = 0; b < num_before; ++b) {
+		if (!_installed_contains(before[b].string()) &&
+		    num_removed < MAX_PACKAGES)
+			removed[num_removed++] = before[b];
+	}
+
+	_report_remove_ok(pkg, removed, num_removed);
+}
+
+
+/* ===================== runtime-config generation ===================== */
+
+/*
+ * Emit the full pkg_runtime <config> from _installed.
+ *
+ * Determinism contract (the highest-risk constraint of Phase 4b):
+ * the output for a given installed set is byte-identical every run.
+ * Consequences:
+ *   - <start> nodes are emitted in name-sorted order (so install order
+ *     cannot perturb an already-running child's config);
+ *   - every attribute is emitted in a fixed order;
+ *   - no volatile fields (no timestamps, counters, or session ids).
+ * init diffs the new config against the live tree, so unchanged
+ * children keep running across an unrelated install.
+ */
+void Sponge::Pkgd::Main::_generate_runtime_config()
+{
+	/* Selection-sort the installed set by name into a stable index order. */
+	unsigned order[MAX_PACKAGES] { };
+	for (unsigned i = 0; i < _num_installed; ++i) order[i] = i;
+	for (unsigned i = 0; i < _num_installed; ++i) {
+		unsigned best { i };
+		for (unsigned j = i + 1; j < _num_installed; ++j) {
+			if (Genode::strcmp(_installed[order[j]].name.string(),
+			                   _installed[order[best]].name.string()) < 0)
+				best = j;
+		}
+		if (best != i) {
+			unsigned tmp = order[i];
+			order[i] = order[best];
+			order[best] = tmp;
+		}
+	}
+
+	_runtime_reporter.generate_xml([&](Genode::Xml_generator &g) {
+		g.node("parent-provides", [&] {
+			g.node("service", [&] { g.attribute("name", "ROM"); });
+			g.node("service", [&] { g.attribute("name", "PD"); });
+			g.node("service", [&] { g.attribute("name", "CPU"); });
+			g.node("service", [&] { g.attribute("name", "LOG"); });
+			g.node("service", [&] { g.attribute("name", "Timer"); });
+		});
+
+		g.node("default-route", [&] {
+			g.node("any-service", [&] {
+				g.node("parent");
+				g.node("any-child");
+			});
+		});
+
+		g.node("default", [&] {
+			/* No default ram: each <start> carries its own <resource name="RAM">,
+			 * and a non-zero default ram would make sandbox/child.cc flag the
+			 * explicit resource as an "ambigious RAM-quota definition". */
+			g.attribute("caps", "100");
+		});
+
+		for (unsigned n = 0; n < _num_installed; ++n) {
+			Package const &c = _installed[order[n]];
+
+			g.node("start", [&] {
+				g.attribute("name", c.name);
+				g.attribute("caps", c.caps);
+
+				g.node("resource", [&] {
+					g.attribute("name", "RAM");
+					g.attribute("quantum", c.ram);
+				});
+
+				g.node("route", [&] {
+					for (unsigned s = 0; s < c.num_sessions; ++s) {
+						Package::Session const &session = c.sessions[s];
+						g.node("service", [&] {
+							g.attribute("name", session.name);
+							g.node("child", [&] {
+								g.attribute("name", session.route);
+							});
+						});
+					}
+					g.node("any-service", [&] { g.node("parent"); });
+				});
+			});
+		}
+	});
 }
 
 
@@ -538,10 +840,7 @@ void Sponge::Pkgd::Main::_report_ok(Genode::String<128> const &pkg)
 					g.attribute("ram",     c.ram);
 					g.attribute("caps",    c.caps);
 					g.attribute("requires", c.requires_sessions());
-					/* new="yes": Phase 4a has no installed set, so every
-					 * resolved component is new. 4b will set this from the
-					 * reuse check. */
-					g.attribute("new", "yes");
+					g.attribute("new", c.reused ? "no" : "yes");
 				});
 			}
 		});
@@ -588,6 +887,50 @@ void Sponge::Pkgd::Main::_report_error(char const *op,
 }
 
 
+/* ---- install / remove results ---- */
+
+void Sponge::Pkgd::Main::_report_install_ok(Genode::String<128> const &pkg,
+                                            Package const &root,
+                                            Genode::String<64> const *added,
+                                            unsigned num_added)
+{
+	_result_reporter.generate_xml([&](Genode::Xml_generator &g) {
+		g.attribute("status",  "ok");
+		g.attribute("op",      "install");
+		g.attribute("pkg",     pkg);
+		g.attribute("version", root.version);
+
+		g.node("components_added", [&] {
+			for (unsigned i = 0; i < num_added; ++i)
+				g.node("component", [&] { g.attribute("name", added[i]); });
+		});
+
+		if (root.has_launcher) {
+			g.node("launcher", [&] {
+				g.attribute("category", root.launcher_category);
+			});
+		}
+	});
+}
+
+
+void Sponge::Pkgd::Main::_report_remove_ok(Genode::String<128> const &pkg,
+                                           Genode::String<64> const *removed,
+                                           unsigned num_removed)
+{
+	_result_reporter.generate_xml([&](Genode::Xml_generator &g) {
+		g.attribute("status", "ok");
+		g.attribute("op",     "remove");
+		g.attribute("pkg",    pkg);
+
+		g.node("components_removed", [&] {
+			for (unsigned i = 0; i < num_removed; ++i)
+				g.node("component", [&] { g.attribute("name", removed[i]); });
+		});
+	});
+}
+
+
 /* ===================== component wiring ===================== */
 
 Sponge::Pkgd::Main::Main(Genode::Env &env) : _env(env)
@@ -595,6 +938,12 @@ Sponge::Pkgd::Main::Main(Genode::Env &env) : _env(env)
 	Genode::log("sponge_pkgd: ready");
 
 	_load_index();
+
+	/* Emit an initial (empty) pkg_runtime config before anything can
+	 * request it, so the nested init boots clean with no children. This
+	 * runs in the constructor so it is published before init constructs
+	 * pkg_runtime (init starts children in config order). */
+	_generate_runtime_config();
 
 	_request_rom.sigh(_request_handler);
 	_request_rom.update();

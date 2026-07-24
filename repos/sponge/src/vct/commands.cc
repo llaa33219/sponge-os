@@ -43,8 +43,8 @@ int HelpCommand::execute(Args const &args)
 		Genode::log("  vct help                  이 도움말 출력");
 		Genode::log("  vct component list        실행 중인 컴포넌트 목록 보기");
 		Genode::log("  vct install <pkg> --explain  패키지 설치 계획 미리보기");
-		Genode::log("  vct install <pkg>         패키지 설치  (실행은 Phase 4b)");
-		Genode::log("  vct remove <pkg>          패키지 제거  (계획됨)");
+		Genode::log("  vct install <pkg>         패키지 설치");
+		Genode::log("  vct remove <pkg>          패키지 제거");
 		Genode::log("  vct config <key> [val]    설정 조회/변경  (계획됨)");
 		Genode::log("  vct leitzentrale          전문가 제어 창 열기  (계획됨)");
 		Genode::log("");
@@ -56,15 +56,15 @@ int HelpCommand::execute(Args const &args)
 		Genode::log("  vct help                  Show this help");
 		Genode::log("  vct component list        List the running components");
 		Genode::log("  vct install <pkg> --explain  Preview the install plan");
-		Genode::log("  vct install <pkg>         Install a package  (execution: Phase 4b)");
-		Genode::log("  vct remove <pkg>          Remove a package   (planned)");
+		Genode::log("  vct install <pkg>         Install a package");
+		Genode::log("  vct remove <pkg>          Remove an installed package");
 		Genode::log("  vct config <key> [val]    Get or set a config option (planned)");
 		Genode::log("  vct leitzentrale          Open the Leitzentrale expert window (planned)");
 		Genode::log("");
 		Genode::log("Common flags: --explain, --manual, --json, --verbose, --lang ko");
 	}
 
-	Genode::warning("not implemented: full subcommand set (Phase 4+). status, version, help, component list, and 'install <pkg> --explain' work today.");
+	Genode::warning("not implemented: full subcommand set (Phase 4+). status, version, help, component list, 'install <pkg> --explain', 'install <pkg>', and 'remove <pkg>' work today.");
 	return 0;
 }
 
@@ -225,6 +225,39 @@ Genode::String<256> deps_line_from(Genode::Xml_node const &result)
 	return out;
 }
 
+
+/* Build a JSON array string of the `name` attributes of all <component>
+ * children under `node_name` (e.g. "components_added"). Emits "[]" if the
+ * node is absent or empty. Used by every install/remove/explain renderer. */
+Genode::String<256> json_array_of(Genode::Xml_node const &result, char const *node_name)
+{
+	char buf[256] { };
+	Genode::size_t pos { 0 };
+
+	result.with_optional_sub_node(node_name,
+		[&](Genode::Xml_node const &comps) {
+			if (pos + 1 < sizeof(buf)) buf[pos++] = '[';
+			bool first { true };
+			comps.for_each_sub_node("component", [&](Genode::Xml_node const &c) {
+				if (!first && pos + 2 < sizeof(buf)) {
+					buf[pos++] = ','; buf[pos++] = ' ';
+				}
+				first = false;
+				if (pos + 2 < sizeof(buf)) buf[pos++] = '"';
+				Genode::String<64> const name =
+					c.attribute_value("name", Genode::String<64>());
+				char const *s = name.string();
+				while (*s && pos + 2 < sizeof(buf)) buf[pos++] = *s++;
+				if (pos + 1 < sizeof(buf)) buf[pos++] = '"';
+			});
+			if (pos + 1 < sizeof(buf)) buf[pos++] = ']';
+		});
+
+	if (pos == 0) { buf[0] = '['; buf[1] = ']'; pos = 2; }
+	buf[pos] = 0;
+	return Genode::String<256>(buf);
+}
+
 }  /* namespace */
 
 
@@ -244,15 +277,18 @@ int InstallCommand::execute(Args const &args)
 		return 1;
 	}
 
-	/* Phase 4b: actual execution is not implemented yet. */
-	if (!args.explain) {
-		Genode::warning("not implemented: install execution (Phase 4b)");
-		Genode::log("Use 'vct install ", pkg, " --explain' to preview the plan.");
-		return 1;
+	PkgClient client { _env };
+
+	if (args.explain) {
+		if (!client.request("explain", pkg)) {
+			Genode::warning("vct: sponge_pkgd did not answer for '", pkg, "'");
+			return 1;
+		}
+		return args.json ? _render_explain_json(client.result_xml())
+		                 : _render_explain_human(client.result_xml());
 	}
 
-	PkgClient client { _env };
-	if (!client.request_explain(pkg)) {
+	if (!client.request("install", pkg)) {
 		if (args.json)
 			Genode::log("{\"command\":\"install\",\"package\":\"", pkg,
 			            "\",\"status\":\"error\",\"error\":\"sponge_pkgd did not answer\"}");
@@ -261,15 +297,12 @@ int InstallCommand::execute(Args const &args)
 		return 1;
 	}
 
-	Genode::Xml_node const result = client.result_xml();
-
-	if (args.json)
-		return _render_json(result);
-	return _render_human(result);
+	return args.json ? _render_install_json(client.result_xml())
+	                 : _render_install_human(client.result_xml());
 }
 
 
-int InstallCommand::_render_human(Genode::Xml_node const &result)
+int InstallCommand::_render_explain_human(Genode::Xml_node const &result)
 {
 	Genode::String<32> const status =
 		result.attribute_value("status", Genode::String<32>());
@@ -376,7 +409,7 @@ int InstallCommand::_render_human(Genode::Xml_node const &result)
 }
 
 
-int InstallCommand::_render_json(Genode::Xml_node const &result)
+int InstallCommand::_render_explain_json(Genode::Xml_node const &result)
 {
 	Genode::String<32> const status =
 		result.attribute_value("status", Genode::String<32>());
@@ -395,30 +428,7 @@ int InstallCommand::_render_json(Genode::Xml_node const &result)
 	 * an executed install's "success". */
 	Genode::String<32> const ver =
 		result.attribute_value("version", Genode::String<32>());
-
-	char comp_buf[256] { };
-	Genode::size_t pos { 0 };
-	result.with_optional_sub_node("components",
-		[&](Genode::Xml_node const &comps) {
-			if (pos + 1 < sizeof(comp_buf)) comp_buf[pos++] = '[';
-			bool first { true };
-			comps.for_each_sub_node("component", [&](Genode::Xml_node const &c) {
-				if (!first && pos + 2 < sizeof(comp_buf)) {
-					comp_buf[pos++] = ','; comp_buf[pos++] = ' ';
-				}
-				first = false;
-				if (pos + 2 < sizeof(comp_buf)) comp_buf[pos++] = '"';
-				Genode::String<64> const name =
-					c.attribute_value("name", Genode::String<64>());
-				char const *s = name.string();
-				while (*s && pos + 2 < sizeof(comp_buf)) comp_buf[pos++] = *s++;
-				if (pos + 1 < sizeof(comp_buf)) comp_buf[pos++] = '"';
-			});
-			if (pos + 1 < sizeof(comp_buf)) comp_buf[pos++] = ']';
-		});
-	comp_buf[pos] = 0;
-
-	Genode::String<256> const components(comp_buf);
+	Genode::String<256> const components = json_array_of(result, "components");
 
 	result.with_sub_node("launcher", [&](Genode::Xml_node const &l) {
 		Genode::log("{\"command\":\"install\",\"package\":\"", pkg,
@@ -433,5 +443,185 @@ int InstallCommand::_render_json(Genode::Xml_node const &result)
 		            "\",\"components\":", components, "}");
 	});
 
+	return 0;
+}
+
+
+/* ===================== InstallCommand: install renderers ===================== */
+
+int InstallCommand::_render_install_human(Genode::Xml_node const &result)
+{
+	Genode::String<32> const status =
+		result.attribute_value("status", Genode::String<32>());
+	Genode::String<128> const pkg =
+		result.attribute_value("pkg", Genode::String<128>());
+
+	if (status != Genode::String<32>("ok")) {
+		Genode::String<256> const err =
+			result.attribute_value("error", Genode::String<256>());
+		Genode::log("install: error: ", err);
+		return 1;
+	}
+
+	Genode::String<32> const ver =
+		result.attribute_value("version", Genode::String<32>());
+
+	/* Collect the added component names for the summary line. */
+	char added_buf[256] { };
+	Genode::size_t pos { 0 };
+	result.with_optional_sub_node("components_added",
+		[&](Genode::Xml_node const &comps) {
+			bool first { true };
+			comps.for_each_sub_node("component", [&](Genode::Xml_node const &c) {
+				if (!first && pos + 2 < sizeof(added_buf)) {
+					added_buf[pos++] = ','; added_buf[pos++] = ' ';
+				}
+				first = false;
+				Genode::String<64> const name =
+					c.attribute_value("name", Genode::String<64>());
+				char const *s = name.string();
+				while (*s && pos + 1 < sizeof(added_buf)) added_buf[pos++] = *s++;
+			});
+		});
+	added_buf[pos] = 0;
+
+	Genode::log("Resolving dependencies... done");
+	Genode::log("Generating component configuration... done");
+	Genode::log("Installing... done");
+	Genode::log("");
+	Genode::log("Installed package: ", pkg, " ", ver);
+
+	if (pos == 0)
+		Genode::log("Components added: (none — already installed)");
+	else
+		Genode::log("Components added: ", Genode::String<256>(added_buf));
+
+	/* Launcher registration is Phase 5 (sponge_configd); surface the
+	 * metadata-declared category as informational, never as "registered". */
+	result.with_optional_sub_node("launcher", [&](Genode::Xml_node const &l) {
+		Genode::log("Launcher entry: ",
+		            l.attribute_value("category", Genode::String<32>()),
+		            " (registration deferred to Phase 5)");
+	});
+
+	return 0;
+}
+
+
+int InstallCommand::_render_install_json(Genode::Xml_node const &result)
+{
+	Genode::String<32> const status =
+		result.attribute_value("status", Genode::String<32>());
+	Genode::String<128> const pkg =
+		result.attribute_value("pkg", Genode::String<128>());
+
+	if (status != Genode::String<32>("ok")) {
+		Genode::String<256> const err =
+			result.attribute_value("error", Genode::String<256>());
+		Genode::log("{\"command\":\"install\",\"package\":\"", pkg,
+		            "\",\"status\":\"error\",\"error\":\"", err, "\"}");
+		return 1;
+	}
+
+	/* docs/06-vct.md §6.2 locked schema. duration_ms is omitted rather
+	 * than faked (AGENTS.md §5.3). */
+	Genode::String<32> const ver =
+		result.attribute_value("version", Genode::String<32>());
+	Genode::String<256> const added = json_array_of(result, "components_added");
+
+	Genode::log("{\"command\":\"install\",\"package\":\"", pkg,
+	            "\",\"status\":\"success\",\"version\":\"", ver,
+	            "\",\"components_added\":", added, "}");
+	return 0;
+}
+
+
+/* ===================== RemoveCommand ===================== */
+
+int RemoveCommand::execute(Args const &args)
+{
+	char const *const pkg = args.positional.string();
+
+	if (Genode::strcmp(pkg, "") == 0) {
+		Genode::warning("vct: remove requires a package name");
+		Genode::log("Usage: vct remove <package> [--json]");
+		return 1;
+	}
+
+	PkgClient client { _env };
+	if (!client.request("remove", pkg)) {
+		if (args.json)
+			Genode::log("{\"command\":\"remove\",\"package\":\"", pkg,
+			            "\",\"status\":\"error\",\"error\":\"sponge_pkgd did not answer\"}");
+		else
+			Genode::warning("vct: sponge_pkgd did not answer for '", pkg, "'");
+		return 1;
+	}
+
+	return args.json ? _render_json(client.result_xml())
+	                 : _render_human(client.result_xml());
+}
+
+
+int RemoveCommand::_render_human(Genode::Xml_node const &result)
+{
+	Genode::String<32> const status =
+		result.attribute_value("status", Genode::String<32>());
+	Genode::String<128> const pkg =
+		result.attribute_value("pkg", Genode::String<128>());
+
+	if (status != Genode::String<32>("ok")) {
+		Genode::String<256> const err =
+			result.attribute_value("error", Genode::String<256>());
+		Genode::log("remove: error: ", err);
+		return 1;
+	}
+
+	char removed_buf[256] { };
+	Genode::size_t pos { 0 };
+	result.with_optional_sub_node("components_removed",
+		[&](Genode::Xml_node const &comps) {
+			bool first { true };
+			comps.for_each_sub_node("component", [&](Genode::Xml_node const &c) {
+				if (!first && pos + 2 < sizeof(removed_buf)) {
+					removed_buf[pos++] = ','; removed_buf[pos++] = ' ';
+				}
+				first = false;
+				Genode::String<64> const name =
+					c.attribute_value("name", Genode::String<64>());
+				char const *s = name.string();
+				while (*s && pos + 1 < sizeof(removed_buf)) removed_buf[pos++] = *s++;
+			});
+		});
+	removed_buf[pos] = 0;
+
+	Genode::log("Removing package: ", pkg);
+	if (pos == 0)
+		Genode::log("Components removed: (none)");
+	else
+		Genode::log("Components removed: ", Genode::String<256>(removed_buf));
+	Genode::log("Removed package: ", pkg);
+	return 0;
+}
+
+
+int RemoveCommand::_render_json(Genode::Xml_node const &result)
+{
+	Genode::String<32> const status =
+		result.attribute_value("status", Genode::String<32>());
+	Genode::String<128> const pkg =
+		result.attribute_value("pkg", Genode::String<128>());
+
+	if (status != Genode::String<32>("ok")) {
+		Genode::String<256> const err =
+			result.attribute_value("error", Genode::String<256>());
+		Genode::log("{\"command\":\"remove\",\"package\":\"", pkg,
+		            "\",\"status\":\"error\",\"error\":\"", err, "\"}");
+		return 1;
+	}
+
+	Genode::String<256> const removed = json_array_of(result, "components_removed");
+	Genode::log("{\"command\":\"remove\",\"package\":\"", pkg,
+	            "\",\"status\":\"success\",\"components_removed\":", removed, "}");
 	return 0;
 }

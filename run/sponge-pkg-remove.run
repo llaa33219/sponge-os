@@ -1,0 +1,101 @@
+#
+# \brief  Sponge OS package remove scenario (Phase 4b)
+# \author Sponge OS contributors
+# \date   2026
+#
+# Verifies the full install -> remove lifecycle through sponge_pkgd.
+# vct is short-lived (one command per boot), so this scenario drives
+# the Report/ROM channel with the pkg_seq_probe component: it installs
+# hello, confirms the result, removes hello, confirms the result, then
+# logs "pkg-seq-probe: PASS".
+#
+# Teardown of the hello child inside pkg_runtime is initiated by
+# sponge_pkgd regenerating the config without hello's <start> node;
+# init abandons the child. This scenario checks the remove RESULT
+# (status="ok"); live child-destruction is not additionally asserted
+# here (see the choice note in the task).
+#
+# Topology is run/sponge-pkg-install.run with vct replaced by
+# pkg_seq_probe.
+#
+
+build { core lib/ld init timer server/report_rom sponge_pkgd pkg_hello \
+        test/pkg_seq_probe }
+
+create_boot_directory
+
+install_config {
+config
++ parent-provides
+  + service LOG
+  + service PD
+  + service CPU
+  + service ROM
+
++ default-route
+  + any-service
+    + parent
+    + any-child
++ default | caps: 200 | ram: 8M
+
++ start timer
+  + provides | + service Timer
+
++ start report_rom | ram: 4M
+  + provides
+    + service Report
+    + service ROM
+  + config | verbose: no
+    + policy | label: sponge_pkgd -> request      | report: pkg_seq_probe -> request
+    + policy | label: pkg_seq_probe -> result     | report: sponge_pkgd -> result
+    + policy | label: pkg_runtime -> config       | report: sponge_pkgd -> runtime
+
++ start sponge_pkgd | caps: 200 | ram: 16M
+  + route
+    + service ROM | label_last: request | + child report_rom
+    + service Report | + child report_rom
+    + any-service
+      + parent
+      + any-child
+
++ start pkg_runtime | caps: 400 | ram: 32M
+  + binary init
+  + route
+    + service ROM | label: config | + child report_rom
+    + any-service
+      + parent
+      + any-child
+
++ start pkg_seq_probe | caps: 200 | ram: 8M
+  + route
+    + service Timer | + child timer
+    + service ROM | label_last: result | + child report_rom
+    + service Report | + child report_rom
+    + any-service
+      + parent
+      + any-child
+- }
+
+set staged_pkgs { hello ncurses nano }
+foreach pkg $staged_pkgs {
+	set src "${genode_dir}/../pkg/$pkg/metadata.xml"
+	set dst "[run_dir]/genode/pkg_$pkg.xml"
+	if {![file exists $src]} {
+		error "package metadata not found: $src"
+	}
+	exec cp -L $src $dst
+}
+
+set index_fh [open "[run_dir]/genode/pkg_index.xml" w]
+puts $index_fh "<packages>"
+foreach pkg $staged_pkgs {
+	puts $index_fh "  <pkg name=\"$pkg\"/>"
+}
+puts $index_fh "</packages>"
+close $index_fh
+
+build_boot_image [build_artifacts]
+
+append qemu_args " -nographic -m 1G "
+
+run_genode_until {.*pkg-seq-probe: PASS.*} 40

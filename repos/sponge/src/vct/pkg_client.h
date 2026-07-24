@@ -35,14 +35,15 @@ class PkgClient
 
 		explicit PkgClient(Genode::Env &env);
 
-		/* Send an "explain" request for `pkg` and poll the result ROM
-		 * until sponge_pkgd answers with a matching result (or the poll
-		 * budget is spent). Returns true on a matching answer, after
-		 * which result_xml() exposes the structured <result/>. */
-		bool request_explain(char const *pkg);
+		/* Send a request (`op` in {explain, install, remove}) for `pkg`
+		 * and poll the result ROM until sponge_pkgd answers with a
+		 * matching result (or the poll budget is spent). Returns true
+		 * on a matching answer, after which result_xml() exposes the
+		 * structured <result/>. */
+		bool request(char const *op, char const *pkg);
 
-		/* Structured result from the last request_explain. Only valid to
-		 * call when request_explain() returned true. */
+		/* Structured result from the last request. Only valid to call
+		 * when request() returned true. */
 		Genode::Xml_node result_xml() const { return _result_rom.xml(); }
 
 	private:
@@ -53,7 +54,7 @@ class PkgClient
 		Genode::Expanding_reporter       _request_reporter { _env, "request", "request" };
 		Genode::Attached_rom_dataspace   _result_rom       { _env, "result" };
 
-		bool _result_matches(char const *pkg) const;
+		bool _result_matches(char const *op, char const *pkg) const;
 };
 
 }  /* namespace Sponge::Vct */

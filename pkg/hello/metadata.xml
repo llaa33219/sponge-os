@@ -1,16 +1,20 @@
 <!--
   hello — the smallest possible Sponge OS package.
 
-  GUI-free: it only writes to LOG and reads the user's terminal via a
-  File_system session. It has no dependencies and registers a launcher
-  entry under "Utilities".
+  GUI-free and session-free: it needs only the parent-provided services
+  (LOG/ROM/PD/CPU). It has no dependencies and registers a launcher
+  entry under "Utilities". It is the install target exercised by
+  run/sponge-pkg-install.run, whose payload component lives at
+  repos/sponge/src/pkg_hello.
 
-  This file is the canonical example of docs/12-package-format.md §4.2.
+  Per docs/12-package-format.md §4.1, omitting <sessions> entirely means
+  "parent-provided services only", which is why this package can be
+  installed and started in a minimal scenario with no vfs or nitpicker.
 -->
 <package>
   <name>hello</name>
   <version>1.0</version>
-  <description>Prints hello to the log. The smallest possible Sponge OS package.</description>
+  <description>Smallest installable Sponge OS package. Logs a marker and stays alive.</description>
 
   <binary>hello</binary>
   <quota ram="8M" caps="256"/>
@@ -18,11 +22,4 @@
   <launcher category="Utilities"/>
 
   <dependencies/>
-
-  <sessions>
-    <session name="File_system"
-             default-route="vfs"
-             readonly="yes"
-             subpath="/app/hello"/>
-  </sessions>
 </package>
