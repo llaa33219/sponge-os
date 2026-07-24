@@ -27,6 +27,13 @@ window on nitpicker, and input reaches the widgets:
   its `input` report; the demo button's `clicked` signal fires
 - ✅ Theme system wired: `default.theme` ROM → `theme/theme_loader`
   → panel/window styling (see `docs/10-theme-format.md`)
+- ✅ Live theme reload via `sponge_themed` + ThemeController
+  (`run/sponge-theme.run`)
+- ✅ Launcher menu fed by `sponge_pkgd` (`run/sponge-launcher.run`)
+- ✅ Upstream window-management stack integrated (`run/sponge-wm.run`):
+  app windows route through Genode's `wm` + `window_layouter` +
+  `decorator` and become decorated/movable (verified by a synthetic
+  drag); the panel stays a fixed nitpicker-domain surface
 
 The interactive escape hatch is `run/sponge-de.run` (fb_sdl window on
 the host display, base-linux).
