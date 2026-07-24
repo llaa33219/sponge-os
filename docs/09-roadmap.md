@@ -386,3 +386,12 @@ Deferred follow-ups (not blockers):
 2. **Package install persistence**: Phase 4 installs are in-memory
    only (see §6 Known Limitations); an FS-backed installed-set store
    makes them survive reboots.
+3. **Custom Sponge WM / window decorator**: Sponge DE currently
+   adopts Genode's upstream `wm` + `window_layouter` + `decorator`
+   stack (reused, not re-implemented, per AGENTS.md §5.2). A
+   Sponge-native window manager — or, more likely first, a
+   Sponge-themed decorator producing Catppuccin-styled window chrome —
+   remains a long-term option once the DE's own semantics
+   (tiling rules, custom focus model, themed decorations) outgrow the
+   upstream stack's configurability. The `themed_decorator` drop-in
+   (theme tar via VFS) is the nearer-term step on this path.
