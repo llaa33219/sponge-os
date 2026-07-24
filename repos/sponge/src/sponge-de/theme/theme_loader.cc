@@ -62,6 +62,13 @@ bool ThemeLoader::load(char const *data, Genode::size_t len, Theme &out)
 	_ok = true;
 	_section = Genode::String<32>();
 
+	/*
+	 * ROM dataspaces are page-aligned, so a theme file loaded from a ROM
+	 * module arrives padded with NUL bytes. Trailing NULs are never valid
+	 * theme content; stop at the first padding byte.
+	 */
+	while (len > 0 && data[len - 1] == '\0') len--;
+
 	Genode::size_t line_no = 1;
 	Genode::size_t pos = 0;
 	while (pos < len) {
@@ -306,7 +313,7 @@ bool ThemeLoader::_parse_color(char const *value, Genode::size_t len, Color &out
 {
 	if (len > 0 && value[0] == '#') {
 		if (len != 7) return false;
-		uint32_t raw = 0;
+		Genode::uint32_t raw = 0;
 		for (Genode::size_t i = 1; i < len; i++) {
 			char const c = value[i];
 			unsigned digit = 0;
@@ -323,15 +330,15 @@ bool ThemeLoader::_parse_color(char const *value, Genode::size_t len, Color &out
 	char buf[32];
 	copy_with_nul(buf, sizeof(buf), value, len);
 
-	if      (Genode::strcmp(buf, "black")   == 0) { out = Color{(uint32_t)0x000000}; return true; }
-	else if (Genode::strcmp(buf, "white")   == 0) { out = Color{(uint32_t)0xffffff}; return true; }
-	else if (Genode::strcmp(buf, "red")     == 0) { out = Color{(uint32_t)0xff0000}; return true; }
-	else if (Genode::strcmp(buf, "green")   == 0) { out = Color{(uint32_t)0x00ff00}; return true; }
-	else if (Genode::strcmp(buf, "blue")    == 0) { out = Color{(uint32_t)0x0000ff}; return true; }
-	else if (Genode::strcmp(buf, "yellow")  == 0) { out = Color{(uint32_t)0xffff00}; return true; }
-	else if (Genode::strcmp(buf, "cyan")    == 0) { out = Color{(uint32_t)0x00ffff}; return true; }
-	else if (Genode::strcmp(buf, "magenta") == 0) { out = Color{(uint32_t)0xff00ff}; return true; }
-	else if (Genode::strcmp(buf, "gray")    == 0) { out = Color{(uint32_t)0x808080}; return true; }
+	if      (Genode::strcmp(buf, "black")   == 0) { out = Color{(Genode::uint32_t)0x000000}; return true; }
+	else if (Genode::strcmp(buf, "white")   == 0) { out = Color{(Genode::uint32_t)0xffffff}; return true; }
+	else if (Genode::strcmp(buf, "red")     == 0) { out = Color{(Genode::uint32_t)0xff0000}; return true; }
+	else if (Genode::strcmp(buf, "green")   == 0) { out = Color{(Genode::uint32_t)0x00ff00}; return true; }
+	else if (Genode::strcmp(buf, "blue")    == 0) { out = Color{(Genode::uint32_t)0x0000ff}; return true; }
+	else if (Genode::strcmp(buf, "yellow")  == 0) { out = Color{(Genode::uint32_t)0xffff00}; return true; }
+	else if (Genode::strcmp(buf, "cyan")    == 0) { out = Color{(Genode::uint32_t)0x00ffff}; return true; }
+	else if (Genode::strcmp(buf, "magenta") == 0) { out = Color{(Genode::uint32_t)0xff00ff}; return true; }
+	else if (Genode::strcmp(buf, "gray")    == 0) { out = Color{(Genode::uint32_t)0x808080}; return true; }
 
 	return false;
 }

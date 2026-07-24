@@ -70,7 +70,7 @@ See [`docs/04-components.md`](docs/04-components.md) for the detailed design.
 
 ## Current Status
 
-🟡 **Early design stage (Pre-Alpha)** — booting on real Genode, both kernels.
+🟡 **Pre-Alpha** — Phase 3 complete: Sponge DE renders on nitpicker with verified input.
 
 The repository currently contains:
 
@@ -81,8 +81,10 @@ The repository currently contains:
 - ✅ vct boots as a real Genode component on base-sel4 (seL4, the production target)
 - ✅ Genode 26.05 vendored at `genode/` (pinned to upstream commit
   `492a510242`); one `git clone sponge-os` brings the whole build
-- 🔜 IPC interface definitions between components
-- 🔜 A minimum working demo
+- ✅ Sponge DE (Qt6 6.8.3) renders a themed panel + window on nitpicker;
+  verified headlessly by `run/sponge-de-test.run` (Capture pixel check +
+  Event-session input round-trip, no host display needed)
+- 🔜 Package management (`sponge_pkgd`, Phase 4)
 
 Verified vct boot output (base-sel4 on QEMU):
 

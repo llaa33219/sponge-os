@@ -12,19 +12,24 @@ For the full design, see [`docs/05-sponge-de.md`](../../../../docs/05-sponge-de.
 
 ## Current status
 
-🟡 Phase 3 (in progress). Qt6 integration is wired and the component
-builds and links successfully:
+✅ Phase 3 (complete). The component renders a themed panel plus a demo
+window on nitpicker, and input reaches the widgets:
 
 - ✅ Qt6 6.8.3 builds and links inside Genode 26.05
 - ✅ Component uses `Libc::Component::construct` (Pattern B bootstrap
   with `qpa_init`)
 - ✅ `Main` is a `QWidget` subclass that creates a single window
-- 🔜 Gui session rendering verified via a run scenario (needs full
-  driver stack: nitpicker + framebuffer + input)
-- 🔜 Keyboard and mouse input through the `Event` session
+- ✅ Gui session rendering verified by `run/sponge-de-test.run`
+  (headless: the `sponge_de_probe` component matches the composited
+  window pixels through a Capture session)
+- ✅ Keyboard and mouse input verified: the probe injects a synthetic
+  click through nitpicker's Event service and sponge-de confirms it via
+  its `input` report; the demo button's `clicked` signal fires
+- ✅ Theme system wired: `default.theme` ROM → `theme/theme_loader`
+  → panel/window styling (see `docs/10-theme-format.md`)
 
-The theme system skeleton (`theme/theme_loader.{h,cc}`) is present but
-not yet wired into the Qt build (see `docs/10-theme-format.md`).
+The interactive escape hatch is `run/sponge-de.run` (fb_sdl window on
+the host display, base-linux).
 
 ## Source layout
 

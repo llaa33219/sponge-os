@@ -19,13 +19,13 @@ namespace Sponge::Sponge_DE::Theme {
 /* Color stored as 0xRRGGBB with byte accessors. */
 struct Color
 {
-	uint32_t raw { 0 };
+	Genode::uint32_t raw { 0 };
 
-	constexpr Color(uint32_t raw = 0) : raw(raw) { }
+	constexpr Color(Genode::uint32_t raw = 0) : raw(raw) { }
 
-	uint8_t r() const { return (raw >> 16) & 0xffu; }
-	uint8_t g() const { return (raw >> 8)  & 0xffu; }
-	uint8_t b() const { return raw         & 0xffu; }
+	Genode::uint8_t r() const { return (raw >> 16) & 0xffu; }
+	Genode::uint8_t g() const { return (raw >> 8)  & 0xffu; }
+	Genode::uint8_t b() const { return raw         & 0xffu; }
 
 	bool operator == (Color const &other) const { return raw == other.raw; }
 	bool operator != (Color const &other) const { return raw != other.raw; }

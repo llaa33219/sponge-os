@@ -19,7 +19,7 @@ Phase 1: Minimum boot             ✅ done (base-linux + base-sel4)
 Phase 2: vct minimum working      ✅ done
    |
    v
-Phase 3: Sponge DE single window  🟡 current (Qt6 build verified, GUI scenario pending)
+Phase 3: Sponge DE single window  ✅ done (headless verification on nitpicker)
    |
    v
 Phase 4: Package management (sponge_pkgd)
@@ -202,10 +202,22 @@ notification yet.
 - [x] Qt builds and links inside Genode (using the existing Genode Qt
   port). Verified: sponge-de binary compiles and links against Qt6 6.8.3
   (libQt6Core, libQt6Gui, libQt6Widgets) on Genode 26.05.
-- [ ] Sponge DE opens a `Gui` session and displays a Qt widget.
-- [ ] Keyboard and mouse input are received through the `Input`
-  session.
-- [ ] A run scenario automatically verifies that the window appears.
+- [x] Sponge DE opens a `Gui` session and displays a Qt widget.
+  Verified by `run/sponge-de-test.run`: the `sponge_de_probe` component
+  reads nitpicker's composited screen through a `Capture` session and
+  positively matches the demo window's themed `window_bg` color
+  (`#313244`) at the demo-domain center.
+- [x] Keyboard and mouse input are received through the `Input`
+  session. Verified by the probe injecting an absolute-motion +
+  BTN_LEFT click into nitpicker's `Event` service: sponge-de's `input`
+  report (relayed via `report_rom`) confirms the press, and the demo
+  button's `clicked` signal fires
+  (`sponge-de: input event received (button clicked)`).
+- [x] A run scenario automatically verifies that the window appears:
+  `run/sponge-de-test.run` is headless (no framebuffer driver, no host
+  display) and kernel-agnostic; it passes when the probe logs
+  `sponge-de-probe: PASS` (`run_genode_until` match). The interactive
+  escape hatch is `run/sponge-de.run` (fb_sdl on the host display).
 
 ### Explicitly **Excluded** From This Phase
 
@@ -321,21 +333,28 @@ These stages get fleshed out in a separate document after Alpha.
 
 ## 11. Current Focus
 
-Phase 0–2 are complete. Phase 3 (Sponge DE single window) is in progress:
+Phase 0–3 are complete. Phase 3 was closed by `run/sponge-de-test.run`:
+a headless, kernel-agnostic scenario in which the `sponge_de_probe`
+component verifies actual window rendering on nitpicker (Capture pixel
+check) and end-to-end input delivery (Event-session injection →
+sponge-de input report round-trip), logging `sponge-de-probe: PASS`.
 
-1. **✅ Qt6 build**: sponge-de compiles and links against Qt6 6.8.3 on
-   Genode 26.05 (Phase 3 criterion 1 met).
-2. **GUI run scenario**: write `run/sponge-de.run` that boots the full
-   GUI stack (nitpicker + framebuffer driver + input driver) and
-   verifies sponge-de draws a window. This requires wiring the
-   `drivers_interactive-pc` driver set (vesa_fb, ps2, event_filter,
-   platform, acpi, pci_decode) on base-sel4, or `fb_sdl` on base-linux.
-3. **Input session**: verify keyboard/mouse events reach sponge-de via
-   nitpicker's `Event` service.
+Next up: Phase 4 (package management, `sponge_pkgd`).
 
-Theme format spec + parser skeleton are done (partial Phase 5 progress,
-see `docs/10-theme-format.md`).
+Deferred follow-ups (not Phase 3 blockers):
 
-Each item is tracked under its own GitHub issue (or, in the early
-stage, under an "Open Design Questions" section in the relevant
-document).
+1. **base-sel4 interactive GUI**: the headless test scenario is
+   kernel-agnostic and covers Phase 3 on both kernels, but a *visible*
+   desktop on base-sel4 still needs the `drivers_interactive-pc`
+   driver set (vesa_fb, ps2, usb_hid, event_filter, platform, acpi,
+   pci_decode) wired into a QEMU run script, with
+   `-device nec-usb-xhci,id=xhci -device usb-tablet` for absolute
+   pointer input. Reference: `docs/11-environment.md` and the vendored
+   `genode/repos/os/recipes/raw/drivers_interactive-pc/` config set.
+2. **Theme parser wiring**: `theme/theme_loader.{h,cc}` and
+   `theme/theme_qt.h` are now exercised by sponge-de at runtime
+   (default.theme ROM → panel/window styling), completing the Phase 5
+   skeleton integration for the system theme layer.
+
+Theme format spec + default theme + parser are done (partial Phase 5
+progress, see `docs/10-theme-format.md`).

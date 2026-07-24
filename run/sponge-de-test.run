@@ -1,16 +1,31 @@
 #
-# \brief  Sponge DE boot scenario (Phase 3 — panel + window)
+# \brief  Sponge DE headless GUI verification scenario (Phase 3)
 # \author Sponge OS contributors
 # \date   2026
 #
-# Boots sponge-de on base-linux with fb_sdl + nitpicker.
-# Shows the themed panel and one demo window. Requires a host display
-# (DISPLAY or WAYLAND_DISPLAY) for the SDL window.
+# Boots nitpicker + sponge-de WITHOUT any framebuffer driver or host
+# display, plus the sponge_de_probe component that proves:
+#   (a) sponge-de's window is actually rendered into nitpicker's
+#       composited screen (Capture-session pixel check), and
+#   (b) synthetic pointer input injected into nitpicker reaches the
+#       sponge-de widget (Event-session injection -> report round-trip).
+#
+# Kernel-agnostic (like run/sponge-minimal.run): runs on base-linux
+# (core runs natively, no QEMU) and base-sel4 (QEMU). There is no
+# fb_sdl here — the probe itself is nitpicker's only capture client, so
+# it defines the panorama and reads back the composited pixels.
+#
+# Control escape hatch (AGENTS.md §1.1): to view the desktop on the
+# host display, use run/sponge-de.run instead — it wires fb_sdl + an
+# SDL window and accepts host mouse/keyboard.
 #
 
-assert {[have_spec linux]}
-
-build { core lib/ld init timer server/report_rom server/nitpicker driver/framebuffer/sdl sponge-de qt6/base lib/libc lib/libm lib/stdcxx lib/mesa lib/mesa_gpu-softpipe lib/egl lib/softpipe lib/libdrm lib/expat lib/qt6_component lib/vfs lib/vfs_pipe lib/vfs_gpu lib/rom_filter lib/zlib lib/libpng }
+build { core lib/ld init timer server/report_rom server/nitpicker \
+         sponge-de test/sponge_de_probe \
+         qt6/base lib/libc lib/libm lib/stdcxx lib/mesa \
+         lib/mesa_gpu-softpipe lib/egl lib/softpipe lib/libdrm lib/expat \
+         lib/qt6_component lib/vfs lib/vfs_pipe lib/vfs_gpu lib/rom_filter \
+         lib/zlib lib/libpng }
 
 create_boot_directory
 
@@ -38,6 +53,8 @@ config
   + provides
     + service Report
     + service ROM
+  + config
+    + policy | label: sponge_de_probe -> sponge_de_input | report: sponge-de -> input
 
 + start nitpicker | ram: 8M
   + provides
@@ -65,16 +82,6 @@ config
     + default-policy | domain: default
     + background | color: #1e1e2e
 
-+ start fb_sdl | ld: no | ram: 32M
-  + config | buffered: yes | width: 1024 | height: 768
-  + route
-    + service Timer | + child timer
-    + service Capture | + child nitpicker
-    + service Event | + child nitpicker
-    + any-service
-      + parent
-      + any-child
-
 + start sponge-de | caps: 300 | ram: 128M
   + config
     + vfs
@@ -88,8 +95,19 @@ config
   + route
     + service Gui | + child nitpicker
     + service Report | label: shape | + child report_rom
+    + service Report | label: input | + child report_rom
     + service ROM | label: default.theme | + parent
     + service ROM | label: mesa_gpu.lib.so | + parent | label: mesa_gpu-softpipe.lib.so
+    + any-service
+      + parent
+      + any-child
+
++ start sponge_de_probe | caps: 100 | ram: 16M
+  + route
+    + service Capture | + child nitpicker
+    + service Event   | + child nitpicker
+    + service Timer   | + child timer
+    + service ROM     | label: sponge_de_input | + child report_rom
     + any-service
       + parent
       + any-child
@@ -140,13 +158,17 @@ if {[file exists $theme_src] && ![file exists $theme_dst]} {
 	exec cp -L $theme_src $theme_dst
 }
 
+#
+# Harmless on base-linux (core runs natively); required for base-sel4/
+# QEMU to avoid opening a graphical QEMU window.
+#
 append qemu_args " -nographic "
 
 #
-# Automated verification: sponge-de logs this marker once the panel and
-# the demo window are visible on nitpicker. For interactive viewing on
-# the host display (control escape hatch), replace the line below with:
+# Automated verification: the probe logs this marker once it has
+# confirmed both the pixel render and the input round-trip. On timeout
+# (probe did not reach PASS) the run tool errors out — that is the FAIL
+# path. The timeout is generous because Qt's first paint under the
+# software (softpipe) Mesa is slow.
 #
-#     run_genode_until forever
-#
-run_genode_until {.*sponge-de: panel and window shown.*} 60
+run_genode_until {.*sponge-de-probe: PASS.*} 180
