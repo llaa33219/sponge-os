@@ -22,10 +22,10 @@ Phase 2: vct minimum working      ✅ done
 Phase 3: Sponge DE single window  ✅ done (headless verification on nitpicker)
    |
    v
-Phase 4: Package management (sponge_pkgd)
+Phase 4: Package management (sponge_pkgd)  ✅ done
    |
    v
-Phase 5: Integration and automation layer
+Phase 5: Integration and automation layer  🟡 current
    |
    v
 Phase 6: Leitzentrale integration
@@ -237,14 +237,35 @@ example, `nano`, `bash`, simple apps).
 
 ### Completion Criteria
 
-- [ ] `sponge_pkgd` backend component implemented.
-- [ ] Package metadata format defined.
-- [ ] Dependency resolution algorithm implemented.
-- [ ] `vct install <pkg>` adds a component under the `init` tree.
-- [ ] `--explain` previews the work.
-- [ ] `--manual` runs step by step.
-- [ ] Packages are read from a package repository (a local directory at
-  first).
+- [x] `sponge_pkgd` backend component implemented (Report/ROM channel,
+  deterministic config generator, minimum privileges).
+- [x] Package metadata format defined (`docs/12-package-format.md`).
+- [x] Dependency resolution algorithm implemented (deterministic DFS
+  with cycle detection).
+- [x] `vct install <pkg>` adds a component under the `init` tree
+  (nested `pkg_runtime` init; verified by `run/sponge-pkg-install.run`).
+- [x] `--explain` previews the work (`run/sponge-pkg-explain.run`).
+- [x] `--manual` runs step by step (per-step visibility; interactive
+  [Y/n] confirmation deferred to the future shell, reported honestly —
+  `run/sponge-pkg-manual.run`).
+- [x] Packages are read from a package repository (a local directory at
+  first — `pkg/`, staged as ROM modules with a build-time
+  `pkg_index.xml` manifest).
+
+Additionally delivered: `vct remove` (with dependency GC), `vct list`
+(installed-set introspection), and the config-driven `pkg_seq_probe`
+test component.
+
+### Known Limitations (documented, deferred)
+
+- Installed state is in-memory only; installs do not survive reboot.
+  The state→config path is a pure function so an FS-backed store can
+  replace it later (persistence seam).
+- Report/ROM channel is single-writer; concurrent callers would
+  collide (request-id + backend mutex deferred until concurrent
+  callers exist).
+- Launcher entry registration needs `sponge_configd` (Phase 5); the
+  install output reports it as informational.
 
 ---
 
@@ -333,15 +354,20 @@ These stages get fleshed out in a separate document after Alpha.
 
 ## 11. Current Focus
 
-Phase 0–3 are complete. Phase 3 was closed by `run/sponge-de-test.run`:
-a headless, kernel-agnostic scenario in which the `sponge_de_probe`
-component verifies actual window rendering on nitpicker (Capture pixel
-check) and end-to-end input delivery (Event-session injection →
-sponge-de input report round-trip), logging `sponge-de-probe: PASS`.
+Phase 0–4 are complete. Phase 4 was closed by `sponge_pkgd`: packages
+are described by `docs/12-package-format.md` metadata in `pkg/`, and
+`vct install/remove/list` drive a nested `pkg_runtime` init through the
+Report/ROM channel (`run/sponge-pkg-{explain,install,remove,list,
+manual}.run` all green).
 
-Next up: Phase 4 (package management, `sponge_pkgd`).
+Next up: Phase 5 (integration and automation layer — Sponge DE panel
+and launcher, `sponge_configd` configuration backend, `sponge_themed`
+theme backend, and vct/Sponge DE configuration consistency). The theme
+format (`docs/10-theme-format.md`), default theme, and runtime theme
+loading in sponge-de are already done; the pkgd backend is ready to
+answer launcher queries.
 
-Deferred follow-ups (not Phase 3 blockers):
+Deferred follow-ups (not blockers):
 
 1. **base-sel4 interactive GUI**: the headless test scenario is
    kernel-agnostic and covers Phase 3 on both kernels, but a *visible*
@@ -351,10 +377,6 @@ Deferred follow-ups (not Phase 3 blockers):
    `-device nec-usb-xhci,id=xhci -device usb-tablet` for absolute
    pointer input. Reference: `docs/11-environment.md` and the vendored
    `genode/repos/os/recipes/raw/drivers_interactive-pc/` config set.
-2. **Theme parser wiring**: `theme/theme_loader.{h,cc}` and
-   `theme/theme_qt.h` are now exercised by sponge-de at runtime
-   (default.theme ROM → panel/window styling), completing the Phase 5
-   skeleton integration for the system theme layer.
-
-Theme format spec + default theme + parser are done (partial Phase 5
-progress, see `docs/10-theme-format.md`).
+2. **Package install persistence**: Phase 4 installs are in-memory
+   only (see §6 Known Limitations); an FS-backed installed-set store
+   makes them survive reboots.
