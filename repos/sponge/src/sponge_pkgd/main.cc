@@ -148,6 +148,18 @@ class Sponge::Pkgd::Main
 		 */
 		Genode::Expanding_reporter _runtime_reporter { _env, "config", "runtime" };
 
+		/*
+		 * Installed-set broadcast (Phase 5c). Long-lived watchers
+		 * (sponge-de's launcher) cannot share the request/result
+		 * channel with vct because report_rom is single-writer per
+		 * label. pkgd therefore mirrors sponge_configd's "config"
+		 * broadcast pattern: it republishes the rich installed list
+		 * as an "installed" ROM whenever the set changes, so watchers
+		 * observe the live state without issuing requests. The
+		 * request/result path is unchanged for vct and the probes.
+		 */
+		Genode::Expanding_reporter _installed_reporter { _env, "installed", "installed" };
+
 		Genode::Signal_handler<Main> _request_handler {
 			_env.ep(), *this, &Main::_handle_request };
 
@@ -230,6 +242,9 @@ class Sponge::Pkgd::Main
 
 		/* ---- runtime-config generation (deterministic) ---- */
 		void _generate_runtime_config();
+
+		/* ---- installed-broadcast generation (Phase 5c) ---- */
+		void _generate_installed_report();
 
 		/* ---- result generation ---- */
 		void _report_ok(Genode::String<128> const &pkg);
@@ -674,6 +689,7 @@ void Sponge::Pkgd::Main::_do_install(Genode::String<128> const &pkg)
 	_add_root(name);
 	_sync_installed_from_roots();
 	_generate_runtime_config();
+	_generate_installed_report();
 
 	Genode::String<64> added[MAX_PACKAGES] { };
 	unsigned num_added { 0 };
@@ -719,6 +735,7 @@ void Sponge::Pkgd::Main::_do_remove(Genode::String<128> const &pkg)
 	}
 	_sync_installed_from_roots();
 	_generate_runtime_config();
+	_generate_installed_report();
 
 	Genode::String<64> removed[MAX_PACKAGES] { };
 	unsigned num_removed { 0 };
@@ -815,6 +832,50 @@ void Sponge::Pkgd::Main::_generate_runtime_config()
 				});
 			});
 		}
+	});
+}
+
+
+/* ===================== installed broadcast (Phase 5c) ===================== */
+
+void Sponge::Pkgd::Main::_generate_installed_report()
+{
+	/*
+	 * Name-sorted (same selection sort as _generate_runtime_config and
+	 * _report_list_ok) so the broadcast is byte-identical for a given
+	 * installed set — long-lived watchers can cheaply diff consecutive
+	 * versions without churn.
+	 */
+	unsigned order[MAX_PACKAGES] { };
+	for (unsigned i = 0; i < _num_installed; ++i) order[i] = i;
+	for (unsigned i = 0; i < _num_installed; ++i) {
+		unsigned best { i };
+		for (unsigned j = i + 1; j < _num_installed; ++j) {
+			if (Genode::strcmp(_installed[order[j]].name.string(),
+			                   _installed[order[best]].name.string()) < 0)
+				best = j;
+		}
+		if (best != i) {
+			unsigned tmp = order[i]; order[i] = order[best]; order[best] = tmp;
+		}
+	}
+
+	_installed_reporter.generate_xml([&](Genode::Xml_generator &g) {
+		g.attribute("count", _num_installed);
+
+		g.node("packages", [&] {
+			for (unsigned n = 0; n < _num_installed; ++n) {
+				Package const &p = _installed[order[n]];
+				g.node("package", [&] {
+					g.attribute("name",    p.name);
+					g.attribute("version", p.version);
+					g.attribute("binary",  p.binary);
+					if (p.has_launcher)
+						g.attribute("category", p.launcher_category);
+					g.attribute("description", p.description);
+				});
+			}
+		});
 	});
 }
 
@@ -973,6 +1034,14 @@ void Sponge::Pkgd::Main::_report_list_ok()
 				g.node("package", [&] {
 					g.attribute("name",    p.name);
 					g.attribute("version", p.version);
+					/* Phase 5c: additive attributes. vct's list
+					 * renderers read only name+version so they keep
+					 * working; the launcher reads `category` to group
+					 * entries. */
+					g.attribute("binary", p.binary);
+					if (p.has_launcher)
+						g.attribute("category", p.launcher_category);
+					g.attribute("description", p.description);
 				});
 			}
 		});
@@ -993,6 +1062,11 @@ Sponge::Pkgd::Main::Main(Genode::Env &env) : _env(env)
 	 * runs in the constructor so it is published before init constructs
 	 * pkg_runtime (init starts children in config order). */
 	_generate_runtime_config();
+
+	/* Publish an initial (empty) installed-set broadcast so watchers
+	 * (sponge-de's launcher) read a well-formed <installed count="0"/>
+	 * immediately on startup rather than seeing a missing ROM. */
+	_generate_installed_report();
 
 	_request_rom.sigh(_request_handler);
 	_request_rom.update();

@@ -10,10 +10,12 @@
  * vct. The QPA plugin that bridges Qt to Genode's Gui session is loaded by
  * qpa_init(), which must run before QApplication is constructed.
  *
- * Phase 3 scope: a themed panel docked to the screen edge plus one demo
- * window, both drawn by Qt on top of nitpicker. The theme is loaded from
- * the "default.theme" ROM module (system layer, docs/10-theme-format.md
- * §7); launcher backend and notifications remain Phase 5 stubs.
+ * Phase 5c: panel + launcher. The launcher button opens an app menu
+ * populated from sponge_pkgd's rich `list` result (only packages that
+ * declare a launcher category). The LauncherController polls pkgd on a
+ * QTimer (same non-blocking pattern as ThemeController) and publishes a
+ * `launcher` report for headless verification. Click-to-launch itself
+ * is intentionally deferred (see launcher_menu_view.cc).
  */
 
 #include <base/attached_rom_dataspace.h>
@@ -26,6 +28,8 @@
 
 #include <qt6_component/qpa_init.h>
 
+#include "launcher/launcher_controller.h"
+#include "launcher/launcher_menu_view.h"
 #include "panel/panel_widget.h"
 #include "sponge_de_main.h"
 #include "theme/theme_controller.h"
@@ -47,9 +51,9 @@ void Libc::Component::construct(Libc::Env &env)
 
 		/*
 		 * ThemeController owns the live theme pipeline. In live mode it
-		 * watches sponge_themed's "theme" report and re-styles the panel
-		 * and window in place when it changes; in fallback mode (no
-		 * sponge_themed, e.g. run/sponge-de-test.run) it reads
+		 * watches sponge_themed's "theme" report and re-styles the panel,
+		 * demo window, and launcher in place when it changes; in fallback
+		 * mode (no sponge_themed, e.g. run/sponge-de-test.run) it reads
 		 * default.theme once. Either way, initial() is the theme used to
 		 * construct the widgets below.
 		 */
@@ -58,8 +62,19 @@ void Libc::Component::construct(Libc::Env &env)
 		app.setFont(QFont(theme_ctrl.initial().default_font().family.string(),
 		                  (int)theme_ctrl.initial().default_font().size));
 
+		/*
+		 * Launcher data path. Constructed before the panel because the
+		 * panel's launcher button shows/hides its popup. The view is
+		 * constructed with the initial theme so the popup renders
+		 * correctly even before the first pkgd poll completes.
+		 */
+		LauncherController launcher_ctrl(env);
+		LauncherMenuView   launcher_view(launcher_ctrl, theme_ctrl.initial());
+		launcher_ctrl.attach_view(&launcher_view);
+
 		PanelWidget panel(theme_ctrl.initial());
 		panel.show();
+		panel.set_launcher_view(&launcher_view);
 		theme_ctrl.attach_panel(&panel);
 		Genode::log("sponge-de: panel shown");
 
@@ -67,6 +82,8 @@ void Libc::Component::construct(Libc::Env &env)
 		main_window.show();
 		theme_ctrl.attach_main(&main_window);
 		Genode::log("sponge-de: window shown");
+
+		theme_ctrl.attach_launcher(&launcher_view);
 
 		/* Marker matched by run/sponge-de.run for automated verification. */
 		Genode::log("sponge-de: panel and window shown");

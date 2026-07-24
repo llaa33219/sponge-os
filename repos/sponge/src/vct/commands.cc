@@ -10,10 +10,10 @@
 #include "commands.h"
 
 #include "init_state.h"
-#include "pkg_client.h"
 
 #include <base/log.h>
 
+#include <sponge/backend_client.h>
 #include <sponge/platform.h>
 #include <sponge/version.h>
 
@@ -22,6 +22,7 @@
 
 using namespace Sponge;
 using namespace Sponge::Vct;
+using Sponge::Backend::ReportRomClient;
 
 
 /* ===================== HelpCommand ===================== */
@@ -279,7 +280,7 @@ int InstallCommand::execute(Args const &args)
 		return 1;
 	}
 
-	PkgClient client { _env };
+	ReportRomClient client { _env };
 
 	if (args.manual) {
 		/* --manual executes the same install as the automatic path, but
@@ -658,7 +659,7 @@ int RemoveCommand::execute(Args const &args)
 		return 1;
 	}
 
-	PkgClient client { _env };
+	ReportRomClient client { _env };
 	if (!client.request("remove", pkg)) {
 		if (args.json)
 			Genode::log("{\"command\":\"remove\",\"package\":\"", pkg,
@@ -741,7 +742,7 @@ int RemoveCommand::_render_json(Genode::Xml_node const &result)
 
 int ListCommand::execute(Args const &args)
 {
-	PkgClient client { _env };
+	ReportRomClient client { _env };
 	if (!client.request("list")) {
 		if (args.json)
 			Genode::log("{\"command\":\"list\",\"status\":\"error\","
@@ -862,7 +863,7 @@ int ConfigCommand::execute(Args const &args)
 
 	/* `vct config list` — no key/value. */
 	if (Genode::strcmp(key, "list") == 0) {
-		PkgClient client { _env, "config_request", "config_result" };
+		ReportRomClient client { _env, "config_request", "config_result" };
 		if (!client.config_list()) {
 			if (args.json)
 				Genode::log("{\"command\":\"config\",\"op\":\"list\","
@@ -883,7 +884,7 @@ int ConfigCommand::execute(Args const &args)
 	}
 
 	char const *const value = args.positional2.string();
-	PkgClient client { _env, "config_request", "config_result" };
+	ReportRomClient client { _env, "config_request", "config_result" };
 
 	/* No value -> get; value present -> set. */
 	if (Genode::strcmp(value, "") == 0) {
@@ -1161,7 +1162,7 @@ int ThemeCommand::execute(Args const &args)
 	 * as `vct config theme.active <name>`; configd validates the key,
 	 * sponge_themed resolves it, sponge-de applies it live.
 	 */
-	PkgClient client { _env, "config_request", "config_result" };
+	ReportRomClient client { _env, "config_request", "config_result" };
 	if (!client.config_set("theme.active", name)) {
 		if (args.json)
 			Genode::log("{\"command\":\"theme\",\"op\":\"apply\",\"name\":\"", name,

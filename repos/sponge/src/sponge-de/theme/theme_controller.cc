@@ -6,6 +6,7 @@
 
 #include "theme_controller.h"
 
+#include "launcher/launcher_menu_view.h"
 #include "panel/panel_widget.h"
 #include "sponge_de_main.h"
 #include "theme/theme_loader.h"
@@ -116,6 +117,7 @@ ThemeController::ThemeController(Genode::Env &env, QObject *parent)
 
 void ThemeController::attach_panel(PanelWidget *panel) { _panel = panel; }
 void ThemeController::attach_main(Main *main)         { _main  = main; }
+void ThemeController::attach_launcher(LauncherMenuView *launcher) { _launcher = launcher; }
 
 
 /*
@@ -207,8 +209,9 @@ void ThemeController::applyTheme(QString name, QString ini)
 	qApp->setFont(QFont(_theme.default_font().family.string(),
 	                    (int)_theme.default_font().size));
 
-	if (_panel) _panel->restyle(_theme);
-	if (_main)  _main->restyle(_theme);
+	if (_panel)   _panel->restyle(_theme);
+	if (_main)    _main->restyle(_theme);
+	if (_launcher) _launcher->restyle(_theme);
 
 	_live_applied = true;
 	_publish_applied(name.toUtf8().constData());

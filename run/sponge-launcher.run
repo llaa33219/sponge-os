@@ -1,0 +1,233 @@
+#
+# \brief  Sponge OS launcher scenario (Phase 5c)
+# \author Sponge OS contributors
+# \date   2026
+#
+# End-to-end verification of the Sponge DE launcher: the panel's launcher
+# button opens an app menu populated from sponge_pkgd's installed set.
+# A probe installs `hello` via the pkgd channel, then asserts sponge-de's
+# `launcher` report contains `hello` with its declared category
+# ("Utilities"). This closes the Phase 5 criterion "Sponge DE panel and
+# launcher implemented". Click-to-launch is intentionally deferred
+# (logged by the launcher view; see launcher_menu_view.cc).
+#
+# Topology (base-linux; kernel-agnostic in shape):
+#
+#   init
+#   + timer
+#   + report_rom     (relays every Report<->ROM hop below)
+#   + nitpicker      (Gui/Capture/Event)
+#   + sponge_pkgd    (owns pkg_runtime's config; answers list/install)
+#   + pkg_runtime    (nested init hosting installed payloads)
+#   + sponge-de      (panel + launcher button + popup; polls pkgd list;
+#                     publishes launcher report)
+#   + launcher_probe (installs hello; asserts launcher report)
+#
+# report_rom policies (full labels include the child-name prefix):
+#   sponge_pkgd's ROM "request"     <- launcher_probe's "request" report
+#   probe's ROM "result"            <- sponge_pkgd's "result" report
+#   pkg_runtime's ROM "config"      <- sponge_pkgd's "runtime" report
+#   sponge-de's ROM "installed"     <- sponge_pkgd's "installed" broadcast
+#   probe's ROM "sponge_de_launcher"<- sponge-de's "launcher" report
+#
+# sponge-de is a pure watcher (no request/report) because report_rom is
+# single-writer per label and the launcher_probe owns the request channel
+# for the install command. pkgd republishes the rich installed list as an
+# "installed" broadcast whenever the set changes (mirrors sponge_configd's
+# "config" broadcast pattern). See sponge_pkgd/main.cc.
+#
+
+build { core lib/ld init timer server/report_rom server/nitpicker \
+        sponge_pkgd pkg_hello sponge-de test/launcher_probe \
+        qt6/base lib/libc lib/libm lib/stdcxx lib/mesa \
+        lib/mesa_gpu-softpipe lib/egl lib/softpipe lib/libdrm lib/expat \
+        lib/qt6_component lib/vfs lib/vfs_pipe lib/vfs_gpu lib/rom_filter \
+        lib/zlib lib/libpng lib/blit }
+
+create_boot_directory
+
+install_config {
+config
++ parent-provides
+  + service ROM
+  + service PD
+  + service CPU
+  + service LOG
+  + service IRQ
+  + service IO_MEM
+  + service IO_PORT
+
++ default | caps: 200 | ram: 4M
++ default-route
+  + any-service
+    + parent
+    + any-child
+
++ start timer
+  + provides | + service Timer
+
++ start report_rom | ram: 4M
+  + provides
+    + service Report
+    + service ROM
+  + config | verbose: no
+    + policy | label: sponge_pkgd -> request | report: launcher_probe -> request
+    + policy | label: launcher_probe -> result | report: sponge_pkgd -> result
+    + policy | label: pkg_runtime -> config | report: sponge_pkgd -> runtime
+    + policy | label: sponge-de -> installed | report: sponge_pkgd -> installed
+    + policy | label: launcher_probe -> sponge_de_launcher | report: sponge-de -> launcher
+
++ start nitpicker | ram: 8M
+  + provides
+    + service Gui
+    + service Capture
+    + service Event
+  + route
+    + service Report | + child report_rom
+    + service Timer | + child timer
+    + any-service
+      + parent
+      + any-child
+  + config
+    + capture
+    + event
+    + domain panel | layer: 1 | content: client | label: no
+                   | hover: always | focus: click | ypos: 0 | height: 28
+    + domain demo | layer: 2 | content: client | label: no
+                  | hover: always | focus: click
+                  | xpos: 192 | ypos: 172 | width: 640 | height: 480
+    + domain launcher | layer: 4 | content: client | label: no
+                      | hover: always | focus: click
+                      | xpos: 0 | ypos: 28 | width: 341 | height: 480
+    + domain default | layer: 3 | content: client | label: no
+                     | hover: always | focus: click | ypos: 28 | height: -28
+    + policy | label_prefix: sponge-de -> Sponge Panel | domain: panel
+    + policy | label_prefix: sponge-de -> Sponge DE Demo | domain: demo
+    + policy | label_prefix: sponge-de -> Sponge Launcher | domain: launcher
+    + default-policy | domain: default
+    + background | color: #1e1e2e
+
++ start sponge_pkgd | caps: 200 | ram: 16M
+  + route
+    + service ROM | label_last: request | + child report_rom
+    + service Report | + child report_rom
+    + any-service
+      + parent
+      + any-child
+
++ start pkg_runtime | caps: 400 | ram: 32M
+  + binary init
+  + route
+    + service ROM | label: config | + child report_rom
+    + any-service
+      + parent
+      + any-child
+
++ start sponge-de | caps: 300 | ram: 128M
+  + config
+    + launcher | source: pkgd
+    + vfs
+      + dir dev
+        + log
+        + inline rtc | : 2018-01-01 00:01
+      + dir pipe | + pipe
+      + tar qt6_dejavusans.tar
+      + tar qt6_libqgenode.tar
+    + libc | stdout: /dev/log | stderr: /dev/log | pipe: /pipe | rtc: /dev/rtc
+  + route
+    + service Gui | + child nitpicker
+    + service Report | label: shape | + child report_rom
+    + service Report | label: input | + child report_rom
+    + service Report | label: applied_theme | + child report_rom
+    + service Report | label: launcher | + child report_rom
+    + service ROM | label: installed | + child report_rom
+    + service ROM | label: default.theme | + parent
+    + service ROM | label: mesa_gpu.lib.so | + parent | label: mesa_gpu-softpipe.lib.so
+    + any-service
+      + parent
+      + any-child
+
++ start launcher_probe | caps: 200 | ram: 16M
+  + route
+    + service Capture | + child nitpicker
+    + service Timer | + child timer
+    + service ROM | label_last: result | + child report_rom
+    + service ROM | label_last: sponge_de_launcher | + child report_rom
+    + service Report | + child report_rom
+    + any-service
+      + parent
+      + any-child
+- }
+
+build_boot_image [build_artifacts]
+
+#
+# Qt6 shared libraries and runtime tars (built by separate cmake targets).
+#
+foreach lib { libQt6Core.lib.so libQt6Gui.lib.so libQt6Widgets.lib.so \
+              libqgenode.lib.so \
+              qt6_libqgenode.tar qt6_dejavusans.tar } {
+	set src "bin/$lib"
+	set dst "[run_dir]/genode/$lib"
+	if {[file exists $src] && ![file exists $dst]} {
+		exec cp -L $src $dst
+	}
+}
+
+#
+# qt6_dejavusans.tar raw recipe is depot-only; mirror its content here from
+# the qt6_base port sources (same as run/sponge-de-test.run).
+#
+set dejavu_dst "[run_dir]/genode/qt6_dejavusans.tar"
+if {![file exists $dejavu_dst]} {
+	set dejavu_src [glob -nocomplain "${genode_dir}/contrib/qt6_base-*/src/lib/qt6_base/src/3rdparty/wasm/DejaVuSans.ttf"]
+	if {[llength $dejavu_src] == 0} {
+		error "DejaVuSans.ttf not found in the qt6_base port sources"
+	}
+	set staging "[run_dir]/dejavusans-staging"
+	file mkdir "$staging/qt/lib/fonts"
+	file copy -force [lindex $dejavu_src 0] "$staging/qt/lib/fonts/DejaVuSans.ttf"
+	exec tar -cf $dejavu_dst -C $staging qt
+	file delete -force $staging
+}
+
+#
+# Default theme staged so sponge-de's fallback path (no sponge_themed)
+# produces themed panel + launcher styling. Same as run/sponge-de-test.run.
+#
+set theme_src "${genode_dir}/repos/sponge/src/sponge-de/themes/default.theme"
+set theme_dst "[run_dir]/genode/default.theme"
+if {[file exists $theme_src] && ![file exists $theme_dst]} {
+	exec cp -L $theme_src $theme_dst
+}
+
+#
+# Stage package metadata + the derived index so sponge_pkgd can resolve
+# `hello`. Same scheme as run/sponge-pkg-install.run.
+#
+set staged_pkgs { hello ncurses nano }
+foreach pkg $staged_pkgs {
+	set src "${genode_dir}/../pkg/$pkg/metadata.xml"
+	set dst "[run_dir]/genode/pkg_$pkg.xml"
+	if {![file exists $src]} {
+		error "package metadata not found: $src"
+	}
+	exec cp -L $src $dst
+}
+
+set index_fh [open "[run_dir]/genode/pkg_index.xml" w]
+puts $index_fh "<packages>"
+foreach pkg $staged_pkgs {
+	puts $index_fh "  <pkg name=\"$pkg\"/>"
+}
+puts $index_fh "</packages>"
+close $index_fh
+
+append qemu_args " -nographic -m 2G "
+
+#
+# Verification: PASS only after the probe installs hello AND observes
+# sponge-de's launcher report carrying it with category="Utilities".
+# Generous timeout: Qt's first paint under software Mesa is slow.
+#
+run_genode_until {.*launcher-probe: PASS.*} 240

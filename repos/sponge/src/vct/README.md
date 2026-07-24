@@ -47,7 +47,7 @@ Phase 4 (`docs/09-roadmap.md`).
 
 ```
 src/vct/
-├── target.mk            # Genode build target
+├── target.mk            # Genode build target (LIBS += sponge_backend_client)
 ├── main.cc              # Component::construct entry point
 ├── vct_main.{h,cc}      # Vct::Main: config ROM read + dispatch
 ├── args.{h,cc}          # Config-ROM argument parser (<args><arg/>...</args>)
@@ -55,7 +55,6 @@ src/vct/
 ├── command_router.{h,cc}# Subcommand dispatch (Args.subcommand -> Command)
 ├── commands.{h,cc}      # Help/Version/Status/ComponentList/Install/Remove/List
 ├── init_state.{h,cc}    # InitStateReader: live init state report parser
-├── pkg_client.{h,cc}    # PkgClient: Report/ROM client for sponge_pkgd
 └── README.md            # this file
 ```
 
@@ -70,3 +69,9 @@ src/vct/
 - Live init state is read from a ROM module labelled "state", which is
   produced by a `report_rom` component relaying the state report of a
   nested `init` (the standard Genode pattern used by sculpt_manager).
+- The Report/ROM client used to talk to the backends lives in the
+  shared library `sponge_backend_client`
+  (`lib/src/sponge_backend_client/`, header
+  `<sponge/backend_client.h>`, class `Sponge::Backend::ReportRomClient`).
+  It is shared with sponge-de's launcher so the two components always
+  agree on the channel's request/result shapes.

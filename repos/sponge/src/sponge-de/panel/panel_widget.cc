@@ -26,6 +26,7 @@
 #include <QTime>
 #include <QTimer>
 
+#include "launcher/launcher_menu_view.h"
 #include "theme/theme_loader.h"
 #include "theme/theme_qt.h"
 
@@ -54,13 +55,24 @@ PanelWidget::PanelWidget(Theme::Theme const &theme, QWidget *parent)
 	layout->setContentsMargins(pad, gap, pad, gap);
 	layout->setSpacing(gap);
 
-	/* Launcher entry point (placeholder backend). */
+	/* Launcher button: toggles the popup. */
 	auto *launcher = new QPushButton(QStringLiteral("S"), this);
 	launcher->setFixedSize((int)theme.launcher_width(),
 	                       (int)theme.panel_height() - 2 * gap);
-	connect(launcher, &QPushButton::clicked, this, [] {
-		Genode::log("sponge-de: launcher button clicked");
-		Genode::warning("not implemented: launcher backend (Phase 5)");
+	connect(launcher, &QPushButton::clicked, this, [this] {
+		if (_launcher_view) {
+			if (_launcher_view->isVisible()) {
+				_launcher_view->hide();
+				return;
+			}
+			/* Refresh on open: a pkgd update may have landed between opens. */
+			_launcher_view->repopulate();
+			_launcher_view->show();
+			_launcher_view->raise();
+			_launcher_view->activateWindow();
+		} else {
+			Genode::warning("not implemented: launcher view not attached");
+		}
 	});
 	layout->addWidget(launcher);
 
