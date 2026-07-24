@@ -116,6 +116,7 @@ All detailed documentation lives in [`docs/`](docs/).
 - [09 - Roadmap](docs/09-roadmap.md)
 - [10 - Theme Format](docs/10-theme-format.md)
 - [11 - Development Environment & Reproducibility](docs/11-environment.md)
+- [12 - Package Format and Local Repository](docs/12-package-format.md)
 
 Contributors and AI agents must read [`AGENTS.md`](AGENTS.md) first.
 
