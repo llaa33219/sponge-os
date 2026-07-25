@@ -304,6 +304,68 @@ clear `CMAKE_*_IMPLICIT_INCLUDE_DIRECTORIES`, and disable the
 `system_doubleconversion` / `system_md4c` Qt features that pull in
 unavailable third-party dependencies. The wrappers themselves are
 Sponge-owned files at `repos/sponge/tool/`, not upstream patches.
+
+### 3.8 base-sel4 interactive GUI scenario (drivers_interactive-pc)
+
+`run/sponge-de-sel4-interactive.run` boots seL4 on QEMU with the real
+interactive-PC driver set (vesa_fb, ps2, usb_hid, pc_usb_host,
+event_filter, platform, acpi, pci_decode) and a usb-tablet absolute
+pointer — closing roadmap §11 deferred item 1. It is *base-sel4 only*
+(`assert {[have_spec sel4]}`); on base-linux use `run/sponge-de.run`
+(fb_sdl) instead.
+
+To run it, switch the kernel and prepare two extra host tools the
+driver build needs:
+
+```bash
+# 1. Switch KERNEL/BOARD in genode/build/x86_64/etc/build.conf:
+#       KERNEL ?= sel4
+#       BOARD  ?= pc
+#    (and, on a headless host, keep `# QEMU_OPT += -display sdl`
+#    commented so QEMU does not need an X display).
+
+# 2. The dde_linux USB stack (usb_hid/pc_usb_host) builds the Linux
+#    kernel, whose timeconst.h generation needs `bc`; and the seL4
+#    kernel cmake needs `pyyaml`. Neither is in §1.3's host-package
+#    list yet. See docs/11-environment.md §10 for the full new list.
+uv pip install --python .venv/bin/python pyyaml          # seL4 kernel build
+# `bc`: distro package, or a portable busybox `bc` on PATH
+#       (e.g. download busybox, symlink `bc -> busybox`).
+
+# 3. Run it (prepare_port for linux + jitterentropy is idempotent and
+#    already wired into `./tool/build ports`).
+./tool/build ports
+./tool/build run sponge-de-sel4-interactive
+```
+
+Expected headless result (serial log, both assertions matched):
+
+```
+[init -> drivers -> fb] using 1024x768 (1024x768)
+[init -> drivers -> usb_hid] Connected device: input0 (QEMU QEMU USB
+        Tablet at usb-usbbus-0/input0) POINTER
+Run script execution successful.
+```
+
+**What is and is not verified.** The scenario verifies the *driver
+stack* (the actual roadmap item): vesa_fb maps the physical VESA
+framebuffer at 1024x768 and is consuming nitpicker's `Capture` session,
+and usb_hid binds the usb-tablet as an absolute pointer. Sponge DE's
+own Qt6 window is **not** visible yet because the Qt6/Mesa (EGL)
+initialization hangs on base-sel4 (`docs/09-roadmap.md` §11.1). The
+scenario's run script documents the intended stronger verification
+(probe `inject=no` Capture check + QMP `input-send-event` usb-tablet
+click) that drops in once Qt6-on-sel4 rendering is fixed. The
+interactive escape hatch is `run_genode_until forever` plus
+`-display sdl` — the host mouse then reaches the guest through the
+usb-tablet bound above.
+
+**Qt6 rebuild on kernel switch.** Switching `KERNEL` between `linux`
+and `sel4` rebuilds the Qt6 shared libraries because the Genode `SPECS`
+change. If a previous kernel's `genode/build/x86_64/qt6/base/` cmake
+tree exists, the rebuild can fail at the `libQt6Widgets` link with
+stale-autogen undefined references; delete
+`genode/build/x86_64/qt6/base/` once and let it rebuild cleanly.
 They exist because the previous host location (`/tmp/opencode/bin/`)
 was `tmpfiles`-swept.
 
@@ -328,6 +390,7 @@ Scenarios:
 | `run/sponge-vct-status.run` | `vct status` reads live init state through a sub-init + `report_rom` relay | ✅ |
 | `run/sponge-vct-component-list.run` | `vct component list` lists the live component tree | ✅ |
 | `run/sponge-de.run` | Sponge DE single-window demo (nitpicker + fb_sdl + sponge-de) | 🟡 (Phase 3 in progress) |
+| `run/sponge-de-sel4-interactive.run` | base-sel4 interactive-PC driver set (vesa_fb/ps2/usb_hid/event_filter/platform/acpi/pci_decode) under QEMU with usb-tablet absolute pointer | ✅ driver stack; 🟡 Qt6-on-sel4 rendering (see §3.8) |
 
 The source-of-truth `.run` files live in `run/`. The same files are
 discoverable through `repos/sponge/run/` via **committed relative

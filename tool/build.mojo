@@ -28,8 +28,11 @@ comptime BLOCK_BEGIN = "# >>> sponge-os managed block >>>"
 comptime BLOCK_END = "# <<< sponge-os managed block <<<"
 
 # Ports required for base-sel4 boot (sel4, sel4_tools, grub2) and the
-# sponge-de Qt6 GUI (the rest). Downloads are SHA-256-verified and land in
-# genode/contrib/. prepare_port itself skips already-prepared ports.
+# sponge-de Qt6 GUI (the rest). `linux` is pulled in by the
+# drivers_interactive-pc USB stack (usb_hid/pc_usb_host via dde_linux),
+# needed for run/sponge-de-sel4-interactive.run (absolute-pointer input).
+# Downloads are SHA-256-verified and land in genode/contrib/.
+# prepare_port itself skips already-prepared ports.
 def port_list() -> List[String]:
     return [
         "libc",
@@ -46,6 +49,8 @@ def port_list() -> List[String]:
         "sel4",
         "sel4_tools",
         "grub2",
+        "linux",
+        "jitterentropy",
     ]
 
 
@@ -173,6 +178,12 @@ def ensure_build_conf(build_conf: String) raises -> Bool:
         + "REPOSITORIES += $(GENODE_DIR)/repos/sponge\n"
         + "REPOSITORIES += $(GENODE_DIR)/repos/libports\n"
         + "REPOSITORIES += $(GENODE_DIR)/repos/gems\n"
+        + "# pc + dde_linux: PC hardware drivers (platform/pc, vesa via libports,\n"
+        + "# ps2, acpi, pci_decode, event_filter via os) and the DDE-Linux USB\n"
+        + "# stack (pc_usb_host, usb_hid) used by the base-sel4 interactive GUI\n"
+        + "# scenario (run/sponge-de-sel4-interactive.run). Harmless on base-linux.\n"
+        + "REPOSITORIES += $(GENODE_DIR)/repos/pc\n"
+        + "REPOSITORIES += $(GENODE_DIR)/repos/dde_linux\n"
         + "MAKE += -j"
         + String(cpu_count)
         + "\n"
