@@ -27,7 +27,7 @@
 # parent (init serves boot modules by name).
 #
 
-build { core lib/ld init timer server/report_rom sponge_pkgd vct }
+build { core lib/ld init timer server/report_rom lib/vfs sponge_pkgd vct }
 
 create_boot_directory
 
@@ -57,6 +57,7 @@ config
     + policy | label: vct -> result          | report: sponge_pkgd -> result
 
 + start sponge_pkgd | caps: 200 | ram: 16M
+  + config
   + route
     + service ROM | label_last: request | + child report_rom
     + service Report | + child report_rom

@@ -18,7 +18,7 @@
 # inside pkg_runtime (the step-by-step output prints above it).
 #
 
-build { core lib/ld init timer server/report_rom sponge_pkgd pkg_hello vct }
+build { core lib/ld init timer server/report_rom lib/vfs sponge_pkgd pkg_hello vct }
 
 create_boot_directory
 
@@ -49,6 +49,7 @@ config
     + policy | label: pkg_runtime -> config  | report: sponge_pkgd -> runtime
 
 + start sponge_pkgd | caps: 200 | ram: 16M
+  + config
   + route
     + service ROM | label_last: request | + child report_rom
     + service Report | + child report_rom

@@ -6,11 +6,13 @@
 # "result" report (relayed back to vct as a ROM). The Report/ROM channel
 # is the settled vct<->backend design (docs/04-components.md §5).
 #
-# Needs only Report + ROM sessions (minimum privilege). Purely
-# signal-driven — no Timer, no libc, no Qt, no exceptions.
+# Sessions: Report + ROM always; an optional File_system session (via the
+# Vfs library) is opened only when <config> carries a <vfs> node, to back
+# the persistent installed-set store (docs/12-package-format.md §13).
+# Purely signal-driven — no Timer, no libc, no Qt, no exceptions.
 
 TARGET   := sponge_pkgd
 SRC_CC   := main.cc
-LIBS     := base
+LIBS     := base vfs
 INC_DIR  := $(PRG_DIR)/include \
             $(REP_DIR)/include

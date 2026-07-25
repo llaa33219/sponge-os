@@ -53,15 +53,44 @@ config-diff leaves already-running children untouched across an
 unrelated install. An empty-but-valid config is emitted at startup so
 pkg_runtime boots clean before any install.
 
+## Persistent installed-set store (Phase 4 follow-up #2)
+
+The set of explicitly-installed roots is mirrored to a tiny versioned
+XML store on a `File_system` session, so installs survive a reboot.
+The store holds **only the root names**; the full installed set is
+re-derived on load by the same `_sync_installed_from_roots` path that
+install/remove use, so the state→config generator is untouched.
+
+Persistence is **opt-in per deployment**: it activates only when this
+component's `<config>` carries a `<vfs>` node (see
+`docs/12-package-format.md` §13 for the format, failure semantics, and
+the inspect/edit/reset/disable escape hatches). With no `<vfs>` node
+(the Phase 4 scenarios, or any deployment that declines persistence)
+the daemon opens no `File_system` session and behaves byte-identically
+to the in-memory build.
+
+On construct: load the store → restore `_roots[]` → re-derive
+`_installed[]` → regenerate the pkg_runtime config and the installed
+broadcast, so a restored boot restarts the previously-installed
+components with no user action. The store is rewritten after every
+successful install/remove, before the change is broadcast.
+
+The reference proof is `run/sponge-pkg-persist.run` (base-linux,
+`lx_fs`-backed, two boots over the same host directory).
+
 ## What is deliberately not implemented
 
-- Persistence of the installed set across reboots (in-memory only).
 - `update`, version constraints (docs/12 §10).
 - Launcher/sponge_configd integration (Phase 5).
+- Crash-consistent writes (write-temp-then-rename / checksum). A torn
+  write is detected as corrupt on the next boot and the daemon restarts
+  empty with a warning, never crashes (docs/12 §13.2).
 
 ## Minimum privilege
 
-The component requests only `Report` and `ROM` sessions —
-everything it needs to read requests/metadata and write results, and
-nothing more (AGENTS.md §1.2). It is purely signal-driven and needs no
-Timer session.
+The component requests `Report` and `ROM` sessions always, and an
+optional `File_system` session (via the Vfs library) only when its
+`<config>` carries a `<vfs>` node — i.e. only when the deployment has
+explicitly enabled persistence. Everything it needs to read
+requests/metadata and write results, and nothing more (AGENTS.md §1.2).
+It is purely signal-driven and needs no Timer session.

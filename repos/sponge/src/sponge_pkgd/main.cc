@@ -25,6 +25,18 @@
  * The generator is deterministic (sorted start nodes, fixed attribute
  * order, no volatile fields) so init's config-diff leaves unchanged
  * children running across unrelated installs.
+ *
+ * Persistence (Phase 4 follow-up #2 / docs/09-roadmap.md §6): the set
+ * of explicitly-installed roots is mirrored to a tiny versioned XML
+ * store on a File_system session, so installs survive a reboot. The
+ * store holds ONLY the root names — the full installed set (roots +
+ * transitive deps) is re-derived on load via the same pure-function
+ * path (_sync_installed_from_roots) that install/remove already use,
+ * so the state->config generator is untouched. Persistence is opt-in
+ * per deployment: it activates only when this component's <config>
+ * carries a <vfs> node (see docs/12-package-format.md §13). With no
+ * such config (the Phase 4 scenarios) behaviour is byte-identical to
+ * the in-memory daemon.
  */
 
 #include <base/attached_rom_dataspace.h>
@@ -37,6 +49,7 @@
 #include <util/string.h>
 #include <util/xml_generator.h>
 #include <util/xml_node.h>
+#include <vfs/simple_env.h>
 
 namespace Sponge::Pkgd {
 
@@ -207,18 +220,40 @@ class Sponge::Pkgd::Main
 		Genode::String<256> _error { };
 
 		/*
-		 * Installed state. Phase 4 keeps this in memory only (no
-		 * persistence); the state->config path is a pure function so a
-		 * future FS-backed store can replace it without touching the
-		 * generator. _roots are explicitly-installed package names;
-		 * _installed is the full transitive closure (roots + deps).
-		 * On remove, unused deps are GC'd by re-deriving _installed
-		 * from the surviving _roots.
+		 * Installed state. _roots are the explicitly-installed package
+		 * names; _installed is the full transitive closure (roots +
+		 * deps). On remove, unused deps are GC'd by re-deriving
+		 * _installed from the surviving _roots.
+		 *
+		 * The state->config path is a pure function: every report and
+		 * the pkg_runtime config are derived from _roots+_installed
+		 * alone, with no hidden inputs. Persistence (when enabled)
+		 * mirrors ONLY _roots to disk and reloads them on construct;
+		 * _installed is then rebuilt by the same _sync_installed_from_
+		 * roots call the install/remove paths use, so the generator is
+		 * untouched either way.
 		 */
 		Package            _installed[MAX_PACKAGES] { };
 		unsigned           _num_installed           { 0 };
 		Genode::String<64> _roots[MAX_PACKAGES]     { };
 		unsigned           _num_roots               { 0 };
+
+		/*
+		 * Optional persistent installed-set store (Phase 4 follow-up
+		 * #2). Activated only when this component's <config> ROM
+		 * contains a <vfs> node; otherwise _vfs_env stays deconstructed
+		 * and _load_store()/_save_store() are no-ops, leaving behaviour
+		 * identical to the in-memory Phase 4 daemon. The store itself
+		 * is a single small XML file (see docs/12-package-format.md
+		 * §13) on whatever File_system session the <vfs> node mounts.
+		 */
+		static char        const STORE_PATH[];
+		static unsigned    const STORE_VERSION;
+		static Genode::size_t const STORE_BUF;
+
+		Genode::Attached_rom_dataspace         _config_rom { _env, "config" };
+		Genode::Heap                           _heap       { _env.ram(), _env.rm() };
+		Genode::Constructible<Genode::Vfs::Simple_env> _vfs_env { };
 
 		/* ---- request handling ---- */
 		void _handle_request();
@@ -239,6 +274,12 @@ class Sponge::Pkgd::Main
 		bool _installed_contains(char const *name) const;
 		void _add_root(char const *name);
 		void _sync_installed_from_roots();
+
+		/* ---- persistent store (optional) ---- */
+		bool _store_enabled() const { return _vfs_env.constructed(); }
+		void _init_store();
+		void _load_store();
+		void _save_store();
 
 		/* ---- runtime-config generation (deterministic) ---- */
 		void _generate_runtime_config();
@@ -688,6 +729,7 @@ void Sponge::Pkgd::Main::_do_install(Genode::String<128> const &pkg)
 
 	_add_root(name);
 	_sync_installed_from_roots();
+	_save_store();   /* flush before broadcast so the change survives a reboot */
 	_generate_runtime_config();
 	_generate_installed_report();
 
@@ -728,12 +770,13 @@ void Sponge::Pkgd::Main::_do_remove(Genode::String<128> const &pkg)
 	/* Drop the root; re-derive the closure so unused deps are GC'd. */
 	for (unsigned i = 0; i < _num_roots; ++i) {
 		if (Genode::strcmp(_roots[i].string(), name) == 0) {
-			_roots[i] = _roots[_num_roots - 1];
-			_num_roots--;
-			break;
-		}
+		_roots[i] = _roots[_num_roots - 1];
+		_num_roots--;
+		break;
+	}
 	}
 	_sync_installed_from_roots();
+	_save_store();   /* flush before broadcast so the change survives a reboot */
 	_generate_runtime_config();
 	_generate_installed_report();
 
@@ -1049,6 +1092,214 @@ void Sponge::Pkgd::Main::_report_list_ok()
 }
 
 
+/* ===================== persistent store (optional) ===================== */
+
+char const         Sponge::Pkgd::Main::STORE_PATH[]   = "/store/installed.xml";
+unsigned const     Sponge::Pkgd::Main::STORE_VERSION  = 1;
+Genode::size_t const Sponge::Pkgd::Main::STORE_BUF    = 4096;
+
+
+/*
+ * Build the Vfs environment only when the component <config> carries a
+ * <vfs> node. Constructing Vfs::Simple_env mounts the <fs/> plugin,
+ * which opens a File_system session routed by the scenario (e.g. to an
+ * lx_fs server backed by a host directory). With no <vfs> node the
+ * store stays disabled and the daemon behaves exactly as the in-memory
+ * Phase 4 build — this is what keeps the non-persistent scenarios and
+ * any deployment that declines persistence working unchanged.
+ */
+void Sponge::Pkgd::Main::_init_store()
+{
+	_config_rom.update();
+	if (!_config_rom.valid())
+		return;
+
+	try {
+		_config_rom.node().with_optional_sub_node("vfs",
+			[&](Genode::Node const &vfs_node) {
+				_vfs_env.construct(_env, _heap, vfs_node);
+				Genode::log("sponge_pkgd: persistent store enabled at ", STORE_PATH);
+			});
+	} catch (Genode::Xml_node::Invalid_syntax) {
+		Genode::warning("sponge_pkgd: malformed <config> — persistence disabled");
+	}
+}
+
+
+/*
+ * Restore _roots[] from the store. Every failure mode — missing file,
+ * empty/oversized, unreadable, wrong root element, unsupported version,
+ * malformed XML — resolves to the same safe state: an empty root set
+ * plus a warning, never a crash (docs/12-package-format.md §13.2). The
+ * full installed set is rebuilt afterwards by the caller via
+ * _sync_installed_from_roots(), so loading and installing share one path.
+ */
+void Sponge::Pkgd::Main::_load_store()
+{
+	if (!_store_enabled()) return;
+
+	Genode::Vfs::File_system &vfs = _vfs_env->root_dir();
+
+	Genode::Vfs::Directory_service::Stat stat { };
+	if (vfs.stat(STORE_PATH, stat) != Genode::Vfs::Directory_service::STAT_OK) {
+		Genode::log("sponge_pkgd: no installed-set store — starting empty");
+		return;
+	}
+	if (stat.size == 0 || stat.size > STORE_BUF) {
+		Genode::warning("sponge_pkgd: store size ", stat.size,
+		                " out of range — starting empty");
+		return;
+	}
+
+	Genode::Vfs::Vfs_handle *handle { nullptr };
+	if (vfs.open(STORE_PATH, Genode::Vfs::Directory_service::OPEN_MODE_RDONLY,
+	             &handle, _heap) != Genode::Vfs::Directory_service::OPEN_OK) {
+		Genode::warning("sponge_pkgd: store open failed — starting empty");
+		return;
+	}
+	Genode::Vfs::Vfs_handle::Guard guard(handle);
+
+	char buf[STORE_BUF] { };
+	Genode::size_t total { 0 };
+	bool ok { true };
+	while (total < stat.size) {
+		handle->seek(total);
+		handle->fs().queue_read(handle, stat.size - total);
+		Genode::size_t n { 0 };
+		Genode::Vfs::File_io_service::Read_result r;
+		while ((r = handle->fs().complete_read(handle,
+		            Genode::Byte_range_ptr(buf + total, sizeof(buf) - total),
+		            n)) == Genode::Vfs::File_io_service::READ_QUEUED)
+			_vfs_env->io().commit_and_wait();
+		if (r != Genode::Vfs::File_io_service::READ_OK || n == 0) {
+			ok = false; break;
+		}
+		total += n;
+	}
+
+	if (!ok || total == 0) {
+		Genode::warning("sponge_pkgd: store unreadable — starting empty");
+		return;
+	}
+
+	unsigned restored { 0 };
+	try {
+		Genode::Xml_node const root(buf, total);
+		if (!root.has_type("sponge-installed")) {
+			Genode::warning("sponge_pkgd: store root is not <sponge-installed> "
+			                "— starting empty");
+			return;
+		}
+		unsigned const version = root.attribute_value("version", 0U);
+		if (version != STORE_VERSION) {
+			Genode::warning("sponge_pkgd: store version ", version,
+			                " unsupported (expected ", STORE_VERSION,
+			                ") — starting empty");
+			return;
+		}
+		root.for_each_sub_node("root", [&](Genode::Xml_node const &n) {
+			Genode::String<64> const name =
+				n.attribute_value("name", Genode::String<64>());
+			if (Genode::strcmp(name.string(), "") != 0 &&
+			    _num_roots < MAX_PACKAGES) {
+				_roots[_num_roots++] = name;
+				++restored;
+			}
+		});
+	} catch (Genode::Xml_node::Invalid_syntax) {
+		Genode::warning("sponge_pkgd: store is not valid XML — starting empty");
+		_num_roots = 0;
+		return;
+	}
+
+	Genode::log("sponge_pkgd: restored ", restored, " root(s) from store");
+}
+
+
+/*
+ * Persist _roots[] to the store. Output is name-sorted with a fixed
+ * attribute order so the file is byte-stable for a given root set
+ * (matching the determinism contract of the config generator). A failed
+ * write is logged but never blocks the install/remove: the in-memory
+ * state and the broadcast still reflect the requested change, only the
+ * across-reboot durability is lost for that one mutation.
+ *
+ * The version attribute is emitted as the literal "1" so the on-disk
+ * format is grep-stable; if STORE_VERSION is bumped, update it here too.
+ */
+void Sponge::Pkgd::Main::_save_store()
+{
+	if (!_store_enabled()) return;
+
+	unsigned order[MAX_PACKAGES] { };
+	for (unsigned i = 0; i < _num_roots; ++i) order[i] = i;
+	for (unsigned i = 0; i < _num_roots; ++i) {
+		unsigned best { i };
+		for (unsigned j = i + 1; j < _num_roots; ++j)
+			if (Genode::strcmp(_roots[order[j]].string(),
+			                   _roots[order[best]].string()) < 0)
+				best = j;
+		if (best != i) {
+			unsigned t = order[i]; order[i] = order[best]; order[best] = t;
+		}
+	}
+
+	char buf[STORE_BUF] { };
+	Genode::size_t pos { 0 };
+	auto append = [&buf, &pos](char const *s) {
+		while (*s && pos + 1 < sizeof(buf)) buf[pos++] = *s++;
+	};
+	append("<sponge-installed version=\"1\">");
+	for (unsigned i = 0; i < _num_roots; ++i) {
+		append("<root name=\"");
+		append(_roots[order[i]].string());
+		append("\"/>");
+	}
+	append("</sponge-installed>");
+	Genode::size_t const len = pos;
+
+	Genode::Vfs::File_system &vfs = _vfs_env->root_dir();
+
+	Genode::Vfs::Vfs_handle *handle { nullptr };
+	if (vfs.open(STORE_PATH,
+	             Genode::Vfs::Directory_service::OPEN_MODE_WRONLY
+	             | Genode::Vfs::Directory_service::OPEN_MODE_CREATE,
+	             &handle, _heap) != Genode::Vfs::Directory_service::OPEN_OK) {
+		Genode::warning("sponge_pkgd: cannot open store for write");
+		return;
+	}
+	Genode::Vfs::Vfs_handle::Guard guard(handle);
+
+	handle->fs().ftruncate(handle, len);
+
+	Genode::size_t off { 0 };
+	bool ok { true };
+	while (off < len) {
+		handle->seek(off);
+		Genode::size_t n { 0 };
+		Genode::Vfs::File_io_service::Write_result const w =
+			handle->fs().write(handle,
+			    Genode::Const_byte_range_ptr(buf + off, len - off), n);
+		if (w == Genode::Vfs::File_io_service::WRITE_OK) {
+			if (n == 0) { ok = false; break; }
+			off += n;
+		} else if (w == Genode::Vfs::File_io_service::WRITE_ERR_WOULD_BLOCK) {
+			_vfs_env->io().commit_and_wait();
+		} else {
+			ok = false; break;
+		}
+	}
+
+	handle->fs().queue_sync(handle);
+	while (handle->fs().complete_sync(handle) ==
+	       Genode::Vfs::File_io_service::SYNC_QUEUED)
+		_vfs_env->io().commit_and_wait();
+
+	if (!ok)
+		Genode::warning("sponge_pkgd: store write incomplete");
+}
+
+
 /* ===================== component wiring ===================== */
 
 Sponge::Pkgd::Main::Main(Genode::Env &env) : _env(env)
@@ -1057,15 +1308,29 @@ Sponge::Pkgd::Main::Main(Genode::Env &env) : _env(env)
 
 	_load_index();
 
-	/* Emit an initial (empty) pkg_runtime config before anything can
-	 * request it, so the nested init boots clean with no children. This
-	 * runs in the constructor so it is published before init constructs
-	 * pkg_runtime (init starts children in config order). */
+	/* Optional persistent store: activate it if <config> declares a
+	 * <vfs>, then reload the previously-installed root set (if any). In
+	 * the non-persistent scenarios both calls are no-ops. */
+	_init_store();
+	_load_store();
+
+	/* Rebuild the full installed set from whatever roots we now have
+	 * (empty on a fresh start, possibly restored on a reboot). This is
+	 * the SAME path install/remove use, so the initial config and the
+	 * installed broadcast below reflect the restored state for free. */
+	if (_num_roots > 0)
+		_sync_installed_from_roots();
+
+	/* Emit the initial pkg_runtime config before anything can request
+	 * it. On a restored boot this already contains the previously-
+	 * installed components, so pkg_runtime starts them without any
+	 * user action. (Published here so init — which constructs children
+	 * in config order — sees it before it constructs pkg_runtime.) */
 	_generate_runtime_config();
 
-	/* Publish an initial (empty) installed-set broadcast so watchers
-	 * (sponge-de's launcher) read a well-formed <installed count="0"/>
-	 * immediately on startup rather than seeing a missing ROM. */
+	/* Publish the initial installed-set broadcast so watchers (e.g.
+	 * sponge-de's launcher) read a well-formed <installed .../> right
+	 * away — on a restored boot this already lists the survivors. */
 	_generate_installed_report();
 
 	_request_rom.sigh(_request_handler);

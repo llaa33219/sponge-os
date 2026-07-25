@@ -1,0 +1,184 @@
+#
+# \brief  Sponge OS package persistence scenario (Phase 4 follow-up #2)
+# \author Sponge OS contributors
+# \date   2026
+#
+# Proves that sponge_pkgd's installed set survives a reboot against the
+# same backing store, closing docs/09-roadmap.md §6 known-limitation #1
+# and §11 deferred follow-up #2. The store format is specified in
+# docs/12-package-format.md §13.
+#
+# Two boots over the SAME lx_fs-backed host directory
+# ([run_dir]/genode/persist), modelled on the upstream depot_remove.run
+# multi-boot pattern (each run_genode_until respawns ./core on base-linux;
+# boot modules are files under [run_dir]/genode/ read fresh each boot, and
+# lx_fs maps its "/persist" policy onto that directory so host writes
+# persist across the two boots):
+#
+#   boot 1 — pkg_seq_probe issues `install hello`. sponge_pkgd resolves
+#            hello, starts it under pkg_runtime, and writes the root set
+#            to /store/installed.xml on its File_system session.
+#
+#   boot 2 — a FRESH core/init boots against the same [run_dir]. On
+#            construct sponge_pkgd loads /store/installed.xml, restores
+#            _roots=[hello], and regenerates the pkg_runtime config and
+#            the installed broadcast — so hello restarts with NO install
+#            request. pkg_seq_probe then issues ONLY `list` and asserts
+#            hello is present. The only way hello can be in the list on
+#            boot 2 is the restored store: no install was issued this boot.
+#
+# base-linux only: lx_fs is a Linux-host file-system wrapper, so the
+# scenario asserts have_spec linux. The component code itself is portable;
+# only this test's transport (lx_fs) is base-linux-specific.
+#
+
+assert {[have_spec linux]}
+
+build { core lib/ld init timer server/report_rom server/lx_fs lib/vfs \
+        sponge_pkgd pkg_hello test/pkg_seq_probe }
+
+create_boot_directory
+
+install_config {
+config
++ parent-provides
+  + service LOG
+  + service PD
+  + service CPU
+  + service ROM
+
++ default-route
+  + any-service
+    + parent
+    + any-child
++ default | caps: 200 | ram: 8M
+
++ start timer
+  + provides | + service Timer
+
++ start lx_fs | ld: no
+  + provides | + service File_system
+  + config
+    + policy | label_prefix: sponge_pkgd | root: /persist | writeable: yes
+
++ start report_rom | ram: 4M
+  + provides
+    + service Report
+    + service ROM
+  + config | verbose: no
+    + policy | label: sponge_pkgd -> request      | report: pkg_seq_probe -> request
+    + policy | label: pkg_seq_probe -> result     | report: sponge_pkgd -> result
+    + policy | label: pkg_runtime -> config       | report: sponge_pkgd -> runtime
+
++ start sponge_pkgd | caps: 200 | ram: 16M
+  + config
+    + vfs
+      + dir store | + fs
+  + route
+    + service File_system | + child lx_fs
+    + service ROM | label_last: request | + child report_rom
+    + service Report | + child report_rom
+    + any-service
+      + parent
+      + any-child
+
++ start pkg_runtime | caps: 400 | ram: 32M
+  + binary init
+  + route
+    + service ROM | label: config | + child report_rom
+    + any-service
+      + parent
+      + any-child
+
++ start pkg_seq_probe | caps: 200 | ram: 8M
+  + route
+    + service Timer | + child timer
+    + service ROM | label_last: result | + child report_rom
+    + service ROM | label: config | + parent | label: pkg_probe_config
+    + service Report | + child report_rom
+    + any-service
+      + parent
+      + any-child
+- }
+
+#
+# Stage package metadata + the derived index (same scheme as the other
+# pkg scenarios). The hello binary is a build artifact, staged by
+# build_boot_image.
+#
+set staged_pkgs { hello ncurses nano }
+foreach pkg $staged_pkgs {
+	set src "${genode_dir}/../pkg/$pkg/metadata.xml"
+	set dst "[run_dir]/genode/pkg_$pkg.xml"
+	if {![file exists $src]} {
+		error "package metadata not found: $src"
+	}
+	exec cp -L $src $dst
+}
+
+set index_fh [open "[run_dir]/genode/pkg_index.xml" w]
+puts $index_fh "<packages>"
+foreach pkg $staged_pkgs {
+	puts $index_fh "  <pkg name=\"$pkg\"/>"
+}
+puts $index_fh "</packages>"
+close $index_fh
+
+#
+# Backing store for the persistent installed-set. lx_fs root "/persist"
+# maps onto this host directory; it survives boot 2 because
+# run_genode_until respawns ./core against the same [run_dir].
+#
+exec mkdir -p [run_dir]/genode/persist
+
+build_boot_image [build_artifacts]
+
+append qemu_args " -nographic -m 1G "
+
+#
+# The probe's step list is a separate boot module (pkg_probe_config) so
+# it can be swapped between boots without touching init's config — the
+# depot_remove.run idiom. On base-linux boot modules are plain files
+# under [run_dir]/genode/, read fresh by each ./core, so overwriting the
+# file between run_genode_until calls takes effect on the next boot.
+#
+proc write_probe_config { steps } {
+	set fh [open "[run_dir]/genode/pkg_probe_config" w]
+	puts $fh "<config>"
+	foreach s $steps { puts $fh $s }
+	puts $fh "</config>"
+	close $fh
+}
+
+# ---------- boot 1: install hello (writes the store) ----------
+puts "\n--- boot 1: install hello (writes the persistent store) ---"
+write_probe_config { {<step op="install" pkg="hello"/>} }
+run_genode_until {.*pkg-seq-probe: PASS.*} 60
+
+#
+# Host-side corroboration that boot 1 actually persisted the root set:
+# the store file must exist and name hello. This is independent of the
+# probe's own PASS and catches a silent write failure.
+#
+if {![file exists [run_dir]/genode/persist/installed.xml]} {
+	puts stderr "ERROR: store file not written by boot 1"; exit 1
+}
+set store_fh [open "[run_dir]/genode/persist/installed.xml" r]
+set store_data [read $store_fh]; close $store_fh
+if {![regexp {<root name="hello"/>} $store_data]} {
+	puts stderr "ERROR: store does not name hello: $store_data"; exit 1
+}
+puts "--- boot 1: store written and contains hello ---"
+
+# ---------- boot 2: list-only (restore proof) ----------
+#
+# A fresh core/init boots against the SAME [run_dir]: the lx_fs host dir
+# (with installed.xml) and the swapped pkg_probe_config both persist.
+# sponge_pkgd restores hello on construct; the probe issues only `list`,
+# so hello appearing in the result can ONLY come from the restored store.
+#
+puts "\n--- boot 2: list-only (installed set must be restored) ---"
+write_probe_config { {<step op="list" expect="hello"/>} }
+run_genode_until {.*pkg-seq-probe: PASS.*} 60
+
+puts "\nTest succeeded: installed set restored from store after reboot\n"
