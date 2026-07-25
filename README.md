@@ -70,21 +70,37 @@ See [`docs/04-components.md`](docs/04-components.md) for the detailed design.
 
 ## Current Status
 
-🟡 **Pre-Alpha** — Phase 3 complete: Sponge DE renders on nitpicker with verified input.
+🟡 **Pre-Alpha** — Phases 0–6 complete; Phase 7 (Alpha, first usable
+version) is the current focus.
 
 The repository currently contains:
 
 - ✅ Project philosophy and architectural principles defined
 - ✅ Genode-based directory structure and build system skeleton
-- ✅ vct and Sponge DE component scaffolds
 - ✅ vct boots as a real Genode component on base-linux (Genode 26.05)
-- ✅ vct boots as a real Genode component on base-sel4 (seL4, the production target)
+  and on base-sel4 (seL4, the production target)
+- ✅ vct day-to-day commands: `status`, `component list`, `config`,
+  `install`/`remove`/`list`, `theme`, `leitzentrale` — with `--json`,
+  `--lang ko`, and `--manual` escape hatches
 - ✅ Genode 26.05 vendored at `genode/` (pinned to upstream commit
   `492a510242`); one `git clone sponge-os` brings the whole build
-- ✅ Sponge DE (Qt6 6.8.3) renders a themed panel + window on nitpicker;
-  verified headlessly by `run/sponge-de-test.run` (Capture pixel check +
-  Event-session input round-trip, no host display needed)
-- 🔜 Package management (`sponge_pkgd`, Phase 4)
+- ✅ Sponge DE (Qt6 6.8.3) renders a themed panel + window on nitpicker
+  with verified input, integrated with Genode's upstream
+  `wm` + `window_layouter` + `decorator` stack (window dragging verified)
+- ✅ Package management: `sponge_pkgd` backend, dependency resolution,
+  nested `pkg_runtime` init, and **persistent installed-set storage**
+  (installs survive reboot; proven by the two-boot
+  `run/sponge-pkg-persist.run` scenario)
+- ✅ Configuration and theme backends (`sponge_configd`, `sponge_themed`)
+  with live theme reload shared by vct and Sponge DE
+- ✅ Launcher menu fed by `sponge_pkgd`'s installed-set broadcast
+- ✅ Leitzentrale integration: Sculpt's expert interface boots as a
+  subsystem, shows as a Sponge DE window via `lz_viewer`, and model
+  changes are detected and resolved (`vct leitzentrale keep/revert`)
+- ✅ base-sel4 interactive driver stack: `run/sponge-de-sel4-interactive.run`
+  boots seL4 on QEMU with vesa_fb, ps2, and USB tablet input
+  (`drivers_interactive-pc`); Qt6/Mesa rendering on seL4 is a known
+  limitation (see `docs/09-roadmap.md` §11.1)
 
 Verified vct boot output (base-sel4 on QEMU):
 
