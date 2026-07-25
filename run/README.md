@@ -57,6 +57,17 @@ A scenario defines:
   pipeline and injects a synthetic title-bar drag, confirming the
   window actually moves (`wm-probe: PASS`). Headless.
 
+- `sponge-de-sel4-interactive.run` — base-sel4 (seL4 / QEMU) interactive
+  GUI driver stack: the vendored `drivers_interactive-pc` set (vesa_fb,
+  ps2, usb_hid, pc_usb_host, event_filter, platform, acpi, pci_decode)
+  built from source and wired with `-device nec-usb-xhci -device
+  usb-tablet` for absolute-pointer input. Headless verification matches
+  vesa_fb setting the 1024x768 mode and usb_hid binding the QEMU
+  usb-tablet as a `POINTER` (the full driver set coming up). base-sel4
+  only (`assert {[have_spec sel4]}`); see `docs/08-development.md` §3.8
+  and `docs/09-roadmap.md` §11/§11.1 for the Qt6/Mesa-on-sel4 rendering
+  limitation and the kernel-switch/host-tool requirements.
+
 - `sponge-pkg-explain.run` — Phase 4a: end-to-end package-explain flow.
   `vct install nano --explain` writes a request report that `report_rom`
   relays to `sponge_pkgd`, which resolves the package + its `ncurses`
@@ -83,12 +94,24 @@ A scenario defines:
   starts hello under pkg_runtime; verified by hello's marker. Kernel-
   agnostic.
 
+- `sponge-pkg-persist.run` — Phase 4 follow-up #2: installed-set
+  persistence across a reboot. Two boots over the same `lx_fs`-backed
+  host directory (modelled on upstream `depot_remove.run`): boot 1
+  installs hello and writes the store; boot 2 boots a fresh `core`/init
+  against the same directory and issues a `list`-only request, asserting
+  hello is present — which can only be the restored store, since no
+  install was issued this boot. `base-linux` only (lx_fs is a Linux-host
+  wrapper); the component code itself is portable.
+
 ## Planned additions
 
-- A base-sel4 interactive GUI scenario (visible desktop under QEMU),
-  wiring the `drivers_interactive-pc` driver set (vesa_fb, ps2,
-  usb_hid, event_filter, platform, acpi, pci_decode). Phase 3 itself is
-  already covered on both kernels by the headless `sponge-de-test.run`.
+- The end-to-end usb-tablet click proof for
+  `sponge-de-sel4-interactive.run` (probe `inject=no` Capture pixel
+  check + a host-side QMP `input-send-event` usb-tablet click observed
+  through sponge-de's `input` report) is wired into the driver set but
+  gated on the Qt6/Mesa-on-sel4 rendering hang being fixed
+  (`docs/09-roadmap.md` §11.1). The driver stack itself is verified
+  today.
 
 For how to write a run script, see the
 [Genode run framework](https://genode.org/documentation/developer-resources/run)
