@@ -71,6 +71,10 @@ int CommandRouter::dispatch(Args const &args)
 		ThemeCommand c { _env };
 		return c.execute(args);
 	}
+	if (Genode::strcmp(cmd, "leitzentrale") == 0) {
+		LeitzentraleCommand c { _env };
+		return c.execute(args);
+	}
 
 	Genode::warning("vct: unknown subcommand '", cmd,
 	                "' — falling back to help");

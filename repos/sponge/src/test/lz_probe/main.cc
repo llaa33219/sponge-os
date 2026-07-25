@@ -71,24 +71,33 @@ struct Lz_probe
 
 			/*
 			 * Robust substring search for "child manager" (the HID-format
-			 * state entry for the sculpt_manager child).
+			 * state entry for the sculpt_manager child) AND "child
+			 * runtime_view" (the menu_view that paints the Leitzentrale
+			 * UI — Phase 6b). Both present means the subsystem is fully
+			 * up including its UI renderer.
 			 */
-			bool manager_running = false;
-			char const needle[] = "child manager";
-			Genode::size_t const nlen = sizeof(needle) - 1;
-			for (Genode::size_t k = 0; k + nlen <= len; ++k) {
-				bool match = true;
-				for (Genode::size_t j = 0; j < nlen; ++j)
-					if (raw[k + j] != needle[j]) { match = false; break; }
-				if (match) { manager_running = true; break; }
-			}
+			auto contains = [](char const *hay, Genode::size_t len,
+			                   char const *needle) {
+				Genode::size_t const nlen = Genode::strlen(needle);
+				for (Genode::size_t k = 0; k + nlen <= len; ++k) {
+					bool match = true;
+					for (Genode::size_t j = 0; j < nlen; ++j)
+						if (hay[k + j] != needle[j]) { match = false; break; }
+					if (match) return true;
+				}
+				return false;
+			};
+
+			bool const manager_running       = contains(raw, len, "child manager");
+			bool const runtime_view_running  = contains(raw, len, "child runtime_view");
 
 			if (i % 20 == 0)
 				Genode::log("lz-probe: poll ", i, " len=", len,
-				            " manager=", manager_running);
+				            " manager=", manager_running,
+				            " runtime_view=", runtime_view_running);
 
-			if (manager_running) {
-				Genode::log("lz-probe: sculpt_manager detected in leitzentrale subsystem");
+			if (manager_running && runtime_view_running) {
+				Genode::log("lz-probe: sculpt_manager + runtime_view detected in leitzentrale subsystem");
 				Genode::log("lz-probe: PASS");
 				_env.parent().exit(0);
 				return;
