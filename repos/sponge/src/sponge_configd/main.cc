@@ -113,6 +113,23 @@ class Sponge::Configd::Main
 			_env.ep(), *this, &Main::_handle_request };
 
 		/*
+		 * Phase 6c: lz_watch (inside the Leitzentrale subsystem) emits an
+		 * lz_model report describing model-fs divergence. configd watches it
+		 * and mirrors a read-only leitzentrale.diverged key in the broadcast
+		 * (the "synchronization with sponge_configd" criterion). This key is
+		 * computed, never settable via config_set. Only enabled when the
+		 * configd config ROM contains <lz_model/>, so scenarios without the
+		 * Leitzentrale subsystem don't try to open a non-existent ROM.
+		 */
+		Genode::Attached_rom_dataspace _config_rom { _env, "config" };
+		Genode::Constructible<Genode::Attached_rom_dataspace> _lz_model_rom { };
+		Genode::Signal_handler<Main> _lz_model_handler {
+			_env.ep(), *this, &Main::_handle_lz_model };
+		bool _lz_diverged { false };
+
+		void _handle_lz_model();
+
+		/*
 		 * De-duplication of the request ROM. ROM signals can fire more
 		 * than once for the same content, and a repeated set with an
 		 * identical signature is a no-op (the value is already stored).
@@ -359,7 +376,32 @@ void Sponge::Configd::Main::_generate_broadcast()
 				g.attribute("value", _values[i]);
 			});
 		}
+		/* Read-only computed key mirrored from lz_watch (Phase 6c). */
+		g.node("key", [&] {
+			g.attribute("name",  "leitzentrale.diverged");
+			g.attribute("value", _lz_diverged ? "true" : "false");
+		});
 	});
+}
+
+
+void Sponge::Configd::Main::_handle_lz_model()
+{
+	if (!_lz_model_rom.constructed()) return;
+	_lz_model_rom->update();
+	if (!_lz_model_rom->valid()) return;
+
+	bool diverged = false;
+	_lz_model_rom->xml().for_each_sub_node("file", [&] (Genode::Xml_node const &f) {
+		if (f.attribute_value("changed", Genode::String<8>()) ==
+		    Genode::String<8>("true"))
+			diverged = true;
+	});
+
+	if (diverged != _lz_diverged) {
+		_lz_diverged = diverged;
+		_generate_broadcast();
+	}
 }
 
 
@@ -437,6 +479,33 @@ Sponge::Configd::Main::Main(Genode::Env &env) : _env(env)
 
 	_request_rom.sigh(_request_handler);
 	_request_rom.update();
+
+	/*
+	 * Enable lz_model watching only when the configd config ROM explicitly
+	 * requests it (<lz_model/>). Other scenarios don't provide the ROM and
+	 * must not try to open it.
+	 */
+	_config_rom.update();
+	bool const config_valid = _config_rom.valid();
+	bool       watch_lz_model = false;
+	if (config_valid) {
+		char const *p = _config_rom.local_addr<char const>();
+		for (Genode::size_t i = 0; p[i]; ++i) {
+			if (p[i] == 'l' && p[i+1] == 'z' && p[i+2] == '_' &&
+			    p[i+3] == 'm' && p[i+4] == 'o' && p[i+5] == 'd' &&
+			    p[i+6] == 'e' && p[i+7] == 'l') {
+				watch_lz_model = true;
+				break;
+			}
+		}
+	}
+	if (watch_lz_model) {
+		Genode::log("sponge_configd: lz_model watching enabled");
+		_lz_model_rom.construct(_env, "lz_model");
+		_lz_model_rom->sigh(_lz_model_handler);
+		_lz_model_rom->update();
+		_handle_lz_model();
+	}
 
 	/* Process a request that arrived before the signal handler was wired. */
 	_handle_request();

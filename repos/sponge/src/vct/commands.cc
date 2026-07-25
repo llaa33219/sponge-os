@@ -11,7 +11,10 @@
 
 #include "init_state.h"
 
+#include <base/attached_rom_dataspace.h>
 #include <base/log.h>
+#include <os/reporter.h>
+#include <timer_session/connection.h>
 
 #include <sponge/backend_client.h>
 #include <sponge/platform.h>
@@ -1202,31 +1205,39 @@ int ThemeCommand::execute(Args const &args)
 void LeitzentraleCommand::_print_help(Args const &args)
 {
 	if (args.lang == "ko") {
-		Genode::log("사용법: vct leitzentrale [off|status]");
-		Genode::log("Leitzentrale 전문가 제어 창의 표시 여부를 토글합니다.");
+		Genode::log("사용법: vct leitzentrale [off|status|diff|keep|revert]");
+		Genode::log("Leitzentrale 전문가 제어 창의 표시 여부를 토글하고,");
+		Genode::log("모델 파일시스템 변경을 감지/동기화/복원합니다.");
 		Genode::log("");
 		Genode::log("  vct leitzentrale          창 활성화 (나타남)");
 		Genode::log("  vct leitzentrale off      창 비활성화 (숨김)");
 		Genode::log("  vct leitzentrale status   현재 상태 조회");
+		Genode::log("  vct leitzentrale diff     모델 변경(divergence) 조회");
+		Genode::log("  vct leitzentrale keep     현재 모델을 새 기준선으로 채택");
+		Genode::log("  vct leitzentrale revert   기준선으로 모델 복원");
 		Genode::log("");
 		Genode::log("sculpt_manager 하위 시스템은 항상 부팅되어 있으며,");
 		Genode::log("이 명령은 표시 여부 플래그만 토글합니다.");
 		Genode::log("변경 사항은 vct 종료 후에도 유지됩니다 (sponge_configd → 브리지).");
-		Genode::log("같은 설정을 직접 제어하려면: vct config leitzentrale.enabled <true|false>");
+		Genode::log("merge(수동 병합)는 Phase 6에서는 미구현입니다 (문서 참조).");
 		return;
 	}
 
-	Genode::log("Usage: vct leitzentrale [off|status]");
-	Genode::log("Toggle the visibility of the Leitzentrale expert window.");
+	Genode::log("Usage: vct leitzentrale [off|status|diff|keep|revert]");
+	Genode::log("Toggle the Leitzentrale window visibility, and detect / sync /");
+	Genode::log("restore model-fs changes made inside the Leitzentrale.");
 	Genode::log("");
 	Genode::log("  vct leitzentrale          Enable (raise the window)");
 	Genode::log("  vct leitzentrale off      Disable (hide the window)");
 	Genode::log("  vct leitzentrale status   Query the current state");
+	Genode::log("  vct leitzentrale diff     Show model divergence (changed files)");
+	Genode::log("  vct leitzentrale keep     Adopt the current model as the new baseline");
+	Genode::log("  vct leitzentrale revert   Restore the model to the baseline");
 	Genode::log("");
-	Genode::log("The sculpt_manager subsystem is always booted; this command only");
-	Genode::log("toggles the visibility flag. The change persists after vct exits");
-	Genode::log("(sponge_configd -> bridge -> gui_fader).");
-	Genode::log("For direct control of the same key: vct config leitzentrale.enabled <true|false>");
+	Genode::log("The sculpt_manager subsystem is always booted; enable/off only");
+	Genode::log("toggles visibility (persists via sponge_configd -> bridge).");
+	Genode::log("diff/keep/revert go directly to lz_watch inside the subsystem.");
+	Genode::log("merge (manual conflict resolution) is deferred past Phase 6.");
 }
 
 
@@ -1243,13 +1254,21 @@ int LeitzentraleCommand::execute(Args const &args)
 	                  Genode::strcmp(verb, "disable") == 0 ||
 	                  Genode::strcmp(verb, "false") == 0);
 	bool const status_only = (Genode::strcmp(verb, "status") == 0);
+	bool const diff_op     = (Genode::strcmp(verb, "diff") == 0);
+	bool const keep_op     = (Genode::strcmp(verb, "keep") == 0);
+	bool const revert_op   = (Genode::strcmp(verb, "revert") == 0);
 
-	if (!off && !status_only && Genode::strcmp(verb, "") != 0) {
+	bool const sync_op = diff_op || keep_op || revert_op;
+
+	if (!off && !status_only && !sync_op && Genode::strcmp(verb, "") != 0) {
 		Genode::warning("vct: unknown leitzentrale argument '", verb,
-		                "' — expected 'off', 'status', or nothing");
+		                "' — expected off/status/diff/keep/revert or nothing");
 		_print_help(args);
 		return 1;
 	}
+
+	if (sync_op)
+		return _run_sync_op(verb, diff_op, keep_op, revert_op, args);
 
 	ReportRomClient client { _env, "config_request", "config_result" };
 
@@ -1312,4 +1331,84 @@ int LeitzentraleCommand::execute(Args const &args)
 	else
 		Genode::log(off ? "Leitzentrale hidden." : "Leitzentrale window enabled.");
 	return 0;
+}
+
+/*
+ * Phase 6c sync ops (diff/keep/revert). These talk directly to lz_watch
+ * (inside the subsystem) over two channels bridged by the top-level
+ * report_rom: lz_model (ROM, read) for diff, and lz_watch_request /
+ * lz_watch_result (Report write / ROM read) for keep/revert. configd
+ * independently mirrors leitzentrale.diverged from lz_model for other
+ * watchers, so vct diff and configd agree.
+ */
+int LeitzentraleCommand::_run_sync_op(char const *verb, bool diff,
+                                       bool keep, bool /*revert*/,
+                                       Args const &args)
+{
+	if (diff) {
+		Genode::Attached_rom_dataspace model { _env, "lz_model" };
+
+		/* lz_watch emits periodically; poll a little for the first sample. */
+		Timer::Connection timer { _env };
+		for (unsigned i = 0; i < 30; ++i) {
+			model.update();
+			if (model.valid()) break;
+			timer.msleep(100);
+		}
+		if (!model.valid()) {
+			if (args.json)
+				Genode::log("{\"command\":\"leitzentrale\",\"op\":\"diff\",\"status\":\"error\",\"error\":\"lz_model unavailable\"}");
+			else
+				Genode::log("leitzentrale diff: lz_watch not reachable");
+			return 1;
+		}
+
+		bool diverged = (model.xml().attribute_value("diverged",
+		                       Genode::String<8>()) == Genode::String<8>("true"));
+
+		if (args.json) {
+			Genode::log("{\"command\":\"leitzentrale\",\"op\":\"diff\",\"diverged\":",
+			            diverged ? "true" : "false", "}");
+		} else {
+			Genode::log(diverged ? "Leitzentrale model: DIVERGED"
+			                     : "Leitzentrale model: clean (matches baseline)");
+			model.xml().for_each_sub_node("file", [&] (Genode::Xml_node const &f) {
+				bool const ch = (f.attribute_value("changed", Genode::String<8>()) ==
+				                 Genode::String<8>("true"));
+				Genode::log("  ", f.attribute_value("name", Genode::String<32>()),
+				            ch ? "  CHANGED" : "  clean");
+			});
+		}
+		return 0;
+	}
+
+	/* keep / revert: write the request, poll for the result. */
+	char const *op = keep ? "snapshot" : "revert";
+
+	Genode::Expanding_reporter req { _env, "lz_watch_request", "lz_watch_request" };
+	req.generate_xml([&] (Genode::Xml_generator &g) { g.attribute("op", op); });
+
+	Genode::Attached_rom_dataspace res { _env, "lz_watch_result" };
+	Timer::Connection timer { _env };
+	bool ok = false;
+	for (unsigned i = 0; i < 30; ++i) {
+		timer.msleep(100);
+		res.update();
+		if (!res.valid()) continue;
+		Genode::String<16> const rop  = res.xml().attribute_value("op",  Genode::String<16>());
+		if (rop == Genode::String<16>(op)) {
+			ok = (res.xml().attribute_value("status", Genode::String<16>()) ==
+			      Genode::String<16>("ok"));
+			break;
+		}
+	}
+
+	if (args.json) {
+		Genode::log("{\"command\":\"leitzentrale\",\"op\":\"", verb,
+		            "\",\"status\":\"", ok ? "ok" : "error\"}");
+	} else {
+		Genode::log("leitzentrale ", verb, ": ",
+		            ok ? "done" : "lz_watch did not answer");
+	}
+	return ok ? 0 : 1;
 }
