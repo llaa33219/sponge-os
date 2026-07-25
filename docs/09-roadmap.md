@@ -28,10 +28,10 @@ Phase 4: Package management (sponge_pkgd)  ✅ done
 Phase 5: Integration and automation layer  ✅ done
    |
    v
-Phase 6: Leitzentrale integration  🟡 current
+Phase 6: Leitzentrale integration  ✅ done
    |
    v
-Phase 7: Alpha — first usable version
+Phase 7: Alpha — first usable version  🟡 current
 ```
 
 ---
@@ -316,12 +316,22 @@ configuration is implemented.
 
 ### Completion Criteria
 
-- [ ] Sculpt's Leitzentrale component is included in the build.
-- [ ] `vct leitzentrale` starts Leitzentrale.
-- [ ] Sponge DE (or a dedicated viewer) shows Leitzentrale as a window.
-- [ ] Detection of Leitzentrale changes and synchronization with
-  `sponge_configd`.
-- [ ] Conflict-resolution UI (keep / revert / merge).
+- [x] Sculpt's Leitzentrale component is included in the build
+  (`run/sponge-leitzentrale.run`; the subsystem boots headlessly).
+- [x] `vct leitzentrale` starts Leitzentrale (enable/off/status via the
+  configd `leitzentrale.enabled` key + lz_bridge; audit log on start).
+- [x] Sponge DE (or a dedicated viewer) shows Leitzentrale as a window
+  (the `lz_viewer` component captures the subsystem's composited UI and
+  presents it on the outer nitpicker; pixel-verified by lz_viz_probe).
+- [x] Detection of Leitzentrale changes and synchronization with
+  `sponge_configd` (lz_watch checksums the model fs; configd mirrors a
+  read-only `leitzentrale.diverged` key in its broadcast).
+- [x] Conflict-resolution UI (keep / revert / merge): `vct leitzentrale
+  diff/keep/revert` implemented and verified by the edit→detect→revert
+  probe cycle. Merge is documented as deferred — no Sponge automation
+  writes the lz model in Phase 6, so a merge operation would be
+  vacuous; the trigger for implementing it is recorded in
+  docs/07-leitzentrale.md's open questions.
 
 ---
 
@@ -363,15 +373,16 @@ These stages get fleshed out in a separate document after Alpha.
 
 ## 11. Current Focus
 
-Phase 0–5 are complete. Phase 5 closed the integration layer: vct and
-Sponge DE share the `sponge_configd` / `sponge_themed` / `sponge_pkgd`
-backends over the Report/ROM channel, with consistency proven by
-probe-driven scenarios (`run/sponge-theme.run`'s 3-way match,
-`run/sponge-launcher.run`).
+Phase 0–6 are complete. Phase 6 integrated Sculpt's Leitzentrale: the
+subsystem boots under `lz_runtime`, `vct leitzentrale` toggles it via
+`sponge_configd`, the `lz_viewer` dedicated viewer shows it as a window
+on the Sponge desktop, and `lz_watch` + configd detect and resolve
+model changes (keep/revert).
 
-Next up: Phase 6 (Leitzentrale integration — `vct leitzentrale` opens
-Sculpt's Leitzentrale as a window, plus the synchronization strategy
-between Leitzentrale changes and `sponge_configd`).
+Next up: Phase 7 (Alpha — the first usable version: installable media,
+Sponge DE usable after boot, a default app set installable, vct
+covering day-to-day tasks, installation docs, and documented known
+limitations).
 
 Deferred follow-ups (not blockers):
 
