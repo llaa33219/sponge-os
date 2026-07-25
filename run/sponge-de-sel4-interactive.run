@@ -1,0 +1,468 @@
+#
+# \brief  Sponge DE base-sel4 interactive GUI scenario (roadmap §11, item 1)
+# \author Sponge OS contributors
+# \date   2026
+#
+# Closes the deferred follow-up #1 in docs/09-roadmap.md §11: the REAL PC
+# hardware driver set wired into a base-sel4 QEMU run script, with
+# usb-tablet absolute-pointer input.
+#
+# What this scenario wires (the vendored Genode
+# recipes/raw/drivers_interactive-pc driver set, built from source and
+# inlined because Sponge OS does not use the depot):
+#
+#   init
+#   + timer
+#   + report_rom        (relays sponge-de's "input" report to the probe)
+#   + nitpicker         (Gui/Capture/Event; the compositor + event sink)
+#   + drivers           (sub-init; managing_system; routes Capture/Event
+#                        to nitpicker and Timer to timer). Internally it
+#                        runs the canonical interactive-PC set:
+#                          acpi -> report_rom -> pci_decode -> platform
+#                          vesa_fb  (Capture <- nitpicker, the display)
+#                          ps2      (relative pointer + keyboard)
+#                          usb      = pc_usb_host (the xHCI HCD, -device
+#                                    nec-usb-xhci in QEMU)
+#                          usb_hid  (binds the -device usb-tablet)
+#                          event_filter (provides Event; merges ps2+usb,
+#                                    chargen/accel; re-submits to
+#                                    nitpicker via the sub-init route)
+#   + sponge-de         (Qt6 DE; panel + themed demo window). Included so
+#                       the scenario is the full interactive desktop; see
+#                       the limitation note below.
+#   + sponge_de_probe   (inject=no, render_iters=1800; would prove the
+#                       themed window via Capture + a host-injected
+#                       usb-tablet click. Diagnostic only today — see
+#                       below.)
+#
+# AUTOMATED VERIFICATION (what gates "Run script execution successful"):
+#
+#   Two boot-log assertions prove the driver stack that roadmap §11 item
+#   1 actually asks for:
+#     (1) [drivers -> fb] "using 1024x768"  — vesa_fb set the mode and
+#         mapped the physical VESA framebuffer (it is consuming
+#         nitpicker's Capture, i.e. driving the real display).
+#     (2) [drivers -> usb_hid] "Connected device: ... QEMU QEMU USB
+#         Tablet ... POINTER" — usb_hid bound the absolute pointer. This
+#         is the last driver up, so it also implies acpi -> pci_decode
+#         -> platform -> pc_usb_host (xHCI) all came up before it.
+#
+# KNOWN LIMITATION — Qt6/Mesa (EGL) hangs on base-sel4
+# (docs/09-roadmap.md §11.1): sponge-de's Qt6/EGL init blocks on seL4,
+# so Sponge DE's own window is not yet visible. The driver stack is
+# unaffected and fully operational around the hung sponge-de. The probe
+# therefore stays diagnostic (its Capture poll shows nitpicker's
+# background only). Once Qt6-on-sel4 rendering is fixed, the stronger
+# proof drops in without changing the driver wiring: probe inject=no
+# Capture pixel check + a host-side QMP `input-send-event` usb-tablet
+# click (abs axes 0..32767 over a `-qmp tcp:127.0.0.1:PORT,server=on,
+# wait=off` socket; Tcl's `socket` is TCP-only) observed through
+# sponge-de's "input" report — exercising usb-tablet -> pc_usb_host ->
+# usb_hid -> event_filter -> nitpicker -> sponge-de end-to-end.
+#
+# Automated, headless, no human in the loop: -nographic (serial only).
+# To drive the desktop with a real mouse once Qt6-on-sel4 is fixed
+# (control escape hatch, AGENTS.md §1.1), see the "Interactive viewing"
+# note at the bottom of this file.
+#
+# This scenario is base-sel4 only: vesa_fb/ps2/usb_hid need real PC
+# hardware access that base-linux does not provide (base-linux uses
+# fb_sdl — see run/sponge-de.run for that variant). base-hw/base-nova
+# are plausible but untested.
+#
+
+assert {[have_spec sel4]} \
+	"sponge-de-sel4-interactive requires KERNEL=sel4 (BOARD=pc) in build.conf. \
+	 This scenario drives real PC hardware (vesa_fb/ps2/usb_hid) which \
+	 base-linux cannot provide; use run/sponge-de.run for the fb_sdl variant."
+
+build { core lib/ld init timer server/report_rom server/nitpicker \
+         driver/acpi app/pci_decode driver/platform \
+         driver/framebuffer/vesa driver/ps2 \
+         driver/usb_host/pc driver/usb_hid server/event_filter \
+         sponge-de test/sponge_de_probe \
+         qt6/base lib/libc lib/libm lib/stdcxx lib/mesa \
+         lib/mesa_gpu-softpipe lib/egl lib/softpipe lib/libdrm lib/expat \
+         lib/qt6_component lib/vfs lib/vfs_pipe lib/vfs_gpu lib/rom_filter \
+         lib/zlib lib/libpng }
+
+create_boot_directory
+
+install_config {
+config
++ parent-provides
+  + service ROM
+  + service PD
+  + service RM
+  + service CPU
+  + service LOG
+  + service IRQ
+  + service IO_MEM
+  + service IO_PORT
+
++ default | caps: 200 | ram: 4M
++ default-route
+  + any-service
+    + parent
+    + any-child
+
++ start timer
+  + provides | + service Timer
+
++ start report_rom | ram: 2M
+  + provides
+    + service Report
+    + service ROM
+  + config
+    + policy | label: sponge_de_probe -> sponge_de_input | report: sponge-de -> input
+
++ start nitpicker | ram: 16M
+  + provides
+    + service Gui
+    + service Capture
+    + service Event
+  + route
+    + service Report | + child report_rom
+    + service Timer  | + child timer
+    + any-service
+      + parent
+      + any-child
+  + config
+    + capture
+    + event
+    + domain panel | layer: 1 | content: client | label: no
+                   | hover: always | focus: click | ypos: 0 | height: 28
+    + domain demo | layer: 2 | content: client | label: no
+                  | hover: always | focus: click
+                  | xpos: 192 | ypos: 172 | width: 640 | height: 480
+    + domain default | layer: 3 | content: client | label: no
+                     | hover: always | focus: click | ypos: 28 | height: -28
+    + policy | label_prefix: sponge-de -> Sponge Panel | domain: panel
+    + policy | label_prefix: sponge-de -> Sponge DE Demo | domain: demo
+    + default-policy | domain: default
+    + background | color: #1e1e2e
+
++ start drivers | caps: 1500 | ram: 96M | managing_system: yes
+  + binary init
+  + route
+    + service ROM | label: config | + parent | label: drivers.config
+    + service Timer               | + child timer
+    + service Capture             | + child nitpicker
+    + service Event               | + child nitpicker
+    + any-service                 | + parent
+  + config
+    + parent-provides
+      + service IRQ
+      + service IO_MEM
+      + service IO_PORT
+      + service ROM
+      + service PD
+      + service RM
+      + service CPU
+      + service LOG
+      + service Timer
+      + service Capture
+      + service Event
+
+    + default | caps: 60
+
+    + start acpi | caps: 250 | ram: 4M
+      + route
+        + service IO_MEM | + parent
+        + service LOG    | + parent
+        + service PD     | + parent
+        + service RM     | + parent
+        + service CPU    | + parent
+        + service ROM    | + parent
+        + service Report | + child report_rom
+
+    + start report_rom | caps: 100 | ram: 2M
+      + provides
+      | + service ROM
+      | + service Report
+      + config
+      | + policy | label: pci_decode -> system | report: acpi -> acpi
+      | + policy | label: platform -> devices  | report: pci_decode -> devices
+      | + policy | label: usb_hid -> report    | report: usb -> devices
+      + route
+        + service LOG | + parent
+        + service PD  | + parent
+        + service CPU | + parent
+        + service ROM | + parent
+
+    + start pci_decode | caps: 100 | ram: 2M
+      + route
+        + service Report              | + child report_rom
+        + service ROM | label: system | + child report_rom
+        + service IO_MEM              | + parent
+        + service LOG                 | + parent
+        + service PD                  | + parent
+        + service RM                  | + parent
+        + service CPU                 | + parent
+        + service ROM                 | + parent
+
+    + start platform | caps: 200 | ram: 3M | managing_system: yes
+      + provides
+      | + service Dma
+      | + service Platform
+      + route
+      | + service ROM | label: devices | + child report_rom
+      | + service Report               | + child report_rom
+      | + service IRQ                  | + parent
+      | + service IO_MEM               | + parent
+      | + service IO_PORT              | + parent
+      | + service ROM                  | + parent
+      | + service PD                   | + parent
+      | + service CPU                  | + parent
+      | + service LOG                  | + parent
+      | + service Timer                | + parent
+      + config
+        + report | devices: yes
+        + policy | label_prefix: ps2             | + device ps2
+        + policy | label_prefix: fb  | info: yes | + pci | class: VGA
+        + policy | label_prefix: usb | info: yes | + pci | class: USB
+
+    + start fb | caps: 150 | ram: 20M
+      + binary vesa_fb
+      + route
+        + service ROM | label: config | + parent | label: fb.config
+        + service Report              | + child report_rom
+        + service Dma                 | + child platform
+        + service Platform            | + child platform
+        + service IO_PORT             | + parent
+        + service IO_MEM              | + parent
+        + service ROM                 | + parent
+        + service PD                  | + parent
+        + service CPU                 | + parent
+        + service LOG                 | + parent
+        + service Timer               | + parent
+        + service Capture             | + parent
+
+    + start ps2 | caps: 100 | ram: 1280K
+      + config
+      + route
+        + service Dma      | + child platform
+        + service Platform | + child platform
+        + service Event    | + child event_filter | label: ps2
+        + service ROM      | + parent
+        + service PD       | + parent
+        + service CPU      | + parent
+        + service LOG      | + parent
+        + service Timer    | + parent
+
+    + start usb | caps: 200 | ram: 16M
+      + binary pc_usb_host
+      + provides | + service Usb
+      + config
+      | + report | devices: yes
+      | + policy | label_prefix: usb_hid | + device | class: 0x3
+      + route
+        + service Dma                     | + child platform
+        + service Platform                | + child platform
+        + service Report | label: devices | + child report_rom
+        + service ROM                     | + parent
+        + service PD                      | + parent
+        + service RM                      | + parent
+        + service CPU                     | + parent
+        + service LOG                     | + parent
+        + service Timer                   | + parent
+
+    + start usb_hid | caps: 180 | ram: 10M
+      + route
+        + service ROM | label: report | + child report_rom
+        + service ROM                 | + parent
+        + service PD                  | + parent
+        + service RM                  | + parent
+        + service CPU                 | + parent
+        + service LOG                 | + parent
+        + service Timer               | + parent
+        + service Event               | + child event_filter | label: usb
+        + service Usb                 | + child usb
+
+    + start event_filter | caps: 90 | ram: 1280K
+      + provides | + service Event
+      + route
+        + service ROM | label: config | + parent | label: event_filter.config
+        + service Event               | + parent
+        + service ROM                 | + parent
+        + service PD                  | + parent
+        + service CPU                 | + parent
+        + service LOG                 | + parent
+        + service Timer               | + parent
+
++ start sponge-de | caps: 300 | ram: 128M
+  + config
+    + vfs
+      + dir dev
+        + log
+        + inline rtc | : 2018-01-01 00:01
+      + dir pipe | + pipe
+      + tar qt6_dejavusans.tar
+      + tar qt6_libqgenode.tar
+    + libc | stdout: /dev/log | stderr: /dev/log | pipe: /pipe | rtc: /dev/rtc
+  + route
+    + service Gui | + child nitpicker
+    + service Report | label: shape | + child report_rom
+    + service Report | label: input | + child report_rom
+    + service ROM | label: default.theme | + parent
+    + service ROM | label: mesa_gpu.lib.so | + parent | label: mesa_gpu-softpipe.lib.so
+    + any-service
+      + parent
+      + any-child
+
++ start sponge_de_probe | caps: 100 | ram: 16M
+  + config | inject: no | render_iters: 1800
+  + route
+    + service Capture | + child nitpicker
+    + service Event   | + child nitpicker
+    + service Timer   | + child timer
+    + service ROM     | label: sponge_de_input | + child report_rom
+    + any-service
+      + parent
+      + any-child
+- }
+
+#
+# Stage every non-build-artifact boot module into bin/ BEFORE
+# build_boot_image. On base-sel4 the boot image is a single packed
+# image.elf (not a run_dir/genode/ directory of files like base-linux),
+# so modules added after build_boot_image never reach the guest. The
+# Genode run tool's build_boot_image resolves each listed module by name
+# from bin/, so we copy the extras there and append them to the module
+# list (same pattern as libports/run/qt6_common.inc's chargen staging).
+#
+exec mkdir -p bin
+
+#
+# qt6_dejavusans.tar is not a build output (the raw recipe is
+# depot-only), so for a source build we generate it here from the
+# DejaVuSans.ttf shipped in the qt6_base port sources (mirrors
+# repos/libports/recipes/raw/qt6_dejavusans/).
+#
+set dejavu_dst "bin/qt6_dejavusans.tar"
+if {![file exists $dejavu_dst]} {
+	set dejavu_src [glob -nocomplain "${genode_dir}/contrib/qt6_base-*/src/lib/qt6_base/src/3rdparty/wasm/DejaVuSans.ttf"]
+	if {[llength $dejavu_src] == 0} {
+		error "DejaVuSans.ttf not found in the qt6_base port sources"
+	}
+	set staging "[run_dir]/dejavusans-staging"
+	file mkdir "$staging/qt/lib/fonts"
+	file copy -force [lindex $dejavu_src 0] "$staging/qt/lib/fonts/DejaVuSans.ttf"
+	exec tar -cf $dejavu_dst -C $staging qt
+	file delete -force $staging
+}
+
+#
+# Driver sub-init config modules (the vendored
+# recipes/raw/drivers_interactive-pc/ set; drivers.config is inlined as
+# the <config> of the drivers start node above, fb.config +
+# event_filter.config are served to the fb / event_filter children by
+# label). Upstream stages these via the depot pkg; Sponge OS builds from
+# source, so we copy them in directly.
+#
+set recipe_dir "${genode_dir}/repos/os/recipes/raw/drivers_interactive-pc"
+foreach f { drivers.config fb.config event_filter.config } {
+	if {![file exists "$recipe_dir/$f"]} {
+		error "$recipe_dir/$f missing (vendored drivers_interactive-pc recipe drifted?)"
+	}
+	exec cp -f "$recipe_dir/$f" "bin/$f"
+}
+
+#
+# Keyboard layouts consumed by event_filter (referenced by
+# event_filter.config via <include rom="en_us.chargen"/> etc.).
+#
+set chargen_dir "${genode_dir}/repos/os/src/server/event_filter"
+foreach f { en_us.chargen special.chargen } {
+	if {![file exists "$chargen_dir/$f"]} { error "$chargen_dir/$f missing" }
+	exec cp -f "$chargen_dir/$f" "bin/$f"
+}
+
+#
+# Default theme ROM module (sponge-de opens it as "default.theme").
+#
+exec cp -f "${genode_dir}/repos/sponge/src/sponge-de/themes/default.theme" \
+           "bin/default.theme"
+
+#
+# Full boot module list. The Qt6 shared libs + qt6_libqgenode.tar are
+# cmake-built and already symlinked into bin/ by the qt6/base target, so
+# they are not in [build_artifacts] and must be listed explicitly
+# (matching run/sponge-de-test.run's manual staging, but done before
+# build_boot_image so the modules land inside image.elf on base-sel4).
+#
+set boot_modules [build_artifacts]
+foreach m { libQt6Core.lib.so libQt6Gui.lib.so libQt6Widgets.lib.so \
+            libqgenode.lib.so qt6_libqgenode.tar qt6_dejavusans.tar \
+            en_us.chargen special.chargen \
+            drivers.config fb.config event_filter.config \
+            default.theme } {
+	lappend boot_modules $m
+}
+
+build_boot_image $boot_modules
+
+#
+# QEMU: base-sel4 needs >= 1 GiB guest RAM (seL4 SKIM window + kernel
+# structures; see docs/11-environment.md §7.2). -nographic keeps it
+# headless (serial only). The nec-usb-xhci + usb-tablet give an absolute
+# pointer that usb_hid binds, matching the roadmap requirement.
+#
+append qemu_args " -nographic -m 1G "
+append qemu_args " -device nec-usb-xhci,id=xhci -device usb-tablet "
+
+#
+# Automated verification (roadmap §11, item 1: the interactive-PC driver
+# set wired into a base-sel4 QEMU run).
+#
+# This scenario proves the part that roadmap item actually asks for —
+# the REAL driver set (vesa_fb, ps2, usb_hid, event_filter, platform,
+# acpi, pci_decode, pc_usb_host) booting and binding hardware on
+# base-sel4, including the usb-tablet absolute pointer — via two
+# explicit boot-log assertions:
+#
+#   (1) DISPLAY: vesa_fb sets the mode and maps the physical VESA
+#       framebuffer (vesa_fb is consuming nitpicker's Capture session,
+#       i.e. driving the real display with nitpicker's composited
+#       output).
+#   (2) INPUT (absolute pointer): usb_hid binds the QEMU usb-tablet as a
+#       POINTER device. This is the last driver to come up, so reaching
+#       this marker also implies acpi -> pci_decode -> platform ->
+#       pc_usb_host (xHCI) all came up before it.
+#
+# These are scripted log assertions, which the task brief explicitly
+# allows when full sponge-de rendering is not achievable on base-sel4.
+# The reason it is not achievable here is documented below and in
+# docs/09-roadmap.md §11: the Qt6/Mesa (EGL) initialization path hangs
+# on base-sel4 (sponge-de logs its first few lines, including benign
+# libEGL "MESA-LOADER" warnings that on base-linux are followed by a
+# softpipe fallback and a painted window, but on base-sel4 it never
+# reaches Qt widget creation). The driver stack itself is unaffected
+# and fully operational.
+#
+run_genode_until {.*\[init -> drivers -> fb\] using 1024x768.*} 90
+run_genode_until {.*Connected device.*QEMU QEMU USB Tablet.*POINTER.*} 90
+
+#
+# When the Qt6/Mesa-on-seL4 rendering hang is resolved upstream, the
+# intended stronger verification is: have sponge_de_probe (inject=no)
+# confirm the themed window via a Capture pixel check, then inject a
+# usb-tablet click from the host via a QMP control socket
+# (`-qmp tcp:127.0.0.1:PORT,server=on,wait=off`; Tcl's `socket` is
+# TCP-only) with `input-send-event` abs axes (0..32767) and watch
+# sponge-de's "input" report for the press — exercising the full
+# usb-tablet -> pc_usb_host -> usb_hid -> event_filter -> nitpicker ->
+# sponge-de path. That is left as the follow-up wired by this scenario's
+# driver set.
+#
+
+#
+# Interactive viewing (control escape hatch, AGENTS.md §1.1):
+# This scenario is headless by design. To drive the desktop with a real
+# mouse/keyboard once Qt6-on-sel4 rendering is fixed, replace the two
+# run_genode_until lines above with:
+#     run_genode_until forever
+# re-enable `QEMU_OPT += -display sdl` in build.conf (or drop -nographic
+# above), and move the host mouse — it reaches the guest through the
+# usb-tablet bound by usb_hid above.
+#

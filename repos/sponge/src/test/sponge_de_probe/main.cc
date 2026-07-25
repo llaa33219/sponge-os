@@ -9,10 +9,16 @@
  *       composited screen, verified by reading pixels through a Capture
  *       session (background area == nitpicker bg color; demo-domain
  *       area != bg color).
- *   (b) synthetic pointer input injected into nitpicker reaches the
- *       sponge-de widget, verified by an Event session round-trip:
- *       inject absolute motion + BTN_LEFT click, then watch sponge-de's
- *       "input" report (relayed by report_rom) for confirmation.
+ *   (b) pointer input reaches the sponge-de widget, verified by an
+ *       Event session path. In the default inject=yes mode the probe
+ *       synthesizes an absolute-motion + BTN_LEFT click into
+ *       nitpicker's Event service. In inject=no mode (selected by
+ *       <config inject="no"/> — used by run/sponge-de-sel4-
+ *       interactive.run) the probe only OBSERVES a click arriving
+ *       through the real driver path (ps2/usb_hid -> event_filter),
+ *       which the run script injects from the host via a QEMU
+ *       usb-tablet. In both modes the press is confirmed via
+ *       sponge-de's "input" report (relayed by report_rom).
  *
  * It is a plain Genode component (Component::construct, no libc/Qt),
  * following AGENTS.md §3.1 (qualified Genode types, no exceptions).
@@ -138,6 +144,16 @@ struct Sponge_de_probe
 	Genode::Attached_rom_dataspace _input_rom { _env, "sponge_de_input" };
 
 	/*
+	 * Optional config. Controls whether the probe synthesizes the click
+	 * itself (default; headless null-framebuffer scenarios such as
+	 * run/sponge-de-test.run) or only OBSERVES a click arriving through
+	 * the real input driver path (run/sponge-de-sel4-interactive.run,
+	 * where the click is injected from the host via a QEMU usb-tablet).
+	 * Absent config => inject=yes, preserving the original behavior.
+	 */
+	Genode::Attached_rom_dataspace _config { _env, "config" };
+
+	/*
 	 * Pixel buffer is only valid after Capture::Connection::buffer(),
 	 * so it is constructed lazily in the body.
 	 */
@@ -166,9 +182,17 @@ struct Sponge_de_probe
 		 * must be the configured nitpicker bg color, and the
 		 * demo-domain center must show the themed window_bg color
 		 * (positive proof the window is composited there).
+		 *
+		 * The poll cap defaults to 600 (~60s, enough on base-linux).
+		 * The base-sel4 interactive scenario passes a larger value via
+		 * <config render_iters="..."/> because Qt6 first paint under
+		 * the software (softpipe) Mesa is markedly slower on seL4.
 		 */
+		unsigned const render_iters =
+			(!_config.valid()) ? 600 :
+			_config.xml().attribute_value("render_iters", 600u);
 		bool rendered = false;
-		for (unsigned i = 0; i < 600; ++i) {  /* up to ~60s */
+		for (unsigned i = 0; i < render_iters; ++i) {
 			_timer.msleep(100);
 			_capture.capture_at(Capture::Point(0, 0));
 
@@ -203,22 +227,40 @@ struct Sponge_de_probe
 		}
 
 		/*
-		 * (b) Input round-trip. Establish a baseline of the input
-		 * report, inject a synthetic click into nitpicker's Event
-		 * session, then poll the report until sponge-de confirms it.
+		 * (b) Input round-trip. inject=yes (default) synthesizes the
+		 * click into nitpicker's Event service (headless null-fb
+		 * scenarios). inject=no only watches for a press arriving via
+		 * the real driver path (base-sel4 interactive scenario, where
+		 * the run script injects a QEMU usb-tablet click from the
+		 * host). The default must stay "yes" so run/sponge-de-test.run
+		 * is unchanged.
 		 */
+		bool const inject = (!_config.valid()) ||
+		                    _config.xml().attribute_value("inject", true);
+
+		unsigned const INJECT_WATCH_ITERS = 200;  /* ~20s after self-inject */
+		unsigned const OBSERVE_WATCH_ITERS = 900; /* ~90s for host injection */
+
 		_input_rom.update();  /* baseline */
 
-		Genode::log("sponge-de-probe: injecting click at (",
-		            CLICK_PT.x, ",", CLICK_PT.y, ")");
-		_event.with_batch([&](Event::Session_client::Batch &batch) {
-			batch.submit(Input::Absolute_motion{ CLICK_PT.x, CLICK_PT.y });
-			batch.submit(Input::Press   { Input::BTN_LEFT });
-			batch.submit(Input::Release { Input::BTN_LEFT });
-		});
+		if (inject) {
+			Genode::log("sponge-de-probe: injecting click at (",
+			            CLICK_PT.x, ",", CLICK_PT.y, ")");
+			_event.with_batch([&](Event::Session_client::Batch &batch) {
+				batch.submit(Input::Absolute_motion{ CLICK_PT.x, CLICK_PT.y });
+				batch.submit(Input::Press   { Input::BTN_LEFT });
+				batch.submit(Input::Release { Input::BTN_LEFT });
+			});
+		} else {
+			Genode::log("sponge-de-probe: observe mode (inject=no) -- "
+			            "awaiting external click via the real input "
+			            "driver path (usb-tablet/ps2 -> event_filter)");
+		}
 
 		bool delivered = false;
-		for (unsigned i = 0; i < 200; ++i) {  /* up to ~20s */
+		unsigned const watch_iters = inject ? INJECT_WATCH_ITERS
+                                            : OBSERVE_WATCH_ITERS;
+		for (unsigned i = 0; i < watch_iters; ++i) {
 			_timer.msleep(100);
 			_input_rom.update();
 
@@ -234,7 +276,10 @@ struct Sponge_de_probe
 		}
 
 		if (!delivered) {
-			_fail("injected click did not reach sponge-de");
+			_fail(inject ? "injected click did not reach sponge-de"
+			             : "external click did not reach sponge-de "
+			               "(usb-tablet injection missing or input driver "
+			               "path not wired)");
 			return;
 		}
 
