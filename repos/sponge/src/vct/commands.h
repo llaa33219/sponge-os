@@ -218,6 +218,8 @@ class LeitzentraleCommand : public Command
 		Genode::Env &_env;
 
 		void _print_help(Args const &args);
-};
+		int  _run_sync_op(char const *verb, bool diff, bool keep,
+		                  bool revert, Args const &args);
+	};
 
 }  /* namespace Sponge::Vct */

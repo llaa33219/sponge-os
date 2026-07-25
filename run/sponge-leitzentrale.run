@@ -44,7 +44,8 @@ build { core lib/ld init timer \
         app/sculpt_manager app/menu_view \
         lib/vfs lib/vfs_ttf lib/vfs_import lib/libc lib/libm lib/libpng lib/zlib lib/posix \
         sponge_configd vct \
-        test/lz_probe test/lz_viz_probe test/lz_viewer }
+        test/lz_probe test/lz_viz_probe test/lz_viewer test/lz_edit_probe \
+        lz_watch }
 
 create_boot_directory
 
@@ -174,6 +175,9 @@ config
     + policy | label_suffix: lz_config            | report: sponge_configd -> config
     + policy | label_suffix: focus                      | report: nitpicker -> focus
     + policy | label_suffix: hover                      | report: nitpicker -> hover
+    + policy | label_suffix: lz_model                    | report: lz_runtime -> leitzentrale -> lz_watch -> lz_model
+    + policy | label_suffix: lz_watch_result             | report: lz_runtime -> leitzentrale -> lz_watch -> result
+    + policy | label_suffix: lz_watch_request            | report: lz_runtime -> leitzentrale -> lz_edit_probe -> lz_watch_request
 
 + start nitpicker | ram: 16M
   + provides
@@ -196,8 +200,10 @@ config
     + background | color: #1e1e2e
 
 + start sponge_configd | caps: 200 | ram: 16M
+  + config | lz_model: yes
   + route
     + service ROM | label_last: config_request | + child report_rom
+    + service ROM | label_last: lz_model | + child report_rom
     + service Report | + child report_rom
     + any-service
       + parent
@@ -220,6 +226,12 @@ config
     + service Timer               | + child timer
     + service Gui                | + child nitpicker
     + service ROM | label_suffix: leitzentrale_enabled | + child lz_bridge
+    + service ROM | label_suffix: lz_config | + child report_rom
+    + service ROM | label_suffix: lz_model | + child report_rom
+    + service ROM | label_suffix: lz_watch_result | + child report_rom
+    + service Report | label_suffix: lz_model | + child report_rom
+    + service Report | label_suffix: lz_watch_request | + child report_rom
+    + service Report | label_suffix: lz_watch_result | + child report_rom
     + service ROM | label_suffix: focus | + child report_rom
     + service ROM | label_suffix: hover | + child report_rom
     + any-service                | + parent
@@ -231,6 +243,8 @@ config
   + route
     + service Timer | + child timer
     + service ROM | label_last: config_result | + child report_rom
+    + service ROM | label_last: lz_model | + child report_rom
+    + service ROM | label_last: lz_watch_result | + child report_rom
     + service Report | + child report_rom
     + any-service
       + parent
@@ -250,12 +264,12 @@ build_boot_image [build_artifacts]
 append qemu_args " -nographic "
 
 #
-# Automated verification (Phase 6b):
-#   1. lz_probe (inside lz_runtime) confirms sculpt_manager is alive (6a).
-#   2. vct leitzentrale writes leitzentrale.enabled=true (audit log line).
-#   3. lz_viz_probe confirms the window is actually on screen (Capture).
-# The final gate is lz-viz-probe: PASS. On timeout (window never became
-# visible, or vct failed to set the key) the run tool errors out — the
-# correct FAIL path.
+# Automated verification:
+#   6a: lz_probe confirms sculpt_manager + runtime_view running.
+#   6b: vct leitzentrale enables the window; lz_viz_probe confirms pixels.
+#   6c: lz_edit_probe drives edit→detect→configd-sync→revert→clear.
+# The final gate is lz-edit-probe: PASS (the 6c cycle completes only
+# after lz_watch detected the real fs change AND configd mirrored it AND
+# the revert restored the baseline). On timeout the run tool errors out.
 #
-run_genode_until {.*lz-viz-probe: PASS.*} 180
+run_genode_until {.*lz-edit-probe: PASS.*} 240
