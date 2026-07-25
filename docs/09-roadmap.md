@@ -258,9 +258,19 @@ test component.
 
 ### Known Limitations (documented, deferred)
 
-- Installed state is in-memory only; installs do not survive reboot.
-  The state→config path is a pure function so an FS-backed store can
-  replace it later (persistence seam).
+- Installed-set persistence is delivered (Phase 4 follow-up #2, see
+  `docs/12-package-format.md` §13): the explicitly-installed roots are
+  mirrored to a versioned XML store on a `File_system` session, so
+  installs survive a reboot. The store is opt-in per deployment — it
+  activates only when `sponge_pkgd`'s `<config>` carries a `<vfs>` node
+  — and is inspectable/resettable by the user (control escape hatch).
+  Remaining limitation: **the store is single-writer**. There is exactly
+  one `sponge_pkgd` per system and it serializes all writes, so
+  concurrent writers are not a concern in practice, but the format
+  carries no checksum and is not crash-consistent against a power loss
+  mid-write (a torn write is detected as corrupt on the next boot and
+  the daemon restarts empty with a warning, never crashes — see
+  `docs/12-package-format.md` §13.2).
 - Report/ROM channel is single-writer; concurrent callers would
   collide (request-id + backend mutex deferred until concurrent
   callers exist).
@@ -386,17 +396,50 @@ limitations).
 
 Deferred follow-ups (not blockers):
 
-1. **base-sel4 interactive GUI**: the headless test scenario is
-   kernel-agnostic and covers Phase 3 on both kernels, but a *visible*
-   desktop on base-sel4 still needs the `drivers_interactive-pc`
-   driver set (vesa_fb, ps2, usb_hid, event_filter, platform, acpi,
-   pci_decode) wired into a QEMU run script, with
-   `-device nec-usb-xhci,id=xhci -device usb-tablet` for absolute
-   pointer input. Reference: `docs/11-environment.md` and the vendored
+1. **base-sel4 interactive GUI** ✅ driver stack delivered
+   (`run/sponge-de-sel4-interactive.run`): the full
+   `drivers_interactive-pc` driver set — vesa_fb, ps2, usb_hid,
+   pc_usb_host, event_filter, platform, acpi, pci_decode — is wired into
+   a base-sel4 QEMU run script with `-device nec-usb-xhci,id=xhci
+   -device usb-tablet` for absolute-pointer input, exactly as this item
+   asked. The scenario boots seL4 on QEMU (1 GiB RAM) and is verified
+   headlessly by two boot-log assertions: vesa_fb sets the 1024x768 mode
+   and maps the physical VESA framebuffer, and usb_hid binds the QEMU
+   usb-tablet as a `POINTER` device (the last driver to come up, so it
+   also implies acpi → pci_decode → platform → pc_usb_host succeeded).
+   The Qt6/Mesa (EGL) rendering path on base-sel4 is a separate,
+   newly-discovered limitation documented in §11.1 below, so Sponge DE's
+   own window is not yet visible on base-sel4; the interactive escape
+   hatch is `run_genode_until forever` + `-display sdl`. Reference:
+   `docs/11-environment.md` §7.2/§10 and the vendored
    `genode/repos/os/recipes/raw/drivers_interactive-pc/` config set.
-2. **Package install persistence**: Phase 4 installs are in-memory
-   only (see §6 Known Limitations); an FS-backed installed-set store
-   makes them survive reboots.
+
+   11.1. **Known limitation — Qt6/Mesa (EGL) hangs on base-sel4.**
+   Sponge DE's Qt6/EGL initialization hangs on base-sel4: the component
+   logs its first few lines (including the benign libEGL
+   `MESA-LOADER: failed to retrieve device information` warnings that on
+   base-linux are followed by a softpipe fallback and a painted window),
+   requests one tiny PD-quota upgrade, and then never reaches Qt widget
+   creation. This is orthogonal to the driver stack (vesa_fb/ps2/usb_hid
+   all come up and stay up around the hung sponge-de). The same hang
+   blocks the headless `run/sponge-de-test.run` from exercising its
+   base-sel4 path: that scenario's Qt6 shared-library staging
+   (`cp` into `run_dir/genode/`) is base-linux-specific (base-sel4 packs
+   a single `image.elf`), so Qt6-on-seL4 rendering had never actually
+   been run before this work. Fixing it needs Mesa/EGL-on-seL4
+   investigation (likely the loader blocking on an absent DRM device, or
+   a softpipe-on-seL4 init issue) and is tracked as the next follow-up.
+   Once fixed, `run/sponge-de-sel4-interactive.run` already documents
+   the intended stronger verification: probe `inject=no` Capture pixel
+   check + a host-side QMP `input-send-event` usb-tablet click observed
+   through sponge-de's `input` report.
+2. **Package install persistence** ✅ delivered: the explicitly-installed
+   root set is mirrored to a versioned XML store on a `File_system`
+   session (format in `docs/12-package-format.md` §13) and reloaded on
+   construct, so installs survive a reboot. Proven by
+   `run/sponge-pkg-persist.run` (two boots over the same lx_fs-backed
+   host directory; boot 2 issues a `list`-only and finds the previously
+   installed package, which can only have come from the restored store).
 3. **Custom Sponge WM / window decorator**: Sponge DE currently
    adopts Genode's upstream `wm` + `window_layouter` + `decorator`
    stack (reused, not re-implemented, per AGENTS.md §5.2). A
