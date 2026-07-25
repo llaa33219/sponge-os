@@ -51,7 +51,7 @@ int HelpCommand::execute(Args const &args)
 		Genode::log("  vct config <key> <value>  설정 값 변경");
 		Genode::log("  vct config list           전체 설정 키 목록");
 		Genode::log("  vct theme apply <name>    바탕화면 테마 적용");
-		Genode::log("  vct leitzentrale          전문가 제어 창 열기  (계획됨)");
+		Genode::log("  vct leitzentrale          전문가 제어 창 열기 (끄기: vct leitzentrale off)");
 		Genode::log("");
 		Genode::log("공통 옵션: --explain, --manual, --json, --verbose, --lang ko");
 	} else {
@@ -68,7 +68,7 @@ int HelpCommand::execute(Args const &args)
 		Genode::log("  vct config <key> <value>  Set a configuration value");
 		Genode::log("  vct config list           List all configuration keys");
 		Genode::log("  vct theme apply <name>    Apply a desktop theme");
-		Genode::log("  vct leitzentrale          Open the Leitzentrale expert window (planned)");
+		Genode::log("  vct leitzentrale          Open the Leitzentrale expert window (off: vct leitzentrale off)");
 		Genode::log("");
 		Genode::log("Common flags: --explain, --manual, --json, --verbose, --lang ko");
 	}
@@ -1193,5 +1193,123 @@ int ThemeCommand::execute(Args const &args)
 		            "\",\"status\":\"success\"}");
 	else
 		Genode::log("Applied theme: ", name);
+	return 0;
+}
+
+
+/* ===================== LeitzentraleCommand ===================== */
+
+void LeitzentraleCommand::_print_help(Args const &args)
+{
+	if (args.lang == "ko") {
+		Genode::log("사용법: vct leitzentrale [off|status]");
+		Genode::log("Leitzentrale 전문가 제어 창의 표시 여부를 토글합니다.");
+		Genode::log("");
+		Genode::log("  vct leitzentrale          창 활성화 (나타남)");
+		Genode::log("  vct leitzentrale off      창 비활성화 (숨김)");
+		Genode::log("  vct leitzentrale status   현재 상태 조회");
+		Genode::log("");
+		Genode::log("sculpt_manager 하위 시스템은 항상 부팅되어 있으며,");
+		Genode::log("이 명령은 표시 여부 플래그만 토글합니다.");
+		Genode::log("변경 사항은 vct 종료 후에도 유지됩니다 (sponge_configd → 브리지).");
+		Genode::log("같은 설정을 직접 제어하려면: vct config leitzentrale.enabled <true|false>");
+		return;
+	}
+
+	Genode::log("Usage: vct leitzentrale [off|status]");
+	Genode::log("Toggle the visibility of the Leitzentrale expert window.");
+	Genode::log("");
+	Genode::log("  vct leitzentrale          Enable (raise the window)");
+	Genode::log("  vct leitzentrale off      Disable (hide the window)");
+	Genode::log("  vct leitzentrale status   Query the current state");
+	Genode::log("");
+	Genode::log("The sculpt_manager subsystem is always booted; this command only");
+	Genode::log("toggles the visibility flag. The change persists after vct exits");
+	Genode::log("(sponge_configd -> bridge -> gui_fader).");
+	Genode::log("For direct control of the same key: vct config leitzentrale.enabled <true|false>");
+}
+
+
+int LeitzentraleCommand::execute(Args const &args)
+{
+	char const *const verb = args.positional.string();
+
+	if (Genode::strcmp(verb, "--help") == 0 || Genode::strcmp(verb, "-h") == 0) {
+		_print_help(args);
+		return 0;
+	}
+
+	bool const off = (Genode::strcmp(verb, "off") == 0 ||
+	                  Genode::strcmp(verb, "disable") == 0 ||
+	                  Genode::strcmp(verb, "false") == 0);
+	bool const status_only = (Genode::strcmp(verb, "status") == 0);
+
+	if (!off && !status_only && Genode::strcmp(verb, "") != 0) {
+		Genode::warning("vct: unknown leitzentrale argument '", verb,
+		                "' — expected 'off', 'status', or nothing");
+		_print_help(args);
+		return 1;
+	}
+
+	ReportRomClient client { _env, "config_request", "config_result" };
+
+	char const *const want = off ? "false" : "true";
+
+	if (status_only) {
+		if (!client.config_get("leitzentrale.enabled")) {
+			if (args.json)
+				Genode::log("{\"command\":\"leitzentrale\",\"op\":\"status\",\"status\":\"error\",\"error\":\"sponge_configd did not answer\"}");
+			else
+				Genode::warning("vct: sponge_configd did not answer");
+			return 1;
+		}
+		Genode::Xml_node const result = client.result_xml();
+		Genode::String<32> const value =
+			result.attribute_value("value", Genode::String<32>());
+		bool const active = (value == Genode::String<32>("true"));
+		if (args.json)
+			Genode::log("{\"command\":\"leitzentrale\",\"op\":\"status\",\"active\":",
+			            active ? "true" : "false", "}");
+		else
+			Genode::log("Leitzentrale: ", active ? "active" : "inactive");
+		return 0;
+	}
+
+	if (!client.config_set("leitzentrale.enabled", want)) {
+		if (args.json)
+			Genode::log("{\"command\":\"leitzentrale\",\"op\":\"set\",\"value\":\"", want,
+			            "\",\"status\":\"error\",\"error\":\"sponge_configd did not answer\"}");
+		else
+			Genode::warning("vct: sponge_configd did not answer for leitzentrale.enabled");
+		return 1;
+	}
+
+	Genode::Xml_node const result = client.result_xml();
+	Genode::String<32> const rstatus =
+		result.attribute_value("status", Genode::String<32>());
+
+	if (rstatus != Genode::String<32>("ok")) {
+		Genode::String<256> const err =
+			result.attribute_value("error", Genode::String<256>());
+		if (args.json)
+			Genode::log("{\"command\":\"leitzentrale\",\"op\":\"set\",\"value\":\"", want,
+			            "\",\"status\":\"error\",\"error\":\"", err, "\"}");
+		else
+			Genode::log("leitzentrale: error: ", err);
+		return 1;
+	}
+
+	/*
+	 * Audit trail (docs/07 §4.3): log who/what so the enable is
+	 * attributable. vct is short-lived so this log line is the record.
+	 */
+	Genode::log("vct: leitzentrale ", off ? "disabled" : "enabled",
+	            " (leitzentrale.enabled=", want, ")");
+
+	if (args.json)
+		Genode::log("{\"command\":\"leitzentrale\",\"op\":\"set\",\"value\":\"", want,
+		            "\",\"status\":\"success\"}");
+	else
+		Genode::log(off ? "Leitzentrale hidden." : "Leitzentrale window enabled.");
 	return 0;
 }

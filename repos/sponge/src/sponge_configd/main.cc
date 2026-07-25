@@ -150,13 +150,15 @@ class Sponge::Configd::Main
 
 
 Sponge::Configd::Main::Key_def const Sponge::Configd::Main::_registry[MAX_KEYS] = {
+	{ "leitzentrale.enabled", true,
+	  { "true", "false" }, 2, "false" },
 	{ "panel.position", true,
 	  { "top", "bottom", "left", "right" }, 4, "bottom" },
 	{ "theme.active",   false,
 	  { }, 0, "light" },
 };
 
-unsigned const Sponge::Configd::Main::_num_keys = 2;
+unsigned const Sponge::Configd::Main::_num_keys = 3;
 
 
 /* ===================== registry helpers ===================== */

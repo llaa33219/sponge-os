@@ -189,4 +189,35 @@ class ThemeCommand : public Command
 		void _print_help(Args const &args);
 };
 
+/*
+ * leitzentrale — toggle the Leitzentrale expert window visibility.
+ *
+ *   vct leitzentrale           enable (raise the window)
+ *   vct leitzentrale off       disable (hide the window)
+ *   vct leitzentrale --help
+ *
+ * The subsystem hosting sculpt_manager is always booted (Phase 6a); this
+ * command only flips the visibility flag. It writes leitzentrale.enabled
+ * into sponge_configd over the same Report/ROM channel as `vct config`
+ * (the automation-default path; `vct config leitzentrale.enabled <v>` is
+ * the always-open control door to the same key). A bridge component
+ * regenerates the leitzentrale_enabled ROM from the configd broadcast so
+ * the change persists after vct exits and gui_fader fades the window
+ * in/out.
+ *
+ * The enable is logged (docs/07 §4.3 audit trail).
+ */
+class LeitzentraleCommand : public Command
+{
+	public:
+		explicit LeitzentraleCommand(Genode::Env &env) : _env(env) {}
+		char const *name()    const override { return "leitzentrale"; }
+		char const *summary() const override { return "Toggle the Leitzentrale expert window."; }
+		int execute(Args const &args) override;
+	private:
+		Genode::Env &_env;
+
+		void _print_help(Args const &args);
+};
+
 }  /* namespace Sponge::Vct */
