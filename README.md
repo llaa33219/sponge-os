@@ -99,8 +99,11 @@ The repository currently contains:
   changes are detected and resolved (`vct leitzentrale keep/revert`)
 - ✅ base-sel4 interactive driver stack: `run/sponge-de-sel4-interactive.run`
   boots seL4 on QEMU with vesa_fb, ps2, and USB tablet input
-  (`drivers_interactive-pc`); Qt6/Mesa rendering on seL4 is a known
-  limitation (see `docs/09-roadmap.md` §11.1)
+  (`drivers_interactive-pc`), and Sponge DE (Qt6/Mesa softpipe) renders
+  the themed desktop on seL4 — pixel- and input-verified by
+  `sponge_de_probe` (root cause of the former EGL hang: capability
+  exhaustion on seL4, fixed by sizing `caps`; see
+  `docs/09-roadmap.md` §11.1)
 
 Verified vct boot output (base-sel4 on QEMU):
 

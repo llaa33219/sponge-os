@@ -403,36 +403,49 @@ Deferred follow-ups (not blockers):
    a base-sel4 QEMU run script with `-device nec-usb-xhci,id=xhci
    -device usb-tablet` for absolute-pointer input, exactly as this item
    asked. The scenario boots seL4 on QEMU (1 GiB RAM) and is verified
-   headlessly by two boot-log assertions: vesa_fb sets the 1024x768 mode
-   and maps the physical VESA framebuffer, and usb_hid binds the QEMU
-   usb-tablet as a `POINTER` device (the last driver to come up, so it
-   also implies acpi → pci_decode → platform → pc_usb_host succeeded).
-   The Qt6/Mesa (EGL) rendering path on base-sel4 is a separate,
-   newly-discovered limitation documented in §11.1 below, so Sponge DE's
-   own window is not yet visible on base-sel4; the interactive escape
-   hatch is `run_genode_until forever` + `-display sdl`. Reference:
+   headlessly by three boot-log assertions: vesa_fb sets the 1024x768
+   mode and maps the physical VESA framebuffer, usb_hid binds the QEMU
+   usb-tablet as a `POINTER` device, and `sponge_de_probe` reports
+   `PASS` — the themed window is pixel-verified through a Capture
+   session and a synthetic click round-trips through sponge-de's
+   `input` report. The Qt6/Mesa (EGL) rendering path on base-sel4 was
+   fixed as part of this work; see §11.1 below for the root cause
+   (capability exhaustion, not a Mesa bug). Reference:
    `docs/11-environment.md` §7.2/§10 and the vendored
    `genode/repos/os/recipes/raw/drivers_interactive-pc/` config set.
 
-   11.1. **Known limitation — Qt6/Mesa (EGL) hangs on base-sel4.**
-   Sponge DE's Qt6/EGL initialization hangs on base-sel4: the component
-   logs its first few lines (including the benign libEGL
-   `MESA-LOADER: failed to retrieve device information` warnings that on
-   base-linux are followed by a softpipe fallback and a painted window),
-   requests one tiny PD-quota upgrade, and then never reaches Qt widget
-   creation. This is orthogonal to the driver stack (vesa_fb/ps2/usb_hid
-   all come up and stay up around the hung sponge-de). The same hang
-   blocks the headless `run/sponge-de-test.run` from exercising its
-   base-sel4 path: that scenario's Qt6 shared-library staging
-   (`cp` into `run_dir/genode/`) is base-linux-specific (base-sel4 packs
-   a single `image.elf`), so Qt6-on-seL4 rendering had never actually
-   been run before this work. Fixing it needs Mesa/EGL-on-seL4
-   investigation (likely the loader blocking on an absent DRM device, or
-   a softpipe-on-seL4 init issue) and is tracked as the next follow-up.
-   Once fixed, `run/sponge-de-sel4-interactive.run` already documents
-   the intended stronger verification: probe `inject=no` Capture pixel
-   check + a host-side QMP `input-send-event` usb-tablet click observed
-   through sponge-de's `input` report.
+   11.1. **Resolved — Qt6/Mesa (EGL) on base-sel4 was capability
+   exhaustion, not a Mesa bug.** The original symptom: sponge-de's
+   Qt6/EGL initialization hung on base-sel4 after logging the benign
+   libEGL `MESA-LOADER: failed to retrieve device information` and
+   `failed to get driver name for fd 0` warnings (both also appear on
+   base-linux, where softpipe fallback follows and the window paints),
+   plus one `upgrading quota donation for PD session (0 bytes, 4 caps)`
+   line — then silence forever. Root cause, confirmed by experiment:
+   base-sel4's capability accounting costs roughly 3x base-linux's per
+   operation (each Genode capability maps to several raw seL4 caps), so
+   the former `caps: 300` assignment ran out **in the middle of Mesa's
+   screen creation**. The child requested a 4-cap upgrade, and the
+   subsequent out-of-caps allocation blocked *silently* — no error, no
+   log, an infinite hang. Raising sponge-de to `caps: 1000` (RAM was
+   never the bottleneck — the upgrade request was 0 bytes, so
+   `ram: 128M` matches the base-linux scenarios) makes the full desktop
+   render on seL4: `sponge-de: panel and window shown`, the probe's
+   Capture pixel check detects the themed window, and an injected click
+   round-trips (`sponge-de-probe: PASS`). The scenario now gates on that
+   PASS marker, so a regression fails loudly instead of hanging.
+   **Open question (upstream)**: a Genode component that exhausts its
+   capability quota mid-initialization hangs with zero diagnostics — the
+   last visible line is the quota-upgrade request. A loud failure (or a
+   retry-then-abort) in the out-of-caps path would have turned this
+   multi-day mystery into a one-line log. Candidate for an upstream
+   Genode issue; not worked around in Sponge OS code because the fix
+   belongs in base/capability accounting, not in individual components.
+   Remaining follow-up on this scenario: drive the click from the host
+   through the real usb-tablet (QMP `input-send-event` over a
+   `-qmp tcp:...` socket) instead of the probe's synthetic Event
+   injection, exercising usb-tablet → pc_usb_host → usb_hid →
+   event_filter → nitpicker → sponge-de with real hardware input.
 2. **Package install persistence** ✅ delivered: the explicitly-installed
    root set is mirrored to a versioned XML store on a `File_system`
    session (format in `docs/12-package-format.md` §13) and reloaded on

@@ -27,13 +27,11 @@
 #                          event_filter (provides Event; merges ps2+usb,
 #                                    chargen/accel; re-submits to
 #                                    nitpicker via the sub-init route)
-#   + sponge-de         (Qt6 DE; panel + themed demo window). Included so
-#                       the scenario is the full interactive desktop; see
-#                       the limitation note below.
-#   + sponge_de_probe   (inject=no, render_iters=1800; would prove the
-#                       themed window via Capture + a host-injected
-#                       usb-tablet click. Diagnostic only today — see
-#                       below.)
+#   + sponge-de         (Qt6 DE; panel + themed demo window). Renders on
+#                       base-sel4 since the caps fix (header note below).
+#   + sponge_de_probe   (inject=no, render_iters=1800; proves the themed
+#                       window via Capture pixel check and the input
+#                       round-trip via an injected click -> "PASS").
 #
 # AUTOMATED VERIFICATION (what gates "Run script execution successful"):
 #
@@ -47,23 +45,25 @@
 #         is the last driver up, so it also implies acpi -> pci_decode
 #         -> platform -> pc_usb_host (xHCI) all came up before it.
 #
-# KNOWN LIMITATION — Qt6/Mesa (EGL) hangs on base-sel4
-# (docs/09-roadmap.md §11.1): sponge-de's Qt6/EGL init blocks on seL4,
-# so Sponge DE's own window is not yet visible. The driver stack is
-# unaffected and fully operational around the hung sponge-de. The probe
-# therefore stays diagnostic (its Capture poll shows nitpicker's
-# background only). Once Qt6-on-sel4 rendering is fixed, the stronger
-# proof drops in without changing the driver wiring: probe inject=no
-# Capture pixel check + a host-side QMP `input-send-event` usb-tablet
-# click (abs axes 0..32767 over a `-qmp tcp:127.0.0.1:PORT,server=on,
-# wait=off` socket; Tcl's `socket` is TCP-only) observed through
-# sponge-de's "input" report — exercising usb-tablet -> pc_usb_host ->
-# usb_hid -> event_filter -> nitpicker -> sponge-de end-to-end.
+# Qt6/Mesa (EGL) on base-sel4 — RESOLVED (was: known limitation,
+# docs/09-roadmap.md §11.1): sponge-de's Qt6/EGL init used to block on
+# seL4. Root cause: capability exhaustion. base-sel4's cap accounting is
+# roughly 3x base-linux's per operation (each Genode capability maps to
+# several raw seL4 caps), so the former `caps: 300` ran out in the
+# middle of Mesa's screen creation. The child requested a tiny upgrade
+# (`upgrading quota donation for PD session (0 bytes, 4 caps)`) and then
+# blocked *silently* — no error, no log, an infinite hang inside
+# EGL/softpipe init. `caps: 1000` gives comfortable headroom (measured:
+# 300 hangs at EGL init; 1000 renders the full desktop; RAM was never
+# the bottleneck — the upgrade request was 0 bytes, so `ram: 128M`
+# matches the base-linux scenarios). With that, sponge-de renders and
+# the probe's Capture pixel check + injected click pass (see the
+# verification section below).
 #
 # Automated, headless, no human in the loop: -nographic (serial only).
-# To drive the desktop with a real mouse once Qt6-on-sel4 is fixed
-# (control escape hatch, AGENTS.md §1.1), see the "Interactive viewing"
-# note at the bottom of this file.
+# To drive the desktop with a real mouse (control escape hatch,
+# AGENTS.md §1.1), see the "Interactive viewing" note at the bottom of
+# this file.
 #
 # This scenario is base-sel4 only: vesa_fb/ps2/usb_hid need real PC
 # hardware access that base-linux does not provide (base-linux uses
@@ -290,7 +290,10 @@ config
         + service LOG                 | + parent
         + service Timer               | + parent
 
-+ start sponge-de | caps: 300 | ram: 128M
+# caps: 1000 (not the base-linux 300): base-sel4's capability accounting
+# is roughly 3x base-linux's; 300 caps run out inside Mesa's EGL screen
+# creation and the component hangs *silently* (see the header note).
++ start sponge-de | caps: 1000 | ram: 128M
   + config
     + vfs
       + dir dev
@@ -430,37 +433,34 @@ append qemu_args " -device nec-usb-xhci,id=xhci -device usb-tablet "
 #       this marker also implies acpi -> pci_decode -> platform ->
 #       pc_usb_host (xHCI) all came up before it.
 #
-# These are scripted log assertions, which the task brief explicitly
-# allows when full sponge-de rendering is not achievable on base-sel4.
-# The reason it is not achievable here is documented below and in
-# docs/09-roadmap.md §11: the Qt6/Mesa (EGL) initialization path hangs
-# on base-sel4 (sponge-de logs its first few lines, including benign
-# libEGL "MESA-LOADER" warnings that on base-linux are followed by a
-# softpipe fallback and a painted window, but on base-sel4 it never
-# reaches Qt widget creation). The driver stack itself is unaffected
-# and fully operational.
+# These two assertions prove the driver set. The third assertion gates
+# on the Qt6/Mesa-on-seL4 fix (see the header note): sponge_de_probe
+# (inject=no) confirms the themed window via its Capture pixel check
+# ("window detected in demo domain") and injects a synthetic click that
+# sponge-de confirms through its "input" report, ending in
+# "sponge-de-probe: PASS". A regression of the caps sizing (or any
+# future Mesa/EGL-on-seL4 breakage) fails this scenario instead of
+# hanging silently.
 #
 run_genode_until {.*\[init -> drivers -> fb\] using 1024x768.*} 90
 run_genode_until {.*Connected device.*QEMU QEMU USB Tablet.*POINTER.*} 90
+run_genode_until {.*sponge-de-probe: PASS.*} 120
 
 #
-# When the Qt6/Mesa-on-seL4 rendering hang is resolved upstream, the
-# intended stronger verification is: have sponge_de_probe (inject=no)
-# confirm the themed window via a Capture pixel check, then inject a
-# usb-tablet click from the host via a QMP control socket
+# Remaining follow-up on this scenario: drive the click from the HOST
+# through the real usb-tablet instead of the probe's synthetic Event
+# injection — a QMP control socket
 # (`-qmp tcp:127.0.0.1:PORT,server=on,wait=off`; Tcl's `socket` is
-# TCP-only) with `input-send-event` abs axes (0..32767) and watch
-# sponge-de's "input" report for the press — exercising the full
-# usb-tablet -> pc_usb_host -> usb_hid -> event_filter -> nitpicker ->
-# sponge-de path. That is left as the follow-up wired by this scenario's
-# driver set.
+# TCP-only) with `input-send-event` abs axes (0..32767), observed
+# through sponge-de's "input" report — exercising usb-tablet ->
+# pc_usb_host -> usb_hid -> event_filter -> nitpicker -> sponge-de
+# end-to-end with real hardware input.
 #
 
 #
 # Interactive viewing (control escape hatch, AGENTS.md §1.1):
 # This scenario is headless by design. To drive the desktop with a real
-# mouse/keyboard once Qt6-on-sel4 rendering is fixed, replace the two
-# run_genode_until lines above with:
+# mouse/keyboard, replace the three run_genode_until lines above with:
 #     run_genode_until forever
 # re-enable `QEMU_OPT += -display sdl` in build.conf (or drop -nographic
 # above), and move the host mouse — it reaches the guest through the

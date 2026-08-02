@@ -62,11 +62,15 @@ A scenario defines:
   ps2, usb_hid, pc_usb_host, event_filter, platform, acpi, pci_decode)
   built from source and wired with `-device nec-usb-xhci -device
   usb-tablet` for absolute-pointer input. Headless verification matches
-  vesa_fb setting the 1024x768 mode and usb_hid binding the QEMU
-  usb-tablet as a `POINTER` (the full driver set coming up). base-sel4
+  vesa_fb setting the 1024x768 mode, usb_hid binding the QEMU usb-tablet
+  as a `POINTER`, and `sponge-de-probe: PASS` — sponge-de (Qt6/Mesa
+  softpipe) renders the themed window on seL4 (Capture pixel check) and
+  a synthetic click round-trips through its `input` report. base-sel4
   only (`assert {[have_spec sel4]}`); see `docs/08-development.md` §3.8
-  and `docs/09-roadmap.md` §11/§11.1 for the Qt6/Mesa-on-sel4 rendering
-  limitation and the kernel-switch/host-tool requirements.
+  and `docs/09-roadmap.md` §11/§11.1 for the kernel-switch/host-tool
+  requirements and the resolved Qt6/Mesa-on-sel4 capability-exhaustion
+  root cause (sponge-de needs `caps: 1000` on seL4, not the base-linux
+  300).
 
 - `sponge-pkg-explain.run` — Phase 4a: end-to-end package-explain flow.
   `vct install nano --explain` writes a request report that `report_rom`
@@ -105,13 +109,13 @@ A scenario defines:
 
 ## Planned additions
 
-- The end-to-end usb-tablet click proof for
-  `sponge-de-sel4-interactive.run` (probe `inject=no` Capture pixel
-  check + a host-side QMP `input-send-event` usb-tablet click observed
-  through sponge-de's `input` report) is wired into the driver set but
-  gated on the Qt6/Mesa-on-sel4 rendering hang being fixed
-  (`docs/09-roadmap.md` §11.1). The driver stack itself is verified
-  today.
+- The end-to-end HOST-injected usb-tablet click proof for
+  `sponge-de-sel4-interactive.run`: a host-side QMP `input-send-event`
+  usb-tablet click observed through sponge-de's `input` report
+  (exercising the real hardware input path end-to-end). The in-guest
+  half is already verified — the Qt6/Mesa-on-sel4 capability-exhaustion
+  hang is fixed (`docs/09-roadmap.md` §11.1) and `sponge_de_probe`'s
+  synthetic click round-trips today.
 
 For how to write a run script, see the
 [Genode run framework](https://genode.org/documentation/developer-resources/run)
