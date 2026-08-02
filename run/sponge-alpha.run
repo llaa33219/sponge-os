@@ -1,0 +1,685 @@
+#
+# \brief  Sponge OS Alpha unified desktop scenario (Phase 7, todo 4)
+# \author Sponge OS contributors
+# \date   2026
+#
+# ONE base-sel4 scenario merging FIVE proven component sets into the
+# Alpha desktop: real PC drivers + wm/decorator + live theme pipeline +
+# launcher feed (pkgd) + Leitzentrale subsystem — all on seL4, pixel-
+# and report-verified by a single composite probe.
+#
+# Merge map (each set is lifted verbatim from its proven scenario):
+#
+#   (1) Driver stack            <- run/sponge-de-sel4-interactive.run
+#       acpi/pci_decode/platform/vesa_fb/ps2/pc_usb_host/usb_hid/
+#       event_filter as a sub-init; xHCI + usb-tablet absolute pointer.
+#       QEMU RAM bumped 1G -> 2G to absorb the lz subsystem too.
+#
+#   (2) wm + layouter + decorator <- run/sponge-wm.run
+#       App windows (Sponge DE Demo) route through wm and get real
+#       decorated/movable frames; the panel + launcher popup stay in
+#       fixed nitpicker domains (panel layer 1, launcher layer 4).
+#
+#   (3) sponge_configd + sponge_themed <- run/sponge-theme.run
+#       Live config -> theme pipeline feeding sponge-de (theme source:
+#       themed), with configd also broadcasting to the lz subsystem.
+#
+#   (4) sponge_pkgd + pkg_runtime + hello <- run/sponge-launcher.run
+#       Launcher feed: sponge-de shows the installed set; hello is
+#       pre-staged so the launcher report carries it at boot.
+#
+#   (5) Leitzentrale subsystem   <- run/sponge-leitzentrale.run
+#       lz_runtime (sculpt_manager) + lz_bridge (rom_filter) +
+#       lz_watch + lz_viewer; configs at repos/sponge/src/leitzentrale/
+#       {subsys,lz_runtime,lz_bridge}.config. lz_viewer streams the
+#       subsystem's composited UI to the outer nitpicker once
+#       configd's leitzentrale.enabled=true (flipped by the probe).
+#
+# Verification: a new composite probe (test/alpha_probe) asserts all
+# four Alpha criteria in bounded iterations and logs exactly
+# "alpha-probe: PASS". The run gates on that marker via
+# run_genode_until; on timeout the run tool errors out (fail-loud,
+# docs/09-roadmap.md §11.1 lesson — never a silent hang).
+#
+# Quota policy (Metis A3): sponge-de caps 1000 (proven for Qt6/Mesa on
+# seL4); lz_runtime caps 8000 + leitzentrale child caps 4600 (proven
+# in sponge-leitzentrale.run); wm/decorator/drivers sized per their
+# source scenarios. Total fits in 2G QEMU RAM.
+#
+# base-sel4 only: vesa_fb/ps2/usb_hid need real PC hardware access
+# that base-linux cannot provide. qt6 stale-cmake note (Metis A12,
+# docs/11 §10.3): if the build dir was previously used for a base-linux
+# Qt6 build, `rm -rf genode/build/x86_64/qt6/base` before building.
+#
+# Scope OUT (W1 guardrails): no networking (W3), no click-to-launch
+# (W2), no writable fs / persistence wiring, no vendored-tree patches.
+#
+
+assert {[have_spec sel4]} \
+	"sponge-alpha requires KERNEL=sel4 (BOARD=pc) in build.conf. \
+	 This scenario drives real PC hardware (vesa_fb/ps2/usb_hid) which \
+	 base-linux cannot provide."
+
+build { core lib/ld init timer server/report_rom server/nitpicker \
+         driver/acpi app/pci_decode driver/platform \
+         driver/framebuffer/vesa driver/ps2 \
+         driver/usb_host/pc driver/usb_hid server/event_filter \
+         server/wm app/window_layouter app/decorator \
+         sponge_configd sponge_themed sponge_pkgd pkg_hello sponge-de \
+         server/rom_filter app/themed_decorator app/backdrop \
+         server/gui_fb server/gui_fader \
+         server/fs_report server/fs_rom server/vfs \
+         app/sculpt_manager app/menu_view \
+         lz_watch test/lz_probe test/lz_viewer test/lz_edit_probe \
+         test/alpha_probe \
+         qt6/base lib/libc lib/libm lib/stdcxx lib/mesa \
+         lib/mesa_gpu-softpipe lib/egl lib/softpipe lib/libdrm lib/expat \
+         lib/qt6_component lib/vfs lib/vfs_pipe lib/vfs_gpu lib/rom_filter \
+         lib/zlib lib/libpng lib/blit lib/vfs_ttf lib/vfs_import lib/posix }
+
+create_boot_directory
+
+#
+# On base-sel4 every boot module must land in bin/ BEFORE
+# build_boot_image (the boot_dir/sel4 plugin packs a single image.elf
+# from bin/ at that point — modules added after never reach the guest).
+#
+exec mkdir -p bin
+
+#
+# Stage model.tar for the lz subsystem from Sculpt ingredients (READ-ONLY
+# access to genode/repos/gems/sculpt — no vendored-tree edits, §5.2).
+#
+set model_stage "[run_dir]/model-staging"
+file mkdir "$model_stage/child"
+file mkdir "$model_stage/depot"
+
+set sculpt_dir "${genode_dir}/repos/gems/sculpt"
+
+foreach cfg {deploy system manager fb runtime} {
+    exec cp -fL "$sculpt_dir/$cfg/default" "$model_stage/$cfg"
+}
+
+foreach cfg {wifi event_filter font gui clipboard log_view network \
+             numlock_remap global_keys runtime_view usb ram_fs report model} {
+    exec cp -fL "$sculpt_dir/$cfg/default" "$model_stage/child/$cfg"
+}
+
+exec cp -fL "${genode_dir}/repos/sponge/src/leitzentrale/subsys.config" \
+           "$model_stage/child/leitzentrale"
+
+set dv [open "$model_stage/depot/version" w]
+puts $dv {depot | version: 0}
+close $dv
+
+exec tar -cf "bin/model.tar" -C "$model_stage" .
+file delete -force "$model_stage"
+
+#
+# Fonts for the lz subsystem (Vera.ttf / VeraMono.ttf from the prepared
+# ttf-bitstream-vera port).
+#
+set vera_dir [lindex [glob -nocomplain \
+    "${genode_dir}/contrib/ttf-bitstream-vera-*/ttf/bitstream-vera"] 0]
+if {$vera_dir eq ""} {
+    error "ttf-bitstream-vera port not prepared; run: ./genode/tool/ports/prepare_port ttf-bitstream-vera"
+}
+exec cp -fL "$vera_dir/Vera.ttf"     "bin/Vera.ttf"
+exec cp -fL "$vera_dir/VeraMono.ttf" "bin/VeraMono.ttf"
+
+#
+# Images referenced by the lz subsystem (decorator drop shadow, backdrop).
+#
+exec cp -fL "$sculpt_dir/../run/sculpt/drop_shadow.png" \
+           "bin/drop_shadow.png"
+exec cp -fL "$sculpt_dir/../src/app/backdrop/genode_logo.png" \
+           "bin/genode_logo.png"
+
+#
+# Static runtime_config ROM (empty runtime — nothing deployed yet).
+#
+set rc [open "bin/runtime_config" w]
+puts $rc {config}
+close $rc
+
+#
+# VERSION + build_info ROMs read by sculpt_manager.
+#
+set ver [open "bin/VERSION" w]
+puts $ver "26.05"
+close $ver
+
+set bi [open "bin/build_info" w]
+puts $bi {build_info | genode_version: 26.05 | date: 2026-08-03 | depot_user: sponge | arch: x86_64 | board: pc
+-}
+close $bi
+
+#
+# Sponge-authored lz configs (kept out of the inline config to avoid deep
+# HID nesting — same pattern as sponge-leitzentrale.run). NOTE:
+# subsys.config is staged as leitzentrale.config (the subsystem child's
+# config ROM route expects that label).
+#
+exec cp -fL "${genode_dir}/repos/sponge/src/leitzentrale/lz_runtime.config" \
+           "bin/lz_runtime.config"
+exec cp -fL "${genode_dir}/repos/sponge/src/leitzentrale/subsys.config" \
+           "bin/leitzentrale.config"
+exec cp -fL "${genode_dir}/repos/sponge/src/leitzentrale/lz_bridge.config" \
+           "bin/lz_bridge.config"
+
+#
+# Stage the driver sub-init config modules (vendored
+# recipes/raw/drivers_interactive-pc/ set). fb.config + event_filter.config
+# are served to the fb/event_filter children by label.
+#
+set recipe_dir "${genode_dir}/repos/os/recipes/raw/drivers_interactive-pc"
+foreach f { drivers.config fb.config event_filter.config } {
+	if {![file exists "$recipe_dir/$f"]} {
+		error "$recipe_dir/$f missing (vendored drivers_interactive-pc recipe drifted?)"
+	}
+	exec cp -f "$recipe_dir/$f" "bin/$f"
+}
+
+#
+# Keyboard layouts consumed by event_filter.
+#
+set chargen_dir "${genode_dir}/repos/os/src/server/event_filter"
+foreach f { en_us.chargen special.chargen } {
+	if {![file exists "$chargen_dir/$f"]} { error "$chargen_dir/$f missing" }
+	exec cp -f "$chargen_dir/$f" "bin/$f"
+}
+
+#
+# Theme files staged so sponge_themed can resolve default + light by name.
+#
+foreach theme { default light } {
+	set theme_src "${genode_dir}/repos/sponge/src/sponge-de/themes/${theme}.theme"
+	set theme_dst "bin/${theme}.theme"
+	if {[file exists $theme_src] && ![file exists $theme_dst]} {
+		exec cp -fL $theme_src $theme_dst
+	}
+}
+
+#
+# Stage package metadata + the derived index so sponge_pkgd can resolve
+# `hello` (same scheme as run/sponge-launcher.run).
+#
+set staged_pkgs { hello }
+foreach pkg $staged_pkgs {
+	set src "${genode_dir}/../pkg/$pkg/metadata.xml"
+	set dst "bin/pkg_$pkg.xml"
+	if {![file exists $src]} {
+		error "package metadata not found: $src"
+	}
+	exec cp -fL $src $dst
+}
+
+set index_fh [open "bin/pkg_index.xml" w]
+puts $index_fh "<packages>"
+foreach pkg $staged_pkgs {
+	puts $index_fh "  <pkg name=\"$pkg\"/>"
+}
+puts $index_fh "</packages>"
+close $index_fh
+
+#
+# Top-level init configuration (merged from the five source scenarios).
+#
+install_config {
+config
++ parent-provides
+  + service ROM
+  + service PD
+  + service RM
+  + service CPU
+  + service LOG
+  + service IRQ
+  + service IO_MEM
+  + service IO_PORT
+
++ default | caps: 200 | ram: 4M
++ default-route
+  + any-service
+    + parent
+    + any-child
+
++ start timer
+  + provides | + service Timer
+
++ start report_rom | caps: 300 | ram: 8M
+  + provides
+    + service Report
+    + service ROM
+  + config | verbose: no
+    + policy | label: layouter -> window_list       | report: wm -> window_list
+    + policy | label: decorator -> pointer           | report: wm -> pointer
+    + policy | label: decorator -> window_layout     | report: layouter -> window_layout
+    + policy | label: wm -> focus                    | report: layouter -> focus
+    + policy | label: wm -> resize_request           | report: layouter -> resize_request
+    + policy | label: layouter -> hover              | report: decorator -> hover
+    + policy | label: layouter -> decorator_margins  | report: decorator -> decorator_margins
+    + policy | label: layouter -> rules              | report: layout_rules
+    + policy | label: layouter -> focus_request      | report: wm -> focus_request
+    + policy | label: sponge_configd -> config_request | report: alpha_probe -> config_request
+    + policy | label: alpha_probe -> config_result     | report: sponge_configd -> config_result
+    + policy | label: sponge_themed -> config          | report: sponge_configd -> config
+    + policy | label: alpha_probe -> config            | report: sponge_configd -> config
+    + policy | label_suffix: lz_config                 | report: sponge_configd -> config
+    + policy | label: sponge-de -> theme               | report: sponge_themed -> theme
+    + policy | label: alpha_probe -> theme             | report: sponge_themed -> theme
+    + policy | label: sponge_pkgd -> request     | report: alpha_probe -> request
+    + policy | label: alpha_probe -> result       | report: sponge_pkgd -> result
+    + policy | label: pkg_runtime -> config       | report: sponge_pkgd -> runtime
+    + policy | label: sponge-de -> installed      | report: sponge_pkgd -> installed
+    + policy | label: alpha_probe -> sponge_de_launcher | report: sponge-de -> launcher
+    + policy | label_suffix: lz_model         | report: lz_runtime -> leitzentrale -> lz_watch -> lz_model
+    + policy | label_suffix: lz_watch_result  | report: lz_runtime -> leitzentrale -> lz_watch -> result
+    + policy | label_suffix: lz_watch_request | report: lz_runtime -> leitzentrale -> lz_edit_probe -> lz_watch_request
+    + policy | label_suffix: focus            | report: nitpicker -> focus
+    + policy | label_suffix: hover            | report: nitpicker -> hover
+
++ start nitpicker | ram: 16M
+  + provides
+    + service Gui
+    + service Capture
+    + service Event
+  + route
+    + service Report | + child report_rom
+    + service Timer  | + child timer
+    + any-service
+      + parent
+      + any-child
+  + config
+    + capture
+    + event
+    + report | focus: yes | hover: yes
+    + domain panel | layer: 1 | content: client | label: no
+                   | hover: always | focus: click | ypos: 0 | height: 28
+    + domain launcher | layer: 4 | content: client | label: no
+                      | hover: always | focus: click
+                      | xpos: 0 | ypos: 28 | width: 341 | height: 480
+    + domain default | layer: 3 | content: client | label: no
+                     | hover: always | focus: click | ypos: 28 | height: -28
+    + policy | label_prefix: sponge-de -> Sponge Panel   | domain: panel
+    + policy | label_prefix: sponge-de -> Sponge Launcher | domain: launcher
+    + default-policy | domain: default
+    + background | color: #1e1e2e
+
++ start drivers | caps: 1500 | ram: 96M | managing_system: yes
+  + binary init
+  + route
+    + service ROM | label: config | + parent | label: drivers.config
+    + service Timer               | + child timer
+    + service Capture             | + child nitpicker
+    + service Event               | + child nitpicker
+    + any-service                 | + parent
+  + config
+    + parent-provides
+      + service IRQ
+      + service IO_MEM
+      + service IO_PORT
+      + service ROM
+      + service PD
+      + service RM
+      + service CPU
+      + service LOG
+      + service Timer
+      + service Capture
+      + service Event
+
+    + default | caps: 60
+
+    + start acpi | caps: 250 | ram: 4M
+      + route
+        + service IO_MEM | + parent
+        + service LOG    | + parent
+        + service PD     | + parent
+        + service RM     | + parent
+        + service CPU    | + parent
+        + service ROM    | + parent
+        + service Report | + child report_rom
+
+    + start report_rom | caps: 100 | ram: 2M
+      + provides
+      | + service ROM
+      | + service Report
+      + config
+      | + policy | label: pci_decode -> system | report: acpi -> acpi
+      | + policy | label: platform -> devices  | report: pci_decode -> devices
+      | + policy | label: usb_hid -> report    | report: usb -> devices
+      + route
+        + service LOG | + parent
+        + service PD  | + parent
+        + service CPU | + parent
+        + service ROM | + parent
+
+    + start pci_decode | caps: 100 | ram: 2M
+      + route
+        + service Report              | + child report_rom
+        + service ROM | label: system | + child report_rom
+        + service IO_MEM              | + parent
+        + service LOG                 | + parent
+        + service PD                  | + parent
+        + service RM                  | + parent
+        + service CPU                 | + parent
+        + service ROM                 | + parent
+
+    + start platform | caps: 200 | ram: 3M | managing_system: yes
+      + provides
+      | + service Dma
+      | + service Platform
+      + route
+      | + service ROM | label: devices | + child report_rom
+      | + service Report               | + child report_rom
+      | + service IRQ                  | + parent
+      | + service IO_MEM               | + parent
+      | + service IO_PORT              | + parent
+      | + service ROM                  | + parent
+      | + service PD                   | + parent
+      | + service CPU                  | + parent
+      | + service LOG                  | + parent
+      | + service Timer                | + parent
+      + config
+        + report | devices: yes
+        + policy | label_prefix: ps2             | + device ps2
+        + policy | label_prefix: fb  | info: yes | + pci | class: VGA
+        + policy | label_prefix: usb | info: yes | + pci | class: USB
+
+    + start fb | caps: 150 | ram: 20M
+      + binary vesa_fb
+      + route
+        + service ROM | label: config | + parent | label: fb.config
+        + service Report              | + child report_rom
+        + service Dma                 | + child platform
+        + service Platform            | + child platform
+        + service IO_PORT             | + parent
+        + service IO_MEM              | + parent
+        + service ROM                 | + parent
+        + service PD                  | + parent
+        + service CPU                 | + parent
+        + service LOG                 | + parent
+        + service Timer               | + parent
+        + service Capture             | + parent
+
+    + start ps2 | caps: 100 | ram: 1280K
+      + config
+      + route
+        + service Dma      | + child platform
+        + service Platform | + child platform
+        + service Event    | + child event_filter | label: ps2
+        + service ROM      | + parent
+        + service PD       | + parent
+        + service CPU      | + parent
+        + service LOG      | + parent
+        + service Timer    | + parent
+
+    + start usb | caps: 200 | ram: 16M
+      + binary pc_usb_host
+      + provides | + service Usb
+      + config
+      | + report | devices: yes
+      | + policy | label_prefix: usb_hid | + device | class: 0x3
+      + route
+        + service Dma                     | + child platform
+        + service Platform                | + child platform
+        + service Report | label: devices | + child report_rom
+        + service ROM                     | + parent
+        + service PD                      | + parent
+        + service RM                      | + parent
+        + service CPU                     | + parent
+        + service LOG                     | + parent
+        + service Timer                   | + parent
+
+    + start usb_hid | caps: 180 | ram: 10M
+      + route
+        + service ROM | label: report | + child report_rom
+        + service ROM                 | + parent
+        + service PD                  | + parent
+        + service RM                  | + parent
+        + service CPU                 | + parent
+        + service LOG                 | + parent
+        + service Timer               | + parent
+        + service Event               | + child event_filter | label: usb
+        + service Usb                 | + child usb
+
+    + start event_filter | caps: 90 | ram: 1280K
+      + provides | + service Event
+      + route
+        + service ROM | label: config | + parent | label: event_filter.config
+        + service Event               | + parent
+        + service ROM                 | + parent
+        + service PD                  | + parent
+        + service CPU                 | + parent
+        + service LOG                 | + parent
+        + service Timer               | + parent
+
++ start wm | caps: 250 | ram: 8M
+  + provides
+    + service Gui
+    + service Report
+    + service ROM
+  + config
+    + policy | label_prefix: decorator | role: decorator
+    + policy | label_prefix: layouter  | role: layouter
+    + default-policy
+  + route
+    + service ROM    | label: focus          | + child report_rom
+    + service ROM    | label: resize_request | + child report_rom
+    + service Report | label_last: shape     | + child report_rom
+    + service Report                         | + child report_rom
+    + service Gui                            | + child nitpicker
+    + any-service
+      + parent
+      + any-child
+
++ start layouter | caps: 150 | ram: 4M
+  + binary window_layouter
+  + config | rules: rom
+    + report | rules: yes
+    + rules
+      + screen screen
+      + assign | label: sponge-de -> Sponge DE Demo | target: screen
+               | xpos: 192 | ypos: 172 | width: 640 | height: 480 | maximized: no
+    + press   | key: BTN_LEFT  | action: drag
+      + release | key: BTN_LEFT | action: drop
+  + route
+    + service ROM    | label: window_list       | + child report_rom
+    + service ROM    | label: focus_request     | + child report_rom
+    + service ROM    | label: hover             | + child report_rom
+    + service ROM    | label: decorator_margins | + child report_rom
+    + service ROM    | label: rules             | + child report_rom
+    + service Report | label: rules             | + child report_rom | label: layout_rules
+    + service Report                            | + child report_rom
+    + any-service
+      + child wm
+      + parent
+      + any-child
+
++ start decorator | caps: 350 | ram: 32M
+  + config
+    + controls
+      + maximizer
+      + title
+    + default-policy
+  + route
+    + service ROM    | label: window_layout | + child report_rom
+    + service ROM    | label: pointer       | + child report_rom
+    + service Report                        | + child report_rom
+    + any-service
+      + child wm
+      + parent
+      + any-child
+
++ start sponge_configd | caps: 200 | ram: 16M
+  + config | lz_model: yes
+  + route
+    + service ROM | label_last: config_request | + child report_rom
+    + service ROM | label_last: lz_model | + child report_rom
+    + service Report | + child report_rom
+    + any-service
+      + parent
+      + any-child
+
++ start sponge_themed | caps: 200 | ram: 8M
+  + route
+    + service ROM | label_last: config | + child report_rom
+    + service ROM | label_last: default.theme | + parent
+    + service ROM | label_last: light.theme   | + parent
+    + service Report | + child report_rom
+    + any-service
+      + parent
+      + any-child
+
++ start sponge_pkgd | caps: 200 | ram: 16M
+  + route
+    + service ROM | label_last: request | + child report_rom
+    + service Report | + child report_rom
+    + any-service
+      + parent
+      + any-child
+
++ start pkg_runtime | caps: 400 | ram: 32M
+  + binary init
+  + route
+    + service ROM | label: config | + child report_rom
+    + any-service
+      + parent
+      + any-child
+
++ start sponge-de | caps: 1000 | ram: 128M
+  + config
+    + theme | source: themed
+    + launcher | source: pkgd
+    + vfs
+      + dir dev
+        + log
+        + inline rtc | : 2018-01-01 00:01
+      + dir pipe | + pipe
+      + tar qt6_dejavusans.tar
+      + tar qt6_libqgenode.tar
+    + libc | stdout: /dev/log | stderr: /dev/log | pipe: /pipe | rtc: /dev/rtc
+  + route
+    + service Gui | label_last: Sponge Panel   | + child nitpicker
+    + service Gui | label_last: Sponge Launcher | + child nitpicker
+    + service Gui                              | + child wm
+    + service Report | label: shape | + child report_rom
+    + service Report | label: input | + child report_rom
+    + service Report | label: applied_theme | + child report_rom
+    + service Report | label: launcher | + child report_rom
+    + service ROM | label: installed | + child report_rom
+    + service ROM | label: theme | + child report_rom
+    + service ROM | label: mesa_gpu.lib.so | + parent | label: mesa_gpu-softpipe.lib.so
+    + any-service
+      + parent
+      + any-child
+
++ start lz_bridge | ram: 4M
+  + binary rom_filter
+  + provides | + service ROM
+  + route
+    + service ROM | label: config | + parent | label: lz_bridge.config
+    + service ROM | label_last: lz_config | + child report_rom
+    + any-service
+      + parent
+      + any-child
+
++ start lz_runtime | caps: 8000 | ram: 1G | managing_system: yes
+  + binary init
+  + route
+    + service ROM | label: config | + parent | label: lz_runtime.config
+    + service Timer               | + child timer
+    + service Gui                | + child nitpicker
+    + service ROM | label_suffix: leitzentrale_enabled | + child lz_bridge
+    + service ROM | label_suffix: lz_config | + child report_rom
+    + service ROM | label_suffix: lz_model | + child report_rom
+    + service ROM | label_suffix: lz_watch_result | + child report_rom
+    + service Report | label_suffix: lz_model | + child report_rom
+    + service Report | label_suffix: lz_watch_request | + child report_rom
+    + service Report | label_suffix: lz_watch_result | + child report_rom
+    + service ROM | label_suffix: focus | + child report_rom
+    + service ROM | label_suffix: hover | + child report_rom
+    + any-service                | + parent
+
++ start alpha_probe | caps: 200 | ram: 16M
+  + route
+    + service Capture | + child nitpicker
+    + service Timer   | + child timer
+    + service ROM | label_last: result | + child report_rom
+    + service ROM | label_last: config_result | + child report_rom
+    + service ROM | label_last: config | + child report_rom
+    + service ROM | label_last: sponge_de_launcher | + child report_rom
+    + service Report | + child report_rom
+    + any-service
+      + parent
+      + any-child
+- }
+
+#
+# (bin/ was created early above; all non-build-artifact boot modules have
+# been staged into it already. build_boot_image packs them into the
+# single image.elf at this point on base-sel4.)
+#
+
+#
+# Qt6 shared libs + qt6_libqgenode.tar are cmake-built and symlinked
+# into bin/ by the qt6/base target already; nothing extra to do on
+# base-sel4 (build_boot_image finds them in bin/).
+#
+
+#
+# qt6_dejavusans.tar raw recipe is depot-only; mirror its content into
+# bin/ from the qt6_base port sources (same as run/sponge-de-test.run).
+#
+set dejavu_dst "bin/qt6_dejavusans.tar"
+if {![file exists $dejavu_dst]} {
+	set dejavu_src [glob -nocomplain "${genode_dir}/contrib/qt6_base-*/src/lib/qt6_base/src/3rdparty/wasm/DejaVuSans.ttf"]
+	if {[llength $dejavu_src] == 0} {
+		error "DejaVuSans.ttf not found in the qt6_base port sources"
+	}
+	set staging "[run_dir]/dejavusans-staging"
+	file mkdir "$staging/qt/lib/fonts"
+	file copy -force [lindex $dejavu_src 0] "$staging/qt/lib/fonts/DejaVuSans.ttf"
+	exec tar -cf $dejavu_dst -C $staging qt
+	file delete -force $staging
+}
+
+#
+# Full boot module list. The Qt6 shared libs + tars are cmake-built and
+# not in [build_artifacts], so listed explicitly (base-sel4 needs them
+# inside image.elf).
+#
+set boot_modules [build_artifacts]
+foreach m { libQt6Core.lib.so libQt6Gui.lib.so libQt6Widgets.lib.so \
+            libqgenode.lib.so qt6_libqgenode.tar qt6_dejavusans.tar \
+            en_us.chargen special.chargen \
+            drivers.config fb.config event_filter.config \
+            default.theme light.theme \
+            pkg_hello.xml pkg_index.xml \
+            model.tar Vera.ttf VeraMono.ttf \
+            drop_shadow.png genode_logo.png \
+            runtime_config VERSION build_info \
+            lz_runtime.config leitzentrale.config lz_bridge.config } {
+	lappend boot_modules $m
+}
+
+build_boot_image $boot_modules
+
+#
+# QEMU: -m 2G (bumped from 1G to absorb the lz subsystem; sponge-de +
+# Qt6/Mesa + lz_runtime caps:8000/ram:1G + pkg_runtime all fit). -nographic
+# keeps it headless. nec-usb-xhci + usb-tablet give the absolute pointer.
+#
+append qemu_args " -nographic -m 2G "
+append qemu_args " -device nec-usb-xhci,id=xhci -device usb-tablet "
+
+#
+# Automated verification: alpha_probe logs PASS once ALL four criteria
+# are confirmed (panel pixel / launcher has hello / configd broadcast
+# live / lz_viewer marker pixel). On timeout the run tool errors out —
+# the FAIL path (fail-loud, docs/09-roadmap.md §11.1).
+#
+# The generous timeout covers: Qt6 first paint under softpipe Mesa
+# (~60-90s on seL4), lz subsystem boot (~30s), lz_viewer fade-in after
+# the probe flips leitzentrale.enabled (~10s), and pkgd install cycle.
+#
+run_genode_until {.*alpha-probe: PASS.*} 360
