@@ -477,6 +477,39 @@ cannot find a contiguous physical region large enough for the
 ~30 MiB boot module. 1 GiB is the smallest QEMU RAM size that leaves
 enough contiguous physical memory below 1 GiB.
 
+### 7.3 Media creation host tools (ISO + disk image)
+
+Producing a bootable ISO or disk image of a base-sel4 scenario (the
+`RUN_OPT="--include image/iso"` / `RUN_OPT="--include image/disk"`
+modes; see `run/sponge-media-smoke.run` for the smoke test and
+`run/sponge-alpha.run` for the full desktop) requires six host tools
+that the minimal-boot path does not. They are invoked by the Genode
+run framework's image plugins (`genode/tool/run/image/iso`,
+`genode/tool/run/image/disk`, and `genode/tool/run/iso.inc`):
+
+| Tool | Provided by (apt) | Used by | Purpose |
+|------|-------------------|---------|---------|
+| `xorriso` | `xorriso` | `image/iso` | Writes the El Torito bootable ISO (mkisofs mode). |
+| `sgdisk`  | `gptfdisk` | `image/disk` | Manages the GPT partition table on the disk image. |
+| `mcopy`   | `mtools` | `image/disk` | Copies the EFI bootloader into the EFI System Partition. |
+| `e2cp`, `e2mkdir` | `e2tools` | `image/disk` | Copies the boot modules into the ext2 content partition. |
+| `mkfs.vfat` | `dosfstools` | (EFI partition fallback) | Formats the EFI System Partition when needed. |
+| `mkfs.ext2`, `resize2fs` | `e2fsprogs` | `image/disk` | Formats and shrinks the ext2 content partition. |
+
+Install all six on Debian / Ubuntu:
+
+```bash
+sudo apt install xorriso gptfdisk mtools e2tools dosfstools e2fsprogs
+```
+
+(Arch: `sudo pacman -S xorriso gptfdisk mtools e2tools dosfstools e2fsprogs`.)
+
+The smoke test detects missing tools at the `installed_command` call
+site inside the image plugin and exits with a clear error; install the
+listed package and re-run. `e2tools` is the one most commonly missing
+on minimal server images — it is only needed for the disk-image path,
+not the ISO path.
+
 ---
 
 ## 8. Environment Variables & Build Knobs
