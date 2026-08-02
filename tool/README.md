@@ -31,6 +31,7 @@ the idiomatic Mojo pattern for missing functionality.
 |-----------------------|--------------------------|--------------------------------------------------------------|--------|
 | `./tool/build`        | `tool/build.mojo`        | Top-level build wrapper (`prepare`, `ports`, `list`, `run`)  | ✅ works |
 | `./tool/check-compile`| `tool/check_compile.mojo`| Structural sanity check for a component                      | ✅ works |
+| `./tool/patches`      | `tool/patches.mojo`      | Patch ledger manager (`list`, `verify`, `export`, `drop`)    | ✅ works |
 | (direct)              | `tool/gen_vct_config.mojo`| Generate a vct config-ROM XML from argv                     | ✅ works |
 | (direct)              | `tool/version_bump.mojo` | Bump version in `include/sponge/version.h`                   | ✅ works |
 
@@ -83,6 +84,21 @@ propagates the make exit code.
 ./tool/check-compile src/vct
 ./tool/check-compile src/sponge-de
 ```
+
+### patches
+Manages the patch ledger (docs/11-environment.md §4): the Sponge-local
+commits on top of the vendored Genode subtree. Read-only against the
+repository — `drop` prints manual instructions, it never reverts.
+
+```bash
+./tool/patches list           # ledger rows + git resolution status
+./tool/patches verify         # ledger vs git reality (exits non-zero on mismatch)
+./tool/patches export <dir>   # write each patch as <dir>/<NN>-<slug>.patch
+./tool/patches drop <n>       # print the manual revert steps for patch #n
+```
+
+The manual equivalent of each subcommand is documented in
+docs/11-environment.md §4.1.
 
 ### gen-vct-config
 Generates the `<config><args>...</args></config>` blob that vct expects
