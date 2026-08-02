@@ -1,0 +1,143 @@
+#
+# \brief  Sponge OS seL4 media smoke test (Phase 7, todo 3)
+# \author Sponge OS contributors
+# \date   2026
+#
+# Proves the grub2 -> bender -> seL4 boot chain from *removable media*
+# (El Torito ISO or GPT disk image) BEFORE the full desktop exists.
+#
+# Same payload as sponge-minimal.run (core, lib/ld, init, vct) but the
+# boot image is materialised as a real media file and QEMU is pointed at
+# that file by the run framework (not a direct kernel boot). The
+# scenario proves the user-installable media actually boots.
+#
+# Run both ways (the RUN_OPT include selects which media file is
+# produced and attached):
+#
+#   make -C genode/build/x86_64 run/sponge-media-smoke \
+#       KERNEL=sel4 BOARD=pc RUN_OPT="--include image/iso"
+#   make -C genode/build/x86_64 run/sponge-media-smoke \
+#       KERNEL=sel4 BOARD=pc RUN_OPT="--include image/disk"
+#
+# base-sel4 only: media creation uses grub2+bender, which is the seL4
+# boot path (docs/11-environment.md §10.4, single image.elf).
+#
+# Host tools required to materialise the media are documented in
+# docs/11-environment.md §7.3 (xorriso, gptfdisk, mtools, e2tools,
+# dosfstools, e2fsprogs).
+#
+
+#
+# seL4 media boot requires the grub2+bender boot path. Asserting the
+# kernel/board up front produces a clear error instead of a confusing
+# failure inside the boot_dir plugin.
+#
+assert {[have_spec sel4]} \
+	"sponge-media-smoke requires KERNEL=sel4: the media boot chain is grub2->bender->seL4."
+assert {[have_board pc]} \
+	"sponge-media-smoke requires BOARD=pc: the grub2 menuentry targets the pc board."
+
+##
+# Ensure essential run-framework plugins are loaded.
+#
+# WHY: the documented shorthand invocations pass RUN_OPT on the make
+# command line (e.g. RUN_OPT="--include image/iso"). GNU make treats a
+# command-line assignment as an OVERRIDE: it replaces the variable
+# entirely, so the build.conf's `RUN_OPT += ...` lines (which normally
+# accumulate --include power_on/qemu, --include log/qemu, and
+# --include boot_dir/$(KERNEL)) are all discarded. With those plugins
+# missing, the run framework's DUMMY fallbacks kick in: run_power_on
+# and run_load return true without spawning QEMU, and run_log exits 0
+# without matching any output — a VACUOUS SUCCESS (the
+# 'misleading_success_output' adversarial class).
+#
+# This proc sources any of the three essential plugins that the
+# override dropped, so the shorthand commands produce a REAL QEMU boot
+# of the REAL media file. image/iso or image/disk is intentionally NOT
+# sourced here — the user's RUN_OPT selects the media mode.
+#
+proc ensure_plugin_loaded { name } {
+	if {![have_include $name]} {
+		set path [genode_dir]/tool/run/$name
+		puts "sourcing $path (missing from RUN_OPT, restored by run script)"
+		source $path
+		global include_list
+		lappend include_list $name
+	}
+}
+
+ensure_plugin_loaded boot_dir/sel4
+ensure_plugin_loaded power_on/qemu
+ensure_plugin_loaded log/qemu
+
+#
+# Build — the binaries that go into the boot image.
+# (AGENTS.md §4.2: core + lib/ld + init + the component under test.)
+#
+build { core lib/ld init vct }
+
+#
+# Boot image — config delivered to init, plus binaries.
+#
+create_boot_directory
+
+install_config {
+config
++ parent-provides
+  + service LOG
+  + service PD
+  + service CPU
+  + service ROM
+
++ default-route
+  + any-service
+    + parent
+    + any-child
++ default | caps: 200 | ram: 8M
+
++ start vct
+  + config
+    + args
+      + arg version
+- }
+
+#
+# build_artifacts = the staged boot modules. On base-sel4 these are
+# packed into a single image.elf by the boot_dir/sel4 plugin
+# (docs/11-environment.md §10.4). Omitting a payload module from this
+# list omits it from the media file — the failure-gate check (todo 3
+# acceptance #3) drops 'vct' from this list to prove the banner gate
+# is non-vacuous. NOTE: dropping 'ld.lib.so' does NOT work on base-sel4
+# because boot_dir/sel4 re-injects it as a kernel-essential module
+# (genode/tool/run/boot_dir/sel4:41-49); only pure payload modules
+# like 'vct' are controllable here.
+#
+build_boot_image [build_artifacts]
+
+#
+# Run — boot the produced media file in QEMU and watch for vct's banner.
+#
+# -m 1G: seL4 on QEMU needs >=1 GiB guest RAM (docs/09-roadmap.md
+#   Phase 1 lessons; docs/11-environment.md §7.2).
+#
+# The run framework's power_on/qemu plugin auto-attaches the produced
+# media file (selected by the RUN_OPT include):
+#     image/iso  ->  -cdrom <run_dir>.iso
+#     image/disk ->  -drive format=raw,file=<run_dir>.img
+# so the scenario gates on a boot *of the media file*, not a direct
+# kernel boot (defeats the 'misleading_success_output' adversarial
+# class — a direct-kernel boot would not exercise grub2/bender at all).
+#
+append qemu_args " -nographic -m 1G "
+
+# When booting the ISO, make the CD-ROM the explicit boot device per the
+# upstream pattern (genode/repos/gems/run/sculpt_test.run:18). Harmless
+# when no competing disk is attached; required if one ever is.
+append_if [have_include image/iso] qemu_args " -boot d "
+
+#
+# Gate on vct's startup banner (vct_main.cc:19). A hang fails by timeout
+# — run_genode_until exits -2 on timeout, never passes vacuously
+# (AGENTS.md fail-loud rule, docs/09 §11.1 lesson).
+#
+run_genode_until {.*\[init -> vct\] vct \(.*Archaeocyte.*} 30
