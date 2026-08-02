@@ -13,23 +13,50 @@ For the full design, see [`docs/06-vct.md`](../../../../docs/06-vct.md).
 
 ## Current status
 
-🟢 Phase 2 minimum working, verified booting on Genode 26.05 on both
-base-linux and base-sel4. The following is implemented and runs as a
-real Genode component:
+🟡 Pre-Alpha — Phases 0–6 complete; Phase 7 (Alpha, first usable
+version) adds `shutdown`, `reboot`, `update`, `search`, and `launch`
+to bring the user-facing surface to 15 subcommands.
+
+The following is implemented and runs as a real Genode component on
+Genode 26.05 on both base-linux and base-sel4 (the production target):
 
 - Version output (`vct --version` / `vct version`)
 - Startup message
 - Config-ROM argument parsing (`args.h` / `args.cc`)
-- Subcommand dispatch for `status`, `help`, `version`, `component list`
-  (`command_router.cc`)
-- `--json`, `--verbose`, `--lang ko` flags honored
+- Subcommand dispatch for 10 routed subcommands: `status`, `help`,
+  `version`, `component list`, `install`, `remove`, `list`, `config`
+  (positional `vct config <key> [value]` and `vct config list`),
+  `theme apply`, `leitzentrale` (`command_router.cc`)
+- `--json`, `--verbose`, `--explain`, `--manual`, `--lang ko` flags
+  honored
 - `vct status` reads the live init state report via a sub-init +
   `report_rom` relay and prints real RAM, caps, and component count
-- `vct component list` enumerates the live component tree with per-child
-  RAM and cap usage
+- `vct component list` enumerates the live component tree with
+  per-child RAM and cap usage
+- `vct install` / `vct remove` / `vct list` drive the `sponge_pkgd`
+  Report/ROM channel (dependency resolution, install / remove,
+  installed-set broadcast)
+- `vct config <key> [value]` / `vct config list` drive the
+  `sponge_configd` Report/ROM channel (`config_get` / `config_set` /
+  `config_list`)
+- `vct theme apply` writes `theme.active` through `sponge_configd`;
+  `sponge_themed` resolves the new theme, Sponge DE picks it up live
+- `vct leitzentrale` toggles the expert window via `sponge_configd`
+  and bridges to `lz_watch` for `diff` / `keep` / `revert`
 
-Verified boot output (base-linux and base-sel4, see
-`docs/09-roadmap.md` Phase 2):
+Phase 7 (in design and implementation; see `docs/06-vct.md` §4.2,
+§4.7, §8 and `.omo/plans/phase7-alpha.md`) adds:
+
+- `vct shutdown` and `vct reboot` — platform-driver `System` session
+  (poweroff / reset); user-invoked only.
+- `vct update [pkg]` and `vct search <term>` — read-only operations
+  against the on-image `sponge_pkgd` metadata; no network fetching.
+- `vct launch <pkg>` — drives the same `sponge_pkgd` launch channel
+  that the Sponge DE launcher menu uses (AGENTS.md §3.3 rule 5).
+
+Verified boot output (base-linux and base-sel4; the `vct status`
+output below was captured at the original status milestone and still
+matches the current implementation):
 
 ```
 Genode 26.05
@@ -40,8 +67,9 @@ Genode 26.05
 [init -> vct] components:  1
 ```
 
-Backend integration (`sponge_pkgd`, `sponge_configd`, ...) lands in
-Phase 4 (`docs/09-roadmap.md`).
+For the full design, see
+[`docs/06-vct.md`](../../../../docs/06-vct.md); the Phase 7 plan is
+in `.omo/plans/phase7-alpha.md`.
 
 ## Source layout
 
