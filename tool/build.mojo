@@ -33,6 +33,10 @@ comptime BLOCK_END = "# <<< sponge-os managed block <<<"
 # needed for run/sponge-de-sel4-interactive.run (absolute-pointer input).
 # `dde_ipxe` and `lwip` are pulled in by the networking probe
 # run/sponge-net-probe.run (todo 12).
+# `bash`, `vim`, `ncurses` are pulled in by the terminal package
+# (pkg/terminal, todo 13): bash-minimal + vim-minimal are noux packages
+# built from source; vim-minimal links ncurses. ncurses' Caps generation
+# requires `mawk` on the host (see docs/11-environment.md §7).
 # Downloads are SHA-256-verified and land in genode/contrib/.
 # prepare_port itself skips already-prepared ports.
 def port_list() -> List[String]:
@@ -55,6 +59,9 @@ def port_list() -> List[String]:
         "jitterentropy",
         "dde_ipxe",
         "lwip",
+        "bash",
+        "vim",
+        "ncurses",
     ]
 
 
@@ -181,6 +188,10 @@ def ensure_build_conf(build_conf: String) raises -> Bool:
         + "# ifdef blocks below them read those variables early.\n"
         + "REPOSITORIES += $(GENODE_DIR)/repos/sponge\n"
         + "REPOSITORIES += $(GENODE_DIR)/repos/libports\n"
+        + "# ports: noux packages (bash-minimal, vim-minimal) for the terminal\n"
+        + "# package (pkg/terminal). Depends on libports (ncurses). Source-built\n"
+        + "# only — no depot import for these (Phase 7 todo 13).\n"
+        + "REPOSITORIES += $(GENODE_DIR)/repos/ports\n"
         + "REPOSITORIES += $(GENODE_DIR)/repos/gems\n"
         + "# pc + dde_linux: PC hardware drivers (platform/pc, vesa via libports,\n"
         + "# ps2, acpi, pci_decode, event_filter via os) and the DDE-Linux USB\n"

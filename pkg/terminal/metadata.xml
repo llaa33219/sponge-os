@@ -1,0 +1,183 @@
+<!--
+  terminal — the Sponge OS terminal package (Phase 7 todo 13).
+
+  A source-built terminal stack: the gems graphical `terminal` server
+  (genode/repos/gems/src/server/terminal) hosting a Noux `bash-minimal`
+  shell (and `vim-minimal` editor) via the four-child sub-init composition
+  pioneered by the upstream system_shell pkg
+  (genode/repos/ports/recipes/raw/system_shell/system_shell.config):
+
+      terminal  (gems server)   provides the Terminal session over a GUI
+                                window; font loaded from the VeraMono.ttf
+                                ROM via the vfs_ttf plugin.
+      vfs       (os server)     mounts bash-minimal.tar + vim-minimal.tar
+                                and exposes /dev/terminal (the VFS
+                                <terminal/> plugin, os/src/lib/vfs/
+                                terminal_file_system.h) which bridges the
+                                terminal server's Terminal session to a
+                                plain file that bash opens as stdio.
+      vfs_rom   (cached_fs_rom) serves the /bin/bash and /bin/vim ELF
+                                files as ROM sessions read out of the vfs
+                                tar mounts (so the noux binaries need not
+                                be individual boot modules).
+      /bin/bash (noux-pkg)      the shell; libc stdin/stdout/stderr point
+                                at /dev/terminal, closing the loop:
+                                keypress -> terminal read buffer ->
+                                /dev/terminal -> bash -> echo ->
+                                terminal render.
+
+  Per docs/12-package-format.md §4.1 the package models ONE binary, and
+  that binary is `init` (the nested sub-init) — exactly the shape of the
+  upstream system_shell runtime (`binary: init | config: system_shell.config`).
+  The metadata <config> below is the sub-init configuration, emitted
+  verbatim into the generated <start> node by sponge_pkgd's runtime-config
+  generator (todo 8). The package's <sessions> (Gui/Timer/Report/ROM) are
+  materialized as <parent/> routes by the generator and resolved through
+  pkg_runtime's extended parent-provides.
+
+  This is the SOURCE-BUILT path (AGENTS.md §5.2 — no depot import); the
+  noux tars and the gems/os binaries are built in-tree from the prepared
+  bash/vim/ncurses ports. No networking, no ssh, no tmux (Alpha scope).
+-->
+<package>
+  <name>terminal</name>
+  <version>1.0</version>
+  <description>Terminal with bash and vim.</description>
+
+  <binary>init</binary>
+  <quota ram="160M" caps="1100"/>
+
+  <launcher category="System"/>
+
+  <dependencies/>
+
+  <sessions>
+    <session name="Gui"    default-route="nitpicker"/>
+    <session name="Timer"  default-route="parent"/>
+    <session name="Report" default-route="parent"/>
+    <session name="ROM"    default-route="parent"/>
+  </sessions>
+
+  <config>
+    <parent-provides>
+      <service name="ROM"/>
+      <service name="PD"/>
+      <service name="RM"/>
+      <service name="CPU"/>
+      <service name="LOG"/>
+      <service name="Timer"/>
+      <service name="Gui"/>
+      <service name="Report"/>
+    </parent-provides>
+
+    <default caps="120"/>
+
+    <default-route>
+      <any-service><parent/><any-child/></any-service>
+    </default-route>
+
+    <!--
+         Graphical terminal server (gems). Provides the Terminal session
+         that the vfs <terminal/> plugin connects to. The font is loaded
+         directly from the VeraMono.ttf ROM via the vfs_ttf plugin (the
+         terminal README pattern), so no external font File_system child
+         is needed. Clipboard copy/paste is disabled (the Alpha scenario
+         does not route a clipboard Report/ROM) — initial 800x600
+         accommodates the windowed scenario.
+    -->
+    <start name="terminal" caps="150" ram="48M">
+      <provides><service name="Terminal"/></provides>
+      <config>
+        <initial width="800" height="600"/>
+        <vfs>
+          <rom name="VeraMono.ttf"/>
+          <dir name="font">
+            <dir name="monospace">
+              <ttf name="regular" path="/VeraMono.ttf" size_px="14"/>
+            </dir>
+          </dir>
+        </vfs>
+      </config>
+      <route>
+        <service name="Gui"><parent/></service>
+        <any-service><parent/><any-child/></any-service>
+      </route>
+    </start>
+
+    <!--
+         Vfs server. Mounts the noux tars at the root and exposes
+         /dev/terminal (the <terminal/> VFS plugin opens a Terminal
+         session to the sibling 'terminal' child), /dev/rtc, /pipe, and
+         a RAM-backed /tmp. The vfs_rom policy lets cached_fs_rom read
+         the /bin/* ELFs out of this file system.
+    -->
+    <start name="vfs" caps="250" ram="32M">
+      <provides><service name="File_system"/></provides>
+      <config>
+        <vfs>
+          <tar name="bash-minimal.tar"/>
+          <tar name="vim-minimal.tar"/>
+          <dir name="dev">
+            <zero/>
+            <null/>
+            <terminal/>
+            <inline name="rtc">2018-01-01 00:01</inline>
+          </dir>
+          <dir name="pipe"> <pipe/> </dir>
+          <dir name="tmp">  <ram/> </dir>
+          <dir name="share">
+            <dir name="vim"/>
+          </dir>
+        </vfs>
+        <policy label_prefix="vfs_rom" root="/"/>
+        <default-policy root="/" writeable="yes"/>
+      </config>
+      <route>
+        <service name="Terminal"><child name="terminal"/></service>
+        <any-service><parent/></any-service>
+      </route>
+    </start>
+
+    <!--
+         cached_fs_rom: serves /bin/bash and /bin/vim as ROM sessions
+         read from the vfs child's tar mounts.
+    -->
+    <start name="vfs_rom" ram="32M">
+      <binary name="cached_fs_rom"/>
+      <provides><service name="ROM"/></provides>
+      <config/>
+      <route>
+        <service name="File_system"><child name="vfs"/></service>
+        <any-service><parent/></any-service>
+      </route>
+    </start>
+
+    <!--
+         The bash shell. stdin/stdout/stderr point at /dev/terminal
+         (the vfs <terminal/> plugin -> the gems terminal server). Its
+         ELF is loaded via vfs_rom (/bin/bash inside bash-minimal.tar);
+         shared libraries (.lib.so) come from the parent boot modules.
+         TERM=screen makes bash emit the prompt + echo typed chars, which
+         is what the terminal renders and the verification probe sees.
+    -->
+    <start name="/bin/bash" caps="450" ram="32M">
+      <config>
+        <libc stdin="/dev/terminal" stdout="/dev/terminal" stderr="/dev/terminal"
+              rtc="/dev/rtc" pipe="/pipe"/>
+        <vfs> <fs/> </vfs>
+        <arg value="bash"/>
+        <env name="TERM"  value="screen"/>
+        <env name="PATH"  value="/bin"/>
+        <env name="PS1"   value="sponge:$PWD> "/>
+        <env name="SHELL" value="/bin/bash"/>
+      </config>
+      <route>
+        <service name="File_system"><child name="vfs"/></service>
+        <service name="ROM" label_suffix=".lib.so"><parent/></service>
+        <service name="ROM" label_last="/bin/bash"><child name="vfs_rom"/></service>
+        <service name="ROM" label_prefix="/bin"><child name="vfs_rom"/></service>
+        <any-service><parent/><any-child/></any-service>
+      </route>
+    </start>
+  </config>
+</package>

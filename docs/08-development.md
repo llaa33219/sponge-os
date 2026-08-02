@@ -172,6 +172,11 @@ cd ../..
 ./tool/ports/prepare_port libc stdcxx mesa zlib libpng expat libdrm \
                           x86emu qoost qt6_api qt6_base sel4 sel4_tools grub2
 
+#    The terminal package (pkg/terminal, todo 13) additionally needs the
+#    bash, vim, and ncurses ports (ncurses' Caps generation requires the
+#    host `mawk` tool — see docs/11-environment.md §7):
+#        ./tool/ports/prepare_port bash vim ncurses
+
 # 6. Build and install the Qt6 host tools into var/qt6-host-tools
 #    (~6.0 GB build tree under genode/contrib/qt6-host-*, one-time).
 #    tool_chain_qt6 is a makefile, not an executable; it fetches the

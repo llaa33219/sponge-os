@@ -202,6 +202,26 @@ A scenario defines:
   `run_genode_until` timeouts everywhere (the `hung_or_long_commands`
   class). base-sel4 only (`assert {[have_spec sel4]}`).
 
+- `sponge-terminal.run` — Phase 7 todo 13: the terminal package
+  (`pkg/terminal`), source-built from in-tree components (no depot
+  import). The `terminal_probe` drives `sponge_pkgd` to install and
+  launch `terminal`, then verifies the running stack: (a) the
+  `installed` broadcast carries `terminal` (the `vct list`-equivalent
+  check), (b) the terminal window + bash prompt render on nitpicker
+  (Capture glyph-pixel check), and (c) a synthetic keystroke round-trips
+  (focus click + `Press_char` events via nitpicker's Event service →
+  gems terminal server read buffer → `/dev/terminal` via the vfs
+  `<terminal/>` plugin → noux bash echo → terminal re-render, observed
+  as a glyph-count increase). The package is a nested sub-init
+  (`binary: init`) hosting the gems graphical `terminal` server, a `vfs`
+  (with the `<terminal/>` plugin that bridges the terminal session to
+  `/dev/terminal`), a `cached_fs_rom` (serves `/bin/bash` out of
+  `bash-minimal.tar`), and the noux `/bin/bash` child — the
+  source-built system_shell composition. Stages `VeraMono.ttf` (the
+  terminal's monospace font, via the `vfs_ttf` plugin). Kernel-agnostic
+  topology (base-linux native or base-sel4 QEMU); the acceptance run
+  uses `KERNEL=sel4 BOARD=pc`. Gates on `terminal-probe: PASS`.
+
 ## Planned additions
 
 - The end-to-end HOST-injected usb-tablet click proof for

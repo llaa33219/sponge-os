@@ -237,6 +237,9 @@ fingerprint of each:
 | `jitterentropy` | `jitterentropy-3.4.1` | `smuellerDD/jitterentropy-library` v3.4.1 | Entropy source linked by the DDE-Linux USB drivers (`virt_lx_emul` / `pc_lx_emul`). Only fetched with the `linux` port above. |
 | `dde_ipxe` | `a7206d6c2a1b2de7fa7fde6733a3500411a64de2` | `https://github.com/ipxe/ipxe.git` @ `c4bce43c3c4d3c5ebb2d926b58ad16dc9642c19d` | The iPXE NIC driver stack (GPLv2). Provides the e1000 NIC driver (`dde_ipxe/src/driver/nic` → `ipxe_nic`) used by the base-sel4 networking probe (`run/sponge-net-probe.run`). Only fetched when the dde_ipxe repository is in `REPOSITORIES`. |
 | `lwip` | `d4911a43269263cd9376b6bc3ad98d28b749b0e3` | `https://github.com/lwip-tcpip/lwip/archive/refs/tags/STABLE-2_1_2_RELEASE.tar.gz` (v2.1.2, BSD) | The lwIP TCP/IP stack, used as the in-process socket provider for libc-based Genode components via the `vfs_lwip` plugin. `run/sponge-net-probe.run` (todo 12) wires it as `<dir name="socket"><lwip dhcp="yes"/></dir>` in `fetchurl`'s vfs. |
+| `bash` | `93dd45640aa0cbd1a850deb4bee4cf6a332e61bb` | `https://ftpmirror.gnu.org/bash/bash-5.3.tar.gz` (GPLv3) | GNU bash, built as the `noux-pkg/bash-minimal` package (`bash-minimal.tar`) that ships inside the `terminal` package (todo 13). Genode's noux bash build does **not** link readline/ncurses. |
+| `vim` | `abada0b43ca034d23ba39f3281bff997f08fc884` | `https://github.com/vim/vim/archive/v7.3.tar.gz` (Vim license) | Vim 7.3, built as the `noux-pkg/vim-minimal` package (`vim-minimal.tar`) that ships inside the `terminal` package (todo 13). Links ncurses (`--with-tlib=ncurses`). |
+| `ncurses` | `5fb8a84ea7e768167f325dccabde30f2e6e56f72` | `https://ftpmirror.gnu.org/ncurses/ncurses-5.9.tar.gz` (MIT) | The ncurses 5.9 terminal library, required by the `vim-minimal` noux package. Lives in the `libports` repo (not `ports`). Its `Caps` header generation invokes `mawk` by name — see the `mawk` host-tool requirement in §7. |
 
 In addition to the `prepare_port` set above, two **Genode depot packages**
 are imported host-side into `pkg/<name>/` by `tool/pkg_import` (todo 11).
@@ -341,15 +344,18 @@ Every step is reproducible. The exact ordered sequence, in one place:
 
 2. **Install host packages** (Tcl/expect for the Genode run tool,
    `qemu-system-x86_64` for non-base-linux runs, `rpcgen` for the
-   `libc` port's prepare step, plus build essentials):
-   ```bash
-   # Arch
-   sudo pacman -S tcl expect qemu-system-x86 cmake ninja make rpcsvc-proto
-   # Debian / Ubuntu
-   sudo apt install tcl expect qemu-system-x86 cmake ninja-build build-essential libc-dev-bin
-   ```
-   (`rpcsvc-proto` / `libc-dev-bin` provide `rpcgen`. Without it,
-   `prepare_port libc` fails during its header-generation step.)
+    `libc` port's prepare step, plus build essentials):
+    ```bash
+    # Arch
+    sudo pacman -S tcl expect qemu-system-x86 cmake ninja make rpcsvc-proto mawk
+    # Debian / Ubuntu
+    sudo apt install tcl expect qemu-system-x86 cmake ninja-build build-essential libc-dev-bin mawk
+    ```
+    (`rpcsvc-proto` / `libc-dev-bin` provide `rpcgen`. Without it,
+    `prepare_port libc` fails during its header-generation step. `mawk`
+    is required by `prepare_port ncurses`: the ncurses 5.9 `Caps` header
+    generators are invoked as `mawk` by name — `gawk` is not a drop-in
+    here, the scripts mis-parse under it.)
 
 3. **Clone Sponge OS**:
    ```bash
@@ -559,10 +565,16 @@ they contribute `pc_platform`, `pc_usb_host`, and `usb_hid`. They are
 harmless on base-linux (their targets are only built on demand).
 `dde_ipxe` (the iPXE-based NIC driver, `ipxe_nic`) is appended to
 `REPOSITORIES` for the networking scenarios (`run/sponge-net-probe.run`,
-todo 12). The full managed block in `genode/build/x86_64/etc/build.conf`
-is therefore: `sponge`, `libports`, `gems`, `pc`, `dde_linux`, `dde_ipxe`.
+todo 12). `ports` is appended for the `terminal` package (todo 13): it
+contributes the `noux-pkg/bash-minimal` and `noux-pkg/vim-minimal`
+build targets (which depend on the prepared `bash`/`vim`/`ncurses`
+ports — `ncurses` itself lives in `libports`, already in the list).
+The full managed block in `genode/build/x86_64/etc/build.conf`
+is therefore: `sponge`, `libports`, `ports`, `gems`, `pc`, `dde_linux`,
+`dde_ipxe`.
 Like `pc`/`dde_linux`, `dde_ipxe` is harmless on base-linux (its
-`REQUIRES = x86` target only builds on demand).
+`REQUIRES = x86` target only builds on demand). `ports` is likewise
+harmless when no noux target is built.
 
 ### 8.2 Why `make -j$(nproc)` is set by `prepare`
 
