@@ -130,6 +130,19 @@ A scenario defines:
   `alpha-probe: PASS`; the run gates on that marker (fail-loud on
   timeout). base-sel4 only.
 
+- `sponge-pkg-gui.run` — Phase 7 todo 8: GUI-package runtime-config
+  generator verification. Installs a minimal Qt6 colored-window package
+  (`pkg_gui_demo`) through `sponge_pkgd` and pixel-verifies its
+  distinctive green (#00ff00) window through a Capture session, proving
+  the generator correctly emits `<binary>` (when it differs from
+  `<name>`), the inline `<config>` verbatim (Qt6/libc wiring), the
+  `<parent/>` route for `default-route="nitpicker"` Gui sessions, the
+  extended `parent-provides` (Gui/Input/Report/File_system/NIC), and
+  the GUI-safe `<default>` caps floor (1000, per the §11.1 lesson).
+  Kernel-agnostic topology (base-linux native or base-sel4 QEMU); the
+  acceptance run uses `KERNEL=sel4 BOARD=pc`. Gates on
+  `pkg-gui-probe: PASS`.
+
 ## Planned additions
 
 - The end-to-end HOST-injected usb-tablet click proof for

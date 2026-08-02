@@ -76,7 +76,18 @@ struct Sponge::Pkgd::Package
 	Genode::String<16>  ram;      /* "48M"            */
 	unsigned            caps;     /* 512 default      */
 
-	bool                has_launcher { false };
+	/*
+	 * Inline <config> element from metadata, serialized to a string at
+	 * parse time as a complete "<config>...</config>" block (empty when
+	 * the metadata carries no <config>). Emitted verbatim into the
+	 * generated <start> node via Xml_generator::append (raw, non-
+	 * sanitized) so Qt/libc fragments such as <libc>/<vfs>/<tar> pass
+	 * through literally (docs/12-package-format.md §7.2 rule 4).
+	 */
+	Genode::String<3072> config_xml;
+
+	bool                has_autostart  { false };
+	bool                has_launcher   { false };
 	Genode::String<32>  launcher_category;
 
 	struct Session
@@ -85,6 +96,7 @@ struct Sponge::Pkgd::Package
 		Genode::String<32> route;       /* "nitpicker"        */
 		bool               readonly;    /* File_system only   */
 		Genode::String<64> subpath;     /* "/app/nano"        */
+		Genode::String<64> label;       /* optional Genode label hint */
 	};
 
 	Session   sessions[MAX_SESSIONS] { };
@@ -303,6 +315,19 @@ class Sponge::Pkgd::Main
 		                      char const *name);
 		static Genode::String<256> _cycle_message(Genode::String<64> const *visiting,
 		                                           unsigned n, char const *repeat);
+
+		/*
+		 * Session-routing helpers (docs/12-package-format.md §7.2).
+		 * _is_parent_route: a declared default-route routes via <parent/>
+		 * when it is the literal "parent" OR names an outer-system
+		 * service (nitpicker/vfs/event_filter/...) that lives outside
+		 * pkg_runtime — never as a <child name="nitpicker"/> (rule 1).
+		 * _session_label: materialize the label attribute per rule 2
+		 * (explicit label wins; read-only File_system gets "<pkg>-ro").
+		 */
+		static bool _is_parent_route(char const *route);
+		static Genode::String<96> _session_label(char const *pkg_name,
+		                                         Package::Session const &s);
 };
 
 
@@ -331,6 +356,51 @@ Genode::String<256> Sponge::Pkgd::Main::_cycle_message(
 	while (*s && pos + 1 < sizeof(buf)) buf[pos++] = *s++;
 	buf[pos] = 0;
 	return Genode::String<256>(buf);
+}
+
+
+/*
+ * Outer-system service/component names that live outside pkg_runtime and
+ * therefore route via <parent/>, never <child> (docs/12 §7.2 rule 1). The
+ * set is the union of (a) the literal "parent", and (b) every named
+ * outer-system service the run scenarios actually wire (nitpicker/vfs/
+ * event_filter/wm/report_rom/timer/input_drv). A default-route that is
+ * none of these is assumed to name a sibling package inside pkg_runtime
+ * and routes via <child name="..."/>.
+ */
+bool Sponge::Pkgd::Main::_is_parent_route(char const *route)
+{
+	if (route == nullptr || route[0] == '\0') return true;
+	if (Genode::strcmp(route, "parent") == 0) return true;
+
+	static char const *const OUTER[] = {
+		"nitpicker", "vfs", "event_filter", "wm",
+		"report_rom", "timer", "input_drv"
+	};
+	for (char const *o : OUTER)
+		if (Genode::strcmp(route, o) == 0)
+			return true;
+	return false;
+}
+
+
+/*
+ * Materialize a session label per docs/12 §7.2 rule 2:
+ *   - an explicit <session label="..."> is forwarded as-is;
+ *   - a read-only File_system session with no explicit label gets the
+ *     "<pkg>-ro" suffix (the convention the outer vfs policy matches);
+ *   - everything else has no label attribute (empty string).
+ */
+Genode::String<96> Sponge::Pkgd::Main::_session_label(
+	char const *pkg_name, Package::Session const &s)
+{
+	if (Genode::strcmp(s.label.string(), "") != 0)
+		return Genode::String<96>(s.label);
+
+	if (s.readonly && Genode::strcmp(s.name.string(), "File_system") == 0)
+		return Genode::String<96>(pkg_name, "-ro");
+
+	return Genode::String<96>();
 }
 
 
@@ -455,6 +525,36 @@ void Sponge::Pkgd::Main::_parse_package(Genode::Xml_node const &pkg,
 			out.ram  = child.attribute_value("ram",  Genode::String<16>("32M"));
 			out.caps = child.attribute_value("caps", 512U);
 		}
+		else if (child.has_type("config")) {
+			/*
+			 * Serialize the metadata <config> element (with its inner
+			 * XML) into out.config_xml as a complete "<config>...</config>"
+			 * block, emitted verbatim into the <start> node later. We
+			 * rebuild the element via Xml_generator::generate +
+			 * append_node_content so arbitrary Qt/libc fragments
+			 * (<libc>, <vfs>, <tar>, ...) are preserved structurally.
+			 */
+			char cfg_buf[3072] { };
+			Genode::Xml_generator::Result const cfg_res =
+				Genode::Xml_generator::generate(
+					Genode::Byte_range_ptr(cfg_buf, sizeof(cfg_buf)),
+					Genode::Xml_generator::Tag_name("config"),
+					[&](Genode::Xml_generator &g) {
+						/* append_node_content is nodiscard: failure
+						 * (max-depth exceeded) just yields a shorter
+						 * serialized fragment, logged below. */
+						(void)g.append_node_content(child,
+						                            { .value = 16 });
+					});
+			if (cfg_res.ok())
+				out.config_xml = Genode::String<3072>(cfg_buf);
+			else
+				Genode::warning("pkg: <config> for ", name,
+				                " exceeded serialization buffer");
+		}
+		else if (child.has_type("autostart")) {
+			out.has_autostart = true;
+		}
 		else if (child.has_type("launcher")) {
 			out.has_launcher      = true;
 			out.launcher_category = child.attribute_value("category",
@@ -478,6 +578,8 @@ void Sponge::Pkgd::Main::_parse_package(Genode::Xml_node const &pkg,
 					                    Genode::String<32>());
 					session.readonly  = s.attribute_value("readonly", false);
 					session.subpath   = s.attribute_value("subpath",
+					                    Genode::String<64>());
+					session.label     = s.attribute_value("label",
 					                    Genode::String<64>());
 				}
 			});
@@ -827,12 +929,23 @@ void Sponge::Pkgd::Main::_generate_runtime_config()
 	}
 
 	_runtime_reporter.generate_xml([&](Genode::Xml_generator &g) {
+		/*
+		 * Extended parent-provides (docs/12 §7.2): the original
+		 * ROM/PD/CPU/LOG/Timer set could not resolve <parent/> routes
+		 * for Gui/Input/Report/File_system/NIC. Phase 7 adds exactly
+		 * those five (Timer is retained, not duplicated).
+		 */
 		g.node("parent-provides", [&] {
 			g.node("service", [&] { g.attribute("name", "ROM"); });
 			g.node("service", [&] { g.attribute("name", "PD"); });
 			g.node("service", [&] { g.attribute("name", "CPU"); });
 			g.node("service", [&] { g.attribute("name", "LOG"); });
 			g.node("service", [&] { g.attribute("name", "Timer"); });
+			g.node("service", [&] { g.attribute("name", "Gui"); });
+			g.node("service", [&] { g.attribute("name", "Input"); });
+			g.node("service", [&] { g.attribute("name", "Report"); });
+			g.node("service", [&] { g.attribute("name", "File_system"); });
+			g.node("service", [&] { g.attribute("name", "NIC"); });
 		});
 
 		g.node("default-route", [&] {
@@ -843,10 +956,19 @@ void Sponge::Pkgd::Main::_generate_runtime_config()
 		});
 
 		g.node("default", [&] {
-			/* No default ram: each <start> carries its own <resource name="RAM">,
-			 * and a non-zero default ram would make sandbox/child.cc flag the
-			 * explicit resource as an "ambigious RAM-quota definition". */
-			g.attribute("caps", "100");
+			/*
+			 * GUI-safe caps floor (docs/09-roadmap.md §11.1 lesson,
+			 * Metis A3). The previous caps="100" silently exhausted
+			 * on seL4 mid-Qt-init, hanging with zero diagnostics.
+			 * Each <start> still carries its own per-package <quota>
+			 * caps (honored below); this floor protects any child
+			 * that lacks an explicit value. No default ram: each
+			 * <start> carries its own <resource name="RAM">, and a
+			 * non-zero default ram would make sandbox/child.cc flag
+			 * the explicit resource as an "ambiguous RAM-quota
+			 * definition".
+			 */
+			g.attribute("caps", "1000");
 		});
 
 		for (unsigned n = 0; n < _num_installed; ++n) {
@@ -856,19 +978,58 @@ void Sponge::Pkgd::Main::_generate_runtime_config()
 				g.attribute("name", c.name);
 				g.attribute("caps", c.caps);
 
+				/*
+				 * (a) <binary> when the component binary differs from
+				 * the package name (docs/12 §4.1: binary defaults to
+				 * name). Omitting it keeps the legacy single-name form.
+				 */
+				if (Genode::strcmp(c.binary.string(),
+				                   c.name.string()) != 0) {
+					g.node("binary", [&] {
+						g.attribute("name", c.binary);
+					});
+				}
+
 				g.node("resource", [&] {
 					g.attribute("name", "RAM");
 					g.attribute("quantum", c.ram);
 				});
 
+				/*
+				 * (b) Inline <config> from metadata, emitted verbatim
+				 * via raw append (Xml_generator::append is the non-
+				 * sanitized path). config_xml already includes its own
+				 * <config>...</config> wrapper.
+				 */
+				if (Genode::strcmp(c.config_xml.string(), "") != 0)
+					g.append(c.config_xml.string());
+
 				g.node("route", [&] {
 					for (unsigned s = 0; s < c.num_sessions; ++s) {
 						Package::Session const &session = c.sessions[s];
+
+						bool const parent_route =
+							_is_parent_route(session.route.string());
+
+						Genode::String<96> const label =
+							_session_label(c.name.string(), session);
+
+						/*
+						 * (c)+(e) service route: <parent/> for
+						 * outer-system routes (rule 1), <child> for
+						 * siblings; label materialized per rule 2.
+						 */
 						g.node("service", [&] {
 							g.attribute("name", session.name);
-							g.node("child", [&] {
-								g.attribute("name", session.route);
-							});
+							if (Genode::strcmp(label.string(), "") != 0)
+								g.attribute("label", label);
+							if (parent_route) {
+								g.node("parent");
+							} else {
+								g.node("child", [&] {
+									g.attribute("name", session.route);
+								});
+							}
 						});
 					}
 					g.node("any-service", [&] { g.node("parent"); });
