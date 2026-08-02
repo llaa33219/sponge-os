@@ -245,6 +245,32 @@ A scenario defines:
   acceptance run uses `KERNEL=sel4 BOARD=pc`. Gates on
   `textedit-probe: PASS`.
 
+- `sponge-files.run` — Phase 7 todo 15: the file-manager package
+  (`pkg/files`), source-built from the in-tree Qt6 component
+  `repos/sponge/src/sponge_files` (a single Qt6 Widgets binary, not a
+  nested sub-init). The `files_probe` drives `sponge_pkgd` to install
+  and launch `files`, then verifies: (a) the installed broadcast
+  carries `files` (`vct list`-equivalent) AND the Qt6 file-manager
+  window actually renders into nitpicker (Capture non-background-
+  fraction AND color-diversity check across the 800x600 "files" domain —
+  themed list + preview + accent buttons; the
+  `misleading_success_output` class — bare exit 0 is not enough); (b)
+  a synthetic double-click on the list's first row navigates into
+  `/demo` (asserted via the component's structural `files` report path
+  transitioning `/` -> `/demo` — NOT by parsing pixels); (c) copy
+  `/demo/notes.txt` -> `/writable/notes.txt` then delete
+  `/writable/notes.txt` driven via the request channel (the GUI is the
+  manual escape hatch; the request channel is the automation default,
+  AGENTS.md §3.3 rule 2); (d) attempt delete in the read-only area
+  (`/demo/notes.txt`) is refused — the tar-backed `/demo` is read-only
+  by nature so `unlink(2)` returns `EROFS`, and the refusal surfaces
+  three ways at once (UI status label + `Genode::log` line + the
+  `files` report's `last_action result="refused"`). The fixture area
+  (`/demo`) is staged from `run/fixtures/files-demo/` and packed into
+  `files_demo.tar` at scenario time. Kernel-agnostic topology
+  (base-linux native or base-sel4 QEMU); the acceptance run uses
+  `KERNEL=sel4 BOARD=pc`. Gates on `files-probe: PASS`.
+
 ## Planned additions
 
 - The end-to-end HOST-injected usb-tablet click proof for
