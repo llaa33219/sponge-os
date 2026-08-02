@@ -183,6 +183,25 @@ A scenario defines:
   uses `KERNEL=sel4 BOARD=pc`. Gates on `launch-probe: PASS` (two Qt6
   first paints under softpipe Mesa on seL4; generous 600s timeout).
 
+- `sponge-net-probe.run` — Phase 7 todo 12: networking probe on
+  base-sel4, proving the stack BEFORE Falkon arrives (todo 16). The
+  dde_ipxe e1000 NIC driver (`ipxe_nic`, an Uplink client) is bridged
+  to a Nic session by `nic_uplink` (the no-`nic_router` pattern from
+  upstream `os/run/nic_uplink.run` — `nic_router` is explicitly out of
+  Alpha scope). `fetchurl` (libcurl + libc) loads the `lwip` vfs
+  socket plugin at `/socket`, DHCP-configures via lwip, and GETs
+  `http://10.0.2.2:8765/net-fixture.txt` from a host-side
+  `python3 -m http.server` started by the run script (lifecycle:
+  spawned before `build_boot_image`, killed by PID + pkill fallback at
+  end-of-run). The fixture's first line is read off the file BEFORE the
+  run and the run gates on that exact byte string appearing in the
+  boot log (the `misleading_success_output` adversarial class — exit 0
+  alone is not enough; the bytes must round-trip). Also starts the
+  `system_clock` subsystem (`pc_rtc` + `system_rtc`) so the Rtc
+  session TLS will need later is proven to come up on seL4. Bounded
+  `run_genode_until` timeouts everywhere (the `hung_or_long_commands`
+  class). base-sel4 only (`assert {[have_spec sel4]}`).
+
 ## Planned additions
 
 - The end-to-end HOST-injected usb-tablet click proof for

@@ -1,0 +1,396 @@
+#
+# \brief  Sponge OS networking probe on base-sel4 (Phase 7 todo 12)
+# \author Sponge OS contributors
+# \date   2026
+#
+# Proves the network stack on seL4 BEFORE Falkon arrives (todo 16):
+# the dde_ipxe e1000 NIC driver (ipxe_nic, Uplink client) + the
+# nic_uplink bridge (no nic_router — explicitly out of scope for the
+# Alpha) + the libports fetchurl component with the lwip vfs socket
+# plugin GETs a known fixture from a host-side python3 http.server via
+# QEMU user-mode networking (10.0.2.2 = host from the guest), and the
+# run gates on the fixture's exact content marker appearing in the
+# boot log. Also starts gems' system_clock subsystem (pc_rtc +
+# system_rtc) so the Rtc session that TLS will need later (todo 16)
+# is proven to come up on seL4.
+#
+# Topology (no nic_router — see MUST NOT in the plan):
+#
+#   init
+#   + timer                       (Timer)
+#   + report_rom                  (relays ACPI device reports inside drivers)
+#   + drivers                     (sub-init; managing_system; contains
+#   |                              acpi/pci_decode/platform/ipxe_nic).
+#   |                              ipxe_nic is an Uplink CLIENT — its
+#   |                              Uplink session routes up to the outer
+#   |                              init and back down to nic_uplink.
+#   + nic_uplink                  (the no-nic_router Uplink<->Nic bridge;
+#   |                              provides Uplink to the driver AND Nic
+#   |                              to fetchurl. Modeled on the upstream
+#   |                              os/run/nic_uplink.run pattern.)
+#   + pc_rtc                      (hardware RTC driver, provides Rtc)
+#   + system_rtc                  (system_clock subsystem's Rtc aggregator;
+#   |                              routes its own Rtc session to pc_rtc.
+#   |                              "system_clock" in the sculpt option
+#   |                              namespace is this pc_rtc+system_rtc
+#   |                              pair; both started here directly
+#   |                              because Sponge OS does not use the
+#   |                              depot pkg form.)
+#   + fetchurl                    (libcurl; vfs loads the lwip plugin at
+#                                  /socket, DHCP via lwip, GETs the
+#                                  fixture URL, writes the body to
+#                                  /dev/log so it appears verbatim in
+#                                  the boot log.)
+#
+# Host fixture (started by this run script, killed after):
+#   python3 -m http.server <port> --directory run/fixtures/net-probe
+#   The guest reaches it at http://10.0.2.2:<port>/net-fixture.txt
+#   (10.0.2.2 is the QEMU slirp host alias).
+#
+# Bounded everywhere (hung_or_long_commands adversarial class):
+#   - The host fixture is started as a background process whose PID is
+#     captured; it is killed at the end of the run via that PID (with a
+#     pkill fallback in case the PID vector was empty).
+#   - run_genode_until has a hard timeout (60s for the content marker,
+#     30s for the clean exit). A stuck DHCP, an unbound driver, or a
+#     silent curl hang fails the run loudly by timeout instead of
+#     passing vacuously.
+#
+# This scenario is base-sel4 only: it asserts have_spec sel4. The
+# dde_ipxe REQUIRES=x86 driver and the e1000 model in QEMU are the
+# target; base-linux has its own (linux_slirp) NIC path that this
+# scenario does not exercise.
+#
+
+assert {[have_spec sel4]} \
+	"sponge-net-probe requires KERNEL=sel4 (BOARD=pc) in build.conf. \
+	 This scenario drives the dde_ipxe e1000 NIC driver on seL4/QEMU."
+
+#
+# Build set.
+#
+# - `driver/nic` resolves to dde_ipxe/src/driver/nic/target.mk (TARGET=ipxe_nic)
+#   because no other REPOSITORY has a top-level target.mk at src/driver/nic/.
+# - `server/nic_uplink` is the os-provided Uplink<->Nic bridge (the
+#   no-nic_router pattern from os/run/nic_uplink.run).
+# - `app/fetchurl`, `lib/vfs_lwip`, `lib/vfs_pipe` are from libports.
+# - `driver/rtc/spec/x86` is pc_rtc; `server/system_rtc` is system_rtc.
+# - lwip/curl/openssl/zlib/libc are pulled in transitively by fetchurl.
+#
+build { core lib/ld init timer/hpet server/report_rom \
+         driver/acpi app/pci_decode driver/platform \
+         driver/nic \
+         server/nic_uplink \
+         driver/rtc/spec/x86 server/system_rtc \
+         app/fetchurl \
+         lib/libc lib/libm lib/zlib lib/vfs \
+         lib/curl lib/libssh lib/libssl lib/libcrypto \
+         lib/vfs_lwip lib/vfs_pipe }
+
+create_boot_directory
+
+#
+# Host fixture lifecycle.
+#
+# Started BEFORE build_boot_image so it is already serving by the time
+# QEMU boots. Killed in a finally-style manner at end of run.
+#
+set fixture_dir  [file normalize [file join [run_dir] "../../run/fixtures/net-probe"]]
+# run_dir is <repo>/genode/build/x86_64/var/run/sponge-net-probe; walk
+# back to the repo root and into run/fixtures/net-probe.
+set repo_root    [file normalize [file join [run_dir] "../../../../../.."]]
+set fixture_dir  [file normalize "$repo_root/run/fixtures/net-probe"]
+if {![file exists "$fixture_dir/net-fixture.txt"]} {
+	error "fixture $fixture_dir/net-fixture.txt missing"
+}
+set fixture_port 8765
+set fixture_url  "http://10.0.2.2:$fixture_port/net-fixture.txt"
+
+#
+# Read the marker line straight off the fixture so the run-side gate
+# always matches the file's exact bytes (misleading_success_output
+# adversarial class — the run cannot pass on a stale or invented
+# string; it must be the fixture's actual content).
+#
+set fixture_marker ""
+set fh [open "$fixture_dir/net-fixture.txt" "RDONLY"]
+gets $fh fixture_marker
+close $fh
+if {[string length $fixture_marker] == 0} {
+	error "could not read marker line from $fixture_dir/net-fixture.txt"
+}
+puts "sponge-net-probe: fixture marker = '$fixture_marker'"
+puts "sponge-net-probe: fixture URL     = $fixture_url"
+
+#
+# Spawn python3 -m http.server in the background. `exec ... &` returns
+# a list of PIDs (Tcl exec semantics with the trailing ampersand).
+#
+# Pre-clean: a stale server on the same port from a previous (failed)
+# run makes the new bind fail with EADDRINUSE. Kill it first; the
+# `catch` swallows the no-such-process case.
+#
+catch {exec pkill -f "http.server $fixture_port --directory $fixture_dir"}
+after 500
+set fixture_pids [exec python3 -m http.server $fixture_port --directory $fixture_dir &]
+after 1000
+puts "sponge-net-probe: host fixture started (pids=$fixture_pids) on port $fixture_port"
+
+#
+# Helper to kill the fixture. Idempotent — safe to call twice (the
+# happy path AND the failure path both invoke it).
+#
+proc kill_fixture { pids } {
+	foreach pid $pids {
+		catch {exec kill $pid}
+	}
+	# pkill fallback: match the exact port+directory combo so we never
+	# kill an unrelated http.server.
+	catch {exec pkill -f "http.server $::fixture_port --directory $::fixture_dir"}
+}
+
+#
+# init config. The drivers sub-init's <config> is inlined (the same
+# pattern as drivers_nic-pc.config but with ipxe_nic as the binary
+# and the Uplink route threaded up to outer init -> nic_uplink).
+#
+install_config {
+config
++ parent-provides
+  + service ROM
+  + service PD
+  + service RM
+  + service CPU
+  + service LOG
+  + service IRQ
+  + service IO_MEM
+  + service IO_PORT
+
++ default | caps: 200 | ram: 4M
++ default-route
+  + any-service
+    + parent
+    + any-child
+
++ start timer
+  + provides | + service Timer
+
++ start report_rom | ram: 2M
+  + provides
+    + service Report
+    + service ROM
+  + config
+    + policy | label: pci_decode -> system | report: acpi -> acpi
+    + policy | label: platform -> devices       | report: pci_decode -> devices
+
+#
+# drivers sub-init. ipxe_nic is an Uplink client; it routes Uplink to
+# its parent (this sub-init) which routes Uplink to its parent (outer
+# init) which routes Uplink to nic_uplink. The sub-init provides Nic
+# outward via its `nic` child — but ipxe_nic only does Uplink, so the
+# Nic-service-via-drivers route is intentionally absent; consumers
+# (fetchurl) route Nic directly to nic_uplink.
+#
++ start drivers | caps: 1200 | ram: 32M | managing_system: yes
+  + binary init
+  + route
+    + service Uplink              | + child nic_uplink
+    + service Timer               | + child timer
+    + service Report              | + child report_rom
+    + any-service                 | + parent
+  + config
+    + parent-provides
+      + service IRQ
+      + service IO_MEM
+      + service IO_PORT
+      + service ROM
+      + service PD
+      + service RM
+      + service CPU
+      + service LOG
+      + service Timer
+      + service Uplink
+
+    + default | caps: 100 | ram: 1M
+
+    + start acpi | caps: 300 | ram: 4M
+      + route
+        + service IO_MEM | + parent
+        + service LOG    | + parent
+        + service PD     | + parent
+        + service RM     | + parent
+        + service CPU    | + parent
+        + service ROM    | + parent
+        + service Report | + child report_rom
+
+    + start report_rom | caps: 100 | ram: 2M
+      + provides
+        + service ROM
+        + service Report
+      + config
+        + policy | label: pci_decode -> system | report: acpi -> acpi
+        + policy | label: platform -> devices  | report: pci_decode -> devices
+      + route
+        + service LOG | + parent
+        + service PD  | + parent
+        + service CPU | + parent
+        + service ROM | + parent
+
+    + start pci_decode | caps: 100 | ram: 2M
+      + route
+        + service Report              | + child report_rom
+        + service ROM | label: system | + child report_rom
+        + service IO_MEM              | + parent
+        + service LOG                 | + parent
+        + service PD                  | + parent
+        + service RM                  | + parent
+        + service CPU                 | + parent
+        + service ROM                 | + parent
+
+    + start platform | caps: 200 | ram: 3M | managing_system: yes
+      + provides
+        + service Dma
+        + service Platform
+        + service Acpi
+      + route
+        + service ROM | label: devices | + child report_rom
+        + service IRQ                  | + parent
+        + service IO_MEM               | + parent
+        + service IO_PORT              | + parent
+        + service ROM                  | + parent
+        + service PD                   | + parent
+        + service CPU                  | + parent
+        + service LOG                  | + parent
+        + service Timer                | + parent
+      + config
+        + policy | label_prefix: nic | info: yes | + pci | class: ETHERNET
+
+    + start nic | caps: 250 | ram: 10M
+      + binary ipxe_nic
+      + route
+        + service Dma      | + child platform
+        + service Platform | + child platform
+        + service ROM      | + parent
+        + service PD       | + parent
+        + service RM       | + parent
+        + service CPU      | + parent
+        + service LOG      | + parent
+        + service Timer    | + parent
+        + service Uplink   | + parent
+
+#
+# nic_uplink: the no-nic_router Uplink<->Nic bridge. Provides Uplink
+# to the drivers sub-init (which forwards it to ipxe_nic) and Nic to
+# fetchurl. Modeled on os/run/nic_uplink.run.
+#
++ start nic_uplink | caps: 200 | ram: 8M
+  + provides
+    + service Uplink
+    + service Nic
+  + config | verbose: yes
+  + route
+    + service Timer | + child timer
+    + any-service   | + parent
+
+#
+# system_clock subsystem (gems): pc_rtc provides Rtc from the hardware
+# CMOS; system_rtc aggregates it into the system-wide Rtc session that
+# TLS (todo 16) will need. Both are started directly (Sponge OS does
+# not use the depot pkg form of system_clock-pc).
+#
++ start pc_rtc | caps: 100 | ram: 2M
+  + provides | + service Rtc
+  + route
+    + service Timer | + child timer
+    + any-service | + parent
+
++ start system_rtc | caps: 100 | ram: 2M
+  + provides | + service Rtc
+  + route
+    + service Rtc   | + child pc_rtc
+    + service Timer | + child timer
+    + any-service | + parent
+
+#
+# fetchurl: libcurl + libc + lwip vfs socket plugin. Writes the body
+# to /dev/log so the fixture content appears verbatim in the boot log
+# (the round-trip proof). retry=3 gives DHCP a few cycles to settle.
+#
++ start fetchurl | caps: 500 | ram: 32M
+  + config
+    + report | progress: yes
+    + vfs
+    | + dir dev
+    |   + log
+    |   + null
+    |   + inline rtc    | : 2000-01-01 00:00
+    |   + inline random | : 0123456789012345678901234567890123456789
+    | + dir pipe | + pipe
+    | + dir socket | + lwip | dhcp: yes
+    + libc | stdout: /dev/log    | stderr: /dev/log | rtc:    /dev/rtc
+    |      | rng:    /dev/random | socket: /socket  | pipe:   /pipe
+    + fetch | url: } $fixture_url { | path: /dev/log | retry: 3
+- }
+
+#
+# Boot modules: artifacts of the build above + the lwip/vfs_pipe shared
+# libs (which are loaded at runtime by libc's vfs plugin machinery).
+#
+set boot_modules [build_artifacts]
+build_boot_image $boot_modules
+
+#
+# QEMU: base-sel4 needs >= 1 GiB guest RAM. -nographic keeps it
+# headless. The board/pc/qemu_args file already contributes
+# `-net nic,model=e1000,netdev=net0 -netdev user,id=net0`; calling
+# append_qemu_nic_args appends a second -netdev user,id=net0 which the
+# run tool's power_on/qemu dedupes (see tool/run/power_on/qemu:148).
+# We call it anyway for explicitness and to match the upstream
+# fetchurl scenarios.
+#
+append qemu_args " -nographic -m 1G "
+append_qemu_nic_args
+
+#
+# Automated verification (fail-loud, bounded — hung_or_long_commands
+# adversarial class):
+#
+#   (1) CONTENT ROUND-TRIP (the load-bearing assertion, gates
+#       misleading_success_output): the fixture's exact first line
+#       (read off the file before the run started) must appear in the
+#       boot log via fetchurl's /dev/log write. If this matches, the
+#       dde_ipxe driver came up, DHCP via lwip succeeded, libcurl
+#       completed the GET, and the bytes round-tripped — not just
+#       "fetchurl exited 0 on an empty response."
+#   (2) CLEAN EXIT: fetchurl exits with exit value 0. This catches a
+#       silent curl failure that nonetheless produced some bytes.
+#
+# Each run_genode_until has a hard timeout. A stuck driver, a hung
+# DHCP, or a curl silent hang fails the run loudly by timeout instead
+# of passing vacuously.
+#
+# Cleanup runs regardless of outcome: kill_fixture is invoked before
+# the run script exits, success or failure.
+#
+
+set rc 0
+if {[catch {
+	run_genode_until ".*$fixture_marker.*" 90
+	run_genode_until {.*child "fetchurl" exited with exit value 0.*} 30
+} err]} {
+	puts "sponge-net-probe: FAILED — $err"
+	set rc 1
+}
+
+#
+# Cleanup receipt (always runs). The kill is best-effort; the `catch`
+# swallows the case where the PID has already exited.
+#
+kill_fixture $fixture_pids
+puts "sponge-net-probe: host fixture killed (cleanup receipt)"
+
+if {$rc != 0} {
+	exit $rc
+}
+
+# vi: set ft=tcl :

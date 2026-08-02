@@ -31,6 +31,8 @@ comptime BLOCK_END = "# <<< sponge-os managed block <<<"
 # sponge-de Qt6 GUI (the rest). `linux` is pulled in by the
 # drivers_interactive-pc USB stack (usb_hid/pc_usb_host via dde_linux),
 # needed for run/sponge-de-sel4-interactive.run (absolute-pointer input).
+# `dde_ipxe` and `lwip` are pulled in by the networking probe
+# run/sponge-net-probe.run (todo 12).
 # Downloads are SHA-256-verified and land in genode/contrib/.
 # prepare_port itself skips already-prepared ports.
 def port_list() -> List[String]:
@@ -51,6 +53,8 @@ def port_list() -> List[String]:
         "grub2",
         "linux",
         "jitterentropy",
+        "dde_ipxe",
+        "lwip",
     ]
 
 
@@ -184,6 +188,10 @@ def ensure_build_conf(build_conf: String) raises -> Bool:
         + "# scenario (run/sponge-de-sel4-interactive.run). Harmless on base-linux.\n"
         + "REPOSITORIES += $(GENODE_DIR)/repos/pc\n"
         + "REPOSITORIES += $(GENODE_DIR)/repos/dde_linux\n"
+        + "# dde_ipxe: iPXE-based NIC driver (ipxe_nic) for the base-sel4\n"
+        + "# networking scenarios (run/sponge-net-probe.run). Harmless on\n"
+        + "# base-linux (REQUIRES=x86 target built only on demand).\n"
+        + "REPOSITORIES += $(GENODE_DIR)/repos/dde_ipxe\n"
         + "MAKE += -j"
         + String(cpu_count)
         + "\n"
