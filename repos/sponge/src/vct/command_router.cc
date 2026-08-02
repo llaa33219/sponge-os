@@ -59,6 +59,10 @@ int CommandRouter::dispatch(Args const &args)
 		RemoveCommand c { _env };
 		return c.execute(args);
 	}
+	if (Genode::strcmp(cmd, "launch") == 0) {
+		LaunchCommand c { _env };
+		return c.execute(args);
+	}
 	if (Genode::strcmp(cmd, "list") == 0) {
 		ListCommand c { _env };
 		return c.execute(args);

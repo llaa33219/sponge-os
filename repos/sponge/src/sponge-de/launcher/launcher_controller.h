@@ -9,10 +9,14 @@
  *     QTimer poll, because Qt's event loop does not drive the Genode
  *     entrypoint and the GUI thread must never block on IPC.
  *   - Each poll re-reads the broadcast ROM pkgd publishes on every
- *     install/remove (additive Phase 5c). The launcher does NOT write
- *     requests: report_rom is single-writer per label, and vct + the
- *     probes already own the request/result channel for one-shot
- *     commands. sponge-de is a pure watcher.
+ *     install/remove (additive Phase 5c). Phase 7 todo 10 adds a
+ *     write path: clicking a launcher entry sends a `launch <name>`
+ *     request to pkgd over a dedicated "launcher_request" channel
+ *     (report_rom is single-writer per label, so the long-lived
+ *     launcher cannot share vct's "request" label). The result is
+ *     polled non-blocking via a short-lived QTimer so the GUI thread
+ *     never blocks on IPC (AGENTS.md §3.3 rule 5: same pkgd backend
+ *     as vct launch, just a distinct transport label).
  *   - When the parsed app list actually changes, the controller emits
  *     appsChanged() on the GUI thread; LauncherMenuView repopulates.
  *
@@ -72,6 +76,7 @@ class LauncherController : public QObject
 			QString category;
 			QString binary;
 			QString description;
+			bool    running { false };
 		};
 
 		explicit LauncherController(Genode::Env &env,
@@ -85,6 +90,16 @@ class LauncherController : public QObject
 
 		bool live_list_seen() const { return _live_list_seen; }
 
+		/*
+		 * Click-to-launch (Phase 7 todo 10). Sends `launch <name>` to
+		 * pkgd over the "launcher_request" channel and starts a non-
+		 * blocking QTimer poll for the matching result. Safe to call
+		 * from the GUI thread (the click handler): it never blocks on
+		 * IPC — the Expanding_reporter write is synchronous-but-fast
+		 * and the result poll is timer-driven.
+		 */
+		void request_launch(QString const &name);
+
 	signals:
 
 		/* Emitted on the GUI thread whenever the parsed app list
@@ -94,6 +109,7 @@ class LauncherController : public QObject
 	private slots:
 
 		void poll();
+		void _poll_launch_result();
 
 	private:
 
@@ -109,6 +125,17 @@ class LauncherController : public QObject
 		 */
 		Genode::Constructible<Genode::Attached_rom_dataspace> _installed_rom { };
 
+		/*
+		 * Launch request/result channel (Phase 7 todo 10). Distinct
+		 * labels from vct's "request"/"result" because report_rom is
+		 * single-writer per label and a long-lived launcher coexists
+		 * with short-lived vct children in the same scenario. pkgd
+		 * exposes "launcher_request"/"launcher_result" as a second
+		 * input/output pair feeding the same _do_launch backend.
+		 */
+		Genode::Constructible<Genode::Expanding_reporter>     _launch_request  { };
+		Genode::Constructible<Genode::Attached_rom_dataspace> _launch_result   { };
+
 		/* Headless-verifiability: published app list. */
 		Genode::Reporter _launcher_report { _env, "launcher" };
 
@@ -119,6 +146,11 @@ class LauncherController : public QObject
 		bool _live_list_seen { false };
 
 		QString _last_result_signature;
+
+		/* Pending launch (non-blocking result poll). */
+		QString _pending_launch_name;
+		unsigned _launch_poll_count { 0 };
+		static constexpr unsigned LAUNCH_POLL_MAX { 60 };
 
 		bool _read_and_parse();
 		bool _try_parse(Genode::Xml_node const &root);

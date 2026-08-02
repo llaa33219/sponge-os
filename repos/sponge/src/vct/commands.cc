@@ -49,6 +49,7 @@ int HelpCommand::execute(Args const &args)
 		Genode::log("  vct install <pkg> --explain  패키지 설치 계획 미리보기");
 		Genode::log("  vct install <pkg>         패키지 설치 (--manual: 단계별 출력)");
 		Genode::log("  vct remove <pkg>          패키지 제거");
+		Genode::log("  vct launch <pkg>          설치된 패키지 시작");
 		Genode::log("  vct list                  설치된 패키지 목록");
 		Genode::log("  vct config <key>          설정 값 조회");
 		Genode::log("  vct config <key> <value>  설정 값 변경");
@@ -66,6 +67,7 @@ int HelpCommand::execute(Args const &args)
 		Genode::log("  vct install <pkg> --explain  Preview the install plan");
 		Genode::log("  vct install <pkg>         Install a package (--manual: step-by-step)");
 		Genode::log("  vct remove <pkg>          Remove an installed package");
+		Genode::log("  vct launch <pkg>          Start an installed package");
 		Genode::log("  vct list                  List installed packages");
 		Genode::log("  vct config <key>          Get a configuration value");
 		Genode::log("  vct config <key> <value>  Set a configuration value");
@@ -738,6 +740,95 @@ int RemoveCommand::_render_json(Genode::Xml_node const &result)
 	Genode::log("{\"command\":\"remove\",\"package\":\"", pkg,
 	            "\",\"status\":\"success\",\"components_removed\":", removed, "}");
 	return 0;
+}
+
+
+/* ===================== LaunchCommand ===================== */
+
+int LaunchCommand::execute(Args const &args)
+{
+	char const *const pkg = args.positional.string();
+
+	if (Genode::strcmp(pkg, "") == 0) {
+		Genode::warning("vct: launch requires a package name");
+		Genode::log("Usage: vct launch <package> [--json] [--help]");
+		return 1;
+	}
+
+	/* Audit line before acting (docs/06-vct.md §4.2, control philosophy). */
+	Genode::log("vct: launch: requesting start of ", pkg);
+
+	ReportRomClient client { _env };
+	if (!client.request("launch", pkg)) {
+		if (args.json)
+			Genode::log("{\"command\":\"launch\",\"package\":\"", pkg,
+			            "\",\"status\":\"error\","
+			            "\"error\":\"sponge_pkgd did not answer\"}");
+		else
+			Genode::warning("vct: sponge_pkgd did not answer launch for '", pkg, "'");
+		return 1;
+	}
+
+	return args.json ? _render_json(client.result_xml())
+	                 : _render_human(client.result_xml());
+}
+
+
+int LaunchCommand::_render_human(Genode::Xml_node const &result)
+{
+	Genode::String<32> const status =
+		result.attribute_value("status", Genode::String<32>());
+	Genode::String<128> const pkg =
+		result.attribute_value("pkg", Genode::String<128>());
+
+	if (status == Genode::String<32>("ok")) {
+		Genode::log("launched: ", pkg);
+		return 0;
+	}
+	if (status == Genode::String<32>("not-installed")) {
+		Genode::log("launch: ", pkg, " is not installed");
+		return 1;
+	}
+	if (status == Genode::String<32>("already-running")) {
+		Genode::log("launch: ", pkg, " is already running");
+		return 1;
+	}
+
+	Genode::String<256> const err =
+		result.attribute_value("error", Genode::String<256>());
+	Genode::log("launch: error: ", err);
+	return 1;
+}
+
+
+int LaunchCommand::_render_json(Genode::Xml_node const &result)
+{
+	Genode::String<32> const status =
+		result.attribute_value("status", Genode::String<32>());
+	Genode::String<128> const pkg =
+		result.attribute_value("pkg", Genode::String<128>());
+
+	if (status == Genode::String<32>("ok")) {
+		Genode::log("{\"command\":\"launch\",\"package\":\"", pkg,
+		            "\",\"status\":\"success\"}");
+		return 0;
+	}
+	if (status == Genode::String<32>("not-installed")) {
+		Genode::log("{\"command\":\"launch\",\"package\":\"", pkg,
+		            "\",\"status\":\"error\",\"error\":\"not-installed\"}");
+		return 1;
+	}
+	if (status == Genode::String<32>("already-running")) {
+		Genode::log("{\"command\":\"launch\",\"package\":\"", pkg,
+		            "\",\"status\":\"error\",\"error\":\"already-running\"}");
+		return 1;
+	}
+
+	Genode::String<256> const err =
+		result.attribute_value("error", Genode::String<256>());
+	Genode::log("{\"command\":\"launch\",\"package\":\"", pkg,
+	            "\",\"status\":\"error\",\"error\":\"", err, "\"}");
+	return 1;
 }
 
 

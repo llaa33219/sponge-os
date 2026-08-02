@@ -222,4 +222,28 @@ class LeitzentraleCommand : public Command
 		                  bool revert, Args const &args);
 	};
 
+/*
+ * launch — transitions an installed-but-stopped package to running via
+ * sponge_pkgd (Phase 7, docs/06-vct.md §4.2 + docs/12 §9.2.1). Shares
+ * the SAME Report/ROM channel and the SAME pkgd backend as the Sponge
+ * DE launcher menu click (AGENTS.md §3.3 rule 5). No --manual mode
+ * (launch is a single-step op; no stop exists in Alpha). The result
+ * status is one of "ok" / "not-installed" / "already-running"; the two
+ * non-ok outcomes exit non-zero with a clear message. An audit line is
+ * printed before the request (control philosophy, docs/06 §4.2).
+ */
+class LaunchCommand : public Command
+{
+	public:
+		explicit LaunchCommand(Genode::Env &env) : _env(env) {}
+		char const *name()    const override { return "launch"; }
+		char const *summary() const override { return "Start an installed package."; }
+		int execute(Args const &args) override;
+	private:
+		Genode::Env &_env;
+
+		int _render_human(Genode::Xml_node const &result);
+		int _render_json(Genode::Xml_node const &result);
+};
+
 }  /* namespace Sponge::Vct */

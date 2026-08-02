@@ -163,6 +163,26 @@ A scenario defines:
   under softpipe is the slow part on seL4). Gates on
   `lifecycle-probe: PASS`.
 
+- `sponge-launch.run` — Phase 7 todo 10: click-to-launch + `vct launch`
+  verification. Proves BOTH launch paths share the same `sponge_pkgd`
+  backend (AGENTS.md §3.3 rule 5 — two interfaces, one backend). The
+  `launch_probe` (1) sends `launch pkg_gui_demo` over the same
+  `request` channel `vct launch` uses (VCT PATH — pkg_gui_demo boots
+  and logs its `window shown` marker); (2) removes + reinstalls the
+  package; (3) injects a synthetic click on sponge-de's launcher button
+  to open the popup, then on the first menu entry — sponge-de's
+  `LauncherController` writes `launch pkg_gui_demo` to the dedicated
+  `launcher_request` channel (report_rom is single-writer per label,
+  so the long-lived launcher cannot share vct's `request` label);
+  pkgd processes it via the SAME `_do_launch` and answers on
+  `launcher_result`; the probe pixel-verifies the green (#00ff00)
+  window (CLICK PATH); (4) verifies `launch nosuchpkg` →
+  `not-installed` and double-launch → `already-running`, emitting
+  vct-equivalent JSON lines the run script asserts. Kernel-agnostic
+  topology (base-linux native or base-sel4 QEMU); the acceptance run
+  uses `KERNEL=sel4 BOARD=pc`. Gates on `launch-probe: PASS` (two Qt6
+  first paints under softpipe Mesa on seL4; generous 600s timeout).
+
 ## Planned additions
 
 - The end-to-end HOST-injected usb-tablet click proof for

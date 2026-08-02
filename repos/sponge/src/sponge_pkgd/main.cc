@@ -25,6 +25,14 @@
  *   - launch (Phase 7): transition an installed-but-stopped package to
  *     running by adding its <start> node and regenerating. The result
  *     carries one of three outcomes: ok / not-installed / already-running.
+ *     Phase 7 todo 10: the launch op is reachable from TWO input
+ *     channels — "request" (vct + test probes) and "launcher_request"
+ *     (the Sponge DE launcher menu) — because report_rom is single-
+ *     writer per label and a long-lived launcher cannot share the same
+ *     "request" label as short-lived vct invocations. Both channels
+ *     feed the SAME _handle_request body and the SAME _do_launch: one
+ *     launch backend, two transports (AGENTS.md §3.3 rule 5 — same
+ *     backend interface, not a forked launch path).
  *   - remove  (4b): drop the package (and now-unused deps), regenerate.
  *
  * The pkg_runtime config is emitted via a second Expanding_reporter
@@ -172,6 +180,23 @@ class Sponge::Pkgd::Main
 		Genode::Expanding_reporter _result_reporter { _env, "result", "result" };
 
 		/*
+		 * Launcher request/result channel pair (Phase 7 todo 10).
+		 * report_rom is single-writer per label, so a long-lived
+		 * launcher (sponge-de) cannot share the "request" label with
+		 * short-lived vct invocations. pkgd exposes a SECOND input/
+		 * output pair for the launcher menu. Both channels feed the
+		 * SAME _handle_request_impl body and the SAME _do_launch —
+		 * one backend, two transports (AGENTS.md §3.3 rule 5).
+		 *
+		 * _launcher_request_rom is Constructible because scenarios that
+		 * do not route the "launcher_request" ROM deny the session at
+		 * the parent, which is fatal if opened eagerly. The constructor
+		 * tries to construct it and falls back gracefully.
+		 */
+		Genode::Constructible<Genode::Attached_rom_dataspace> _launcher_request_rom { };
+		Genode::Expanding_reporter     _launcher_result_reporter { _env, "result", "launcher_result" };
+
+		/*
 		 * Runtime config report: report_rom relays this to the nested
 		 * pkg_runtime init's "config" ROM. pkgd owns the ENTIRE
 		 * pkg_runtime config and regenerates it on every install/remove.
@@ -195,6 +220,9 @@ class Sponge::Pkgd::Main
 		Genode::Signal_handler<Main> _request_handler {
 			_env.ep(), *this, &Main::_handle_request };
 
+		Genode::Signal_handler<Main> _launcher_request_handler {
+			_env.ep(), *this, &Main::_handle_launcher_request };
+
 		/*
 		 * De-duplication of the request ROM. ROM signals can be
 		 * delivered more than once for the same content (e.g. once on
@@ -205,6 +233,14 @@ class Sponge::Pkgd::Main
 		 * one we already handled.
 		 */
 		Genode::String<160> _last_request_sig { };
+
+		/*
+		 * Selects which result reporter the _report_* helpers write to
+		 * during an in-flight request. Set at the top of each handler
+		 * entry point. Signals dispatch serially, so no concurrency.
+		 */
+		enum class Result_channel { primary, launcher };
+		Result_channel _active_channel { Result_channel::primary };
 
 		/*
 		 * Known-package set, loaded once from the pkg_index.xml boot
@@ -292,6 +328,16 @@ class Sponge::Pkgd::Main
 
 		/* ---- request handling ---- */
 		void _handle_request();
+		void _handle_launcher_request();
+
+		/*
+		 * Core request-processing body shared by both input channels.
+		 * `result` selects which reporter receives the <result/> so the
+		 * launcher reads "launcher_result" and vct/probes read "result"
+		 * — report_rom is single-writer per label, so the two output
+		 * reports cannot be merged (see _launcher_request_rom above).
+		 */
+		void _handle_request_impl(Genode::Xml_node const &req);
 		void _do_explain(Genode::String<128> const &pkg);
 		void _do_install(Genode::String<128> const &pkg);
 		void _do_remove(Genode::String<128> const &pkg);
@@ -322,6 +368,9 @@ class Sponge::Pkgd::Main
 		void _load_store();
 		void _save_store();
 
+		/* ---- launcher channel (optional, config-gated) ---- */
+		void _init_launcher_channel();
+
 		/* ---- runtime-config generation (deterministic) ---- */
 		void _generate_runtime_config();
 
@@ -342,6 +391,7 @@ class Sponge::Pkgd::Main
 		                   char const *message);
 
 		/* ---- small helpers ---- */
+		Genode::Expanding_reporter &_result();
 		static bool _contains(Genode::String<64> const *set, unsigned n,
 		                      char const *name);
 		static Genode::String<256> _cycle_message(Genode::String<64> const *visiting,
@@ -369,6 +419,13 @@ bool Sponge::Pkgd::Main::_contains(Genode::String<64> const *set, unsigned n,
 		if (Genode::strcmp(set[i].string(), name) == 0)
 			return true;
 	return false;
+}
+
+
+Genode::Expanding_reporter &Sponge::Pkgd::Main::_result()
+{
+	return _active_channel == Result_channel::launcher
+	     ? _launcher_result_reporter : _result_reporter;
 }
 
 
@@ -706,66 +763,92 @@ void Sponge::Pkgd::Main::_visit(char const *name)
 
 void Sponge::Pkgd::Main::_handle_request()
 {
-	_request_rom.update();
+	_active_channel = Result_channel::primary;
 
+	_request_rom.update();
 	if (!_request_rom.valid())
 		return;
 
 	try {
-		Genode::Xml_node const req = _request_rom.xml();
-
-		if (!req.has_type("request")) {
-			_report_error("explain", Genode::String<128>(),
-			              "request root is not <request>");
-			return;
-		}
-
-		Genode::String<32>  const op  = req.attribute_value("op",
-		                                         Genode::String<32>());
-		Genode::String<128> const pkg = req.attribute_value("pkg",
-		                                         Genode::String<128>());
-		Genode::String<16>  const seq = req.attribute_value("seq",
-		                                         Genode::String<16>());
-
-		Genode::String<160> const sig(op, "|", pkg, "|", seq);
-		if (sig == _last_request_sig)
-			return;
-		_last_request_sig = sig;
-
-		/* `list` takes no package; every other op requires one. */
-		if (Genode::strcmp(op.string(), "list") == 0) {
-			_do_list();
-			return;
-		}
-
-		if (Genode::strcmp(pkg.string(), "") == 0) {
-			_report_error(op.string(), pkg, "no package specified in request");
-			return;
-		}
-
-		if (Genode::strcmp(op.string(), "explain") == 0) {
-			_do_explain(pkg);
-			return;
-		}
-		if (Genode::strcmp(op.string(), "install") == 0) {
-			_do_install(pkg);
-			return;
-		}
-		if (Genode::strcmp(op.string(), "remove") == 0) {
-			_do_remove(pkg);
-			return;
-		}
-		if (Genode::strcmp(op.string(), "launch") == 0) {
-			_do_launch(pkg);
-			return;
-		}
-
-		_report_error(op.string(), pkg, "unknown operation");
+		_handle_request_impl(_request_rom.xml());
 	}
 	catch (Genode::Xml_node::Invalid_syntax) {
 		_report_error("explain", Genode::String<128>(),
 		              "malformed request ROM");
 	}
+}
+
+
+void Sponge::Pkgd::Main::_handle_launcher_request()
+{
+	if (!_launcher_request_rom.constructed())
+		return;
+
+	_active_channel = Result_channel::launcher;
+
+	_launcher_request_rom->update();
+	if (!_launcher_request_rom->valid())
+		return;
+
+	try {
+		_handle_request_impl(_launcher_request_rom->xml());
+	}
+	catch (Genode::Xml_node::Invalid_syntax) {
+		_report_error("explain", Genode::String<128>(),
+		              "malformed launcher_request ROM");
+	}
+}
+
+
+void Sponge::Pkgd::Main::_handle_request_impl(Genode::Xml_node const &req)
+{
+	if (!req.has_type("request")) {
+		_report_error("explain", Genode::String<128>(),
+		              "request root is not <request>");
+		return;
+	}
+
+	Genode::String<32>  const op  = req.attribute_value("op",
+	                                         Genode::String<32>());
+	Genode::String<128> const pkg = req.attribute_value("pkg",
+	                                         Genode::String<128>());
+	Genode::String<16>  const seq = req.attribute_value("seq",
+	                                         Genode::String<16>());
+
+	Genode::String<160> const sig(op, "|", pkg, "|", seq);
+	if (sig == _last_request_sig)
+		return;
+	_last_request_sig = sig;
+
+	/* `list` takes no package; every other op requires one. */
+	if (Genode::strcmp(op.string(), "list") == 0) {
+		_do_list();
+		return;
+	}
+
+	if (Genode::strcmp(pkg.string(), "") == 0) {
+		_report_error(op.string(), pkg, "no package specified in request");
+		return;
+	}
+
+	if (Genode::strcmp(op.string(), "explain") == 0) {
+		_do_explain(pkg);
+		return;
+	}
+	if (Genode::strcmp(op.string(), "install") == 0) {
+		_do_install(pkg);
+		return;
+	}
+	if (Genode::strcmp(op.string(), "remove") == 0) {
+		_do_remove(pkg);
+		return;
+	}
+	if (Genode::strcmp(op.string(), "launch") == 0) {
+		_do_launch(pkg);
+		return;
+	}
+
+	_report_error(op.string(), pkg, "unknown operation");
 }
 
 
@@ -1244,7 +1327,7 @@ void Sponge::Pkgd::Main::_report_ok(Genode::String<128> const &pkg)
 	/* The root package is the last entry in the install-ordered plan. */
 	Package const &root = _plan[_num_plan > 0 ? _num_plan - 1 : 0];
 
-	_result_reporter.generate_xml([&](Genode::Xml_generator &g) {
+	_result().generate_xml([&](Genode::Xml_generator &g) {
 		g.attribute("status", "ok");
 		g.attribute("op",     "explain");
 		g.attribute("pkg",    pkg);
@@ -1310,7 +1393,7 @@ void Sponge::Pkgd::Main::_report_error(char const *op,
                                        Genode::String<128> const &pkg,
                                        char const *message)
 {
-	_result_reporter.generate_xml([&](Genode::Xml_generator &g) {
+	_result().generate_xml([&](Genode::Xml_generator &g) {
 		g.attribute("status", "error");
 		g.attribute("op",     op);
 		g.attribute("pkg",    pkg);
@@ -1326,7 +1409,7 @@ void Sponge::Pkgd::Main::_report_install_ok(Genode::String<128> const &pkg,
                                             Genode::String<64> const *added,
                                             unsigned num_added)
 {
-	_result_reporter.generate_xml([&](Genode::Xml_generator &g) {
+	_result().generate_xml([&](Genode::Xml_generator &g) {
 		g.attribute("status",  "ok");
 		g.attribute("op",      "install");
 		g.attribute("pkg",     pkg);
@@ -1350,7 +1433,7 @@ void Sponge::Pkgd::Main::_report_remove_ok(Genode::String<128> const &pkg,
                                            Genode::String<64> const *removed,
                                            unsigned num_removed)
 {
-	_result_reporter.generate_xml([&](Genode::Xml_generator &g) {
+	_result().generate_xml([&](Genode::Xml_generator &g) {
 		g.attribute("status", "ok");
 		g.attribute("op",     "remove");
 		g.attribute("pkg",    pkg);
@@ -1375,7 +1458,11 @@ void Sponge::Pkgd::Main::_report_remove_ok(Genode::String<128> const &pkg,
 void Sponge::Pkgd::Main::_report_launch_ok(Genode::String<128> const &pkg,
                                            char const *outcome)
 {
-	_result_reporter.generate_xml([&](Genode::Xml_generator &g) {
+	Genode::log("sponge_pkgd: launch result ", pkg, " -> ", outcome,
+	            " (channel=",
+	            _active_channel == Result_channel::launcher ? "launcher" : "primary",
+	            ")");
+	_result().generate_xml([&](Genode::Xml_generator &g) {
 		g.attribute("status", outcome);
 		g.attribute("op",     "launch");
 		g.attribute("pkg",    pkg);
@@ -1400,7 +1487,7 @@ void Sponge::Pkgd::Main::_report_list_ok()
 		}
 	}
 
-	_result_reporter.generate_xml([&](Genode::Xml_generator &g) {
+	_result().generate_xml([&](Genode::Xml_generator &g) {
 		g.attribute("status", "ok");
 		g.attribute("op",     "list");
 		g.attribute("count",  _num_installed);
@@ -1459,6 +1546,33 @@ void Sponge::Pkgd::Main::_init_store()
 			});
 	} catch (Genode::Xml_node::Invalid_syntax) {
 		Genode::warning("sponge_pkgd: malformed <config> — persistence disabled");
+	}
+}
+
+
+/*
+ * Launcher channel opt-in (Phase 7 todo 10). The launcher_request ROM
+ * is opened ONLY when <config> carries <launcher_request/>. Genode
+ * 26.05's session-denial path calls sleep_forever() (not a throw), so
+ * an eager open in an unrouted scenario would hang the daemon. The
+ * config gate is identical in spirit to _init_store's <vfs> gate.
+ */
+void Sponge::Pkgd::Main::_init_launcher_channel()
+{
+	_config_rom.update();
+	if (!_config_rom.valid())
+		return;
+
+	try {
+		_config_rom.node().with_optional_sub_node("launcher_request",
+			[&](Genode::Node const &) {
+				_launcher_request_rom.construct(_env, "launcher_request");
+				_launcher_request_rom->sigh(_launcher_request_handler);
+				_launcher_request_rom->update();
+				Genode::log("sponge_pkgd: launcher_request channel enabled");
+			});
+	} catch (Genode::Xml_node::Invalid_syntax) {
+		Genode::warning("sponge_pkgd: malformed <config> — launcher channel disabled");
 	}
 }
 
@@ -1682,6 +1796,16 @@ Sponge::Pkgd::Main::Main(Genode::Env &env) : _env(env)
 
 	_request_rom.sigh(_request_handler);
 	_request_rom.update();
+
+	/*
+	 * Launcher channel: constructed ONLY when this component's <config>
+	 * carries a <launcher_request/> element. Genode 26.05's session
+	 * routing calls sleep_forever() on denial (not a catchable throw),
+	 * so the ROM session MUST NOT be opened in scenarios that do not
+	 * route it. The config gate is the same opt-in pattern _init_store
+	 * uses for <vfs>.
+	 */
+	_init_launcher_channel();
 
 	/* Process a request that arrived before the signal handler was wired. */
 	_handle_request();

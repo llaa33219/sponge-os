@@ -34,5 +34,13 @@ void Main::run()
 		            " json=",           args.json);
 	}
 
-	_router.dispatch(args);
+	int const rc = _router.dispatch(args);
+
+	/*
+	 * Propagate the command's exit code so a failed launch (or any
+	 * other non-zero return) surfaces to init as a component exit,
+	 * not just a log line. vct is short-lived: exit() ends the
+	 * component immediately after the command renders its output.
+	 */
+	_env.parent().exit(rc);
 }
