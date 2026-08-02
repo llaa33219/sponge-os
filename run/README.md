@@ -107,6 +107,29 @@ A scenario defines:
   install was issued this boot. `base-linux` only (lx_fs is a Linux-host
   wrapper); the component code itself is portable.
 
+- `sponge-media-smoke.run` — Phase 7 todo 3: minimal seL4 media smoke
+  test. Same payload as `sponge-minimal.run` (core, lib/ld, init, vct)
+  but the boot image is materialised as a real El Torito ISO or GPT disk
+  image and QEMU boots from that media file (not a direct kernel boot).
+  Run with `RUN_OPT="--include image/iso"` or `RUN_OPT="--include
+  image/disk"`; gates on vct's banner. Proves the grub2→bender→seL4
+  boot chain from removable media before the full desktop exists.
+  base-sel4 only.
+
+- `sponge-alpha.run` — Phase 7 todo 4: the unified Alpha desktop
+  scenario on base-sel4. Merges five proven component sets into ONE
+  boot: the interactive-PC driver stack (vesa_fb/ps2/usb_hid/xHCI), the
+  upstream `wm`+`window_layouter`+`decorator` window-management stack,
+  the live `sponge_configd`→`sponge_themed`→sponge-de theme pipeline,
+  the `sponge_pkgd`+`pkg_runtime` launcher feed (with pre-staged
+  `hello`), and the Leitzentrale subsystem (`lz_runtime`/`lz_bridge`/
+  `lz_watch`/`lz_viewer`). QEMU RAM bumped to 2G. The composite
+  `alpha_probe` asserts all four Alpha criteria in bounded iterations
+  (themed panel pixel, launcher report carries `hello`, configd
+  broadcast ROM live, lz_viewer Leitzentrale window pixel) and logs
+  `alpha-probe: PASS`; the run gates on that marker (fail-loud on
+  timeout). base-sel4 only.
+
 ## Planned additions
 
 - The end-to-end HOST-injected usb-tablet click proof for
