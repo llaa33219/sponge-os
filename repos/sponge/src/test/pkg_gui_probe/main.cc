@@ -14,9 +14,17 @@
  *   - the GUI-safe caps floor (Qt6 init did not silently hang on the
  *     §11.1 capability-exhaustion cliff).
  *
+ * Phase 7 todo 9 lifecycle update: pkg_gui_demo has no <autostart/>,
+ * so install registers it STOPPED. The probe issues a `launch` after
+ * install to transition it to running (docs/12-package-format.md
+ * §9.2.1). The same launch path the Sponge DE launcher menu and
+ * `vct launch` will share (todo 10).
+ *
  * Flow:
  *   (1) <request op="install" pkg="pkg_gui_demo"/>; wait for pkgd ok.
- *   (2) Poll capture for the green pixel in the demo domain center.
+ *   (2) <request op="launch"  pkg="pkg_gui_demo"/>; wait for pkgd ok
+ *       (status="ok" — installed -> running transition).
+ *   (3) Poll capture for the green pixel in the demo domain center.
  *
  * Success logs "pkg-gui-probe: PASS"; any failure logs
  * "pkg-gui-probe: FAIL <reason>" and exits non-zero so the run
@@ -108,8 +116,23 @@ struct Pkg_gui_probe
 
 	bool _install_and_wait(char const *pkg)
 	{
+		return _send_and_wait("install", pkg);
+	}
+
+	bool _launch_and_wait(char const *pkg)
+	{
+		return _send_and_wait("launch", pkg);
+	}
+
+	/*
+	 * Send `<request op pkg/>` and poll the result ROM until pkgd
+	 * answers with a result for the same op+pkg. Used by both the
+	 * install and the Phase 7 launch step.
+	 */
+	bool _send_and_wait(char const *op, char const *pkg)
+	{
 		_request.generate_xml([&](Genode::Xml_generator &g) {
-			g.attribute("op",  "install");
+			g.attribute("op",  op);
 			g.attribute("pkg", pkg);
 		});
 
@@ -120,7 +143,7 @@ struct Pkg_gui_probe
 			try {
 				Genode::Xml_node const r = _result.xml();
 				if (r.has_type("result") &&
-				    r.attribute_value("op",  Genode::String<32>()) == Genode::String<32>("install") &&
+				    r.attribute_value("op",  Genode::String<32>()) == Genode::String<32>(op) &&
 				    r.attribute_value("pkg", Genode::String<128>()) == Genode::String<128>(pkg) &&
 				    r.has_attribute("status"))
 					return true;
@@ -199,7 +222,32 @@ struct Pkg_gui_probe
 		}
 		Genode::log("pkg-gui-probe: [1] install ok");
 
-		Genode::log("pkg-gui-probe: [2] wait for demo window pixel");
+		/*
+		 * Phase 7 todo 9 lifecycle: pkg_gui_demo has no <autostart/>,
+		 * so install left it STOPPED. Issue the launch that transitions
+		 * it to running so pkg_runtime actually starts the component
+		 * (docs/12-package-format.md §9.2.1).
+		 */
+		Genode::log("pkg-gui-probe: [2] launch pkg_gui_demo via sponge_pkgd");
+		if (!_launch_and_wait("pkg_gui_demo")) {
+			_fail("sponge_pkgd did not answer launch pkg_gui_demo");
+			return;
+		}
+		{
+			Genode::String<32> status { };
+			try {
+				status = _result.xml().attribute_value("status",
+				                                       Genode::String<32>());
+			} catch (Genode::Xml_node::Invalid_syntax) { }
+
+			if (status != Genode::String<32>("ok")) {
+				_fail(Genode::String<256>("launch returned: ", status).string());
+				return;
+			}
+		}
+		Genode::log("pkg-gui-probe: [2] launch ok");
+
+		Genode::log("pkg-gui-probe: [3] wait for demo window pixel");
 		if (!_demo_window_visible()) {
 			_fail("demo window green pixel never appeared on nitpicker");
 			return;

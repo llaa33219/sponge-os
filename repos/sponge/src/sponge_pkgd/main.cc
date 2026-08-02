@@ -18,6 +18,13 @@
  *   - explain (4a): produce the install plan, no side effects.
  *   - install (4b): resolve, add to the installed set, regenerate the
  *     pkg_runtime config (a nested init that hosts the components).
+ *     Phase 7 (docs/12 §9.2.1): install registers packages as STOPPED
+ *     unless their metadata declares <autostart/>, in which case they
+ *     also get a <start> node immediately (preserves hello's old
+ *     auto-start behavior).
+ *   - launch (Phase 7): transition an installed-but-stopped package to
+ *     running by adding its <start> node and regenerating. The result
+ *     carries one of three outcomes: ok / not-installed / already-running.
  *   - remove  (4b): drop the package (and now-unused deps), regenerate.
  *
  * The pkg_runtime config is emitted via a second Expanding_reporter
@@ -251,6 +258,22 @@ class Sponge::Pkgd::Main
 		unsigned           _num_roots               { 0 };
 
 		/*
+		 * Running set (Phase 7, docs/12-package-format.md §9.2.1).
+		 * Subset of installed package names that currently have a
+		 * <start> node in pkg_runtime. Membership is determined by:
+		 *   - <autostart/> packages: in _running automatically when
+		 *     installed (or restored on boot);
+		 *   - explicitly launched packages: added by _do_launch;
+		 *   - everyone else: installed-but-stopped, NOT in _running.
+		 * _sync_running_state() is the single re-derivation point
+		 * called after install/remove/launch/restore so the invariant
+		 * "_running ⊆ installed_names, autostart ∪ explicitly-launched"
+		 * always holds before the config + broadcast are regenerated.
+		 */
+		Genode::String<64> _running[MAX_PACKAGES]   { };
+		unsigned           _num_running             { 0 };
+
+		/*
 		 * Optional persistent installed-set store (Phase 4 follow-up
 		 * #2). Activated only when this component's <config> ROM
 		 * contains a <vfs> node; otherwise _vfs_env stays deconstructed
@@ -272,6 +295,7 @@ class Sponge::Pkgd::Main
 		void _do_explain(Genode::String<128> const &pkg);
 		void _do_install(Genode::String<128> const &pkg);
 		void _do_remove(Genode::String<128> const &pkg);
+		void _do_launch(Genode::String<128> const &pkg);
 		void _do_list();
 
 		/* ---- resolution ---- */
@@ -286,6 +310,11 @@ class Sponge::Pkgd::Main
 		bool _installed_contains(char const *name) const;
 		void _add_root(char const *name);
 		void _sync_installed_from_roots();
+
+		/* ---- running-set management (Phase 7 lifecycle) ---- */
+		bool _is_running(char const *name) const;
+		bool _add_running(char const *name);
+		void _sync_running_state();
 
 		/* ---- persistent store (optional) ---- */
 		bool _store_enabled() const { return _vfs_env.constructed(); }
@@ -306,6 +335,8 @@ class Sponge::Pkgd::Main
 		                        Genode::String<64> const *added, unsigned num_added);
 		void _report_remove_ok(Genode::String<128> const &pkg,
 		                       Genode::String<64> const *removed, unsigned num_removed);
+		void _report_launch_ok(Genode::String<128> const &pkg,
+		                       char const *outcome);
 		void _report_list_ok();
 		void _report_error(char const *op, Genode::String<128> const &pkg,
 		                   char const *message);
@@ -724,6 +755,10 @@ void Sponge::Pkgd::Main::_handle_request()
 			_do_remove(pkg);
 			return;
 		}
+		if (Genode::strcmp(op.string(), "launch") == 0) {
+			_do_launch(pkg);
+			return;
+		}
 
 		_report_error(op.string(), pkg, "unknown operation");
 	}
@@ -810,6 +845,61 @@ void Sponge::Pkgd::Main::_sync_installed_from_roots()
 }
 
 
+/* ===================== running-set management (Phase 7) ===================== */
+
+bool Sponge::Pkgd::Main::_is_running(char const *name) const
+{
+	for (unsigned i = 0; i < _num_running; ++i)
+		if (Genode::strcmp(_running[i].string(), name) == 0)
+			return true;
+	return false;
+}
+
+
+/*
+ * Add a name to the running set. Returns true iff it was newly added
+ * (false on duplicate or overflow). Used by _do_launch and the
+ * autostart path in _sync_running_state.
+ */
+bool Sponge::Pkgd::Main::_add_running(char const *name)
+{
+	if (_is_running(name))
+		return false;
+	if (_num_running < MAX_PACKAGES) {
+		_running[_num_running++] = Genode::String<64>(name);
+		return true;
+	}
+	return false;
+}
+
+
+/*
+ * Re-derive _running from the current _installed set so the invariant
+ * "_running ⊆ installed_names" survives every state change. Drops any
+ * running entry whose package was uninstalled; adds every autostart
+ * package that is currently installed (idempotent — _add_running
+ * deduplicates). Explicit (non-autostart) launches of still-installed
+ * packages are preserved.
+ */
+void Sponge::Pkgd::Main::_sync_running_state()
+{
+	/* Drop running entries for packages that are no longer installed. */
+	unsigned w { 0 };
+	for (unsigned i = 0; i < _num_running; ++i) {
+		if (_installed_contains(_running[i].string())) {
+			_running[w++] = _running[i];
+		}
+	}
+	_num_running = w;
+
+	/* Ensure every installed <autostart/> package is in the running set. */
+	for (unsigned i = 0; i < _num_installed; ++i) {
+		if (_installed[i].has_autostart)
+			_add_running(_installed[i].name.string());
+	}
+}
+
+
 void Sponge::Pkgd::Main::_do_install(Genode::String<128> const &pkg)
 {
 	char const *const name = pkg.string();
@@ -831,6 +921,7 @@ void Sponge::Pkgd::Main::_do_install(Genode::String<128> const &pkg)
 
 	_add_root(name);
 	_sync_installed_from_roots();
+	_sync_running_state();   /* picks up <autostart/> roots (docs/12 §9.2.1) */
 	_save_store();   /* flush before broadcast so the change survives a reboot */
 	_generate_runtime_config();
 	_generate_installed_report();
@@ -878,6 +969,7 @@ void Sponge::Pkgd::Main::_do_remove(Genode::String<128> const &pkg)
 	}
 	}
 	_sync_installed_from_roots();
+	_sync_running_state();   /* drops the removed name from _running too */
 	_save_store();   /* flush before broadcast so the change survives a reboot */
 	_generate_runtime_config();
 	_generate_installed_report();
@@ -891,6 +983,50 @@ void Sponge::Pkgd::Main::_do_remove(Genode::String<128> const &pkg)
 	}
 
 	_report_remove_ok(pkg, removed, num_removed);
+}
+
+
+/*
+ * Phase 7 launch operation (docs/12-package-format.md §9.2.1).
+ *
+ * Transitions an installed-but-stopped package to running by adding its
+ * name to _running and regenerating the pkg_runtime config so init
+ * starts the new <start> node. Three bounded outcomes:
+ *   - not-installed: the package is not in the installed set
+ *     (no implicit install — caller must install first);
+ *   - already-running: the package already has a <start> node
+ *     (idempotent launch is a no-op);
+ *   - ok: the package transitioned installed -> running.
+ *
+ * No stop operation exists in Alpha, so once running the package stays
+ * running until it is removed (which drops both the root and any
+ * running entry, regenerating pkg_runtime without the <start> node).
+ */
+void Sponge::Pkgd::Main::_do_launch(Genode::String<128> const &pkg)
+{
+	char const *const name = pkg.string();
+
+	if (!_installed_contains(name)) {
+		_report_launch_ok(pkg, "not-installed");
+		return;
+	}
+
+	if (_is_running(name)) {
+		_report_launch_ok(pkg, "already-running");
+		return;
+	}
+
+	_add_running(name);
+	/*
+	 * _save_store() persists only the installed root set; _running is
+	 * intentionally NOT persisted (docs/12 §9.2.1 + §13). On reboot,
+	 * autostart packages re-enter _running via _sync_running_state;
+	 * explicitly-launched packages re-enter only via a fresh launch.
+	 */
+	_generate_runtime_config();
+	_generate_installed_report();
+
+	_report_launch_ok(pkg, "ok");
 }
 
 
@@ -973,6 +1109,15 @@ void Sponge::Pkgd::Main::_generate_runtime_config()
 
 		for (unsigned n = 0; n < _num_installed; ++n) {
 			Package const &c = _installed[order[n]];
+
+			/*
+			 * Phase 7 lifecycle gate (docs/12-package-format.md §9.2.1):
+			 * emit <start> only for packages in _running. Installed-but-
+			 * stopped packages are deliberately absent from pkg_runtime,
+			 * so init never constructs them until a launch adds them.
+			 */
+			if (!_is_running(c.name.string()))
+				continue;
 
 			g.node("start", [&] {
 				g.attribute("name", c.name);
@@ -1074,6 +1219,14 @@ void Sponge::Pkgd::Main::_generate_installed_report()
 					g.attribute("name",    p.name);
 					g.attribute("version", p.version);
 					g.attribute("binary",  p.binary);
+					/*
+					 * Phase 7 lifecycle (docs/12 §9.2.1): per-package
+					 * running="yes"|"no" so watchers (launcher, vct)
+					 * can distinguish registered from running without
+					 * inferring state from missing metadata.
+					 */
+					g.attribute("running",
+					            _is_running(p.name.string()) ? "yes" : "no");
 					if (p.has_launcher)
 						g.attribute("category", p.launcher_category);
 					g.attribute("description", p.description);
@@ -1210,6 +1363,26 @@ void Sponge::Pkgd::Main::_report_remove_ok(Genode::String<128> const &pkg,
 }
 
 
+/*
+ * Launch result (Phase 7, docs/12 §9.2.1). The outcome — one of
+ * "ok" / "not-installed" / "already-running" — is encoded directly in
+ * the `status` attribute so callers polling the result ROM can branch
+ * on the existing status field without parsing a separate outcome
+ * attribute. `status="ok"` is reserved for a successful transition;
+ * the other two outcomes are non-error but non-success (the request
+ * was well-formed and processed; no state changed).
+ */
+void Sponge::Pkgd::Main::_report_launch_ok(Genode::String<128> const &pkg,
+                                           char const *outcome)
+{
+	_result_reporter.generate_xml([&](Genode::Xml_generator &g) {
+		g.attribute("status", outcome);
+		g.attribute("op",     "launch");
+		g.attribute("pkg",    pkg);
+	});
+}
+
+
 void Sponge::Pkgd::Main::_report_list_ok()
 {
 	/* Name-sorted, matching the config generator's ordering, so `list`
@@ -1241,8 +1414,11 @@ void Sponge::Pkgd::Main::_report_list_ok()
 					/* Phase 5c: additive attributes. vct's list
 					 * renderers read only name+version so they keep
 					 * working; the launcher reads `category` to group
-					 * entries. */
+					 * entries. Phase 7 adds `running` so list is a
+					 * faithful view of the lifecycle state too. */
 					g.attribute("binary", p.binary);
+					g.attribute("running",
+					            _is_running(p.name.string()) ? "yes" : "no");
 					if (p.has_launcher)
 						g.attribute("category", p.launcher_category);
 					g.attribute("description", p.description);
@@ -1481,6 +1657,16 @@ Sponge::Pkgd::Main::Main(Genode::Env &env) : _env(env)
 	 * installed broadcast below reflect the restored state for free. */
 	if (_num_roots > 0)
 		_sync_installed_from_roots();
+
+	/*
+	 * Phase 7 lifecycle (docs/12 §9.2.1): on a restored boot, re-enter
+	 * every <autostart/> package into _running so its <start> node is
+	 * emitted below. Explicitly-launched packages are NOT persisted
+	 * (§13), so a non-autostart package re-runs only after a fresh
+	 * launch — this is the documented Alpha semantics. On a fresh
+	 * (empty) boot _running stays empty and the call is a no-op.
+	 */
+	_sync_running_state();
 
 	/* Emit the initial pkg_runtime config before anything can request
 	 * it. On a restored boot this already contains the previously-
