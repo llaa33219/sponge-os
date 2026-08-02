@@ -1,0 +1,198 @@
+#
+# \brief  Sponge OS terminal package scenario (Phase 7, todo 13)
+# \author Sponge OS contributors
+# \date   2026
+#
+# Verifies pkg/terminal end to end in a single headless Genode instance:
+# the terminal_probe drives sponge_pkgd to install and launch the
+# `terminal` package, then proves (a) the installed broadcast lists it
+# (vct list-equivalent), (b) the terminal window + bash prompt render on
+# nitpicker (Capture glyph-pixel check), and (c) a synthetic keystroke
+# round-trips (focus click + Press_char events -> terminal read buffer
+# -> bash echo -> terminal render, observed as a glyph-count increase).
+#
+# The package is a nested sub-init (binary `init`) hosting the gems
+# graphical `terminal` server, a `vfs` (with the <terminal/> plugin that
+# bridges the terminal session to /dev/terminal), a `cached_fs_rom`
+# (serves /bin/bash out of bash-minimal.tar), and the noux `/bin/bash`
+# child — the source-built system_shell composition (no depot import).
+#
+# Topology (kernel-agnostic — base-linux native or base-sel4 QEMU, same
+# as run/sponge-pkg-gui.run; the acceptance run uses KERNEL=sel4 BOARD=pc
+# per the todo, base-linux is the fast iteration path):
+#
+#   init
+#   + timer
+#   + report_rom     (relays request/result/runtime/installed)
+#   + nitpicker      (Gui/Capture/Event; "term" domain hosts the window)
+#   + sponge_pkgd    (owns pkg_runtime's config via the "runtime" report;
+#                     broadcasts the "installed" set)
+#   + pkg_runtime    (binary init; config ROM <- report_rom "runtime";
+#                     hosts the terminal sub-init after launch)
+#   + terminal_probe (installs+launches terminal; pixel + keystroke check)
+#
+# report_rom policies (full labels include the child-name prefix):
+#   sponge_pkgd's ROM "request"     <- terminal_probe's "request" report
+#   terminal_probe's ROM "result"   <- sponge_pkgd's "result" report
+#   terminal_probe's ROM "installed"<- sponge_pkgd's "installed" report
+#   pkg_runtime's ROM "config"      <- sponge_pkgd's "runtime" report
+#
+
+build { core lib/ld init timer server/report_rom server/nitpicker \
+        sponge_pkgd \
+        server/terminal server/vfs server/cached_fs_rom \
+        noux-pkg/bash-minimal noux-pkg/vim-minimal \
+        lib/libc lib/libm lib/posix lib/ncurses \
+        lib/vfs lib/vfs_pipe lib/vfs_ttf \
+        test/terminal_probe lib/blit }
+
+create_boot_directory
+
+install_config {
+config
++ parent-provides
+  + service ROM
+  + service PD
+  + service CPU
+  + service LOG
+  + service IRQ
+  + service IO_MEM
+  + service IO_PORT
+
++ default | caps: 200 | ram: 4M
++ default-route
+  + any-service
+    + parent
+    + any-child
+
++ start timer
+  + provides | + service Timer
+
++ start report_rom | ram: 8M
+  + provides
+    + service Report
+    + service ROM
+  + config | verbose: no
+    + policy | label: sponge_pkgd -> request      | report: terminal_probe -> request
+    + policy | label: terminal_probe -> result    | report: sponge_pkgd -> result
+    + policy | label: terminal_probe -> installed | report: sponge_pkgd -> installed
+    + policy | label: pkg_runtime -> config       | report: sponge_pkgd -> runtime
+
++ start nitpicker | ram: 8M
+  + provides
+    + service Gui
+    + service Capture
+    + service Event
+  + route
+    + service Report | + child report_rom
+    + service Timer | + child timer
+    + any-service
+      + parent
+      + any-child
+  + config
+    + capture
+    + event
+    + domain term | layer: 2 | content: client | label: no
+                  | hover: always | focus: click
+                  | xpos: 64 | ypos: 48 | width: 800 | height: 600
+    + domain default | layer: 3 | content: client | label: no
+                     | hover: always | focus: click | ypos: 0 | height: 0
+    + default-policy | domain: term
+    + background | color: #1e1e2e
+
++ start sponge_pkgd | caps: 200 | ram: 16M
+  + route
+    + service ROM | label_last: request | + child report_rom
+    + service Report | + child report_rom
+    + any-service
+      + parent
+      + any-child
+
++ start pkg_runtime | caps: 1500 | ram: 256M
+  + binary init
+  + route
+    + service ROM | label: config | + child report_rom
+    + service Gui | + child nitpicker
+    + service Report | + child report_rom
+    + any-service
+      + parent
+      + any-child
+
++ start terminal_probe | caps: 200 | ram: 16M
+  + route
+    + service Capture | + child nitpicker
+    + service Event | + child nitpicker
+    + service Timer | + child timer
+    + service ROM | label_last: result | + child report_rom
+    + service ROM | label_last: installed | + child report_rom
+    + service Report | + child report_rom
+    + any-service
+      + parent
+      + any-child
+- }
+
+#
+# Stage the terminal package metadata + the derived index (same scheme
+# as run/sponge-pkg-gui.run).
+#
+set staged_pkgs { terminal }
+foreach pkg $staged_pkgs {
+	set src "${genode_dir}/../pkg/$pkg/metadata.xml"
+	if {![file exists $src]} {
+		error "package metadata not found: $src"
+	}
+	exec cp -L $src "bin/pkg_$pkg.xml"
+}
+
+set index_fh [open "bin/pkg_index.xml" w]
+puts $index_fh "<packages>"
+foreach pkg $staged_pkgs {
+	puts $index_fh "  <pkg name=\"$pkg\"/>"
+}
+puts $index_fh "</packages>"
+close $index_fh
+
+#
+# VeraMono.ttf — the gems terminal server's monospace font, loaded from a
+# ROM via the vfs_ttf plugin (terminal README pattern). Staged from the
+# prepared ttf-bitstream-vera port.
+#
+set vera_dir [lindex [glob -nocomplain \
+    "${genode_dir}/contrib/ttf-bitstream-vera-*/ttf/bitstream-vera"] 0]
+if {$vera_dir eq ""} {
+	error "ttf-bitstream-vera port not prepared; run: ./genode/tool/ports/prepare_port ttf-bitstream-vera"
+}
+exec cp -fL "$vera_dir/VeraMono.ttf" "bin/VeraMono.ttf"
+
+#
+# Boot modules. [build_artifacts] carries core/ld/init/nitpicker/
+# report_rom/sponge_pkgd/pkg_runtime(=init)/terminal/vfs/cached_fs_rom/
+# terminal_probe plus the noux tars (bash-minimal.tar, vim-minimal.tar)
+# and the shared libs they link (libc/libm/posix/ncurses/vfs/vfs_pipe/
+# vfs_ttf .lib.so). The font ROM and the staged package metadata are
+# extras (not build targets), so they are appended explicitly — base-sel4
+# packs a single image.elf from bin/ at build_boot_image and needs every
+# module named (docs/11-environment.md §10.4).
+#
+set boot_modules [build_artifacts]
+foreach m { VeraMono.ttf pkg_terminal.xml pkg_index.xml } {
+	lappend boot_modules $m
+}
+
+build_boot_image $boot_modules
+
+#
+# QEMU: -nographic for headless, -m 2G for the sub-init (terminal+vfs+
+# vfs_rom+bash) plus pkg_runtime's 256M allocation.
+#
+append qemu_args " -nographic -m 2G "
+
+#
+# Automated verification (fail-loud, docs/09-roadmap.md §11.1):
+# terminal_probe logs PASS once it has installed+launched terminal via
+# sponge_pkgd AND pixel-verified the window AND confirmed the keystroke
+# echo. On timeout (probe did not reach PASS) the run tool errors out —
+# never a silent hang. The generous timeout covers the noux bash first
+# boot under softpipe Mesa on seL4 (~60-120s; faster on linux).
+#
+run_genode_until {.*terminal-probe: PASS.*} 300
