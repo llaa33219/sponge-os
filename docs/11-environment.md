@@ -153,6 +153,56 @@ the patch is dropped by re-running `git subtree pull`) in its own
 commit on `main`, the patch ledger row is removed, and the commit
 message says so.
 
+### 4.1 Managing the ledger: tool/patches
+
+The ledger table above is the source of truth, and
+[`tool/patches`](../tool/patches) (Mojo source:
+[`tool/patches.mojo`](../tool/patches.mojo)) is the convenience layer on
+top of it. It answers the four recurring questions about the patch set
+without the contributor having to remember the git incantations:
+
+```bash
+./tool/patches list                # ledger rows + whether git resolves each commit
+./tool/patches verify              # ledger vs git reality; exits non-zero on mismatch
+./tool/patches export <dir>        # write each patch as a .patch file into <dir>
+./tool/patches drop <n>            # print the manual revert steps for patch #n
+```
+
+- `list` prints one `#<n> <sha-prefix> <subject>` line per row, then
+  resolves each prefix with `git log -1 --format=%H%n%s <sha>` and
+  reports whether the commit exists and whether its full SHA starts
+  with the ledger prefix.
+- `verify` checks, per row, that the commit exists, that it is an
+  ancestor of `HEAD` (`git merge-base --is-ancestor`), and reports the
+  paths it touches (`git show --format= --name-only`). Touched paths
+  are **reported, not policed**: patch #5 legitimately adds
+  `repos/sponge/tool/` wrappers next to the `genode/` symlink, so there
+  is no genode-only rule to enforce. `verify` exits non-zero if any
+  row's commit is missing.
+- `export <dir>` runs `git format-patch -1 <sha> --stdout` per row and
+  writes `<dir>/<NN>-<slugified-subject>.patch` so the patch set can be
+  carried or re-applied independently of this repository. The
+  directory is created if missing.
+- `drop <n>` **prints instructions only** — the exact
+  `git revert <full-sha>` command, the reminder to remove ledger row
+  `#n` from the table above, and the note that the removal must be its
+  own commit on `main` (AGENTS.md §5.2). Dropping a patch is a
+  deliberate act; the tool guides, the human commits. Auto-revert is
+  deliberately not implemented.
+
+**Manual equivalents** (the control escape hatch, per AGENTS.md §3.5 —
+every automated step is also a documented manual step):
+
+| Subcommand | Manual equivalent |
+|------------|-------------------|
+| `list` | Read the table above; `git log --oneline -- genode/` |
+| `verify` | `git show -s <sha>` (exists), `git merge-base --is-ancestor <sha> HEAD` (ancestor), `git show --stat <sha>` (touched paths) |
+| `export <dir>` | `git format-patch -1 <sha> --stdout > <dir>/<name>.patch` per row |
+| `drop <n>` | `git revert <sha>`, then edit the table above and commit both changes together |
+
+The tool is read-only against the repository: it never reverts,
+commits, or edits the ledger itself.
+
 ---
 
 ## 5. Third-Party Ports
