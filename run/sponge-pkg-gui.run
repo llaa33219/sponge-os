@@ -1,0 +1,200 @@
+#
+# \brief  Sponge OS GUI package generator-verification scenario (Phase 7, todo 8)
+# \author Sponge OS contributors
+# \date   2026
+#
+# Verifies every runtime-config generator fix from todo 8 by installing a
+# real Qt6 GUI package (pkg_gui_demo) through sponge_pkgd and pixel-
+# verifying its distinctive green window through a Capture session.
+#
+# What this proves end to end:
+#   (a) <binary name="pkg_gui_demo"/> emitted when binary != name,
+#   (b) the metadata <config> (libc + vfs + Qt font/plugin tars) emitted
+#       verbatim so Qt6 actually initializes,
+#   (c) the Gui session's default-route="nitpicker" materialized as
+#       <parent/> (not <child name="nitpicker"/>) and resolved through
+#       the extended parent-provides,
+#   (d) the extended parent-provides (Gui/Input/Report/File_system/NIC)
+#       let pkg_runtime forward the Gui session to the outer nitpicker,
+#   (e) the per-package <quota caps="1000"> honored (and the <default>
+#       caps floor raised to the GUI-safe 1000, docs/09-roadmap.md §11.1),
+#       so Qt6 init does NOT silently hang on seL4 capability exhaustion.
+#
+# Kernel-agnostic topology (runs on base-linux natively and base-sel4
+# under QEMU, same as run/sponge-de-test.run). The acceptance run uses
+# KERNEL=sel4 BOARD=pc per the todo; base-linux is the fast iteration
+# path and the regression-kernel for sponge-pkg-install.
+#
+#   init
+#   + timer
+#   + report_rom     (relays request/result/runtime)
+#   + nitpicker      (Gui/Capture/Event; demo domain hosts the window)
+#   + sponge_pkgd    (owns pkg_runtime's config via "runtime" report)
+#   + pkg_runtime    (binary init; config ROM <- report_rom "runtime";
+#                     hosts pkg_gui_demo after install)
+#   + pkg_gui_probe  (installs pkg_gui_demo; pixel-verifies green window)
+#
+# report_rom policies (full labels include the child-name prefix):
+#   sponge_pkgd's ROM "request"  <- pkg_gui_probe's "request" report
+#   pkg_gui_probe's ROM "result" <- sponge_pkgd's "result" report
+#   pkg_runtime's ROM "config"   <- sponge_pkgd's "runtime" report
+#
+
+build { core lib/ld init timer server/report_rom server/nitpicker \
+        sponge_pkgd test/pkg_gui_demo test/pkg_gui_probe \
+        qt6/base lib/libc lib/libm lib/stdcxx lib/mesa \
+        lib/mesa_gpu-softpipe lib/egl lib/softpipe lib/libdrm lib/expat \
+        lib/qt6_component lib/vfs lib/vfs_pipe lib/vfs_gpu lib/rom_filter \
+        lib/zlib lib/libpng lib/blit }
+
+create_boot_directory
+
+install_config {
+config
++ parent-provides
+  + service ROM
+  + service PD
+  + service CPU
+  + service LOG
+  + service IRQ
+  + service IO_MEM
+  + service IO_PORT
+
++ default | caps: 200 | ram: 4M
++ default-route
+  + any-service
+    + parent
+    + any-child
+
++ start timer
+  + provides | + service Timer
+
++ start report_rom | ram: 4M
+  + provides
+    + service Report
+    + service ROM
+  + config | verbose: no
+    + policy | label: sponge_pkgd -> request | report: pkg_gui_probe -> request
+    + policy | label: pkg_gui_probe -> result | report: sponge_pkgd -> result
+    + policy | label: pkg_runtime -> config | report: sponge_pkgd -> runtime
+
++ start nitpicker | ram: 8M
+  + provides
+    + service Gui
+    + service Capture
+    + service Event
+  + route
+    + service Report | + child report_rom
+    + service Timer | + child timer
+    + any-service
+      + parent
+      + any-child
+  + config
+    + capture
+    + event
+    + domain demo | layer: 2 | content: client | label: no
+                   | hover: always | focus: click
+                   | xpos: 352 | ypos: 200 | width: 320 | height: 240
+    + domain default | layer: 3 | content: client | label: no
+                     | hover: always | focus: click | ypos: 0 | height: 0
+    + default-policy | domain: demo
+    + background | color: #1e1e2e
+
++ start sponge_pkgd | caps: 200 | ram: 16M
+  + route
+    + service ROM | label_last: request | + child report_rom
+    + service Report | + child report_rom
+    + any-service
+      + parent
+      + any-child
+
++ start pkg_runtime | caps: 1500 | ram: 256M
+  + binary init
+  + route
+    + service ROM | label: config | + child report_rom
+    + service ROM | label_last: mesa_gpu.lib.so | + parent | label: mesa_gpu-softpipe.lib.so
+    + service Gui | + child nitpicker
+    + service Report | + child report_rom
+    + any-service
+      + parent
+      + any-child
+
++ start pkg_gui_probe | caps: 200 | ram: 16M
+  + route
+    + service Capture | + child nitpicker
+    + service Timer | + child timer
+    + service ROM | label_last: result | + child report_rom
+    + service Report | + child report_rom
+    + any-service
+      + parent
+      + any-child
+- }
+
+#
+# Stage package metadata + the derived index (same scheme as
+# run/sponge-pkg-install.run). pkg_gui_demo exercises the new schema.
+#
+set staged_pkgs { pkg_gui_demo }
+foreach pkg $staged_pkgs {
+	set src "${genode_dir}/../pkg/$pkg/metadata.xml"
+	if {![file exists $src]} {
+		error "package metadata not found: $src"
+	}
+	exec cp -L $src "bin/pkg_$pkg.xml"
+}
+
+set index_fh [open "bin/pkg_index.xml" w]
+puts $index_fh "<packages>"
+foreach pkg $staged_pkgs {
+	puts $index_fh "  <pkg name=\"$pkg\"/>"
+}
+puts $index_fh "</packages>"
+close $index_fh
+
+#
+# qt6_dejavusans.tar raw recipe is depot-only; mirror its content into
+# bin/ from the qt6_base port sources (same as run/sponge-alpha.run).
+#
+set dejavu_dst "bin/qt6_dejavusans.tar"
+if {![file exists $dejavu_dst]} {
+	set dejavu_src [glob -nocomplain "${genode_dir}/contrib/qt6_base-*/src/lib/qt6_base/src/3rdparty/wasm/DejaVuSans.ttf"]
+	if {[llength $dejavu_src] == 0} {
+		error "DejaVuSans.ttf not found in the qt6_base port sources"
+	}
+	set staging "[run_dir]/dejavusans-staging"
+	file mkdir "$staging/qt/lib/fonts"
+	file copy -force [lindex $dejavu_src 0] "$staging/qt/lib/fonts/DejaVuSans.ttf"
+	exec tar -cf $dejavu_dst -C "$staging" qt
+	file delete -force $staging
+}
+
+#
+# Full boot module list. The Qt6 shared libs + tars are cmake-built by
+# qt6/base and land in bin/; they are NOT in [build_artifacts], so they
+# are listed explicitly (base-sel4's boot_dir/sel4 plugin packs a single
+# image.elf from bin/ at this point and needs every module named).
+#
+set boot_modules [build_artifacts]
+foreach m { libQt6Core.lib.so libQt6Gui.lib.so libQt6Widgets.lib.so \
+            libqgenode.lib.so qt6_libqgenode.tar qt6_dejavusans.tar \
+            pkg_pkg_gui_demo.xml pkg_index.xml } {
+	lappend boot_modules $m
+}
+
+build_boot_image $boot_modules
+
+#
+# QEMU: -nographic for headless, -m 2G for Qt6/Mesa + pkg_runtime's
+# 256M RAM allocation (generous on seL4; harmless overhead on linux).
+#
+append qemu_args " -nographic -m 2G "
+
+#
+# Automated verification: pkg_gui_probe logs PASS once it has installed
+# pkg_gui_demo via sponge_pkgd AND pixel-verified the green window on
+# nitpicker. On timeout (probe did not reach PASS) the run tool errors
+# out — the FAIL path (fail-loud, docs/09-roadmap.md §11.1 — never a
+# silent hang). The generous timeout covers Qt6 first paint under
+# softpipe Mesa (~60-120s on seL4, faster on linux).
+#
+run_genode_until {.*pkg-gui-probe: PASS.*} 300

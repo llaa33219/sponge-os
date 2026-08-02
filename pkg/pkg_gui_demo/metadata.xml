@@ -1,0 +1,44 @@
+<!--
+  pkg_gui_demo — minimal Qt6 GUI test package (Phase 7 todo 8).
+
+  Exercises every runtime-config generator feature added in todo 8:
+    - <binary> differs from <name> (emitted as a <binary> sub-node).
+    - <config> carries inline Qt6/libc wiring (emitted verbatim).
+    - <sessions> Gui with default-route="nitpicker" (emitted as a
+      <parent/> route, not <child name="nitpicker"/>).
+    - <quota caps="1000"> (the §11.1 GUI-safe floor for Qt6/Mesa on
+      seL4; honored per-package by the generator).
+
+  No File_system, no Input session, no dependencies — the window only
+  needs the Gui session to reach nitpicker. This is deliberately the
+  smallest package that proves the generator's GUI path.
+-->
+<package>
+  <name>pkg_gui_demo</name>
+  <version>1.0</version>
+  <description>Minimal Qt6 colored-window package for generator verification.</description>
+
+  <binary>pkg_gui_demo</binary>
+  <quota ram="64M" caps="1000"/>
+
+  <launcher category="Utilities"/>
+
+  <dependencies/>
+
+  <config>
+    <libc stdout="/dev/log" stderr="/dev/log" pipe="/pipe" rtc="/dev/rtc"/>
+    <vfs>
+      <dir name="dev">
+        <log/>
+        <inline name="rtc">2018-01-01 00:01</inline>
+      </dir>
+      <dir name="pipe">  <pipe/> </dir>
+      <tar name="qt6_dejavusans.tar"/>
+      <tar name="qt6_libqgenode.tar"/>
+    </vfs>
+  </config>
+
+  <sessions>
+    <session name="Gui" default-route="nitpicker"/>
+  </sessions>
+</package>
