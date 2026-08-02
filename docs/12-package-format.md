@@ -96,6 +96,8 @@ rely on order, but authors should write in this order for readability.
 | `<description>` | 1 | One short sentence, ASCII or UTF-8. Surfaced in `vct list` and the launcher tooltip. |
 | `<binary>` | 0..1 | Name of the component binary to start. Defaults to `<name>` if omitted. |
 | `<quota>` | 0..1 | Resource hints for the generated component (`ram`, `caps`). Defaults: `ram="32M"`, `caps="512"`. |
+| `<config>` | 0..1 | Optional inline Genode configuration. Its inner XML is emitted verbatim into the package's generated `<start>` node. This is used for application wiring such as a libc node and a `vfs` node with font or plugin tar files. |
+| `<autostart>` | 0..1 | If present, the package is started automatically when it is installed and when its installed state is restored. Without it, installation registers the package but does not create a `<start>` node. |
 | `<launcher>` | 0..1 | If present, the package gets a launcher entry. Carries one attribute `category`. |
 | `<dependencies>` | 0..1 | Container of `<pkg>` children, each naming another package by `<name>`. Empty container means "no dependencies". |
 | `<sessions>` | 0..1 | Container of `<session>` children, each declaring a required session and its default route. Omit entirely for components that need only parent-provided services (`LOG`, `ROM`, `PD`, `CPU`, `Timer`). |
@@ -105,13 +107,21 @@ A `<session>` element carries the following attributes:
 | Attribute | Required | Meaning |
 |---|---|---|
 | `name` | yes | Session type as Genode names it (`Gui`, `Input`, `File_system`, `ROM`, `Report`, ...). |
-| `default-route` | yes | The service or component name the session should be routed to when no user override exists. |
+| `default-route` | yes | The service or component name the session should be routed to when no user override exists. `parent`, `nitpicker`, `vfs`, and other named outer-system services use the parent route described in §7.2. |
 | `readonly` | no (default `no`) | Only meaningful for `File_system`. `yes` mounts the package's directory read-only. |
 | `subpath` | no | Only meaningful for `File_system`. The path inside the `vfs` subtree (typically `/app/<name>`). |
 | `label` | no | Optional session label, forwarded as Genode's `<policy label="...">` hint. |
 
 All attributes are lower-case, ASCII, and quoted with double quotes,
 following Genode convention. Comments use `<!-- ... -->`.
+
+The optional `<config>` element is a configuration fragment, not a
+package-manager setting. Its child elements are preserved as XML and
+emitted verbatim inside the generated package `<start>` node by
+`sponge_pkgd`'s runtime-config generator. This lets Qt and libc-based
+applications carry inline wiring such as `<libc>` and `<vfs>` nodes with
+font or plugin tar files. The optional `<autostart/>` marker is empty and
+has no attributes.
 
 ### 4.2 Annotated Example: `hello`
 
@@ -128,6 +138,7 @@ beyond its name, version, and a single `File_system` session.
 
   <!-- Component wiring -->
   <binary>hello</binary>                             <!-- defaults to <name> when omitted -->
+  <autostart/>                                       <!-- Alpha example: start at install and boot -->
   <quota ram="8M" caps="256"/>                       <!-- overrides only when smaller than defaults -->
 
   <!-- Launcher integration (optional) -->
@@ -291,6 +302,19 @@ The §5.3 rule stands for the repository itself: `pkg/` on disk has no
 index. The manifest exists only inside the boot image, and only because
 of the ROM/denial model above.
 
+### 5.5 Alpha Install Semantics on `base-sel4`
+
+The Alpha media uses a single `image.elf` boot image. On `base-sel4`, all
+package binaries and payloads are pre-staged into that image at build time,
+so the on-image repository is fixed when the image is built. `vct install`
+does not deliver a binary at runtime. It registers and enables a package
+that is already present in the image, subject to the installed-versus-running
+lifecycle in §9.2. A later package version becomes effective only after the
+image is rebuilt with the new repository contents.
+
+This is an Alpha media limitation, not a hidden fetch path: `sponge_pkgd`
+never downloads package binaries at runtime.
+
 ---
 
 ## 6. Dependency Resolution
@@ -393,31 +417,56 @@ that is always open".
 
 When `sponge_pkgd` materializes the `<session>` block from a metadata
 file, the generated `init` config uses Genode's `<route>` notation,
-mirroring the style used in `run/sponge-minimal.run`:
+mirroring the style used in `run/sponge-minimal.run`. These rules are
+implemented by the Phase 7 runtime-config generator, not only defined by
+the metadata format:
 
 ```xml
 <start name="nano">
   <resource name="RAM" quantum="48M"/>
   <config> ... </config>
   <route>
-    <service name="Gui">         <child name="nitpicker"/>  </service>
-    <service name="Input">       <child name="input_drv"/>  </service>
-    <service name="File_system"> <child name="vfs"/>        </service>
+    <service name="Gui">         <parent/>  </service>
+    <service name="Input">       <parent/>  </service>
+    <service name="File_system"> <parent/>  </service>
     <any-service> <parent/> </any-service>
   </route>
 </start>
 ```
 
-Three rules govern the conversion:
+The conversion rules are:
 
-1. **`<session name="X" default-route="Y">`** becomes
-   `<service name="X"><child name="Y"/></service>`.
-2. **`readonly="yes"` on a `File_system` session** sets the policy
-   label to `'<pkg>-ro'` (or the explicit `label` attribute if the
-   metadata provides one) so that `vfs` can apply a read-only policy.
-3. **`subpath="..."` on a `File_system` session** is materialized as a
-   `<policy label="<pkg>-ro" root="<subpath>" writeable="no"/>` entry
-   in `vfs`'s own config, generated as part of the same plan.
+1. **Session route selection.** `<session name="X" default-route="Y">`
+   becomes `<service name="X"><child name="Y"/></service>` when `Y`
+   names a child hosted inside the nested `pkg_runtime` init. The value
+   `parent`, or the name of an outer-system service such as `nitpicker`,
+   `vfs`, or `event_filter`, becomes `<service name="X"><parent/></service>`.
+   It is never emitted as `<child name="nitpicker"/>`, `<child name="vfs"/>`,
+   or another child route. The same parent-route notation applies to a
+   user route override.
+2. **Session labels and read-only materialization.** A session `label`
+   attribute is emitted on the generated route service as Genode's label
+   hint. For a read-only `File_system` session, `readonly="yes"` selects
+   the package label suffix `<pkg>-ro`. An explicit `label` remains the
+   label source when provided, while the generated `vfs` policy still
+   records the package's read-only intent.
+3. **VFS subpath materialization.** `subpath="..."` on a `File_system`
+   session emits a matching policy in `vfs`'s generated configuration,
+   with `root="<subpath>"` and `writeable="no"` for a read-only session.
+   The policy label is the materialized session label, normally
+   `<pkg>-ro`. This rule is generated as part of the same plan.
+4. **Inline package configuration.** When metadata contains `<config>`,
+   its inner XML is copied verbatim into the package's `<start>` node.
+   The generator does not reinterpret or flatten the fragment, so Qt/libc
+   applications can provide their required libc, vfs, font, and plugin
+   configuration in one package metadata file.
+
+For parent routes, `pkg_runtime` extends its `<parent-provides>` list so
+these services can resolve through the outer system. The final list is
+`ROM`, `PD`, `CPU`, `LOG`, `Timer`, `Gui`, `Input`, `Report`,
+`File_system`, and `NIC`. Phase 7 adds `Gui`, `Input`, `Report`,
+`File_system`, and `NIC` to the existing `ROM`/`PD`/`CPU`/`LOG`/`Timer`
+list, retaining `Timer` rather than adding a duplicate.
 
 ### 7.3 Inspecting and Editing
 
@@ -548,13 +597,66 @@ The repository path is a single configuration value held by
 (staged into the boot image). A future revision can override it
 through a config ROM without changing any package metadata.
 
-### 9.2 Updates and Removal
+### 9.2 Installed, Running, Updates, and Removal
 
-`vct update [package]` and `vct remove <package>` are out of scope for
-this format (the metadata holds no state that distinguishes "installed"
-from "available"). Phase 4's notion of "installed" is "present in the
-live `init` component tree", which is the same ground truth `vct
-status` reads. This keeps the source of truth in one place.
+#### 9.2.1 Installed versus running
+
+Phase 7 separates package registration from component execution. The
+installed-vs-running rule is: **installed = registered in the package set,
+with no `<start>` node; running = `<start>` node present in `pkg_runtime`.**
+
+- **Installed** means the package is registered in the package set. An
+  installed package has no generated `<start>` node in `pkg_runtime` unless
+  it is marked `<autostart/>`.
+- **Running** means the package has a generated `<start>` node in
+  `pkg_runtime` and its component is eligible to run.
+- `vct install [package]` resolves dependencies and registers the resulting
+  packages. It creates `<start>` nodes only for packages that declare
+  `<autostart/>`; `hello` uses this marker to preserve its old automatic
+  behavior.
+- `vct launch <package>` sends the new `launch` request operation to
+  `sponge_pkgd`. For an installed package without a running node, the
+  operation adds its `<start>` node and transitions it from installed to
+  running. Launching a package that is not installed reports
+  `not-installed`; launching one that is already running reports
+  `already-running`.
+- Alpha has no stop or kill operation. A running package can therefore be
+  inspected and launched, but not stopped through the package manager.
+
+The `installed` broadcast reports every package in the package set and adds
+`running="yes"` or `running="no"` to each package entry. This lets the
+launcher and other watchers distinguish a registered package from a running
+component without inferring state from missing metadata.
+
+Install semantics on `base-sel4` follow §5.5: all binaries are already in
+the single image at build time. Installation changes runtime enablement, not
+binary availability. The Alpha media does not enable the writable backing
+store from §13. Deployments that opt into §13 retain its documented restore
+behavior; that separate boot-time path does not change the installed and
+running definitions above.
+
+#### 9.2.2 Update semantics
+
+`vct update [pkg]` re-resolves the installed root set against the repository
+metadata present on the running image. With no package argument it checks
+every installed root. With `pkg`, it checks that installed root and its
+resolved dependency graph. The command reports version deltas without
+pretending to upgrade anything, for example:
+
+```
+already current: hello 1.0
+repo carries 2.0, installed 1.0, effective after next image build
+```
+
+Version strings are reported honestly and are not ordered by the Alpha
+format. There is no fetching and no runtime binary delivery. The repository
+is fixed at image build time, so a newer repository package becomes effective
+only when the image is rebuilt and the updated package is pre-staged. An
+update request does not silently mutate the installed set or running state.
+
+`vct remove <package>` removes the package and any dependencies that are no
+longer needed, then regenerates `pkg_runtime`. Removal is separate from the
+Alpha launch lifecycle and does not introduce a stop operation.
 
 ### 9.3 No Hidden State
 
@@ -572,15 +674,16 @@ on-disk representation is specified separately in §13.
 
 ## 10. Evolution Path
 
-The following features are deliberately excluded from the Phase 4
-format. They are listed here so future contributors know they were
-considered, and so the metadata schema does not accidentally close
+The following features were excluded from the original Phase 4 format.
+Some are still future work, while Phase 7 has delivered the host-side depot
+interop described below. They are listed here so future contributors know
+what was considered, and so the metadata schema does not accidentally close
 any door.
 
 | Feature | Sketch | Why deferred |
 |---|---|---|
 | Remote repositories | A second config ROM names a list of remote roots fetched over a Sponge-controlled transport. | Phase 4 only needs a local directory; remote adds failure modes (offline, partial, signature) that are easier to reason about once the local path is stable. |
-| Genode depot archive interop | A second metadata root under `genode/depot/` whose `<archive>` entries mirror Genode's archive format. | The format needs to grow an `<archive>` element without breaking the Phase 4 elements. |
+| Genode depot archive interop | **Delivered in Phase 7 as host-side repackaging.** `tool/pkg_import` converts a downloaded depot package into `pkg/<name>/`, writes the package metadata and payload layout, and records a `SOURCE` pin file for the depot reference and content fingerprint. | Runtime fetching is explicitly not part of Alpha. The downloaded archive must be available to the host-side import step, and `sponge_pkgd` never contacts a depot or other network source. |
 | Signatures | An optional `<signature>` element with an Ed25519 signature over a canonical form of `metadata.xml` plus the payload hashes. | Requires a trust-root story that is bigger than Phase 4. |
 | Version constraints | A `<dependencies>` extension with `<pkg name="foo" version=">=1.0,~=1.2"/>`. | Adds a constraint solver. Phase 4 matches by `<name>` only. |
 | Content addressing | A `<hash>` element with the SHA-256 of the payload tree. | Requires a fetch cache that does not exist yet. |
