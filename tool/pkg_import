@@ -1,0 +1,67 @@
+#!/usr/bin/env bash
+#
+# tool/pkg_import — Sponge OS host-side depot package importer (launcher).
+#
+# Thin shim that delegates to the canonical Mojo implementation in
+# tool/pkg_import.mojo. Resolution order for the mojo binary:
+#   1. mojo on PATH
+#   2. <repo>/.venv/bin/mojo (repo-local uv/venv install)
+# If neither exists, prints install guidance and exits 127.
+#
+# Usage (see tool/pkg_import.mojo for the full contract):
+#   ./tool/pkg_import <user>/pkg/<recipe>/<version> [--name <sponge-name>] [--arch x86_64]
+#   ./tool/pkg_import help
+#
+# WHAT IT DOES (host-side only, AGENTS.md §3.5):
+#   Given a depot pkg reference (e.g. cproc/pkg/qt6_textedit/2025-10-27)
+#   that has already been downloaded by `genode/tool/depot/download`, this
+#   tool reads its `runtime` + `archives` metadata, downloads the matching
+#   `bin/<arch>/<binary-recipe>/<version>` prebuilt archive on demand,
+#   extracts every payload file listed in the runtime into
+#   `pkg/<name>/payload/`, generates `pkg/<name>/metadata.xml` per
+#   docs/12-package-format.md (with an inline `<config>` carrying the
+#   libc+vfs boilerplate modeled on run/sponge-launcher.run:126-136), and
+#   writes `pkg/<name>/SOURCE` recording the depot user/pkg/version/sha256
+#   for reproducibility (docs/11-environment.md §1).
+#
+# WHAT IT DOES NOT DO:
+#   - It does NOT fetch the depot pkg/src/raw/api archives (run
+#     `genode/tool/depot/download <user>/pkg/<recipe>/<version>` first).
+#   - It does NOT re-implement the depot tool (shells out to make + curl,
+#     exactly like a contributor would by hand).
+#   - It does NOT touch anything outside the repository.
+#   - sponge_pkgd never contacts a depot at runtime (Metis amendment A1);
+#     the binaries are baked into the boot image at build time.
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+MOJO_FILE="$SCRIPT_DIR/pkg_import.mojo"
+VENV_MOJO="$REPO_ROOT/.venv/bin/mojo"
+
+if command -v mojo >/dev/null 2>&1; then
+    MOJO_BIN="mojo"
+elif [ -x "$VENV_MOJO" ]; then
+    MOJO_BIN="$VENV_MOJO"
+else
+    cat >&2 <<EOF
+[sponge-pkg-import] mojo SDK not found on PATH and no repo-local install at
+$VENV_MOJO.
+
+The canonical Sponge OS tooling is written in Mojo (Modular's language).
+Install the Mojo SDK to use this wrapper:
+
+  https://docs.modular.com/mojo/manual/get-started/
+
+Or install it into this repository's virtualenv (pinned by uv.lock):
+
+  uv sync
+
+Once installed, run directly:
+  mojo $MOJO_FILE "$@"
+EOF
+    exit 127
+fi
+
+exec "$MOJO_BIN" "$MOJO_FILE" "$@"
