@@ -141,7 +141,27 @@ A scenario defines:
   the GUI-safe `<default>` caps floor (1000, per the §11.1 lesson).
   Kernel-agnostic topology (base-linux native or base-sel4 QEMU); the
   acceptance run uses `KERNEL=sel4 BOARD=pc`. Gates on
-  `pkg-gui-probe: PASS`.
+  `pkg-gui-probe: PASS`. Updated in todo 9 to issue a `launch`
+  after install (pkg_gui_demo has no `<autostart/>`, so install alone
+  no longer starts the component).
+
+- `sponge-pkg-lifecycle.run` — Phase 7 todo 9: installed-vs-running
+  lifecycle verification (docs/12-package-format.md §9.2.1). The
+  `pkg_lifecycle_probe` (modeled on `pkg_seq_probe`) drives a six-step
+  sequence against `sponge_pkgd` AND reads the `installed` broadcast
+  ROM to assert per-package `running="yes"|"no"` after every
+  transition: (1) install `hello` → broadcast shows `hello/running=yes`
+  (its metadata declares `<autostart/>`); (2) install `pkg_gui_demo`
+  → `running=no` (no autostart — STOPPED); (3) `launch pkg_gui_demo`
+  → `running=yes` AND pkg_gui_demo's `window shown` marker (the run
+  gates on the marker to prove the launched `<start>` node actually
+  booted the component); (4) launch again → `already-running`
+  (idempotent); (5) `launch nosuchpkg` → `not-installed` (no implicit
+  install); (6) `remove pkg_gui_demo` → broadcast drops it (`<start>`
+  node dropped from `pkg_runtime`). Kernel-agnostic; the acceptance
+  run uses `KERNEL=linux BOARD=pc` (fast iteration — Qt6 first paint
+  under softpipe is the slow part on seL4). Gates on
+  `lifecycle-probe: PASS`.
 
 ## Planned additions
 

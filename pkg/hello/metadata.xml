@@ -10,6 +10,12 @@
   Per docs/12-package-format.md §4.1, omitting <sessions> entirely means
   "parent-provided services only", which is why this package can be
   installed and started in a minimal scenario with no vfs or nitpicker.
+
+  The <autostart/> marker (docs/12 §9.2.1) preserves this package's
+  pre-Phase-7 behavior: install emits the <start> node immediately, so
+  the existing install scenarios that gate on hello's "running" marker
+  keep working without an extra launch step. Packages that omit
+  <autostart/> install as STOPPED and require an explicit launch.
 -->
 <package>
   <name>hello</name>
@@ -19,6 +25,7 @@
   <binary>hello</binary>
   <quota ram="8M" caps="256"/>
 
+  <autostart/>
   <launcher category="Utilities"/>
 
   <dependencies/>

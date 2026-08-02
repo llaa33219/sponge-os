@@ -1,0 +1,233 @@
+#
+# \brief  Sponge OS installed-vs-running lifecycle scenario (Phase 7, todo 9)
+# \author Sponge OS contributors
+# \date   2026
+#
+# Verifies the docs/12-package-format.md §9.2.1 lifecycle:
+#   - install registers but does NOT <start> (except <autostart/> pkgs);
+#   - launch transitions installed -> running;
+#   - the installed broadcast carries per-package running="yes"|"no";
+#   - remove drops the <start> node of a running package too;
+#   - launch outcomes: ok / not-installed / already-running.
+#
+# Driven by test/pkg_lifecycle_probe, which models on pkg_seq_probe
+# (same Report/ROM channel: request -> sponge_pkgd, result <- sponge_pkgd)
+# and additionally reads the "installed" broadcast ROM to assert the
+# per-package running= attribute after every transition.
+#
+# Six-step scenario (one boot, ordered step list):
+#   1. install hello           -> ok; broadcast shows hello/running="yes"
+#                                  (hello declares <autostart/>).
+#   2. install pkg_gui_demo    -> ok; broadcast shows pkg_gui_demo/
+#                                  running="no" (no <autostart/>).
+#   3. launch pkg_gui_demo     -> ok; broadcast shows pkg_gui_demo/
+#                                  running="yes" AND pkg_gui_demo's
+#                                  payload logs its "window shown"
+#                                  marker (the run script gates on the
+#                                  marker via run_genode_until).
+#   4. launch pkg_gui_demo     -> already-running (idempotent launch).
+#   5. launch nosuchpkg        -> not-installed (no implicit install).
+#   6. remove pkg_gui_demo     -> ok; broadcast no longer shows
+#                                  pkg_gui_demo (<start> node dropped).
+#
+# Kernel-agnostic topology (base-linux native or base-sel4 QEMU). The
+# acceptance run uses KERNEL=linux BOARD=pc for fast iteration; the
+# topology is identical on seL4 (where pkg_gui_demo's Qt6/Mesa paint
+# needs more time, hence the generous timeout).
+#
+#   init
+#   + timer
+#   + report_rom     (relays request/result/runtime/installed)
+#   + nitpicker      (Gui/Capture/Event; the demo domain hosts the
+#                     pkg_gui_demo window once it is launched)
+#   + sponge_pkgd    (owns pkg_runtime's config via "runtime" report)
+#   + pkg_runtime    (binary init; config ROM <- report_rom "runtime";
+#                     hosts hello from step 1 and pkg_gui_demo from
+#                     step 3 onward)
+#   + pkg_lifecycle_probe  (drives the channel + reads broadcast)
+#
+# report_rom policies (full labels include the child-name prefix):
+#   sponge_pkgd's ROM "request"          <- pkg_lifecycle_probe's "request"
+#   pkg_lifecycle_probe's ROM "result"   <- sponge_pkgd's "result"
+#   pkg_lifecycle_probe's ROM "installed"<- sponge_pkgd's "installed"
+#   pkg_runtime's ROM "config"           <- sponge_pkgd's "runtime"
+#
+
+build { core lib/ld init timer server/report_rom server/nitpicker \
+        sponge_pkgd pkg_hello test/pkg_gui_demo test/pkg_lifecycle_probe \
+        qt6/base lib/libc lib/libm lib/stdcxx lib/mesa \
+        lib/mesa_gpu-softpipe lib/egl lib/softpipe lib/libdrm lib/expat \
+        lib/qt6_component lib/vfs lib/vfs_pipe lib/vfs_gpu lib/rom_filter \
+        lib/zlib lib/libpng lib/blit }
+
+create_boot_directory
+
+install_config {
+config
++ parent-provides
+  + service ROM
+  + service PD
+  + service CPU
+  + service LOG
+  + service IRQ
+  + service IO_MEM
+  + service IO_PORT
+
++ default | caps: 200 | ram: 4M
++ default-route
+  + any-service
+    + parent
+    + any-child
+
++ start timer
+  + provides | + service Timer
+
++ start report_rom | ram: 4M
+  + provides
+    + service Report
+    + service ROM
+  + config | verbose: no
+    + policy | label: sponge_pkgd -> request                | report: pkg_lifecycle_probe -> request
+    + policy | label: pkg_lifecycle_probe -> result         | report: sponge_pkgd -> result
+    + policy | label: pkg_lifecycle_probe -> installed      | report: sponge_pkgd -> installed
+    + policy | label: pkg_runtime -> config                 | report: sponge_pkgd -> runtime
+
++ start nitpicker | ram: 8M
+  + provides
+    + service Gui
+    + service Capture
+    + service Event
+  + route
+    + service Report | + child report_rom
+    + service Timer | + child timer
+    + any-service
+      + parent
+      + any-child
+  + config
+    + capture
+    + event
+    + domain demo | layer: 2 | content: client | label: no
+                   | hover: always | focus: click
+                   | xpos: 352 | ypos: 200 | width: 320 | height: 240
+    + domain default | layer: 3 | content: client | label: no
+                     | hover: always | focus: click | ypos: 0 | height: 0
+    + default-policy | domain: demo
+    + background | color: #1e1e2e
+
++ start sponge_pkgd | caps: 200 | ram: 16M
+  + route
+    + service ROM | label_last: request | + child report_rom
+    + service Report | + child report_rom
+    + any-service
+      + parent
+      + any-child
+
++ start pkg_runtime | caps: 1500 | ram: 256M
+  + binary init
+  + route
+    + service ROM | label: config | + child report_rom
+    + service ROM | label_last: mesa_gpu.lib.so | + parent | label: mesa_gpu-softpipe.lib.so
+    + service Gui | + child nitpicker
+    + service Report | + child report_rom
+    + any-service
+      + parent
+      + any-child
+
++ start pkg_lifecycle_probe | caps: 200 | ram: 16M
+  + config
+    + step | op: install           | pkg: hello
+    + step | op: assert_installed  | name: hello          | running: yes
+
+    + step | op: install           | pkg: pkg_gui_demo
+    + step | op: assert_installed  | name: pkg_gui_demo   | running: no
+
+    + step | op: launch            | pkg: pkg_gui_demo
+    + step | op: assert_installed  | name: pkg_gui_demo   | running: yes
+
+    + step | op: launch            | pkg: pkg_gui_demo    | expect_status: already-running
+
+    + step | op: launch            | pkg: nosuchpkg        | expect_status: not-installed
+
+    + step | op: remove            | pkg: pkg_gui_demo
+    + step | op: assert_absent     | name: pkg_gui_demo
+  + route
+    + service Timer | + child timer
+    + service ROM | label_last: result | + child report_rom
+    + service ROM | label_last: installed | + child report_rom
+    + service Report | + child report_rom
+    + any-service
+      + parent
+      + any-child
+- }
+
+#
+# Stage package metadata + the derived index. Both hello (autostart)
+# and pkg_gui_demo (no autostart) must be in the index so sponge_pkgd
+# can resolve them; nosuchpkg is intentionally absent so step 5 asserts
+# the not-installed outcome against a real missing-package case.
+#
+set staged_pkgs { hello ncurses nano pkg_gui_demo }
+foreach pkg $staged_pkgs {
+	set src "${genode_dir}/../pkg/$pkg/metadata.xml"
+	if {![file exists $src]} {
+		error "package metadata not found: $src"
+	}
+	exec cp -L $src "bin/pkg_$pkg.xml"
+}
+
+set index_fh [open "bin/pkg_index.xml" w]
+puts $index_fh "<packages>"
+foreach pkg $staged_pkgs {
+	puts $index_fh "  <pkg name=\"$pkg\"/>"
+}
+puts $index_fh "</packages>"
+close $index_fh
+
+#
+# qt6_dejavusans.tar raw recipe is depot-only; mirror its content into
+# bin/ from the qt6_base port sources (same as run/sponge-pkg-gui.run).
+#
+set dejavu_dst "bin/qt6_dejavusans.tar"
+if {![file exists $dejavu_dst]} {
+	set dejavu_src [glob -nocomplain "${genode_dir}/contrib/qt6_base-*/src/lib/qt6_base/src/3rdparty/wasm/DejaVuSans.ttf"]
+	if {[llength $dejavu_src] == 0} {
+		error "DejaVuSans.ttf not found in the qt6_base port sources"
+	}
+	set staging "[run_dir]/dejavusans-staging"
+	file mkdir "$staging/qt/lib/fonts"
+	file copy -force [lindex $dejavu_src 0] "$staging/qt/lib/fonts/DejaVuSans.ttf"
+	exec tar -cf $dejavu_dst -C "$staging" qt
+	file delete -force $staging
+}
+
+#
+# Full boot module list (same shape as run/sponge-pkg-gui.run — the
+# Qt6 shared libs + tars are cmake-built by qt6/base and land in bin/,
+# NOT in [build_artifacts]).
+#
+set boot_modules [build_artifacts]
+foreach m { libQt6Core.lib.so libQt6Gui.lib.so libQt6Widgets.lib.so \
+            libqgenode.lib.so qt6_libqgenode.tar qt6_dejavusans.tar \
+            pkg_pkg_gui_demo.xml pkg_hello.xml pkg_ncurses.xml pkg_nano.xml \
+            pkg_index.xml } {
+	lappend boot_modules $m
+}
+
+build_boot_image $boot_modules
+
+append qemu_args " -nographic -m 2G "
+
+#
+# Verification: the pkg_gui_demo payload logs this marker once it has
+# been launched AND Qt6 finished first paint. Step 3 of the probe
+# issues the launch; the run tool gates on the marker to prove the
+# launched <start> node actually started the component (not just that
+# pkgd flipped an internal state flag). The probe's own PASS marker
+# asserts every per-step outcome (ok / already-running / not-installed)
+# and the broadcast state transitions. Both must appear in order.
+#
+# Generous timeout: Qt6 first paint under softpipe Mesa is slow on
+# seL4 (~60-120s) and even on linux can take ~30s for cold font cache.
+#
+run_genode_until {.*pkg_gui_demo: window shown.*} 240
+run_genode_until {.*lifecycle-probe: PASS.*} 120

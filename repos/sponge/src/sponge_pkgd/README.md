@@ -35,23 +35,40 @@ uses; `report_rom` is the decoupling layer.
   `pkg_index.xml` manifest, then opening each package's metadata ROM
   `pkg_<name>.xml`.
 - `explain` (4a): emits the structured install plan, no side effects.
-- `install` (4b): adds the resolved packages to an in-memory installed
-  set and regenerates the pkg_runtime config (a nested init that hosts
-  the components) via the `runtime` Expanding_reporter.
+- `install` (4b / Phase 7 lifecycle): adds the resolved packages to an
+  in-memory installed set and regenerates the pkg_runtime config (a
+  nested init). Packages whose metadata declares `<autostart/>` get a
+  `<start>` node immediately; everyone else registers as STOPPED and
+  needs an explicit `launch` to run (docs/12-package-format.md §9.2.1).
+- `launch` (Phase 7): transitions an installed-but-stopped package to
+  running by adding its `<start>` node and regenerating. Result status
+  is one of `ok` / `not-installed` / `already-running`. There is no
+  stop operation in Alpha.
 - `remove` (4b): drops the package and its now-unused dependencies,
-  regenerates the config so the nested init abandons the child.
+  regenerates the config (also dropping the `<start>` node if the
+  package was running).
 - `list` (4c): emits the installed set (name-sorted, matching the config
-  generator's order) so callers see exactly what will be regenerated.
-- Emits a structured `<result>` (ok/error) per request.
+  generator's order) with a per-package `running="yes"|"no"` attribute,
+  so callers see exactly what will be regenerated and what is running.
+- Emits a structured `<result>` per request.
 
-## Runtime config generation (Phase 4b)
+## Runtime config generation (Phase 4b / Phase 7 lifecycle)
 
 pkgd owns the ENTIRE pkg_runtime `<config>` and regenerates it on every
-install/remove. The generator is deterministic — `<start>` nodes sorted
-by name, fixed attribute order, no volatile fields — so init's
+install/remove/launch. The generator is deterministic — `<start>` nodes
+sorted by name, fixed attribute order, no volatile fields — so init's
 config-diff leaves already-running children untouched across an
 unrelated install. An empty-but-valid config is emitted at startup so
 pkg_runtime boots clean before any install.
+
+Phase 7 adds the installed-vs-running gate (docs/12 §9.2.1): the
+generator emits a `<start>` node only for packages in the running set
+(`_running`). The running set is the union of (a) installed packages
+whose metadata declares `<autostart/>` and (b) packages explicitly
+added by `launch`. It is re-derived by `_sync_running_state()` after
+every install/remove/launch/restore, so the invariant
+`_running ⊆ installed_names` always holds before the config is
+regenerated.
 
 ## Persistent installed-set store (Phase 4 follow-up #2)
 
