@@ -105,19 +105,23 @@ void LauncherMenuView::repopulate()
 		}
 
 		Section &sec = _sections[a.category];
-		auto *entry = new QPushButton(a.name, this);
+		QString const label = a.running
+		    ? a.name + QStringLiteral(" \342\200\242")
+		    : a.name;
+		auto *entry = new QPushButton(label, this);
 		entry->setStyleSheet(_entry_stylesheet());
 		if (!a.description.isEmpty())
 			entry->setToolTip(a.description);
 
 		/*
-		 * Click-to-launch is the deferred Phase 5+ piece. We log the
-		 * honest not-implemented warning (AGENTS.md §5.3) and close
-		 * the menu so the click is observably acknowledged.
+		 * Click-to-launch (Phase 7 todo 10): the controller sends a
+		 * `launch <name>` request to sponge_pkgd over the
+		 * "launcher_request" channel (AGENTS.md §3.3 rule 5: same
+		 * pkgd backend as `vct launch`). The menu closes so the
+		 * launched window can take focus.
 		 */
 		connect(entry, &QPushButton::clicked, this, [this, a] {
-			Genode::warning("not implemented: app launch (deferred — needs "
-			                "start-on-demand lifecycle) for ", a.name.toUtf8().constData());
+			_controller.request_launch(a.name);
 			hide();
 		});
 

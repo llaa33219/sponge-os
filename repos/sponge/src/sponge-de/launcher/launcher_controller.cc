@@ -86,6 +86,15 @@ LauncherController::LauncherController(Genode::Env &env, QObject *parent)
 	Genode::log("sponge-de: launcher source=pkgd (live)");
 	_installed_rom.construct(_env, "installed");
 
+	/*
+	 * Launch channel (Phase 7 todo 10): constructed alongside the
+	 * installed ROM so click-to-launch is wired whenever the launcher
+	 * is pkgd-backed. Scenarios without a report_rom policy for these
+	 * labels see invalid ROMs; the poll simply times out harmlessly.
+	 */
+	_launch_request.construct(_env, "request", "launcher_request");
+	_launch_result.construct(_env, "launcher_result");
+
 	_poll_timer = new QTimer(this);
 	_poll_timer->start(1500);
 	QObject::connect(_poll_timer, &QTimer::timeout, this, &LauncherController::poll);
@@ -143,15 +152,17 @@ bool LauncherController::_try_parse(Genode::Xml_node const &root)
 				if (Genode::strcmp(category.string(), "") == 0)
 					return;
 
-				App a;
-				a.name = QString::fromUtf8(
-					p.attribute_value("name", Genode::String<64>()).string());
-				a.category = QString::fromUtf8(category.string());
-				a.binary = QString::fromUtf8(
-					p.attribute_value("binary", Genode::String<64>()).string());
-				a.description = QString::fromUtf8(
-					p.attribute_value("description", Genode::String<256>()).string());
-				parsed.append(a);
+			App a;
+			a.name = QString::fromUtf8(
+				p.attribute_value("name", Genode::String<64>()).string());
+			a.category = QString::fromUtf8(category.string());
+			a.binary = QString::fromUtf8(
+				p.attribute_value("binary", Genode::String<64>()).string());
+			a.description = QString::fromUtf8(
+				p.attribute_value("description", Genode::String<256>()).string());
+			a.running = (p.attribute_value("running", Genode::String<8>("no"))
+			             == Genode::String<8>("yes"));
+			parsed.append(a);
 			});
 		});
 
@@ -171,17 +182,20 @@ bool LauncherController::_try_parse(Genode::Xml_node const &root)
 }
 
 
-QString LauncherController::_signature_of(QVector<App> const &apps) const
-{
-	/* Stable identity string for change detection: concatenation of
-	 * name|category pairs. Order is whatever QVector gives us, but
-	 * pkgd emits the list name-sorted so the signature is stable
-	 * across runs for the same installed set. */
-	QString s;
-	for (App const &a : apps)
-		s += a.name + QStringLiteral("|") + a.category + QStringLiteral(";");
-	return s;
-}
+	QString LauncherController::_signature_of(QVector<App> const &apps) const
+	{
+		/* Stable identity string for change detection: concatenation of
+		 * name|category|running pairs. Running state is included so a
+		 * launch (installed→running) triggers a repopulate and the menu
+		 * suffix updates. */
+		QString s;
+		for (App const &a : apps)
+			s += a.name + QStringLiteral("|") + a.category
+			     + QStringLiteral("|") + (a.running ? QStringLiteral("1")
+			                                        : QStringLiteral("0"))
+			     + QStringLiteral(";");
+		return s;
+	}
 
 
 void LauncherController::_publish_report()
@@ -194,7 +208,115 @@ void LauncherController::_publish_report()
 				g.attribute("name",     a.name.toUtf8().constData());
 				g.attribute("category", a.category.toUtf8().constData());
 				g.attribute("binary",   a.binary.toUtf8().constData());
+				g.attribute("running",  a.running ? "yes" : "no");
 			});
 		}
 	});
+}
+
+
+/* ===================== click-to-launch (Phase 7 todo 10) ===================== */
+
+void LauncherController::request_launch(QString const &name)
+{
+	if (!_launch_request.constructed()) {
+		Genode::warning("sponge-de: launch request for '",
+		                name.toUtf8().constData(),
+		                "' but launcher_request channel is not wired");
+		return;
+	}
+
+	/*
+	 * Stash the package name so the non-blocking result poll can match
+	 * the answer, and reset the poll counter. If a previous launch is
+	 * still pending, the new request supersedes it (the user clicked
+	 * again — acceptable for the Alpha single-writer model).
+	 */
+	_pending_launch_name = name;
+	_launch_poll_count = 0;
+
+	QByteArray const utf8 = name.toUtf8();
+	char const *const pkg = utf8.constData();
+
+	Genode::log("sponge-de: launcher click-to-launch '", pkg, "'");
+
+	_launch_request->generate_xml([&](Genode::Xml_generator &g) {
+		g.attribute("op",  "launch");
+		g.attribute("pkg", pkg);
+	});
+
+	/*
+	 * Drive the result poll via a single-shot QTimer defer (not a
+	 * tight loop) so the Qt event loop stays responsive. Each tick
+	 * re-checks the launcher_result ROM for a matching <result/>.
+	 */
+	QMetaObject::invokeMethod(this, [this]() { _poll_launch_result(); },
+	                          Qt::QueuedConnection);
+}
+
+
+void LauncherController::_poll_launch_result()
+{
+	if (_pending_launch_name.isEmpty())
+		return;
+
+	if (!_launch_result.constructed() || !_launch_result->valid()) {
+		if (++_launch_poll_count >= LAUNCH_POLL_MAX) {
+			Genode::warning("sponge-de: launch result for '",
+			                _pending_launch_name.toUtf8().constData(),
+			                "' timed out (launcher_result unavailable)");
+			_pending_launch_name.clear();
+			return;
+		}
+		QTimer::singleShot(100, this, [this]() { _poll_launch_result(); });
+		return;
+	}
+
+	_launch_result->update();
+
+	QByteArray const utf8 = _pending_launch_name.toUtf8();
+	char const *const pkg = utf8.constData();
+
+	bool matched = false;
+	Genode::String<32> status { };
+
+	try {
+		Genode::Xml_node const r = _launch_result->xml();
+		if (r.has_type("result") &&
+		    r.attribute_value("op", Genode::String<32>()) == Genode::String<32>("launch") &&
+		    r.attribute_value("pkg", Genode::String<128>()) == Genode::String<128>(pkg)) {
+			matched = true;
+			status = r.attribute_value("status", Genode::String<32>());
+		}
+	} catch (Genode::Xml_node::Invalid_syntax) { }
+
+	if (!matched) {
+		if (++_launch_poll_count >= LAUNCH_POLL_MAX) {
+			Genode::warning("sponge-de: launch result for '",
+			                _pending_launch_name.toUtf8().constData(),
+			                "' timed out");
+			_pending_launch_name.clear();
+			return;
+		}
+		QTimer::singleShot(100, this, [this]() { _poll_launch_result(); });
+		return;
+	}
+
+	/* Got a matching result: log the outcome for observability. */
+	char const *const st = status.string();
+	if (Genode::strcmp(st, "ok") == 0) {
+		Genode::log("sponge-de: launched '", pkg, "'");
+	} else if (Genode::strcmp(st, "not-installed") == 0) {
+		Genode::warning("sponge-de: launch '", pkg,
+		                "' failed: not installed");
+	} else if (Genode::strcmp(st, "already-running") == 0) {
+		Genode::log("sponge-de: launch '", pkg,
+		            "': already running");
+	} else {
+		Genode::warning("sponge-de: launch '", pkg,
+		                "' returned status='", st, "'");
+	}
+
+	_pending_launch_name.clear();
+	_launch_poll_count = 0;
 }

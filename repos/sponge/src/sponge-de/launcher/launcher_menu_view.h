@@ -16,12 +16,13 @@
  *   All colors and the heading font come from the loaded theme
  *   (AGENTS.md §3.4). No visual element is hardcoded.
  *
- * CLICK-TO-LAUNCH IS DEFERRED:
- *   Activating an entry logs the honest not-implemented warning and
- *   closes the popup. The lifecycle glue (start-on-demand through
- *   pkg_runtime / init config) is its own phase per docs/09-roadmap.md
- *   Phase 5 notes; here we only prove the launcher populated from the
- *   pkgd rich list (Phase 5c criterion).
+ * CLICK-TO-LAUNCH (Phase 7 todo 10):
+ *   Activating an entry calls LauncherController::request_launch(),
+ *   which sends a `launch <name>` request to sponge_pkgd over the
+ *   "launcher_request" channel and polls "launcher_result" non-
+ *   blocking. The menu then closes so the launched window gets focus.
+ *   Running entries render a suffix (" \342\200\242" dot) sourced from
+ *   the installed broadcast's `running` attribute.
  *
  * No Q_OBJECT macro: all connections use functor/lambda overloads, so
  * this class needs no moc pass.
