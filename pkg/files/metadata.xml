@@ -1,0 +1,69 @@
+<!--
+  files — the Sponge OS file manager package (Phase 7 todo 15).
+
+  A source-built Qt6 Widgets file manager (repos/sponge/src/sponge_files).
+  The component binary is sponge_files (differs from the package name
+  `files`), so metadata <binary> is set; the runtime-config generator
+  (todo 8) emits <start name="files"><binary name="sponge_files"/>.
+
+  The metadata <config> below is emitted verbatim into pkg_runtime's
+  generated <start> node by sponge_pkgd's runtime-config generator.
+  It carries:
+
+    - libc wiring (stdout/stderr to /dev/log; pipe for Qt; rtc)
+    - a <vfs> with:
+        /dev/log, /dev/rtc  (libc plumbing)
+        /pipe               (Qt event loop)
+        qt6_dejavusans.tar  (Qt font, mounted at /qt/lib/fonts/)
+        qt6_libqgenode.tar  (Qt QPA plugins)
+        files_demo.tar      (read-only fixture area; exposes /demo/* —
+                             the tar plugin is inherently read-only, so
+                             delete in /demo is refused with EROFS,
+                             surfaced three ways: UI status label,
+                             Genode::log line, and the `files` report's
+                             last_action result="refused")
+        /writable           (RAM-backed writable area; copy and delete
+                             succeed here, verified by the probe)
+
+  The component opens three sessions, all routed to the outer system:
+    Gui    — for the Qt window (default-route nitpicker)
+    Report — for the `files` report (testability)
+    ROM    — for `files_request`, `config`, and `default.theme`
+
+  No File_system session: file access goes through the libc vfs above
+  (minimum privilege, AGENTS.md §1.2). Alpha scope: navigate, open,
+  copy, delete — no rename, no search, no drag-drop (todo 15 guardrails).
+-->
+<package>
+  <name>files</name>
+  <version>1.0</version>
+  <description>Minimal Qt6 file manager (navigate, open, copy, delete).</description>
+
+  <binary>sponge_files</binary>
+  <quota ram="64M" caps="1000"/>
+
+  <launcher category="Utilities"/>
+
+  <dependencies/>
+
+  <config>
+    <libc stdout="/dev/log" stderr="/dev/log" pipe="/pipe" rtc="/dev/rtc"/>
+    <vfs>
+      <dir name="dev">
+        <log/>
+        <inline name="rtc">2018-01-01 00:01</inline>
+      </dir>
+      <dir name="pipe"><pipe/></dir>
+      <tar name="qt6_dejavusans.tar"/>
+      <tar name="qt6_libqgenode.tar"/>
+      <tar name="files_demo.tar"/>
+      <dir name="writable"><ram/></dir>
+    </vfs>
+  </config>
+
+  <sessions>
+    <session name="Gui"    default-route="nitpicker"/>
+    <session name="Report" default-route="parent"/>
+    <session name="ROM"    default-route="parent"/>
+  </sessions>
+</package>
