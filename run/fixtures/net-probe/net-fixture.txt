@@ -1,0 +1,6 @@
+SPONGE-NET-PROBE-MARKER-7c9f2a3b
+This is the Sponge OS network probe fixture.
+If this exact byte sequence appears in the Genode boot log via
+fetchurl, then the dde_ipxe e1000 NIC driver + the lwip vfs socket
+plugin + libcurl round-trip a real HTTP GET over QEMU user-mode
+networking on base-sel4.

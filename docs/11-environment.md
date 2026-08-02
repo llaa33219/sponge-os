@@ -235,6 +235,21 @@ fingerprint of each:
 | `qoost` | `014d68ce23644076c30c2dc03ee70c8fa04698d7` | qoost upstream | QtObjectSystemTester-style helpers used by some libports components. |
 | `linux` | `e4aad15aa6e3267bf6f8ac2b1b51766c03a8d82b` | Linux 6.18.19 (`dde_linux/ports/linux.port`) | Linux kernel source used by the DDE-Linux USB stack (`usb_hid`, `pc_usb_host`) that the base-sel4 interactive scenario (`run/sponge-de-sel4-interactive.run`) pulls in. Only fetched when those drivers are built; large (~140 MB tarball). |
 | `jitterentropy` | `jitterentropy-3.4.1` | `smuellerDD/jitterentropy-library` v3.4.1 | Entropy source linked by the DDE-Linux USB drivers (`virt_lx_emul` / `pc_lx_emul`). Only fetched with the `linux` port above. |
+| `dde_ipxe` | `a7206d6c2a1b2de7fa7fde6733a3500411a64de2` | `https://github.com/ipxe/ipxe.git` @ `c4bce43c3c4d3c5ebb2d926b58ad16dc9642c19d` | The iPXE NIC driver stack (GPLv2). Provides the e1000 NIC driver (`dde_ipxe/src/driver/nic` → `ipxe_nic`) used by the base-sel4 networking probe (`run/sponge-net-probe.run`). Only fetched when the dde_ipxe repository is in `REPOSITORIES`. |
+| `lwip` | `d4911a43269263cd9376b6bc3ad98d28b749b0e3` | `https://github.com/lwip-tcpip/lwip/archive/refs/tags/STABLE-2_1_2_RELEASE.tar.gz` (v2.1.2, BSD) | The lwIP TCP/IP stack, used as the in-process socket provider for libc-based Genode components via the `vfs_lwip` plugin. `run/sponge-net-probe.run` (todo 12) wires it as `<dir name="socket"><lwip dhcp="yes"/></dir>` in `fetchurl`'s vfs. |
+
+In addition to the `prepare_port` set above, two **Genode depot packages**
+are imported host-side into `pkg/<name>/` by `tool/pkg_import` (todo 11).
+The depot is **not** a port: it is fetched by `genode/tool/depot/download`,
+verified by PGP against the in-tree pubkey at
+`genode/repos/gems/sculpt/depot/cproc/pubkey`, and re-packaged locally.
+The depot archives never leave the build host — `sponge_pkgd` does not
+fetch at runtime (Metis amendment A1).
+
+| Depot archive | Version | SHA-256 of `<user>/<type>/<recipe>/<version>.tar.xz` | Used by | Notes |
+|---|---|---|---|---|
+| `cproc/pkg/falkon_qt6-jemalloc` | `2026-04-22` | `23e6a2b6be18b71cb7efc5a33018d3fa9b978310a9daf13ac0eae0f2fbc00b1e` | `pkg/falkon/` (todo 16) | Pinned by `genode/repos/gems/sculpt/deploy/falkon_web_browser` line 28. The pkg recipe name (`falkon_qt6-jemalloc`) differs from the underlying binary recipe name (`falkon_qt6`); `tool/pkg_import` resolves the correct `bin/x86_64/falkon_qt6/<version>` archive. The full transitive closure is ~1.8 GB (1 pkg + 25 src + 2 raw + 43 api archives). |
+| `cproc/pkg/qt6_textedit` | `2025-10-27` | `61d207c2fab6f2901e50cbbc714f5522997823d78e1323bd6da638ccd8fdfa1f` | `pkg/textedit/` (todo 14) | **The in-tree recipe hash at `genode/repos/libports/recipes/pkg/qt6_textedit/hash` says `2026-05-27`, but the depot has not published that version (404 as of the todo-11 spike).** `tool/pkg_import` therefore takes an explicit version on the command line and uses the depot's latest available (`2025-10-27`). Re-running the spike after a future depot publish should restore the recipe pin. The corresponding `bin/x86_64/qt6_textedit/2025-10-12` is the latest prebuilt binary version; pkg-vs-bin versions are independent in the depot. |
 
 Populated by:
 
@@ -542,6 +557,12 @@ manually without a reason. `pc` and `dde_linux` are needed by the
 base-sel4 interactive GUI scenario (`run/sponge-de-sel4-interactive.run`):
 they contribute `pc_platform`, `pc_usb_host`, and `usb_hid`. They are
 harmless on base-linux (their targets are only built on demand).
+`dde_ipxe` (the iPXE-based NIC driver, `ipxe_nic`) is appended to
+`REPOSITORIES` for the networking scenarios (`run/sponge-net-probe.run`,
+todo 12). The full managed block in `genode/build/x86_64/etc/build.conf`
+is therefore: `sponge`, `libports`, `gems`, `pc`, `dde_linux`, `dde_ipxe`.
+Like `pc`/`dde_linux`, `dde_ipxe` is harmless on base-linux (its
+`REQUIRES = x86` target only builds on demand).
 
 ### 8.2 Why `make -j$(nproc)` is set by `prepare`
 
