@@ -60,6 +60,42 @@ assert {[have_spec sel4]} \
 	 This scenario drives real PC hardware (vesa_fb/ps2/usb_hid) which \
 	 base-linux cannot provide."
 
+##
+# Ensure essential run-framework plugins are loaded.
+#
+# WHY: the documented media-mode invocations pass RUN_OPT on the make
+# command line (e.g. RUN_OPT="--include image/disk"). GNU make treats a
+# command-line assignment as an OVERRIDE: it replaces the variable
+# entirely, so build.conf's accumulated `RUN_OPT += ...` lines (which
+# normally carry --include power_on/qemu, --include log/qemu, and
+# --include boot_dir/$(KERNEL)) are all discarded. With those plugins
+# missing, the run framework's DUMMY fallbacks kick in: run_power_on
+# and run_load return true without spawning QEMU, and run_log exits 0
+# without matching any output — a VACUOUS SUCCESS (the
+# 'misleading_success_output' adversarial class; same pitfall proven
+# out by run/sponge-media-smoke.run in todo 3).
+#
+# This proc sources any of the three essential plugins that the
+# override dropped, so the media-mode shorthand commands produce a
+# REAL QEMU boot of the REAL media file. image/iso or image/disk is
+# intentionally NOT sourced here — the user's RUN_OPT selects the
+# media mode (the default build.conf RUN_OPT carries image/iso, so a
+# bare `make run/sponge-alpha` still works as in todo 4).
+#
+proc ensure_plugin_loaded { name } {
+	if {![have_include $name]} {
+		set path [genode_dir]/tool/run/$name
+		puts "sourcing $path (missing from RUN_OPT, restored by run script)"
+		source $path
+		global include_list
+		lappend include_list $name
+	}
+}
+
+ensure_plugin_loaded boot_dir/sel4
+ensure_plugin_loaded power_on/qemu
+ensure_plugin_loaded log/qemu
+
 build { core lib/ld init timer server/report_rom server/nitpicker \
          driver/acpi app/pci_decode driver/platform \
          driver/framebuffer/vesa driver/ps2 \
