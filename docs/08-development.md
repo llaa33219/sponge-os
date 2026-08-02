@@ -612,3 +612,131 @@ Summary of `AGENTS.md` §4:
 For difficult debugging issues, first re-read the principles in
 `AGENTS.md` §5 "AI Agent-Specific Guidelines" and
 `docs/02-philosophy.md`.
+
+---
+
+## 11. Building Distribution Media (Alpha)
+
+This section produces the two installable Alpha media artifacts in
+`var/dist/`:
+
+```
+sponge-os-0.1.0-alpha-x86_64-sel4.img   (GPT disk image, image/disk)
+sponge-os-0.1.0-alpha-x86_64-sel4.iso   (El Torito ISO,   image/iso)
+```
+
+Each artifact ships with a `<name>.sha256` sidecar in the
+`<hash>  <filename>` format that `sha256sum -c` consumes directly.
+Both media boot (in QEMU) to the same `alpha-probe: PASS` marker the
+unified desktop scenario gates on — the media are already boot-proven
+by `run/sponge-alpha.run`'s `run_genode_until` call inside the make
+invocation; nothing re-verifies them post-copy.
+
+### 11.1 One-command flow (default)
+
+```bash
+./tool/dist
+```
+
+The wrapper ([`tool/dist`](../tool/dist) → [`tool/dist.mojo`](../tool/dist.mojo)):
+
+1. Pre-flight checks every host tool the Genode run framework's
+   image plugins invoke (`xorriso`, `sgdisk`, `mcopy`, `e2cp`,
+   `e2mkdir`, `mkfs.ext2`, `mkfs.vfat`, `resize2fs`) and prints the
+   exact `apt install` line for any missing one, exiting non-zero
+   **before** any build runs (loud-and-early failure).
+2. Runs the disk-image build, then the ISO build, sequentially,
+   streaming each `make` invocation's output. A non-zero make exit
+   propagates as the tool's exit code.
+3. Cleans `genode/build/x86_64/var/run/sponge-alpha*` between the two
+   modes so neither mode's staged boot directory pollutes the other.
+4. Copies the artifacts to `var/dist/` with the release names and
+   writes the `.sha256` sidecars.
+5. Prints a summary table with artifact sizes and sha256 prefixes.
+
+`./tool/dist` never boot-verifies the media itself (the run framework
+already does that during the make), and never touches anything
+outside the repository (AGENTS.md §3.5).
+
+### 11.2 Manual flow (the canonical reference)
+
+Per AGENTS.md §3.5 every automated step has a documented manual
+equivalent. The procedure below reproduces `./tool/dist` step by
+step. Run it from the repository root, after `./tool/build prepare`
+and `./tool/build ports` have set up `genode/build/x86_64/`.
+
+```bash
+# 0. Install the six media host-tool packages once (§1.3 covers the
+#    base build packages; this is the extra media set, documented in
+#    docs/11-environment.md §7.3).
+sudo apt install xorriso gptfdisk mtools e2tools dosfstools e2fsprogs
+# (Arch: substitute `pacman -S` for `apt install`.)
+
+# 1. Sanity-check that every host tool the image plugins invoke is
+#    actually on PATH. The names are the ones the Genode run tool's
+#    `installed_command` proc looks up by `auto_execok`. Missing any
+#    of them makes the corresponding image plugin abort inside make.
+for tool in xorriso sgdisk mcopy e2cp e2mkdir mkfs.ext2 mkfs.vfat resize2fs; do
+    command -v "$tool" >/dev/null || echo "MISSING: $tool"
+done
+
+# 2. Build the disk image (.img). The KERNEL/BOARD on the make
+#    command line override anything in etc/build.conf for this one
+#    invocation, so the same build directory can be used for the
+#    Linux developer flow elsewhere. RUN_OPT pulls in the
+#    image/disk plugin after the run framework's regular boot test.
+make -C genode/build/x86_64 run/sponge-alpha \
+    KERNEL=sel4 BOARD=pc \
+    RUN_OPT='--include image/disk'
+
+# 3. Copy the disk artifact to its release name and write the
+#    sha256 sidecar. The image plugin leaves it at
+#    genode/build/x86_64/var/run/sponge-alpha.img.
+mkdir -p var/dist
+cp genode/build/x86_64/var/run/sponge-alpha.img \
+   var/dist/sponge-os-0.1.0-alpha-x86_64-sel4.img
+(cd var/dist && sha256sum sponge-os-0.1.0-alpha-x86_64-sel4.img \
+    > sponge-os-0.1.0-alpha-x86_64-sel4.img.sha256)
+
+# 4. Clean the previous mode's staged boot directory so the ISO
+#    build does not inherit stale boot modules from the disk build
+#    (stale_state guard; `./tool/dist` does the same).
+rm -rf genode/build/x86_64/var/run/sponge-alpha*
+
+# 5. Build the ISO (.iso) — same make shape with image/iso instead.
+make -C genode/build/x86_64 run/sponge-alpha \
+    KERNEL=sel4 BOARD=pc \
+    RUN_OPT='--include image/iso'
+
+# 6. Copy + sha256 the ISO artifact.
+cp genode/build/x86_64/var/run/sponge-alpha.iso \
+   var/dist/sponge-os-0.1.0-alpha-x86_64-sel4.iso
+(cd var/dist && sha256sum sponge-os-0.1.0-alpha-x86_64-sel4.iso \
+    > sponge-os-0.1.0-alpha-x86_64-sel4.iso.sha256)
+
+# 7. Verify both sidecars.
+(cd var/dist && sha256sum -c *.sha256)
+
+# 8. (Optional) Print a summary of what was produced.
+ls -lh var/dist/sponge-os-0.1.0-alpha-x86_64-sel4.{img,iso}
+```
+
+The release name embeds the version (`0.1.0-alpha`, kept in sync
+with `include/sponge/version.h`), the architecture (`x86_64`), and
+the kernel (`sel4`). Bump the version in
+`include/sponge/version.h` first (`tool/version_bump.mojo`) and the
+release name changes everywhere it is referenced.
+
+### 11.3 Why two media formats
+
+The disk image (`.img`) is what you `dd` onto a USB stick for a real
+boot (out of scope for the Alpha — QEMU only, see
+`docs/09-roadmap.md` §9). The ISO (`.iso`) is what you mount/attach
+as a CD-ROM. The Genode run framework produces them via two different
+image plugins (`genode/tool/run/image/disk` vs.
+`genode/tool/run/image/iso`) that share the boot modules but differ
+in the bootloader stage (GRUB on the ISO's El Torito image vs. a GPT
+partition table + EFI System Partition on the disk image). Producing
+both from the same scenario is a redundancy check that the boot
+chain works in either container.
+
