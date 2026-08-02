@@ -222,6 +222,29 @@ A scenario defines:
   topology (base-linux native or base-sel4 QEMU); the acceptance run
   uses `KERNEL=sel4 BOARD=pc`. Gates on `terminal-probe: PASS`.
 
+- `sponge-textedit.run` — Phase 7 todo 14: the text-editor package
+  (`pkg/textedit`), the depot-repackaged `cproc/pkg/qt6_textedit/
+  2025-10-27` (todo 11). The `textedit_probe` drives `sponge_pkgd` to
+  install and launch `textedit`, then verifies: (a) the `installed`
+  broadcast carries `textedit` with `running="no"` (`vct list`-
+  equivalent + lifecycle), (b) after launch the broadcast flips to
+  `running="yes"`, (c) the Qt6 text-editor window actually renders into
+  nitpicker (Capture non-background-fraction check across the domain —
+  the qt6_textedit widget paints a menu bar / toolbar / rich-text area
+  everywhere distinct from the `#1e1e2e` nitpicker background; the
+  `misleading_success_output` class — a bare exit 0 is not enough, the
+  rendered scene must really appear), and (d) pkgd's launch error paths
+  return clear statuses (`not-installed`, `already-running`), never a
+  crash. The prebuilt `textedit` binary is NOT a Sponge build target
+  (no in-tree `src/app/qt6_textedit`); it is staged from
+  `pkg/textedit/payload/` (extracted from `cproc/bin/x86_64/qt6_textedit/
+  2025-10-12` by `tool/pkg_import`). The separate missing-binary
+  failure channel is verified by the scratch scenario
+  `run/sponge-textedit-fail.run` (see `.omo/evidence/task-14-phase7-alpha.log`).
+  Kernel-agnostic topology (base-linux native or base-sel4 QEMU); the
+  acceptance run uses `KERNEL=sel4 BOARD=pc`. Gates on
+  `textedit-probe: PASS`.
+
 ## Planned additions
 
 - The end-to-end HOST-injected usb-tablet click proof for
