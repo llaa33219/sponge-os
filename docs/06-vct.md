@@ -34,7 +34,7 @@ Examples:
 vct install firefox           # install a package
 vct install firefox --explain # preview what automation would do
 vct status                    # summary of system state
-vct config set theme dark     # change configuration
+vct config theme dark         # change a configuration value (positional)
 vct leitzentrale              # open the Leitzentrale window
 ```
 
@@ -66,7 +66,7 @@ Options:
   --explain     Preview the planned steps and exit (no execution).
   --manual      Turn automation off and run step by step.
   --json        Print the result as JSON.
-  --no-deps     Skip automatic dependency installation (use with care).
+  --no-deps     Skip automatic dependency installation (not yet implemented).
   ...
 ```
 
@@ -123,13 +123,129 @@ release. **Not every command ships in the first release.**
 
 ### 4.2 Package Management
 
-| Command | Purpose |
+| Command | Status | Purpose |
+|---|---|---|
+| `vct install <package>` | Phases 0–6 (delivered) | Install a package (automatic dependency resolution) |
+| `vct remove <package>` | Phases 0–6 (delivered) | Remove a package |
+| `vct list` | Phases 0–6 (delivered) | List installed packages |
+| `vct update [package]` | Phase 7 (delivered) | Re-resolve installed roots against the on-image metadata |
+| `vct search <term>` | Phase 7 (delivered) | Search the on-image repository by name or description |
+| `vct launch <package>` | Phase 7 (delivered) | Start an installed package through `sponge_pkgd` |
+
+#### `vct update [package]`
+
+Synopsis:
+
+```
+vct update [package] [--json] [--help] [--lang ko]
+```
+
+Flags:
+
+| Flag | Purpose |
 |---|---|
-| `vct install <package>` | Install a package (automatic dependency resolution) |
-| `vct remove <package>` | Remove a package |
-| `vct update [package]` | Update a package (or all packages) |
-| `vct search <term>` | Search packages |
-| `vct list` | List installed packages |
+| `--json` | Machine-readable status output (see §6.2) |
+| `--help`, `-h` | Concise English summary followed by detailed English help; Korean with `--lang ko` |
+| `--lang ko` | Korean output (where the runtime supports it) |
+
+Automation-default behavior:
+
+- No `package` argument: re-resolves every installed root against the
+  on-image repository metadata (`pkg_index.xml` plus the
+  `pkg_<name>.xml` ROMs).
+- With a `package` argument: re-resolves that installed root and its
+  transitive dependency graph.
+- Reports version deltas honestly, using one of two line shapes:
+  - `already current: <name> <installed_version>`
+  - `repo carries <repo_version>, installed <installed_version> — effective after next image build`
+- No network fetching. The on-image repository is fixed at build time
+  (Alpha semantics, `docs/12-package-format.md` §5.5); a newer
+  repository version becomes effective only after the image is
+  rebuilt and the updated package is pre-staged.
+- No auto-upgrade. The command never mutates the installed set or the
+  running state. Version strings are reported as-is and are not
+  ordered by the Alpha format.
+
+Manual escape hatch:
+
+- `vct update` has no `--manual` mode (it is a single-shot read-only
+  operation; the four `--manual`-style prompts of `vct install` do
+  not apply here).
+- To inspect what is currently installed, run `vct list`
+  (or `vct list --json` for machine output).
+- To inspect a single package's metadata, read
+  `pkg/<name>/metadata.xml` directly per
+  `docs/12-package-format.md` §9.3 — there is no hidden state.
+- To change the installed set, use `vct install <pkg>` /
+  `vct remove <pkg>`.
+
+#### `vct search <term>`
+
+Synopsis:
+
+```
+vct search <term> [--json] [--help] [--lang ko]
+```
+
+Flags: identical to `vct update`.
+
+Automation-default behavior:
+
+- Scans the on-image repository metadata (`pkg_index.xml` plus the
+  `pkg_<name>.xml` ROMs) for matches against `<name>` and
+  `<description>`.
+- Prints one line per match: `name  version  one-line description`.
+- An empty result is honest: prints `No matches.` and exits 0. An
+  empty result is never an error and never a non-zero exit.
+- No network fetching; the on-image repository is fixed at build time.
+
+Manual escape hatch:
+
+- `vct search` has no `--manual` mode (single-shot read-only).
+- To list the installed subset, use `vct list`.
+- To inspect a package's full metadata, read
+  `pkg/<name>/metadata.xml` directly per §9.3.
+
+#### `vct launch <package>`
+
+Synopsis:
+
+```
+vct launch <package> [--json] [--help] [--lang ko]
+```
+
+Flags: identical to `vct update`.
+
+Automation-default behavior:
+
+- Sends the `launch <name>` request to the same `sponge_pkgd`
+  Report/ROM channel that `vct install` and `vct list` already use
+  (`docs/12-package-format.md` §9.2.1). For an installed package
+  without a running node, `sponge_pkgd` adds the `<start>` node to
+  `pkg_runtime` and the package transitions from installed to
+  running.
+- The Sponge DE launcher menu uses **the same backend** — clicking a
+  launcher entry sends the same `launch` request to the same
+  `sponge_pkgd` channel, per AGENTS.md §3.3 rule 5. Two interfaces
+  (CLI and GUI), one backend, one state of truth.
+- Errors are reported explicitly:
+  - `not-installed`: the named package is not in the installed set;
+    exit non-zero.
+  - `already-running`: the named package already has a `<start>`
+    node; exit non-zero.
+- Audit line printed before acting:
+  `[vct] launch: requesting start of <name>`.
+
+Manual escape hatch:
+
+- `vct launch` has no `--manual` mode (launch is a single-step
+  operation in the Alpha lifecycle; no stop operation exists yet —
+  see `docs/12-package-format.md` §9.2.1).
+- To inspect the live component tree after launch, use
+  `vct component list` (reads the same init state report).
+- To launch from the DE side, click the entry in the Sponge DE
+  launcher menu; it sends the same `launch` request to the same
+  `sponge_pkgd` channel. There is no separate DE-only launch path.
 
 ### 4.3 Component Management (Control)
 
@@ -149,11 +265,19 @@ automation. They let the user run the same work step by step.
 
 | Command | Purpose |
 |---|---|
-| `vct config get <key>` | Read a configuration value |
-| `vct config set <key> <value>` | Change a configuration value |
+| `vct config <key>` | Read a configuration value |
+| `vct config <key> <value>` | Change a configuration value |
 | `vct config list` | Show the full configuration |
-| `vct config export` | Export configuration (for backup) |
-| `vct config import <file>` | Import configuration |
+| `vct config export` | Export configuration for backup (not yet implemented) |
+| `vct config import <file>` | Import configuration (not yet implemented) |
+
+The positional form (`vct config <key> [value]`) is the implemented
+form. The verb form (`config get` / `config set`) shown in earlier
+drafts is **not implemented** and the parser does not route it: the
+second positional selects between read (no value) and write (value
+present), and the literal `list` dispatches to the bulk read. Export
+and import stay on the table so the API surface is honest, but the
+parser does not route them yet either (AGENTS.md §5.3).
 
 ### 4.5 Hardware
 
@@ -172,12 +296,82 @@ automation. They let the user run the same work step by step.
 
 ### 4.7 System Control
 
-| Command | Purpose |
+| Command | Status | Purpose |
+|---|---|---|
+| `vct shutdown` | Phase 7 (delivered) | Shut down the system |
+| `vct reboot` | Phase 7 (delivered) | Reboot the system |
+| `vct snapshot` | future | Snapshot the system state |
+| `vct rollback <snapshot>` | future | Roll back to a snapshot |
+
+Snapshot and rollback are listed for API completeness but are not
+routed by the current parser. They are not part of the Alpha media;
+land them only when a snapshot/rollback backend exists.
+
+#### `vct shutdown`
+
+Synopsis:
+
+```
+vct shutdown [--json] [--help] [--lang ko]
+```
+
+Flags:
+
+| Flag | Purpose |
 |---|---|
-| `vct shutdown` | Shut down the system |
-| `vct reboot` | Reboot the system |
-| `vct snapshot` | Snapshot the system state (when rollback is supported) |
-| `vct rollback <snapshot>` | Roll back to a snapshot |
+| `--json` | Machine-readable status output (see §6.2) |
+| `--help`, `-h` | Concise English summary followed by detailed English help; Korean with `--lang ko` |
+| `--lang ko` | Korean output (where the runtime supports it) |
+
+Automation-default behavior:
+
+- Opens a `System` session routed to the platform driver
+  (`acpi` / `platform` in the `run/sponge-alpha.run` drivers sub-init).
+- Prints an audit line before acting:
+  `[vct] shutdown: requesting poweroff`.
+- Invokes poweroff. On QEMU the guest shuts down and the run tool
+  observes the clean exit; on real hardware the ACPI power button is
+  signalled.
+
+Manual escape hatch:
+
+- If the `System` session is not routable (no platform driver in the
+  scenario), the command fails with a clear `service unavailable`
+  error, exits non-zero, and the guest keeps running. The user can
+  then take direct control through QEMU's monitor: `system_powerdown`
+  via `-qmp`, or the `Ctrl-A x` keyboard escape followed by
+  `system_powerdown`.
+- For headless QEMU where the monitor is unreachable, the
+  `qemu-system-x86_64 ... -action panic=shutdown -action
+  reboot=shutdown` flags are an equivalent host-side fallback. These
+  QEMU-monitor escape hatches are documented in
+  `docs/13-installation.md` for users whose firmware refuses the ACPI
+  power button.
+- `vct shutdown` is purely user-invoked. No automation (cron, hook,
+  policy) ever calls it.
+
+#### `vct reboot`
+
+Synopsis:
+
+```
+vct reboot [--json] [--help] [--lang ko]
+```
+
+Flags: identical to `vct shutdown`.
+
+Automation-default behavior:
+
+- Opens a `System` session routed to the platform driver.
+- Prints an audit line before acting:
+  `[vct] reboot: requesting reset`.
+- Invokes reset. On QEMU the guest reboots and the run log shows the
+  boot banner twice in sequence.
+
+Manual escape hatch:
+
+- Identical to `vct shutdown`. The QEMU-monitor fallback for reset is
+  `system_reset` (with the same `-qmp` / `Ctrl-A x` access pattern).
 
 ---
 
@@ -263,7 +457,7 @@ Every command supports two output formats:
   default; Korean when `--lang ko` is set and a translation exists).
 - Step-by-step progress.
 - Clear success and failure states.
-- Color when the terminal supports it (disable with `--no-color`).
+- Color when the terminal supports it (disable with `--no-color`, not yet implemented).
 
 ### 6.2 JSON (`--json`)
 
@@ -317,21 +511,49 @@ Consequences of this structure:
 
 ## 8. Implementation Status
 
-vct is at the **Phase 2 minimum working** stage. The following commands
-run end-to-end against real Genode state inside the boot image on both
-base-linux and base-sel4 (the production target):
+vct has reached the **Phases 0–6 milestone** for the 10 commands
+below. Each line names its backend so the rule "vct is a thin CLI, the
+backends do the work" (`docs/04-components.md` §1.2) stays visible.
+Every command runs end-to-end against real Genode state inside the
+boot image on both `base-linux` and `base-sel4` (the production
+target).
 
-- `vct --version` — prints the version.
-- `vct --help` — prints the help text (concise English summary plus
-  detailed English help; `--lang ko` switches to Korean).
-- `vct status` — reads the live `init` state report (via a sub-init +
-  `report_rom` relay) and prints init RAM and the component count.
-- `vct component list` — lists the live component tree with per-child RAM
-  and cap usage.
+| Command | Backend |
+|---|---|
+| `vct status` | live `init` state report (sub-init + `report_rom` relay) |
+| `vct --help` / `vct help` | static help text (`--lang ko` for Korean); no backend |
+| `vct --version` / `vct version` | static version string; no backend |
+| `vct component list` | live `init` state report (sub-init + `report_rom` relay) |
+| `vct install <pkg>` | `sponge_pkgd` Report/ROM channel (`explain`, `install`) |
+| `vct remove <pkg>` | `sponge_pkgd` Report/ROM channel (`remove`) |
+| `vct list` | `sponge_pkgd` Report/ROM channel (`list`) |
+| `vct config <key> [value]` / `vct config list` | `sponge_configd` Report/ROM channel (`config_get` / `config_set` / `config_list`) |
+| `vct theme apply <name>` | `sponge_configd` (writes `theme.active`); consumed by `sponge_themed` |
+| `vct leitzentrale [off\|status\|diff\|keep\|revert]` | `sponge_configd` (toggle) + `lz_watch` (diff/keep/revert) |
 
-`--json` is supported for `status` and `component list`. Phase 3 onwards
-adds the Sponge DE window, Phase 4 adds package management backends, and
-Phase 6 integrates Leitzentrale.
+`--json` is honored by every command that produces structured output
+(`status`, `component list`, `install`, `remove`, `list`, `config`,
+`config list`, `theme apply`, `leitzentrale`).
+
+### Phase 7 additions (Alpha media)
+
+Phase 7 (this milestone) extends vct to cover the day-to-day tasks
+the Alpha media needs. The five commands below are **specified by
+this document** (todo 2 of the Phase 7 plan) and implemented in the
+`run/sponge-alpha.run`-gated scenarios (todos 17 and 18 of the same
+plan):
+
+| Command | Backend |
+|---|---|
+| `vct shutdown` | platform driver `System` session (poweroff) |
+| `vct reboot` | platform driver `System` session (reset) |
+| `vct update [pkg]` | `sponge_pkgd` (re-reads on-image metadata; no fetch) |
+| `vct search <term>` | `sponge_pkgd` (reads on-image metadata; no fetch) |
+| `vct launch <pkg>` | `sponge_pkgd` Report/ROM channel (`launch`; same channel the Sponge DE launcher uses per AGENTS.md §3.3 rule 5) |
+
+With the Phase 7 additions the Alpha surface is **15 user-facing
+subcommands**. `vct snapshot` and `vct rollback` stay in §4.7 as
+future work; they are not part of the Alpha media.
 
 The implementation roadmap is defined under the milestones in
 `docs/09-roadmap.md`.
