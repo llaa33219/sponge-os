@@ -32,6 +32,8 @@ the idiomatic Mojo pattern for missing functionality.
 | `./tool/build`        | `tool/build.mojo`        | Top-level build wrapper (`prepare`, `ports`, `list`, `run`)  | ✅ works |
 | `./tool/check-compile`| `tool/check_compile.mojo`| Structural sanity check for a component                      | ✅ works |
 | `./tool/patches`      | `tool/patches.mojo`      | Patch ledger manager (`list`, `verify`, `export`, `drop`)    | ✅ works |
+| `./tool/dist`         | `tool/dist.mojo`         | Alpha distribution media builder (`.img` + `.iso` into `var/dist/`) | ✅ works |
+| `./tool/pkg_import`   | `tool/pkg_import.mojo`   | Host-side Genode depot → Sponge pkg/ repackager (Phase 7 todo 11) | ✅ works |
 | (direct)              | `tool/gen_vct_config.mojo`| Generate a vct config-ROM XML from argv                     | ✅ works |
 | (direct)              | `tool/version_bump.mojo` | Bump version in `include/sponge/version.h`                   | ✅ works |
 
@@ -113,9 +115,26 @@ mojo tool/gen_vct_config.mojo install firefox --explain
 ```bash
 mojo tool/version_bump.mojo --show     # print current version
 mojo tool/version_bump.mojo --patch    # bump 0.0.1 -> 0.0.2
-mojo tool/version_bump.mojo --minor    # bump 0.0.1 -> 0.1.0
+mojo tool/version_bump.mojo --minor    # bump 0.0.1 -> 1.0.0
 mojo tool/version_bump.mojo --major    # bump 0.0.1 -> 1.0.0
 ```
+
+### pkg-import
+```bash
+# Re-fetch the depot pkg + its transitive deps (one-time per pkg):
+export GNUPGHOME="$PWD/var/scratch/gnupg"   # see docs/08 §12.1 setup
+./genode/tool/depot/download cproc/pkg/qt6_textedit/2025-10-27
+
+# Re-package into pkg/<name>/:
+./tool/pkg_import cproc/pkg/qt6_textedit/2025-10-27 --bin-version 2025-10-12
+```
+
+Imports a Genode depot pkg archive into a Sponge `pkg/<name>/` directory:
+reads the depot `runtime` metadata, downloads the matching `bin` archive
+on demand, stages every payload the runtime declares, and writes
+`metadata.xml` + `SOURCE` (depot pin + sha256). See
+[docs/08-development.md §12](../docs/08-development.md) for the full
+contract and the manual escape hatch.
 
 ## Why Mojo?
 
