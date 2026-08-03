@@ -106,12 +106,31 @@ struct Alpha_probe
 	/* configd channel: enable leitzentrale + read broadcast. */
 	Genode::Expanding_reporter     _cfg_request { _env, "request", "config_request" };
 	Genode::Attached_rom_dataspace _cfg_result  { _env, "config_result" };
-	Genode::Attached_rom_dataspace _cfg_broadcast { _env, "config" };
+	/*
+	 * configd broadcast: in the alpha scenario (no inline config), read
+	 * from "config" (served by report_rom). In the disk-desktop scenario,
+	 * the inline <config skip_lz="yes"/> causes the sandbox to intercept
+	 * "config" — so the broadcast is also available at "configd_config"
+	 * via a separate report_rom policy. _cfgd_config is Constructible
+	 * because the alpha scenario does not route it (denial is graceful).
+	 */
+	Genode::Attached_rom_dataspace               _cfg_broadcast { _env, "config" };
+	Genode::Constructible<Genode::Attached_rom_dataspace> _cfgd_config { };
 
 	/* sponge-de's launcher report. */
 	Genode::Attached_rom_dataspace _launcher { _env, "sponge_de_launcher" };
 
 	bool _ok { true };
+
+	/*
+	 * Phase 8 P2: the Leitzentrale subsystem is not yet bootable from
+	 * disk (P5 work). When <config skip_lz="yes"/> is set, the probe
+	 * skips criterion (d) and the configd leitzentrale-enable step,
+	 * logging PASS after (a)/(b)/(c) only. This keeps the same probe
+	 * binary usable in both the full Alpha (lz on) and the P2 disk
+	 * desktop (lz off) scenarios.
+	 */
+	bool _skip_lz { false };
 
 	Alpha_probe(Genode::Env &env) : _env(env) { }
 
@@ -181,11 +200,14 @@ struct Alpha_probe
 
 	/*
 	 * Criterion (a): themed panel composited. Poll the panel band
-	 * (x=512, y=4..24) for non-zero pixels. The default theme's
-	 * panel_bg #1e1e2e is non-zero, so any painted panel passes; the
-	 * pure-black untouched buffer does not. Same approach as
-	 * launcher_probe (proven).
+	 * (x=512, y=4..24) for non-background pixels. The nitpicker
+	 * background #1e1e2e is non-zero but must NOT count as "panel
+	 * rendered" — without this check, the background alone triggers a
+	 * false positive on the disk-desktop scenario where sponge-de is
+	 * slow to start.
 	 */
+	static Genode::uint32_t const BG_PIXEL = 0x1e1e2e;
+
 	bool _panel_rendered()
 	{
 		for (unsigned i = 0; i < RENDER_POLL_ITERS && _ok; ++i) {
@@ -195,7 +217,7 @@ struct Alpha_probe
 			Pixel const *px = _cap_ds->local_addr<Pixel>();
 			for (int y = 4; y <= 24; y += 4) {
 				Pixel p = px[y * SCREEN_W + 512];
-				if (p.pixel != 0) {
+				if (p.pixel != 0 && p.pixel != BG_PIXEL) {
 					Genode::log("alpha-probe: (a) panel band rendered at (512,", y,
 					            ") = ", Genode::Hex(p.pixel));
 					return true;
@@ -258,6 +280,25 @@ struct Alpha_probe
 	bool _configd_broadcast_live()
 	{
 		for (unsigned i = 0; i < CONFIGD_POLL_ITERS && _ok; ++i) {
+			if (_cfgd_config.constructed()) {
+				_cfgd_config->update();
+				if (_cfgd_config->valid()) {
+					try {
+						Genode::Xml_node const root = _cfgd_config->xml();
+						if (root.has_type("config")) {
+							unsigned key_count { 0 };
+							root.for_each_sub_node("key", [&](Genode::Xml_node const &) {
+								++key_count;
+							});
+							if (key_count > 0) {
+								Genode::log("alpha-probe: (c) configd broadcast live (",
+								            key_count, " keys via configd_config)");
+								return true;
+							}
+						}
+					} catch (Genode::Xml_node::Invalid_syntax) { }
+				}
+			}
 			_cfg_broadcast.update();
 			if (!_cfg_broadcast.valid()) { _timer.msleep(100); continue; }
 			try {
@@ -319,6 +360,31 @@ struct Alpha_probe
 	{
 		Genode::log("alpha-probe: starting");
 
+		/* Read optional <config skip_lz="yes"/> (Phase 8 P2 disk-desktop
+		 * mode — the lz subsystem arrives in P5). Use .node() (not .xml())
+		 * because init delivers inline configs in HID format, which Xml_node
+		 * cannot parse but Node handles natively. */
+		Genode::Attached_rom_dataspace cfg { _env, "config" };
+		cfg.update();
+		if (cfg.valid()) {
+			_skip_lz = cfg.node().attribute_value("skip_lz", false);
+			if (_skip_lz)
+				Genode::log("alpha-probe: skip_lz=yes (criterion d deferred to P5)");
+		}
+
+		/*
+		 * In the disk-desktop scenario (_skip_lz), open the
+		 * "configd_config" ROM for the configd broadcast. This is
+		 * routed by the disk-desktop run script; the inline "config"
+		 * is intercepted by the sandbox (§configd_config workaround).
+		 * Genode 26.05 session denial calls sleep_forever(), so this
+		 * MUST only be opened when the routing is guaranteed.
+		 */
+		if (_skip_lz) {
+			_cfgd_config.construct(_env, "configd_config");
+			_cfgd_config->update();
+		}
+
 		/* Allocate the capture buffer (defines the outer panorama). */
 		_capture.buffer({ .px       = Capture::Area(SCREEN_W, SCREEN_H),
 		                  .mm       = Capture::Area(0, 0),
@@ -327,9 +393,9 @@ struct Alpha_probe
 		_cap_ds.construct(_env.rm(), _capture.dataspace());
 
 		/*
-		 * Step 1: kick off both setup writes in parallel — install
-		 * hello via pkgd (for criterion b) and enable leitzentrale via
-		 * configd (for criterion d). Then wait for both acks.
+		 * Step 1: install hello via pkgd (for criterion b). In the
+		 * full Alpha also enable leitzentrale via configd (for
+		 * criterion d) — skipped when _skip_lz is set.
 		 */
 		Genode::log("alpha-probe: [1] install hello via sponge_pkgd");
 		if (!_pkg_install_and_wait("hello")) {
@@ -350,19 +416,20 @@ struct Alpha_probe
 		}
 		Genode::log("alpha-probe: [1] install hello ok");
 
-		Genode::log("alpha-probe: [2] set leitzentrale.enabled=true");
-		if (!_cfg_set_and_wait("leitzentrale.enabled", "true")) {
-			_fail("configd did not accept set leitzentrale.enabled=true");
-			return;
+		if (!_skip_lz) {
+			Genode::log("alpha-probe: [2] set leitzentrale.enabled=true");
+			if (!_cfg_set_and_wait("leitzentrale.enabled", "true")) {
+				_fail("configd did not accept set leitzentrale.enabled=true");
+				return;
+			}
+			Genode::log("alpha-probe: [2] leitzentrale.enabled=true ack");
 		}
-		Genode::log("alpha-probe: [2] leitzentrale.enabled=true ack");
 
 		/*
-		 * Step 2: assert all four criteria, each in bounded iterations.
-		 * Order: (c) configd broadcast (fastest, also confirms configd
-		 * itself is up), then (a) panel pixel, then (b) launcher report
-		 * (depends on the install above), then (d) lz_viewer pixel
-		 * (slowest — lz subsystem boot + fader fade-in).
+		 * Step 2: assert criteria, each in bounded iterations.
+		 * Order: (c) configd broadcast (fastest), then (a) panel
+		 * pixel, then (b) launcher report. Criterion (d) lz_viewer
+		 * pixel is last and only checked when _skip_lz is false.
 		 */
 		Genode::log("alpha-probe: [3] assert (c) configd broadcast live");
 		if (!_configd_broadcast_live()) {
@@ -382,10 +449,12 @@ struct Alpha_probe
 			return;
 		}
 
-		Genode::log("alpha-probe: [6] assert (d) lz_viewer window visible");
-		if (!_lz_viewer_visible()) {
-			_fail("lz_viewer Leitzentrale window never appeared on screen");
-			return;
+		if (!_skip_lz) {
+			Genode::log("alpha-probe: [6] assert (d) lz_viewer window visible");
+			if (!_lz_viewer_visible()) {
+				_fail("lz_viewer Leitzentrale window never appeared on screen");
+				return;
+			}
 		}
 
 		Genode::log("alpha-probe: PASS");

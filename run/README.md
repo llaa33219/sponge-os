@@ -35,6 +35,29 @@ A scenario defines:
   but storage reads from a separate GPT disk attached via `-device nvme`).
   base-sel4 only.
 
+- `sponge-desktop-disk.run` — Phase 8 P2: the FULL Alpha desktop booted
+  from disk (docs/14 §4.4–§4.7). Tier 0 (image.elf) contains ONLY the
+  boot+storage chain (kernel/core/init/ld.lib.so/timer/report_rom/
+  platform/acpi/pci_decode/ahci/part_block/vfs+rump) plus nitpicker and
+  the display/input drivers sub-init (vesa_fb/ps2/usb_hid/event_filter —
+  justified as boot-critical + rescue-display, §4.5/§4.7). A nested
+  system init (binary `init` served from `/system/bin/init` via
+  `cached_fs_rom`, config from `/system/init/system.config`) hosts the
+  desktop stack: wm/window_layouter/decorator, sponge_configd,
+  sponge_themed, sponge_pkgd (with `binary_prefix="bin/"` + §4.6
+  ld.lib.so route in generated configs), pkg_runtime, sponge-de, and
+  alpha_probe. ALL their binaries and libs (Qt6, Mesa, libc, etc.) are
+  served from `/system/bin/` and `/system/lib/` via two cached_fs_rom
+  instances (rom_sys chroot `/system`, rom_lib chroot `/system/lib` for
+  `.lib.so` files). Every dynamically linked child carries the §4.6
+  route `ROM label_last="ld.lib.so" → parent`. ld.lib.so is Tier-0 only
+  (never in `/system/lib/`). `alpha_probe` (with `skip_lz="yes"`) asserts
+  themed panel pixel + launcher feed + configd broadcast from disk-served
+  binaries; lz_viewer (criterion d) is deferred to P5. The image.elf
+  size is printed and asserted ≤80 MiB. Failure channel:
+  `SPONGE_DISK_FAIL=1` stages a corrupted system.config for a bounded,
+  identified failure. base-sel4 only; `RUN_OPT="--include image/disk"`.
+
 - `sponge-minimal.run` — Phase 1 goal: minimum boot (skeleton).
   Kernel-agnostic; verified on `base-linux` (no QEMU) and `base-sel4`
   (QEMU, production target).
