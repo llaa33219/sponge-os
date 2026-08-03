@@ -149,6 +149,7 @@ All detailed documentation lives in [`docs/`](docs/).
 - [10 - Theme Format](docs/10-theme-format.md)
 - [11 - Development Environment & Reproducibility](docs/11-environment.md)
 - [13 - Installation and Alpha Quick Start](docs/13-installation.md)
+- [14 - Boot & Storage Architecture (Proposal)](docs/14-boot-storage-architecture.md)
 
 Contributors and AI agents must read [`AGENTS.md`](AGENTS.md) first.
 
