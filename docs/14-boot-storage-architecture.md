@@ -1,12 +1,21 @@
-# 14 - Boot & Storage Architecture (Proposal)
+# 14 - Boot & Storage Architecture
 
-> Status: **PROPOSAL — awaiting maintainer decision.** This document defines
-> how Sponge OS splits boot modules from disk-resident content, which
+> Status: **ADOPTED — Phase 8 delivered.** This document defines how
+> Sponge OS splits boot modules from disk-resident content, which
 > filesystems and partition layout it uses, and how user data persists.
 > It supersedes the Alpha stop-gap of packing everything into the boot
 > image (the `image.elf` single-module model), which hit the seL4 boot
 > chain's ~256 MiB boot-module ceiling (see `docs/09-roadmap.md` §9,
 > `docs/13-installation.md` §6, and `.omo/evidence/task-16-phase7-alpha.log`).
+>
+> Phase 8 (P1–P5) implemented this architecture; the per-phase outcome
+> is recorded in §12. P1–P3 are committed and ship on the product `.img`
+> (`./tool/dist`); P4's architecture is proven (falkon boots from disk)
+> with first paint blocked by a base-sel4 capability-space issue that is
+> documented as the next seL4-eng work item; P5 integrated the 4-partition
+> product media into `./tool/dist` and rewrote the install/limitation
+> docs. The proposal-only sections below are retained verbatim as the
+> design authority for the implementation.
 >
 > Every mechanism referenced here was verified against the vendored
 > Genode 26.05 tree (`genode/`). Citations point at exact paths.
@@ -443,3 +452,183 @@ docs/13 rewrite.
    report_rom policies) before P1 — an under-specified Tier 0 is
    exactly the class of bug AGENTS.md §4.2's scenario-gate rule exists
    to catch.
+
+---
+
+## 12. Phase 8 status (P1–P5)
+
+This section is the implementation outcome log for the P1–P5 rollout
+defined in §10. Each sub-section names the commit, the scenario that
+proves the claim, and the evidence file. The design authority for every
+claim is the section of this document the phase implements (cited
+per-phase). The Phase 8 plan tracker is
+`.omo/plans/phase8-storage.md`.
+
+### 12.1 P1 — storage-chain smoke — DELIVERED
+
+- **Commit:** `d3473f61f6`.
+- **Scenario:** `run/sponge-boot.run` (base-sel4 only,
+  `RUN_OPT='--include image/disk'`).
+- **Claim proven:** the Tier-0 disk-read chain
+  (§4.4 — `platform`/`acpi`/`pci_decode` → `ahci` (Block) → `part_block`
+  (Block/P3, pinned BY NUMBER) → `vfs` (`<rump fs="ext2fs"/>`) →
+  `cached_fs_rom` (chroot `/system`) → `boot_probe` reading
+  `/system/marker.txt` and logging `boot-probe: PASS`).
+- **`prepare_port dde_rump`:** succeeded; hash recorded in
+  `docs/11-environment.md` §5 (acceptance gate per §10).
+- **NVMe variant:** also proven (`SPONGE_BOOT_NVME=1`); AHCI remains the
+  QEMU default for the product media (q35 auto-attach).
+- **Failure path:** `SPONGE_DISK_FAIL=1` corrupts the marker; bounded
+  timeout, no silent hang (§7 risk 4).
+- **Evidence:** `.omo/evidence/p1-storage-boot.log`.
+
+### 12.2 P2 — desktop from disk — DELIVERED
+
+- **Commit:** `e7f8b9a458`.
+- **Scenario:** `run/sponge-desktop-disk.run` (base-sel4 only,
+  `RUN_OPT='--include image/disk'`).
+- **Claim proven (the §4.4 key properties):**
+  - The full Qt6 desktop boots with `image.elf` ≤ 12 MiB (well under
+    the §4.5 80 MiB target). The desktop stack (wm/decorator/
+    sponge_configd/sponge_themed/sponge_pkgd/sponge-de/alpha_probe) is
+    served entirely from `/system/bin` and `/system/lib` on the GENODE
+    ext2 partition via two `cached_fs_rom` instances (rom_sys chroot
+    `/system`, rom_lib chroot `/system/lib`).
+  - ld.lib.so is Tier-0 only (§4.6); every dynamically linked child
+    carries `<service ROM label_last="ld.lib.so"><parent/></service>`,
+    cascading up through the nested init.
+  - `alpha-probe: PASS` from a disk boot (themed panel pixel + launcher
+    feed + configd broadcast).
+- **Evidence:** `.omo/evidence/p2-desktop-disk.log`.
+
+### 12.3 P3 — persistence on SPONGE-DATA — DELIVERED
+
+- **Commits:** `tool/mkdata` partition creator `f25a81dcbe`; two-boot
+  persistence scenario `run/sponge-persist-disk.run` rides the same
+  commit.
+- **Scenario:** `run/sponge-persist-disk.run` (base-sel4 only,
+  `RUN_OPT='--include image/disk'`).
+- **Claim proven (§6 persistence model):** `sponge_pkgd`'s
+  installed-set store survives a reboot when backed by a writable ext2
+  on the SPONGE-DATA partition. `tool/mkdata` implements the §4.3
+  grow/repartition sequence; `vfs_data` (Vfs_block on P4 + rump ext2)
+  backs the store. The two-boot proof is adversarial: boot 1 installs
+  `hello` and writes the store; boot 2 boots a fresh QEMU against the
+  SAME image file and `sponge_pkgd` logs `restored N root(s) from
+  store` — a line that can ONLY appear if boot 1's write survived. A
+  host-side `e2cp` readback of `/store/installed.xml` off the image
+  corroborates the write independent of any guest log
+  (`misleading_success_output` defense).
+- **Documentation sync:** `docs/13-installation.md` §6 no longer lists
+  install-persistence as a limitation on the `.img` media (it is still
+  listed for the live/eval `.iso`, which is read-only by nature — §8).
+- **Evidence:** `.omo/evidence/p3-persistence.log`,
+  `.omo/evidence/p3-failure-channel.log` (the read-only failure path).
+
+### 12.4 P4 — Falkon from disk — ARCHITECTURE PROVEN; first paint blocked by seL4 CSpace
+
+- **Commits:** `run/sponge-falkon-disk.run` `bae5423d1b`; cspace
+  investigation reverted (no vendored-tree patch ships).
+- **Scenario:** `run/sponge-falkon-disk.run` (base-sel4 only,
+  `RUN_OPT='--include image/disk'`).
+- **Architectural claim PROVEN (§1 goal 2 / §4.4 key property
+  "Falkon boots"):** falkon's 509 MiB WebEngine payload boots FROM DISK
+  via `cached_fs_rom` — `image.elf` stays at ~12 MiB. falkon's process
+  starts, the dynamic linker resolves the 237 MiB
+  `libQt6WebEngineCore.lib.so` from disk via rom_pkg, and lwIP DHCPs to
+  10.0.2.15 over the `ipxe_nic` + `nic_uplink` stack. The Phase 7
+  boot-module ceiling (§2.1 — Bender relocation + seL4 untyped cnode)
+  is fully defeated: the payload never enters the boot chain.
+- **First paint BLOCKED — orthogonal to the boot/storage architecture.
+  The blocker is base-sel4's per-PD capability pools, not the disk
+  chain.** Three proven levels, each documented with seL4 kernel
+  diagnostics:
+  1. **Main CSpace (FIXABLE).** The default per-child-PD main CSpace
+     is `CSPACE_SIZE_LOG2 = 6+7 = 13` → 8192 slots. A multi-file
+     vendored base-sel4 patch (1ST/2ND raised to 9/9 → 262144 slots,
+     size-aware `Cnode` ctor backing >4 KiB CNodes from the existing
+     16 KiB untyped pool, `cnode_backing_alloc` per arch) was PROVEN
+     to launch falkon + DHCP from disk (run1 log). The patch was
+     REVERTED because shipping it depends on resolving (3) below.
+  2. **vm_space PTE pool (SECOND blocker).** Core's `Vm_space` keeps a
+     SEPARATE per-PD pool of PTE/page-frame selectors
+     (`NUM_VM_SEL_LOG2 = 7+5+3 = 15` → 32768 selectors per PD,
+     `platform.cc:672` "Physical memory per PD at most: 128M"). Each
+     mapped 4 KiB page consumes one selector from this pool; falkon's
+     ~100k WebEngine frames AND rom_pkg's ~130k cached payload frames
+     each independently exceed 32768. The main-CSpace fix does not
+     touch this pool — the prior diagnosis attributed the residual
+     "out of selector" to the main CSpace, but the message prefix
+     `flush page table entries - mapping cache full` shows it is
+     actually `vm_space`'s pool. Enlargement attempts (LEAF/3RD-log2
+     combinations targeting NUM_VM_SEL_LOG2=18) all broke boot via
+     `_cnodes` array heap starvation, silent core death, or bad 16K
+     untypeds; see §4 of the fix log.
+  3. **16K untyped pool carving regresses ahci/DMA (the reason both
+     (1) and (2) stay reverted).** The size-aware Cnode ctor backs
+     >4 KiB CNodes from `phys_alloc_16k()`. Sizing that pool large
+     enough for 262144-slot main CSpaces (and the would-be enlarged
+     vm_space) either starves init RAM (cached_fs_rom OOM at 512 MiB
+     reservation) or, at a proportional cap, regresses the non-falkon
+     storage scenarios — `ahci` starts but `part_block` never detects
+     the disk (sponge-boot canary hang). The pool population callback
+     already skips device ranges; the residual bug is subtle (likely
+     phys-address → 16K-untyped-slot coherence or DMA-pool interaction
+     under carving pressure) and needs a seL4-cap-level trace to pin
+     down. This is the **next seL4-eng work item.**
+- **The 8192/16384 caps-fquota numbers are doubly moot.** Phase 7's
+  `pkg/falkon/metadata.xml` `caps="4000"` and P4's raised
+  `caps="30000"`/`200000` experiments all fail identically because the
+  per-PD CSpace is fixed by the kernel, not the init `caps` quota.
+- **Evidence:** `.omo/evidence/p4-cspace-falkon.log` (the original
+  one-line-patch attempt that surfaced the single-page CNode backing
+  cap, with the regression-clean 16384 config);
+  `.omo/evidence/p4-cspace-fix.log` (the multi-file main-CSpace fix:
+  PROVEN to launch falkon + DHCP, then reverted because of (3));
+  `.omo/evidence/p4-falkon-disk.log` (the P4 architectural proof that
+  falkon boots from disk). All three logs are REQUIRED reading for the
+  seL4-eng work item above — they save the next iteration the ~2 dozen
+  build+boot cycles this session consumed.
+- **Documentation sync:** `docs/13-installation.md` §6 falkon entry
+  updated to reflect that the architecture works and first paint is
+  blocked by the cspace/vm_space chain (not by the boot-module
+  ceiling, which is defeated).
+
+### 12.5 P5 — media + docs — DELIVERED
+
+- **Commits:** not yet committed (the orchestrator commits per the
+  Phase 8 plan; this section records the implementation outcome).
+- **Implementation:**
+  - `tool/dist` rewritten: the default product media is the
+    4-partition `.img` (`run/sponge-desktop-disk` + `tool/mkdata` for
+    SPONGE-DATA P4); the `.iso` is the live/eval alpha boot-modules
+    media (§8). Control doors: `--no-data` (skip P4), `--data-size <N>`
+    (custom P4 size), and the standalone `tool/mkdata` for re-runs.
+  - `docs/13-installation.md` rewritten: install-persistence limitation
+    removed for the `.img` (kept for the `.iso`); falkon entry updated
+    (architecture works, first paint blocked by cspace/vm_space chain);
+    the 4-partition media + mkdata step documented in the install flow.
+  - `docs/08-development.md` §11 + §4 updated for the new dist flow
+    and the new run scenarios (`sponge-boot`, `sponge-desktop-disk`,
+    `sponge-persist-disk`, `sponge-falkon-disk`).
+- **Verification (acceptance gates):**
+  1. `./tool/dist` produces a 4-partition `.img` that boots to
+     `alpha-probe: PASS` (sgdisk -p + boot log captured in the
+     evidence).
+  2. `RUN_OPT='--include image/iso'` of `sponge-alpha` still boots to
+     PASS (live/eval mode).
+  3. `docs/13` no longer lists install-persistence as a limitation on
+     the `.img` and carries the updated falkon entry.
+  4. `docs/14` §12 (this section) records the Phase 8 outcome per
+     phase.
+- **Evidence:** `.omo/evidence/p5-media-docs.log`.
+
+### 12.6 Phase 8 summary table
+
+| Phase | Outcome | Commit | Evidence |
+|---|---|---|---|
+| P1 storage-chain smoke | ✅ DELIVERED | `d3473f61f6` | `.omo/evidence/p1-storage-boot.log` |
+| P2 desktop from disk | ✅ DELIVERED | `e7f8b9a458` | `.omo/evidence/p2-desktop-disk.log` |
+| P3 persistence on SPONGE-DATA | ✅ DELIVERED | `f25a81dcbe` | `.omo/evidence/p3-persistence.log` |
+| P4 Falkon from disk | 🟡 ARCHITECTURE PROVEN; first paint blocked by seL4 CSpace | `bae5423d1b` (cspace reverted) | `.omo/evidence/p4-cspace-falkon.log`, `.omo/evidence/p4-cspace-fix.log`, `.omo/evidence/p4-falkon-disk.log` |
+| P5 media + docs | ✅ DELIVERED (this phase) | (orchestrator commits) | `.omo/evidence/p5-media-docs.log` |
