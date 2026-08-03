@@ -63,6 +63,18 @@ int CommandRouter::dispatch(Args const &args)
 		LaunchCommand c { _env };
 		return c.execute(args);
 	}
+	if (Genode::strcmp(cmd, "shutdown") == 0 || Genode::strcmp(cmd, "reboot") == 0) {
+		PowerCommand c { _env };
+		return c.execute(args);
+	}
+	if (Genode::strcmp(cmd, "search") == 0) {
+		SearchCommand c { _env };
+		return c.execute(args);
+	}
+	if (Genode::strcmp(cmd, "update") == 0) {
+		UpdateCommand c { _env };
+		return c.execute(args);
+	}
 	if (Genode::strcmp(cmd, "list") == 0) {
 		ListCommand c { _env };
 		return c.execute(args);

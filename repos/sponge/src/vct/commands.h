@@ -246,4 +246,106 @@ class LaunchCommand : public Command
 		int _render_json(Genode::Xml_node const &result);
 };
 
+/*
+ * power — `vct shutdown` and `vct reboot` (Phase 7, docs/06-vct.md §4.7).
+ *
+ * INTERFACE FINDING (todo 17, recorded for reviewers): the task spec
+ * mentioned a "System session routed to the platform driver". Genode
+ * 26.05 has NO System RPC session. The verified power path is the
+ * `system` ROM report consumed by the `acpica` component
+ * (genode/repos/libports/src/app/acpica/os.cc:state_changed): a writer
+ * publishes `<system state="poweroff|reset"/>`; report_rom relays it as
+ * the `system` ROM to acpica; acpica calls AcpiEnterSleepState(5) (S5
+ * poweroff, QEMU exits) or AcpiReset() (FADT reset register, QEMU
+ * reboots). This is the exact path upstream Sculpt uses
+ * (genode/repos/gems/sculpt/option/acpi_support routes `rom system`
+ * into the acpica pkg). vct is the writer; acpica is the actor.
+ *
+ * The command publishes the `system` report (label "system") and
+ * waits a bounded time for the side effect (QEMU exit on shutdown,
+ * reboot banner on reboot). If the guest is still alive after the
+ * bound, the System consumer (acpica) is unavailable: vct prints a
+ * clear `service unavailable` error, exits non-zero, and the guest
+ * keeps running. The user can then take direct control via QEMU's
+ * monitor (`system_powerdown` / `system_reset`) — documented in the
+ * help text as the escape hatch (docs/06 §4.7).
+ *
+ * The audit line is printed BEFORE the report write (control
+ * philosophy). `--json` emits the structured status before the
+ * bounded wait too, because vct may not get to log anything after
+ * acpica acts on shutdown.
+ *
+ * Purely user-invoked (docs/06 §4.7): no automation, cron, or hook
+ * ever calls this command.
+ */
+class PowerCommand : public Command
+{
+	public:
+		explicit PowerCommand(Genode::Env &env) : _env(env) {}
+		/* name() is "power"; the router dispatches both "shutdown" and
+		 * "reboot" to this class, which inspects args.subcommand. */
+		char const *name()    const override { return "power"; }
+		char const *summary() const override { return "Shut down or reboot the system."; }
+		int execute(Args const &args) override;
+	private:
+		Genode::Env &_env;
+
+		void _print_help(Args const &args, char const *verb);
+};
+
+/*
+ * search — `vct search <term>` (Phase 7, docs/06-vct.md §4.2 + docs/12
+ * §5.4). Reads the on-image repository metadata directly (minimum
+ * privilege — no sponge_pkgd request needed): the `pkg_index.xml` ROM
+ * lists every staged `pkg_<name>.xml` ROM; vct opens each, matches the
+ * term against <name> and <description>, and prints one line per hit.
+ * Empty result is honest: "No matches." and exit 0. No network fetching
+ * (the on-image repo is fixed at build time, docs/12 §5.5).
+ */
+class SearchCommand : public Command
+{
+	public:
+		explicit SearchCommand(Genode::Env &env) : _env(env) {}
+		char const *name()    const override { return "search"; }
+		char const *summary() const override { return "Search the on-image package repository."; }
+		int execute(Args const &args) override;
+	private:
+		Genode::Env &_env;
+
+		void _print_help(Args const &args);
+};
+
+/*
+ * update — `vct update [pkg]` (Phase 7, docs/06-vct.md §4.2 + docs/12
+ * §9.2.2). Re-resolves the installed root set against the on-image
+ * repository metadata and reports version deltas honestly. Reads the
+ * `installed` broadcast ROM (sponge_pkgd's view of the installed set +
+ * their versions) and the `pkg_index.xml` / `pkg_<name>.xml` ROMs (the
+ * on-image repo view). Compares the two version strings by exact
+ * inequality (no ordering heuristics — docs/12 §9.2.2). No fetching, no
+ * auto-upgrade: the command never mutates the installed set or running
+ * state. With no package argument it checks every installed root; with
+ * a package argument it checks that one.
+ *
+ * On a single running Alpha image the installed version (pkgd's view,
+ * re-derived from the same on-image metadata) always equals the repo
+ * version, so every installed package reports "already current". A real
+ * delta only arises across an image rebuild where the repo metadata
+ * changes; that is documented in docs/12 §9.2.2 and exercised in the
+ * scenario by staging repo metadata whose version differs from the
+ * version the installed-set broadcast carries.
+ */
+class UpdateCommand : public Command
+{
+	public:
+		explicit UpdateCommand(Genode::Env &env) : _env(env) {}
+		char const *name()    const override { return "update"; }
+		char const *summary() const override { return "Report version deltas against the on-image repository."; }
+		int execute(Args const &args) override;
+	private:
+		Genode::Env &_env;
+
+		void _print_help(Args const &args);
+};
+
 }  /* namespace Sponge::Vct */

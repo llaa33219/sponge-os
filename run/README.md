@@ -294,6 +294,59 @@ A scenario defines:
   and the resolution path (disk-based payload). base-sel4 only. Bounded
   timeouts (900s probe + 180s GET check).
 
+- `sponge-power.run` — Phase 7 todo 17 (SUCCESS path): verifies
+  `vct shutdown` actually powers the guest off through the real ACPI
+  stack. There is NO `System` RPC session in Genode 26.05; the verified
+  power path is the `system` ROM report consumed by the `acpica`
+  component (`genode/repos/libports/src/app/acpica/os.cc`), the exact
+  route upstream Sculpt uses. vct publishes `<system state="poweroff"/>`
+  via a Report session; `report_rom` relays it as the `system` ROM;
+  acpica calls `AcpiEnterSleepState(5)` (S5 → QEMU exits). The flat
+  driver set (acpi/pci_decode/platform as top-level children, the
+  `libports/run/acpica.run` pattern) provides the Platform device acpica
+  needs. Verification (fail-loud): match the audit line
+  `vct: shutdown: requesting poweroff`, then a bounded `expect`
+  disambiguates — QEMU exit (`eof` = acpica acted = PASS) vs the
+  unavailable line / hard timeout (FAIL). base-sel4 only. Reboot
+  (`vct reboot`, state="reset") shares the same code path; change the
+  vct config arg to verify, optionally with `-no-reboot`.
+
+- `sponge-power-fail.run` — Phase 7 todo 17 (FAILURE channel): the
+  companion to `sponge-power.run`. Same vct code path WITHOUT acpica.
+  vct publishes the `system` report, runs its bounded 4s wait, observes
+  the guest is still alive, and logs `System service (acpica)
+  unavailable - guest did not power off within 4000ms` (audit line +
+  QEMU-monitor escape-hatch hint, `--json` emits structured status)
+  exit 1. The guest (init + report_rom + timer + vct) keeps running —
+  the control-philosophy door (AGENTS.md §1.1): never a silent hang or
+  a misleading success when the automation's backend is absent. Gates
+  on the unavailable line. base-sel4 only.
+
+- `sponge-pkg-meta.run` — Phase 7 todo 18: search/update assertion
+  matrix. vct is short-lived, so the `pkg_meta_probe` drives the SAME
+  ROM reads + comparisons that vct's `SearchCommand`/`UpdateCommand`
+  perform (pkg_index.xml + pkg_<name>.xml + the `installed` broadcast),
+  covering six steps in one boot: (1) install hello via sponge_pkgd,
+  (2) search "hello" → hit, (3) search "zzznomatch" → honest empty
+  result, (4) update hello → "already current" (broadcast == repo),
+  (5) update hello delta → "repo carries 1.0, installed 0.9 — effective
+  after next image build" (synthetic `installed_delta` broadcast with a
+  pinned old version, faithful to the cross-image-rebuild semantic of
+  docs/12 §9.2.2), (6) update nosuchpkg → "not installed" error
+  (non-zero path). Gates on `pkg-meta-probe: PASS`. Kernel-agnostic
+  (no GUI/drivers); runs on base-linux for speed.
+
+- `sponge-vct-search.run` — Phase 7 todo 18: proves the REAL vct
+  binary's `SearchCommand` works end-to-end (the probe mirrors vct's
+  logic; this scenario runs vct itself). Stages hello's metadata +
+  pkg_index.xml, boots vct with `search hello`, gates on the human
+  output line `hello  1.0  <description>`. Kernel-agnostic.
+
+- `sponge-vct-search-json.run` — Phase 7 todo 18: the `--json`
+  companion to `sponge-vct-search.run`. Same topology, vct config arg
+  `search hello --json`; gates on the structured JSON match line
+  (`"command":"search","status":"success","matches":[{"name":"hello",...}]`).
+
 ## Planned additions
 
 - The end-to-end HOST-injected usb-tablet click proof for

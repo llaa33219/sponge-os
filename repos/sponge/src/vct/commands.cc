@@ -51,6 +51,10 @@ int HelpCommand::execute(Args const &args)
 		Genode::log("  vct remove <pkg>          패키지 제거");
 		Genode::log("  vct launch <pkg>          설치된 패키지 시작");
 		Genode::log("  vct list                  설치된 패키지 목록");
+		Genode::log("  vct search <term>         이미지 내 패키지 저장소 검색");
+		Genode::log("  vct update [<pkg>]        설치된 패키지와 저장소 버전 비교");
+		Genode::log("  vct shutdown              시스템 종료 (ACPI poweroff)");
+		Genode::log("  vct reboot                시스템 재부팅 (ACPI reset)");
 		Genode::log("  vct config <key>          설정 값 조회");
 		Genode::log("  vct config <key> <value>  설정 값 변경");
 		Genode::log("  vct config list           전체 설정 키 목록");
@@ -69,6 +73,10 @@ int HelpCommand::execute(Args const &args)
 		Genode::log("  vct remove <pkg>          Remove an installed package");
 		Genode::log("  vct launch <pkg>          Start an installed package");
 		Genode::log("  vct list                  List installed packages");
+		Genode::log("  vct search <term>         Search the on-image package repository");
+		Genode::log("  vct update [<pkg>]        Report version deltas vs the on-image repo");
+		Genode::log("  vct shutdown              Shut down the system (ACPI poweroff)");
+		Genode::log("  vct reboot                Reboot the system (ACPI reset)");
 		Genode::log("  vct config <key>          Get a configuration value");
 		Genode::log("  vct config <key> <value>  Set a configuration value");
 		Genode::log("  vct config list           List all configuration keys");
@@ -78,7 +86,7 @@ int HelpCommand::execute(Args const &args)
 		Genode::log("Common flags: --explain, --manual, --json, --verbose, --lang ko");
 	}
 
-	Genode::warning("not implemented: full subcommand set (Phase 4+). status, version, help, component list, install (--explain/--manual/plain), remove, list, config, and theme apply work today.");
+	Genode::warning("not implemented: full subcommand set (Phase 4+). status, version, help, component list, install (--explain/--manual/plain), remove, launch, list, search, update, config, theme apply, leitzentrale, shutdown, and reboot work today.");
 	return 0;
 }
 
@@ -1502,4 +1510,486 @@ int LeitzentraleCommand::_run_sync_op(char const *verb, bool diff,
 		            ok ? "done" : "lz_watch did not answer");
 	}
 	return ok ? 0 : 1;
+}
+
+
+/* ===================== PowerCommand (Phase 7: shutdown / reboot) ===================== */
+
+/*
+ * Bounded wait (ms) for the power side effect after publishing the
+ * `system` report. On QEMU, acpica's AcpiEnterSleepState(5) /
+ * AcpiReset() take effect within milliseconds. The bound is generous
+ * enough to cover ACPI evaluation latency on real hardware too, and
+ * short enough that the failure-channel scenario fails loudly by
+ * timeout (the `hung_or_long_commands` adversarial class) rather than
+ * hanging the run.
+ */
+namespace { constexpr unsigned POWER_SIDE_EFFECT_BOUND_MS = 4000; }
+
+
+void PowerCommand::_print_help(Args const &args, char const *verb)
+{
+	bool const ko = (args.lang == "ko");
+
+	if (Genode::strcmp(verb, "reboot") == 0) {
+		if (ko) {
+			Genode::log("사용법: vct reboot [--json] [--help] [--lang ko]");
+			Genode::log("시스템을 재부팅합니다 (ACPI reset).");
+			Genode::log("");
+		} else {
+			Genode::log("Usage: vct reboot [--json] [--help] [--lang ko]");
+			Genode::log("Reboot the system (ACPI reset).");
+			Genode::log("");
+		}
+	} else {
+		if (ko) {
+			Genode::log("사용법: vct shutdown [--json] [--help] [--lang ko]");
+			Genode::log("시스템을 종료합니다 (ACPI S5 poweroff).");
+			Genode::log("");
+		} else {
+			Genode::log("Usage: vct shutdown [--json] [--help] [--lang ko]");
+			Genode::log("Shut down the system (ACPI S5 poweroff).");
+			Genode::log("");
+		}
+	}
+
+	if (ko) {
+		Genode::log("동작:");
+		Genode::log("  `system` 리포트를 발행하면 acpica 가 ACPI 전원 제어를 수행합니다.");
+		Genode::log("  시스템 소비자(acpica)가 없으면 명확한 오류로 끝나고 게스트는 계속 실행됩니다.");
+		Genode::log("");
+		Genode::log("수동 탈출구 (QEMU 모니터):");
+		Genode::log("  systemctl_powerdown 이 불가능할 때 - Ctrl-A x 또는 -qmp 로 QEMU 모니터에");
+		Genode::log("  접근한 뒤 system_powerdown (종료) / system_reset (재부팅) 을 직접 실행.");
+	} else {
+		Genode::log("Behavior:");
+		Genode::log("  Publishes the `system` report; acpica performs the ACPI power action.");
+		Genode::log("  If the System consumer (acpica) is unavailable, the command prints a");
+		Genode::log("  clear `service unavailable` error, exits non-zero, and the guest keeps running.");
+		Genode::log("");
+		Genode::log("Manual escape hatch (QEMU monitor):");
+		Genode::log("  If ACPI poweroff/reset is unreachable, enter the QEMU monitor with");
+		Genode::log("  Ctrl-A x (or connect via -qmp) and run system_powerdown (shutdown) /");
+		Genode::log("  system_reset (reboot) directly. Equivalent host-side flags:");
+		Genode::log("  qemu-system-x86_64 ... -action panic=shutdown -action reboot=shutdown.");
+	}
+}
+
+
+int PowerCommand::execute(Args const &args)
+{
+	char const *const verb = args.subcommand.string();
+	bool const reboot = (Genode::strcmp(verb, "reboot") == 0);
+	char const *const state = reboot ? "reset" : "poweroff";
+
+	char const *const pos = args.positional.string();
+	if (Genode::strcmp(pos, "--help") == 0 || Genode::strcmp(pos, "-h") == 0) {
+		_print_help(args, verb);
+		return 0;
+	}
+
+	/* Audit line BEFORE acting (docs/06-vct.md §4.7, control philosophy). */
+	Genode::log("vct: ", verb, ": requesting ", reboot ? "reset" : "poweroff");
+
+	/*
+	 * Publish the `system` report (label "system"). report_rom relays it
+	 * as the `system` ROM consumed by acpica. The reporter construction
+	 * opens a Report session; the scenario MUST route vct's "system"
+	 * Report to report_rom (the failure-channel scenario routes it to a
+	 * read-back ROM but starts no acpica — proving the unavailable path).
+	 */
+	Genode::Expanding_reporter system_report { _env, "system", "system" };
+	system_report.generate_xml([&] (Genode::Xml_generator &g) {
+		g.attribute("state", state);
+	});
+
+	/*
+	 * Emit --json BEFORE the bounded wait: on shutdown, acpica's
+	 * AcpiEnterSleepState(5) pulls QEMU out from under us and vct may
+	 * not get another scheduling slot to log.
+	 */
+	if (args.json) {
+		Genode::log("{\"command\":\"", verb, "\",\"state\":\"", state,
+		            "\",\"status\":\"requested\"}");
+	}
+
+	/*
+	 * Bounded wait for the side effect. If the guest is still alive
+	 * after the bound, the System consumer (acpica) is absent — fail
+	 * loudly with a clear, actionable error (the control-philosophy
+	 * escape hatch points the user at the QEMU monitor).
+	 */
+	Timer::Connection timer { _env };
+	for (unsigned ms = 0; ms < POWER_SIDE_EFFECT_BOUND_MS; ms += 200)
+		timer.msleep(200);
+
+	if (args.json) {
+		Genode::log("{\"command\":\"", verb, "\",\"state\":\"", state,
+		            "\",\"status\":\"error\","
+		            "\"error\":\"System service (acpica) unavailable - guest did not ",
+		            reboot ? "reset" : "power off",
+		            " within ", POWER_SIDE_EFFECT_BOUND_MS, "ms\"}");
+	} else {
+		Genode::log("vct: ", verb, ": System service (acpica) unavailable - ",
+		            "guest did not ", reboot ? "reset" : "power off", " within ",
+		            POWER_SIDE_EFFECT_BOUND_MS, "ms");
+		Genode::log("vct: ", verb, ": escape hatch - QEMU monitor: ",
+		            reboot ? "system_reset" : "system_powerdown",
+		            " (Ctrl-A x, or -qmp; see docs/13-installation.md).");
+	}
+	return 1;
+}
+
+
+/* ===================== SearchCommand (Phase 7: search) ===================== */
+
+void SearchCommand::_print_help(Args const &args)
+{
+	if (args.lang == "ko") {
+		Genode::log("사용법: vct search <검색어> [--json] [--help] [--lang ko]");
+		Genode::log("이미지 내 패키지 저장소에서 이름/설명이 일치하는 패키지를 찾습니다.");
+		Genode::log("");
+		Genode::log("결과가 없으면 'No matches.' 를 출력하고 종료 코드 0 으로 끝납니다 (오류 아님).");
+		Genode::log("저장소는 빌드 시점에 고정되므로 네트워크 가져오기는 수행하지 않습니다.");
+		return;
+	}
+
+	Genode::log("Usage: vct search <term> [--json] [--help] [--lang ko]");
+	Genode::log("Search the on-image package repository by name or description.");
+	Genode::log("");
+	Genode::log("An empty result prints 'No matches.' and exits 0 (never an error).");
+	Genode::log("No network fetching - the repository is fixed at image build time.");
+}
+
+
+namespace {
+
+/*
+ * Read the `pkg_index.xml` ROM and call `fn(name)` for every staged
+ * package name. Returns false if the index ROM is unavailable (the
+ * scenario forgot to stage it). Used by both SearchCommand and
+ * UpdateCommand so the two commands never disagree about which
+ * packages exist in the repo.
+ */
+template <typename FN>
+bool for_each_repo_pkg(Genode::Env &env, FN const &fn)
+{
+	Genode::Attached_rom_dataspace index { env, "pkg_index.xml" };
+	index.update();
+	if (!index.valid())
+		return false;
+
+	try {
+		Genode::Xml_node const root(index.local_addr<char>(), index.size());
+		if (!root.has_type("packages"))
+			return false;
+		root.for_each_sub_node("pkg", [&](Genode::Xml_node const &p) {
+			fn(p.attribute_value("name", Genode::String<64>()));
+		});
+		return true;
+	} catch (Genode::Xml_node::Invalid_syntax) {
+		return false;
+	}
+}
+
+
+/*
+ * Open the `pkg_<name>.xml` ROM and extract the <name>, <version>,
+ * <description> triple. Returns false if the ROM is missing or
+ * malformed. Mirrors sponge_pkgd's _load_package parse, minus the
+ * dependency/session walk (search/update need only the identity fields).
+ */
+struct Repo_pkg { Genode::String<64> name; Genode::String<32> version; Genode::String<192> description; };
+
+bool load_repo_pkg(Genode::Env &env, char const *name, Repo_pkg &out)
+{
+	Genode::String<96> const label("pkg_", name, ".xml");
+	try {
+		Genode::Attached_rom_dataspace rom { env, label.string() };
+		rom.update();
+		if (!rom.valid())
+			return false;
+		Genode::Xml_node const root(rom.local_addr<char>(), rom.size());
+		if (!root.has_type("package"))
+			return false;
+		bool ok { true };
+		root.with_sub_node("name", [&](Genode::Xml_node const &n) {
+			out.name = n.decoded_content<Genode::String<64>>(); },
+			[&] { ok = false; });
+		root.with_sub_node("version", [&](Genode::Xml_node const &n) {
+			out.version = n.decoded_content<Genode::String<32>>(); },
+			[&] { ok = false; });
+		root.with_sub_node("description", [&](Genode::Xml_node const &n) {
+			out.description = n.decoded_content<Genode::String<192>>(); },
+			[&] { ok = false; });
+		return ok;
+	}
+	catch (Genode::Rom_connection::Rom_connection_failed) { return false; }
+	catch (Genode::Xml_node::Invalid_syntax)             { return false; }
+}
+
+
+bool ci_contains(Genode::String<192> const &haystack, char const *needle)
+{
+	char const *h = haystack.string();
+	Genode::size_t const hlen = Genode::strlen(h);
+	Genode::size_t const nlen = Genode::strlen(needle);
+	if (nlen == 0 || nlen > hlen)
+		return nlen == 0;
+	for (Genode::size_t i = 0; i + nlen <= hlen; ++i) {
+		bool match { true };
+		for (Genode::size_t k = 0; k < nlen; ++k) {
+			char a = h[i + k];
+			char b = needle[k];
+			if (a >= 'A' && a <= 'Z') a = char(a - 'A' + 'a');
+			if (b >= 'A' && b <= 'Z') b = char(b - 'A' + 'a');
+			if (a != b) { match = false; break; }
+		}
+		if (match) return true;
+	}
+	return false;
+}
+
+}  /* namespace */
+
+
+int SearchCommand::execute(Args const &args)
+{
+	char const *const term = args.positional.string();
+
+	if (Genode::strcmp(term, "--help") == 0 || Genode::strcmp(term, "-h") == 0) {
+		_print_help(args);
+		return 0;
+	}
+	if (Genode::strcmp(term, "") == 0) {
+		Genode::warning("vct: search requires a term");
+		_print_help(args);
+		return 1;
+	}
+
+	unsigned count { 0 };
+	char json_buf[768] { };
+	Genode::size_t jpos { 0 };
+	if (args.json) { json_buf[jpos++] = '['; }
+
+	bool index_ok = for_each_repo_pkg(_env, [&](Genode::String<64> const &name) {
+		Repo_pkg p { };
+		if (!load_repo_pkg(_env, name.string(), p))
+			return;
+		if (!ci_contains(Genode::String<192>(p.name), term) &&
+		    !ci_contains(p.description, term))
+			return;
+
+		++count;
+		if (args.json) {
+			if (count > 1 && jpos + 2 < sizeof(json_buf)) {
+				json_buf[jpos++] = ','; json_buf[jpos++] = ' ';
+			}
+			if (jpos + 2 < sizeof(json_buf)) json_buf[jpos++] = '{';
+			const char *k = "\"name\":\"";
+			while (*k && jpos + 1 < sizeof(json_buf)) json_buf[jpos++] = *k++;
+			for (char const *s = p.name.string(); *s && jpos + 1 < sizeof(json_buf); ++s) json_buf[jpos++] = *s;
+			k = "\",\"version\":\"";
+			while (*k && jpos + 1 < sizeof(json_buf)) json_buf[jpos++] = *k++;
+			for (char const *s = p.version.string(); *s && jpos + 1 < sizeof(json_buf); ++s) json_buf[jpos++] = *s;
+			k = "\",\"description\":\"";
+			while (*k && jpos + 1 < sizeof(json_buf)) json_buf[jpos++] = *k++;
+			for (char const *s = p.description.string(); *s && jpos + 1 < sizeof(json_buf); ++s) json_buf[jpos++] = *s;
+			if (jpos + 2 < sizeof(json_buf)) { json_buf[jpos++] = '"'; json_buf[jpos++] = '}'; }
+		} else {
+			Genode::log(p.name, "  ", p.version, "  ", p.description);
+		}
+	});
+
+	if (!index_ok) {
+		if (args.json)
+			Genode::log("{\"command\":\"search\",\"term\":\"", term,
+			            "\",\"status\":\"error\","
+			            "\"error\":\"pkg_index.xml unavailable\"}");
+		else
+			Genode::log("search: pkg_index.xml unavailable (no repository staged)");
+		return 1;
+	}
+
+	if (count == 0) {
+		if (args.json) {
+			Genode::log("{\"command\":\"search\",\"term\":\"", term,
+			            "\",\"status\":\"success\",\"matches\":[]}");
+		} else {
+			Genode::log("No matches.");
+		}
+		return 0;
+	}
+
+	if (args.json) {
+		if (jpos + 1 < sizeof(json_buf)) json_buf[jpos++] = ']';
+		json_buf[jpos] = 0;
+		Genode::log("{\"command\":\"search\",\"term\":\"", term,
+		            "\",\"status\":\"success\",\"matches\":",
+		            Genode::String<768>(json_buf), "}");
+	}
+	return 0;
+}
+
+
+/* ===================== UpdateCommand (Phase 7: update) ===================== */
+
+void UpdateCommand::_print_help(Args const &args)
+{
+	if (args.lang == "ko") {
+		Genode::log("사용법: vct update [<패키지>] [--json] [--help] [--lang ko]");
+		Genode::log("설치된 패키지를 이미지 내 저장소 메타데이터와 비교해 버전 차이를 보고합니다.");
+		Genode::log("");
+		Genode::log("  vct update            모든 설치된 루트 패키지를 검사");
+		Genode::log("  vct update <패키지>   해당 패키지만 검사");
+		Genode::log("");
+		Genode::log("가져오기나 자동 갱신은 수행하지 않습니다 (docs/12 §9.2.2).");
+		Genode::log("설치된 패키지 목록은 `vct list` 로, 메타데이터는 pkg/<이름>/metadata.xml 로 직접 확인.");
+		return;
+	}
+
+	Genode::log("Usage: vct update [<package>] [--json] [--help] [--lang ko]");
+	Genode::log("Report version deltas between installed packages and the on-image repo.");
+	Genode::log("");
+	Genode::log("  vct update            Check every installed root package");
+	Genode::log("  vct update <package>  Check just that package");
+	Genode::log("");
+	Genode::log("No fetching, no auto-upgrade (docs/12 §9.2.2). The repo is fixed at image");
+	Genode::log("build time; a newer repo version becomes effective only after a rebuild.");
+	Genode::log("Inspect the installed set with `vct list`; read a package's metadata");
+	Genode::log("directly at pkg/<name>/metadata.xml (docs/12 §9.3, no hidden state).");
+}
+
+
+int UpdateCommand::execute(Args const &args)
+{
+	char const *const filter = args.positional.string();
+
+	if (Genode::strcmp(filter, "--help") == 0 || Genode::strcmp(filter, "-h") == 0) {
+		_print_help(args);
+		return 0;
+	}
+
+	/*
+	 * The installed set + installed versions come from sponge_pkgd's
+	 * `installed` broadcast ROM (the same ROM the launcher reads). vct
+	 * opens it directly — minimum privilege, no pkgd request round-trip.
+	 */
+	Genode::Attached_rom_dataspace installed { _env, "installed" };
+	Timer::Connection timer { _env };
+	for (unsigned i = 0; i < 20; ++i) {
+		installed.update();
+		if (installed.valid()) break;
+		timer.msleep(100);
+	}
+	if (!installed.valid()) {
+		if (args.json)
+			Genode::log("{\"command\":\"update\",\"status\":\"error\","
+			            "\"error\":\"installed broadcast unavailable (sponge_pkgd absent)\"}");
+		else
+			Genode::log("update: installed broadcast unavailable (sponge_pkgd absent)");
+		return 1;
+	}
+
+	unsigned checked   { 0 };
+	unsigned deltas    { 0 };
+	bool   filter_miss { false };
+
+	char json_buf[1024] { };
+	Genode::size_t jpos { 0 };
+	if (args.json) { json_buf[jpos++] = '['; }
+
+	try {
+		Genode::Xml_node const root(installed.local_addr<char>(), installed.size());
+
+		root.with_optional_sub_node("packages",
+			[&](Genode::Xml_node const &pkgs) {
+				pkgs.for_each_sub_node("package", [&](Genode::Xml_node const &p) {
+					Genode::String<64> const iname =
+						p.attribute_value("name", Genode::String<64>());
+
+					if (Genode::strcmp(filter, "") != 0 &&
+					    iname != Genode::String<64>(filter))
+						return;
+
+					++checked;
+
+					Genode::String<32> const installed_ver =
+						p.attribute_value("version", Genode::String<32>());
+
+					Repo_pkg repo { };
+					if (!load_repo_pkg(_env, iname.string(), repo)) {
+						if (args.json) {
+							if (checked > 1 && jpos + 2 < sizeof(json_buf)) {
+								json_buf[jpos++] = ','; json_buf[jpos++] = ' ';
+							}
+							Genode::String<256> row(
+								"{\"name\":\"", iname,
+								"\",\"status\":\"error\","
+								"\"error\":\"repo metadata missing\"}");
+							for (char const *s = row.string(); *s && jpos + 1 < sizeof(json_buf); ++s)
+								json_buf[jpos++] = *s;
+						} else {
+							Genode::log("update: error: ", iname,
+							            " - repo metadata missing");
+						}
+						return;
+					}
+
+					bool const current =
+						(installed_ver == repo.version);
+
+					if (args.json) {
+						if (checked > 1 && jpos + 2 < sizeof(json_buf)) {
+							json_buf[jpos++] = ','; json_buf[jpos++] = ' ';
+						}
+						Genode::String<384> row(
+							"{\"name\":\"", iname,
+							"\",\"installed_version\":\"", installed_ver,
+							"\",\"repo_version\":\"", repo.version,
+							"\",\"status\":\"", current ? "current" : "delta\"}");
+						for (char const *s = row.string(); *s && jpos + 1 < sizeof(json_buf); ++s)
+							json_buf[jpos++] = *s;
+					} else if (current) {
+						Genode::log("already current: ", iname, " ", installed_ver);
+					} else {
+						Genode::log("repo carries ", repo.version, ", installed ",
+						            installed_ver, " — effective after next image build");
+					}
+
+					if (!current) ++deltas;
+				});
+			});
+	} catch (Genode::Xml_node::Invalid_syntax) {
+		if (args.json)
+			Genode::log("{\"command\":\"update\",\"status\":\"error\","
+			            "\"error\":\"installed broadcast malformed\"}");
+		else
+			Genode::log("update: installed broadcast malformed");
+		return 1;
+	}
+
+	if (Genode::strcmp(filter, "") != 0 && checked == 0)
+		filter_miss = true;
+
+	if (filter_miss) {
+		if (args.json)
+			Genode::log("{\"command\":\"update\",\"package\":\"", filter,
+			            "\",\"status\":\"error\","
+			            "\"error\":\"not installed (use vct list to inspect)\"}");
+		else
+			Genode::log("update: error: ", filter,
+			            " is not installed (use vct list to inspect)");
+		return 1;
+	}
+
+	if (args.json) {
+		if (jpos + 1 < sizeof(json_buf)) json_buf[jpos++] = ']';
+		json_buf[jpos] = 0;
+		Genode::log("{\"command\":\"update\",\"status\":\"success\","
+		            "\"checked\":", checked,
+		            ",\"deltas\":", deltas,
+		            ",\"results\":", Genode::String<1024>(json_buf), "}");
+	}
+	return 0;
 }

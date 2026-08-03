@@ -1,0 +1,76 @@
+#
+# \brief  Sponge OS vct search --json end-to-end scenario (Phase 7, todo 18)
+# \author Sponge OS contributors
+# \date   2026
+#
+# Proves the REAL vct binary's SearchCommand --json output works
+# end-to-end. Companion to run/sponge-vct-search.run (human output).
+#
+# `vct search hello` reads pkg_index.xml + pkg_hello.xml directly and
+# prints the match. The scenario stages hello's metadata + the index,
+# boots vct with args "search hello", and gates on vct's human output
+# line carrying hello's name + version. The --json variant is exercised
+# by changing the config arg (the same scenario structure).
+#
+# Kernel-agnostic (no GUI, no drivers); runs on base-linux for speed.
+#
+
+build { core lib/ld init vct }
+
+create_boot_directory
+
+install_config {
+config
++ parent-provides
+  + service LOG
+  + service PD
+  + service CPU
+  + service ROM
+
++ default-route
+  + any-service
+    + parent
+    + any-child
++ default | caps: 200 | ram: 8M
+
++ start vct
+  + config
+    + args
+      + arg search
+      + arg hello
+      + arg --json
+- }
+
+#
+# Stage package metadata + the derived index (only metadata is needed
+# for search — no payload binary, no pkgd).
+#
+set staged_pkgs { hello ncurses nano }
+foreach pkg $staged_pkgs {
+	set src "${genode_dir}/../pkg/$pkg/metadata.xml"
+	set dst "[run_dir]/genode/pkg_$pkg.xml"
+	if {![file exists $src]} {
+		error "package metadata not found: $src"
+	}
+	exec cp -L $src $dst
+}
+
+set index_fh [open "[run_dir]/genode/pkg_index.xml" w]
+puts $index_fh "<packages>"
+foreach pkg $staged_pkgs {
+	puts $index_fh "  <pkg name=\"$pkg\"/>"
+}
+puts $index_fh "</packages>"
+close $index_fh
+
+build_boot_image [build_artifacts]
+
+append qemu_args " -nographic -m 512M "
+
+#
+# Verification: vct's JSON search output emits the structured match.
+# The gate matches a unique substring of the JSON line (the TCL
+# brace-delimited arg means literal {/} in the regex must be escaped
+# or avoided; matching on "name"" and "matches" is unambiguous).
+#
+run_genode_until {.*"command":"search".*"status":"success".*"name":"hello".*} 30

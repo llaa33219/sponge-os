@@ -1,0 +1,108 @@
+#
+# \brief  Sponge OS power-control scenario (Phase 7, todo 17) - FAILURE channel
+# \author Sponge OS contributors
+# \date   2026
+#
+# Proves the failure path of `vct shutdown` (docs/06-vct.md §4.7): when
+# the System consumer (acpica) is NOT present in the scenario, vct must
+# (a) print a clear "service unavailable" error, (b) exit non-zero, and
+# (c) leave the guest running. Same PowerCommand code path as the
+# success scenario (run/sponge-power.run), just without the acpica
+# start node and without the Platform route that would reach it.
+#
+# vct's bounded wait (POWER_SIDE_EFFECT_BOUND_MS = 4000 in commands.cc)
+# observes the guest is still alive after 4s and logs:
+#   "vct: shutdown: System service (acpica) unavailable - guest did not
+#    power off within 4000ms"
+# followed by the QEMU-monitor escape-hatch hint, then exits 1. The
+# guest (init + report_rom + timer + vct) keeps running, so the
+# scenario's run_genode_until matches the unavailable line within the
+# bound and the QEMU process is still alive at match time (verifying
+# "guest keeps running").
+#
+# This is the control-philosophy door (AGENTS.md §1.1): the user is
+# never left with a silent hang or a misleading success when the
+# automation's backend is absent.
+#
+# Topology: same as sponge-power.run MINUS the drivers sub-init and
+# acpica. vct's "system" Report routes to report_rom, which relays it
+# as the "system" ROM, but no consumer reads it - so nothing acts and
+# vct's bounded wait fires the unavailable error.
+#
+
+assert {[have_spec sel4]} \
+	"sponge-power-fail requires KERNEL=sel4 (BOARD=pc)."
+
+proc ensure_plugin_loaded { name } {
+	if {![have_include $name]} {
+		set path [genode_dir]/tool/run/$name
+		puts "sourcing $path (missing from RUN_OPT, restored by run script)"
+		source $path
+		global include_list
+		lappend include_list $name
+	}
+}
+
+ensure_plugin_loaded boot_dir/sel4
+ensure_plugin_loaded power_on/qemu
+ensure_plugin_loaded log/qemu
+
+build { core lib/ld init timer server/report_rom vct }
+
+create_boot_directory
+
+exec mkdir -p bin
+
+install_config {
+config
++ parent-provides
+  + service ROM
+  + service PD
+  + service RM
+  + service CPU
+  + service LOG
+  + service IO_MEM
+  + service IO_PORT
+  + service IRQ
+
++ default | caps: 200 | ram: 4M
++ default-route
+  + any-service
+    + parent
+    + any-child
+
++ start timer
+  + provides | + service Timer
+
++ start report_rom | caps: 200 | ram: 8M
+  + provides
+    + service Report
+    + service ROM
+  + config | verbose: no
+    + policy | label_suffix: system | report: vct -> system
+
++ start vct | caps: 200 | ram: 8M
+  + config
+    + args
+      + arg shutdown
+      + arg --json
+  + route
+    + service Timer  | + child timer
+    + service Report | label: system | + child report_rom
+    + any-service
+      + parent
+      + any-child
+- }
+
+build_boot_image [build_artifacts]
+
+append qemu_args " -nographic -m 512M "
+
+#
+# Verification: the audit line appears first, then vct's bounded wait
+# fires and the "service unavailable" line appears. The --json variant
+# emits the structured error. The guest is still alive at match time
+# (vct exits 1 but init keeps running). Bounded timeout = fail-loud
+# gate (hung_or_long_commands).
+#
+run_genode_until {.*System service \(acpica\) unavailable.*} 30
