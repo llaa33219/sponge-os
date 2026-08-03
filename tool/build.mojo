@@ -59,6 +59,7 @@ def port_list() -> List[String]:
         "jitterentropy",
         "dde_ipxe",
         "lwip",
+        "dde_rump",
         "bash",
         "vim",
         "ncurses",
@@ -203,6 +204,10 @@ def ensure_build_conf(build_conf: String) raises -> Bool:
         + "# networking scenarios (run/sponge-net-probe.run). Harmless on\n"
         + "# base-linux (REQUIRES=x86 target built only on demand).\n"
         + "REPOSITORIES += $(GENODE_DIR)/repos/dde_ipxe\n"
+        + "# dde_rump: NetBSD rump kernel for ext2/ffs/msdos/cd9660/ntfs/udf\n"
+        + "# filesystems via the vfs_rump plugin. Used by the base-sel4 storage\n"
+        + "# chain (run/sponge-boot.run, docs/14 §5). Harmless on base-linux.\n"
+        + "REPOSITORIES += $(GENODE_DIR)/repos/dde_rump\n"
         + "MAKE += -j"
         + String(cpu_count)
         + "\n"
