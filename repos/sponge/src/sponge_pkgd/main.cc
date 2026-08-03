@@ -52,6 +52,13 @@
  * carries a <vfs> node (see docs/12-package-format.md §13). With no
  * such config (the Phase 4 scenarios) behaviour is byte-identical to
  * the in-memory daemon.
+ *
+ * Disk-served mode (Phase 8 P2, docs/14-boot-storage-architecture.md):
+ * when <config> carries binary_prefix="bin/", generated <start> nodes
+ * emit <binary name="bin/<binary>"/> so cached_fs_rom (chroot /system)
+ * resolves them at /system/bin/<binary>. Without the attribute the
+ * boot-module behaviour (<binary> = bare name) is unchanged.
+ * Every generated child also gets the §4.6 ld.lib.so route uniformly.
  */
 
 #include <base/attached_rom_dataspace.h>
@@ -325,6 +332,15 @@ class Sponge::Pkgd::Main
 		Genode::Attached_rom_dataspace         _config_rom { _env, "config" };
 		Genode::Heap                           _heap       { _env.ram(), _env.rm() };
 		Genode::Constructible<Genode::Vfs::Simple_env> _vfs_env { };
+
+		/*
+		 * Disk-served binary path prefix (Phase 8 P2, docs/14 §4.4/§4.6).
+		 * When non-empty (e.g. "bin/"), generated <binary> names are
+		 * prefixed so cached_fs_rom (chroot /system) resolves them at
+		 * /system/bin/<binary>. Empty in the boot-module model — the
+		 * binary name is the bare module name (backward-compatible).
+		 */
+		Genode::String<32> _binary_prefix { };
 
 		/* ---- request handling ---- */
 		void _handle_request();
@@ -1207,14 +1223,19 @@ void Sponge::Pkgd::Main::_generate_runtime_config()
 				g.attribute("caps", c.caps);
 
 				/*
-				 * (a) <binary> when the component binary differs from
-				 * the package name (docs/12 §4.1: binary defaults to
-				 * name). Omitting it keeps the legacy single-name form.
+				 * (a) <binary> when the effective binary path differs
+				 * from the package name (docs/12 §4.1). In disk-served
+				 * mode (binary_prefix set, docs/14 §4.4) the path is
+				 * "bin/<binary>" so cached_fs_rom resolves it from
+				 * /system/bin/. In boot-module mode the prefix is empty
+				 * and the legacy single-name form is preserved.
 				 */
-				if (Genode::strcmp(c.binary.string(),
+				Genode::String<96> const bin_path(_binary_prefix,
+				                                  c.binary);
+				if (Genode::strcmp(bin_path.string(),
 				                   c.name.string()) != 0) {
 					g.node("binary", [&] {
-						g.attribute("name", c.binary);
+						g.attribute("name", bin_path);
 					});
 				}
 
@@ -1232,8 +1253,23 @@ void Sponge::Pkgd::Main::_generate_runtime_config()
 				if (Genode::strcmp(c.config_xml.string(), "") != 0)
 					g.append(c.config_xml.string());
 
-				g.node("route", [&] {
-					for (unsigned s = 0; s < c.num_sessions; ++s) {
+			g.node("route", [&] {
+				/*
+				 * §4.6 ld.lib.so rule (docs/14-boot-storage-architecture.md):
+				 * every dynamically linked child routes ld.lib.so to
+				 * <parent/>, cascading up to core's boot-module ROM.
+				 * Harmless in boot-module mode (same target); load-
+				 * bearing in disk-served mode (prevents a chicken-and-
+				 * egg: the component that loads a dynamically linked
+				 * binary must itself already be loaded).
+				 */
+				g.node("service", [&] {
+					g.attribute("name", "ROM");
+					g.attribute("label_last", "ld.lib.so");
+					g.node("parent");
+				});
+
+				for (unsigned s = 0; s < c.num_sessions; ++s) {
 						Package::Session const &session = c.sessions[s];
 
 						bool const parent_route =
@@ -1758,6 +1794,15 @@ Sponge::Pkgd::Main::Main(Genode::Env &env) : _env(env)
 	Genode::log("sponge_pkgd: ready");
 
 	_load_index();
+
+	_config_rom.update();
+	if (_config_rom.valid()) {
+		_binary_prefix = _config_rom.node().attribute_value(
+		    "binary_prefix", Genode::String<32>());
+		Genode::log("sponge_pkgd: binary_prefix='", _binary_prefix, "'");
+	} else {
+		Genode::warning("sponge_pkgd: config ROM not valid at construct");
+	}
 
 	/* Optional persistent store: activate it if <config> declares a
 	 * <vfs>, then reload the previously-installed root set (if any). In

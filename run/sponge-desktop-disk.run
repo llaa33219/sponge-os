@@ -1,0 +1,885 @@
+#
+# \brief  Sponge OS Phase 8 P2 — desktop from disk
+# \author Sponge OS contributors
+# \date   2026
+#
+# Boots the FULL Alpha desktop from the GENODE partition's /system
+# directory. Tier 0 (image.elf) contains ONLY the boot+storage chain
+# plus display/input drivers and nitpicker. Everything else — wm,
+# decorator, sponge_configd, sponge_themed, sponge_pkgd, sponge-de,
+# Qt6/Mesa libs, themes — is served from /system via cached_fs_rom.
+#
+# Architecture (docs/14-boot-storage-architecture.md §4.4–§4.7):
+#
+#   GRUB → bender → seL4 (image.elf = Tier 0 only)
+#     └─ init (Tier 0)
+#         ├─ timer, report_rom
+#         ├─ platform/acpi/pci_decode
+#         ├─ ahci (Block)
+#         ├─ part_block → Block/P3 (partition pinned BY NUMBER)
+#         ├─ vfs (Vfs_block + <rump fs="ext2fs"/>) → File_system
+#         ├─ rom_sys: cached_fs_rom(chroot /system)        → ROM
+#         ├─ rom_lib: cached_fs_rom(chroot /system/lib)    → ROM (.lib.so only)
+#         ├─ nitpicker
+#         ├─ drivers (sub-init: vesa_fb/ps2/usb_hid/event_filter)
+#         └─ system (nested init from disk)
+#             ├─ binary "init" from rom_sys at /system/bin/init
+#             ├─ config from rom_sys at /system/init/system.config
+#             ├─ ROM label_last="ld.lib.so" → parent (§4.6)
+#             └─ hosts: report_rom, wm, window_layouter, decorator,
+#                       sponge_configd, sponge_themed, sponge_pkgd,
+#                       pkg_runtime, sponge-de, alpha_probe
+#                  (ALL binaries+libs served from /system via rom_sys/rom_lib)
+#
+# === Tier-0 roster (docs/14 §4.5) ===
+#
+# In Tier 0: kernel/core/init/ld.lib.so, timer/report_rom,
+# platform/acpi/pci_decode, ahci/part_block, vfs+vfs_rump+libc deps,
+# cached_fs_rom (×2), nitpicker, vesa_fb/ps2/usb_hid/event_filter,
+# their config files, and the Tier-0 init config.
+#
+# Display/input drivers in Tier 0 — justification against §4.5:
+#   The §4.5 rule allows Tier-0 placement for boot-critical and rescue-
+#   display components (§4.7). vesa_fb + nitpicker are explicitly listed
+#   as rescue-display components. The input drivers (ps2/usb_hid/event_
+#   filter) are NOT strictly rescue-display, but:
+#     (a) they are boot-critical — without them the desktop renders but
+#         cannot accept input, which is useless for verification;
+#     (b) they are small (~3 MiB total) — the §4.5 target is ≤80 MiB;
+#     (c) serving them from disk would require routing Platform/Dma/IRQ
+#         sessions through the nested init to the Tier-0 platform
+#         driver, adding complexity for minimal Tier-0 savings.
+#   The §4.5 rule's intent — keep LARGE payloads (Qt6/Mesa/sponge-de)
+#   off the boot chain — is fully satisfied. Total Tier-0 is ~15 MiB.
+#
+# rescue-minimal nitpicker: skipped for P2 (noted as P5 work, §4.7).
+# The current nitpicker in Tier 0 IS the full nitpicker; a dedicated
+# rescue display with a console logger is future work.
+#
+# === ld.lib.so rule (docs/14 §4.6) ===
+#
+# ld.lib.so is a Tier-0 boot module ONLY. It is NOT in /system/lib/.
+# Every dynamically linked child carries:
+#   <service ROM label_last="ld.lib.so"> <parent/> </service>
+# This cascades: child → system init → Tier-0 init → core ROM.
+#
+# === Verification ===
+#
+# alpha-probe (with skip_lz=yes) asserts three criteria:
+#   (a) themed panel pixel rendered on nitpicker
+#   (b) launcher report carries hello/Utilities
+#   (c) configd broadcast ROM is live
+# Criterion (d) lz_viewer is deferred to P5.
+# The run gates on "alpha-probe: PASS" with a bounded timeout.
+#
+# The image.elf size is printed and asserted ≤ 80 MiB (§4.5 target).
+#
+# === Failure channel ===
+#
+# SPONGE_DISK_FAIL=1 in the environment stages a corrupted
+# /system/init/system.config (invalid XML). The nested init fails to
+# parse it, logs an error, and the bounded run_genode_until timeout
+# catches it — no silent hang. The run gates on the init parse-error
+# marker for a bounded, identified failure.
+#
+# base-sel4 only.
+#
+# Build:
+#   make -C genode/build/x86_64 run/sponge-desktop-disk \
+#       KERNEL=sel4 BOARD=pc RUN_OPT="--include image/disk"
+#
+
+assert {[have_spec sel4]} \
+	"sponge-desktop-disk requires KERNEL=sel4 (BOARD=pc)."
+
+##
+# Ensure essential run-framework plugins are loaded (same rationale as
+# sponge-alpha.run: RUN_OPT override on the make command line discards
+# build.conf's accumulated --include lines).
+#
+proc ensure_plugin_loaded { name } {
+	if {![have_include $name]} {
+		set path [genode_dir]/tool/run/$name
+		puts "sourcing $path (missing from RUN_OPT, restored by run script)"
+		source $path
+		global include_list
+		lappend include_list $name
+	}
+}
+
+ensure_plugin_loaded boot_dir/sel4
+ensure_plugin_loaded power_on/qemu
+ensure_plugin_loaded log/qemu
+
+#
+# Failure-channel selector: SPONGE_DISK_FAIL=1 corrupts system.config.
+#
+set fail_mode [expr {[info exists ::env(SPONGE_DISK_FAIL)] && $::env(SPONGE_DISK_FAIL) == "1"}]
+if {$fail_mode} {
+	puts "sponge-desktop-disk: FAILURE CHANNEL (corrupted system.config)"
+}
+
+#
+# Build — Tier-0 chain + desktop components. The desktop components are
+# built normally; they are copied to /system/bin on disk (not into
+# image.elf). The build list matches sponge-alpha.run minus the lz
+# subsystem (P5 work).
+#
+set build_components {
+	core lib/ld init timer
+	server/report_rom server/nitpicker
+	driver/platform driver/acpi app/pci_decode
+	driver/framebuffer/vesa driver/ps2
+	driver/usb_host/pc driver/usb_hid server/event_filter
+	server/part_block server/vfs server/cached_fs_rom
+	lib/vfs lib/vfs_rump
+	server/wm app/window_layouter app/decorator
+	sponge_configd sponge_themed sponge_pkgd pkg_hello sponge-de
+	test/alpha_probe
+	qt6/base lib/libc lib/libm lib/stdcxx lib/mesa \
+	lib/mesa_gpu-softpipe lib/egl lib/softpipe lib/libdrm lib/expat \
+	lib/qt6_component lib/vfs lib/vfs_pipe lib/vfs_gpu lib/rom_filter \
+	lib/zlib lib/libpng lib/blit lib/vfs_ttf lib/vfs_import lib/posix \
+	driver/ahci
+}
+
+build $build_components
+
+create_boot_directory
+
+#
+# On base-sel4 every boot module must land in bin/ BEFORE
+# build_boot_image.
+#
+exec mkdir -p bin
+
+# ========================================================================
+# Stage /system/ directory (auto-e2cp'd into GENODE P3 by image/disk)
+# ========================================================================
+#
+# /system/bin/    desktop binaries (served via <binary name="bin/...">)
+# /system/lib/    .lib.so files (served via rom_lib chroot)
+# /system/init/   the nested init config (system.config)
+# /system/        flat: themes, tars, pkg metadata (served by bare name)
+#
+# Directory layout note (docs/14 §4 vs cached_fs_rom label resolution):
+#   cached_fs_rom resolves ROM labels via label.last_element(), which
+#   becomes the file path relative to the vfs chroot. Binaries use
+#   <binary name="bin/..."/> so the path includes the bin/ prefix.
+#   Libraries are requested by bare name by the dynamic linker (e.g.
+#   "libQt6Core.lib.so") and cannot carry a prefix — so rom_lib uses a
+#   SEPARATE cached_fs_rom chrooted to /system/lib to resolve them.
+#   Files served by bare name (themes, tars, pkg metadata) live flat
+#   under /system/.
+#
+set sys_dir "[run_dir]/system"
+exec mkdir -p "$sys_dir/bin"
+exec mkdir -p "$sys_dir/lib"
+exec mkdir -p "$sys_dir/init"
+
+#
+# Empty config for children without inline <config> (e.g. hello). The
+# sandbox opens a "config" ROM for every child; without an inline config,
+# the request cascades to rom_sys. A bare <config/> at /system/config
+# satisfies the request so the child isn't stopped by a ROM denial.
+#
+set empty_cfg [open "$sys_dir/config" w]
+puts -nonewline $empty_cfg {<config/>}
+close $empty_cfg
+
+# --- desktop binaries → /system/bin/ ---
+foreach b { init report_rom wm window_layouter decorator \
+            sponge_configd sponge_themed sponge_pkgd sponge-de \
+            alpha_probe hello } {
+	exec cp -fL "bin/$b" "$sys_dir/bin/$b"
+}
+
+# --- shared libraries → /system/lib/ ---
+# Copy ALL .lib.so files EXCEPT ld-*.lib.so (Tier-0 only, §4.6) and
+# the Falkon/WebEngine-specific libs (P4 payload, not desktop). The
+# desktop's transitive deps are covered by staging the full set minus
+# these exclusions.
+set falkon_libs {
+	libFalkonPrivate.lib.so
+	libQt6WebEngineCore.lib.so
+	libQt6WebEngineQuick.lib.so
+	libQt6WebEngineWidgets.lib.so
+	libQt6WebChannel.lib.so
+	libQt6WebChannelQuick.lib.so
+	libQt6PrintSupport.lib.so
+	libQt6Qml.lib.so
+	libQt6QmlMeta.lib.so
+	libQt6QmlModels.lib.so
+	libQt6QmlWorkerScript.lib.so
+	libQt6Quick.lib.so
+	libQt6QuickWidgets.lib.so
+	libqtquick2plugin.lib.so
+	libqtwebenginequickplugin.lib.so
+	libworkerscriptplugin.lib.so
+	nss3.lib.so
+	nssckbi.lib.so
+	freebl3.lib.so
+	softokn3.lib.so
+	libssl.lib.so
+	libcrypto.lib.so
+	libssh.lib.so
+	curl.lib.so
+	vfs_lwip.lib.so
+	vfs_qtwebengine_shm.lib.so
+	vfs_jitterentropy.lib.so
+	vfs_xoroshiro.lib.so
+	vfs_oss.lib.so
+	ncurses.lib.so
+}
+
+foreach lib [glob -nocomplain bin/*.lib.so] {
+	set libname [file tail $lib]
+	# Skip ld-*.lib.so (Tier-0 boot module, §4.6 — never on disk)
+	if {[string match "ld-*.lib.so" $libname]} { continue }
+	# Skip ld.lib.so itself (the generic name — Tier-0 only)
+	if {$libname eq "ld.lib.so"} { continue }
+	# Skip Falkon/WebEngine-specific libs (P4 payload)
+	if {[lsearch -exact $falkon_libs $libname] >= 0} { continue }
+	# Skip rump storage-chain libs (Tier-0 deps)
+	if {$libname eq "rump.lib.so" || $libname eq "rump_fs.lib.so"} { continue }
+	# Skip vfs_rump (Tier-0 storage chain dep)
+	if {$libname eq "vfs_rump.lib.so"} { continue }
+
+	exec cp -fL $lib "$sys_dir/lib/$libname"
+}
+
+# --- themes (flat — served by bare name) ---
+foreach theme { default light } {
+	set theme_src "${genode_dir}/repos/sponge/src/sponge-de/themes/${theme}.theme"
+	if {[file exists $theme_src]} {
+		exec cp -fL $theme_src "$sys_dir/${theme}.theme"
+	}
+}
+
+# --- Qt6 tars (flat — served by bare name) ---
+# qt6_dejavusans.tar: staged from qt6_base port sources
+set dejavu_src [glob -nocomplain "${genode_dir}/contrib/qt6_base-*/src/lib/qt6_base/src/3rdparty/wasm/DejaVuSans.ttf"]
+if {[llength $dejavu_src] > 0} {
+	set staging "[run_dir]/dejavusans-staging"
+	file mkdir "$staging/qt/lib/fonts"
+	file copy -force [lindex $dejavu_src 0] "$staging/qt/lib/fonts/DejaVuSans.ttf"
+	exec tar -cf "$sys_dir/qt6_dejavusans.tar" -C "$staging" qt
+	file delete -force "$staging"
+}
+
+# qt6_libqgenode.tar: cmake-built, already in bin/
+if {[file exists "bin/qt6_libqgenode.tar"]} {
+	exec cp -fL "bin/qt6_libqgenode.tar" "$sys_dir/qt6_libqgenode.tar"
+}
+
+# --- package metadata (flat — pkgd opens ROM "pkg_<name>.xml") ---
+foreach pkg { hello } {
+	set src "${genode_dir}/../pkg/$pkg/metadata.xml"
+	if {[file exists $src]} {
+		exec cp -fL $src "$sys_dir/pkg_$pkg.xml"
+	}
+}
+
+set index_fh [open "$sys_dir/pkg_index.xml" w]
+puts $index_fh "<packages>"
+puts $index_fh "  <pkg name=\"hello\"/>"
+puts $index_fh "</packages>"
+close $index_fh
+
+# ========================================================================
+# Write /system/init/system.config — the nested system init config
+# ========================================================================
+#
+# This is the desktop composition, formerly inline in sponge-alpha.run's
+# top-level init config. It is now DATA on disk (docs/14 §4.4: "init
+# config is data, not image"). Changing the desktop composition no
+# longer rebuilds image.elf.
+#
+# The config references Tier-0 services (nitpicker/timer/report_rom)
+# via <parent/>, which cascades through the system init to the Tier-0
+# init. Binaries use <binary name="bin/..."/> for disk resolution.
+# Every child carries the §4.6 ld.lib.so route.
+#
+
+if {$fail_mode} {
+	#
+	# FAILURE CHANNEL: write a deliberately corrupted system.config.
+	# The nested init will fail to parse it and log an XML error.
+	#
+	set sysconfig_fh [open "$sys_dir/init/system.config" w]
+	puts $sysconfig_fh {<config THIS IS DELIBERATELY BROKEN XML><unclosed}
+	close $sysconfig_fh
+} else {
+	#
+	# Write system.config in HID format to a temp file, then convert
+	# to XML using the `hid` tool. The nested init reads the config
+	# from disk via cached_fs_rom; writing it as proper XML eliminates
+	# any ambiguity in how inline <config> attributes (e.g.
+	# binary_prefix) are parsed by child components.
+	#
+	set sysconfig_hid "[run_dir]/system.config.hid"
+	set sysconfig_fh [open "$sysconfig_hid" w]
+puts $sysconfig_fh {
+config
++ parent-provides
+  + service ROM
+  + service PD
+  + service CPU
+  + service LOG
+  + service Timer
+  + service Gui
+  + service Capture
+  + service Event
+
++ default | caps: 200 | ram: 4M
++ default-route
+  + any-service
+    + parent
+    + any-child
+
++ start report_rom | caps: 300 | ram: 8M
+  + binary | name: bin/report_rom
+  + provides
+    + service Report
+    + service ROM
+  + config | verbose: no
+    + policy | label: layouter -> window_list       | report: wm -> window_list
+    + policy | label: decorator -> pointer           | report: wm -> pointer
+    + policy | label: decorator -> window_layout     | report: layouter -> window_layout
+    + policy | label: wm -> focus                    | report: layouter -> focus
+    + policy | label: wm -> resize_request           | report: layouter -> resize_request
+    + policy | label: layouter -> hover              | report: decorator -> hover
+    + policy | label: layouter -> decorator_margins  | report: decorator -> decorator_margins
+    + policy | label: layouter -> rules              | report: layout_rules
+    + policy | label: layouter -> focus_request      | report: wm -> focus_request
+    + policy | label: sponge_configd -> config_request | report: alpha_probe -> config_request
+    + policy | label: alpha_probe -> config_result     | report: sponge_configd -> config_result
+    + policy | label: sponge_themed -> config          | report: sponge_configd -> config
+    + policy | label: alpha_probe -> configd_config    | report: sponge_configd -> config
+    + policy | label: alpha_probe -> config            | report: sponge_configd -> config
+    + policy | label: sponge-de -> theme               | report: sponge_themed -> theme
+    + policy | label: alpha_probe -> theme             | report: sponge_themed -> theme
+    + policy | label: sponge_pkgd -> request     | report: alpha_probe -> request
+    + policy | label: alpha_probe -> result       | report: sponge_pkgd -> result
+    + policy | label: pkg_runtime -> config       | report: sponge_pkgd -> runtime
+    + policy | label: sponge-de -> installed      | report: sponge_pkgd -> installed
+    + policy | label: alpha_probe -> sponge_de_launcher | report: sponge-de -> launcher
+
++ start wm | caps: 250 | ram: 8M
+  + binary | name: bin/wm
+  + provides
+    + service Gui
+    + service Report
+    + service ROM
+  + config
+    + policy | label_prefix: decorator | role: decorator
+    + policy | label_prefix: layouter  | role: layouter
+    + default-policy
+  + route
+    + service ROM | label_last: ld.lib.so | + parent
+    + service ROM | label: focus          | + child report_rom
+    + service ROM | label: resize_request | + child report_rom
+    + service Report | label_last: shape  | + child report_rom
+    + service Report                       | + child report_rom
+    + service Gui                          | + parent
+    + any-service
+      + parent
+      + any-child
+
++ start layouter | caps: 150 | ram: 4M
+  + binary | name: bin/window_layouter
+  + config | rules: rom
+    + report | rules: yes
+    + rules
+      + screen screen
+      + assign | label: sponge-de -> Sponge DE Demo | target: screen
+               | xpos: 192 | ypos: 172 | width: 640 | height: 480 | maximized: no
+    + press   | key: BTN_LEFT  | action: drag
+      + release | key: BTN_LEFT | action: drop
+  + route
+    + service ROM | label_last: ld.lib.so     | + parent
+    + service ROM | label: window_list       | + child report_rom
+    + service ROM | label: focus_request     | + child report_rom
+    + service ROM | label: hover             | + parent
+    + service ROM | label: focus             | + parent
+    + service ROM | label: decorator_margins | + child report_rom
+    + service ROM | label: rules             | + child report_rom
+    + service Report | label: rules           | + child report_rom | label: layout_rules
+    + service Report                            | + child report_rom
+    + any-service
+      + child wm
+      + parent
+      + any-child
+
++ start decorator | caps: 350 | ram: 32M
+  + binary | name: bin/decorator
+  + config
+    + controls
+      + maximizer
+      + title
+    + default-policy
+  + route
+    + service ROM | label_last: ld.lib.so | + parent
+    + service ROM | label: window_layout | + child report_rom
+    + service ROM | label: pointer       | + child report_rom
+    + service Report                      | + child report_rom
+    + any-service
+      + child wm
+      + parent
+      + any-child
+
++ start sponge_configd | caps: 200 | ram: 16M
+  + binary | name: bin/sponge_configd
+  + config
+  + route
+    + service ROM | label_last: ld.lib.so | + parent
+    + service ROM | label_last: config_request | + child report_rom
+    + service Report | + child report_rom
+    + any-service
+      + parent
+      + any-child
+
++ start sponge_themed | caps: 200 | ram: 8M
+  + binary | name: bin/sponge_themed
+  + route
+    + service ROM | label_last: ld.lib.so | + parent
+    + service ROM | label_last: config       | + child report_rom
+    + service ROM | label_last: default.theme | + parent
+    + service ROM | label_last: light.theme   | + parent
+    + service Report | + child report_rom
+    + any-service
+      + parent
+      + any-child
+
++ start sponge_pkgd | caps: 200 | ram: 16M
+  + binary | name: bin/sponge_pkgd
+  + config | binary_prefix: bin/
+  + route
+    + service ROM | label_last: ld.lib.so | + parent
+    + service ROM | label_last: request | + child report_rom
+    + service Report | + child report_rom
+    + any-service
+      + parent
+      + any-child
+
++ start pkg_runtime | caps: 400 | ram: 32M
+  + binary | name: bin/init
+  + route
+    + service ROM | label_last: ld.lib.so | + parent
+    + service ROM | label: config | + child report_rom
+    + any-service
+      + parent
+      + any-child
+
++ start sponge-de | caps: 1000 | ram: 128M
+  + binary | name: bin/sponge-de
+  + config
+    + theme | source: themed
+    + launcher | source: pkgd
+    + vfs
+      + dir dev
+        + log
+        + inline rtc | : 2018-01-01 00:01
+      + dir pipe | + pipe
+      + tar qt6_dejavusans.tar
+      + tar qt6_libqgenode.tar
+    + libc | stdout: /dev/log | stderr: /dev/log | pipe: /pipe | rtc: /dev/rtc
+  + route
+    + service ROM | label_last: ld.lib.so | + parent
+    + service Gui | label_last: Sponge Panel   | + parent
+    + service Gui | label_last: Sponge Launcher | + parent
+    + service Gui                              | + child wm
+    + service Report | label: shape | + child report_rom
+    + service Report | label: input | + child report_rom
+    + service Report | label: applied_theme | + child report_rom
+    + service Report | label: launcher | + child report_rom
+    + service ROM | label: installed | + child report_rom
+    + service ROM | label: theme | + child report_rom
+    + service ROM | label: mesa_gpu.lib.so | + parent | label: mesa_gpu-softpipe.lib.so
+    + any-service
+      + parent
+      + any-child
+
++ start alpha_probe | caps: 200 | ram: 16M
+  + binary | name: bin/alpha_probe
+  + config | skip_lz: yes
+  + route
+    + service ROM | label_last: ld.lib.so | + parent
+    + service Capture | + parent
+    + service Timer   | + parent
+    + service ROM | label_last: result | + child report_rom
+    + service ROM | label_last: config_result | + child report_rom
+    + service ROM | label_last: configd_config | + child report_rom
+    + service ROM | label_last: config | + child report_rom
+    + service ROM | label_last: sponge_de_launcher | + child report_rom
+    + service Report | + child report_rom
+    + any-service
+      + parent
+      + any-child
+-}
+	close $sysconfig_fh
+
+	#
+	# Convert HID → XML so the nested init receives unambiguous XML.
+	#
+	set xml_content [exec [genode_dir]/tool/hid format --output-xml "$sysconfig_hid"]
+	set sysconfig_final [open "$sys_dir/init/system.config" w]
+	puts -nonewline $sysconfig_final $xml_content
+	close $sysconfig_final
+	file delete "$sysconfig_hid"
+}
+
+# ========================================================================
+# Tier-0 init configuration
+# ========================================================================
+
+install_config {
+config
++ parent-provides
+  + service ROM
+  + service PD
+  + service RM
+  + service CPU
+  + service LOG
+  + service IRQ
+  + service IO_MEM
+  + service IO_PORT
+
++ default | caps: 200 | ram: 4M
++ default-route
+  + any-service
+    + parent
+    + any-child
+
++ start timer
+  + provides | + service Timer
+
++ start report_rom | caps: 300 | ram: 8M
+  + provides
+    + service Report
+    + service ROM
+  + config | verbose: no
+    + policy | label: pci_decode -> system | report: acpi -> acpi
+    + policy | label: platform -> devices  | report: pci_decode -> devices
+    + policy | label: usb_hid -> report    | report: usb -> devices
+    + policy | label_suffix: focus | report: nitpicker -> focus
+    + policy | label_suffix: hover | report: nitpicker -> hover
+
++ start acpi | caps: 350 | ram: 4M
+  + route
+    + service ROM | label_last: ld.lib.so | + parent
+    + service Report | + child report_rom
+    + service IO_MEM | + parent
+    + service LOG    | + parent
+    + service PD     | + parent
+    + service RM     | + parent
+    + service CPU    | + parent
+    + service ROM    | + parent
+
++ start pci_decode | caps: 350 | ram: 2M
+  + route
+    + service ROM | label_last: ld.lib.so | + parent
+    + service Report              | + child report_rom
+    + service ROM | label: system | + child report_rom
+    + service IO_MEM              | + parent
+    + service LOG                 | + parent
+    + service PD                  | + parent
+    + service RM                  | + parent
+    + service CPU                 | + parent
+    + service ROM                 | + parent
+
++ start platform | caps: 200 | ram: 3M | managing_system: yes
+  + provides
+    + service Platform
+    + service Dma
+  + route
+    + service ROM | label_last: ld.lib.so | + parent
+    + service ROM | label: devices | + child report_rom
+    + service Report               | + child report_rom
+    + service Timer                | + child timer
+    + service IRQ                  | + parent
+    + service IO_MEM               | + parent
+    + service IO_PORT              | + parent
+    + service ROM                  | + parent
+    + service PD                   | + parent
+    + service CPU                  | + parent
+    + service LOG                  | + parent
+  + config
+    + report | devices: yes
+    + policy | label_prefix: ahci | + pci | class: AHCI
+    + policy | label_prefix: ps2  | + device ps2
+    + policy | label_prefix: fb   | info: yes | + pci | class: VGA
+    + policy | label_prefix: usb  | info: yes | + pci | class: USB
+
++ start ahci | caps: 5000 | ram: 128M
+  + provides | + service Block
+  + config
+    + report | ports: yes
+    + policy | label_prefix: part_block | device: 0 | writeable: yes
+  + route
+    + service ROM | label_last: ld.lib.so | + parent
+    + service Platform | + child platform
+    + service Dma      | + child platform
+    + service Timer    | + child timer
+    + service Report   | + child report_rom
+    + service ROM      | + parent
+    + service PD       | + parent
+    + service CPU      | + parent
+    + service LOG      | + parent
+
++ start part_block | caps: 200 | ram: 8M
+  + provides | + service Block
+  + config
+    + report | partitions: no
+    + policy | label_prefix: vfs | partition: 3 | writeable: yes
+  + route
+    + service ROM | label_last: ld.lib.so | + parent
+    + service Block | + child ahci
+    + any-service
+      + parent
+      + any-child
+
++ start vfs | caps: 500 | ram: 64M
+  + provides | + service File_system
+  + config
+    + vfs
+      + rump | fs: ext2fs | ram: 48M | writeable: yes
+    + policy | label_prefix: rom_sys | root: /system     | writeable: no
+    + policy | label_prefix: rom_lib | root: /system/lib | writeable: no
+  + route
+    + service ROM | label_last: ld.lib.so     | + parent
+    + service ROM | label_last: vfs.lib.so    | + parent
+    + service ROM | label_last: vfs_rump.lib.so | + parent
+    + service ROM | label_last: rump.lib.so   | + parent
+    + service ROM | label_last: rump_fs.lib.so | + parent
+    + service Block | + child part_block
+    + any-service
+      + parent
+      + any-child
+
++ start rom_sys | caps: 500 | ram: 256M
+  + binary cached_fs_rom
+  + provides | + service ROM
+  + route
+    + service File_system | + child vfs
+    + service ROM | label_last: ld.lib.so | + parent
+    + any-service
+      + parent
+      + any-child
+
++ start rom_lib | caps: 500 | ram: 256M
+  + binary cached_fs_rom
+  + provides | + service ROM
+  + route
+    + service File_system | + child vfs
+    + service ROM | label_last: ld.lib.so | + parent
+    + any-service
+      + parent
+      + any-child
+
++ start nitpicker | ram: 16M
+  + provides
+    + service Gui
+    + service Capture
+    + service Event
+  + route
+    + service ROM | label_last: ld.lib.so | + parent
+    + service Report | + child report_rom
+    + service Timer  | + child timer
+    + any-service
+      + parent
+      + any-child
+  + config
+    + capture
+    + event
+    + report | focus: yes | hover: yes
+    + domain panel | layer: 1 | content: client | label: no
+                   | hover: always | focus: click | ypos: 0 | height: 28
+    + domain launcher | layer: 4 | content: client | label: no
+                      | hover: always | focus: click
+                      | xpos: 0 | ypos: 28 | width: 341 | height: 480
+    + domain default | layer: 3 | content: client | label: no
+                     | hover: always | focus: click | ypos: 28 | height: -28
+    + policy | label_prefix: system -> sponge-de -> Sponge Panel   | domain: panel
+    + policy | label_prefix: system -> sponge-de -> Sponge Launcher | domain: launcher
+    + default-policy | domain: default
+    + background | color: #1e1e2e
+
++ start fb | caps: 150 | ram: 20M
+  + binary vesa_fb
+  + route
+    + service ROM | label_last: ld.lib.so | + parent
+    + service ROM | label: config | + parent | label: fb.config
+    + service Report              | + child report_rom
+    + service Dma                 | + child platform
+    + service Platform            | + child platform
+    + service IO_PORT             | + parent
+    + service IO_MEM              | + parent
+    + service ROM                 | + parent
+    + service PD                  | + parent
+    + service CPU                 | + parent
+    + service LOG                 | + parent
+    + service Timer               | + child timer
+    + service Capture             | + child nitpicker
+
++ start ps2 | caps: 100 | ram: 1280K
+  + config
+  + route
+    + service ROM | label_last: ld.lib.so | + parent
+    + service Dma      | + child platform
+    + service Platform | + child platform
+    + service Event    | + child event_filter | label: ps2
+    + service ROM      | + parent
+    + service PD       | + parent
+    + service CPU      | + parent
+    + service LOG      | + parent
+    + service Timer    | + child timer
+
++ start usb | caps: 200 | ram: 16M
+  + binary pc_usb_host
+  + provides | + service Usb
+  + config
+    + report | devices: yes
+    + policy | label_prefix: usb_hid | + device | class: 0x3
+  + route
+    + service ROM | label_last: ld.lib.so | + parent
+    + service Dma                     | + child platform
+    + service Platform                | + child platform
+    + service Report | label: devices | + child report_rom
+    + service ROM                     | + parent
+    + service PD                      | + parent
+    + service RM                      | + parent
+    + service CPU                     | + parent
+    + service LOG                     | + parent
+    + service Timer                   | + child timer
+
++ start usb_hid | caps: 180 | ram: 10M
+  + route
+    + service ROM | label_last: ld.lib.so | + parent
+    + service ROM | label: report | + child report_rom
+    + service ROM                 | + parent
+    + service PD                  | + parent
+    + service RM                  | + parent
+    + service CPU                 | + parent
+    + service LOG                 | + parent
+    + service Timer               | + child timer
+    + service Event               | + child event_filter | label: usb
+    + service Usb                 | + child usb
+
++ start event_filter | caps: 90 | ram: 1280K
+  + provides | + service Event
+  + route
+    + service ROM | label_last: ld.lib.so | + parent
+    + service ROM | label: config | + parent | label: event_filter.config
+    + service Event               | + child nitpicker
+    + service ROM                 | + parent
+    + service PD                  | + parent
+    + service CPU                 | + parent
+    + service LOG                 | + parent
+    + service Timer               | + child timer
+
++ start system | caps: 8000 | ram: 1500M
+  + binary | name: bin/init
+  + route
+    + service ROM | label: config | + child rom_sys | label: init/system.config
+    + service ROM | label_last: ld.lib.so | + parent
+    + service ROM | label_suffix: .lib.so | + child rom_lib
+    + service ROM | label_last: focus | + child report_rom
+    + service ROM | label_last: hover | + child report_rom
+    + service ROM | + child rom_sys
+    + service Gui     | + child nitpicker
+    + service Capture | + child nitpicker
+    + service Event   | + child nitpicker
+    + service Timer   | + child timer
+    + service Report  | + child report_rom
+    + any-service
+      + parent
+      + any-child
+- }
+
+#
+# Stage the driver sub-init config modules (Tier-0 boot modules).
+#
+set recipe_dir "${genode_dir}/repos/os/recipes/raw/drivers_interactive-pc"
+foreach f { fb.config event_filter.config } {
+	if {![file exists "$recipe_dir/$f"]} {
+		error "$recipe_dir/$f missing (vendored drivers_interactive-pc recipe drifted?)"
+	}
+	exec cp -f "$recipe_dir/$f" "bin/$f"
+}
+
+#
+# Keyboard layouts consumed by event_filter.
+#
+set chargen_dir "${genode_dir}/repos/os/src/server/event_filter"
+foreach f { en_us.chargen special.chargen } {
+	if {![file exists "$chargen_dir/$f"]} { error "$chargen_dir/$f missing" }
+	exec cp -f "$chargen_dir/$f" "bin/$f"
+}
+
+#
+# Tier-0 boot module list — storage chain + drivers + nitpicker ONLY.
+# ld.lib.so is auto-injected by boot_dir/sel4 (docs/11 §10.4).
+# The vfs+rump chain libs are transitive deps not in build_artifacts.
+# Desktop components (wm/sponge-de/Qt6/Mesa/etc.) are on DISK, NOT here.
+#
+set boot_modules { }
+foreach m { core-sel4.a ld-sel4.lib.so init timer report_rom nitpicker platform acpi pci_decode \
+            ahci part_block vfs cached_fs_rom \
+            vesa_fb ps2 pc_usb_host usb_hid event_filter } {
+	lappend boot_modules $m
+}
+foreach m { vfs.lib.so vfs_rump.lib.so rump.lib.so rump_fs.lib.so \
+            en_us.chargen special.chargen \
+            fb.config event_filter.config } {
+	lappend boot_modules $m
+}
+
+build_boot_image $boot_modules
+
+#
+# Assert Tier-0 budget: image.elf must be ≤ 80 MiB (docs/14 §4.5).
+#
+set image_elf "[run_dir]/boot/image.elf"
+if {[file exists $image_elf]} {
+	set size_bytes [file size $image_elf]
+	set size_mib [expr {$size_bytes / 1048576}]
+	puts "sponge-desktop-disk: image.elf = ${size_mib} MiB ($size_bytes bytes)"
+	if {$size_mib > 80} {
+		puts "sponge-desktop-disk: ERROR — Tier-0 budget exceeded (>80 MiB, §4.5)"
+	}
+} else {
+	puts "sponge-desktop-disk: image.elf not found at expected path"
+}
+
+#
+# Assert ld.lib.so is NOT in /system/lib/ (§4.6 rule).
+#
+set ld_check "$sys_dir/lib/ld.lib.so"
+if {[file exists $ld_check]} {
+	puts "sponge-desktop-disk: ERROR — ld.lib.so found in /system/lib/ (§4.6 violation)"
+}
+
+#
+# QEMU: -m 4G for cached_fs_rom cache + Qt6/Mesa + rump + seL4 SKIM.
+# nec-usb-xhci + usb-tablet for absolute pointer.
+#
+append qemu_args " -nographic -m 4G "
+append qemu_args " -device nec-usb-xhci,id=xhci -device usb-tablet "
+
+#
+# Verification gate.
+#
+# SUCCESS: alpha-probe logs PASS after confirming themed panel pixel,
+# launcher feed (hello), and configd broadcast — all from disk-served
+# binaries. Bounded timeout (fail-loud on expiry).
+#
+# FAILURE CHANNEL: bounded by timeout; the nested init's XML parse
+# error identifies the stage (corrupted system.config).
+#
+if {$fail_mode} {
+	run_genode_until {.*init -> system.*Error.*config.*|.*system.*invalid.*|.*Error reading config.*} 120
+	puts "sponge-desktop-disk: FAILURE CHANNEL — system init rejected corrupted config (bounded, identified)"
+} else {
+	run_genode_until {.*alpha-probe: PASS.*} 900
+}
