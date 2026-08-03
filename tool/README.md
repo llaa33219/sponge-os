@@ -33,6 +33,7 @@ the idiomatic Mojo pattern for missing functionality.
 | `./tool/check-compile`| `tool/check_compile.mojo`| Structural sanity check for a component                      | ✅ works |
 | `./tool/patches`      | `tool/patches.mojo`      | Patch ledger manager (`list`, `verify`, `export`, `drop`)    | ✅ works |
 | `./tool/dist`         | `tool/dist.mojo`         | Alpha distribution media builder (`.img` + `.iso` into `var/dist/`) | ✅ works |
+| `./tool/mkdata`       | `tool/mkdata.mojo`       | Grow SPONGE-DATA (P4) onto an image/disk `.img` (docs/14 §4.3; idempotent) | ✅ works |
 | `./tool/pkg_import`   | `tool/pkg_import.mojo`   | Host-side Genode depot → Sponge pkg/ repackager (Phase 7 todo 11) | ✅ works |
 | (direct)              | `tool/gen_vct_config.mojo`| Generate a vct config-ROM XML from argv                     | ✅ works |
 | (direct)              | `tool/version_bump.mojo` | Bump version in `include/sponge/version.h`                   | ✅ works |

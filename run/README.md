@@ -58,6 +58,31 @@ A scenario defines:
   `SPONGE_DISK_FAIL=1` stages a corrupted system.config for a bounded,
   identified failure. base-sel4 only; `RUN_OPT="--include image/disk"`.
 
+- `sponge-persist-disk.run` — Phase 8 P3: persistence on SPONGE-DATA
+  (docs/14 §6). Proves sponge_pkgd's installed-set store survives a
+  reboot when backed by a writable ext2 on the install media's fourth
+  GPT partition. A focused, headless scenario (no desktop/Qt6 — keeps
+  the P2 regression gate pristine and the proof fast): Tier-0 chain
+  (platform/acpi/pci_decode/ahci/part_block) → `vfs_data` (a second
+  `vfs` instance: Vfs_block on P4 + `<rump fs="ext2fs"
+  writeable="yes"/>`) → sponge_pkgd with its `<vfs>`-activated store
+  (docs/12 §13) wired to vfs_data → pkg_seq_probe. After image/disk
+  produces the .img, `tool/mkdata` runs the docs/14 §4.3 sequence
+  (truncate + sgdisk delete/move/new/hybrid + mkfs.ext2 -E offset) to
+  add P4=SPONGE-DATA; the run script pre-creates /store on P4 via
+  dd+e2mkdir. Two boots over the SAME .img (QEMU attaches it
+  `-drive format=raw` with NO -snapshot, so writes persist to the host
+  file): boot 1 installs hello and writes the store; a host-side e2cp
+  readback of /store/installed.xml off the image file corroborates the
+  write (misleading_success_output defense); boot 2 boots a fresh QEMU
+  against the same image and gates on `sponge_pkgd: restored N root(s)
+  from store` — the adversarial restoration proof (impossible unless
+  boot 1's write survived). Failure channel: `SPONGE_PERSIST_RO=1`
+  makes vfs_data read-only; pkgd's _save_store refuses with a bounded
+  "cannot open store for write" log line (docs/12 §13.3) and the host-
+  side readback confirms no store appeared (write refused, not
+  corrupted). base-sel4 only; `RUN_OPT="--include image/disk"`.
+
 - `sponge-minimal.run` — Phase 1 goal: minimum boot (skeleton).
   Kernel-agnostic; verified on `base-linux` (no QEMU) and `base-sel4`
   (QEMU, production target).
