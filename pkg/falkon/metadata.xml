@@ -1,0 +1,96 @@
+<package>
+  <!--
+       Falkon web browser (Phase 7 todo 16).
+       Source: cproc/pkg/falkon_qt6-jemalloc/2026-04-22 (depot pin).
+       Repackaged by tool/pkg_import (payload staging) + hand-edited
+       metadata for the Sponge OS Alpha runtime. Schema:
+       docs/12-package-format.md §4.
+
+       Route-mapping table (sculpt deploy falkon_web_browser -> Sponge):
+       see .omo/evidence/task-16-phase7-alpha.log §1.
+
+       The inline <config> is adapted from the depot's falkon.config
+       (cproc/raw/falkon_qt6/2025-10-28/falkon.config) for the Alpha
+       stack: <gpu/>, <oss/>, <capture/> removed (no GPU/audio/capture
+       drivers in Alpha; falkon uses software rendering via
+       QT_QUICK_BACKEND=software + --disable-gpu-compositing);
+       .config/downloads changed from <fs label="..."/> to <ram/>
+       (Alpha has no writable persistence component; ram_fs child
+       elided — falkon gets private RAM-backed dirs instead); a
+       fixture URL arg added so falkon navigates to the host test
+       fixture on startup (the acceptance-channel page-load check).
+  -->
+  <name>falkon</name>
+  <version>2026-04-22</version>
+  <description>Falkon web browser (Qt6 WebEngine). Browse the Alpha's QEMU-slirp network.</description>
+
+  <binary>falkon</binary>
+  <!--
+       caps/ram: WebEngine is the heaviest component in the Alpha.
+       Start values caps=4000, ram=1G (between the task's 2000-floor
+       and the depot runtime's 10000/2G). RAISE per docs/09-roadmap.md
+       §11.1 if the boot log shows a quota-upgrade line as the last
+       entry (cap exhaustion signature). The empirical values that
+       worked are recorded in .omo/evidence/task-16-phase7-alpha.log.
+  -->
+  <quota ram="1G" caps="4000"/>
+
+  <config clipboard="yes">
+    <vfs>
+      <dir name="dev">
+        <dir name="pipe"> <pipe/> </dir>
+        <log/>
+        <jitterentropy name="entropy"/>
+        <xoroshiro name="random" seed_path="/dev/entropy"/>
+        <xoroshiro name="urandom" seed_path="/dev/entropy"/>
+        <rtc/>
+      </dir>
+      <dir name=".config"> <ram/> </dir>
+      <dir name="downloads"> <ram/> </dir>
+      <dir name="shm"> <qtwebengine_shm/> </dir>
+      <dir name="socket"> <lwip dhcp="yes"/> </dir>
+      <dir name="tmp"> <ram/> </dir>
+      <tar name="qt6_dejavusans.tar"/>
+      <tar name="qt6_declarative_qml.tar"/>
+      <tar name="qt6_libqgenode.tar"/>
+      <tar name="qt6_libqsqlite.tar"/>
+      <tar name="qt6_libqsvg.tar"/>
+      <tar name="qt6_webengine_qml.tar"/>
+      <tar name="qt6_webengine_resources.tar"/>
+      <tar name="qt6_webengine_translations.tar"/>
+      <tar name="falkon_theme.tar"/>
+      <ram/>
+    </vfs>
+    <libc stdout="/dev/log" stderr="/dev/log" pipe="/dev/pipe" rtc="/dev/rtc" socket="/socket" pid="1">
+      <mmap align_log2="21"/>
+    </libc>
+    <arg value="falkon"/>
+    <arg value="http://10.0.2.2:8765/net-fixture.txt"/>
+    <arg value="--webEngineArgs"/>
+    <arg value="--single-process"/>
+    <arg value="--no-sandbox"/>
+    <arg value="--disable-gpu-compositing"/>
+    <arg value="--disable-gpu-shader-disk-cache"/>
+    <arg value="--enable-logging"/>
+    <arg value="--log-level=3"/>
+    <arg value="--v=0"/>
+    <env key="QT_QUICK_BACKEND" value="software"/>
+  </config>
+
+  <launcher category="Internet"/>
+
+  <!--
+       Sessions use the EXACT Genode service names (Nic, Rtc — not
+       NIC/RTC; pkg_import's default mapping uppercases incorrectly).
+       Omitted per the route-mapping: Gpu (software rendering),
+       Capture/Play/Record (no media drivers), File_system (RAM-backed
+       .config/downloads), RM (subsumed by PD).
+  -->
+  <sessions>
+    <session name="Gui" default-route="parent"/>
+    <session name="Report" default-route="parent"/>
+    <session name="ROM" default-route="parent"/>
+    <session name="Nic" default-route="parent"/>
+    <session name="Rtc" default-route="parent"/>
+  </sessions>
+</package>

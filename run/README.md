@@ -271,6 +271,29 @@ A scenario defines:
   (base-linux native or base-sel4 QEMU); the acceptance run uses
   `KERNEL=sel4 BOARD=pc`. Gates on `files-probe: PASS`.
 
+- `sponge-falkon.run` — Phase 7 todo 16: the Falkon web browser package
+  (`pkg/falkon`), the depot-repackaged `cproc/pkg/falkon_qt6-jemalloc/
+  2026-04-22` (todo 11). Falkon is a full Qt6 WebEngine browser (~500MB
+  payload, ~1G RAM) — the heaviest Alpha component. The scenario merges
+  the textedit GUI topology + the net-probe networking stack (ipxe_nic +
+  nic_uplink + pc_rtc + system_rtc). Because falkon's 64-file closure
+  exceeds the seL4 boot chain's module-size ceiling (~256MB; Bender's
+  relocation limit + seL4's untyped cnode exhaustion), the payload is
+  packed into `falkon_payload.tar` and added as a SEPARATE multiboot2
+  module (not inside image.elf); a `tar_rom` server reads it and serves
+  individual files as ROM sessions (pkg_runtime routes falkon's ROM
+  requests there). The `falkon_probe` drives `sponge_pkgd` to install
+  and launch falkon, then pixel-verifies the browser window via Capture
+  (rendered-fraction + color-diversity). The run script separately
+  verifies the host fixture GET (falkon's config arg navigates to
+  `http://10.0.2.2:8765/net-fixture.txt` on startup). **KNOWN
+  LIMITATION:** the seL4 boot chain cannot currently handle falkon's
+  500MB+ payload — even with the tar_rom approach, seL4 resets during
+  boot module setup (untyped cnode exhaustion). See
+  `.omo/evidence/task-16-phase7-alpha.log` §2.2 for the full diagnosis
+  and the resolution path (disk-based payload). base-sel4 only. Bounded
+  timeouts (900s probe + 180s GET check).
+
 ## Planned additions
 
 - The end-to-end HOST-injected usb-tablet click proof for
