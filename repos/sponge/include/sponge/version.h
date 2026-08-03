@@ -15,14 +15,14 @@ namespace Sponge {
 
 /* Semantic version components of the Sponge OS distribution. */
 constexpr unsigned VERSION_MAJOR = 0;
-constexpr unsigned VERSION_MINOR = 0;
-constexpr unsigned VERSION_PATCH = 1;
+constexpr unsigned VERSION_MINOR = 1;
+constexpr unsigned VERSION_PATCH = 0;
 
 /* Human-readable pre-release marker (empty for stable releases). */
-constexpr char const *VERSION_SUFFIX = "-pre-alpha";
+constexpr char const *VERSION_SUFFIX = "-alpha";
 
-/* Human-readable version string, e.g. "0.0.1-pre-alpha". */
-constexpr char const *VERSION_STRING = "0.0.1-pre-alpha";
+/* Human-readable version string, e.g. "0.1.0-alpha". */
+constexpr char const *VERSION_STRING = "0.1.0-alpha";
 
 /* Codename for the current development cycle. Sponge OS uses cellular-biology
  * themed codenames. Phase 0/1 uses "Archaeocyte" (a totipotent sponge cell
