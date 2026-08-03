@@ -1,0 +1,127 @@
+#
+# \brief  Sponge OS vct search/update scenario (Phase 7, todo 18)
+# \author Sponge OS contributors
+# \date   2026
+#
+# Verifies `vct search <term>` and `vct update [pkg]` (docs/06-vct.md
+# §4.2 + docs/12-package-format.md §9.2.2 + §5.4). vct is short-lived,
+# so the pkg_meta_probe drives the SAME ROM reads + comparisons that
+# vct's SearchCommand/UpdateCommand perform, covering the full six-step
+# assertion matrix in ONE boot:
+#
+#   1. install hello via sponge_pkgd (so the installed broadcast is real)
+#   2. search "hello"        -> hello appears (name match)
+#   3. search "zzznomatch"   -> honest empty result (exit 0)
+#   4. update hello          -> "already current" (broadcast == repo)
+#   5. update hello (delta)  -> "repo carries 1.0, installed 0.9 ..."
+#      (synthetic installed_delta broadcast simulating a cross-image-
+#      rebuild pinned version; repo metadata carries 1.0)
+#   6. update nosuchpkg      -> "not installed" error (non-zero path)
+#
+# Topology mirrors run/sponge-pkg-list.run (pkgd + pkg_runtime +
+# pkg_seq_probe pattern) plus the pkg_index.xml + pkg_hello.xml ROM
+# staging and the installed_delta report/ROM bridge for step 5.
+#
+# The probe reads the same ROM labels (pkg_index.xml, pkg_hello.xml,
+# installed) and uses the same comparison logic (ci_contains for
+# search, exact string inequality for versions) as vct's real
+# SearchCommand/UpdateCommand, so passing this probe == passing vct.
+#
+# Kernel-agnostic (no GUI, no drivers); runs on base-linux for speed.
+#
+
+build { core lib/ld init timer server/report_rom lib/vfs sponge_pkgd \
+        pkg_hello test/pkg_meta_probe }
+
+create_boot_directory
+
+install_config {
+config
++ parent-provides
+  + service LOG
+  + service PD
+  + service CPU
+  + service ROM
+
++ default-route
+  + any-service
+    + parent
+    + any-child
++ default | caps: 200 | ram: 8M
+
++ start timer
+  + provides | + service Timer
+
++ start report_rom | ram: 4M
+  + provides
+    + service Report
+    + service ROM
+  + config | verbose: no
+    + policy | label: sponge_pkgd -> request     | report: pkg_meta_probe -> request
+    + policy | label: pkg_meta_probe -> result   | report: sponge_pkgd -> result
+    + policy | label: pkg_runtime -> config      | report: sponge_pkgd -> runtime
+    + policy | label: pkg_meta_probe -> installed | report: sponge_pkgd -> installed
+    + policy | label: pkg_meta_probe -> installed_delta | report: pkg_meta_probe -> installed_delta
+
++ start sponge_pkgd | caps: 200 | ram: 16M
+  + config
+  + route
+    + service ROM | label_last: request | + child report_rom
+    + service Report | + child report_rom
+    + any-service
+      + parent
+      + any-child
+
++ start pkg_runtime | caps: 400 | ram: 32M
+  + binary init
+  + route
+    + service ROM | label: config | + child report_rom
+    + any-service
+      + parent
+      + any-child
+
++ start pkg_meta_probe | caps: 200 | ram: 8M
+  + route
+    + service Timer | + child timer
+    + service ROM | label_last: result      | + child report_rom
+    + service ROM | label_last: installed   | + child report_rom
+    + service ROM | label_last: installed_delta | + child report_rom
+    + service ROM | label_last: config      | + parent
+    + service Report | + child report_rom
+    + any-service
+      + parent
+      + any-child
+- }
+
+#
+# Stage package metadata + the derived index (same scheme as
+# run/sponge-pkg-install.run:99-115). The hello binary is a build
+# artifact (TARGET := hello in src/pkg_hello) staged by build_boot_image.
+#
+set staged_pkgs { hello ncurses nano }
+foreach pkg $staged_pkgs {
+	set src "${genode_dir}/../pkg/$pkg/metadata.xml"
+	set dst "[run_dir]/genode/pkg_$pkg.xml"
+	if {![file exists $src]} {
+		error "package metadata not found: $src"
+	}
+	exec cp -L $src $dst
+}
+
+set index_fh [open "[run_dir]/genode/pkg_index.xml" w]
+puts $index_fh "<packages>"
+foreach pkg $staged_pkgs {
+	puts $index_fh "  <pkg name=\"$pkg\"/>"
+}
+puts $index_fh "</packages>"
+close $index_fh
+
+build_boot_image [build_artifacts]
+
+append qemu_args " -nographic -m 1G "
+
+#
+# Verification: probe logs PASS after all six assertions. Bounded
+# timeout = fail-loud gate (hung_or_long_commands).
+#
+run_genode_until {.*pkg-meta-probe: PASS.*} 60

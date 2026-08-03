@@ -1,0 +1,244 @@
+#
+# \brief  Sponge OS power-control scenario (Phase 7, todo 17) - SUCCESS path
+# \author Sponge OS contributors
+# \date   2026
+#
+# Verifies `vct shutdown` actually powers the guest off through the
+# real ACPI stack. The path (verified at implementation time; recorded
+# in commands.h's PowerCommand doc-comment):
+#
+#   vct --[Report "system" state="poweroff"]--> report_rom
+#     --[ROM "system"]--> acpica
+#     --[AcpiEnterSleepState(5)]--> QEMU exits
+#
+# There is NO `System` RPC session in Genode 26.05; the power path is
+# the `system` ROM report consumed by the `acpica` component
+# (genode/repos/libports/src/app/acpica/os.cc:state_changed), exactly
+# the route upstream Sculpt uses
+# (genode/repos/gems/sculpt/option/acpi_support). vct is the writer;
+# acpica is the actor.
+#
+# Topology (base-sel4 only - ACPI/Platform need real PC hardware access):
+#   Flat driver set (acpi/pci_decode/platform as top-level children,
+#   the genode/repos/libports/run/acpica.run pattern, NOT a sub-init —
+#   a nested init would not re-export the Platform session acpica needs):
+#
+#   init
+#   + timer
+#   + drivers_reports (report_rom: acpi -> pci_decode -> platform chain)
+#   + report_rom      (vct "system" Report -> "system" ROM for acpica)
+#   + acpi, pci_decode, platform   (the ACPI/Platform discovery chain)
+#   + acpica          (poweroff:yes reset:yes; reads "system" ROM)
+#   + vct             (args: shutdown)
+#
+# Verification (fail-loud, docs/09-roadmap.md §11.1):
+#   1. run_genode_until matches the audit line "vct: shutdown: requesting
+#      poweroff" within boot+dispatch timeout (bounded, no silent hang).
+#   2. A bounded expect then waits for QEMU to exit (eof = acpica acted,
+#      PASS) or vct's "service unavailable" line (acpica absent, FAIL)
+#      or a hard timeout (FAIL). The bounded-wait is the
+#      `hung_or_long_commands` adversarial gate.
+#
+# The failure-channel companion is run/sponge-power-fail.run (same
+# vct code path minus acpica; gates on the "service unavailable" line
+# and the guest staying alive).
+#
+# Reboot (`vct reboot`): the SAME code path with state="reset" instead
+# of "poweroff"; acpica calls AcpiReset() (FADT reset register). To
+# verify reboot, change the vct config arg from "shutdown" to "reboot"
+# and add QEMU `-no-reboot` so the reset becomes a clean exit (or gate
+# on a second boot banner). Both share the PowerCommand code (only
+# the state attribute differs), so the shutdown gate is strong evidence
+# the reset path is wired correctly too.
+#
+
+assert {[have_spec sel4]} \
+	"sponge-power requires KERNEL=sel4 (BOARD=pc) in build.conf. \
+	 The ACPI/Platform driver stack needs real PC hardware access via \
+	 QEMU that base-linux cannot provide."
+
+proc ensure_plugin_loaded { name } {
+	if {![have_include $name]} {
+		set path [genode_dir]/tool/run/$name
+		puts "sourcing $path (missing from RUN_OPT, restored by run script)"
+		source $path
+		global include_list
+		lappend include_list $name
+	}
+}
+
+ensure_plugin_loaded boot_dir/sel4
+ensure_plugin_loaded power_on/qemu
+ensure_plugin_loaded log/qemu
+
+build { core lib/ld init timer server/report_rom \
+        driver/acpi app/pci_decode driver/platform \
+        app/acpica \
+        lib/acpica lib/libc lib/posix \
+        vct }
+
+create_boot_directory
+
+exec mkdir -p bin
+
+#
+# Non-PCI devices file consumed by the platform driver (board/pc/devices
+# is empty for PC - all device discovery is dynamic via ACPI/PCI).
+#
+exec cp -fL [select_from_repositories board/pc/devices] "bin/devices"
+
+install_config {
+config
++ parent-provides
+  + service ROM
+  + service PD
+  + service RM
+  + service CPU
+  + service LOG
+  + service IRQ
+  + service IO_MEM
+  + service IO_PORT
+
++ default | caps: 200 | ram: 4M
++ default-route
+  + any-service
+    + parent
+    + any-child
+
++ start timer
+  + provides | + service Timer
+
+#
+# drivers_reports: the internal relay for the acpi -> pci_decode ->
+# platform discovery chain (acpi reports ACPI tables; pci_decode reads
+# them and reports the device tree; platform reads the device tree).
+# Mirrors genode/repos/libports/run/acpica.run.
+#
++ start drivers_reports | caps: 200 | ram: 4M
+  + binary report_rom
+  + provides
+    + service Report
+    + service ROM
+  + config | verbose: no
+    + policy | label: pci_decode -> system | report: acpi -> acpi
+    + policy | label: platform -> devices | report: pci_decode -> devices
+
+#
+# report_rom: the bridge for vct's `system` report -> acpica's `system` ROM.
+#
++ start report_rom | caps: 200 | ram: 4M
+  + provides
+    + service Report
+    + service ROM
+  + config | verbose: no
+    + policy | label: acpica -> system | report: vct -> system
+
++ start acpi | caps: 250 | ram: 4M
+  + route
+    + service IO_MEM  | + parent
+    + service IO_PORT | + parent
+    + service LOG     | + parent
+    + service PD      | + parent
+    + service RM      | + parent
+    + service CPU     | + parent
+    + service ROM     | + parent
+    + service Report  | + child drivers_reports
+
++ start pci_decode | caps: 100 | ram: 2M
+  + route
+    + service Report              | + child drivers_reports
+    + service ROM | label: system | + child drivers_reports
+    + service IO_MEM              | + parent
+    + service LOG                 | + parent
+    + service PD                  | + parent
+    + service RM                  | + parent
+    + service CPU                 | + parent
+    + service ROM                 | + parent
+
++ start platform | caps: 200 | ram: 3M | managing_system: yes
+  + provides
+    + service Dma
+    + service Platform
+  + route
+    + service ROM | label: devices | + child drivers_reports
+    + service Report               | + child drivers_reports
+    + service IRQ                  | + parent
+    + service IO_MEM               | + parent
+    + service IO_PORT              | + parent
+    + service ROM                  | + parent
+    + service PD                   | + parent
+    + service CPU                  | + parent
+    + service LOG                  | + parent
+    + service Timer                | + child timer
+  + config
+    + report | devices: yes
+    + policy | label_prefix: acpica | + device acpi
+
++ start acpica | caps: 400 | ram: 16M
+  + config
+  |        poweroff: yes
+  |        reset:    yes
+  |        report:   no
+  |        sleep:    no
+  |        verbose:  no
+  + route
+    + service ROM | label: system        | + child report_rom
+    + service ROM | label: platform_info | + parent
+    + service Platform | label: acpica   | + child platform
+    + service Dma                        | + child platform
+    + service Report                     | + child report_rom
+    + service Timer                      | + child timer
+    + service IO_MEM                     | + parent
+    + service IO_PORT                    | + parent
+    + service IRQ                        | + parent
+    + any-service
+      + parent
+      + any-child
+
++ start vct | caps: 200 | ram: 8M
+  + config
+    + args
+      + arg shutdown
+  + route
+    + service Timer  | + child timer
+    + service Report | label: system | + child report_rom
+    + any-service
+      + parent
+      + any-child
+- }
+
+set boot_modules [build_artifacts]
+foreach m { devices } {
+	lappend boot_modules $m
+}
+build_boot_image $boot_modules
+
+append qemu_args " -nographic -m 1G "
+
+#
+# Verification (fail-loud):
+#  1. Match the audit line within a generous boot+dispatch bound.
+#  2. Then a bounded expect disambiguates: QEMU exit (eof) = acpica
+#     acted = PASS; vct's "service unavailable" line or a hard timeout
+#     = FAIL. This is the misleading_success_output + hung_or_long_commands
+#     adversarial gates - bare exit 0 is never enough.
+#
+run_genode_until {.*vct: shutdown: requesting poweroff.*} 90
+
+global qemu_spawn_id
+set spawn_id $qemu_spawn_id
+set timeout 20
+expect {
+	-i $qemu_spawn_id
+	-re {.*System service \(acpica\) unavailable.*} {
+		puts stderr "\nsponge-power: FAIL - vct reported acpica unavailable (audit ran but no poweroff)"
+		exit 1
+	}
+	eof {
+		puts "\nsponge-power: PASS - QEMU exited cleanly after shutdown audit line (ACPI S5 poweroff took effect)"
+	}
+	timeout {
+		puts stderr "\nsponge-power: FAIL - QEMU did not exit within 20s of the audit line (acpica did not act)"
+		exit 1
+	}
+}
