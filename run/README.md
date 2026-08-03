@@ -357,6 +357,53 @@ A scenario defines:
   and the resolution path (disk-based payload). base-sel4 only. Bounded
   timeouts (900s probe + 180s GET check).
 
+- `sponge-falkon-disk.run` — Phase 8 P4: Falkon FROM DISK on base-sel4
+  (the ceiling-killer proof, docs/14-boot-storage-architecture.md §4.4
+  key property "Falkon boots"). Applies the P2 desktop-from-disk pattern
+  to falkon's 509 MiB WebEngine closure — the payload Phase 7 packaged
+  (`pkg/falkon/`, 64 ROMs) but could NOT boot because the seL4 boot
+  chain has a ~256 MiB boot-module ceiling (Bender relocation + seL4
+  untyped cnode, docs/14 §2.1). The payload is staged under
+  `/system/pkg/falkon/payload/` on the GENODE ext2 P3 and served as ROM
+  sessions by a THIRD `cached_fs_rom` instance (`rom_pkg`, chrooted
+  there) — NONE of it is a Tier-0 boot module, so `image.elf` stays at
+  ~12 MiB (the P2 Tier-0 roster, unchanged). **This architectural claim
+  is PROVEN** (`.omo/evidence/p4-falkon-disk.log`): falkon's process
+  starts, the dynamic linker resolves the 237 MiB
+  `libQt6WebEngineCore.lib.so` from disk via rom_pkg, and lwIP DHCPs
+  over the ipxe_nic+nic_uplink stack (address=10.0.2.15). The Tier-0
+  `system`-child route rule `label_prefix: pkg_runtime → child rom_pkg`
+  catches falkon's payload ROM requests (binary + WebEngine libs + Qt
+  tars), forwarded up through the nested init, and serves them from
+  disk. `sponge_pkgd` runs WITHOUT `binary_prefix` so falkon's binary
+  resolves via `rom_pkg`. The scenario adds the nic stack (`ipxe_nic` +
+  `nic_uplink` from todo 12 / `sponge-net-probe.run`) and `pc_rtc` +
+  `system_rtc`. The desktop CHROME (sponge-de/wm/decorator/themed) is
+  deliberately omitted so falkon is the ONLY Qt renderer — the
+  `falkon_probe` pixel check is then unambiguous (no desktop chrome to
+  false-positive on, the misleading_success_output guard); the desktop
+  is separately proven in P2. **Remaining blocker (orthogonal to the
+  boot-chain claim):** base-sel4 gives every child PD a FIXED 8192-slot
+  capability CNode (`CSPACE_SIZE_LOG2=13`, platform_pd.cc:199-216),
+  independent of the init `caps` quota (30000/80000/200000 all fail
+  identically). falkon's WebEngine runtime (render buffers / shared
+  memory) exceeds 8192 caps and is stopped ("out of selector" → "denied
+  RM-session") after DHCP, before first paint. The fix is a vendored
+  base-sel4 patch to `CSPACE_SIZE_LOG2_2ND` (forbidden by the P4
+  "no vendored-tree patches" constraint — documented for P5 in the
+  evidence log §11). falkon_probe pixel check therefore does not pass
+  on this base-sel4 build; the bounded 900s `run_genode_until` timeout
+  governs (never a silent hang). The P4 run also delivered a real
+  `sponge_pkgd` fix: the generated `parent-provides` now carries `Nic` +
+  `Rtc` in the canonical casing (the prior `NIC` was wrong-cased and
+  `Rtc` was absent — falkon was stopped at "denied Rtc-session"). Sizing:
+  `pkg/falkon/` `caps=200000` (documented as moot on seL4 due to the
+  CNode, but correct for a patched/hw kernel); `falkon ram=1G`;
+  `pkg_runtime caps=210000 ram=1500M`; `system caps=250000 ram=3000M`;
+  `rom_pkg ram=768M`; QEMU `-m 6G`. Failure channel:
+  `SPONGE_FALKON_NO_FIXTURE=1` skips the host fixture (bounded GET-check
+  failure). base-sel4 only; `RUN_OPT="--include image/disk"`.
+
 - `sponge-power.run` — Phase 7 todo 17 (SUCCESS path): verifies
   `vct shutdown` actually powers the guest off through the real ACPI
   stack. There is NO `System` RPC session in Genode 26.05; the verified

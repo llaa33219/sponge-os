@@ -1180,7 +1180,15 @@ void Sponge::Pkgd::Main::_generate_runtime_config()
 			g.node("service", [&] { g.attribute("name", "Input"); });
 			g.node("service", [&] { g.attribute("name", "Report"); });
 			g.node("service", [&] { g.attribute("name", "File_system"); });
-			g.node("service", [&] { g.attribute("name", "NIC"); });
+			/*
+			 * Nic + Rtc use Genode's canonical service-name casing
+			 * (case-sensitive). The prior "NIC" never matched a real
+			 * request; without Rtc here, a networked+rtc package child
+			 * (e.g. falkon) is stopped at construction with
+			 * "parent denied Rtc-session".
+			 */
+			g.node("service", [&] { g.attribute("name", "Nic"); });
+			g.node("service", [&] { g.attribute("name", "Rtc"); });
 		});
 
 		g.node("default-route", [&] {
