@@ -500,6 +500,21 @@ cannot find a contiguous physical region large enough for the
 ~30 MiB boot module. 1 GiB is the smallest QEMU RAM size that leaves
 enough contiguous physical memory below 1 GiB.
 
+**Large-payload caveat (Falkon / WebEngine).** The seL4 boot chain
+(GRUB → Bender → seL4 core) has a practical ceiling on total boot
+module size: Bender's module relocation fails above ~256 MB ("no
+memory for relocation found"), and seL4's initial untyped capability
+cnode cannot map a single boot module larger than ~256 MB (the kernel
+resets during boot module setup). `run/sponge-falkon.run` works around
+the Bender limit by packing falkon's ~500 MB Qt6/WebEngine closure into
+a separate `falkon_payload.tar` multiboot2 module (not inside
+`image.elf`) and serving files via `tar_rom`; however, the seL4 untyped
+cnode limit still blocks the separate module. The resolution path
+(future work) is disk-based payload staging (block driver + filesystem +
+ROM-from-FS server, as Sculpt OS does for depot packages). The Alpha
+documents this as a known limitation in `docs/13-installation.md` (todo
+19) and `run/sponge-falkon.run`'s header comment.
+
 ### 7.3 Media creation host tools (ISO + disk image)
 
 Producing a bootable ISO or disk image of a base-sel4 scenario (the

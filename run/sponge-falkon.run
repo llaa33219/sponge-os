@@ -1,0 +1,410 @@
+#
+# \brief  Sponge OS Falkon browser package scenario (Phase 7, todo 16)
+# \author Sponge OS contributors
+# \date   2026
+#
+# Falkon (Qt6 WebEngine, ~500MB payload) — the heaviest Alpha component.
+# Payload staged as a SEPARATE multiboot2 module (tar_rom), not inside
+# image.elf, to avoid Bender's relocation limit with large images.
+#
+# Route-mapping (sculpt deploy falkon_web_browser -> Sponge):
+#   mesa_gpu-cpu -> mesa_gpu.lib.so copy in tar (softpipe alias)
+#   falkon_backdrop -> OMITTED | wm -> nitpicker (direct)
+#   black_hole (capture/gpu) -> OMITTED (software rendering)
+#   mixer -> OMITTED | system_clock -> pc_rtc + system_rtc
+#   ram_fs -> <ram/> in falkon vfs | network -> ipxe_nic -> nic_uplink
+#
+
+assert {[have_spec sel4]} \
+	"sponge-falkon requires KERNEL=sel4 (BOARD=pc)."
+
+build { core lib/ld init timer/hpet server/report_rom server/nitpicker \
+        server/tar_rom \
+        sponge_pkgd test/falkon_probe \
+        driver/acpi app/pci_decode driver/platform \
+        driver/nic server/nic_uplink \
+        driver/rtc/spec/x86 server/system_rtc }
+
+create_boot_directory
+
+set repo_root    [file normalize [file join [run_dir] "../../../../../.."]]
+set fixture_dir  [file normalize "$repo_root/run/fixtures/net-probe"]
+if {![file exists "$fixture_dir/net-fixture.txt"]} {
+	error "fixture $fixture_dir/net-fixture.txt missing"
+}
+set fixture_port 8765
+set access_log_path [file join [run_dir] "falkon-access.log"]
+puts "sponge-falkon: fixture URL = http://10.0.2.2:$fixture_port/net-fixture.txt"
+catch {exec pkill -f "http.server $fixture_port --directory $fixture_dir"}
+after 500
+set fixture_pids [exec sh -c "python3 -m http.server $fixture_port --directory $fixture_dir >>$access_log_path 2>&1" &]
+after 1000
+puts "sponge-falkon: host fixture started on port $fixture_port"
+proc kill_fixture { pids } {
+	foreach pid $pids { catch {exec kill $pid} }
+	catch {exec pkill -f "http.server $::fixture_port --directory $::fixture_dir"}
+}
+
+set payload_dir "$repo_root/pkg/falkon/payload"
+if {![file isdirectory $payload_dir]} {
+	error "falkon payload directory not found: $payload_dir"
+}
+set tar_staging "[run_dir]/falkon-tar-staging"
+file delete -force $tar_staging
+file mkdir $tar_staging
+foreach f [glob -directory $payload_dir -types f *] {
+	file copy -force $f "$tar_staging/[file tail $f]"
+}
+file copy -force "$tar_staging/mesa_gpu-softpipe.lib.so" "$tar_staging/mesa_gpu.lib.so"
+exec tar -cf "[run_dir]/falkon_payload.tar" -C "$tar_staging" .
+file delete -force $tar_staging
+puts "sponge-falkon: falkon_payload.tar created ([expr {[file size [run_dir]/falkon_payload.tar] / 1048576}]MB)"
+
+install_config {
+config
++ parent-provides
+  + service ROM
+  + service PD
+  + service RM
+  + service CPU
+  + service LOG
+  + service IRQ
+  + service IO_MEM
+  + service IO_PORT
+
++ default | caps: 200 | ram: 4M
++ default-route
+  + any-service
+    + parent
+    + any-child
+
++ start timer
+  + provides
+    + service Timer
+
++ start report_rom | ram: 8M
+  + provides
+    + service Report
+    + service ROM
+  + config | verbose: no
+    + policy | label: sponge_pkgd -> request     | report: falkon_probe -> request
+    + policy | label: falkon_probe -> result     | report: sponge_pkgd -> result
+    + policy | label: falkon_probe -> installed  | report: sponge_pkgd -> installed
+    + policy | label: pkg_runtime -> config      | report: sponge_pkgd -> runtime
+
++ start drivers | caps: 1200 | ram: 32M | managing_system: yes
+  + binary init
+  + route
+    + service Uplink
+      + child nic_uplink
+    + service Timer
+      + child timer
+    + service Report
+      + child report_rom
+    + any-service
+      + parent
+  + config
+    + parent-provides
+      + service IRQ
+      + service IO_MEM
+      + service IO_PORT
+      + service ROM
+      + service PD
+      + service RM
+      + service CPU
+      + service LOG
+      + service Timer
+      + service Uplink
+    + default | caps: 100 | ram: 1M
+    + start acpi | caps: 300 | ram: 4M
+      + route
+        + service IO_MEM
+          + parent
+        + service LOG
+          + parent
+        + service PD
+          + parent
+        + service RM
+          + parent
+        + service CPU
+          + parent
+        + service ROM
+          + parent
+        + service Report
+          + child report_rom
+    + start report_rom | caps: 100 | ram: 2M
+      + provides
+        + service ROM
+        + service Report
+      + config
+        + policy | label: pci_decode -> system | report: acpi -> acpi
+        + policy | label: platform -> devices  | report: pci_decode -> devices
+      + route
+        + service LOG
+          + parent
+        + service PD
+          + parent
+        + service CPU
+          + parent
+        + service ROM
+          + parent
+    + start pci_decode | caps: 100 | ram: 2M
+      + route
+        + service Report
+          + child report_rom
+        + service ROM | label: system
+          + child report_rom
+        + service IO_MEM
+          + parent
+        + service LOG
+          + parent
+        + service PD
+          + parent
+        + service RM
+          + parent
+        + service CPU
+          + parent
+        + service ROM
+          + parent
+    + start platform | caps: 200 | ram: 3M | managing_system: yes
+      + provides
+        + service Dma
+        + service Platform
+        + service Acpi
+      + route
+        + service ROM | label: devices
+          + child report_rom
+        + service IRQ
+          + parent
+        + service IO_MEM
+          + parent
+        + service IO_PORT
+          + parent
+        + service ROM
+          + parent
+        + service PD
+          + parent
+        + service CPU
+          + parent
+        + service LOG
+          + parent
+        + service Timer
+          + parent
+      + config
+        + policy | label_prefix: nic | info: yes | + pci | class: ETHERNET
+    + start nic | caps: 250 | ram: 10M
+      + binary ipxe_nic
+      + route
+        + service Dma
+          + child platform
+        + service Platform
+          + child platform
+        + service ROM
+          + parent
+        + service PD
+          + parent
+        + service RM
+          + parent
+        + service CPU
+          + parent
+        + service LOG
+          + parent
+        + service Timer
+          + parent
+        + service Uplink
+          + parent
+
++ start nic_uplink | caps: 200 | ram: 8M
+  + provides
+    + service Uplink
+    + service Nic
+  + config | verbose: yes
+  + route
+    + service Timer
+      + child timer
+    + any-service
+      + parent
+
++ start pc_rtc | caps: 100 | ram: 2M
+  + provides
+    + service Rtc
+  + route
+    + service Timer
+      + child timer
+    + any-service
+      + parent
+
++ start system_rtc | caps: 100 | ram: 2M
+  + provides
+    + service Rtc
+  + route
+    + service Rtc
+      + child pc_rtc
+    + service Timer
+      + child timer
+    + any-service
+      + parent
+
++ start tar_rom | caps: 200 | ram: 64M
+  + provides
+    + service ROM
+  + config
+    + archive | name: falkon_payload.tar
+  + route
+    + service ROM
+      + parent
+    + any-service
+      + parent
+
++ start nitpicker | ram: 16M
+  + provides
+    + service Gui
+    + service Capture
+    + service Event
+  + route
+    + service Report
+      + child report_rom
+    + service Timer
+      + child timer
+    + any-service
+      + parent
+      + any-child
+  + config
+    + capture
+    + event
+    + domain www | layer: 2 | content: client | label: no
+                   | hover: always | focus: click
+                   | xpos: 0 | ypos: 0 | width: 1024 | height: 768
+    + domain default | layer: 3 | content: client | label: no
+                     | hover: always | focus: click | ypos: 0 | height: 0
+    + default-policy | domain: www
+    + background | color: #1e1e2e
+
++ start sponge_pkgd | caps: 200 | ram: 16M
+  + route
+    + service ROM | label_last: request
+      + child report_rom
+    + service Report
+      + child report_rom
+    + any-service
+      + parent
+      + any-child
+
++ start pkg_runtime | caps: 2000 | ram: 256M
+  + binary init
+  + route
+    + service ROM | label: config
+      + child report_rom
+    + service ROM
+      + child tar_rom
+    + service Gui
+      + child nitpicker
+    + service Report
+      + child report_rom
+    + service Nic
+      + child nic_uplink
+    + service Rtc
+      + child system_rtc
+    + any-service
+      + parent
+      + any-child
+
++ start falkon_probe | caps: 200 | ram: 16M
+  + route
+    + service Capture
+      + child nitpicker
+    + service Timer
+      + child timer
+    + service ROM | label_last: result
+      + child report_rom
+    + service ROM | label_last: installed
+      + child report_rom
+    + service Report
+      + child report_rom
+    + any-service
+      + parent
+      + any-child
+- }
+
+set staged_pkgs { falkon }
+foreach pkg $staged_pkgs {
+	set src "${genode_dir}/../pkg/$pkg/metadata.xml"
+	if {![file exists $src]} { error "package metadata not found: $src" }
+	exec cp -L $src "bin/pkg_$pkg.xml"
+}
+set index_fh [open "bin/pkg_index.xml" w]
+puts $index_fh "<packages>"
+foreach pkg $staged_pkgs { puts $index_fh "  <pkg name=\"$pkg\"/>" }
+puts $index_fh "</packages>"
+close $index_fh
+
+proc check_for_missing_lib_build { binaries } { }
+set boot_modules [build_artifacts]
+lappend boot_modules pkg_falkon.xml pkg_index.xml
+build_boot_image $boot_modules
+
+file copy -force "[run_dir]/falkon_payload.tar" "[run_dir]/boot/falkon_payload.tar"
+puts "sponge-falkon: falkon_payload.tar staged as separate boot module"
+
+set grub_cfg "[run_dir]/boot/grub/grub.cfg"
+set fh [open $grub_cfg r]
+set grub_content [read $fh]
+close $fh
+regsub -all {phys_max=256M} $grub_content {phys_max=4G} grub_content
+regsub -all {(\s*module2 /boot/image\.elf image\.elf\s*\n)} $grub_content \
+	{\1 module2 /boot/falkon_payload.tar falkon_payload.tar
+} grub_content
+set fh [open $grub_cfg w]
+puts -nonewline $fh $grub_content
+close $fh
+puts "sponge-falkon: grub.cfg patched (phys_max=4G + tar module2)"
+
+#
+# Re-create the ISO AFTER adding the tar + patching grub.cfg. The initial
+# ISO (created during build_boot_image) only has image.elf. This re-runs
+# xorriso to produce an ISO with the separate falkon_payload.tar module
+# and the patched grub.cfg.
+#
+run_image
+puts "sponge-falkon: ISO re-created with falkon_payload.tar module"
+
+append qemu_args " -nographic -m 4G "
+append_qemu_nic_args
+
+set rc 0
+if {[catch {
+	run_genode_until {.*falkon-probe: PASS.*} 900
+} err]} {
+	puts "sponge-falkon: probe did not PASS within 900s — $err"
+	puts "sponge-falkon: (quota-upgrade as last log = cap exhaustion — raise caps)"
+	set rc 1
+}
+
+set got_get 0
+if {$rc == 0} {
+	puts "sponge-falkon: probe PASS — checking fixture GET..."
+	for {set i 0} {$i < 36} {incr i} {
+		after 5000
+		if {[file exists $access_log_path]} {
+			set fh [open $access_log_path r]
+			set content [read $fh]
+			close $fh
+			if {[regexp {GET /net-fixture\.txt} $content]} {
+				set got_get 1
+				puts "sponge-falkon: fixture GET detected"
+				break
+			}
+		}
+		if {$i % 6 == 0} { puts "sponge-falkon: waiting for GET... ($([expr {$i * 5}])s)" }
+	}
+	if {!$got_get} {
+		puts "sponge-falkon: FAILED — no fixture GET after 180s"
+		set rc 1
+	}
+}
+
+kill_fixture $fixture_pids
+puts "sponge-falkon: host fixture killed (cleanup receipt)"
+if {$rc != 0} { exit $rc }
+puts "sponge-falkon: ALL CHECKS PASSED"
+# vi: set ft=tcl :
