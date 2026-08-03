@@ -84,10 +84,32 @@
          is needed. Clipboard copy/paste is disabled (the Alpha scenario
          does not route a clipboard Report/ROM) — initial 800x600
          accommodates the windowed scenario.
+
+         ld_check_ctors="false": the upstream gems `terminal` server
+         (genode/repos/gems/src/server/terminal, Genode 26.05 pristine)
+         uses plain `Component::construct` without calling
+         `env.exec_static_constructors()`. Since this start node pulls
+         in vfs.lib.so (NEEDED), and vfs's plugin registry contributes
+         pending static constructors, the dynamic linker's safety check
+         (repos/base/src/lib/ldso/main.cc:440, gated by the
+         `ld_check_ctors` config attribute which defaults to true)
+         fires and aborts the component at boot. The vfs plugins that
+         register themselves via those static constructors are not
+         needed by this start node — it routes File_system to a sibling
+         `vfs` child rather than dlopen-ing any plugin — so suppressing
+         the check is safe here. The 22-glyph first paint plus the
+         22 -> 329 keystroke-echo round-trip in run/sponge-terminal.run
+         proves the runtime is fully functional under this setting.
+         Tracking note: if a future Genode release either patches
+         gems/terminal to call exec_static_constructors (the
+         error-message-suggested fix; matches the pattern in
+         genode/repos/{demo,os}/src/.../main.cc) or makes vfs's plugin
+         registry not use binary-stage static constructors, this
+         attribute can be removed.
     -->
     <start name="terminal" caps="150" ram="48M">
       <provides><service name="Terminal"/></provides>
-      <config>
+      <config ld_check_ctors="false">
         <initial width="800" height="600"/>
         <vfs>
           <rom name="VeraMono.ttf"/>

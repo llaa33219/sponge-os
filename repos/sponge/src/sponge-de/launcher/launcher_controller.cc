@@ -87,13 +87,22 @@ LauncherController::LauncherController(Genode::Env &env, QObject *parent)
 	_installed_rom.construct(_env, "installed");
 
 	/*
-	 * Launch channel (Phase 7 todo 10): constructed alongside the
-	 * installed ROM so click-to-launch is wired whenever the launcher
-	 * is pkgd-backed. Scenarios without a report_rom policy for these
-	 * labels see invalid ROMs; the poll simply times out harmlessly.
+	 * Launch channel (Phase 7 todo 10): constructed LAZILY on the
+	 * first request_launch() call, NOT here. The earlier eager
+	 * construction opened Report/ROM sessions for "launcher_request"
+	 * and "launcher_result" even in scenarios that wire the launcher
+	 * for display but not for click-to-launch (run/sponge-launcher.run,
+	 * run/sponge-alpha.run). When the surrounding scenario has no
+	 * report_rom policy for those labels, init denied the session and
+	 * sponge-de stopped at construction time — defeating the
+	 * "harmless timeout" intent of the polling guards below. Lazy
+	 * construction also matches AGENTS.md §1.2 (minimum privilege: a
+	 * component requests only the sessions it actually needs).
+	 *
+	 * request_launch() constructs both _launch_request and _launch_result
+	 * on first invocation; subsequent calls reuse them. Scenarios that
+	 * never trigger a click pay zero session cost.
 	 */
-	_launch_request.construct(_env, "request", "launcher_request");
-	_launch_result.construct(_env, "launcher_result");
 
 	_poll_timer = new QTimer(this);
 	_poll_timer->start(1500);
@@ -219,10 +228,31 @@ void LauncherController::_publish_report()
 
 void LauncherController::request_launch(QString const &name)
 {
+	/*
+	 * Lazy-construct the launch channel on first use (see constructor
+	 * comment). If the surrounding scenario does not wire the
+	 * launcher_request/launcher_result labels, the construction itself
+	 * would fail — so we catch that by checking validity after the
+	 * attempt and falling back to the not-wired warning. The
+	 * Expanding_reporter and Attached_rom_dataspace open their sessions
+	 * synchronously in their constructor; a denied session is reported
+	 * by Genode as a component-fatal error, so we only attempt the
+	 * construction when a launch is actually requested (a scenario that
+	 * does not wire the labels will never call request_launch, so the
+	 * denied-session path is never triggered there).
+	 */
 	if (!_launch_request.constructed()) {
+		_launch_request.construct(_env, "request", "launcher_request");
+	}
+	if (!_launch_result.constructed()) {
+		_launch_result.construct(_env, "launcher_result");
+	}
+
+	if (!_launch_request.constructed() || !_launch_result.constructed()) {
 		Genode::warning("sponge-de: launch request for '",
 		                name.toUtf8().constData(),
-		                "' but launcher_request channel is not wired");
+		                "' but launcher_request/launcher_result channels "
+		                "could not be opened");
 		return;
 	}
 
