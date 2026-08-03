@@ -24,16 +24,24 @@
   <version>2026-04-22</version>
   <description>Falkon web browser (Qt6 WebEngine). Browse the Alpha's QEMU-slirp network.</description>
 
-  <binary>falkon</binary>
-  <!--
-       caps/ram: WebEngine is the heaviest component in the Alpha.
-       Start values caps=4000, ram=1G (between the task's 2000-floor
-       and the depot runtime's 10000/2G). RAISE per docs/09-roadmap.md
-       §11.1 if the boot log shows a quota-upgrade line as the last
-       entry (cap exhaustion signature). The empirical values that
-       worked are recorded in .omo/evidence/task-16-phase7-alpha.log.
-  -->
-  <quota ram="1G" caps="4000"/>
+   <binary>falkon</binary>
+   <!--
+        caps/ram: WebEngine is the heaviest component in the Alpha.
+        ram=1G (the WebEngine heap). caps=200000 for the disk-served
+        model (run/sponge-falkon-disk.run, Phase 8 P4): falkon's payload
+        maps ~400 MiB of shared libraries eagerly at load (the 237 MiB
+        libQt6WebEngineCore.lib.so alone is ~60k 4 KiB frames; the full
+        Qt6/WebEngine/NSS closure is ~100k frames) plus page-table caps
+        plus the WebEngine heap. The docs/14 §11 starting value of 30000
+        and the first measured 80000 both hit "out of selector" / "denied
+        RM-session" (the §11.1 cap-exhaustion signature) — falkon
+        silently stopped mid-init. 200000 covers the ~100k lib frames +
+        ~100k headroom for heap/resource allocations. RAISE further per
+        docs/09-roadmap.md §11.1 if the boot log shows a quota-upgrade
+        line as the last entry. The empirical value that boots falkon
+        from disk is recorded in .omo/evidence/p4-falkon-disk.log.
+   -->
+   <quota ram="1G" caps="200000"/>
 
   <config clipboard="yes">
     <vfs>
