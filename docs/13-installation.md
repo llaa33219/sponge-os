@@ -2,6 +2,20 @@
 
 This guide covers Sponge OS Alpha 0.1.0, codename Archaeocyte. The Alpha media target is seL4 running in QEMU. It is a development release, not a general hardware installer.
 
+> **Phase 8 media model.** As of Phase 8, the Alpha media splits into two
+> distinct products (see
+> [`docs/14-boot-storage-architecture.md`](14-boot-storage-architecture.md)
+> §8 for the design authority):
+>
+> | Media | What it is | Persistence |
+> |---|---|---|
+> | `.img` | The **real product** — a 4-partition disk image: BIOS-boot + ESP + GENODE (the Qt6 desktop served from disk via `cached_fs_rom`) + SPONGE-DATA (the writable user-area filesystem). | ✅ Installs survive reboot on this media (Phase 8 P3). |
+> | `.iso` | The **live/eval media** — the Phase 7 boot-modules composition on a read-only El Torito image; Tier 2 is a RAM filesystem. | ❌ Nothing persists (it is a read-only optical medium). |
+>
+> Both media boot the same themed desktop and pass `alpha-probe: PASS`.
+> Pick the `.img` to install packages and keep them; pick the `.iso` to
+> evaluate Sponge OS without writing anything.
+
 ## 1. Prerequisites
 
 Start with a checkout of this repository. The Genode 26.05 source tree is already vendored at `genode/`; no separate Genode checkout is needed.
@@ -10,13 +24,13 @@ Install the host toolchain and base packages listed in [`docs/11-environment.md`
 
 ```bash
 # Debian / Ubuntu
-sudo apt install xorriso gptfdisk mtools e2tools dosfstools e2fsprogs
+sudo apt install xorriso gptfdisk mtools e2tools dosfstools e2fsprogs coreutils
 
 # Arch / CachyOS
 sudo pacman -S libisoburn gptfdisk mtools e2tools dosfstools e2fsprogs
 ```
 
-The required executable names are `xorriso`, `sgdisk`, `mcopy`, `e2cp`, `e2mkdir`, `mkfs.ext2`, `mkfs.vfat`, and `resize2fs`. The seL4 build also needs the toolchain, CMake, Ninja, QEMU, Tcl, expect, and the Python modules listed in [`docs/11-environment.md` §7](11-environment.md#7-host-bootstrap). Set up the repository-local Mojo environment with:
+The required executable names are `xorriso`, `sgdisk`, `mcopy`, `e2cp`, `e2mkdir`, `mkfs.ext2`, `mkfs.vfat`, `resize2fs`, and `truncate`. The seL4 build also needs the toolchain, CMake, Ninja, QEMU, Tcl, expect, and the Python modules listed in [`docs/11-environment.md` §7](11-environment.md#7-host-bootstrap). Set up the repository-local Mojo environment with:
 
 ```bash
 uv sync
@@ -33,7 +47,15 @@ From the repository root, run:
 ./tool/dist
 ```
 
-The command checks the media tools, builds both `image/disk` and `image/iso` from `run/sponge-alpha.run`, copies the release artifacts into `var/dist/`, and writes SHA-256 sidecars. Verify the sidecars with:
+The command:
+
+1. Pre-flight checks every host tool the Genode run framework's image plugins AND `tool/mkdata` invoke (`xorriso`, `sgdisk`, `mcopy`, `e2cp`, `e2mkdir`, `mkfs.ext2`, `mkfs.vfat`, `resize2fs`, `truncate`).
+2. Builds the **product `.img`** from `run/sponge-desktop-disk.run` with `RUN_OPT='--include image/disk'`. That scenario boots a Tier-0 `image.elf` (≤ 80 MiB) that mounts the GENODE ext2 partition and serves the full Qt6 desktop from `/system` via `cached_fs_rom`, then gates on `alpha-probe: PASS`.
+3. Runs `tool/mkdata` on the produced `.img` to add the SPONGE-DATA P4 (`docs/14` §4.3 — `truncate` + `sgdisk` delete/move/new/hybrid + `mkfs.ext2 -E offset`). This is the partition that backs `sponge_pkgd`'s installed-set store, so installs survive reboot.
+4. Builds the **live/eval `.iso`** from `run/sponge-alpha.run` with `RUN_OPT='--include image/iso'` — the Phase 7 boot-modules composition on an El Torito image, gated on `alpha-probe: PASS`.
+5. Copies the artifacts to `var/dist/`, writes the SHA-256 sidecars, and prints a summary table.
+
+Verify the sidecars with:
 
 ```bash
 (cd var/dist && sha256sum -c *.sha256)
@@ -42,28 +64,45 @@ The command checks the media tools, builds both `image/disk` and `image/iso` fro
 The resulting files are:
 
 ```text
-var/dist/sponge-os-0.1.0-alpha-x86_64-sel4.img
-var/dist/sponge-os-0.1.0-alpha-x86_64-sel4.iso
+var/dist/sponge-os-0.1.0-alpha-x86_64-sel4.img   (4 partitions: BIOSBOOT/ESP/GENODE/SPONGE-DATA)
+var/dist/sponge-os-0.1.0-alpha-x86_64-sel4.iso   (live/eval El Torito)
 ```
+
+Confirm the four partitions are present (the `misleading_success_output` defense — never trust the build exit code alone):
+
+```bash
+sgdisk -p var/dist/sponge-os-0.1.0-alpha-x86_64-sel4.img
+# Expect: four partitions, with P4 named SPONGE-DATA.
+```
+
+#### Control doors
+
+The automation is the default and a door is always open (AGENTS.md §1.1):
+
+- `./tool/dist --no-data` — produce the `.img` WITHOUT the SPONGE-DATA P4 (a 3-partition image; installs will NOT persist on this media). Useful when iterating on the disk-served desktop alone.
+- `./tool/dist --data-size 256` — produce a 256 MiB SPONGE-DATA P4 instead of the default 1024 MiB (handy for fast QEMU boot).
+- `./tool/mkdata <img>` — run only the P4 grow/repartition step on an existing 3-partition `.img`. Idempotent.
 
 ### 2.2 Manual build
 
-The automation has a documented control path. From the repository root, after the normal build preparation and port setup, run the equivalent commands from [`docs/08-development.md` §11.2](08-development.md#112-manual-flow-the-canonical-reference):
+The automation has a documented control path. From the repository root, after the normal build preparation and port setup, the canonical manual sequence is in [`docs/08-development.md` §11.2](08-development.md#112-manual-flow-the-canonical-reference). The short form:
 
 ```bash
-make -C genode/build/x86_64 run/sponge-alpha \
-    KERNEL=sel4 BOARD=pc \
-    RUN_OPT='--include image/disk'
+# Product .img (4-partition). Build the disk-served desktop scenario:
+make -C genode/build/x86_64 run/sponge-desktop-disk \
+    KERNEL=sel4 BOARD=pc RUN_OPT='--include image/disk'
+# Grow SPONGE-DATA P4 onto the produced image:
+./tool/mkdata genode/build/x86_64/var/run/sponge-desktop-disk.img
 mkdir -p var/dist
-cp genode/build/x86_64/var/run/sponge-alpha.img \
+cp genode/build/x86_64/var/run/sponge-desktop-disk.img \
    var/dist/sponge-os-0.1.0-alpha-x86_64-sel4.img
 (cd var/dist && sha256sum sponge-os-0.1.0-alpha-x86_64-sel4.img \
     > sponge-os-0.1.0-alpha-x86_64-sel4.img.sha256)
 
+# Live/eval .iso. Build the alpha boot-modules composition:
 rm -rf genode/build/x86_64/var/run/sponge-alpha*
 make -C genode/build/x86_64 run/sponge-alpha \
-    KERNEL=sel4 BOARD=pc \
-    RUN_OPT='--include image/iso'
+    KERNEL=sel4 BOARD=pc RUN_OPT='--include image/iso'
 cp genode/build/x86_64/var/run/sponge-alpha.iso \
    var/dist/sponge-os-0.1.0-alpha-x86_64-sel4.iso
 (cd var/dist && sha256sum sponge-os-0.1.0-alpha-x86_64-sel4.iso \
@@ -75,7 +114,7 @@ cp genode/build/x86_64/var/run/sponge-alpha.iso \
 
 QEMU is the supported Alpha target. Use at least 2 GiB of guest RAM. These commands boot the already-built media directly and keep the guest log in the terminal:
 
-### 3.1 Disk image
+### 3.1 Disk image (the product media — installs persist)
 
 ```bash
 qemu-system-x86_64 \
@@ -87,7 +126,7 @@ qemu-system-x86_64 \
     -device e1000,netdev=net0
 ```
 
-### 3.2 ISO
+### 3.2 ISO (live/eval — nothing persists)
 
 ```bash
 qemu-system-x86_64 \
@@ -100,7 +139,7 @@ qemu-system-x86_64 \
     -device e1000,netdev=net0
 ```
 
-The scenario-level media verification uses the same `image/disk` and `image/iso` modes and gates on `alpha-probe: PASS` (`run/sponge-alpha.run`). To stop a guest that does not respond to `vct shutdown`, use QEMU's monitor escape, `Ctrl-A`, then `x`, or terminate the QEMU process from the host.
+The scenario-level media verification uses the same `image/disk` and `image/iso` modes and gates on `alpha-probe: PASS` (for the `.img`, `run/sponge-desktop-disk.run`; for the `.iso`, `run/sponge-alpha.run`). To stop a guest that does not respond to `vct shutdown`, use QEMU's monitor escape, `Ctrl-A`, then `x`, or terminate the QEMU process from the host.
 
 ## 4. Write the disk image to USB
 
@@ -122,30 +161,30 @@ sync
 
 The following path is the shortest tour of the delivered Alpha. Each claim names the run scenario that proves it.
 
-1. **Boot the media.** Start the `.img` or `.iso` in QEMU. The seL4 boot chain reaches the Sponge desktop probe marker (`run/sponge-alpha.run`; media boot evidence is recorded in `.omo/evidence/task-5-phase7-alpha.log` and `.omo/evidence/task-6-phase7-alpha.log`).
-2. **See the desktop.** The themed panel and launcher appear automatically after boot (`run/sponge-alpha.run`).
-3. **Open the launcher.** The launcher receives the pre-staged package set from `sponge_pkgd` (`run/sponge-alpha.run`).
+1. **Boot the media.** Start the `.img` or `.iso` in QEMU. The seL4 boot chain reaches the Sponge desktop probe marker (`run/sponge-desktop-disk.run` for the `.img`, `run/sponge-alpha.run` for the `.iso`; media boot evidence is recorded in `.omo/evidence/task-5-phase7-alpha.log` and `.omo/evidence/task-6-phase7-alpha.log` for the ISO flow, and `.omo/evidence/p2-desktop-disk.log` for the disk-served product flow).
+2. **See the desktop.** The themed panel and launcher appear automatically after boot (same scenarios as step 1).
+3. **Open the launcher.** The launcher receives the staged package set from `sponge_pkgd`.
 4. **Launch Terminal.** The terminal window, bash prompt, and a keystroke round trip are verified (`run/sponge-terminal.run`).
 5. **Launch Files.** The file manager window, navigation, copy, delete, and read-only refusal are verified (`run/sponge-files.run`).
-6. **Launch TextEdit.** The Qt6 text editor window renders after install and launch (`run/sponge-textedit.run`). **Falkon is not bootable on this Alpha media; do not expect a browser window here.** Its package is staged and documented in the limitations below (`.omo/evidence/task-16-phase7-alpha.log`).
+6. **Launch TextEdit.** The Qt6 text editor window renders after install and launch (`run/sponge-textedit.run`). **Falkon's first paint is blocked by a base-sel4 capability-space issue — see §6.**
 7. **Inspect system status.** `vct status` reads the live component state (`run/sponge-vct-status.run`).
-8. **Inspect packages.** `vct list` reports the installed set, and `vct install` enables a pre-staged package (`run/sponge-pkg-list.run`, `run/sponge-pkg-install.run`).
+8. **Inspect packages.** `vct list` reports the installed set, and `vct install` enables a staged package (`run/sponge-pkg-list.run`, `run/sponge-pkg-install.run`).
 9. **Read and change configuration.** `vct config theme.active` reads the active theme, and `vct theme apply` exercises the theme command and live theme backend (`run/sponge-config.run`).
 10. **Launch explicitly.** `vct launch <package>` starts an installed package through the same backend used by the desktop launcher (`run/sponge-launch.run`).
 11. **Open Leitzentrale.** `vct leitzentrale` enables the Leitzentrale subsystem and its viewer marker appears in the desktop (`run/sponge-leitzentrale.run`, `run/sponge-alpha.run`). The viewer is a marker view, not the complete Sculpt UI.
 12. **Shut down.** `vct shutdown` requests ACPI poweroff and QEMU exits in the success scenario (`run/sponge-power.run`).
 
-Installs are not persistent on the seL4 media. After a reboot, repeat the `vct install` step for any package you want to enable (`run/sponge-pkg-persist.run` proves persistence only in the separate base-linux development flow, not on Alpha media).
+On the **product `.img`**, installs persist across reboots via the SPONGE-DATA partition (`run/sponge-persist-disk.run` proves the two-boot restoration on the same image). On the **`.iso`**, nothing persists — Tier 2 is a RAM filesystem (the read-only optical medium cannot deliver persistence).
 
 ## 6. Known limitations
 
 This register is part of the Alpha contract.
 
-- **QEMU-only target.** There is no hardware support matrix for this release. The verified target is seL4 in QEMU (`run/sponge-alpha.run`).
-- **Install means enable.** All Alpha binaries are pre-staged into the seL4 boot image. `vct install` enables a package already on the image. It does not deliver a binary at runtime (`run/sponge-pkg-install.run`; decision A1 in `docs/plans/phase7-alpha-decisions.md`).
-- **No install persistence on seL4 media.** Installed package state is lost when the Alpha media reboots. The base-linux `lx_fs` persistence scenario is a development proof only (`run/sponge-pkg-persist.run`; decision A6).
+- **QEMU-only target.** There is no hardware support matrix for this release. The verified target is seL4 in QEMU (`run/sponge-desktop-disk.run` for the product `.img`, `run/sponge-alpha.run` for the live/eval `.iso`).
+- **Install means enable (`.iso` media only).** On the live/eval `.iso`, all binaries are pre-staged into the boot image and `vct install` enables a package already on the image. It does not deliver a binary at runtime (`run/sponge-pkg-install.run`; decision A1 in `docs/plans/phase7-alpha-decisions.md`). The product `.img` does NOT have this limitation: its package repository lives at `/system/pkg` on the GENODE partition and `vfs_data` on SPONGE-DATA backs `sponge_pkgd`'s store, so installs come from the on-disk repo and persist across reboots (Phase 8 P3, `run/sponge-persist-disk.run`).
+- **Installs do not persist on `.iso` media.** The live/eval ISO is read-only by nature; Tier 2 is a RAM filesystem. Use the product `.img` for any install persistence (Phase 8 P3, `run/sponge-persist-disk.run`).
 - **QEMU slirp networking only.** Networking is limited to QEMU user-mode networking and the slirp path. Wi-Fi, real-hardware networking, and a network configuration UI are out of scope (`run/sponge-net-probe.run`).
-- **Falkon is packaged but not bootable on seL4 media.** The boot chain has an approximately 256 MB boot-module ceiling, while Falkon's WebEngine payload is approximately 509 MB. The package is therefore not a working browser in this Alpha. The planned fix is disk-based payload staging after Alpha (`.omo/evidence/task-16-phase7-alpha.log`, decision D5 in `docs/plans/phase7-alpha-decisions.md`).
+- **Falkon is packaged, boots from disk, but first paint is blocked by a base-sel4 capability-space issue.** The Phase 8 disk-served architecture (docs/14) is PROVEN: falkon's 509 MiB WebEngine payload boots FROM DISK via `cached_fs_rom` — the binary starts, the dynamic linker resolves the 237 MiB `libQt6WebEngineCore.lib.so` from disk, and lwIP DHCPs to 10.0.2.15 (`run/sponge-falkon-disk.run`, `.omo/evidence/p4-falkon-disk.log`). The boot-module ceiling that blocked it in Phase 7 is fully defeated. The remaining blocker is ORTHOGONAL to the boot/storage architecture: base-sel4 gives every child protection domain a fixed-size capability CNode, and falkon's WebEngine runtime exceeds it before first paint. The blocker has THREE proven levels (`.omo/evidence/p4-cspace-falkon.log`, `.omo/evidence/p4-cspace-fix.log`): (1) the main per-PD CSpace is fixable — a vendored multi-file patch was PROVEN to launch falkon + DHCP at 262144 slots (one seL4-eng work item, deferred); (2) the vm_space PTE pool (`NUM_VM_SEL_LOG2=15`, ~32768 selectors per PD) is a SECOND per-PD pool that the main-CSpace fix does not touch and that falkon also exceeds; (3) the 16 KiB untyped-pool reservation that backs the larger CNodes regresses ahci/disk detection (sponge-boot hang) when the pool is sized large enough — a seL4-cap-level trace is needed to pin down. This is documented as the next seL4-eng work item in `docs/14-boot-storage-architecture.md` §12.
 - **Leitzentrale viewer is limited.** `lz_viewer` shows the Leitzentrale marker and window path, not the full Sculpt UI content (`run/sponge-alpha.run`).
 - **No stability guarantee.** This is an Alpha and data loss is possible. Keep anything important outside the guest.
 - **No snapshots, backup, or recovery.** The Alpha provides none of these safeguards.
