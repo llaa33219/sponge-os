@@ -20,6 +20,21 @@ A scenario defines:
 
 ## Current scenarios
 
+- `sponge-boot.run` — Phase 8 P1: storage-chain smoke test on base-sel4.
+  Proves the Tier-0 runtime disk-read chain end-to-end (docs/14 §4.4):
+  `platform`/`acpi`/`pci_decode` → `ahci` (Block) → `part_block` (Block/P3,
+  partition pinned BY NUMBER) → `vfs` (`<rump fs="ext2fs"/>` → File_system)
+  → `cached_fs_rom` (chroot `/system`, ROM service) → `boot_probe` (opens
+  ROM `marker.txt`, validates exact content, logs `boot-probe: PASS`).
+  Produces a disk image via `RUN_OPT="--include image/disk"` whose GENODE
+  ext2 P3 contains `/system/marker.txt`; the `image/disk` tool
+  auto-e2cp's the whole run dir into P3. The `boot_probe` component
+  (`repos/sponge/src/test/boot_probe/`) is a tiny plain-Genode probe
+  (no libc, no Qt). AHCI variant is the default; NVMe variant is selected
+  via `SPONGE_BOOT_NVME=1` (boots from the same .img via AHCI auto-attach,
+  but storage reads from a separate GPT disk attached via `-device nvme`).
+  base-sel4 only.
+
 - `sponge-minimal.run` — Phase 1 goal: minimum boot (skeleton).
   Kernel-agnostic; verified on `base-linux` (no QEMU) and `base-sel4`
   (QEMU, production target).

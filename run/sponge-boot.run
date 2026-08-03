@@ -1,0 +1,386 @@
+#
+# \brief  Sponge OS Phase 8 P1 storage-chain smoke test
+# \author Sponge OS contributors
+# \date   2026
+#
+# Proves the Tier-0 runtime disk-read chain on base-sel4 — the
+# foundation for everything else in Phase 8 (docs/14-boot-storage-
+# architecture.md §3, §4.4). This is the scenario that replaces the
+# Alpha "pack everything into image.elf" model with "boot modules
+# reach persistent storage, then serve the on-disk system as ROMs."
+#
+# The chain under test (docs/14 §4.4):
+#
+#   GRUB → bender → seL4 (image.elf = Tier 0 only)
+#     └─ init
+#         ├─ timer, report_rom
+#         ├─ platform/acpi/pci_decode (hardware discovery)
+#         ├─ ahci (or nvme) → Block session
+#         ├─ part_block → Block/P3 (partition pinned BY NUMBER)
+#         ├─ vfs (Vfs_block + <rump fs="ext2fs"/>) → File_system
+#         ├─ cached_fs_rom (chroot /system) → ROM service
+#         └─ boot_probe: opens ROM "marker.txt", asserts exact content,
+#             logs boot-probe: PASS (bounded; on chain break the
+#             upstream component logs identify the stage and the
+#             run_genode_until timeout bounds it).
+#
+# The scenario produces a disk image via RUN_OPT="--include image/disk"
+# whose GENODE ext2 P3 contains /system/marker.txt with known content.
+# The image/disk tool auto-e2cp's the whole run dir into P3
+# (genode/tool/run/image/disk:79-90); the marker file is staged into
+# [run_dir]/system/ by this script before run_image runs.
+#
+# On q35, image/disk's auto-attach `-drive format=raw,file=<run_dir>.img`
+# lands on the AHCI (ICH9 SATA) controller, so the Genode ahci driver
+# binds it with no extra QEMU wiring.
+#
+# === AHCI VARIANT (default) ===
+#
+#   make -C genode/build/x86_64 run/sponge-boot \
+#       KERNEL=sel4 BOARD=pc RUN_OPT="--include image/disk"
+#
+# === NVME VARIANT ===
+#
+#   set ::env(SPONGE_BOOT_NVME) 1
+#   make -C genode/build/x86_64 run/sponge-boot \
+#       KERNEL=sel4 BOARD=pc RUN_OPT="--include image/disk"
+#   (or: make ... SPONGE_BOOT_NVME=1 — the run framework exports it)
+#
+# The NVMe variant boots from the same image/disk .img (AHCI auto-attach
+# provides the boot media), but the storage target is a separate
+# bin/nvme_disk.img (GPT P3 + ext2 + /system/marker.txt) attached via
+# -device nvme. The ahci driver is NOT started; only nvme is. The boot
+# disk's own P3 is present but unread by the storage chain.
+#
+# base-sel4 only: the storage chain components (platform, ahci/nvme,
+# part_block, vfs+rump) need real PC hardware access on seL4.
+#
+
+assert {[have_spec sel4]} \
+	"sponge-boot requires KERNEL=sel4 (BOARD=pc) in build.conf."
+
+#
+# Variant selection: default ahci; nvme via SPONGE_BOOT_NVME=1.
+#
+set use_nvme [expr {[info exists ::env(SPONGE_BOOT_NVME)] && $::env(SPONGE_BOOT_NVME) == "1"}]
+puts "sponge-boot: [expr {$use_nvme ? "NVME" : "AHCI"}] variant"
+
+#
+# The known marker content. The file staged into [run_dir]/system/ and
+# the probe's <config expected="..."/> MUST agree on this exact byte
+# string (no trailing newline — the probe compares length-exact).
+#
+set marker_content "sponge-boot-marker-v1"
+
+#
+# Build — the Tier-0 component chain.
+#
+set build_components {
+	core lib/ld init timer
+	server/report_rom
+	driver/platform driver/acpi app/pci_decode
+	server/part_block
+	server/vfs
+	server/cached_fs_rom
+	lib/vfs lib/vfs_rump
+	test/boot_probe
+}
+
+#
+# Storage driver: ahci (default) or nvme.
+#
+if {$use_nvme} {
+	lappend build_components driver/nvme
+} else {
+	lappend build_components driver/ahci
+}
+
+build $build_components
+
+create_boot_directory
+
+#
+# Config — the Tier-0 component tree (docs/14 §4.4).
+#
+# Modeled on:
+#   - genode/repos/os/run/ahci_block.run (flat platform/acpi/pci_decode/ahci)
+#   - genode/repos/dde_rump/run/fs_rom_update_ext2.run (vfs+rump+fs_rom chain)
+#   - genode/repos/gems/src/app/sculpt_manager/runtime/file_system.cc
+#     (the Sculpt-proven vfs+rump config: <vfs><rump fs="ext2fs"/></vfs>)
+#
+
+set storage_driver [expr {$use_nvme ? "nvme" : "ahci"}]
+set pci_class      [expr {$use_nvme ? "NVME" : "AHCI"}]
+
+install_config [subst {
+config
++ parent-provides
+  + service ROM
+  + service IRQ
+  + service IO_MEM
+  + service IO_PORT
+  + service PD
+  + service RM
+  + service CPU
+  + service LOG
+
++ default-route
+  + any-service
+    + parent
+    + any-child
+
++ default | caps: 100 | ram: 1M
+
++ start timer
+  + provides | + service Timer
+
++ start report_rom | ram: 2M
+  + provides
+    + service Report
+    + service ROM
+  + config
+    + policy | label: pci_decode -> system | report: acpi -> acpi
+    + policy | label: platform -> devices  | report: pci_decode -> devices
+
++ start acpi | caps: 350 | ram: 4M
+  + route
+    + service Report | + child report_rom
+    + service IO_MEM | + parent
+    + service LOG    | + parent
+    + service PD     | + parent
+    + service RM     | + parent
+    + service CPU    | + parent
+    + service ROM    | + parent
+
++ start pci_decode | caps: 350 | ram: 2M
+  + route
+    + service Report              | + child report_rom
+    + service ROM | label: system | + child report_rom
+    + service IO_MEM              | + parent
+    + service LOG                 | + parent
+    + service PD                  | + parent
+    + service RM                  | + parent
+    + service CPU                 | + parent
+    + service ROM                 | + parent
+
++ start platform | caps: 200 | ram: 3M | managing_system: yes
+  + provides
+    + service Platform
+    + service Dma
+  + route
+    + service ROM | label: devices | + child report_rom
+    + service Report               | + child report_rom
+    + service Timer                | + child timer
+    + service IRQ                  | + parent
+    + service IO_MEM               | + parent
+    + service IO_PORT              | + parent
+    + service ROM                  | + parent
+    + service PD                   | + parent
+    + service CPU                  | + parent
+    + service LOG                  | + parent
+  + config
+    + report | devices: yes
+    + policy | label_prefix: $storage_driver | + pci | class: $pci_class
+
+#
+# Storage driver: ahci (default) or nvme.
+#
+# Quota guidance from docs/14 §11 risk 1: Sculpt sizes block drivers at
+# max_ram 256M for DMA pools. We give ahci ram 128M/caps 5000, nvme
+# ram 64M/caps 5000 — generous headroom for P1; P4 (Falkon) will
+# measure the real DMA pool pressure.
+#
++ start $storage_driver | caps: 5000 | ram: [expr {$use_nvme ? "64M" : "128M"}]
+  + provides | + service Block
+  + config
+    + report | ports: yes
+    + policy | label_prefix: part_block | device: 0 | writeable: yes
+  + route
+    + service Platform | + child platform
+    + service Dma      | + child platform
+    + service Timer    | + child timer
+    + service Report   | + child report_rom
+    + service ROM      | + parent
+    + service PD       | + parent
+    + service CPU      | + parent
+    + service LOG      | + parent
+
+#
+# part_block: pin partition 3 BY NUMBER (never auto-probe — docs/14 §4.4).
+# A stale auto-probe on slow real AHCI would read as "no GENODE partition".
+# The policy routes vfs's Block session to partition 3.
+#
++ start part_block | caps: 200 | ram: 8M
+  + provides | + service Block
+  + config
+    + report | partitions: no
+    + policy | label_prefix: vfs | partition: 3 | writeable: yes
+  + route
+    + service Block | + child $storage_driver
+    + any-service
+      + parent
+      + any-child
+
+#
+# vfs: mounts the P3 Block session via rump ext2fs → File_system.
+# Pattern: genode/repos/dde_rump/run/fs_rom_update_ext2.run:51-56 and
+# sculpt_manager/runtime/file_system.cc:26-46 (<vfs><rump fs="ext2fs"
+# ram="48M"/></vfs>). The Block session is opened by rump's io backend
+# (dde_rump/src/lib/rump/io.cc:120) with the component label "vfs",
+# which part_block's policy routes to partition 3.
+#
+# cached_fs_rom chroots to /system via the policy root.
+#
++ start vfs | caps: 500 | ram: 64M
+  + provides | + service File_system
+  + config
+    + vfs
+      + rump | fs: ext2fs | ram: 48M | writeable: yes
+    + policy | label_prefix: cached_fs_rom | root: /system | writeable: no
+  + route
+    + service Block | + child part_block
+    + service ROM | label_last: ld.lib.so     | + parent
+    + service ROM | label_last: vfs.lib.so    | + parent
+    + service ROM | label_last: vfs_rump.lib.so | + parent
+    + service ROM | label_last: rump.lib.so   | + parent
+    + service ROM | label_last: rump_fs.lib.so | + parent
+    + any-service
+      + parent
+      + any-child
+
+#
+# cached_fs_rom: serves ROMs from the ext2 filesystem (chroot /system).
+# docs/14 §3, §4.4. Opens a File_system session to vfs and serves
+# individual files as ROM modules. boot_probe's ROM "marker.txt" is
+# served from here.
+#
++ start cached_fs_rom | caps: 200 | ram: 16M
+  + provides | + service ROM
+  + route
+    + service File_system | + child vfs
+    + service ROM | label_last: ld.lib.so | + parent
+    + any-service
+      + parent
+      + any-child
+
+#
+# boot_probe: opens ROM "marker.txt" (routed to cached_fs_rom), asserts
+# its exact content, logs boot-probe: PASS (repos/sponge/src/test/
+# boot_probe/). On PASS or FAIL it calls env.parent().exit() so the
+# scenario ends cleanly.
+#
++ start boot_probe | caps: 100 | ram: 4M
+  + route
+    + service ROM | label: marker.txt | + child cached_fs_rom
+    + service ROM | label_last: ld.lib.so | + parent
+    + any-service
+      + parent
+      + any-child
+- }]
+
+#
+# Stage the marker file into [run_dir]/system/ so image/disk auto-e2cp's
+# it into P3's ext2 at /system/marker.txt
+# (genode/tool/run/image/disk:79-90 copies everything under [run_dir]).
+#
+exec mkdir -p [run_dir]/system
+set marker_fh [open "[run_dir]/system/marker.txt" "WRONLY CREAT TRUNC"]
+puts -nonewline $marker_fh $marker_content
+close $marker_fh
+
+#
+# For the NVMe variant: create a separate disk image with GPT P3 + ext2
+# containing /system/marker.txt. This disk is attached via -device nvme
+# and the nvme driver reads from it. The boot .img (from image/disk) is
+# only the boot media; its P3 is unused in this variant.
+#
+if {$use_nvme} {
+	set sgdisk [installed_command sgdisk]
+	set mkfs   [installed_command mkfs.ext2]
+	set e2cp   [installed_command e2cp]
+	set e2mkdir [installed_command e2mkdir]
+
+	#
+	# Create the ext2 partition as a standalone file first (so e2mkdir
+	# and e2cp work without @@offset gymnastics — they operate on a
+	# raw ext2 image). Then assemble the final GPT disk by writing
+	# the ext2 into partition 3 at the right sector offset. This
+	# mirrors image/disk's approach (genode/tool/run/image/disk:74-126).
+	#
+	# 1. Standalone ext2 partition with /system/marker.txt
+	#
+	exec dd if=/dev/zero of=bin/nvme_partition.ext2 bs=1M count=16 2>/dev/null
+	exec $mkfs -F -q -L GENODE bin/nvme_partition.ext2 2>/dev/null
+	exec $e2mkdir bin/nvme_partition.ext2:/system
+	exec $e2cp [run_dir]/system/marker.txt bin/nvme_partition.ext2:/system/marker.txt
+
+	#
+	# 2. GPT disk with partition 3 spanning the whole disk
+	#
+	exec dd if=/dev/zero of=bin/nvme_disk.img bs=1M count=32 2>/dev/null
+	exec $sgdisk --clear --new=3:0:0 --change-name=3:GENODE bin/nvme_disk.img 2>/dev/null
+
+	#
+	# 3. Get partition 3 offset and embed the ext2 into the GPT disk
+	#
+	set p3_info [exec $sgdisk -i 3 bin/nvme_disk.img]
+	set first_sector [regexp -inline {First sector: ([0-9]+)} $p3_info]
+	set first_sector [lindex $first_sector 1]
+
+	exec dd if=bin/nvme_partition.ext2 of=bin/nvme_disk.img bs=512 \
+		seek=$first_sector conv=notrunc 2>/dev/null
+	exec rm -f bin/nvme_partition.ext2
+}
+
+#
+# Boot module list. The shared libs for the vfs+rump chain are NOT in
+# [build_artifacts] (they are transitive deps of lib/vfs_rump), so they
+# must be listed explicitly — same pattern as sponge-de-sel4-interactive.
+# run's Qt6 lib staging (run/sponge-de-sel4-interactive.run:397-404).
+#
+set boot_modules [build_artifacts]
+foreach m { vfs.lib.so vfs_rump.lib.so rump.lib.so rump_fs.lib.so } {
+	lappend boot_modules $m
+}
+
+#
+# On base-sel4, boot_dir/sel4 auto-injects ld.lib.so (ld-sel4.lib.so),
+# so it is NOT in the explicit list (docs/11 §10.4).
+#
+
+build_boot_image $boot_modules
+
+#
+# QEMU: base-sel4 needs >= 1 GiB guest RAM (docs/11 §7.2).
+# -nographic keeps it headless (serial only).
+#
+append qemu_args " -nographic -m 1G "
+
+#
+# NVMe variant: attach the separate nvme_disk.img via -device nvme.
+# The boot .img auto-attaches via image/disk (AHCI) but the ahci driver
+# is not started, so the AHCI disk is only the boot media.
+#
+if {$use_nvme} {
+	append qemu_args " -device pcie-root-port,id=root_port1 "
+	append qemu_args " -drive id=disk0,file=bin/nvme_disk.img,format=raw,if=none "
+	append qemu_args " -device nvme,drive=disk0,serial=fnord,id=nvme0,bus=root_port1 "
+}
+
+#
+# Verification gate: boot-probe: PASS (exact byte string match in the
+# log — defeats misleading_success_output). A timeout is a bounded FAIL
+# (the hung_or_long_commands class). The marker bytes are printed in the
+# PASS line for adversarial verification.
+#
+# Use double-quotes (not braces) so $marker_content is expanded by Tcl.
+#
+set probe_pattern ".*boot-probe: PASS.*$marker_content.*"
+run_genode_until $probe_pattern 120
+
+#
+# Cleanup the NVMe scratch disk.
+#
+if {$use_nvme} {
+	exec rm -f bin/nvme_disk.img
+}
