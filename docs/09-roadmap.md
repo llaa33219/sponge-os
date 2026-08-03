@@ -31,7 +31,7 @@ Phase 5: Integration and automation layer  ✅ done
 Phase 6: Leitzentrale integration  ✅ done
    |
    v
-Phase 7: Alpha — first usable version  🟡 current
+Phase 7: Alpha — first usable version  ✅ done with caveats
 ```
 
 ---
@@ -354,14 +354,13 @@ at which one can honestly say "I have used Sponge OS".
 
 ### Completion Criteria
 
-- [ ] Installable media (an ISO or a disk image) is provided.
-- [ ] Sponge DE is usable automatically after boot.
-- [ ] A default app set (browser, terminal, text editor, file manager)
-  is installable.
-- [ ] vct supports every day-to-day task (install, configure, status).
-- [ ] Leitzentrale integration.
-- [ ] Installation documentation and quick-start guide.
-- [ ] Known limitations are clearly documented.
+- [x] Installable media, both an ISO and a disk image, are provided and boot-verified in QEMU (`run/sponge-media-smoke.run`, `run/sponge-alpha.run`; release artifacts from todos 5 and 6).
+- [x] Sponge DE is usable automatically after boot, with the themed panel and launcher visible (`run/sponge-alpha.run`).
+- [x] A default app set (browser, terminal, text editor, file manager) is installable, with caveats: terminal, text editor, and file manager are verified booting (`run/sponge-terminal.run`, `run/sponge-textedit.run`, `run/sponge-files.run`); Falkon is packaged but not bootable on the seL4 media because of the boot-module ceiling, as documented in `docs/13-installation.md` (`.omo/evidence/task-16-phase7-alpha.log`).
+- [x] vct supports everyday tasks including install, configure, status, list, launch, update, search, shutdown, and reboot (`run/sponge-vct-status.run`, `run/sponge-pkg-install.run`, `run/sponge-config.run`, `run/sponge-launch.run`, `run/sponge-pkg-meta.run`, `run/sponge-power.run`).
+- [x] Leitzentrale integration is present in the Alpha image and reachable through vct (`run/sponge-leitzentrale.run`, `run/sponge-alpha.run`).
+- [x] Installation documentation and a quick-start guide are provided (`docs/13-installation.md`; media and desktop flow proven by `run/sponge-alpha.run`).
+- [x] Known limitations are clearly documented, including the QEMU-only target, pre-staged install semantics, non-persistence, networking boundary, Falkon caveat, and limited Leitzentrale viewer (`docs/13-installation.md`; behavior references `run/sponge-net-probe.run`, `run/sponge-pkg-persist.run`, and `run/sponge-alpha.run`).
 
 ### Explicitly **Excluded** From Alpha
 
@@ -383,16 +382,9 @@ These stages get fleshed out in a separate document after Alpha.
 
 ## 11. Current Focus
 
-Phase 0–6 are complete. Phase 6 integrated Sculpt's Leitzentrale: the
-subsystem boots under `lz_runtime`, `vct leitzentrale` toggles it via
-`sponge_configd`, the `lz_viewer` dedicated viewer shows it as a window
-on the Sponge desktop, and `lz_watch` + configd detect and resolve
-model changes (keep/revert).
+Phase 0–7 are complete, with Alpha caveats recorded in [`docs/13-installation.md`](13-installation.md). Phase 7 delivered installable seL4 media, a themed desktop, the verified terminal, text editor, and file manager packages, the expanded vct command surface, and Leitzentrale integration. The Alpha remains QEMU-only, installs enable pre-staged packages without persistence, and Falkon is packaged but not bootable because its payload exceeds the seL4 boot-module ceiling.
 
-Next up: Phase 7 (Alpha — the first usable version: installable media,
-Sponge DE usable after boot, a default app set installable, vct
-covering day-to-day tasks, installation docs, and documented known
-limitations).
+Next up: post-Alpha work, led by disk-based payload staging for Falkon, followed by stability, persistence, recovery, and broader hardware support.
 
 Deferred follow-ups (not blockers):
 

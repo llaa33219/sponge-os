@@ -70,27 +70,40 @@ See [`docs/04-components.md`](docs/04-components.md) for the detailed design.
 
 ## Current Status
 
-🟡 **Pre-Alpha** — Phases 0–6 complete; Phase 7 (Alpha, first usable
-version) is the current focus.
+🟢 **Alpha 0.1.0, Archaeocyte** — Phase 7 is done with caveats. The
+verified release boots in QEMU on seL4. See
+[`docs/13-installation.md`](docs/13-installation.md) for prerequisites,
+media commands, the quick-start tour, and the complete limitations register.
 
 The repository currently contains:
 
 - ✅ Project philosophy and architectural principles defined
 - ✅ Genode-based directory structure and build system skeleton
 - ✅ vct boots as a real Genode component on base-linux (Genode 26.05)
-  and on base-sel4 (seL4, the production target)
+  and on base-sel4 in QEMU
 - ✅ vct day-to-day commands: `status`, `component list`, `config`,
-  `install`/`remove`/`list`, `theme`, `leitzentrale` — with `--json`,
-  `--lang ko`, and `--manual` escape hatches
+  `install`/`remove`/`list`, `theme`, `launch`, `update`, `search`,
+  `shutdown`/`reboot`, and `leitzentrale` — with `--json`, `--lang ko`,
+  and `--manual` escape hatches
+- ✅ Alpha 0.1.0 seL4 disk image and ISO boot in QEMU to the themed desktop
+  (`run/sponge-alpha.run` and the media scenarios)
+- ✅ Alpha packages verified in QEMU: terminal with bash/vim, Qt6 text
+  editor, and Sponge file manager (`run/sponge-terminal.run`,
+  `run/sponge-textedit.run`, `run/sponge-files.run`)
+- ⚠️ Falkon is packaged but not bootable on the Alpha seL4 media because
+  its WebEngine payload exceeds the boot-module ceiling; see
+  [`docs/13-installation.md`](docs/13-installation.md#6-known-limitations)
+- ⚠️ Alpha installs enable pre-staged packages and do not persist across
+  reboots on seL4 media; networking is QEMU slirp only
 - ✅ Genode 26.05 vendored at `genode/` (pinned to upstream commit
   `492a510242`); one `git clone sponge-os` brings the whole build
 - ✅ Sponge DE (Qt6 6.8.3) renders a themed panel + window on nitpicker
   with verified input, integrated with Genode's upstream
   `wm` + `window_layouter` + `decorator` stack (window dragging verified)
 - ✅ Package management: `sponge_pkgd` backend, dependency resolution,
-  nested `pkg_runtime` init, and **persistent installed-set storage**
-  (installs survive reboot; proven by the two-boot
-  `run/sponge-pkg-persist.run` scenario)
+  nested `pkg_runtime`, installed-set inspection, and launch lifecycle
+  (`run/sponge-pkg-install.run`, `run/sponge-pkg-list.run`,
+  `run/sponge-launch.run`)
 - ✅ Configuration and theme backends (`sponge_configd`, `sponge_themed`)
   with live theme reload shared by vct and Sponge DE
 - ✅ Launcher menu fed by `sponge_pkgd`'s installed-set broadcast
@@ -110,9 +123,9 @@ Verified vct boot output (base-sel4 on QEMU):
 ```
 Genode 26.05
 699 MiB RAM and 523288 caps assigned to init
-[init -> vct] vct (0.0.1-pre-alpha / Archaeocyte) starting
+[init -> vct] vct (0.1.0-alpha / Archaeocyte) starting
 [init -> vct] vct — Very Convenient Tool
-[init -> vct] version: 0.0.1-pre-alpha (Archaeocyte)
+[init -> vct] version: 0.1.0-alpha (Archaeocyte)
 Run script execution successful.
 ```
 
@@ -135,7 +148,7 @@ All detailed documentation lives in [`docs/`](docs/).
 - [09 - Roadmap](docs/09-roadmap.md)
 - [10 - Theme Format](docs/10-theme-format.md)
 - [11 - Development Environment & Reproducibility](docs/11-environment.md)
-- [12 - Package Format and Local Repository](docs/12-package-format.md)
+- [13 - Installation and Alpha Quick Start](docs/13-installation.md)
 
 Contributors and AI agents must read [`AGENTS.md`](AGENTS.md) first.
 
