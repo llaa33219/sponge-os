@@ -220,7 +220,7 @@ Your next move: start work now, or run the dual high-accuracy review (Momus) fir
   Acceptance criteria: `grep -c "\[x\]" docs/09-roadmap.md` increases for the §9 block; every flipped checkbox names its proving scenario in the adjacent text; README says Alpha 0.1.0; `grep -n "QEMU" docs/13-installation.md` and the limitations list are present.
   QA scenarios: happy — docs consistent with delivered scenarios (each cited scenario exists in run/); failure — `grep -n "real.hardware\|production.ready" docs/13-installation.md README.md` must return nothing (no overclaiming). Evidence .omo/evidence/task-19-phase7-alpha.md
   Commit: Y | docs(alpha): installation guide, known limitations, Alpha status
-- [ ] 20. Full regression + release verification
+- [x] 20. Full regression + release verification
   What to do: Run the ENTIRE scenario suite green: all 20 pre-existing run/*.run scenarios (base-linux where applicable) plus the new ones (sponge-media-smoke, sponge-alpha, sponge-pkg-gui, sponge-pkg-lifecycle, sponge-launch, sponge-net-probe) on their designated kernels; re-run `./tool/dist` from a clean var/dist and re-verify both media boot to `alpha-probe: PASS`; assemble the evidence index (.omo/evidence/) and the PR-body numbers per AGENTS.md §5.1 (commands/clicks for each quick-start task). Must NOT do: do not skip flaky scenarios — a flake is a failure to fix or explicitly document as pre-existing with evidence.
   Parallelization: Wave 5 | Blocked by: 19 | Blocks: —
   References: run/README.md (scenario inventory); todos 3-18 acceptance criteria; AGENTS.md §4.2, §5.1.
@@ -230,10 +230,10 @@ Your next move: start work now, or run the dual high-accuracy review (Momus) fir
 
 ## Final verification wave
 > Runs in parallel after ALL todos. ALL must APPROVE. Surface results and wait for the user's explicit okay before declaring complete.
-- [ ] F1. Plan compliance audit
-- [ ] F2. Code quality review
-- [ ] F3. Real manual QA
-- [ ] F4. Scope fidelity
+- [x] F1. Plan compliance audit
+- [x] F2. Code quality review
+- [x] F3. Real manual QA
+- [x] F4. Scope fidelity
 
 ## Commit strategy
 - One logical change = one commit (AGENTS.md §4.2/§4.3), conventional commits with scopes `docs`, `run`, `tool`, `pkgd`, `de`, `vct`, `pkg`, `files`.
