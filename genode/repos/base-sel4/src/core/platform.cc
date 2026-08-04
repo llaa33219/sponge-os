@@ -647,8 +647,24 @@ Core::Platform::Platform()
 		error("setup of virtual memory space of core failed");
 
 	/* add some minor virtual region for dynamic usage by core */
-	addr_t const virt_size = 2 * _core_vm_space.max_page_frames() * PAGE_SIZE;
-	_unused_virt_alloc.alloc_aligned(virt_size, AT_PAGE).with_result(
+	{
+		/*
+		 * Sponge C2 (x86_64 only): with the enlarged vm_space (NUM_VM_SEL_LOG2
+		 * raised 15 -> 17), the raw computation 2*max_page_frames()*PAGE_SIZE
+		 * would reserve 1 GiB of core virtual address space and eagerly back
+		 * it with page tables during Platform() — this is what silently killed
+		 * Platform() in prior attempt C (p4-cspace-fix.log §4). Core's own
+		 * dynamic usage needs only the upstream 256 MiB; cap it there. Other
+		 * arches keep the upstream formula byte-for-byte.
+		 */
+#ifdef __x86_64__
+		addr_t const max_core_virt = 256UL * 1024 * 1024;
+		addr_t const virt_size = min(2UL * _core_vm_space.max_page_frames() * PAGE_SIZE,
+		                             max_core_virt);
+#else
+		addr_t const virt_size = 2 * _core_vm_space.max_page_frames() * PAGE_SIZE;
+#endif
+		_unused_virt_alloc.alloc_aligned(virt_size, AT_PAGE).with_result(
 
 		[&] (Range_allocator::Allocation &virt) {
 			addr_t const virt_addr = (addr_t)virt.ptr;
@@ -664,9 +680,10 @@ Core::Platform::Platform()
 			virt.deallocate = false;
 		},
 
-		[&] (Alloc_error) {
-			warning("failed to reserve core virtual memory for dynamic use"); }
+	[&] (Alloc_error) {
+		warning("failed to reserve core virtual memory for dynamic use"); }
 	);
+	} /* end Sponge C2 virt_size scope */
 
 	log("Physical memory per PD at most: ",
 	    Number_of_bytes(_core_vm_space.max_page_frames() * PAGE_SIZE));

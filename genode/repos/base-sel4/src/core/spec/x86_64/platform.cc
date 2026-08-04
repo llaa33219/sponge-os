@@ -103,27 +103,33 @@ void Platform::_init_core_page_table_registry()
 	phys_alloc_16k(&core_mem_alloc());
 
 	/*
-	 * Reserve 16 KiB memory for two consumers of this pool:
+	 * Reserve 16 KiB memory for three consumers of this pool:
 	 *   - VCPUs (upstream):                  MAX_VCPU_COUNT * Vcpu_kobj
-	 *   - large child-PD CNode backings:     MAX_CNODE_PD_COUNT PDs, each
+	 *   - large child-PD main-CSpace CNodes: MAX_CNODE_PD_COUNT PDs, each
 	 *                                        backing (1 << CSPACE_SIZE_LOG2_1ST)
 	 *                                        2nd-level CNodes of 16 KiB.
+	 *   - vm_space leaf CNodes (Sponge C2):  lazily constructed 512-entry leaves
+	 *                                        (16 KiB each), sized for the realistic
+	 *                                        concurrent working set of heavy PDs
+	 *                                        (falkon ~200 leaves, rom_pkg ~256).
 	 *
 	 * The CNode term is bounded to a fixed, realistic working set (NOT
 	 * proportional to total RAM). An earlier proportional carve (~247 MiB)
 	 * removed too much low RAM from the general pool and disturbed the
 	 * platform-driver/ahci boot dependency chain; this fixed bound keeps
-	 * the reservation small (~64 MiB) while covering all canary scenarios.
+	 * the reservation modest while covering all canary scenarios.
 	 */
 	enum {
 		MAX_VCPU_COUNT    = 16,
 		MAX_CNODE_PD_COUNT = 64,
 		SECOND_LEVEL_CNODES_PER_PD = 1UL << CSPACE_SIZE_LOG2_1ST,
+		MAX_VM_LEAF_COUNT = 2048,
 	};
 
 	addr_t const max_pd_mem =
 		MAX_VCPU_COUNT            * (1UL << Vcpu_kobj::SIZE_LOG2) +
-		MAX_CNODE_PD_COUNT        * (SECOND_LEVEL_CNODES_PER_PD << Vcpu_kobj::SIZE_LOG2);
+		MAX_CNODE_PD_COUNT        * (SECOND_LEVEL_CNODES_PER_PD << Vcpu_kobj::SIZE_LOG2) +
+		MAX_VM_LEAF_COUNT         * (1UL << Vcpu_kobj::SIZE_LOG2);
 
 	_initial_untyped_pool.turn_into_untyped_object(Core_cspace::TOP_CNODE_UNTYPED_16K,
 		[&] (addr_t const phys, addr_t const size, bool const device_memory) {

@@ -40,17 +40,36 @@ class Core::Vm_space
 		unsigned const _id;
 		Cap_sel  const _pd_sel;
 
+		/*
+		 * Sponge C2: selector of core's CNode, retained so that lazily
+		 * constructed 3rd/4th-level VM CNodes can be placed in core's CSpace
+		 * (see _ensure_leaf) long after the constructor returns.
+		 */
+		Cap_sel  const _core_cnode_sel;
+
 		enum {
 			/**
 			 * Number of entries of 3rd-level VM CNode ('_vm_3rd_cnode')
 			 */
 			VM_3RD_CNODE_SIZE_LOG2 = (CONFIG_WORD_SIZE == 32) ? 8 : 7,
 
-			/**
-			 * Number of entries of each leaf CNodes
-			 */
-			LEAF_CNODE_SIZE_LOG2 = (CONFIG_WORD_SIZE == 32) ? 8 : 7,
-			LEAF_CNODE_SIZE      = 1UL << LEAF_CNODE_SIZE_LOG2,
+		/**
+		 * Number of entries of each leaf CNodes
+		 *
+		 * Sponge (x86_64 only): each leaf CNode is enlarged to 512 entries so
+		 * that NUM_VM_SEL_LOG2 rises to 17 (131072 mappings/PD) WITHOUT growing
+		 * the '_cnodes' array (which is part of each Platform_pd object and
+		 * starved core's heap when enlarged eagerly in prior attempts — see
+		 * .omo/evidence/p4-cspace-fix.log §4). 512-entry leaves need 16 KiB
+		 * backing each, drawn lazily from the 16 KiB untyped pool (see _ensure_leaf).
+		 * Other 64-bit arches and 32-bit keep the upstream page-sized geometry.
+		 */
+#ifdef __x86_64__
+		LEAF_CNODE_SIZE_LOG2 = 9,
+#else
+		LEAF_CNODE_SIZE_LOG2 = (CONFIG_WORD_SIZE == 32) ? 8 : 7,
+#endif
+		LEAF_CNODE_SIZE      = 1UL << LEAF_CNODE_SIZE_LOG2,
 
 			/**
 			 * Number of leaf CNodes
@@ -111,17 +130,26 @@ class Core::Vm_space
 					}, [](auto){ /* checked by constructed() */ });
 				}
 
-				void destruct(Cap_sel_alloc   &cap_sel_alloc,
-				              Range_allocator &phys_alloc)
-				{
-					_cnode->destruct(phys_alloc);
+			void destruct(Cap_sel_alloc   &cap_sel_alloc,
+			              Range_allocator &phys_alloc)
+			{
+				/*
+				 * Sponge C2: with lazy 3rd/4th-level construction, most
+				 * CNodes in the '_cnodes' array are never constructed. Make
+				 * destruct a no-op for them so the destructor can iterate the
+				 * whole array uniformly.
+				 */
+				if (!constructed())
+					return;
 
-					_cnode_sel.with_result([&](auto result) {
-						cap_sel_alloc.free(Cap_sel(unsigned(result)));
-					}, [](auto) { });
+				_cnode->destruct(phys_alloc);
 
-					_cnode_sel = { Cap_sel_alloc::Cap_sel_error::DENIED };
-				}
+				_cnode_sel.with_result([&](auto result) {
+					cap_sel_alloc.free(Cap_sel(unsigned(result)));
+				}, [](auto) { });
+
+				_cnode_sel = { Cap_sel_alloc::Cap_sel_error::DENIED };
+			}
 
 				bool constructed() const
 				{
@@ -174,6 +202,42 @@ class Core::Vm_space
 
 		Selector_allocator _sel_alloc { };
 
+		/*
+		 * Sponge C2: lazily construct the 3rd-level CNode and the leaf
+		 * (4th-level) CNode that cover the given (l3, l4) selector group on
+		 * first use, and wire them into the CSpace tree. This replaces the
+		 * upstream eager construction of all 3rd/4th-level CNodes at PD
+		 * creation — eager construction of the enlarged tree starved core's
+		 * heap (p4-cspace-fix.log §4 Attempt A/B). Called under _mutex (or
+		 * during single-threaded core init / PD teardown).
+		 */
+		void _ensure_leaf(unsigned const l3, unsigned const l4)
+		{
+			if (!_cnodes[l3]._3rd.constructed()) {
+				_cnodes[l3]._3rd.construct(_cap_sel_alloc, _core_cnode_sel,
+				                           _phys_alloc, VM_3RD_CNODE_SIZE_LOG2);
+
+				_vm_pad_cnode.with_cnode([&](auto &vm_pad_cnode) {
+					_cnodes[l3]._3rd.with_cnode([&](auto &cnode_3rd) {
+						Cnode_base const cspace(Cap_sel(seL4_CapInitThreadCNode), 32);
+						vm_pad_cnode.copy(cspace, cnode_3rd.sel(), Cnode_index(l3));
+					});
+				});
+			}
+
+			if (!_cnodes[l3]._4th[l4].constructed()) {
+				_cnodes[l3]._4th[l4].construct(_cap_sel_alloc, _core_cnode_sel,
+				                               _phys_alloc, LEAF_CNODE_SIZE_LOG2);
+
+				_cnodes[l3]._3rd.with_cnode([&](auto &cnode_3rd) {
+					_cnodes[l3]._4th[l4].with_cnode([&](auto &cnode_4th) {
+						Cnode_base const cspace(Cap_sel(seL4_CapInitThreadCNode), 32);
+						cnode_3rd.copy(cspace, cnode_4th.sel(), Cnode_index(l4));
+					});
+				});
+			}
+		}
+
 		/**
 		 * Return leaf CNode that contains an index allocated from '_sel_alloc'
 		 */
@@ -183,6 +247,8 @@ class Core::Vm_space
 			auto const l3 = idx >> (LEAF_CNODE_SIZE_LOG2 + NUM_LEAF_CNODES_LOG2);
 
 			ASSERT(l3 < NUM_CNODE_3RD);
+
+			_ensure_leaf(l3, l4);
 
 			return _cnodes[l3]._4th[l4].with_cnode(fn);
 		}
@@ -385,12 +451,6 @@ class Core::Vm_space
 			});
 		}
 
-		void _for_each_l3_cnodes(auto const &fn)
-		{
-			for (unsigned l3 = 0; l3 < NUM_CNODE_3RD; l3++)
-				fn(l3, _cnodes[l3]._3rd, _cnodes[l3]._4th);
-		}
-
 		void _revert_cnodes_l3(auto const &fn)
 		{
 			for (int l3 = NUM_CNODE_3RD - 1; l3 >= 0; l3--)
@@ -420,78 +480,45 @@ class Core::Vm_space
 		         unsigned             id,
 		         Page_table_registry &page_table_registry,
 		         Name          const &name)
-		:
-			_cap_sel_alloc(cap_sel_alloc),
-			_pt_registry(page_table_registry),
-			_phys_alloc(phys_alloc),
-			_id(id), _pd_sel(pd_sel),
-			_top_level_cnode(top_level_cnode),
-			_phys_cnode(phys_cnode),
-			name(name)
-		{
-			static_assert(NUM_CNODE_3RD_LOG2 <= VM_2ND_CNODE_LOG2);
+	:
+		_cap_sel_alloc(cap_sel_alloc),
+		_pt_registry(page_table_registry),
+		_phys_alloc(phys_alloc),
+		_id(id), _pd_sel(pd_sel),
+		_core_cnode_sel(core_cnode.sel()),
+		_top_level_cnode(top_level_cnode),
+		_phys_cnode(phys_cnode),
+		name(name)
+	{
+		static_assert(NUM_CNODE_3RD_LOG2 <= VM_2ND_CNODE_LOG2);
 
-			_vm_pad_cnode.construct(_cap_sel_alloc, core_cnode.sel(),
-			                        phys_alloc, VM_2ND_CNODE_LOG2);
+		_vm_pad_cnode.construct(_cap_sel_alloc, _core_cnode_sel,
+		                        phys_alloc, VM_2ND_CNODE_LOG2);
 
-			_vm_pad_cnode.with_cnode([&](auto &vm_pad_cnode) {
-				Cnode_base const cspace(Cap_sel(seL4_CapInitThreadCNode), 32);
+		_vm_pad_cnode.with_cnode([&](auto &vm_pad_cnode) {
+			Cnode_base const cspace(Cap_sel(seL4_CapInitThreadCNode), 32);
 
-				/* insert 2nd-level VM-pad CNode into 1st-level CNode */
-				_top_level_cnode.copy(cspace, vm_pad_cnode.sel(), Cnode_index(_id));
+			/* insert 2nd-level VM-pad CNode into 1st-level CNode */
+			_top_level_cnode.copy(cspace, vm_pad_cnode.sel(), Cnode_index(_id));
 
-				_for_each_l3_cnodes([&](int l3, auto &cnode_3rd, auto &leafs) {
-
-					cnode_3rd.construct(_cap_sel_alloc, core_cnode.sel(),
-						                phys_alloc, VM_3RD_CNODE_SIZE_LOG2);
-
-					for (unsigned l4 = 0; l4 < NUM_LEAF_CNODES; l4++) {
-
-						/* init leaf VM CNode */
-						leafs[l4].construct(_cap_sel_alloc, core_cnode.sel(),
-						                    phys_alloc, LEAF_CNODE_SIZE_LOG2);
-
-						/* insert leaf VM CNode into 3nd-level VM CNode */
-						cnode_3rd.with_cnode([&](auto &cnode_3rd) {
-							leafs[l4].with_cnode([&](auto &cnode_4th) {
-								cnode_3rd.copy(cspace, cnode_4th.sel(), Cnode_index(l4));
-							});
-						});
-					}
-
-					/* insert 3rd-level VM CNode into 2nd-level VM-pad CNode */
-					cnode_3rd.with_cnode([&](auto &cnode) {
-						vm_pad_cnode.copy(cspace, cnode.sel(), Cnode_index(l3));
-					});
-				});
-			});
-		}
+			/*
+			 * Sponge C2: 3rd-level and leaf (4th-level) CNodes are constructed
+			 * LAZILY by _ensure_leaf on first use of their selector range.
+			 * This avoids the eager per-PD cost (16 KiB-backed leaves * 256 per
+			 * PD = 4 MiB eager per PD) that starved core's heap and broke boot
+			 * in prior attempts (p4-cspace-fix.log §4).
+			 */
+		});
+	}
 
 		bool constructed()
 		{
-			if (!_vm_pad_cnode.constructed())
-				return false;
-
-			bool success = true;
-
-			_for_each_l3_cnodes([&](int, auto &cnode_3rd, auto &leafs) {
-				if (!success)
-					return;
-
-				success = cnode_3rd.constructed();
-
-				if (!success)
-					return;
-
-				for (unsigned l4 = 0; l4 < NUM_LEAF_CNODES; l4++) {
-					success = leafs[l4].constructed();
-
-					if (!success)
-						break;
-				}
-			});
-
-			return success;
+			/*
+			 * Sponge C2: with lazy 3rd/4th-level construction, only the
+			 * 2nd-level pad CNode must be constructed for the PD to be viable.
+			 * Leaf CNodes are created on demand by _ensure_leaf.
+			 */
+			return _vm_pad_cnode.constructed();
 		}
 
 		~Vm_space()
@@ -514,28 +541,31 @@ class Core::Vm_space
 				_unmap_and_free(idx, paddr);
 			});
 
-			_vm_pad_cnode.with_cnode([&](auto &vm_pad_cnode) {
-				_revert_cnodes_l3([&](auto l3, auto &cnode_3rd, auto &leafs) {
+		_vm_pad_cnode.with_cnode([&](auto &vm_pad_cnode) {
+			_revert_cnodes_l3([&](auto l3, auto &cnode_3rd, auto &leafs) {
+				/*
+				 * Sponge C2: only revert groups whose 3rd-level CNode was
+				 * actually (lazily) constructed. Construct_cnode::destruct is
+				 * no-op-safe for the rest.
+				 */
+				cnode_3rd.with_cnode([&](auto &cnode) {
 					for (int l4 = NUM_LEAF_CNODES - 1; l4 >= 0; l4--) {
-						cnode_3rd.with_cnode([&](auto &cnode) {
-							cnode.remove(Cnode_index(l4));
-							leafs[l4].destruct(_cap_sel_alloc, _phys_alloc);
-						});
+						cnode.remove(Cnode_index(l4));
+						leafs[l4].destruct(_cap_sel_alloc, _phys_alloc);
 					}
 
 					vm_pad_cnode.remove(Cnode_index(l3));
 
-					cnode_3rd.with_cnode([&](auto &cnode) {
-						cnode.destruct(_phys_alloc);
-					});
-					cnode_3rd.destruct(_cap_sel_alloc, _phys_alloc);
+					cnode.destruct(_phys_alloc);
 				});
-
-				_top_level_cnode.remove(Cnode_index(_id));
-
-				vm_pad_cnode.destruct(_phys_alloc);
-				_cap_sel_alloc.free(vm_pad_cnode.sel());
+				cnode_3rd.destruct(_cap_sel_alloc, _phys_alloc);
 			});
+
+			_top_level_cnode.remove(Cnode_index(_id));
+
+			vm_pad_cnode.destruct(_phys_alloc);
+			_cap_sel_alloc.free(vm_pad_cnode.sel());
+		});
 		}
 
 		bool map(addr_t const from_phys, addr_t const to_virt,
