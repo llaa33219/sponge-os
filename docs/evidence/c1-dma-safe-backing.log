@@ -1,0 +1,342 @@
+================================================================
+Phase 9 C1 — DMA-safe on-demand large CNode backing for base-sel4
+Evidence Log  •  Date: 2026-08-04
+Plan ref: docs/plans/phase9-sel4-cspace.md workstream C1.
+Prior art (trusted terrain):
+  docs/evidence/p4-cspace-fix.log     (362-line diagnosis + 16K-pool regression)
+  docs/evidence/p4-cspace-falkon.log  (single-page CNode cap proof)
+================================================================
+
+## 0. HEADLINE — C1 LANDED (working increment, NOT reverted)
+
+All three C1 canaries PASS at the enlarged backing. The ahci regression
+that sank the prior attempt (p4-cspace-fix.log §7) is GONE. The tree is
+left in a WORKING state (6 vendored base-sel4 files changed; not committed,
+per instructions).
+
+  Acceptance (1) precise diagnosis written (this file §1):           MET
+  Acceptance (2) sponge-boot PASS at enlarged backing (ahci works):   MET
+  Acceptance (3) sponge-alpha PASS:                                   MET
+  Acceptance (4) falkon reaches vm_space stage (past cspace):         MET
+  Acceptance (5) this evidence file:                                  MET
+
+CONFIG LANDED (x86_64 only; other arches upstream byte-for-byte):
+  CSPACE_SIZE_LOG2_1ST = 6   (1st-level CNode: 4 KiB backing, upstream)
+  CSPACE_SIZE_LOG2_2ND = 9   (2nd-level CNode: 16 KiB backing, NEW)
+  => 2^(6+9) = 32768 slots per child PD  (4x upstream 8192)
+  16 KiB pool carve = 64 MiB fixed  (MAX_VCPU_COUNT + MAX_CNODE_PD_COUNT=64)
+
+CANARY RESULTS (all on KERNEL=sel4 BOARD=pc):
+  sponge-boot        PASS  ahci version 1.0, port #0 ATA, GPT P1/P2/P3,
+                          boot-probe: PASS (22 bytes marker). ahci
+                          regression GONE (vs prior 247 MiB carve hang).
+  sponge-alpha       PASS  alpha-probe: PASS (all 4 criteria a/b/c/d).
+  sponge-falkon-disk PROG  falkon-probe [3] launch ok -> lwIP DHCP
+                          10.0.2.15 -> vm_space "mapping cache full /
+                          out of selector" -> denied RM-session. Reaches
+                          the vm_space (C2) stage, NOT the cspace stage.
+                          0x "Cnode construction failed" (no pool exhaust).
+
+Logs: docs/evidence/c1-sponge-boot.log, c1-sponge-alpha.log,
+      c1-sponge-falkon-disk.log.
+
+================================================================
+
+## 1. DIAGNOSIS — why the prior 16K-pool carve broke ahci
+
+Prior attempt (p4-cspace-fix.log §1,§7) bundled the CSpace enlargement
+(1ST=9/2ND=9 = 262144 slots) with a 16K-pool reservation sized for the
+64-PD worst case. Sized fixed at 512 MiB it starved init RAM
+(cached_fs_rom OOM); capped proportional to total RAM (~247 MiB on the
+1 GiB sponge-boot VM) it left init 451 MiB (plenty) BUT ahci started and
+part_block never detected the disk. This section pins the mechanism.
+
+### 1.1 What the carve actually does to the physical-memory pools
+
+The 16K carve runs EARLY, inside `Platform::_init_core_page_table_registry`
+(spec/x86_64/platform.cc, the `_initial_untyped_pool.turn_into_untyped_object`
+call), which executes BEFORE `Platform::_init_allocators` (platform.cc init
+list ordering, platform.h: `_init_core_page_table_registry_done` precedes
+`_init_allocators_done`). Both passes share the SAME
+`_initial_untyped_pool._free_offset[]` bookkeeping
+(initial_untyped_pool.h:178-259). Consequences:
+
+  * The carve consumes the FRONT of each RAM untyped range (turn_into_untyped_
+    object advances range.free_offset by each batch) into 16 KiB untyped
+    OBJECTS placed in the TOP_CNODE_UNTYPED_16K CNode.
+  * Its callback removes those phys ranges from `_unused_phys_alloc` and adds
+    them to `phys_alloc_16k()` — EXCLUSIVELY (spec/x86_64/platform.cc carve
+    callback: `_unused_phys_alloc.remove_range` then `phys_alloc_16k().add_range`).
+  * `_init_allocators`'s later 4K pool population therefore only sees the
+    REMAINING tails (free_offset already advanced). The carved phys is NEVER
+    added to `_core_mem_alloc.phys_alloc()` (the 4 KiB RAM pool).
+
+CODE: spec/x86_64/platform.cc carve + callback; platform.cc:102-165
+(`_init_allocators` 4K pool population); initial_untyped_pool.h:184-258
+(`turn_into_untyped_object`, shared free_offset).
+
+### 1.2 The DMA path is ordinary RAM (no DMA-specific pool, no constraint)
+
+Traced end-to-end (the question the prior log left open):
+
+  ahci Dma::Connection (ahci.h:243)
+   -> platform DRIVER Dma_component::alloc (os/src/driver/platform/dma_component.cc:64)
+   -> Dma_buffer from `_env_ram` (the platform driver's own Ram session)
+   -> core Ram_dataspace_factory::alloc_ram (base/src/core/ram_dataspace_factory.cc:20)
+   -> `_core_mem_alloc.phys_alloc()`  (platform.h:259 ram_alloc())
+
+There is NO separate DMA pool and NO phys-address constraint on seL4/x86
+with `disable_iommu=true` (QEMU ahci boot log: "Boot config: disable_iommu
+= true"). The platform driver's `_env_ram` is a plain Ram session; its
+buffers back to the 4 KiB pool. ahci itself programs full 64-bit DMA
+addresses (ahci.h Clbu/Clbu, Fb/Fbu, Ctba0_u0, Dba/Dbau — all 64-bit),
+and QEMU ich9 AHCI is 64-bit DMA capable. So DMA placement is NOT the
+failure vector.
+
+CODE: dma_component.cc:64-91; ram_dataspace_factory.cc:20-147 (the
+"prefer >4 GiB, fall back to any" passes); io_mem_session_support.cc:23
+(device MMIO via `_io_mem_alloc` + 4K untypeds — device ranges are
+SKIPPED by the carve callback's `if (device_memory) return false`, so
+io_mem is unaffected by the carve).
+
+### 1.3 The observed failure point and the compounding pressure
+
+Boot-log comparison (1 GiB QEMU, sponge-boot AHCI variant):
+
+  WORKING (16384 / 256 KiB carve, docs/evidence/p4-regress/sponge-boot.log):
+    phys_mem_16k => 256 KiB at [0x200000, 0x240000)
+    693 MiB RAM assigned to init
+    [init -> ahci] --- Starting AHCI driver ---
+    [init -> ahci] version: major=0x1 minor=0x0      <- HBA MMIO read OK
+    [init -> ahci] port scan: #0: ATA
+    [init -> part_block] GPT Partition 1/2/3 ...
+    boot-probe: PASS
+
+  BROKEN (262144 / 247 MiB carve, docs/evidence/p4-regress-262144/sponge-boot.log):
+    phys_mem_16k => 241 MiB at [0x100000,0xa00000)+[0x30fc000,0x4000000)+[0x8000000,0x159ec000)
+    451 MiB RAM assigned to init   (plenty — NOT a RAM-quantity failure)
+    [init -> ahci] --- Starting AHCI driver ---
+    (log ends at the acpi SMBIOS line — NO "version: major=0x1", NO port
+     scan, NO GPT. Bounded timeout.)
+
+ahci prints "Starting AHCI driver" (main.cc:496) then hangs in the window
+before `Hba::reinit()` reads the first MMIO register (ahci.h:120-137,
+logged as "version: major=0x1"). That window is `driver.construct()`
+-> Resources -> `Platform::Device` acquisition + BAR5 MMIO mapping
+(ahci.h:245-282, 309-318), which depends on the platform DRIVER's device
+report, which depends on the acpi/pci_decode/platform children completing
+their boot and PCI discovery.
+
+The prior attempt's config combined TWO pressure sources on that early
+boot-critical dependency chain (acpi -> pci_decode -> platform -> ahci):
+  (a) a HUGE static low-RAM carve (~241 MiB ripped out of the 4K pool and
+      dedicated to 16K objects), and
+  (b) eager large-CNode allocation of 8 MiB PER child PD (1ST=9 -> 512
+      2nd-level CNodes x 16 KiB, constructed in the platform_pd.cc:199-216
+      loop at every PD creation) for ~10 boot-critical PDs (~80 MiB of
+      eager 16K allocation before the platform driver can report).
+Both consume from / compete with core's early boot memory bookkeeping
+(core's own page tables, kernel objects, the `_unused_phys_alloc`
+splitting). The chain could not complete within the bounded timeout.
+
+PROOF this is the mechanism (not DMA placement, not io_mem): the fix
+below reduces BOTH pressure sources ~4x (carve 64 MiB vs 247 MiB; per-PD
+eager 1 MiB vs 8 MiB) and ahci detects GPT P1/P2/P3 and boot-probe PASSes
+(§3). The DMA path is unchanged by the fix; only the carve size and the
+per-PD eager 16K allocation shrank.
+
+Residual uncertainty: the EXACT micro-failure inside the acpi->platform
+handshake under the prior config was not captured by a seL4-cap-level
+trace (the prior worker reverted before getting one, §7 of p4-cspace-fix).
+But the pressure-vector identification + the empirical resolution by
+minimising the carve is sufficient and robust: any future carve
+enlargement must re-verify the ahci canary.
+
+### 1.4 Why "on-demand, no fixed pre-carve" is the right shape
+
+The task's steer ("allocate the backing at construction time ... WITHOUT a
+fixed pre-carved pool that starves RAM or disturbs device memory") is
+satisfied by the VTX-pattern mechanism implemented here: each child-PD
+CNode draws its 16 KiB backing from `phys_alloc_16k()` AT CNODE
+CONSTRUCTION (the platform_pd.cc eager loop), and the carve that PREPARES
+those 16K untypeds is a FIXED, BOUNDED, MODEST reservation (64 MiB) sized
+for the realistic working set — NOT proportional to total RAM and NOT
+sized for the 64-PD worst case. The carve is the same proven VTX pool
+upstream already populates (spec/x86/platform_thread.cc:39-52); only its
+SIZE grew (from 256 KiB to 64 MiB). This is the minimal, upstreamable
+shape.
+
+================================================================
+
+## 2. IMPLEMENTATION — on-demand large CNode backing (6 files, base-sel4)
+
+The mechanism reuses Genode's existing 16K untyped pool (the VTX VCPU
+pool) and the proven VTX allocation pattern (alloc_pages(phys_alloc_16k,4)
++ _core_local_sel(TOP_CNODE_UNTYPED_16K, phys, 14)). The change is MINIMAL
+and COHERENT; non-x86_64 arches are upstream byte-for-byte.
+
+Files changed (all under genode/repos/base-sel4/):
+
+  src/include/base/internal/capability_space_sel4.h
+    x86_64 only (gated `#ifdef __x86_64__`): CSPACE_SIZE_LOG2_2ND 7->9.
+    1ST stays 6 (1st-level CNode keeps its 4 KiB backing, upstream).
+    => per-PD main CSpace 8192 -> 32768 slots.
+    Other arches keep the upstream `(CONFIG_WORD_SIZE==32)?8:7` unchanged.
+
+  src/core/include/untyped_memory.h
+    + enum { LARGE_BACKING_UNTYPED_LOG2 = 14 };  (the 16K untyped object
+      size; = Vcpu_kobj::SIZE_LOG2 on x86_64; inert on arches whose CNodes
+      stay page-sized)
+    + size-aware `untyped_sel(phys, backing_log2)` overload: routes to
+      TOP_CNODE_UNTYPED_16K (phys>>14) when backing > 4 KiB, else the 4K
+      default. (Selector addressing verified against the VTX pattern,
+      spec/x86/platform_thread.cc:52.)
+    + `free_pages(alloc, addr, num_pages)` helper (symmetric with free_page).
+    + declaration of per-arch `cnode_backing_alloc(size_log2, default)`.
+
+  src/core/include/cnode.h
+    The 4-arg Range_allocator-form `Cnode` ctor (used for every child-PD
+    main-CSpace CNode in platform_pd.cc) is now size-aware:
+      backing_log2 = Cnode_kobj::SIZE_LOG2(=5) + size_log2
+      large        = backing_log2 > PAGE_SIZE_LOG2
+      pool         = cnode_backing_alloc(size_log2, phys_alloc)
+      _phys        = large ? alloc_pages(pool, 1<<(backing_log2-12))
+                           : alloc_page(pool)
+      service sel  = large ? untyped_sel(phys, backing_log2)
+                           : untyped_sel(phys)
+      create<Cnode_kobj>(service, parent_sel, dst_idx, size_log2)
+    `destruct` is made size-aware symmetrically (frees to the same pool it
+    allocated from). Core's own CNodes use the separate Initial_untyped_pool
+    ctor and are unaffected.
+
+  src/core/spec/x86_64/platform.cc
+    + `Untyped_memory::cnode_backing_alloc`: returns `phys_alloc_16k()` when
+      the CNode backing exceeds one page, else the caller's default.
+    + 16K-pool carve `max_pd_mem` enlarged from VCPU-only to also cover
+      MAX_CNODE_PD_COUNT(=64) child PDs x (1<<CSPACE_SIZE_LOG2_1ST=64) 2nd-
+      level CNodes x 16 KiB = 64 MiB + 256 KiB VCPU. FIXED bounded size.
+
+  src/core/spec/arm/platform.cc, src/core/spec/arm_v8a/platform.cc
+    + `cnode_backing_alloc` definition: returns the default allocator
+      unchanged (ARM keeps page-sized CNodes; the large-backing branch is
+      never taken; defined so the symbol links).
+
+Backed by an `error("Cnode construction failed")` fail-loud gate (cnode.h:
+the seL4 retype returns nonzero when the 16K pool is exhausted, _phys is
+cleared, constructed() returns false, and platform_pd.cc:176/209 refuse to
+install the CNode — bounded, never a silent hang).
+
+================================================================
+
+## 3. CANARY EVIDENCE
+
+### 3.1 sponge-boot (AHCI canary) — PASS  (ahci regression GONE)
+
+Run: make -C genode/build/x86_64 run/sponge-boot KERNEL=sel4 BOARD=pc \
+     RUN_OPT='--include boot_dir/sel4 --include power_on/qemu --include log/qemu --include image/disk'
+Log: docs/evidence/c1-sponge-boot.log
+
+  phys_mem_16k => 64 MB  (vs 241 MB broken, 256 KB upstream)
+  629 MiB RAM and 523288 caps assigned to init
+  [init -> ahci] --- Starting AHCI driver ---
+  [init -> ahci] version: major=0x1 minor=0x0
+  [init -> ahci] command slots: 32
+  [init -> ahci] native command queuing: yes
+  [init -> ahci] 64-bit support: yes
+  [init -> ahci] port scan:
+  [init -> ahci] 		#0: ATA
+  [init -> ahci] 		#1:  off (unknown device signature)
+  [init -> ahci] 		#2: off (ATAPI)
+  [init -> ahci] 		#3:  off (unknown device signature)
+  [init -> ahci] 		#4:  off (unknown device signature)
+  [init -> ahci] 		#5:  off (unknown device signature)
+  [init -> part_block] GPT Partition 1: LBA 40 (101 blocks) ... BIOSBOOT
+  [init -> part_block] GPT Partition 2: LBA 141 (4515 blocks) ... GRUB2
+  [init -> part_block] GPT Partition 3: LBA 4952 (23152 blocks) ... GENODE
+  [init -> boot_probe] boot-probe: PASS (22 bytes: "sponge-boot-marker-v1.")
+  Run script execution successful.
+
+AHCI regression GONE: the broken config hung after "Starting AHCI driver"
+(§1.3); this config reads the HBA version, scans ports, and part_block
+detects GPT P1/P2/P3 — the full disk-read chain.
+
+### 3.2 sponge-alpha — PASS
+
+Run: make -C genode/build/x86_64 run/sponge-alpha KERNEL=sel4 BOARD=pc \
+     RUN_OPT='--include power_on/qemu --include log/qemu --include image/iso'
+Log: docs/evidence/c1-sponge-alpha.log
+
+  1571 MiB RAM and 523288 caps assigned to init
+  [init -> alpha_probe] alpha-probe: (c) configd broadcast live (4 keys)
+  [init -> alpha_probe] alpha-probe: (a) panel band rendered at (512,4) = 0xffe6e9ef
+  [init -> alpha_probe] alpha-probe: (b) launcher report contains hello/Utilities
+  [init -> alpha_probe] alpha-probe: (d) Leitzentrale window live (660 marker pixels ...)
+  [init -> alpha_probe] alpha-probe: PASS
+
+(First attempt used 1ST=7/2ND=9 + MAX_CNODE_PD_COUNT=32; alpha's ~40 PDs
+exhausted the 32-PD pool ("Cnode construction failed" at lz_viewer).
+Reducing to 1ST=6 halves per-PD cost to 1 MiB, so 64 PDs fit the same
+64 MiB carve. Re-run PASSes with 0x "Cnode construction failed".)
+
+### 3.3 sponge-falkon-disk — reaches vm_space stage (past cspace)
+
+Run: make -C genode/build/x86_64 run/sponge-falkon-disk KERNEL=sel4 BOARD=pc \
+     RUN_OPT='--include power_on/qemu --include log/qemu --include image/disk'
+Log: docs/evidence/c1-sponge-falkon-disk.log
+
+  5745 MiB RAM and 523288 caps assigned to init
+  [init -> system -> falkon_probe] falkon-probe: [3] launch falkon via sponge_pkgd
+  [init -> system -> falkon_probe] falkon-probe: [3] launch ok — WebEngine first paint may take minutes under softpipe
+  Warning: flush page table entries - mapping cache full - PD: init -> rom_pkg out of selector
+  [init -> system -> pkg_runtime -> falkon] lwIP Nic interface up address=10.0.2.15 netmask=255.255.255.0 gateway=10.0.2.2 nameserver=10.0.2.3
+  Warning: flush page table entries - mapping cache full - PD: init -> rom_pkg out of selector
+  Warning: flush page table entries - mapping cache full - PD: ... -> falkon out of selector
+  [init -> system -> pkg_runtime -> falkon] Error: stop because parent denied RM-session: label="", ram_quota=64K, cap_quota=2
+  [init -> system -> falkon_probe] Error: falkon-probe: FAIL falkon window never rendered into nitpicker
+
+PROGRESSION CONFIRMED: falkon launches from disk, lwIP DHCPs to 10.0.2.15,
+then hits the vm_space "mapping cache full / out of selector" limit (the
+C2 blocker — Core::Vm_space NUM_VM_SEL_LOG2=15 => 32768 mappings/PD,
+independent of CSPACE_SIZE_LOG2). This is the EXPECTED C2 failure, NOT the
+cspace stage: 0x "Cnode construction failed" (16K pool did NOT exhaust);
+the main CSpace (32768 slots) carried falkon's launch + DHCP cleanly.
+Matches the proven prior-art progression (p4-cspace-fix.log §1 run1).
+
+================================================================
+
+## 4. Vendored changes for the docs/11 patch ledger (C4 writes the row)
+
+C4 will add the docs/11-environment.md §4 ledger row. The vendored surface
+this workstream introduces (all under genode/repos/base-sel4/, gated to
+x86_64 where applicable, other arches upstream byte-for-byte):
+
+  WHAT  : On-demand 16 KiB CNode backing + per-PD main CSpace 8192->32768.
+  WHERE : capability_space_sel4.h (CSPACE_SIZE_LOG2_2ND x86_64 7->9);
+          untyped_memory.h (size-aware untyped_sel + cnode_backing_alloc decl
+          + LARGE_BACKING_UNTYPED_LOG2 + free_pages);
+          cnode.h (size-aware Range_allocator ctor + destruct);
+          spec/x86_64/platform.cc (cnode_backing_alloc def + 64 MiB carve);
+          spec/{arm,arm_v8a}/platform.cc (cnode_backing_alloc def, default).
+  WHY   : base-sel4 capped each child-PD CNode at one 4 KiB page (max 128
+          slots/CNode, 16384/PD), blocking large workloads (falkon WebEngine)
+          at the main CSpace. The 16K-backing path lifts this to 32768/PD
+          using the existing VTX 16K untyped pool. dma-safe: the carve is a
+          fixed bounded 64 MiB (not proportional to RAM), so it does not
+          starve init RAM or disturb the platform-driver/ahci boot chain.
+  DROP  : revert the 6 files; upstream base-sel4 behaviour is restored
+          (8192-slot page-sized CSpace, 256 KiB VCPU-only 16K pool). When
+          upstream Genode grows lazy/size-aware CNodes (the platform.cc:108
+          XXX), this patch is obsolete.
+
+================================================================
+
+## 5. Final tree state
+
+  git status --short : 6 modified files, all under genode/repos/base-sel4/
+  git diff --stat    : 196 insertions, 41 deletions
+  build              : core/sel4/core compiles clean (make core)
+  canaries           : sponge-boot PASS, sponge-alpha PASS, sponge-falkon-disk
+                       reaches vm_space (C2)
+  committed          : NO (per instructions — orchestrator commits)
+  tree state         : WORKING (unlike the prior attempt which reverted)
+================================================================

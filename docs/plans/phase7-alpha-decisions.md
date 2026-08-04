@@ -2,7 +2,7 @@
 slug: phase7-alpha
 status: awaiting-approval
 intent: clear
-pending-action: write .omo/plans/phase7-alpha.md
+pending-action: write docs/plans/phase7-alpha.md
 approach: 5 waves — (W1) unified desktop boot scenario + installable media (image/disk + image/iso on base-sel4), (W2) pkgd runtime-config gaps + click-to-launch lifecycle, (W3) default app packages (terminal, editor, Falkon+networking, Sponge-native file manager), (W4) vct Alpha gaps (shutdown/reboot, update/search, launch, doc-drift fixes), (W5) installation docs + quick-start + known limitations.
 ---
 
@@ -59,7 +59,7 @@ approach: 5 waves — (W1) unified desktop boot scenario + installable media (im
 - D2 browser = Falkon Qt6 installable package + QEMU networking (USER DECIDED); heaviest workstream, scheduled last in W3
 - D3 file manager = new Sponge-native Qt6 component `sponge_files` (USER DECIDED)
 - D4 wave order W1→W5: media/unified desktop first so every later feature lands in the bootable image
-- D5 (execution outcome, 2026-08-03): Falkon package COMPLETE but boot-blocked — seL4 boot chain (GRUB→Bender→seL4) has a ~256MB boot-module ceiling; falkon's WebEngine payload is 509MB (libQt6WebEngineCore alone 226MB stripped, irreducible). Three boot strategies tested (in-image.elf, separate tar module via tar_rom, phys_max variants), all bounded-loud failures. Pre-decided contingency invoked: falkon = docs-only known limitation in todo 19; resolution path = disk-based payload staging (block driver + fs + cached_fs_rom, the Sculpt pattern) as post-Alpha work. Evidence: .omo/evidence/task-16-phase7-alpha.log; commit fcfec4a86b.
+- D5 (execution outcome, 2026-08-03): Falkon package COMPLETE but boot-blocked — seL4 boot chain (GRUB→Bender→seL4) has a ~256MB boot-module ceiling; falkon's WebEngine payload is 509MB (libQt6WebEngineCore alone 226MB stripped, irreducible). Three boot strategies tested (in-image.elf, separate tar module via tar_rom, phys_max variants), all bounded-loud failures. Pre-decided contingency invoked: falkon = docs-only known limitation in todo 19; resolution path = disk-based payload staging (block driver + fs + cached_fs_rom, the Sculpt pattern) as post-Alpha work. Evidence: docs/evidence/task-16-phase7-alpha.log; commit fcfec4a86b.
 
 ## Scope IN
 - Unified desktop scenario (drivers + nitpicker + wm/decorator + sponge-de + configd/themed/pkgd + launcher feed + lz subsystem optional)
@@ -83,4 +83,4 @@ approach: 5 waves — (W1) unified desktop boot scenario + installable media (im
 
 ## Approval gate
 status: execution-authorized (2026-08-02) — Momus review OKAY (bg_4d81e950, zero blocking issues); Codex second pass waived by user; user said "리뷰 한번 돌리고 시작하자" → start-work
-<!-- Plan: .omo/plans/phase7-alpha.md — 20 todos, 6 waves (W0 docs-first, W1 media, W2 launch, W3 apps, W4 vct, W5 docs+regression). -->
+<!-- Plan: docs/plans/phase7-alpha.md — 20 todos, 6 waves (W0 docs-first, W1 media, W2 launch, W3 apps, W4 vct, W5 docs+regression). -->

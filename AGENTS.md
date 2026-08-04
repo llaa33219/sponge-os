@@ -278,6 +278,26 @@ If you modify code, update the related documentation. Updating docs
 without code, or vice versa, is not allowed. During early scaffolding,
 docs may lead the code.
 
+### 5.5 Orchestration Artifacts
+
+The directory `.omo/` (containing `plans/`, `drafts/`, `evidence/`,
+`ledger/`, `boulder`, and similar) is git-ignored orchestration scratch:
+transient working state for the planning and execution loop, never part
+of the durable record. Anything worth keeping must be promoted to a
+tracked location.
+
+- Plans and decision logs go to `docs/plans/`.
+- Design-significant engineering evidence (regression writeups,
+  capability analyses, capability-chain diagnoses, similar) goes to
+  `docs/evidence/`.
+
+Durable documentation under `docs/` and `README.md` must never cite paths
+under `.omo/`. If such a reference exists, fix it: rewrite to the new
+tracked path, or drop the cross-reference when the underlying artifact
+is no longer durable. Raw per-run logs (large transcripts under
+`.omo/evidence/`) are not promoted by default; only curated writeups that
+explain why a design decision was made.
+
 ---
 
 ## 6. Questions and Discussions
