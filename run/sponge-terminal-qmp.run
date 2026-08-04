@@ -1,0 +1,670 @@
+#
+# \brief  Terminal keyboard over the REAL QMP/PS2 input chain (Phase 10, W4)
+# \author Sponge OS contributors
+# \date   2026
+#
+# Roadmap criterion 5a (docs/09-roadmap.md §10): QMP `send-key` keyboard
+# input reaches a focused terminal window through the real driver chain —
+# replacing the synthetic in-guest Event injection of
+# run/sponge-terminal.run (which stays untouched as the fast regression
+# tier).
+#
+# Chain proven end to end:
+#
+#   host run script (run/qmp.inc + local QMP helpers)
+#     -> HMP mouse_set + QMP input-send-event abs (usb-tablet pointer,
+#        scaled by the staged event_filter <transform>) + HMP
+#        mouse_button (window focus click)
+#     -> QMP send-key 'echo ok' + Return (emulated PS/2 keyboard)
+#     -> ps2 driver -> event_filter (en_us.chargen) -> nitpicker
+#     -> focused terminal Gui session (pkg_runtime -> terminal sub-init)
+#     -> gems terminal read buffer -> /dev/terminal (vfs <terminal/>)
+#     -> noux bash echo -> terminal re-render
+#     -> terminal_probe observes the glyph-count increase via Capture
+#     -> terminal-probe: PASS
+#
+# Topology = run/sponge-terminal.run (pkgd + pkg_runtime + terminal
+# sub-init + terminal_probe) PLUS the drivers sub-init copied verbatim
+# from run/sponge-de-sel4-interactive.run (vesa_fb/ps2/pc_usb_host/
+# usb_hid/event_filter + chargen staging) PLUS the QMP socket wiring
+# from run/qmp.inc. base-sel4 only: vesa_fb/ps2/usb_hid need real PC
+# hardware access (same rationale as the interactive scenario).
+#
+# Marker choreography (probe <-> host contract, run/qmp.inc): after the
+# render check, terminal_probe (config qmp="yes") emits
+# `QMP-TARGET click <gx> <gy>` at the terminal-window center and
+# `QMP-TARGET type echo ok`. The run script's bounded expects on the
+# QEMU serial dispatch the click + keys through QMP, then append a
+# Return (send-key ret) so bash executes the line. Every wait is
+# bounded — fail loud, never hang.
+#
+# Click target = the terminal-window CENTER (528, 396): with vesa_fb
+# present the terminal's Gui session sees two capture clients, so Gui
+# window() returns the domain rect and the window sits at
+# (128,96,800,600) rather than at the domain origin (root-caused in
+# docs/evidence/task-4-phase10-interactive.md). The pointer is
+# positioned with a usb-tablet abs event (scaled back to pixels by the
+# staged event_filter <transform>) and the click is delivered via HMP
+# `mouse_button' — QEMU 11's input-send-event button events never reach
+# any guest device under -nographic. The keyboard path under test is
+# unaffected by these pointer mechanics.
+#
+
+assert {[have_spec sel4]} \
+	"sponge-terminal-qmp requires KERNEL=sel4 (BOARD=pc) in build.conf. \
+	 This scenario drives real PC hardware (vesa_fb/ps2/usb_hid) which \
+	 base-linux cannot provide; run/sponge-terminal.run remains the \
+	 kernel-agnostic synthetic regression tier."
+
+build { core lib/ld init timer server/report_rom server/nitpicker \
+        driver/acpi app/pci_decode driver/platform \
+        driver/framebuffer/vesa driver/ps2 \
+        driver/usb_host/pc driver/usb_hid server/event_filter \
+        sponge_pkgd \
+        server/terminal server/vfs server/cached_fs_rom \
+        noux-pkg/bash-minimal noux-pkg/vim-minimal \
+        lib/libc lib/libm lib/posix lib/ncurses \
+        lib/vfs lib/vfs_pipe lib/vfs_ttf \
+        test/terminal_probe lib/blit }
+
+create_boot_directory
+
+install_config {
+config
++ parent-provides
+  + service ROM
+  + service PD
+  + service RM
+  + service CPU
+  + service LOG
+  + service IRQ
+  + service IO_MEM
+  + service IO_PORT
+
++ default | caps: 200 | ram: 4M
++ default-route
+  + any-service
+    + parent
+    + any-child
+
++ start timer
+  + provides | + service Timer
+
++ start report_rom | ram: 8M
+  + provides
+    + service Report
+    + service ROM
+  + config | verbose: no
+    + policy | label: sponge_pkgd -> request      | report: terminal_probe -> request
+    + policy | label: terminal_probe -> result    | report: sponge_pkgd -> result
+    + policy | label: terminal_probe -> installed | report: sponge_pkgd -> installed
+    + policy | label: terminal_probe -> focus     | report: nitpicker -> focus
+    + policy | label: terminal_probe -> hover     | report: nitpicker -> hover
+    + policy | label: pkg_runtime -> config       | report: sponge_pkgd -> runtime
+
++ start nitpicker | ram: 16M
+  + provides
+    + service Gui
+    + service Capture
+    + service Event
+  + route
+    + service Report | + child report_rom
+    + service Timer | + child timer
+    + any-service
+      + parent
+      + any-child
+  + config
+    + capture
+    + event
+    + report | focus: yes | hover: yes
+    + domain term | layer: 2 | content: client | label: no
+                  | hover: always | focus: click
+                  | xpos: 64 | ypos: 48 | width: 800 | height: 600
+    + domain default | layer: 3 | content: client | label: no
+                     | hover: always | focus: click | ypos: 0 | height: 0
+    + default-policy | domain: term
+    + background | color: #1e1e2e
+
+#
+# Drivers sub-init: the canonical interactive-PC set, copied verbatim
+# from run/sponge-de-sel4-interactive.run (the vendored
+# recipes/raw/drivers_interactive-pc set built from source). The
+# keyboard path that matters for criterion 5a: ps2 -> event_filter
+# (en_us chargen) -> Event -> nitpicker.
+#
++ start drivers | caps: 1500 | ram: 96M | managing_system: yes
+  + binary init
+  + route
+    + service ROM | label: config | + parent | label: drivers.config
+    + service Timer               | + child timer
+    + service Capture             | + child nitpicker
+    + service Event               | + child nitpicker
+    + any-service                 | + parent
+  + config
+    + parent-provides
+      + service IRQ
+      + service IO_MEM
+      + service IO_PORT
+      + service ROM
+      + service PD
+      + service RM
+      + service CPU
+      + service LOG
+      + service Timer
+      + service Capture
+      + service Event
+
+    + default | caps: 60
+
+    + start acpi | caps: 250 | ram: 4M
+      + route
+        + service IO_MEM | + parent
+        + service LOG    | + parent
+        + service PD     | + parent
+        + service RM     | + parent
+        + service CPU    | + parent
+        + service ROM    | + parent
+        + service Report | + child report_rom
+
+    + start report_rom | caps: 100 | ram: 2M
+      + provides
+      | + service ROM
+      | + service Report
+      + config
+      | + policy | label: pci_decode -> system | report: acpi -> acpi
+      | + policy | label: platform -> devices  | report: pci_decode -> devices
+      | + policy | label: usb_hid -> report    | report: usb -> devices
+      + route
+        + service LOG | + parent
+        + service PD  | + parent
+        + service CPU | + parent
+        + service ROM | + parent
+
+    + start pci_decode | caps: 100 | ram: 2M
+      + route
+        + service Report              | + child report_rom
+        + service ROM | label: system | + child report_rom
+        + service IO_MEM              | + parent
+        + service LOG                 | + parent
+        + service PD                  | + parent
+        + service RM                  | + parent
+        + service CPU                 | + parent
+        + service ROM                 | + parent
+
+    + start platform | caps: 200 | ram: 3M | managing_system: yes
+      + provides
+      | + service Dma
+      | + service Platform
+      + route
+      | + service ROM | label: devices | + child report_rom
+      | + service Report               | + child report_rom
+      | + service IRQ                  | + parent
+      | + service IO_MEM               | + parent
+      | + service IO_PORT              | + parent
+      | + service ROM                  | + parent
+      | + service PD                   | + parent
+      | + service CPU                  | + parent
+      | + service LOG                  | + parent
+      | + service Timer                | + parent
+      + config
+        + report | devices: yes
+        + policy | label_prefix: ps2             | + device ps2
+        + policy | label_prefix: fb  | info: yes | + pci | class: VGA
+        + policy | label_prefix: usb | info: yes | + pci | class: USB
+
+    + start fb | caps: 150 | ram: 20M
+      + binary vesa_fb
+      + route
+        + service ROM | label: config | + parent | label: fb.config
+        + service Report              | + child report_rom
+        + service Dma                 | + child platform
+        + service Platform            | + child platform
+        + service IO_PORT             | + parent
+        + service IO_MEM              | + parent
+        + service ROM                 | + parent
+        + service PD                  | + parent
+        + service CPU                 | + parent
+        + service LOG                 | + parent
+        + service Timer               | + parent
+        + service Capture             | + parent
+
+    + start ps2 | caps: 100 | ram: 1280K
+      + config
+      + route
+        + service Dma      | + child platform
+        + service Platform | + child platform
+        + service Event    | + child event_filter | label: ps2
+        + service ROM      | + parent
+        + service PD       | + parent
+        + service CPU      | + parent
+        + service LOG      | + parent
+        + service Timer    | + parent
+
+    + start usb | caps: 200 | ram: 16M
+      + binary pc_usb_host
+      + provides | + service Usb
+      + config
+      | + report | devices: yes
+      | + policy | label_prefix: usb_hid | + device | class: 0x3
+      + route
+        + service Dma                     | + child platform
+        + service Platform                | + child platform
+        + service Report | label: devices | + child report_rom
+        + service ROM                     | + parent
+        + service PD                      | + parent
+        + service RM                      | + parent
+        + service CPU                     | + parent
+        + service LOG                     | + parent
+        + service Timer                   | + parent
+
+    + start usb_hid | caps: 180 | ram: 10M
+      + route
+        + service ROM | label: report | + child report_rom
+        + service ROM                 | + parent
+        + service PD                  | + parent
+        + service RM                  | + parent
+        + service CPU                 | + parent
+        + service LOG                 | + parent
+        + service Timer               | + parent
+        + service Event               | + child event_filter | label: usb
+        + service Usb                 | + child usb
+
+    + start event_filter | caps: 90 | ram: 1280K
+      + provides | + service Event
+      + route
+        + service ROM | label: config | + parent | label: event_filter.config
+        + service Event               | + parent
+        + service ROM                 | + parent
+        + service PD                  | + parent
+        + service CPU                 | + parent
+        + service LOG                 | + parent
+        + service Timer               | + parent
+
++ start sponge_pkgd | caps: 200 | ram: 16M
+  + route
+    + service ROM | label_last: request | + child report_rom
+    + service Report | + child report_rom
+    + any-service
+      + parent
+      + any-child
+
++ start pkg_runtime | caps: 1500 | ram: 256M
+  + binary init
+  + route
+    + service ROM | label: config | + child report_rom
+    + service Gui | + child nitpicker
+    + service Report | + child report_rom
+    + any-service
+      + parent
+      + any-child
+
+#
+# terminal_probe with qmp="yes": install -> launch -> render check run
+# unchanged; the keystroke step then emits QMP-TARGET markers instead of
+# the synthetic Event injection. The config ROM is delivered in HID
+# format by init's sandbox (Genode 26.05 default); the probe reads it
+# via the format-agnostic Node API (see the probe source header and
+# docs/evidence/task-1-phase10-interactive.md step 0).
+#
++ start terminal_probe | caps: 200 | ram: 16M
+  + config | qmp: yes
+  + route
+    + service Capture | + child nitpicker
+    + service Event | + child nitpicker
+    + service Timer | + child timer
+    + service ROM | label_last: result | + child report_rom
+    + service ROM | label_last: installed | + child report_rom
+    + service ROM | label_last: focus | + child report_rom
+    + service ROM | label_last: hover | + child report_rom
+    + service Report | + child report_rom
+    + any-service
+      + parent
+      + any-child
+- }
+
+#
+# Stage the terminal package metadata + the derived index (same scheme
+# as run/sponge-terminal.run).
+#
+set staged_pkgs { terminal }
+foreach pkg $staged_pkgs {
+	set src "${genode_dir}/../pkg/$pkg/metadata.xml"
+	if {![file exists $src]} {
+		error "package metadata not found: $src"
+	}
+	exec cp -L $src "bin/pkg_$pkg.xml"
+}
+
+set index_fh [open "bin/pkg_index.xml" w]
+puts $index_fh "<packages>"
+foreach pkg $staged_pkgs {
+	puts $index_fh "  <pkg name=\"$pkg\"/>"
+}
+puts $index_fh "</packages>"
+close $index_fh
+
+#
+# VeraMono.ttf — the gems terminal server's monospace font, loaded from a
+# ROM via the vfs_ttf plugin (terminal README pattern). Staged from the
+# prepared ttf-bitstream-vera port.
+#
+set vera_dir [lindex [glob -nocomplain \
+    "${genode_dir}/contrib/ttf-bitstream-vera-*/ttf/bitstream-vera"] 0]
+if {$vera_dir eq ""} {
+	error "ttf-bitstream-vera port not prepared; run: ./genode/tool/ports/prepare_port ttf-bitstream-vera"
+}
+exec cp -fL "$vera_dir/VeraMono.ttf" "bin/VeraMono.ttf"
+
+#
+# Driver sub-init config modules + event_filter keyboard layouts
+# (chargen), same staging as run/sponge-de-sel4-interactive.run. All
+# extras must land in bin/ BEFORE build_boot_image — base-sel4 packs a
+# single image.elf from bin/ (docs/11-environment.md §10.4).
+#
+# event_filter.config is GENERATED here rather than copied from the
+# recipe: it adds a <transform> scale on the usb input. QEMU 11's
+# usb-tablet reports absolute positions in device units (0..32767 per
+# axis) and nitpicker treats Absolute_motion values as raw PIXELS, so
+# unscaled tablet events clamp to the screen corner (observed:
+# (528,396) -> (1023,767)). The scale maps device units to the
+# 1024x768 framebuffer (1024/32767, 768/32767); verified by the
+# event_filter log showing ABS_MOTION +528+396 for abs (16896,16895).
+# Everything else (chargen en_us/special, ps2 keyboard path, mod/repeat
+# blocks) is identical to the vendored recipe.
+#
+set recipe_dir "${genode_dir}/repos/os/recipes/raw/drivers_interactive-pc"
+foreach f { drivers.config fb.config } {
+	if {![file exists "$recipe_dir/$f"]} {
+		error "$recipe_dir/$f missing (vendored drivers_interactive-pc recipe drifted?)"
+	}
+	exec cp -f "$recipe_dir/$f" "bin/$f"
+}
+
+set ef [open "bin/event_filter.config" w]
+puts $ef {<config>
+  <output>
+    <chargen>
+      <merge>
+        <accelerate max="50" sensitivity_percent="1000" curve="127">
+          <button-scroll>
+            <input name="ps2"/>
+            <vertical button="BTN_MIDDLE" speed_percent="-10"/>
+            <horizontal button="BTN_MIDDLE" speed_percent="-10"/>
+          </button-scroll>
+        </accelerate>
+        <transform>
+          <scale x="0.0312517" y="0.0234382"/>
+          <input name="usb"/>
+        </transform>
+      </merge>
+      <mod1><key name="KEY_LEFTSHIFT"/><key name="KEY_RIGHTSHIFT"/></mod1>
+      <mod2><key name="KEY_LEFTCTRL"/><key name="KEY_RIGHTCTRL"/></mod2>
+      <mod3><key name="KEY_RIGHTALT"/>AltGr</mod3>
+      <repeat delay_ms="230" rate_ms="90"/>
+      <include rom="en_us.chargen"/>
+      <include rom="special.chargen"/>
+    </chargen>
+  </output>
+  <policy label="ps2" input="ps2"/>
+  <policy label="usb" input="usb"/>
+</config>}
+close $ef
+
+set chargen_dir "${genode_dir}/repos/os/src/server/event_filter"
+foreach f { en_us.chargen special.chargen } {
+	if {![file exists "$chargen_dir/$f"]} { error "$chargen_dir/$f missing" }
+	exec cp -f "$chargen_dir/$f" "bin/$f"
+}
+
+#
+# Boot modules. [build_artifacts] carries core/ld/init/nitpicker/
+# report_rom/the drivers/sponge_pkgd/pkg_runtime(=init)/terminal/vfs/
+# cached_fs_rom/terminal_probe plus the noux tars and shared libs. The
+# font, the package metadata, and the driver configs are extras (not
+# build targets), appended explicitly for the image.elf packing
+# (docs/11-environment.md §10.4).
+#
+set boot_modules [build_artifacts]
+foreach m { VeraMono.ttf pkg_terminal.xml pkg_index.xml \
+            drivers.config fb.config event_filter.config \
+            en_us.chargen special.chargen } {
+	lappend boot_modules $m
+}
+
+build_boot_image $boot_modules
+
+#
+# QMP control socket + QEMU device set. -nographic keeps the run
+# headless (serial only); nec-usb-xhci + usb-tablet give the absolute
+# pointer usb_hid binds (and that delivers the focus click); send-key
+# targets the always-present emulated PS/2 keyboard. -m 2G is sized
+# like run/sponge-terminal.run (sub-init + pkg_runtime's 256M) plus the
+# drivers sub-init. The QMP socket is attached from the FIRST boot —
+# this scenario uses a single QEMU spawn for all gates (each subsequent
+# run_genode_until reuses the running spawn via $qemu_spawn_id), so the
+# port only needs to be picked once. qmp_pick_port returns a
+# kernel-assigned ephemeral port, dodging TIME_WAIT collisions between
+# sequential scenario runs. See run/qmp.inc for the protocol helper.
+#
+#
+# Source the shared QMP helper for the CONNECTION layer (qmp_pick_port,
+# qmp_connect, qmp_cmd, qmp_disconnect — the W1-committed, stable core).
+# The retry rides out brief parse windows while a parallel Phase-10
+# workstream (W3) is mid-edit on the file; after ~10 min it fails loud.
+#
+set qmp_inc [file join [file dirname [file normalize [info script]]] qmp.inc]
+set qmp_loaded 0
+for {set i 0} {$i < 20} {incr i} {
+	if {![catch {source $qmp_inc} qmp_err]} { set qmp_loaded 1; break }
+	puts "\nqmp: qmp.inc not parseable yet ($qmp_err), retrying in 30s"
+	flush stdout
+	after 30000
+}
+if {!$qmp_loaded} {
+	puts stderr "\nFAIL: could not source qmp.inc after 20 tries: $qmp_err"
+	exit 1
+}
+
+#
+# Local input-delivery helpers. qmp.inc's delivery procs are deliberately
+# NOT used here: (a) its qmp_send_key/qmp_type emit the string-form
+# `keys:["name"]` JSON that QEMU rejects ("Invalid parameter type for
+# 'keys[0]', expected: object") — a latent W1 bug, flagged for W6; and
+# (b) qmp_click/qmp_pointer_move are being reworked by a parallel
+# workstream (W3), so their semantics are a moving target.
+#
+# term_qmp_tablet_click chan tx ty: move the pointer to (tx,ty) with a
+# tablet abs event and click with HMP mouse_button. Two QEMU 11
+# -nographic quirks dictate the mechanics (both root-caused in
+# docs/evidence/task-4-phase10-interactive.md):
+#
+#  (1) input-send-event abs events broadcast to ALL mice; the PS/2
+#      relative mouse translates them to accelerated rel deltas that
+#      slam the pointer into a corner. HMP `mouse_set <index>' makes
+#      the absolute tablet the current mouse so abs events take the
+#      tablet path (device-targeting the tablet is impossible — no QOM
+#      id, and `device' errors "not bound to a QemuConsole" without a
+#      graphical display).
+#  (2) input-send-event BUTTON events reach no guest device at all
+#      (verified via event_filter's log filter: zero events), and
+#      send-key has no button qcodes on QEMU 11. HMP `mouse_button
+#      1/0' delivers BTN_LEFT press/release through the current
+#      (tablet) device — verified by the event_filter log and by
+#      nitpicker's focus ROM flipping to the terminal session.
+#
+# The abs values use the qmp.inc scaling (guest px -> 0..32767 device
+# units); the staged event_filter <transform> scales them back to
+# pixels (see the staging comment above).
+#
+proc term_qmp_tablet_index { chan } {
+	global _term_qmp_tablet_idx
+	if {![info exists _term_qmp_tablet_idx]} {
+		set _term_qmp_tablet_idx ""
+		set result [qmp_cmd $chan {{"execute":"query-mice"}}]
+		if {[regexp {"index":\s*([0-9]+)[^\}]*"absolute":\s*true} $result dummy idx]} {
+			set _term_qmp_tablet_idx $idx
+		}
+		puts "\nqmp: absolute tablet mouse index: '$_term_qmp_tablet_idx'"
+		flush stdout
+	}
+	return $_term_qmp_tablet_idx
+}
+
+proc term_qmp_tablet_click { chan tx ty } {
+	set idx [term_qmp_tablet_index $chan]
+	if {$idx eq ""} {
+		puts stderr "\nFAIL: query-mice shows no absolute mouse device"
+		exit 1
+	}
+	qmp_cmd $chan [format {{"execute":"human-monitor-command","arguments":{"command-line":"mouse_set %s"}}} $idx]
+	set ax [expr {($tx * 32767 + 512) / 1024}]
+	set ay [expr {($ty * 32767 + 384) / 768}]
+	qmp_cmd $chan [format {{"execute":"input-send-event","arguments":{"events":[{"type":"abs","data":{"axis":"x","value":%d}},{"type":"abs","data":{"axis":"y","value":%d}}]}}} $ax $ay]
+	after 15
+	qmp_cmd $chan {{"execute":"human-monitor-command","arguments":{"command-line":"mouse_button 1"}}}
+	after 15
+	qmp_cmd $chan {{"execute":"human-monitor-command","arguments":{"command-line":"mouse_button 0"}}}
+}
+
+proc term_qmp_send_key { chan keyname } {
+	qmp_cmd $chan [format {{"execute":"send-key","arguments":{"keys":[{"type":"qcode","data":"%s"}]}}} $keyname]
+}
+
+#
+# Type a string one char at a time. Accepts the subset the scenario's
+# QMP-TARGET type markers use (a-z, 0-9, space); Return is sent
+# explicitly by the caller (term_qmp_send_key ret). Rejects anything
+# else loud.
+#
+proc term_qmp_char_to_keyname { ch } {
+	scan $ch %c code
+	if {$code >= 0x61 && $code <= 0x7a} { return [format %c $code] }
+	if {$code >= 0x30 && $code <= 0x39} { return [format %c $code] }
+	if {$ch eq " "} { return "spc" }
+	puts stderr "\nqmp: unmapped character (code=$code, char='$ch') for term_qmp_type"
+	exit 1
+}
+
+proc term_qmp_type { chan string } {
+	foreach ch [split $string ""] {
+		term_qmp_send_key $chan [term_qmp_char_to_keyname $ch]
+		after 15
+	}
+}
+
+set qmp_port [qmp_pick_port]
+append qemu_args " -nographic -m 2G "
+append qemu_args " -device nec-usb-xhci,id=xhci -device usb-tablet "
+append qemu_args " -qmp tcp:127.0.0.1:${qmp_port},server=on,wait=off "
+
+#
+# Automated verification (single boot, every wait bounded — fail loud,
+# docs/09-roadmap.md §11.1).
+#
+# WHY A RENDEZVOUS INSTEAD OF SEQUENTIAL GATES: the terminal_probe races
+# the driver bring-up. Its Capture-based render check does not need any
+# driver, so it detects the bash prompt and emits BOTH QMP-TARGET markers
+# while acpi/usb/usb_hid are still initializing (observed order on the
+# serial line: render marker -> QMP-TARGET click -> fb "using 1024x768"
+# -> QMP-TARGET type -> usb_hid POINTER). A naive gate sequence
+# (fb -> POINTER -> render -> qmp_exec_target) deadlocks: the earlier
+# expects consume the markers before qmp_exec_target runs, and the
+# probe's PASS can only be caused by input that requires the usb-tablet
+# to be bound FIRST. So the run script performs ONE bounded expect that
+# collects all four markers in whatever order they arrive (the
+# rendezvous), and only then dispatches — via the qmp.inc procs —
+# guaranteeing the full chain is live before the first event is sent:
+#
+#   (1) DISPLAY:   [init -> drivers -> fb] using 1024x768
+#   (2) INPUT:     usb_hid binds the QEMU usb-tablet as POINTER (last
+#                  driver up; implies acpi -> pci_decode -> platform ->
+#                  pc_usb_host (xHCI); ps2 + event_filter start earlier)
+#   (3) RENDER:    implied by the QMP-TARGET markers — the probe emits
+#                  them only after its install -> launch -> bash-prompt
+#                  Capture check passed
+#   (4) MARKERS:   QMP-TARGET click <gx> <gy> (focus) and
+#                  QMP-TARGET type <string> (the text to type)
+#
+# Dispatch order after the rendezvous: focus click (usb-tablet abs
+# motion + BTN_LEFT) -> type the string (QMP send-key, PS/2 -> chargen
+# -> nitpicker -> focused terminal) -> Return (bash executes the echo).
+# The probe then observes the glyph-count increase caused solely by
+# those host-driven key events and logs terminal-probe: PASS (gate 5).
+#
+run_genode_until {.*terminal-probe: starting.*} 120
+global qemu_spawn_id
+puts "\nqmp: boot gate passed, entering rendezvous"
+flush stdout
+
+set rv_fb     0
+set rv_ptr    0
+set rv_gx     ""
+set rv_gy     ""
+set rv_type   ""
+set rv_need   4
+
+#
+# The four markers are collected by ONE expect with a single alternation
+# pattern, NOT by four separate patterns: expect consumes the buffer from
+# its start through the end of the matched text, so a pattern listed
+# earlier that matches LATER text silently eats any marker lines sitting
+# before the match (observed: the fb pattern consumed the QMP-TARGET
+# click line when both arrived in one chunk). An alternation always
+# matches the EARLIEST marker in the buffer, so markers are processed in
+# arrival order and none are skipped.
+#
+# The trailing `\r*\n' anchor protects against partial-line captures
+# (the serial stream arrives in arbitrary chunks; without an anchor,
+# "348" was captured as "3"). It must be `\r*', not `\r?': QEMU's
+# -nographic serial path emits CR CR LF line endings for Genode's CRLF
+# log lines (verified by od -c on the captured log). Each non-marker
+# alternative also extends to end of line ([^\r\n]*) so the anchor
+# applies uniformly (the fb line continues " (1024x768)" after the
+# mode). Pattern validated against a synthetic \r\r\n feed before use.
+#
+set timeout 360
+expect {
+	-i $qemu_spawn_id -re {(\[init -> drivers -> fb\] using 1024x768[^\r\n]*|Connected device[^\r\n]*QEMU QEMU USB Tablet[^\r\n]*POINTER[^\r\n]*|QMP-TARGET click (-?[0-9]+) (-?[0-9]+)|QMP-TARGET type (\S[^\r\n]*))\r*\n} {
+		set m $expect_out(1,string)
+		if {[string match {*using 1024x768*} $m]} {
+			set rv_fb 1
+			puts "\nqmp: rendezvous saw fb marker"
+		} elseif {[string match {*POINTER*} $m]} {
+			set rv_ptr 1
+			puts "\nqmp: rendezvous saw POINTER marker"
+		} elseif {[string match {QMP-TARGET click*} $m]} {
+			set rv_gx $expect_out(2,string)
+			set rv_gy $expect_out(3,string)
+			puts "\nqmp: rendezvous saw click marker ($rv_gx,$rv_gy)"
+		} else {
+			set rv_type [string trim $expect_out(4,string)]
+			puts "\nqmp: rendezvous saw type marker '$rv_type'"
+		}
+		flush stdout
+		if {[incr rv_need -1] > 0} { exp_continue }
+	}
+	-i $qemu_spawn_id eof {
+		puts stderr "\nFAIL: QEMU exited before the rendezvous completed (fb=$rv_fb pointer=$rv_ptr click='$rv_gx,$rv_gy' type='$rv_type')"
+		exit 1
+	}
+	timeout {
+		puts stderr "\nFAIL: rendezvous timeout — missing markers (fb=$rv_fb pointer=$rv_ptr click='$rv_gx,$rv_gy' type='$rv_type')"
+		exit 1
+	}
+}
+
+puts "\nqmp: rendezvous complete (fb=$rv_fb pointer=$rv_ptr click='$rv_gx,$rv_gy' type='$rv_type'), connecting QMP port $qmp_port"
+flush stdout
+set qmp_chan [qmp_connect $qmp_port]
+puts "\nqmp: connected, dispatching tablet focus click at guest ($rv_gx,$rv_gy)"
+flush stdout
+term_qmp_tablet_click $qmp_chan $rv_gx $rv_gy
+puts "\nqmp: dispatching type '$rv_type' + Return"
+flush stdout
+term_qmp_type $qmp_chan $rv_type
+term_qmp_send_key $qmp_chan ret
+puts "\nqmp: dispatch complete, awaiting PASS"
+flush stdout
+
+run_genode_until {.*terminal-probe: PASS.*} 120 $qemu_spawn_id
+qmp_disconnect $qmp_chan
