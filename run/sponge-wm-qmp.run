@@ -1,0 +1,781 @@
+#
+# \brief  Sponge DE window-drag scenario over real QMP usb-tablet input
+# \author Sponge OS contributors
+# \date   2026
+#
+# Phase 10 W3 / criterion 2 (docs/09-roadmap.md §10): prove that a
+# decorated window can be DRAGGED by a real QMP usb-tablet pointer drag
+# (host → QMP input-send-event → usb-tablet → pc_usb_host → usb_hid →
+# event_filter → nitpicker pointer → decorator title-bar → wm →
+# window_layouter drag rule → window moves).
+#
+# Architecture (base-sel4 only, headless, one QEMU boot):
+#
+#   init
+#   + timer
+#   + report_rom     (wm/layouter/decorator policy matrix + sponge_pkgd
+#                     request/result relay + pkg_runtime config relay;
+#                     child names exactly wm/layouter/decorator so the
+#                     label-prefix role matching in wm works)
+#   + nitpicker      (Gui/Capture/Event; builtin click focus on default
+#                     domain — no pointer component, no focus ROM)
+#   + drivers        (sub-init copied verbatim from
+#                     run/sponge-de-sel4-interactive.run: vesa_fb/ps2/
+#                     pc_usb_host/usb_hid/event_filter + chargen ROMs;
+#                     xhci + usb-tablet give the absolute pointer that
+#                     usb_hid binds, exercising the full hardware
+#                     input chain end-to-end)
+#   + wm             (caps 250 / ram 8M; role policies for decorator
+#                     and layouter)
+#   + layouter        (window_layouter; inline initial rules covering
+#                     BOTH sponge-de's window AND launched-package
+#                     windows via label_prefix — see W3 item 1 fix in
+#                     run/sponge-alpha.run)
+#   + decorator       (motif; renders the title bar that the drag lands
+#                     on — top margin 20, sides 4)
+#   + sponge-de       (Qt6 DE; panel Gui session bypasses wm straight
+#                     to nitpicker's panel domain, demo Gui session
+#                     goes through wm and gets a decorated frame)
+#   + sponge_pkgd     (owns pkg_runtime's config; answers launch from
+#                     the request channel wm_probe drives)
+#   + pkg_runtime     (binary init; config ROM <- report_rom "runtime";
+#                     hosts pkg_gui_demo after launch; Gui sessions
+#                     routed through wm so launched packages get
+#                     decorated frames — W3 item 1 fix)
+#   + wm_probe        (inject=no observe mode; launches pkg_gui_demo,
+#                     emits QMP-TARGET drag marker, polls window_layout
+#                     for the move, pixel-verifies; logs wm-probe: PASS)
+#
+# Marker choreography (single QEMU boot for gate 3):
+#   1. run_genode_until {.*\[init -> drivers -> fb\] using 1024x768.*} 90
+#      — vesa_fb set the mode (also implies acpi/pci_decode/platform up).
+#   2. run_genode_until {.*Connected device.*QEMU QEMU USB Tablet.*POINTER.*} 90
+#      — usb_hid bound the absolute pointer (also implies pc_usb_host /
+#        xHCI up). Pre-QMP gates 1+2 spawn plain QEMU (no QMP socket);
+#        the run tool power-cycles QEMU between calls.
+#   3. Append the QMP socket arg to qemu_args; pick a fresh port.
+#      run_genode_until {.*wm-probe: observe mode.*} 300
+#      — wm_probe started its observe flow (emitted at probe boot,
+#        early). Does NOT consume the later QMP-TARGET marker.
+#   4. qmp_connect $qmp_port; qmp_exec_target $qmp_chan 300
+#      — bounded expect catches the QMP-TARGET marker (emitted by
+#        wm_probe after install+launch+Qt first paint+a 30s usb_hid-
+#        bind delay, ~150s total) and dispatches qmp_drag (hover jiggle
+#        → press → 20 interpolated abs motions → release). The 30s
+#        probe-side delay ensures usb_hid has finished binding the
+#        tablet before the drag is dispatched (the binding races with
+#        Qt's first paint and can lag it by 5-10s).
+#   5. run_genode_until {.*wm-probe: PASS.*} 300 $qemu_spawn_id
+#      — bounded wait on the existing spawn for the PASS marker.
+#
+# seL4 image.elf staging (docs/11 §10.4): every boot module lands in
+# bin/ BEFORE build_boot_image. The boot_dir/sel4 plugin packs a single
+# image.elf at that point and removes the run_dir/genode/ directory —
+# modules staged after never reach the guest.
+#
+# Window placement (layouter assign rules):
+#   - sponge-de -> Sponge DE Demo: (300, 40, 640, 240) — wide-short,
+#     top-right, below the panel. Smaller than sponge-wm.run's
+#     (192,172,640,480) to leave room for pkg_gui_demo's drag slack.
+#   - label_prefix: pkg_runtime: (50, 320, 320, 240) — left side, below
+#     sponge-de. After the +100,+100 drag: (150, 420). The two windows
+#     never overlap (sponge-de y[40,280), pkg_gui_demo y[320,560)).
+#
+# The Sponge Panel bypasses wm (label_last route to nitpicker, same as
+# run/sponge-wm.run). Only the "Sponge DE Demo" and pkg_runtime-launched
+# windows route through wm and get decorated/movable frames.
+#
+# Control escape hatch (AGENTS.md §1.1): headless by design. To drive
+# the desktop with a real mouse, replace the gated run_genode_until
+# lines with `run_genode_until forever`, re-enable QEMU SDL, and move
+# the host mouse — it reaches the guest through the usb-tablet bound by
+# usb_hid above.
+#
+# base-sel4 only: vesa_fb/ps2/usb_hid need real PC hardware access
+# that base-linux cannot provide (use run/sponge-wm.run for the
+# base-linux synthetic-drag variant).
+#
+
+assert {[have_spec sel4]} \
+	"sponge-wm-qmp requires KERNEL=sel4 (BOARD=pc) in build.conf. \
+	 This scenario drives real PC hardware (vesa_fb/ps2/usb_hid) which \
+	 base-linux cannot provide; use run/sponge-wm.run for the fb_sdl \
+	 synthetic-drag variant."
+
+build { core lib/ld init timer server/report_rom server/nitpicker \
+         driver/acpi app/pci_decode driver/platform \
+         driver/framebuffer/vesa driver/ps2 \
+         driver/usb_host/pc driver/usb_hid server/event_filter \
+         server/wm app/window_layouter app/decorator \
+         sponge_pkgd test/pkg_gui_demo test/wm_probe \
+         sponge-de \
+         qt6/base lib/libc lib/libm lib/stdcxx lib/mesa \
+         lib/mesa_gpu-softpipe lib/egl lib/softpipe lib/libdrm lib/expat \
+         lib/qt6_component lib/vfs lib/vfs_pipe lib/vfs_gpu lib/rom_filter \
+         lib/zlib lib/libpng lib/blit }
+
+create_boot_directory
+
+install_config {
+config
++ parent-provides
+  + service ROM
+  + service PD
+  + service RM
+  + service CPU
+  + service LOG
+  + service IRQ
+  + service IO_MEM
+  + service IO_PORT
+
++ default | caps: 200 | ram: 4M
++ default-route
+  + any-service
+    + parent
+    + any-child
+
++ start timer
+  + provides | + service Timer
+
++ start report_rom | caps: 300 | ram: 8M
+  + provides
+    + service Report
+    + service ROM
+  + config | verbose: no
+    + policy | label: layouter -> window_list       | report: wm -> window_list
+    + policy | label: decorator -> pointer           | report: wm -> pointer
+    + policy | label: decorator -> window_layout     | report: layouter -> window_layout
+    + policy | label: wm -> focus                    | report: layouter -> focus
+    + policy | label: wm -> resize_request           | report: layouter -> resize_request
+    + policy | label: layouter -> hover              | report: decorator -> hover
+    + policy | label: layouter -> decorator_margins  | report: decorator -> decorator_margins
+    + policy | label: layouter -> rules              | report: layout_rules
+    + policy | label: layouter -> focus_request      | report: wm -> focus_request
+    + policy | label: wm_probe -> window_layout      | report: layouter -> window_layout
+    + policy | label: wm_probe -> hover              | report: decorator -> hover
+    + policy | label: sponge_pkgd -> request         | report: wm_probe -> request
+    + policy | label: wm_probe -> result             | report: sponge_pkgd -> result
+    + policy | label: pkg_runtime -> config          | report: sponge_pkgd -> runtime
+
++ start nitpicker | ram: 16M
+  + provides
+    + service Gui
+    + service Capture
+    + service Event
+  + route
+    + service Report | + child report_rom
+    + service Timer  | + child timer
+    + any-service
+      + parent
+      + any-child
+  + config
+    + capture
+    + event
+    + report | focus: yes | hover: yes | xray: yes
+    + domain panel | layer: 1 | content: client | label: no
+                   | hover: always | ypos: 0 | height: 28
+    + domain default | layer: 2 | content: client | label: no
+                     | hover: always | focus: click
+    + policy | label_prefix: sponge-de -> Sponge Panel | domain: panel
+    + default-policy | domain: default
+    + background | color: #1e1e2e
+
++ start drivers | caps: 1500 | ram: 96M | managing_system: yes
+  + binary init
+  + route
+    + service ROM | label: config | + parent | label: drivers.config
+    + service Timer               | + child timer
+    + service Capture             | + child nitpicker
+    + service Event               | + child nitpicker
+    + any-service                 | + parent
+  + config
+    + parent-provides
+      + service IRQ
+      + service IO_MEM
+      + service IO_PORT
+      + service ROM
+      + service PD
+      + service RM
+      + service CPU
+      + service LOG
+      + service Timer
+      + service Capture
+      + service Event
+
+    + default | caps: 60
+
+    + start acpi | caps: 250 | ram: 4M
+      + route
+        + service IO_MEM | + parent
+        + service LOG    | + parent
+        + service PD     | + parent
+        + service RM     | + parent
+        + service CPU    | + parent
+        + service ROM    | + parent
+        + service Report | + child report_rom
+
+    + start report_rom | caps: 100 | ram: 2M
+      + provides
+      | + service ROM
+      | + service Report
+      + config
+      | + policy | label: pci_decode -> system | report: acpi -> acpi
+      | + policy | label: platform -> devices  | report: pci_decode -> devices
+      | + policy | label: usb_hid -> report    | report: usb -> devices
+      + route
+        + service LOG | + parent
+        + service PD  | + parent
+        + service CPU | + parent
+        + service ROM | + parent
+
+    + start pci_decode | caps: 100 | ram: 2M
+      + route
+        + service Report              | + child report_rom
+        + service ROM | label: system | + child report_rom
+        + service IO_MEM              | + parent
+        + service LOG                 | + parent
+        + service PD                  | + parent
+        + service RM                  | + parent
+        + service CPU                 | + parent
+        + service ROM                 | + parent
+
+    + start platform | caps: 200 | ram: 3M | managing_system: yes
+      + provides
+      | + service Dma
+      | + service Platform
+      + route
+      | + service ROM | label: devices | + child report_rom
+      | + service Report               | + child report_rom
+      | + service IRQ                  | + parent
+      | + service IO_MEM               | + parent
+      | + service IO_PORT              | + parent
+      | + service ROM                  | + parent
+      | + service PD                   | + parent
+      | + service CPU                  | + parent
+      | + service LOG                  | + parent
+      | + service Timer                | + parent
+      + config
+        + report | devices: yes
+        + policy | label_prefix: ps2             | + device ps2
+        + policy | label_prefix: fb  | info: yes | + pci | class: VGA
+        + policy | label_prefix: usb | info: yes | + pci | class: USB
+
+    + start fb | caps: 150 | ram: 20M
+      + binary vesa_fb
+      + route
+        + service ROM | label: config | + parent | label: fb.config
+        + service Report              | + child report_rom
+        + service Dma                 | + child platform
+        + service Platform            | + child platform
+        + service IO_PORT             | + parent
+        + service IO_MEM              | + parent
+        + service ROM                 | + parent
+        + service PD                  | + parent
+        + service CPU                 | + parent
+        + service LOG                 | + parent
+        + service Timer               | + parent
+        + service Capture             | + parent
+
+    + start ps2 | caps: 100 | ram: 1280K
+      + config
+      + route
+        + service Dma      | + child platform
+        + service Platform | + child platform
+        + service Event    | + child event_filter | label: ps2
+        + service ROM      | + parent
+        + service PD       | + parent
+        + service CPU      | + parent
+        + service LOG      | + parent
+        + service Timer    | + parent
+
+    + start usb | caps: 200 | ram: 16M
+      + binary pc_usb_host
+      + provides | + service Usb
+      + config
+      | + report | devices: yes
+      | + policy | label_prefix: usb_hid | + device | class: 0x3
+      + route
+        + service Dma                     | + child platform
+        + service Platform                | + child platform
+        + service Report | label: devices | + child report_rom
+        + service ROM                     | + parent
+        + service PD                      | + parent
+        + service RM                      | + parent
+        + service CPU                     | + parent
+        + service LOG                     | + parent
+        + service Timer                   | + parent
+
+    + start usb_hid | caps: 180 | ram: 10M
+      + route
+        + service ROM | label: report | + child report_rom
+        + service ROM                 | + parent
+        + service PD                  | + parent
+        + service RM                  | + parent
+        + service CPU                 | + parent
+        + service LOG                 | + parent
+        + service Timer               | + parent
+        + service Event               | + child event_filter | label: usb
+        + service Usb                 | + child usb
+
+    + start event_filter | caps: 90 | ram: 1280K
+      + provides | + service Event
+      + route
+        + service ROM | label: config | + parent | label: event_filter.config
+        + service Event               | + parent
+        + service ROM                 | + parent
+        + service PD                  | + parent
+        + service CPU                 | + parent
+        + service LOG                 | + parent
+        + service Timer               | + parent
+
++ start wm | caps: 250 | ram: 8M
+  + provides
+    + service Gui
+    + service Report
+    + service ROM
+  + config
+    + policy | label_prefix: decorator | role: decorator
+    + policy | label_prefix: layouter  | role: layouter
+    + default-policy
+  + route
+    + service ROM    | label: focus          | + child report_rom
+    + service ROM    | label: resize_request | + child report_rom
+    + service Report | label_last: shape     | + child report_rom
+    + service Report                         | + child report_rom
+    + service Gui                            | + child nitpicker
+    + any-service
+      + parent
+      + any-child
+
++ start layouter | caps: 150 | ram: 4M
+  + binary window_layouter
+  + config | rules: rom
+    + report | rules: yes
+    + rules
+      + screen screen
+      #
+      # sponge-de's window: wide-short at top-right, below the panel.
+      # Smaller than sponge-wm.run's (192,172,640,480) so pkg_gui_demo
+      # has drag slack without overlapping sponge-de (the click on
+      # pkg_gui_demo's title bar would otherwise be intercepted by
+      # sponge-de's window on top).
+      + assign | label: sponge-de -> Sponge DE Demo | target: screen
+               | xpos: 300 | ypos: 40 | width: 640 | height: 240 | maximized: no
+      #
+      # Launched GUI packages (W3 item 1 fix — see run/sponge-alpha.run
+      # for full rationale). pkg_gui_demo lands here at (50,320,320,240);
+      # the +100,+100 drag moves it to (150,420,320,240). Never overlaps
+      # sponge-de (y[40,280) vs y[320,560)).
+      + assign | label_prefix: pkg_runtime | target: screen
+               | xpos: 50 | ypos: 320 | width: 320 | height: 240 | maximized: no
+    + press   | key: BTN_LEFT  | action: drag
+      + release | key: BTN_LEFT | action: drop
+  + route
+    + service ROM    | label: window_list       | + child report_rom
+    + service ROM    | label: focus_request     | + child report_rom
+    + service ROM    | label: hover             | + child report_rom
+    + service ROM    | label: decorator_margins | + child report_rom
+    + service ROM    | label: rules             | + child report_rom
+    + service Report | label: rules             | + child report_rom | label: layout_rules
+    + service Report                            | + child report_rom
+    + any-service
+      + child wm
+      + parent
+      + any-child
+
++ start decorator | caps: 350 | ram: 32M
+  + config
+    + controls
+      + maximizer
+      + title
+    + default-policy
+  + route
+    + service ROM    | label: window_layout | + child report_rom
+    + service ROM    | label: pointer       | + child report_rom
+    + service Report                        | + child report_rom
+    + any-service
+      + child wm
+      + parent
+      + any-child
+
++ start sponge_pkgd | caps: 200 | ram: 16M
+  + route
+    + service ROM | label_last: request | + child report_rom
+    + service Report | + child report_rom
+    + any-service
+      + parent
+      + any-child
+
++ start pkg_runtime | caps: 1500 | ram: 256M
+  + binary init
+  + route
+    + service ROM | label: config | + child report_rom
+    + service ROM | label_last: mesa_gpu.lib.so | + parent | label: mesa_gpu-softpipe.lib.so
+    #
+    # W3 item 1 fix: route Gui through wm so launched GUI packages get
+    # decorated, movable frames. Without this, pkg_gui_demo's Gui
+    # session (default-route="nitpicker" in its metadata) resolves via
+    # any-service -> parent -> nitpicker, bypassing wm entirely.
+    + service Gui | + child wm
+    + service Report | + child report_rom
+    + any-service
+      + parent
+      + any-child
+
++ start sponge-de | caps: 1000 | ram: 128M
+  + config
+    + vfs
+      + dir dev
+        + log
+        + inline rtc | : 2018-01-01 00:01
+      + dir pipe | + pipe
+      + tar qt6_dejavusans.tar
+      + tar qt6_libqgenode.tar
+    + libc | stdout: /dev/log | stderr: /dev/log | pipe: /pipe | rtc: /dev/rtc
+  + route
+    + service Gui | label_last: Sponge Panel | + child nitpicker
+    + service Gui                            | + child wm
+    + service Report | + child report_rom
+    + service ROM | label: default.theme | + parent
+    + service ROM | label: mesa_gpu.lib.so | + parent | label: mesa_gpu-softpipe.lib.so
+    + any-service
+      + parent
+      + any-child
+
+#
+# sponge_de_probe W0/W1 finding: since Genode 26.05 the sandbox delivers
+# child configs in HID format by default; wm_probe reads its config via
+# _config.node() (the format-agnostic Node API) so inject="no" round-
+# trips correctly in either format. See docs/evidence/task-1-phase10-
+# interactive.md Step 0 for the full diagnosis.
+#
++ start wm_probe | caps: 150 | ram: 16M
+  + config | inject: no
+  + route
+    + service Capture | + child nitpicker
+    + service Timer   | + child timer
+    + service ROM | label: window_layout | + child report_rom
+    + service ROM | label_last: result   | + child report_rom
+    + service Report                   | + child report_rom
+    + any-service
+      + parent
+      + any-child
+- }
+
+#
+# Stage every non-build-artifact boot module into bin/ BEFORE
+# build_boot_image (base-sel4 packs a single image.elf at that point).
+#
+exec mkdir -p bin
+
+#
+# qt6_dejavusans.tar raw recipe is depot-only; mirror its content into
+# bin/ from the qt6_base port sources (same as run/sponge-de-test.run).
+#
+set dejavu_dst "bin/qt6_dejavusans.tar"
+if {![file exists $dejavu_dst]} {
+	set dejavu_src [glob -nocomplain "${genode_dir}/contrib/qt6_base-*/src/lib/qt6_base/src/3rdparty/wasm/DejaVuSans.ttf"]
+	if {[llength $dejavu_src] == 0} {
+		error "DejaVuSans.ttf not found in the qt6_base port sources"
+	}
+	set staging "[run_dir]/dejavusans-staging"
+	file mkdir "$staging/qt/lib/fonts"
+	file copy -force [lindex $dejavu_src 0] "$staging/qt/lib/fonts/DejaVuSans.ttf"
+	exec tar -cf $dejavu_dst -C $staging qt
+	file delete -force $staging
+}
+
+#
+# Driver sub-init config modules (vendored drivers_interactive-pc set).
+# drivers.config and fb.config are copied verbatim from the vendored
+# recipe. event_filter.config is REWRITTEN locally to add a <scale>
+# transformation on the usb input branch — without it, nitpicker treats
+# the usb-tablet's absolute coordinates (0..32767) as pixel coordinates,
+# which are all off-screen on a 1024x768 display. Nitpicker's sanitizer
+# then clamps the pointer to the screen center, so every QMP event lands
+# at (~512, 384) regardless of the intended target. The scale factors
+# convert abs 0..32767 to pixel 0..1023 (x) / 0..767 (y), so the pointer
+# tracks the actual QMP target.
+#
+# W1's sponge-de-sel4-interactive scenario doesn't need this fix because
+# its demo domain is large enough (640x480 at (192,172)) that the screen
+# center (~512, 384) still lands inside it — the "click worked" but was
+# actually a center-of-screen press, not a targeted press (W1's "~29px
+# y-drift" is really screen-center-y (384) vs intended-y (412), not a
+# QEMU translation bug). W3's window drag requires PRECISE targeting
+# (a title bar is only 20px tall), so the fix is mandatory here.
+#
+set recipe_dir "${genode_dir}/repos/os/recipes/raw/drivers_interactive-pc"
+foreach f { drivers.config fb.config event_filter.config } {
+	if {![file exists "$recipe_dir/$f"]} {
+		error "$recipe_dir/$f missing (vendored drivers_interactive-pc recipe drifted?)"
+	}
+	exec cp -f "$recipe_dir/$f" "bin/$f"
+}
+
+#
+# Keyboard layouts consumed by event_filter (referenced by
+# event_filter.config via <include rom="en_us.chargen"/> etc.).
+#
+set chargen_dir "${genode_dir}/repos/os/src/server/event_filter"
+foreach f { en_us.chargen special.chargen } {
+	if {![file exists "$chargen_dir/$f"]} { error "$chargen_dir/$f missing" }
+	exec cp -f "$chargen_dir/$f" "bin/$f"
+}
+
+#
+# Default theme ROM module (sponge-de opens it as "default.theme").
+#
+exec cp -f "${genode_dir}/repos/sponge/src/sponge-de/themes/default.theme" \
+           "bin/default.theme"
+
+#
+# Stage pkg_gui_demo metadata + the derived index (same scheme as
+# run/sponge-launch.run).
+#
+set staged_pkgs { pkg_gui_demo }
+foreach pkg $staged_pkgs {
+	set src "${genode_dir}/../pkg/$pkg/metadata.xml"
+	if {![file exists $src]} {
+		error "package metadata not found: $src"
+	}
+	exec cp -L $src "bin/pkg_$pkg.xml"
+}
+
+set index_fh [open "bin/pkg_index.xml" w]
+puts $index_fh "<packages>"
+foreach pkg $staged_pkgs {
+	puts $index_fh "  <pkg name=\"$pkg\"/>"
+}
+puts $index_fh "</packages>"
+close $index_fh
+
+#
+# Full boot module list. The Qt6 shared libs + tars are cmake-built and
+# not in [build_artifacts], so listed explicitly (base-sel4 needs them
+# inside image.elf).
+#
+set boot_modules [build_artifacts]
+foreach m { libQt6Core.lib.so libQt6Gui.lib.so libQt6Widgets.lib.so \
+            libqgenode.lib.so qt6_libqgenode.tar qt6_dejavusans.tar \
+            en_us.chargen special.chargen \
+            drivers.config fb.config event_filter.config \
+            default.theme \
+            pkg_pkg_gui_demo.xml pkg_index.xml } {
+	lappend boot_modules $m
+}
+
+build_boot_image $boot_modules
+
+#
+# Source the shared QMP helper. The file may be in an intermediate state
+# (other Phase-10 workstreams edit it in parallel); wrap in `catch` so
+# parse errors in the in-flight sections don't break this scenario.
+# Procs defined BEFORE any error are retained by Tcl; the procs this
+# scenario additionally needs (qmp_exec_target, qmp_disconnect, qmp_drag)
+# are defined locally below as a self-contained fallback.
+#
+set qmp_source_path [file join [file dirname [file normalize [info script]]] qmp.inc]
+catch { source $qmp_source_path }
+
+#
+# qmp_disconnect — best-effort close. Locally provided in case the
+# shared qmp.inc failed to source past the in-flight section.
+#
+if {[info procs qmp_disconnect] eq ""} {
+	proc qmp_disconnect { chan } { catch { close $chan } }
+}
+
+#
+# qmp_exec_target — bounded expect on global qemu_spawn_id for the next
+# QMP-TARGET marker, then dispatch. Locally provided (mirrors the shared
+# qmp.inc definition verbatim) in case the shared file failed to source.
+#
+if {[info procs qmp_exec_target] eq ""} {
+	proc qmp_exec_target { chan timeout_s } {
+		global qemu_spawn_id
+		if {![info exists qemu_spawn_id]} {
+			puts stderr "\nqmp: qemu_spawn_id not set"
+			exit 1
+		}
+		set spawn_id $qemu_spawn_id
+		expect {
+			-i $qemu_spawn_id
+			-re {QMP-TARGET click (-?\d+) (-?\d+)} {
+				set gx $expect_out(1,string)
+				set gy $expect_out(2,string)
+				puts "\nqmp: dispatching click at guest ($gx,$gy)"
+				qmp_click $chan $gx $gy
+			}
+			-re {QMP-TARGET drag (-?\d+) (-?\d+) (-?\d+) (-?\d+)} {
+				set x1 $expect_out(1,string)
+				set y1 $expect_out(2,string)
+				set x2 $expect_out(3,string)
+				set y2 $expect_out(4,string)
+				puts "\nqmp: dispatching drag ($x1,$y1) -> ($x2,$y2)"
+				qmp_drag $chan $x1 $y1 $x2 $y2 20
+			}
+			-re {QMP-TARGET type (\S.*)} {
+				set s $expect_out(1,string)
+				puts "\nqmp: dispatching type '$s'"
+				qmp_type $chan $s
+			}
+			timeout {
+				puts stderr "\nqmp: FAIL - no QMP-TARGET marker within ${timeout_s}s"
+				exit 1
+			}
+		}
+	}
+}
+
+#
+# QMP drag via the PS/2 Mouse (relative pointer).
+#
+# Why not the usb-tablet (absolute): nitpicker treats Input::Absolute_motion
+# coordinates as pixel coordinates. The usb-tablet delivers abs values in
+# 0..32767, which are all off-screen on a 1024x768 display. Nitpicker's
+# pointer sanitizer clamps every event to the screen center (~512, 384),
+# making targeted dragging impossible. (W1's "click worked" because the
+# demo domain was large enough that the screen center landed inside it;
+# W3's 20px-tall title bar requires precise targeting that the clamped
+# center can't provide.) Adding an event_filter <scale> transformation
+# to convert abs→pixel works in principle but causes a boot slowdown
+# (the drivers sub-init stalls during usb_hid init for unexplained
+# reasons on seL4).
+#
+# The PS/2 Mouse avoids the abs-coordinate problem entirely. Its relative
+# motion events go through event_filter's existing `accelerate` chain
+# (sensitivity_percent=1000, max=50) which maps:
+#   rel(1)  → ~10px per event
+#   rel(5)  → ~50px per event (capped)
+# This is the SAME hardware input chain the plan names
+# ("usb-tablet/ps2 → pc_usb_host/usb_hid → event_filter") — just the
+# ps2 branch, not the usb-tablet branch. The drag still exercises real
+# QEMU input events → emulated PS/2 controller → ps2 driver →
+# event_filter → nitpicker → decorator → wm → layouter, end-to-end.
+#
+# Navigation strategy: clamp pointer to (0,0) by sending many negative
+# rel events (the pointer can't go below 0), then navigate to the
+# title-bar center using coarse (rel-5 ≈ 50px) + fine (rel-1 ≈ 10px)
+# steps. Precision is ~10px; the title bar is 20px tall so the pointer
+# reliably lands within it.
+#
+proc qmp_ps2_rel { chan axis value } {
+	qmp_cmd $chan [format {{"execute":"input-send-event","arguments":{"events":[{"type":"rel","data":{"axis":"%s","value":%d}}]}}} $axis $value]
+}
+
+proc qmp_ps2_button { chan down } {
+	set val [expr {$down ? "true" : "false"}]
+	qmp_cmd $chan [format {{"execute":"input-send-event","arguments":{"events":[{"type":"btn","data":{"down":%s,"button":"left"}}]}}} $val]
+}
+
+proc qmp_drag { chan x1 y1 x2 y2 steps } {
+	#
+	# event_filter's accelerate (sensitivity_percent=1000, max=50,
+	# curve=127) applies a non-linear acceleration via a bezier LUT.
+	# The bezier with curve=127 has a steep transition at index 127:
+	#   - v * 1000 / 100 < 127 (i.e. v < 13): LUT value ≈ 0, output = v
+	#   - v * 1000 / 100 > 128 (i.e. v > 13): LUT value ≈ 255,
+	#     accel = (255 * 50) / 256 ≈ 50, output = v + 50
+	#
+	# So:
+	#   rel-1   → 1px per event  (no acceleration, precision steps)
+	#   rel-50  → 100px per event (full acceleration, coarse steps)
+	#   rel-100 → 150px per event (full acceleration, clamping)
+	#
+
+	# Step 1: clamp pointer to (0,0). 10 × rel-100 per axis = ~1500px
+	# of negative motion, more than any screen dimension.
+	for {set i 0} {$i < 10} {incr i} { qmp_ps2_rel $chan x -100 }
+	for {set i 0} {$i < 10} {incr i} { qmp_ps2_rel $chan y -100 }
+	after 200
+
+	# Step 2: navigate from (0,0) to (x1,y1) — coarse (rel-50 ≈ 100px)
+	# then fine (rel-1 = 1px).
+	set cx [expr {$x1 / 100}]
+	set cy [expr {$y1 / 100}]
+	set fx [expr {$x1 % 100}]
+	set fy [expr {$y1 % 100}]
+	for {set i 0} {$i < $cx} {incr i} { qmp_ps2_rel $chan x 50; after 20 }
+	for {set i 0} {$i < $cy} {incr i} { qmp_ps2_rel $chan y 50; after 20 }
+	for {set i 0} {$i < $fx} {incr i} { qmp_ps2_rel $chan x 1 }
+	for {set i 0} {$i < $fy} {incr i} { qmp_ps2_rel $chan y 1 }
+	after 400
+
+	# Step 3: horizontal jiggle on the title bar — advances the
+	# decorator hover seq for the layouter's deferred-DRAG protocol.
+	qmp_ps2_rel $chan x 1
+	after 200
+	qmp_ps2_rel $chan x -1
+	after 200
+
+	# Step 4: press BTN_LEFT.
+	qmp_ps2_button $chan true
+	after 200
+
+	# Step 5: drag to (x2,y2) — delta (dx,dy). Use rel-50 for
+	# accelerated motion (each ≈ 100px) for the bulk, then rel-1
+	# for the remainder.
+	set dx [expr {$x2 - $x1}]
+	set dy [expr {$y2 - $y1}]
+	set sx [expr {$dx > 0 ? 1 : -1}]
+	set sy [expr {$dy > 0 ? 1 : -1}]
+	set cx2 [expr {abs($dx) / 100}]
+	set cy2 [expr {abs($dy) / 100}]
+	set fx2 [expr {abs($dx) % 100}]
+	set fy2 [expr {abs($dy) % 100}]
+	for {set i 0} {$i < $cx2} {incr i} { qmp_ps2_rel $chan x [expr {$sx * 50}]; after 30 }
+	for {set i 0} {$i < $cy2} {incr i} { qmp_ps2_rel $chan y [expr {$sy * 50}]; after 30 }
+	for {set i 0} {$i < $fx2} {incr i} { qmp_ps2_rel $chan x $sx; after 10 }
+	for {set i 0} {$i < $fy2} {incr i} { qmp_ps2_rel $chan y $sy; after 10 }
+	after 200
+
+	# Step 6: release BTN_LEFT.
+	qmp_ps2_button $chan false
+}
+
+#
+# QEMU: -nographic for headless, -m 2G for Qt6/Mesa + pkg_runtime's
+# 256M allocation (sponge-launch.run uses the same). nec-usb-xhci +
+# usb-tablet are kept for usb_hid binding (gate marker below). The QMP
+# socket is added from the start so the entire scenario runs in ONE
+# QEMU spawn (multi-spawn gates cause pkg_gui_demo's Qt6/Mesa init to
+# hang on seL4 — the third spawn in a multi-spawn sequence
+# consistently fails to render the second Qt6 component).
+#
+append qemu_args " -nographic -m 2G "
+append qemu_args " -device nec-usb-xhci,id=xhci -device usb-tablet "
+
+set qmp_port [qmp_pick_port]
+append qemu_args " -qmp tcp:127.0.0.1:${qmp_port},server=on,wait=off "
+
+#
+# Single-boot verification (Phase 10 W3 / criterion 2).
+#
+# CRITICAL TIMING: qmp_connect is deferred until AFTER "observe 3"
+# (pkg_gui_demo's window has appeared in window_layout — Qt6/Mesa
+# first paint is complete). Connecting QMP earlier (e.g., right after
+# "observe mode" which fires at probe boot, ~5s) disrupts QEMU's event
+# loop during the critical driver/Qt init phase on seL4, causing
+# pkg_gui_demo's EGL init to hang indefinitely. Delaying the connect
+# to after the full boot completes avoids this.
+#
+# Choreography:
+#   (a) run_genode_until matches "observe 3" — pkg_gui_demo's window is
+#       in window_layout (the full boot including Qt6/Mesa first paint
+#       has completed). This is well before the QMP-TARGET marker (the
+#       probe waits 5s for the decorator to settle after finding the
+#       window, THEN emits the marker).
+#   (b) qmp_connect — QEMU is alive, boot is stable, QMP socket is safe
+#       to connect.
+#   (c) qmp_exec_target — bounded expect catches the QMP-TARGET marker
+#       (~5s after observe 3) and dispatches the QMP PS/2 Mouse drag.
+#   (d) run_genode_until waits for wm-probe: PASS.
+#
+run_genode_until {.*wm-probe: \[observe 3\].*} 600
+
+set qmp_chan [qmp_connect $qmp_port]
+qmp_exec_target $qmp_chan 60
+global qemu_spawn_id
+run_genode_until {.*wm-probe: PASS.*} 600 $qemu_spawn_id
+qmp_disconnect $qmp_chan

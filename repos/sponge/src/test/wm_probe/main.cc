@@ -164,14 +164,28 @@ int const MOTIF_TOP_MARGIN    = 20;
 int const MOTIF_SIDE_MARGIN   = 4;
 
 /*
- * QMP usb-tablet y-drift compensation. QEMU -nographic routes
- * input-send-event through a fallback path whose abs-axis-to-screen
- * translation lands clicks ~29px ABOVE the intended y (W1 calibration
- * matrix, docs/evidence/task-1-phase10-interactive.md). Adding +29 to
- * the title-bar y before emitting the QMP-TARGET marker makes the
- * observed click land at the intended title-bar y.
+ * QMP usb-tablet y-drift compensation.
+ *
+ * Originally (W1) believed to be a ~29px drift in QEMU's abs-axis-to-
+ * screen translation under -nographic. W3 root-cause analysis (this
+ * workstream) revealed the actual mechanism: nitpicker treats
+ * Input::Absolute_motion coordinates as PIXEL coordinates, but the usb-
+ * tablet delivers ABS coordinates (0..32767). The off-screen abs values
+ * trigger nitpicker's pointer sanitizer, which clamps the pointer to
+ * the screen center (~512, 384). W1's "click worked" because the demo
+ * domain was large enough that the screen center still landed inside
+ * it; the "~29px y-drift" was really screen-center-y (384) vs intended-
+ * y (412).
+ *
+ * W3's run/sponge-wm-qmp.run fixes this properly by adding a <scale>
+ * transformation in event_filter.config that converts abs 0..32767 to
+ * pixel 0..1023 (x) / 0..767 (y) before the events reach nitpicker.
+ * With that fix in place, the QMP coordinates map to the intended
+ * pixel positions and NO drift compensation is needed. The constant
+ * is kept at 0 (with this explanation) for clarity — the QMP-TARGET
+ * marker carries the UNCOMPENSATED title-bar pixel coordinates.
  */
-int const QMP_Y_DRIFT = 29;
+int const QMP_Y_DRIFT = 0;
 
 int const COLOR_TOLERANCE = 12;
 
@@ -608,13 +622,14 @@ struct Wm_probe
 
 		/*
 		 * Step 3: poll the layouter's window_layout ROM for a window
-		 * whose title contains "pkg_gui_demo". Up to ~120s for Qt's
-		 * first paint under softpipe Mesa + the wm/decorator pipeline
-		 * to settle (sponge-launch.run uses ~120s for the same wait).
+		 * whose title contains "pkg_gui_demo". Up to ~300s for Qt's
+		 * first paint under softpipe Mesa on seL4 + the wm/decorator
+		 * pipeline to settle (the full boot including drivers + Qt
+		 * init takes ~250-300s on this stack).
 		 */
 		Window_rect pkg_win { };
 		bool        found   = false;
-		for (unsigned i = 0; i < 1200; ++i) {
+		for (unsigned i = 0; i < 3000; ++i) {
 			pkg_win = _window_rect_by_title("pkg_gui_demo");
 			if (pkg_win.valid) { found = true; break; }
 			_timer.msleep(100);
@@ -647,6 +662,20 @@ struct Wm_probe
 		int const end_x_qmp   = title_x + DRAG_DX;
 		int const end_y_qmp   = title_y + DRAG_DY + QMP_Y_DRIFT;
 
+		/*
+		 * Wait briefly for the input subsystem to settle before
+		 * emitting the QMP-TARGET marker. The wm-qmp scenario drives
+		 * the drag via QMP PS/2 Mouse events (relative motion through
+		 * the event_filter accelerate chain). The PS/2 Mouse is
+		 * emulated by QEMU and bound by the ps2 driver early in boot
+		 * (no usb-tablet binding race). A short delay here just lets
+		 * the decorator finish rendering pkg_gui_demo's title bar
+		 * (the window_layout ROM may carry the window before the
+		 * decorator has painted the frame).
+		 */
+		Genode::log("wm-probe: [observe 3a] waiting 5s for decorator to settle before emitting the QMP-TARGET marker");
+		_timer.msleep(5000);
+
 		Genode::log("wm-probe: [observe 4] title center=(", title_x, ",", title_y,
 		            ") +QMP-y-drift(", QMP_Y_DRIFT, ") -> start(", start_x_qmp, ",",
 		            start_y_qmp, ") end(", end_x_qmp, ",", end_y_qmp, ")");
@@ -667,13 +696,15 @@ struct Wm_probe
 		 * QMP drag by the time we reach here (qmp_exec_target is
 		 * synchronous from the run script's perspective; the probe's
 		 * serial log continues only after the QMP events have been
-		 * sent). Up to ~30s for the usb-tablet -> usb_hid ->
-		 * event_filter -> nitpicker -> decorator -> layouter round
-		 * trip.
+		 * sent). Up to ~120s poll window accommodates late usb_hid
+		 * tablet binding in a fresh QEMU spawn (the run script waits
+		 * for the "Connected device ... POINTER" marker before
+		 * dispatching qmp_exec_target, but slack here is cheap
+		 * insurance).
 		 */
 		bool        moved  = false;
 		Window_rect after  { };
-		for (unsigned i = 0; i < 300; ++i) {
+		for (unsigned i = 0; i < 1200; ++i) {
 			after = _window_rect_by_title("pkg_gui_demo");
 			if (after.valid &&
 			    (after.x != pkg_win.x || after.y != pkg_win.y)) {
