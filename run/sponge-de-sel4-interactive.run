@@ -31,12 +31,14 @@
 #                       base-sel4 since the caps fix (header note below).
 #   + sponge_de_probe   (inject=no, render_iters=1800; proves the themed
 #                       window via Capture pixel check and the input
-#                       round-trip via an injected click -> "PASS").
+#                       round-trip via a real QMP-driven usb-tablet click
+#                       dispatched from the host -> "PASS").
 #
 # AUTOMATED VERIFICATION (what gates "Run script execution successful"):
 #
 #   Two boot-log assertions prove the driver stack that roadmap §11 item
-#   1 actually asks for:
+#   1 actually asks for, and a third gate proves a real QMP-driven click
+#   traverses the full hardware input chain:
 #     (1) [drivers -> fb] "using 1024x768"  — vesa_fb set the mode and
 #         mapped the physical VESA framebuffer (it is consuming
 #         nitpicker's Capture, i.e. driving the real display).
@@ -293,6 +295,18 @@ config
 # caps: 1000 (not the base-linux 300): base-sel4's capability accounting
 # is roughly 3x base-linux's; 300 caps run out inside Mesa's EGL screen
 # creation and the component hangs *silently* (see the header note).
+#
+# sponge_de_probe inject=no: the inline <config> is delivered to the
+# child by init's sandbox Inline_config_rom_service. Since Genode 26.05,
+# the sandbox delivers child configs in HID format by default (the
+# dynamic linker's `_generate_xml' config switch defaults to false — see
+# genode/repos/base/src/lib/ldso/main.cc). The probe reads its config
+# via the modern Genode::Node API (since this workstream), which
+# transparently accepts both HID and XML; the inject="no" attribute
+# round-trips correctly in either format. (The earlier probe code used
+# `_config.xml().attribute_value(...)' which returns <empty/> on HID
+# input, so inject silently defaulted to true — the W0 unexpected-green
+# root cause; see docs/evidence/task-0-phase10-interactive.log.)
 + start sponge-de | caps: 1000 | ram: 128M
   + config
     + vfs
@@ -411,6 +425,25 @@ build_boot_image $boot_modules
 # headless (serial only). The nec-usb-xhci + usb-tablet give an absolute
 # pointer that usb_hid binds, matching the roadmap requirement.
 #
+# QMP control socket (`-qmp tcp:...,server=on,wait=off`): lets the run
+# script drive host-side input events (`input-send-event`, `send-key`)
+# through the real usb-tablet/ps2 device chain. QMP is appended to
+# qemu_args ONLY before gate 3 (the host-driven click gate); the
+# pre-click gates 1-2 spawn a plain QEMU and don't need it. This keeps
+# gate-1/2 boot logs free of QMP noise AND means each spawn that DOES
+# need QMP picks a fresh kernel-assigned port right before — dodging
+# TIME_WAIT collisions between sequential QEMU spawns (the run tool
+# power-cycles QEMU for every run_genode_until call). The socket is
+# non-blocking on the QEMU side (server=on,wait=off) so QEMU does not
+# block waiting for us; qmp.inc::qmp_connect retries the connect on
+# the Tcl side for the brief window between QEMU spawn and the
+# listener being ready. See run/qmp.inc for the protocol helper.
+#
+# Source the shared QMP helper up front (Tcl 8.x builtin socket only;
+# no external dependencies).
+#
+source [file join [file dirname [file normalize [info script]]] qmp.inc]
+
 append qemu_args " -nographic -m 1G "
 append qemu_args " -device nec-usb-xhci,id=xhci -device usb-tablet "
 
@@ -421,8 +454,11 @@ append qemu_args " -device nec-usb-xhci,id=xhci -device usb-tablet "
 # This scenario proves the part that roadmap item actually asks for —
 # the REAL driver set (vesa_fb, ps2, usb_hid, event_filter, platform,
 # acpi, pci_decode, pc_usb_host) booting and binding hardware on
-# base-sel4, including the usb-tablet absolute pointer — via two
-# explicit boot-log assertions:
+# base-sel4, including the usb-tablet absolute pointer — AND that a
+# real QMP-driven click traverses the full hardware input chain
+# (QMP input-send-event → usb-tablet → pc_usb_host → usb_hid →
+# event_filter → nitpicker → sponge-de) end-to-end. Three explicit
+# gates:
 #
 #   (1) DISPLAY: vesa_fb sets the mode and maps the physical VESA
 #       framebuffer (vesa_fb is consuming nitpicker's Capture session,
@@ -432,37 +468,69 @@ append qemu_args " -device nec-usb-xhci,id=xhci -device usb-tablet "
 #       POINTER device. This is the last driver to come up, so reaching
 #       this marker also implies acpi -> pci_decode -> platform ->
 #       pc_usb_host (xHCI) all came up before it.
-#
-# These two assertions prove the driver set. The third assertion gates
-# on the Qt6/Mesa-on-seL4 fix (see the header note): sponge_de_probe
-# (inject=no) confirms the themed window via its Capture pixel check
-# ("window detected in demo domain") and injects a synthetic click that
-# sponge-de confirms through its "input" report, ending in
-# "sponge-de-probe: PASS". A regression of the caps sizing (or any
-# future Mesa/EGL-on-seL4 breakage) fails this scenario instead of
-# hanging silently.
+#   (3) HOST-DRIVEN CLICK: after gates 1-2, sponge_de_probe (inject=no)
+#       runs its render-poll, confirms the themed window via Capture
+#       pixel check, switches to observe mode, and emits
+#       `QMP-TARGET click 512 412` on the serial console. The run
+#       script's bounded expect on the QEMU serial catches that marker
+#       and dispatches a real QMP input-send-event usb-tablet click at
+#       the demo window center. The press propagates through the live
+#       driver chain into sponge-de's "input" report, which the probe
+#       confirms and logs `sponge-de-probe: PASS`. A failure of any
+#       link in the chain (driver bind, event_filter rewrite, nitpicker
+#       pointer routing, sponge-de widget hit) fails this scenario
+#       instead of hanging silently — every wait below is bounded.
 #
 run_genode_until {.*\[init -> drivers -> fb\] using 1024x768.*} 90
 run_genode_until {.*Connected device.*QEMU QEMU USB Tablet.*POINTER.*} 90
-run_genode_until {.*sponge-de-probe: PASS.*} 120
 
 #
-# Remaining follow-up on this scenario: drive the click from the HOST
-# through the real usb-tablet instead of the probe's synthetic Event
-# injection — a QMP control socket
-# (`-qmp tcp:127.0.0.1:PORT,server=on,wait=off`; Tcl's `socket` is
-# TCP-only) with `input-send-event` abs axes (0..32767), observed
-# through sponge-de's "input" report — exercising usb-tablet ->
-# pc_usb_host -> usb_hid -> event_filter -> nitpicker -> sponge-de
-# end-to-end with real hardware input.
+# Gate 3 (host-driven QMP click). The Genode run tool respawns QEMU per
+# run_genode_until call (power_cycle kills the prior QEMU), so we add
+# the QMP socket arg to qemu_args ONLY here — gates 1 and 2 ran with a
+# plain QEMU. qmp_pick_port returns a kernel-assigned ephemeral port
+# (via `socket -server ... 0`) which is fresh per scenario invocation,
+# dodging TIME_WAIT collisions.
+#
+# Choreography within QEMU3 (single boot, single spawn):
+#   (a) match "observe mode" — gate 3's probe has finished its render
+#       poll and entered observe mode; the next serial line is the
+#       QMP-TARGET marker.
+#   (b) connect QMP — QEMU3 is alive, its QMP socket is up.
+#   (c) qmp_exec_target — bounded expect (60s) for the QMP-TARGET
+#       marker on the SAME qemu_spawn_id, then dispatches the QMP
+#       usb-tablet click at the demo window center.
+#   (d) run_genode_until (running_spawn_id=$qemu_spawn_id) — waits for
+#       sponge-de-probe: PASS on the existing QEMU3, no respawn.
+#
+set qmp_port [qmp_pick_port]
+append qemu_args " -qmp tcp:127.0.0.1:${qmp_port},server=on,wait=off "
+
+run_genode_until {.*sponge-de-probe: observe mode.*} 300
+
+set qmp_chan [qmp_connect $qmp_port]
+qmp_exec_target $qmp_chan 60
+global qemu_spawn_id
+run_genode_until {.*sponge-de-probe: PASS.*} 120 $qemu_spawn_id
+qmp_disconnect $qmp_chan
+
+#
+# The §11.1 follow-up ("drive the click from the HOST through the real
+# usb-tablet instead of the probe's synthetic Event injection") is now
+# closed: gate (3) above is driven entirely by host-side QMP
+# input-send-event abs-axes events over the usb-tablet, observed
+# through sponge-de's "input" report — exercising
+# usb-tablet -> pc_usb_host -> usb_hid -> event_filter -> nitpicker
+# -> sponge-de end-to-end with real hardware input. The probe's
+# synthetic Event-session injection remains as the fast base-linux
+# regression tier (run/sponge-de-test.run).
 #
 
 #
 # Interactive viewing (control escape hatch, AGENTS.md §1.1):
 # This scenario is headless by design. To drive the desktop with a real
-# mouse/keyboard, replace the three run_genode_until lines above with:
-#     run_genode_until forever
-# re-enable `QEMU_OPT += -display sdl` in build.conf (or drop -nographic
-# above), and move the host mouse — it reaches the guest through the
-# usb-tablet bound by usb_hid above.
+# mouse/keyboard, replace the gated run_genode_until lines above with
+# `run_genode_until forever`, re-enable `QEMU_OPT += -display sdl` in
+# build.conf (or drop -nographic above), and move the host mouse — it
+# reaches the guest through the usb-tablet bound by usb_hid above.
 #
