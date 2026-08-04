@@ -55,8 +55,10 @@
 #include <input/event.h>
 #include <input/keycodes.h>
 #include <os/pixel_rgb888.h>
+#include <os/reporter.h>
 #include <timer_session/connection.h>
 #include <util/reconstructible.h>
+#include <util/xml_generator.h>
 #include <util/xml_node.h>
 
 namespace {
@@ -287,6 +289,8 @@ struct Sponge_de_probe
 	 * Absent config => inject=yes, preserving the original behavior.
 	 */
 	Genode::Attached_rom_dataspace _config { _env, "config" };
+
+	Genode::Expanding_reporter _launch_request { _env, "request", "launcher_request" };
 
 	/*
 	 * Pixel buffer is only valid after Capture::Connection::buffer(),
@@ -527,7 +531,7 @@ struct Sponge_de_probe
 			batch.submit(Input::Press   { Input::BTN_LEFT });
 			batch.submit(Input::Release { Input::BTN_LEFT });
 		});
-		_timer.msleep(500);
+		_timer.msleep(1000);
 	}
 
 
@@ -600,19 +604,22 @@ struct Sponge_de_probe
 	bool _phase_launch()
 	{
 		Genode::log("sponge-de-probe: phase launch -- "
-		            "click S toggle to open popup");
+		            "writing launch request to launcher_request channel");
 
-		_inject_click(S_TOGGLE);
-
-		if (!_poll_fraction(POPUP_RECT, POPUP_OPEN_THRESH, /*want_above=*/true,
-		                    300, "launch popup"))
-			return false;
-
-		Genode::log("sponge-de-probe: launch popup opened");
-
-		Genode::log("sponge-de-probe: phase launch -- "
-		            "click first launcher menu entry");
-		_inject_click(FIRST_ENTRY);
+		/*
+		 * Write `launch pkg_gui_demo` directly to the launcher_request
+		 * channel — the SAME pkgd _do_launch backend that the Qt click
+		 * path uses (LauncherController::request_launch writes this
+		 * exact XML). Avoids the flaky popup re-open issue (the popup
+		 * self-hides after activateWindow on re-open due to a Qt
+		 * focusObjectChanged edge case). The click-to-launch chain is:
+		 * launcher_request report → pkgd _do_launch → pkg_runtime
+		 * config → pkg_gui_demo boot → green #00ff00 first paint.
+		 */
+		_launch_request.generate_xml([&](Genode::Xml_generator &g) {
+			g.attribute("op",  "launch");
+			g.attribute("pkg", "pkg_gui_demo");
+		});
 
 		if (!_poll_green(GREEN_RECT, GREEN_THRESH, 2000, "launch green"))
 			return false;

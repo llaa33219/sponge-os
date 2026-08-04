@@ -47,7 +47,7 @@ LauncherMenuView::LauncherMenuView(LauncherController &controller,
 	 */
 	connect(qApp, &QApplication::focusObjectChanged, this,
 	        [this](QObject *o) {
-		if (isVisible() && o != nullptr && !this->isAncestorOf(qobject_cast<QWidget *>(o)))
+		if (isVisible() && o != nullptr && o != this && !this->isAncestorOf(qobject_cast<QWidget *>(o)))
 			hide();
 	});
 

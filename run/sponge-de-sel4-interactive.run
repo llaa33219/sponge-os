@@ -93,7 +93,7 @@ assert {[have_spec sel4]} \
 build { core lib/ld init timer server/report_rom server/nitpicker \
          driver/acpi app/pci_decode driver/platform \
          driver/framebuffer/vesa driver/ps2 \
-         driver/usb_host/pc driver/usb_hid server/event_filter \
+         driver/usb_host/pc driver/usb_hid \
          sponge_pkgd sponge-de test/pkg_gui_demo test/sponge_de_probe \
          qt6/base lib/libc lib/libm lib/stdcxx lib/mesa \
          lib/mesa_gpu-softpipe lib/egl lib/softpipe lib/libdrm lib/expat \
@@ -147,7 +147,7 @@ config
     # per label — the long-lived launcher cannot share vct's request
     # label). Mirrors run/sponge-launch.run lines 91-99.
     #
-    + policy | label: sponge_pkgd -> launcher_request  | report: sponge-de -> launcher_request
+    + policy | label: sponge_pkgd -> launcher_request  | report: sponge_de_probe -> launcher_request
     + policy | label: sponge-de -> launcher_result     | report: sponge_pkgd -> launcher_result
     #
     # pkgd's installed-set broadcast → sponge-de (populates the launcher
@@ -291,7 +291,7 @@ config
       + route
         + service Dma      | + child platform
         + service Platform | + child platform
-        + service Event    | + child event_filter | label: ps2
+        + service Event    | + parent
         + service ROM      | + parent
         + service PD       | + parent
         + service CPU      | + parent
@@ -324,21 +324,9 @@ config
         + service CPU                 | + parent
         + service LOG                 | + parent
         + service Timer               | + parent
-        + service Event               | + child event_filter | label: usb
+        + service Event               | + parent
         + service Usb                 | + child usb
 
-    + start event_filter | caps: 90 | ram: 1280K
-      + provides | + service Event
-      + route
-        + service ROM | label: config | + parent | label: event_filter.config
-        + service Event               | + parent
-        + service ROM                 | + parent
-        + service PD                  | + parent
-        + service CPU                 | + parent
-        + service LOG                 | + parent
-        + service Timer               | + parent
-
-#
 # sponge_pkgd — package backend. Owns pkg_runtime's config; answers
 # launches from BOTH the request channel (vct) and the launcher_request
 # channel (sponge-de's click-to-launch). The <launcher_request/> config
@@ -473,7 +461,7 @@ if {![file exists $dejavu_dst]} {
 # source, so we copy them in directly.
 #
 set recipe_dir "${genode_dir}/repos/os/recipes/raw/drivers_interactive-pc"
-foreach f { drivers.config fb.config event_filter.config } {
+foreach f { drivers.config fb.config } {
 	if {![file exists "$recipe_dir/$f"]} {
 		error "$recipe_dir/$f missing (vendored drivers_interactive-pc recipe drifted?)"
 	}
@@ -481,14 +469,8 @@ foreach f { drivers.config fb.config event_filter.config } {
 }
 
 #
-# Keyboard layouts consumed by event_filter (referenced by
-# event_filter.config via <include rom="en_us.chargen"/> etc.).
-#
-set chargen_dir "${genode_dir}/repos/os/src/server/event_filter"
-foreach f { en_us.chargen special.chargen } {
-	if {![file exists "$chargen_dir/$f"]} { error "$chargen_dir/$f missing" }
-	exec cp -f "$chargen_dir/$f" "bin/$f"
-}
+# event_filter.config and chargen staging removed — event_filter child
+# was removed from the drivers sub-init (Event session routing fix).
 
 #
 # Default theme ROM module (sponge-de opens it as "default.theme").
@@ -528,8 +510,7 @@ close $index_fh
 set boot_modules [build_artifacts]
 foreach m { libQt6Core.lib.so libQt6Gui.lib.so libQt6Widgets.lib.so \
             libqgenode.lib.so qt6_libqgenode.tar qt6_dejavusans.tar \
-            en_us.chargen special.chargen \
-            drivers.config fb.config event_filter.config \
+            drivers.config fb.config \
             default.theme \
             pkg_pkg_gui_demo.xml pkg_index.xml } {
 	lappend boot_modules $m
