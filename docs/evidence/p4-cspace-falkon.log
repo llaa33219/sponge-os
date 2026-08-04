@@ -1,0 +1,323 @@
+================================================================
+Phase 8 P4 (cspace unblock attempt) — seL4 CNode blocker
+Evidence Log  •  Date: 2026-08-04
+Plan ref: docs/plans/phase8-storage.md P4 step 7 (continuation of
+          commit bae5423d1b).
+Design authority: docs/14-boot-storage-architecture.md §11 risk 3.
+================================================================
+
+## 0. Headline verdict — BLOCKER IS DEEPER THAN A ONE-LINE CONSTANT
+
+GOAL NOT MET under the stated constraint: falkon's first paint is NOT
+achievable by changing only `CSPACE_SIZE_LOG2_*` in
+`capability_space_sel4.h`. The task's specified one-line patch
+(`CSPACE_SIZE_LOG2_2ND` 7→9, "64×512 = 32768 slots") DOES NOT BOOT.
+Root cause is fully diagnosed below with empirical proof and the seL4
+kernel's own error messages. The vendored tree has been reverted to
+pristine; no patch is applied; no ledger row is added. This log is the
+deliverable per the task's explicit guidance: "If a NEW blocker
+appears, capture the exact stage and report (no silent hang)."
+
+The new blocker is NOT a falkon problem and NOT a caps-quota problem.
+It is a base-sel4 architectural coupling: every child-PD CNode is
+backed by exactly ONE 4 KiB untyped page, which hard-caps each CNode
+at 2^7 = 128 slots (seL4 CTE = 32 bytes), and therefore caps the
+total per-PD CSpace at 2^(1ST+2ND) ≤ 2^(7+7) = 16384. Falkon needs
+strictly more than 16384, so NO single-line change to
+`capability_space_sel4.h` can satisfy it. Growing further requires a
+multi-file base-sel4 rearchitecture (populate the 8K/16K untyped
+pools + rewire the `Cnode` backing + `untyped_sel`), which is outside
+the "ONLY the one-line cspace patch" constraint.
+
+Acceptance (1) falkon_probe PASS: NOT MET (blocked, root cause proven).
+Acceptance (2) fixture GET: NOT MET (falkon dies before HTTP GET).
+Acceptance (3) 5 regression scenarios PASS: MET (run at the maximal
+  single-page-compatible cspace config 16384, all 5 pass — proving a
+  global cspace enlargement is regression-clean; see §5).
+Acceptance (4) docs/11 ledger entry: NOT ADDED — the patch is not
+  viable, so per AGENTS.md §5.2 no ledger row is recorded. The
+  finding lives here instead.
+Acceptance (5) this evidence file: MET.
+
+================================================================
+
+## 1. The hypothesis (from the task / commit bae5423d1b)
+
+P4 (bae5423d1b) proved falkon boots FROM DISK (image.elf 12 MiB,
+508 MiB payload on the GENODE partition via rom_pkg; ldso resolves the
+237 MiB libQt6WebEngineCore.lib.so from disk; lwIP DHCPs to
+10.0.2.15) but dies before first paint:
+
+    out of selector  →  denied RM-session  (ram_quota=64K, cap_quota=2)
+
+Diagnosed in bae5423d1b / docs/evidence/p4-falkon-disk.log §3 as the
+FIXED 8192-slot per-child-PD CNode:
+
+    capability_space_sel4.h:
+      CSPACE_SIZE_LOG2_1ST = 6   (64 1st-level slots)
+      CSPACE_SIZE_LOG2_2ND = 7   (128 slots per 2nd-level CNode, 64-bit)
+      CSPACE_SIZE_LOG2     = 13  →  2^13 = 8192 slots per child PD
+
+The task's approved remedy: raise `CSPACE_SIZE_LOG2_2ND` 7→9 so the
+per-PD CSpace becomes 2^(6+9) = 32768. This file records what happens
+when that is applied.
+
+================================================================
+
+## 2. ATTEMPT 1 — the specified patch (2ND 7→9) DOES NOT BOOT
+
+Patch applied (single source confirmed — every other reference,
+`platform_pd.cc:172,206`, `platform_pd.h:64,138,159`,
+`capability_space.cc:61,159,167,189`, derives from the three
+`CSPACE_SIZE_LOG2*` constants; the `7` appears only in the ternary):
+
+    - CSPACE_SIZE_LOG2_2ND = (CONFIG_WORD_SIZE == 32) ? 8 : 7,
+    + CSPACE_SIZE_LOG2_2ND = (CONFIG_WORD_SIZE == 32) ? 8 : 9,
+
+Rebuilt cleanly (`capability_space.o`, `platform_pd.o`, `core/sel4/core`
+all recompiled; no compile error). Booted
+`run/sponge-falkon-disk KERNEL=sel4 BOARD=pc RUN_OPT=--include image/disk`.
+Log: docs/evidence/p4-falkon-cspace-run.log
+
+FAILURE — core cannot construct the FIRST child PD. The boot dies
+IMMEDIATELY after the banner, before any `[init -> ...]` line:
+
+    Genode 26.05
+    5809 MiB RAM and 523288 caps assigned to init
+    Error: seL4_Untyped_RetypeAtOffset (cnode) returned 10
+    Error: Cnode construction failed
+    <<seL4 ... Untyped Retype: Insufficient memory
+       (1 * 16384 bytes needed, 4096 bytes available).>>
+    ... (repeats for every 2nd-level CNode core tries to create) ...
+    Warning: copy: seL4_CNode_Copy (...) returned 6
+    Warning: with_cspace_cnode invalid sel
+    vm fault on code at address 0xf1fe0 ...  ->  Test execution timed out
+
+seL4 error 10 = seL4_NotEnoughMemory. The kernel needs 16384 bytes to
+retype one 2^9-slot CNode but the backing untyped only has 4096.
+
+================================================================
+
+## 3. ROOT CAUSE — single-page CNode backing (the coupling the
+           task's model missed)
+
+### 3.1 seL4 CTE size = 32 bytes (measured from the kernel)
+
+The kernel's own accounting: a CNode of `size_bits = 9` (the value we
+set) needs `2^9 slots × 32 bytes = 16384 bytes`. Therefore each seL4
+capability-table entry (CTE) is 32 bytes on this 64-bit build.
+
+### 3.2 Genode backs each child-PD CNode with exactly ONE 4 KiB page
+
+`genode/repos/base-sel4/src/core/include/cnode.h` (Cnode ctor, the
+4-arg `Range_allocator` variant used by `platform_pd.cc:170,204`):
+
+    Cnode(Cap_sel parent_sel, Index dst_idx, uint8_t size_log2,
+          Range_allocator &phys_alloc)
+    :
+        Cnode_base(dst_idx, size_log2),
+        _phys(Untyped_memory::alloc_page(phys_alloc))   <-- ONE page
+    {
+        _phys.with_result([&](auto &res) {
+            auto const service =
+                Untyped_memory::untyped_sel(addr_t(res.ptr)).value(); <-- 4K untyped
+            ok = create<Cnode_kobj>(service, parent_sel, dst_idx, size_log2);
+        }, ...);
+    }
+
+`Untyped_memory::alloc_page` → `alloc_pages(phys, 1)` → exactly one
+`PAGE_SIZE` (4096) byte region (`untyped_memory.h`). And
+`untyped_sel()` always returns a `TOP_CNODE_UNTYPED_4K` selector
+(4 KiB untyped cap). seL4 cannot retype a 4096-byte untyped into a
+16384-byte object → error 10.
+
+### 3.3 The hard cap
+
+A 4 KiB page holds `4096 / 32 = 128 = 2^7` CTEs. So BOTH
+`CSPACE_SIZE_LOG2_1ST` and `CSPACE_SIZE_LOG2_2ND` are individually
+capped at 7 by the single-page backing. The maximal single-page-
+compatible per-PD CSpace is therefore
+
+    2^(CSPACE_SIZE_LOG2_1ST + CSPACE_SIZE_LOG2_2ND) ≤ 2^(7+7) = 16384.
+
+Upstream's `1ST=6, 2ND=7` (8192) sits below this cap. The task's
+`2ND=9` (4-page CNodes) breaks it. This is NOT a coincidence: the
+upstream value is precisely the largest 2nd-level CNode that fits in
+one 4 KiB page at the seL4 CTE size.
+
+### 3.4 Why the 8K/16K untyped pools don't rescue it
+
+`Core_cspace` DOES define 4K/8K/16K untyped CNode slots
+(`TOP_CNODE_UNTYPED_4K/8K/16K`, core_cspace.h). But
+`Platform::_init_allocators` populates ONLY the 4K pool
+(platform.cc:113 — the single `turn_into_untyped_object` call targets
+`TOP_CNODE_UNTYPED_4K`). `Untyped_memory` exposes no allocator for
+8K/16K untypeds and `untyped_sel()` always returns a 4K selector. So
+backing a >4 KiB CNode would require, at minimum:
+
+  (a) platform.cc: also `turn_into_untyped_object(... UNTYPED_8K/16K ...)`
+      for general RAM (and decide a sizing policy),
+  (b) untyped_memory.h: an `untyped_sel(phys, size_log2)` that selects
+      the right pool, and
+  (c) cnode.h: allocate `2^(Cnode_kobj::SIZE_LOG2 + size_log2 - PAGE_SIZE_LOG2)`
+      pages and obtain a single covering untyped cap.
+
+That is a multi-file base-sel4 rearchitecture, explicitly outside the
+"ONLY the one-line cspace patch" constraint.
+
+================================================================
+
+## 4. ATTEMPT 2 — maximal single-page config (1ST=7, 2ND=7 = 16384)
+
+To prove the cap is real AND to measure whether 16384 (the most a
+one-line change can give) is enough for falkon, the largest single-
+page-compatible config was tested:
+
+    CSPACE_SIZE_LOG2_1ST = 7   (128 1st-level slots, 1 page)
+    CSPACE_SIZE_LOG2_2ND = 7   (128 slots/2nd-level CNode, 1 page each)
+    total = 2^14 = 16384 slots per child PD   (2× the upstream 8192)
+
+Both levels fit in one 4 KiB page → the boot is single-page compatible.
+
+BUILD/BOOT: clean. `make core` succeeded; the falkon-disk scenario
+booted normally (no Cnode-construction errors, no seL4 error 10).
+Log: docs/evidence/p4-falkon-16384.log
+
+FALKON RESULT — still fails, at the SAME point as the original 8192
+blocker, just with more headroom consumed first. Sequence:
+
+    [init -> system -> falkon_probe] falkon-probe: [3] launch ok ...
+    [init -> rom_pkg] Warning: flush page table entries - mapping cache
+                         full - PD: init -> rom_pkg out of selector
+    [init -> system -> pkg_runtime -> falkon] lwIP Nic interface up
+        address=10.0.2.15 ... gateway=10.0.2.2
+    [init -> rom_pkg] out of selector      (repeats — rom_pkg caching
+                                            the 508 MiB payload exceeds
+                                            its 16384-slot CNode)
+    [init -> system -> pkg_runtime -> falkon] out of selector
+    [init -> system -> pkg_runtime -> falkon] Error: stop because parent
+        denied RM-session: label="", ram_quota=64K, cap_quota=2
+    [init -> system -> falkon_probe] falkon-probe: FAIL falkon window
+        never rendered into nitpicker
+    -> Test execution timed out (bounded, identified; no silent hang)
+
+CONCLUSION: 16384 is INSUFFICIENT. Two PDs exhaust it independently:
+  - rom_pkg (cached_fs_rom) caches falkon's 508 MiB payload as ROM
+    sessions → many frame caps in rom_pkg's own PD.
+  - falkon's WebEngine runtime (render buffers / qtwebengine_shm /
+    many 4 KiB mappings) on top of the eagerly-mapped Qt6/WebEngine
+    libs.
+
+Since 16384 is the MAXIMUM any single-line `capability_space_sel4.h`
+change can yield (§3.3), and it is insufficient, falkon's first paint
+is NOT achievable under the stated constraint. Proven, not speculated.
+
+================================================================
+
+## 5. REGRESSION — global cspace enlargement is regression-clean
+
+Per acceptance (3) ("capability accounting change is global — prove
+the rest of the system is unaffected"), the five required scenarios
+were run at the 16384 config (1ST=7, 2ND=7 — the booting global cspace
+enlargement). All PASS. This proves that enlarging the per-PD CSpace
+does not regress the rest of the system; the only consumer that needs
+more than 16384 is falkon itself.
+
+  scenario               config        result   gate
+  ---------------------  ------------  -------  -------------------------------
+  sponge-boot            16384 / sel4  PASS     boot-probe: PASS
+  sponge-terminal        16384 / sel4  PASS     terminal-probe: PASS
+  sponge-alpha           16384 / sel4  PASS     alpha-probe: PASS
+  sponge-desktop-disk    16384 / sel4  PASS     alpha-probe: PASS
+  sponge-persist-disk    16384 / sel4  PASS     restored 1 root(s) from store
+
+Per-scenario logs: docs/evidence/p4-regress/<scenario>.log
+Summary:           docs/evidence/p4-regress/SUMMARY.txt
+
+NOTE on sponge-boot harness: it lacks `ensure_plugin_loaded boot_dir/sel4`,
+so a bare `RUN_OPT=--include image/disk` override drops the boot_dir
+plugin and fails instantly ("boot_dir module missing"). The re-run used
+the full `RUN_OPT='--include boot_dir/sel4 --include power_on/qemu
+--include log/qemu --include image/disk'` and passed. This is a run-
+script harness asymmetry (the newer P2/P4 scripts self-load plugins;
+the P1 sponge-boot does not), NOT a regression.
+
+After the regression set, the vendored tree was reverted to pristine
+(2ND=7, 1ST=6) and `sponge-boot` re-run on the pristine config to
+confirm baseline health: `boot-probe: PASS (22 bytes:
+"sponge-boot-marker-v1.")`.
+
+================================================================
+
+## 6. Final tree state (hand-off to orchestrator)
+
+  - genode/repos/base-sel4/.../capability_space_sel4.h : PRISTINE (== HEAD)
+  - docs/11-environment.md §4 ledger                  : PRISTINE (no row #6)
+  - genode/build/x86_64/etc/build.conf                : KERNEL=sel4 BOARD=pc
+      (git-ignored build dir; left on the seL4 target so the orchestrator
+       can re-run immediately. This is the standard docs/11 §7.2 step 6
+       manual setting, not a vendored change.)
+  - build artifacts                                   : core rebuilt to
+      pristine config (matches source)
+
+`git diff HEAD` on tracked files is empty. Nothing is committed (per
+instructions — the orchestrator commits).
+
+================================================================
+
+## 7. Options for the orchestrator (decision required)
+
+The goal (falkon first paint on base-sel4) is achievable only by
+relaxing the "one-line cspace patch" constraint. Ranked options:
+
+  A. Relax the constraint; vendored multi-file base-sel4 patch.
+     Populate the 8K/16K (and possibly a 2 MiB) untyped pools in
+     platform.cc, add a size-aware `Untyped_memory::untyped_sel`, and
+     make the `Cnode` ctor allocate `2^(5+size_log2-12)` pages with a
+     single covering untyped. Then set e.g. 1ST=7, 2ND=11
+     (128 × 2048 = 262144 slots) — comfortably above WebEngine's need.
+     Record TWO ledger rows (cspace + cnode/untyped). Risk: non-trivial
+     base-sel4 internals change; needs careful review; verify falkon
+     actually paints AND the full regression set still passes. The
+     8K/16K CNode slots already existing in Core_cspace is evidence
+     upstream anticipated this direction.
+
+  B. Switch falkon to base-hw for the seL4-media product.
+     base-hw has no fixed per-PD CSpace (it is quota-driven). docs/14
+     §9 locks base-hw out for the Alpha media; that section would need
+     revisiting. Larger strategic change, out of scope for a patch.
+
+  C. Accept falkon-on-sel4 as blocked for Alpha; ship the disk-based
+     payload architecture (PROVEN in P4/bae5423d1b — falkon boots from
+     disk, loads WebEngine, DHCPs) and document that first paint needs
+     either (A) or a kernel with a larger per-PD CSpace. Update
+     docs/14 §11 risk 3 to record that the limiter is the single-page
+     CNode backing (NOT merely the 8192 constant), and that the caps
+     quota is doubly moot.
+
+  D. (Optional intermediate, regression-clean per §5) apply the
+     maximal single-line config 1ST=7 (= 16384) as a strict 2×
+     improvement. It does NOT unblock falkon but helps any workload in
+     the 8192–16384 band and is a one-line, regression-clean patch.
+     Only worth taking if (A) is deferred.
+
+Recommended next step: decide between (A) and (C). If (A), the work
+breaks down as the three sub-changes in (A) plus a re-run of
+sponge-falkon-disk and the §5 regression set.
+
+================================================================
+
+## 8. Files written by this task
+
+  docs/evidence/p4-cspace-falkon.log              (THIS FILE)
+  docs/evidence/p4-falkon-cspace-run.log          (attempt 1: 2ND=9, no boot)
+  docs/evidence/p4-falkon-16384.log               (attempt 2: 16384, boot,
+                                                   falkon still out-of-selector)
+  docs/evidence/p4-regress/<5 scenarios>.log      (regression at 16384)
+  docs/evidence/p4-regress/SUMMARY.txt            (regression summary)
+
+  NOT modified (per constraints + infeasibility):
+    genode/repos/base-sel4/**  (reverted to pristine; no viable one-line patch)
+    docs/11-environment.md     (ledger row #6 NOT added — patch not applied)
+    run/**, repos/sponge/**    (untouched)
+================================================================

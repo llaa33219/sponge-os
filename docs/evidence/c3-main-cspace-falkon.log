@@ -1,0 +1,322 @@
+================================================================
+Phase 9 C3 — "lazy main-CSpace growth" for base-sel4
+Evidence Log  *  Date: 2026-08-04
+Plan ref: docs/plans/phase9-sel4-cspace.md workstream C3.
+Prior art (trusted terrain):
+  docs/evidence/c1-dma-safe-backing.log  (C1: 32768-slot main CSpace)
+  docs/evidence/c2-lazy-vmspace.log      (C2: lazy vm_space, 131072/PD)
+  docs/evidence/p4-cspace-falkon.log     (the original blocker map)
+================================================================
+
+## 0. HEADLINE — FALKON FIRST PAINT ACHIEVED. THE BLOCKER CHAIN IS CLOSED.
+
+  Acceptance (1) falkon_probe PASS (window pixel-verified):           MET
+  Acceptance (2) fixture GET in host access log:                      MET
+  Acceptance (3) canaries PASS (sponge-boot + sponge-desktop-disk):   MET
+  Acceptance (4) this evidence file:                                  MET
+
+THE PAYOFF: falkon boots from disk, loads the 237 MiB WebEngineCore
+lib from disk via rom_pkg, links, DHCPs (10.0.2.15), creates its WebEngine
+profile, renders its browser window (59% non-bg, 37 distinct color
+buckets at capture poll 420), and HTTP-GETs the host fixture page.
+ALL CHECKS PASSED.
+
+THE FIX WAS NOT WHAT THE PLAN PREDICTED. The C3 workstream was scoped as
+"lazy main-CSpace growth (base-hw upgrade_cap_slab philosophy on seL4)"
+— a vendored base-sel4 kernel-level change to grow the main CSpace
+lazily. The actual blocker was a MISSING RM SERVICE ROUTE — a pure
+config fix, smaller and more honest than any CSpace change. The c2 log's
+diagnosis ("falkon burned through ~29998 of 30000 caps") was WRONG: it
+was based on stale data (metadata caps was already 200000, not 30000)
+and misread the `cap_quota=2` token as a remaining-capacity measure
+when it is actually Rm_session::CAP_QUOTA (the fixed REQUEST size for
+an RM session, rm_session.h:34).
+
+MECHANISM USED: config sizing (missing service route), NOT lazy CSpace
+growth. Zero vendored changes. Zero kernel changes.
+
+================================================================
+
+## 1. THE REAL BLOCKER — missing "RM" service route (not cap exhaustion)
+
+### 1.1 The denial message, decoded
+
+The C2 run2 failure (c2-sponge-falkon-disk-run2.log lines 707-709):
+
+  [pkg_runtime] Warning: falkon: no route to service "RM" (label="falkon -> ")
+  [falkon] Error: stop because parent denied RM-session: label="",
+                 ram_quota=64K, cap_quota=2
+
+Each token, traced to source (not speculated):
+
+  "no route to service RM"
+    -> sandbox/route_model.h:272-274. Printed when Route_model::resolve()
+       exhausts ALL route rules + default-route targets without a match.
+       The <parent/> target is only valid for services registered via
+       <parent-provides> (sandbox/config_model.h Parent_provides_model;
+       sandbox/library.cc:222-225 create_parent_service). RM was NOT in
+       any parent-provides in the chain -> find_service throws
+       Service_denied -> "no route" warning -> session DENIED.
+
+  "ram_quota=64K"
+    -> Rm_connection ctor (rm_session/connection.h:30): Ram_quota{64*1024}.
+       This is the FIXED request size for an RM session, NOT a measure of
+       remaining RAM.
+
+  "cap_quota=2"
+    -> Rm_session::CAP_QUOTA = 2 (rm_session/hm_session.h:34). This is the
+       FIXED cap quota an Rm_connection requests, NOT a measure of
+       remaining caps. The c2 log interpreted this as "only 2 caps remain"
+       — that interpretation is WRONG.
+
+  "stop because parent denied RM-session"
+    -> base/src/lib/base/component.cc:200-201. The DENIED branch of the
+       session-retry loop. falkon's Rm_connection request was denied by
+       pkg_runtime (no route), and after the retry budget is exhausted,
+       the component calls sleep_forever().
+
+### 1.2 Why falkon needs RM (and why "RM (subsumed by PD)" is wrong)
+
+The falkon metadata comment (pkg/falkon/metadata.xml, pre-fix) said:
+  "RM (subsumed by PD)"
+
+This is FACTUALLY INCORRECT. In Genode 26.05:
+  - PD (pd_session.h) provides exactly THREE region maps: address_space()
+    (line 238), stack_area() (line 243), linker_area() (line 248). These
+    are the component's OWN address space, stack area, and linker area.
+  - RM (rm_session.h) is a SEPARATE core service (base/src/core/main.cc:151
+    Rm_root, :164 Core_service<Rm_session_component>) for creating
+    ADDITIONAL region maps (sub-address-spaces).
+
+WebEngine creates additional region maps at runtime via Rm_connection:
+  - mmap (the libc mmap path for anonymous mappings uses Rm_session)
+  - qtwebengine_shm (shared memory for WebEngine's render compositing)
+  - WebEngine's internal heap region management
+
+falkon completed ALL of init, WebEngineCore linking, AND DHCP (10.0.2.15)
+using its initial PD-provided region maps. It only died when WebEngine's
+runtime created its FIRST additional Rm_connection — and pkg_runtime had
+no route for the "RM" service.
+
+### 1.3 Why the main CSpace was NOT the problem
+
+falkon's main CSpace has 32768 slots (C1: CSPACE_SIZE_LOG2_1ST=6,
+CSPACE_SIZE_LOG2_2ND=9, total 2^15=32768). falkon's cap_quota accounting
+is 200000 (pkg/falkon/metadata.xml <quota caps="200000"/>). The binding
+constraint is min(32768 slots, 200000 accounting) = 32768 slots.
+
+From the C2 run2 log: falkon got through the ENTIRE init+link+DHCP
+sequence WITHOUT any "out of selector" or cap-exhaustion message. The
+ONLY failure was the RM route. This proves falkon's main-CSpace slot
+consumption at the point of failure was well under 32768 — the CSpace
+was NOT exhausted. The RM denial happened at a routing gate BEFORE any
+cap/slot accounting was consulted.
+
+================================================================
+
+## 2. THE FIX — add "RM" to two parent-provides lists (3 Sponge-owned files)
+
+### 2.1 The routing chain (4 hops, 2 were broken)
+
+  falkon -> pkg_runtime -> system(nested init) -> Tier-0 init -> core
+
+For RM to reach falkon, each hop must declare RM in its parent-provides:
+  Hop 1: falkon's route catches RM via <any-service>-><parent/>
+         (pkgd-generated, main.cc:1307). Works once pkg_runtime
+         parent-provides has RM.                          [FIXED below]
+  Hop 2: pkg_runtime's default-route catches RM via <any-service>->
+         <parent/>|<any-child> (pkgd-generated, main.cc:1194-1199).
+         Works once system parent-provides has RM.       [FIXED below]
+  Hop 3: system's default-route catches RM via <any-service>->
+         <parent/>|<any-child> (sponge-falkon-disk.run:382-386).
+         Works once Tier-0 parent-provides has RM.       [already present]
+  Hop 4: Tier-0 init parent-provides includes RM
+         (sponge-falkon-disk.run:494).                   [already present]
+         Core announces RM (main.cc:151,164).            [upstream]
+
+The two broken hops were:
+  - pkg_runtime parent-provides (generated by sponge_pkgd): missing RM
+  - system.config parent-provides (in sponge-falkon-disk.run): missing RM
+
+### 2.2 File 1: repos/sponge/src/sponge_pkgd/main.cc (pkgd generator)
+
+Added "RM" to the hardcoded parent-provides list (after PD, before CPU),
+with a comment documenting WHY (matching the existing Nic/Rtc comment
+convention at the same site):
+
+  g.node("service", [&] { g.attribute("name", "RM"); });
+
+BLAST RADIUS: affects ALL scenarios using sponge_pkgd (terminal, textedit,
+files, falkon, launch, pkg-gui, pkg-lifecycle, desktop-disk). Adding RM
+to parent-provides is HARMLESS for packages that don't request RM — it
+just declares the service as available from the parent. Only falkon
+(WebEngine) actually constructs Rm_connections; the others never exercise
+the route. Verified: sponge-desktop-disk PASS (alpha-probe PASS) with
+the change.
+
+### 2.3 File 2: run/sponge-falkon-disk.run (system.config parent-provides)
+
+Added "+ service RM" to the nested system init's parent-provides (after
+PD, matching the sponge-desktop-disk.run pattern at line 541):
+
+  + parent-provides
+    + service ROM
+    + service PD
+    + service RM          <- ADDED
+    + service CPU
+    ...
+
+This was an OMISSION unique to sponge-falkon-disk.run — sponge-desktop-
+disk.run already had RM (line 541). The falkon-disk system.config was
+written without it because the metadata comment "RM (subsumed by PD)"
+led the author to believe it wasn't needed.
+
+### 2.4 File 3: pkg/falkon/metadata.xml (comment correction)
+
+Corrected the factually wrong "RM (subsumed by PD)" comment in the
+<sessions> section to accurately state that RM is a distinct core
+service, not subsumed by PD, and is handled by sponge_pkgd's parent-
+provides (no per-package <session> route needed). Per AGENTS.md
+"Documentation Matches Code."
+
+### 2.5 What was NOT changed
+
+  - genode/repos/base-sel4/** : UNTOUCHED (zero vendored changes)
+  - capability_space_sel4.h   : UNTOUCHED (C1's 32768-slot config holds)
+  - vm_space.h                : UNTOUCHED (C2's lazy config holds)
+  - No lazy main-CSpace growth was needed or implemented.
+
+================================================================
+
+## 3. CANARY EVIDENCE — ALL PASS
+
+### 3.1 sponge-falkon-disk — PASS (THE PAYOFF)
+
+Run: make -C genode/build/x86_64 run/sponge-falkon-disk KERNEL=sel4 \
+     BOARD=pc RUN_OPT='--include boot_dir/sel4 --include power_on/qemu \
+     --include log/qemu --include image/disk'
+Log: docs/evidence/c3-sponge-falkon-disk-run1.log
+
+  Genode 26.05
+  5714 MiB RAM and 523288 caps assigned to init
+  [falkon_probe] falkon-probe: [3] launch ok
+  [falkon] Warning: LD: Reloc_non_plt(libQt6WebEngineCore.lib.so): ... (normal)
+  [falkon] lwIP Nic interface up address=10.0.2.15          <- DHCP OK
+  [falkon] Warning: Libc RNG not configured                 <- WebEngine runtime
+  [falkon] libEGL warning: MESA-LOADER: failed to retrieve device information
+  [falkon] Falkon: Creating new profile directory           <- WebEngine init
+  [falkon] Falkon: 1 extensions loaded
+  [falkon_probe] capture poll 420 rendered_frac=59% color_buckets=2  <- FIRST PAINT
+  [falkon_probe] falkon window detected (59% non-bg, 37 distinct color buckets)
+  [falkon_probe] falkon-probe: PASS
+  sponge-falkon-disk: fixture GET detected
+  sponge-falkon-disk: ALL CHECKS PASSED
+  Run script execution successful.  EXIT_CODE=0
+
+ZERO "no route to service RM" messages. ZERO "denied RM-session".
+ZERO "out of selector". ZERO "mapping cache full". The RM route fix
+unblocked the entire WebEngine runtime path.
+
+### 3.2 sponge-boot (AHCI canary) — PASS (no regression)
+
+Run: make -C genode/build/x86_64 run/sponge-boot KERNEL=sel4 BOARD=pc \
+     RUN_OPT='--include boot_dir/sel4 --include power_on/qemu \
+     --include log/qemu --include image/disk'
+Log: docs/evidence/c3-sponge-boot.log
+
+  Genode 26.05
+  598 MiB RAM and 523288 caps assigned to init
+  [init -> ahci] port scan: #0: ATA
+  [init -> part_block] GPT Partition 1/2/3 ...
+  [init -> boot_probe] boot-probe: PASS (22 bytes: "sponge-boot-marker-v1.")
+  Run script execution successful.  EXIT_CODE=0
+
+AHCI/disk chain intact. No base-sel4 regression (no vendored changes
+were made, so this is expected — but verified).
+
+### 3.3 sponge-desktop-disk — PASS (no regression from pkgd change)
+
+Run: make -C genode/build/x86_64 run/sponge-desktop-disk KERNEL=sel4 \
+     BOARD=pc RUN_OPT='--include boot_dir/sel4 --include power_on/qemu \
+     --include log/qemu --include image/disk'
+Log: docs/evidence/c3-sponge-desktop-disk.log
+
+  Genode 26.05
+  3667 MiB RAM and 523288 caps assigned to init
+  [init -> system -> alpha_probe] alpha-probe: (c) configd broadcast live (4 keys)
+  [init -> system -> alpha_probe] alpha-probe: (a) panel band rendered at (512,4) = 0xffe6e9ef
+  [init -> system -> alpha_probe] alpha-probe: (b) launcher report contains hello/Utilities
+  [init -> system -> alpha_probe] alpha-probe: PASS
+  Run script execution successful.  EXIT_CODE=0
+
+Desktop fully functional. The pkgd change (adding RM to parent-provides)
+did not regress the desktop — sponge-de and its Qt6/Mesa pipeline render
+the themed panel, the launcher feeds hello, and configd broadcasts. The
+"mapping cache full - out of CAP" warnings for fb/vfs are PRE-EXISTING
+(same as the C2 canary log; they are vm_space cap-accounting noise for
+the framebuffer PD, unrelated to the RM route fix).
+
+================================================================
+
+## 4. Vendored changes for the docs/11 patch ledger
+
+NONE. This workstream introduced ZERO vendored changes. The fix is
+entirely Sponge-owned (run/ + repos/sponge/ + pkg/). No docs/11 ledger
+row is needed.
+
+This is the SMALLEST possible fix for the C3 blocker — smaller than the
+plan anticipated (the plan expected a vendored base-sel4 lazy-CSpace
+patch). The investigation proved the plan's premise (main-CSpace cap
+exhaustion) was a misdiagnosis; the actual blocker was a config/routing
+omission.
+
+================================================================
+
+## 5. Correction of the prior diagnosis chain
+
+The blocker progression across the three workstreams, as ACTUALLY
+observed (not as predicted):
+
+  C1 (commit 93ded092f1): size-aware CNode backing -> main CSpace 32768
+    slots. NEEDED and CORRECT — falkon's main CSpace was previously
+    hard-capped at 8192 (upstream), which WAS a real limit. C1's 32768
+    is sufficient for falkon's actual main-CSpace consumption (verified:
+    falkon reached first paint at 32768 slots with no "out of selector").
+
+  C2 (commit 19303468ff): lazy vm_space growth -> 131072 mappings/PD.
+    NEEDED and CORRECT — the "out of selector" / "mapping cache full"
+    blocker was a real vm_space limit. C2's 131072 selectors handle
+    falkon's ~100k page-frame mappings and rom_pkg's ~130k.
+
+  C3 (THIS WORKSTREAM): the predicted "main-CSpace cap quota exhaustion"
+    did NOT exist. The actual blocker was a missing RM service route.
+    Fixed with a 3-line config change (add RM to two parent-provides
+    lists + correct one comment). No CSpace change needed.
+
+The c2-lazy-vmspace.log §3 diagnosis was based on two errors:
+  (a) Stale caps value: it cited "falkon's init-donated cap quota is
+      30000" — the metadata was already 200000 (raised in P4).
+  (b) Misread cap_quota=2: it interpreted this as "only 2 caps remain"
+      — actually Rm_session::CAP_QUOTA (the fixed request size).
+
+Both errors are corrected here. The fix validates that C1's 32768-slot
+main CSpace and C2's 131072-selector vm_space are BOTH correctly sized
+for falkon's workload.
+
+================================================================
+
+## 6. Final tree state
+
+  git status --short :
+    M pkg/falkon/metadata.xml              (comment correction: RM not subsumed by PD)
+    M repos/sponge/src/sponge_pkgd/main.cc (add RM to parent-provides)
+    M run/sponge-falkon-disk.run           (add RM to system.config parent-provides)
+
+  git diff --stat    : 25 insertions, 7 deletions (3 files)
+  vendored changes   : ZERO (genode/repos/base-sel4/** untouched)
+  build              : core/sel4/core + sponge_pkgd compile clean
+  canaries           : sponge-falkon-disk PASS (falkon_probe + fixture GET),
+                       sponge-boot PASS, sponge-desktop-disk PASS
+  committed          : NO (per instructions — orchestrator commits)
+  tree state         : WORKING (falkon first paint achieved, blocker chain closed)
+================================================================

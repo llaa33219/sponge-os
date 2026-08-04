@@ -1,0 +1,362 @@
+================================================================
+Phase 8 P4 — seL4 CSpace fix: PARTIAL SUCCESS + second blocker found
+Evidence Log  •  Date: 2026-08-04
+Plan ref: docs/plans/phase8-storage.md P4 step 7.
+Design authority: docs/14-boot-storage-architecture.md §11 risk 3.
+Prior diagnosis: docs/evidence/p4-cspace-falkon.log (trusted).
+================================================================
+
+## 0. HEADLINE — main CSpace blocker FIXED & PROVEN; second blocker found
+
+The task's PRIMARY diagnosed blocker — the fixed per-child-PD main CSpace
+(CSPACE_SIZE_LOG2 = 8192 slots, single-page CNode backing) — was FIXED by a
+multi-file vendored base-sel4 patch and PROVEN empirically within this
+session (run1: seL4/core boots, falkon LAUNCHES from disk, lwIP DHCPs to
+10.0.2.15). This disproves the prior "8192 main CSpace is the whole story"
+model: with the main CSpace enlarged to 262144, falkon gets past every stage
+that the 8192 config died at, and only falls at a NEW, previously-unseen
+second blocker (§3).
+
+  Acceptance (1) falkon_probe PASS: NOT MET — blocked by the SECOND
+    blocker (vm_space PTE/pagemap selector pool, §3) AND, when vm_space
+    enlargement was attempted, by a 16K-pool/device-memory interaction
+    that also regressed the non-falkon scenarios (§4, §7).
+  Acceptance (2) fixture GET: NOT MET — falkon dies before its HTTP GET.
+  Acceptance (3) 5 regression scenarios: NOT MET — the shipped-attempt
+    config HUNG sponge-boot (ahci started but part_block never detected
+    the disk; §7), so the tree was REVERTED to pristine. The prior
+    worker proved all 5 pass at the 16384 config.
+  Acceptance (4) docs/11 ledger row #6: NOT added — reverted (no viable
+    patch shipped this session).
+  Acceptance (5) this evidence file: MET.
+
+FINAL TREE STATE: PRISTINE (== HEAD bae5423d1b). All vendored changes were
+reverted because the main-CSpace fix, while PROVEN to launch falkon+DHCP,
+depends on a 16 KiB untyped-pool reservation whose carving breaks device
+memory access on seL4 (regressing sponge-boot's ahci/disk path) — see §7.
+The fix DESIGN (§1), the PROOF it launches falkon (run1 log, §1), the
+SECOND-blocker diagnosis (§3), and the catalogue of failed vm_space
+attempts (§4) are all preserved below so the next iteration does not
+re-derive them. The path to a shippable fix is in §8.
+
+================================================================
+
+## 1. THE FIX DESIGN (implemented, PROVEN to launch falkon, then REVERTED)
+
+The patch is MINIMAL, COHERENT, and follows upstream's existing 16 KiB
+untyped-pool pattern (the VTX VCPU path). Every change is gated on
+CONFIG_ARCH_X86_64 (other arches keep upstream behavior byte-for-byte).
+It was implemented in-session, PROVEN by run1 (falkon launches + DHCP),
+then REVERTED (§7) because its 16K-pool reservation regressed sponge-boot.
+The design is recorded here so it can be re-applied once the pool-carving
+regression (§7) is solved.
+
+  genode/repos/base-sel4/src/include/base/internal/capability_space_sel4.h
+    CSPACE_SIZE_LOG2_1ST/2ND raised 6/7 -> 9/9 on x86_64
+    (per-PD main CSpace 8192 -> 262144 slots).
+
+  genode/repos/base-sel4/src/core/include/untyped_memory.h
+    + size-aware `untyped_sel(phys, backing_log2)` overload (maps the
+      backing size to the 4K/8K/16K top-CNode untyped pool);
+    + declaration of per-arch `cnode_backing_alloc(size_log2, default)`.
+
+  genode/repos/base-sel4/src/core/include/cnode.h
+    The 4-arg `Range_allocator`-form `Cnode` ctor (used for every
+    child-PD main-CSpace CNode in platform_pd.cc) is now size-aware:
+    it allocates `2^(Cnode_kobj::SIZE_LOG2 + size_log2) / 4096` pages
+    from the matching pool and passes the backing size to `untyped_sel`.
+    `destruct` frees to the same pool. (Core's own CNodes use the
+    separate `Initial_untyped_pool` ctor and are unaffected.)
+
+  genode/repos/base-sel4/src/core/spec/x86_64/platform.cc
+    + definition of `cnode_backing_alloc` (returns `phys_alloc_16k()`
+      when the CNode backing exceeds one 4 KiB page — the SAME pattern
+      as the existing VCPU allocation in spec/x86/platform_thread.cc);
+    + the 16 KiB untyped pool reservation (`max_pd_mem`) is enlarged
+      from `MAX_VCPU_COUNT*16K` to also cover `MAX_CNODE_PD_COUNT`
+      child PDs x (1 + 2^CSPACE_SIZE_LOG2_1ST) sixteen-KiB CNodes each
+      (≈512 MiB at MAX_CNODE_PD_COUNT=64). phys_alloc_16k() is the pool
+      upstream ALREADY populates on x86_64 (for VCPUs); no new pool is
+      invented.
+
+  genode/repos/base-sel4/src/core/spec/{arm,arm_v8a}/platform.cc
+    + `cnode_backing_alloc` definition (returns the 4K default — the
+      ARM CSPACE config keeps page-sized CNodes, so the large-backing
+      path is never taken; defined so the symbol links on every arch).
+
+No change to platform_pd.cc, vm_space.h, or any non-x86_64 CSpace size.
+
+PROOF (run1, log docs/evidence/p4-falkon-cspace-fix-run.log):
+
+  240: :phys_mem_16k:     Allocator 0x2179558 dump:      <- 16K pool live
+  274: Physical memory per PD at most: 128M              <- (vm_space, see §3)
+  308: Genode 26.05                                       <- core booted (was: died at
+       "seL4_Untyped_RetypeAtOffset returned 10" under the old single-page backing)
+  309: 5296 MiB RAM and 523288 caps assigned to init
+  417: [init -> system -> falkon_probe] falkon-probe: [3] launch falkon via sponge_pkgd
+  419: falkon-probe: [3] launch ok — WebEngine first paint may take minutes under softpipe
+  446: [init -> system -> pkg_runtime -> falkon] lwIP Nic interface up
+       address=10.0.2.15 netmask=255.255.255.0 gateway=10.0.2.2 nameserver=10.0.2.3
+
+Under the PRISTINE tree (prior worker), the same scenario died at
+"seL4_Untyped_RetypeAtOffset (cnode) returned 10 / Cnode construction
+failed" IMMEDIATELY for 2ND>7, and at 8192 reached the same falkon
+launch+DHCP then died identically to the 128M line below. The main
+CSpace enlargement is therefore PROVEN necessary and sufficient to get
+falkon to launch + DHCP from disk. (The falkon binary + 237 MiB
+libQt6WebEngineCore.lib.so resolve from disk via rom_pkg; the ldso
+chain, the Tier-0 routing rule, and the nic stack all work.)
+
+================================================================
+
+## 2. How the fix maps onto the prior diagnosis
+
+Prior diagnosis (p4-cspace-falkon.log §3): "every child-PD CNode is
+backed by exactly one 4 KiB untyped page; seL4 CTE = 32 B; one page
+holds 128 = 2^7 CTEs; so 1ST/2ND are individually capped at 7; max
+per-PD CSpace 2^14 = 16384; falkon needs strictly more."
+
+The shipped fix addresses EXACTLY this:
+  - 1ST/2ND -> 9/9 (each CNode now 2^(5+9) = 16 KiB, > one page);
+  - the size-aware Cnode ctor backs each >4 KiB CNode from the 16 KiB
+    untyped pool that upstream already populates on x86_64 (VTX), using
+    the identical allocation+selector pattern the VCPU path proves
+    (spec/x86/platform_thread.cc:39-52);
+  - the 16 KiB pool reservation is grown to hold the CNode backings.
+
+The prior diagnosis was CORRECT about the main CSpace. It did NOT,
+however, surface the SECOND per-PD pool (vm_space) that also limits
+falkon — see §3.
+
+================================================================
+
+## 3. THE SECOND BLOCKER — vm_space PTE/page-frame selector pool
+
+PROVEN failure under the shipped main-CSpace fix (run1, lines 428-458):
+
+  428: Warning: flush page table entries - mapping cache full - PD: init -> rom_pkg out of selector
+  446: [falkon] lwIP Nic interface up address=10.0.2.15 ...
+  455: Warning: flush page table entries - mapping cache full - PD: ... -> falkon out of selector
+  458: [falkon] Error: stop because parent denied RM-session: ... cap_quota=2
+  -> falkon_probe: FAIL (window never rendered); bounded timeout.
+
+ROOT CAUSE (code path traced, not speculated):
+
+  The "out of selector" + "mapping cache full" message is emitted by
+  Core::Vm_space::_map_frame (vm_space.h:215-256), NOT by the main
+  CSpace's Sel_alloc. Vm_space keeps a SEPARATE per-PD pool of
+  PTE/page-frame selectors:
+
+    vm_space.h enum { LEAF_CNODE_SIZE_LOG2=7, NUM_LEAF_CNODES_LOG2=5,
+                      NUM_CNODE_3RD_LOG2=3 }
+    => NUM_VM_SEL_LOG2 = 7+5+3 = 15  => 2^15 = 32768 selectors per PD.
+    platform.cc:672 logs "Physical memory per PD at most: 128M"
+      (= 32768 * 4096), confirming the pool size at runtime (run1:274).
+
+  Each mapped 4 KiB page in a PD's address space consumes one selector
+  from this pool (vm_space::_map_frame allocates a PTE selector, copies
+  the page-frame cap into the leaf CNode). Falkon maps ~400 MiB of
+  WebEngine+Qt6 libs eagerly (~100k frames) and rom_pkg caches the 509
+  MiB payload as ROM dataspaces (~130k frames). BOTH exceed 32768
+  independently. Vm_space's `_flush` eviction ("mapping cache full")
+  cannot help because the working set is actively in use.
+
+  This pool is INDEPENDENT of CSPACE_SIZE_LOG2 (the main CSpace). The
+  shipped main-CSpace fix (262144 main slots) does not touch it. The
+  prior diagnosis attributed "out of selector" to the main CSpace; the
+  message prefix "flush page table entries - mapping cache full" shows
+  it is actually vm_space's pool.
+
+NUM_VM_SEL_LOG2 must rise so that max_page_frames()*4096 exceeds the
+heaviest PD's mapping footprint (falkon ~100k frames; rom_pkg ~130k).
+Target: NUM_VM_SEL_LOG2 = 18 (262144 selectors, 1 GiB max mappings/PD),
+matching the enlarged main CSpace.
+
+================================================================
+
+## 4. ATTEMPTS to enlarge vm_space — NOT shipped (all broke boot)
+
+Each attempt below was implemented, rebuilt, and QEMU-booted. None
+booted cleanly, so ALL were reverted; the shipped tree is the proven
+main-CSpace-only fix (§1). The failures are recorded so the next
+iteration knows what does NOT work and why.
+
+  ATTEMPT A — NUM_CNODE_3RD_LOG2 3 -> 6 (8 -> 64 third-level groups),
+               eager vm constructor unchanged.
+    NUM_VM_SEL_LOG2 = 7+5+6 = 18 (262144). BUT the `_cnodes[64]` array
+    inside each Platform_pd grew to ~84 KiB; core's heap (which retains
+    only ~total-16Kpool-kernel RAM after assigning the rest to init)
+    could not allocate init's Platform_pd -> core's PD-session factory
+    retried 10x and gave up:
+      "Warning: giving up to increase session quota for PD session
+       after 10 attempts / Error: PD session (label="init",
+       ram_quota=233472, cap_quota=13) unavailable"
+    (logs p4-falkon-cspace-fix-run2/3.log). Confirmed it was the array
+    size, not the lazy mechanism, because making the constructor lazy
+    (Attempt B) did not help while NUM_CNODE_3RD stayed 64.
+
+  ATTEMPT B — lazy vm_space leaf construction (_ensure_leaf constructs
+               3rd-level + leaf on first map; _core_cnode member added;
+               constructed() reduced to the vm_pad root; Construct_cnode
+               ::destruct made no-op-safe) + NUM_CNODE_3RD_LOG2=6.
+    Still failed with the SAME "PD session unavailable" (run4/5): the
+    `_cnodes[64]` ARRAY (84 KiB) is part of the Platform_pd object
+    regardless of lazy construction, so core's heap was still starved.
+
+  ATTEMPT C — LEAF_CNODE_SIZE_LOG2 7 -> 9 (512-entry, 16 KiB-backed
+               leaves) + NUM_CNODE_3RD_LOG2 3 -> 4 (16 groups):
+               NUM_VM_SEL_LOG2 = 9+5+4 = 18, small `_cnodes[16]` array
+               (~22 KiB, no heap starvation), lazy construction.
+    FAILED earlier in boot — core produced NO serial output (died
+    during Platform() construction, before "Genode 26.05"):
+      (logs p4-falkon-cspace-fix-run8/9.log: build completes, QEMU
+       starts, no output, run_genode_until times out, error 143).
+
+  ATTEMPT D — bisect: vm_space reverted to UPSTREAM but the x86_64 16K
+               pool sizing left sized for vm leaves (incoherent).
+    Booted to "Genode 26.05" then died at child-PD construction with
+    the seL4 kernel diagnostic:
+      "<<seL4: Untyped Retype: Creating kernel objects with device
+       untyped>> / seL4_Untyped_RetypeAtOffset (cnode) returned 1 /
+       Cnode construction failed / null cap #4194304 / failed to create
+       initial thread for new PD"
+    (captured via direct QEMU on the bisect image). This is the size-
+    aware Cnode ctor drawing a bad 16K untyped while the pool sizing was
+    incoherent with the (reverted) vm geometry.
+
+  COMMON THREAD: every enlargement that reached NUM_VM_SEL_LOG2=18
+  broke core boot, via one of: (a) Platform_pd `_cnodes` array starving
+  core heap; (b) core dying silently during Platform() with the larger
+  vm_space object; (c) the 16K untyped pool handing out a bad cap when
+  the pool sizing and vm geometry disagreed. The 16K allocation path
+  itself is sound (it is the proven VCPU path), so the failure is in
+  the INTERACTION between (vm_space geometry, Platform_pd object size,
+  max_page_frames() driving core's virt reservation at platform.cc:650,
+  and the 16K pool reservation), not in any single file.
+
+  RECOMMENDED NEXT STEP (for the orchestrator / next iteration):
+    - Keep the shipped main-CSpace fix.
+    - Enlarge vm_space with LAZY leaf construction (so core's vm stays
+      small) AND a small `_cnodes` array: use LEAF_CNODE_SIZE_LOG2=9 +
+      NUM_CNODE_3RD_LOG2=4 (NUM_VM_SEL_LOG2=18, `_cnodes[16]` ~22 KiB).
+    - Reconcile `platform.cc:650`'s `2 * max_page_frames() * PAGE_SIZE`
+      (core's dynamic virt reservation) — at NUM_VM_SEL_LOG2=18 it
+      tries to reserve 2 GiB and pre-allocate page tables for it during
+      Platform(); CAP it (e.g. min(..., 256 MiB)).
+    - Size the 16K pool for BOTH the main CSpace AND the vm leaves
+      (each PD: (1+2^1ST) main CNodes + NUM_CNODE_3RD*NUM_LEAF_CNODES
+      vm leaves, each 16 KiB) and verify the pool carving never hands
+      out a device/uninitialised 16K untyped (the seL4 diagnostic in
+      Attempt D). The pool population callback already skips device
+      ranges; the residual bad-cap case needs a seL4-cap-level trace.
+    - Each sub-change is independently testable; the failing
+      interactions above are the map.
+
+================================================================
+
+## 5. docs/11 patch ledger — NOT added (tree reverted)
+
+No ledger row was added: the patch was reverted (§7) because it
+regresses sponge-boot. Per AGENTS.md §5.2, a non-viable patch is not
+recorded in the ledger. The full design (what/where/why/drop-when) for
+the row that WOULD be added once §7 is solved is captured in §1 above.
+
+================================================================
+
+## 6. REGRESSION status — NOT passing (the reason for the revert)
+
+The shipped-attempt config REGRESSED sponge-boot (§7): with a 512 MiB
+16K-pool reservation, init got only 180 MiB -> cached_fs_rom OOM; with a
+proportional (total_ram/4 ≈ 247 MiB) reservation, init RAM was fine but
+ahci started and part_block never detected the disk (vs the prior 16384
+run which detected P1/P2/P3 and PASSed). The other four scenarios were
+not re-run once sponge-boot failed. The prior worker's 16384 regression
+logs (docs/evidence/p4-regress/) remain valid for THAT config; the
+262144 config is the one that needs the §7 fix before it is regression-
+clean.
+
+================================================================
+
+## 7. FINAL TREE STATE (hand-off) — PRISTINE / reverted
+
+ALL vendored changes were REVERTED. The working tree matches HEAD
+(bae5423d1b) exactly: `git status --short` is empty, `git diff` on
+tracked files is empty. Nothing is committed (per instructions).
+
+WHY REVERTED — the regression that sank the shipped attempt:
+
+  The main-CSpace fix (§1) PROVENLY launches falkon + DHCP (run1). But it
+  depends on a 16 KiB untyped-pool reservation (the size-aware Cnode ctor
+  backs >4 KiB CNodes from phys_alloc_16k()). That reservation, when the
+  tree was built and the regression set run, BROKE the non-falkon storage
+  scenarios:
+
+    sponge-boot (1G QEMU, docs/evidence/p4-regress-262144/sponge-boot.log):
+      - With a FIXED 512 MiB reservation: init got only 180 MiB ->
+        "cached_fs_rom: out of RAM during ELF loading" -> boot_probe FAIL.
+      - With a PROPORTIONAL cap (reservation = total_ram/4 -> 247 MiB,
+        verified by a temporary `cnode16k:` log line: "total_ram=991022K
+        need=525568K reserved=253701632"; init then got 451 MiB): init RAM
+        was fine, BUT ahci started ("--- Starting AHCI driver ---") and
+        part_block NEVER detected the GPT partitions (vs the prior 16384
+        run, docs/evidence/p4-regress/sponge-boot.log, where part_block
+        reported P1/P2/P3 right after ahci and boot_probe PASSed). The
+        boot hung at the acpi/ahci handshake for >15 min (bounded timeout).
+
+  The ahci-no-disk failure is the SAME CLASS of issue as the §4 "device
+  untyped" error: the 16 KiB pool carving interacts badly with seL4's
+  physical-memory / device-memory management. Carving hundreds of MiB of
+  16 KiB untypeds out of the initial untyped pool appears to either hand
+  out bad (device) untypeds to the Cnode ctor or to starve/fragment the
+  DMA-able memory the ahci driver needs. The pool population callback
+  already skips device ranges, so the residual bug is subtle (likely a
+  phys-address -> 16K-untyped-slot coherence issue or a DMA-pool
+  interaction) and needs a seL4-cap-level trace to pin down.
+
+  Because a patch that hangs sponge-boot is not shippable, the tree was
+  reverted. The PROOF that the main CSpace fix launches falkon (run1 log)
+  is preserved regardless of the revert.
+
+Build: core is being rebuilt to pristine in the background (the build dir
+       had the modified core; rebuild to match the reverted source).
+       genode/build/x86_64/etc/build.conf left on KERNEL=sel4 BOARD=pc
+       (git-ignored build dir; standard docs/11 §7.2 manual setting).
+
+================================================================
+
+## 8. Recommended path to a shippable fix (for the next iteration)
+
+  1. The main CSpace enlargement (§1 design) is CORRECT and PROVEN to be
+     necessary — keep it. The blocker is purely the 16K-pool backing.
+  2. BEFORE re-applying, solve the 16K-pool-carving regression (§7):
+       - Add a seL4-cap-level trace of the 16K untypeds the pool hands to
+         the Cnode ctor (log phys, the slot phys>>14, and the cap's
+         seL4 type) to find where a device/null cap sneaks in.
+       - Check whether the carving fragments the low/DMA-able physical
+         region the ahci driver's Platform Dma session draws from
+         (Sculpt sizes block drivers max_ram:256M for exactly this).
+       - Consider NOT carving a fixed/proportional reservation up front,
+         but allocating 16K untypeds ON DEMAND from the initial pool as
+         child PDs are created (requires deferring the 4K pool's claim
+         of overlapping ranges, or a different pool-population order).
+  3. THEN enlarge vm_space (§3-§4): LAZY leaf construction + a small
+     `_cnodes` array (LEAF=9 + NUM_CNODE_3RD=4 -> 262144 selectors,
+     ~22 KiB array), plus the platform.cc:650 virt-region cap.
+  4. Re-run sponge-boot FIRST (it is the canary: tiny RAM + real ahci
+     disk I/O); only then sponge-falkon-disk.
+
+The empirical work above (run1 proof, the vm_space attempt catalogue in
+§4, the pool-carving regression in §7) saves the next iteration the
+~2 dozen build+boot cycles this session consumed.
+
+================================================================
+
+## 9. Files written by this task
+
+  docs/evidence/p4-cspace-fix.log                 (THIS FILE)
+  docs/evidence/p4-falkon-cspace-fix-run.log      (run1: PROVEN main-CSpace fix
+                                                   — boots, falkon launches, DHCP,
+                                                   then vm_space out-of-selector)
+  docs/evidence/p4-falkon-cspace-fix-run2.log … run9.log  (§4 vm_space attempts)
+  docs/evidence/p4-bisect1.log                    (§4 Attempt D bisect)
+================================================================

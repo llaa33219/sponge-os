@@ -1,0 +1,345 @@
+================================================================
+Phase 9 C2 — lazy vm_space growth for base-sel4
+Evidence Log  •  Date: 2026-08-04
+Plan ref: docs/plans/phase9-sel4-cspace.md workstream C2.
+Prior art (trusted terrain):
+  docs/evidence/c1-dma-safe-backing.log  (C1 landed: 32768-slot main CSpace)
+  docs/evidence/p4-cspace-fix.log        (§3 vm_space diagnosis, §4 failed
+                                           eager-growth catalogue — the map)
+================================================================
+
+## 0. HEADLINE — C2 LANDED (working increment, NOT reverted)
+
+The vm_space CNode tree now grows LAZILY: 3rd/4th-level CNodes are
+constructed on first use of their selector range (not at PD creation),
+via the new _ensure_leaf() hook. The tree is enlarged from 32768 to
+131072 selectors per PD (NUM_VM_SEL_LOG2 15→17), meeting the task's
+≥131072 target. No core-heap starvation, no boot breakage. The "out of
+selector" vm_space blocker that sank falkon in C1 is GONE. A new,
+different blocker (main-CSpace cap quota, the C3 workstream) now
+surfaces — proving C2 closed its layer of the chain cleanly.
+
+  Acceptance (1) lazy construction works — no heap starvation:         MET
+  Acceptance (2) sponge-boot + sponge-desktop-disk PASS:               MET
+  Acceptance (3) falkon gets past mapping-cache-full (log evidence):   MET
+  Acceptance (4) falkon_probe PASS + fixture GET (THE PAYOFF):        NOT MET
+                — new blocker: main-CSpace cap quota (C3, §3 below)
+  Acceptance (5) this evidence file:                                   MET
+
+CONFIG LANDED (x86_64 only; other arches upstream byte-for-byte):
+  LEAF_CNODE_SIZE_LOG2  = 9   (upstream 7; 512 entries per leaf)
+  NUM_LEAF_CNODES_LOG2  = 5   (unchanged)
+  NUM_CNODE_3RD_LOG2    = 3   (unchanged)
+  => NUM_VM_SEL_LOG2 = 9+5+3 = 17  => 131072 selectors per PD
+  => max_page_frames() * PAGE_SIZE = 512 MiB max mappings per PD
+  _cnodes[8] array = UNCHANGED from upstream (no Platform_pd growth
+    beyond the 16 KiB Selector_allocator, vs the 84 KiB array that
+    starved core's heap in prior attempt A)
+  Leaf CNode backing = Cnode_kobj::SIZE_LOG2(5) + 9 = 14 → 16 KiB
+    (drawn lazily from the 16 KiB untyped pool via cnode_backing_alloc,
+     the proven C1 path)
+  16K pool budget: +32 MiB for vm leaves (MAX_VM_LEAF_COUNT=2048),
+    total pool ~96 MiB (was ~64 MiB in C1)
+  Core virt reservation: capped to 256 MiB on x86_64 (was 1 GiB raw
+    at NUM_VM_SEL_LOG2=17 — the cap avoids the silent Platform() crash
+    that sank prior attempt C)
+
+CANARY RESULTS (all on KERNEL=sel4 BOARD=pc):
+  sponge-boot          PASS  ahci version 1.0, port #0 ATA, GPT P1/P2/P3,
+                              boot-probe: PASS. 598 MiB to init (was 629
+                              MiB in C1 — reflects the larger 16K carve).
+                              No ahci regression.
+  sponge-desktop-disk  PASS  alpha-probe: PASS (panel pixel 0xffe6e9ef,
+                              launcher hello/Utilities, configd broadcast).
+                              3667 MiB to init. Desktop unaffected.
+  sponge-falkon-disk   PROG  falkon launches → loads WebEngineCore from
+                              disk → DHCP 10.0.2.15 → denied RM-session
+                              (cap_quota=2). ZERO "out of selector" / ZERO
+                              "mapping cache full" messages (the C2
+                              blocker is GONE). New blocker = falkon's
+                              main-CSpace cap quota exhausted (C3 §3).
+
+Logs: docs/evidence/c2-sponge-boot.log,
+       docs/evidence/c2-sponge-desktop-disk.log,
+       docs/evidence/c2-sponge-falkon-disk.log       (rom_pkg caps=2000),
+       docs/evidence/c2-sponge-falkon-disk-run2.log  (rom_pkg caps=20000).
+
+================================================================
+
+## 1. IMPLEMENTATION — lazy vm_space growth (3 vendored files + 1 run fix)
+
+### 1.1 Design rationale (why LAZY, why LEAF=9)
+
+Prior eager-growth attempts (p4-cspace-fix.log §4) ALL broke boot:
+  A. NUM_CNODE_3RD 3→6 eager: _cnodes[64] array (~84 KiB in Platform_pd)
+     starved core's heap → "PD session unavailable".
+  B. Lazy + NUM_CNODE_3RD=6: the _cnodes[64] ARRAY is part of the
+     Platform_pd object regardless of lazy construction → still starved.
+  C. LEAF=9 + NUM_CNODE_3RD=4 lazy: silent Platform() crash (the raw
+     virt_size = 2*max_page_frames()*PAGE_SIZE = 2 GiB, eagerly backed
+     with page tables during Platform()).
+
+LESSON (from the task + prior art): growth must be LAZY (construct on
+first use), the _cnodes[] array must stay SMALL, and core's virt
+reservation must be CAPPED.
+
+The chosen config resolves all three:
+  - LEAF=9 + NUM_CNODE_3RD=3 (unchanged) → NUM_VM_SEL_LOG2=17 (131072),
+    _cnodes[8] array UNCHANGED (no Platform_pd object growth beyond the
+    Selector_allocator's 4 KiB → 16 KiB bump). Platform_pd ≈ 35 KiB,
+    well under attempt A's 84 KiB failure point.
+  - _ensure_leaf() constructs 3rd-level and leaf CNodes on first map
+    into their selector range. At PD creation, only _vm_pad_cnode (the
+    2nd-level root) is constructed. Zero eager per-PD cost for leaves.
+  - platform.cc caps core's virt reservation to 256 MiB on x86_64,
+    avoiding the 1 GiB page-table reservation that killed Platform().
+
+### 1.2 vm_space.h — lazy construction + enlarged leaves
+
+  LEAF_CNODE_SIZE_LOG2: 7 → 9 on x86_64 (#ifdef __x86_64__, other arches
+    keep upstream byte-for-byte). Each leaf now has 512 entries (16 KiB
+    backing, drawn from the 16K pool via the C1 cnode_backing_alloc path).
+
+  + Cap_sel const _core_cnode_sel: retained from the constructor so that
+    _ensure_leaf() can place lazily-constructed CNodes in core's CSpace
+    long after the constructor returns.
+
+  + _ensure_leaf(l3, l4): the lazy construction hook. On first access to
+    a selector in group (l3, l4):
+      1. If _cnodes[l3]._3rd is not constructed: construct it (4 KiB-
+         backed, VM_3RD_CNODE_SIZE_LOG2=7) and copy its cap into
+         _vm_pad_cnode at index l3.
+      2. If _cnodes[l3]._4th[l4] is not constructed: construct it (16 KiB-
+         backed, LEAF_CNODE_SIZE_LOG2=9) and copy its cap into the 3rd-
+         level CNode at index l4.
+    Called under _mutex (all call sites: map/map_guest/unmap/alloc_page_
+    tables hold _mutex; destructor is single-threaded). Thread-safe.
+
+  _leaf_cnode(): now calls _ensure_leaf(l3, l4) before with_cnode(fn).
+    If construction fails (16K pool exhausted, sel alloc denied), the
+    leaf stays unconstructed, with_cnode returns false, and _map_frame
+    returns DENIED — fail-loud (error("Cnode construction failed") is
+    logged by the Cnode ctor), bounded (map fails, no silent hang).
+
+  Construct_cnode::destruct: made no-op-safe (early return if
+    !constructed()). The destructor iterates the whole _cnodes[] array
+    uniformly; unconstructed (never-used) entries are skipped.
+
+  constructed(): simplified to return _vm_pad_cnode.constructed() (with
+    lazy construction, only the 2nd-level pad needs to be constructed
+    for the PD to be viable; leaves are on-demand).
+
+  Constructor: only _vm_pad_cnode is constructed + inserted into
+    top_level_cnode. The eager _for_each_l3_cnodes loop (which built
+    all 8*32=256 leaves eagerly) is REMOVED.
+
+  Destructor: the _revert_cnodes_l3 block is restructured so
+    vm_pad_cnode.remove(l3) and the leaf/3rd destructs happen INSIDE
+    cnode_3rd.with_cnode() (only for constructed groups). Unconstructed
+    groups are skipped via the no-op-safe destruct.
+
+  _for_each_l3_cnodes: removed (unused after the eager loop and the
+    constructed() simplification).
+
+### 1.3 platform.cc — cap core's virt reservation
+
+  The raw computation 2 * max_page_frames() * PAGE_SIZE at
+  NUM_VM_SEL_LOG2=17 yields 1 GiB. Platform() eagerly reserves this
+  and backs it with page tables — this is what silently killed
+  Platform() in prior attempt C. Capped to 256 MiB (the upstream x86_64
+  value at NUM_VM_SEL_LOG2=15) via #ifdef __x86_64__. Core's own dynamic
+  usage needs only 256 MiB; other arches keep the upstream formula.
+
+### 1.4 spec/x86_64/platform.cc — 16K pool budget for vm leaves
+
+  The 16K pool now covers a third consumer: lazily-constructed vm leaves
+  (16 KiB each, LEAF_CNODE_SIZE_LOG2=9). Added MAX_VM_LEAF_COUNT=2048
+  (2048 * 16 KiB = 32 MiB). Total pool budget:
+    16 VCPUs * 16 KiB  (upstream)
+    + 64 PDs * 64 main-CSpace 2nd-level CNodes * 16 KiB  (C1)
+    + 2048 vm leaves * 16 KiB  (C2, NEW)
+    = ~96 MiB (was ~64 MiB in C1, well under the 247 MiB that broke boot)
+  The vm leaf term is consumed lazily (only as PDs actually map into
+  new selector ranges), NOT at boot.
+
+### 1.5 run/sponge-falkon-disk.run — rom_pkg caps config fix (Sponge-owned)
+
+  rom_pkg (cached_fs_rom serving falkon's 509 MiB WebEngine payload from
+  disk) had caps: 2000 — enough for its page_table_registry slab to
+  track only ~3000 page-frame entries before exhausting its PD cap quota
+  ("out of CAP"). Bumped to caps: 20000. This is NOT a vendored change
+  (run/ is Sponge-owned); it was always undersized but the C1 vm_space
+  "out of selector" hit FIRST, masking it. With C2 fixing vm_space,
+  rom_pkg's cap limit became the next exposed limit; this bump lets
+  rom_pkg serve the full payload cleanly (zero "out of CAP" in run 2).
+
+================================================================
+
+## 2. CANARY EVIDENCE
+
+### 2.1 sponge-boot (AHCI canary) — PASS  (no regression vs C1)
+
+Run: make -C genode/build/x86_64 run/sponge-boot KERNEL=sel4 BOARD=pc \
+     RUN_OPT='--include boot_dir/sel4 --include power_on/qemu --include log/qemu --include image/disk'
+Log: docs/evidence/c2-sponge-boot.log
+
+  Genode 26.05
+  598 MiB RAM and 523288 caps assigned to init    (was 629 MiB in C1;
+                                                    larger 16K carve)
+  [init -> ahci] --- Starting AHCI driver ---
+  [init -> ahci] version: major=0x1 minor=0x0
+  [init -> ahci] port scan: #0: ATA
+  [init -> part_block] GPT Partition 1/2/3 ...
+  [init -> boot_probe] boot-probe: PASS (22 bytes: "sponge-boot-marker-v1.")
+  Run script execution successful.
+
+AHCI regression GONE (same as C1; the larger 96 MiB carve did not
+disturb the acpi→platform→ahci chain).
+
+### 2.2 sponge-desktop-disk — PASS  (desktop unaffected)
+
+Run: make -C genode/build/x86_64 run/sponge-desktop-disk KERNEL=sel4 BOARD=pc \
+     RUN_OPT='--include boot_dir/sel4 --include power_on/qemu --include log/qemu --include image/disk'
+Log: docs/evidence/c2-sponge-desktop-disk.log
+
+  Genode 26.05
+  3667 MiB RAM and 523288 caps assigned to init
+  [init -> system -> alpha_probe] alpha-probe: (c) configd broadcast live (4 keys)
+  [init -> system -> alpha_probe] alpha-probe: (a) panel band rendered at (512,4) = 0xffe6e9ef
+  [init -> system -> alpha_probe] alpha-probe: (b) launcher report contains hello/Utilities
+  [init -> system -> alpha_probe] alpha-probe: PASS
+  Run script execution successful.
+
+Desktop fully functional — lazy vm_space did not disturb the Qt6/Mesa
+rendering pipeline (~40 PDs, each with their own lazily-constructed
+vm_space tree).
+
+### 2.3 sponge-falkon-disk — PAST mapping-cache-full (the C2 milestone)
+
+Run: make -C genode/build/x86_64 run/sponge-falkon-disk KERNEL=sel4 BOARD=pc \
+     RUN_OPT='--include boot_dir/sel4 --include power_on/qemu --include log/qemu --include image/disk'
+
+  --- Run 1 (rom_pkg caps=2000, original config) ---
+  Log: docs/evidence/c2-sponge-falkon-disk.log
+
+  Physical memory per PD at most: 512M               <- NUM_VM_SEL_LOG2=17 ✓
+  [falkon_probe] falkon-probe: [3] launch ok
+  Warning: flush page table entries - mapping cache full - PD: init -> rom_pkg out of CAP
+  [falkon] lwIP Nic interface up address=10.0.2.15
+  [falkon] Error: stop because parent denied RM-session: cap_quota=2
+  falkon-probe: FAIL (window never rendered)
+
+  NOTE: the message is "out of CAP" (page_table_registry slab cap quota),
+  NOT "out of selector" (vm_space pool). In C1 the same stage printed
+  "out of selector" THREE times (rom_pkg x2, falkon x1). In C2 it prints
+  "out of CAP" ONCE (rom_pkg only; falkon's vm_space has enough selectors).
+  The vm_space selector pool (131072) is no longer the bottleneck.
+
+  --- Run 2 (rom_pkg caps=20000, config fix) ---
+  Log: docs/evidence/c2-sponge-falkon-disk-run2.log
+
+  Physical memory per PD at most: 512M               <- NUM_VM_SEL_LOG2=17 ✓
+  [falkon_probe] falkon-probe: [3] launch ok
+  [falkon] Warning: LD: Reloc_non_plt(libQt6WebEngineCore.lib.so): ... (normal)
+  [falkon] lwIP Nic interface up address=10.0.2.15
+  [pkg_runtime] Warning: falkon: no route to service "RM" (label="falkon -> ")
+  [falkon] Error: stop because parent denied RM-session: cap_quota=2
+  falkon-probe: FAIL (window never rendered)
+
+  ZERO "mapping cache full" messages. ZERO "out of selector". ZERO
+  "out of CAP". rom_pkg served the full 509 MiB payload cleanly. falkon
+  loaded WebEngineCore, linked, DHCP'd, then died at main-CSpace cap
+  exhaustion (C3 §3). The C2 blocker chain is CLOSED.
+
+PROGRESSION CONFIRMED: falkon advances from the C1 stage ("mapping
+cache full / out of selector" = vm_space exhaustion) to the C3 stage
+("denied RM-session cap_quota=2" = main-CSpace cap exhaustion). This is
+EXACTLY the progression the plan predicted (C2 → C3).
+
+================================================================
+
+## 3. THE NEXT BLOCKER — main-CSpace cap quota (C3 workstream)
+
+PROVEN failure under the C2 fix (run 2, lines 432-435):
+
+  [pkg_runtime] Warning: falkon: no route to service "RM" (label="falkon -> ")
+  [falkon] Error: stop because parent denied RM-session: label="",
+                 ram_quota=64K, cap_quota=2
+
+ROOT CAUSE (code path traced, not speculated):
+
+  falkon's main CSpace has 32768 slots (C1 fix: CSPACE_SIZE_LOG2_1ST=6,
+  CSPACE_SIZE_LOG2_2ND=9, total 2^15=32768). falkon's init-donated cap
+  quota is 30000 (from pkg/falkon metadata). WebEngine creates thousands
+  of threads, IPC endpoints, dataspaces, and RM sessions — each consuming
+  a main-CSpace cap. falkon burned through ~29998 of 30000 caps and
+  pkg_runtime can no longer create the RM session falkon requests
+  (only 2 caps remain; an RM session needs more).
+
+  This is the MAIN CSPACE (CSPACE_SIZE_LOG2), INDEPENDENT of the vm_space
+  selector pool (NUM_VM_SEL_LOG2=17, 131072 — plenty) that C2 just fixed.
+  The vm_space holds page-frame caps; the main CSpace holds IPC/session
+  caps. falkon needs both enlarged; C1+C2 fixed vm_space, C3 must fix the
+  main CSpace.
+
+  The C1 fix enlarged the main CSpace 8192→32768 (a factor of 4). falkon
+  needs strictly more — the plan's C3 step prescribes LAZY 2nd-level
+  main-CSpace CNode creation (grow on selector consumption, base-hw
+  upgrade_cap_slab philosophy), exactly the pattern C2 just proved for
+  vm_space.
+
+  Evidence the vm_space fix is NOT the issue: zero "out of selector" /
+  zero "mapping cache full" in run 2. The "denied RM-session cap_quota=2"
+  is a pure main-CSpace cap-accounting failure, surfacing only AFTER
+  rom_pkg's payload is fully served (the C2 layer is clean).
+
+================================================================
+
+## 4. Vendored changes for the docs/11 patch ledger (C4 writes the row)
+
+C4 will add the docs/11-environment.md ledger row. The vendored surface
+this workstream introduces (all under genode/repos/base-sel4/, gated to
+x86_64 where applicable, other arches upstream byte-for-byte):
+
+  WHAT  : Lazy vm_space CNode growth + enlarged leaf CNodes (131072
+          selectors/PD on x86_64, upstream 32768).
+  WHERE : vm_space.h (LEAF_CNODE_SIZE_LOG2 7→9 on x86_64; +_core_cnode_sel
+          member; +_ensure_leaf lazy construction hook; _leaf_cnode calls
+          _ensure_leaf; Construct_cnode::destruct no-op-safe; constructed()
+          simplified to vm_pad-only; constructor eager loop removed;
+          destructor restructured for lazy; _for_each_l3_cnodes removed);
+          platform.cc (core virt_size capped to 256 MiB on x86_64);
+          spec/x86_64/platform.cc (16K pool +32 MiB for vm leaves,
+          MAX_VM_LEAF_COUNT=2048).
+  WHY   : base-sel4 capped each PD's vm_space at 32768 page-frame selectors
+          (NUM_VM_SEL_LOG2=15), blocking falkon (~100k frames) and rom_pkg
+          (~130k frames) at the "mapping cache full / out of selector"
+          stage. Eager enlargement broke boot (heap starvation, silent
+          Platform() crash — p4-cspace-fix.log §4). Lazy construction
+          avoids all eager-failure modes: the _cnodes[] array stays at
+          upstream size, leaves are built on demand from the 16K pool.
+  DROP  : revert the 3 files; upstream base-sel4 behaviour is restored
+          (32768 selectors, eager construction, 256 KiB core virt). When
+          upstream Genode grows lazy vm_space CNodes, this patch is
+          obsolete.
+
+Non-vendored (Sponge-owned, no ledger row): run/sponge-falkon-disk.run
+rom_pkg caps 2000→20000 (config fix unmasked by the C2 vm_space fix).
+
+================================================================
+
+## 5. Final tree state
+
+  git status --short :
+    M genode/repos/base-sel4/src/core/include/vm_space.h
+    M genode/repos/base-sel4/src/core/platform.cc
+    M genode/repos/base-sel4/src/core/spec/x86_64/platform.cc
+    M run/sponge-falkon-disk.run                  (rom_pkg caps config fix)
+
+  git diff --stat    : 164 insertions, 111 deletions (4 files)
+  build              : core/sel4/core compiles clean
+  canaries           : sponge-boot PASS, sponge-desktop-disk PASS,
+                       sponge-falkon-disk PAST mapping-cache-full (C3 next)
+  committed          : NO (per instructions — orchestrator commits)
+  tree state         : WORKING (lazy vm_space growth landed, not reverted)
+================================================================

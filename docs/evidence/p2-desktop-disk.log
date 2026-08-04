@@ -1,0 +1,185 @@
+================================================================
+Phase 8 P2 — Desktop from Disk
+Evidence Log
+Date: 2026-08-03
+Design authority: docs/14-boot-storage-architecture.md §4.4–§4.7
+================================================================
+
+## 1. Acceptance criteria
+
+### (1) Desktop-from-disk PASS x2 with image.elf ≤80 MiB
+
+Run 1 (clean build):
+  image.elf = 12 MiB (12,628,928 bytes) ≤ 80 MiB ✓
+  alpha-probe: (c) configd broadcast live (4 keys via configd_config)
+  alpha-probe: (a) panel band rendered at (512,4) = 0xffe6e9ef
+  alpha-probe: (b) launcher report contains hello/Utilities
+  alpha-probe: PASS
+  hello from package: running (from /system/bin/hello via rom_sys)
+
+Run 2 (same build dir, fresh image):
+  image.elf = 12 MiB (12,628,928 bytes) ≤ 80 MiB ✓
+  alpha-probe: PASS
+
+Both runs used: make -C genode/build/x86_64 run/sponge-desktop-disk \
+  KERNEL=sel4 BOARD=pc RUN_OPT="--include image/disk"
+
+### (2) ld.lib.so confirmed Tier-0 only
+
+- grep /system/lib/: NO ld.lib.so present (CONFIRMED absent)
+- system.config (XML on disk) contains 9 occurrences of ld.lib.so
+  (one per dynamically linked child's route: wm, layouter, decorator,
+   sponge_configd, sponge_themed, sponge_pkgd, pkg_runtime, sponge-de,
+   alpha_probe — all carry ROM label_last="ld.lib.so" → parent)
+- image.elf includes ld-sel4.lib.so as a Tier-0 boot module
+  (auto-injected by boot_dir/sel4)
+
+### (3) Failure channel bounded + identified
+
+SPONGE_DISK_FAIL=1 stages a corrupted /system/init/system.config:
+  <config THIS IS DELIBERATELY BROKEN XML><unclosed
+
+Result:
+  - Storage chain boots normally (ahci/part_block/vfs/rom_sys/rom_lib)
+  - System init reads corrupted config → fails to start children
+  - NO [init -> system -> ...] output (identifiable: success case shows
+    sponge_configd/sponge_themed/sponge-de boot markers)
+  - run_genode_until timeout (120s) bounds the failure
+  - No silent hang — the timeout exit code is non-zero
+
+Stage identification: storage chain OK (part_block reports GPT P3,
+vfs mounts ext2, rom_sys/rom_lib start). The system init is the
+failure point — it never produces child output.
+
+### (4) Evidence file location
+
+This file: docs/evidence/p2-desktop-disk.log
+
+## 2. Tier-0 boot module roster (image.elf, 12 MiB)
+
+  core-sel4.a, ld-sel4.lib.so, init, timer(hpet), report_rom,
+  nitpicker, platform, acpi, pci_decode, ahci, part_block, vfs,
+  cached_fs_rom (×2: rom_sys + rom_lib), vesa_fb, ps2, pc_usb_host,
+  usb_hid, event_filter,
+  vfs.lib.so, vfs_rump.lib.so, rump.lib.so, rump_fs.lib.so,
+  en_us.chargen, special.chargen, fb.config, event_filter.config
+
+Justification for display/input drivers in Tier 0 (§4.5 tradeoff):
+  vesa_fb + nitpicker are explicitly rescue-display components (§4.7).
+  ps2/usb_hid/event_filter are boot-critical (desktop unusable without
+  input) and small (~3 MiB). Serving them from disk would require
+  routing Platform/Dma/IRQ through the nested init — complexity for
+  negligible Tier-0 savings. Total Tier-0 = 12 MiB << 80 MiB target.
+
+## 3. /system disk layout (served by cached_fs_rom)
+
+  /system/bin/     11 binaries (init, wm, decorator, sponge-de, ...)
+  /system/lib/     37 .lib.so files (Qt6, Mesa, libc, ...) — NO ld.lib.so
+  /system/init/    system.config (nested init config, XML format)
+  /system/         flat: themes, tars, pkg metadata, empty config
+
+## 4. Key design decisions
+
+### Two cached_fs_rom instances (rom_sys + rom_lib)
+
+cached_fs_rom resolves ROM labels via label.last_element(), which
+becomes the file path relative to the vfs chroot. Binaries use
+<binary name="bin/..."/> so the path includes the bin/ prefix. But
+the dynamic linker requests libraries by bare name (e.g.
+"libQt6Core.lib.so") with no prefix — the linker cannot be told to
+add "lib/". Solution: a second cached_fs_rom (rom_lib) chrooted to
+/system/lib serves .lib.so files. Routing: label_suffix=".lib.so"
+→ rom_lib; everything else → rom_sys.
+
+### §4.6 ld.lib.so rule in pkgd generator
+
+pkgd's _generate_runtime_config now emits:
+  <service name="ROM" label_last="ld.lib.so"><parent/></service>
+in every generated child's <route>. This is the §4.6 convention
+applied uniformly — harmless in boot-module mode, load-bearing in
+disk-served mode.
+
+### binary_prefix config option in pkgd
+
+pkgd's <config binary_prefix="bin/"> makes the generator emit
+<binary name="bin/<binary>"/> so cached_fs_rom resolves disk-served
+binaries at /system/bin/<binary>.
+
+### HID format → XML conversion for system.config
+
+The system.config is written in HID format (Genode's indented DSL),
+then converted to XML using `tool/hid format --output-xml`. This is
+needed because init delivers inline configs in HID format, and
+Attached_rom_dataspace::xml() (returns Xml_node) cannot parse HID.
+Components reading config attributes must use .node() (handles both
+XML and HID), not .xml().
+
+### alpha_probe dual-ROM for configd broadcast
+
+The sandbox intercepts ALL "config" ROM sessions for children with
+inline configs. alpha_probe's inline <config skip_lz="yes"/> would
+shadow the configd broadcast at label "config". Solution: a separate
+ROM label "configd_config" (via report_rom policy) carries the
+broadcast. The probe tries "configd_config" first (disk-desktop
+scenario), falling back to "config" (alpha scenario).
+
+### Flat /system/config for children without inline config
+
+Children without an inline <config> (e.g. hello) trigger the sandbox
+to open an external "config" ROM. Without a source, the denial stops
+the child. A bare <config/> at /system/config satisfies these
+requests so children start with empty config (non-fatal).
+
+## 5. Files modified
+
+  repos/sponge/src/sponge_pkgd/main.cc
+    - binary_prefix member + config reading (uses .node() not .xml())
+    - ld.lib.so route in generated children (§4.6)
+    - binary name uses _binary_prefix when non-empty
+
+  repos/sponge/src/test/alpha_probe/main.cc
+    - skip_lz config option (uses .node() not .xml())
+    - configd_config dual-ROM (Constructible, gated by _skip_lz)
+    - Background pixel filter (0x1e1e2e excluded from panel check)
+
+  run/sponge-desktop-disk.run (NEW)
+    - Tier-0 init config (flat drivers, no sub-init)
+    - /system staging logic (binaries, libs, themes, tars, metadata)
+    - system.config generation (HID → XML conversion)
+    - Tier-0 boot module list (explicit, not build_artifacts)
+    - image.elf size assertion + ld.lib.so absence check
+    - Failure channel (SPONGE_DISK_FAIL=1)
+
+  genode/repos/sponge/run/sponge-desktop-disk.run (NEW symlink)
+  run/README.md (new entry)
+
+## 6. NOT modified (per constraints)
+
+  run/sponge-alpha.run — unchanged (boot-modules reference)
+
+## 7. Build commands
+
+  make -C genode/build/x86_64 run/sponge-desktop-disk \
+      KERNEL=sel4 BOARD=pc RUN_OPT="--include image/disk"
+
+  # Failure channel:
+  SPONGE_DISK_FAIL=1 make -C genode/build/x86_64 run/sponge-desktop-disk \
+      KERNEL=sel4 BOARD=pc RUN_OPT="--include image/disk"
+
+## 8. Boot log excerpts (proving disk-served binaries)
+
+  [init -> part_block] GPT Partition 3: LBA 4952 ... name: 'GENODE'
+  [init -> vfs] (rump ext2fs mounted)
+  [init -> rom_sys] (cached_fs_rom chroot /system started)
+  [init -> rom_lib] (cached_fs_rom chroot /system/lib started)
+  [init -> system -> sponge_pkgd] sponge_pkgd: binary_prefix='bin/'
+  [init -> system -> sponge_configd] sponge_configd: ready
+  [init -> system -> sponge_themed] sponge_themed: ready
+  [init -> system -> sponge-de] sponge-de: panel shown
+  [init -> system -> sponge-de] sponge-de: window shown
+  [init -> system -> pkg_runtime -> hello] hello from package: running
+  [init -> system -> alpha_probe] alpha-probe: PASS
+
+  All desktop binaries (sponge-de, wm, decorator, ...) and libs (Qt6,
+  Mesa, libc, ...) were served from /system via rom_sys/rom_lib.
+  cached_fs_rom fetched them on demand from the ext2 GENODE partition.

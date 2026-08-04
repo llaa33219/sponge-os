@@ -1,0 +1,588 @@
+make: ディレクトリ '/home/luke/sponge-os/genode/build/x86_64'　に入ります
+including /home/luke/sponge-os/genode/tool/run/image/disk
+including /home/luke/sponge-os/repos/sponge/run/sponge-persist-disk.run
+sourcing /home/luke/sponge-os/genode/tool/run/boot_dir/sel4 (missing from RUN_OPT, restored by run script)
+sourcing /home/luke/sponge-os/genode/tool/run/power_on/qemu (missing from RUN_OPT, restored by run script)
+sourcing /home/luke/sponge-os/genode/tool/run/log/qemu (missing from RUN_OPT, restored by run script)
+building targets:  core lib/ld init timer server/report_rom driver/platform driver/acpi app/pci_decode driver/ahci server/part_block server/vfs lib/vfs lib/vfs_rump sponge_pkgd pkg_hello test/pkg_seq_probe
+
+spawn make core lib/ld init timer server/report_rom driver/platform driver/acpi app/pci_decode driver/ahci server/part_block server/vfs lib/vfs lib/vfs_rump sponge_pkgd pkg_hello test/pkg_seq_probe
+make[1]: ディレクトリ '/home/luke/sponge-os/genode/build/x86_64' に入ります
+Skip target driver/platform/pc/spec/x86_32 because it requires 'x86_32'
+  [00;33mLibrary[0m ld.abi.so
+  [00;33mLibrary[0m ldso_so_support.lib.a
+  [00;33mLibrary[0m kernel-sel4-pc.lib.a
+ninja: Jobserver mode detected:  -j128 --jobserver-auth=fifo:/tmp/GMfifo2675109 --no-print-directory -- DEBUG_DIR=/home/luke/sponge-os/genode/build/x86_64/debug INSTALL_DIR=/home/luke/sponge-os/genode/build/x86_64/bin BUILD_BASE_DIR=/home/luke/sponge-os/genode/build/x86_64 SHARED_LIBS= ARCHIVES= LIB=kernel-sel4-pc LIB_MK=/home/luke/sponge-os/genode/repos/base-sel4/lib/mk/spec/x86_64/kernel-sel4-pc.mk REP_DIR=/home/luke/sponge-os/genode/repos/base-sel4 KERNEL=sel4 BOARD=pc RUN_OPT=--include\ image/disk SHELL=/usr/bin/bash
+ninja: no work to do.
+  [00;33mLibrary[0m syscall-sel4-pc.lib.a
+  [00;33mLibrary[0m syscall-sel4.lib.a
+  [00;33mLibrary[0m startup-sel4.lib.a
+  [00;33mLibrary[0m base-sel4-common.lib.a
+  [00;33mLibrary[0m timeout.lib.a
+  [00;33mLibrary[0m cxx.lib.a
+  [00;33mLibrary[0m base-sel4.lib.a
+  [00;33mLibrary[0m ld-sel4.lib.so
+  [00;33mLibrary[0m ld.lib.so
+  [00;33mLibrary[0m vfs.abi.so
+  [00;33mLibrary[0m base.lib.a
+  [00;33mLibrary[0m vfs.lib.so
+  [00;33mLibrary[0m format.lib.a
+  [00;33mLibrary[0m rump_include.lib.a
+  [00;33mLibrary[0m rump.lib.so
+  [00;33mLibrary[0m rump_tools.lib.a
+  [00;33mLibrary[0m rump_fs.lib.so
+  [00;33mLibrary[0m vfs_rump.lib.so
+  [01;33mProgram[0m app/pci_decode/pci_decode
+  [00;33mLibrary[0m core-sel4.lib.a
+    COMPILE  version.o
+    MERGE    core-sel4.lib.a
+  [01;33mProgram[0m core/sel4/core
+  [01;33mProgram[0m driver/acpi/spec/x86/acpi
+  [01;33mProgram[0m driver/ahci/ahci
+  [01;33mProgram[0m driver/platform/pc/spec/x86_64/pc_platform
+  [01;33mProgram[0m driver/platform/platform
+  [01;33mProgram[0m init/init
+  [01;33mProgram[0m pkg_hello/hello
+  [01;33mProgram[0m server/part_block/part_block
+  [01;33mProgram[0m server/report_rom/report_rom
+  [01;33mProgram[0m server/vfs/vfs
+  [01;33mProgram[0m sponge_pkgd/sponge_pkgd
+  [01;33mProgram[0m test/pkg_seq_probe/pkg_seq_probe
+  [01;33mProgram[0m timer/hpet/hpet_timer
+make[1]: ディレクトリ '/home/luke/sponge-os/genode/build/x86_64' から出ます
+genode build completed
+building targets: kernel/sel4 lib/ld-sel4
+spawn make kernel/sel4 lib/ld-sel4
+make[1]: ディレクトリ '/home/luke/sponge-os/genode/build/x86_64' に入ります
+  [00;33mLibrary[0m kernel-sel4-pc.lib.a
+ninja: Jobserver mode detected:  -j128 --jobserver-auth=fifo:/tmp/GMfifo2676981 --no-print-directory -- DEBUG_DIR=/home/luke/sponge-os/genode/build/x86_64/debug INSTALL_DIR=/home/luke/sponge-os/genode/build/x86_64/bin BUILD_BASE_DIR=/home/luke/sponge-os/genode/build/x86_64 SHARED_LIBS= ARCHIVES= LIB=kernel-sel4-pc LIB_MK=/home/luke/sponge-os/genode/repos/base-sel4/lib/mk/spec/x86_64/kernel-sel4-pc.mk REP_DIR=/home/luke/sponge-os/genode/repos/base-sel4 KERNEL=sel4 BOARD=pc RUN_OPT=--include\ image/disk SHELL=/usr/bin/bash
+ninja: no work to do.
+  [00;33mLibrary[0m syscall-sel4-pc.lib.a
+  [00;33mLibrary[0m syscall-sel4.lib.a
+  [00;33mLibrary[0m startup-sel4.lib.a
+  [00;33mLibrary[0m base-sel4-common.lib.a
+  [00;33mLibrary[0m timeout.lib.a
+  [00;33mLibrary[0m cxx.lib.a
+  [00;33mLibrary[0m base-sel4.lib.a
+  [00;33mLibrary[0m ldso_so_support.lib.a
+  [00;33mLibrary[0m ld-sel4.lib.so
+  [01;33mProgram[0m kernel/sel4/sel4-pc
+make[1]: ディレクトリ '/home/luke/sponge-os/genode/build/x86_64' から出ます
+genode build completed
+using 'core-sel4.a' as 'core.a'
+using 'hpet_timer' as 'timer'
+using 'ld-sel4.lib.so' as 'ld.lib.so'
+Created image file var/run/sponge-persist-disk.img (13772kiB)
+sponge-persist-disk: creating P4 (SPONGE-DATA, 64 MiB) on var/run/sponge-persist-disk.img
+Failed to initialize Crashpad.  Crash reporting will not be available.  Cause: while locating crashpad handler: unable to locate crashpad handler executable
+[sponge-mkdata] Sponge OS SPONGE-DATA (P4) creator
+  image:        var/run/sponge-persist-disk.img
+  data-size:    64 MiB
+
+[sponge-mkdata] host tool check
+  sgdisk  ok
+  mkfs.ext2  ok
+  truncate  ok
+
+[sponge-mkdata] P3 captured: first=4952 last=28431
+[sponge-mkdata] growing image by 64 MiB (67108864 bytes)
+[sponge-mkdata] image grew: 14577664 -> 81686528 bytes
+Warning: The kernel is still using the old partition table.
+The new table will be used at the next reboot or after you
+run partprobe(8) or kpartx(8)
+The operation has completed successfully.
+Warning: The kernel is still using the old partition table.
+The new table will be used at the next reboot or after you
+run partprobe(8) or kpartx(8)
+The operation has completed successfully.
+Warning: The kernel is still using the old partition table.
+The new table will be used at the next reboot or after you
+run partprobe(8) or kpartx(8)
+The operation has completed successfully.
+Warning: The kernel is still using the old partition table.
+The new table will be used at the next reboot or after you
+run partprobe(8) or kpartx(8)
+The operation has completed successfully.
+[sponge-mkdata] creating P4: first=28432 last=159510
+Warning: The kernel is still using the old partition table.
+The new table will be used at the next reboot or after you
+run partprobe(8) or kpartx(8)
+The operation has completed successfully.
+Warning: The kernel is still using the old partition table.
+The new table will be used at the next reboot or after you
+run partprobe(8) or kpartx(8)
+The operation has completed successfully.
+[sponge-mkdata] formatting P4 ext2: offset=14557184 size=65539 KiB label=SPONGE-DATA
+
+[sponge-mkdata] P4 creation complete. Verifying layout ...
+[sponge-mkdata] verified: P3=GENODE [4952..28431], P4=SPONGE-DATA [28432..159510]
+
+[sponge-mkdata] done: 4-partition image ready (P4=SPONGE-DATA, 65539 KiB ext2)
+sponge-persist-disk: sgdisk -p verification
+Disk var/run/sponge-persist-disk.img: 159544 sectors, 77.9 MiB
+Sector size (logical): 512 bytes
+Disk identifier (GUID): A51297F6-A788-47C1-A55F-4E503F90B2D6
+Partition table holds up to 128 entries
+Main partition table begins at sector 2 and ends at sector 33
+First usable sector is 34, last usable sector is 159510
+Partitions will be aligned on 1-sector boundaries
+Total free space is 302 sectors (151.0 KiB)
+
+Number  Start (sector)    End (sector)  Size       Code  Name
+   1              40             140   50.5 KiB    EF02  BIOSBOOT
+   2             141            4655   2.2 MiB     EF00  GRUB2
+   3            4952           28431   11.5 MiB    8300  GENODE
+   4           28432          159510   64.0 MiB    8300  SPONGE-DATA
+sponge-persist-disk: OK — 4 partitions present
+sponge-persist-disk: OK — P4 = SPONGE-DATA
+sponge-persist-disk: pre-creating /store on P4 (sectors 28432..159510)
+sponge-persist-disk: image sha256 BEFORE boot 1: 89a0bc9c02c476d1bdbaaa9ec8e58db6bc07f0a9fcc076c6ee5f0337640ee8c4  var/run/sponge-persist-disk.img
+
+--- boot 1: install hello (writes the persistent store to P4) ---
+spawn qemu-system-x86_64 -nographic -m 1G -serial mon:stdio -drive format=raw,file=var/run/sponge-persist-disk.img -machine q35 -cpu Skylake-Client -net nic,model=e1000,netdev=net0 -netdev user,id=net0
+qemu-system-x86_64: warning: TCG doesn't support requested feature: CPUID[eax=01h].ECX.pcid [bit 17]
+qemu-system-x86_64: warning: TCG doesn't support requested feature: CPUID[eax=01h].ECX.tsc-deadline [bit 24]
+qemu-system-x86_64: warning: TCG doesn't support requested feature: CPUID[eax=07h,ecx=00h].EBX.hle [bit 4]
+qemu-system-x86_64: warning: TCG doesn't support requested feature: CPUID[eax=07h,ecx=00h].EBX.invpcid [bit 10]
+qemu-system-x86_64: warning: TCG doesn't support requested feature: CPUID[eax=07h,ecx=00h].EBX.rtm [bit 11]
+qemu-system-x86_64: warning: TCG doesn't support requested feature: CPUID[eax=0Dh,ecx=01h].EAX.xsavec [bit 1]
+c[?7l[2J[0mSeaBIOS (version Arch Linux 1.17.0-2-2)
+
+
+iPXE (http://ipxe.org) 00:02.0 C900 PCI2.10 PnP PMM+3EFD3DD0+3EF33DD0 C900
+Press Ctrl-B to configure iPXE (PCI 00:02.0)...                                                                               
+
+
+Booting from Hard Disk...
+GRUB loading.
+[01;01H
+Bender Version 0.9-beta7-51-g28ba2ad-dirty
+Patching BDA with I/O port 0x3f8.
+Bender: Hello World.
+hwp config: eeo=na irq=na hwp=na epp=na epb=na
+Boot config: debug_port = 0x3f8
+Boot config: disable_iommu = true
+  module #0: start=0xf4eb000 end=0xfdf63c0 size=0x90b3c0 name='image.elf'
+	Physical Memory Region from 0 size 9fc00 type 1
+	Physical Memory Region from 9fc00 size 400 type 2
+	Physical Memory Region from f0000 size 10000 type 2
+	Physical Memory Region from 100000 size 3fedf000 type 1
+Adding physical memory region 0x100000-0x3ffdf000
+	Physical Memory Region from 3ffdf000 size 21000 type 2
+	Physical Memory Region from b0000000 size 10000000 type 2
+	Physical Memory Region from fed1c000 size 4000 type 2
+	Physical Memory Region from fffc0000 size 40000 type 2
+Got framebuffer info in multiboot2. Current video mode is at physical address=fd000000 pitch=5120 resolution=1280x800@32 type=1
+Detected 1 boot module(s):
+Kernel loaded to: start=0x200000 end=0xe3e000 size=0xc3e000 entry=0x200298
+ACPI: RSDT paddr=0x3ffe2344
+ACPI: RSDT vaddr=0x3ffe2344
+ACPI: FADT paddr=0x3ffe213c
+ACPI: FADT vaddr=0x3ffe213c
+ACPI: FADT flags=0x84a5
+ACPI: MADT paddr=0x3ffe2230
+ACPI: MADT vaddr=0x3ffe2230
+ACPI: MADT apic_addr=0xfee00000
+ACPI: MADT flags=0x1
+ACPI: MADT_APIC apic_id=0x0
+ACPI: MADT_IOAPIC ioapic_id=0 ioapic_addr=0xfec00000 gsib=0
+ACPI: MADT_ISO bus=0 source=0 gsi=2 flags=0x0
+ACPI: MADT_ISO bus=0 source=5 gsi=5 flags=0xd
+ACPI: MADT_ISO bus=0 source=9 gsi=9 flags=0xd
+ACPI: MADT_ISO bus=0 source=10 gsi=10 flags=0xd
+ACPI: MADT_ISO bus=0 source=11 gsi=11 flags=0xd
+ACPI: 1 CPU(s) detected
+ELF-loading userland images from boot modules:
+size=0x22e6000 v_entry=0x2000018 v_start=0x2000000 v_end=0x42e6000 p_start=0xfdf7000 p_end=0x120dd000
+Moving loaded userland images to final location: from=0xfdf7000 to=0xe3e000 size=0x22e6000
+Starting node #0 with APIC ID 0
+Mapping kernel window is done
+vt-x: not supported
+available phys memory regions: 1
+  [100000..3ffdf000]
+reserved virt address space regions: 1
+  [ffffff8000200000..ffffff8003124000]
+Booting all finished, dropped to user space
+[34mWarning: device memory in range [0000000800000000,0000001000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000001000000000,0000002000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000002000000000,0000004000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000004000000000,0000008000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000008000000000,0000408000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000408000000000,0000608000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000608000000000,0000708000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000708000000000,0000788000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000788000000000,00007c8000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [00007c8000000000,00007e8000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [00007e8000000000,00007f8000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [00007f8000000000,0000800000000000) is unavailable (due to limited untyped cnode range)[0m
+:phys_mem_16k:     Allocator 0x2179558 dump:
+ Block: [0000000000200000,0000000000240000) size=256K avail=256K max_avail=256K
+ => mem_size=262144 (0 MB) / mem_avail=262144 (0 MB)
+
+[34mWarning: device memory in range [0000000200000000,0000000400000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000000400000000,0000000800000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000000800000000,0000001000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000001000000000,0000002000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000002000000000,0000004000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000004000000000,0000008000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000008000000000,0000408000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000408000000000,0000608000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000608000000000,0000708000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000708000000000,0000788000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000788000000000,00007c8000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [00007c8000000000,00007e8000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [00007e8000000000,00007f8000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [00007f8000000000,0000800000000000) is unavailable (due to limited untyped cnode range)[0m
+virtual address layout of core:
+ overall    [0000000000002000,0000001000000000)
+ core image [0000000002000000,00000000042e6000)
+ ipc buffer [00000000042e6000,00000000042e7000)
+ boot_info  [00000000042e7000,00000000042e8542)
+ stack area [0000000040000000,0000000050000000)
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+Physical memory per PD at most: 128M
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+boot module 'config' (7221 bytes)
+boot module 'pkg_hello.xml' (1212 bytes)
+boot module 'pkg_index.xml' (45 bytes)
+boot module 'pkg_probe_config' (89 bytes)
+boot module 'acpi' (190328 bytes)
+boot module 'ahci' (260248 bytes)
+boot module 'hello' (10024 bytes)
+boot module 'timer' (144744 bytes)
+boot module 'init' (516744 bytes)
+boot module 'init.hsd' (4125 bytes)
+boot module 'init.xsd' (8118 bytes)
+boot module 'ld.lib.so' (1112464 bytes)
+boot module 'part_block' (192304 bytes)
+boot module 'pc_platform' (724960 bytes)
+boot module 'pci_decode' (171336 bytes)
+boot module 'pkg_seq_probe' (129584 bytes)
+boot module 'platform' (598984 bytes)
+boot module 'report_rom' (150784 bytes)
+boot module 'sponge_pkgd' (218288 bytes)
+boot module 'vfs' (250448 bytes)
+boot module 'vfs.lib.so' (804616 bytes)
+boot module 'vfs_rump.lib.so' (87576 bytes)
+boot module 'rump.lib.so' (1343016 bytes)
+boot module 'rump_fs.lib.so' (1113128 bytes)
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+Genode 26.05
+693 MiB RAM and 523288 caps assigned to init
+[init -> timer] timers=3, clock 10000000fs , 64bit counter , legacy routing support vendor=0x8086
+[init -> timer] timer0 GSI options 0xff0104, supports periodic
+[init -> timer] timer1 GSI options 0xff0104, supports periodic
+[init -> timer] timer2 GSI options 0xff0104, supports periodic
+[init -> timer] time wraps after 5849 years
+[init -> timer] irqs=off legacy=off
+[init -> ahci] --- Starting AHCI driver ---
+[init -> timer] Using timer 2 -> using GSI 2 edge triggered
+[init -> acpi] Found MADT
+[init -> acpi] MADT IRQ 0 -> GSI 2 flags: 0
+[init -> acpi] MADT IRQ 5 -> GSI 5 flags: 13
+[init -> acpi] MADT IRQ 9 -> GSI 9 flags: 13
+[init -> acpi] MADT IRQ 10 -> GSI 10 flags: 13
+[init -> acpi] MADT IRQ 11 -> GSI 11 flags: 13
+[init -> acpi] Found HPET hw_id=0x1  vendor_id=0x8086 space_id=0x0 addr=0xfed00000 hpet_id=0x0
+[init -> acpi] Found MCFG
+[init -> acpi] MCFG BASE 0xb0000000 seg 0x0 bus 0x0-0xff
+[init -> acpi] RSDT OEM 'BOCHS ', table id 'BXPC    ', revision 1, creator 'BXPC' (1)
+[init -> pkg_seq_probe] pkg-seq-probe: [1] install hello
+[init -> acpi] [34mWarning: SMBIOSv3 entry point invalid[0m
+[init -> acpi] SMBIOSv2 table (entry point: 0x1b6520 structures: 0xf6540)
+[init -> sponge_pkgd] sponge_pkgd: ready
+[init -> sponge_pkgd] sponge_pkgd: binary_prefix='bin/'
+[init -> ahci] version: major=0x1 minor=0x0
+[init -> ahci] command slots: 32
+[init -> ahci] native command queuing: yes
+[init -> ahci] 64-bit support: yes
+[init -> ahci] port scan:
+[init -> ahci] 		#0: ATA
+[init -> ahci] 		#1:  off (unknown device signature)
+[init -> ahci] 		#2: off (ATAPI)
+[init -> ahci] 		#3:  off (unknown device signature)
+[init -> ahci] 		#4:  off (unknown device signature)
+[init -> ahci] 		#5:  off (unknown device signature)
+[init -> part_block] GPT Partition 1: LBA 40 (101 blocks) type: '21686148-6449-6e6f-744e-656564454649' name: 'BIOSBOOT'
+[init -> part_block] GPT Partition 2: LBA 141 (4515 blocks) type: 'c12a7328-f81f-11d2-ba4b-00a0c93ec93b' name: 'GRUB2'
+[init -> part_block] GPT Partition 3: LBA 4952 (23480 blocks) type: '0fc63daf-8483-4772-8e79-3d69d8477de4' name: 'GENODE'
+[init -> part_block] GPT Partition 4: LBA 28432 (131079 blocks) type: '0fc63daf-8483-4772-8e79-3d69d8477de4' name: 'SPONGE-DATA'
+[init -> sponge_pkgd] sponge_pkgd: persistent store enabled at /store/installed.xml
+[init -> sponge_pkgd] sponge_pkgd: no installed-set store — starting empty
+[init -> pkg_runtime] [31mError: hello: environment ROM session denied (label="hello", ram_quota=6144, cap_quota=3)[0m
+[init -> pkg_runtime] [31mError: hello: environment ROM session denied (label="hello", ram_quota=6144, cap_quota=3)[0m
+[init -> pkg_runtime] [31mError: hello: environment ROM session denied (label="hello", ram_quota=6144, cap_quota=3)[0m
+[init -> pkg_runtime] [31mError: hello: environment ROM session denied (label="hello", ram_quota=6144, cap_quota=3)[0m
+[init -> pkg_runtime] [31mError: hello: environment ROM session denied (label="hello", ram_quota=6144, cap_quota=3)[0m
+[init -> pkg_runtime] [31mError: hello: environment ROM session denied (label="hello", ram_quota=6144, cap_quota=3)[0m
+[init -> pkg_runtime] [31mError: hello: environment ROM session denied (label="hello", ram_quota=6144, cap_quota=3)[0m
+[init -> pkg_runtime] [31mError: hello: environment ROM session denied (label="hello", ram_quota=6144, cap_quota=3)[0m
+[init -> pkg_runtime] [31mError: hello: environment ROM session denied (label="hello", ram_quota=6144, cap_quota=3)[0m
+[init -> pkg_runtime] [31mError: hello: environment ROM session denied (label="hello", ram_quota=6144, cap_quota=3)[0m
+[init -> pkg_seq_probe] pkg-seq-probe: [1] install ok
+[init -> pkg_seq_probe] pkg-seq-probe: [2] list
+[init -> pkg_seq_probe] pkg-seq-probe: [2] list ok
+[init -> pkg_seq_probe] pkg-seq-probe: PASS
+--- boot 1: store on P4 contains hello (host-side e2cp readback) ---
+    store bytes: <sponge-installed version="1"><root name="hello"/></sponge-installed>
+sponge-persist-disk: image sha256 AFTER boot 1:  1ee34b344b5498985e43b3214f08c9cae4398684e157029d86a08560ce02103b  var/run/sponge-persist-disk.img
+sponge-persist-disk: OK — image mutated by boot 1 (sha256 differs)
+sponge-persist-disk: terminating boot 1 QEMU to release the image lock
+
+--- boot 2: pkgd must restore from P4 (same image, fresh QEMU) ---
+spawn qemu-system-x86_64 -nographic -m 1G -serial mon:stdio -drive format=raw,file=var/run/sponge-persist-disk.img -machine q35 -cpu Skylake-Client -net nic,model=e1000,netdev=net0 -netdev user,id=net0
+qemu-system-x86_64: warning: TCG doesn't support requested feature: CPUID[eax=01h].ECX.pcid [bit 17]
+qemu-system-x86_64: warning: TCG doesn't support requested feature: CPUID[eax=01h].ECX.tsc-deadline [bit 24]
+qemu-system-x86_64: warning: TCG doesn't support requested feature: CPUID[eax=07h,ecx=00h].EBX.hle [bit 4]
+qemu-system-x86_64: warning: TCG doesn't support requested feature: CPUID[eax=07h,ecx=00h].EBX.invpcid [bit 10]
+qemu-system-x86_64: warning: TCG doesn't support requested feature: CPUID[eax=07h,ecx=00h].EBX.rtm [bit 11]
+qemu-system-x86_64: warning: TCG doesn't support requested feature: CPUID[eax=0Dh,ecx=01h].EAX.xsavec [bit 1]
+c[?7l[2J[0mSeaBIOS (version Arch Linux 1.17.0-2-2)
+
+
+iPXE (http://ipxe.org) 00:02.0 C900 PCI2.10 PnP PMM+3EFD3DD0+3EF33DD0 C900
+Press Ctrl-B to configure iPXE (PCI 00:02.0)...                                                                               
+
+
+Booting from Hard Disk...
+GRUB loading.
+[01;01H
+Bender Version 0.9-beta7-51-g28ba2ad-dirty
+Patching BDA with I/O port 0x3f8.
+Bender: Hello World.
+hwp config: eeo=na irq=na hwp=na epp=na epb=na
+Boot config: debug_port = 0x3f8
+Boot config: disable_iommu = true
+  module #0: start=0xf4eb000 end=0xfdf63c0 size=0x90b3c0 name='image.elf'
+	Physical Memory Region from 0 size 9fc00 type 1
+	Physical Memory Region from 9fc00 size 400 type 2
+	Physical Memory Region from f0000 size 10000 type 2
+	Physical Memory Region from 100000 size 3fedf000 type 1
+Adding physical memory region 0x100000-0x3ffdf000
+	Physical Memory Region from 3ffdf000 size 21000 type 2
+	Physical Memory Region from b0000000 size 10000000 type 2
+	Physical Memory Region from fed1c000 size 4000 type 2
+	Physical Memory Region from fffc0000 size 40000 type 2
+Got framebuffer info in multiboot2. Current video mode is at physical address=fd000000 pitch=5120 resolution=1280x800@32 type=1
+Detected 1 boot module(s):
+Kernel loaded to: start=0x200000 end=0xe3e000 size=0xc3e000 entry=0x200298
+ACPI: RSDT paddr=0x3ffe2344
+ACPI: RSDT vaddr=0x3ffe2344
+ACPI: FADT paddr=0x3ffe213c
+ACPI: FADT vaddr=0x3ffe213c
+ACPI: FADT flags=0x84a5
+ACPI: MADT paddr=0x3ffe2230
+ACPI: MADT vaddr=0x3ffe2230
+ACPI: MADT apic_addr=0xfee00000
+ACPI: MADT flags=0x1
+ACPI: MADT_APIC apic_id=0x0
+ACPI: MADT_IOAPIC ioapic_id=0 ioapic_addr=0xfec00000 gsib=0
+ACPI: MADT_ISO bus=0 source=0 gsi=2 flags=0x0
+ACPI: MADT_ISO bus=0 source=5 gsi=5 flags=0xd
+ACPI: MADT_ISO bus=0 source=9 gsi=9 flags=0xd
+ACPI: MADT_ISO bus=0 source=10 gsi=10 flags=0xd
+ACPI: MADT_ISO bus=0 source=11 gsi=11 flags=0xd
+ACPI: 1 CPU(s) detected
+ELF-loading userland images from boot modules:
+size=0x22e6000 v_entry=0x2000018 v_start=0x2000000 v_end=0x42e6000 p_start=0xfdf7000 p_end=0x120dd000
+Moving loaded userland images to final location: from=0xfdf7000 to=0xe3e000 size=0x22e6000
+Starting node #0 with APIC ID 0
+Mapping kernel window is done
+vt-x: not supported
+available phys memory regions: 1
+  [100000..3ffdf000]
+reserved virt address space regions: 1
+  [ffffff8000200000..ffffff8003124000]
+Booting all finished, dropped to user space
+[34mWarning: device memory in range [0000000800000000,0000001000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000001000000000,0000002000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000002000000000,0000004000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000004000000000,0000008000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000008000000000,0000408000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000408000000000,0000608000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000608000000000,0000708000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000708000000000,0000788000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000788000000000,00007c8000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [00007c8000000000,00007e8000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [00007e8000000000,00007f8000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [00007f8000000000,0000800000000000) is unavailable (due to limited untyped cnode range)[0m
+:phys_mem_16k:     Allocator 0x2179558 dump:
+ Block: [0000000000200000,0000000000240000) size=256K avail=256K max_avail=256K
+ => mem_size=262144 (0 MB) / mem_avail=262144 (0 MB)
+
+[34mWarning: device memory in range [0000000200000000,0000000400000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000000400000000,0000000800000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000000800000000,0000001000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000001000000000,0000002000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000002000000000,0000004000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000004000000000,0000008000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000008000000000,0000408000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000408000000000,0000608000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000608000000000,0000708000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000708000000000,0000788000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000788000000000,00007c8000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [00007c8000000000,00007e8000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [00007e8000000000,00007f8000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [00007f8000000000,0000800000000000) is unavailable (due to limited untyped cnode range)[0m
+virtual address layout of core:
+ overall    [0000000000002000,0000001000000000)
+ core image [0000000002000000,00000000042e6000)
+ ipc buffer [00000000042e6000,00000000042e7000)
+ boot_info  [00000000042e7000,00000000042e8542)
+ stack area [0000000040000000,0000000050000000)
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+Physical memory per PD at most: 128M
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+boot module 'config' (7221 bytes)
+boot module 'pkg_hello.xml' (1212 bytes)
+boot module 'pkg_index.xml' (45 bytes)
+boot module 'pkg_probe_config' (89 bytes)
+boot module 'acpi' (190328 bytes)
+boot module 'ahci' (260248 bytes)
+boot module 'hello' (10024 bytes)
+boot module 'timer' (144744 bytes)
+boot module 'init' (516744 bytes)
+boot module 'init.hsd' (4125 bytes)
+boot module 'init.xsd' (8118 bytes)
+boot module 'ld.lib.so' (1112464 bytes)
+boot module 'part_block' (192304 bytes)
+boot module 'pc_platform' (724960 bytes)
+boot module 'pci_decode' (171336 bytes)
+boot module 'pkg_seq_probe' (129584 bytes)
+boot module 'platform' (598984 bytes)
+boot module 'report_rom' (150784 bytes)
+boot module 'sponge_pkgd' (218288 bytes)
+boot module 'vfs' (250448 bytes)
+boot module 'vfs.lib.so' (804616 bytes)
+boot module 'vfs_rump.lib.so' (87576 bytes)
+boot module 'rump.lib.so' (1343016 bytes)
+boot module 'rump_fs.lib.so' (1113128 bytes)
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+Genode 26.05
+693 MiB RAM and 523288 caps assigned to init
+[init -> ahci] --- Starting AHCI driver ---
+[init -> timer] timers=3, clock 10000000fs , 64bit counter , legacy routing support vendor=0x8086
+[init -> timer] timer0 GSI options 0xff0104, supports periodic
+[init -> timer] timer1 GSI options 0xff0104, supports periodic
+[init -> timer] timer2 GSI options 0xff0104, supports periodic
+[init -> timer] time wraps after 5849 years
+[init -> timer] irqs=off legacy=off
+[init -> timer] Using timer 2 -> using GSI 2 edge triggered
+[init -> acpi] Found MADT
+[init -> acpi] MADT IRQ 0 -> GSI 2 flags: 0
+[init -> acpi] MADT IRQ 5 -> GSI 5 flags: 13
+[init -> acpi] MADT IRQ 9 -> GSI 9 flags: 13
+[init -> acpi] MADT IRQ 10 -> GSI 10 flags: 13
+[init -> acpi] MADT IRQ 11 -> GSI 11 flags: 13
+[init -> acpi] Found HPET hw_id=0x1  vendor_id=0x8086 space_id=0x0 addr=0xfed00000 hpet_id=0x0
+[init -> acpi] Found MCFG
+[init -> acpi] MCFG BASE 0xb0000000 seg 0x0 bus 0x0-0xff
+[init -> acpi] RSDT OEM 'BOCHS ', table id 'BXPC    ', revision 1, creator 'BXPC' (1)
+[init -> acpi] [34mWarning: SMBIOSv3 entry point invalid[0m
+[init -> acpi] SMBIOSv2 table (entry point: 0x1b6520 structures: 0xf6540)
+[init -> pkg_seq_probe] pkg-seq-probe: [1] install hello
+[init -> sponge_pkgd] sponge_pkgd: ready
+[init -> sponge_pkgd] sponge_pkgd: binary_prefix='bin/'
+[init -> ahci] version: major=0x1 minor=0x0
+[init -> ahci] command slots: 32
+[init -> ahci] native command queuing: yes
+[init -> ahci] 64-bit support: yes
+[init -> ahci] port scan:
+[init -> ahci] 		#0: ATA
+[init -> ahci] 		#1:  off (unknown device signature)
+[init -> ahci] 		#2: off (ATAPI)
+[init -> ahci] 		#3:  off (unknown device signature)
+[init -> ahci] 		#4:  off (unknown device signature)
+[init -> ahci] 		#5:  off (unknown device signature)
+[init -> part_block] GPT Partition 1: LBA 40 (101 blocks) type: '21686148-6449-6e6f-744e-656564454649' name: 'BIOSBOOT'
+[init -> part_block] GPT Partition 2: LBA 141 (4515 blocks) type: 'c12a7328-f81f-11d2-ba4b-00a0c93ec93b' name: 'GRUB2'
+[init -> part_block] GPT Partition 3: LBA 4952 (23480 blocks) type: '0fc63daf-8483-4772-8e79-3d69d8477de4' name: 'GENODE'
+[init -> part_block] GPT Partition 4: LBA 28432 (131079 blocks) type: '0fc63daf-8483-4772-8e79-3d69d8477de4' name: 'SPONGE-DATA'
+[init -> vfs_data] rump: /genode: file system not clean; please fsck(8)
+[init -> sponge_pkgd] sponge_pkgd: persistent store enabled at /store/installed.xml
+[init -> sponge_pkgd] sponge_pkgd: restored 1 root(s) from store
+--- boot 2: store still on P4 (read back, intact) ---
+
+Test succeeded: installed set restored from SPONGE-DATA (P4) after reboot
+
+
+Run script execution successful.
+make: ディレクトリ '/home/luke/sponge-os/genode/build/x86_64' から出ます
+
+
+================================================================
+P3 PERSISTENCE — MANUAL-QA CHANNEL + ACCEPTANCE SUMMARY
+================================================================
+
+(A) sgdisk -p on the produced 4-partition image:
+--------------------------------------------------
+Disk genode/build/x86_64/var/run/sponge-persist-disk.img: 159544 sectors, 77.9 MiB
+Sector size (logical): 512 bytes
+Disk identifier (GUID): A51297F6-A788-47C1-A55F-4E503F90B2D6
+Partition table holds up to 128 entries
+Main partition table begins at sector 2 and ends at sector 33
+First usable sector is 34, last usable sector is 159510
+Partitions will be aligned on 1-sector boundaries
+Total free space is 302 sectors (151.0 KiB)
+
+Number  Start (sector)    End (sector)  Size       Code  Name
+   1              40             140   50.5 KiB    EF02  BIOSBOOT
+   2             141            4655   2.2 MiB     EF00  GRUB2
+   3            4952           28431   11.5 MiB    8300  GENODE
+   4           28432          159510   64.0 MiB    8300  SPONGE-DATA
+
+(B) Boot-2 restoration proof — pkgd log lines from boot 1 vs boot 2:
+--------------------------------------------------
+sourcing /home/luke/sponge-os/genode/tool/run/boot_dir/sel4 (missing from RUN_OPT, restored by run script)
+sourcing /home/luke/sponge-os/genode/tool/run/power_on/qemu (missing from RUN_OPT, restored by run script)
+sourcing /home/luke/sponge-os/genode/tool/run/log/qemu (missing from RUN_OPT, restored by run script)
+[init -> sponge_pkgd] sponge_pkgd: persistent store enabled at /store/installed.xml
+[init -> sponge_pkgd] sponge_pkgd: no installed-set store — starting empty
+[init -> pkg_seq_probe] pkg-seq-probe: PASS
+[init -> sponge_pkgd] sponge_pkgd: persistent store enabled at /store/installed.xml
+[init -> sponge_pkgd] sponge_pkgd: restored 1 root(s) from store
+Test succeeded: installed set restored from SPONGE-DATA (P4) after reboot
+
+(C) Host-side e2cp readback of /store/installed.xml from the IMAGE FILE
+    (bytes read off P4 via dd + e2cp, independent of guest logs):
+--------------------------------------------------
+P4 sectors: 28432..159510 (131079 sectors, offset 14557184 bytes)
+e2ls /store: installed.xml
+e2cp /store/installed.xml -> <sponge-installed version="1"><root name="hello"/></sponge-installed>
+
+(D) Acceptance criteria status:
+  (1) sgdisk -p shows 4 partitions, P4=SPONGE-DATA .......... PASS (see A)
+  (2) two-boot persistence: boot 2 restored + host readback . PASS (see B + C)
+  (3) P4 creation idempotent (sgdisk -p stable across re-runs) PASS
+  (4) failure channel (RO P4 -> honest bounded error) ....... PASS (p3-failure-channel.log)
+  (5) evidence at docs/evidence/p3-persistence.log .......... PASS (this file)
+
+(E) Naming note: docs/14 §6 calls the store 'SPONGE-DATA:/store/pkgd.xml'
+    (planning name). docs/12 §13 + the implementation use
+    '/store/installed.xml' (STORE_PATH in sponge_pkgd/main.cc).
+    The task's 'read back /store/pkgd.xml' is satisfied by reading the
+    actual file /store/installed.xml that sponge_pkgd writes.
+
+(F) Flag note: the task/docs say 'sgdisk -l' but in gptfdisk -l is
+    --load-backup=file; the partition-listing flag is -p/--print.
+    This scenario and tool/mkdata use sgdisk -p (correct).
+
+(G) sponge_configd has NO persistent store (its README: 'in-memory
+    only'). Per the task this is P5 scope, not built here. Only
+    sponge_pkgd's store (docs/12 §13) is wired to vfs_data in P3.
