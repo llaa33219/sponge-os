@@ -370,6 +370,7 @@ config
 + parent-provides
   + service ROM
   + service PD
+  + service RM
   + service CPU
   + service LOG
   + service Timer

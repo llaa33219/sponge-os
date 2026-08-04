@@ -1173,6 +1173,18 @@ void Sponge::Pkgd::Main::_generate_runtime_config()
 		g.node("parent-provides", [&] {
 			g.node("service", [&] { g.attribute("name", "ROM"); });
 			g.node("service", [&] { g.attribute("name", "PD"); });
+			/*
+			 * RM is a distinct core service (base/src/core/main.cc
+			 * Core_service<Rm_session_component>), NOT subsumed by PD.
+			 * Without it in parent-provides, a package child that
+			 * constructs an Rm_connection (e.g. falkon/WebEngine for
+			 * mmap / qtwebengine_shm) is stopped with
+			 * "no route to service RM" (sandbox/route_model.h:272).
+			 * PD only hands out the component's own address_space/
+			 * stack_area/linker_area region maps; additional region
+			 * maps require a separate RM session routed to core.
+			 */
+			g.node("service", [&] { g.attribute("name", "RM"); });
 			g.node("service", [&] { g.attribute("name", "CPU"); });
 			g.node("service", [&] { g.attribute("name", "LOG"); });
 			g.node("service", [&] { g.attribute("name", "Timer"); });
