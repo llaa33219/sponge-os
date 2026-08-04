@@ -102,8 +102,16 @@ Pt const PANEL_PT { 512, 14  };
  * ~288px below the window top, i.e. screen (512,460). The point stays
  * inside the demo window so the press reaches sponge-de regardless of
  * which child widget happens to sit under the cursor.
+ *
+ * OBSERVE_PT is the click target the host should drive in observe mode
+ * (inject=no): the demo-domain center (512,412), so the press lands on
+ * the demo window body — anywhere inside the window reaches sponge-de's
+ * input report regardless of which child widget is under the cursor.
+ * This is the point emitted as `QMP-TARGET click 512 412` for the host
+ * run script to pick up via bounded expect on the QEMU serial.
  */
 Pt const CLICK_PT { 512, 460 };
+Pt const OBSERVE_PT { DEMO_X + DEMO_W/2, DEMO_Y + DEMO_H/2 }; /* (512,412) */
 
 /* Allow a few bits of slack when comparing solid colors (blending at
  * view edges can shift a channel by a couple of units). */
@@ -187,10 +195,18 @@ struct Sponge_de_probe
 		 * The base-sel4 interactive scenario passes a larger value via
 		 * <config render_iters="..."/> because Qt6 first paint under
 		 * the software (softpipe) Mesa is markedly slower on seL4.
+		 *
+		 * Config is read via the Genode::Node API (Genode 26.05),
+		 * which transparently accepts both XML and HID-format config
+		 * deliveries. The sandbox's inline-config ROM service emits
+		 * HID by default since the format became the framework
+		 * default; using the older _config.xml() accessor here would
+		 * return <empty/> on HID input and silently fall back to the
+		 * default (the W0 unexpected-green root cause).
 		 */
 		unsigned const render_iters =
 			(!_config.valid()) ? 600 :
-			_config.xml().attribute_value("render_iters", 600u);
+			_config.node().attribute_value("render_iters", 600u);
 		bool rendered = false;
 		for (unsigned i = 0; i < render_iters; ++i) {
 			_timer.msleep(100);
@@ -236,7 +252,7 @@ struct Sponge_de_probe
 		 * is unchanged.
 		 */
 		bool const inject = (!_config.valid()) ||
-		                    _config.xml().attribute_value("inject", true);
+		                    _config.node().attribute_value("inject", true);
 
 		unsigned const INJECT_WATCH_ITERS = 200;  /* ~20s after self-inject */
 		unsigned const OBSERVE_WATCH_ITERS = 900; /* ~90s for host injection */
@@ -255,6 +271,18 @@ struct Sponge_de_probe
 			Genode::log("sponge-de-probe: observe mode (inject=no) -- "
 			            "awaiting external click via the real input "
 			            "driver path (usb-tablet/ps2 -> event_filter)");
+			/*
+			 * Emit the QMP-TARGET marker so the host run script can
+			 * dispatch a real QMP input-send-event click at the demo
+			 * window center. The bounded expect on the QEMU serial
+			 * (run/qmp.inc::qmp_exec_target) catches this line and
+			 * forwards the click through the usb-tablet absolute
+			 * pointer → usb_hid → event_filter → nitpicker →
+			 * sponge-de. Target is OBSERVE_PT (demo-domain center
+			 * 512,412) — anywhere inside the demo window reaches
+			 * sponge-de's input report.
+			 */
+			Genode::log("QMP-TARGET click ", OBSERVE_PT.x, " ", OBSERVE_PT.y);
 		}
 
 		bool delivered = false;
@@ -270,7 +298,13 @@ struct Sponge_de_probe
 			 */
 			if (_input_rom.valid() && _input_rom.xml().has_attribute("press")) {
 				delivered = true;
-				Genode::log("sponge-de-probe: input report confirms press");
+				/*
+				 * Log the observed press coordinates for host-side
+				 * calibration of QMP absolute-axis scaling. sponge-de's
+				 * input report carries ax/ay in the press attribute.
+				 */
+				Genode::log("sponge-de-probe: input report confirms press",
+				            " press=", _input_rom.xml().attribute_value("press", Genode::String<64>{}));
 				break;
 			}
 		}
