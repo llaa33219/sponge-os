@@ -27,12 +27,24 @@
 #                          event_filter (provides Event; merges ps2+usb,
 #                                    chargen/accel; re-submits to
 #                                    nitpicker via the sub-init route)
-#   + sponge-de         (Qt6 DE; panel + themed demo window). Renders on
-#                       base-sel4 since the caps fix (header note below).
-#   + sponge_de_probe   (inject=no, render_iters=1800; proves the themed
-#                       window via Capture pixel check and the input
-#                       round-trip via a real QMP-driven usb-tablet click
-#                       dispatched from the host -> "PASS").
+#   + sponge-de         (Qt6 DE; panel + launcher popup + themed demo
+#                       window). Renders on base-sel4 since the caps fix
+#                       (header note below). Launcher backend wired to
+#                       sponge_pkgd (Phase 10 W2): reads the installed
+#                       broadcast, writes launcher_request on click,
+#                       reads launcher_result.
+#   + sponge_pkgd       (package backend; owns pkg_runtime config;
+#                       answers launcher_request via _do_launch — same
+#                       backend as vct launch)
+#   + pkg_runtime       (nested init hosting launched packages; caps 2000
+#                       / ram 256M for Qt6/Mesa softpipe on seL4)
+#   + sponge_de_probe   (inject=no, render_iters=1800,
+#                       phases=input,panel,launch; proves the themed
+#                       window via Capture pixel check, the input round-
+#                       trip via real QMP clicks, the panel S-toggle
+#                       popup open/close, and click-to-launch of
+#                       pkg_gui_demo — all over the real usb-tablet
+#                       driver path → "PASS").
 #
 # AUTOMATED VERIFICATION (what gates "Run script execution successful"):
 #
@@ -82,11 +94,11 @@ build { core lib/ld init timer server/report_rom server/nitpicker \
          driver/acpi app/pci_decode driver/platform \
          driver/framebuffer/vesa driver/ps2 \
          driver/usb_host/pc driver/usb_hid server/event_filter \
-         sponge-de test/sponge_de_probe \
+         sponge_pkgd sponge-de test/pkg_gui_demo test/sponge_de_probe \
          qt6/base lib/libc lib/libm lib/stdcxx lib/mesa \
          lib/mesa_gpu-softpipe lib/egl lib/softpipe lib/libdrm lib/expat \
          lib/qt6_component lib/vfs lib/vfs_pipe lib/vfs_gpu lib/rom_filter \
-         lib/zlib lib/libpng }
+         lib/zlib lib/libpng lib/blit }
 
 create_boot_directory
 
@@ -111,12 +123,33 @@ config
 + start timer
   + provides | + service Timer
 
-+ start report_rom | ram: 2M
++ start report_rom | caps: 300 | ram: 8M
   + provides
     + service Report
     + service ROM
-  + config
+  + config | verbose: no
+    #
+    # Input report relay (W1 criterion 1): sponge-de -> input → probe.
+    #
     + policy | label: sponge_de_probe -> sponge_de_input | report: sponge-de -> input
+    #
+    # Launcher channel (W2 criteria 3,4): pkgd <-> sponge-de over the
+    # dedicated launcher_request / launcher_result labels (single-writer
+    # per label — the long-lived launcher cannot share vct's request
+    # label). Mirrors run/sponge-launch.run lines 91-99.
+    #
+    + policy | label: sponge_pkgd -> launcher_request  | report: sponge-de -> launcher_request
+    + policy | label: sponge-de -> launcher_result     | report: sponge_pkgd -> launcher_result
+    #
+    # pkgd's installed-set broadcast → sponge-de (populates the launcher
+    # menu).
+    #
+    + policy | label: sponge-de -> installed           | report: sponge_pkgd -> installed
+    #
+    # pkg_runtime's config ROM ← pkgd's runtime report (pkgd owns the
+    # nested init's config; every install/launch regenerates it).
+    #
+    + policy | label: pkg_runtime -> config            | report: sponge_pkgd -> runtime
 
 + start nitpicker | ram: 16M
   + provides
@@ -134,12 +167,16 @@ config
     + event
     + domain panel | layer: 1 | content: client | label: no
                    | hover: always | focus: click | ypos: 0 | height: 28
+    + domain launcher | layer: 4 | content: client | label: no
+                      | hover: always | focus: click
+                      | xpos: 0 | ypos: 28 | width: 341 | height: 480
     + domain demo | layer: 2 | content: client | label: no
                   | hover: always | focus: click
                   | xpos: 192 | ypos: 172 | width: 640 | height: 480
     + domain default | layer: 3 | content: client | label: no
                      | hover: always | focus: click | ypos: 28 | height: -28
-    + policy | label_prefix: sponge-de -> Sponge Panel | domain: panel
+    + policy | label_prefix: sponge-de -> Sponge Panel   | domain: panel
+    + policy | label_prefix: sponge-de -> Sponge Launcher | domain: launcher
     + policy | label_prefix: sponge-de -> Sponge DE Demo | domain: demo
     + default-policy | domain: default
     + background | color: #1e1e2e
@@ -292,6 +329,48 @@ config
         + service LOG                 | + parent
         + service Timer               | + parent
 
+#
+# sponge_pkgd — package backend. Owns pkg_runtime's config; answers
+# launches from BOTH the request channel (vct) and the launcher_request
+# channel (sponge-de's click-to-launch). The <launcher_request/> config
+# node enables the launcher channel (sponge_pkgd/main.cc:1610-1627);
+# _do_launch (main.cc:1104) is shared by both channels, proving
+# AGENTS.md §3.3 rule 5 (two interfaces, one backend) over the real
+# input path. No <vfs> node → no persistence session (in-memory store,
+# same as sponge-launch.run).
+#
++ start sponge_pkgd | caps: 200 | ram: 16M
+  + config
+    + launcher_request
+  + route
+    + service ROM | label_last: request           | + child report_rom
+    + service ROM | label_last: launcher_request   | + child report_rom
+    + service Report                       | + child report_rom
+    + any-service
+      + parent
+      + any-child
+
+#
+# pkg_runtime — nested init hosting launched packages. Its config is
+# regenerated by pkgd (relayed via report_rom "runtime" → "config").
+# caps: 2000 / ram: 256M: Qt6 GUI child on seL4 needs the §11.1 cap
+# headroom (base-sel4's 3x cap accounting); pkgd's generator already
+# emits the 1000-cap GUI floor per-package. Gui routes to nitpicker
+# directly (no wm in this scenario — the plan's topology decision);
+# launched GUI packages resolve via any-service → parent → nitpicker,
+# landing in the default domain.
+#
++ start pkg_runtime | caps: 2000 | ram: 256M
+  + binary init
+  + route
+    + service ROM | label: config                 | + child report_rom
+    + service ROM | label_last: mesa_gpu.lib.so   | + parent | label: mesa_gpu-softpipe.lib.so
+    + service Gui                                 | + child nitpicker
+    + service Report                              | + child report_rom
+    + any-service
+      + parent
+      + any-child
+
 # caps: 1000 (not the base-linux 300): base-sel4's capability accounting
 # is roughly 3x base-linux's; 300 caps run out inside Mesa's EGL screen
 # creation and the component hangs *silently* (see the header note).
@@ -309,6 +388,7 @@ config
 # root cause; see docs/evidence/task-0-phase10-interactive.log.)
 + start sponge-de | caps: 1000 | ram: 128M
   + config
+    + launcher | source: pkgd
     + vfs
       + dir dev
         + log
@@ -318,17 +398,23 @@ config
       + tar qt6_libqgenode.tar
     + libc | stdout: /dev/log | stderr: /dev/log | pipe: /pipe | rtc: /dev/rtc
   + route
-    + service Gui | + child nitpicker
-    + service Report | label: shape | + child report_rom
-    + service Report | label: input | + child report_rom
-    + service ROM | label: default.theme | + parent
+    + service Gui | label_last: Sponge Panel   | + child nitpicker
+    + service Gui | label_last: Sponge Launcher | + child nitpicker
+    + service Gui                              | + child nitpicker
+    + service Report | label: shape  | + child report_rom
+    + service Report | label: input  | + child report_rom
+    + service Report | label: launcher          | + child report_rom
+    + service Report | label: launcher_request  | + child report_rom
+    + service ROM | label: installed            | + child report_rom
+    + service ROM | label: launcher_result      | + child report_rom
+    + service ROM | label: default.theme        | + parent
     + service ROM | label: mesa_gpu.lib.so | + parent | label: mesa_gpu-softpipe.lib.so
     + any-service
       + parent
       + any-child
 
 + start sponge_de_probe | caps: 100 | ram: 16M
-  + config | inject: no | render_iters: 1800
+  + config | inject: no | render_iters: 1800 | phases: input,panel,launch
   + route
     + service Capture | + child nitpicker
     + service Event   | + child nitpicker
@@ -402,6 +488,28 @@ exec cp -f "${genode_dir}/repos/sponge/src/sponge-de/themes/default.theme" \
            "bin/default.theme"
 
 #
+# Stage package metadata + the derived index so sponge_pkgd can resolve
+# pkg_gui_demo (the click-to-launch target). Same scheme as
+# run/sponge-launch.run lines 198-213.
+#
+set staged_pkgs { pkg_gui_demo }
+foreach pkg $staged_pkgs {
+	set src "${genode_dir}/../pkg/$pkg/metadata.xml"
+	if {![file exists $src]} {
+		error "package metadata not found: $src"
+	}
+	exec cp -L $src "bin/pkg_$pkg.xml"
+}
+
+set index_fh [open "bin/pkg_index.xml" w]
+puts $index_fh "<packages>"
+foreach pkg $staged_pkgs {
+	puts $index_fh "  <pkg name=\"$pkg\"/>"
+}
+puts $index_fh "</packages>"
+close $index_fh
+
+#
 # Full boot module list. The Qt6 shared libs + qt6_libqgenode.tar are
 # cmake-built and already symlinked into bin/ by the qt6/base target, so
 # they are not in [build_artifacts] and must be listed explicitly
@@ -413,7 +521,8 @@ foreach m { libQt6Core.lib.so libQt6Gui.lib.so libQt6Widgets.lib.so \
             libqgenode.lib.so qt6_libqgenode.tar qt6_dejavusans.tar \
             en_us.chargen special.chargen \
             drivers.config fb.config event_filter.config \
-            default.theme } {
+            default.theme \
+            pkg_pkg_gui_demo.xml pkg_index.xml } {
 	lappend boot_modules $m
 }
 
@@ -421,9 +530,12 @@ build_boot_image $boot_modules
 
 #
 # QEMU: base-sel4 needs >= 1 GiB guest RAM (seL4 SKIM window + kernel
-# structures; see docs/11-environment.md §7.2). -nographic keeps it
-# headless (serial only). The nec-usb-xhci + usb-tablet give an absolute
-# pointer that usb_hid binds, matching the roadmap requirement.
+# structures; see docs/11-environment.md §7.2). Bumped to 2G for the
+# pkg_runtime nested init (256M) hosting a second Qt6/Mesa softpipe
+# renderer (pkg_gui_demo) — same budget as run/sponge-alpha.run and
+# run/sponge-launch.run. -nographic keeps it headless (serial only).
+# The nec-usb-xhci + usb-tablet give an absolute pointer that usb_hid
+# binds, matching the roadmap requirement.
 #
 # QMP control socket (`-qmp tcp:...,server=on,wait=off`): lets the run
 # script drive host-side input events (`input-send-event`, `send-key`)
@@ -444,7 +556,7 @@ build_boot_image $boot_modules
 #
 source [file join [file dirname [file normalize [info script]]] qmp.inc]
 
-append qemu_args " -nographic -m 1G "
+append qemu_args " -vnc unix:/tmp/vnc-de-sel4.sock -m 2G "
 append qemu_args " -device nec-usb-xhci,id=xhci -device usb-tablet "
 
 #
@@ -454,8 +566,8 @@ append qemu_args " -device nec-usb-xhci,id=xhci -device usb-tablet "
 # This scenario proves the part that roadmap item actually asks for —
 # the REAL driver set (vesa_fb, ps2, usb_hid, event_filter, platform,
 # acpi, pci_decode, pc_usb_host) booting and binding hardware on
-# base-sel4, including the usb-tablet absolute pointer — AND that a
-# real QMP-driven click traverses the full hardware input chain
+# base-sel4, including the usb-tablet absolute pointer — AND that real
+# QMP-driven clicks traverse the full hardware input chain
 # (QMP input-send-event → usb-tablet → pc_usb_host → usb_hid →
 # event_filter → nitpicker → sponge-de) end-to-end. Three explicit
 # gates:
@@ -468,40 +580,53 @@ append qemu_args " -device nec-usb-xhci,id=xhci -device usb-tablet "
 #       POINTER device. This is the last driver to come up, so reaching
 #       this marker also implies acpi -> pci_decode -> platform ->
 #       pc_usb_host (xHCI) all came up before it.
-#   (3) HOST-DRIVEN CLICK: after gates 1-2, sponge_de_probe (inject=no)
-#       runs its render-poll, confirms the themed window via Capture
-#       pixel check, switches to observe mode, and emits
-#       `QMP-TARGET click 512 412` on the serial console. The run
-#       script's bounded expect on the QEMU serial catches that marker
-#       and dispatches a real QMP input-send-event usb-tablet click at
-#       the demo window center. The press propagates through the live
-#       driver chain into sponge-de's "input" report, which the probe
-#       confirms and logs `sponge-de-probe: PASS`. A failure of any
-#       link in the chain (driver bind, event_filter rewrite, nitpicker
-#       pointer routing, sponge-de widget hit) fails this scenario
-#       instead of hanging silently — every wait below is bounded.
+#   (3) HOST-DRIVEN MULTI-PHASE CLICKS: after gates 1-2, sponge_de_probe
+#       (inject=no, phases=input,panel,launch) emits QMP-TARGET click
+#       markers on the serial console. The run script dispatches each
+#       marker as a real QMP usb-tablet click:
+#         input  — demo-center click → sponge-de input report confirms
+#                  press (criterion 1, Phase 10 W1).
+#         panel  — S-toggle click opens launcher popup (Capture non-bg
+#                  fraction rises); demo-body click closes it via focus-
+#                  out (criterion 4, Phase 10 W2).
+#         launch — S-toggle click opens popup; first-entry click drives
+#                  the full click-to-launch chain (Qt click →
+#                  LauncherController → launcher_request → pkgd
+#                  _do_launch → pkg_runtime → pkg_gui_demo green #00ff00
+#                  first paint; criterion 3, Phase 10 W2).
+#       Every wait is bounded — fail loud, never hang.
 #
 run_genode_until {.*\[init -> drivers -> fb\] using 1024x768.*} 90
 run_genode_until {.*Connected device.*QEMU QEMU USB Tablet.*POINTER.*} 90
 
 #
-# Gate 3 (host-driven QMP click). The Genode run tool respawns QEMU per
-# run_genode_until call (power_cycle kills the prior QEMU), so we add
-# the QMP socket arg to qemu_args ONLY here — gates 1 and 2 ran with a
-# plain QEMU. qmp_pick_port returns a kernel-assigned ephemeral port
-# (via `socket -server ... 0`) which is fresh per scenario invocation,
-# dodging TIME_WAIT collisions.
+# Gate 3 (host-driven QMP multi-phase click choreography). The Genode
+# run tool respawns QEMU per run_genode_until call (power_cycle kills
+# the prior QEMU), so we add the QMP socket arg to qemu_args ONLY here
+# — gates 1 and 2 ran with a plain QEMU. qmp_pick_port returns a
+# kernel-assigned ephemeral port (via `socket -server ... 0`) which is
+# fresh per scenario invocation, dodging TIME_WAIT collisions.
 #
-# Choreography within QEMU3 (single boot, single spawn):
-#   (a) match "observe mode" — gate 3's probe has finished its render
-#       poll and entered observe mode; the next serial line is the
-#       QMP-TARGET marker.
-#   (b) connect QMP — QEMU3 is alive, its QMP socket is up.
-#   (c) qmp_exec_target — bounded expect (60s) for the QMP-TARGET
-#       marker on the SAME qemu_spawn_id, then dispatches the QMP
-#       usb-tablet click at the demo window center.
-#   (d) run_genode_until (running_spawn_id=$qemu_spawn_id) — waits for
-#       sponge-de-probe: PASS on the existing QEMU3, no respawn.
+# Single QEMU boot, single spawn. The probe runs an ordered phase list
+# (input, panel, launch), each emitting a QMP-TARGET click marker on
+# the serial console. The host dispatches each marker via
+# qmp_exec_target (bounded expect on qemu_spawn_id), which sends a real
+# QMP input-send-event usb-tablet click. Between markers the probe
+# polls capture + the input ROM for the effect (popup open/close, green
+# pixel, press report) — every poll is bounded, fail loud on timeout.
+#
+#   (a) match "observe mode" — probe finished render poll, entering phases.
+#   (b) qmp_connect — QEMU is alive, its QMP socket is up.
+#   (c) phase input:  qmp_exec_target → demo-center click → wait for
+#       "phase input PASS" (input report confirms press).
+#   (d) phase panel:  qmp_exec_target → S-toggle click (open popup);
+#                     qmp_exec_target → demo-body click (close via focus-
+#                     out); wait for "phase panel PASS".
+#   (e) phase launch: qmp_exec_target → S-toggle click (open popup);
+#                     qmp_exec_target → first-entry click (launch);
+#                     wait for pkg_gui_demo "window shown" marker
+#                     (independent corroboration the launch chain ran);
+#                     wait for "sponge-de-probe: PASS" (green pixel).
 #
 set qmp_port [qmp_pick_port]
 append qemu_args " -qmp tcp:127.0.0.1:${qmp_port},server=on,wait=off "
@@ -509,9 +634,35 @@ append qemu_args " -qmp tcp:127.0.0.1:${qmp_port},server=on,wait=off "
 run_genode_until {.*sponge-de-probe: observe mode.*} 300
 
 set qmp_chan [qmp_connect $qmp_port]
-qmp_exec_target $qmp_chan 60
 global qemu_spawn_id
-run_genode_until {.*sponge-de-probe: PASS.*} 120 $qemu_spawn_id
+
+# Phase input: click demo center → input report confirms press.
+qmp_exec_target $qmp_chan 120
+run_genode_until {.*sponge-de-probe: phase input PASS.*} 120 $qemu_spawn_id
+
+# Phase panel: click S (open) → click demo body (close via focus-out).
+qmp_exec_target $qmp_chan 120
+qmp_exec_target $qmp_chan 120
+run_genode_until {.*sponge-de-probe: phase panel PASS.*} 120 $qemu_spawn_id
+
+# Phase launch: click S (open) → click first entry (launch pkg_gui_demo).
+qmp_exec_target $qmp_chan 120
+qmp_exec_target $qmp_chan 120
+
+#
+# Independent corroboration (misleading_success_output defense): wait
+# for pkg_gui_demo's "window shown" boot marker on the serial log
+# before waiting for the probe's PASS. The marker can only appear if
+# the launched <start> node actually booted the component.
+#
+run_genode_until {.*pkg_gui_demo: window shown.*} 300 $qemu_spawn_id
+
+#
+# Final gate: the probe's green-pixel check confirms pkg_gui_demo's
+# #00ff00 first paint — the full click-to-launch chain ran end-to-end.
+# Generous timeout: Qt6/Mesa softpipe first paint on seL4 is slow.
+#
+run_genode_until {.*sponge-de-probe: PASS.*} 600 $qemu_spawn_id
 qmp_disconnect $qmp_chan
 
 #

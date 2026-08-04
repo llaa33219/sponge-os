@@ -1,0 +1,54 @@
+=== Phase 10 W2 — task-2-phase10-interactive.log ===
+=== Curated from multiple run attempts (w2-run2 through w2-run12) ===
+=== Raw logs: /tmp/w2-run*.log ===
+
+============================================================
+RUN 2 (-display none, QMP_Y_DRIFT=0, no truncation fix yet)
+============================================================
+--- Gate 1: display ---
+[init -> drivers -> fb] using 1024x768 (1024x768)
+--- Gate 2: usb_hid ---
+[init -> drivers -> usb_hid] Connected device: input0 (QEMU QEMU USB Tablet at usb-usbbus-0/input0) POINTERspawn qemu-system-x86_64 -display none -m 2G -device nec-usb-xhci,id=xhci -device usb-tablet -qmp tcp:127.0.0.1:30471,server=on,wait=off -serial mon:stdio -cdrom var/run/sponge-de-sel4-interactive.iso -machine q35 -cpu Skylake-Client -net nic,model=e1000,netdev=net0 -netdev user,id=net0
+--- Phase input ---
+[init -> sponge_de_probe] QMP-TARGET click 512 412
+qmp: dispatching click at guest (512,412)
+[init -> sponge_de_probe] sponge-de-probe: input report confirms press press=319,211
+[init -> sponge_de_probe] sponge-de-probe: phase input PASS
+qmp: dispatching click at guest (32,1)
+--- Phase panel (truncated coordinates!) ---
+[init -> sponge_de_probe] QMP-TARGET click 32 1
+qmp: dispatching click at guest (32,1)
+--- Result ---
+[init -> sponge_de_probe] [31mError: sponge-de-probe: FAIL popup did not appear (fraction stayed below threshold)[0m
+
+============================================================
+RUN 3 (-display none, QMP_Y_DRIFT=0, WITH \D truncation fix)
+============================================================
+--- Phase input PASS ---
+[init -> sponge_de_probe] sponge-de-probe: input report confirms press press=319,211
+[init -> sponge_de_probe] sponge-de-probe: phase input PASS
+--- Phase panel: click dispatched correctly ---
+[init -> sponge_de_probe] QMP-TARGET click 32 14
+qmp: dispatching click at guest (32,14)
+--- Panel poll (frac=0 throughout) ---
+[init -> sponge_de_probe] sponge-de-probe: panel open poll 0 frac_per_mille=0
+[init -> sponge_de_probe] sponge-de-probe: panel open poll 5 frac_per_mille=0
+[init -> sponge_de_probe] sponge-de-probe: panel open poll 10 frac_per_mille=0
+--- No sponge-de activity during panel phase ---
+(confirmed: grep for sponge-de between dispatch and FAIL returns no widget lines)
+--- Result ---
+[init -> sponge_de_probe] [31mError: sponge-de-probe: FAIL popup did not appear (fraction stayed below threshold)[0m
+
+============================================================
+KEY DIAGNOSTIC: query-mice (standalone QEMU 11.0.2)
+============================================================
+{"return": [
+  {"index": 3, "name": "QEMU HID Tablet", "current": false, "absolute": true},
+  {"index": 2, "name": "QEMU PS/2 Mouse", "current": true, "absolute": false}
+]}
+
+============================================================
+CONCLUSION: usb-tablet abs-axis broken under headless QEMU
+ALL abs events land at (511,383) regardless of abs values
+Fix: -vnc unix:/tmp/vnc-de-sel4.sock (VNC console for tablet)
+============================================================
