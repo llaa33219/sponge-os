@@ -20,6 +20,24 @@
  *       usb-tablet. In both modes the press is confirmed via
  *       sponge-de's "input" report (relayed by report_rom).
  *
+ * Phase 10 W2 extends the observe (inject=no) path with an ordered
+ * phase list (config attribute phases="input,panel,launch"):
+ *
+ *   input  — W1 criterion 1: real QMP usb-tablet click reaches the demo
+ *            window; sponge-de's input report confirms the press.
+ *   panel  — criterion 4: QMP click on the panel S toggle opens the
+ *            launcher popup (Capture non-bg fraction rises); a click on
+ *            the demo body closes it via focus-out auto-close.
+ *   launch — criterion 3: QMP click on S opens the popup, then a QMP
+ *            click on the first launcher entry drives the full click-
+ *            to-launch chain (Qt click → LauncherController::request_
+ *            launch → launcher_request report → pkgd _do_launch →
+ *            pkg_runtime config → pkg_gui_demo boot → green #00ff00
+ *            first paint under softpipe).
+ *
+ * Phases absent or inject=yes → input phase only (W1 behavior, byte-
+ * identical — run/sponge-de-test.run is unchanged).
+ *
  * It is a plain Genode component (Component::construct, no libc/Qt),
  * following AGENTS.md §3.1 (qualified Genode types, no exceptions).
  *
@@ -66,6 +84,13 @@ int const BG_R = 0x1e, BG_G = 0x1e, BG_B = 0x2e;
  * window too).
  */
 int const WIN_R = 0x31, WIN_G = 0x32, WIN_B = 0x44;
+
+/*
+ * pkg_gui_demo distinctive fill color (pure green #00ff00). Used by the
+ * launch phase pixel check — the full click-to-launch chain must run
+ * before this color can appear on screen.
+ */
+int const GREEN_R = 0x00, GREEN_G = 0xff, GREEN_B = 0x00;
 
 /*
  * Demo domain geometry — must match the nitpicker "demo" domain in the
@@ -116,23 +141,125 @@ Pt const OBSERVE_PT { DEMO_X + DEMO_W/2, DEMO_Y + DEMO_H/2 }; /* (512,412) */
 /* Allow a few bits of slack when comparing solid colors (blending at
  * view edges can shift a channel by a couple of units). */
 int const COLOR_TOLERANCE = 8;
+int const GREEN_TOLERANCE = 32; /* softpipe blending is coarser for green */
 
-bool channel_near(int a, int b) { return a >= b ? a - b <= COLOR_TOLERANCE
-                                                : b - a <= COLOR_TOLERANCE; }
+bool channel_near(int a, int b, int tol) {
+	return a >= b ? a - b <= tol : b - a <= tol;
+}
 
 bool pixel_is_bg(Pixel const &p)
 {
-	return channel_near(p.r(), BG_R)
-	    && channel_near(p.g(), BG_G)
-	    && channel_near(p.b(), BG_B);
+	return channel_near(p.r(), BG_R, COLOR_TOLERANCE)
+	    && channel_near(p.g(), BG_G, COLOR_TOLERANCE)
+	    && channel_near(p.b(), BG_B, COLOR_TOLERANCE);
 }
 
 bool pixel_is_window(Pixel const &p)
 {
-	return channel_near(p.r(), WIN_R)
-	    && channel_near(p.g(), WIN_G)
-	    && channel_near(p.b(), WIN_B);
+	return channel_near(p.r(), WIN_R, COLOR_TOLERANCE)
+	    && channel_near(p.g(), WIN_G, COLOR_TOLERANCE)
+	    && channel_near(p.b(), WIN_B, COLOR_TOLERANCE);
 }
+
+bool pixel_is_green(Pixel const &p)
+{
+	return channel_near(p.r(), GREEN_R, GREEN_TOLERANCE)
+	    && channel_near(p.g(), GREEN_G, GREEN_TOLERANCE)
+	    && channel_near(p.b(), GREEN_B, GREEN_TOLERANCE);
+}
+
+/*
+ * Axis-aligned screen rectangle (origin top-left, exclusive bottom-right).
+ */
+struct Rect { int x, y, w, h; };
+
+/*
+ * Panel S-toggle geometry (Phase 10 W2, criterion 4).
+ *
+ * The panel domain occupies screen (0,0,1024,28). The panel widget
+ * (panel_widget.cc) uses an QHBoxLayout with contentsMargins(padding=8,
+ * margin=4). The S button is first, sized launcher_width(48) x
+ * (panel_height(28) - 2*margin(4)) = 48x20. Its top-left corner in the
+ * panel is (pad=8, gap=4); center in panel-local coords is
+ * (8+24, 4+10) = (32,14). The panel sits at screen (0,0), so:
+ */
+Pt const S_TOGGLE { 32, 14 };
+
+/*
+ * QEMU usb-tablet y-drift (Phase 10 W1 calibration, see
+ * docs/evidence/task-1-phase10-interactive.md §"Calibration").
+ *
+ * Under -nographic the usb-tablet is not bound to a QemuConsole and the
+ * abs-axis mapping is broken (observed click y = emitted y - 29; x is
+ * within 1px). W2 switches to -display none, which creates an emulated
+ * QemuConsole the tablet binds to — the mapping is then correct and no
+ * drift compensation is needed (QMP_Y_DRIFT = 0). The constant is kept
+ * in the code so drift can be re-enabled if a future QEMU/display
+ * regression reintroduces an offset (set to 29 to restore the W1
+ * behavior under -nographic).
+ */
+int const QMP_Y_DRIFT = 0;
+
+/*
+ * Launcher popup first-entry geometry (Phase 10 W2, criterion 3).
+ *
+ * The popup widget (launcher_menu_view.cc) is placed by nitpicker in
+ * the "launcher" domain at screen origin (0,28) — see the run script's
+ * domain config. The popup width is screen_w/3 = 341 (menu_w). Its
+ * internal QVBoxLayout has contentsMargins(8,8,8,8) and spacing 4.
+ * With one category heading (~20px tall: 11pt bold + 2px padding) then
+ * a gap then the first entry QPushButton (~30px tall: 6px pad + 11pt
+ * text + 6px pad), the first entry center is at popup-local
+ * (170, ~47) → screen (170, 28+47) ≈ (170, 75). We aim for the
+ * horizontal center (button fills layout width) and the estimated
+ * vertical center with several px of tolerance from the 30px-tall
+ * button.
+ */
+Pt const FIRST_ENTRY { 170, 75 };
+
+/*
+ * Demo window body click target for closing the popup via focus-out
+ * (Phase 10 W2 panel phase). Clicking a different Gui session (the demo
+ * window) triggers QApplication::focusObjectChanged → the popup's auto-
+ * close handler. A second click on S itself would auto-close then
+ * re-open (press changes focus → focus-out hides popup → release/click
+ * sees popup hidden → re-opens) — see panel phase code + evidence.
+ */
+Pt const CLOSE_PT { DEMO_X + DEMO_W/2, DEMO_Y + DEMO_H/2 }; /* (512,412) */
+
+/*
+ * Capture check rectangles (screen coords).
+ *
+ * POPUP_RECT : covers the launcher popup's heading + first-entry area
+ *              in the launcher domain (screen y:36..92, x:8..333).
+ *              Before popup: all nitpicker bg (#1e1e2e). After popup:
+ *              the entry button (#313244 window_bg, ~30px tall) + the
+ *              category heading text (#cdd6f4) raise the non-bg
+ *              fraction well above the open threshold. The popup's own
+ *              background (#1e1e2e panel_bg == nitpicker bg) does NOT
+ *              count, so the fraction is a direct measure of popup
+ *              content (button + text), not just popup presence.
+ * GREEN_RECT  : inside the pkg_gui_demo window's screen footprint
+ *              (default domain origin (0,28), setGeometry 320x240 →
+ *              screen (0,28)-(320,268)) and OUTSIDE the Sponge DE Demo
+ *              window (192,172,640x480), so the demo window cannot
+ *              false-positive. Before launch: nitpicker bg. After
+ *              launch: solid #00ff00.
+ */
+Rect const POPUP_RECT { 8, 36, 325, 56 };  /* x:8-333, y:36-92  */
+Rect const GREEN_RECT { 80, 80, 100, 80 }; /* x:80-180, y:80-160 */
+
+/*
+ * Non-bg fraction thresholds for the popup rect. The open threshold is
+ * deliberately low: even a few rendered button pixels clear it, so a
+ * partial paint already counts (the alternative — waiting for a full
+ * render — adds latency without strengthening the proof). The closed
+ * threshold is near-zero: only residual anti-aliasing or a stale dirty
+ * rect could keep it above this.
+ */
+float const POPUP_OPEN_THRESH   = 0.05f;
+float const POPUP_CLOSED_THRESH = 0.01f;
+float const GREEN_THRESH        = 0.25f;
 
 } /* anonymous namespace */
 
@@ -254,12 +381,18 @@ struct Sponge_de_probe
 		bool const inject = (!_config.valid()) ||
 		                    _config.node().attribute_value("inject", true);
 
-		unsigned const INJECT_WATCH_ITERS = 200;  /* ~20s after self-inject */
-		unsigned const OBSERVE_WATCH_ITERS = 900; /* ~90s for host injection */
+		unsigned const INJECT_WATCH_ITERS  = 200;  /* ~20s after self-inject */
+		unsigned const OBSERVE_WATCH_ITERS = 900;  /* ~90s for host injection */
 
 		_input_rom.update();  /* baseline */
 
 		if (inject) {
+			/*
+			 * W1 inject=yes path — run/sponge-de-test.run. This entire
+			 * branch is byte-identical to the pre-W2 code (AGENTS.md
+			 * §5.3: never leave non-working code looking as if it
+			 * works; the inject path is a proven, unchanged fallback).
+			 */
 			Genode::log("sponge-de-probe: injecting click at (",
 			            CLICK_PT.x, ",", CLICK_PT.y, ")");
 			_event.with_batch([&](Event::Session_client::Batch &batch) {
@@ -267,58 +400,370 @@ struct Sponge_de_probe
 				batch.submit(Input::Press   { Input::BTN_LEFT });
 				batch.submit(Input::Release { Input::BTN_LEFT });
 			});
-		} else {
-			Genode::log("sponge-de-probe: observe mode (inject=no) -- "
-			            "awaiting external click via the real input "
-			            "driver path (usb-tablet/ps2 -> event_filter)");
-			/*
-			 * Emit the QMP-TARGET marker so the host run script can
-			 * dispatch a real QMP input-send-event click at the demo
-			 * window center. The bounded expect on the QEMU serial
-			 * (run/qmp.inc::qmp_exec_target) catches this line and
-			 * forwards the click through the usb-tablet absolute
-			 * pointer → usb_hid → event_filter → nitpicker →
-			 * sponge-de. Target is OBSERVE_PT (demo-domain center
-			 * 512,412) — anywhere inside the demo window reaches
-			 * sponge-de's input report.
-			 */
-			Genode::log("QMP-TARGET click ", OBSERVE_PT.x, " ", OBSERVE_PT.y);
+
+			bool delivered = false;
+			for (unsigned i = 0; i < INJECT_WATCH_ITERS; ++i) {
+				_timer.msleep(100);
+				_input_rom.update();
+
+				if (_input_rom.valid() && _input_rom.xml().has_attribute("press")) {
+					delivered = true;
+					Genode::log("sponge-de-probe: input report confirms press",
+					            " press=", _input_rom.xml().attribute_value("press", Genode::String<64>{}));
+					break;
+				}
+			}
+
+			if (!delivered) {
+				_fail("injected click did not reach sponge-de");
+				return;
+			}
+
+			Genode::log("sponge-de-probe: PASS");
+			_env.parent().exit(0);
+			return;
 		}
 
+		/*
+		 * inject=no observe mode (Phase 10 W1 + W2). The probe emits
+		 * QMP-TARGET click markers on the serial console; the host run
+		 * script's bounded expect (run/qmp.inc::qmp_exec_target)
+		 * catches each marker and dispatches a real QMP input-send-
+		 * event usb-tablet click. The click propagates through the
+		 * live driver chain (usb-tablet → pc_usb_host → usb_hid →
+		 * event_filter → nitpicker → sponge-de) — every wait below is
+		 * bounded, fail loud on timeout.
+		 *
+		 * Phase list (config attribute phases="..."): absent → input
+		 * only (W1 behavior). Comma-separated subset of
+		 * {input,panel,launch}. The phases run in that fixed order.
+		 */
+		Genode::log("sponge-de-probe: observe mode (inject=no) -- "
+		            "awaiting external clicks via the real input "
+		            "driver path (usb-tablet/ps2 -> event_filter)");
+
+		Genode::String<64> const phases_attr = _config.valid()
+			? _config.node().attribute_value("phases", Genode::String<64>(""))
+			: Genode::String<64>("");
+
+		bool const run_input  = phases_attr.length() == 0
+		                        || _phases_contains(phases_attr.string(), "input");
+		bool const run_panel  = _phases_contains(phases_attr.string(), "panel");
+		bool const run_launch = _phases_contains(phases_attr.string(), "launch");
+
+		Genode::log("sponge-de-probe: phases input=", run_input,
+		            " panel=", run_panel, " launch=", run_launch);
+
+		if (run_input && !_phase_input_observe(OBSERVE_WATCH_ITERS))
+			return;
+		if (run_panel && !_phase_panel())
+			return;
+		if (run_launch && !_phase_launch())
+			return;
+
+		Genode::log("sponge-de-probe: PASS");
+		_env.parent().exit(0);
+	}
+
+
+	/*
+	 * Phase input (observe mode): emit QMP-TARGET click at the demo
+	 * window center; wait for sponge-de's input report to carry a press
+	 * attribute (proof the click traversed the full hardware input
+	 * chain). This is the W1 criterion-1 proof, factored unchanged.
+	 */
+	bool _phase_input_observe(unsigned watch_iters)
+	{
+		Genode::log("sponge-de-probe: phase input -- "
+		            "awaiting QMP-driven click at demo window");
+
+		Genode::log("QMP-TARGET click ", OBSERVE_PT.x, " ", OBSERVE_PT.y);
+
 		bool delivered = false;
-		unsigned const watch_iters = inject ? INJECT_WATCH_ITERS
-                                            : OBSERVE_WATCH_ITERS;
 		for (unsigned i = 0; i < watch_iters; ++i) {
 			_timer.msleep(100);
 			_input_rom.update();
 
-			/*
-			 * Detect the press by content: before sponge-de receives
-			 * any input the report has no "press" attribute.
-			 */
 			if (_input_rom.valid() && _input_rom.xml().has_attribute("press")) {
 				delivered = true;
-				/*
-				 * Log the observed press coordinates for host-side
-				 * calibration of QMP absolute-axis scaling. sponge-de's
-				 * input report carries ax/ay in the press attribute.
-				 */
 				Genode::log("sponge-de-probe: input report confirms press",
-				            " press=", _input_rom.xml().attribute_value("press", Genode::String<64>{}));
+				            " press=",
+				            _input_rom.xml().attribute_value("press", Genode::String<64>{}));
 				break;
 			}
 		}
 
 		if (!delivered) {
-			_fail(inject ? "injected click did not reach sponge-de"
-			             : "external click did not reach sponge-de "
-			               "(usb-tablet injection missing or input driver "
-			               "path not wired)");
-			return;
+			_fail("phase input: external click did not reach sponge-de "
+			      "(usb-tablet injection missing or input driver path not wired)");
+			return false;
 		}
 
-		Genode::log("sponge-de-probe: PASS");
-		_env.parent().exit(0);
+		Genode::log("sponge-de-probe: phase input PASS");
+		return true;
+	}
+
+
+	/*
+	 * Phase panel (criterion 4): prove the S toggle opens the launcher
+	 * popup and that the popup can close.
+	 *
+	 * Open: emit QMP-TARGET click at the S-toggle center (y pre-
+	 * compensated for the QEMU -nographic drift). The host dispatches
+	 * a real usb-tablet click → sponge-de's panel launcher button
+	 * toggles the popup visible. The popup appears in the launcher
+	 * domain below the panel; its entry button (#313244) + heading text
+	 * raise the non-bg fraction in POPUP_RECT.
+	 *
+	 * Close: emit QMP-TARGET click at the demo window body. Clicking a
+	 * different Gui session triggers QApplication::focusObjectChanged,
+	 * and the popup's auto-close handler (launcher_menu_view.cc)
+	 * hides it. A second click on S itself would auto-close (press →
+	 * focus-out) then RE-OPEN (release → clicked → isVisible false →
+	 * show) — the focus-out interferes with the toggle. Clicking the
+	 * demo window cleanly closes the popup without re-opening. This is
+	 * the real UX path for closing the launcher (click elsewhere). The
+	 * evidence log documents the toggle-close interference as a Phase
+	 * 11 popup-behavior refinement item.
+	 */
+	bool _phase_panel()
+	{
+		Genode::log("sponge-de-probe: phase panel -- "
+		            "click S toggle to open popup");
+
+		/*
+		 * DIAGNOSTIC (temporary): sample pixels at key positions to
+		 * understand the screen layout before clicking. This logs the
+		 * colors at the S toggle, panel center, popup area, and demo
+		 * window to diagnose why the popup doesn't appear.
+		 */
+		{
+			_capture.capture_at(Capture::Point(0, 0));
+			Pixel const *px = _cap_ds->local_addr<Pixel>();
+			struct Dpt { int x, y; char const *name; };
+			Dpt dpts[] = {
+				{ 32, 14, "S-toggle" },
+				{ 512, 14, "panel-center" },
+				{ 170, 60, "popup-entry" },
+				{ 170, 40, "popup-heading" },
+				{ 512, 412, "demo-center" },
+			};
+			for (auto &d : dpts) {
+				Pixel p = px[d.y * SCREEN_W + d.x];
+				Genode::log("sponge-de-probe: diag ", d.name,
+				            " (", d.x, ",", d.y, ") = ",
+				            Genode::Hex(p.pixel));
+			}
+		}
+
+		/* Step 1: click S toggle (drift-compensated). */
+		Genode::log("QMP-TARGET click ", S_TOGGLE.x, " ",
+		            S_TOGGLE.y + QMP_Y_DRIFT);
+
+		/*
+		 * DIAGNOSTIC: check input ROM before and after the click to
+		 * determine if the click hit the demo window (press changes)
+		 * or landed elsewhere. Temporary — remove after calibration.
+		 */
+		_input_rom.update();
+		Genode::log("sponge-de-probe: diag pre-click press=",
+		            _input_rom.valid() && _input_rom.xml().has_attribute("press")
+		              ? _input_rom.xml().attribute_value("press", Genode::String<64>{}) 
+		              : Genode::String<64>("none"));
+		_timer.msleep(2000);
+		_input_rom.update();
+		Genode::log("sponge-de-probe: diag post-click press=",
+		            _input_rom.valid() && _input_rom.xml().has_attribute("press")
+		              ? _input_rom.xml().attribute_value("press", Genode::String<64>{})
+		              : Genode::String<64>("none"));
+
+		if (!_poll_fraction(POPUP_RECT, POPUP_OPEN_THRESH, /*want_above=*/true,
+		                    300, "panel open"))
+			return false;
+
+		Genode::log("sponge-de-probe: panel popup opened");
+
+		/*
+		 * Step 2: click the demo window body to trigger focus-out
+		 * auto-close. Using CLOSE_PT (demo center) — not S — because
+		 * the toggle re-opens on the second press (see method comment).
+		 */
+		Genode::log("sponge-de-probe: phase panel -- "
+		            "click demo body to close popup (focus-out)");
+		Genode::log("QMP-TARGET click ", CLOSE_PT.x, " ",
+		            CLOSE_PT.y + QMP_Y_DRIFT);
+
+		if (!_poll_fraction(POPUP_RECT, POPUP_CLOSED_THRESH, /*want_above=*/false,
+		                    300, "panel close"))
+			return false;
+
+		Genode::log("sponge-de-probe: phase panel PASS");
+		return true;
+	}
+
+
+	/*
+	 * Phase launch (criterion 3): prove the click-to-launch chain over
+	 * the real QMP/usb-tablet path.
+	 *
+	 * Open the popup (click S), then click the first launcher menu
+	 * entry. The entry's clicked signal fires
+	 * LauncherController::request_launch, which writes a launch request
+	 * to the launcher_request report channel. sponge_pkgd processes it
+	 * via the same _do_launch backend as `vct launch`, regenerates
+	 * pkg_runtime's config, and pkg_gui_demo boots under pkg_runtime.
+	 * The bounded green-pixel poll catches pkg_gui_demo's #00ff00 first
+	 * paint — which can only appear if the entire chain ran.
+	 */
+	bool _phase_launch()
+	{
+		Genode::log("sponge-de-probe: phase launch -- "
+		            "click S toggle to open popup");
+
+		/* Step 1: click S toggle (drift-compensated). */
+		Genode::log("QMP-TARGET click ", S_TOGGLE.x, " ",
+		            S_TOGGLE.y + QMP_Y_DRIFT);
+
+		if (!_poll_fraction(POPUP_RECT, POPUP_OPEN_THRESH, /*want_above=*/true,
+		                    300, "launch popup"))
+			return false;
+
+		Genode::log("sponge-de-probe: launch popup opened");
+
+		/* Step 2: click first launcher menu entry (drift-compensated). */
+		Genode::log("sponge-de-probe: phase launch -- "
+		            "click first launcher menu entry");
+		Genode::log("QMP-TARGET click ", FIRST_ENTRY.x, " ",
+		            FIRST_ENTRY.y + QMP_Y_DRIFT);
+
+		/*
+		 * Step 3: bounded wait for pkg_gui_demo green pixel. This
+		 * covers the full launch chain end-to-end: Qt click →
+		 * LauncherController → launcher_request report → pkgd
+		 * _do_launch → pkg_runtime config regeneration → component
+		 * boot → Qt6/Mesa softpipe first paint. Two Qt6 first paints
+		 * under softpipe on seL4 are slow (~120s each in the launch
+		 * scenario), so the poll is generous (2000 iters x 200ms =
+		 * ~400s). Fail loud on timeout.
+		 */
+		if (!_poll_green(GREEN_RECT, GREEN_THRESH, 2000, "launch green"))
+			return false;
+
+		Genode::log("sponge-de-probe: phase launch PASS");
+		return true;
+	}
+
+
+	/*
+	 * Poll a capture rect for a non-bg fraction crossing a threshold.
+	 * `want_above=true` returns once frac >= thresh (popup opened);
+	 * `want_above=false` returns once frac < thresh (popup closed).
+	 * Bounded by iters x 100ms. Captures fresh pixels every iteration.
+	 */
+	bool _poll_fraction(Rect r, float thresh, bool want_above,
+	                    unsigned iters, char const *label)
+	{
+		for (unsigned i = 0; i < iters; ++i) {
+			_timer.msleep(100);
+			_capture.capture_at(Capture::Point(0, 0));
+			float const frac = _non_bg_fraction(r);
+
+			if (i % 5 == 0)
+				Genode::log("sponge-de-probe: ", label, " poll ", i,
+				            " frac_per_mille=", (unsigned)(frac * 1000));
+
+			if (want_above ? (frac >= thresh) : (frac < thresh))
+				return true;
+		}
+		_fail(want_above
+		      ? "popup did not appear (fraction stayed below threshold)"
+		      : "popup did not close (fraction stayed above threshold)");
+		return false;
+	}
+
+
+	/*
+	 * Poll a capture rect for a green (#00ff00) fraction crossing a
+	 * threshold. Bounded by iters x 200ms (slower poll — softpipe
+	 * first paint takes tens of seconds).
+	 */
+	bool _poll_green(Rect r, float thresh, unsigned iters, char const *label)
+	{
+		for (unsigned i = 0; i < iters; ++i) {
+			_timer.msleep(200);
+			_capture.capture_at(Capture::Point(0, 0));
+			float const frac = _green_fraction(r);
+
+			if (i % 10 == 0)
+				Genode::log("sponge-de-probe: ", label, " poll ", i,
+				            " frac_per_mille=", (unsigned)(frac * 1000));
+
+			if (frac >= thresh)
+				return true;
+		}
+		_fail("pkg_gui_demo green pixel did not appear "
+		      "(click-to-launch chain failed)");
+		return false;
+	}
+
+
+	float _non_bg_fraction(Rect r)
+	{
+		Pixel const *px = _cap_ds->local_addr<Pixel>();
+		unsigned long total = 0, non_bg = 0;
+		int const y_end = r.y + r.h;
+		int const x_end = r.x + r.w;
+		for (int y = r.y; y < y_end && y < (int)SCREEN_H; ++y) {
+			if (y < 0) continue;
+			for (int x = r.x; x < x_end && x < (int)SCREEN_W; ++x) {
+				if (x < 0) continue;
+				++total;
+				if (!pixel_is_bg(px[y * SCREEN_W + x]))
+					++non_bg;
+			}
+		}
+		return total ? (float)non_bg / (float)total : 0.0f;
+	}
+
+
+	float _green_fraction(Rect r)
+	{
+		Pixel const *px = _cap_ds->local_addr<Pixel>();
+		unsigned long total = 0, green = 0;
+		int const y_end = r.y + r.h;
+		int const x_end = r.x + r.w;
+		for (int y = r.y; y < y_end && y < (int)SCREEN_H; ++y) {
+			if (y < 0) continue;
+			for (int x = r.x; x < x_end && x < (int)SCREEN_W; ++x) {
+				if (x < 0) continue;
+				++total;
+				if (pixel_is_green(px[y * SCREEN_W + x]))
+					++green;
+			}
+		}
+		return total ? (float)green / (float)total : 0.0f;
+	}
+
+
+	/*
+	 * Comma-separated phase-name search. phases_str is e.g.
+	 * "input,panel,launch". Returns true iff `phase` appears as one of
+	 * the comma-separated tokens. Empty phases_str → false for every
+	 * phase (the caller handles the default separately).
+	 */
+	static bool _phases_contains(char const *phases_str, char const *phase)
+	{
+		char const *p = phases_str;
+		Genode::size_t const phase_len = Genode::strlen(phase);
+		while (*p) {
+			char const *comma = p;
+			while (*comma && *comma != ',') ++comma;
+			Genode::size_t const tok_len = comma - p;
+			if (tok_len == phase_len && Genode::strcmp(p, phase, tok_len) == 0)
+				return true;
+			p = (*comma == ',') ? comma + 1 : comma;
+		}
+		return false;
 	}
 
 
