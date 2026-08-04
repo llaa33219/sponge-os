@@ -23,7 +23,29 @@
 
 using Platform = Core::Platform;
 
+using Core::Range_allocator;
+
 seL4_Word Core::Untyped_memory::smallest_page_type() { return seL4_X86_4K; }
+
+
+/**
+ * Sponge: pick the physical-memory allocator backing a child-PD CNode.
+ *
+ * CNodes whose backing exceeds one page (size_log2 > 7 on 64-bit, i.e. the
+ * 2nd-level 65536-slot-geometry CNodes) are backed by the 16 KiB untyped
+ * pool that already exists for VCPUs. Smaller CNodes use the caller's
+ * default (4 KiB RAM) allocator, preserving upstream behaviour byte-for-byte.
+ */
+Range_allocator &Core::Untyped_memory::cnode_backing_alloc(uint8_t cnode_size_log2,
+                                                           Range_allocator &default_alloc)
+{
+	addr_t const backing_log2 = Cnode_kobj::SIZE_LOG2 + cnode_size_log2;
+
+	if (backing_log2 > PAGE_SIZE_LOG2)
+		return phys_alloc_16k();
+
+	return default_alloc;
+}
 
 
 void Platform::init_sel4_ipc_buffer()
@@ -80,9 +102,28 @@ void Platform::_init_core_page_table_registry()
 	/* initialize 16k memory allocator */
 	phys_alloc_16k(&core_mem_alloc());
 
-	/* reserve some memory for VCPUs - must be 16k */
-	enum { MAX_VCPU_COUNT = 16 };
-	addr_t const max_pd_mem = MAX_VCPU_COUNT * (1UL << Vcpu_kobj::SIZE_LOG2);
+	/*
+	 * Reserve 16 KiB memory for two consumers of this pool:
+	 *   - VCPUs (upstream):                  MAX_VCPU_COUNT * Vcpu_kobj
+	 *   - large child-PD CNode backings:     MAX_CNODE_PD_COUNT PDs, each
+	 *                                        backing (1 << CSPACE_SIZE_LOG2_1ST)
+	 *                                        2nd-level CNodes of 16 KiB.
+	 *
+	 * The CNode term is bounded to a fixed, realistic working set (NOT
+	 * proportional to total RAM). An earlier proportional carve (~247 MiB)
+	 * removed too much low RAM from the general pool and disturbed the
+	 * platform-driver/ahci boot dependency chain; this fixed bound keeps
+	 * the reservation small (~64 MiB) while covering all canary scenarios.
+	 */
+	enum {
+		MAX_VCPU_COUNT    = 16,
+		MAX_CNODE_PD_COUNT = 64,
+		SECOND_LEVEL_CNODES_PER_PD = 1UL << CSPACE_SIZE_LOG2_1ST,
+	};
+
+	addr_t const max_pd_mem =
+		MAX_VCPU_COUNT            * (1UL << Vcpu_kobj::SIZE_LOG2) +
+		MAX_CNODE_PD_COUNT        * (SECOND_LEVEL_CNODES_PER_PD << Vcpu_kobj::SIZE_LOG2);
 
 	_initial_untyped_pool.turn_into_untyped_object(Core_cspace::TOP_CNODE_UNTYPED_16K,
 		[&] (addr_t const phys, addr_t const size, bool const device_memory) {

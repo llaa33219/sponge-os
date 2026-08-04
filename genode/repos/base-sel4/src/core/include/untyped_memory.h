@@ -30,6 +30,15 @@ namespace Core { struct Untyped_memory; }
 
 struct Core::Untyped_memory
 {
+	/*
+	 * Object size of the large-CNode-backing untyped pool. On x86_64 this
+	 * is the 16 KiB pool that also backs VCPUs (Vcpu_kobj::SIZE_LOG2 == 14).
+	 * The large-backing branch is only reached when a child-PD CNode exceeds
+	 * one page, which the configured CSPACE sizes permit only on x86_64;
+	 * the value is inert on architectures where CNodes stay page-sized.
+	 */
+	enum { LARGE_BACKING_UNTYPED_LOG2 = 14 };
+
 	static inline Allocator::Alloc_result alloc_pages(Range_allocator &phys,
 	                                                  size_t const num_pages)
 	{
@@ -46,6 +55,13 @@ struct Core::Untyped_memory
 	static inline void free_page(Range_allocator &phys_alloc, addr_t addr)
 	{
 		phys_alloc.free(reinterpret_cast<void *>(addr));
+	}
+
+
+	static inline void free_pages(Range_allocator &phys_alloc, addr_t addr,
+	                              size_t const num_pages)
+	{
+		phys_alloc.free(reinterpret_cast<void *>(addr), num_pages * PAGE_SIZE);
 	}
 
 
@@ -71,6 +87,36 @@ struct Core::Untyped_memory
 	{
 		return _core_local_sel(Core_cspace::TOP_CNODE_UNTYPED_4K, phys_addr);
 	}
+
+
+	/**
+	 * Return core-local selector for the untyped object backing a CNode of
+	 * the given backing size at 'phys_addr'.
+	 *
+	 * Backings up to one page (4 KiB) are served by the 4 KiB untyped pool.
+	 * Larger backings are served by the 16 KiB untyped pool, whose objects
+	 * are addressed by phys_addr >> LARGE_BACKING_UNTYPED_LOG2.
+	 */
+	static inline Cap_sel untyped_sel(addr_t phys_addr, addr_t backing_log2)
+	{
+		if (backing_log2 > PAGE_SIZE_LOG2)
+			return _core_local_sel(Core_cspace::TOP_CNODE_UNTYPED_16K,
+			                       phys_addr, LARGE_BACKING_UNTYPED_LOG2);
+
+		return untyped_sel(phys_addr);
+	}
+
+
+	/**
+	 * Per-arch physical-memory allocator used for CNode backing.
+	 *
+	 * On x86_64, backings larger than one page are drawn from the 16 KiB
+	 * untyped pool (the same pool that backs VCPUs). On other architectures
+	 * CNodes stay page-sized, so the default allocator is returned unchanged
+	 * and the large-backing path is never taken.
+	 */
+	static Range_allocator &cnode_backing_alloc(uint8_t  cnode_size_log2,
+	                                            Range_allocator &default_alloc);
 
 
 	/**
