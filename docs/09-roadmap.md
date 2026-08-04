@@ -32,6 +32,36 @@ Phase 6: Leitzentrale integration  ✅ done
    |
    v
 Phase 7: Alpha — first usable version  ✅ done with caveats
+   |
+   v
+Phase 8: Boot & storage architecture (docs/14)  ✅ done
+   |
+   v
+Phase 9: seL4 capability-space scaling  ✅ done (Falkon first paint)
+   |
+   v
+Phase 10: Sponge DE — fully interactive desktop
+   |
+   v
+Phase 11: DE customization and panel strengthening
+   |
+   v
+Phase 12: Hardware support expansion
+   |
+   v
+Phase 13: Package ecosystem growth
+   |
+   v
+Phase 14: Sponge DE as a daily-usable desktop
+   |
+   v
+Phase 15: Real-hardware boot
+   |
+   v
+Phase 16: Sponge IME (multi-language / CJK input)
+   |
+   v
+Phase 17: GUI installer for SSD/HDD installation
 ```
 
 ---
@@ -370,21 +400,192 @@ at which one can honestly say "I have used Sponge OS".
 
 ---
 
-## 10. Beyond Alpha (Section Headings Only)
+## 10. Post-Alpha Phases (10–17)
 
-- Beta: stability, more hardware, backup / recovery.
-- Stable: long-term support, a wider app set.
-- A community-contribution model is established.
+Phases 8 and 9 (boot/storage architecture per `docs/14`, seL4
+capability-space scaling) are delivered and closed the two largest
+Alpha caveats — the boot-module ceiling and the missing persistence.
+The phases below define the road from the current QEMU-verified Alpha
+to a daily-usable system on real hardware. As with earlier phases,
+dates are not firm; they express relative order, and every phase is
+scenario-gated.
 
-These stages get fleshed out in a separate document after Alpha.
+### Phase 10: Sponge DE — Fully Interactive Desktop
+
+#### Goal
+
+The desktop becomes fully operable through real input: mouse and
+keyboard work end-to-end through the actual driver chain, windows can
+be dragged, and every interactive element (buttons, launcher entries,
+the panel) responds to clicks.
+
+#### Completion Criteria
+
+- [ ] Real input path verified end-to-end: usb-tablet → pc_usb_host →
+  usb_hid → event_filter → nitpicker → sponge-de, driven from the host
+  via QMP `input-send-event` instead of the probe's synthetic Event
+  injection (this closes the remaining §11.1 follow-up).
+- [ ] Window dragging / moving works and is verified by a run scenario
+  (pointer press on the title bar, motion, release; window position
+  asserted through the layouter or a Capture pixel check).
+- [ ] Click-to-launch delivered: clicking a launcher entry starts the
+  package through the start-on-demand lifecycle (the Phase 5 deferral
+  is resolved).
+- [ ] Panel interactions wired: launcher menu open/close, panel
+  buttons, and clock/menu elements respond to clicks.
+- [ ] Keyboard input reaches focused windows (typing in terminal and
+  text editor verified by scenario).
+
+### Phase 11: DE Customization and Panel Strengthening
+
+#### Goal
+
+Users can meaningfully customize their desktop environment — theme,
+panel layout, and behavior — without touching Genode internals.
+Automation stays the default; every customization is also reachable
+manually through `vct config` / theme files (control escape hatch).
+
+#### Completion Criteria
+
+- [ ] Panel customization through `sponge_configd`: position, size,
+  visible widgets, clock format, launcher organization.
+- [ ] Expanded theme surface: more themeable elements, additional
+  shipped themes beyond `default.theme`, live reload preserved.
+- [ ] Sponge-themed window chrome: the `themed_decorator` drop-in
+  (theme tar via VFS) replaces stock decorations with themed ones —
+  the near-term step from deferred item 3 below.
+- [ ] All customization flows documented and scenario-verified
+  (config change → configd → themed/decorator → pixel repaint).
+
+### Phase 12: Hardware Support Expansion
+
+#### Goal
+
+The system boots on a wider range of (virtual and physical) platform
+configurations, and the supported-hardware surface is explicit rather
+than accidental. This phase builds the enablement infrastructure;
+Phase 15 is the concrete real-hardware boot milestone.
+
+#### Completion Criteria
+
+- [ ] Boot matrix beyond the current QEMU defaults: additional machine
+  types, AHCI and NVMe storage variants, USB boot media.
+- [ ] Driver set expanded: networking beyond QEMU slirp (at least one
+  real NIC driver path), input beyond PS/2 + usb-tablet.
+- [ ] A hardware compatibility document listing tested configurations
+  and known gaps.
+- [ ] Run scenarios cover the new configurations so regressions fail
+  loudly.
+
+### Phase 13: Package Ecosystem Growth
+
+#### Goal
+
+The installable package set grows beyond the Alpha app set, and
+adding a new package becomes a documented, low-friction process.
+
+#### Completion Criteria
+
+- [ ] Additional everyday packages shipped in `pkg/` (choices driven
+  by the daily-use goals of Phase 14).
+- [ ] Package authoring documented end-to-end: metadata format,
+  payload staging, index generation, and testing (`docs/12` extended
+  or a new authoring guide).
+- [ ] `tool/pkg_import.mojo` (or successor) covers the common import
+  cases; each new package has a boot-verified run scenario.
+
+### Phase 14: Sponge DE as a Daily-Usable Desktop
+
+#### Goal
+
+Sponge DE can serve as a primary working environment for everyday
+tasks — not a demo, but a desktop one can actually sit down and use.
+
+#### Completion Criteria
+
+- [ ] Session stability: the desktop runs extended interactive
+  sessions without component crashes or resource exhaustion.
+- [ ] Core desktop services complete: notifications, clipboard,
+  sensible window management defaults (focus model, raising,
+  minimizing).
+- [ ] Everyday workflow proven end-to-end in scenario: boot → launch
+  terminal/editor/files/browser → do real work → shut down cleanly.
+- [ ] Remaining paper cuts from Phases 10–13 resolved.
+
+### Phase 15: Real-Hardware Boot
+
+#### Goal
+
+Sponge OS boots successfully on at least one physical machine — the
+QEMU-only limitation is retired.
+
+#### Completion Criteria
+
+- [ ] Boot verified on physical hardware from USB or SSD media
+  (target machine recorded in the compatibility document).
+- [ ] Input, display, and storage functional on that machine; the
+  desktop reaches the same verified state as the QEMU scenarios.
+- [ ] `docs/13-installation.md` updated: real-hardware install path
+  documented, QEMU-only limitation removed or rescoped.
+- [ ] Known hardware-specific issues recorded with reproduction
+  notes.
+
+### Phase 16: Sponge IME — Multi-Language / CJK Input
+
+#### Goal
+
+A Sponge-native input method editor, implemented as a proper Genode
+component, supporting multiple languages with CJK input (Korean
+first-class, given the project's audience).
+
+#### Completion Criteria
+
+- [ ] `sponge_ime` component implemented: sits in the input chain
+  (event_filter-level integration), capability-minimal, and
+  toggleable at runtime.
+- [ ] Korean Hangul composition working (2-set at minimum); at least
+  one additional CJK or multi-language layout supported.
+- [ ] IME state configurable through `sponge_configd`; automation
+  default (sensible layout per locale) with manual override.
+- [ ] Scenario-verified: composed characters reach a focused text
+  field in the text editor and terminal.
+
+### Phase 17: GUI Installer for SSD/HDD Installation
+
+#### Goal
+
+Installing Sponge OS to internal storage is a guided graphical
+experience: an everyday user can install the system without knowing
+partition tables or Genode run scripts.
+
+#### Completion Criteria
+
+- [ ] GUI installer component shipped on the install media: disk
+  selection, guided partitioning with safe defaults (automation),
+  and an advanced/manual partitioning path (control).
+- [ ] The installer writes the 4-partition layout from `docs/14` to
+  the target disk and produces a bootable installation.
+- [ ] End-to-end verification in QEMU: boot media → install to a
+  second disk → reboot from the installed disk → desktop verified.
+- [ ] Failure paths are loud and recoverable (no half-written disks
+  presented as success); installation docs updated.
 
 ---
 
 ## 11. Current Focus
 
-Phase 0–7 are complete, with Alpha caveats recorded in [`docs/13-installation.md`](13-installation.md). Phase 7 delivered installable seL4 media, a themed desktop, the verified terminal, text editor, and file manager packages, the expanded vct command surface, and Leitzentrale integration. The Alpha remains QEMU-only, installs enable pre-staged packages without persistence, and Falkon is packaged but not bootable because its payload exceeds the seL4 boot-module ceiling.
+Phases 0–7 are complete, with Alpha caveats recorded in
+[`docs/13-installation.md`](13-installation.md). Phases 8 and 9 are
+also complete: the boot/storage architecture (`docs/14`) delivered
+disk-based payload staging and persistence on the 4-partition product
+media, and the seL4 capability-space work closed the capability-chain
+blocker so Falkon boots from disk and reaches first paint on seL4.
+The two largest Alpha caveats — the boot-module ceiling and missing
+persistence — are resolved.
 
-Next up: post-Alpha work, led by disk-based payload staging for Falkon, followed by stability, persistence, recovery, and broader hardware support.
+Next up: **Phase 10 — the fully interactive desktop**, followed by the
+post-Alpha sequence defined in §10 (customization, hardware support,
+packages, daily usability, real hardware, IME, GUI installer).
 
 Deferred follow-ups (not blockers):
 
@@ -433,11 +634,12 @@ Deferred follow-ups (not blockers):
    multi-day mystery into a one-line log. Candidate for an upstream
    Genode issue; not worked around in Sponge OS code because the fix
    belongs in base/capability accounting, not in individual components.
-   Remaining follow-up on this scenario: drive the click from the host
-   through the real usb-tablet (QMP `input-send-event` over a
-   `-qmp tcp:...` socket) instead of the probe's synthetic Event
-   injection, exercising usb-tablet → pc_usb_host → usb_hid →
-   event_filter → nitpicker → sponge-de with real hardware input.
+    Remaining follow-up on this scenario — drive the click from the host
+    through the real usb-tablet (QMP `input-send-event` over a
+    `-qmp tcp:...` socket) instead of the probe's synthetic Event
+    injection, exercising usb-tablet → pc_usb_host → usb_hid →
+    event_filter → nitpicker → sponge-de with real hardware input — is
+    now tracked as a completion criterion of **Phase 10** (§10).
 2. **Package install persistence** ✅ delivered: the explicitly-installed
    root set is mirrored to a versioned XML store on a `File_system`
    session (format in `docs/12-package-format.md` §13) and reloaded on
@@ -452,5 +654,6 @@ Deferred follow-ups (not blockers):
    Sponge-themed decorator producing Catppuccin-styled window chrome —
    remains a long-term option once the DE's own semantics
    (tiling rules, custom focus model, themed decorations) outgrow the
-   upstream stack's configurability. The `themed_decorator` drop-in
-   (theme tar via VFS) is the nearer-term step on this path.
+    upstream stack's configurability. The `themed_decorator` drop-in
+    (theme tar via VFS) is the nearer-term step on this path and is now
+    tracked as a completion criterion of **Phase 11** (§10).
