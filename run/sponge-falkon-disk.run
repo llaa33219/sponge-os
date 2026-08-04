@@ -639,7 +639,7 @@ config
 # falkon's binary + every WebEngine/Qt/NSS/crypto lib + every Qt tar
 # resolves as a ROM session against this server.
 #
-+ start rom_pkg | caps: 2000 | ram: 768M
++ start rom_pkg | caps: 20000 | ram: 768M
   + binary cached_fs_rom
   + provides | + service ROM
   + route
