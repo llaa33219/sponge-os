@@ -516,6 +516,24 @@ config
       + screen screen
       + assign | label: sponge-de -> Sponge DE Demo | target: screen
                | xpos: 192 | ypos: 172 | width: 640 | height: 480 | maximized: no
+      #
+      # Launched GUI packages (binary pkg_runtime -> <pkg>) open their Gui
+      # sessions to pkg_runtime's parent — i.e. to this init, whose only
+      # Gui provider beside nitpicker is wm. Without an explicit assign
+      # rule matching the launched-package labels, the layouter's wildcard
+      # placement would maximize them, hiding the panel and Sponge DE Demo
+      # window (Phase 10 W3 diagnosis: launched GUI packages were
+      # undecorated and undraggable because their Gui sessions resolved
+      # via any-service -> parent -> nitpicker, bypassing wm entirely).
+      # The fix has two parts: the pkg_runtime route below routes Gui to
+      # wm (so launched packages get decorated frames); this assign rule
+      # gives the layouter a floating placement for them so they don't
+      # maximize over the existing desktop. label_prefix is supported on
+      # <assign> per genode/repos/gems/src/app/window_layouter/README
+      # (lines 44-46) — the launched-package session labels all begin
+      # with "pkg_runtime -> " so a single prefix rule covers them all.
+      + assign | label_prefix: pkg_runtime | target: screen
+               | xpos: 50 | ypos: 300 | width: 320 | height: 240 | maximized: no
     + press   | key: BTN_LEFT  | action: drag
       + release | key: BTN_LEFT | action: drop
   + route
@@ -578,6 +596,20 @@ config
   + binary init
   + route
     + service ROM | label: config | + child report_rom
+    #
+    # Route pkg_runtime's Gui sessions through the wm so that launched
+    # GUI packages (pkg_gui_demo, files, terminal, ...) get decorated,
+    # movable frames. Without this rule the Gui session resolves via
+    # the any-service fallback below to nitpicker directly, bypassing
+    # the wm — the launched window is then undecorated and undraggable
+    # (Phase 10 W3 root cause). The matching layouter <assign> rule
+    # (label_prefix: pkg_runtime) gives such windows a floating
+    # placement; absent that, the wm/layouter default is to maximize
+    # them over the existing desktop. The route is inert when no GUI
+    # package is running (e.g. sponge-alpha today with only `hello`
+    # pre-staged — hello is a non-GUI binary that never opens a Gui
+    # session), so sponge-alpha's regression marker stays unaffected.
+    + service Gui | + child wm
     + any-service
       + parent
       + any-child

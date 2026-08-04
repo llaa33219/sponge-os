@@ -394,6 +394,15 @@ config
       + screen screen
       + assign | label: sponge-de -> Sponge DE Demo | target: screen
                | xpos: 192 | ypos: 172 | width: 640 | height: 480 | maximized: no
+      #
+      # Launched GUI packages need a floating placement so they don't
+      # maximize over the desktop. See run/sponge-alpha.run for the
+      # full rationale (Phase 10 W3 pkg_runtime Gui-route fix). The
+      # matching Gui route through the wm is added to pkg_runtime
+      # below; this rule covers the layouter side. label_prefix is
+      # supported on <assign> per the window_layouter README.
+      + assign | label_prefix: pkg_runtime | target: screen
+               | xpos: 50 | ypos: 300 | width: 320 | height: 240 | maximized: no
     + press   | key: BTN_LEFT  | action: drag
       + release | key: BTN_LEFT | action: drop
   + route
@@ -467,6 +476,12 @@ config
   + route
     + service ROM | label_last: ld.lib.so | + parent
     + service ROM | label: config | + child report_rom
+    #
+    # Route pkg_runtime's Gui sessions through the wm so launched GUI
+    # packages get decorated, movable frames. Phase 10 W3 fix — see
+    # run/sponge-alpha.run for full rationale. Inert when no GUI
+    # package is running (hello is a non-GUI binary).
+    + service Gui | + child wm
     + any-service
       + parent
       + any-child
