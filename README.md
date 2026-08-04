@@ -90,8 +90,7 @@ The repository currently contains:
 - ✅ Alpha packages verified in QEMU: terminal with bash/vim, Qt6 text
   editor, and Sponge file manager (`run/sponge-terminal.run`,
   `run/sponge-textedit.run`, `run/sponge-files.run`)
-- ⚠️ Falkon is packaged but not bootable on the Alpha seL4 media because
-  its WebEngine payload exceeds the boot-module ceiling; see
+- ✅ Falkon is packaged, boots from disk, AND reaches first paint on the Alpha seL4 media (Phase 9 closed the capability-chain blocker); see
   [`docs/13-installation.md`](docs/13-installation.md#6-known-limitations)
 - ⚠️ Alpha installs enable pre-staged packages and do not persist across
   reboots on seL4 media; networking is QEMU slirp only
