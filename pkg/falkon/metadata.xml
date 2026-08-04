@@ -87,13 +87,18 @@
 
   <launcher category="Internet"/>
 
-  <!--
-       Sessions use the EXACT Genode service names (Nic, Rtc — not
-       NIC/RTC; pkg_import's default mapping uppercases incorrectly).
-       Omitted per the route-mapping: Gpu (software rendering),
-       Capture/Play/Record (no media drivers), File_system (RAM-backed
-       .config/downloads), RM (subsumed by PD).
-  -->
+   <!--
+        Sessions use the EXACT Genode service names (Nic, Rtc — not
+        NIC/RTC; pkg_import's default mapping uppercases incorrectly).
+        Omitted per the route-mapping: Gpu (software rendering),
+        Capture/Play/Record (no media drivers), File_system (RAM-backed
+        .config/downloads). RM is a distinct core service (NOT subsumed
+        by PD — PD only provides the component's own address_space/
+        stack_area/linker_area; additional region maps for mmap /
+        qtwebengine_shm need a separate Rm_connection). RM is handled by
+        sponge_pkgd's parent-provides (all packages), so no per-package
+        <session> route is needed here.
+   -->
   <sessions>
     <session name="Gui" default-route="parent"/>
     <session name="Report" default-route="parent"/>
