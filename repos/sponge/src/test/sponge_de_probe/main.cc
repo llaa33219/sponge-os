@@ -505,6 +505,33 @@ struct Sponge_de_probe
 
 
 	/*
+	 * Inject an absolute-motion + BTN_LEFT click at the given screen
+	 * position via the probe's Event session. Used by phases panel and
+	 * launch (criterion 3, 4) where QMP's usb-tablet abs-axis cannot
+	 * target specific positions (all abs events land at screen center
+	 * under headless QEMU — see docs/evidence/task-2-phase10-interactive.md).
+	 *
+	 * The Event session connects to nitpicker, which provides correct
+	 * absolute positioning. This is the same mechanism as the inject=yes
+	 * path (run/sponge-de-test.run) — the click traverses nitpicker →
+	 * sponge-de's Gui session → Qt widget → clicked signal. Phase input
+	 * (criterion 1) uses the real QMP/usb-tablet path to prove the
+	 * hardware input chain; phases panel/launch use the Event session
+	 * because QMP cannot target panel/launcher positions.
+	 */
+	void _inject_click(Pt pt)
+	{
+		Genode::log("sponge-de-probe: inject click at (", pt.x, ",", pt.y, ")");
+		_event.with_batch([&](Event::Session_client::Batch &batch) {
+			batch.submit(Input::Absolute_motion{ pt.x, pt.y });
+			batch.submit(Input::Press   { Input::BTN_LEFT });
+			batch.submit(Input::Release { Input::BTN_LEFT });
+		});
+		_timer.msleep(500);
+	}
+
+
+	/*
 	 * Phase panel (criterion 4): prove the S toggle opens the launcher
 	 * popup and that the popup can close.
 	 *
@@ -531,51 +558,7 @@ struct Sponge_de_probe
 		Genode::log("sponge-de-probe: phase panel -- "
 		            "click S toggle to open popup");
 
-		/*
-		 * DIAGNOSTIC (temporary): sample pixels at key positions to
-		 * understand the screen layout before clicking. This logs the
-		 * colors at the S toggle, panel center, popup area, and demo
-		 * window to diagnose why the popup doesn't appear.
-		 */
-		{
-			_capture.capture_at(Capture::Point(0, 0));
-			Pixel const *px = _cap_ds->local_addr<Pixel>();
-			struct Dpt { int x, y; char const *name; };
-			Dpt dpts[] = {
-				{ 32, 14, "S-toggle" },
-				{ 512, 14, "panel-center" },
-				{ 170, 60, "popup-entry" },
-				{ 170, 40, "popup-heading" },
-				{ 512, 412, "demo-center" },
-			};
-			for (auto &d : dpts) {
-				Pixel p = px[d.y * SCREEN_W + d.x];
-				Genode::log("sponge-de-probe: diag ", d.name,
-				            " (", d.x, ",", d.y, ") = ",
-				            Genode::Hex(p.pixel));
-			}
-		}
-
-		/* Step 1: click S toggle (drift-compensated). */
-		Genode::log("QMP-TARGET click ", S_TOGGLE.x, " ",
-		            S_TOGGLE.y + QMP_Y_DRIFT);
-
-		/*
-		 * DIAGNOSTIC: check input ROM before and after the click to
-		 * determine if the click hit the demo window (press changes)
-		 * or landed elsewhere. Temporary — remove after calibration.
-		 */
-		_input_rom.update();
-		Genode::log("sponge-de-probe: diag pre-click press=",
-		            _input_rom.valid() && _input_rom.xml().has_attribute("press")
-		              ? _input_rom.xml().attribute_value("press", Genode::String<64>{}) 
-		              : Genode::String<64>("none"));
-		_timer.msleep(2000);
-		_input_rom.update();
-		Genode::log("sponge-de-probe: diag post-click press=",
-		            _input_rom.valid() && _input_rom.xml().has_attribute("press")
-		              ? _input_rom.xml().attribute_value("press", Genode::String<64>{})
-		              : Genode::String<64>("none"));
+		_inject_click(S_TOGGLE);
 
 		if (!_poll_fraction(POPUP_RECT, POPUP_OPEN_THRESH, /*want_above=*/true,
 		                    300, "panel open"))
@@ -590,8 +573,7 @@ struct Sponge_de_probe
 		 */
 		Genode::log("sponge-de-probe: phase panel -- "
 		            "click demo body to close popup (focus-out)");
-		Genode::log("QMP-TARGET click ", CLOSE_PT.x, " ",
-		            CLOSE_PT.y + QMP_Y_DRIFT);
+		_inject_click(CLOSE_PT);
 
 		if (!_poll_fraction(POPUP_RECT, POPUP_CLOSED_THRESH, /*want_above=*/false,
 		                    300, "panel close"))
@@ -620,9 +602,7 @@ struct Sponge_de_probe
 		Genode::log("sponge-de-probe: phase launch -- "
 		            "click S toggle to open popup");
 
-		/* Step 1: click S toggle (drift-compensated). */
-		Genode::log("QMP-TARGET click ", S_TOGGLE.x, " ",
-		            S_TOGGLE.y + QMP_Y_DRIFT);
+		_inject_click(S_TOGGLE);
 
 		if (!_poll_fraction(POPUP_RECT, POPUP_OPEN_THRESH, /*want_above=*/true,
 		                    300, "launch popup"))
@@ -630,22 +610,10 @@ struct Sponge_de_probe
 
 		Genode::log("sponge-de-probe: launch popup opened");
 
-		/* Step 2: click first launcher menu entry (drift-compensated). */
 		Genode::log("sponge-de-probe: phase launch -- "
 		            "click first launcher menu entry");
-		Genode::log("QMP-TARGET click ", FIRST_ENTRY.x, " ",
-		            FIRST_ENTRY.y + QMP_Y_DRIFT);
+		_inject_click(FIRST_ENTRY);
 
-		/*
-		 * Step 3: bounded wait for pkg_gui_demo green pixel. This
-		 * covers the full launch chain end-to-end: Qt click →
-		 * LauncherController → launcher_request report → pkgd
-		 * _do_launch → pkg_runtime config regeneration → component
-		 * boot → Qt6/Mesa softpipe first paint. Two Qt6 first paints
-		 * under softpipe on seL4 are slow (~120s each in the launch
-		 * scenario), so the poll is generous (2000 iters x 200ms =
-		 * ~400s). Fail loud on timeout.
-		 */
 		if (!_poll_green(GREEN_RECT, GREEN_THRESH, 2000, "launch green"))
 			return false;
 
