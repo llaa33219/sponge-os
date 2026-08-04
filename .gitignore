@@ -35,3 +35,6 @@ GTAGS
 # Local run artifacts.
 /run/var/
 /run/*.log
+
+# Depot-imported package payloads are re-creatable via tool/pkg_import (see pkg/*/SOURCE)
+pkg/*/payload/
