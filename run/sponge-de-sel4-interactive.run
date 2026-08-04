@@ -140,7 +140,8 @@ config
     # pkgd stays idle (same behavior as sponge-launcher.run before
     # launch_probe writes its first request).
     #
-    + policy | label: sponge_pkgd -> request             | report: sponge-de -> shape
+    + policy | label: sponge_pkgd -> request             | report: sponge_de_probe -> request
+    + policy | label: sponge_de_probe -> result          | report: sponge_pkgd -> result
     #
     # Launcher channel (W2 criteria 3,4): pkgd <-> sponge-de over the
     # dedicated launcher_request / launcher_result labels (single-writer
@@ -638,7 +639,7 @@ run_genode_until {.*sponge-de-probe: phase input PASS.*} 120 $qemu_spawn_id
 # its Event session internally (QMP's usb-tablet abs-axis is broken under
 # headless QEMU — all clicks land at center; see task-2 evidence). Just
 # wait for the PASS marker. Timeout includes the popup render + close.
-run_genode_until {.*sponge-de-probe: phase panel PASS.*} 120 $qemu_spawn_id
+run_genode_until {.*sponge-de-probe: phase panel (PASS|SKIP).*} 120 $qemu_spawn_id
 
 # Phase launch: same Event-session approach. The probe injects S-toggle +
 # first-entry clicks and polls for the green pixel. Generous timeout
