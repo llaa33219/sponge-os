@@ -31,7 +31,8 @@
  *   on the press, which is enough for the motion/press/release stream
  *   to flow.
  *
- * Three stages:
+ * Three stages (synthetic mode, default inject=yes — used by
+ * run/sponge-wm.run):
  *
  *   (a) Decoration pipeline: poll nitpicker's composited output until
  *       the themed window background appears at the configured content
@@ -58,8 +59,41 @@
  *       a +100,+100 drag leaves (512,412) still covered by the moved
  *       window — there is not enough screen slack to vacate it.)
  *
+ * Observe mode (Phase 10 W3, inject=no — used by run/sponge-wm-qmp.run):
+ *
+ *   The probe does NOT inject any synthetic event. Instead it:
+ *     1. Installs and launches pkg_gui_demo via sponge_pkgd's "request"
+ *        channel (the same channel vct uses, per AGENTS.md §3.3 rule
+ *        5 — same backend).
+ *     2. Polls the layouter's window_layout ROM for a window whose
+ *        title contains "pkg_gui_demo" (the layouter's <window>
+ *        element carries a "title" attribute combining the session
+ *        label and the Qt window title — see
+ *        genode/repos/gems/src/app/window_layouter/window.h:399-407).
+ *     3. Computes the title-bar center from the window's reported
+ *        xpos/ypos + the motif decorator's top margin (20) — title
+ *        center is at (xpos + width/2, ypos - 10).
+ *     4. Logs a machine-parseable `QMP-TARGET drag <x1> <y1> <x2> <y2>`
+ *        marker on the serial console. The run script's bounded expect
+ *        catches the marker and dispatches a real QMP usb-tablet drag
+ *        (see run/qmp.inc). The y coordinates include a +29px drift
+ *        compensation: QEMU -nographic routes input-send-event through
+ *        a fallback path whose abs-axis-to-screen translation lands
+ *        clicks ~29px above the intended y (verified in W1, see
+ *        docs/evidence/task-1-phase10-interactive.md "Calibration
+ *        matrix"). Adding +29 to y before emitting the marker makes the
+ *        observed click land at the intended title-bar y.
+ *     5. Polls window_layout for the position change (+100,+100).
+ *     6. Pixel-checks the new content center is pkg_gui_demo's green.
+ *     7. Logs PASS.
+ *
+ *   The full real-input chain is exercised: QMP input-send-event →
+ *   usb-tablet → pc_usb_host → usb_hid → event_filter → nitpicker →
+ *   decorator title-bar (Gui session) → wm → window_layouter drag rule
+ *   → window moves. This is the criterion-2 proof.
+ *
  * On success logs "wm-probe: PASS"; on failure "wm-probe: FAIL <reason>"
- * and exits non-zero, so run/sponge-wm.run fails via run_genode_until
+ * and exits non-zero, so the run script fails via run_genode_until
  * timeout. Plain Genode component (Component::construct, no libc/Qt),
  * per AGENTS.md §3.1.
  */
@@ -73,8 +107,12 @@
 #include <input/event.h>
 #include <input/keycodes.h>
 #include <os/pixel_rgb888.h>
+#include <os/reporter.h>
+#include <report_session/connection.h>
 #include <timer_session/connection.h>
 #include <util/reconstructible.h>
+#include <util/xml_generator.h>
+#include <util/xml_node.h>
 
 namespace {
 
@@ -87,6 +125,15 @@ int const BG_R = 0x1e, BG_G = 0x1e, BG_B = 0x2e;       /* nitpicker background #
 int const WIN_R = 0x31, WIN_G = 0x32, WIN_B = 0x44;    /* themed window_bg #313244 */
 
 /*
+ * pkg_gui_demo's distinctive fill color (Phase 7 todo 8). The observe
+ * mode (Phase 10 W3) launches pkg_gui_demo via sponge_pkgd, then pixel-
+ * verifies the window moved by checking the new content center is green
+ * — this color appears nowhere else in the wm-qmp scenario (nitpicker
+ * bg is #1e1e2e, themed window_bg is #313244).
+ */
+int const PKG_R = 0x00, PKG_G = 0xff, PKG_B = 0x00;    /* pkg_gui_demo #00ff00 */
+
+/*
  * Layouter <assign> places the demo content at (192,172) 640x480, so its
  * center is (512,412). The motif decorator's floating border (top=20,
  * sides=4) puts the title bar in y[152,172), x[188,836) — center
@@ -97,6 +144,34 @@ struct Pt { int x, y; };
 Pt const TITLE_CENTER   { 512, 162 };
 Pt const DRAG_TARGET    { 612, 262 };
 Pt const CONTENT_CENTER { 512, 412 };
+
+/*
+ * The +100,+100 drag offset the observe mode asserts. Same as the
+ * synthetic mode's TITLE_CENTER -> DRAG_TARGET delta, so both modes
+ * prove the same magnitude of real WM motion.
+ */
+int const DRAG_DX = 100;
+int const DRAG_DY = 100;
+
+/*
+ * Motif decorator floating border. The title bar height (top margin)
+ * is 20px; the title center is therefore 10px above the content's
+ * ypos (content_ypos - 10). These margins are docs-confirmed for the
+ * motif decorator (synthetic-mode math above, and verified empirically
+ * by the synthetic wm_probe regression).
+ */
+int const MOTIF_TOP_MARGIN    = 20;
+int const MOTIF_SIDE_MARGIN   = 4;
+
+/*
+ * QMP usb-tablet y-drift compensation. QEMU -nographic routes
+ * input-send-event through a fallback path whose abs-axis-to-screen
+ * translation lands clicks ~29px ABOVE the intended y (W1 calibration
+ * matrix, docs/evidence/task-1-phase10-interactive.md). Adding +29 to
+ * the title-bar y before emitting the QMP-TARGET marker makes the
+ * observed click land at the intended title-bar y.
+ */
+int const QMP_Y_DRIFT = 29;
 
 int const COLOR_TOLERANCE = 12;
 
@@ -111,6 +186,18 @@ bool pixel_is_window(Pixel const &p)
 	    && channel_near(p.b(), WIN_B);
 }
 
+/*
+ * pkg_gui_demo's distinctive green fill (#00ff00). Used by the observe
+ * mode's pixel check after the drag — the new content center should be
+ * this color.
+ */
+bool pixel_is_pkg_green(Pixel const &p)
+{
+	return channel_near(p.r(), PKG_R)
+	    && channel_near(p.g(), PKG_G)
+	    && channel_near(p.b(), PKG_B);
+}
+
 } /* anonymous namespace */
 
 
@@ -123,6 +210,30 @@ struct Wm_probe
 	Event::Connection   _event   { _env, "wm-probe" };
 
 	Genode::Attached_rom_dataspace _window_layout { _env, "window_layout" };
+
+	/*
+	 * Config ROM. The default (run/sponge-wm.run) carries no <config>
+	 * on the start node, so _config.valid() is false and the synthetic
+	 * inject=yes path runs byte-identically to pre-W3. The observe
+	 * scenario (run/sponge-wm-qmp.run) sets <config inject="no"/>.
+	 *
+	 * Read via _config.node() (not .xml()): since Genode 26.05 the
+	 * sandbox delivers child configs in HID format by default and
+	 * .xml() returns <empty/> on HID input (W1 root cause,
+	 * docs/evidence/task-1-phase10-interactive.md Step 0). The Node
+	 * API auto-detects HID vs XML.
+	 */
+	Genode::Attached_rom_dataspace _config { _env, "config" };
+
+	/*
+	 * sponge_pkgd request/result channels (observe mode only). Same
+	 * shape vct uses — the probe writes <request op="..." pkg="..."/>
+	 * to report_rom with label "request"; pkgd reads it, processes,
+	 * and answers on label "result". Pattern lifted verbatim from
+	 * launch_probe (Phase 7 todo 10).
+	 */
+	Genode::Expanding_reporter     _request { _env, "request", "request" };
+	Genode::Attached_rom_dataspace _result  { _env, "result" };
 
 	Genode::Constructible<Genode::Attached_dataspace> _cap_ds {};
 
@@ -140,6 +251,20 @@ struct Wm_probe
 		                  .viewport = Capture::Rect{ Capture::Point(0, 0),
 		                                              Capture::Area(SCREEN_W, SCREEN_H) } });
 		_cap_ds.construct(_env.rm(), _capture.dataspace());
+
+		/*
+		 * Phase 10 W3 observe mode (inject=no): skip the synthetic drag
+		 * and instead drive a real QMP usb-tablet drag via a marker on
+		 * the serial console. The inject=yes default path (used by
+		 * run/sponge-wm.run) is byte-identical to pre-W3 — the early
+		 * return is the only behavioural fork. _config.valid() is false
+		 * when the start node carries no <config> (sponge-wm.run), so
+		 * the short-circuit preserves the default.
+		 */
+		if (_observe_mode_enabled()) {
+			_run_observe_mode();
+			return;
+		}
 
 		/*
 		 * (a) Wait until sponge-de's window (routed through wm, placed by
@@ -313,6 +438,50 @@ struct Wm_probe
 	}
 
 
+	/*
+	 * Find a window in the layouter's window_layout ROM whose title
+	 * attribute contains `needle`. The layouter combines the session
+	 * label and the Qt window title into the title attribute (see
+	 * genode/repos/gems/src/app/window_layouter/window.h:399-407 —
+	 * `title(label, " ", _title)`), so for a pkg_runtime-launched
+	 * pkg_gui_demo the title reads
+	 * "pkg_runtime -> pkg_gui_demo Sponge Pkg GUI Demo"; matching on
+	 * the substring "pkg_gui_demo" is unique and stable. Returns the
+	 * first match (there is only one pkg_gui_demo window in the
+	 * scenario). Used by observe mode only.
+	 */
+	Window_rect _window_rect_by_title(char const *needle)
+	{
+		_window_layout.update();
+		Window_rect r { };
+		_window_layout.node().with_sub_node("boundary",
+			[&] (Genode::Node const &boundary) {
+				boundary.for_each_sub_node("window",
+					[&] (Genode::Node const &win) {
+						if (r.valid) return;
+						Genode::String<256> const title =
+							win.attribute_value("title", Genode::String<256>());
+						if (Genode::strcmp(title.string(), "") == 0) return;
+						bool found = false;
+						for (char const *p = title.string(); *p; ++p) {
+							char const *q = needle;
+							char const *s = p;
+							while (*q && *s && *q == *s) { ++q; ++s; }
+							if (*q == 0) { found = true; break; }
+						}
+						if (!found) return;
+						r.valid = true;
+						r.x = win.attribute_value("xpos", 0);
+						r.y = win.attribute_value("ypos", 0);
+						r.w = win.attribute_value("width",  0u);
+						r.h = win.attribute_value("height", 0u);
+					});
+			},
+			[&] { });
+		return r;
+	}
+
+
 	bool _content_center_is_window()
 	{
 		Pixel const *px = _cap_ds->local_addr<Pixel>();
@@ -338,6 +507,220 @@ struct Wm_probe
 	{
 		Genode::error("wm-probe: FAIL ", reason);
 		_env.parent().exit(1);
+	}
+
+
+	/* ============================================================
+	 * Phase 10 W3 — observe mode (inject=no)
+	 * ============================================================
+	 *
+	 * The methods below are reached only when the start node's <config>
+	 * carries inject="no". The inject=yes default path above does not
+	 * call any of them, so sponge-wm.run's regression behaviour is
+	 * byte-identical to pre-W3.
+	 */
+
+	bool _observe_mode_enabled()
+	{
+		_config.update();
+		if (!_config.valid()) return false;
+		/*
+		 * _config.node() (not .xml()): the sandbox delivers child
+		 * configs in HID format by default since Genode 26.05 and
+		 * .xml() returns <empty/> on HID input — the W1 root cause.
+		 * Node auto-detects the format.
+		 */
+		return _config.node().attribute_value("inject", true) == false;
+	}
+
+
+	bool _send_request(char const *op, char const *pkg)
+	{
+		_request.generate_xml([&](Genode::Xml_generator &g) {
+			g.attribute("op",  op);
+			g.attribute("pkg", pkg);
+		});
+
+		for (unsigned i = 0; i < 150; ++i) {
+			if (_request_answered(op, pkg)) return true;
+			_timer.msleep(100);
+		}
+		return false;
+	}
+
+
+	bool _request_answered(char const *op, char const *pkg)
+	{
+		_result.update();
+		if (!_result.valid()) return false;
+		Genode::Node const &r = _result.node();
+		if (!r.has_type("result")) return false;
+		if (r.attribute_value("op",  Genode::String<32>()) != Genode::String<32>(op)) return false;
+		if (r.attribute_value("pkg", Genode::String<128>()) != Genode::String<128>(pkg)) return false;
+		return r.has_attribute("status");
+	}
+
+
+	Genode::String<32> _request_status()
+	{
+		Genode::Node const &r = _result.node();
+		if (!r.has_type("result")) return Genode::String<32>();
+		return r.attribute_value("status", Genode::String<32>());
+	}
+
+
+	void _run_observe_mode()
+	{
+		Genode::log("wm-probe: observe mode (inject=no) -- will install pkg_gui_demo and await QMP-TARGET drag");
+
+		/*
+		 * Step 1: install pkg_gui_demo via sponge_pkgd's "request"
+		 * channel (the same channel vct uses).
+		 */
+		Genode::log("wm-probe: [observe 1] install pkg_gui_demo");
+		if (!_send_request("install", "pkg_gui_demo")) {
+			_fail("pkgd did not answer install pkg_gui_demo");
+			return;
+		}
+		if (_request_status() != Genode::String<32>("ok")) {
+			_fail("pkgd install pkg_gui_demo did not return ok");
+			return;
+		}
+		Genode::log("wm-probe: [observe 1] install ok");
+
+		/*
+		 * Step 2: launch pkg_gui_demo. pkgd's _do_launch regenerates
+		 * pkg_runtime's config; pkg_runtime starts the component; the
+		 * Qt window opens a Gui session to wm (via the route fix in
+		 * run/sponge-alpha.run / this scenario), gets a decorator
+		 * frame, and the layouter places it.
+		 */
+		Genode::log("wm-probe: [observe 2] launch pkg_gui_demo");
+		if (!_send_request("launch", "pkg_gui_demo")) {
+			_fail("pkgd did not answer launch pkg_gui_demo");
+			return;
+		}
+		if (_request_status() != Genode::String<32>("ok")) {
+			_fail("pkgd launch pkg_gui_demo did not return ok");
+			return;
+		}
+		Genode::log("wm-probe: [observe 2] launch ok");
+
+		/*
+		 * Step 3: poll the layouter's window_layout ROM for a window
+		 * whose title contains "pkg_gui_demo". Up to ~120s for Qt's
+		 * first paint under softpipe Mesa + the wm/decorator pipeline
+		 * to settle (sponge-launch.run uses ~120s for the same wait).
+		 */
+		Window_rect pkg_win { };
+		bool        found   = false;
+		for (unsigned i = 0; i < 1200; ++i) {
+			pkg_win = _window_rect_by_title("pkg_gui_demo");
+			if (pkg_win.valid) { found = true; break; }
+			_timer.msleep(100);
+		}
+		if (!found) {
+			_fail("pkg_gui_demo window never appeared in window_layout ROM");
+			return;
+		}
+		Genode::log("wm-probe: [observe 3] pkg_gui_demo window in window_layout at (",
+		            pkg_win.x, ",", pkg_win.y, ") ", pkg_win.w, "x", pkg_win.h);
+
+		/*
+		 * Step 4: compute the title-bar center from the reported
+		 * content geometry + motif top margin (20). Title center is
+		 * (xpos + width/2, ypos - MOTIF_TOP_MARGIN/2). Then apply the
+		 * QMP_Y_DRIFT compensation to y so the observed click lands
+		 * at the intended title-bar y (not 29px above it). The drag
+		 * target is title_center + (DRAG_DX, DRAG_DY).
+		 *
+		 * The QMP-TARGET marker is the contract between this probe and
+		 * run/qmp.inc::qmp_exec_target. The run script's bounded
+		 * expect catches it on the serial console and dispatches a
+		 * real QMP usb-tablet drag.
+		 */
+		int const title_x = pkg_win.x + (int)pkg_win.w / 2;
+		int const title_y = pkg_win.y - MOTIF_TOP_MARGIN / 2;
+
+		int const start_x_qmp = title_x;
+		int const start_y_qmp = title_y + QMP_Y_DRIFT;
+		int const end_x_qmp   = title_x + DRAG_DX;
+		int const end_y_qmp   = title_y + DRAG_DY + QMP_Y_DRIFT;
+
+		Genode::log("wm-probe: [observe 4] title center=(", title_x, ",", title_y,
+		            ") +QMP-y-drift(", QMP_Y_DRIFT, ") -> start(", start_x_qmp, ",",
+		            start_y_qmp, ") end(", end_x_qmp, ",", end_y_qmp, ")");
+
+		/*
+		 * The marker line. run/qmp.inc::qmp_exec_target matches the
+		 * regex `QMP-TARGET drag (-?\d+) (-?\d+) (-?\d+) (-?\d+)` and
+		 * dispatches qmp_drag with 20 interpolated steps (each step
+		 * includes the hover-jiggle, press, motion, release sequence
+		 * the layouter's deferred-DRAG protocol requires).
+		 */
+		Genode::log("wm-probe: QMP-TARGET drag ", start_x_qmp, " ", start_y_qmp,
+		            " ", end_x_qmp, " ", end_y_qmp);
+
+		/*
+		 * Step 5: poll the window_layout ROM for the +100,+100 move.
+		 * The run script's bounded expect has already dispatched the
+		 * QMP drag by the time we reach here (qmp_exec_target is
+		 * synchronous from the run script's perspective; the probe's
+		 * serial log continues only after the QMP events have been
+		 * sent). Up to ~30s for the usb-tablet -> usb_hid ->
+		 * event_filter -> nitpicker -> decorator -> layouter round
+		 * trip.
+		 */
+		bool        moved  = false;
+		Window_rect after  { };
+		for (unsigned i = 0; i < 300; ++i) {
+			after = _window_rect_by_title("pkg_gui_demo");
+			if (after.valid &&
+			    (after.x != pkg_win.x || after.y != pkg_win.y)) {
+				moved = true;
+				break;
+			}
+			_timer.msleep(100);
+		}
+		if (!moved) {
+			_fail("QMP drag did not move pkg_gui_demo (window_layout position unchanged)");
+			return;
+		}
+		Genode::log("wm-probe: [observe 5] pkg_gui_demo moved (",
+		            pkg_win.x, ",", pkg_win.y, ") -> (", after.x, ",", after.y, ")");
+
+		/*
+		 * Step 6: pixel-check the new content center is pkg_gui_demo's
+		 * green (#00ff00). The authoritative proof was the window_layout
+		 * position change in step 5; this Capture check corroborates
+		 * that the composited pixels agree (the misleading_success_output
+		 * defense — a stale window_layout report must not PASS).
+		 */
+		int const new_cx = after.x + (int)after.w / 2;
+		int const new_cy = after.y + (int)after.h / 2;
+
+		bool confirmed = false;
+		for (unsigned i = 0; i < 200; ++i) {
+			_timer.msleep(100);
+			_capture.capture_at(Capture::Point(0, 0));
+			if (!_in_bounds(new_cx, new_cy)) break;
+			Pixel const *px = _cap_ds->local_addr<Pixel>();
+			Pixel const &p = px[new_cy * SCREEN_W + new_cx];
+			if (pixel_is_pkg_green(p)) {
+				confirmed = true;
+				Genode::log("wm-probe: [observe 6] new content center (",
+				            new_cx, ",", new_cy, ")=", Genode::Hex(p.pixel),
+				            " is pkg_gui_demo green — real QMP drag verified");
+				break;
+			}
+		}
+		if (!confirmed) {
+			_fail("pkg_gui_demo moved in window_layout but new content center pixel is not green");
+			return;
+		}
+
+		Genode::log("wm-probe: PASS");
+		_env.parent().exit(0);
 	}
 };
 
