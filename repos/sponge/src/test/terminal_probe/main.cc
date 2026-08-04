@@ -27,6 +27,27 @@
  *       (misleading_success_output class: a bare exit 0 is not enough —
  *       the rendered echo must actually appear).
  *
+ * QMP mode (<config qmp="yes"/>, Phase 10 W4 — used by
+ * run/sponge-terminal-qmp.run): steps (1)-(4) run UNCHANGED; step (5)
+ * then emits the QMP-TARGET marker contract (run/qmp.inc) instead of
+ * the synthetic Event-session injection:
+ *
+ *       QMP-TARGET click <gx> <gy>   (focus the terminal window)
+ *       QMP-TARGET type echo ok      (host types via QMP send-key)
+ *
+ * The host-side run script catches the markers on the serial console,
+ * dispatches a real QMP usb-tablet click + PS/2 `send-key` events
+ * (ps2 -> event_filter chargen -> nitpicker -> focused terminal), and
+ * appends a Return so bash executes the line. The probe then observes
+ * the glyph-count increase through the SAME capture mechanism as the
+ * synthetic path — the PASS is caused solely by host-driven key events
+ * through the real driver chain. Absent config (or qmp attribute not
+ * "yes") keeps the synthetic default byte-identical — the
+ * run/sponge-terminal.run regression depends on it. The config is read
+ * via the format-agnostic Node API (Genode 26.05's sandbox delivers
+ * child configs in HID format by default; see
+ * docs/evidence/task-1-phase10-interactive.md step 0).
+ *
  * Flow:
  *   (1) <request op="install" pkg="terminal"/>; wait for pkgd ok.
  *   (2) Read the `installed` broadcast; assert it carries "terminal".
@@ -34,7 +55,8 @@
  *       (terminal has no <autostart/>, so install left it STOPPED —
  *       docs/12-package-format.md §9.2.1).
  *   (4) Poll capture for glyph pixels (bash prompt rendered).
- *   (5) Inject focus click + keystrokes; confirm glyph count grew.
+ *   (5) Inject focus click + keystrokes (synthetic default), or emit
+ *       QMP-TARGET markers in qmp mode; confirm glyph count grew.
  *
  * Plain Genode component (Component::construct, no libc/Qt), following
  * AGENTS.md §3.1 (qualified Genode types, no exceptions). Success logs
@@ -90,9 +112,33 @@ int const SCAN_Y0 = TERM_Y + 4;
 int const SCAN_X1 = TERM_X + 440;
 int const SCAN_Y1 = TERM_Y + 44;
 
+/*
+ * QMP-mode scan region: with vesa_fb present, the terminal's Gui session
+ * sees TWO nitpicker capture clients, which makes Gui window() return
+ * the domain rect (64,48,800,600) instead of the single-client
+ * framebuffer bounding box (0,0,1024,768) — so the terminal positions
+ * its view at (128,96), not (64,48), and the prompt renders BELOW the
+ * synthetic scan band. The wider region covers the top text lines of
+ * both window positions. Only used in qmp mode; the synthetic default
+ * keeps the original band byte-identical.
+ */
+int const QMP_SCAN_X0 = TERM_X;
+int const QMP_SCAN_Y0 = TERM_Y;
+int const QMP_SCAN_X1 = TERM_X + TERM_W;
+int const QMP_SCAN_Y1 = TERM_Y + 120;
+
 struct Pt { int x, y; };
 Pt const BG_PT { 940, 700 };                       /* outside every domain  */
 Pt const CLICK_PT { TERM_X + 120, TERM_Y + 24 };   /* focus the terminal   */
+
+/*
+ * QMP-mode focus-click target: the center of the terminal window. With
+ * vesa_fb present the terminal ends up at (128,96,800,600) — center
+ * (528,396) — but (528,396) also lies inside the pre-wipe position
+ * (64,48,800,600), so the target is correct whether or not the fb
+ * capture client has already registered when the probe emits it.
+ */
+Pt const QMP_CLICK_PT { 528, 396 };
 
 /*
  * A pixel counts as a "glyph" (foreground text) if it is bright compared
@@ -128,6 +174,48 @@ struct Terminal_probe
 	Genode::Expanding_reporter     _request { _env, "request", "request" };
 	Genode::Attached_rom_dataspace _result  { _env, "result" };
 	Genode::Attached_rom_dataspace _installed { _env, "installed" };
+
+	/*
+	 * Optional <config qmp="yes"/> (run/sponge-terminal-qmp.run). Read
+	 * via the format-agnostic Node API: Genode 26.05's sandbox delivers
+	 * child configs in HID format by default, and `_config.xml()' would
+	 * silently return <empty/> on HID input (the W0/W1 root cause — see
+	 * docs/evidence/task-1-phase10-interactive.md step 0). An absent or
+	 * invalid config short-circuits to qmp=false, keeping the synthetic
+	 * default path byte-identical (run/sponge-terminal.run regression).
+	 */
+	Genode::Attached_rom_dataspace _config { _env, "config" };
+
+	/*
+	 * QMP mode only: nitpicker's focus/hover reports (routed via
+	 * report_rom in run/sponge-terminal-qmp.run), used to prove that the
+	 * host-driven focus click actually moves the input focus to the
+	 * terminal session. Constructed lazily — in the synthetic default
+	 * scenario (run/sponge-terminal.run) these ROMs do not exist and the
+	 * session request must not be made.
+	 */
+	Genode::Constructible<Genode::Attached_rom_dataspace> _focus {};
+	Genode::Constructible<Genode::Attached_rom_dataspace> _hover {};
+
+	bool _qmp_mode() const
+	{
+		return _config.valid()
+		    && _config.node().attribute_value("qmp", false);
+	}
+
+	void _log_rom(char const *tag,
+	              Genode::Constructible<Genode::Attached_rom_dataspace> &rom)
+	{
+		if (!rom.constructed()) return;
+		rom->update();
+		if (!rom->valid()) {
+			Genode::log("terminal-probe: ", tag, " ROM invalid");
+			return;
+		}
+		Genode::size_t const n = rom->size() < 400 ? rom->size() : 400;
+		Genode::String<401> const content(Genode::Cstring(rom->local_addr<char>(), n));
+		Genode::log("terminal-probe: ", tag, " '", content, "'");
+	}
 
 	bool _ok { true };
 
@@ -178,10 +266,15 @@ struct Terminal_probe
 
 	unsigned _count_glyphs()
 	{
+		int const x0 = _qmp_mode() ? QMP_SCAN_X0 : SCAN_X0;
+		int const y0 = _qmp_mode() ? QMP_SCAN_Y0 : SCAN_Y0;
+		int const x1 = _qmp_mode() ? QMP_SCAN_X1 : SCAN_X1;
+		int const y1 = _qmp_mode() ? QMP_SCAN_Y1 : SCAN_Y1;
+
 		Pixel const *px = _cap_ds->local_addr<Pixel>();
 		unsigned n = 0;
-		for (int y = SCAN_Y0; y < SCAN_Y1; ++y)
-			for (int x = SCAN_X0; x < SCAN_X1; ++x)
+		for (int y = y0; y < y1; ++y)
+			for (int x = x0; x < x1; ++x)
 				if (is_glyph(px[y * SCREEN_W + x]))
 					++n;
 		return n;
@@ -229,7 +322,15 @@ struct Terminal_probe
 	 */
 	bool _wait_for_prompt(unsigned &baseline_glyphs)
 	{
-		for (unsigned i = 0; i < 700 && _ok; ++i) {
+		/*
+		 * QMP mode waits much longer: driver bring-up (acpi/xHCI/
+		 * usb_hid under TCG) competes with the noux bash first boot,
+		 * stretching the prompt render well past the synthetic
+		 * scenario's ~70s worst case.
+		 */
+		unsigned const max_iters = _qmp_mode() ? 2400u : 700u;
+		bool poked = false;
+		for (unsigned i = 0; i < max_iters && _ok; ++i) {
 			_timer.msleep(100);
 			_capture.capture_at(Capture::Point(0, 0));
 
@@ -246,6 +347,38 @@ struct Terminal_probe
 				baseline_glyphs = g;
 				return true;
 			}
+
+			/*
+			 * QMP mode recovery poke: with vesa_fb present, the gems
+			 * terminal frequently never paints the first prompt (its
+			 * buffer is created while nitpicker's screen is re-defined
+			 * by the fb capture session, and it does not repaint its
+			 * cell model afterwards). A synthetic focus click + Return
+			 * makes bash print a fresh prompt line, which forces the
+			 * terminal to repaint — proving the render path alive and
+			 * giving the render check something to find. This is
+			 * SETUP ONLY: it runs before the QMP-TARGET markers, so
+			 * the later glyph-count INCREASE that gates PASS is still
+			 * caused solely by the host-driven QMP key events. Return
+			 * (not a printable char) keeps bash's input buffer empty.
+			 */
+			if (_qmp_mode() && !poked && i == 300) {
+				poked = true;
+				Genode::log("terminal-probe: qmp mode — no prompt after "
+				            "30s; poking terminal with synthetic focus "
+				            "click + Return to force a repaint");
+				_event.with_batch([&](Event::Session_client::Batch &batch) {
+					batch.submit(Input::Absolute_motion{ QMP_CLICK_PT.x, QMP_CLICK_PT.y });
+					batch.submit(Input::Press   { Input::BTN_LEFT });
+					batch.submit(Input::Release { Input::BTN_LEFT });
+				});
+				_timer.msleep(300);
+				_event.with_batch([&](Event::Session_client::Batch &batch) {
+					batch.submit(Input::Press_char { Input::KEY_ENTER,
+					                                 Input::Codepoint { '\n' } });
+					batch.submit(Input::Release { Input::KEY_ENTER });
+				});
+			}
 		}
 		return false;
 	}
@@ -261,6 +394,11 @@ struct Terminal_probe
 		                  .viewport = Capture::Rect{ Capture::Point(0, 0),
 		                                              Capture::Area(SCREEN_W, SCREEN_H) } });
 		_cap_ds.construct(_env.rm(), _capture.dataspace());
+
+		if (_qmp_mode()) {
+			_focus.construct(_env, "focus");
+			_hover.construct(_env, "hover");
+		}
 
 		/* (1) install terminal via sponge_pkgd */
 		log("terminal-probe: [1] install terminal via sponge_pkgd");
@@ -309,38 +447,88 @@ struct Terminal_probe
 		    baseline_glyphs, " glyph pixels)");
 
 		/*
-		 * (5) Keystroke round-trip. Focus the terminal (absolute-motion +
-		 * BTN_LEFT), then inject a run of printable Press_char events.
-		 * bash echoes each; the glyph count must grow.
+		 * (5) Keystroke round-trip. Default (synthetic): focus the
+		 * terminal (absolute-motion + BTN_LEFT) and inject a run of
+		 * printable Press_char events via nitpicker's Event service.
+		 * QMP mode: emit the QMP-TARGET marker contract instead — the
+		 * host clicks + types through the real driver chain (usb-tablet
+		 * / ps2 -> event_filter -> nitpicker). Both paths converge on
+		 * the glyph-count observation below: bash echoes the input, the
+		 * terminal re-renders, the glyph count must grow.
 		 */
-		log("terminal-probe: [5] focus terminal at (",
-		    CLICK_PT.x, ",", CLICK_PT.y, ") and inject 8 keystrokes");
-		_event.with_batch([&](Event::Session_client::Batch &batch) {
-			batch.submit(Input::Absolute_motion{ CLICK_PT.x, CLICK_PT.y });
-			batch.submit(Input::Press   { Input::BTN_LEFT });
-			batch.submit(Input::Release { Input::BTN_LEFT });
-		});
-		_timer.msleep(300);
-
-		for (unsigned k = 0; k < 8; ++k) {
+		if (_qmp_mode()) {
+			log("terminal-probe: [5] qmp mode — host-driven focus click "
+			    "at (", QMP_CLICK_PT.x, ",", QMP_CLICK_PT.y,
+			    ") + type 'echo ok'");
+			_log_rom("pre-marker focus:", _focus);
+			_log_rom("pre-marker hover:", _hover);
+			log("QMP-TARGET click ", QMP_CLICK_PT.x, " ", QMP_CLICK_PT.y);
+			/*
+			 * Let the host dispatch the focus click before the type
+			 * marker arrives — nitpicker applies the focus change
+			 * synchronously with the click, and the bounded sleep
+			 * keeps the two markers ordered on the serial line even
+			 * if the host is slow to connect its QMP socket.
+			 */
+			_timer.msleep(300);
+			log("QMP-TARGET type echo ok");
+		} else {
+			log("terminal-probe: [5] focus terminal at (",
+			    CLICK_PT.x, ",", CLICK_PT.y, ") and inject 8 keystrokes");
 			_event.with_batch([&](Event::Session_client::Batch &batch) {
-				batch.submit(Input::Press_char { Input::KEY_A,
-				                                 Input::Codepoint { 'a' } });
-				batch.submit(Input::Release { Input::KEY_A });
+				batch.submit(Input::Absolute_motion{ CLICK_PT.x, CLICK_PT.y });
+				batch.submit(Input::Press   { Input::BTN_LEFT });
+				batch.submit(Input::Release { Input::BTN_LEFT });
 			});
-			_timer.msleep(60);
+			_timer.msleep(300);
+
+			for (unsigned k = 0; k < 8; ++k) {
+				_event.with_batch([&](Event::Session_client::Batch &batch) {
+					batch.submit(Input::Press_char { Input::KEY_A,
+					                                 Input::Codepoint { 'a' } });
+					batch.submit(Input::Release { Input::KEY_A });
+				});
+				_timer.msleep(60);
+			}
 		}
 
 		bool echoed = false;
 		unsigned after_glyphs = 0;
-		for (unsigned i = 0; i < 300 && _ok; ++i) {
+		/*
+		 * QMP mode polls much longer: the host can only dispatch the
+		 * focus click once the usb-tablet is bound (usb_hid is the last
+		 * driver up, and driver bring-up races the probe's render
+		 * check), so the observation window must cover
+		 * (drivers finish) + (host dispatch) + (bash echo re-render).
+		 */
+		unsigned const max_polls = _qmp_mode() ? 1200u : 300u;
+		for (unsigned i = 0; i < max_polls && _ok; ++i) {
 			_timer.msleep(100);
 			_capture.capture_at(Capture::Point(0, 0));
 			after_glyphs = _count_glyphs();
 
+			/*
+			 * QMP mode: vesa_fb's mode set re-initializes the terminal's
+			 * screen buffer AFTER the baseline was taken, erasing the
+			 * prompt glyphs (observed: 22 -> 0 at the fb "using
+			 * 1024x768" line). Re-baseline on the first sample; nothing
+			 * re-renders spontaneously afterwards, so an increase can
+			 * still only be caused by the typed echo.
+			 */
+			if (i == 0 && _qmp_mode() && after_glyphs < baseline_glyphs) {
+				log("terminal-probe: re-baseline after fb mode set (glyphs ",
+				    baseline_glyphs, " -> ", after_glyphs, ")");
+				baseline_glyphs = after_glyphs;
+			}
+
 			if (i % 10 == 0)
 				log("terminal-probe: echo poll ", i,
 				    " glyphs=", after_glyphs);
+
+			if (_qmp_mode() && i % 50 == 0 && i > 0) {
+				_log_rom("echo-poll focus:", _focus);
+				_log_rom("echo-poll hover:", _hover);
+			}
 
 			if (after_glyphs > baseline_glyphs) {
 				echoed = true;
