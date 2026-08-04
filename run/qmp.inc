@@ -234,27 +234,20 @@ proc qmp_button { chan btn state } {
 ##
 # Click (press + release BTN_LEFT) at the given guest coordinates.
 #
-# Under QEMU headless (-nographic/-display none) the usb-tablet's
-# absolute-axis events ALWAYS land at the screen center ~(511,383)
-# regardless of the abs values sent (see docs/evidence/task-1-phase10-
-# interactive.md §Calibration). Button events sent to the tablet also
-# carry the tablet's abs position, overriding any prior pointer motion.
-#
-# This function bypasses the usb-tablet entirely by sending ALL events
-# (relative motion + button) to the PS/2 Mouse device explicitly
-# (device: "QEMU PS/2 Mouse"). The PS/2 Mouse is a relative device —
-# it moves the pointer by deltas without setting an absolute position.
-# The event_filter's accelerate node (sensitivity_percent=1000, max=50)
-# maps each rel-1 event to ~10px and each rel-5 event to ~50px (capped).
-#
-# Navigation: first clamp the pointer to (0,0) by sending many negative
-# rel events (the pointer can't go below 0), then navigate to (x,y) by
-# sending the appropriate number of positive rel events. Precision is
-# ~10px (one rel-1 step); UI elements (buttons 20-48px) tolerate this.
+# With -vnc unix:socket, QEMU creates a graphical console that the
+# usb-tablet binds to. The abs-axis mapping is then correct
+# (screen = abs * console_w/32768). All four events (abs x, abs y,
+# btn down, btn up) are sent in a SINGLE input-send-event call so the
+# button fires at the same position as the motion. Under -nographic
+# (no console), the tablet's abs mapping was broken — all clicks landed
+# at screen center; VNC fixes this (see task-2-phase10-interactive.md).
 #
 proc qmp_click { chan x y } {
-	lassign [qmp_abs $x $y] ax ay
-	qmp_cmd $chan "\{\"execute\":\"input-send-event\",\"arguments\":\{\"events\":\[\{\"type\":\"abs\",\"data\":\{\"axis\":\"x\",\"value\":$ax\}\},\{\"type\":\"abs\",\"data\":\{\"axis\":\"y\",\"value\":$ay\}\},\{\"type\":\"btn\",\"data\":\{\"down\":true,\"button\":\"left\"\}\},\{\"type\":\"btn\",\"data\":\{\"down\":false,\"button\":\"left\"\}\}\]\}\}"
+	qmp_pointer_move $chan $x $y
+	after 15
+	qmp_button $chan left down
+	after 15
+	qmp_button $chan left up
 }
 
 ##
