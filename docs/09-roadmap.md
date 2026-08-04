@@ -410,6 +410,11 @@ to a daily-usable system on real hardware. As with earlier phases,
 dates are not firm; they express relative order, and every phase is
 scenario-gated.
 
+**Version milestones**: completing Phase 15 (real-hardware boot)
+releases **0.2.0-alpha**; completing Phase 17 (GUI installer)
+releases **0.3.0-alpha**. Phases 10–14 and 16 accumulate on top of
+0.1.0-alpha without their own version bumps.
+
 ### Phase 10: Sponge DE — Fully Interactive Desktop
 
 #### Goal
@@ -517,7 +522,8 @@ tasks — not a demo, but a desktop one can actually sit down and use.
 #### Goal
 
 Sponge OS boots successfully on at least one physical machine — the
-QEMU-only limitation is retired.
+QEMU-only limitation is retired. **Completing this phase releases
+0.2.0-alpha.**
 
 #### Completion Criteria
 
@@ -556,7 +562,8 @@ first-class, given the project's audience).
 
 Installing Sponge OS to internal storage is a guided graphical
 experience: an everyday user can install the system without knowing
-partition tables or Genode run scripts.
+partition tables or Genode run scripts. **Completing this phase
+releases 0.3.0-alpha.**
 
 #### Completion Criteria
 
