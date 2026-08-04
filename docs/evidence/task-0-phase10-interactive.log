@@ -1,0 +1,201 @@
+# Phase 10 / W0 — Baseline red-run of sponge-de-sel4-interactive
+
+## Header
+
+- **Date:** 2026-08-04
+- **Plan:** `docs/plans/phase10-interactive-desktop.md` (workstream W0)
+- **Scenario:** `run/sponge-de-sel4-interactive.run` (run as-is, no edits)
+- **Build configuration** (`genode/build/x86_64/etc/build.conf`):
+  - `KERNEL ?= sel4` (line 20)
+  - `BOARD  ?= pc`  (line 23)
+  - Managed block appended by `./tool/build prepare` (lines 139-164):
+    `REPOSITORIES += …/repos/sponge`, `…/repos/libports`,
+    `…/repos/ports`, `…/repos/gems`, `…/repos/pc`,
+    `…/repos/dde_linux`, `…/repos/dde_ipxe`, `…/repos/dde_rump`,
+    `MAKE += -j128`
+- **Command used** (documented in `docs/08-development.md` §3.1 /
+  `tool/README.md` §build; canonical one-command flow):
+  ```bash
+  cd /home/luke/sponge-os
+  timeout 1500 ./tool/build run sponge-de-sel4-interactive \
+      > docs/evidence/task-0-phase10-interactive.raw.log 2>&1
+  ```
+  (`make` exit code 0; scenario prints `Run script execution successful.`)
+- **Accepted kernel for this scenario:** `sel4 / pc` (the scenario
+  asserts `[have_spec sel4]`; see run script line 74)
+- **Raw captured log** (full transcript, 6 223 lines):
+  `docs/evidence/task-0-phase10-interactive.raw.log`
+- **This evidence file** (header + key gate markers + diagnosis):
+  `docs/evidence/task-0-phase10-interactive.log`
+
+---
+
+## Verdict — UNEXPECTED GREEN
+
+| Gate | Marker | Verdict |
+|------|--------|---------|
+| 1 | `[init -> drivers -> fb] using 1024x768 (1024x768)` | **PASS** |
+| 2 | `[init -> drivers -> usb_hid] Connected device: input0 (QEMU QEMU USB Tablet at usb-usbbus-0/input0) POINTER` | **PASS** |
+| 3 | `[init -> sponge_de_probe] sponge-de-probe: PASS` | **PASS** (unexpected) |
+
+`make` exit code: 0. Final marker: `Run script execution successful.`
+
+The W0 acceptance criterion is **NOT met**. The plan predicted gates 1-2
+green and gate 3 red (observe-mode timeout / `_fail(...)` with "usb-tablet
+injection missing"). The empirical run shows gates 1-2-3 ALL GREEN, which
+**invalidates the W1-onwards premise** that a host-side QMP
+`input-send-event` is the only thing standing between the current
+scenario and a passing `run/sponge-de-sel4-interactive.run`.
+
+Per the task's "MUST NOT DO" rules ("If gate 3 unexpectedly PASSES, do
+not proceed to change anything — report that immediately"), no source,
+run-script, or config edits were made during this workstream. Below is
+only the diagnostic observation that explains the unexpected-green
+result, so the plan's owner can decide whether W1's design still holds.
+
+---
+
+## Key captured lines (extracted from the raw log)
+
+### Gates 1 & 2 — green (as expected)
+
+```
+[init -> drivers -> fb] using 1024x768 (1024x768)
+[init -> drivers -> usb_hid] Connected device: input0 (QEMU QEMU USB Tablet at usb-usbbus-0/input0) POINTER
+```
+
+(Gate 2 is printed AFTER gate 3 in this particular boot order — the
+QEMU usb-tablet enumeration races the probe's Capture-poll window.
+Both are present in the same boot; the run script's matching
+`run_genode_until` regex still matches and the gate verdict holds.)
+
+### Gate 3 — GREEN, but NOT for the reason the plan predicted
+
+```
+[init -> sponge_de_probe] sponge-de-probe: window detected in demo domain
+[init -> sponge_de_probe] sponge-de-probe: panel pixel at (512,14) = 0xff1e1e2e (informational; theme panel_bg == nitpicker bg)
+[init -> sponge_de_probe] sponge-de-probe: injecting click at (512,460)
+[init -> sponge-de] sponge-de: input event received (button clicked)
+[init -> sponge_de_probe] sponge-de-probe: input report confirms press
+[init -> sponge_de_probe] sponge-de-probe: PASS
+[init] child "sponge_de_probe" exited with exit value 0
+Run script execution successful.
+```
+
+### Gate-3 failure line the plan predicted — NOT observed
+
+The plan predicted gate 3 would time out at the 120 s `run_genode_until`
+budget and the probe would log:
+
+```
+sponge-de-probe: FAIL external click did not reach sponge-de
+                   (usb-tablet injection missing or input driver
+                   path not wired)
+```
+
+That FAIL line is **not** present anywhere in the raw log. The probe
+never entered observe mode at all — it hit the `inject` branch and
+passed.
+
+---
+
+## Why this is unexpected (diagnostic observation, read-only)
+
+The plan's W0 ("Verified ground truth (confirmed by reading the files)")
+predicted gate 3 RED because of the scenario line
+(`run/sponge-de-sel4-interactive.run` line 317):
+
+```tcl
++ start sponge_de_probe | caps: 100 | ram: 16M
+  + config | inject: no | render_iters: 1800
+  ...
+```
+
+and the matching probe config-driven branch
+(`repos/sponge/src/test/sponge_de_probe/main.cc:238-286`):
+
+```cpp
+bool const inject = (!_config.valid()) ||
+                    _config.xml().attribute_value("inject", true);
+...
+if (inject) {
+    Genode::log("sponge-de-probe: injecting click at (",
+                CLICK_PT.x, ",", CLICK_PT.y, ")");
+    _event.with_batch([&](Event::Session_client::Batch &batch) {
+        batch.submit(Input::Absolute_motion{ CLICK_PT.x, CLICK_PT.y });
+        batch.submit(Input::Press   { Input::BTN_LEFT });
+        batch.submit(Input::Release { Input::BTN_LEFT });
+    });
+} else {
+    Genode::log("sponge-de-probe: observe mode (inject=no) -- "
+                "awaiting external click via the real input "
+                "driver path (usb-tablet/ps2 -> event_filter)");
+}
+```
+
+The empirical log line `sponge-de-probe: injecting click at (512,460)`
+unambiguously shows the `if (inject)` branch — NOT the `else` branch
+(which would log `sponge-de-probe: observe mode (inject=no) -- awaiting
+external click…` and would then either time out or print
+`FAIL external click did not reach sponge-de (usb-tablet injection
+missing or input driver path not wired)` after ~90 s).
+
+Given the source above, `inject == true` at run time, which means one of:
+
+1. **The `<config | inject: no>` start-attribute shorthand in the
+   scenario is not actually delivering `inject="no"` to the probe's
+   config ROM.** Most likely cause — the Genode run tool's
+   attribute-translation for `<start><config>` may stringify
+   `inject: no` in a way that does not become an `inject="no"`
+   attribute on the inner `<config>` XML node, or `install_boot_module
+   "config" …` consumes the value differently. (Ruled out by reading —
+   `genode/tool/run/run:324-327` just joins the args with no separator
+   and writes them to `bin/config`; the `<config>` child of `<start>`
+   becomes whatever the parser produces. The fact that neither the
+   `observe mode` log line nor the `FAIL … usb-tablet injection
+   missing` line ever appears is itself the smoking gun for this
+   case.)
+2. **Genode's `parse(Span, bool&)` does not match `"no"` for the
+   `inject` attribute.** Ruled out by reading — inspection of
+   `genode/repos/base/include/util/string.h:518-533` shows it matches
+   a 6-entry table including `{ "no", 2, false }`, so `"no"` does
+   parse as `false`.
+3. **The probe binary is stale relative to the probe source.** Ruled
+   out — `stat -c %y` shows `bin/sponge_de_probe` 2026-07-25 19:02:11
+   vs `repos/sponge/src/test/sponge_de_probe/main.cc` 2026-07-25
+   19:01:09, i.e. the binary is newer by ~1 minute, so the source
+   change is in the binary.
+
+So the most likely root cause is **(1)**: the scenario's existing
+`+ config | inject: no` shorthand does not actually round-trip the
+`inject="no"` attribute through to the probe's config ROM. A
+single-line run-script fix (e.g. `<inject>no</inject>` element form,
+or moving the attribute onto `<start>` itself) would re-establish the
+red baseline the plan predicted, without any change to the probe
+sources or any host-side QMP infrastructure.
+
+This means W1's design as written ("add host-side QMP
+`input-send-event`, drive the click from the host, observe it via
+sponge-de's `input` report") would not be the *minimal* change that
+flips gate 3 from red to green in the run-script as-is. The plan
+owner should decide whether the W1 design (host-driven QMP) is still
+the right end state given that:
+
+- the run-script itself has a config delivery bug (separate bug,
+  fixable locally in W1's prep work), and
+- gate 3 already passes today via the probe's own synthetic Event
+  injection, which is precisely the path that W1 set out to replace.
+
+---
+
+## Reproducibility
+
+- Re-running the same invocation reproduces the same outcome (the
+  scenario is deterministic on this base-sel4 / QEMU + Mesa softpipe
+  stack; the boot arrives at `sponge-de-probe: PASS` from the
+  `if (inject)` branch on every attempt).
+- Raw log: `docs/evidence/task-0-phase10-interactive.raw.log`
+  (6 223 lines, full transcript of the capture during this workstream
+  — `ninja` build was incremental; both `make` and the run script
+  exited 0)
+- This evidence file: `docs/evidence/task-0-phase10-interactive.log`
