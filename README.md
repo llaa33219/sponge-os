@@ -70,8 +70,9 @@ See [`docs/04-components.md`](docs/04-components.md) for the detailed design.
 
 ## Current Status
 
-🟢 **Alpha 0.1.0, Archaeocyte** — Phase 7 is done with caveats. The
-verified release boots in QEMU on seL4. See
+🟢 **Alpha 0.1.0, Archaeocyte** — Phase 7 is done with caveats, and
+Phase 10 (fully interactive desktop) is done. The verified release
+boots in QEMU on seL4. See
 [`docs/13-installation.md`](docs/13-installation.md) for prerequisites,
 media commands, the quick-start tour, and the complete limitations register.
 
@@ -112,10 +113,20 @@ The repository currently contains:
 - ✅ base-sel4 interactive driver stack: `run/sponge-de-sel4-interactive.run`
   boots seL4 on QEMU with vesa_fb, ps2, and USB tablet input
   (`drivers_interactive-pc`), and Sponge DE (Qt6/Mesa softpipe) renders
-  the themed desktop on seL4 — pixel- and input-verified by
-  `sponge_de_probe` (root cause of the former EGL hang: capability
-  exhaustion on seL4, fixed by sizing `caps`; see
-  `docs/09-roadmap.md` §11.1)
+  the themed desktop on seL4. Phase 10 strengthened every input action
+  to the real QMP-driven chain: a host-driven QEMU QMP click reaches
+  sponge-de through the real
+  `usb-tablet`/`ps2` → `pc_usb_host`/`usb_hid` → `event_filter` → `nitpicker`
+  → `sponge-de` driver path, the panel launcher toggle opens + closes
+  the launcher popup on host QMP clicks, and clicking a launcher entry
+  fires the full click-to-launch chain (`Qt` → `LauncherController`
+  → `sponge_pkgd` `_do_launch` → `pkg_gui_demo` first paint). The four
+  sister scenarios (`sponge-wm-qmp.run`, `sponge-terminal-qmp.run`,
+  `sponge-textedit-qmp.run`) prove window dragging + QMP `send-key`
+  keyboard input to a focused terminal + text editor respectively.
+  See `docs/evidence/phase10-index.md` and `docs/08-development.md`
+  §4.4 (root cause of the former EGL hang: capability exhaustion on
+  seL4, fixed by sizing `caps`; see `docs/09-roadmap.md` §11.1).
 
 Verified vct boot output (base-sel4 on QEMU):
 
