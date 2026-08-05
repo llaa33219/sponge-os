@@ -1,0 +1,402 @@
+Failed to initialize Crashpad.  Crash reporting will not be available.  Cause: while locating crashpad handler: unable to locate crashpad handler executable
+make: ディレクトリ '/home/luke/sponge-os/genode/build/x86_64'　に入ります
+including /home/luke/sponge-os/genode/tool/run/power_on/qemu
+including /home/luke/sponge-os/genode/tool/run/log/qemu
+including /home/luke/sponge-os/genode/tool/run/image/iso
+including /home/luke/sponge-os/genode/tool/run/boot_dir/sel4
+including /home/luke/sponge-os/repos/sponge/run/sponge-terminal-qmp.run
+building targets:  core lib/ld init timer server/report_rom server/nitpicker driver/acpi app/pci_decode driver/platform driver/framebuffer/vesa driver/ps2 driver/usb_host/pc driver/usb_hid server/event_filter sponge_pkgd server/terminal server/vfs server/cached_fs_rom noux-pkg/bash-minimal noux-pkg/vim-minimal lib/libc lib/libm lib/posix lib/ncurses lib/vfs lib/vfs_pipe lib/vfs_ttf test/terminal_probe lib/blit 
+spawn make core lib/ld init timer server/report_rom server/nitpicker driver/acpi app/pci_decode driver/platform driver/framebuffer/vesa driver/ps2 driver/usb_host/pc driver/usb_hid server/event_filter sponge_pkgd server/terminal server/vfs server/cached_fs_rom noux-pkg/bash-minimal noux-pkg/vim-minimal lib/libc lib/libm lib/posix lib/ncurses lib/vfs lib/vfs_pipe lib/vfs_ttf test/terminal_probe lib/blit
+make[1]: ディレクトリ '/home/luke/sponge-os/genode/build/x86_64' に入ります
+Skip target driver/platform/pc/spec/x86_32 because it requires 'x86_32'
+Skip target driver/ps2/pl050 because it requires 'arm_v7'
+Skip target driver/usb_hid/spec/arm_v7 because it requires 'arm_v7'
+Skip target driver/usb_hid/spec/arm_v8 because it requires 'arm_v8'
+Skip target driver/usb_hid/spec/x86_32 because it requires 'x86_32'
+Skip target driver/usb_host/pc/spec/x86_32 because it requires '32bit'
+  [00;33mLibrary[0m ld.abi.so
+  [00;33mLibrary[0m ldso_so_support.lib.a
+  [00;33mLibrary[0m kernel-sel4-pc.lib.a
+ninja: Jobserver mode detected:  -j128 --jobserver-auth=fifo:/tmp/GMfifo217149 --no-print-directory -- DEBUG_DIR=/home/luke/sponge-os/genode/build/x86_64/debug INSTALL_DIR=/home/luke/sponge-os/genode/build/x86_64/bin BUILD_BASE_DIR=/home/luke/sponge-os/genode/build/x86_64 SHARED_LIBS= ARCHIVES= LIB=kernel-sel4-pc LIB_MK=/home/luke/sponge-os/genode/repos/base-sel4/lib/mk/spec/x86_64/kernel-sel4-pc.mk REP_DIR=/home/luke/sponge-os/genode/repos/base-sel4 SHELL=/usr/bin/bash
+ninja: no work to do.
+  [00;33mLibrary[0m syscall-sel4-pc.lib.a
+  [00;33mLibrary[0m syscall-sel4.lib.a
+  [00;33mLibrary[0m startup-sel4.lib.a
+  [00;33mLibrary[0m base-sel4-common.lib.a
+  [00;33mLibrary[0m timeout.lib.a
+  [00;33mLibrary[0m cxx.lib.a
+  [00;33mLibrary[0m base-sel4.lib.a
+  [00;33mLibrary[0m ld-sel4.lib.so
+  [00;33mLibrary[0m ld.lib.so
+  [00;33mLibrary[0m libc.abi.so
+  [00;33mLibrary[0m libc-string.lib.a
+  [00;33mLibrary[0m libc-locale.lib.a
+  [00;33mLibrary[0m libc-stdlib.lib.a
+  [00;33mLibrary[0m libc-stdio.lib.a
+  [00;33mLibrary[0m libc-gen.lib.a
+  [00;33mLibrary[0m libc-gdtoa.lib.a
+  [00;33mLibrary[0m libc-inet.lib.a
+  [00;33mLibrary[0m libc-stdtime.lib.a
+  [00;33mLibrary[0m libc-regex.lib.a
+  [00;33mLibrary[0m libc-compat.lib.a
+  [00;33mLibrary[0m libc-setjmp.lib.a
+  [00;33mLibrary[0m libc-mem.lib.a
+  [00;33mLibrary[0m libc-resolv.lib.a
+  [00;33mLibrary[0m libc-isc.lib.a
+  [00;33mLibrary[0m libc-nameser.lib.a
+  [00;33mLibrary[0m libc-net.lib.a
+  [00;33mLibrary[0m libc-rpc.lib.a
+  [00;33mLibrary[0m libc-tzcode.lib.a
+  [00;33mLibrary[0m libc-libkern.lib.a
+  [00;33mLibrary[0m base.lib.a
+  [00;33mLibrary[0m vfs.abi.so
+  [00;33mLibrary[0m libc.lib.so
+  [00;33mLibrary[0m libm.abi.so
+  [00;33mLibrary[0m libm.lib.so
+  [00;33mLibrary[0m posix.abi.so
+  [00;33mLibrary[0m posix.lib.so
+  [00;33mLibrary[0m ncurses.abi.so
+  [00;33mLibrary[0m ncurses.lib.so
+  [00;33mLibrary[0m vfs.lib.so
+  [00;33mLibrary[0m vfs_pipe.lib.so
+  [00;33mLibrary[0m ttf_font.lib.a
+  [00;33mLibrary[0m vfs_ttf.lib.so
+  [00;33mLibrary[0m blit.lib.a
+  [01;33mProgram[0m app/pci_decode/pci_decode
+  [00;33mLibrary[0m core-sel4.lib.a
+    COMPILE  version.o
+    MERGE    core-sel4.lib.a
+  [01;33mProgram[0m core/sel4/core
+  [01;33mProgram[0m driver/acpi/spec/x86/acpi
+  [00;33mLibrary[0m x86emu.lib.a
+  [00;33mLibrary[0m format.lib.a
+  [01;33mProgram[0m driver/framebuffer/vesa/vesa_fb
+  [01;33mProgram[0m driver/platform/pc/spec/x86_64/pc_platform
+  [01;33mProgram[0m driver/platform/platform
+  [01;33mProgram[0m driver/ps2/x86/ps2
+  [00;33mLibrary[0m jitterentropy.lib.a
+  [00;33mLibrary[0m virt_lx_emul.lib.a
+  [00;33mLibrary[0m virt_linux_generated.lib.a
+  [01;33mProgram[0m driver/usb_hid/spec/x86_64/usb_hid
+  [00;33mLibrary[0m pc_lx_emul.lib.a
+  [00;33mLibrary[0m pc_linux_generated.lib.a
+  [01;33mProgram[0m driver/usb_host/pc/spec/x86_64/pc_usb_host
+  [01;33mProgram[0m init/init
+  [01;33mProgram[0m noux-pkg/bash-minimal/bash-minimal
+  [01;33mProgram[0m noux-pkg/vim-minimal/vim-minimal
+  [01;33mProgram[0m server/cached_fs_rom/cached_fs_rom
+  [01;33mProgram[0m server/event_filter/event_filter
+  [01;33mProgram[0m server/nitpicker/nitpicker
+  [01;33mProgram[0m server/report_rom/report_rom
+  [01;33mProgram[0m server/terminal/terminal
+  [01;33mProgram[0m server/vfs/vfs
+  [01;33mProgram[0m sponge_pkgd/sponge_pkgd
+  [01;33mProgram[0m test/terminal_probe/terminal_probe
+    COMPILE  main.o
+    LINK     terminal_probe
+  [01;33mProgram[0m timer/hpet/hpet_timer
+make[1]: ディレクトリ '/home/luke/sponge-os/genode/build/x86_64' から出ます
+genode build completed
+building targets: kernel/sel4 lib/ld-sel4
+spawn make kernel/sel4 lib/ld-sel4
+make[1]: ディレクトリ '/home/luke/sponge-os/genode/build/x86_64' に入ります
+  [00;33mLibrary[0m kernel-sel4-pc.lib.a
+ninja: Jobserver mode detected:  -j128 --jobserver-auth=fifo:/tmp/GMfifo217871 --no-print-directory -- DEBUG_DIR=/home/luke/sponge-os/genode/build/x86_64/debug INSTALL_DIR=/home/luke/sponge-os/genode/build/x86_64/bin BUILD_BASE_DIR=/home/luke/sponge-os/genode/build/x86_64 SHARED_LIBS= ARCHIVES= LIB=kernel-sel4-pc LIB_MK=/home/luke/sponge-os/genode/repos/base-sel4/lib/mk/spec/x86_64/kernel-sel4-pc.mk REP_DIR=/home/luke/sponge-os/genode/repos/base-sel4 SHELL=/usr/bin/bash
+ninja: no work to do.
+  [00;33mLibrary[0m syscall-sel4-pc.lib.a
+  [00;33mLibrary[0m syscall-sel4.lib.a
+  [00;33mLibrary[0m startup-sel4.lib.a
+  [00;33mLibrary[0m base-sel4-common.lib.a
+  [00;33mLibrary[0m timeout.lib.a
+  [00;33mLibrary[0m cxx.lib.a
+  [00;33mLibrary[0m base-sel4.lib.a
+  [00;33mLibrary[0m ldso_so_support.lib.a
+  [00;33mLibrary[0m ld-sel4.lib.so
+  [01;33mProgram[0m kernel/sel4/sel4-pc
+make[1]: ディレクトリ '/home/luke/sponge-os/genode/build/x86_64' から出ます
+genode build completed
+using 'core-sel4.a' as 'core.a'
+using 'hpet_timer' as 'timer'
+using 'ld-sel4.lib.so' as 'ld.lib.so'
+install bootloader
+creating ISO image...
+xorriso 1.5.8.pl02 : RockRidge filesystem manipulator, libburnia project.
+
+spawn qemu-system-x86_64 -nographic -m 2G -device nec-usb-xhci,id=xhci -device usb-tablet -qmp tcp:127.0.0.1:36442,server=on,wait=off -serial mon:stdio -cdrom var/run/sponge-terminal-qmp.iso -machine q35 -cpu Skylake-Client -net nic,model=e1000,netdev=net0 -netdev user,id=net0
+qemu-system-x86_64: warning: TCG doesn't support requested feature: CPUID[eax=01h].ECX.pcid [bit 17]
+qemu-system-x86_64: warning: TCG doesn't support requested feature: CPUID[eax=01h].ECX.tsc-deadline [bit 24]
+qemu-system-x86_64: warning: TCG doesn't support requested feature: CPUID[eax=07h,ecx=00h].EBX.hle [bit 4]
+qemu-system-x86_64: warning: TCG doesn't support requested feature: CPUID[eax=07h,ecx=00h].EBX.invpcid [bit 10]
+qemu-system-x86_64: warning: TCG doesn't support requested feature: CPUID[eax=07h,ecx=00h].EBX.rtm [bit 11]
+qemu-system-x86_64: warning: TCG doesn't support requested feature: CPUID[eax=0Dh,ecx=01h].EAX.xsavec [bit 1]
+c[?7l[2J[0mSeaBIOS (version Arch Linux 1.17.0-2-2)
+
+
+iPXE (http://ipxe.org) 00:02.0 C900 PCI2.10 PnP PMM+7EFD3D80+7EF33D80 C900
+Press Ctrl-B to configure iPXE (PCI 00:02.0)...                                                                               
+
+
+Booting from Hard Disk...
+Boot failed: could not read the boot disk
+
+Booting from DVD/CD...
+error: can't find command `loadfont'.
+  Booting `Genode on seL4'
+
+
+Bender Version 0.9-beta7-51-g28ba2ad-dirty
+Patching BDA with I/O port 0x3f8.
+Bender: Hello World.
+hwp config: eeo=na irq=na hwp=na epp=na epb=na
+Boot config: debug_port = 0x3f8
+Boot config: disable_iommu = true
+  module #0: start=0xec25000 end=0xfdf63c0 size=0x11d13c0 name='image.elf'
+	Physical Memory Region from 0 size 9fc00 type 1
+	Physical Memory Region from 9fc00 size 400 type 2
+	Physical Memory Region from f0000 size 10000 type 2
+	Physical Memory Region from 100000 size 7fede000 type 1
+Adding physical memory region 0x100000-0x7ffde000
+	Physical Memory Region from 7ffde000 size 22000 type 2
+	Physical Memory Region from b0000000 size 10000000 type 2
+	Physical Memory Region from fed1c000 size 4000 type 2
+	Physical Memory Region from fffc0000 size 40000 type 2
+Got framebuffer info in multiboot2. Current video mode is at physical address=fd000000 pitch=5120 resolution=1280x800@32 type=1
+Detected 1 boot module(s):
+Kernel loaded to: start=0x200000 end=0xe3e000 size=0xc3e000 entry=0x200298
+ACPI: RSDT paddr=0x7ffe2355
+ACPI: RSDT vaddr=0x7ffe2355
+ACPI: FADT paddr=0x7ffe214d
+ACPI: FADT vaddr=0x7ffe214d
+ACPI: FADT flags=0x84a5
+ACPI: MADT paddr=0x7ffe2241
+ACPI: MADT vaddr=0x7ffe2241
+ACPI: MADT apic_addr=0xfee00000
+ACPI: MADT flags=0x1
+ACPI: MADT_APIC apic_id=0x0
+ACPI: MADT_IOAPIC ioapic_id=0 ioapic_addr=0xfec00000 gsib=0
+ACPI: MADT_ISO bus=0 source=0 gsi=2 flags=0x0
+ACPI: MADT_ISO bus=0 source=5 gsi=5 flags=0xd
+ACPI: MADT_ISO bus=0 source=9 gsi=9 flags=0xd
+ACPI: MADT_ISO bus=0 source=10 gsi=10 flags=0xd
+ACPI: MADT_ISO bus=0 source=11 gsi=11 flags=0xd
+ACPI: 1 CPU(s) detected
+ELF-loading userland images from boot modules:
+size=0x2bb0000 v_entry=0x2000018 v_start=0x2000000 v_end=0x4bb0000 p_start=0xfdf7000 p_end=0x129a7000
+Moving loaded userland images to final location: from=0xfdf7000 to=0xe3e000 size=0x2bb0000
+Starting node #0 with APIC ID 0
+Mapping kernel window is done
+vt-x: not supported
+available phys memory regions: 1
+  [100000..7ffde000]
+reserved virt address space regions: 1
+  [ffffff8000200000..ffffff80039ee000]
+Booting all finished, dropped to user space
+[34mWarning: device memory in range [0000000800000000,0000001000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000001000000000,0000002000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000002000000000,0000004000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000004000000000,0000008000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000008000000000,0000408000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000408000000000,0000608000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000608000000000,0000708000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000708000000000,0000788000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000788000000000,00007c8000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [00007c8000000000,00007e8000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [00007e8000000000,00007f8000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [00007f8000000000,0000800000000000) is unavailable (due to limited untyped cnode range)[0m
+:phys_mem_16k:     Allocator 0x217a658 dump:
+ Block: [0000000000100000,0000000000a00000) size=9M avail=9M max_avail=9M
+ Block: [00000000039f0000,0000000004000000) size=6208K avail=6208K max_avail=83136K
+ Block: [0000000008000000,000000000d130000) size=83136K avail=83136K max_avail=83136K
+ => mem_size=100925440 (96 MB) / mem_avail=100925440 (96 MB)
+
+[34mWarning: device memory in range [0000000200000000,0000000400000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000000400000000,0000000800000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000000800000000,0000001000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000001000000000,0000002000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000002000000000,0000004000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000004000000000,0000008000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000008000000000,0000408000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000408000000000,0000608000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000608000000000,0000708000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000708000000000,0000788000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000788000000000,00007c8000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [00007c8000000000,00007e8000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [00007e8000000000,00007f8000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [00007f8000000000,0000800000000000) is unavailable (due to limited untyped cnode range)[0m
+virtual address layout of core:
+ overall    [0000000000002000,0000001000000000)
+ core image [0000000002000000,0000000004bb0000)
+ ipc buffer [0000000004bb0000,0000000004bb1000)
+ boot_info  [0000000004bb1000,0000000004bb2542)
+ stack area [0000000040000000,0000000050000000)
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+Physical memory per PD at most: 512M
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+boot module 'config' (9025 bytes)
+boot module 'acpi' (190328 bytes)
+boot module 'bash-minimal.tar' (1423360 bytes)
+boot module 'cached_fs_rom' (165192 bytes)
+boot module 'event_filter' (332104 bytes)
+boot module 'timer' (144744 bytes)
+boot module 'init' (516744 bytes)
+boot module 'init.hsd' (4125 bytes)
+boot module 'init.xsd' (8118 bytes)
+boot module 'ld.lib.so' (1112464 bytes)
+boot module 'libc.lib.so' (2598456 bytes)
+boot module 'libm.lib.so' (291512 bytes)
+boot module 'ncurses.lib.so' (356648 bytes)
+boot module 'nitpicker' (530480 bytes)
+boot module 'pc_platform' (724960 bytes)
+boot module 'pc_usb_host' (1564952 bytes)
+boot module 'pci_decode' (171336 bytes)
+boot module 'platform' (598984 bytes)
+boot module 'posix.lib.so' (34144 bytes)
+boot module 'ps2' (156880 bytes)
+boot module 'report_rom' (150784 bytes)
+boot module 'sponge_pkgd' (218544 bytes)
+boot module 'terminal' (315248 bytes)
+boot module 'terminal_probe' (135840 bytes)
+boot module 'usb_hid' (1131360 bytes)
+boot module 'vesa_fb' (334560 bytes)
+boot module 'vfs' (250448 bytes)
+boot module 'vfs.lib.so' (804616 bytes)
+boot module 'vfs_pipe.lib.so' (83792 bytes)
+boot module 'vfs_ttf.lib.so' (294312 bytes)
+boot module 'vim-minimal.tar' (2457600 bytes)
+boot module 'VeraMono.ttf' (49224 bytes)
+boot module 'pkg_terminal.xml' (8678 bytes)
+boot module 'pkg_index.xml' (48 bytes)
+boot module 'drivers.config' (4838 bytes)
+boot module 'fb.config' (53 bytes)
+boot module 'event_filter.config' (915 bytes)
+boot module 'en_us.chargen' (8852 bytes)
+boot module 'special.chargen' (1218 bytes)
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+Genode v0.1.0-alpha-47-gb69d83e34b <local changes>
+1613 MiB RAM and 523288 caps assigned to init
+[init -> timer] timers=3, clock 10000000fs , 64bit counter , legacy routing support vendor=0x8086
+[init -> timer] timer0 GSI options 0xff0104, supports periodic
+[init -> timer] timer1 GSI options 0xff0104, supports periodic
+[init -> timer] timer2 GSI options 0xff0104, supports periodic
+[init -> timer] time wraps after 5849 years
+[init -> timer] irqs=off legacy=off
+[init -> timer] Using timer 2 -> using GSI 2 edge triggered
+[init -> sponge_pkgd] sponge_pkgd: ready
+[init -> sponge_pkgd] sponge_pkgd: binary_prefix=''
+[init -> terminal_probe] terminal-probe: starting
+
+qmp: boot gate passed, entering rendezvous
+[init -> terminal_probe] terminal-probe: [1] install terminal via sponge_pkgd
+[init -> terminal_probe] terminal-probe: [1] install ok
+[init -> terminal_probe] terminal-probe: [2] verify installed broadcast lists terminal
+[init -> terminal_probe] terminal-probe: [2] installed broadcast lists terminal
+[init -> terminal_probe] terminal-probe: [3] launch terminal via sponge_pkgd
+[init -> sponge_pkgd] sponge_pkgd: launch result terminal -> ok (channel=primary)
+[init -> terminal_probe] terminal-probe: [3] launch ok
+[init -> terminal_probe] terminal-probe: [4] wait for terminal window + bash prompt
+[init -> drivers -> acpi] Found MADT
+[init -> drivers -> acpi] MADT IRQ 0 -> GSI 2 flags: 0
+[init -> drivers -> acpi] MADT IRQ 5 -> GSI 5 flags: 13
+[init -> drivers -> acpi] MADT IRQ 9 -> GSI 9 flags: 13
+[init -> drivers -> acpi] MADT IRQ 10 -> GSI 10 flags: 13
+[init -> drivers -> acpi] MADT IRQ 11 -> GSI 11 flags: 13
+[init -> drivers -> acpi] Found HPET hw_id=0x1  vendor_id=0x8086 space_id=0x0 addr=0xfed00000 hpet_id=0x0
+[init -> terminal_probe] terminal-probe: capture poll 0 bg=0x1e1e2e glyphs=0
+[init -> drivers -> acpi] Found MCFG
+[init -> drivers -> acpi] MCFG BASE 0xb0000000 seg 0x0 bus 0x0-0xff
+[init -> drivers -> acpi] RSDT OEM 'BOCHS ', table id 'BXPC    ', revision 1, creator 'BXPC' (1)
+[init -> drivers -> acpi] [34mWarning: SMBIOSv3 entry point invalid[0m
+[init -> drivers -> acpi] SMBIOSv2 table (entry point: 0x1b6510 structures: 0xf6530)
+[init -> drivers -> fb] fb mapped to 0x6000
+[init -> terminal_probe] terminal-probe: capture poll 10 bg=0x1e1e2e glyphs=0
+[init -> drivers -> ps2] Using keyboard with scan code set 1 (xlate)
+[init -> drivers -> ps2] detected ExPS/2 mouse - activating scroll-wheel and 5-button support
+[init -> drivers -> fb] Found: VESA BIOS version 3.0
+[init -> drivers -> fb] OEM: SeaBIOS VBE(C) 2011
+[init -> drivers -> usb] SLUB: HWalign=64, Order=0-1, MinObjects=0, CPUs=1, Nodes=1
+[init -> drivers -> usb] NR_IRQS: 4352, nr_irqs: 4352, preallocated irqs: 256
+[init -> drivers -> usb] clocksource: dde_counter: mask: 0xffffffffffffff max_cycles: 0x1d854df40, max_idle_ns: 3526361616960 ns
+[init -> drivers -> fb] Found: physical frame buffer at 0xfd000000 size: 16777216
+[init -> drivers -> fb] fb mapped to 0x17000000
+[init -> drivers -> usb] clocksource: jiffies: mask: 0xffffffff max_cycles: 0xffffffff, max_idle_ns: 7645041785100000 ns
+[init -> drivers -> fb] using 1024x768 (1024x768)
+
+qmp: rendezvous saw fb marker
+[init -> drivers -> usb] usbcore: registered new interface driver usbfs
+[init -> drivers -> usb] usbcore: registered new interface driver hub
+[init -> drivers -> usb] usbcore: registered new device driver usb
+[init -> drivers -> usb] clocksource: Switched to clocksource dde_counter
+[init -> drivers -> usb] usbcore: registered new interface driver genode
+[init -> drivers -> usb] xhci_hcd 00:03.0: xHCI Host Controller
+[init -> drivers -> usb] xhci_hcd 00:03.0: new USB bus registered, assigned bus number 1
+[init -> drivers -> usb] xhci_hcd 00:03.0: hcc params 0x00087001 hci version 0x100 quirks 0x0000000000000014
+[34mWarning: flush page table entries - mapping cache full - PD: init -> pkg_runtime -> terminal -> terminal out of CAP[0m
+[init -> drivers -> usb] xhci_hcd 00:03.0: xHCI Host Controller
+[init -> drivers -> usb] xhci_hcd 00:03.0: new USB bus registered, assigned bus number 2
+[init -> drivers -> usb] xhci_hcd 00:03.0: Host supports USB 3.0 SuperSpeed
+[34mWarning: flush page table entries - mapping cache full - PD: init -> drivers -> fb out of CAP[0m
+[init -> terminal_probe] terminal-probe: capture poll 20 bg=0x1e1e2e glyphs=0
+[init -> drivers -> usb] hub 1-0:1.0: USB hub found
+[init -> drivers -> usb] hub 1-0:1.0: 4 ports detected
+[init -> drivers -> usb] usb usb2: We don't know the algorithms for LPM for this host, disabling LPM.
+[init -> drivers -> usb] hub 2-0:1.0: USB hub found
+[init -> drivers -> usb] hub 2-0:1.0: 4 ports detected
+[init -> drivers -> usb] sched_clock: Marking stable (630980000, 812275000)->(2040155000, -596900000)
+[init -> terminal_probe] terminal-probe: [4] terminal window detected (98 glyph pixels)
+[init -> terminal_probe] terminal-probe: [5] qmp mode — host-driven focus click at (528,396) + type 'echo ok'
+[init -> terminal_probe] terminal-probe: pre-marker focus: 'focus
+[init -> terminal_probe] -
+[init -> terminal_probe] '
+[34mWarning: flush page table entries - mapping cache full - PD: init -> drivers -> fb out of CAP[0m
+[init -> terminal_probe] terminal-probe: pre-marker hover: 'hover | label: pkg_runtime -> terminal -> terminal ->  | color: #ffffff | domain: term | xpos: 511 | ypos: 383
+[init -> terminal_probe] -
+[init -> terminal_probe] '
+[init -> terminal_probe] QMP-TARGET click 528 396
+
+qmp: rendezvous saw click marker (528,396)
+[34mWarning: flush page table entries - mapping cache full - PD: init -> drivers -> fb out of CAP[0m
+[init -> drivers -> usb_hid] SLUB: HWalign=64, Order=0-1, MinObjects=0, CPUs=1, Nodes=1
+[init -> drivers -> usb_hid] clocksource: dde_counter: mask: 0xffffffffffffff max_cycles: 0x1d854df40, max_idle_ns: 3526361616960 ns
+[init -> terminal_probe] QMP-TARGET type echo ok
+
+qmp: rendezvous saw type marker 'echo ok'
+[init -> drivers -> usb_hid] clocksource: jiffies: mask: 0xffffffff max_cycles: 0xffffffff, max_idle_ns: 7645041785100000 ns
+[init -> drivers -> usb_hid] usbcore: registered new interface driver usbfs
+[init -> drivers -> usb_hid] usbcore: registered new interface driver hub
+[init -> drivers -> usb_hid] usbcore: registered new device driver usb
+[init -> drivers -> usb_hid] clocksource: Switched to clocksource dde_counter
+[init -> drivers -> usb_hid] usbcore: registered new interface driver usbhid
+[init -> drivers -> usb_hid] hid_core: USB HID core driver
+[init -> drivers -> usb_hid] sched_clock: Marking stable (0, 4439236000)->(4485669000, -46433000)
+[init -> terminal_probe] terminal-probe: echo poll 0 glyphs=98
+[init -> drivers -> usb] usb 1-1: new high-speed USB device number 2 using xhci_hcd
+[34mWarning: flush page table entries - mapping cache full - PD: init -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> drivers -> fb out of CAP[0m
+[init -> pkg_runtime -> terminal -> vfs] [34mWarning: ram donation is 4246742 but used RAM is 4164KB, 'vfs_rom -> /'[0m
+[init -> pkg_runtime -> terminal -> vfs] [34mWarning: cap donation is 11 but used caps is 18, 'vfs_rom -> /'[0m
+[init -> terminal_probe] terminal-probe: echo poll 10 glyphs=98
+[init -> drivers -> usb_hid] input: QEMU QEMU USB Tablet as /devices/usb-1-2/0-0:1.0/0003:0627:0001.0001/input/input0
+[init -> drivers -> usb_hid] Connected device: input0 (QEMU QEMU USB Tablet at usb-usbbus-0/input0) POINTER
+
+qmp: rendezvous saw POINTER marker
+
+qmp: rendezvous complete (fb=1 pointer=1 click='528,396' type='echo ok'), connecting QMP port 36442
+
+qmp: connected, dispatching tablet focus click at guest (528,396)
+
+qmp: absolute tablet mouse index: '3'
+
+qmp: dispatching type 'echo ok' + Return
+
+qmp: dispatch complete, awaiting PASS
+[init -> drivers -> usb_hid] hid-generic 0003:0627:0001.0001: input: USB HID v0.01 Mouse [QEMU QEMU USB Tablet] on usb-usbbus-0/input0
+[34mWarning: flush page table entries - mapping cache full - PD: init -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> drivers -> fb out of CAP[0m
+[init -> terminal_probe] terminal-probe: keystroke echo confirmed (glyphs 98 -> 130)
+[init -> terminal_probe] terminal-probe: PASS
+Run script execution successful.
+make: ディレクトリ '/home/luke/sponge-os/genode/build/x86_64' から出ます
