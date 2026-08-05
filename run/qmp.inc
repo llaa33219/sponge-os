@@ -488,6 +488,20 @@ proc qmp_exec_target { chan timeout_s } {
 	set timeout [expr {$timeout_s}]
 	set spawn_id $qemu_spawn_id
 	puts "\nqmp: qmp_exec_target waiting for marker (timeout=${timeout_s}s)"
+	#
+	# Raise the expect match-window for the QEMU spawn to prevent
+	# buffer truncation under the probe's poll spam. The probe polls
+	# per-iteration for popup-open (~200 iters × 100 ms = 20 s) and for
+	# green-pixel first paint (~2000 iters × 200 ms = 400 s). Each poll
+	# line is ~70 bytes; the green-poll alone spams ~140 KB into the
+	# spawn_id buffer. Tcl/expect's default match_max is 2000 bytes —
+	# under that window the QMP-TARGET markers get pushed out of the
+	# match buffer both (a) while waiting between markers (the markers
+	# were emitted but expect only retains the tail) and (b) on the
+	# next match after a previous dispatch (the matched tail is
+	# replaced). 200 KB covers any single inter-marker window plus the
+	# ~140 KB green-poll flood that runs after the entry click.
+	match_max -i $qemu_spawn_id 200000
 	expect {
 		-i $qemu_spawn_id
 		#
