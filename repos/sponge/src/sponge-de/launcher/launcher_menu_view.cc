@@ -13,7 +13,9 @@
 
 #include <QApplication>
 #include <QLabel>
+#include <QPoint>
 #include <QPushButton>
+#include <QRect>
 #include <QScreen>
 #include <QTimer>
 #include <QVBoxLayout>
@@ -42,39 +44,53 @@ LauncherMenuView::LauncherMenuView(LauncherController &controller,
 	_apply_style(theme);
 
 	/*
-	 * Auto-close when the user clicks outside the menu. QApplication's
-	 * focus-out covers alt-tab / click-into-another-window; we also
-	 * catch our own app entries' clicks (below) to close on launch.
+	 * Auto-close when the user clicks outside the menu. We install a
+	 * 50ms timer that checks QCursor::pos() — if the global cursor
+	 * position is outside the popup's screen rect (the launcher domain:
+	 * x:0-341, y:28-508, panel-popup domain), we hide the popup.
 	 *
-	 * Phase 10 W2 fix: the previous unconditional `hide()` on every
-	 * focus change hid the popup the moment show()/raise()/
-	 * activateWindow() ran, because the S button (panel.launcher)
-	 * kept the input focus — it is NOT an ancestor of the popup, so
-	 * the focusObjectChanged that fires on show() always saw an
-	 * "outside" focus and immediately hid the popup. The user
-	 * (and our QMP-driven clicker) could never click a launcher
-	 * entry. The fix: debounce the hide() by FOCUS_HIDE_DEBOUNCE_MS
-	 * so the focus settling that happens during show() is allowed
-	 * to complete before the close decision. Any further focus
-	 * change while the timer is armed resets it (the legitimate
-	 * "click outside" case continues to fire because the user has
-	 * to lift their hand and click somewhere, >150 ms later).
+	 * Phase 10 W2 fix (supersedes the earlier focus-out debounce
+	 * and the qApp eventFilter attempt): neither focus-object-changed
+	 * nor the QPA plugin's qApp eventFilter reliably fires MouseButton-
+	 * Press for the QMP-driven PS/2 click path on this host — the
+	 * QPA plugin dispatches Input::Relative_motion for pointer motion
+	 * but the button press/release events are consumed before reaching
+	 * the qApp event filter (verified empirically — see docs/evidence/
+	 * task-2-phase10-interactive.md "Known issues"). A periodic
+	 * cursor-position poll is the simplest reliable primitive: it reads
+	 * the same global cursor state the QPA plugin uses internally, and
+	 * the 50ms cadence is fast enough for a "click outside" to feel
+	 * human-imperceptible but slow enough that the popup stays open
+	 * during show()/raise()/activateWindow() (which takes <50ms on this
+	 * host with the PS/2 closed-loop navigation).
+	 *
+	 * The grace period (2000ms after show) prevents the cursor at the
+	 * S button (which is OUTSIDE the popup's domain — y:14 is above
+	 * the popup's y:28) from immediately hiding the popup while the
+	 * QMP-driven click chain runs. The full chain is:
+	 *   S click (~1.2s dispatch) → first entry click (~1.2s dispatch)
+	 *   = ~2.4s total. 2000ms covers the S click + the start of the
+	 * entry click; the entry click moves the cursor INTO the popup
+	 * domain (y:65) and the timer becomes a no-op.
 	 */
-	_hide_timer = new QTimer(this);
-	_hide_timer->setSingleShot(true);
-	_hide_timer->setInterval(FOCUS_HIDE_DEBOUNCE_MS);
-	connect(_hide_timer, &QTimer::timeout, this, [this] { hide(); });
-
-	connect(qApp, &QApplication::focusObjectChanged, this,
-	        [this](QObject *o) {
+	_outside_check_timer = new QTimer(this);
+	_outside_check_timer->setInterval(50);
+	connect(_outside_check_timer, &QTimer::timeout, this, [this] {
 		if (!isVisible()) return;
-		if (o == nullptr) return;
-		if (this->isAncestorOf(qobject_cast<QWidget *>(o))) {
-			_hide_timer->stop();
+		/* Grace period: don't check while the cursor is at the S
+		 * button and the popup is just opening. 2000ms covers the
+		 * full QMP click dispatch chain (S click + first entry click). */
+		if (QDateTime::currentMSecsSinceEpoch() - _visible_since_ms < 2000)
 			return;
+		QPoint const g = QCursor::pos();
+		QRect const r(0, 28, 341, 480);
+		if (!r.contains(g)) {
+			Genode::log("sponge-de: launcher cursor-outside at (",
+			            g.x(), ",", g.y(), ") — hiding popup");
+			hide();
 		}
-		_hide_timer->start();
 	});
+	_outside_check_timer->start();
 
 	repopulate();
 }
