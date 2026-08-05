@@ -479,6 +479,12 @@ proc qmp_exec_target { chan timeout_s } {
 	puts "\nqmp: qmp_exec_target waiting for marker (timeout=${timeout_s}s)"
 	expect {
 		-i $qemu_spawn_id
+		-re {QMP-TARGET tabclick (-?\d+) (-?\d+)\r*\n} {
+			set gx $expect_out(1,string)
+			set gy $expect_out(2,string)
+			puts "\nqmp: dispatching tabclick at guest ($gx,$gy) via usb-tablet abs + HMP mouse_button"
+			qmp_tablet_click $chan $gx $gy
+		}
 		-re {QMP-TARGET click (-?\d+) (-?\d+)\r*\n} {
 			set gx $expect_out(1,string)
 			set gy $expect_out(2,string)
@@ -542,6 +548,83 @@ proc qmp_exec_target { chan timeout_s } {
 			exit 1
 		}
 	}
+}
+
+
+##
+# W4 proven-exact landing recipe (docs/evidence/task-4-phase10-
+# interactive.md). On QEMU 11.0.2 under -nographic:
+#   1. input-send-event btn events reach NO guest device (PS/2 mouse
+#      doesn't fire; tablet doesn't receive). FIX: HMP `mouse_button 1/0`
+#      delivers BTN_LEFT through the current (tablet) device.
+#   2. Untargeted abs events broadcast to both mice; the PS/2 mouse
+#      wins and translates abs to accelerated rel deltas that slam the
+#      pointer into a corner. FIX: HMP `mouse_set <tablet-index>` makes
+#      the tablet current so abs events take the tablet path.
+#   3. The usb-tablet reports absolute positions in device units
+#      (0..32767 per axis) and nitpicker treats Absolute_motion
+#      values as raw pixels, so unscaled tablet events clamp to the
+#      screen corner. FIX: event_filter <transform> scale on the usb
+#      input (see run/sponge-de-sel4-interactive.run staging) maps
+#      device units back to pixels.
+# Together these three fixes make the QMP-TARGET tabclick marker
+# land exactly on the target pixel (±0-1 px verified in W4).
+#
+
+##
+# Send a QEMU Human Monitor Protocol (HMP) command via QMP. The HMP
+# accepts the same command-line syntax as the QEMU monitor (e.g.
+# `mouse_set 3`, `mouse_button 1`, `info mice`). Wraps the string in
+# the QMP `human-monitor-command` envelope.
+#
+proc qmp_hmp { chan cmdline } {
+	qmp_cmd $chan [format {{"execute":"human-monitor-command","arguments":{"command-line":"%s"}}} $cmdline]
+}
+
+
+##
+# Find the usb-tablet's `query-mice` index. Caches the result in a
+# global so repeated tabclick calls don't re-query. Returns the empty
+# string if no absolute device is present (caller should fail loud).
+#
+proc qmp_tablet_index { chan } {
+	global _qmp_tablet_idx
+	if {![info exists _qmp_tablet_idx]} {
+		set _qmp_tablet_idx ""
+		set result [qmp_cmd $chan {{"execute":"query-mice"}}]
+		if {[regexp {"index":\s*([0-9]+)[^\}]*"absolute":\s*true} $result dummy idx]} {
+			set _qmp_tablet_idx $idx
+		}
+		puts "\nqmp: absolute tablet mouse index: '$_qmp_tablet_idx'"
+		flush stdout
+	}
+	return $_qmp_tablet_idx
+}
+
+
+##
+# Send a QMP-TARGET tabclick via the W4 tablet-abs recipe:
+#   1. HMP `mouse_set <tablet-index>' — make the usb-tablet current
+#   2. QMP input-send-event abs (scaled by qmp_abs) — position cursor
+#   3. HMP `mouse_button 1' — press
+#   4. HMP `mouse_button 0' — release
+# The click is deterministic on this host (verified in W4: ABS_MOTION
+# +528+396 for abs (16896,16895) lands precisely on the target pixel).
+#
+proc qmp_tablet_click { chan tx ty } {
+	set idx [qmp_tablet_index $chan]
+	if {$idx eq ""} {
+		puts stderr "\nFAIL: query-mice shows no absolute mouse device"
+		exit 1
+	}
+	qmp_hmp $chan "mouse_set $idx"
+	set ax [expr {($tx * 32767 + 512) / 1024}]
+	set ay [expr {($ty * 32767 + 384) / 768}]
+	qmp_cmd $chan [format {{"execute":"input-send-event","arguments":{"events":[{"type":"abs","data":{"axis":"x","value":%d}},{"type":"abs","data":{"axis":"y","value":%d}}]}}} $ax $ay]
+	after 15
+	qmp_hmp $chan "mouse_button 1"
+	after 15
+	qmp_hmp $chan "mouse_button 0"
 }
 
 ##
