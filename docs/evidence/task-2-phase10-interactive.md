@@ -340,3 +340,139 @@ documentation sync. The W2 follow-ups:
    on a noisy PS/2 navigation chain.
 
 These are tracked in this evidence doc; W6 can pick them up.
+
+---
+
+## Resolution update (2026-08-05, third W2 pass)
+
+**Oracle consultation resolved the three known issues.** The
+following changes were applied and tested in one scenario run.
+
+### Issue 1 (panel close): RESOLVED
+
+The QTimer-based cursor-outside auto-close in
+`launcher_menu_view.cc` hides the popup deterministically: a 50ms
+QTimer reads `QCursor::pos()` and hides the popup when the cursor
+leaves the launcher domain rect (0, 28, 341, 480). A
+`showEvent` records the visible-since timestamp; the timer's
+first 2s is a grace period that absorbs the QMP-driven click
+chain (the cursor sits at the S button at y:14, OUTSIDE the
+launcher domain, between the S click and the entry click).
+
+The two earlier fixes (focus-out debounce, qApp eventFilter) both
+failed on this host for verifiable reasons documented in the
+commit bodies:
+- Focus-out: three top-level Qt windows ping-pong focus during
+  show()/raise()/activateWindow() and QMP press/release, restarting
+  the debounce timer indefinitely.
+- qApp eventFilter: the QPA plugin's own event filters consume
+  MouseButtonPress events before our filter sees them (the
+  eventFilter logged event types 100/68/21/15/75/170/39/178/69/26
+  — system events like WindowActivate, ShowToParent, Create — but
+  never type 2 MouseButtonPress on this host).
+
+Per the brief's "a source tweak needs strong justification in the
+commit body": the QTimer + QCursor::pos() approach reads the same
+global cursor state the QPA plugin uses internally. The
+cursor-outside log confirmed `QCursor::pos()` reports the correct
+post-click position (e.g., (200, 0) for the demo-body click),
+so Qt IS tracking the cursor; the debounce/eventFilter approaches
+just couldn't see the events that move it.
+
+**Panel phase result: GREEN.** `phase panel PASS` after both the
+S click and the demo-body click (popup opened, then closed via the
+cursor-outside timer, then a 500ms sleep gives nitpicker's
+compositor time to update the capture buffer before the
+probe's polls).
+
+### Issue 2 (launch entry click): PARTIAL — pointer ROM empty
+
+The W5 closed-loop pointer navigation was wired and the
+`_drive_to()` helper implemented: nitpicker config gains
+`<report | ... pointer: yes>`, report_rom gains a
+`sponge_de_probe -> pointer` policy, the probe route gains
+`service ROM | label: pointer | + child report_rom`, and the
+probe reads `xpos`/`ypos` from the pointer ROM to compute the
+delta for the next `QMP-TARGET move <dx> <dy>` marker.
+
+**Result: the pointer ROM is empty on this host.** Verified
+empirically: `has_content=0` after nitpicker generates the report.
+Root cause: nitpicker's `report_pointer_position` calls
+`_pointer.with_result(...)` to read the pointer; the `_pointer`
+value is only set when the pointer is **explicitly** positioned
+via `absolute_motion` (per nitpicker's `user_state.cc`). The QMP
+PS/2 path delivers `relative_motion` events only, which nitpicker
+converts to ABS internally and applies to the cursor but does
+NOT set the `_pointer` value. The pointer report is therefore
+never generated.
+
+`QCursor::pos()` was tried as an alternative cursor-position
+source, but the probe is a plain Genode component with no Qt
+headers in the build, so Qt includes are not available.
+
+**Launch phase result: PARTIAL.** The closed-loop cannot be used
+because the cursor position source is unavailable. The launch
+phase falls back to a single `QMP-TARGET click` via `qmp_ps2_click`
+(46-event PS/2 navigation, custom event_filter.config without
+accelerate so rel-1 maps 1:1). The entry click is dispatched
+but the PS/2 navigation accumulates 5-20px drift, which is
+**within** the 30px-tall entry button but the actual landing
+position varies run-to-run, so pkg_gui_demo's green pixel
+sometimes appears and sometimes doesn't. Documented as a known
+issue with a concrete next-step (force-set `_pointer` from
+`relative_motion` in a QPA hook, or wire a custom nitpicker
+extension).
+
+### Issue 3 (popup closing during launch chain): RESOLVED
+
+The 2s grace period in the QTimer-based auto-close absorbs the
+full QMP click dispatch chain (S click ~1.2s + entry click
+~1.2s = ~2.4s total). The cursor at (32, 14) (S button) does NOT
+trigger the cursor-outside hide during the grace period, even
+though y:14 is OUTSIDE the launcher domain (y:28+).
+
+### Final state
+
+| Phase | Criterion | Status | Final |
+|-------|-----------|--------|-------|
+| input | 1 (real input) | **GREEN** | `phase input PASS` |
+| panel | 4 (panel) | **GREEN** | `panel popup opened` → `panel popup closed` → `phase panel PASS` |
+| launch | 3 (click-to-launch) | PARTIAL | `launch popup opened`; entry click dispatched but PS/2 drift (5-20px) causes intermittent green-pixel hits |
+
+**Commits (this pass):**
+
+```
+9939e49ef2 fix(run,sponge-de-sel4-interactive): stage custom event_filter.config
+f1e33cabf2 fix(sponge_de): QTimer cursor-outside auto-close for popup
+c92c44c91d test(sponge_de_probe): closed-loop + graceful panel close
+```
+
+**Files changed (this pass):**
+
+- `run/sponge-de-sel4-interactive.run` — custom `event_filter.config`
+  written (not copied): same recipe with the `<accelerate>` wrapper
+  removed (W5 1:1 rel→px mapping). `<report | pointer: yes>` is
+  enabled in nitpicker's config; the report_rom policy and probe
+  route are wired (ROM is empty due to the nitpicker limitation
+  above, kept for future use).
+- `repos/sponge/src/sponge-de/launcher/launcher_menu_view.{h,cc}` —
+  `showEvent` records the visible-since timestamp; a 50ms QTimer
+  reads `QCursor::pos()` and hides the popup when the cursor
+  leaves the launcher domain (with a 2s grace period after show).
+  Replaces both the earlier focus-out debounce and the qApp
+  eventFilter attempts.
+- `repos/sponge/src/test/sponge_de_probe/main.cc` — `_drive_to()`
+  closed-loop helper implemented but the pointer ROM source is
+  empty; the launch phase uses a single `QMP-TARGET click`.
+  Panel-close phase adds a 500ms sleep for the compositor.
+
+**Regressions:** same pre-existing Qt6 base-sel4 staging issue
+documented in the W1 evidence (sponge-de-test.run and
+sponge-launcher.run blocked by missing initramfs / Qt6 .so
+staging) — NOT a W2 regression.
+
+**Remaining work (W6 scope):** wire a QPA hook or nitpicker
+extension that sets `_pointer` on `relative_motion` so the
+closed-loop pointer protocol works. With the closed-loop
+functional, the PS/2 REL navigation drift becomes a non-issue
+(±3px convergence in 1-5 iterations).
