@@ -763,7 +763,7 @@ match_max -i $qemu_spawn_id 200000
 # PASS" marker.
 #
 qmp_exec_target $qmp_chan 120
-run_genode_until {.*sponge-de-probe: phase input PASS.*} 120 $qemu_spawn_id
+run_genode_until {.*sponge-de-probe: phase input PASS} 120 $qemu_spawn_id
 after 500
 
 #
@@ -777,7 +777,7 @@ after 500
 #
 qmp_exec_target $qmp_chan 120
 qmp_exec_target $qmp_chan 120
-run_genode_until {.*sponge-de-probe: phase panel PASS.*} 120 $qemu_spawn_id
+run_genode_until {.*sponge-de-probe: phase panel PASS} 120 $qemu_spawn_id
 after 500
 
 #
@@ -817,7 +817,7 @@ after 500
 #
 qmp_exec_target $qmp_chan 120
 qmp_exec_target $qmp_chan 120
-run_genode_until {.*sponge-de-probe: phase launch PASS.*} 600 $qemu_spawn_id
+run_genode_until {.*sponge-de-probe: phase launch PASS} 600 $qemu_spawn_id
 after 500
 
 #
@@ -827,12 +827,12 @@ after 500
 # explicitly to make the corroboration visible (a green pixel alone
 # could be a stale pixel; the boot marker is unambiguous).
 #
-run_genode_until {.*pkg_gui_demo: window shown.*} 60 $qemu_spawn_id
+run_genode_until {.*pkg_gui_demo: window shown} 60 $qemu_spawn_id
 
 #
 # Final gate.
 #
-run_genode_until {.*sponge-de-probe: PASS.*} 60 $qemu_spawn_id
+run_genode_until {.*sponge-de-probe: PASS} 60 $qemu_spawn_id
 
 qmp_disconnect $qmp_chan
 
