@@ -572,8 +572,16 @@ build_boot_image $boot_modules
 # (other Phase-10 workstreams edit it in parallel); wrap in `catch` so
 # parse errors in the in-flight sections don't break this scenario.
 # Procs defined BEFORE any error are retained by Tcl; the procs this
-# scenario additionally needs (qmp_exec_target, qmp_disconnect, qmp_drag)
-# are defined locally below as a self-contained fallback.
+# scenario additionally needs (qmp_exec_target, qmp_drag) are defined
+# locally below — they shadow the qmp.inc versions on purpose because
+# the W3-proven drag choreography (single press + jiggle + drag +
+# release, no interleaved press+release) differs from qmp.inc's drag
+# handler (which calls qmp_ps2_click first, press+releasing at the
+# start point — observed in W6 regression to fail the layouter's
+# deferred-DRAG protocol). Only qmp_pick_port / qmp_connect / qmp_cmd
+# / qmp_disconnect / qmp_ps2_rel / qmp_ps2_button / qmp_move_rel /
+# qmp_send_key / qmp_type / qmp_char_to_keyname are sourced from
+# qmp.inc; qmp_drag and qmp_exec_target are intentionally local.
 #
 set qmp_source_path [file join [file dirname [file normalize [info script]]] qmp.inc]
 catch { source $qmp_source_path }
@@ -588,42 +596,42 @@ if {[info procs qmp_disconnect] eq ""} {
 
 #
 # qmp_exec_target — bounded expect on global qemu_spawn_id for the next
-# QMP-TARGET marker, then dispatch. Locally provided (mirrors the shared
-# qmp.inc definition verbatim) in case the shared file failed to source.
+# QMP-TARGET marker, then dispatch. Defined UNCONDITIONALLY here (no
+# `if {[info procs ...] eq ""}` guard) so the local version always
+# overrides any qmp.inc source. The drag arm dispatches to the local
+# qmp_drag (line ~672) which uses the W3-proven recipe.
 #
-if {[info procs qmp_exec_target] eq ""} {
-	proc qmp_exec_target { chan timeout_s } {
-		global qemu_spawn_id
-		if {![info exists qemu_spawn_id]} {
-			puts stderr "\nqmp: qemu_spawn_id not set"
-			exit 1
+proc qmp_exec_target { chan timeout_s } {
+	global qemu_spawn_id
+	if {![info exists qemu_spawn_id]} {
+		puts stderr "\nqmp: qemu_spawn_id not set"
+		exit 1
+	}
+	set spawn_id $qemu_spawn_id
+	expect {
+		-i $qemu_spawn_id
+		-re {QMP-TARGET click (-?\d+) (-?\d+)} {
+			set gx $expect_out(1,string)
+			set gy $expect_out(2,string)
+			puts "\nqmp: dispatching click at guest ($gx,$gy)"
+			qmp_click $chan $gx $gy
 		}
-		set spawn_id $qemu_spawn_id
-		expect {
-			-i $qemu_spawn_id
-			-re {QMP-TARGET click (-?\d+) (-?\d+)} {
-				set gx $expect_out(1,string)
-				set gy $expect_out(2,string)
-				puts "\nqmp: dispatching click at guest ($gx,$gy)"
-				qmp_click $chan $gx $gy
-			}
-			-re {QMP-TARGET drag (-?\d+) (-?\d+) (-?\d+) (-?\d+)} {
-				set x1 $expect_out(1,string)
-				set y1 $expect_out(2,string)
-				set x2 $expect_out(3,string)
-				set y2 $expect_out(4,string)
-				puts "\nqmp: dispatching drag ($x1,$y1) -> ($x2,$y2)"
-				qmp_drag $chan $x1 $y1 $x2 $y2 20
-			}
-			-re {QMP-TARGET type (\S.*)} {
-				set s $expect_out(1,string)
-				puts "\nqmp: dispatching type '$s'"
-				qmp_type $chan $s
-			}
-			timeout {
-				puts stderr "\nqmp: FAIL - no QMP-TARGET marker within ${timeout_s}s"
-				exit 1
-			}
+		-re {QMP-TARGET drag (-?\d+) (-?\d+) (-?\d+) (-?\d+)} {
+			set x1 $expect_out(1,string)
+			set y1 $expect_out(2,string)
+			set x2 $expect_out(3,string)
+			set y2 $expect_out(4,string)
+			puts "\nqmp: dispatching drag ($x1,$y1) -> ($x2,$y2)"
+			qmp_drag $chan $x1 $y1 $x2 $y2 20
+		}
+		-re {QMP-TARGET type (\S.*)} {
+			set s $expect_out(1,string)
+			puts "\nqmp: dispatching type '$s'"
+			qmp_type $chan $s
+		}
+		timeout {
+			puts stderr "\nqmp: FAIL - no QMP-TARGET marker within ${timeout_s}s"
+			exit 1
 		}
 	}
 }
@@ -716,6 +724,13 @@ proc qmp_drag { chan x1 y1 x2 y2 steps } {
 	# Step 5: drag to (x2,y2) — delta (dx,dy). Use rel-50 for
 	# accelerated motion (each ≈ 100px) for the bulk, then rel-1
 	# for the remainder.
+	#
+	# Stability fix (W6): the y-axis rel-50 motion is given extra
+	# post-press pacing (after 100 before the first move; after 30
+	# between each event) to avoid the W6 race where the PS/2 controller
+	# drops or doubles a single rel-50 event when it arrives right
+	# after BTN_LEFT. The x-axis has been stable across runs on this
+	# host with the original pacing.
 	set dx [expr {$x2 - $x1}]
 	set dy [expr {$y2 - $y1}]
 	set sx [expr {$dx > 0 ? 1 : -1}]
@@ -724,6 +739,7 @@ proc qmp_drag { chan x1 y1 x2 y2 steps } {
 	set cy2 [expr {abs($dy) / 100}]
 	set fx2 [expr {abs($dx) % 100}]
 	set fy2 [expr {abs($dy) % 100}]
+	after 100
 	for {set i 0} {$i < $cx2} {incr i} { qmp_ps2_rel $chan x [expr {$sx * 50}]; after 30 }
 	for {set i 0} {$i < $cy2} {incr i} { qmp_ps2_rel $chan y [expr {$sy * 50}]; after 30 }
 	for {set i 0} {$i < $fx2} {incr i} { qmp_ps2_rel $chan x $sx; after 10 }
