@@ -213,7 +213,7 @@ Pt const S_TOGGLE { 32, 14 };
  * (8, ~36) → screen (8, ~64). Center y ≈ 79. We aim well inside the
  * 30px button — y=80, with several px of tolerance.
  */
-Pt const FIRST_ENTRY { 10, 65 };
+Pt const FIRST_ENTRY { 170, 73 };
 
 /*
  * Demo window body click target for closing the popup via focus-out
