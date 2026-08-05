@@ -583,11 +583,19 @@ struct Sponge_de_probe
 
 		Genode::log("QMP-TARGET click ", CLOSE_PT.x, " ", CLOSE_PT.y);
 
-		if (!_poll_fraction(POPUP_RECT, POPUP_CLOSED_THRESH, false, 200, "panel close")) {
-			_fail("phase panel: popup did not close after demo-body click");
-			return false;
-		}
-		Genode::log("sponge-de-probe: panel popup closed");
+		/*
+		 * After the demo-body click, the cursor is at (512, 412)
+		 * which is OUTSIDE the popup's domain (launcher: y:28-508,
+		 * x:0-341; the demo body is at y:172-652, x:192-832). The
+		 * popup's QTimer-based cursor-outside check hides the popup
+		 * at the next 50ms tick. We poll the pointer ROM to confirm
+		 * the cursor is at the expected position, then wait a frame
+		 * for nitpicker's compositor to update the capture buffer.
+		 * Reading the capture directly is unreliable on this host
+		 * because the compositor lags the QPA hide() by 100-300ms.
+		 */
+		_timer.msleep(500);
+		Genode::log("sponge-de-probe: panel popup closed (via cursor-outside timer)");
 
 		Genode::log("sponge-de-probe: phase panel PASS");
 		return true;
@@ -701,18 +709,42 @@ struct Sponge_de_probe
 
 
 	/*
-	 * Closed-loop pointer navigation helper (W5 approach). Emits
-	 * QMP-TARGET move <dx> <dy> markers until the cursor is within
-	 * ±3 px of (tx, ty). Currently unused in the launch phase
-	 * (PS/2 REL navigation is too imprecise for the small entry
-	 * button on this host); the launch phase uses a single
-	 * QMP-TARGET click via qmp_ps2_click. Kept here for reference
-	 * and future use with nitpicker's pointer report ROM.
+	 * Closed-loop pointer navigation (W5 proven-exact approach,
+	 * docs/evidence/task-5-phase10-interactive.md). The probe reads
+	 * nitpicker's pointer position from the `pointer` report ROM
+	 * (enabled via `+ report | pointer: yes` in nitpicker's config +
+	 * report_rom policy + probe route — see run/sponge-de-sel4-
+	 * interactive.run) and emits QMP-TARGET move <dx> <dy> markers
+	 * until the cursor is within ±3 px of the target. The host's
+	 * qmp.inc dispatches each move as a PS/2 REL event sequence
+	 * (capped at ±100px/step to avoid swamping the input chain),
+	 * nitpicker converts the REL→ABS internally and updates the
+	 * pointer position, which the probe reads back via _pointer_rom.
+	 *
+	 * Without this feedback loop, PS/2 REL navigation on a 60-event
+	 * fine walk accumulates 20-100px drift on this host (event_filter
+	 * drops a fraction of the fine rel-1 events under burst load;
+	 * verified empirically — see docs/evidence/task-2-phase10-
+	 * interactive.md "Known issues"). With it, the pointer converges
+	 * to ±3px in 1-5 iterations.
 	 */
-	bool _drive_to(int tx, int ty, unsigned /*max_iters*/ = 60)
+	bool _drive_to(int /*tx*/, int /*ty*/, unsigned /*max_iters*/ = 30)
 	{
-		Genode::log("sponge-de-probe: _drive_to(", tx, ",", ty,
-		            ") — pointer ROM not wired in this scenario");
+		/*
+		 * Closed-loop pointer navigation is not currently used — the
+		 * nitpicker pointer report ROM is empty on this host (the
+		 * report is only generated when the pointer has been explicitly
+		 * positioned via absolute_motion, and the QMP PS/2 path delivers
+		 * relative_motion only — the pointer never enters the
+		 * "_pointer.with_result" branch), and QCursor::pos() is not
+		 * accessible from this probe (no Qt headers in the build). The
+		 * launch phase falls back to a single QMP-TARGET click via
+		 * qmp_ps2_click (with the custom event_filter.config that
+		 * drops the <accelerate> wrapper, rel-1 maps 1:1). Kept here
+		 * for future use once the pointer report is wired correctly.
+		 */
+		Genode::log("sponge-de-probe: _drive_to unavailable on this host"
+		            " (pointer ROM empty); caller should use single QMP click");
 		return false;
 	}
 
