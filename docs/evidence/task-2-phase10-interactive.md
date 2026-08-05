@@ -698,3 +698,112 @@ extension that sets `_pointer` on `relative_motion` so the
 closed-loop pointer protocol works. With the closed-loop
 functional, the PS/2 REL navigation drift becomes a non-issue
 (±3px convergence in 1-5 iterations).
+
+### Issue 2 follow-up (seventh W2 pass): event-driven click-outside
+
+**ROOT CAUSE (finally):** the `QTimer + QCursor::pos()` auto-close
+mechanism in `launcher_menu_view.cc` is fundamentally broken on the
+Genode QPA. `QCursor::pos()` never reflects the real nitpicker
+pointer — it always reports `(0,0)`. The 2000ms grace-period
+QTimer fires the moment it elapses, hiding the popup between the
+S-click and the entry click in the launch phase. The panel phase
+passed by accident (closing is what that phase verifies); the
+launch phase failed because the popup must STAY OPEN across the
+two-click chain.
+
+run_gate1.log line 6312: `sponge-de: launcher cursor-outside
+at (0,0) — hiding popup` — fired right when the tablet entry click
+was dispatched. The cursor reported (0,0) (Qt/Genode QPA
+divorce), the launcher domain rect was `(0, 28, 341, 480)`, so
+(0,0) is outside the rect → the timer hid the popup.
+
+**FIX (event-driven, per Oracle's step-5 recommendation):**
+replace the timer mechanism entirely with a `qApp->installEventFilter`
+in `LauncherMenuView`'s constructor and an `eventFilter` override.
+
+Three allowlist cases (do nothing, let the widget's own handler
+take it):
+1. **Press on the popup itself or any child** — entry button's
+   `clicked` handler closes the popup on success; must not race
+   it by hiding on press.
+2. **Press on the panel's launcher toggle button** (identified
+   by the new `objectName("launcherToggle")` set in
+   `PanelWidget`'s constructor) — its `clicked` handler TOGGLES
+   the popup on release (hide+show). Hiding on press would race
+   the release and produce a visible glitch.
+3. **Non-QWidget watched object** — defensive (QPA delivers some
+   press events to non-widget objects; we don't care).
+
+Anything else (press on the demo body, the panel background, the
+desktop, etc.) is "click outside" → hide.
+
+This is deterministic, race-free, and independent of the cursor
+position reported by the QPA. The QMP-driven click chain
+(S click → entry click) keeps the popup open across the chain
+because no press target falls outside the toggle/popup allowlist.
+
+**VERIFIED (run_ef1.log + run_ef2.log — TWO consecutive runs):**
+
+| Run | Phase | Marker | Dispatch | Result |
+|---|---|---|---|---|
+| ef1 | input | click (512,412) | line 6225: dispatching click (512,412) | **PASS** — `phase input PASS` |
+| ef1 | panel S-click | click (32,14) | line 6245: dispatching click (32,14) | **PASS** |
+| ef1 | panel close | click (512,412) | line 6260: dispatching click (512,412) | **PASS** — `phase panel PASS` |
+| ef1 | launch S-click | click (32,14) | line 6285: dispatching click (32,14) | **PASS** |
+| ef1 | launch entry | tablet (170,73) | line 6295: dispatching tablet (170,73) | **DISPATCHED** — popup hidden by event filter on `Main` press |
+| ef2 | (same as ef1, identical sequence) | | | **SAME** — popup hidden by event filter on `Main` press |
+| ef1/ef2 | launch | — | `sponge-de: launcher click-outside on Sponge::Sponge_DE::Main cursor=70,40 — hiding popup` | **FAIL** — green pixel never appears |
+
+**Per-run PASS markers (run_ef2):**
+- `phase input PASS` (line 6281)
+- `phase panel PASS` (line 6281)
+- **NO** `phase launch PASS` — green pixel never appears because the
+  popup is hidden by the event filter when the tablet press is
+  delivered to `Main` (the demo body widget) instead of the
+  popup's entry button.
+
+**UNRESOLVED: the tablet press is delivered to `Main` instead of
+the popup's entry button.** The cursor after the tablet move is
+at (70,40) per the instrumented log (inside the popup domain
+0-341, 28-508 but above the entry button at y:64-94). The QPA
+delivers the press to `Main` (the demo body widget) even though
+the cursor is in the popup domain. The W4 recipe (`mouse_set`
++ abs + `mouse_button`) works in the W4 terminal scenario but
+not in this sponge-de Qt scenario — this is a Qt/tablet integration
+issue on this host, separate from the click-outside mechanism.
+
+**Files changed (this pass, commit `3727eaf2d2`):**
+- `repos/sponge/src/sponge-de/launcher/launcher_menu_view.h` —
+  remove `_outside_check_timer` and `_visible_since_ms` members;
+  remove `showEvent` override; declare `eventFilter` override.
+- `repos/sponge/src/sponge-de/launcher/launcher_menu_view.cc` —
+  remove QTimer creation, 50ms timer connect, and showEvent; install
+  `qApp->installEventFilter(this)` in the constructor; implement
+  `eventFilter` with the three-case allowlist.
+- `repos/sponge/src/sponge-de/panel/panel_widget.cc` — set
+  `launcher->setObjectName("launcherToggle")` so the event filter
+  can identify it.
+
+**Per the STOP rule** ("Max 2 debugging rounds; if still not
+landing, STOP and report with logs — do NOT weaken the proof"):
+two rounds done (event filter + instrumented run with cursor
+position logging). The event-driven click-outside is verified
+correct. The Qt/tablet integration issue is a separate
+investigation item — the W4 recipe works in the W4 terminal
+scenario but not in this sponge-de Qt scenario.
+
+**Remaining work (W6 scope):** the Qt/tablet integration issue
+needs investigation — the W4 evidence documents that the W4
+recipe works in the terminal scenario (`run/sponge-terminal-qmp.run`),
+but this sponge-de Qt scenario delivers the tablet press to the
+wrong widget (the demo body `Main` instead of the popup's entry
+button). Possible investigations: (a) whether the Qt/QPA plugin
+on this host needs a `QWidget::grabMouse()` or popup-level mouse
+grab when the popup is shown; (b) whether the nitpicker pointer
+report can be wired to the popup's mouse event handling; (c)
+whether the W4 recipe needs a small delay after `mouse_set` before
+the abs event is delivered (so the device switch takes effect);
+(d) whether sponge-de needs a `QApplication::setAttribute(Qt::AA_
+GrabMouseExtraUpdates)` to correctly track the tablet. The
+event-driven click-outside is the right foundation; the tablet-
+delivery is a separate investigation.
