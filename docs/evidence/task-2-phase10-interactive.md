@@ -568,6 +568,83 @@ buffer past the matched text; (c) whether serial back-pressure
 host's stream. The match_max 200KB fix is the right
 foundation; the off-by-one is a separate investigation.
 
+### Issue 2 follow-up (sixth W2 pass): gate trailing .* + tablet-index regex
+
+The off-by-one was finally traced to TWO related regex bugs in
+the QMP choreography path. Both fixed in commit `a9ca5ffd9e`.
+
+**(a) Gate pattern trailing `.*` in `run_genode_until`.**
+Every `run_genode_until` gate used a trailing `.*` after the
+marker:
+```
+{.*sponge-de-probe: phase input PASS.*}    → {.*sponge-de-probe: phase input PASS}
+{.*sponge-de-probe: phase panel PASS.*}    → {.*sponge-de-probe: phase panel PASS}
+{.*sponge-de-probe: phase launch PASS.*}   → {.*sponge-de-probe: phase launch PASS}
+{.*pkg_gui_demo: window shown.*}           → {.*pkg_gui_demo: window shown}
+{.*sponge-de-probe: PASS.*}                → {.*sponge-de-probe: PASS}
+```
+The trailing `.*` is greedy and consumed the entire rest of
+the buffer after the match — swallowing the next QMP-TARGET
+marker that arrived in the same read chunk. run_gate1.log
+shows the panel S-click `QMP-TARGET click 32 14` (line 6248)
+arrived in the same chunk as `phase input PASS` (line 6246);
+the gate's trailing `.*` swallowed it, so the 2nd
+`qmp_exec_target` arm saw no S-click and matched the panel
+close click (512,412) that arrived at line 6255 instead.
+That cascaded: arm 3 consumed the launch S-click, arm 4
+and 5 never got their markers. The leading `.*` is fine
+(only consumes output BEFORE the marker) — keep it.
+
+**(b) `qmp_tablet_index` regex greedy `[^\}]*`.**
+`qmp_tablet_index` queries `query-mice` to find the first
+device with `"absolute": true`. The regex was:
+```
+{\"index\":\s*([0-9]+)[^\}]*\"absolute\":\s*true}
+```
+The greedy `[^\}]*` matched across the entire JSON array,
+capturing the PS/2 mouse (index 0, but the regex engine
+walked past the first `}`) instead of the usb-tablet (index
+3). `mouse_set 0` then made the PS/2 mouse current; the abs
+events were delivered to the PS/2 mouse (which doesn't
+understand abs), so the cursor reset to (0,0). Fix:
+non-greedy `[^\}]*?` so the match stops at the first `}`
+before `"absolute": true`. run_regex1.log line 6311:
+`qmp: absolute tablet mouse index: '3'` (was '0' before fix).
+
+**VERIFIED (run_gate1.log):** all 5 `qmp_exec_target` arms
+now consume the CORRECT markers:
+| Arm | Marker | Dispatch line | Coordinates |
+|---|---|---|---|
+| 1 | input click | 6239 | (512,412) |
+| 2 | panel S-click | 6259 | (32,14) |
+| 3 | panel close | 6274 | (512,412) |
+| 4 | launch S-click | 6299 | (32,14) |
+| 5 | launch entry | 6309 | tablet (170,73) |
+
+**UNRESOLVED: the tablet move still doesn't land.** After the
+5th arm dispatches the tablet click (line 6309:
+`dispatching tablet at guest (170,73)`), the cursor is at
+(0,0), not (170,73). The `mouse_set 3` + abs event +
+`mouse_button 1/0` are all dispatched, but `QCursor::pos()`
+on the host reports (0,0) (line 6312: `sponge-de: launcher
+cursor-outside at (0,0) — hiding popup`). The cursor
+didn't move at all.
+
+**Landing verification per the brief:** the landing is
+provably outside the button rect — cursor at (0,0) vs button
+rect (8, 64)-(333, 94). BUT no `FIRST_ENTRY` change is
+warranted: adjusting the entry coordinates can't help when
+the cursor doesn't move. The root cause is that tablet abs
+events don't reach `QCursor::pos()` on this host (a known
+issue documented in the evidence as "Result: the pointer
+ROM is empty on this host" — the Qt application doesn't
+reflect usb-tablet abs events in its internal cursor state).
+
+Per the brief's STOP rule ("if still not landing, STOP and
+report with logs — do NOT weaken the proof"), this is
+reported with logs. Two consecutive green runs not achieved.
+The Qt/tablet integration is a separate investigation item.
+
 ### Issue 3 (popup closing during launch chain): RESOLVED
 
 The 2s grace period in the QTimer-based auto-close absorbs the
