@@ -4,6 +4,12 @@
 > artifact path + verdict per todo 1-19, plus the full task-20 regression
 > suite results. Every path is relative to the repository root.
 
+## Phase 10 (post-Alpha interactive desktop)
+
+See [`docs/evidence/phase10-index.md`](phase10-index.md) for the W0–W6
+artifact table and the scenario → criterion → PASS-marker traceability
+that closes `docs/09-roadmap.md` §10.
+
 ## Todos 1-19 (build-up evidence)
 
 | Todo | Title | Primary artifact | Verdict |
