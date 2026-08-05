@@ -34,19 +34,27 @@
  *   launch — criterion 3: install pkg_gui_demo via the request
  *            channel (mirrors sponge-launch.run's launch_probe
  *            pattern so the launcher menu has an entry to click).
- *            Then QMP click S to open the popup, QMP click the first
- *            launcher entry to drive the full click-to-launch chain
- *            (Qt click → LauncherController::request_launch →
+ *            Then QMP click S to open the popup, QMP tablet-click the
+ *            first launcher entry to drive the full click-to-launch
+ *            chain (Qt click → LauncherController::request_launch →
  *            launcher_request report → pkgd _do_launch → pkg_runtime
  *            config → pkg_gui_demo boot → green #00ff00 first paint
  *            under softpipe). FATAL.
  *
- * Every click goes through QMP-TARGET click <gx> <gy> markers. The
- * run script's bounded expect (run/qmp.inc::qmp_exec_target) catches
- * each marker and dispatches a real QMP input-send-event PS/2
- * relative-axis click (W3's proven recipe — ±1px precision). The
- * click propagates through the live driver chain (PS/2 mouse →
- * ps2 driver → event_filter → nitpicker → sponge-de). All waits
+ * The S-toggle and demo-body clicks run over the PS/2 mouse via
+ * QMP-TARGET click <gx> <gy> markers (W3's proven recipe — clamp-to-
+ * (0,0) + coarse rel-50 + fine rel-1, ±1px). The launch-phase entry
+ * click runs over the usb-tablet via QMP-TARGET tablet <gx> <gy>
+ * markers (W4's proven recipe — HMP mouse_set + abs move + HMP
+ * mouse_button, ±0-1 px). The marker name "tablet" was chosen so the
+ * QMP-TARGET dispatch in qmp_exec_target has no substring collision
+ * with the existing "click" pattern (the previous "tabclick" attempt
+ * had the "click" pattern matching the "click" suffix of "tabclick").
+ * The run script's bounded expect (run/qmp.inc::qmp_exec_target)
+ * catches each marker and dispatches the matching QMP recipe. The
+ * click propagates through the live driver chain (PS/2 -> ps2 ->
+ * event_filter -> nitpicker -> sponge-de OR usb-tablet -> pc_usb_host
+ * -> usb_hid -> event_filter -> nitpicker -> sponge-de). All waits
  * bounded — fail loud, never hang.
  *
  * Phases absent or inject=yes → input phase only (default behavior
@@ -676,7 +684,7 @@ struct Sponge_de_probe
 		/*
 		 * Let the launcher menu update from the "installed" broadcast
 		 * before clicking the S toggle. The broadcast goes from
-		 * sponge_pkgd → report_rom → sponge-de's ROM, then sponge-de
+		 * sponge_pkgd -> report_rom -> sponge-de's ROM, then sponge-de
 		 * updates the launcher popup's entry list.
 		 */
 		_timer.msleep(1000);
@@ -691,10 +699,24 @@ struct Sponge_de_probe
 		}
 		Genode::log("sponge-de-probe: launch popup opened");
 
+		/*
+		 * Step 3 (entry click): emit QMP-TARGET tablet (NOT click) for
+		 * the first launcher entry. The W4 tablet-abs recipe (run/
+		 * qmp.inc::qmp_tablet_click) lands exactly on the target pixel
+		 * (±0-1 px), in contrast to the PS/2 REL navigation that
+		 * accumulates 5-20 px drift on the 60-event walk to a 30-px
+		 * button. The marker is the word "tablet" — chosen because it
+		 * shares no substring with the existing "click" marker, so the
+		 * expect dispatch in qmp_exec_target cannot have a substring
+		 * collision (the previous attempt used "tabclick" and ran into
+		 * the "click" pattern matching the "click" suffix of
+		 * "tabclick"). See docs/evidence/task-2-phase10-interactive.md
+		 * for the resolution.
+		 */
 		Genode::log("sponge-de-probe: phase launch -- "
 		            "click first launcher entry to launch pkg_gui_demo");
 
-		Genode::log("QMP-TARGET click ", FIRST_ENTRY.x, " ", FIRST_ENTRY.y);
+		Genode::log("QMP-TARGET tablet ", FIRST_ENTRY.x, " ", FIRST_ENTRY.y);
 
 		if (!_poll_green(GREEN_RECT, GREEN_THRESH, 2000, "launch green")) {
 			_fail("phase launch: pkg_gui_demo green pixel did not appear "

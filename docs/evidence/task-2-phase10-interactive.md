@@ -423,6 +423,60 @@ issue with a concrete next-step (force-set `_pointer` from
 `relative_motion` in a QPA hook, or wire a custom nitpicker
 extension).
 
+### Issue 2 follow-up (fourth W2 pass): tablet marker rename + dispatch-order fix
+
+After the third W2 pass left the launch entry click on `QMP-TARGET
+click` (PS/2 recipe), the next attempt swapped the entry click
+to the W4 usb-tablet recipe via `QMP-TARGET tabclick <x> <y>`.
+The `tabclick` expect arm was added at the TOP of the
+`qmp_exec_target` block, but every `tabclick` marker was
+dispatched to `qmp_ps2_click` instead of `qmp_tablet_click`.
+Root cause: the existing `click` pattern `QMP-TARGET click
+(-?\d+) (-?\d+)\r*\n` matched the `click` suffix of `tabclick`,
+so the `tabclick` arm was effectively unreachable.
+
+**Fix (this pass):** rename the marker to `tablet`. The word
+`tablet` shares no substring with `click` (or any other marker
+verb), so the substring collision is impossible by construction.
+Pattern-list order: click listed FIRST (because click lines
+arrive first in input/panel phases, and the launch S-click is
+also a click). Tablet listed SECOND (only the launch entry
+click is a tablet).
+
+**Verification (Tcl regex, `/tmp/opencode/qmp_dispatch_test.tcl`):**
+- `QMP-TARGET click 512 412\r\n` → dispatch click → gx=512 gy=412
+- `QMP-TARGET tablet 170 73\r\n` → dispatch tablet → gx=170 gy=73
+- `QMP-TARGET click 32 14\n` → dispatch click → gx=32 gy=14
+- `QMP-TARGET tablet 0 0\r\n` → dispatch tablet → gx=0 gy=0
+- EOL variants: single LF, CR LF, CR CR LF all match (the `\r*\n`
+  anchor allows 0 or more CR).
+- Cross-pattern: a `tablet` line never matches the `click`
+  pattern; a `click` line never matches the `tablet` pattern.
+- W4 tablet scale check: `(170*32767+512)/1024=5440`,
+  `(73*32767+384)/768=3115` — matches the W4 numbers used in
+  `run/sponge-terminal-qmp.run`.
+
+**Status: launch click still not landing.** With the marker
+renamed to `tablet` and the click pattern listed first, the
+host's 4th `qmp_exec_target` (which should consume the launch
+S-click `QMP-TARGET click 32 14`) still times out at 120s.
+The probe emits both launch markers BEFORE the 4th's
+"waiting" log line, so the markers are in the spawn_id
+buffer by the time the expect block runs, but neither
+pattern matches. The marker dispatch order is fine in
+isolation (verified via the Tcl test); the issue is upstream
+of the dispatch — the expect block does not see the
+launch S-click line. This exceeds the 2-debugging-round
+STOP rule budget and is reported with logs (not solved).
+Two consecutive green runs not achieved.
+
+Per the brief's STOP rule ("if still not landing, STOP and
+report with logs — do NOT weaken the proof"), no synthetic
+injection, no non-fatal phases, no direct `launcher_request`
+writes were added. The collision fix is correct and the
+Tcl test proves it; the dispatch-timeout is a separate
+investigation item.
+
 ### Issue 3 (popup closing during launch chain): RESOLVED
 
 The 2s grace period in the QTimer-based auto-close absorbs the
