@@ -1,11 +1,12 @@
 #
-# \brief  Sponge DE base-sel4 interactive GUI scenario (roadmap §11, item 1)
+# \brief  Sponge DE base-sel4 interactive GUI scenario (Phase 10 W2)
 # \author Sponge OS contributors
 # \date   2026
 #
-# Closes the deferred follow-up #1 in docs/09-roadmap.md §11: the REAL PC
-# hardware driver set wired into a base-sel4 QEMU run script, with
-# usb-tablet absolute-pointer input.
+# Closes the deferred follow-up #1 in docs/09-roadmap.md §11 (the REAL
+# PC hardware driver set wired into a base-sel4 QEMU run script) AND
+# delivers the Phase 10 W2 proof of roadmap §10 criteria 3 (click-to-
+# launch) + 4 (panel interactions) over the real QMP input path.
 #
 # What this scenario wires (the vendored Genode
 # recipes/raw/drivers_interactive-pc driver set, built from source and
@@ -13,7 +14,10 @@
 #
 #   init
 #   + timer
-#   + report_rom        (relays sponge-de's "input" report to the probe)
+#   + report_rom        (relays sponge-de's "input" report to the probe;
+#                        wires request/result/launcher_request/
+#                        launcher_result/installed/runtime between
+#                        sponge_pkgd, sponge-de, and the probe)
 #   + nitpicker         (Gui/Capture/Event; the compositor + event sink)
 #   + drivers           (sub-init; managing_system; routes Capture/Event
 #                        to nitpicker and Timer to timer). Internally it
@@ -43,14 +47,15 @@
 #                       window via Capture pixel check, the input round-
 #                       trip via real QMP clicks, the panel S-toggle
 #                       popup open/close, and click-to-launch of
-#                       pkg_gui_demo — all over the real usb-tablet
-#                       driver path → "PASS").
+#                       pkg_gui_demo — all over the real PS/2 mouse
+#                       driver path (PS/2 → ps2 → event_filter →
+#                       nitpicker → sponge-de) → "PASS").
 #
 # AUTOMATED VERIFICATION (what gates "Run script execution successful"):
 #
 #   Two boot-log assertions prove the driver stack that roadmap §11 item
-#   1 actually asks for, and a third gate proves a real QMP-driven click
-#   traverses the full hardware input chain:
+#   1 actually asks for, and a series of QMP-driven gates prove the
+#   Phase 10 W2 criteria 3 + 4 over the real input chain:
 #     (1) [drivers -> fb] "using 1024x768"  — vesa_fb set the mode and
 #         mapped the physical VESA framebuffer (it is consuming
 #         nitpicker's Capture, i.e. driving the real display).
@@ -58,6 +63,26 @@
 #         Tablet ... POINTER" — usb_hid bound the absolute pointer. This
 #         is the last driver up, so it also implies acpi -> pci_decode
 #         -> platform -> pc_usb_host (xHCI) all came up before it.
+#     (3) PHASE INPUT (criterion 1) — QMP PS/2-mouse click at the
+#         demo window center; sponge-de's input report confirms the
+#         press. Proves the PS/2 → ps2 → event_filter → nitpicker →
+#         sponge-de chain.
+#     (4) PHASE PANEL (criterion 4) — QMP PS/2-mouse click on the
+#         panel S toggle opens the launcher popup (Capture non-bg
+#         fraction in POPUP_RECT rises). Then a QMP click on the
+#         demo window body closes the popup via focus-out auto-close.
+#         FATAL — both observations must succeed.
+#     (5) PHASE LAUNCH (criterion 3) — first, install pkg_gui_demo via
+#         the request channel (mirrors run/sponge-launch.run's
+#         launch_probe pattern, populates the launcher menu); then QMP
+#         click on S to open the popup; then QMP click on the first
+#         launcher entry → sponge-de's LauncherController →
+#         launcher_request report → pkgd _do_launch → pkg_runtime
+#         config regen → pkg_gui_demo boot → green #00ff00 first
+#         paint. FATAL.
+#     (6) INDEPENDENT CORROBORATION — pkg_gui_demo's "window shown"
+#         boot marker (the misleading_success_output defense).
+#     (7) FINAL GATE — sponge-de-probe: PASS.
 #
 # Qt6/Mesa (EGL) on base-sel4 — RESOLVED (was: known limitation,
 # docs/09-roadmap.md §11.1): sponge-de's Qt6/EGL init used to block on
@@ -71,8 +96,7 @@
 # 300 hangs at EGL init; 1000 renders the full desktop; RAM was never
 # the bottleneck — the upgrade request was 0 bytes, so `ram: 128M`
 # matches the base-linux scenarios). With that, sponge-de renders and
-# the probe's Capture pixel check + injected click pass (see the
-# verification section below).
+# the probe's Capture pixel check + QMP clicks pass.
 #
 # Automated, headless, no human in the loop: -nographic (serial only).
 # To drive the desktop with a real mouse (control escape hatch,
@@ -94,6 +118,7 @@ build { core lib/ld init timer server/report_rom server/nitpicker \
          driver/acpi app/pci_decode driver/platform \
          driver/framebuffer/vesa driver/ps2 \
          driver/usb_host/pc driver/usb_hid \
+         server/event_filter \
          sponge_pkgd sponge-de test/pkg_gui_demo test/sponge_de_probe \
          qt6/base lib/libc lib/libm lib/stdcxx lib/mesa \
          lib/mesa_gpu-softpipe lib/egl lib/softpipe lib/libdrm lib/expat \
@@ -292,7 +317,7 @@ config
       + route
         + service Dma      | + child platform
         + service Platform | + child platform
-        + service Event    | + parent
+        + service Event    | + child event_filter | label: ps2
         + service ROM      | + parent
         + service PD       | + parent
         + service CPU      | + parent
@@ -325,8 +350,19 @@ config
         + service CPU                 | + parent
         + service LOG                 | + parent
         + service Timer               | + parent
-        + service Event               | + parent
+        + service Event               | + child event_filter | label: usb
         + service Usb                 | + child usb
+
+    + start event_filter | caps: 90 | ram: 1280K
+      + provides | + service Event
+      + route
+        + service ROM | label: config | + parent | label: event_filter.config
+        + service Event               | + parent
+        + service ROM                 | + parent
+        + service PD                  | + parent
+        + service CPU                 | + parent
+        + service LOG                 | + parent
+        + service Timer               | + parent
 
 # sponge_pkgd — package backend. Owns pkg_runtime's config; answers
 # launches from BOTH the request channel (vct) and the launcher_request
@@ -415,9 +451,10 @@ config
   + config | inject: no | render_iters: 1800 | phases: input,panel,launch
   + route
     + service Capture | + child nitpicker
-    + service Event   | + child nitpicker
     + service Timer   | + child timer
     + service ROM     | label: sponge_de_input | + child report_rom
+    + service ROM     | label_last: result     | + child report_rom
+    + service Report  | + child report_rom
     + any-service
       + parent
       + any-child
@@ -458,11 +495,11 @@ if {![file exists $dejavu_dst]} {
 # recipes/raw/drivers_interactive-pc/ set; drivers.config is inlined as
 # the <config> of the drivers start node above, fb.config +
 # event_filter.config are served to the fb / event_filter children by
-# label). Upstream stages these via the depot pkg; Sponge OS builds from
-# source, so we copy them in directly.
+# label). Upstream stages these via the depot pkg; Sponge OS builds
+# from source, so we copy them in directly.
 #
 set recipe_dir "${genode_dir}/repos/os/recipes/raw/drivers_interactive-pc"
-foreach f { drivers.config fb.config } {
+foreach f { drivers.config fb.config event_filter.config } {
 	if {![file exists "$recipe_dir/$f"]} {
 		error "$recipe_dir/$f missing (vendored drivers_interactive-pc recipe drifted?)"
 	}
@@ -470,8 +507,17 @@ foreach f { drivers.config fb.config } {
 }
 
 #
-# event_filter.config and chargen staging removed — event_filter child
-# was removed from the drivers sub-init (Event session routing fix).
+# en_us.chargen + special.chargen — event_filter's keyboard character
+# map (the recipe's `chargen <include rom: en_us.chargen>` requires
+# them as boot modules). Sourced from the event_filter server sources.
+#
+set chargen_dir "${genode_dir}/repos/os/src/server/event_filter"
+foreach f { en_us.chargen special.chargen } {
+	if {![file exists "$chargen_dir/$f"]} {
+		error "$chargen_dir/$f missing (event_filter sources drifted?)"
+	}
+	exec cp -f "$chargen_dir/$f" "bin/$f"
+}
 
 #
 # Default theme ROM module (sponge-de opens it as "default.theme").
@@ -511,7 +557,8 @@ close $index_fh
 set boot_modules [build_artifacts]
 foreach m { libQt6Core.lib.so libQt6Gui.lib.so libQt6Widgets.lib.so \
             libqgenode.lib.so qt6_libqgenode.tar qt6_dejavusans.tar \
-            drivers.config fb.config \
+            drivers.config fb.config event_filter.config \
+            en_us.chargen special.chargen \
             default.theme \
             pkg_pkg_gui_demo.xml pkg_index.xml } {
 	lappend boot_modules $m
@@ -530,17 +577,13 @@ build_boot_image $boot_modules
 #
 # QMP control socket (`-qmp tcp:...,server=on,wait=off`): lets the run
 # script drive host-side input events (`input-send-event`, `send-key`)
-# through the real usb-tablet/ps2 device chain. QMP is appended to
-# qemu_args ONLY before gate 3 (the host-driven click gate); the
-# pre-click gates 1-2 spawn a plain QEMU and don't need it. This keeps
-# gate-1/2 boot logs free of QMP noise AND means each spawn that DOES
-# need QMP picks a fresh kernel-assigned port right before — dodging
-# TIME_WAIT collisions between sequential QEMU spawns (the run tool
-# power-cycles QEMU for every run_genode_until call). The socket is
-# non-blocking on the QEMU side (server=on,wait=off) so QEMU does not
-# block waiting for us; qmp.inc::qmp_connect retries the connect on
-# the Tcl side for the brief window between QEMU spawn and the
-# listener being ready. See run/qmp.inc for the protocol helper.
+# through the real PS/2 mouse / usb-tablet device chain. QMP is
+# appended to qemu_args ONLY before gate 3 (the host-driven click
+# gate); the pre-click gates 1-2 spawn a plain QEMU and don't need it.
+# The socket is non-blocking on the QEMU side (server=on,wait=off) so
+# QEMU does not block waiting for us; qmp.inc::qmp_connect retries the
+# connect on the Tcl side for the brief window between QEMU spawn and
+# the listener being ready. See run/qmp.inc for the protocol helper.
 #
 # Source the shared QMP helper up front (Tcl 8.x builtin socket only;
 # no external dependencies).
@@ -552,41 +595,48 @@ append qemu_args " -device nec-usb-xhci,id=xhci -device usb-tablet "
 
 #
 # Automated verification (roadmap §11, item 1: the interactive-PC driver
-# set wired into a base-sel4 QEMU run).
+# set wired into a base-sel4 QEMU run; Phase 10 W2: criteria 3 + 4
+# over the real QMP input path).
 #
 # This scenario proves the part that roadmap item actually asks for —
 # the REAL driver set (vesa_fb, ps2, usb_hid, event_filter, platform,
 # acpi, pci_decode, pc_usb_host) booting and binding hardware on
 # base-sel4, including the usb-tablet absolute pointer — AND that real
-# QMP-driven clicks traverse the full hardware input chain
-# (QMP input-send-event → usb-tablet → pc_usb_host → usb_hid →
-# event_filter → nitpicker → sponge-de) end-to-end. Three explicit
-# gates:
+# QMP-driven PS/2-mouse clicks traverse the full hardware input chain
+# (QMP input-send-event → emulated PS/2 controller → ps2 driver →
+# event_filter → nitpicker → sponge-de) end-to-end. Explicit gates:
 #
 #   (1) DISPLAY: vesa_fb sets the mode and maps the physical VESA
 #       framebuffer (vesa_fb is consuming nitpicker's Capture session,
 #       i.e. driving the real display with nitpicker's composited
 #       output).
-#   (2) INPUT (absolute pointer): usb_hid binds the QEMU usb-tablet as a
-#       POINTER device. The -vnc unix:socket display creates a graphical
-#       QemuConsole that the tablet binds to (fixing the abs-axis mapping
-#       that was broken under -nographic where all clicks landed at center).
+#   (2) INPUT: usb_hid binds the QEMU usb-tablet as a POINTER device.
 #       This is the last driver to come up, so it also implies acpi ->
-#       pci_decode -> platform -> pc_usb_host (xHCI) all came up first.
+#       pci_decode -> platform -> pc_usb_host (xHCI) all came up
+#       first.
 #   (3) HOST-DRIVEN MULTI-PHASE CLICKS: after gates 1-2, sponge_de_probe
 #       (inject=no, phases=input,panel,launch) emits QMP-TARGET click
 #       markers on the serial console. The run script dispatches each
-#       marker as a real QMP usb-tablet click:
-#         input  — demo-center click → sponge-de input report confirms
-#                  press (criterion 1, Phase 10 W1).
-#         panel  — S-toggle click opens launcher popup (Capture non-bg
-#                  fraction rises); demo-body click closes it via focus-
-#                  out (criterion 4, Phase 10 W2).
-#         launch — S-toggle click opens popup; first-entry click drives
-#                  the full click-to-launch chain (Qt click →
-#                  LauncherController → launcher_request → pkgd
-#                  _do_launch → pkg_runtime → pkg_gui_demo green #00ff00
-#                  first paint; criterion 3, Phase 10 W2).
+#       marker as a real QMP PS/2-mouse click (W3's proven recipe —
+#       clamp-to-(0,0) + coarse rel-50 + fine rel-1, ±1px precision).
+#       Between markers the probe polls capture for the effect (popup
+#       open/close, green pixel, press report) — every poll is
+#       bounded, fail loud on timeout.
+#
+#         input  — QMP click at the demo center → input report
+#                  confirms press (criterion 1, Phase 10 W1).
+#         panel  — QMP click S toggle (open popup); QMP click demo
+#                  body (close popup via focus-out). Capture polls
+#                  the popup rect for both transitions
+#                  (criterion 4, Phase 10 W2).
+#         launch — install pkg_gui_demo via the request channel
+#                  (populates the launcher menu, mirrors
+#                  run/sponge-launch.run's launch_probe); QMP click
+#                  S (open popup); QMP click first launcher entry
+#                  (launch). Capture polls for the green pixel +
+#                  run-script gate on pkg_gui_demo's "window shown"
+#                  marker for independent corroboration (criterion
+#                  3, Phase 10 W2).
 #       Every wait is bounded — fail loud, never hang.
 #
 run_genode_until {.*\[init -> drivers -> fb\] using 1024x768.*} 90
@@ -601,25 +651,31 @@ run_genode_until {.*Connected device.*QEMU QEMU USB Tablet.*POINTER.*} 90
 # fresh per scenario invocation, dodging TIME_WAIT collisions.
 #
 # Single QEMU boot, single spawn. The probe runs an ordered phase list
-# (input, panel, launch), each emitting a QMP-TARGET click marker on
+# (input, panel, launch), each emitting QMP-TARGET click markers on
 # the serial console. The host dispatches each marker via
-# qmp_exec_target (bounded expect on qemu_spawn_id), which sends a real
-# QMP input-send-event usb-tablet click. Between markers the probe
-# polls capture + the input ROM for the effect (popup open/close, green
-# pixel, press report) — every poll is bounded, fail loud on timeout.
+# qmp_exec_target (bounded expect on qemu_spawn_id), which sends a
+# real QMP PS/2-mouse click. Between markers the probe polls capture
+# for the popup/green effect — every poll is bounded, fail loud.
 #
 #   (a) match "observe mode" — probe finished render poll, entering phases.
 #   (b) qmp_connect — QEMU is alive, its QMP socket is up.
 #   (c) phase input:  qmp_exec_target → demo-center click → wait for
 #       "phase input PASS" (input report confirms press).
-#   (d) phase panel:  qmp_exec_target → S-toggle click (open popup);
-#                     qmp_exec_target → demo-body click (close via focus-
-#                     out); wait for "phase panel PASS".
-#   (e) phase launch: qmp_exec_target → S-toggle click (open popup);
+#   (d) phase panel:  qmp_exec_target → S-toggle click (open popup,
+#                       bounded by probe's _poll_fraction);
+#                     qmp_exec_target → demo-body click (close popup,
+#                       bounded by probe's _poll_fraction);
+#                     wait for "phase panel PASS".
+#   (e) phase launch: install pkg_gui_demo (probe-driven via request
+#                       channel; result ROM confirms ok);
+#                     qmp_exec_target → S-toggle click (open popup);
 #                     qmp_exec_target → first-entry click (launch);
 #                     wait for pkg_gui_demo "window shown" marker
 #                     (independent corroboration the launch chain ran);
-#                     wait for "sponge-de-probe: PASS" (green pixel).
+#                     wait for "sponge-de-probe: phase launch PASS"
+#                     (green pixel).
+#   (f) final:         "sponge-de-probe: PASS" + "Run script execution
+#                       successful".
 #
 set qmp_port [qmp_pick_port]
 append qemu_args " -qmp tcp:127.0.0.1:${qmp_port},server=on,wait=off "
@@ -629,43 +685,71 @@ run_genode_until {.*sponge-de-probe: observe mode.*} 300
 set qmp_chan [qmp_connect $qmp_port]
 global qemu_spawn_id
 
-# Phase input: QMP click at demo center → input report confirms press.
-# This is the ONLY phase that uses QMP — it proves the real usb-tablet
-# hardware input chain (criterion 1).
+#
+# Phase input (criterion 1): QMP PS/2-mouse click at the demo center
+# (512,412). The probe emits `QMP-TARGET click 512 412`; the host
+# dispatches the click via qmp_ps2_click (clamp-to-(0,0) + coarse
+# rel-50 + fine rel-1 → ±1px landing). The click propagates through
+# the PS/2 → ps2 → event_filter → nitpicker → sponge-de chain, the
+# press reaches the demo window, and sponge-de's input report
+# confirms it. The run script gates on the probe's "phase input
+# PASS" marker.
+#
 qmp_exec_target $qmp_chan 120
 run_genode_until {.*sponge-de-probe: phase input PASS.*} 120 $qemu_spawn_id
+after 500
 
-# Phase panel: the probe injects the S-toggle and demo-body clicks via
-# its Event session internally (QMP's usb-tablet abs-axis is broken under
-# headless QEMU — all clicks land at center; see task-2 evidence). Just
-# wait for the PASS marker. Timeout includes the popup render + close.
-run_genode_until {.*sponge-de-probe: phase panel (PASS|SKIP).*} 120 $qemu_spawn_id
+#
+# Phase panel (criterion 4): two QMP PS/2-mouse clicks — one on the
+# S toggle (32,14) to open the popup, then one on the demo body
+# (512,412) to close it via focus-out auto-close. The probe polls the
+# popup rect (8,36,325,56) for non-bg fraction crossing the
+# open/closed thresholds between the two clicks. FATAL — if either
+# transition fails, the probe _fails and the run script's second
+# qmp_exec_target will time out (no more markers arrive).
+#
+qmp_exec_target $qmp_chan 120
+qmp_exec_target $qmp_chan 120
+run_genode_until {.*sponge-de-probe: phase panel PASS.*} 120 $qemu_spawn_id
+after 500
 
-# Phase launch: same Event-session approach. The probe injects S-toggle +
-# first-entry clicks and polls for the green pixel. Generous timeout
-# (Qt6/Mesa softpipe first paint on seL4 is slow).
+#
+# Phase launch (criterion 3): the probe first installs pkg_gui_demo
+# via the request channel (NOT a click-to-launch proof; this
+# populates the launcher menu so the S popup has an entry to
+# click — same install-via-request pattern as
+# run/sponge-launch.run's launch_probe). After the install
+# confirms, the probe emits two more QMP-TARGET click markers: the
+# S toggle to open the popup, then the first launcher entry
+# (170,73) to launch. The full click-to-launch chain runs:
+# Qt click → LauncherController::request_launch → launcher_request
+# report → pkgd _do_launch → pkg_runtime config regen →
+# pkg_gui_demo boot → green #00ff00 first paint. The probe's
+# green-pixel poll catches the first paint; the run script
+# additionally gates on pkg_gui_demo's "window shown" boot marker
+# (independent corroboration, misleading_success_output defense).
+# FATAL.
+#
+qmp_exec_target $qmp_chan 120
+qmp_exec_target $qmp_chan 120
 run_genode_until {.*sponge-de-probe: phase launch PASS.*} 600 $qemu_spawn_id
+after 500
 
-# Independent corroboration (misleading_success_output defense): wait
-# for pkg_gui_demo's "window shown" boot marker (must have already
-# appeared during the phase launch poll, but gate on it explicitly).
+#
+# Independent corroboration gate (misleading_success_output defense):
+# pkg_gui_demo must have logged its "window shown" boot marker at
+# some point during the launch chain — the run script gates on it
+# explicitly to make the corroboration visible (a green pixel alone
+# could be a stale pixel; the boot marker is unambiguous).
+#
 run_genode_until {.*pkg_gui_demo: window shown.*} 60 $qemu_spawn_id
 
+#
 # Final gate.
+#
 run_genode_until {.*sponge-de-probe: PASS.*} 60 $qemu_spawn_id
-qmp_disconnect $qmp_chan
 
-#
-# Phase input proves the real QMP/usb-tablet hardware input chain
-# (criterion 1, closing §11.1). Phases panel and launch prove the
-# interactive desktop behaviors (criteria 3, 4) via the probe's Event
-# session — the same nitpicker → sponge-de → Qt widget path used by
-# run/sponge-de-test.run. QMP cannot target panel/launcher positions
-# because QEMU's usb-tablet abs-axis is broken under headless mode
-# (all abs events land at screen center regardless of values; verified
-# across -nographic, -display none, and -vnc; see
-# docs/evidence/task-2-phase10-interactive.md for the full diagnosis).
-#
+qmp_disconnect $qmp_chan
 
 #
 # Interactive viewing (control escape hatch, AGENTS.md §1.1):
@@ -673,5 +757,7 @@ qmp_disconnect $qmp_chan
 # mouse/keyboard, replace the gated run_genode_until lines above with
 # `run_genode_until forever`, re-enable `QEMU_OPT += -display sdl` in
 # build.conf (or drop -nographic above), and move the host mouse — it
-# reaches the guest through the usb-tablet bound by usb_hid above.
+# reaches the guest through the usb-tablet bound by usb_hid above (the
+# PS/2 mouse used by QMP here is the same emulated controller the
+# host's SDL mouse eventually feeds).
 #
