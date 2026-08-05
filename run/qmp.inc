@@ -639,7 +639,7 @@ proc qmp_tablet_index { chan } {
 	if {![info exists _qmp_tablet_idx]} {
 		set _qmp_tablet_idx ""
 		set result [qmp_cmd $chan {{"execute":"query-mice"}}]
-		if {[regexp {"index":\s*([0-9]+)[^\}]*"absolute":\s*true} $result dummy idx]} {
+		if {[regexp {"index":\s*([0-9]+)[^\}]*?"absolute":\s*true} $result dummy idx]} {
 			set _qmp_tablet_idx $idx
 		}
 		puts "\nqmp: absolute tablet mouse index: '$_qmp_tablet_idx'"
