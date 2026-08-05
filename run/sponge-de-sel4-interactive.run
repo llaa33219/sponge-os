@@ -173,7 +173,18 @@ config
     # per label — the long-lived launcher cannot share vct's request
     # label). Mirrors run/sponge-launch.run lines 91-99.
     #
-    + policy | label: sponge_pkgd -> launcher_request  | report: sponge_de_probe -> launcher_request
+    # Final-resolution fix: the launcher_request source is sponge-de's
+    # report (the click-to-launch writes from LauncherController::
+    # request_launch), NOT the probe's report. Earlier this policy
+    # mapped sponge_pkgd's launcher_request ROM to sponge_de_probe's
+    # launcher_request report — pkgd then read an empty report and
+    # the click-to-launch chain never reached _do_launch, surfacing
+    # as "launch result for 'pkg_gui_demo' timed out (launcher_result
+    # unavailable)". The probe's _launch_request reporter is kept (the
+    # class still exists for backwards compat with the earlier
+    # test path) but is no longer wired to pkgd.
+    #
+    + policy | label: sponge_pkgd -> launcher_request  | report: sponge-de -> launcher_request
     + policy | label: sponge-de -> launcher_result     | report: sponge_pkgd -> launcher_result
     #
     # pkgd's installed-set broadcast → sponge-de (populates the launcher
@@ -787,39 +798,39 @@ after 500
 # click — same install-via-request pattern as
 # run/sponge-launch.run's launch_probe). After the install
 # confirms, the probe emits a QMP-TARGET click marker for the S
-# toggle (32,14) to open the popup, then a QMP-TARGET tablet
-# marker for the first launcher entry (170,73) — the W4
-# tablet-abs recipe (mouse_set + abs move + HMP mouse_button —
-# deterministic landing, see docs/evidence/task-4-phase10-
-# interactive.md). The full click-to-launch chain runs:
-# Qt click → LauncherController::request_launch → launcher_request
-# report → pkgd _do_launch → pkg_runtime config regen →
-# pkg_gui_demo boot → green #00ff00 first paint. The probe's
-# green-pixel poll catches the first paint; the run script
-# additionally gates on pkg_gui_demo's "window shown" boot marker
-# (independent corroboration, misleading_success_output defense).
-# FATAL.
+# toggle (32,14) to open the popup, then a QMP-TARGET click
+# marker for the first launcher entry (170,85) — the W3
+# PS/2 REL recipe (clamp-to-(0,0) + coarse rel-50 + fine rel-1,
+# ±1px landing per qmp_ps2_click in run/qmp.inc). The full
+# click-to-launch chain runs: Qt click → LauncherController::
+# request_launch → launcher_request report → pkgd _do_launch →
+# pkg_runtime config regen → pkg_gui_demo boot → green #00ff00
+# first paint. The probe's green-pixel poll catches the first
+# paint; the run script additionally gates on pkg_gui_demo's
+# "window shown" boot marker (independent corroboration,
+# misleading_success_output defense). FATAL.
 #
-# The marker name is "tablet" (not "tabclick"): the word "tablet"
-# shares no substring with "click", so the expect dispatch in
-# qmp_exec_target cannot have a substring collision (the earlier
-# "tabclick" attempt had the "click" pattern matching the "click"
-# suffix of "tabclick", forcing us to choose between the two
-# patterns in the same expect block). The PS/2 QMP-TARGET click
-# path is used for the input + panel phases (where the QTimer-based
-# cursor-outside auto-close handles the popup hide). The launch
-# entry click switches to the W4 tablet-abs recipe because the
-# PS/2 fine-walk accumulates 5-20px drift on a 60-event navigation
-# (not enough for the 30px-tall entry button), while the W4 recipe
-# lands exactly on the target pixel. The 600s timeout covers the
-# ~1s tablet dispatch (mouse_set + 1 abs move + 2 HMP mouse_button
-# calls with 15ms inter-call delays).
+# Final-resolution geometry: the launcher entry button is now
+# ~50 px tall (was ~30 px — launcher_menu_view.cc _entry_
+# stylesheet bumped padding 6→16 px + added min-height 50 px);
+# the FIRST_ENTRY probe constant moved from (170, 73) to
+# (170, 85) accordingly. The taller button absorbs the
+# ±20-30 px PS/2 REL drift observed on this host on the previous
+# ~30-px-tall buttons (run_ps1.log / run_ps2.log eighth-pass
+# evidence). See docs/evidence/task-2-phase10-interactive.md
+# §Final resolution for the full chain.
 #
 qmp_exec_target $qmp_chan 120
 qmp_exec_target $qmp_chan 120
-run_genode_until {.*sponge-de-probe: phase launch PASS} 600 $qemu_spawn_id
-after 500
-
+#
+# Re-raise match_max BEFORE each subsequent run_genode_until. The
+# run tool's wait_for_output (genode/tool/run/run:1006) starts a new
+# expect block per call, and the match_max set at line 764 is per-
+# spawn-id per-instance — the default match_max -d 40000 (run:492) is
+# what subsequent run_genode_until calls would otherwise fall back to.
+# 200 KB covers the full inter-marker window plus the green-poll
+# flood.
+match_max -i $qemu_spawn_id 200000
 #
 # Independent corroboration gate (misleading_success_output defense):
 # pkg_gui_demo must have logged its "window shown" boot marker at
@@ -827,7 +838,18 @@ after 500
 # explicitly to make the corroboration visible (a green pixel alone
 # could be a stale pixel; the boot marker is unambiguous).
 #
+# Gate ordering: the launch chain emits "pkg_gui_demo: window shown"
+# BEFORE "sponge-de-probe: phase launch PASS" (the probe polls for the
+# green pixel AFTER pkg_gui_demo has already logged the marker), so
+# the window-shown gate MUST come first — otherwise the first
+# run_genode_until consumes the buffer up through "phase launch PASS"
+# and the second gate (window shown) cannot find its already-consumed
+# match. Earlier-pass evidence (run_sel4_int_3.log / run_sel4_int_4.log)
+# showed this exact timeout.
 run_genode_until {.*pkg_gui_demo: window shown} 60 $qemu_spawn_id
+after 500
+run_genode_until {.*sponge-de-probe: phase launch PASS} 600 $qemu_spawn_id
+after 500
 
 #
 # Final gate.
