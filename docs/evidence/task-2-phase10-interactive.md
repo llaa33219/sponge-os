@@ -9,6 +9,10 @@
 - **QMP helper:** `run/qmp.inc` (qcode form, EOL anchor, PS/2 REL proc, move marker)
 - **Build configuration:** `KERNEL=sel4 BOARD=pc`
 - **QEMU:** `qemu-system-x86_64` version 11.0.2
+- **Decisive durable artifacts:**
+  - `docs/evidence/task-2-phase10-interactive-run1.log` (1st green run, full boot transcript)
+  - `docs/evidence/task-2-phase10-interactive-run2.log` (2nd consecutive green run, full boot transcript)
+  - `docs/evidence/task-2-phase10-interactive-dispatch-test.tcl` (Tcl regex dispatch test; run with `tclsh <path>`)
 
 ---
 
@@ -443,7 +447,7 @@ arrive first in input/panel phases, and the launch S-click is
 also a click). Tablet listed SECOND (only the launch entry
 click is a tablet).
 
-**Verification (Tcl regex, `/tmp/opencode/qmp_dispatch_test.tcl`):**
+**Verification (Tcl regex, `docs/evidence/task-2-phase10-interactive-dispatch-test.tcl`):**
 - `QMP-TARGET click 512 412\r\n` → dispatch click → gx=512 gy=412
 - `QMP-TARGET tablet 170 73\r\n` → dispatch tablet → gx=170 gy=73
 - `QMP-TARGET click 32 14\n` → dispatch click → gx=32 gy=14
@@ -518,7 +522,7 @@ following `qmp_exec_target` finds no marker.
    earlier `run_genode_until` calls (with `running_spawn_id=-1`)
    would otherwise leave the buffer truncated.
 
-**Verification (run_fix2.log, one run):**
+**Verification (intermediate run, kept off the durable record):**
 - 1st `qmp_exec_target` (line 6228) → consumes input click
   (line 6234: `dispatching click at guest (512,412) via PS/2 relative`)
 - 2nd `qmp_exec_target` (line 6251) → consumes panel close
@@ -585,7 +589,7 @@ marker:
 ```
 The trailing `.*` is greedy and consumed the entire rest of
 the buffer after the match — swallowing the next QMP-TARGET
-marker that arrived in the same read chunk. run_gate1.log
+marker that arrived in the same read chunk. (Intermediate run captured earlier in the pass.)
 shows the panel S-click `QMP-TARGET click 32 14` (line 6248)
 arrived in the same chunk as `phase input PASS` (line 6246);
 the gate's trailing `.*` swallowed it, so the 2nd
@@ -608,10 +612,10 @@ walked past the first `}`) instead of the usb-tablet (index
 events were delivered to the PS/2 mouse (which doesn't
 understand abs), so the cursor reset to (0,0). Fix:
 non-greedy `[^\}]*?` so the match stops at the first `}`
-before `"absolute": true`. run_regex1.log line 6311:
+before `"absolute": true`. (Intermediate regex test log, kept off the durable record.)
 `qmp: absolute tablet mouse index: '3'` (was '0' before fix).
 
-**VERIFIED (run_gate1.log):** all 5 `qmp_exec_target` arms
+**VERIFIED (intermediate gate-trace log; superseded by the two final green runs):** all 5 `qmp_exec_target` arms
 now consume the CORRECT markers:
 | Arm | Marker | Dispatch line | Coordinates |
 |---|---|---|---|
@@ -711,7 +715,7 @@ passed by accident (closing is what that phase verifies); the
 launch phase failed because the popup must STAY OPEN across the
 two-click chain.
 
-run_gate1.log line 6312: `sponge-de: launcher cursor-outside
+(Intermediate gate-trace log, kept off the durable record; the same diagnostic line reads:) `sponge-de: launcher cursor-outside
 at (0,0) — hiding popup` — fired right when the tablet entry click
 was dispatched. The cursor reported (0,0) (Qt/Genode QPA
 divorce), the launcher domain rect was `(0, 28, 341, 480)`, so
@@ -742,7 +746,7 @@ position reported by the QPA. The QMP-driven click chain
 (S click → entry click) keeps the popup open across the chain
 because no press target falls outside the toggle/popup allowlist.
 
-**VERIFIED (run_ef1.log + run_ef2.log — TWO consecutive runs):**
+**VERIFIED (two consecutive runs from the event-filter pass — kept off the durable record; the next strategy-change pass superseded them, and the final two green runs are the durable record):**
 
 | Run | Phase | Marker | Dispatch | Result |
 |---|---|---|---|---|
@@ -754,7 +758,7 @@ because no press target falls outside the toggle/popup allowlist.
 | ef2 | (same as ef1, identical sequence) | | | **SAME** — popup hidden by event filter on `Main` press |
 | ef1/ef2 | launch | — | `sponge-de: launcher click-outside on Sponge::Sponge_DE::Main cursor=70,40 — hiding popup` | **FAIL** — green pixel never appears |
 
-**Per-run PASS markers (run_ef2):**
+**Per-run PASS markers (event-filter pass — same choreography as the final greens):**
 - `phase input PASS` (line 6281)
 - `phase panel PASS` (line 6281)
 - **NO** `phase launch PASS` — green pixel never appears because the
@@ -816,7 +820,7 @@ W4-era PS/2 click was observed to have "5-20px drift vs the
 event_filter accelerate config. The custom staged config now
 maps rel-1 → exactly 1px (accelerate removed), and PS/2 clicks
 already land correctly for input (512,412) and panel (32,14)/
-(512,412) in BOTH of the last runs (run_ef1.log, run_ef2.log).
+(512,412) in BOTH of the last runs in the event-filter pass (superseded by the final two green runs).
 The QMP PS/2 click-to-launch chain is simpler and more reliable
 than the QPA-misrouted tablet recipe.
 
@@ -828,7 +832,7 @@ kept in `qmp.inc` (used conceptually by the W4 terminal scenario
 style — `run/sponge-terminal-qmp.run`) but are not exercised by
 THIS run.
 
-**VERIFIED (run_ps1.log + run_ps2.log — TWO consecutive runs):**
+**VERIFIED (PS/2 strategy pass — same recipe as the final greens; those two intermediate runs are superseded by the durable runs in §"Final resolution"):**
 
 | Run | Phase | Marker | Dispatch | Result |
 |---|---|---|---|---|
@@ -959,7 +963,7 @@ PS/2 input path on base-sel4.
      per-spawn-id match-buffer doesn't fall back to the
      `match_max -d 40000` default (genode/tool/run/run:492).
 
-### Per-arm evidence — run_sel4_int_5.log (1st green run)
+### Per-arm evidence — task-2-phase10-interactive-run1.log (1st green run)
 
 | Marker | Dispatch | Result |
 |---|---|---|
@@ -970,7 +974,7 @@ PS/2 input path on base-sel4.
 | launch entry (340,170) | qmp dispatching click (340,170) via PS/2 relative | **PASS** — `launcher click-to-launch 'pkg_gui_demo'` → `launch result pkg_gui_demo -> ok (channel=launcher)` → `pkg_gui_demo: window shown` → `pkg_gui_demo green pixel detected` → `phase launch PASS` |
 | **final** | — | `sponge-de-probe: PASS` + `Run script execution successful` |
 
-### Per-arm evidence — run_sel4_int_6.log (2nd green run)
+### Per-arm evidence — task-2-phase10-interactive-run2.log (2nd green run)
 
 | Marker | Dispatch | Result |
 |---|---|---|
