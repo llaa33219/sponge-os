@@ -1,0 +1,781 @@
+#
+# \brief  Text-edit keyboard over the REAL input chain via QMP (Phase 10, criterion 5b)
+# \author Sponge OS contributors
+# \date   2026
+#
+# Roadmap criterion 5b (docs/09-roadmap.md §10): QMP `send-key' keyboard
+# input reaches a focused text-editor window. This scenario is the
+# run/sponge-textedit.run topology (sponge_pkgd + pkg_runtime + the
+# staged qt6_textedit payload + textedit_probe) PLUS the interactive-PC
+# drivers sub-init copied from run/sponge-de-sel4-interactive.run
+# (vesa_fb / ps2 / pc_usb_host / usb_hid / event_filter + chargen
+# staging) PLUS a QMP control socket.
+#
+# The textedit_probe runs in QMP mode (<config qmp="yes"/>): it performs
+# the unchanged install/launch/broadcast/render/error-path checks, then
+# (8a) cross-checks input delivery with its OWN native Gui view (no Qt
+# in the path), (8) drives the pointer onto the document-area center of
+# the textedit window and presses (nitpicker `focus: click' focuses the
+# edit domain and Qt places the text cursor), measures the cursor-blink
+# baseline pixel delta over the document region, and (9) requests `type
+# hello', requiring the document region's Capture delta to exceed 2x the
+# blink baseline before logging `textedit-probe: PASS' (a blink alone
+# must never PASS — the misleading_success_output guard).
+#
+# The keyboard events traverse the REAL chain end-to-end:
+#
+#   host QMP send-key -> emulated PS/2 keyboard -> ps2 driver
+#     -> event_filter (en_us.chargen) -> nitpicker (focused edit domain)
+#     -> textedit Gui session -> Qt key event -> QTextEdit document
+#     -> re-render -> observed by the probe's Capture delta.
+#
+# Pointer driving note: QEMU 11.0.2's ABSOLUTE-pointer (usb-tablet)
+# delivery under -nographic is broken on this host in every variant
+# tested (details in docs/evidence/task-5-phase10-interactive.md), so
+# the probe positions the pointer via CLOSED-LOOP RELATIVE moves: it
+# reads the actual position from nitpicker's `pointer' report ROM and
+# emits `QMP-TARGET move <dx> <dy>' markers until the target is reached
+# (QMP input-send-event rel axes -> PS/2 mouse -> ps2 driver ->
+# event_filter -> nitpicker — also the real chain). The usb-tablet is
+# still present and its binding is gated on (marker 2).
+#
+# AUTOMATED VERIFICATION (fail-loud, every wait bounded):
+#   (1) [drivers -> fb] "using 1024x768"  — vesa_fb drives the display.
+#   (2) usb_hid binds the QEMU usb-tablet as POINTER (also implies
+#       acpi -> pci_decode -> platform -> pc_usb_host came up).
+#   (3) the probe's render marker (textedit window painted).
+#   (4) qmp_drive_until_end: bounded marker loop (absmove/move/press/
+#       type/end) driving the probe's choreography.
+#   (5) `textedit-probe: PASS'.
+#
+# This scenario is base-sel4 only (vesa_fb/ps2/usb_hid need real PC
+# hardware access; the synthetic regression tier remains
+# run/sponge-textedit.run, unchanged).
+#
+
+assert {[have_spec sel4]} \
+	"sponge-textedit-qmp requires KERNEL=sel4 (BOARD=pc) in build.conf. \
+	 This scenario drives real PC hardware (vesa_fb/ps2/usb_hid) which \
+	 base-linux cannot provide; run/sponge-textedit.run is the synthetic \
+	 regression tier."
+
+build { core lib/ld init timer server/report_rom server/nitpicker \
+        driver/acpi app/pci_decode driver/platform \
+        driver/framebuffer/vesa driver/ps2 \
+        driver/usb_host/pc driver/usb_hid server/event_filter \
+        sponge_pkgd test/textedit_probe \
+        qt6/base lib/libc lib/libm lib/stdcxx lib/mesa \
+        lib/mesa_gpu-softpipe lib/egl lib/softpipe lib/libdrm lib/expat \
+        lib/freetype lib/jpeg \
+        lib/qt6_component lib/vfs lib/vfs_pipe lib/vfs_gpu lib/rom_filter \
+        lib/zlib lib/libpng lib/blit }
+
+create_boot_directory
+
+install_config {
+config
++ parent-provides
+  + service ROM
+  + service PD
+  + service RM
+  + service CPU
+  + service LOG
+  + service IRQ
+  + service IO_MEM
+  + service IO_PORT
+
++ default | caps: 200 | ram: 4M
++ default-route
+  + any-service
+    + parent
+    + any-child
+
++ start timer
+  + provides | + service Timer
+
++ start report_rom | ram: 8M
+  + provides
+    + service Report
+    + service ROM
+  + config | verbose: no
+    + policy | label: sponge_pkgd -> request        | report: textedit_probe -> request
+    + policy | label: textedit_probe -> result      | report: sponge_pkgd -> result
+    + policy | label: textedit_probe -> installed   | report: sponge_pkgd -> installed
+    + policy | label: pkg_runtime -> config         | report: sponge_pkgd -> runtime
+    + policy | label: textedit_probe -> focus       | report: nitpicker -> focus
+    + policy | label: textedit_probe -> clicked     | report: nitpicker -> clicked
+    + policy | label: textedit_probe -> hover       | report: nitpicker -> hover
+    + policy | label: textedit_probe -> pointer     | report: nitpicker -> pointer
+    + policy | label: textedit_probe -> keystate    | report: nitpicker -> keystate
+
++ start nitpicker | ram: 8M
+  + provides
+    + service Gui
+    + service Capture
+    + service Event
+  + route
+    + service Report | + child report_rom
+    + service Timer | + child timer
+    + any-service
+      + parent
+      + any-child
+  + config
+    + capture
+    + event
+    #
+    # Focus/clicked reporting: lets the probe observe WHICH session (if
+    # any) nitpicker focused after the QMP click — the decisive signal
+    # for the keyboard chain (unfocused session => keys dropped).
+    #
+    + report | focus: yes | clicked: yes | hover: yes | pointer: yes | keystate: yes
+    #
+    # Same full-screen edit domain as run/sponge-textedit.run: the
+    # QGenodeScreen QPA reports the full 1024x768 panorama and the
+    # upstream textedit main.cpp centers itself against it
+    # (mw.resize(512,512); mw.move(256,128)), so the edit domain MUST
+    # sit at (0,0) for the window to land at screen coords
+    # (256,128)-(768,640). `focus: click' is what the probe's QMP focus
+    # click exercises: the click focuses the edit domain, and
+    # subsequent ps2 key events are routed to the focused session.
+    #
+    + domain edit | layer: 2 | content: client | label: no
+                   | hover: always | focus: click
+                   | xpos: 0 | ypos: 0 | width: 1024 | height: 768
+    + domain default | layer: 3 | content: client | label: no
+                     | hover: always | focus: click | ypos: 0 | height: 0
+    + default-policy | domain: edit
+    + background | color: #1e1e2e
+
+#
+# Drivers sub-init: the vendored recipes/raw/drivers_interactive-pc set,
+# copied verbatim from run/sponge-de-sel4-interactive.run (acpi ->
+# report_rom -> pci_decode -> platform; vesa_fb as `fb'; ps2; pc_usb_host
+# as `usb'; usb_hid; event_filter providing Event and re-submitting to
+# nitpicker via the sub-init route).
+#
++ start drivers | caps: 1500 | ram: 96M | managing_system: yes
+  + binary init
+  + route
+    + service ROM | label: config | + parent | label: drivers.config
+    + service Timer               | + child timer
+    + service Capture             | + child nitpicker
+    + service Event               | + child nitpicker
+    + any-service                 | + parent
+  + config
+    + parent-provides
+      + service IRQ
+      + service IO_MEM
+      + service IO_PORT
+      + service ROM
+      + service PD
+      + service RM
+      + service CPU
+      + service LOG
+      + service Timer
+      + service Capture
+      + service Event
+
+    + default | caps: 60
+
+    + start acpi | caps: 250 | ram: 4M
+      + route
+        + service IO_MEM | + parent
+        + service LOG    | + parent
+        + service PD     | + parent
+        + service RM     | + parent
+        + service CPU    | + parent
+        + service ROM    | + parent
+        + service Report | + child report_rom
+
+    + start report_rom | caps: 100 | ram: 2M
+      + provides
+      | + service ROM
+      | + service Report
+      + config
+      | + policy | label: pci_decode -> system | report: acpi -> acpi
+      | + policy | label: platform -> devices  | report: pci_decode -> devices
+      | + policy | label: usb_hid -> report    | report: usb -> devices
+      + route
+        + service LOG | + parent
+        + service PD  | + parent
+        + service CPU | + parent
+        + service ROM | + parent
+
+    + start pci_decode | caps: 100 | ram: 2M
+      + route
+        + service Report              | + child report_rom
+        + service ROM | label: system | + child report_rom
+        + service IO_MEM              | + parent
+        + service LOG                 | + parent
+        + service PD                  | + parent
+        + service RM                  | + parent
+        + service CPU                 | + parent
+        + service ROM                 | + parent
+
+    + start platform | caps: 200 | ram: 3M | managing_system: yes
+      + provides
+      | + service Dma
+      | + service Platform
+      + route
+      | + service ROM | label: devices | + child report_rom
+      | + service Report               | + child report_rom
+      | + service IRQ                  | + parent
+      | + service IO_MEM               | + parent
+      | + service IO_PORT              | + parent
+      | + service ROM                  | + parent
+      | + service PD                   | + parent
+      | + service CPU                  | + parent
+      | + service LOG                  | + parent
+      | + service Timer                | + parent
+      + config
+        + report | devices: yes
+        + policy | label_prefix: ps2             | + device ps2
+        + policy | label_prefix: fb  | info: yes | + pci | class: VGA
+        + policy | label_prefix: usb | info: yes | + pci | class: USB
+
+    + start fb | caps: 150 | ram: 20M
+      + binary vesa_fb
+      + route
+        + service ROM | label: config | + parent | label: fb.config
+        + service Report              | + child report_rom
+        + service Dma                 | + child platform
+        + service Platform            | + child platform
+        + service IO_PORT             | + parent
+        + service IO_MEM              | + parent
+        + service ROM                 | + parent
+        + service PD                  | + parent
+        + service CPU                 | + parent
+        + service LOG                 | + parent
+        + service Timer               | + parent
+        + service Capture             | + parent
+
+    + start ps2 | caps: 100 | ram: 1280K
+      + config | verbose_keyboard: yes | verbose_scancodes: yes
+      + route
+        + service Dma      | + child platform
+        + service Platform | + child platform
+        + service Event    | + child event_filter | label: ps2
+        + service ROM      | + parent
+        + service PD       | + parent
+        + service CPU      | + parent
+        + service LOG      | + parent
+        + service Timer    | + parent
+
+    + start usb | caps: 200 | ram: 16M
+      + binary pc_usb_host
+      + provides | + service Usb
+      + config
+      | + report | devices: yes
+      | + policy | label_prefix: usb_hid | + device | class: 0x3
+      + route
+        + service Dma                     | + child platform
+        + service Platform                | + child platform
+        + service Report | label: devices | + child report_rom
+        + service ROM                     | + parent
+        + service PD                      | + parent
+        + service RM                      | + parent
+        + service CPU                     | + parent
+        + service LOG                     | + parent
+        + service Timer                   | + parent
+
+    + start usb_hid | caps: 180 | ram: 10M
+      + route
+        + service ROM | label: report | + child report_rom
+        + service ROM                 | + parent
+        + service PD                  | + parent
+        + service RM                  | + parent
+        + service CPU                 | + parent
+        + service LOG                 | + parent
+        + service Timer               | + parent
+        + service Event               | + child event_filter | label: usb
+        + service Usb                 | + child usb
+
+    + start event_filter | caps: 90 | ram: 1280K
+      + provides | + service Event
+      + route
+        + service ROM | label: config | + parent | label: event_filter.config
+        + service Event               | + parent
+        + service ROM                 | + parent
+        + service PD                  | + parent
+        + service CPU                 | + parent
+        + service LOG                 | + parent
+        + service Timer               | + parent
+
++ start sponge_pkgd | caps: 200 | ram: 16M
+  + route
+    + service ROM | label_last: request | + child report_rom
+    + service Report | + child report_rom
+    + any-service
+      + parent
+      + any-child
+
++ start pkg_runtime | caps: 1500 | ram: 256M
+  + binary init
+  + route
+    + service ROM | label: config | + child report_rom
+    + service ROM | label_last: mesa_gpu.lib.so | + parent | label: mesa_gpu-softpipe.lib.so
+    + service Gui | + child nitpicker
+    + service Report | + child report_rom
+    + any-service
+      + parent
+      + any-child
+
+#
+# textedit_probe in QMP mode: the `qmp: yes' attribute is delivered by
+# init's sandbox Inline_config_rom_service (in HID format by default
+# since Genode 26.05) and read by the probe via the format-agnostic
+# Genode::Node API — see docs/evidence/task-1-phase10-interactive.md
+# for the HID-vs-XML delivery quirk and why `.node()' is required.
+#
++ start textedit_probe | caps: 200 | ram: 16M
+  + config | qmp: yes
+  + route
+    + service Capture | + child nitpicker
+    + service Timer | + child timer
+    + service ROM | label_last: result | + child report_rom
+    + service ROM | label_last: installed | + child report_rom
+    + service ROM | label_last: focus | + child report_rom
+    + service ROM | label_last: clicked | + child report_rom
+    + service ROM | label_last: hover | + child report_rom
+    + service ROM | label_last: pointer | + child report_rom
+    + service ROM | label_last: keystate | + child report_rom
+    + service Report | + child report_rom
+    + any-service
+      + parent
+      + any-child
+- }
+
+#
+# Stage the textedit package metadata + the derived index (same as
+# run/sponge-textedit.run).
+#
+set staged_pkgs { textedit }
+foreach pkg $staged_pkgs {
+	set src "${genode_dir}/../pkg/$pkg/metadata.xml"
+	if {![file exists $src]} {
+		error "package metadata not found: $src"
+	}
+	exec cp -L $src "bin/pkg_$pkg.xml"
+}
+
+set index_fh [open "bin/pkg_index.xml" w]
+puts $index_fh "<packages>"
+foreach pkg $staged_pkgs {
+	puts $index_fh "  <pkg name=\"$pkg\"/>"
+}
+puts $index_fh "</packages>"
+close $index_fh
+
+#
+# Stage the prebuilt `textedit' binary + its upstream `textedit.config'
+# from pkg/textedit/payload/ (NOT build targets — depot-repackaged by
+# tool/pkg_import; see run/sponge-textedit.run for the rationale).
+#
+set payload_dir "${genode_dir}/../pkg/textedit/payload"
+foreach f { textedit textedit.config } {
+	set src "$payload_dir/$f"
+	set dst "bin/$f"
+	if {![file exists $src]} {
+		error "payload file not found: $src"
+	}
+	exec cp -fL $src $dst
+}
+
+#
+# qt6_dejavusans.tar from the qt6_base port sources (same as
+# run/sponge-textedit.run).
+#
+set dejavu_dst "bin/qt6_dejavusans.tar"
+if {![file exists $dejavu_dst]} {
+	set dejavu_src [glob -nocomplain "${genode_dir}/contrib/qt6_base-*/src/lib/qt6_base/src/3rdparty/wasm/DejaVuSans.ttf"]
+	if {[llength $dejavu_src] == 0} {
+		error "DejaVuSans.ttf not found in the qt6_base port sources"
+	}
+	set staging "[run_dir]/dejavusans-staging"
+	file mkdir "$staging/qt/lib/fonts"
+	file copy -force [lindex $dejavu_src 0] "$staging/qt/lib/fonts/DejaVuSans.ttf"
+	exec tar -cf $dejavu_dst -C "$staging" qt
+	file delete -force $staging
+}
+
+#
+# Driver sub-init config modules. drivers.config and fb.config come from
+# the vendored recipe. event_filter.config is WRITTEN (not copied) with
+# one deviation from the recipe: the `accelerate' wrapper around the ps2
+# input is removed — the probe's closed-loop relative positioning needs
+# a 1:1 (or at least tame) rel-count-to-pixel mapping; the accelerator's
+# 1000% sensitivity would amplify large steps unpredictably. The chargen
+# keyboard path (en_us/special includes, modifier and repeat nodes) is
+# identical to the recipe. All staging happens BEFORE build_boot_image:
+# on base-sel4 the boot image is a single packed image.elf, so modules
+# added later never reach the guest (docs/11-environment.md §10.4).
+#
+set recipe_dir "${genode_dir}/repos/os/recipes/raw/drivers_interactive-pc"
+foreach f { drivers.config fb.config } {
+	if {![file exists "$recipe_dir/$f"]} {
+		error "$recipe_dir/$f missing (vendored drivers_interactive-pc recipe drifted?)"
+	}
+	exec cp -f "$recipe_dir/$f" "bin/$f"
+}
+
+set ef_fh [open "bin/event_filter.config" w]
+puts $ef_fh {config
++ output
+  + chargen
+    + merge
+    | + input ps2
+    | + input usb
+    + mod1
+    | + key KEY_LEFTSHIFT
+    | + key KEY_RIGHTSHIFT
+    + mod2
+    | + key KEY_LEFTCTRL
+    | + key KEY_RIGHTCTRL
+    + mod3
+    | + key KEY_RIGHTALT | . AltGr
+    + repeat | delay_ms: 230 | rate_ms: 90
+    + include | rom: en_us.chargen
+    + include | rom: special.chargen
++ policy | label: ps2 | input: ps2
++ policy | label: usb | input: usb
+- }
+close $ef_fh
+
+set chargen_dir "${genode_dir}/repos/os/src/server/event_filter"
+foreach f { en_us.chargen special.chargen } {
+	if {![file exists "$chargen_dir/$f"]} { error "$chargen_dir/$f missing" }
+	exec cp -f "$chargen_dir/$f" "bin/$f"
+}
+
+#
+# Full boot module list: [build_artifacts] + the Qt6 closure + the
+# textedit payload + the staged metadata (as in run/sponge-textedit.run)
+# + the driver configs and chargen layouts (as in
+# run/sponge-de-sel4-interactive.run).
+#
+set boot_modules [build_artifacts]
+foreach m { textedit textedit.config \
+            libQt6Core.lib.so libQt6Gui.lib.so libQt6Widgets.lib.so \
+            libQt6PrintSupport.lib.so \
+            libqgenode.lib.so qt6_libqgenode.tar qt6_dejavusans.tar \
+            egl.lib.so mesa.lib.so glapi.lib.so mesa_gpu-softpipe.lib.so \
+            libdrm.lib.so libpng.lib.so freetype.lib.so jpeg.lib.so \
+            expat.lib.so zlib.lib.so \
+            stdcxx.lib.so libc.lib.so libm.lib.so \
+            qt6_component.lib.so \
+            vfs.lib.so vfs_gpu.lib.so vfs_pipe.lib.so \
+            pkg_textedit.xml pkg_index.xml \
+            en_us.chargen special.chargen \
+            drivers.config fb.config event_filter.config } {
+	lappend boot_modules $m
+}
+
+build_boot_image $boot_modules
+
+#
+# QEMU: -nographic headless; -m 2G for Qt6/Mesa softpipe + pkg_runtime's
+# 256M allocation + the drivers sub-init. nec-usb-xhci + usb-tablet give
+# the absolute pointer usb_hid binds (its binding is gated on; the
+# pointer itself is driven via PS/2 relative moves — see the pointer
+# driving note at the top of this file); the emulated PS/2 keyboard is
+# present by default and carries the QMP send-key events.
+#
+# QMP helper — W5-LOCAL INLINE COPY of run/qmp.inc (the committed W1
+# version) with two fixes applied. run/qmp.inc is outside this
+# workstream's file scope AND was observed mid-edit by another
+# workstream (a torn write broke `source' at parse time), so this
+# scenario carries the exact procs it needs, self-contained. Consolidate
+# back into qmp.inc at W6:
+#
+#   FIX 1 (qmp_send_key/qmp_type): QEMU's send-key takes `keys' as an
+#     array of KeyValue OBJECTS ({"type":"qcode","data":"h"}), not
+#     strings ("Invalid parameter type for 'keys[0]', expected: object"
+#     on QEMU system-x86_64 11.0.2).
+#   FIX 2 (qmp_drive_until_end): marker regexes anchored to the line
+#     terminator — serial output reaches expect in arbitrary chunks and
+#     the unanchored patterns matched PARTIAL markers (observed:
+#     "QMP-TARGET click 512 4" dispatched as (512,4)).
+#
+# NOTE (pointer driving): the QMP abs-click forms (W1's split calls,
+# atomic batches, explicit `device' targeting, and a VNC-console +
+# `mouse_set' variant) were all evaluated on QEMU 11.0.2 and fail in
+# distinct ways — see the pointer-driving comment below and
+# docs/evidence/task-5-phase10-interactive.md.
+#
+
+proc qmp_read_line { chan {deadline_ms 5000} } {
+	set start [clock milliseconds]
+	while {1} {
+		if {![eof $chan]} {
+			if {[gets $chan line] >= 0} {
+				return $line
+			}
+		} else {
+			puts stderr "\nqmp: EOF on QMP socket (QEMU died?)"
+			exit 1
+		}
+		if {[expr {[clock milliseconds] - $start}] > $deadline_ms} {
+			puts stderr "\nqmp: timeout reading from QMP socket (${deadline_ms}ms)"
+			exit 1
+		}
+		after 10
+	}
+}
+
+proc qmp_pick_port {} {
+	set s ""
+	set port 0
+	if {![catch {socket -server apply {args {}} 0} c]} {
+		set s $c
+		set port [lindex [fconfigure $s -sockname] 2]
+		close $s
+	}
+	if {$port == 0} {
+		set port [expr {20000 + ([pid] % 20000)}]
+	}
+	return $port
+}
+
+proc qmp_connect { port } {
+	set chan ""
+	set tries 0
+	while {$tries < 100} {
+		if {![catch {socket 127.0.0.1 $port} c]} {
+			set chan $c
+			break
+		}
+		after 50
+		incr tries
+	}
+	if {$chan eq ""} {
+		puts stderr "\nqmp: failed to connect to 127.0.0.1:$port after 100 tries"
+		exit 1
+	}
+	fconfigure $chan -buffering line -translation crlf -blocking 0
+
+	set greeting [qmp_read_line $chan 5000]
+	if {![regexp {^\{"QMP"} $greeting]} {
+		puts stderr "\nqmp: malformed greeting: $greeting"
+		exit 1
+	}
+
+	puts $chan {{"execute":"qmp_capabilities"}}
+	flush $chan
+	set ack [qmp_read_line $chan 5000]
+	if {![regexp {^\{"return":\s*\{?\}} $ack]} {
+		puts stderr "\nqmp: qmp_capabilities handshake failed: $ack"
+		exit 1
+	}
+
+	return $chan
+}
+
+proc qmp_cmd { chan json } {
+	puts $chan $json
+	flush $chan
+
+	set start [clock milliseconds]
+	while {1} {
+		set line [qmp_read_line $chan 10000]
+		if {[regexp {^\{"event":} $line]} { continue }
+		if {[regexp {^\{"error":\s*\{(.*)\}\}} $line dummy detail]} {
+			puts stderr "\nqmp: command failed: $line"
+			exit 1
+		}
+		if {[regexp {^\{"return":} $line]} {
+			return $line
+		}
+		if {[clock milliseconds] - $start > 10000} {
+			puts stderr "\nqmp: no return for command: $json (last line: $line)"
+			exit 1
+		}
+	}
+}
+
+# Guest (1024x768) -> QEMU usb-tablet absolute axes (0..32767).
+proc qmp_abs { x y } {
+	set ax [expr {($x * 32767 + 512) / 1024}]
+	set ay [expr {($y * 32767 + 384) / 768}]
+	return [list $ax $ay]
+}
+
+# Pointer driving on QEMU 11.0.2 under -nographic: absolute-axis
+# delivery is broken in EVERY variant tested (untargeted abs events are
+# reinterpreted by the PS/2 relative mouse as huge deltas, slamming the
+# pointer into the (1023,767) corner; atomic batched clicks deliver
+# nothing; a VNC console + `mouse_set tablet' fixes the motion but the
+# button events sync against the VNC console's rest position so the
+# press lands in the corner; an explicit `device' argument crashes
+# QEMU outright). RELATIVE events, by contrast, are delivered 1:1 and
+# deterministically by the PS/2 mouse. So the probe drives the pointer
+# closed-loop: it reads the actual position from nitpicker's pointer
+# report ROM and emits `move' markers with the remaining delta. See
+# docs/evidence/task-5-phase10-interactive.md for the full evaluation.
+#
+# qmp_pointer_move (abs) is retained ONLY for the `absmove' marker that
+# materializes the pointer at a deterministic position (the corner)
+# before the closed loop starts.
+proc qmp_pointer_move { chan x y } {
+	lassign [qmp_abs $x $y] ax ay
+	qmp_cmd $chan [format {{"execute":"input-send-event","arguments":{"events":[{"type":"abs","data":{"axis":"x","value":%d}},{"type":"abs","data":{"axis":"y","value":%d}}]}}} $ax $ay]
+}
+
+proc qmp_button { chan btn state } {
+	qmp_cmd $chan [format {{"execute":"input-send-event","arguments":{"events":[{"type":"btn","data":{"down":%s,"button":"%s"}}]}}} [expr {$state eq "down" ? "true" : "false"}] $btn]
+}
+
+# Relative move by (dx,dy) — the workhorse of the closed loop.
+proc qmp_rel_move { chan dx dy } {
+	qmp_cmd $chan [format {{"execute":"input-send-event","arguments":{"events":[{"type":"rel","data":{"axis":"x","value":%d}},{"type":"rel","data":{"axis":"y","value":%d}}]}}} $dx $dy]
+}
+
+# Press+release BTN_LEFT at the CURRENT pointer position (no motion
+# events, so no position sync surprises).
+proc qmp_press { chan } {
+	qmp_button $chan left down
+	after 30
+	qmp_button $chan left up
+}
+
+proc qmp_char_to_keyname { ch } {
+	scan $ch %c code
+	if {$code >= 0x61 && $code <= 0x7a} { return [format %c $code] }
+	if {$code >= 0x30 && $code <= 0x39} { return [format %c $code] }
+	if {$code >= 0x41 && $code <= 0x5a} { return [format %c $code] }
+	switch -- $ch {
+		" "  { return "spc" }
+		"\n" { return "ret" }
+		"\t" { return "tab" }
+		"-"  { return "minus" }
+		"."  { return "dot" }
+		","  { return "comma" }
+		"/"  { return "slash" }
+	}
+	puts stderr "\nqmp: unmapped character (code=$code, char='$ch') — extend qmp_char_to_keyname"
+	exit 1
+}
+
+# FIX 1: KeyValue-object send-key (see the header note above). The
+# 150ms hold-time stays below event_filter's key-repeat delay (230ms)
+# so each key produces exactly one character.
+proc qmp_send_key { chan keyname } {
+	qmp_cmd $chan [format {{"execute":"send-key","arguments":{"keys":[{"type":"qcode","data":"%s"}],"hold-time":150}}} $keyname]
+}
+
+proc qmp_type { chan string } {
+	foreach ch [split $string ""] {
+		set kn [qmp_char_to_keyname $ch]
+		qmp_send_key $chan $kn
+		after 15
+	}
+}
+
+# FIX 2: marker regexes anchored to the line terminator (serial chunks
+# can otherwise match partial markers — observed: "QMP-TARGET click
+# 512 4" dispatched as (512,4)).
+#
+# Marker-drive loop: the probe emits a VARIABLE number of markers
+# (the closed-loop `move' count depends on the pointer's actual
+# trajectory), so the host loops until the probe declares `QMP-TARGET
+# end'. Every marker wait is bounded — fail loud, never hang.
+#
+#   QMP-TARGET absmove <x> <y>   one absolute move (pointer materialize)
+#   QMP-TARGET move <dx> <dy>    relative move (closed-loop step)
+#   QMP-TARGET press             left press+release at current position
+#   QMP-TARGET type <string>     send-key per character
+#   QMP-TARGET end               no more markers; start the PASS wait
+#
+proc qmp_drive_until_end { chan timeout_s } {
+	global qemu_spawn_id
+	if {![info exists qemu_spawn_id]} {
+		puts stderr "\nqmp: qemu_spawn_id not set — drive loop must run after run_genode_until spawned QEMU"
+		exit 1
+	}
+	while {1} {
+		set timeout [expr {$timeout_s}]
+		expect {
+			-i $qemu_spawn_id
+			-re {QMP-TARGET absmove (-?\d+) (-?\d+)[\r\n]} {
+				puts "\nqmp: absmove to ($expect_out(1,string),$expect_out(2,string))"
+				qmp_pointer_move $chan $expect_out(1,string) $expect_out(2,string)
+			}
+			-re {QMP-TARGET move (-?\d+) (-?\d+)[\r\n]} {
+				qmp_rel_move $chan $expect_out(1,string) $expect_out(2,string)
+			}
+			-re {QMP-TARGET press[\r\n]} {
+				puts "\nqmp: press"
+				qmp_press $chan
+			}
+			-re {QMP-TARGET type ([^\r\n]+)[\r\n]} {
+				set s [string trimright $expect_out(1,string)]
+				puts "\nqmp: dispatching type '$s'"
+				qmp_type $chan $s
+			}
+			-re {QMP-TARGET end[\r\n]} {
+				puts "\nqmp: marker sequence complete"
+				return
+			}
+			timeout {
+				puts stderr "\nqmp: FAIL - no QMP-TARGET marker within ${timeout_s}s (probe died or boot/render race)"
+				exit 1
+			}
+		}
+	}
+}
+
+proc qmp_disconnect { chan } {
+	catch {close $chan}
+}
+
+# PID-derived QMP port. -nographic: headless (serial only); W1 verified
+# that the QMP abs-event fallback path under -nographic delivers
+# split-call clicks to the guest on this QEMU build (with a consistent
+# ~29px y drift, absorbed by the click-target choice).
+set qmp_port [qmp_pick_port]
+append qemu_args " -nographic -m 2G "
+append qemu_args " -device nec-usb-xhci,id=xhci -device usb-tablet "
+append qemu_args " -qmp tcp:127.0.0.1:${qmp_port},server=on,wait=off "
+
+#
+# Automated verification — SINGLE boot, all gates on one QEMU spawn.
+# (The multi-boot variant — plain QEMU for the driver gates, QMP added
+# for the input gate — is not viable with a VNC console: the run tool's
+# power_off is a NOP for QEMU, so sequential spawns coexist and the
+# second spawn's VNC bind collides with the first. The 3-argument
+# run_genode_until form waits on the EXISTING spawn instead.)
+#
+#   (1) fb marker: vesa_fb set the 1024x768 mode (drives the display
+#       via nitpicker's Capture).
+#   (2) usb_hid POINTER marker: the tablet is bound; also implies
+#       acpi -> pci_decode -> platform -> pc_usb_host came up, and
+#       (ps2 + event_filter start earlier than usb_hid) the whole input
+#       chain is live BEFORE any QMP event is dispatched.
+#   (3) render marker: the probe installed+launched textedit via pkgd,
+#       pixel-verified the window, and finished the pkgd error-path
+#       checks; the next serial lines are the QMP-TARGET markers.
+#   (4) connect QMP.
+#   (5) qmp_drive_until_end — bounded marker loop: the probe emits
+#       `absmove' (materialize pointer), a variable number of `move'
+#       markers (closed-loop relative positioning onto the probe's own
+#       bisect view, then onto the textedit document center), `press'
+#       (focus click), and `type hello' (twice: bisect + the real
+#       criterion-5b proof), then `end'.
+#   (6) bounded wait for `textedit-probe: PASS'.
+#
+run_genode_until {.*\[init -> drivers -> fb\] using 1024x768.*} 120
+global qemu_spawn_id
+run_genode_until {.*Connected device.*QEMU QEMU USB Tablet.*POINTER.*} 120 $qemu_spawn_id
+run_genode_until {.*textedit-probe: textedit window detected.*} 420 $qemu_spawn_id
+
+set qmp_chan [qmp_connect $qmp_port]
+qmp_drive_until_end $qmp_chan 90
+run_genode_until {.*textedit-probe: PASS.*} 120 $qemu_spawn_id
+qmp_disconnect $qmp_chan
+
+#
+# Interactive viewing (control escape hatch, AGENTS.md §1.1): replace
+# the gated run_genode_until lines above with `run_genode_until
+# forever' and drop -nographic (or re-enable `-display sdl' in
+# build.conf) — host mouse/keyboard reach the guest through the same
+# usb-tablet/ps2 -> event_filter -> nitpicker chain the QMP events use.
+#
