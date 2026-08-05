@@ -477,6 +477,97 @@ writes were added. The collision fix is correct and the
 Tcl test proves it; the dispatch-timeout is a separate
 investigation item.
 
+### Issue 2 follow-up (fifth W2 pass): match_max root cause
+
+**Root cause (finally):** Tcl/expect's default `match_max`
+(per-spawn-id buffer size for regex matching) is 2000 bytes.
+The launch-phase green-pixel poll spams `sponge-de-probe:
+launch green poll N frac_per_mille=0` every 200 ms; with 2000
+iters × ~70 B that is ~140 KB of poll spam pushed into the
+`qemu_spawn_id` buffer. Under that flood, expect's match
+window keeps only the TAIL of accumulated output:
+
+(a) **between markers** — the QMP-TARGET marker lines were
+emitted into the spawn_id buffer, but by the time the next
+`qmp_exec_target` arm starts, the buffer tail is the green-poll
+spam, not the marker line. The expect block's `-re` patterns
+find nothing to match and time out at 120 s.
+(b) **on the next match after a previous dispatch** — the
+matched tail is replaced by the next batch of poll spam; the
+following `qmp_exec_target` finds no marker.
+
+**Fix (this pass, three coordinated changes — commit
+`b5bd9b0307`):**
+
+1. `run/qmp.inc::qmp_exec_target` — raise `match_max -i
+   $qemu_spawn_id 200000` (200 KB) immediately before the
+   `expect` block. 200 KB covers any single inter-marker
+   window plus the green-poll flood. Comment block in the
+   proc explains the rationale.
+
+2. `repos/sponge/src/test/sponge_de_probe/main.cc::_poll_green`
+   — log cadence: poll 0 (always), every 50th iteration, and
+   the final iteration. Shrinks the flood at the source.
+   Previously: every 10th iteration. All phase markers and
+   PASS/FAIL lines unaffected.
+
+3. `run/sponge-de-sel4-interactive.run` — raise `match_max -i
+   $qemu_spawn_id 200000` immediately after `global
+   qemu_spawn_id` is set, before any `run_genode_until` call
+   can consume data with the default 2000-byte window. The
+   earlier `run_genode_until` calls (with `running_spawn_id=-1`)
+   would otherwise leave the buffer truncated.
+
+**Verification (run_fix2.log, one run):**
+- 1st `qmp_exec_target` (line 6228) → consumes input click
+  (line 6234: `dispatching click at guest (512,412) via PS/2 relative`)
+- 2nd `qmp_exec_target` (line 6251) → consumes panel close
+  click (line 6257: `dispatching click at guest (512,412) via PS/2 relative`)
+  ← **NEW off-by-one: should have consumed panel S-click (32,14)**
+- 3rd `qmp_exec_target` (line 6265) → consumes launch S-click
+  (line 6279: `dispatching click at guest (32,14) via PS/2 relative`)
+  ← **NEW off-by-one: should have consumed panel close click (512,412)**
+- Panel S-click (line 6248) was never consumed by any
+  `qmp_exec_target` arm.
+- 4th / 5th `qmp_exec_target` "waiting" lines missing — the
+  4th and 5th calls never produced "waiting" output before
+  the run timed out at `run_genode_until` for launch PASS
+  (line 6300: `Error: Test execution timed out`).
+- The launch entry click `QMP-TARGET tablet 170 73` (line
+  6276) was never dispatched; the green poll stays at
+  `frac_per_mille=0` (lines 6289–6299) and the run times out.
+
+**Status: launch click still not landing (exceeds STOP rule
+budget).** The match_max fix advanced the 4th dispatch to
+correctly consume the launch S-click — the previous
+expect-timeout root cause is confirmed and partially fixed.
+A NEW off-by-one issue surfaced: the 2nd `qmp_exec_target`
+arm dispatches the panel close click (512,412) instead of
+the panel S-click (32,14), so the panel S-click is silently
+lost and the 5th arm never gets the launch entry click.
+
+Per the brief's STOP rule ("if still not landing, STOP and
+report with logs"), this is reported with logs. Two
+consecutive green runs not achieved.
+
+**What to try next (W6 / future work, NOT done in this
+pass):** the panel S-click (32,14) is emitted into the
+spawn_id buffer BEFORE the 2nd `qmp_exec_target`'s "waiting"
+message, yet the expect arm matches the panel close click
+(512,412) that arrives AFTER the "waiting" message. This
+suggests the buffer tail is being managed (advanced past
+the S-click line) by some other consumer between the
+input-PASS `run_genode_until` and the 2nd
+`qmp_exec_target`. Possible investigations: (a) whether the
+input-PASS `run_genode_until`'s `expect_out(buffer)` append
+truncates the buffer tail; (b) whether the `wait_for_output`
+proc in genode/tool/run/run advances the match_max-allocated
+buffer past the matched text; (c) whether serial back-pressure
+(fb's flush-page-table warnings at lines 6244, 6249, 6252,
+6281, 6282, 6286, 6287) re-orders the serial lines in the
+host's stream. The match_max 200KB fix is the right
+foundation; the off-by-one is a separate investigation.
+
 ### Issue 3 (popup closing during launch chain): RESOLVED
 
 The 2s grace period in the QTimer-based auto-close absorbs the
