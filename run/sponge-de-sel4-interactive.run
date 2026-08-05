@@ -506,40 +506,52 @@ foreach f { drivers.config fb.config } {
 }
 
 #
-# event_filter.config — WRITTEN (not copied) with one deviation from
-# the recipe: the `accelerate' wrapper around the ps2 input is removed.
-# W3 evidence (docs/evidence/task-3-phase10-interactive.md) shows
-# rel-1 → ~10px/event with the standard `accelerate' wrapper, but for
-# the W5 closed-loop pointer protocol (used by the panel/launch phases)
-# we need a 1:1 (or at least tame) rel-count-to-pixel mapping — the
-# accelerator's 1000% sensitivity would amplify the per-step error from
-# a back-to-back burst of fine rel events. The charger keyboard path
-# (en_us/special includes, modifier and repeat nodes) is identical to
-# the recipe. All staging happens BEFORE build_boot_image: on base-sel4
-# the boot image is a single packed image.elf, so modules added later
-# never reach the guest (docs/11-environment.md §10.4).
+# event_filter.config — WRITTEN (not copied) with two deviations from
+# the recipe:
+#   1. The `accelerate' wrapper around the ps2 input is removed.
+#      W3 evidence (docs/evidence/task-3-phase10-interactive.md) shows
+#      rel-1 → ~10px/event with the standard `accelerate' wrapper, but
+#      for the PS/2 click path we need a 1:1 (or at least tame) rel-
+#      count-to-pixel mapping — the accelerator's 1000% sensitivity would
+#      amplify the per-step error from a back-to-back burst of fine rel
+#      events.
+#   2. A <transform> scale on the usb input. QEMU 11's usb-tablet
+#      reports absolute positions in device units (0..32767 per axis)
+#      and nitpicker treats Absolute_motion values as raw PIXELS, so
+#      unscaled tablet events clamp to the screen corner (observed:
+#      (528,396) -> (1023,767)). The scale maps device units to the
+#      1024x768 framebuffer (1024/32767, 768/32767); verified by the
+#      W4 evidence event_filter log showing ABS_MOTION +528+396 for abs
+#      (16896,16895). The PS/2 path is unchanged otherwise.
+# The charger keyboard path (en_us/special includes, modifier and
+# repeat nodes) is identical to the recipe. All staging happens BEFORE
+# build_boot_image: on base-sel4 the boot image is a single packed
+# image.elf, so modules added later never reach the guest
+# (docs/11-environment.md §10.4).
 #
 set ef_fh [open "bin/event_filter.config" w]
 puts $ef_fh {config
 + output
   + chargen
     + merge
+    | + transform
+    | | + scale | x: 0.0312517 | y: 0.0234382
+    | | + input usb
     | + button-scroll
     | |   + input ps2
     | |   + vertical   | button: BTN_MIDDLE | speed_percent: -10
     | |   + horizontal | button: BTN_MIDDLE | speed_percent: -10
-    | + input usb
-    + mod1
-    | + key KEY_LEFTSHIFT
-    | + key KEY_RIGHTSHIFT
-    + mod2
-    | + key KEY_LEFTCTRL
-    | + key KEY_RIGHTCTRL
-    + mod3
-    | + key KEY_RIGHTALT | . AltGr
-    + repeat | delay_ms: 230 | rate_ms: 90
-    + include | rom: en_us.chargen
-    + include | rom: special.chargen
+  + mod1
+  | + key KEY_LEFTSHIFT
+  | + key KEY_RIGHTSHIFT
+  + mod2
+  | + key KEY_LEFTCTRL
+  | + key KEY_RIGHTCTRL
+  + mod3
+  | + key KEY_RIGHTALT | . AltGr
+  + repeat | delay_ms: 230 | rate_ms: 90
+  + include | rom: en_us.chargen
+  + include | rom: special.chargen
 + policy | label: ps2 | input: ps2
 + policy | label: usb | input: usb
 -}
@@ -758,9 +770,12 @@ after 500
 # populates the launcher menu so the S popup has an entry to
 # click — same install-via-request pattern as
 # run/sponge-launch.run's launch_probe). After the install
-# confirms, the probe emits two more QMP-TARGET click markers: the
-# S toggle to open the popup, then the first launcher entry
-# (170,73) to launch. The full click-to-launch chain runs:
+# confirms, the probe emits two more QMP-TARGET tabclick markers
+# (W4 tablet-abs recipe: mouse_set + abs move + HMP mouse_button
+# — deterministic landing, see docs/evidence/task-4-phase10-
+# interactive.md): the S toggle (32,14) to open the popup, then
+# the first launcher entry (170,73) to launch. The full click-
+# to-launch chain runs:
 # Qt click → LauncherController::request_launch → launcher_request
 # report → pkgd _do_launch → pkg_runtime config regen →
 # pkg_gui_demo boot → green #00ff00 first paint. The probe's
@@ -768,6 +783,16 @@ after 500
 # additionally gates on pkg_gui_demo's "window shown" boot marker
 # (independent corroboration, misleading_success_output defense).
 # FATAL.
+#
+# The PS/2 QMP-TARGET click path is used for the input + panel
+# phases (where the QTimer-based cursor-outside auto-close handles
+# the popup hide). The launch phase switches to the W4 tablet-abs
+# recipe because the PS/2 fine-walk accumulates 5-20px drift on
+# a 60-event navigation (not enough for the 30px-tall entry
+# button), while the W4 recipe lands exactly on the target
+# pixel. The 600s timeout covers the ~1s tabclick dispatch
+# (mouse_set + 1 abs move + 2 HMP mouse_button calls with
+# 15ms inter-call delays).
 #
 qmp_exec_target $qmp_chan 120
 qmp_exec_target $qmp_chan 120
