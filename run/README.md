@@ -124,16 +124,122 @@ A scenario defines:
   GUI driver stack: the vendored `drivers_interactive-pc` set (vesa_fb,
   ps2, usb_hid, pc_usb_host, event_filter, platform, acpi, pci_decode)
   built from source and wired with `-device nec-usb-xhci -device
-  usb-tablet` for absolute-pointer input. Headless verification matches
-  vesa_fb setting the 1024x768 mode, usb_hid binding the QEMU usb-tablet
-  as a `POINTER`, and `sponge-de-probe: PASS` — sponge-de (Qt6/Mesa
-  softpipe) renders the themed window on seL4 (Capture pixel check) and
-  a synthetic click round-trips through its `input` report. base-sel4
-  only (`assert {[have_spec sel4]}`); see `docs/08-development.md` §3.8
-  and `docs/09-roadmap.md` §11/§11.1 for the kernel-switch/host-tool
-  requirements and the resolved Qt6/Mesa-on-sel4 capability-exhaustion
-  root cause (sponge-de needs `caps: 1000` on seL4, not the base-linux
-  300).
+  usb-tablet` for absolute-pointer input. **Phase 10** extended the
+  scenario in place: every input action is now dispatched from the host
+  via QEMU QMP (Tcl `socket` over TCP, PID-derived port) using the
+  shared `run/qmp.inc` helper. The probe runs in three bounded observe
+  phases (FATAL — any timeout/marker failure is a hard FAIL):
+  1. **input** (criterion 1) — a host QMP click on the demo domain,
+     real driver chain verified end-to-end (`phase input PASS`).
+  2. **panel** (criterion 4) — a host QMP click on the panel's S
+     launcher toggle opens the popup; a second QMP click on the demo
+     body closes it (`phase panel PASS`). The panel's only
+     clickable widgets today (the launcher S toggle and launcher
+     entries inside the popup) are exercised. The clock is a passive
+     `QLabel` by design; additional panel widgets are Phase 11 scope.
+  3. **launch** (criterion 3) — opens the launcher popup, then a
+     QMP-driven click on the first installed launcher entry
+     (`pkg_gui_demo`) goes through the full chain: Qt click →
+     `LauncherController::request_launch` → `launcher_request`
+     report → `sponge_pkgd` `_do_launch` → regenerated `pkg_runtime`
+     config → `pkg_gui_demo` first paint, green-pixel verified
+     (`pkg_gui_demo: window shown` + `pkg_gui_demo green pixel
+     detected` + `phase launch PASS`).
+  Final markers: `sponge-de-probe: PASS` + `Run script execution
+  successful.`. See `docs/evidence/phase10-index.md` for the per-phase
+  mapping, `docs/evidence/task-2-phase10-interactive-{run1,run2}.log`
+  for two consecutive green runs, and `docs/08-development.md` §"Host-
+  driven QMP input" for the qmp.inc API + QEMU-11 caveats. base-sel4
+  only (`assert {[have_spec sel4]}`); the Qt6/Mesa-on-sel4 root cause
+  remains in `docs/09-roadmap.md` §11.1 (capability exhaustion;
+  `caps: 1000` on seL4).
+
+- `sponge-wm-qmp.run` — **Phase 10 criterion 2**: real-pointer
+  window drag on base-sel4. Same topology as `run/sponge-wm.run`
+  (upstream `wm` + `window_layouter` + `decorator` stack) plus the
+  vendored `drivers_interactive-pc` drivers sub-init copied from
+  `run/sponge-de-sel4-interactive.run`, plus `sponge_pkgd` +
+  `pkg_runtime` (with the W3 phase `+ service Gui | + child wm` route
+  fix and a layouter `<assign label_prefix="pkg_runtime"
+  target="screen" xpos=50 ypos=300 width=320 height=240>` rule), plus
+  the staged `pkg_gui_demo` package and `wm_probe` in `inject="no"`
+  observe mode. QEMU: `-m 2G`, xhci + usb-tablet, `run/qmp.inc`-driven
+  PS/2 Mouse drag (proven more reliable than the usb-tablet
+  absolute-axis recipe under QEMU 11.0.2 because nitpicker's pointer
+  sanitizer clamps every `Absolute_motion` value to screen center;
+  see the qcode-block comment at the top of `run/qmp.inc`). The probe
+  launches `pkg_gui_demo` via `sponge_pkgd`'s `request` channel,
+  observes its window appearing in the `window_layout` ROM, emits a
+  `QMP-TARGET drag <x1> <y1> <x2> <y2>` marker, waits for the
+  `window_layout` position change AND a Capture pixel check at the new
+  location, then asserts `wm-probe: PASS`. Gates: fb `using 1024x768` →
+  usb_hid `POINTER` → QMP drag → `wm-probe: PASS`. base-sel4 only.
+  See `docs/evidence/task-3-phase10-interactive.md` and
+  `docs/evidence/phase10-index.md`.
+
+- `sponge-terminal-qmp.run` — **Phase 10 criterion 5a**: real QMP
+  keyboard input to a focused terminal. Topology: the
+  `run/sponge-terminal.run` setup (terminal package, bash-minimal.tar,
+  VeraMono.ttf, vfs_ttf) plus the vendored `drivers_interactive-pc`
+  drivers sub-init, plus `run/qmp.inc` (Tcl QMP over TCP). The keyboard
+  chain: QMP `send-key` → emulated PS/2 keyboard → `ps2` driver →
+  `event_filter` (`en_us.chargen` + `special.chargen`) → nitpicker →
+  focused terminal Gui session (`pkg_runtime -> terminal -> terminal`)
+  → gems terminal server read buffer → `/dev/terminal` (vfs
+  `<terminal/>` plugin) → noux bash echo → terminal re-render,
+  observed as a glyph-count increase. The `terminal_probe` `qmp="yes"`
+  mode emits `QMP-TARGET click <gx> <gy>` at the terminal window
+  center (focus), then `QMP-TARGET type echo ok`; the run script
+  connects QMP and dispatches via `qmp_send_key` (the
+  qcode-object form, NOT the rejected string form — see
+  `docs/08-development.md` §"Host-driven QMP input"). All probe waits
+  bounded; the click + type are driven by host QMP, not synthetic
+  Event injection. Gates: fb → usb_hid → render → focus click → type
+  → `terminal-probe: PASS`. base-sel4 only. See
+  `docs/evidence/task-4-phase10-interactive.md`.
+
+- `sponge-textedit-qmp.run` — **Phase 10 criterion 5b**: real QMP
+  keyboard input to a focused text editor. Topology: the
+  `run/sponge-textedit.run` setup (qt6_textedit, full-screen
+  `edit` domain at (0,0) with `focus: click`, staged textedit payload
+  from `pkg/textedit/payload/`) plus the `drivers_interactive-pc`
+  drivers sub-init, plus `run/qmp.inc`. The keyboard chain runs end-to-
+  end; the `textedit_probe` `qmp="yes"` mode emits `QMP-TARGET click`
+  for focus, then `QMP-TARGET type hello`, and verifies the typed
+  delta's Capture sample exceeds 2× the cursor-blink baseline
+  (`typed_delta >= TYPED_FLOOR && typed_delta > 2*baseline`, the
+  `misleading_success_output` defense: a lone cursor blink cannot
+  pass). Gates: fb → usb_hid → render → focus click → type →
+  `textedit-probe: PASS`. base-sel4 only. See
+  `docs/evidence/task-5-phase10-interactive.md`.
+
+- `run/qmp.inc` — shared Tcl helper for the four Phase 10 QMP
+  scenarios above. Sourced by a run script via
+  `source [file join [file dirname [file normalize [info script]]] qmp.inc]`
+  (Tcl 8.x, no external dependencies — only `socket` and `expect`,
+  already used by the run tool). Provides: `qmp_pick_port` (free TCP
+  port via Tcl `socket -server 0`), `qmp_connect` (bounded retry +
+  QMP greeting read + `qmp_capabilities` handshake), `qmp_cmd` (send
+  one JSON, skip async events, die loud on `{"error":...}`),
+  `qmp_abs`, `qmp_pointer_move`, `qmp_button`, `qmp_click`,
+  `qmp_ps2_click` (W3 calibrated relative-recipe with clamp-to-(0,0)
+  + coarse rel-50 + fine rel-1 + hover jiggle), `qmp_drag`,
+  `qmp_send_key` (qcode-object form on QEMU 11; the string form is
+  rejected with `Invalid parameter type for 'keys[0]', expected:
+  object`), `qmp_type` (char → QEMU keyname map), `qmp_exec_target`
+  (bounded `expect` on global `qemu_spawn_id` for QMP-TARGET markers
+  emitted by probes; FAIL + exit 1 on timeout), `qmp_disconnect`.
+  Patterns anchor on `\r*\n` because QEMU's `-nographic` serial emits
+  CR CR LF (verified). The `match_max -i $qemu_spawn_id 200000`
+  raise inside `qmp_exec_target` is required under log floods (see
+  the comment at the call site: the launch-phase green-pixel poll
+  spams ~140 KB at 200 ms cadence; the default 2000-byte `match_max`
+  window then keeps only the tail of accumulated output and the
+  expect arms time out). See `docs/08-development.md` §"Host-driven
+  QMP input" for the API summary + the hard-won QEMU 11 lessons.
+  Mirrored at `repos/sponge/run/qmp.inc` via a committed relative
+  symlink so the Genode build repo-discovery picks it up regardless
+  of which directory the build was launched from.
 
 - `sponge-pkg-explain.run` — Phase 4a: end-to-end package-explain flow.
   `vct install nano --explain` writes a request report that `report_rom`
@@ -303,7 +409,8 @@ A scenario defines:
   `pkg/textedit/payload/` (extracted from `cproc/bin/x86_64/qt6_textedit/
   2025-10-12` by `tool/pkg_import`). The separate missing-binary
   failure channel is verified by the scratch scenario
-  `run/sponge-textedit-fail.run` (see `.omo/evidence/task-14-phase7-alpha.log`).
+  `run/sponge-textedit-fail.run` (evidence log retained by the Phase 7
+  reviewer — see the Phase 7 evidence index).
   Kernel-agnostic topology (base-linux native or base-sel4 QEMU); the
   acceptance run uses `KERNEL=sel4 BOARD=pc`. Gates on
   `textedit-probe: PASS`.
@@ -353,7 +460,7 @@ A scenario defines:
   LIMITATION:** the seL4 boot chain cannot currently handle falkon's
   500MB+ payload — even with the tar_rom approach, seL4 resets during
   boot module setup (untyped cnode exhaustion). See
-  `.omo/evidence/task-16-phase7-alpha.log` §2.2 for the full diagnosis
+  the Phase 7 todo-16 evidence §2.2 for the full diagnosis
   and the resolution path (disk-based payload). base-sel4 only. Bounded
   timeouts (900s probe + 180s GET check).
 
@@ -368,7 +475,7 @@ A scenario defines:
   sessions by a THIRD `cached_fs_rom` instance (`rom_pkg`, chrooted
   there) — NONE of it is a Tier-0 boot module, so `image.elf` stays at
   ~12 MiB (the P2 Tier-0 roster, unchanged). **This architectural claim
-  is PROVEN** (`.omo/evidence/p4-falkon-disk.log`): falkon's process
+  is PROVEN** (`docs/evidence/p4-falkon-disk.log`): falkon's process
   starts, the dynamic linker resolves the 237 MiB
   `libQt6WebEngineCore.lib.so` from disk via rom_pkg, and lwIP DHCPs
   over the ipxe_nic+nic_uplink stack (address=10.0.2.15). The Tier-0
@@ -459,13 +566,10 @@ A scenario defines:
 
 ## Planned additions
 
-- The end-to-end HOST-injected usb-tablet click proof for
-  `sponge-de-sel4-interactive.run`: a host-side QMP `input-send-event`
-  usb-tablet click observed through sponge-de's `input` report
-  (exercising the real hardware input path end-to-end). The in-guest
-  half is already verified — the Qt6/Mesa-on-sel4 capability-exhaustion
-  hang is fixed (`docs/09-roadmap.md` §11.1) and `sponge_de_probe`'s
-  synthetic click round-trips today.
+- Spin a usable Sponge OS install workflow through Leitzentrale (the
+  P5 stream — currently the install path is `./tool/dist` only).
+- More per-package run scripts (`sponge-files.run`-style) for any new
+  default-app addition.
 
 For how to write a run script, see the
 [Genode run framework](https://genode.org/documentation/developer-resources/run)
