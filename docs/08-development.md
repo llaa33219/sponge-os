@@ -395,7 +395,11 @@ Scenarios:
 | `run/sponge-vct-status.run` | `vct status` reads live init state through a sub-init + `report_rom` relay | ✅ |
 | `run/sponge-vct-component-list.run` | `vct component list` lists the live component tree | ✅ |
 | `run/sponge-de.run` | Sponge DE single-window demo (nitpicker + fb_sdl + sponge-de) | 🟡 (Phase 3 in progress) |
-| `run/sponge-de-sel4-interactive.run` | base-sel4 interactive-PC driver set (vesa_fb/ps2/usb_hid/event_filter/platform/acpi/pci_decode) under QEMU with usb-tablet absolute pointer | ✅ driver stack; 🟡 Qt6-on-sel4 rendering (see §3.8) |
+| `run/sponge-de-sel4-interactive.run` | base-sel4 interactive-PC driver set (vesa_fb/ps2/usb_hid/event_filter/platform/acpi/pci_decode) under QEMU with usb-tablet absolute pointer; Phase 10 extended it with QMP-driven real input + click-to-launch over the real driver chain + panel popup toggle | ✅ Phase 10 closed (criteria 1, 3, 4 — see §4.4 and `docs/evidence/phase10-index.md`); the underlying Qt6-on-sel4 capability-exhaustion root cause in §3.8 stays resolved |
+| `run/sponge-wm-qmp.run` | **Phase 10 criterion 2**: real QMP PS/2 Mouse window drag on the upstream wm/layouter/decorator stack + sponge_pkgd-launched `pkg_gui_demo` | ✅ base-sel4 only (driver stack + wm stack + QMP) |
+| `run/sponge-terminal-qmp.run` | **Phase 10 criterion 5a**: real QMP `send-key` keyboard input to a focused terminal session (gems terminal + noux bash) | ✅ base-sel4 only |
+| `run/sponge-textedit-qmp.run` | **Phase 10 criterion 5b**: real QMP `send-key` keyboard input to a focused Qt6 textedit session | ✅ base-sel4 only |
+| `run/qmp.inc` | shared Tcl QMP helper (sourced via `[file dirname [info script]]`); provides `qmp_connect`, `qmp_click`, `qmp_ps2_click`, `qmp_drag`, `qmp_send_key`, `qmp_type`, `qmp_exec_target`, etc. — see §4.4 for the API | n/a |
 | `run/sponge-boot.run` | **Phase 8 P1**: Tier-0 storage-chain smoke (mount GENODE ext2, serve a ROM from disk via `cached_fs_rom`, read back `/system/marker.txt`; gates on `boot-probe: PASS`). base-sel4 only; `RUN_OPT='--include image/disk'`. NVMe variant via `SPONGE_BOOT_NVME=1`. | ✅ (commit `d3473f61f6`) |
 | `run/sponge-desktop-disk.run` | **Phase 8 P2**: the FULL Alpha desktop booted FROM DISK (image.elf ≤ 12 MiB; Qt6 desktop served from `/system` via `cached_fs_rom`); gates on `alpha-probe: PASS`. The disk-served half of the product `.img`. base-sel4 only; `RUN_OPT='--include image/disk'`. | ✅ (commit `e7f8b9a458`) |
 | `run/sponge-persist-disk.run` | **Phase 8 P3**: persistence on SPONGE-DATA — `sponge_pkgd`'s installed-set store survives a reboot when backed by a writable ext2 on P4 (added by `tool/mkdata`); two-boot adversarial proof. base-sel4 only; `RUN_OPT='--include image/disk'`. | ✅ (commit `f25a81dcbe`) |
@@ -478,6 +482,234 @@ The same `sponge-minimal.run` boots on both kernels:
 | `sel4`  | QEMU (`-nographic -m 1G`) | 1 GiB guest RAM | Production target. Requires `prepare_port sel4 sel4_tools grub2` plus the seven Python modules (`§3.6`). |
 | `hw`    | QEMU | 128 MiB | Genode's own microkernel. Not yet wired into Sponge OS scenarios. |
 | `nova`  | QEMU | 256 MiB | NOVA hypervisor. Not yet wired into Sponge OS scenarios. |
+
+### 4.4 Host-driven QMP input (`run/qmp.inc`)
+
+Phase 10 (`docs/plans/phase10-interactive-desktop.md`) delivers the
+fully-interactive desktop by driving guest input from the host through
+QEMU QMP instead of the probe's synthetic `Event`-session injection.
+The shared helper `run/qmp.inc` (sourced by
+`sponge-de-sel4-interactive.run`, `sponge-wm-qmp.run`,
+`sponge-terminal-qmp.run`, and `sponge-textedit-qmp.run`) is a Tcl 8.x
+source file with no external dependencies — only Tcl's built-in
+`socket` (TCP, matches `-qmp tcp:`) and `expect` (already used by the
+Genode run tool).
+
+Source convention (from the symlink-resolved run directory):
+
+```tcl
+source [file join [file dirname [file normalize [info script]]] qmp.inc]
+```
+
+Enable the QMP listener in QEMU args:
+
+```tcl
+set qmp_port [qmp_pick_port]               ;# or [expr {20000 + ([pid] % 20000)}]
+append qemu_args " -qmp tcp:127.0.0.1:${qmp_port},server=on,wait=off "
+```
+
+Then, after `run_genode_until` confirms the guest is ready:
+
+```tcl
+set qmp_chan [qmp_connect $qmp_port]
+qmp_exec_target $qmp_chan 120              ;# bounded expect for QMP-TARGET marker
+run_genode_until {.*<scenario>: PASS.*} 120 $qemu_spawn_id
+qmp_disconnect $qmp_chan
+```
+
+#### `qmp.inc` API (full list)
+
+| Proc | Args | Purpose |
+|---|---|---|
+| `qmp_pick_port` | — | Free TCP port via `socket -server 0`; kernel-assigned; avoids TIME_WAIT collisions on sequential QEMU respawns. |
+| `qmp_connect` | `port` | Bounded retry (100 × 50 ms), read QMP greeting, send `qmp_capabilities`, return channel. |
+| `qmp_cmd` | `chan json` | Send one JSON command, skip async `{"event":...}` lines, die loud (exit 1) on `{"error":...}` or 10 s read timeout. |
+| `qmp_abs` | `x y` | Scale guest (1024×768) coords to QEMU usb-tablet axes (0..32767): `ax=(x*32767+512)/1024`, `ay=(y*32767+384)/768`. |
+| `qmp_pointer_move` | `chan x y` | Emit `input-send-event` abs events (per-axis, two-event batch). |
+| `qmp_button` | `chan btn {down\|up}` | Emit `input-send-event` btn event (`button` key, "left"/"right"/"middle"). |
+| `qmp_click` | `chan x y` | `qmp_pointer_move` + `qmp_button left down` + `qmp_button left up`. Under QEMU `-nographic` the click is NOT precisely targeted — see below. |
+| `qmp_ps2_click` | `chan x y` | The W3-calibrated PS/2 Mouse click: clamp to (0,0) → 5× rel-50 + 4× rel-50 → fine rel-1 walk → hover jiggle (+1/-1) → 200 ms press hold → release. ±1 px precision with the vendored `event_filter` `<accelerate>` chain (or 1:1 rel-to-px with the custom config used by `sponge-de-sel4-interactive.run`). |
+| `qmp_drag` | `chan x1 y1 x2 y2` | Move to start, hover jiggle, press, walk to end (50/1 split), release. |
+| `qmp_send_key` | `chan keyname` | Emit a single QEMU key down/up via `send-key` with the **qcode-object form** (NOT the rejected string form — see QEMU 11 lesson below). |
+| `qmp_type` | `chan string` | Char→keyname map (`a-z`, `0-9`, `space→spc`, `\n→ret`, `-→minus`, `.→dot`) + `qmp_send_key` per char; unmapped chars fail loud. |
+| `qmp_exec_target` | `chan timeout_s` | Bounded `expect` on global `qemu_spawn_id` for the `QMP-TARGET` marker, dispatches to the matching proc (click/drag/type/move), raises `match_max -i $qemu_spawn_id 200000` first. FAIL + exit 1 on timeout. |
+| `qmp_move_rel` | `chan dx dy` | Emit per-axis `REL_*` motion events (PS/2 PATH), with `after` pacing — see lesson (a) below. |
+| `qmp_disconnect` | `chan` | Close the QMP TCP channel. |
+
+#### `QMP-TARGET` marker contract (probe → host)
+
+Probes in observe mode log these lines on the serial console; the run
+script's `qmp_exec_target` consumes and dispatches them:
+
+```
+QMP-TARGET click <gx> <gy>           # PS/2 REL recipe by default
+QMP-TARGET tablet <gx> <gy>          # usb-tablet-abs recipe (W4 terminal scenario style)
+QMP-TARGET drag <x1> <y1> <x2> <y2>  # window drag (motion in two phases)
+QMP-TARGET type <string>             # keyboard input
+QMP-TARGET move <dx> <dy>            # closed-loop PS/2 REL move (W5)
+```
+
+Patterns anchor on `\r*\n` (NOT `\r?\n`) because QEMU's `-nographic`
+serial emits `CR CR LF` line endings (verified by `od -c` on a
+captured line). Marker ordering inside `qmp_exec_target`:
+
+1. `tablet` listed first (the `click` regex matches `-click` as a
+   suffix of some line names; listing `click` first would shadow it).
+   Order matters because expect dispatches the FIRST matching arm.
+2. `click` second — every other click (input/panel/launch) uses the
+   PS/2 recipe (`qmp_ps2_click`).
+3. `drag`, `type`, `move` follow in protocol order.
+
+The dispatch contract is verified by
+`docs/evidence/task-2-phase10-interactive-dispatch-test.tcl`
+(plain `tclsh`, no deps — runs in <1 s).
+
+#### Three hard-won QEMU 11.0.2 lessons
+
+(a) **`match_max` must be raised under log floods.** Tcl/expect's
+default per-spawn-id buffer for regex matching is 2000 bytes. The
+launch-phase green-pixel poll in `sponge_de_probe` spams
+`sponge-de-probe: launch green poll N frac_per_mille=0` every 200 ms;
+2000 iters × ~70 B = ~140 KB of poll spam pushed into
+`qemu_spawn_id`. Under that flood, expect's match window keeps only
+the TAIL of accumulated output — between markers, the buffer tail is
+the poll-spam line, not the QMP-TARGET marker; the expect arms find
+nothing to match and time out at 120 s. The fix (commit `b5bd9b0307`):
+`qmp_exec_target` raises `match_max -i $qemu_spawn_id 200000` (200 KB)
+immediately before the `expect` block; the run script re-raises it
+after `global qemu_spawn_id` is set and before each `run_genode_until`
+gate consumes data. The 200 KB cover any single inter-marker window
+plus the green-poll flood. See the comment block at the
+`match_max` raise in `qmp.inc` for the rationale. (`sponge_de_probe`
+also reduces source-cadence: log only poll 0, every 50th iteration,
+and the final iteration.)
+
+(b) **`run_genode_until` gate patterns must NOT have a trailing `.*`
+when markers follow the gate.** Example:
+
+```
+{.*sponge-de-probe: phase input PASS.*}    ;# trailing .* is GREEDY
+```
+
+The trailing `.*` consumes the entire rest of the buffer after the
+match — swallowing the next QMP-TARGET marker that arrives in the same
+read chunk. Discovered via the W2 panel-phase "off-by-one" cascade:
+the input-PASS `run_genode_until` swallowed the panel S-click marker,
+so the 2nd `qmp_exec_target` arm matched the panel close click (which
+arrived AFTER the "waiting" message) and the launch markers cascaded
+forward. Fix (commit `a9ca5ffd9e`): drop the trailing `.*`, keep the
+leading `.*`. The leading `.*` only consumes output BEFORE the marker
+(bounded); the trailing wildcards are the smell.
+
+(c) **Event pacing (`after`) is required for PS/2 REL bursts.** QEMU
+11's emulated PS/2 controller drops unsynchronized bursts of
+`input-send-event` REL events into a single accumulated delta
+(observed: 50× rapid `rel(-50)` collapses into 2× effective motion on
+this host). The QMP `mouse_set` + `input-send-event` style used by the
+window-drag recipe needs an `after 5` (or so) between consecutive
+per-axis REL events for the controller to deliver them as discrete
+motions. The qmp.inc `qmp_ps2_click` proc paces per-axis events with
+`after 5`; this is the empirically-tuned value for QEMU 11.0.2 on
+Linux. Bumping it slower (`after 20`) is safe; faster (`after 0`)
+silently loses events.
+
+#### Two known QEMU 11 quirks (the beyond-`qmp.inc` caveats)
+
+- **`send-key` strings are rejected.** QEMU 11 (and earlier — this
+  is stable across versions) wants the `keys` argument as an array of
+  objects `{"type":"qcode","data":"<name>"}`, NOT the older string
+  form `["<name>"]`. The string form fails with `Invalid parameter
+  type for 'keys[0]', expected: object` (see
+  `docs/evidence/task-4-phase10-interactive.md` §Root cause 3). All
+  scenarios in `run/qmp.inc` use the qcode-object form.
+
+- **`input-send-event` BTN events are NOT delivered to untargeted
+  devices.** QEMU 11 broadcasts untargeted abs/btn events across all
+  pointer devices; if the PS/2 mouse is the current device (default
+  under `-nographic`, `query-mice` shows `current:true`), the abs
+  events are reinterpreted as PS/2 *relative* deltas (a slam to a
+  corner — see the W4 evidence §Root cause 5). Fix: dispatch
+  `mouse_set <tablet-index>` via HMP to make the usb-tablet the
+  current device BEFORE the abs/btn events. `qmp_tablet_click` /
+  `qmp_hmp` in `qmp.inc` implement the device-targeted recipe
+  (used by `sponge-terminal-qmp.run`, criterion 5a).
+
+#### Pointer model — usb-tablet-abs vs PS/2-REL tradeoffs
+
+Under QEMU 11.0.2 `-nographic`:
+
+- **usb-tablet absolute motion:** the click DOES reach sponge-de
+  through the real usb-tablet → pc_usb_host → usb_hid → event_filter →
+  nitpicker → sponge-de chain (criterion 1's proof is intact), but
+  nitpicker's pointer sanitizer
+  (`genode/repos/os/src/server/nitpicker/main.cc:780-810`) treats
+  `Input::Absolute_motion` coordinates as raw pixels. Every abs value
+  in 0..32767 lands off-screen on a 1024x768 display and is then
+  **clamped to screen center (~512, 384)** — independent of the
+  divisor you choose for `qmp_abs`. This is the
+  `~29 px y-drift (384 - 412 = -28)` mystery from W1: it is
+  `screen-center-y - intended-y`, not a per-event QEMU translation
+  offset. W1's "click worked" because the demo domain
+  (192,172,640,480) is large enough that the clamp point (512, 384)
+  falls inside it.
+
+- **PS/2 Mouse relative motion:** avoids the abs clamping entirely.
+  The pointer walks the path explicitly — `qmp_ps2_click` and
+  `qmp_drag` use event_filter's `<accelerate>` chain
+  (`sensitivity_percent=1000, max=50, curve=127`, the standard
+  recipe in
+  `genode/repos/os/recipes/raw/drivers_interactive-pc/event_filter.config`)
+  which gives a non-linear LUT: `rel-1` → 1 px, `rel-50` → ~100 px,
+  `rel-100` → ~150 px. The clamp-to-(0,0) + coarse + fine sequence
+  lands the pointer ±1 px of any absolute target.
+
+  The PS/2 path exercises a strictly-equivalent hardware input chain
+  (QMP → emulated PS/2 controller → ps2 driver → event_filter →
+  nitpicker → sponge-de / wm / decorator) — just the PS/2 branch of
+  `event_filter`'s input handling instead of the usb branch.
+
+The interactive scenario (`sponge-de-sel4-interactive.run`) uses the
+**PS/2 RECIPE for every click**, including the criterion-1 input click.
+The criterion-1 chain is still proven (the click reaches sponge-de's
+`input` report), and the precise targeting makes all panel/launch
+markers land inside their respective rects.
+
+#### Recipe-matches-`event_filter.config` caveat
+
+`qmp_ps2_click`'s coarse walk (`5 × rel-50` ≈ 100 px per event)
+assumes the vendored event_filter `<accelerate>` chain
+(`rel-50 → ~100 px`). The custom staged `event_filter.config` used
+by `sponge-de-sel4-interactive.run` *removes* the `<accelerate>`
+wrapper (see the run script's `event_filter.config` block), so
+`rel-50 → 50 px` (1:1). With the 1:1 mapping, the recipe's coarse
+walk covers half the intended distance — the `FIRST_ENTRY` target in
+`sponge_de_probe` is doubled (target (170, 73) → target (340, 170))
+so the recipe's halved walk lands on the geometric-correct center.
+Future users reusing `qmp_ps2_click` from `sponge-de-sel4-
+interactive.run`'s event_filter.config (1:1) MUST match the recipe to
+their `event_filter.config` — either restore `<accelerate>` to get
+the standard 100-px coarse walk, or compensate the recipe's halved
+walk by doubling the target coordinates as the scenario does.
+
+#### Manual interactive viewing (control escape hatch)
+
+For a human to drive the running guest from the host instead of the
+script-driven QMP choreography, append the QEMU flags to spawn QEMU
+with the SDL display and replace the final `run_genode_until` with
+`run_genode_until forever`:
+
+```bash
+# Manual equivalent (host-side mouse + keyboard reach the guest):
+make -C genode/build/x86_64 run/sponge-de-sel4-interactive \
+  KERNEL=sel4 BOARD=pc QEMU_OPT="-display sdl"
+```
+
+(The QEMU args are placed BEFORE the run script's own
+`append qemu_args "-qmp tcp:..."` — the `-qmp tcp:` is still added,
+but on QEMU 11 the SDL display and the QMP listener both work in the
+same guest.) Human input from the SDL window reaches the same driver
+chain (event_filter is enabled in the boot config), so this proves the
+script-driven QMP path is equivalent to a real user's mouse.
 
 ---
 
