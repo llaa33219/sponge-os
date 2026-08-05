@@ -453,7 +453,7 @@ config
     + service Capture | + child nitpicker
     + service Timer   | + child timer
     + service ROM     | label: sponge_de_input | + child report_rom
-    + service ROM     | label_last: result     | + child report_rom
+    + service ROM     | label: result        | + child report_rom
     + service Report  | + child report_rom
     + any-service
       + parent
@@ -493,18 +493,57 @@ if {![file exists $dejavu_dst]} {
 #
 # Driver sub-init config modules (the vendored
 # recipes/raw/drivers_interactive-pc/ set; drivers.config is inlined as
-# the <config> of the drivers start node above, fb.config +
-# event_filter.config are served to the fb / event_filter children by
-# label). Upstream stages these via the depot pkg; Sponge OS builds
-# from source, so we copy them in directly.
+# the <config> of the drivers start node above, fb.config is served to
+# the fb child by label). Upstream stages these via the depot pkg; Sponge
+# OS builds from source, so we copy them in directly.
 #
 set recipe_dir "${genode_dir}/repos/os/recipes/raw/drivers_interactive-pc"
-foreach f { drivers.config fb.config event_filter.config } {
+foreach f { drivers.config fb.config } {
 	if {![file exists "$recipe_dir/$f"]} {
 		error "$recipe_dir/$f missing (vendored drivers_interactive-pc recipe drifted?)"
 	}
 	exec cp -f "$recipe_dir/$f" "bin/$f"
 }
+
+#
+# event_filter.config — WRITTEN (not copied) with one deviation from
+# the recipe: the `accelerate' wrapper around the ps2 input is removed.
+# W3 evidence (docs/evidence/task-3-phase10-interactive.md) shows
+# rel-1 → ~10px/event with the standard `accelerate' wrapper, but for
+# the W5 closed-loop pointer protocol (used by the panel/launch phases)
+# we need a 1:1 (or at least tame) rel-count-to-pixel mapping — the
+# accelerator's 1000% sensitivity would amplify the per-step error from
+# a back-to-back burst of fine rel events. The charger keyboard path
+# (en_us/special includes, modifier and repeat nodes) is identical to
+# the recipe. All staging happens BEFORE build_boot_image: on base-sel4
+# the boot image is a single packed image.elf, so modules added later
+# never reach the guest (docs/11-environment.md §10.4).
+#
+set ef_fh [open "bin/event_filter.config" w]
+puts $ef_fh {config
++ output
+  + chargen
+    + merge
+    | + button-scroll
+    | |   + input ps2
+    | |   + vertical   | button: BTN_MIDDLE | speed_percent: -10
+    | |   + horizontal | button: BTN_MIDDLE | speed_percent: -10
+    | + input usb
+    + mod1
+    | + key KEY_LEFTSHIFT
+    | + key KEY_RIGHTSHIFT
+    + mod2
+    | + key KEY_LEFTCTRL
+    | + key KEY_RIGHTCTRL
+    + mod3
+    | + key KEY_RIGHTALT | . AltGr
+    + repeat | delay_ms: 230 | rate_ms: 90
+    + include | rom: en_us.chargen
+    + include | rom: special.chargen
++ policy | label: ps2 | input: ps2
++ policy | label: usb | input: usb
+-}
+close $ef_fh
 
 #
 # en_us.chargen + special.chargen — event_filter's keyboard character
