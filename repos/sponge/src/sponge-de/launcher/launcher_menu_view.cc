@@ -15,6 +15,7 @@
 #include <QLabel>
 #include <QPushButton>
 #include <QScreen>
+#include <QTimer>
 #include <QVBoxLayout>
 
 using namespace Sponge::Sponge_DE;
@@ -44,11 +45,35 @@ LauncherMenuView::LauncherMenuView(LauncherController &controller,
 	 * Auto-close when the user clicks outside the menu. QApplication's
 	 * focus-out covers alt-tab / click-into-another-window; we also
 	 * catch our own app entries' clicks (below) to close on launch.
+	 *
+	 * Phase 10 W2 fix: the previous unconditional `hide()` on every
+	 * focus change hid the popup the moment show()/raise()/
+	 * activateWindow() ran, because the S button (panel.launcher)
+	 * kept the input focus — it is NOT an ancestor of the popup, so
+	 * the focusObjectChanged that fires on show() always saw an
+	 * "outside" focus and immediately hid the popup. The user
+	 * (and our QMP-driven clicker) could never click a launcher
+	 * entry. The fix: debounce the hide() by FOCUS_HIDE_DEBOUNCE_MS
+	 * so the focus settling that happens during show() is allowed
+	 * to complete before the close decision. Any further focus
+	 * change while the timer is armed resets it (the legitimate
+	 * "click outside" case continues to fire because the user has
+	 * to lift their hand and click somewhere, >150 ms later).
 	 */
+	_hide_timer = new QTimer(this);
+	_hide_timer->setSingleShot(true);
+	_hide_timer->setInterval(FOCUS_HIDE_DEBOUNCE_MS);
+	connect(_hide_timer, &QTimer::timeout, this, [this] { hide(); });
+
 	connect(qApp, &QApplication::focusObjectChanged, this,
 	        [this](QObject *o) {
-		if (isVisible() && o != nullptr && !this->isAncestorOf(qobject_cast<QWidget *>(o)))
-			hide();
+		if (!isVisible()) return;
+		if (o == nullptr) return;
+		if (this->isAncestorOf(qobject_cast<QWidget *>(o))) {
+			_hide_timer->stop();
+			return;
+		}
+		_hide_timer->start();
 	});
 
 	repopulate();

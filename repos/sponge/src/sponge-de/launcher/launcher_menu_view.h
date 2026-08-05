@@ -38,6 +38,7 @@
 
 class QLabel;
 class QPushButton;
+class QTimer;
 class QVBoxLayout;
 
 namespace Sponge::Sponge_DE {
@@ -68,6 +69,16 @@ class LauncherMenuView : public QWidget
 
 	private:
 
+		/*
+		 * Focus-out debounce (Phase 10 W2). See .cc for the rationale.
+		 * Short enough that a real "click outside" closes the popup
+		 * within human-perceptible time (~150 ms after the focus
+		 * settles), long enough to absorb the focusObjectChanged that
+		 * fires during show()/raise()/activateWindow() before the
+		 * QMP-driven chained click lands.
+		 */
+		static constexpr int FOCUS_HIDE_DEBOUNCE_MS = 500;
+
 		void _apply_style(Theme::Theme const &theme);
 
 		LauncherController &_controller;
@@ -75,6 +86,8 @@ class LauncherMenuView : public QWidget
 		Theme::Theme _theme;   /* cached for repopulate() */
 
 		QVBoxLayout *_root_layout { nullptr };
+
+		QTimer *_hide_timer { nullptr };
 
 		/*
 		 * Per-category section. Categories are added in the order they
