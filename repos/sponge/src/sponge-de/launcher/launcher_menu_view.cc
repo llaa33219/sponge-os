@@ -230,10 +230,12 @@ QString LauncherMenuView::_category_stylesheet() const
 
 QString LauncherMenuView::_entry_stylesheet() const
 {
+	/* Vertical padding 16 px + min-height 50 px: bigger hit target
+	 * (AGENTS.md §1.1 convenience — UX rationale in commit body). */
 	return QStringLiteral(
 		"QPushButton { background-color: %1; color: %2; "
-		"border: none; border-radius: %3px; padding: 6px 10px; "
-		"text-align: left; }"
+		"border: none; border-radius: %3px; padding: 16px 12px; "
+		"min-height: 50px; text-align: left; }"
 		"QPushButton:hover { background-color: %4; }"
 		"QPushButton:pressed { background-color: %4; }")
 		.arg(Theme::to_css(_theme.window_bg()),
