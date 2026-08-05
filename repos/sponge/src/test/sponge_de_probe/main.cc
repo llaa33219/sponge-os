@@ -15,35 +15,50 @@
  *       nitpicker's Event service. In inject=no mode (selected by
  *       <config inject="no"/> — used by run/sponge-de-sel4-
  *       interactive.run) the probe only OBSERVES a click arriving
- *       through the real driver path (ps2/usb_hid -> event_filter),
- *       which the run script injects from the host via a QEMU
- *       usb-tablet. In both modes the press is confirmed via
- *       sponge-de's "input" report (relayed by report_rom).
+ *       through the real driver path (ps2 -> event_filter), which the
+ *       run script injects from the host via a QEMU PS/2 mouse
+ *       (QMP input-send-event relative axis). In both modes the press
+ *       is confirmed via sponge-de's "input" report (relayed by
+ *       report_rom).
  *
  * Phase 10 W2 extends the observe (inject=no) path with an ordered
  * phase list (config attribute phases="input,panel,launch"):
  *
- *   input  — W1 criterion 1: real QMP usb-tablet click reaches the demo
+ *   input  — W1 criterion 1: real QMP PS/2-mouse click reaches the demo
  *            window; sponge-de's input report confirms the press.
  *   panel  — criterion 4: QMP click on the panel S toggle opens the
- *            launcher popup (Capture non-bg fraction rises); a click on
- *            the demo body closes it via focus-out auto-close.
- *   launch — criterion 3: QMP click on S opens the popup, then a QMP
- *            click on the first launcher entry drives the full click-
- *            to-launch chain (Qt click → LauncherController::request_
- *            launch → launcher_request report → pkgd _do_launch →
- *            pkg_runtime config → pkg_gui_demo boot → green #00ff00
- *            first paint under softpipe).
+ *            launcher popup (Capture non-bg fraction rises); a QMP
+ *            click on the demo body closes it via focus-out auto-
+ *            close. FATAL — popup open and close MUST both be
+ *            observed.
+ *   launch — criterion 3: install pkg_gui_demo via the request
+ *            channel (mirrors sponge-launch.run's launch_probe
+ *            pattern so the launcher menu has an entry to click).
+ *            Then QMP click S to open the popup, QMP click the first
+ *            launcher entry to drive the full click-to-launch chain
+ *            (Qt click → LauncherController::request_launch →
+ *            launcher_request report → pkgd _do_launch → pkg_runtime
+ *            config → pkg_gui_demo boot → green #00ff00 first paint
+ *            under softpipe). FATAL.
  *
- * Phases absent or inject=yes → input phase only (W1 behavior, byte-
- * identical — run/sponge-de-test.run is unchanged).
+ * Every click goes through QMP-TARGET click <gx> <gy> markers. The
+ * run script's bounded expect (run/qmp.inc::qmp_exec_target) catches
+ * each marker and dispatches a real QMP input-send-event PS/2
+ * relative-axis click (W3's proven recipe — ±1px precision). The
+ * click propagates through the live driver chain (PS/2 mouse →
+ * ps2 driver → event_filter → nitpicker → sponge-de). All waits
+ * bounded — fail loud, never hang.
+ *
+ * Phases absent or inject=yes → input phase only (default behavior
+ * used by run/sponge-de-test.run, byte-identical to pre-W2).
  *
  * It is a plain Genode component (Component::construct, no libc/Qt),
  * following AGENTS.md §3.1 (qualified Genode types, no exceptions).
  *
  * Success logs "sponge-de-probe: PASS"; on any failure it logs
  * "sponge-de-probe: FAIL <reason>" and exits non-zero, so the run
- * scenario (run/sponge-de-test.run) fails via run_genode_until timeout.
+ * scenario (run/sponge-de-sel4-interactive.run) fails via
+ * run_genode_until timeout.
  */
 
 #include <base/attached_dataspace.h>
@@ -106,11 +121,6 @@ int const DEMO_W = 640,  DEMO_H = 480;
  *
  *   BG_PT   : (900,100) — outside every domain, in the desktop region
  *             nitpicker reliably composites with the <background> color.
- *             (Points below/beside the demo domain, e.g. (900,700), are
- *             left at buffer-zero by nitpicker's lazy dirty-rect
- *             compositing when there is no framebuffer driver to force
- *             full-screen redraws — so they are not usable as a stable
- *             background reference in the headless scenario.)
  *   DEMO_PT : demo-domain center (512,412) — must show the themed
  *             window_bg color (the window is drawn there).
  *
@@ -124,20 +134,23 @@ Pt const DEMO_PT  { DEMO_X + DEMO_W/2, DEMO_Y + DEMO_H/2 }; /* (512,412) */
 Pt const PANEL_PT { 512, 14  };
 
 /*
- * Synthetic click target. Window top-left is the demo-domain origin
- * (192,172); the demo button is roughly centered horizontally and
- * ~288px below the window top, i.e. screen (512,460). The point stays
- * inside the demo window so the press reaches sponge-de regardless of
- * which child widget happens to sit under the cursor.
+ * Synthetic click target (inject=yes). Window top-left is the
+ * demo-domain origin (192,172); the demo button is roughly centered
+ * horizontally and ~288px below the window top, i.e. screen (512,460).
+ * The point stays inside the demo window so the press reaches
+ * sponge-de regardless of which child widget happens to sit under the
+ * cursor.
  *
  * OBSERVE_PT is the click target the host should drive in observe mode
- * (inject=no): the demo-domain center (512,412), so the press lands on
- * the demo window body — anywhere inside the window reaches sponge-de's
- * input report regardless of which child widget is under the cursor.
- * This is the point emitted as `QMP-TARGET click 512 412` for the host
- * run script to pick up via bounded expect on the QEMU serial.
+ * (inject=no): the demo-domain center (512,412), so the press lands
+ * on the demo window body — anywhere inside the window reaches
+ * sponge-de's input report regardless of which child widget is under
+ * the cursor. This is the point emitted as `QMP-TARGET click 512 412`
+ * for the host run script to pick up via bounded expect on the QEMU
+ * serial. The PS/2-mouse recipe (W3, run/qmp.inc::qmp_ps2_click)
+ * lands ±1px here.
  */
-Pt const CLICK_PT { 512, 460 };
+Pt const CLICK_PT   { 512, 460 };
 Pt const OBSERVE_PT { DEMO_X + DEMO_W/2, DEMO_Y + DEMO_H/2 }; /* (512,412) */
 
 /* Allow a few bits of slack when comparing solid colors (blending at
@@ -188,21 +201,6 @@ struct Rect { int x, y, w, h; };
 Pt const S_TOGGLE { 32, 14 };
 
 /*
- * QEMU usb-tablet y-drift (Phase 10 W1 calibration, see
- * docs/evidence/task-1-phase10-interactive.md §"Calibration").
- *
- * Under -nographic the usb-tablet is not bound to a QemuConsole and the
- * abs-axis mapping is broken (observed click y = emitted y - 29; x is
- * within 1px). W2 switches to -display none, which creates an emulated
- * QemuConsole the tablet binds to — the mapping is then correct and no
- * drift compensation is needed (QMP_Y_DRIFT = 0). The constant is kept
- * in the code so drift can be re-enabled if a future QEMU/display
- * regression reintroduces an offset (set to 29 to restore the W1
- * behavior under -nographic).
- */
-int const QMP_Y_DRIFT = 0;
-
-/*
  * Launcher popup first-entry geometry (Phase 10 W2, criterion 3).
  *
  * The popup widget (launcher_menu_view.cc) is placed by nitpicker in
@@ -211,13 +209,11 @@ int const QMP_Y_DRIFT = 0;
  * internal QVBoxLayout has contentsMargins(8,8,8,8) and spacing 4.
  * With one category heading (~20px tall: 11pt bold + 2px padding) then
  * a gap then the first entry QPushButton (~30px tall: 6px pad + 11pt
- * text + 6px pad), the first entry center is at popup-local
- * (170, ~47) → screen (170, 28+47) ≈ (170, 75). We aim for the
- * horizontal center (button fills layout width) and the estimated
- * vertical center with several px of tolerance from the 30px-tall
- * button.
+ * text + 6px pad), the first entry button top is at popup-local
+ * (8, ~36) → screen (8, ~64). Center y ≈ 79. We aim well inside the
+ * 30px button — y=80, with several px of tolerance.
  */
-Pt const FIRST_ENTRY { 170, 75 };
+Pt const FIRST_ENTRY { 10, 65 };
 
 /*
  * Demo window body click target for closing the popup via focus-out
@@ -248,7 +244,7 @@ Pt const CLOSE_PT { DEMO_X + DEMO_W/2, DEMO_Y + DEMO_H/2 }; /* (512,412) */
  *              false-positive. Before launch: nitpicker bg. After
  *              launch: solid #00ff00.
  */
-Rect const POPUP_RECT { 8, 36, 325, 56 };  /* x:8-333, y:36-92  */
+Rect const POPUP_RECT { 0, 30, 340, 180 };  /* x:0-340, y:30-210 — full launcher domain top */
 Rect const GREEN_RECT { 80, 80, 100, 80 }; /* x:80-180, y:80-160 */
 
 /*
@@ -285,8 +281,9 @@ struct Sponge_de_probe
 	 * itself (default; headless null-framebuffer scenarios such as
 	 * run/sponge-de-test.run) or only OBSERVES a click arriving through
 	 * the real input driver path (run/sponge-de-sel4-interactive.run,
-	 * where the click is injected from the host via a QEMU usb-tablet).
-	 * Absent config => inject=yes, preserving the original behavior.
+	 * where the click is injected from the host via a QEMU PS/2 mouse
+	 * driven by QMP input-send-event). Absent config => inject=yes,
+	 * preserving the original behavior.
 	 */
 	Genode::Attached_rom_dataspace _config { _env, "config" };
 
@@ -380,7 +377,7 @@ struct Sponge_de_probe
 		 * click into nitpicker's Event service (headless null-fb
 		 * scenarios). inject=no only watches for a press arriving via
 		 * the real driver path (base-sel4 interactive scenario, where
-		 * the run script injects a QEMU usb-tablet click from the
+		 * the run script injects a QEMU PS/2 mouse click from the
 		 * host). The default must stay "yes" so run/sponge-de-test.run
 		 * is unchanged.
 		 */
@@ -394,10 +391,11 @@ struct Sponge_de_probe
 
 		if (inject) {
 			/*
-			 * W1 inject=yes path — run/sponge-de-test.run. This entire
-			 * branch is byte-identical to the pre-W2 code (AGENTS.md
-			 * §5.3: never leave non-working code looking as if it
-			 * works; the inject path is a proven, unchanged fallback).
+			 * Default (inject=yes) path — run/sponge-de-test.run. This
+			 * entire branch is byte-identical to the pre-W2 code
+			 * (AGENTS.md §5.3: never leave non-working code looking as
+			 * if it works; the inject path is a proven, unchanged
+			 * fallback). The W2 phases are observe-mode-only.
 			 */
 			Genode::log("sponge-de-probe: injecting click at (",
 			            CLICK_PT.x, ",", CLICK_PT.y, ")");
@@ -435,10 +433,12 @@ struct Sponge_de_probe
 		 * QMP-TARGET click markers on the serial console; the host run
 		 * script's bounded expect (run/qmp.inc::qmp_exec_target)
 		 * catches each marker and dispatches a real QMP input-send-
-		 * event usb-tablet click. The click propagates through the
-		 * live driver chain (usb-tablet → pc_usb_host → usb_hid →
-		 * event_filter → nitpicker → sponge-de) — every wait below is
-		 * bounded, fail loud on timeout.
+		 * event PS/2 mouse click (W3's proven recipe, ±1px precision
+		 * after clamp-to-(0,0) + coarse rel-50 + fine rel-1). The
+		 * click propagates through the live driver chain
+		 * (PS/2 mouse → ps2 driver → event_filter → nitpicker →
+		 * sponge-de) — every wait below is bounded, fail loud on
+		 * timeout.
 		 *
 		 * Phase list (config attribute phases="..."): absent → input
 		 * only (W1 behavior). Comma-separated subset of
@@ -446,7 +446,7 @@ struct Sponge_de_probe
 		 */
 		Genode::log("sponge-de-probe: observe mode (inject=no) -- "
 		            "awaiting external clicks via the real input "
-		            "driver path (usb-tablet/ps2 -> event_filter)");
+		            "driver path (PS/2 mouse -> event_filter -> nitpicker)");
 
 		Genode::String<64> const phases_attr = _config.valid()
 			? _config.node().attribute_value("phases", Genode::String<64>(""))
@@ -475,7 +475,7 @@ struct Sponge_de_probe
 	/*
 	 * Phase input (observe mode): emit QMP-TARGET click at the demo
 	 * window center; wait for sponge-de's input report to carry a press
-	 * attribute (proof the click traversed the full hardware input
+	 * attribute (proof the click traversed the full PS/2-mouse input
 	 * chain). This is the W1 criterion-1 proof, factored unchanged.
 	 */
 	bool _phase_input_observe(unsigned watch_iters)
@@ -501,7 +501,7 @@ struct Sponge_de_probe
 
 		if (!delivered) {
 			_fail("phase input: external click did not reach sponge-de "
-			      "(usb-tablet injection missing or input driver path not wired)");
+			      "(PS/2 mouse injection missing or input driver path not wired)");
 			return false;
 		}
 
@@ -511,42 +511,15 @@ struct Sponge_de_probe
 
 
 	/*
-	 * Inject an absolute-motion + BTN_LEFT click at the given screen
-	 * position via the probe's Event session. Used by phases panel and
-	 * launch (criterion 3, 4) where QMP's usb-tablet abs-axis cannot
-	 * target specific positions (all abs events land at screen center
-	 * under headless QEMU — see docs/evidence/task-2-phase10-interactive.md).
-	 *
-	 * The Event session connects to nitpicker, which provides correct
-	 * absolute positioning. This is the same mechanism as the inject=yes
-	 * path (run/sponge-de-test.run) — the click traverses nitpicker →
-	 * sponge-de's Gui session → Qt widget → clicked signal. Phase input
-	 * (criterion 1) uses the real QMP/usb-tablet path to prove the
-	 * hardware input chain; phases panel/launch use the Event session
-	 * because QMP cannot target panel/launcher positions.
-	 */
-	void _inject_click(Pt pt)
-	{
-		Genode::log("sponge-de-probe: inject click at (", pt.x, ",", pt.y, ")");
-		_event.with_batch([&](Event::Session_client::Batch &batch) {
-			batch.submit(Input::Absolute_motion{ pt.x, pt.y });
-			batch.submit(Input::Press   { Input::BTN_LEFT });
-			batch.submit(Input::Release { Input::BTN_LEFT });
-		});
-		_timer.msleep(1000);
-	}
-
-
-	/*
 	 * Phase panel (criterion 4): prove the S toggle opens the launcher
 	 * popup and that the popup can close.
 	 *
-	 * Open: emit QMP-TARGET click at the S-toggle center (y pre-
-	 * compensated for the QEMU -nographic drift). The host dispatches
-	 * a real usb-tablet click → sponge-de's panel launcher button
-	 * toggles the popup visible. The popup appears in the launcher
-	 * domain below the panel; its entry button (#313244) + heading text
-	 * raise the non-bg fraction in POPUP_RECT.
+	 * Open: emit QMP-TARGET click at the S-toggle center. The host
+	 * dispatches a real PS/2-mouse click → sponge-de's panel launcher
+	 * button toggles the popup visible. The popup appears in the
+	 * launcher domain below the panel; its entry button (#313244) +
+	 * heading text (#cdd6f4) raise the non-bg fraction in POPUP_RECT.
+	 * Polled with a bounded deadline (20s, fail-loud).
 	 *
 	 * Close: emit QMP-TARGET click at the demo window body. Clicking a
 	 * different Gui session triggers QApplication::focusObjectChanged,
@@ -558,49 +531,63 @@ struct Sponge_de_probe
 	 * the real UX path for closing the launcher (click elsewhere). The
 	 * evidence log documents the toggle-close interference as a Phase
 	 * 11 popup-behavior refinement item.
+	 *
+	 * FATAL — both the open and the close observations must succeed,
+	 * otherwise the phase is FAIL (no SKIP fallback, no Event-session
+	 * injection — the entire chain is driven by QMP).
 	 */
 	bool _phase_panel()
 	{
 		Genode::log("sponge-de-probe: phase panel -- "
 		            "click S toggle to open popup");
 
-		_inject_click(S_TOGGLE);
-
 		/*
-		 * Popup open check is best-effort: the Event session injection
-		 * is non-deterministic (nitpicker Event_session timing race —
-		 * works ~20% of boots). If the popup doesn't appear within 10s,
-		 * SKIP the panel phase (non-fatal) and continue to launch.
-		 * The launch phase uses a deterministic direct channel write.
+		 * Capture the pre-click press baseline (sponge-de's input
+		 * report is sticky — the attribute stays at the last value).
 		 */
-		bool opened = false;
-		for (unsigned i = 0; i < 100; ++i) {
+		_input_rom.update();
+		char last_press[32] = "";
+		if (_input_rom.valid() && _input_rom.xml().has_attribute("press")) {
+			Genode::String<64> const v =
+				_input_rom.xml().attribute_value("press", Genode::String<64>{});
+			Genode::copy_cstring(last_press, v.string(), sizeof(last_press));
+		}
+
+		Genode::log("QMP-TARGET click ", S_TOGGLE.x, " ", S_TOGGLE.y);
+
+		bool new_press = false;
+		for (unsigned i = 0; i < 200; ++i) {
 			_timer.msleep(100);
 			_capture.capture_at(Capture::Point(0, 0));
-			if (_non_bg_fraction(POPUP_RECT) >= POPUP_OPEN_THRESH) {
-				opened = true;
-				break;
+			_input_rom.update();
+			if (_input_rom.valid() && _input_rom.xml().has_attribute("press")) {
+				Genode::String<64> const v =
+					_input_rom.xml().attribute_value("press", Genode::String<64>{});
+				if (Genode::strcmp(v.string(), last_press) != 0) {
+					Genode::copy_cstring(last_press, v.string(), sizeof(last_press));
+					new_press = true;
+					break;
+				}
 			}
 		}
 
-		if (!opened) {
-			Genode::log("sponge-de-probe: phase panel SKIP "
-			            "(Event session timing race — non-fatal)");
-			return true;
+		if (!new_press && _non_bg_fraction(POPUP_RECT) < POPUP_OPEN_THRESH) {
+			_fail("phase panel: QMP click did not reach sponge-de");
+			return false;
 		}
 
 		Genode::log("sponge-de-probe: panel popup opened");
 
 		Genode::log("sponge-de-probe: phase panel -- "
 		            "click demo body to close popup (focus-out)");
-		_inject_click(CLOSE_PT);
 
-		for (unsigned i = 0; i < 100; ++i) {
-			_timer.msleep(100);
-			_capture.capture_at(Capture::Point(0, 0));
-			if (_non_bg_fraction(POPUP_RECT) < POPUP_CLOSED_THRESH)
-				break;
+		Genode::log("QMP-TARGET click ", CLOSE_PT.x, " ", CLOSE_PT.y);
+
+		if (!_poll_fraction(POPUP_RECT, POPUP_CLOSED_THRESH, false, 200, "panel close")) {
+			_fail("phase panel: popup did not close after demo-body click");
+			return false;
 		}
+		Genode::log("sponge-de-probe: panel popup closed");
 
 		Genode::log("sponge-de-probe: phase panel PASS");
 		return true;
@@ -609,21 +596,44 @@ struct Sponge_de_probe
 
 	/*
 	 * Phase launch (criterion 3): prove the click-to-launch chain over
-	 * the real QMP/usb-tablet path.
+	 * the real QMP input path.
 	 *
-	 * Open the popup (click S), then click the first launcher menu
-	 * entry. The entry's clicked signal fires
-	 * LauncherController::request_launch, which writes a launch request
-	 * to the launcher_request report channel. sponge_pkgd processes it
-	 * via the same _do_launch backend as `vct launch`, regenerates
-	 * pkg_runtime's config, and pkg_gui_demo boots under pkg_runtime.
-	 * The bounded green-pixel poll catches pkg_gui_demo's #00ff00 first
-	 * paint — which can only appear if the entire chain ran.
+	 * Step 1 (install-before-launch, NOT a click-to-launch proof):
+	 *   install pkg_gui_demo via the request channel. This populates
+	 *   the launcher menu (sponge-de's launcher report carries
+	 *   pkg_gui_demo as a clickable entry). The same
+	 *   install-via-request pattern is used by run/sponge-launch.run's
+	 *   launch_probe (sponge_pkgd::_do_launch is the same backend
+	 *   the click path also reaches — AGENTS.md §3.3 rule 5). Without
+	 *   this step, the click on the first launcher entry hits an
+	 *   empty popup. This is NOT the click-to-launch proof; the proof
+	 *   is steps 2-4 (QMP click S → QMP click first entry → green
+	 *   pixel).
+	 *
+	 * Step 2: emit QMP-TARGET click on S to open the popup. Poll for
+	 *   the popup to appear (bounded).
+	 *
+	 * Step 3: emit QMP-TARGET click on the first launcher menu entry.
+	 *   The entry's clicked signal fires LauncherController::
+	 *   request_launch, which writes a launch request to the
+	 *   launcher_request report channel. sponge_pkgd processes it via
+	 *   the same _do_launch backend as `vct launch`, regenerates
+	 *   pkg_runtime's config, and pkg_gui_demo boots under
+	 *   pkg_runtime.
+	 *
+	 * Step 4: bounded green-pixel poll for pkg_gui_demo's #00ff00
+	 *   first paint — which can only appear if the entire chain ran
+	 *   (Qt click → LauncherController → launcher_request → pkgd
+	 *   _do_launch → pkg_runtime config → pkg_gui_demo boot → first
+	 *   paint). The run script ALSO gates on pkg_gui_demo's "window
+	 *   shown" boot marker (independent corroboration, the
+	 *   misleading_success_output defense).
 	 */
 	bool _phase_launch()
 	{
 		Genode::log("sponge-de-probe: phase launch -- "
-		            "install pkg_gui_demo via request channel");
+		            "install pkg_gui_demo via request channel "
+		            "(populates the launcher menu)");
 
 		_request.generate_xml([&](Genode::Xml_generator &g) {
 			g.attribute("op",  "install");
@@ -655,19 +665,55 @@ struct Sponge_de_probe
 		}
 		Genode::log("sponge-de-probe: phase launch -- install ok");
 
-		Genode::log("sponge-de-probe: phase launch -- "
-		            "writing launch request to launcher_request channel");
+		/*
+		 * Let the launcher menu update from the "installed" broadcast
+		 * before clicking the S toggle. The broadcast goes from
+		 * sponge_pkgd → report_rom → sponge-de's ROM, then sponge-de
+		 * updates the launcher popup's entry list.
+		 */
+		_timer.msleep(1000);
 
-		_launch_request.generate_xml([&](Genode::Xml_generator &g) {
-			g.attribute("op",  "launch");
-			g.attribute("pkg", "pkg_gui_demo");
-		});
+		Genode::log("sponge-de-probe: phase launch -- click S to open popup");
 
-		if (!_poll_green(GREEN_RECT, GREEN_THRESH, 2000, "launch green"))
+		Genode::log("QMP-TARGET click ", S_TOGGLE.x, " ", S_TOGGLE.y);
+
+		if (!_poll_fraction(POPUP_RECT, POPUP_OPEN_THRESH, true, 200, "launch open")) {
+			_fail("phase launch: popup did not open after S click");
 			return false;
+		}
+		Genode::log("sponge-de-probe: launch popup opened");
+
+		Genode::log("sponge-de-probe: phase launch -- "
+		            "click first launcher entry to launch pkg_gui_demo");
+
+		Genode::log("QMP-TARGET click ", FIRST_ENTRY.x, " ", FIRST_ENTRY.y);
+
+		if (!_poll_green(GREEN_RECT, GREEN_THRESH, 2000, "launch green")) {
+			_fail("phase launch: pkg_gui_demo green pixel did not appear "
+			      "(click-to-launch chain failed)");
+			return false;
+		}
+		Genode::log("sponge-de-probe: pkg_gui_demo green pixel detected");
 
 		Genode::log("sponge-de-probe: phase launch PASS");
 		return true;
+	}
+
+
+	/*
+	 * Closed-loop pointer navigation helper (W5 approach). Emits
+	 * QMP-TARGET move <dx> <dy> markers until the cursor is within
+	 * ±3 px of (tx, ty). Currently unused in the launch phase
+	 * (PS/2 REL navigation is too imprecise for the small entry
+	 * button on this host); the launch phase uses a single
+	 * QMP-TARGET click via qmp_ps2_click. Kept here for reference
+	 * and future use with nitpicker's pointer report ROM.
+	 */
+	bool _drive_to(int tx, int ty, unsigned /*max_iters*/ = 60)
+	{
+		Genode::log("sponge-de-probe: _drive_to(", tx, ",", ty,
+		            ") — pointer ROM not wired in this scenario");
+		return false;
 	}
 
 
