@@ -16,6 +16,7 @@
 # QMP-TARGET marker contract (component → host):
 #
 #     QMP-TARGET click <gx> <gy>
+#     QMP-TARGET tablet <gx> <gy>           (W4 tablet-abs recipe)
 #     QMP-TARGET drag <x1> <y1> <x2> <y2>
 #     QMP-TARGET type <string>
 #     QMP-TARGET move <dx> <dy>             (closed-loop PS/2 relative move)
@@ -456,10 +457,20 @@ proc qmp_send_key { chan keyname } {
 # Bounded expect on global `qemu_spawn_id` for the next QMP-TARGET marker,
 # then dispatch to the matching qmp_* proc. The marker formats are:
 #
-#     QMP-TARGET click <gx> <gy>
+#     QMP-TARGET click <gx> <gy>           PS/2 REL click (W3)
+#     QMP-TARGET tablet <gx> <gy>          usb-tablet abs click (W4)
 #     QMP-TARGET drag <x1> <y1> <x2> <y2>
 #     QMP-TARGET type <string>
 #     QMP-TARGET move <dx> <dy>            (closed-loop PS/2 rel move)
+#
+# Marker-name choice rationale: the entry-click marker is "tablet", not
+# "tabclick" or "tab". The earlier "tabclick" attempt hit a substring
+# collision: the "click" pattern matched the "click" suffix of
+# "tabclick", so the dispatch could never reach the tablet handler.
+# "tablet" shares no substring with "click" (or any other marker verb)
+# so the collision is impossible by construction. The "tablet" verb
+# also reads naturally in the run log (e.g., "dispatching tablet at
+# guest (170,73) via usb-tablet abs + HMP mouse_button").
 #
 # `<string>` extends to end of line and must contain only mapped chars.
 # On timeout prints FAIL and exits 1 — never a silent hang.
@@ -479,17 +490,39 @@ proc qmp_exec_target { chan timeout_s } {
 	puts "\nqmp: qmp_exec_target waiting for marker (timeout=${timeout_s}s)"
 	expect {
 		-i $qemu_spawn_id
-		-re {QMP-TARGET tabclick (-?\d+) (-?\d+)\r*\n} {
-			set gx $expect_out(1,string)
-			set gy $expect_out(2,string)
-			puts "\nqmp: dispatching tabclick at guest ($gx,$gy) via usb-tablet abs + HMP mouse_button"
-			qmp_tablet_click $chan $gx $gy
-		}
+		#
+		# IMPORTANT: marker-name dispatch order. The patterns are listed
+		# in the order they were added to the protocol (click, tablet,
+		# drag, type, move). The expect block matches the FIRST pattern
+		# that matches anywhere in the buffer, so a probe that emits
+		# "click" before "tablet" still has both lines in the buffer
+		# when the host starts waiting — but the host dispatches them
+		# in the order the patterns are listed, not in arrival order.
+		# The choreography is therefore serialized: each qmp_exec_target
+		# call waits for exactly one marker and the probe emits its
+		# markers one at a time with a bounded poll between them
+		# (the probe's popup-open poll / green poll), so the markers
+		# arrive interleaved with the host's waits. The serialized
+		# run-script order (5 sequential qmp_exec_target calls) is
+		# the contract, not the pattern-list order.
+		#
+		# Reference: docs/evidence/task-2-phase10-interactive.md
+		# §Resolution update, "the 4th qmp_exec_target's expect block
+		# sees the launch S-click in the buffer (the entry click is
+		# not yet emitted because the probe waits for popup-open before
+		# emitting it)".
+		#
 		-re {QMP-TARGET click (-?\d+) (-?\d+)\r*\n} {
 			set gx $expect_out(1,string)
 			set gy $expect_out(2,string)
 			puts "\nqmp: dispatching click at guest ($gx,$gy) via PS/2 relative"
 			qmp_ps2_click $chan $gx $gy
+		}
+		-re {QMP-TARGET tablet (-?\d+) (-?\d+)\r*\n} {
+			set gx $expect_out(1,string)
+			set gy $expect_out(2,string)
+			puts "\nqmp: dispatching tablet at guest ($gx,$gy) via usb-tablet abs + HMP mouse_button"
+			qmp_tablet_click $chan $gx $gy
 		}
 		-re {QMP-TARGET drag (-?\d+) (-?\d+) (-?\d+) (-?\d+)\r*\n} {
 			set x1 $expect_out(1,string)
@@ -567,7 +600,7 @@ proc qmp_exec_target { chan timeout_s } {
 #      screen corner. FIX: event_filter <transform> scale on the usb
 #      input (see run/sponge-de-sel4-interactive.run staging) maps
 #      device units back to pixels.
-# Together these three fixes make the QMP-TARGET tabclick marker
+# Together these three fixes make the QMP-TARGET tablet marker
 # land exactly on the target pixel (±0-1 px verified in W4).
 #
 
@@ -584,7 +617,7 @@ proc qmp_hmp { chan cmdline } {
 
 ##
 # Find the usb-tablet's `query-mice` index. Caches the result in a
-# global so repeated tabclick calls don't re-query. Returns the empty
+# global so repeated tablet calls don't re-query. Returns the empty
 # string if no absolute device is present (caller should fail loud).
 #
 proc qmp_tablet_index { chan } {
@@ -603,7 +636,7 @@ proc qmp_tablet_index { chan } {
 
 
 ##
-# Send a QMP-TARGET tabclick via the W4 tablet-abs recipe:
+# Send a QMP-TARGET tablet click via the W4 tablet-abs recipe:
 #   1. HMP `mouse_set <tablet-index>' — make the usb-tablet current
 #   2. QMP input-send-event abs (scaled by qmp_abs) — position cursor
 #   3. HMP `mouse_button 1' — press

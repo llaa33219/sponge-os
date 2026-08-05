@@ -770,12 +770,12 @@ after 500
 # populates the launcher menu so the S popup has an entry to
 # click — same install-via-request pattern as
 # run/sponge-launch.run's launch_probe). After the install
-# confirms, the probe emits two more QMP-TARGET tabclick markers
-# (W4 tablet-abs recipe: mouse_set + abs move + HMP mouse_button
-# — deterministic landing, see docs/evidence/task-4-phase10-
-# interactive.md): the S toggle (32,14) to open the popup, then
-# the first launcher entry (170,73) to launch. The full click-
-# to-launch chain runs:
+# confirms, the probe emits a QMP-TARGET click marker for the S
+# toggle (32,14) to open the popup, then a QMP-TARGET tablet
+# marker for the first launcher entry (170,73) — the W4
+# tablet-abs recipe (mouse_set + abs move + HMP mouse_button —
+# deterministic landing, see docs/evidence/task-4-phase10-
+# interactive.md). The full click-to-launch chain runs:
 # Qt click → LauncherController::request_launch → launcher_request
 # report → pkgd _do_launch → pkg_runtime config regen →
 # pkg_gui_demo boot → green #00ff00 first paint. The probe's
@@ -784,15 +784,20 @@ after 500
 # (independent corroboration, misleading_success_output defense).
 # FATAL.
 #
-# The PS/2 QMP-TARGET click path is used for the input + panel
-# phases (where the QTimer-based cursor-outside auto-close handles
-# the popup hide). The launch phase switches to the W4 tablet-abs
-# recipe because the PS/2 fine-walk accumulates 5-20px drift on
-# a 60-event navigation (not enough for the 30px-tall entry
-# button), while the W4 recipe lands exactly on the target
-# pixel. The 600s timeout covers the ~1s tabclick dispatch
-# (mouse_set + 1 abs move + 2 HMP mouse_button calls with
-# 15ms inter-call delays).
+# The marker name is "tablet" (not "tabclick"): the word "tablet"
+# shares no substring with "click", so the expect dispatch in
+# qmp_exec_target cannot have a substring collision (the earlier
+# "tabclick" attempt had the "click" pattern matching the "click"
+# suffix of "tabclick", forcing us to choose between the two
+# patterns in the same expect block). The PS/2 QMP-TARGET click
+# path is used for the input + panel phases (where the QTimer-based
+# cursor-outside auto-close handles the popup hide). The launch
+# entry click switches to the W4 tablet-abs recipe because the
+# PS/2 fine-walk accumulates 5-20px drift on a 60-event navigation
+# (not enough for the 30px-tall entry button), while the W4 recipe
+# lands exactly on the target pixel. The 600s timeout covers the
+# ~1s tablet dispatch (mouse_set + 1 abs move + 2 HMP mouse_button
+# calls with 15ms inter-call delays).
 #
 qmp_exec_target $qmp_chan 120
 qmp_exec_target $qmp_chan 120
