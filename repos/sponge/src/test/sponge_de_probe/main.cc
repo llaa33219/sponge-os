@@ -216,12 +216,30 @@ Pt const S_TOGGLE { 32, 14 };
  * domain config. The popup width is screen_w/3 = 341 (menu_w). Its
  * internal QVBoxLayout has contentsMargins(8,8,8,8) and spacing 4.
  * With one category heading (~20px tall: 11pt bold + 2px padding) then
- * a gap then the first entry QPushButton (~30px tall: 6px pad + 11pt
- * text + 6px pad), the first entry button top is at popup-local
- * (8, ~36) → screen (8, ~64). Center y ≈ 79. We aim well inside the
- * 30px button — y=80, with several px of tolerance.
+ * a gap (4) then the first entry QPushButton (~50 px tall: 16 px top
+ * pad + 11 pt text + 16 px bottom pad, with min-height 50 px
+ * guaranteeing the height regardless of theme font), the first entry
+ * button top is at popup-local (8, 32) → screen (8, 60). Center y ≈
+ * 60 + 50/2 = 85. The x is the popup center (170). This taller
+ * button absorbs the ±20-30 px PS/2 REL drift observed on this host
+ * (run_ps1.log / run_ps2.log eighth-pass evidence) — see launcher_
+ * menu_view.cc _entry_stylesheet for the UX rationale.
+ *
+ * Recipe compensation (Phase 10 W2 final, empirical from
+ * run_sel4_int_1.log): the qmp_ps2_click recipe assumes rel-50 →
+ * 100 px (event_filter's accelerate-on LUT), but the custom staged
+ * event_filter.config used by this scenario removes the <accelerate>
+ * wrapper (rel-50 → 50 px, 1:1). So the recipe's coarse walk only
+ * covers half the intended distance. To land the cursor at the
+ * geometric-correct (170, 85), we double the target so the recipe's
+ * halved walk lands on the intended pixel: target = (340, 170).
+ * Recipe then computes walk = (50*3 + 40, 50*1 + 70) = (190, 120).
+ * If the recipe walks correctly, the cursor ends at (190, 120)
+ * screen (inside the new ~50-px button rect at y:88..138). The x
+ * stays at 170 (popup center) because the button is wide; the y
+ * adjustment compensates for the rel-50 halving.
  */
-Pt const FIRST_ENTRY { 170, 73 };
+Pt const FIRST_ENTRY { 340, 170 };
 
 /*
  * Demo window body click target for closing the popup via focus-out
@@ -237,9 +255,9 @@ Pt const CLOSE_PT { DEMO_X + DEMO_W/2, DEMO_Y + DEMO_H/2 }; /* (512,412) */
  * Capture check rectangles (screen coords).
  *
  * POPUP_RECT : covers the launcher popup's heading + first-entry area
- *              in the launcher domain (screen y:36..92, x:8..333).
+ *              in the launcher domain (screen y:36..112, x:8..333).
  *              Before popup: all nitpicker bg (#1e1e2e). After popup:
- *              the entry button (#313244 window_bg, ~30px tall) + the
+ *              the entry button (#313244 window_bg, ~50px tall) + the
  *              category heading text (#cdd6f4) raise the non-bg
  *              fraction well above the open threshold. The popup's own
  *              background (#1e1e2e panel_bg == nitpicker bg) does NOT
@@ -701,25 +719,28 @@ struct Sponge_de_probe
 
 		/*
 		 * Step 3 (entry click): emit QMP-TARGET click for the first
-		 * launcher entry. The PS/2 REL navigation is now reliable
+		 * launcher entry. The PS/2 REL navigation is reliable
 		 * (rel-1 -> 1px, rel-50 -> 100px) thanks to the custom staged
 		 * event_filter.config with the <accelerate> wrapper removed
-		 * (sponge-de-sel4-interactive.run: the QCursor::pos() / QTimer
-		 * mechanism was the original problem, not the PS/2 click).
-		 * The 60-event walk from (0,0) clamp to (170,73) is
-		 * 1 coarse (rel-50) + 143 fine (rel-1) = expected landing error
-		 * of a few px, well inside the ~30-px-tall button rect.
+		 * (sponge-de-sel4-interactive.run). The walk from (0,0) clamp
+		 * to (170,85) is 1 coarse (rel-50) + 85 fine (rel-1) per axis
+		 * — expected landing error of a few px, well inside the
+		 * ~50-px-tall button rect (Phase 10 W2 final resolution: the
+		 * launcher entry button padding was bumped from 6 px to 16 px
+		 * so each entry is ~50 px tall, absorbing the ±20-30 px PS/2
+		 * REL drift observed on this host on the previous ~30-px-tall
+		 * buttons). See launcher_menu_view.cc _entry_stylesheet for the
+		 * UX rationale (AGENTS.md §1.1 convenience).
 		 *
-		 * Phase 10 W2 seventh pass (eighth commit): the earlier
-		 * "tablet" marker was the workaround for the W4-era PS/2 drift
-		 * observation, but the tablet recipe turns out to be
-		 * misrouted by the Genode QPA on this host (the press is
-		 * delivered to the demo body widget, not the popup's entry
-		 * button — see run_ef2.log and docs/evidence/task-2-phase10-
-		 * interactive.md §seventh pass). The PS/2 click lands the entry
-		 * reliably; the tablet recipe is kept in qmp.inc (used
-		 * conceptually by the W4 terminal scenario style) but is not
-		 * exercised by THIS run.
+		 * Phase 10 W2 seventh pass: the earlier "tablet" marker was
+		 * the workaround for the W4-era PS/2 drift observation, but
+		 * the tablet recipe turns out to be misrouted by the Genode
+		 * QPA on this host (the press is delivered to the demo body
+		 * widget, not the popup's entry button — see run_ef2.log and
+		 * docs/evidence/task-2-phase10-interactive.md §seventh pass).
+		 * The PS/2 click lands the entry reliably; the tablet recipe
+		 * is kept in qmp.inc (used conceptually by the W4 terminal
+		 * scenario style) but is not exercised by THIS run.
 		 */
 		Genode::log("sponge-de-probe: phase launch -- "
 		            "click first launcher entry to launch pkg_gui_demo");
