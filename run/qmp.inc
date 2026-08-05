@@ -301,6 +301,26 @@ proc qmp_ps2_button { chan down } {
 	qmp_cmd $chan [format {{"execute":"input-send-event","arguments":{"events":[{"type":"btn","data":{"down":%s,"button":"left"}}]}}} $val]
 }
 
+
+##
+# qmp_press — press/release at the CURRENT cursor position (no
+# clamp, no walk). Used after the closed-loop _drive_to in the
+# W2 interactive probe has already positioned the cursor exactly:
+# dispatching qmp_ps2_click after _drive_to would re-clamp to
+# (0,0) and re-walk, undoing the closed-loop convergence and
+# reintroducing the +38x/+26y PS/2 burst-drift that the closed-
+# loop was meant to eliminate. The probe emits a separate
+# QMP-TARGET press <x> <y> marker after QMP-TARGET move ...; the
+# host's qmp_exec_target arm dispatches this proc for that marker.
+#
+proc qmp_press { chan x y } {
+	puts "\nqmp: pressing at guest ($x,$y) (no clamp + walk; cursor already positioned)"
+	qmp_ps2_button $chan true
+	after 200
+	qmp_ps2_button $chan false
+	after 100
+}
+
 ##
 # Click (press + release BTN_LEFT) at the given guest coordinates via
 # the PS/2 mouse's relative axis. W3's proven recipe (see
@@ -326,12 +346,20 @@ proc qmp_ps2_click { chan x y } {
 	puts "\nqmp: PS/2 click -> ($x,$y) — clamp to (0,0) + nav + press/release"
 
 	# W3's exact recipe (proven on this host per
-	# docs/evidence/task-3-phase10-interactive.md). No delays between
-	# individual fine rel-1 events — W3 shows this is correct.
+	# docs/evidence/task-3-phase10-interactive.md) WITH pacing
+	# added in the clamp and fine loops (Oracle's step-2 belt-and-
+	# braces; previously omitted). PS/2 event bursts without pacing
+	# can be dropped downstream (ps2 driver input queue overflow or
+	# event_filter input-side batching) — when the clamp events drop,
+	# the cursor never reaches (0,0) and the subsequent fine walk
+	# starts from the previous position, causing large drift. The
+	# coarse loop already has `after 20`. The total extra time per
+	# click at 300 fine events is ~1.5s — acceptable (click-to-
+	# launch phase budget is ~2.4s per the eighth-pass evidence).
 
 	# Step 1: clamp to (0,0).
-	for {set i 0} {$i < 10} {incr i} { qmp_move_rel $chan x -100 }
-	for {set i 0} {$i < 10} {incr i} { qmp_move_rel $chan y -100 }
+	for {set i 0} {$i < 10} {incr i} { qmp_move_rel $chan x -100; after 5 }
+	for {set i 0} {$i < 10} {incr i} { qmp_move_rel $chan y -100; after 5 }
 	after 200
 
 	# Step 2: coarse (rel-50 ≈ 100px).
@@ -341,12 +369,12 @@ proc qmp_ps2_click { chan x y } {
 	for {set i 0} {$i < $cx} {incr i} { qmp_move_rel $chan x 50; after 20 }
 	for {set i 0} {$i < $cy} {incr i} { qmp_move_rel $chan y 50; after 20 }
 
-	# Step 3: fine (rel-1 ≈ 1px) — no delays between events.
+	# Step 3: fine (rel-1 ≈ 1px) — paced to avoid downstream drops.
 	set fx [expr {$x % 100}]
 	set fy [expr {$y % 100}]
 	puts "qmp:   fine rel-1: fx=$fx fy=$fy"
-	for {set i 0} {$i < $fx} {incr i} { qmp_move_rel $chan x 1 }
-	for {set i 0} {$i < $fy} {incr i} { qmp_move_rel $chan y 1 }
+	for {set i 0} {$i < $fx} {incr i} { qmp_move_rel $chan x 1; after 5 }
+	for {set i 0} {$i < $fy} {incr i} { qmp_move_rel $chan y 1; after 5 }
 	after 400
 
 	# Step 4: hover jiggle.
@@ -531,6 +559,12 @@ proc qmp_exec_target { chan timeout_s } {
 			set gy $expect_out(2,string)
 			puts "\nqmp: dispatching click at guest ($gx,$gy) via PS/2 relative"
 			qmp_ps2_click $chan $gx $gy
+		}
+		-re {QMP-TARGET press (-?\d+) (-?\d+)\r*\n} {
+			set gx $expect_out(1,string)
+			set gy $expect_out(2,string)
+			puts "\nqmp: dispatching press at guest ($gx,$gy) (no clamp + walk; cursor already positioned by _drive_to)"
+			qmp_press $chan $gx $gy
 		}
 		-re {QMP-TARGET tablet (-?\d+) (-?\d+)\r*\n} {
 			set gx $expect_out(1,string)
