@@ -735,6 +735,22 @@ run_genode_until {.*sponge-de-probe: observe mode.*} 300
 
 set qmp_chan [qmp_connect $qmp_port]
 global qemu_spawn_id
+#
+# Raise expect's match-window for the QEMU serial stream BEFORE any
+# further expect block can consume data. The default match_max is
+# 2000 bytes; the run framework's earlier run_genode_until calls
+# (with running_spawn_id=-1, default match_max) already truncated
+# the buffer to 2000 bytes. Without this raise, the panel/launch
+# QMP-TARGET markers are pushed out of the match window between
+# markers and the per-iter "launch green poll N" flood (~140 KB)
+# further shrinks the visible window — the qmp_exec_target arm then
+# dispatches the WRONG marker (panel close click instead of panel
+# S-click, or times out waiting for the entry click). 200 KB covers
+# the full inter-marker window plus the green-poll flood. See
+# docs/evidence/task-2-phase10-interactive.md §Resolution 2026-08-05
+# "match_max root cause".
+#
+match_max -i $qemu_spawn_id 200000
 
 #
 # Phase input (criterion 1): QMP PS/2-mouse click at the demo center

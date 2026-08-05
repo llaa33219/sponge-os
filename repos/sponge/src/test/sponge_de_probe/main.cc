@@ -803,6 +803,16 @@ struct Sponge_de_probe
 	 * Poll a capture rect for a green (#00ff00) fraction crossing a
 	 * threshold. Bounded by iters x 200ms (slower poll — softpipe
 	 * first paint takes tens of seconds).
+	 *
+	 * Logging cadence: poll 0 (always), every 50th iteration, and the
+	 * final iteration. Quieting the per-iter log is essential for the
+	 * qmp.inc::qmp_exec_target dispatch — the host's expect arm has a
+	 * finite match_max; the ~140 KB flood of per-iter "green poll N"
+	 * lines pushes QMP-TARGET markers out of the match window between
+	 * the S-click and the entry-click expect blocks (see
+	 * docs/evidence/task-2-phase10-interactive.md §Resolution 2026-08-05
+	 * "match_max root cause"). The PASS/FAIL line at the end is
+	 * emitted by the caller and is unaffected.
 	 */
 	bool _poll_green(Rect r, float thresh, unsigned iters, char const *label)
 	{
@@ -811,7 +821,7 @@ struct Sponge_de_probe
 			_capture.capture_at(Capture::Point(0, 0));
 			float const frac = _green_fraction(r);
 
-			if (i % 10 == 0)
+			if (i == 0 || i % 50 == 0 || i + 1 == iters)
 				Genode::log("sponge-de-probe: ", label, " poll ", i,
 				            " frac_per_mille=", (unsigned)(frac * 1000));
 
