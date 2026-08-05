@@ -700,23 +700,31 @@ struct Sponge_de_probe
 		Genode::log("sponge-de-probe: launch popup opened");
 
 		/*
-		 * Step 3 (entry click): emit QMP-TARGET tablet (NOT click) for
-		 * the first launcher entry. The W4 tablet-abs recipe (run/
-		 * qmp.inc::qmp_tablet_click) lands exactly on the target pixel
-		 * (±0-1 px), in contrast to the PS/2 REL navigation that
-		 * accumulates 5-20 px drift on the 60-event walk to a 30-px
-		 * button. The marker is the word "tablet" — chosen because it
-		 * shares no substring with the existing "click" marker, so the
-		 * expect dispatch in qmp_exec_target cannot have a substring
-		 * collision (the previous attempt used "tabclick" and ran into
-		 * the "click" pattern matching the "click" suffix of
-		 * "tabclick"). See docs/evidence/task-2-phase10-interactive.md
-		 * for the resolution.
+		 * Step 3 (entry click): emit QMP-TARGET click for the first
+		 * launcher entry. The PS/2 REL navigation is now reliable
+		 * (rel-1 -> 1px, rel-50 -> 100px) thanks to the custom staged
+		 * event_filter.config with the <accelerate> wrapper removed
+		 * (sponge-de-sel4-interactive.run: the QCursor::pos() / QTimer
+		 * mechanism was the original problem, not the PS/2 click).
+		 * The 60-event walk from (0,0) clamp to (170,73) is
+		 * 1 coarse (rel-50) + 143 fine (rel-1) = expected landing error
+		 * of a few px, well inside the ~30-px-tall button rect.
+		 *
+		 * Phase 10 W2 seventh pass (eighth commit): the earlier
+		 * "tablet" marker was the workaround for the W4-era PS/2 drift
+		 * observation, but the tablet recipe turns out to be
+		 * misrouted by the Genode QPA on this host (the press is
+		 * delivered to the demo body widget, not the popup's entry
+		 * button — see run_ef2.log and docs/evidence/task-2-phase10-
+		 * interactive.md §seventh pass). The PS/2 click lands the entry
+		 * reliably; the tablet recipe is kept in qmp.inc (used
+		 * conceptually by the W4 terminal scenario style) but is not
+		 * exercised by THIS run.
 		 */
 		Genode::log("sponge-de-probe: phase launch -- "
 		            "click first launcher entry to launch pkg_gui_demo");
 
-		Genode::log("QMP-TARGET tablet ", FIRST_ENTRY.x, " ", FIRST_ENTRY.y);
+		Genode::log("QMP-TARGET click ", FIRST_ENTRY.x, " ", FIRST_ENTRY.y);
 
 		if (!_poll_green(GREEN_RECT, GREEN_THRESH, 2000, "launch green")) {
 			_fail("phase launch: pkg_gui_demo green pixel did not appear "
