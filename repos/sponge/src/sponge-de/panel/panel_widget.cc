@@ -57,6 +57,7 @@ PanelWidget::PanelWidget(Theme::Theme const &theme, QWidget *parent)
 
 	/* Launcher button: toggles the popup. */
 	auto *launcher = new QPushButton(QStringLiteral("S"), this);
+	launcher->setObjectName(QStringLiteral("launcherToggle"));
 	launcher->setFixedSize((int)theme.launcher_width(),
 	                       (int)theme.panel_height() - 2 * gap);
 	connect(launcher, &QPushButton::clicked, this, [this] {

@@ -12,12 +12,12 @@
 #include <base/log.h>
 
 #include <QApplication>
+#include <QEvent>
 #include <QLabel>
-#include <QPoint>
+#include <QMouseEvent>
 #include <QPushButton>
 #include <QRect>
 #include <QScreen>
-#include <QTimer>
 #include <QVBoxLayout>
 
 using namespace Sponge::Sponge_DE;
@@ -44,55 +44,65 @@ LauncherMenuView::LauncherMenuView(LauncherController &controller,
 	_apply_style(theme);
 
 	/*
-	 * Auto-close when the user clicks outside the menu. We install a
-	 * 50ms timer that checks QCursor::pos() — if the global cursor
-	 * position is outside the popup's screen rect (the launcher domain:
-	 * x:0-341, y:28-508, panel-popup domain), we hide the popup.
-	 *
-	 * Phase 10 W2 fix (supersedes the earlier focus-out debounce
-	 * and the qApp eventFilter attempt): neither focus-object-changed
-	 * nor the QPA plugin's qApp eventFilter reliably fires MouseButton-
-	 * Press for the QMP-driven PS/2 click path on this host — the
-	 * QPA plugin dispatches Input::Relative_motion for pointer motion
-	 * but the button press/release events are consumed before reaching
-	 * the qApp event filter (verified empirically — see docs/evidence/
-	 * task-2-phase10-interactive.md "Known issues"). A periodic
-	 * cursor-position poll is the simplest reliable primitive: it reads
-	 * the same global cursor state the QPA plugin uses internally, and
-	 * the 50ms cadence is fast enough for a "click outside" to feel
-	 * human-imperceptible but slow enough that the popup stays open
-	 * during show()/raise()/activateWindow() (which takes <50ms on this
-	 * host with the PS/2 closed-loop navigation).
-	 *
-	 * The grace period (2000ms after show) prevents the cursor at the
-	 * S button (which is OUTSIDE the popup's domain — y:14 is above
-	 * the popup's y:28) from immediately hiding the popup while the
-	 * QMP-driven click chain runs. The full chain is:
-	 *   S click (~1.2s dispatch) → first entry click (~1.2s dispatch)
-	 *   = ~2.4s total. 2000ms covers the S click + the start of the
-	 * entry click; the entry click moves the cursor INTO the popup
-	 * domain (y:65) and the timer becomes a no-op.
+	 * Event-driven click-outside: install a qApp-level event filter
+	 * (see eventFilter()). qApp-level filters see every event before
+	 * the QPA dispatches it to its target widget, which is what we
+	 * need for a deterministic press-time "click outside" decision
+	 * that does not depend on QCursor::pos() (broken on the Genode
+	 * QPA — always reports (0,0)). The filter is installed in the
+	 * constructor; the popup is a long-lived child of the panel, so
+	 * the filter outlives every show()/hide() cycle.
 	 */
-	_outside_check_timer = new QTimer(this);
-	_outside_check_timer->setInterval(50);
-	connect(_outside_check_timer, &QTimer::timeout, this, [this] {
-		if (!isVisible()) return;
-		/* Grace period: don't check while the cursor is at the S
-		 * button and the popup is just opening. 2000ms covers the
-		 * full QMP click dispatch chain (S click + first entry click). */
-		if (QDateTime::currentMSecsSinceEpoch() - _visible_since_ms < 2000)
-			return;
-		QPoint const g = QCursor::pos();
-		QRect const r(0, 28, 341, 480);
-		if (!r.contains(g)) {
-			Genode::log("sponge-de: launcher cursor-outside at (",
-			            g.x(), ",", g.y(), ") — hiding popup");
-			hide();
-		}
-	});
-	_outside_check_timer->start();
+	qApp->installEventFilter(this);
 
 	repopulate();
+}
+
+
+bool LauncherMenuView::eventFilter(QObject *watched, QEvent *event)
+{
+	/*
+	 * Click-outside: only act on QEvent::MouseButtonPress while the
+	 * popup is visible. Three allowlist cases (do nothing, let the
+	 * widget's own handler take it):
+	 *
+	 *  (1) the press is on the popup itself or any of its children
+	 *      (entry buttons, etc.) — the entry button's own clicked
+	 *      handler closes the popup on success; we must not race it
+	 *      by hiding on press.
+	 *  (2) the press is on the panel's launcher toggle button
+	 *      (objectName "launcherToggle") — its clicked handler
+	 *      TOGGLES the popup on release (hide+show). Hiding on press
+	 *      would race the release: the click toggle would re-show
+	 *      what we just hid, and the user would see a glitch.
+	 *  (3) the watched object is not a QWidget (defensive — QPA
+	 *      delivers some press events to non-widget objects too;
+	 *      we don't care about those).
+	 *
+	 * Anything else (press on the demo body, the panel background,
+	 * the desktop, etc.) is "click outside" — hide.
+	 */
+	if (event->type() != QEvent::MouseButtonPress) return false;
+	if (!isVisible()) return false;
+
+	QWidget *w = qobject_cast<QWidget *>(watched);
+	if (w == nullptr) return false;
+
+	/* Case 1: press on popup itself or any child. */
+	if (w == this || isAncestorOf(w)) return false;
+
+	/* Case 2: press on the launcher toggle button. Identified by
+	 * the objectName set in PanelWidget's constructor. */
+	if (w->objectName() == QLatin1String("launcherToggle"))
+		return false;
+
+	/* Case 3 is the catch-all: click outside, hide. */
+	Genode::log("sponge-de: launcher click-outside on ",
+	            w->metaObject()->className(),
+	            " cursor=", QCursor::pos().x(), ",", QCursor::pos().y(),
+	            " — hiding popup");
+	hide();
+	return false;
 }
 
 
