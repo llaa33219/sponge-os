@@ -32,6 +32,7 @@
 
 #include <QHash>
 #include <QString>
+#include <QDateTime>
 #include <QWidget>
 
 #include "theme/theme_loader.h"
@@ -67,17 +68,21 @@ class LauncherMenuView : public QWidget
 		 */
 		void repopulate();
 
-	private:
+	protected:
 
 		/*
-		 * Focus-out debounce (Phase 10 W2). See .cc for the rationale.
-		 * Short enough that a real "click outside" closes the popup
-		 * within human-perceptible time (~150 ms after the focus
-		 * settles), long enough to absorb the focusObjectChanged that
-		 * fires during show()/raise()/activateWindow() before the
-		 * QMP-driven chained click lands.
+		 * showEvent — record the time the popup became visible. The
+		 * 300ms grace period in _outside_check_timer uses this to
+		 * ignore cursor-outside checks while show()/raise()/activate-
+		 * Window() + the QMP closed-loop nav are settling.
 		 */
-		static constexpr int FOCUS_HIDE_DEBOUNCE_MS = 500;
+		void showEvent(QShowEvent *event) override
+		{
+			QWidget::showEvent(event);
+			_visible_since_ms = QDateTime::currentMSecsSinceEpoch();
+		}
+
+	private:
 
 		void _apply_style(Theme::Theme const &theme);
 
@@ -87,7 +92,8 @@ class LauncherMenuView : public QWidget
 
 		QVBoxLayout *_root_layout { nullptr };
 
-		QTimer *_hide_timer { nullptr };
+		QTimer    *_outside_check_timer { nullptr };
+		qint64     _visible_since_ms     { 0 };
 
 		/*
 		 * Per-category section. Categories are added in the order they
