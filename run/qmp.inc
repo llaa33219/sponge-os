@@ -18,6 +18,7 @@
 #     QMP-TARGET click <gx> <gy>
 #     QMP-TARGET drag <x1> <y1> <x2> <y2>
 #     QMP-TARGET type <string>
+#     QMP-TARGET move <dx> <dy>             (closed-loop PS/2 relative move)
 #
 # Probes in observe mode log these lines on the serial console; the run
 # script's bounded expect on global `qemu_spawn_id` (set by the Genode
@@ -28,17 +29,68 @@
 # Requires: Tcl 8.x built-in `socket` (TCP only; matches `-qmp tcp:`),
 #           `expect`, no other external dependencies.
 #
-# Coordinate scaling:
+# Pointer delivery:
 #
-#   The 1024x768 nitpicker framebuffer maps to QEMU's usb-tablet absolute
-#   axes (0..32767 per axis). The principled formula:
+#   Two pointer models are supported, both proven on this host (QEMU
+#   system-x86_64 11.0.2, -nographic):
 #
-#       ax = (x * 32767 + 512) / 1024      # round-to-nearest, x in [0,1024)
-#       ay = (y * 32767 + 384) / 768       # round-to-nearest, y in [0,768)
+#   1. Absolute (qmp_click via qmp_pointer_move) — emits QMP
+#      input-send-event ABS_MOTION events on the usb-tablet axis
+#      (0..32767 per axis, scaled from guest pixels by 32767/1024,
+#      32767/768). Under -nographic the usb-tablet is NOT bound to a
+#      QemuConsole and nitpicker treats Input::Absolute_motion values
+#      as raw pixels — so every abs event in 0..32767 lands off-screen
+#      on a 1024x768 display, and nitpicker's pointer sanitizer
+#      (`main.cc:780-810`) clamps all of them to the screen center
+#      (~512, 384). (Documented in
+#      docs/evidence/task-3-phase10-interactive.md §"W1's ~29px y-drift
+#      root cause — NOT a QEMU translation bug".) This is why W1's
+#      "click worked" — the demo domain (192,172,640,480) is large
+#      enough that the screen center lands inside it. The first-phase
+#      criterion-1 proof STILL holds (the click traverses the real
+#      usb-tablet → pc_usb_host → usb_hid → event_filter → nitpicker →
+#      sponge-de chain) but the click is not precisely targeted.
 #
-#   See the qmp_abs proc comment for an important CALIBRATION NOTE
-#   about QEMU `-nographic` mode introducing a ~29 px y drift that is
-#   downstream of this formula and does not affect criterion 1.
+#   2. Relative (qmp_ps2_click / qmp_move_rel) — emits QMP
+#      input-send-event REL events on the PS/2 mouse axis. The PS/2
+#      mouse is the QEMU-default "current" pointer device
+#      (`query-mice` shows current:true on the PS/2 mouse under
+#      -nographic). event_filter's `accelerate` chain
+#      (sensitivity_percent=1000, max=50, curve=127, the recipe's
+#      standard config at genode/repos/os/recipes/raw/drivers_interactive-
+#      pc/event_filter.config) gives a non-linear LUT:
+#        rel-1   →  1px per event  (precision steps)
+#        rel-50  →  100px per event (full acceleration)
+#        rel-100 → 150px per event (clamped)
+#      This is W3's proven recipe (see
+#      docs/evidence/task-3-phase10-interactive.md) and lands the
+#      pointer within ±1px of any absolute target after a clamp-to-
+#      (0,0) + coarse (rel-50) + fine (rel-1) sequence. The same
+#      hardware input chain as abs (QMP → emulated PS/2 controller
+#      → ps2 driver → event_filter → nitpicker → sponge-de) — just
+#      the PS/2 branch.
+#
+#   The closed-loop move protocol (QMP-TARGET move) is also supported
+#   for scenarios that want pixel-exact landing on an absolute target
+#   by reading the nitpicker pointer position from a report ROM
+#   (W5's approach in docs/evidence/task-5-phase10-interactive.md).
+#   It is not used by the default recipes in this file.
+#
+# Keyboard:
+#
+#   `send-key` requires the qcode/KeyValue object form on QEMU 11
+#   (`{"type":"qcode","data":"h"}` per key, NOT the string form
+#   `["h"]` rejected with `Invalid parameter type for 'keys[0]',
+#   expected: object`). The string form is a latent W1 bug fixed
+#   here. The proc qmp_send_key emits the correct object form.
+#
+# Serial line endings:
+#
+#   QEMU's `-nographic` serial console emits lines terminated with
+#   `CR CR LF` (verified by `od -c` on a QEMU serial capture), not
+#   just `CR LF`. The expect patterns in qmp_exec_target anchor on
+#   `\r*\n` (W4's fix for the click marker that never matched with
+#   `\r?\n`).
 #
 
 ##
@@ -164,31 +216,20 @@ proc qmp_cmd { chan json } {
 # Scale guest (1024x768) coordinates to QEMU usb-tablet absolute axes
 # (0..32767). Returns a Tcl list {ax ay}.
 #
-# The principled formula divides by the framebuffer size (1024, 768) so
-# guest pixel (512, 412) maps cleanly through to abs (16384, 17578).
-#
-# IMPORTANT CALIBRATION NOTE (Phase 10 W1, QEMU system-x86_64 7.2 with
-# `-nographic'): the click consistently lands at observed screen
-# (511, 383), NOT (512, 412) — a ~29 px y drift (x is correct within
-# 1 px). The drift is in QEMU's abs-axis-to-screen translation under
-# `-nographic' (with no graphical display, the usb-tablet is not bound
-# to a QemuConsole and its abs-axis translation uses a different code
-# path than when a graphical console is present). Specifying the
-# `device:"tablet"' argument errors out ("Device tablet is not bound
-# to a QemuConsole") so we cannot bypass the broken path. Empirically,
-# NO divisor choice in this proc changes the landing position —
-# /1024,/768 and /1023,/714 both land at the same (511, 383) —
-# confirming the offset is downstream of our abs value.
-#
-# This is acceptable for the criterion-1 proof: the click DOES traverse
-# the full usb-tablet → pc_usb_host → usb_hid → event_filter →
-# nitpicker → sponge-de chain and triggers sponge-de's input report.
-# The 29 px y drift puts the click near the demo window's vertical
-# center (widget y=211 out of 0..480) rather than exactly at center
-# (240). Perfect calibration is Phase 11+ scope (likely requires a real
-# graphical display or a vendored QEMU patch). See
-# docs/evidence/task-1-phase10-interactive.log for the calibration
-# matrix and the full diagnosis.
+# IMPORTANT NOTE (Phase 10 W1 / W3, QEMU system-x86_64 11.0.2 with
+# `-nographic'): the usb-tablet is not bound to a QemuConsole under
+# -nographic. nitpicker treats Input::Absolute_motion coordinates as
+# raw pixels, so every abs value in 0..32767 lands off-screen on a
+# 1024x768 display and nitpicker's pointer sanitizer clamps all of
+# them to the screen center (~512, 384). The W1-era "~29px y-drift"
+# diagnosis was really screen-center-y (384) - intended-y (412) = -28,
+# not a per-event QEMU translation offset (proven by W3: NO divisor
+# choice in this proc changes the landing position — see
+# docs/evidence/task-3-phase10-interactive.md §"W1's ~29px y-drift
+# root cause — NOT a QEMU translation bug"). The click DOES reach
+# sponge-de (criterion 1's usb-tablet chain is exercised end-to-end)
+# but is not precisely targeted. For precise targeting use
+# qmp_ps2_click or qmp_move_rel below (PS/2 relative, ±1px).
 #
 proc qmp_abs { x y } {
 	set ax [expr {($x * 32767 + 512) / 1024}]
@@ -204,17 +245,8 @@ proc qmp_abs { x y } {
 # docs for `InputMoveEvent`. We send both axes in one input-send-event
 # call so they reach the guest atomically.
 #
-# Note: we do NOT specify `device:"tablet"` in the command, even though
-# that would seem more explicit. With QEMU's `-nographic' (no graphical
-# display), the usb-tablet is not bound to a QemuConsole and an explicit
-# device reference errors out ("Device tablet is not bound to a
-# QemuConsole"). Without the device argument, QEMU routes the event via
-# a different code path that still delivers it through the usb-tablet
-# (the events reach usb_hid in the guest) but the abs-axis-to-screen
-# translation has a ~29px y offset (see qmp_abs comment for details).
-# The offset is consistent and the click reliably reaches the demo
-# window, so criterion 1 is satisfied; perfect calibration is Phase 11+
-# scope (likely requires a real graphical display).
+# See qmp_abs for the abs-clamp caveat under -nographic. For precise
+# targeting use the PS/2 relative procs below.
 #
 proc qmp_pointer_move { chan x y } {
 	lassign [qmp_abs $x $y] ax ay
@@ -232,15 +264,15 @@ proc qmp_button { chan btn state } {
 }
 
 ##
-# Click (press + release BTN_LEFT) at the given guest coordinates.
+# Click (press + release BTN_LEFT) at the given guest coordinates via
+# the USB tablet's absolute axis.
 #
-# With -vnc unix:socket, QEMU creates a graphical console that the
-# usb-tablet binds to. The abs-axis mapping is then correct
-# (screen = abs * console_w/32768). All four events (abs x, abs y,
-# btn down, btn up) are sent in a SINGLE input-send-event call so the
-# button fires at the same position as the motion. Under -nographic
-# (no console), the tablet's abs mapping was broken — all clicks landed
-# at screen center; VNC fixes this (see task-2-phase10-interactive.md).
+# Important caveat: under QEMU -nographic the usb-tablet is not bound
+# to a QemuConsole, so abs events get clamped to screen center by
+# nitpicker's pointer sanitizer. This click is sufficient for
+# criterion 1 (the click DOES reach sponge-de, proving the real
+# usb-tablet chain) but it is not precisely targeted. Use
+# qmp_ps2_click below for precise targeting.
 #
 proc qmp_click { chan x y } {
 	qmp_pointer_move $chan $x $y
@@ -251,11 +283,99 @@ proc qmp_click { chan x y } {
 }
 
 ##
+# Send a single PS/2 mouse relative motion event. axis is "x" or "y";
+# value is the signed rel value. Used by the closed-loop move
+# protocol (QMP-TARGET move <dx> <dy>).
+#
+proc qmp_move_rel { chan axis value } {
+	qmp_cmd $chan [format {{"execute":"input-send-event","arguments":{"events":[{"type":"rel","data":{"axis":"%s","value":%d}}]}}} $axis $value]
+}
+
+##
+# PS/2 mouse press/release. value is the literal "true" (down) or
+# "false" (up).
+#
+proc qmp_ps2_button { chan down } {
+	set val [expr {$down ? "true" : "false"}]
+	qmp_cmd $chan [format {{"execute":"input-send-event","arguments":{"events":[{"type":"btn","data":{"down":%s,"button":"left"}}]}}} $val]
+}
+
+##
+# Click (press + release BTN_LEFT) at the given guest coordinates via
+# the PS/2 mouse's relative axis. W3's proven recipe (see
+# docs/evidence/task-3-phase10-interactive.md):
+#
+#   Step 1: clamp pointer to (0,0). 10 × rel-100 per axis = ~1500px
+#           of negative motion, more than any screen dimension.
+#   Step 2: navigate to (x,y) — coarse (rel-50 ≈ 100px per event
+#           through event_filter's accelerate) then fine (rel-1 ≈ 1px
+#           per event).
+#   Step 3: jiggle ±1 to advance decorator hover (harmless for plain
+#           sponge-de widgets but proven necessary for wm/decorator
+#           hover state in W3).
+#   Step 4: press BTN_LEFT (held 200ms — W3's proven hold time, long
+#           enough for Qt's mousePressEvent to register).
+#   Step 5: release BTN_LEFT.
+#
+# Precision: ±1px after the coarse-fine sequence (event_filter's
+# accelerate LUT makes rel-1 → 1px, rel-50 → 100px). Sufficient
+# for the 48x20 S toggle and ~30px launcher entries.
+#
+proc qmp_ps2_click { chan x y } {
+	puts "\nqmp: PS/2 click -> ($x,$y) — clamp to (0,0) + nav + press/release"
+
+	# W3's exact recipe (proven on this host per
+	# docs/evidence/task-3-phase10-interactive.md). No delays between
+	# individual fine rel-1 events — W3 shows this is correct.
+
+	# Step 1: clamp to (0,0).
+	for {set i 0} {$i < 10} {incr i} { qmp_move_rel $chan x -100 }
+	for {set i 0} {$i < 10} {incr i} { qmp_move_rel $chan y -100 }
+	after 200
+
+	# Step 2: coarse (rel-50 ≈ 100px).
+	set cx [expr {$x / 100}]
+	set cy [expr {$y / 100}]
+	puts "qmp:   coarse rel-50: cx=$cx cy=$cy"
+	for {set i 0} {$i < $cx} {incr i} { qmp_move_rel $chan x 50; after 20 }
+	for {set i 0} {$i < $cy} {incr i} { qmp_move_rel $chan y 50; after 20 }
+
+	# Step 3: fine (rel-1 ≈ 1px) — no delays between events.
+	set fx [expr {$x % 100}]
+	set fy [expr {$y % 100}]
+	puts "qmp:   fine rel-1: fx=$fx fy=$fy"
+	for {set i 0} {$i < $fx} {incr i} { qmp_move_rel $chan x 1 }
+	for {set i 0} {$i < $fy} {incr i} { qmp_move_rel $chan y 1 }
+	after 400
+
+	# Step 4: hover jiggle.
+	qmp_move_rel $chan x 1
+	after 200
+	qmp_move_rel $chan x -1
+	after 200
+
+	# Step 5: press.
+	puts "qmp:   press"
+	qmp_ps2_button $chan true
+	after 200
+
+	# Step 6: release.
+	puts "qmp:   release"
+	qmp_ps2_button $chan false
+	after 100
+}
+
+##
 # Drag from (x1,y1) to (x2,y2) with `steps` interpolated absolute-axis
 # motions. Begins with a small hover jiggle on the start point so the
 # decorator's hover state advances (mirrors the synthetic wm_probe drag
 # pattern), then presses BTN_LEFT and walks the pointer to the endpoint
 # in `steps` equal increments before releasing.
+#
+# Uses the absolute-axis variant (see qmp_pointer_move) — under
+# -nographic the precision is poor due to the abs-clamp root cause
+# documented at qmp_abs. The W3 scenario replaces this proc with its
+# own PS/2-based version (see run/sponge-wm-qmp.run).
 #
 proc qmp_drag { chan x1 y1 x2 y2 steps } {
 	# Hover jiggle — nudge ±1px a few times to trigger decorator hover.
@@ -315,16 +435,21 @@ proc qmp_char_to_keyname { ch } {
 proc qmp_type { chan string } {
 	foreach ch [split $string ""] {
 		set kn [qmp_char_to_keyname $ch]
-		qmp_cmd $chan [format {{"execute":"send-key","arguments":{"keys":["%s"]}}} $kn]
+		qmp_send_key $chan $kn
 		after 15
 	}
 }
 
 ##
 # Send a single QEMU keyname (e.g. "ret", "spc", "a") via send-key.
+# Uses the qcode/KeyValue object form ({"type":"qcode","data":"h"}),
+# the only form QEMU 11 accepts — the string form ["h"] is rejected
+# with `Invalid parameter type for 'keys[0]', expected: object`
+# (latent W1 bug, fixed here; per W4's evidence at
+# docs/evidence/task-4-phase10-interactive.md §"Root cause #3").
 #
 proc qmp_send_key { chan keyname } {
-	qmp_cmd $chan [format {{"execute":"send-key","arguments":{"keys":["%s"]}}} $keyname]
+	qmp_cmd $chan [format {{"execute":"send-key","arguments":{"keys":[{"type":"qcode","data":"%s"}]}}} $keyname]
 }
 
 ##
@@ -334,9 +459,14 @@ proc qmp_send_key { chan keyname } {
 #     QMP-TARGET click <gx> <gy>
 #     QMP-TARGET drag <x1> <y1> <x2> <y2>
 #     QMP-TARGET type <string>
+#     QMP-TARGET move <dx> <dy>            (closed-loop PS/2 rel move)
 #
 # `<string>` extends to end of line and must contain only mapped chars.
 # On timeout prints FAIL and exits 1 — never a silent hang.
+#
+# Each numeric pattern ends with a \r*\n anchor to handle QEMU's
+# CR CR LF serial line ending (W4's fix — the click capture did not
+# match with the unanchored \r?).
 #
 proc qmp_exec_target { chan timeout_s } {
 	global qemu_spawn_id
@@ -346,35 +476,66 @@ proc qmp_exec_target { chan timeout_s } {
 	}
 	set timeout [expr {$timeout_s}]
 	set spawn_id $qemu_spawn_id
+	puts "\nqmp: qmp_exec_target waiting for marker (timeout=${timeout_s}s)"
 	expect {
 		-i $qemu_spawn_id
-		#
-		# Each numeric pattern ends with \D (a non-digit character) to
-		# force expect to wait for the end of the last number before
-		# matching. Without this anchor, expect can match a partial
-		# number when the QEMU serial line arrives in two chunks (the
-		# second digit of e.g. "14" lands in the next serial read).
-		# This is strictly more robust than the W1 patterns and does
-		# not change the marker format or the captured groups.
-		#
-		-re {QMP-TARGET click (-?\d+) (-?\d+)\D} {
+		-re {QMP-TARGET click (-?\d+) (-?\d+)\r*\n} {
 			set gx $expect_out(1,string)
 			set gy $expect_out(2,string)
-			puts "\nqmp: dispatching click at guest ($gx,$gy)"
-			qmp_click $chan $gx $gy
+			puts "\nqmp: dispatching click at guest ($gx,$gy) via PS/2 relative"
+			qmp_ps2_click $chan $gx $gy
 		}
-		-re {QMP-TARGET drag (-?\d+) (-?\d+) (-?\d+) (-?\d+)\D} {
+		-re {QMP-TARGET drag (-?\d+) (-?\d+) (-?\d+) (-?\d+)\r*\n} {
 			set x1 $expect_out(1,string)
 			set y1 $expect_out(2,string)
 			set x2 $expect_out(3,string)
 			set y2 $expect_out(4,string)
-			puts "\nqmp: dispatching drag ($x1,$y1) -> ($x2,$y2)"
-			qmp_drag $chan $x1 $y1 $x2 $y2 20
+			puts "\nqmp: dispatching drag ($x1,$y1) -> ($x2,$y2) via PS/2 relative"
+			# Navigate to start, press, then walk deltas to end, then release.
+			set dx [expr {$x2 - $x1}]
+			set dy [expr {$y2 - $y1}]
+			set sx [expr {$dx > 0 ? 1 : -1}]
+			set sy [expr {$dy > 0 ? 1 : -1}]
+			qmp_ps2_click $chan $x1 $y1
+			after 100
+			# Press is already released by qmp_ps2_click; re-press and
+			# walk to the end point for a real drag (button held).
+			qmp_ps2_button $chan true
+			after 50
+			set ax [expr {abs($dx) / 50}]
+			set ay [expr {abs($dy) / 50}]
+			for {set i 0} {$i < $ax} {incr i} { qmp_move_rel $chan x [expr {$sx * 50}]; after 20 }
+			for {set i 0} {$i < $ay} {incr i} { qmp_move_rel $chan y [expr {$sy * 50}]; after 20 }
+			set fx [expr {abs($dx) % 50}]
+			set fy [expr {abs($dy) % 50}]
+			for {set i 0} {$i < $fx} {incr i} { qmp_move_rel $chan x $sx }
+			for {set i 0} {$i < $fy} {incr i} { qmp_move_rel $chan y $sy }
+			after 100
+			qmp_ps2_button $chan false
 		}
-		-re {QMP-TARGET type (\S.*)\n} {
+		-re {QMP-TARGET type (\S.*)\r*\n} {
 			set s $expect_out(1,string)
 			puts "\nqmp: dispatching type '$s'"
 			qmp_type $chan $s
+		}
+		-re {QMP-TARGET move (-?\d+) (-?\d+)\r*\n} {
+			set dx $expect_out(1,string)
+			set dy $expect_out(2,string)
+			puts "\nqmp: dispatching PS/2 rel move dx=$dx dy=$dy"
+			# Per-axis step cap ±100 to avoid swamping the input chain.
+			while {$dx != 0 || $dy != 0} {
+				set sx 0
+				set sy 0
+				if {$dx > 0}      { set sx [expr {$dx > 100 ? 100 : $dx}] }
+				elseif {$dx < 0}  { set sx [expr {$dx < -100 ? -100 : $dx}] }
+				if {$dy > 0}      { set sy [expr {$dy > 100 ? 100 : $dy}] }
+				elseif {$dy < 0}  { set sy [expr {$dy < -100 ? -100 : $dy}] }
+				if {$sx != 0} { qmp_move_rel $chan x $sx }
+				if {$sy != 0} { qmp_move_rel $chan y $sy }
+				incr dx [expr {-$sx}]
+				incr dy [expr {-$sy}]
+				after 10
+			}
 		}
 		timeout {
 			puts stderr "\nqmp: FAIL - no QMP-TARGET marker within ${timeout_s}s (probe did not emit one — boot/render race or probe died?)"
