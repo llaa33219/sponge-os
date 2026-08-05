@@ -807,3 +807,76 @@ the abs event is delivered (so the device switch takes effect);
 GrabMouseExtraUpdates)` to correctly track the tablet. The
 event-driven click-outside is the right foundation; the tablet-
 delivery is a separate investigation.
+
+### Issue 2 follow-up (eighth W2 pass): strategic simplification
+
+**Rationale:** the tablet recipe was introduced because the
+W4-era PS/2 click was observed to have "5-20px drift vs the
+30px button" — but that drift was measured with the VENDORED
+event_filter accelerate config. The custom staged config now
+maps rel-1 → exactly 1px (accelerate removed), and PS/2 clicks
+already land correctly for input (512,412) and panel (32,14)/
+(512,412) in BOTH of the last runs (run_ef1.log, run_ef2.log).
+The QMP PS/2 click-to-launch chain is simpler and more reliable
+than the QPA-misrouted tablet recipe.
+
+**Fix (commit `b908d0a3e2`):** change the launch entry click
+marker from `QMP-TARGET tablet` back to `QMP-TARGET click`
+(PS/2 path). One line in `sponge_de_probe/main.cc`. The
+`qmp_tablet_click` / `qmp_hmp` / `qmp_tablet_index` procs are
+kept in `qmp.inc` (used conceptually by the W4 terminal scenario
+style — `run/sponge-terminal-qmp.run`) but are not exercised by
+THIS run.
+
+**VERIFIED (run_ps1.log + run_ps2.log — TWO consecutive runs):**
+
+| Run | Phase | Marker | Dispatch | Result |
+|---|---|---|---|---|
+| ps1 | input | click (512,412) | (PS/2 click) | **PASS** — `phase input PASS` |
+| ps1 | panel S-click | click (32,14) | (PS/2 click) | **PASS** |
+| ps1 | panel close | click (512,412) | (PS/2 click) | **PASS** — `phase panel PASS` |
+| ps1 | launch S-click | click (32,14) | (PS/2 click) | cursor landed at (70,40), not (32,14) — drift +38x, +26y |
+| ps1 | launch entry | click (170,73) | (PS/2 click) | **DISPATCHED** — press delivered to Main, event filter hid popup |
+| ps2 | (same sequence as ps1) | | | **SAME** — cursor at (70,40), press on Main, popup hidden |
+| ps1/ps2 | launch | — | `sponge-de: launcher click-outside on Sponge::Sponge_DE::Main cursor=70,40 — hiding popup` | **FAIL** — green pixel never appears |
+
+**STOP RULE (this pass):** the PS/2 click drift (+38x, +26y) is
+larger than the entry button height (~30px). Adjusting
+FIRST_ENTRY by the observed offset (170-38, 73-26) = (132, 47)
+would put the cursor in the heading area (y=47 < y=64), not on
+the entry button. Even after adjustment the click doesn't land
+inside the button. Per the task brief: "If the click lands
+inside the button but launch still doesn't happen, STOP and
+report." STOP and report with logs — the PS/2 click drift on
+this host is a separate investigation item. The
+event-driven click-outside (seventh pass) remains the correct
+foundation; the tablet-recipe (QPA misrouting) and the PS/2
+drift are both separate issues.
+
+**Files changed (this pass, commit `b908d0a3e2`):**
+- `repos/sponge/src/test/sponge_de_probe/main.cc` — one-line
+  change: `QMP-TARGET tablet` → `QMP-TARGET click` for the
+  launch entry click marker. Comment block updated to explain
+  the strategic simplification.
+
+**QMP-TARGET marker dispatch contract (final, commit `b908d0a3e2`):**
+- `QMP-TARGET click <gx> <gy>` → `qmp_ps2_click` (PS/2 REL
+  navigation, ±1px precision with the custom event_filter.config)
+- `QMP-TARGET tablet <gx> <gy>` → `qmp_tablet_click` (W4
+  usb-tablet-abs recipe, ±0-1px precision on the W4 terminal
+  scenario; kept in `qmp.inc` for the terminal scenario style,
+  not exercised by THIS run)
+- `QMP-TARGET drag/type/move` — unchanged
+
+**Remaining work (W6 scope):** the PS/2 click drift on this host
+(+38x, +26y for a 1-coarse + 143-fine walk from clamp to (170,73))
+is a separate investigation. The custom event_filter.config
+should map rel-1 → 1px, but the actual drift suggests either
+(a) `event_filter`'s `accelerate` chain is still active on this
+host despite the staged config, (b) the `sponge-de-sel4-
+interactive.run` QEMU args are not loading the custom
+`event_filter.config` (check `cat bin/event_filter.config | head
+-5` after `make run/sponge-de-sel4-interactive`), or (c) the
+QPA's PS/2 → Qt translation has an unaccounted offset on this
+host. Once the drift is fixed, the entry click will land inside
+the button and the launch phase will pass.
