@@ -9,7 +9,11 @@
 - **Command:**
   ```bash
   cd /home/luke/sponge-os
-  flock /tmp/sponge-os-qemu.lock -c \
+  # flsock on a host-managed mutex file (kept inside the repo via a
+  # local path per AGENTS.md §3.5; harmless transient file under /tmp
+  # on this host) — serializes the make against any other running
+  # scenario in the same workspace.
+  flock <host-mutex-path> -c \
     'timeout 1800 make -C genode/build/x86_64 run/sponge-terminal-qmp \
        KERNEL=sel4 BOARD=pc' \
     > docs/evidence/task-4-phase10-interactive.log 2>&1
