@@ -663,6 +663,71 @@ config ROMs, themes) must be copied into `bin/` **before**
 is the reference implementation; `run/sponge-de-test.run`'s Qt6-lib
 staging is base-linux-specific (see `docs/09-roadmap.md` §11.1).
 
+### 10.5 Phase 10 — QEMU QMP usage (no new host tools)
+
+The four Phase 10 input scenarios
+(`run/sponge-de-sel4-interactive.run`, `run/sponge-wm-qmp.run`,
+`run/sponge-terminal-qmp.run`, `run/sponge-textedit-qmp.run`) drive
+guest input through QEMU QMP, exposed by the shared Tcl helper
+`run/qmp.inc`. The host side uses only:
+
+- **Tcl `socket`** — Tcl 8.x built-in, TCP-only (matches QEMU's
+  `-qmp tcp:...` form, the only form QMP supports).
+- **Tcl `expect`** — already used by the Genode run tool for the
+  `qemu_spawn_id` log drain.
+
+No new host tools, no new Python dependencies, no Mojo helpers — the
+helper is ~700 lines of plain Tcl + `expect`. QEMU's QMP socket is
+exposed via `-qmp tcp:127.0.0.1:<port>,server=on,wait=off`; the
+scenario picks an ephemeral port via `qmp_pick_port` (Tcl
+`socket -server 0`) to avoid TIME_WAIT collisions between sequential
+QEMU respawns. **Reproducibility note:** the QEMU QMP wire protocol
+has been stable across recent QEMU versions, but specific QEMU 11.0.2
+quirks (see below) cause some recipes to differ from older guides — a
+Phase 10 host running QEMU 7.2 will see the abs-axis clamp on a
+different y-center; the PS/2 REL recipe is robust across versions.
+
+#### QEMU 11.0.2 quirks discovered (relevant to any QMP scenario)
+
+These are observed-behavior caveats that the `run/qmp.inc` procs work
+around; documenting them here so the next QEMU-upgrade doesn't silently
+regress Phase 10.
+
+1. **`send-key` strings rejected.** QEMU 11 wants `keys` as
+   `{"type":"qcode","data":"<name>"}` per key; the older string form
+   `["<name>"]` fails with `Invalid parameter type for 'keys[0]',
+   expected: object`. `qmp_send_key` emits the object form.
+2. **`input-send-event` BTN events not delivered to untargeted
+   devices.** Untargeted abs events reach BOTH pointer devices; if
+   the PS/2 mouse is current (default under `-nographic`), abs events
+   are reinterpreted as PS/2 relative deltas — the pointer slams a
+   corner. Fix: HMP `mouse_set <tablet-index>` to make the usb-tablet
+   current BEFORE the abs/btn events.
+3. **`-nographic` broadcasts untargeted input.** Combined with (2),
+   every PS/2 REL event also reaches the usb-tablet, but the
+   usb-tablet ignores REL. No data corruption, but the dispatch
+   order matters — `mouse_set` first, then any abs/btn.
+4. **Serial lines are CR CR LF.** QEMU's `-nographic` serial emits
+   lines terminated with `CR CR LF` (verified by `od -c` on a
+   captured line), not just `CR LF`. Expect patterns anchor on
+   `\r*\n` (NOT `\r?\n`).
+5. **PS/2 Mouse is the default current pointer.** `query-mice`
+   shows the PS/2 mouse with `current:true` on a fresh
+   `-nographic` boot. PS/2 REL dispatches go to the PS/2 mouse;
+   usb-tablet events need `mouse_set` first (see (2)).
+6. **No "click" recipe works without device-targeting under
+   `-nographic`.** Synthesizing the criterion-1 click via
+   `input-send-event` (untargeted BTN events) reaches no guest
+   device; only the device-targeted path (HMP `mouse_button` after
+   `mouse_set 3`) succeeds — verified by `usblog ... PRESS BTN_LEFT`
+   and nitpicker's focus ROM flipping to the terminal domain.
+   See `docs/08-development.md` §4.4 for the full set of procs.
+
+The QEMU 11.0.2 used in this development environment is the only
+QEMU version Phase 10 was verified against; a Phase 12 / Phase 15
+upgrade to a newer QEMU should re-run the four Phase 10 scenarios as
+the first gate.
+
 ---
 
 ## 12. Disk image P4 (SPONGE-DATA) creation
