@@ -58,9 +58,25 @@ struct Theme
 		Color window_bg()     const { return _window_bg; }
 		Color window_border() const { return _window_border; }
 		Color title_text()    const { return _title_text; }
-		Color error()         const { return _error; }
-		Color success()       const { return _success; }
-		Color warning()       const { return _warning; }
+
+		/*
+		 * Error / success / warning colors split into background vs text
+		 * variants. The legacy `error`/`success`/`warning` getters are
+		 * kept as DEPRECATED ALIASES for the *_bg value so existing
+		 * consumer code continues to compile (Phase 11 transition;
+		 * removal in Phase 12 per docs/10-theme-format.md §4.2).
+		 */
+		Color error_bg()      const { return _error_bg; }
+		Color error_text()    const { return _error_text; }
+		Color success_bg()    const { return _success_bg; }
+		Color success_text()  const { return _success_text; }
+		Color warning_bg()    const { return _warning_bg; }
+		Color warning_text()  const { return _warning_text; }
+
+		/* Deprecated alias getters (return the _bg value). */
+		Color error()         const { return _error_bg; }
+		Color success()       const { return _success_bg; }
+		Color warning()       const { return _warning_bg; }
 
 		/* fonts */
 		Font const &default_font() const { return _default_font; }
@@ -73,6 +89,16 @@ struct Theme
 		unsigned margin()              const { return _margin; }
 		unsigned launcher_width()      const { return _launcher_width; }
 		unsigned icon_size()           const { return _icon_size; }
+
+		/*
+		 * Documented no-op layout keys (Phase 11). Parsed but not yet
+		 * routed to a consumer; Phase-12 promotion requires the W2
+		 * construction migration to finish. The accessor surface is in
+		 * place so a future consumer can wire them without a format
+		 * change. See docs/10-theme-format.md §4.4.
+		 */
+		unsigned popup_width()            const { return _popup_width; }
+		unsigned popup_entry_min_height() const { return _popup_entry_min_height; }
 
 		/* window */
 		unsigned border_radius() const { return _border_radius; }
@@ -96,9 +122,12 @@ struct Theme
 		Color _window_bg     { 0x313244 };
 		Color _window_border { 0x45475a };
 		Color _title_text    { 0xcdd6f4 };
-		Color _error         { 0xf38ba8 };
-		Color _success       { 0xa6e3a1 };
-		Color _warning       { 0xf9e2af };
+		Color _error_bg      { 0xf38ba8 };
+		Color _error_text    { 0xf38ba8 };
+		Color _success_bg    { 0xa6e3a1 };
+		Color _success_text  { 0xa6e3a1 };
+		Color _warning_bg    { 0xf9e2af };
+		Color _warning_text  { 0xf9e2af };
 
 		Font _default_font { Genode::String<64>("DejaVu Sans"), 11 };
 		Font _title_font   { Genode::String<64>("DejaVu Sans"), 12 };
@@ -109,6 +138,8 @@ struct Theme
 		unsigned _margin              { 4 };
 		unsigned _launcher_width        { 48 };
 		unsigned _icon_size           { 24 };
+		unsigned _popup_width            { 341 };
+		unsigned _popup_entry_min_height { 50 };
 
 		unsigned _border_radius { 6 };
 		unsigned _border_width  { 1 };

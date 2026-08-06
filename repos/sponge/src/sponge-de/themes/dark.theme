@@ -1,0 +1,39 @@
+# Sponge OS dark theme
+# Catppuccin Macchiato-inspired dark palette (visibly distinct from the
+# Mocha-inspired default.theme — panel_bg + 9 other color keys differ).
+# See docs/10-theme-format.md for the format specification.
+
+[meta]
+version = 1
+
+[colors]
+panel_bg       = #181926
+panel_text     = #cad6f4
+accent         = #8aadf4
+separator      = #5b6078
+window_bg      = #24273a
+window_border  = #5b6078
+title_text     = #cad6f4
+error_bg       = #ed827e
+error_text     = #ed827e
+success_bg     = #a6da95
+success_text   = #a6da95
+warning_bg     = #eed49f
+warning_text   = #eed49f
+
+[fonts]
+default_family = DejaVu Sans
+default_size   = 11
+title_family   = DejaVu Sans
+title_size     = 12
+
+[layout]
+padding        = 8
+margin         = 4
+launcher_width = 48
+icon_size      = 24
+
+[window]
+border_radius = 6
+border_width  = 1
+shadow_radius = 8
