@@ -246,6 +246,8 @@ fingerprint of each:
 | `bash` | `20c34a63efce74be02c9eb92bd8bfb53cd5122e5` | `https://ftp.gnu.org/gnu/bash/bash-5.3.tar.gz` (GPLv3) | GNU bash, built as the `noux-pkg/bash-minimal` package (`bash-minimal.tar`) that ships inside the `terminal` package (todo 13). Genode's noux bash build does **not** link readline/ncurses. **Current** post-patch fingerprint (patch #8); the superseded pre-patch fingerprint was `93dd45640aa0cbd1a850deb4bee4cf6a332e61bb` (mirrored from `ftpmirror.gnu.org`). |
 | `vim` | `abada0b43ca034d23ba39f3281bff997f08fc884` | `https://github.com/vim/vim/archive/v7.3.tar.gz` (Vim license) | Vim 7.3, built as the `noux-pkg/vim-minimal` package (`vim-minimal.tar`) that ships inside the `terminal` package (todo 13). Links ncurses (`--with-tlib=ncurses`). |
 | `ncurses` | `b259f9aa8136195dc38361357e62355a6fe066e8` | `https://ftp.gnu.org/gnu/ncurses/ncurses-5.9.tar.gz` (MIT) | The ncurses 5.9 terminal library, required by the `vim-minimal` noux package. Lives in the `libports` repo (not `ports`). Its `Caps` header generation invokes `mawk` by name — see the `mawk` host-tool requirement in §7. **Current** post-patch fingerprint (patch #8); the superseded pre-patch fingerprint was `5fb8a84ea7e768167f325dccabde30f2e6e56f72` (mirrored from `ftpmirror.gnu.org`). |
+| `stb` | `ab8f505722d9668c907cabba084f96b886985056` | `https://github.com/nothings/stb.git` (v2.19, MIT) | stb single-file header libraries (stb_image), used by the alpha desktop scenario's image-decode path (`run/sponge-alpha.run`). Lives in the `libports` repo. Added to the default port set after the alpha scenario's `check_ports` flagged it missing on a fresh machine. |
+| `ttf-bitstream-vera` | `cd3684816b73c4361e11236f9e63302f99b9b1ff` | `http://ftp.gnome.org/pub/GNOME/sources/ttf-bitstream-vera/1.10/ttf-bitstream-vera-1.10.tar.bz2` (Bitstream Vera Fonts Copyright) | Bitstream Vera font set (v1.10), staged as a runtime ROM by the alpha desktop scenario (`run/sponge-alpha.run`). Lives in the `libports` repo. Added to the default port set after the alpha run stage flagged it missing on a fresh machine. |
 
 In addition to the `prepare_port` set above, two **Genode depot packages**
 are imported host-side into `pkg/<name>/` by `tool/pkg_import` (todo 11).
@@ -596,6 +598,23 @@ is therefore: `sponge`, `libports`, `ports`, `gems`, `pc`, `dde_linux`,
 Like `pc`/`dde_linux`, `dde_ipxe` is harmless on base-linux (its
 `REQUIRES = x86` target only builds on demand). `ports` is likewise
 harmless when no noux target is built.
+
+### 8.1.1 `base-$(KERNEL)` goes AFTER `repos/base` (Sponge prepare fix)
+
+Upstream's `create_builddir` template prepends
+`REPOSITORIES += $(GENODE_DIR)/repos/base-$(KERNEL)` before
+`repos/base`. With that order, forwarding-only target directories —
+`base-sel4/src/timer/hpet` contains only a `target.mk` that includes
+`repos/base`'s `target.inc` — shadow `repos/base`'s buildable variant
+of the same target, and the build fails at link time with
+`cannot find component.o` (the target's own `component.cc` lives next
+to the `.inc` in `repos/base`, not in the forwarding dir; `vpath`
+covers only the forwarding dir). `./tool/build prepare` therefore
+moves the kernel repository after the `base`/`os`/`demo` block, in
+place and idempotently (marked with a `# Kernel-specific repository
+(moved after repos/base:` comment). The kernel library imports are
+unaffected: `lib/import/import-*.mk` exists only in the kernel repo,
+so it wins regardless of order.
 
 ### 8.2 Why `make -j$(nproc)` is set by `prepare`
 

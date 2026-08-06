@@ -63,6 +63,12 @@ def port_list() -> List[String]:
         "bash",
         "vim",
         "ncurses",
+        # `stb` (stb_image header library) is pulled in by the alpha
+        # desktop scenario's image-decode path (run/sponge-alpha.run).
+        "stb",
+        # `ttf-bitstream-vera` (Vera font set) is staged as a runtime ROM
+        # by the alpha desktop scenario (run/sponge-alpha.run).
+        "ttf-bitstream-vera",
     ]
 
 
@@ -161,12 +167,15 @@ def ensure_build_conf(build_conf: String) raises -> Bool:
 
     var changed = False
 
-    # 1. Top-section template defaults (see docstring). 'count' guards
-    #    make this a no-op once the user has diverged from the template.
+    # 1. Top-section template defaults (see docstring). The guards fire
+    #    ONLY on a pristine create_builddir template: the '#KERNEL ?= nova'
+    #    marker is present only then. Checking BOARD independently would
+    #    clobber a user's 'BOARD ?= pc' seL4 setting on a prepare re-run
+    #    (the template's own BOARD default is 'pc' too, so the marker
+    #    cannot tell template from user config — only the KERNEL marker
+    #    can).
     if Int(py=content.count("#KERNEL ?= nova")) > 0:
         content = content.replace("#KERNEL ?= nova", "KERNEL ?= linux")
-        changed = True
-    if Int(py=content.count("BOARD ?= pc")) > 0:
         content = content.replace("BOARD ?= pc", "BOARD ?= linux")
         changed = True
 
@@ -174,6 +183,48 @@ def ensure_build_conf(build_conf: String) raises -> Bool:
         var out = builtins.open(build_conf, "w")
         out.write(content)
         out.close()
+
+    # 1.5 REPOSITORIES order fix (in place, idempotent): the create_builddir
+    #    template puts repos/base-$(KERNEL) BEFORE repos/base. With that
+    #    order, forwarding-only target.mk dirs (base-sel4/src/timer/hpet)
+    #    shadow repos/base's buildable variant of the same target, and the
+    #    target's component.cc is not found (link fails with "cannot find
+    #    component.o"). Move the kernel repo after the base/os/demo block.
+    var kernel_block = (
+        "##\n## Kernel-specific repository\n##\n\n"
+        + "ifdef KERNEL\n"
+        + "REPOSITORIES += $(GENODE_DIR)/repos/base-$(KERNEL)\n"
+        + "endif\n"
+    )
+    var moved_marker = (
+        "## Kernel-specific repository (moved after repos/base:"
+    )
+    var demo_block = (
+        "REPOSITORIES += $(GENODE_DIR)/repos/base\n"
+        + "REPOSITORIES += $(GENODE_DIR)/repos/os\n"
+        + "REPOSITORIES += $(GENODE_DIR)/repos/demo\n"
+    )
+    if Int(py=content.count(moved_marker)) == 0 and Int(
+        py=content.count(kernel_block)
+    ) > 0 and Int(py=content.count(demo_block)) > 0:
+        content = content.replace(kernel_block, "")
+        var moved_block = (
+            demo_block
+            + "\n##\n"
+            + moved_marker + "\n"
+            + "## with base-$(KERNEL) first, forwarding-only target.mk dirs\n"
+            + "## like base-sel4/src/timer/hpet shadow repos/base's buildable\n"
+            + "## variant and the target's component.cc is not found)\n"
+            + "##\n\n"
+            + "ifdef KERNEL\n"
+            + "REPOSITORIES += $(GENODE_DIR)/repos/base-$(KERNEL)\n"
+            + "endif\n"
+        )
+        content = content.replace(demo_block, moved_block)
+        var out2 = builtins.open(build_conf, "w")
+        out2.write(content)
+        out2.close()
+        changed = True
 
     # 2. Marker-delimited managed block (appended once).
     if Int(py=content.count(BLOCK_BEGIN)) > 0:
