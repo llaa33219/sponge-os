@@ -55,6 +55,11 @@ config
     + service ROM
   + config
     + policy | label: sponge_de_probe -> sponge_de_input | report: sponge-de -> input
+    # Phase-10 probe addition (1c602a8a2f): the probe opens a ROM labeled
+    # "result" unconditionally at construction. Route it to report_rom even
+    # though this scenario has no sponge_pkgd producer — the ROM stays empty
+    # and the probe's valid() check tolerates that.
+    + policy | label: sponge_de_probe -> result          | report: sponge_pkgd -> result
 
 + start nitpicker | ram: 8M
   + provides
@@ -109,6 +114,7 @@ config
     + service Event   | + child nitpicker
     + service Timer   | + child timer
     + service ROM     | label: sponge_de_input | + child report_rom
+    + service ROM     | label: result          | + child report_rom
     + any-service
       + parent
       + any-child
