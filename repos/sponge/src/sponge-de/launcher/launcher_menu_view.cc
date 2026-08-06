@@ -23,6 +23,29 @@
 using namespace Sponge::Sponge_DE;
 
 
+namespace {
+
+/*
+ * Local comparator used when sort_by == "alpha". Keeps the standard
+ * QString::compare semantics (locale-independent codepoint order)
+ * so the panel-config probe can replicate the assertion in pure
+ * standard-library code if it needs to.
+ */
+bool less_than_alpha(QString const &a, QString const &b)
+{
+	return a.compare(b, Qt::CaseInsensitive) < 0;
+}
+
+}  /* namespace */
+
+
+bool Sponge::Sponge_DE::launcher_alpha_less_than(LauncherController::App const &a,
+                                                 LauncherController::App const &b)
+{
+	return less_than_alpha(a.name, b.name);
+}
+
+
 LauncherMenuView::LauncherMenuView(LauncherController &controller,
                                    Theme::Theme const &theme,
                                    QWidget *parent)
@@ -36,11 +59,8 @@ LauncherMenuView::LauncherMenuView(LauncherController &controller,
 	setAttribute(Qt::WA_QuitOnClose, false);
 
 	_root_layout = new QVBoxLayout(this);
-	int const pad = (int)theme.padding();
-	int const gap = (int)theme.margin();
-	_root_layout->setContentsMargins(pad, pad, pad, pad);
-	_root_layout->setSpacing(gap);
 
+	_apply_layout(theme);
 	_apply_style(theme);
 
 	/*
@@ -109,6 +129,7 @@ bool LauncherMenuView::eventFilter(QObject *watched, QEvent *event)
 void LauncherMenuView::restyle(Theme::Theme const &theme)
 {
 	_theme = theme;
+	_apply_layout(theme);
 	_apply_style(theme);
 
 	/* Re-apply per-section stylesheets since they carry theme colors. */
@@ -139,8 +160,33 @@ void LauncherMenuView::repopulate()
 
 	int const gap = 4;
 
+	/*
+	 * Phase 11 W2: honor launcher.sort_by.
+	 *
+	 *   "manual" (default if configd is OFF) — preserve the pkgd
+	 *     "installed" broadcast order verbatim. pkgd's broadcast is
+	 *     already name-sorted (sponge_pkgd/main.cc:1329-1376), so
+	 *     for a single installed set this matches alpha.
+	 *
+	 *   "alpha" — re-sort the apps by name before insertion. This
+	 *     gives a stable order even when pkgd's order changes (e.g.
+	 *     a future pkgd optimization, or a probe writing a manual
+	 *     install order); the comparator is exported as
+	 *     launcher_alpha_less_than for assertion by the panel-config
+	 *     probe.
+	 */
+	QVector<LauncherController::App> apps = _controller.apps();
+
+	if (_sort_by == QLatin1String("alpha")) {
+		std::stable_sort(apps.begin(), apps.end(),
+		                 [](LauncherController::App const &a,
+		                    LauncherController::App const &b) {
+			                 return less_than_alpha(a.name, b.name);
+		                 });
+	}
+	/* _sort_by == "manual" or empty: leave the pkgd order untouched. */
+
 	/* For each app, append to (or create) its category section. */
-	QVector<LauncherController::App> const &apps = _controller.apps();
 	for (LauncherController::App const &a : apps) {
 		if (!_sections.contains(a.category)) {
 			auto *heading = new QLabel(a.category, this);
@@ -220,6 +266,23 @@ void LauncherMenuView::_apply_style(Theme::Theme const &theme)
 }
 
 
+void LauncherMenuView::_apply_layout(Theme::Theme const &theme)
+{
+	/*
+	 * Phase 11 W2: margins/spacing now extracted into _apply_layout so
+	 * restyle() can re-apply them after a theme reload (mirrors the
+	 * PanelWidget::_apply_layout migration). The pre-W2 ctor-only
+	 * code lives here verbatim.
+	 */
+	if (!_root_layout) return;
+
+	int const pad = (int)theme.padding();
+	int const gap = (int)theme.margin();
+	_root_layout->setContentsMargins(pad, pad, pad, pad);
+	_root_layout->setSpacing(gap);
+}
+
+
 QString LauncherMenuView::_category_stylesheet() const
 {
 	return QStringLiteral(
@@ -242,4 +305,41 @@ QString LauncherMenuView::_entry_stylesheet() const
 		     Theme::to_css(_theme.title_text()),
 		     QString::number(_theme.border_radius()),
 		     Theme::to_css(_theme.accent()));
+}
+
+
+/* ============================================================
+ * applySortBy slot — GUI thread ONLY.
+ *
+ * Connected (by ConfigController::attach_launcher) to the
+ * launcher_sort_by_changed signal. The ConfigController emits from
+ * applyConfig() on the GUI thread; Qt dispatches signal-connected
+ * slots on the emitting thread, so this slot is guaranteed
+ * GUI-thread.
+ *
+ * Failure-point 2 enforcement: NEVER call this from a non-GUI
+ * thread.
+ * ============================================================ */
+
+void LauncherMenuView::applySortBy(QString sort)
+{
+	/*
+	 * Accept only the two registry-valid values ("alpha", "manual").
+	 * The configd Enum validator rejects unknown tokens before
+	 * broadcast, so defensive clamping here keeps a corrupted
+	 * broadcast from scrambling the menu.
+	 */
+	if (sort != QLatin1String("alpha") && sort != QLatin1String("manual"))
+		sort = QStringLiteral("alpha");
+
+	if (sort == _sort_by) return;
+	_sort_by = sort;
+
+	/*
+	 * Rebuild the menu with the new sort. If the popup is currently
+	 * visible, the rebuild is visible immediately; if it is hidden,
+	 * the rebuild happens lazily on the next show()/repopulate()
+	 * call from the panel's launcher-button click.
+	 */
+	repopulate();
 }
