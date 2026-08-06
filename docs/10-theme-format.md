@@ -151,9 +151,24 @@ parser understands, it logs a warning and falls back to the default theme.
 | `window_bg` | color | #313244       | Window background |
 | `window_border` | color | #45475a   | Window border |
 | `title_text`| color | #cdd6f4       | Window title text |
-| `error`     | color | #f38ba8       | Error state / text |
-| `success`   | color | #a6e3a1       | Success state / text |
-| `warning`   | color | #f9e2af       | Warning state / text |
+| `error_bg`  | color | #f38ba8       | Error indicator background |
+| `error_text`| color | #f38ba8       | Error state text |
+| `success_bg`| color | #a6e3a1       | Success indicator background |
+| `success_text`| color | #a6e3a1     | Success state text |
+| `warning_bg`| color | #f9e2af       | Warning indicator background |
+| `warning_text`| color | #f9e2af     | Warning state text |
+
+**Deprecated aliases** (Phase 11 transitional — removal planned for
+Phase 12): the legacy `error`, `success`, and `warning` keys are
+accepted by the parser and treated as if the corresponding `_bg` key
+had been written. A theme may carry either form, but not both for the
+same state — the `_bg` form wins on conflict.
+
+| Alias key   | Treated as    | Notes |
+|-------------|---------------|-------|
+| `error`     | `error_bg`    | Deprecated alias: same value as `error_bg` |
+| `success`   | `success_bg`  | Deprecated alias: same value as `success_bg` |
+| `warning`   | `warning_bg`  | Deprecated alias: same value as `warning_bg` |
 
 ### 4.3 `[fonts]` — Typography
 
@@ -175,6 +190,17 @@ parser understands, it logs a warning and falls back to the default theme.
 | `launcher_width` | int   | 48      | Launcher button width in pixels |
 | `icon_size`      | int   | 24      | Panel icon size in pixels |
 
+**Documented no-op keys** (Phase 11 — parser accepts but does not yet
+route; Phase-12 promotion requires the W2 panel-config construction
+migration to finish). These keys keep a stable home in the format so
+that user themes authored today continue to parse unchanged; the
+consumer side is wired in a later phase.
+
+| Key                              | Type | Default | Meaning |
+|----------------------------------|------|---------|---------|
+| `panel.popup_width`              | int  | 341     | Launcher popup width in pixels (= `1024 / 3`). Documented no-op in Phase 11 — parsed, not yet routed to `LauncherMenuView` (the popup width is still hardcoded to one third of the screen width). |
+| `panel.popup_entry_min_height`   | int  | 50      | Launcher popup entry minimum height in pixels. Documented no-op in Phase 11 — parsed, not yet routed to `LauncherMenuView` (entry height follows `theme.padding()`). |
+
 ### 4.5 `[window]` — Window Decoration
 
 | Key              | Type  | Default | Meaning |
@@ -182,6 +208,16 @@ parser understands, it logs a warning and falls back to the default theme.
 | `border_radius`  | int   | 6       | Corner radius in pixels |
 | `border_width`   | int   | 1       | Border thickness in pixels |
 | `shadow_radius`  | int   | 8       | Shadow blur radius in pixels |
+
+> **Footnote — decorator title-bar font.** The window decorator's
+> title-bar glyphs come from the vendored upstream
+> `theme/font.tff` asset bundled in `decor.tar` (the
+> `tool/decor_assets.mojo`-produced tar the W4 themed-decorator
+> topology loads via VFS). The font is a literal vendored asset — it
+> is **not** a per-theme key. The `title_family` and `title_size`
+> keys that exist under `[fonts]` (§4.3) are the in-panel / in-app
+> title typography surface; the decorator chrome is intentionally out
+> of scope for the theme format. There are no `decor.*` keys.
 
 ---
 
@@ -202,9 +238,12 @@ separator      = #45475a
 window_bg      = #313244
 window_border  = #45475a
 title_text     = #cdd6f4
-error          = #f38ba8
-success        = #a6e3a1
-warning        = #f9e2af
+error_bg       = #f38ba8
+error_text     = #f38ba8
+success_bg     = #a6e3a1
+success_text   = #a6e3a1
+warning_bg     = #f9e2af
+warning_text   = #f9e2af
 
 [fonts]
 default_family = DejaVu Sans
@@ -219,6 +258,9 @@ padding        = 8
 margin         = 4
 launcher_width = 48
 icon_size      = 24
+# Documented no-op keys (parsed, not yet routed in Phase 11):
+panel.popup_width            = 341
+panel.popup_entry_min_height = 50
 
 [window]
 border_radius = 6
