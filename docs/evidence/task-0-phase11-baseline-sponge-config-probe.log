@@ -1,0 +1,115 @@
+make: ディレクトリ '/home/luke/sponge-os/genode/build/x86_64'　に入ります
+including /home/luke/sponge-os/genode/tool/run/power_on/linux
+including /home/luke/sponge-os/genode/tool/run/log/linux
+including /home/luke/sponge-os/genode/tool/run/boot_dir/linux
+including /home/luke/sponge-os/repos/sponge/run/sponge-config-probe.run
+building targets:  core lib/ld init timer server/report_rom sponge_configd test/pkg_seq_probe 
+spawn make core lib/ld init timer server/report_rom sponge_configd test/pkg_seq_probe
+make[1]: ディレクトリ '/home/luke/sponge-os/genode/build/x86_64' に入ります
+  [00;33mLibrary[0m ld.abi.so
+  [00;33mLibrary[0m ldso_so_support.lib.a
+  [00;33mLibrary[0m syscall-linux.lib.a
+  [00;33mLibrary[0m base-linux-common.lib.a
+  [00;33mLibrary[0m timeout.lib.a
+  [00;33mLibrary[0m startup-linux.lib.a
+  [00;33mLibrary[0m cxx.lib.a
+  [00;33mLibrary[0m seccomp.lib.a
+  [00;33mLibrary[0m base-linux.lib.a
+  [00;33mLibrary[0m ld-linux.lib.so
+  [00;33mLibrary[0m ld.lib.so
+  [00;33mLibrary[0m core-linux.lib.a
+  [01;33mProgram[0m core/linux/core-linux
+    COMPILE  version.o
+    LINK     core-linux
+  [00;33mLibrary[0m base.lib.a
+  [01;33mProgram[0m init/init
+  [01;33mProgram[0m server/report_rom/report_rom
+  [01;33mProgram[0m sponge_configd/sponge_configd
+  [01;33mProgram[0m test/pkg_seq_probe/pkg_seq_probe
+    COMPILE  main.o
+    LINK     pkg_seq_probe
+  [01;33mProgram[0m timer/hpet/hpet_timer
+  [01;33mProgram[0m timer/linux/linux_timer
+make[1]: ディレクトリ '/home/luke/sponge-os/genode/build/x86_64' から出ます
+genode build completed
+spawn ./core
+Genode v0.1.0-alpha-60-g93d02e47e1 <local changes>
+17592186044415 MiB RAM and 19000 caps assigned to init
+[init -> pkg_seq_probe] config-seq-probe: [1] set theme.active = dark
+[init -> report_rom] report 'pkg_seq_probe -> config_request'
+[init -> report_rom]   <request op="set" key="theme.active" value="dark"/>
+[init -> sponge_configd] sponge_configd: ready
+[init -> report_rom] report 'sponge_configd -> config'
+[init -> report_rom]   <config>
+[init -> report_rom]   	<key name="leitzentrale.enabled" value="false"/>
+[init -> report_rom]   	<key name="panel.position" value="bottom"/>
+[init -> report_rom]   	<key name="theme.active" value="light"/>
+[init -> report_rom]   	<key name="leitzentrale.diverged" value="false"/>
+[init -> report_rom]   </config>
+[init -> report_rom] report 'sponge_configd -> config'
+[init -> report_rom]   <config>
+[init -> report_rom]   	<key name="leitzentrale.enabled" value="false"/>
+[init -> report_rom]   	<key name="panel.position" value="bottom"/>
+[init -> report_rom]   	<key name="theme.active" value="dark"/>
+[init -> report_rom]   	<key name="leitzentrale.diverged" value="false"/>
+[init -> report_rom]   </config>
+[init -> report_rom] report 'sponge_configd -> config_result'
+[init -> report_rom]   <result status="ok" op="set" key="theme.active" value="dark"/>
+[init -> pkg_seq_probe] config-seq-probe: [1] set ok
+[init -> pkg_seq_probe] config-seq-probe: [2] get theme.active
+[init -> report_rom] report 'pkg_seq_probe -> config_request'
+[init -> report_rom]   <request op="get" key="theme.active"/>
+[init -> report_rom] report 'sponge_configd -> config_result'
+[init -> report_rom]   <result status="ok" op="get" key="theme.active" value="dark"/>
+[init -> pkg_seq_probe] config-seq-probe: [2] get ok
+[init -> pkg_seq_probe] config-seq-probe: [3] set panel.position = top
+[init -> report_rom] report 'pkg_seq_probe -> config_request'
+[init -> report_rom]   <request op="set" key="panel.position" value="top"/>
+[init -> report_rom] report 'sponge_configd -> config'
+[init -> report_rom]   <config>
+[init -> report_rom]   	<key name="leitzentrale.enabled" value="false"/>
+[init -> report_rom]   	<key name="panel.position" value="top"/>
+[init -> report_rom]   	<key name="theme.active" value="dark"/>
+[init -> report_rom]   	<key name="leitzentrale.diverged" value="false"/>
+[init -> report_rom]   </config>
+[init -> report_rom] report 'sponge_configd -> config_result'
+[init -> report_rom]   <result status="ok" op="set" key="panel.position" value="top"/>
+[init -> pkg_seq_probe] config-seq-probe: [3] set ok
+[init -> pkg_seq_probe] config-seq-probe: [4] get panel.position
+[init -> report_rom] report 'pkg_seq_probe -> config_request'
+[init -> report_rom]   <request op="get" key="panel.position"/>
+[init -> report_rom] report 'sponge_configd -> config_result'
+[init -> report_rom]   <result status="ok" op="get" key="panel.position" value="top"/>
+[init -> pkg_seq_probe] config-seq-probe: [4] get ok
+[init -> pkg_seq_probe] config-seq-probe: [5] list
+[init -> report_rom] report 'pkg_seq_probe -> config_request'
+[init -> report_rom]   <request op="list"/>
+[init -> report_rom] report 'sponge_configd -> config_result'
+[init -> report_rom]   <result status="ok" op="list" count="3">
+[init -> report_rom]   	<keys>
+[init -> report_rom]   		<key name="leitzentrale.enabled" value="false"/>
+[init -> report_rom]   		<key name="panel.position" value="top"/>
+[init -> report_rom]   		<key name="theme.active" value="dark"/>
+[init -> report_rom]   	</keys>
+[init -> report_rom]   </result>
+[init -> pkg_seq_probe] config-seq-probe: [5] list ok
+[init -> pkg_seq_probe] config-seq-probe: [6] list
+[init -> report_rom] report 'pkg_seq_probe -> config_request'
+[init -> report_rom]   <request op="list"/>
+[init -> pkg_seq_probe] config-seq-probe: [6] list ok
+[init -> pkg_seq_probe] config-seq-probe: [7] get no.such.key
+[init -> report_rom] report 'pkg_seq_probe -> config_request'
+[init -> report_rom]   <request op="get" key="no.such.key"/>
+[init -> report_rom] report 'sponge_configd -> config_result'
+[init -> report_rom]   <result status="error" op="get" key="no.such.key" error="unknown key: no.such.key"/>
+[init -> pkg_seq_probe] config-seq-probe: [7] get ok (error as expected)
+[init -> pkg_seq_probe] config-seq-probe: [8] set panel.position = sideways
+[init -> report_rom] report 'pkg_seq_probe -> config_request'
+[init -> report_rom]   <request op="set" key="panel.position" value="sideways"/>
+[init -> report_rom] report 'sponge_configd -> config_result'
+[init -> report_rom]   <result status="error" op="set" key="panel.position" error="invalid value 'sideways' for key 'panel.position' (expected: top, bottom, left, right)"/>
+[init -> pkg_seq_probe] config-seq-probe: [8] set ok (error as expected)
+[init -> pkg_seq_probe] config-seq-probe: PASS
+
+Run script execution successful.
+make: ディレクトリ '/home/luke/sponge-os/genode/build/x86_64' から出ます
