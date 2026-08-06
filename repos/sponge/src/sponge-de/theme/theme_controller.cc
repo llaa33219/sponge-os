@@ -152,8 +152,14 @@ bool ThemeController::_read_theme(QString &name, QString &ini)
 		name = QString::fromUtf8(
 			xml.attribute_value("name", Genode::String<64>()).string());
 
-		Genode::String<2048> const content =
-			xml.decoded_content<Genode::String<2048>>();
+		Genode::String<8192> const content =
+			xml.decoded_content<Genode::String<8192>>();
+
+		if (content.length() == 8192 - 1) {
+			Genode::warning("theme payload truncated at 8192 bytes; "
+			                "raise cap if shipping a larger theme");
+		}
+
 		ini = QString::fromUtf8(content.string(), (int)content.length());
 
 		return !name.isEmpty();
