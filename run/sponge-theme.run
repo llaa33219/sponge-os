@@ -1,5 +1,5 @@
 #
-# \brief  Sponge OS theme pipeline scenario (Phase 5b)
+# \brief  Sponge OS theme pipeline scenario (Phase 5b + Phase 11 W3)
 # \author Sponge OS contributors
 # \date   2026
 #
@@ -7,9 +7,61 @@
 #   vct-write -> sponge_configd -> sponge_themed -> sponge-de
 # driven by the theme_probe component, which asserts a THREE-WAY value
 # match: configd's broadcast "config" ROM, sponge_themed's resolved
-# "theme" ROM, and sponge-de's "applied_theme" report all agree, after a
-# default->light transition. An optional Capture pixel check confirms the
-# demo window background actually repainted.
+# "theme" ROM, and sponge-de's "applied_theme" report all agree.
+#
+# Phase 11 W3 extends the probe to a 5-step sequence that exercises
+# THREE shipped themes + the name-dedup fallback + a liveness proof:
+#
+#   [baseline] default  — captures default's panel-bg pixel baseline
+#   [1] dark             — 3-way match + panel-region pixel diff
+#   [2] compact          — 3-way match + realizable geometry assertion
+#                          (launcher_width=32 makes the toggle end at
+#                          x=36; default's toggle ends at x=56; the
+#                          pixel at (46,14) is accent in default but
+#                          panel_bg/text in compact)
+#   [3] light            — 3-way match + demo-window-bg capture check
+#   [4] does-not-exist   — configd accepts the unknown value;
+#                          sponge_themed's name-dedup rule keeps the
+#                          previously published theme; applied_theme
+#                          stays "light" (graceful keep-previous
+#                          path, not a freeze — see ROUTING below)
+#   [5] default          — LIVENESS PROOF. After step 4 set themed a
+#                          "stale theme" via the catch-all empty-ROM
+#                          fallback, the probe writes theme.active=
+#                          default again; the 3-way match must
+#                          converge to "default" and applied_theme
+#                          must report "default". This can ONLY pass
+#                          if sponge_themed survived step 4 — the
+#                          previous (W3-rev-2) probe silently PASSED
+#                          step 4 because themed had frozen
+#                          (base-lib DENIED -> sleep_forever) and
+#                          report_rom kept serving the cached "light"
+#                          ROM; the component was dead.
+#
+# The 3-theme palette (default/light/dark/compact) is staged as four
+# ROM modules; sponge_themed resolves them by name. compact.theme is
+# the geometry test theme — its panel_height=24 in the file is a
+# documented no-op (per D2.2, configd panel.height is the effective
+# authority) so the panel stays 28 px tall here.
+#
+# ROUTING (Phase 11 W3 follow-up — Plan A):
+#
+#   The previous run relied on init's router to deny any unstaged
+#   .theme ROM request. But the base lib's session retry loop converts
+#   "DENIED" into `error("stop because parent denied ..."); sleep_forever();`
+#   (genode/repos/base/src/lib/base/component.cc:200-202), so the
+#   Rom_connection_failed try/catch in sponge_themed never fires and
+#   themed silently sleeps. report_rom keeps serving the last cached
+#   theme ROM, making the previous probe appear to PASS step 4 while
+#   the component was actually dead.
+#
+#   The fix routes any unstaged <name>.theme ROM through report_rom
+#   with a label_suffix catch-all policy that resolves to a module
+#   name never produced by any writer (so the module is unwritten →
+#   size 0 → "ROM invalid; keeping previous theme" in sponge_themed).
+#   The component stays alive; the 3-way match stays at the previous
+#   theme; any subsequent theme.active=<known> write re-resolves
+#   cleanly through the new explicit route.
 #
 # Topology (base-linux, kernel-agnostic in shape):
 #
@@ -21,7 +73,8 @@
 #   + sponge_themed  (configd broadcast -> resolves <name>.theme -> theme report)
 #   + sponge-de      (watches themed's theme report -> live re-style;
 #                     publishes applied_theme)
-#   + theme_probe    (drives config_request, asserts the 3-way match)
+#   + theme_probe    (drives config_request, asserts the 3-way match +
+#                     pixel diff + geometry assertion + name-dedup)
 #
 # report_rom policies (full labels include the child-name prefix):
 #   configd's   ROM "config_request"   <- theme_probe's "config_request"
@@ -73,6 +126,18 @@ config
     + policy | label: sponge_themed -> config | report: sponge_configd -> config
     + policy | label: sponge-de -> theme | report: sponge_themed -> theme
     + policy | label: theme_probe -> theme | report: sponge_themed -> theme
+    # Catch-all: any <sponge_themed -> <name>.theme> ROM request that
+    # didn't match an explicit rule above (e.g. "does-not-exist.theme"
+    # in probe step 4) maps to a module name NO writer ever produces.
+    # report_rom creates the module on-demand (rom_registry.h:67-79)
+    # but no <writer with label "themed-fallback-none"> exists, so
+    # Module::size() stays 0 and sponge_themed's _resolve_and_publish
+    # takes the "ROM invalid; keeping previous theme" branch (theme/
+    # sponge_themed/main.cc:170-174). The component stays alive; the
+    # probe's step 5 liveness write (theme.active=default) re-resolves
+    # cleanly through the explicit label_last route.
+    + policy | label_suffix: .theme | report: themed-fallback-none
+    + policy | label: sponge-de -> configd | report: sponge_configd -> config
     + policy | label: theme_probe -> sponge_de_applied | report: sponge-de -> applied_theme
 
 + start nitpicker | ram: 8M
@@ -112,8 +177,21 @@ config
 + start sponge_themed | caps: 200 | ram: 8M
   + route
     + service ROM | label_last: config | + child report_rom
+    # Explicit per-theme routes — matched first by init's router
+    # (first-match-wins, see genode/repos/os/src/lib/sandbox/utils.h:142).
     + service ROM | label_last: default.theme | + parent
     + service ROM | label_last: light.theme   | + parent
+    + service ROM | label_last: dark.theme    | + parent
+    + service ROM | label_last: compact.theme | + parent
+    # Catch-all for any <name>.theme ROM not matched above. Routes
+    # the request to report_rom with a label_suffix match; report_rom
+    # has a policy (see below) that maps to a never-produced module
+    # name, so the resulting ROM is unwritten/empty — sponge_themed
+    # logs "ROM invalid; keeping previous theme" and STAYS ALIVE.
+    # Without this catch-all, init denies the ROM session and
+    # base-lib's DENIED branch (component.cc:200-202) calls
+    # sleep_forever, freezing the component.
+    + service ROM | label_suffix: .theme      | + child report_rom
     + service Report | + child report_rom
     + any-service
       + parent
@@ -122,6 +200,7 @@ config
 + start sponge-de | caps: 300 | ram: 128M
   + config
     + theme | source: themed
+    + config | source: configd
     + vfs
       + dir dev
         + log
@@ -136,6 +215,7 @@ config
     + service Report | label: input | + child report_rom
     + service Report | label: applied_theme | + child report_rom
     + service ROM | label: theme | + child report_rom
+    + service ROM | label: configd | + child report_rom
     + service ROM | label: mesa_gpu.lib.so | + parent | label: mesa_gpu-softpipe.lib.so
     + any-service
       + parent
@@ -189,10 +269,11 @@ if {![file exists $dejavu_dst]} {
 
 #
 # Theme files staged as ROM modules for sponge_themed to resolve by name.
-# Both the Mocha default and the light theme are staged so the probe can
-# exercise a real default -> light transition.
+# All four shipped themes are staged so the W3 probe can exercise the
+# 3-theme 4-step sequence (default baseline -> dark -> compact -> light
+# -> does-not-exist name-dedup fallback).
 #
-foreach theme { default light } {
+foreach theme { default light dark compact } {
 	set theme_src "${genode_dir}/repos/sponge/src/sponge-de/themes/${theme}.theme"
 	set theme_dst "[run_dir]/genode/${theme}.theme"
 	if {[file exists $theme_src] && ![file exists $theme_dst]} {
@@ -203,10 +284,13 @@ foreach theme { default light } {
 append qemu_args " -nographic "
 
 #
-# Verification: PASS only after the probe's 3-way consistency check for the
-# default->light transition succeeds. Any hop disagreeing (or a configd
-# rejection) logs "...: FAIL <reason>" and this match times out — the
-# correct FAIL path. The generous timeout covers Qt's slow first paint
-# under the software (softpipe) Mesa.
+# Verification: PASS only after the probe's 3-way consistency check for
+# each of the 4 steps (default baseline, dark, compact, light, then the
+# does-not-exist name-dedup fallback). Any hop disagreeing (or a
+# configd rejection) logs "...: FAIL <reason>" and this match times out
+# — the correct FAIL path. The generous timeout covers Qt's slow first
+# paint under the software (softpipe) Mesa PLUS 4 theme switches in a
+# single boot (each switch waits for the restyle QTimer + the 3-way
+# broadcast/ROM/report chain).
 #
-run_genode_until {.*theme-probe: PASS.*} 240
+run_genode_until {.*theme-probe: PASS.*} 300
