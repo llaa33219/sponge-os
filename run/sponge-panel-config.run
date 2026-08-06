@@ -1,0 +1,235 @@
+#
+# \brief  Sponge OS panel + ConfigController integration scenario (Phase 11 W2)
+# \author Sponge OS contributors
+# \date   2026
+#
+# End-to-end verification of the Phase 11 W2 panel-restyle migration +
+# new in-sponge-de ConfigController:
+#
+#   sponge_configd --[Report "config"]--> report_rom --[ROM "config"]--> sponge-de
+#   sponge_configd <--[Report "config_result"]-- report_rom <--[ROM "config_result"]-- probe
+#   probe --[Report "config_request"]--> report_rom --[ROM "config_request"]--> sponge_configd
+#
+# Topology (base-linux; kernel-agnostic in shape — mirrors run/sponge-theme.run):
+#
+#   init
+#   + timer
+#   + report_rom     (relays every Report<->ROM hop below)
+#   + nitpicker      (Gui/Capture/Event; probe's capture defines the panorama)
+#   + sponge_configd (owns the 7-key registry; broadcasts the whole store)
+#   + sponge_themed  (configd broadcast -> resolves <name>.theme -> theme report)
+#   + sponge-de      (watches themed's theme report AND configd's config
+#                     broadcast; ThemeController + ConfigController)
+#   + sponge_de_probe (drives config_request, asserts the panel/launcher
+#                     reflect the 7-subphase configd writes via pixel deltas)
+#
+# report_rom policies (full labels include the child-name prefix):
+#   configd's   ROM "config_request"   <- probe's "config_request" report
+#   probe's     ROM "config_result"    <- configd's "config_result"
+#   sponge-de's ROM "config"           <- configd's "config" broadcast
+#   sponge_themed's ROM "config"       <- configd's "config" broadcast
+#   sponge-de's ROM "theme"            <- sponge_themed's "theme"
+#   sponge-de's ROM "applied_theme"    <- sponge-de's "applied_theme" (for theme probe path)
+#
+# sponge-de component config gets:
+#   <theme source="themed"/>     — live theme reload via sponge_themed
+#   <config source="configd"/>   — activate ConfigController (gates the
+#                                   `config` ROM session open)
+#
+# The probe selects the panel-config phase via:
+#   <config phases="panel-config"/>
+#
+# Acceptance: sponge-de-probe: phase panel-config PASS + Run script
+# execution successful. The probe's 7-subphase table is at Phase 11 plan
+# W2 step 9; every asserted delta is physically realizable (failure-
+# point 15 enforcement — never asserts against the panel-bg / nitpicker-
+# bg boundary or against the demo-window position).
+#
+
+build { core lib/ld init timer server/report_rom server/nitpicker \
+        sponge_configd sponge-de test/sponge_de_probe \
+        qt6/base lib/libc lib/libm lib/stdcxx lib/mesa \
+        lib/mesa_gpu-softpipe lib/egl lib/softpipe lib/libdrm lib/expat \
+        lib/qt6_component lib/vfs lib/vfs_pipe lib/vfs_gpu lib/rom_filter \
+        lib/zlib lib/libpng lib/blit }
+
+create_boot_directory
+
+install_config {
+config
++ parent-provides
+  + service ROM
+  + service PD
+  + service CPU
+  + service LOG
+  + service IRQ
+  + service IO_MEM
+  + service IO_PORT
+
++ default | caps: 200 | ram: 4M
++ default-route
+  + any-service
+    + parent
+    + any-child
+
++ start timer
+  + provides | + service Timer
+
++ start report_rom | ram: 4M
+  + provides
+    + service Report
+    + service ROM
+  + config | verbose: no
+    + policy | label: sponge_configd -> config_request | report: sponge_de_probe -> config_request
+    + policy | label: sponge_de_probe -> config_result  | report: sponge_configd -> config_result
+    + policy | label: sponge-de -> configd              | report: sponge_configd -> config
+    + policy | label: sponge_de_probe -> configd        | report: sponge_configd -> config
+    + policy | label: sponge_themed -> config           | report: sponge_configd -> config
+    + policy | label: sponge-de -> theme                | report: sponge_themed -> theme
+    + policy | label: sponge_de_probe -> sponge_de_input | report: sponge-de -> input
+
++ start nitpicker | ram: 8M
+  + provides
+    + service Gui
+    + service Capture
+    + service Event
+  + route
+    + service Report | + child report_rom
+    + service Timer | + child timer
+    + any-service
+      + parent
+      + any-child
+  + config
+    + capture
+    + event
+    # Panel domain: maximum height = 128 = the sponge_configd panel.height
+    # upper bound. The domain width/height are the SCREEN-SIZE CONSTRAINTS
+    # reported to clients, NOT the actual rendered area (genode/repos/os/
+    # src/server/nitpicker/README:100-113); the panel widget itself
+    # resizes freely up to what its framebuffer allocation allows. We set
+    # height to 128 so the panel-config probe can grow the panel to 64
+    # and observe the toggle-rect height delta (the P1 subphase proof).
+    + domain panel | layer: 1 | content: client | label: no
+                   | hover: always | focus: click | ypos: 0 | height: 128
+    + domain demo | layer: 2 | content: client | label: no
+                  | hover: always | focus: click
+                  | xpos: 192 | ypos: 172 | width: 640 | height: 480
+    + domain default | layer: 3 | content: client | label: no
+                     | hover: always | focus: click | ypos: 128 | height: -128
+    + policy | label_prefix: sponge-de -> Sponge Panel | domain: panel
+    + policy | label_prefix: sponge-de -> Sponge DE Demo | domain: demo
+    + default-policy | domain: default
+    + background | color: #1e1e2e
+
++ start sponge_configd | caps: 200 | ram: 16M
+  + route
+    + service ROM | label_last: config_request | + child report_rom
+    + service Report | + child report_rom
+    + any-service
+      + parent
+      + any-child
+
++ start sponge_themed | caps: 200 | ram: 8M
+  + route
+    + service ROM | label_last: config | + child report_rom
+    + service ROM | label_last: default.theme | + parent
+    + service ROM | label_last: light.theme   | + parent
+    + service Report | + child report_rom
+    + any-service
+      + parent
+      + any-child
+
++ start sponge-de | caps: 300 | ram: 128M
+  + config
+    + config | source: configd
+    + vfs
+      + dir dev
+        + log
+        + inline rtc | : 2018-01-01 00:01
+      + dir pipe | + pipe
+      + tar qt6_dejavusans.tar
+      + tar qt6_libqgenode.tar
+    + libc | stdout: /dev/log | stderr: /dev/log | pipe: /pipe | rtc: /dev/rtc
+  + route
+    + service Gui | + child nitpicker
+    + service Report | label: shape          | + child report_rom
+    + service Report | label: input          | + child report_rom
+    + service Report | label: applied_theme  | + child report_rom
+    + service ROM    | label: theme          | + child report_rom
+    + service ROM    | label: configd        | + child report_rom
+    + service ROM    | label: mesa_gpu.lib.so | + parent | label: mesa_gpu-softpipe.lib.so
+    + any-service
+      + parent
+      + any-child
+
++ start sponge_de_probe | caps: 100 | ram: 16M
+  + config | phases: panel-config
+  + route
+    + service Capture | + child nitpicker
+    + service Timer   | + child timer
+    + service ROM     | label: sponge_de_input | + child report_rom
+    + service ROM     | label: config_result  | + child report_rom
+    + service ROM     | label: configd        | + child report_rom
+    + service Report  | + child report_rom
+    + any-service
+      + parent
+      + any-child
+- }
+
+build_boot_image [build_artifacts]
+
+#
+# Qt6 shared libraries and runtime tars (built by separate cmake targets).
+#
+foreach lib { libQt6Core.lib.so libQt6Gui.lib.so libQt6Widgets.lib.so \
+              libqgenode.lib.so \
+              qt6_libqgenode.tar qt6_dejavusans.tar } {
+	set src "bin/$lib"
+	set dst "[run_dir]/genode/$lib"
+	if {[file exists $src] && ![file exists $dst]} {
+		exec cp -L $src $dst
+	}
+}
+
+#
+# qt6_dejavusans.tar raw recipe is depot-only; mirror its content here from
+# the qt6_base port sources (same as run/sponge-de-test.run).
+#
+set dejavu_dst "[run_dir]/genode/qt6_dejavusans.tar"
+if {![file exists $dejavu_dst]} {
+	set dejavu_src [glob -nocomplain "${genode_dir}/contrib/qt6_base-*/src/lib/qt6_base/src/3rdparty/wasm/DejaVuSans.ttf"]
+	if {[llength $dejavu_src] == 0} {
+		error "DejaVuSans.ttf not found in the qt6_base port sources"
+	}
+	set staging "[run_dir]/dejavusans-staging"
+	file mkdir "$staging/qt/lib/fonts"
+	file copy -force [lindex $dejavu_src 0] "$staging/qt/lib/fonts/DejaVuSans.ttf"
+	exec tar -cf $dejavu_dst -C $staging qt
+	file delete -force $staging
+}
+
+#
+# Theme files staged as ROM modules for sponge_themed to resolve by name.
+# Both the Mocha default and the light theme are staged so sponge_themed
+# can answer a name-dedup lookup (sponge-theme.run does the same).
+#
+foreach theme { default light } {
+	set theme_src "${genode_dir}/repos/sponge/src/sponge-de/themes/${theme}.theme"
+	set theme_dst "[run_dir]/genode/${theme}.theme"
+	if {[file exists $theme_src] && ![file exists $theme_dst]} {
+		exec cp -L $theme_src $theme_dst
+	}
+}
+
+append qemu_args " -nographic -m 1G "
+
+#
+# Verification: PASS only after the probe's 7-subphase panel-config
+# assertions all succeed. The probe runs in observe mode (no synthetic
+# input injection; all assertions are driven by configd writes the
+# probe sends over the config_request Report). Any subphase failure
+# logs "sponge-de-probe: FAIL panel-config <sub>: <reason>" and the
+# run script times out — the correct FAIL path. The generous timeout
+# covers Qt's slow first paint under the software (softpipe) Mesa.
+#
+run_genode_until {.*sponge-de-probe: phase panel-config PASS.*} 240
