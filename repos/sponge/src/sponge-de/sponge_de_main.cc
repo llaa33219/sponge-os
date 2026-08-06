@@ -24,6 +24,7 @@
 #include <QPushButton>
 #include <QVBoxLayout>
 
+#include "config/config_controller.h"
 #include "theme/theme_loader.h"
 #include "theme/theme_qt.h"
 
@@ -79,6 +80,10 @@ Main::Main(Genode::Env &env, Theme::Theme const &theme, QWidget *parent)
 	auto *title = new QLabel("Sponge DE", this);
 	title->setAlignment(Qt::AlignCenter);
 	auto font = title->font();
+	// title_family stays parsed-but-unused in Phase 11; the demo title
+	// font is set at construction. The Phase-12 restyle migration is
+	// tracked in docs/09-roadmap.md §11 follow-ups. (See Phase-11 plan
+	// W2 §8.)
 	font.setPointSize((int)theme.title_font().size + 12);
 	font.setBold(true);
 	title->setFont(font);
