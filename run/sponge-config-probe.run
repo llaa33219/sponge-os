@@ -61,14 +61,26 @@ config
 
 + start pkg_seq_probe | caps: 200 | ram: 8M
   + config | channel: config
-    + step | op: set  | key: theme.active   | value: dark
-    + step | op: get  | key: theme.active   | expect: dark
-    + step | op: set  | key: panel.position | value: top
-    + step | op: get  | key: panel.position | expect: top
-    + step | op: list | expect: theme.active
-    + step | op: list | expect: panel.position
-    + step | op: get  | key: no.such.key    | expect_status: error
-    + step | op: set  | key: panel.position | value: sideways | expect_status: error
+    + step | op: set  | key: panel.height          | value: 64
+    + step | op: get  | key: panel.height          | expect: 64
+    + step | op: set  | key: panel.height          | value: 12 | expect_status: error
+    + step | op: set  | key: panel.height          | value: 256 | expect_status: error
+    + step | op: set  | key: panel.height          | value: -1 | expect_status: error
+    + step | op: set  | key: panel.visible_widgets | value: launcher
+    + step | op: get  | key: panel.visible_widgets | expect: launcher
+    + step | op: set  | key: panel.visible_widgets | value: launcher,clock
+    + step | op: set  | key: panel.visible_widgets | expect_status: error
+    + step | op: set  | key: panel.visible_widgets | value: tray | expect_status: error
+    + step | op: set  | key: clock.format          | value: HH:mm:ss
+    + step | op: get  | key: clock.format          | expect: HH:mm:ss
+    + step | op: set  | key: clock.format          | value: bogus
+    + step | op: set  | key: launcher.sort_by      | value: manual
+    + step | op: set  | key: launcher.sort_by      | value: random | expect_status: error
+    + step | op: list | expect: panel.height
+    + step | op: list | expect: panel.visible_widgets
+    + step | op: list | expect: clock.format
+    + step | op: list | expect: launcher.sort_by
+    + step | op: get  | key: no.such.key | expect_status: error
   + route
     + service Timer | + child timer
     + service ROM | label_last: config_result | + child report_rom
