@@ -33,6 +33,7 @@ SOURCES  += main.cc \
             launcher/launcher_menu_view.cc \
             theme/theme_loader.cc \
             theme/theme_controller.cc \
+            config/config_controller.cc \
             ../../lib/src/sponge_backend_client/backend_client.cc
 
 HEADERS  += sponge_de_main.h \
@@ -41,4 +42,5 @@ HEADERS  += sponge_de_main.h \
             launcher/launcher_menu_view.h \
             theme/theme_loader.h \
             theme/theme_qt.h \
-            theme/theme_controller.h
+            theme/theme_controller.h \
+            config/config_controller.h

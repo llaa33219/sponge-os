@@ -28,6 +28,7 @@
 
 #include <qt6_component/qpa_init.h>
 
+#include "config/config_controller.h"
 #include "launcher/launcher_controller.h"
 #include "launcher/launcher_menu_view.h"
 #include "panel/panel_widget.h"
@@ -63,6 +64,21 @@ void Libc::Component::construct(Libc::Env &env)
 		                  (int)theme_ctrl.initial().default_font().size));
 
 		/*
+		 * Phase 11 W2: ConfigController — bridges sponge_configd's
+		 * `config` ROM to Qt signals for panel.height,
+		 * panel.visible_widgets, clock.format, launcher.sort_by.
+		 * Activation is gated by <config source="configd"/> in the
+		 * component config (mirrors <theme source="themed"/>); in
+		 * fallback mode the controller never opens a ROM session
+		 * and never emits a signal (sponge-de boots unchanged).
+		 *
+		 * Constructed BEFORE the panel so the very first applyConfig()
+		 * has a target to fan out to; the panel's apply* slots are
+		 * private and connected by attach_panel() below.
+		 */
+		ConfigController config_ctrl(env);
+
+		/*
 		 * Launcher data path. Constructed before the panel because the
 		 * panel's launcher button shows/hides its popup. The view is
 		 * constructed with the initial theme so the popup renders
@@ -76,6 +92,8 @@ void Libc::Component::construct(Libc::Env &env)
 		panel.show();
 		panel.set_launcher_view(&launcher_view);
 		theme_ctrl.attach_panel(&panel);
+		config_ctrl.attach_panel(&panel);
+		config_ctrl.attach_launcher(&launcher_view);
 		Genode::log("sponge-de: panel shown");
 
 		Main main_window(env, theme_ctrl.initial());
