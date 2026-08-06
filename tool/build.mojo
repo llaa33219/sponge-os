@@ -291,6 +291,27 @@ def cmd_prepare() raises:
     print("  - install Qt6 host tools if you plan to build sponge-de")
 
 
+def port_prepared(genode_dir: String, port: String) raises -> Bool:
+    """True when genode/contrib/<port>-<hash>/ already exists.
+
+    prepare_port re-runs its install steps for already-prepared ports.
+    Most ports no-op through that, but dde_rump's git `update` step resets
+    only part of the tree, so its patches then fail to re-apply (upstream
+    non-idempotency — verified 2026-08-07: `aarch64.patch` hunks ignored,
+    "Reversed (or previously applied) patch detected"). Skipping already-
+    prepared ports here keeps `./tool/build ports` safe to re-run."""
+    var glob_py = Python.import_module("glob")
+    var builtins = Python.import_module("builtins")
+    var os_path = Python.import_module("os.path")
+    var matches = glob_py.glob(
+        genode_dir + "/repos/*/ports/" + port + ".hash")
+    if Int(py=builtins.len(matches)) == 0:
+        return False
+    var hash_value = String(open(String(matches[0]), "r").read().strip())
+    return Bool(py=os_path.isdir(
+        genode_dir + "/contrib/" + port + "-" + hash_value))
+
+
 def cmd_ports() raises:
     var os_path = Python.import_module("os.path")
     var root = repo_root()
@@ -304,11 +325,15 @@ def cmd_ports() raises:
     var ports = port_list()
 
     print("[sponge-build] ports: preparing " + String(len(ports)) + " ports")
-    print("(prepare_port skips ports that are already prepared)")
+    print("(ports whose contrib dir already exists are skipped)")
     print()
 
     var failed: List[String] = []
+    var skipped: List[String] = []
     for port in ports:
+        if port_prepared(genode_dir, port):
+            skipped.append(port)
+            continue
         print("[sponge-build] --- " + port + " ---")
         var rc = run_argv(
             ["./tool/ports/prepare_port", port], cwd=genode_dir
@@ -325,8 +350,14 @@ def cmd_ports() raises:
         for bad in failed:
             if bad == port:
                 is_failed = True
+        var is_skipped = False
+        for done in skipped:
+            if done == port:
+                is_skipped = True
         if is_failed:
             print("  FAIL: " + port)
+        elif is_skipped:
+            print("  ok:   " + port + " (already prepared)")
         else:
             print("  ok:   " + port)
 
