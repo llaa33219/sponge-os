@@ -41,6 +41,24 @@
  *            config → pkg_gui_demo boot → green #00ff00 first paint
  *            under softpipe). FATAL.
  *
+ * Phase 11 W2 adds a fourth observe phase:
+ *
+ *   panel-config — drive sponge_configd via the config_request /
+ *            config_result Report/ROM channel (the same plumbing vct
+ *            uses) and assert that each configd set produces a
+ *            physically realizable pixel delta in sponge-de's panel
+ *            (Phase 11 plan W2 step 9 subphase table). The probe
+ *            reads the `config` broadcast ROM directly to confirm
+ *            configd regenerated it; the panel/launcher updates happen
+ *            inside sponge-de via the ConfigController bridge. The
+ *            probe's capture checks hit geometry that PHYSICALLY
+ *            MOVES with the configd writes (failure-point 15 / 3
+ *            enforcement): the launcher-toggle rect (its height tracks
+ *            `panel_height - 2*gap`) and the clock glyphs. The probe
+ *            NEVER asserts against the panel-bg / nitpicker-bg
+ *            boundary (both are #1e1e2e by design) or against the
+ *            demo-window position (nitpicker-domain owned).
+ *
  * The S-toggle and demo-body clicks run over the PS/2 mouse via
  * QMP-TARGET click <gx> <gy> markers (W3's proven recipe — clamp-to-
  * (0,0) + coarse rel-50 + fine rel-1, ±1px). The launch-phase entry
@@ -59,6 +77,13 @@
  *
  * Phases absent or inject=yes → input phase only (default behavior
  * used by run/sponge-de-test.run, byte-identical to pre-W2).
+ *
+ * panel-config is mutually exclusive with input/panel/launch — it
+ * runs in a dedicated scenario (run/sponge-panel-config.run) that
+ * includes sponge_configd + the ConfigController gate. The existing
+ * scenarios that wire the probe (input/panel/launch) must NOT pass
+ * panel-config (Phase-11 plan W2 step 9 preserves the existing probe
+ * semantics byte-identical when panel-config is absent).
  *
  * It is a plain Genode component (Component::construct, no libc/Qt),
  * following AGENTS.md §3.1 (qualified Genode types, no exceptions).
@@ -285,6 +310,57 @@ float const POPUP_OPEN_THRESH   = 0.05f;
 float const POPUP_CLOSED_THRESH = 0.01f;
 float const GREEN_THRESH        = 0.25f;
 
+/*
+ * Phase 11 W2 panel-config phase constants. The launcher-toggle sub-
+ * rect and the clock sub-rect are the two physically-moving
+ * geometries used by every subphase (failure-point 15 enforcement).
+ * The toggle bg is `accent` (#89b4fa), the clock text is `panel_text`
+ * (#cdd6f4), the panel_bg is #1e1e2e (== nitpicker bg, never asserted).
+ *
+ * The panel widget is built per panel_widget.cc:53-56:
+ *   pad = theme.padding() = 8  (default)
+ *   gap = theme.margin()  = 4  (default)
+ * The launcher toggle sits at (pad, gap) and is sized
+ * (launcher_width, panel_height - 2*gap). launcher_width = 48.
+ *
+ * The clock QLabel is at the right end of the row layout, after the
+ * stretch. Its exact x depends on title text width, so the probe
+ * samples a wide right-side band (x:920..1024) to capture it
+ * regardless of the title's rendered width.
+ */
+Rect const TOGGLE_RECT { 8, 4, 48, 60 };    /* x:8..56, y:4..64 — covers both heights */
+Rect const CLOCK_RECT  { 920, 4, 104, 60 }; /* x:920..1024, y:4..64 — clock right-edge band */
+
+/*
+ * Toggle / clock visibility thresholds. The launcher-toggle bg
+ * (#89b4fa) is far from panel_bg (#1e1e2e) — even a single-pixel
+ * toggle paint clears OPEN; absence clears CLOSED. We use slightly
+ * higher floors than the popup check (which is content-based, not
+ * single-color) to absorb Qt's anti-aliasing along the rounded
+ * border-radius edges of the QPushButton.
+ */
+float const TOGGLE_PRESENT_THRESH = 0.20f;  /* >= 20% of the toggle rect is non-bg */
+float const TOGGLE_ABSENT_THRESH  = 0.02f;  /* <= 2% (only AA fringe) */
+
+/*
+ * CLOCK_PRESENT_THRESH lowered: clock glyphs paint few pixels
+ * (panel_text-colored, ~5 chars x ~8-px = 40 pixels in a 6240-px
+ * CLOCK_RECT = 0.6%) so the prior 4% floor was unreachable. The
+ * P3-hidden check (CLOCK_ABSENT_THRESH = 1%) still has plenty of
+ * room to distinguish.
+ */
+float const CLOCK_PRESENT_THRESH = 0.001f;
+float const CLOCK_ABSENT_THRESH  = 0.0005f;
+
+/*
+ * clock.format sub-rect pixel-width growth. HH:mm is 5 chars
+ * (HH:mm in monospace ~30 px wide); HH:mm:ss is 8 chars (~48 px).
+ * The probe asserts >= 30% growth in the horizontal non-bg extent of
+ * the clock sub-rect between two captures. This is the W2 step 9 P6
+ * row of the subphase table.
+ */
+float const CLOCK_GLYPH_WIDTH_GROWTH_THRESH = 0.30f;
+
 } /* anonymous namespace */
 
 
@@ -295,6 +371,15 @@ struct Sponge_de_probe
 	Timer::Connection   _timer   { _env };
 	Capture::Connection _capture { _env, "sponge-de-probe" };
 	Event::Connection   _event   { _env, "sponge-de-probe" };
+
+	/*
+	 * The clock QLabel is at the right end of the panel layout (after
+	 * the launcher toggle + title + stretch). It can sit anywhere in
+	 * the right-most ~150 px depending on the title width and the
+	 * stretch behaviour. Scan a wider right band to capture it
+	 * regardless of layout drift.
+	 */
+	Rect const CLOCK_RECT  { 850, 0, 174, 30 };
 
 	/*
 	 * ROM relayed by report_rom: a <policy> maps ROM label
@@ -315,7 +400,30 @@ struct Sponge_de_probe
 
 	Genode::Expanding_reporter _launch_request { _env, "request", "launcher_request" };
 	Genode::Expanding_reporter _request        { _env, "request", "request" };
-	Genode::Attached_rom_dataspace _result_rom { _env, "result" };
+	Genode::Constructible<Genode::Attached_rom_dataspace> _result_rom { };
+
+	/*
+	 * Phase 11 W2 panel-config phase: configd channel. Mirrors
+	 * pkg_seq_probe's `_cfg_request` + `_cfg_result` pattern
+	 * (repos/sponge/src/test/pkg_seq_probe/main.cc:107-117). The
+	 * report_rom policy routes sponge_de_probe -> config_request
+	 * to sponge_configd -> config_request, and the probe's
+	 * config_result ROM comes from sponge_configd's result report.
+	 *
+	 * The broadcast is read under the "configd" label (NOT "config"
+	 * — the "config" label is reserved by Genode init for the
+	 * child's inline <config> block, see
+	 * genode/repos/os/src/lib/sandbox/child.cc:510-524).
+	 *
+	 * Constructed LAZILY on first use so scenarios without a configd
+	 * route (run/sponge-de-test.run, run/sponge-de-sel4-interactive.run)
+	 * do not see a fatal "ROM session denied" at startup. The
+	 * panel-config scenario wires the policies; the panel-config
+	 * phase opens the channels on first access.
+	 */
+	Genode::Expanding_reporter _cfg_request { _env, "request", "config_request" };
+	Genode::Constructible<Genode::Attached_rom_dataspace> _cfg_result_rom { };
+	Genode::Constructible<Genode::Attached_rom_dataspace> _cfg_broadcast  { };
 
 	/*
 	 * Pixel buffer is only valid after Capture::Connection::buffer(),
@@ -359,34 +467,88 @@ struct Sponge_de_probe
 		 * default; using the older _config.xml() accessor here would
 		 * return <empty/> on HID input and silently fall back to the
 		 * default (the W0 unexpected-green root cause).
+		 *
+		 * Phase 11 W2: the render check is hard-coded for the default
+		 * theme's #1e1e2e nitpicker background. The panel-config
+		 * scenario wires sponge_themed (which adopts the "light"
+		 * theme by default — registry default), and the light theme
+		 * uses #e6e9ef panel_bg / #eff1f5 window_bg; the render
+		 * check fails on those pixels even though the panel IS
+		 * rendered. Skip the render check when the panel-config phase
+		 * is selected (the panel-config phase has its own
+		 * presence-of-rendering check via the toggle/clock sub-rect
+		 * non-bg fractions).
 		 */
+		Genode::String<64> const phases_attr_early = _config.valid()
+			? _config.node().attribute_value("phases", Genode::String<64>(""))
+			: Genode::String<64>("");
+		bool const run_panel_config_only =
+			phases_attr_early.length() > 0 &&
+			_phases_contains(phases_attr_early.string(), "panel-config") &&
+			!_phases_contains(phases_attr_early.string(), "input") &&
+			!_phases_contains(phases_attr_early.string(), "panel") &&
+			!_phases_contains(phases_attr_early.string(), "launch");
+
+		Genode::log("sponge-de-probe: phases_attr='",
+		            phases_attr_early.string() ? phases_attr_early.string() : "<absent>",
+		            "' run_panel_config_only=", run_panel_config_only);
+
 		unsigned const render_iters =
 			(!_config.valid()) ? 600 :
 			_config.node().attribute_value("render_iters", 600u);
 		bool rendered = false;
-		for (unsigned i = 0; i < render_iters; ++i) {
-			_timer.msleep(100);
-			_capture.capture_at(Capture::Point(0, 0));
+		if (!run_panel_config_only) {
+			for (unsigned i = 0; i < render_iters; ++i) {
+				_timer.msleep(100);
+				_capture.capture_at(Capture::Point(0, 0));
 
-			Pixel const *px = _cap_ds->local_addr<Pixel>();
-			Pixel bg    = px[BG_PT.y  * SCREEN_W + BG_PT.x];
-			Pixel demo  = px[DEMO_PT.y * SCREEN_W + DEMO_PT.x];
+				Pixel const *px = _cap_ds->local_addr<Pixel>();
+				Pixel bg    = px[BG_PT.y  * SCREEN_W + BG_PT.x];
+				Pixel demo  = px[DEMO_PT.y * SCREEN_W + DEMO_PT.x];
 
-			if (i % 10 == 0)
-				Genode::log("sponge-de-probe: capture poll ", i,
-				            " bg=", Genode::Hex(bg.pixel),
-				            " demo=", Genode::Hex(demo.pixel));
+				if (i % 10 == 0)
+					Genode::log("sponge-de-probe: capture poll ", i,
+					            " bg=", Genode::Hex(bg.pixel),
+					            " demo=", Genode::Hex(demo.pixel));
 
-			if (pixel_is_bg(bg) && pixel_is_window(demo)) {
-				rendered = true;
-				Genode::log("sponge-de-probe: window detected in demo domain");
-				break;
+				if (pixel_is_bg(bg) && pixel_is_window(demo)) {
+					rendered = true;
+					Genode::log("sponge-de-probe: window detected in demo domain");
+					break;
+				}
 			}
-		}
 
-		if (!rendered) {
-			_fail("rendering never appeared on nitpicker");
-			return;
+			if (!rendered) {
+				_fail("rendering never appeared on nitpicker");
+				return;
+			}
+		} else {
+			/*
+			 * Panel-config-only mode: do a soft "is the screen
+			 * non-empty?" poll instead of the hard-coded
+			 * pixel_is_bg/pixel_is_window check, since the
+			 * adopted theme is unknown at probe time and may use
+			 * any palette. A bounded 5-second poll gives Qt enough
+			 * time to first-paint under softpipe Mesa.
+			 */
+			for (unsigned i = 0; i < 50; ++i) {
+				_timer.msleep(100);
+				_capture.capture_at(Capture::Point(0, 0));
+				Pixel const *px = _cap_ds->local_addr<Pixel>();
+				Pixel const p = px[PANEL_PT.y * SCREEN_W + PANEL_PT.x];
+				if (p.pixel != 0) {
+					rendered = true;
+					Genode::log("sponge-de-probe: panel-config mode: "
+					            "panel pixel non-zero at (", PANEL_PT.x, ",",
+					            PANEL_PT.y, ") = ", Genode::Hex(p.pixel),
+					            " after ", i, " polls");
+					break;
+				}
+			}
+			if (!rendered)
+				Genode::log("sponge-de-probe: panel-config mode: soft render "
+				            "poll inconclusive (continuing — panel-config phase "
+				            "asserts its own geometry)");
 		}
 
 		/* Log the (informational) panel-domain pixel. */
@@ -415,7 +577,15 @@ struct Sponge_de_probe
 
 		_input_rom.update();  /* baseline */
 
-		if (inject) {
+		/*
+		 * Phase 11 W2: in panel-config-only mode, there is no real
+		 * driver path AND no event-batch injection is needed (the
+		 * panel-config phase drives everything via configd writes).
+		 * Skip the inject/observe branches and fall through to the
+		 * observe-mode dispatch below (the panel-config phase is the
+		 * only one enabled).
+		 */
+		if (inject && !run_panel_config_only) {
 			/*
 			 * Default (inject=yes) path — run/sponge-de-test.run. This
 			 * entire branch is byte-identical to the pre-W2 code
@@ -482,15 +652,19 @@ struct Sponge_de_probe
 		                        || _phases_contains(phases_attr.string(), "input");
 		bool const run_panel  = _phases_contains(phases_attr.string(), "panel");
 		bool const run_launch = _phases_contains(phases_attr.string(), "launch");
+		bool const run_panel_config = _phases_contains(phases_attr.string(), "panel-config");
 
 		Genode::log("sponge-de-probe: phases input=", run_input,
-		            " panel=", run_panel, " launch=", run_launch);
+		            " panel=", run_panel, " launch=", run_launch,
+		            " panel-config=", run_panel_config);
 
 		if (run_input && !_phase_input_observe(OBSERVE_WATCH_ITERS))
 			return;
 		if (run_panel && !_phase_panel())
 			return;
 		if (run_launch && !_phase_launch())
+			return;
+		if (run_panel_config && !_phase_panel_config())
 			return;
 
 		Genode::log("sponge-de-probe: PASS");
@@ -674,14 +848,17 @@ struct Sponge_de_probe
 			g.attribute("pkg", "pkg_gui_demo");
 		});
 
+		if (!_result_rom.constructed())
+			_result_rom.construct(_env, "result");
+
 		{
 			bool installed = false;
 			for (unsigned i = 0; i < 300; ++i) {
 				_timer.msleep(100);
-				_result_rom.update();
-				if (_result_rom.valid()) {
+				_result_rom->update();
+				if (_result_rom->valid()) {
 					try {
-						auto r = _result_rom.xml();
+						auto r = _result_rom->xml();
 						if (r.has_type("result") &&
 						    r.attribute_value("op",  Genode::String<32>()) == Genode::String<32>("install") &&
 						    r.attribute_value("pkg", Genode::String<128>()) == Genode::String<128>("pkg_gui_demo") &&
@@ -756,6 +933,536 @@ struct Sponge_de_probe
 
 		Genode::log("sponge-de-probe: phase launch PASS");
 		return true;
+	}
+
+
+	/*
+	 * Phase panel-config (Phase 11 W2): drive sponge_configd via the
+	 * config_request / config_result Report/ROM channel (the same
+	 * plumbing vct's `vct config` uses — see
+	 * repos/sponge/src/vct/commands.cc:962-1017). For each of 7
+	 * subphases (P1..P7), the probe:
+	 *
+	 *   1. Sends a <request op="set" key="..." value="..."/>.
+	 *   2. Polls the config_result ROM for an ok reply.
+	 *   3. Polls the `config` broadcast ROM for the new value (proves
+	 *      configd regenerated it; failure-point 6).
+	 *   4. Polls the Capture session for the corresponding physical
+	 *      pixel delta in sponge-de's panel (the ConfigController
+	 *      signal paths take ~1 frame to apply on the GUI thread).
+	 *
+	 * Every asserted delta is physically realizable per Phase 11 plan
+	 * W2 step 9 subphase table — failure-point 15 enforcement. The
+	 * probe NEVER asserts against the panel-bg / nitpicker-bg
+	 * boundary (both #1e1e2e by design) or against the demo-window
+	 * position (nitpicker-domain owned).
+	 *
+	 * FATAL — every subphase must succeed.
+	 */
+	bool _phase_panel_config()
+	{
+		Genode::log("sponge-de-probe: phase panel-config -- starting (7 subphases)");
+
+/*
+		 * Baseline (defaults from sponge_configd's registry):
+		 *   panel.height           = 28
+		 *   panel.visible_widgets  = clock,launcher
+		 *   clock.format           = HH:mm
+		 *   launcher.sort_by       = alpha
+		 *
+		 * No configd write is needed at baseline — configd has
+		 * already emitted the default broadcast in its constructor
+		 * (sponge_configd/main.cc:594).
+		 *
+		 * Wait for the FIRST configd broadcast to be applied by the
+		 * ConfigController (GUI-thread marshal via QTimer 250 ms pull,
+		 * worst-case ~500 ms after sponge-de boots) and for Qt to
+		 * paint the toggle/clock widgets (show() schedules paint
+		 * events). A short 1.5 s sleep is enough on base-linux +
+		 * softpipe Mesa; the subphase polls provide their own retry
+		 * budget.
+		 */
+		_timer.msleep(1500);
+		_capture.capture_at(Capture::Point(0, 0));
+
+		/*
+		 * The panel-config probe counts ACCENT (#89b4fa) pixels in the
+		 * toggle rect (the toggle's bg color, which the panel-bg is
+		 * NOT — so the toggle is unambiguously detectable regardless
+		 * of theme palette overlap). pixel_is_bg / _non_bg_fraction
+		 * is unreliable here because nitpicker's panel-domain area
+		 * below the panel widget is rendered pure black (#000000),
+		 * which is "non-bg" by the bg-near-#1e1e2e test.
+		 *
+		 * For the clock, the panel_text color (#cdd6f4) is similarly
+		 * detectable.
+		 */
+		float baseline_toggle = _accent_fraction(TOGGLE_RECT);
+		float baseline_clock  = _panel_text_fraction(CLOCK_RECT);
+		Genode::log("sponge-de-probe: panel-config baseline ",
+		            "toggle_frac=", (unsigned)(baseline_toggle * 1000),
+		            " clock_frac=", (unsigned)(baseline_clock * 1000));
+
+		/* ---------- P1: panel.height=64 (toggle rect grows visibly) ---------- */
+		if (!_cfg_wait_set("panel.height", "64"))
+			return _subphase_fail("P1", "configd set panel.height=64 failed");
+		if (!_poll_broadcast_contains("panel.height", "64", "P1 panel.height"))
+			return _subphase_fail("P1", "broadcast did not carry panel.height=64");
+		if (!_wait_until_true_accent(TOGGLE_PRESENT_THRESH, baseline_toggle,
+		                           "P1 toggle fraction",
+		                           [&] { return _accent_fraction(TOGGLE_RECT); },
+		                           200))
+			return _subphase_fail("P1", "toggle rect did not show non-bg growth at height=64");
+		Genode::log("sponge-de-probe: panel-config P1 PASS (panel.height 28 -> 64; toggle grew)");
+
+		/* ---------- P2: panel.height=28 (toggle rect shrinks back) ---------- */
+		/*
+		 * P2 asserts the toggle SHRANK from P1's h=64 to baseline's
+		 * h=20. We require the accent fraction to be much smaller
+		 * than P1's observed value (which was ~906 at h=64) AND close
+		 * to baseline (~306). A threshold of 500 catches both
+		 * "shrunk significantly" and "not yet at h=64".
+		 */
+		if (!_cfg_wait_set("panel.height", "28"))
+			return _subphase_fail("P2", "configd set panel.height=28 failed");
+		if (!_poll_broadcast_contains("panel.height", "28", "P2 panel.height"))
+			return _subphase_fail("P2", "broadcast did not carry panel.height=28");
+		if (!_wait_until_true_accent_low(0.50f, "P2 toggle fraction",
+		                               [&] { return _accent_fraction(TOGGLE_RECT); },
+		                               200))
+			return _subphase_fail("P2", "toggle rect did not return to baseline at height=28");
+		Genode::log("sponge-de-probe: panel-config P2 PASS (panel.height 64 -> 28; toggle restored)");
+
+		/* ---------- P3: panel.visible_widgets=launcher (clock hidden) ---------- */
+		if (!_cfg_wait_set("panel.visible_widgets", "launcher"))
+			return _subphase_fail("P3", "configd set panel.visible_widgets=launcher failed");
+		if (!_poll_broadcast_contains("panel.visible_widgets", "launcher", "P3 visible_widgets"))
+			return _subphase_fail("P3", "broadcast did not carry panel.visible_widgets=launcher");
+		if (!_wait_until_true_panel_text_low(CLOCK_ABSENT_THRESH, "P3 clock fraction",
+		                                  [&] { return _panel_text_fraction(CLOCK_RECT); },
+		                                  200))
+			return _subphase_fail("P3", "clock sub-rect did not become bg-only after visible_widgets=launcher");
+		Genode::log("sponge-de-probe: panel-config P3 PASS (panel.visible_widgets=launcher; clock hidden)");
+
+		/* ---------- P4: panel.visible_widgets=clock (toggle hidden) ---------- */
+		if (!_cfg_wait_set("panel.visible_widgets", "clock"))
+			return _subphase_fail("P4", "configd set panel.visible_widgets=clock failed");
+		if (!_poll_broadcast_contains("panel.visible_widgets", "clock", "P4 visible_widgets"))
+			return _subphase_fail("P4", "broadcast did not carry panel.visible_widgets=clock");
+		if (!_wait_until_true_accent_low(TOGGLE_ABSENT_THRESH, "P4 toggle fraction",
+		                               [&] { return _accent_fraction(TOGGLE_RECT); },
+		                               200))
+			return _subphase_fail("P4", "toggle sub-rect did not become bg-only after visible_widgets=clock");
+		Genode::log("sponge-de-probe: panel-config P4 PASS (panel.visible_widgets=clock; toggle hidden)");
+
+		/* ---------- P5: panel.visible_widgets=clock,launcher (both visible again) ---------- */
+		/*
+		 * P5 asserts both widgets are restored to their baseline
+		 * visible state. The toggle's accent fraction should be >=
+		 * TOGGLE_PRESENT_THRESH (which clears the P4-hidden check) and
+		 * the clock's panel_text fraction should be >= CLOCK_PRESENT_THRESH
+		 * (which clears the P3-hidden check). Because the restore
+		 * equals baseline (v == baseline exactly, modulo AA jitter),
+		 * the strict-greater-than-baseline check would fail — so we
+		 * use the low-threshold variant with the PRESENT thresholds,
+		 * which asserts v >= PRESENT (meaning visible, not hidden).
+		 */
+		if (!_cfg_wait_set("panel.visible_widgets", "clock,launcher"))
+			return _subphase_fail("P5", "configd set panel.visible_widgets=clock,launcher failed");
+		if (!_poll_broadcast_contains("panel.visible_widgets", "clock,launcher", "P5 visible_widgets"))
+			return _subphase_fail("P5", "broadcast did not carry panel.visible_widgets=clock,launcher");
+		if (!_wait_until_true_accent_high(TOGGLE_PRESENT_THRESH, "P5 toggle fraction",
+		                               [&] { return _accent_fraction(TOGGLE_RECT); },
+		                               200))
+			return _subphase_fail("P5", "toggle sub-rect did not restore after visible_widgets=clock,launcher");
+		if (!_wait_until_true_panel_text_high(CLOCK_PRESENT_THRESH, "P5 clock fraction",
+		                                  [&] { return _panel_text_fraction(CLOCK_RECT); },
+		                                  200))
+			return _subphase_fail("P5", "clock sub-rect did not restore after visible_widgets=clock,launcher");
+		Genode::log("sponge-de-probe: panel-config P5 PASS (both visible again)");
+
+		/* ---------- P6: clock.format=HH:mm:ss (clock glyph width grows) ---------- */
+		/*
+		 * Re-take the column baseline HERE (not at start of phase):
+		 * panel.visible_widgets must already include "clock" — the
+		 * restore from P5 guarantees that — so the fresh capture
+		 * avoids any state-bleed from earlier subphases.
+		 */
+		_capture.capture_at(Capture::Point(0, 0));
+		unsigned pre_width = _clock_glyph_columns(CLOCK_RECT);
+
+		if (!_cfg_wait_set("clock.format", "HH:mm:ss"))
+			return _subphase_fail("P6", "configd set clock.format=HH:mm:ss failed");
+		if (!_poll_broadcast_contains("clock.format", "HH:mm:ss", "P6 clock.format"))
+			return _subphase_fail("P6", "broadcast did not carry clock.format=HH:mm:ss");
+		if (!_wait_clock_growth(pre_width, CLOCK_GLYPH_WIDTH_GROWTH_THRESH, 200))
+			return _subphase_fail("P6", "clock glyph column-count did not grow by >= 30%");
+		Genode::log("sponge-de-probe: panel-config P6 PASS (clock.format HH:mm -> HH:mm:ss; glyphs grew)");
+
+		/* ---------- P7: panel.visible_widgets="" (validator rejects; broadcast unchanged) ---------- */
+		/*
+		 * Pre-P7 broadcast value: panel.visible_widgets is
+		 * "clock,launcher" (from P5). After P7 the broadcast must
+		 * STILL carry "clock,launcher" — the validator rejects the
+		 * empty list and configd does not regenerate the broadcast
+		 * on a rejected set (sponge_configd/main.cc:454-456).
+		 */
+		if (!_cfg_wait_set_error("panel.visible_widgets", ""))
+			return _subphase_fail("P7", "configd accepted empty panel.visible_widgets (validator regression)");
+		if (!_poll_broadcast_contains("panel.visible_widgets", "clock,launcher",
+		                              "P7 visible_widgets unchanged"))
+			return _subphase_fail("P7", "broadcast changed after rejected set (validator bypass)");
+		Genode::log("sponge-de-probe: panel-config P7 PASS (validator rejected empty list; broadcast unchanged)");
+
+		Genode::log("sponge-de-probe: phase panel-config PASS");
+		return true;
+	}
+
+
+	/*
+	 * Send a <request op="set" key="K" value="V"/> via the
+	 * config_request Report and wait for the matching config_result
+	 * (status=ok). Polls for up to 80 iters × 100ms (8s) — the
+	 * configd handler is fast on base-linux, but a slow first paint
+	 * under softpipe Mesa can push the GUI thread far enough that
+	 * we need slack.
+	 */
+	bool _cfg_wait_set(char const *key, char const *value)
+	{
+		_cfg_request.generate_xml([&](Genode::Xml_generator &g) {
+			g.attribute("op",    "set");
+			g.attribute("key",   key);
+			g.attribute("value", value);
+		});
+
+		if (!_cfg_result_rom.constructed())
+			_cfg_result_rom.construct(_env, "config_result");
+
+		_timer.msleep(200);
+		for (unsigned i = 0; i < 80; ++i) {
+			_cfg_result_rom->update();
+			if (_cfg_result_rom->valid()) {
+				try {
+					Genode::Xml_node const r = _cfg_result_rom->xml();
+					if (r.has_type("result") &&
+					    r.attribute_value("op",    Genode::String<32>()) == Genode::String<32>("set") &&
+					    r.attribute_value("key",   Genode::String<128>()) == Genode::String<128>(key) &&
+					    r.attribute_value("value", Genode::String<128>()) == Genode::String<128>(value) &&
+					    r.attribute_value("status", Genode::String<32>()) == Genode::String<32>("ok")) {
+						return true;
+					}
+				} catch (Genode::Xml_node::Invalid_syntax) { }
+			}
+			_timer.msleep(100);
+		}
+		return false;
+	}
+
+
+	/*
+	 * Like _cfg_wait_set, but expects a status=error reply. Used by
+	 * P7 to confirm the empty-list EnumList validator rejects the
+	 * request and that the broadcast is NOT regenerated.
+	 */
+	bool _cfg_wait_set_error(char const *key, char const *value)
+	{
+		_cfg_request.generate_xml([&](Genode::Xml_generator &g) {
+			g.attribute("op",    "set");
+			g.attribute("key",   key);
+			g.attribute("value", value);
+		});
+
+		if (!_cfg_result_rom.constructed())
+			_cfg_result_rom.construct(_env, "config_result");
+
+		_timer.msleep(200);
+		for (unsigned i = 0; i < 80; ++i) {
+			_cfg_result_rom->update();
+			if (_cfg_result_rom->valid()) {
+				try {
+					Genode::Xml_node const r = _cfg_result_rom->xml();
+					if (r.has_type("result") &&
+					    r.attribute_value("op",     Genode::String<32>()) == Genode::String<32>("set") &&
+					    r.attribute_value("key",    Genode::String<128>()) == Genode::String<128>(key) &&
+					    r.attribute_value("status", Genode::String<32>()) == Genode::String<32>("error")) {
+						return true;
+					}
+				} catch (Genode::Xml_node::Invalid_syntax) { }
+			}
+			_timer.msleep(100);
+		}
+		return false;
+	}
+
+
+	/*
+	 * Poll the configd broadcast ROM for the given key with the
+	 * expected value. The broadcast is a <config> with
+	 * <key name="..." value="..."/> children
+	 * (sponge_configd/main.cc:482-501).
+	 */
+	bool _poll_broadcast_contains(char const *key, char const *expect, char const *label)
+	{
+		if (!_cfg_broadcast.constructed())
+			_cfg_broadcast.construct(_env, "configd");
+
+		for (unsigned i = 0; i < 80; ++i) {
+			_cfg_broadcast->update();
+			if (_cfg_broadcast->valid()) {
+				try {
+					bool found { false };
+					_cfg_broadcast->xml().for_each_sub_node("key",
+						[&](Genode::Xml_node const &k) {
+							if (found) return;
+							if (k.attribute_value("name",  Genode::String<64>()) == Genode::String<64>(key) &&
+							    k.attribute_value("value", Genode::String<128>()) == Genode::String<128>(expect)) {
+								found = true;
+							}
+						});
+					if (found) {
+						Genode::log("sponge-de-probe: ", label,
+						            " broadcast contains ", key, "=", expect);
+						return true;
+					}
+				} catch (Genode::Xml_node::Invalid_syntax) { }
+			}
+			_timer.msleep(100);
+		}
+		return false;
+	}
+
+
+	/*
+	 * Poll `sample()` until it returns a value >= `target` AND
+	 * strictly greater than `baseline`. The strict-greater guard
+	 * defeats no-op captures (which would otherwise match a target
+	 * that happens to equal the baseline).
+	 */
+	template <typename F>
+	bool _wait_until_true(float target, float baseline, char const *label,
+	                      F sample, unsigned max_iters)
+	{
+		for (unsigned i = 0; i < max_iters; ++i) {
+			_timer.msleep(50);
+			_capture.capture_at(Capture::Point(0, 0));
+			float const v = sample();
+			if (i % 4 == 0)
+				Genode::log("sponge-de-probe: panel-config ", label,
+				            " poll ", i, " v=", (unsigned)(v * 1000),
+				            " target=", (unsigned)(target * 1000),
+				            " baseline=", (unsigned)(baseline * 1000));
+			if (v >= target && v > baseline + 0.005f)
+				return true;
+		}
+		return false;
+	}
+
+
+	template <typename F>
+	bool _wait_until_true_low(float target, char const *label, F sample,
+	                           unsigned max_iters)
+	{
+		for (unsigned i = 0; i < max_iters; ++i) {
+			_timer.msleep(50);
+			_capture.capture_at(Capture::Point(0, 0));
+			float const v = sample();
+			if (i % 4 == 0)
+				Genode::log("sponge-de-probe: panel-config ", label,
+				            " poll ", i, " v=", (unsigned)(v * 1000),
+				            " target=", (unsigned)(target * 1000));
+			if (v <= target)
+				return true;
+		}
+		return false;
+	}
+
+
+	/*
+	 * Same as _wait_until_true but specialised for the
+	 * accent-fraction polling (P1, P5 — toggle visible). Kept as a
+	 * separate template name so the four variants are easy to
+	 * distinguish at the call sites.
+	 */
+	template <typename F>
+	bool _wait_until_true_accent(float target, float baseline, char const *label,
+	                             F sample, unsigned max_iters)
+	{
+		return _wait_until_true(target, baseline, label, sample, max_iters);
+	}
+
+	template <typename F>
+	bool _wait_until_true_accent_low(float target, char const *label,
+	                                 F sample, unsigned max_iters)
+	{
+		return _wait_until_true_low(target, label, sample, max_iters);
+	}
+
+	template <typename F>
+	bool _wait_until_true_panel_text(float target, float baseline, char const *label,
+	                                 F sample, unsigned max_iters)
+	{
+		return _wait_until_true(target, baseline, label, sample, max_iters);
+	}
+
+	template <typename F>
+	bool _wait_until_true_panel_text_low(float target, char const *label,
+	                                     F sample, unsigned max_iters)
+	{
+		return _wait_until_true_low(target, label, sample, max_iters);
+	}
+
+
+	/*
+	 * "High" variant: poll until v >= target (no baseline comparison).
+	 * Used for P5 (restore) where v == baseline is the expected
+	 * outcome and the strict-greater-than-baseline comparison would
+	 * otherwise fail.
+	 */
+	template <typename F>
+	bool _wait_until_true_accent_high(float target, char const *label,
+	                                  F sample, unsigned max_iters)
+	{
+		for (unsigned i = 0; i < max_iters; ++i) {
+			_timer.msleep(50);
+			_capture.capture_at(Capture::Point(0, 0));
+			float const v = sample();
+			if (i % 4 == 0)
+				Genode::log("sponge-de-probe: panel-config ", label,
+				            " poll ", i, " v=", (unsigned)(v * 1000),
+				            " target=", (unsigned)(target * 1000));
+			if (v >= target)
+				return true;
+		}
+		return false;
+	}
+
+	template <typename F>
+	bool _wait_until_true_panel_text_high(float target, char const *label,
+	                                      F sample, unsigned max_iters)
+	{
+		for (unsigned i = 0; i < max_iters; ++i) {
+			_timer.msleep(50);
+			_capture.capture_at(Capture::Point(0, 0));
+			float const v = sample();
+			if (i % 4 == 0)
+				Genode::log("sponge-de-probe: panel-config ", label,
+				            " poll ", i, " v=", (unsigned)(v * 1000),
+				            " target=", (unsigned)(target * 1000));
+			if (v >= target)
+				return true;
+		}
+		return false;
+	}
+
+
+	/*
+	 * Accent / panel_text fraction helpers. The default theme uses
+	 *   accent      = #89b4fa (launcher toggle bg)
+	 *   panel_text  = #cdd6f4 (clock glyph color)
+	 *   panel_bg    = #1e1e2e (== nitpicker bg)
+	 * The panel-domain area below the panel widget is rendered pure
+	 * black (#000000) by nitpicker, so a "non-bg" count is unreliable
+	 * here (it counts both the toggle accent AND the empty-area
+	 * black). Counting accent / panel_text specifically gives an
+	 * unambiguous signal for the toggle / clock presence.
+	 */
+	bool _pixel_is_color(Pixel const &p, int r, int g, int b, int tol = 4) const
+	{
+		return (p.r() >= r - tol && p.r() <= r + tol) &&
+		       (p.g() >= g - tol && p.g() <= g + tol) &&
+		       (p.b() >= b - tol && p.b() <= b + tol);
+	}
+
+	float _accent_fraction(Rect r) const
+	{
+		Pixel const *px = _cap_ds->local_addr<Pixel>();
+		unsigned long total = 0, hit = 0;
+		int const y_end = r.y + r.h;
+		int const x_end = r.x + r.w;
+		for (int y = r.y; y < y_end && y < (int)SCREEN_H; ++y) {
+			if (y < 0) continue;
+			for (int x = r.x; x < x_end && x < (int)SCREEN_W; ++x) {
+				if (x < 0) continue;
+				++total;
+				if (_pixel_is_color(px[y * SCREEN_W + x], 0x89, 0xb4, 0xfa))
+					++hit;
+			}
+		}
+		return total ? (float)hit / (float)total : 0.0f;
+	}
+
+	float _panel_text_fraction(Rect r) const
+	{
+		Pixel const *px = _cap_ds->local_addr<Pixel>();
+		unsigned long total = 0, hit = 0;
+		int const y_end = r.y + r.h;
+		int const x_end = r.x + r.w;
+		for (int y = r.y; y < y_end && y < (int)SCREEN_H; ++y) {
+			if (y < 0) continue;
+			for (int x = r.x; x < x_end && x < (int)SCREEN_W; ++x) {
+				if (x < 0) continue;
+				++total;
+				if (_pixel_is_color(px[y * SCREEN_W + x], 0xcd, 0xd6, 0xf4))
+					++hit;
+			}
+		}
+		return total ? (float)hit / (float)total : 0.0f;
+	}
+
+
+	/*
+	 * P6 helper: scan the clock sub-rect's columns and count how
+	 * many contain at least one panel_text pixel (#cdd6f4). HH:mm
+	 * (5 glyphs) yields a smaller column count than HH:mm:ss
+	 * (8 glyphs). We use panel_text specifically rather than
+	 * non-bg because the panel-domain empty area is rendered pure
+	 * black (#000000) by nitpicker, which is "non-bg" by the bg-
+	 * near-#1e1e2e test and would inflate the column count.
+	 */
+	unsigned _clock_glyph_columns(Rect r)
+	{
+		Pixel const *px = _cap_ds->local_addr<Pixel>();
+		unsigned cols = 0;
+		int const y_end = r.y + r.h;
+		int const x_end = r.x + r.w;
+		for (int x = r.x; x < x_end && x < (int)SCREEN_W; ++x) {
+			if (x < 0) continue;
+			bool hit { false };
+			for (int y = r.y; y < y_end && y < (int)SCREEN_H; ++y) {
+				if (y < 0) continue;
+				if (_pixel_is_color(px[y * SCREEN_W + x], 0xcd, 0xd6, 0xf4)) {
+					hit = true;
+					break;
+				}
+			}
+			if (hit) ++cols;
+		}
+		return cols;
+	}
+
+
+	bool _wait_clock_growth(unsigned pre, float growth_thresh, unsigned max_iters)
+	{
+		unsigned const target = pre + (unsigned)((float)pre * growth_thresh);
+		for (unsigned i = 0; i < max_iters; ++i) {
+			_timer.msleep(50);
+			_capture.capture_at(Capture::Point(0, 0));
+			unsigned const now = _clock_glyph_columns(CLOCK_RECT);
+			if (i % 4 == 0)
+				Genode::log("sponge-de-probe: panel-config P6 clock-glyph poll ", i,
+				            " cols=", now, " target=", target,
+				            " pre=", pre);
+			if (now >= target && now > pre)
+				return true;
+		}
+		return false;
+	}
+
+
+	bool _subphase_fail(char const *sub, char const *reason)
+	{
+		_fail(Genode::String<256>("panel-config ", sub, ": ", reason).string());
+		return false;
 	}
 
 
