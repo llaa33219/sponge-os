@@ -38,16 +38,33 @@
  *   (S click → entry click) keeps the popup open across the chain
  *   because no press target falls outside the toggle/popup allowlist.
  *
- * No Q_OBJECT macro: all connections use functor/lambda overloads, so
- * this class needs no moc pass.
+ * SORT (Phase 11 W2):
+ *   The view's `applySortBy` slot honours configd's `launcher.sort_by`
+ *   (via ConfigController's launcher_sort_by_changed signal). When the
+ *   value is "alpha" (default), entries are sorted alphabetically by
+ *   name within each category. When the value is "manual", the entries
+ *   are emitted in the pkgd "installed" broadcast order (which itself
+ *   is name-sorted by pkgd, so today `manual` ≈ `alpha` for a single
+ *   installed set — the comparator still matters when a probe writes a
+ *   value and then re-reads it). A named comparator
+ *   `launcher_alpha_less_than` is exported so the panel-config probe
+ *   can assert ordering behavior without poking into the view's
+ *   internals.
+ *
+ * Q_OBJECT IS used (a deliberate change from the pre-W2 version) —
+ * the applySortBy slot must be connectable from ConfigController's
+ * pointer-to-member-function syntax. The other behavior (click-
+ * outside filter, etc.) still uses functor/lambda connections.
  */
 
 #pragma once
 
 #include <QHash>
+#include <QObject>
 #include <QString>
 #include <QWidget>
 
+#include "launcher/launcher_controller.h"
 #include "theme/theme_loader.h"
 
 class QEvent;
@@ -57,10 +74,25 @@ class QVBoxLayout;
 
 namespace Sponge::Sponge_DE {
 
-class LauncherController;
+/*
+ * Named comparator used by LauncherMenuView when sort_by == "alpha".
+ * Exported (free function) so the panel-config probe can assert that
+ * a launcher.sort_by=alpha round-trip yields alphabetical order
+ * without poking into the view's internals. Manual sort uses pkgd's
+ * broadcast order verbatim; alpha sort applies this comparator to the
+ * app list before insertion.
+ *
+ * Returns true iff `a.name` precedes `b.name` in ascending order under
+ * QString::compare (locale-independent, the same comparator QList uses
+ * by default — a probe can replicate the assertion in pure C++).
+ */
+bool launcher_alpha_less_than(LauncherController::App const &a,
+                              LauncherController::App const &b);
 
 class LauncherMenuView : public QWidget
 {
+	Q_OBJECT
+
 	public:
 
 		/*
@@ -77,9 +109,22 @@ class LauncherMenuView : public QWidget
 		/*
 		 * Called by LauncherController on the GUI thread after a
 		 * pkgd list refresh; rebuilds the menu contents in place
-		 * using the last-applied theme.
+		 * using the last-applied theme. Honors the cached
+		 * _sort_by: "alpha" resorts via launcher_alpha_less_than;
+		 * "manual" preserves the pkgd broadcast order.
 		 */
 		void repopulate();
+
+	public slots:
+
+		/*
+		 * GUI thread ONLY (connected to ConfigController's
+		 * launcher_sort_by_changed signal — failure-point 2
+		 * enforcement: marshalled via QMetaObject::invokeMethod).
+		 * Updates the cached value and rebuilds the menu. No-op
+		 * when the value is byte-identical to the cached one.
+		 */
+		void applySortBy(QString sort);
 
 	protected:
 
@@ -92,6 +137,7 @@ class LauncherMenuView : public QWidget
 	private:
 
 		void _apply_style(Theme::Theme const &theme);
+		void _apply_layout(Theme::Theme const &theme);
 
 		LauncherController &_controller;
 
@@ -109,6 +155,15 @@ class LauncherMenuView : public QWidget
 			QVBoxLayout *entries_layout { nullptr };
 		};
 		QHash<QString, Section> _sections;
+
+		/*
+		 * Cached configd sort override. "alpha" = alphabetical by
+		 * name (the default per the Phase 11 W2 plan); "manual" =
+		 * preserve the pkgd broadcast order. An empty value
+		 * preserves the pre-W2 behavior (no resort — pkgd's name-
+		 * sorted broadcast order is used verbatim).
+		 */
+		QString _sort_by;
 
 		QString _category_stylesheet() const;
 		QString _entry_stylesheet() const;
