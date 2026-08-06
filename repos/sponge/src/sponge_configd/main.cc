@@ -60,9 +60,14 @@ namespace { }
  * This keeps the store closed and inspectable (AGENTS.md §1.2 — no
  * hidden global state, parent config is explicit).
  *
- * Phase 5a keys:
- *   - theme.active    : free-form string (a theme name).
- *   - panel.position  : enum {top, bottom, left, right}.
+ * Phase 11 keys:
+ *   - clock.format          : structural printable-ASCII format string.
+ *   - leitzentrale.enabled  : enum {true, false}.
+ *   - launcher.sort_by      : enum {manual, alpha}.
+ *   - panel.height          : uint range [16..128].
+ *   - panel.position        : enum {top, bottom, left, right}.
+ *   - panel.visible_widgets : enum-list {clock, launcher}.
+ *   - theme.active          : free-form string (a theme name).
  *
  * The registry is declared in name-sorted order; the output generators
  * also sort defensively (selection sort, like sponge_pkgd) so adding a
@@ -86,6 +91,9 @@ class Sponge::Configd::Main
 			char const *enum_values[MAX_ENUMS];
 			unsigned    num_enums;
 			char const *default_value;
+			enum class Kind { String, Enum, UintRange, EnumList, FormatString } kind;
+			unsigned    min_value;
+			unsigned    max_value;
 		};
 
 		/* Known keys, name-sorted. */
@@ -167,15 +175,25 @@ class Sponge::Configd::Main
 
 
 Sponge::Configd::Main::Key_def const Sponge::Configd::Main::_registry[MAX_KEYS] = {
-	{ "leitzentrale.enabled", true,
-	  { "true", "false" }, 2, "false" },
-	{ "panel.position", true,
-	  { "top", "bottom", "left", "right" }, 4, "bottom" },
-	{ "theme.active",   false,
-	  { }, 0, "light" },
+	{ "clock.format",          false,
+	  { }, 0, "HH:mm", Sponge::Configd::Main::Key_def::Kind::FormatString, 0, 0 },
+	{ "leitzentrale.enabled",  true,
+	  { "true", "false" }, 2, "false", Sponge::Configd::Main::Key_def::Kind::Enum, 0, 0 },
+	{ "launcher.sort_by",      true,
+	  { "manual", "alpha" }, 2, "alpha", Sponge::Configd::Main::Key_def::Kind::Enum, 0, 0 },
+	{ "panel.height",          false,
+	  { }, 0, "28", Sponge::Configd::Main::Key_def::Kind::UintRange, 16, 128 },
+	{ "panel.position",        true,
+	  { "top", "bottom", "left", "right" }, 4, "bottom",
+	  Sponge::Configd::Main::Key_def::Kind::Enum, 0, 0 },
+	{ "panel.visible_widgets", false,
+	  { "clock", "launcher" }, 2, "clock,launcher",
+	  Sponge::Configd::Main::Key_def::Kind::EnumList, 0, 0 },
+	{ "theme.active",          false,
+	  { }, 0, "light", Sponge::Configd::Main::Key_def::Kind::String, 0, 0 },
 };
 
-unsigned const Sponge::Configd::Main::_num_keys = 3;
+unsigned const Sponge::Configd::Main::_num_keys = 7;
 
 
 /* ===================== registry helpers ===================== */
@@ -191,49 +209,147 @@ bool Sponge::Configd::Main::_find_key(char const *key, unsigned &idx) const
 }
 
 
-/*
- * Validate a candidate value for registry index `idx`. Returns true when
- * the value is acceptable; otherwise false and `why` carries a precise
- * reason for the structured error.
- *
- *   - No key accepts an empty value (a config value must be meaningful).
- *   - Enum keys reject anything outside their declared set.
- *   - Free-form (string) keys accept any non-empty value.
- */
 bool Sponge::Configd::Main::_value_valid(unsigned idx, char const *value,
                                          Genode::String<256> &why) const
 {
+	Key_def const &d = _registry[idx];
+
 	if (Genode::strcmp(value, "") == 0) {
-		why = Genode::String<256>("empty value for key '", _registry[idx].name, "'");
+		char const *const expected = d.kind == Key_def::Kind::EnumList
+		                           ? "non-empty comma-separated list"
+		                           : d.kind == Key_def::Kind::FormatString
+		                           ? "non-empty printable ASCII string"
+		                           : "non-empty value";
+		why = Genode::String<256>("invalid value '' for key '", d.name,
+		                          "' (expected: ", expected, ")");
 		return false;
 	}
 
-	Key_def const &d = _registry[idx];
-
-	if (!d.is_enum)
+	if (d.kind == Key_def::Kind::String)
 		return true;
 
-	for (unsigned i = 0; i < d.num_enums; ++i)
-		if (Genode::strcmp(value, d.enum_values[i]) == 0)
-			return true;
+	if (d.kind == Key_def::Kind::UintRange) {
+		unsigned parsed { 0 };
+		for (Genode::size_t i = 0; value[i] != 0; ++i) {
+			char const c = value[i];
+			if (c < '0' || c > '9') {
+				why = Genode::String<256>("invalid value '", Genode::String<128>(value),
+				                          "' for key '", d.name,
+				                          "' (expected: base-10 unsigned integer in range [",
+				                          d.min_value, "..", d.max_value, "])");
+				return false;
+			}
 
-	/* Build "expected: a, b, c" for the error message. */
-	char buf[128] { "expected: " };
-	Genode::size_t pos = Genode::strlen(buf);
+			unsigned const digit = (unsigned)(c - '0');
+			if (parsed > ((~0U) - digit) / 10U) {
+				why = Genode::String<256>("invalid value '", Genode::String<128>(value),
+				                          "' for key '", d.name,
+				                          "' (expected: base-10 unsigned integer in range [",
+				                          d.min_value, "..", d.max_value, "])");
+				return false;
+			}
+			parsed = parsed * 10U + digit;
+		}
+
+		if (parsed < d.min_value || parsed > d.max_value) {
+			why = Genode::String<256>("value '", Genode::String<128>(value),
+			                          "' for key '", d.name,
+			                          "' out of range [", d.min_value,
+			                          "..", d.max_value, "]");
+			return false;
+		}
+		return true;
+	}
+
+	if (d.kind == Key_def::Kind::FormatString) {
+		Genode::size_t const length = Genode::strlen(value);
+		if (length > 64) {
+			why = Genode::String<256>("invalid value '", Genode::String<128>(value),
+			                          "' for key '", d.name,
+			                          "' (expected: at most 64 printable ASCII characters)");
+			return false;
+		}
+		for (Genode::size_t i = 0; i < length; ++i) {
+			unsigned char const c = (unsigned char)value[i];
+			if (c < 0x20U || c > 0x7eU) {
+				why = Genode::String<256>("invalid value '", Genode::String<128>(value),
+				                          "' for key '", d.name,
+				                          "' (expected: printable ASCII characters 0x20..0x7e)");
+				return false;
+			}
+		}
+		return true;
+	}
+
+	char expected[128] { "expected: " };
+	Genode::size_t pos = Genode::strlen(expected);
 	for (unsigned i = 0; i < d.num_enums; ++i) {
-		if (i > 0 && pos + 2 < sizeof(buf)) {
-			buf[pos++] = ',';
-			buf[pos++] = ' ';
+		if (i > 0 && pos + 2 < sizeof(expected)) {
+			expected[pos++] = ',';
+			expected[pos++] = ' ';
 		}
 		char const *s = d.enum_values[i];
-		while (*s && pos + 1 < sizeof(buf))
-			buf[pos++] = *s++;
+		while (*s && pos + 1 < sizeof(expected))
+			expected[pos++] = *s++;
 	}
-	buf[pos] = 0;
+	expected[pos] = 0;
+
+	if (d.kind == Key_def::Kind::Enum) {
+		for (unsigned i = 0; i < d.num_enums; ++i)
+			if (Genode::strcmp(value, d.enum_values[i]) == 0)
+				return true;
+
+		why = Genode::String<256>("invalid value '", Genode::String<128>(value),
+		                          "' for key '", Genode::String<64>(d.name),
+		                          "' (", Genode::String<128>(expected), ")");
+		return false;
+	}
+
+	if (d.kind == Key_def::Kind::EnumList) {
+		auto const whitespace = [] (char c) {
+			return c == ' ' || c == '\t' || c == '\n' || c == '\r';
+		};
+
+		Genode::size_t const length = Genode::strlen(value);
+		Genode::size_t start { 0 };
+		while (start <= length) {
+			Genode::size_t end = start;
+			while (end < length && value[end] != ',') ++end;
+
+			Genode::size_t first = start;
+			Genode::size_t last  = end;
+			while (first < last && whitespace(value[first])) ++first;
+			while (last > first && whitespace(value[last - 1])) --last;
+
+			char token[128] { };
+			Genode::size_t const token_length = last - first;
+			for (Genode::size_t i = 0; i < token_length && i + 1 < sizeof(token); ++i)
+				token[i] = value[first + i];
+
+			bool known { false };
+			if (token_length > 0 && token_length < sizeof(token))
+				for (unsigned i = 0; i < d.num_enums; ++i)
+					if (Genode::strcmp(token, d.enum_values[i]) == 0) {
+						known = true;
+						break;
+					}
+
+			if (!known) {
+				why = Genode::String<256>("invalid token '", Genode::String<128>(token),
+				                          "' in list for key '", d.name,
+				                          "' (", Genode::String<128>(expected), ")");
+				return false;
+			}
+
+			if (end == length) break;
+			start = end + 1;
+		}
+		return true;
+	}
 
 	why = Genode::String<256>("invalid value '", Genode::String<128>(value),
-	                          "' for key '", Genode::String<64>(d.name),
-	                          "' (", Genode::String<128>(buf), ")");
+	                          "' for key '", d.name,
+	                          "' (expected: registered validation kind)");
 	return false;
 }
 

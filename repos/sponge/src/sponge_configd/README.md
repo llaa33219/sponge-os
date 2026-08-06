@@ -43,22 +43,34 @@ at startup with the registry defaults.
 - Watches the `config_request` ROM via `Attached_rom_dataspace` + `sigh`.
 - On change, parses `<request op="..." key="..." value="..."/>`.
 - `get`: returns one key's value (error if the key is unknown).
-- `set`: validates the value against the key's type (free-form string
-  or enum), stores it, regenerates the broadcast, answers ok. Unknown
-  key or invalid enum value → structured error.
+- `set`: validates the value against the key's registered type (string,
+  enum, uint range, enum-list, or structural format string), stores it,
+  regenerates the broadcast, answers ok. Unknown key or invalid value →
+  structured error.
 - `list`: enumerates every known key/value, name-sorted.
 - De-duplicates identical requests by an `op|key|value` signature.
 - Emits a structured `<result>` (ok/error) per request.
 
-## Key registry (Phase 5a)
+## Key registry (Phase 11)
 
 The store is a closed registry — an unknown key is a structured error,
-never a silent write:
+never a silent write. Registry entries and list/broadcast output are
+name-sorted:
 
-| key             | type   | allowed values             | default |
-|-----------------|--------|----------------------------|---------|
-| `theme.active`  | string | any non-empty value        | `light` |
-| `panel.position`| enum   | `top`, `bottom`, `left`, `right` | `bottom` |
+| key                      | type          | allowed values / constraint                    | default         |
+|--------------------------|---------------|-----------------------------------------------|-----------------|
+| `clock.format`           | format string | non-empty, ≤64 printable ASCII characters    | `HH:mm`         |
+| `leitzentrale.enabled`   | enum          | `true`, `false`                               | `false`         |
+| `launcher.sort_by`       | enum          | `manual`, `alpha`                             | `alpha`         |
+| `panel.height`           | uint range    | base-10 integer in `[16..128]`               | `28`            |
+| `panel.position`         | enum          | `top`, `bottom`, `left`, `right`              | `bottom`        |
+| `panel.visible_widgets`  | enum-list     | comma-separated `clock`, `launcher` tokens  | `clock,launcher`|
+| `theme.active`           | string        | any non-empty value                           | `light`         |
+
+All seven keys run on both kernel tags and are live-reloadable from the
+configd broadcast. `panel.position` remains a boot-time placement choice:
+configd persists the value in memory, while the run script/domain owns the
+actual panel placement and a reboot is required after changing it.
 
 ## What is deliberately not implemented
 
@@ -67,7 +79,6 @@ never a silent write:
   touching the generator).
 - Notification of watchers beyond the broadcast ROM (watchers poll the
   ROM; report_rom already signals them on change).
-- Additional keys land in later Phase 5 slices.
 
 ## Minimum privilege
 
