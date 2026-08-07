@@ -1,0 +1,241 @@
+make: ディレクトリ '/home/luke/sponge-os/genode/build/x86_64'　に入ります
+including /home/luke/sponge-os/genode/tool/run/power_on/linux
+including /home/luke/sponge-os/genode/tool/run/log/linux
+including /home/luke/sponge-os/genode/tool/run/boot_dir/linux
+including /home/luke/sponge-os/repos/sponge/run/sponge-config-probe.run
+building targets:  core lib/ld init timer server/report_rom sponge_configd test/pkg_seq_probe 
+spawn make core lib/ld init timer server/report_rom sponge_configd test/pkg_seq_probe
+make[1]: ディレクトリ '/home/luke/sponge-os/genode/build/x86_64' に入ります
+  [00;33mLibrary[0m ld.abi.so
+  [00;33mLibrary[0m ldso_so_support.lib.a
+  [00;33mLibrary[0m syscall-linux.lib.a
+  [00;33mLibrary[0m base-linux-common.lib.a
+  [00;33mLibrary[0m timeout.lib.a
+  [00;33mLibrary[0m startup-linux.lib.a
+  [00;33mLibrary[0m cxx.lib.a
+  [00;33mLibrary[0m seccomp.lib.a
+  [00;33mLibrary[0m base-linux.lib.a
+  [00;33mLibrary[0m ld-linux.lib.so
+  [00;33mLibrary[0m ld.lib.so
+  [00;33mLibrary[0m core-linux.lib.a
+  [01;33mProgram[0m core/linux/core-linux
+    COMPILE  version.o
+    LINK     core-linux
+  [00;33mLibrary[0m base.lib.a
+  [01;33mProgram[0m init/init
+  [01;33mProgram[0m server/report_rom/report_rom
+  [01;33mProgram[0m sponge_configd/sponge_configd
+  [01;33mProgram[0m test/pkg_seq_probe/pkg_seq_probe
+  [01;33mProgram[0m timer/hpet/hpet_timer
+  [01;33mProgram[0m timer/linux/linux_timer
+make[1]: ディレクトリ '/home/luke/sponge-os/genode/build/x86_64' から出ます
+genode build completed
+spawn ./core
+Genode v0.1.0-alpha-79-gce38e4f609
+17592186044415 MiB RAM and 19000 caps assigned to init
+[init -> sponge_configd] sponge_configd: ready
+[init -> report_rom] report 'sponge_configd -> config'
+[init -> pkg_seq_probe] config-seq-probe: [1] set panel.height = 64
+[init -> report_rom]   <config>
+[init -> report_rom]   	<key name="clock.format" value="HH:mm"/>
+[init -> report_rom]   	<key name="launcher.sort_by" value="alpha"/>
+[init -> report_rom]   	<key name="leitzentrale.enabled" value="false"/>
+[init -> report_rom]   	<key name="panel.height" value="28"/>
+[init -> report_rom]   	<key name="panel.position" value="bottom"/>
+[init -> report_rom]   	<key name="panel.visible_widgets" value="clock,launcher"/>
+[init -> report_rom]   	<key name="theme.active" value="light"/>
+[init -> report_rom]   	<key name="leitzentrale.diverged" value="false"/>
+[init -> report_rom]   </config>
+[init -> report_rom] report 'pkg_seq_probe -> config_request'
+[init -> report_rom]   <request op="set" key="panel.height" value="64"/>
+[init -> report_rom] report 'sponge_configd -> config'
+[init -> report_rom]   <config>
+[init -> report_rom]   	<key name="clock.format" value="HH:mm"/>
+[init -> report_rom]   	<key name="launcher.sort_by" value="alpha"/>
+[init -> report_rom]   	<key name="leitzentrale.enabled" value="false"/>
+[init -> report_rom]   	<key name="panel.height" value="64"/>
+[init -> report_rom]   	<key name="panel.position" value="bottom"/>
+[init -> report_rom]   	<key name="panel.visible_widgets" value="clock,launcher"/>
+[init -> report_rom]   	<key name="theme.active" value="light"/>
+[init -> report_rom]   	<key name="leitzentrale.diverged" value="false"/>
+[init -> report_rom]   </config>
+[init -> report_rom] report 'sponge_configd -> config_result'
+[init -> report_rom]   <result status="ok" op="set" key="panel.height" value="64"/>
+[init -> pkg_seq_probe] config-seq-probe: [1] set ok
+[init -> pkg_seq_probe] config-seq-probe: [2] get panel.height
+[init -> report_rom] report 'pkg_seq_probe -> config_request'
+[init -> report_rom]   <request op="get" key="panel.height"/>
+[init -> report_rom] report 'sponge_configd -> config_result'
+[init -> report_rom]   <result status="ok" op="get" key="panel.height" value="64"/>
+[init -> pkg_seq_probe] config-seq-probe: [2] get ok
+[init -> pkg_seq_probe] config-seq-probe: [3] set panel.height = 12
+[init -> report_rom] report 'pkg_seq_probe -> config_request'
+[init -> report_rom]   <request op="set" key="panel.height" value="12"/>
+[init -> report_rom] report 'sponge_configd -> config_result'
+[init -> report_rom]   <result status="error" op="set" key="panel.height" error="value '12' for key 'panel.height' out of range [16..128]"/>
+[init -> pkg_seq_probe] config-seq-probe: [3] set ok (error as expected)
+[init -> pkg_seq_probe] config-seq-probe: [4] set panel.height = 256
+[init -> report_rom] report 'pkg_seq_probe -> config_request'
+[init -> report_rom]   <request op="set" key="panel.height" value="256"/>
+[init -> report_rom] report 'sponge_configd -> config_result'
+[init -> report_rom]   <result status="error" op="set" key="panel.height" error="value '256' for key 'panel.height' out of range [16..128]"/>
+[init -> pkg_seq_probe] config-seq-probe: [4] set ok (error as expected)
+[init -> pkg_seq_probe] config-seq-probe: [5] set panel.height = -1
+[init -> report_rom] report 'pkg_seq_probe -> config_request'
+[init -> report_rom]   <request op="set" key="panel.height" value="-1"/>
+[init -> report_rom] report 'sponge_configd -> config_result'
+[init -> report_rom]   <result status="error" op="set" key="panel.height" error="invalid value '-1' for key 'panel.height' (expected: base-10 unsigned integer in range [16..128])"/>
+[init -> pkg_seq_probe] config-seq-probe: [5] set ok (error as expected)
+[init -> pkg_seq_probe] config-seq-probe: [6] set panel.visible_widgets = launcher
+[init -> report_rom] report 'pkg_seq_probe -> config_request'
+[init -> report_rom]   <request op="set" key="panel.visible_widgets" value="launcher"/>
+[init -> report_rom] report 'sponge_configd -> config'
+[init -> report_rom]   <config>
+[init -> report_rom]   	<key name="clock.format" value="HH:mm"/>
+[init -> report_rom]   	<key name="launcher.sort_by" value="alpha"/>
+[init -> report_rom]   	<key name="leitzentrale.enabled" value="false"/>
+[init -> report_rom]   	<key name="panel.height" value="64"/>
+[init -> report_rom]   	<key name="panel.position" value="bottom"/>
+[init -> report_rom]   	<key name="panel.visible_widgets" value="launcher"/>
+[init -> report_rom]   	<key name="theme.active" value="light"/>
+[init -> report_rom]   	<key name="leitzentrale.diverged" value="false"/>
+[init -> report_rom]   </config>
+[init -> report_rom] report 'sponge_configd -> config_result'
+[init -> report_rom]   <result status="ok" op="set" key="panel.visible_widgets" value="launcher"/>
+[init -> pkg_seq_probe] config-seq-probe: [6] set ok
+[init -> pkg_seq_probe] config-seq-probe: [7] get panel.visible_widgets
+[init -> report_rom] report 'pkg_seq_probe -> config_request'
+[init -> report_rom]   <request op="get" key="panel.visible_widgets"/>
+[init -> report_rom] report 'sponge_configd -> config_result'
+[init -> report_rom]   <result status="ok" op="get" key="panel.visible_widgets" value="launcher"/>
+[init -> pkg_seq_probe] config-seq-probe: [7] get ok
+[init -> pkg_seq_probe] config-seq-probe: [8] set panel.visible_widgets = launcher,clock
+[init -> report_rom] report 'pkg_seq_probe -> config_request'
+[init -> report_rom]   <request op="set" key="panel.visible_widgets" value="launcher,clock"/>
+[init -> report_rom] report 'sponge_configd -> config'
+[init -> report_rom]   <config>
+[init -> report_rom]   	<key name="clock.format" value="HH:mm"/>
+[init -> report_rom]   	<key name="launcher.sort_by" value="alpha"/>
+[init -> report_rom]   	<key name="leitzentrale.enabled" value="false"/>
+[init -> report_rom]   	<key name="panel.height" value="64"/>
+[init -> report_rom]   	<key name="panel.position" value="bottom"/>
+[init -> report_rom]   	<key name="panel.visible_widgets" value="launcher,clock"/>
+[init -> report_rom]   	<key name="theme.active" value="light"/>
+[init -> report_rom]   	<key name="leitzentrale.diverged" value="false"/>
+[init -> report_rom]   </config>
+[init -> report_rom] report 'sponge_configd -> config_result'
+[init -> report_rom]   <result status="ok" op="set" key="panel.visible_widgets" value="launcher,clock"/>
+[init -> pkg_seq_probe] config-seq-probe: [8] set ok
+[init -> pkg_seq_probe] config-seq-probe: [9] set panel.visible_widgets
+[init -> report_rom] report 'pkg_seq_probe -> config_request'
+[init -> report_rom]   <request op="set" key="panel.visible_widgets"/>
+[init -> report_rom] report 'sponge_configd -> config_result'
+[init -> report_rom]   <result status="error" op="set" key="panel.visible_widgets" error="invalid value '' for key 'panel.visible_widgets' (expected: non-empty comma-separated list)"/>
+[init -> pkg_seq_probe] config-seq-probe: [9] set ok (error as expected)
+[init -> pkg_seq_probe] config-seq-probe: [10] set panel.visible_widgets = tray
+[init -> report_rom] report 'pkg_seq_probe -> config_request'
+[init -> report_rom]   <request op="set" key="panel.visible_widgets" value="tray"/>
+[init -> report_rom] report 'sponge_configd -> config_result'
+[init -> report_rom]   <result status="error" op="set" key="panel.visible_widgets" error="invalid token 'tray' in list for key 'panel.visible_widgets' (expected: clock, launcher)"/>
+[init -> pkg_seq_probe] config-seq-probe: [10] set ok (error as expected)
+[init -> pkg_seq_probe] config-seq-probe: [11] set clock.format = HH:mm:ss
+[init -> report_rom] report 'pkg_seq_probe -> config_request'
+[init -> report_rom]   <request op="set" key="clock.format" value="HH:mm:ss"/>
+[init -> report_rom] report 'sponge_configd -> config'
+[init -> report_rom]   <config>
+[init -> report_rom]   	<key name="clock.format" value="HH:mm:ss"/>
+[init -> report_rom]   	<key name="launcher.sort_by" value="alpha"/>
+[init -> report_rom]   	<key name="leitzentrale.enabled" value="false"/>
+[init -> report_rom]   	<key name="panel.height" value="64"/>
+[init -> report_rom]   	<key name="panel.position" value="bottom"/>
+[init -> report_rom]   	<key name="panel.visible_widgets" value="launcher,clock"/>
+[init -> report_rom]   	<key name="theme.active" value="light"/>
+[init -> report_rom]   	<key name="leitzentrale.diverged" value="false"/>
+[init -> report_rom]   </config>
+[init -> report_rom] report 'sponge_configd -> config_result'
+[init -> report_rom]   <result status="ok" op="set" key="clock.format" value="HH:mm:ss"/>
+[init -> pkg_seq_probe] config-seq-probe: [11] set ok
+[init -> pkg_seq_probe] config-seq-probe: [12] get clock.format
+[init -> report_rom] report 'pkg_seq_probe -> config_request'
+[init -> report_rom]   <request op="get" key="clock.format"/>
+[init -> report_rom] report 'sponge_configd -> config_result'
+[init -> report_rom]   <result status="ok" op="get" key="clock.format" value="HH:mm:ss"/>
+[init -> pkg_seq_probe] config-seq-probe: [12] get ok
+[init -> pkg_seq_probe] config-seq-probe: [13] set clock.format = bogus
+[init -> report_rom] report 'pkg_seq_probe -> config_request'
+[init -> report_rom]   <request op="set" key="clock.format" value="bogus"/>
+[init -> report_rom] report 'sponge_configd -> config'
+[init -> report_rom]   <config>
+[init -> report_rom]   	<key name="clock.format" value="bogus"/>
+[init -> report_rom]   	<key name="launcher.sort_by" value="alpha"/>
+[init -> report_rom]   	<key name="leitzentrale.enabled" value="false"/>
+[init -> report_rom]   	<key name="panel.height" value="64"/>
+[init -> report_rom]   	<key name="panel.position" value="bottom"/>
+[init -> report_rom]   	<key name="panel.visible_widgets" value="launcher,clock"/>
+[init -> report_rom]   	<key name="theme.active" value="light"/>
+[init -> report_rom]   	<key name="leitzentrale.diverged" value="false"/>
+[init -> report_rom]   </config>
+[init -> report_rom] report 'sponge_configd -> config_result'
+[init -> report_rom]   <result status="ok" op="set" key="clock.format" value="bogus"/>
+[init -> pkg_seq_probe] config-seq-probe: [13] set ok
+[init -> pkg_seq_probe] config-seq-probe: [14] set launcher.sort_by = manual
+[init -> report_rom] report 'pkg_seq_probe -> config_request'
+[init -> report_rom]   <request op="set" key="launcher.sort_by" value="manual"/>
+[init -> report_rom] report 'sponge_configd -> config'
+[init -> report_rom]   <config>
+[init -> report_rom]   	<key name="clock.format" value="bogus"/>
+[init -> report_rom]   	<key name="launcher.sort_by" value="manual"/>
+[init -> report_rom]   	<key name="leitzentrale.enabled" value="false"/>
+[init -> report_rom]   	<key name="panel.height" value="64"/>
+[init -> report_rom]   	<key name="panel.position" value="bottom"/>
+[init -> report_rom]   	<key name="panel.visible_widgets" value="launcher,clock"/>
+[init -> report_rom]   	<key name="theme.active" value="light"/>
+[init -> report_rom]   	<key name="leitzentrale.diverged" value="false"/>
+[init -> report_rom]   </config>
+[init -> report_rom] report 'sponge_configd -> config_result'
+[init -> report_rom]   <result status="ok" op="set" key="launcher.sort_by" value="manual"/>
+[init -> pkg_seq_probe] config-seq-probe: [14] set ok
+[init -> pkg_seq_probe] config-seq-probe: [15] set launcher.sort_by = random
+[init -> report_rom] report 'pkg_seq_probe -> config_request'
+[init -> report_rom]   <request op="set" key="launcher.sort_by" value="random"/>
+[init -> report_rom] report 'sponge_configd -> config_result'
+[init -> report_rom]   <result status="error" op="set" key="launcher.sort_by" error="invalid value 'random' for key 'launcher.sort_by' (expected: manual, alpha)"/>
+[init -> pkg_seq_probe] config-seq-probe: [15] set ok (error as expected)
+[init -> pkg_seq_probe] config-seq-probe: [16] list
+[init -> report_rom] report 'pkg_seq_probe -> config_request'
+[init -> report_rom]   <request op="list"/>
+[init -> report_rom] report 'sponge_configd -> config_result'
+[init -> report_rom]   <result status="ok" op="list" count="7">
+[init -> report_rom]   	<keys>
+[init -> report_rom]   		<key name="clock.format" value="bogus"/>
+[init -> report_rom]   		<key name="launcher.sort_by" value="manual"/>
+[init -> report_rom]   		<key name="leitzentrale.enabled" value="false"/>
+[init -> report_rom]   		<key name="panel.height" value="64"/>
+[init -> report_rom]   		<key name="panel.position" value="bottom"/>
+[init -> report_rom]   		<key name="panel.visible_widgets" value="launcher,clock"/>
+[init -> report_rom]   		<key name="theme.active" value="light"/>
+[init -> report_rom]   	</keys>
+[init -> report_rom]   </result>
+[init -> pkg_seq_probe] config-seq-probe: [16] list ok
+[init -> pkg_seq_probe] config-seq-probe: [17] list
+[init -> report_rom] report 'pkg_seq_probe -> config_request'
+[init -> report_rom]   <request op="list"/>
+[init -> pkg_seq_probe] config-seq-probe: [17] list ok
+[init -> pkg_seq_probe] config-seq-probe: [18] list
+[init -> report_rom] report 'pkg_seq_probe -> config_request'
+[init -> report_rom]   <request op="list"/>
+[init -> pkg_seq_probe] config-seq-probe: [18] list ok
+[init -> pkg_seq_probe] config-seq-probe: [19] list
+[init -> report_rom] report 'pkg_seq_probe -> config_request'
+[init -> report_rom]   <request op="list"/>
+[init -> pkg_seq_probe] config-seq-probe: [19] list ok
+[init -> pkg_seq_probe] config-seq-probe: [20] get no.such.key
+[init -> report_rom] report 'pkg_seq_probe -> config_request'
+[init -> report_rom]   <request op="get" key="no.such.key"/>
+[init -> report_rom] report 'sponge_configd -> config_result'
+[init -> report_rom]   <result status="error" op="get" key="no.such.key" error="unknown key: no.such.key"/>
+[init -> pkg_seq_probe] config-seq-probe: [20] get ok (error as expected)
+[init -> pkg_seq_probe] config-seq-probe: PASS
+
+Run script execution successful.
+make: ディレクトリ '/home/luke/sponge-os/genode/build/x86_64' から出ます

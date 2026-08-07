@@ -1,0 +1,14 @@
+[sponge-theme-payload] Sponge OS theme payload-size host gate
+  themes_dir:        repos/sponge/src/sponge-de/themes
+  max_payload_bytes: 8192
+
+[sponge-theme-payload] shipped themes:
+
+  default.theme     696 bytes  ok
+  light.theme       738 bytes  ok
+  dark.theme        843 bytes  ok
+  compact.theme    1269 bytes  ok
+
+[sponge-theme-payload] SUMMARY: 4 theme(s) verified, largest compact.theme = 1269 bytes, headroom under cap = 6922 bytes
+[sponge-theme-payload] PASS
+exit_code: 0
