@@ -1,0 +1,552 @@
+#
+# \brief  Sponge OS panel-config scenario on base-sel4 (Phase 11 W5)
+# \author Sponge OS contributors
+# \date   2026
+#
+# End-to-end verification of the Phase 11 W2 panel-restyle migration +
+# new in-sponge-de ConfigController, **on the production kernel** (seL4).
+# Mirrors run/sponge-panel-config.run (base-linux fast loop) on the
+# base-sel4 + real-PC-driver chain (vesa_fb / ps2 / pc_usb_host /
+# usb_hid / event_filter), proving the same panel-config 7-subphase
+# probe stays green with the full hardware stack underneath.
+#
+#   sponge_configd --[Report "config"]--> report_rom --[ROM "config"]--> sponge-de
+#   sponge_configd <--[Report "config_result"]-- report_rom <--[ROM "config_result"]-- probe
+#   probe --[Report "config_request"]--> report_rom --[ROM "config_request"]--> sponge_configd
+#
+# Topology (base-sel4):
+#
+#   init
+#   + timer
+#   + report_rom      (relays every Report<->ROM hop below)
+#   + nitpicker       (Gui/Capture/Event; probe's capture defines the
+#                      panorama; panel domain height=128 — the W1 panel
+#                      .height upper bound — so P1's height=64 grows
+#                      the toggle rect without hitting the domain
+#                      ceiling)
+#   + drivers         (sub-init copied verbatim from run/sponge-de-
+#                      sel4-interactive.run: vesa_fb / ps2 /
+#                      pc_usb_host / usb_hid / event_filter + chargen
+#                      ROMs)
+#   + sponge_configd  (owns the 7-key registry; broadcasts the whole
+#                      store; the probe drives it via the
+#                      config_request / config_result Report channel
+#                      — same plumbing vct's `vct config` uses)
+#   + sponge_themed   (configd broadcast -> resolves <name>.theme ->
+#                      theme report; sponge-de reads it via
+#                      ThemeController)
+#   + sponge-de       (watches themed's theme report AND configd's
+#                      config broadcast; ThemeController +
+#                      ConfigController)
+#   + sponge_de_probe (phases="panel-config" — runs the 7 subphases
+#                      entirely via configd writes; NO QMP click is
+#                      required because every subphase is configd-
+#                      driven. The base-sel4 driver stack is still
+#                      needed because sponge-de is a Qt6 renderer
+#                      that consumes the real vesa_fb + event_filter
+#                      chain; the probe uses Capture + Timer + ROM,
+#                      all of which are wired through nitpicker /
+#                      timer / report_rom.)
+#
+# report_rom policies (full labels include the child-name prefix):
+#   configd's   ROM "config_request"   <- probe's "config_request" report
+#   probe's     ROM "config_result"    <- configd's "config_result"
+#   sponge-de's ROM "configd"          <- configd's "config" broadcast
+#   probe's     ROM "configd"          <- configd's "config" broadcast
+#   sponge_themed's ROM "config"       <- configd's "config" broadcast
+#   sponge-de's ROM "theme"            <- sponge_themed's "theme"
+#   probe's     ROM "sponge_de_input"  <- sponge-de's "input"
+#
+# sponge-de component config gets:
+#   <theme source="themed"/>     — live theme reload via sponge_themed
+#   <config source="configd"/>   — activate ConfigController (gates
+#                                   the `config` ROM session open)
+#   <version value="2"/>         — version bump marker (sponge-de and
+#                                   sponge_themed both log the version
+#                                   on construction so a stale-binary
+#                                   boot shows up immediately)
+#
+# The probe selects the panel-config phase via:
+#   <config phases="panel-config"/>
+# inject="no" is set so the probe takes the observe-mode dispatch
+# (the inject path is byte-identical to the pre-W2 probe and is NOT
+# exercised here; panel-config-only mode skips the inject branch via
+# the run_panel_config_only gate at probe/main.cc:485).
+#
+# === Why no QMP click is needed ===
+#
+# The probe's _phase_panel_config() (probe/main.cc:962) drives every
+# subphase via the config_request Report:
+#   P1 set panel.height=64;          poll toggle rect (accent fraction)
+#   P2 set panel.height=28;          poll toggle rect (shrunk)
+#   P3 set panel.visible_widgets=launcher;  poll clock rect (hidden)
+#   P4 set panel.visible_widgets=clock;     poll toggle rect (hidden)
+#   P5 set panel.visible_widgets=clock,launcher; poll both restored
+#   P6 set clock.format=HH:mm:ss;    poll clock glyph column count
+#   P7 set panel.visible_widgets=""; poll validator rejection + broadcast
+#                                    unchanged
+# Each subphase is configd-driven end-to-end (no marker emitted, no
+# host-driven input choreography). The scenario is therefore configd-
+# driven and the usb-tablet / scale-transform wiring from W4 is NOT
+# needed — we keep the panel domain panel-only and never press the
+# S toggle.
+#
+# === Hard constraints ===
+#
+# - base-sel4 only. vesa_fb/ps2/usb_hid need real PC hardware access.
+# - The W4 usb-tablet absolute-axis recipe is intentionally NOT
+#   wired here (no qmp.inc source, no event_filter scale transform);
+#   the probe only reads Capture pixels + config_request / config
+#   broadcast ROMs.
+# - sponge_configd waits for the theme ROM (run/sponge-theme.run
+#   step 0 ordering — sponge_themed starts BEFORE sponge_configd so
+#   the broadcast is well-formed at first emission; this matches the
+#   trap-7 mitigation in Phase 11 plan).
+#
+# Acceptance: sponge-de-probe: phase panel-config PASS + Run script
+# execution successful. The 7 subphases' table is at Phase 11 plan W2
+# step 9; every asserted delta is physically realizable (failure-
+# point 15 enforcement — never asserts against the panel-bg /
+# nitpicker-bg boundary or against the demo-window position).
+#
+
+assert {[have_spec sel4]} \
+	"sponge-panel-config-sel4 requires KERNEL=sel4 (BOARD=pc) in build.conf. \
+	 This scenario drives the real PC driver chain (vesa_fb / ps2 / usb_hid) \
+	 which base-linux cannot provide. The base-linux counterpart lives at \
+	 run/sponge-panel-config.run."
+
+build { core lib/ld init timer server/report_rom server/nitpicker \
+         driver/acpi app/pci_decode driver/platform \
+         driver/framebuffer/vesa driver/ps2 \
+         driver/usb_host/pc driver/usb_hid server/event_filter \
+         sponge_configd sponge_themed sponge-de \
+         test/sponge_de_probe \
+         qt6/base lib/libc lib/libm lib/stdcxx lib/mesa \
+         lib/mesa_gpu-softpipe lib/egl lib/softpipe lib/libdrm lib/expat \
+         lib/qt6_component lib/vfs lib/vfs_pipe lib/vfs_gpu lib/rom_filter \
+         lib/zlib lib/libpng lib/blit }
+
+create_boot_directory
+
+install_config {
+config
++ parent-provides
+  + service ROM
+  + service PD
+  + service RM
+  + service CPU
+  + service LOG
+  + service IRQ
+  + service IO_MEM
+  + service IO_PORT
+
++ default | caps: 200 | ram: 4M
++ default-route
+  + any-service
+    + parent
+    + any-child
+
++ start timer
+  + provides | + service Timer
+
++ start report_rom | caps: 300 | ram: 8M
+  + provides
+    + service Report
+    + service ROM
+  + config | verbose: no
+    #
+    # Configd channel (mirrors run/sponge-panel-config.run).
+    #
+    + policy | label: sponge_configd -> config_request | report: sponge_de_probe -> config_request
+    + policy | label: sponge_de_probe -> config_result  | report: sponge_configd -> config_result
+    + policy | label: sponge-de -> configd              | report: sponge_configd -> config
+    + policy | label: sponge_de_probe -> configd        | report: sponge_configd -> config
+    + policy | label: sponge_themed -> config           | report: sponge_configd -> config
+    #
+    # Theme pipeline (mirrors run/sponge-theme.run).
+    #
+    + policy | label: sponge-de -> theme                | report: sponge_themed -> theme
+    + policy | label: sponge_de_probe -> theme          | report: sponge_themed -> theme
+    #
+    # sponge-de's `input` report -> probe's `sponge_de_input` ROM
+    # (probe uses it to confirm panel-config clicks are NOT coming
+    # via input — this scenario has no click choreography; the ROM
+    # is consumed only to confirm the probe's render path is
+    # alive). Mirrors the report_rom policy in
+    # run/sponge-de-sel4-interactive.run.
+    #
+    + policy | label: sponge_de_probe -> sponge_de_input | report: sponge-de -> input
+
++ start nitpicker | ram: 16M
+  + provides
+    + service Gui
+    + service Capture
+    + service Event
+  + route
+    + service Report | + child report_rom
+    + service Timer  | + child timer
+    + any-service
+      + parent
+      + any-child
+  + config
+    + capture
+    + event
+    #
+    # Panel domain height = 128 (the W1 panel.height upper bound).
+    # The probe's P1 subphase grows the panel to height=64 and
+    # observes the toggle rect height growing from 20 to 60 px;
+    # the wider domain avoids any clamping when the panel-config
+    # write briefly sits in the GUI thread's QTimer-based apply
+    # queue. Mirror of run/sponge-panel-config.run's domain spec.
+    #
+    + domain panel | layer: 1 | content: client | label: no
+                   | hover: always | focus: click | ypos: 0 | height: 128
+    + domain default | layer: 2 | content: client | label: no
+                     | hover: always | focus: click | ypos: 128 | height: -128
+    + policy | label_prefix: sponge-de -> Sponge Panel | domain: panel
+    + policy | label_prefix: sponge-de -> Sponge DE Demo | domain: default
+    + default-policy | domain: default
+    + background | color: #1e1e2e
+
++ start drivers | caps: 1500 | ram: 96M | managing_system: yes
+  + binary init
+  + route
+    + service ROM | label: config | + parent | label: drivers.config
+    + service Timer               | + child timer
+    + service Capture             | + child nitpicker
+    + service Event               | + child nitpicker
+    + any-service                 | + parent
+  + config
+    + parent-provides
+      + service IRQ
+      + service IO_MEM
+      + service IO_PORT
+      + service ROM
+      + service PD
+      + service RM
+      + service CPU
+      + service LOG
+      + service Timer
+      + service Capture
+      + service Event
+
+    + default | caps: 60
+
+    + start acpi | caps: 250 | ram: 4M
+      + route
+        + service IO_MEM | + parent
+        + service LOG    | + parent
+        + service PD     | + parent
+        + service RM     | + parent
+        + service CPU    | + parent
+        + service ROM    | + parent
+        + service Report | + child report_rom
+
+    + start report_rom | caps: 100 | ram: 2M
+      + provides
+      | + service ROM
+      | + service Report
+      + config
+      | + policy | label: pci_decode -> system | report: acpi -> acpi
+      | + policy | label: platform -> devices  | report: pci_decode -> devices
+      | + policy | label: usb_hid -> report    | report: usb -> devices
+      + route
+        + service LOG | + parent
+        + service PD  | + parent
+        + service CPU | + parent
+        + service ROM | + parent
+
+    + start pci_decode | caps: 100 | ram: 2M
+      + route
+        + service Report              | + child report_rom
+        + service ROM | label: system | + child report_rom
+        + service IO_MEM              | + parent
+        + service LOG                 | + parent
+        + service PD                  | + parent
+        + service RM                  | + parent
+        + service CPU                 | + parent
+        + service ROM                 | + parent
+
+    + start platform | caps: 200 | ram: 3M | managing_system: yes
+      + provides
+      | + service Dma
+      | + service Platform
+      + route
+      | + service ROM | label: devices | + child report_rom
+      | + service Report               | + child report_rom
+      | + service IRQ                  | + parent
+      | + service IO_MEM               | + parent
+      | + service IO_PORT              | + parent
+      | + service ROM                  | + parent
+      | + service PD                   | + parent
+      | + service CPU                  | + parent
+      | + service LOG                  | + parent
+      | + service Timer                | + parent
+      + config
+        + report | devices: yes
+        + policy | label_prefix: ps2             | + device ps2
+        + policy | label_prefix: fb  | info: yes | + pci | class: VGA
+        + policy | label_prefix: usb | info: yes | + pci | class: USB
+
+    + start fb | caps: 150 | ram: 20M
+      + binary vesa_fb
+      + route
+        + service ROM | label: config | + parent | label: fb.config
+        + service Report              | + child report_rom
+        + service Dma                 | + child platform
+        + service Platform            | + child platform
+        + service IO_PORT             | + parent
+        + service IO_MEM              | + parent
+        + service ROM                 | + parent
+        + service PD                  | + parent
+        + service CPU                 | + parent
+        + service LOG                 | + parent
+        + service Timer               | + parent
+        + service Capture             | + parent
+
+    + start ps2 | caps: 100 | ram: 1280K
+      + config
+      + route
+        + service Dma      | + child platform
+        + service Platform | + child platform
+        + service Event    | + child event_filter | label: ps2
+        + service ROM      | + parent
+        + service PD       | + parent
+        + service CPU      | + parent
+        + service LOG      | + parent
+        + service Timer    | + parent
+
+    + start usb | caps: 200 | ram: 16M
+      + binary pc_usb_host
+      + provides | + service Usb
+      + config
+      | + report | devices: yes
+      | + policy | label_prefix: usb_hid | + device | class: 0x3
+      + route
+        + service Dma                     | + child platform
+        + service Platform                | + child platform
+        + service Report | label: devices | + child report_rom
+        + service ROM                     | + parent
+        + service PD                      | + parent
+        + service RM                      | + parent
+        + service CPU                     | + parent
+        + service LOG                     | + parent
+        + service Timer                   | + parent
+
+    + start usb_hid | caps: 180 | ram: 10M
+      + route
+        + service ROM | label: report | + child report_rom
+        + service ROM                 | + parent
+        + service PD                  | + parent
+        + service RM                  | + parent
+        + service CPU                 | + parent
+        + service LOG                 | + parent
+        + service Timer               | + parent
+        + service Event               | + child event_filter | label: usb
+        + service Usb                 | + child usb
+
+    + start event_filter | caps: 90 | ram: 1280K
+      + provides | + service Event
+      + route
+        + service ROM | label: config | + parent | label: event_filter.config
+        + service Event               | + parent
+        + service ROM                 | + parent
+        + service PD                  | + parent
+        + service CPU                 | + parent
+        + service LOG                 | + parent
+        + service Timer               | + parent
+
+#
+# sponge_themed first (init starts children in REVERSE order of the
+# config XML — placing sponge_themed first means it is the LAST to
+# start, so sponge_configd + sponge_de are up first). This avoids the
+# theme-vs-configd boot-order race (Phase 11 plan trap #7): configd
+# waits for the theme ROM before broadcasting overrides.
+#
++ start sponge_themed | caps: 200 | ram: 8M
+  + route
+    + service ROM | label_last: config | + child report_rom
+    + service ROM | label_last: default.theme | + parent
+    + service ROM | label_last: light.theme   | + parent
+    + service ROM | label_last: dark.theme    | + parent
+    + service ROM | label_last: compact.theme | + parent
+    + service ROM | label_suffix: .theme | + child report_rom
+    + service Report | + child report_rom
+    + any-service
+      + parent
+      + any-child
+
++ start sponge_configd | caps: 200 | ram: 16M
+  + route
+    + service ROM | label_last: config_request | + child report_rom
+    + service Report | + child report_rom
+    + any-service
+      + parent
+      + any-child
+
+#
+# sponge-de: Qt6 DE. caps: 1000 (NOT 300) — base-sel4's capability
+# accounting is roughly 3x base-linux's; 300 caps run out inside
+# Mesa's EGL screen creation (the §11.1 lesson documented in
+# run/sponge-de-sel4-interactive.run). The probe's panel-config phase
+# polls Capture every 50-100ms; the GUI thread must remain responsive
+# to receive the configd broadcast updates.
+#
+# <config source="configd"/>   — ConfigController opens the `config`
+#                                 ROM session
+# <version value="2"/>         — version bump marker (Phase 11 W1)
+#
+# NOTE: NO <theme source="themed"/> here. The probe hard-codes the
+# accent color check to #89b4fa (default.theme's accent) and the
+# panel_text to #cdd6f4 (default.theme's panel_text); with live theme
+# reload on, sponge-de would adopt the W1 registry default 'light'
+# (accent #1e66f5) on first broadcast — see sponge_de_main.cc:55-62.
+# Without live reload, sponge-de's ThemeController falls back to
+# default.theme, which is what the probe expects. This mirrors
+# run/sponge-panel-config.run's config block (also no live theme).
+# The W3 + W4 theme-3theme scenarios remain the canonical place to
+# exercise live theme reload; panel-config-sel4 deliberately isolates
+# the configd-driven panel geometry flow.
+#
++ start sponge-de | caps: 1000 | ram: 128M
+  + config
+    + config | source: configd
+    + version: 2
+    + vfs
+      + dir dev
+        + log
+        + inline rtc | : 2018-01-01 00:01
+      + dir pipe | + pipe
+      + tar qt6_dejavusans.tar
+      + tar qt6_libqgenode.tar
+    + libc | stdout: /dev/log | stderr: /dev/log | pipe: /pipe | rtc: /dev/rtc
+  + route
+    + service Gui | label_last: Sponge Panel | + child nitpicker
+    + service Gui                              | + child nitpicker
+    + service Report | label: shape          | + child report_rom
+    + service Report | label: input          | + child report_rom
+    + service Report | label: applied_theme  | + child report_rom
+    + service ROM    | label: theme          | + child report_rom
+    + service ROM    | label: configd        | + child report_rom
+    + service ROM    | label: mesa_gpu.lib.so | + parent | label: mesa_gpu-softpipe.lib.so
+    + any-service
+      + parent
+      + any-child
+
++ start sponge_de_probe | caps: 100 | ram: 16M
+  + config | phases: panel-config | inject: no
+  + route
+    + service Capture | + child nitpicker
+    + service Timer   | + child timer
+    + service ROM     | label: sponge_de_input | + child report_rom
+    + service ROM     | label: config_request | + child report_rom
+    + service ROM     | label: config_result  | + child report_rom
+    + service ROM     | label: configd        | + child report_rom
+    + service ROM     | label: theme          | + child report_rom
+    + service Report  | + child report_rom
+    + any-service
+      + parent
+      + any-child
+- }
+
+#
+# Stage every non-build-artifact boot module into bin/ BEFORE
+# build_boot_image. On base-sel4 the boot image is a single packed
+# image.elf (docs/11 §10.4), so modules added later never reach the
+# guest.
+#
+exec mkdir -p bin
+
+#
+# qt6_dejavusans.tar raw recipe is depot-only; mirror its content into
+# bin/ from the qt6_base port sources (same as run/sponge-de-sel4-
+# interactive.run).
+#
+set dejavu_dst "bin/qt6_dejavusans.tar"
+if {![file exists $dejavu_dst]} {
+	set dejavu_src [glob -nocomplain "${genode_dir}/contrib/qt6_base-*/src/lib/qt6_base/src/3rdparty/wasm/DejaVuSans.ttf"]
+	if {[llength $dejavu_src] == 0} {
+		error "DejaVuSans.ttf not found in the qt6_base port sources"
+	}
+	set staging "[run_dir]/dejavusans-staging"
+	file mkdir "$staging/qt/lib/fonts"
+	file copy -force [lindex $dejavu_src 0] "$staging/qt/lib/fonts/DejaVuSans.ttf"
+	exec tar -cf $dejavu_dst -C $staging qt
+	file delete -force $staging
+}
+
+#
+# Driver sub-init config modules (vendored drivers_interactive-pc set).
+# The W5 scenario uses upstream-verbatim event_filter.config (NO
+# <transform><scale/> on the usb input — only used by the W4 tablet-
+# abs recipe; this scenario has no QMP clicks).
+#
+set recipe_dir "${genode_dir}/repos/os/recipes/raw/drivers_interactive-pc"
+foreach f { drivers.config fb.config event_filter.config } {
+	if {![file exists "$recipe_dir/$f"]} {
+		error "$recipe_dir/$f missing (vendored drivers_interactive-pc recipe drifted?)"
+	}
+	exec cp -f "$recipe_dir/$f" "bin/$f"
+}
+
+set chargen_dir "${genode_dir}/repos/os/src/server/event_filter"
+foreach f { en_us.chargen special.chargen } {
+	if {![file exists "$chargen_dir/$f"]} { error "$chargen_dir/$f missing" }
+	exec cp -f "$chargen_dir/$f" "bin/$f"
+}
+
+#
+# Theme files staged as ROM modules for sponge_themed to resolve by
+# name AND for sponge-de's ThemeController fallback (default.theme).
+# The shipped set (default + light + dark + compact) is the Phase 11
+# W3 expansion; we stage them all. sponge-de uses default.theme
+# because the run script does NOT enable live theme reload (see the
+# start node above).
+#
+foreach theme { default light dark compact } {
+	set theme_src "${genode_dir}/repos/sponge/src/sponge-de/themes/${theme}.theme"
+	if {![file exists $theme_src]} {
+		error "theme file missing: $theme_src"
+	}
+	exec cp -f $theme_src "bin/${theme}.theme"
+}
+
+#
+# Full boot module list. The Qt6 shared libs + qt6_libqgenode.tar are
+# cmake-built and not in [build_artifacts], so listed explicitly
+# (base-sel4 needs them inside image.elf).
+#
+set boot_modules [build_artifacts]
+foreach m { libQt6Core.lib.so libQt6Gui.lib.so libQt6Widgets.lib.so \
+            libqgenode.lib.so qt6_libqgenode.tar qt6_dejavusans.tar \
+            en_us.chargen special.chargen \
+            drivers.config fb.config event_filter.config \
+            default.theme light.theme dark.theme compact.theme } {
+	lappend boot_modules $m
+}
+
+build_boot_image $boot_modules
+
+#
+# QEMU: -nographic for headless, -m 2G for Qt6/Mesa softpipe on
+# base-sel4 (the Phase 10 baseline; the W4 themed-chrome scenario
+# also runs at 2G). No -device usb-tablet and no QMP socket — this
+# scenario does NOT drive any host input (the panel-config probe is
+# fully configd-driven). The usb-tablet binding is harmless when
+# present; we just don't need it.
+#
+append qemu_args " -nographic -m 2G "
+
+#
+# Verification: PASS only after the probe's 7-subphase panel-config
+# assertions all succeed. The probe runs in observe mode (no synthetic
+# input injection; all assertions are driven by configd writes the
+# probe sends over the config_request Report). Any subphase failure
+# logs "sponge-de-probe: FAIL panel-config <sub>: <reason>" and the
+# run script times out — the correct FAIL path. The generous timeout
+# covers Qt's slow first paint under the software (softpipe) Mesa on
+# seL4 (the §11.1 lesson: base-sel4 Qt6 first paint is markedly
+# slower than base-linux).
+#
+run_genode_until {.*sponge-de-probe: phase panel-config PASS.*} 600
