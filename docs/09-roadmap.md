@@ -775,8 +775,13 @@ silently rot.
    (the report is empty). The W5 scenario compensated by using the
    usb-tablet's `mouse_set` + a single `absolute_motion` to materialize
    a known cursor position, then a closed-loop REL walk on top of that.
-   This works but is one boot-specific. Future work: extend nitpicker's
-   `user_state` to update `_pointer` from REL too.
+    This works but is one boot-specific. Future work: extend nitpicker's
+    `user_state` to update `_pointer` from REL too. **Partially delivered**
+    (Phase-11 media follow-up): the relative-motion `Nowhere` branch now
+    initializes the pointer instead of dropping the event (patch ledger
+    #9), which is what makes a visible cursor track under PS/2-only
+    input. The report-ROM side of the gap (REL not updating the pointer
+    report) remains open.
 
 3. **Pre-existing base-sel4 Qt6 staging issue blocks
    `sponge-de-test.run` + `sponge-launcher.run` on sel4.** Reported in
