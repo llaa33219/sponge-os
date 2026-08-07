@@ -131,8 +131,9 @@ class PanelWidget : public QWidget
 
 		/* Cached configd overrides. */
 		unsigned _height            { 0 };   /* 0 = use theme.panel_height() */
-		QString  _visible_widgets;          /* default "clock,launcher" */
+		QString  _visible_widgets { QStringLiteral("clock,launcher") };
 		QString  _clock_format      { QStringLiteral("HH:mm") };
+		QString  _applied_css;             /* stylesheet currently on the widget */
 
 		/*
 		 * De-dup for the clock-format fallback warning: one warning
