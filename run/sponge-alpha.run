@@ -100,7 +100,7 @@ build { core lib/ld init timer server/report_rom server/nitpicker \
          driver/acpi app/pci_decode driver/platform \
          driver/framebuffer/vesa driver/ps2 \
          driver/usb_host/pc driver/usb_hid server/event_filter \
-         server/wm app/window_layouter app/decorator \
+         server/wm app/window_layouter app/decorator app/pointer \
          sponge_configd sponge_themed sponge_pkgd pkg_hello sponge-de \
          server/rom_filter app/themed_decorator app/backdrop \
          server/gui_fb server/gui_fader \
@@ -313,6 +313,7 @@ config
     + policy | label_suffix: lz_watch_request | report: lz_runtime -> leitzentrale -> lz_edit_probe -> lz_watch_request
     + policy | label_suffix: focus            | report: nitpicker -> focus
     + policy | label_suffix: hover            | report: nitpicker -> hover
+    + policy | label: pointer -> xray         | report: pointer-xray-none
 
 + start nitpicker | ram: 16M
   + provides
@@ -329,6 +330,11 @@ config
     + capture
     + event
     + report | focus: yes | hover: yes
+    # Pointer cursor domain: front-most (layer 0), positioned at the
+    # pointer by nitpicker itself (origin: pointer). The upstream
+    # 'pointer' component renders the cursor glyph into it — without
+    # this domain + component there is no visible mouse cursor.
+    + domain pointer | layer: 0 | content: client | label: no | origin: pointer
     + domain panel | layer: 1 | content: client | label: no
                    | hover: always | focus: click | ypos: 0 | height: 28
     + domain launcher | layer: 4 | content: client | label: no
@@ -336,10 +342,26 @@ config
                       | xpos: 0 | ypos: 28 | width: 341 | height: 480
     + domain default | layer: 3 | content: client | label: no
                      | hover: always | focus: click | ypos: 28 | height: -28
+    + policy | label_prefix: pointer                  | domain: pointer
     + policy | label_prefix: sponge-de -> Sponge Panel   | domain: panel
     + policy | label_prefix: sponge-de -> Sponge Launcher | domain: launcher
     + default-policy | domain: default
     + background | color: #1e1e2e
+
++ start pointer | caps: 100 | ram: 4M
+  + provides
+    + service Report
+  + config | shapes: no
+  + route
+    + service Gui              | + child nitpicker
+    + service ROM | label: hover | + child report_rom
+    # The xray ROM is optional (shape-debug feature); without this
+    # empty-ROM route the session denial would freeze the component
+    # (base-lib DENIED -> sleep_forever, cf. the W3 theme fallback).
+    + service ROM | label: xray  | + child report_rom
+    + any-service
+      + parent
+      + any-child
 
 + start drivers | caps: 1500 | ram: 96M | managing_system: yes
   + binary init

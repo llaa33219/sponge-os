@@ -110,6 +110,18 @@ proc ensure_plugin_loaded { name } {
 ensure_plugin_loaded boot_dir/sel4
 ensure_plugin_loaded power_on/qemu
 ensure_plugin_loaded log/qemu
+ensure_plugin_loaded image/disk
+
+#
+# This scenario MUST boot the disk image, but the build.conf template's
+# QEMU_RUN_OPT pulls in image/iso by default, and when both image modes
+# are included the ISO wins the QEMU command line (the guest then finds
+# no AHCI device: part_block's Block session is denied). Drop image/iso
+# from the include list so the disk image is the only boot medium.
+#
+global include_list
+set iso_idx [lsearch -exact $include_list "image/iso"]
+if {$iso_idx >= 0} { set include_list [lreplace $include_list $iso_idx $iso_idx] }
 
 #
 # Failure-channel selector: SPONGE_DISK_FAIL=1 corrupts system.config.
@@ -133,7 +145,7 @@ set build_components {
 	driver/usb_host/pc driver/usb_hid server/event_filter
 	server/part_block server/vfs server/cached_fs_rom
 	lib/vfs lib/vfs_rump
-	server/wm app/window_layouter app/decorator
+	server/wm app/window_layouter app/decorator app/pointer
 	sponge_configd sponge_themed sponge_pkgd pkg_hello sponge-de
 	test/alpha_probe
 	qt6/base lib/libc lib/libm lib/stdcxx lib/mesa \
@@ -579,6 +591,7 @@ config
     + policy | label: usb_hid -> report    | report: usb -> devices
     + policy | label_suffix: focus | report: nitpicker -> focus
     + policy | label_suffix: hover | report: nitpicker -> hover
+    + policy | label: pointer -> xray | report: pointer-xray-none
 
 + start acpi | caps: 350 | ram: 4M
   + route
@@ -708,6 +721,11 @@ config
     + capture
     + event
     + report | focus: yes | hover: yes
+    # Pointer cursor domain: front-most (layer 0), positioned at the
+    # pointer by nitpicker itself (origin: pointer). The upstream
+    # 'pointer' component renders the cursor glyph into it — without
+    # this domain + component there is no visible mouse cursor.
+    + domain pointer | layer: 0 | content: client | label: no | origin: pointer
     + domain panel | layer: 1 | content: client | label: no
                    | hover: always | focus: click | ypos: 0 | height: 28
     + domain launcher | layer: 4 | content: client | label: no
@@ -715,10 +733,26 @@ config
                       | xpos: 0 | ypos: 28 | width: 341 | height: 480
     + domain default | layer: 3 | content: client | label: no
                      | hover: always | focus: click | ypos: 28 | height: -28
+    + policy | label_prefix: pointer                  | domain: pointer
     + policy | label_prefix: system -> sponge-de -> Sponge Panel   | domain: panel
     + policy | label_prefix: system -> sponge-de -> Sponge Launcher | domain: launcher
     + default-policy | domain: default
     + background | color: #1e1e2e
+
++ start pointer | caps: 100 | ram: 4M
+  + provides
+    + service Report
+  + config | shapes: no
+  + route
+    + service Gui              | + child nitpicker
+    + service ROM | label: hover | + child report_rom
+    # The xray ROM is optional (shape-debug feature); without this
+    # empty-ROM route the session denial would freeze the component
+    # (base-lib DENIED -> sleep_forever, cf. the W3 theme fallback).
+    + service ROM | label: xray  | + child report_rom
+    + any-service
+      + parent
+      + any-child
 
 + start fb | caps: 150 | ram: 20M
   + binary vesa_fb
@@ -841,7 +875,7 @@ foreach f { en_us.chargen special.chargen } {
 set boot_modules { }
 foreach m { core-sel4.a ld-sel4.lib.so init timer report_rom nitpicker platform acpi pci_decode \
             ahci part_block vfs cached_fs_rom \
-            vesa_fb ps2 pc_usb_host usb_hid event_filter } {
+            vesa_fb ps2 pc_usb_host usb_hid event_filter pointer } {
 	lappend boot_modules $m
 }
 foreach m { vfs.lib.so vfs_rump.lib.so rump.lib.so rump_fs.lib.so \
