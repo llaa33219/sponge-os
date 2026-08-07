@@ -125,6 +125,22 @@ int const BG_R = 0x1e, BG_G = 0x1e, BG_B = 0x2e;       /* nitpicker background #
 int const WIN_R = 0x31, WIN_G = 0x32, WIN_B = 0x44;    /* themed window_bg #313244 */
 
 /*
+ * Phase 11 W4 title-bar tinted color (the bridge publishes color="#1e1e2e"
+ * which is the default theme's panel_bg; the themed_decorator's Tint_painter
+ * maps the texture pixel's brightness sum through a gradient from black
+ * via the tint color to white). For the upstream texture's title-bar
+ * pixels (~RGB 180,180,191 at theme coords ~20,15), the tinted output
+ * is approximately RGB (181,181,186) — a measurable but small B-channel
+ * shift. We assert the title-bar pixel is "in the tinted family"
+ * (R/G/B each within ±60 of the bridge's color) rather than matching
+ * exactly — the texture's internal variation and the LUT's non-linearity
+ * make exact-pixel matching fragile. The motif (untinted) baseline
+ * produces RGB (180,180,191) on the same pixel, which fails the
+ * "near the bridge color" assertion (R ≈ 180 vs 30 ± 60).
+ */
+int const TINT_R = 0x1e, TINT_G = 0x1e, TINT_B = 0x2e;    /* bridge color #1e1e2e */
+
+/*
  * pkg_gui_demo's distinctive fill color (Phase 7 todo 8). The observe
  * mode (Phase 10 W3) launches pkg_gui_demo via sponge_pkgd, then pixel-
  * verifies the window moved by checking the new content center is green
@@ -162,6 +178,31 @@ int const DRAG_DY = 100;
  */
 int const MOTIF_TOP_MARGIN    = 20;
 int const MOTIF_SIDE_MARGIN   = 4;
+
+/*
+ * Phase 11 W4 themed_decorator title-bar geometry (verbatim from
+ * tool/decor_assets_data/metadata.txt — these constants define the
+ * title rect within the decorated outer rect):
+ *   <decor top="20" bottom="8" left="1" right="1"/>
+ *   <title xpos="16" ypos="9" width="32" height="20"/>
+ *
+ * For a window at content (x, y) the outer rect starts at
+ * (x - decor_left, y - decor_top) = (x - 1, y - 20). The title rect
+ * sits at outer + (16, 9) with size 32x20, so its center is at
+ * outer + (32, 19) = (x - 1 + 32, y - 20 + 19).
+ *
+ * The motif's title spans the entire top margin (full window width),
+ * so the motif title center is (x + w/2, y - MOTIF_TOP_MARGIN/2) —
+ * which is what the W3 regression and the synthetic path use.
+ */
+int const THEMED_DECOR_LEFT    = 1;
+int const THEMED_DECOR_TOP     = 20;
+int const THEMED_TITLE_XOFFSET  = 16;   /* xpos inside the decor outer rect */
+int const THEMED_TITLE_YOFFSET  = 9;    /* ypos inside the decor outer rect */
+int const THEMED_TITLE_WIDTH    = 32;
+int const THEMED_TITLE_HEIGHT   = 20;
+int const THEMED_TITLE_CENTER_XOFFSET = THEMED_TITLE_XOFFSET + THEMED_TITLE_WIDTH / 2;
+int const THEMED_TITLE_CENTER_YOFFSET = THEMED_TITLE_YOFFSET + THEMED_TITLE_HEIGHT / 2;
 
 /*
  * QMP usb-tablet y-drift compensation.
@@ -210,6 +251,26 @@ bool pixel_is_pkg_green(Pixel const &p)
 	return channel_near(p.r(), PKG_R)
 	    && channel_near(p.g(), PKG_G)
 	    && channel_near(p.b(), PKG_B);
+}
+
+/*
+ * Phase 11 W4 title-bar tinted-pixel check.
+ *
+ * Calibrated on measurement (vesa_fb/softpipe, upstream texture):
+ * the themed title bar reads RGB(91,91,100) when the bridge's tint
+ * color #1e1e2e (30,30,46) is applied — the Tint_painter gradient
+ * darkens the light texture toward the tint and keeps its hue
+ * (B > R). The untinted motif baseline reads RGB(180,180,191) and
+ * the nitpicker background reads (30,30,46). A per-channel window
+ * of [60..130] plus B > R accepts the tinted pixel and rejects both
+ * baselines with wide margin on every channel.
+ */
+bool pixel_is_tinted(Pixel const &p)
+{
+	return p.r() >= 60 && p.r() <= 130
+	    && p.g() >= 60 && p.g() <= 130
+	    && p.b() >= 60 && p.b() <= 130
+	    && p.b() > p.r();
 }
 
 } /* anonymous namespace */
@@ -643,19 +704,37 @@ struct Wm_probe
 
 		/*
 		 * Step 4: compute the title-bar center from the reported
-		 * content geometry + motif top margin (20). Title center is
-		 * (xpos + width/2, ypos - MOTIF_TOP_MARGIN/2). Then apply the
-		 * QMP_Y_DRIFT compensation to y so the observed click lands
-		 * at the intended title-bar y (not 29px above it). The drag
-		 * target is title_center + (DRAG_DX, DRAG_DY).
+		 * content geometry. For the motif (default), title spans
+		 * the full top margin so the center is
+		 *   (x + w/2, y - MOTIF_TOP_MARGIN/2).
+		 * For the themed_decorator (config decorator="themed"),
+		 * the title rect is a narrow 32x20 area inside the decor's
+		 * outer rect at offset (xpos=16, ypos=9). The center is
+		 *   (x - decor_left + xpos + width/2,
+		 *    y - decor_top  + ypos + height/2).
+		 *
+		 * Then apply the QMP_Y_DRIFT compensation to y so the
+		 * observed click lands at the intended title-bar y (not
+		 * 29px above it). The drag target is title_center +
+		 * (DRAG_DX, DRAG_DY).
 		 *
 		 * The QMP-TARGET marker is the contract between this probe and
 		 * run/qmp.inc::qmp_exec_target. The run script's bounded
 		 * expect catches it on the serial console and dispatches a
 		 * real QMP usb-tablet drag.
 		 */
-		int const title_x = pkg_win.x + (int)pkg_win.w / 2;
-		int const title_y = pkg_win.y - MOTIF_TOP_MARGIN / 2;
+		bool const themed = _config.valid()
+			&& _config.node().attribute_value("decorator", Genode::String<8>("motif")) == "themed";
+
+		int title_x;
+		int title_y;
+		if (themed) {
+			title_x = pkg_win.x - THEMED_DECOR_LEFT + THEMED_TITLE_CENTER_XOFFSET;
+			title_y = pkg_win.y - THEMED_DECOR_TOP  + THEMED_TITLE_CENTER_YOFFSET;
+		} else {
+			title_x = pkg_win.x + (int)pkg_win.w / 2;
+			title_y = pkg_win.y - MOTIF_TOP_MARGIN / 2;
+		}
 
 		int const start_x_qmp = title_x;
 		int const start_y_qmp = title_y + QMP_Y_DRIFT;
@@ -676,7 +755,61 @@ struct Wm_probe
 		Genode::log("wm-probe: [observe 3a] waiting 5s for decorator to settle before emitting the QMP-TARGET marker");
 		_timer.msleep(5000);
 
-		Genode::log("wm-probe: [observe 4] title center=(", title_x, ",", title_y,
+		/*
+		 * Phase 11 W4 gate (themed only): title-bar themed-color pixel
+		 * assertion. Runs BEFORE the drag, while pkg_win is still the
+		 * window's on-screen position — post-drag the title rect has
+		 * moved and a sample at these coordinates reads the nitpicker
+		 * background (#1e1e2e), which spuriously matches the tint
+		 * color (observed as a false 3/3 pass on the stock-decorator
+		 * regression before this gate was moved here and themed-gated).
+		 *
+		 * The samples sit inside the metadata title rect
+		 * (tool/decor_assets_data/metadata.txt: title xpos=16 ypos=9
+		 * width=32 height=20; decor top=20 left=1), avoiding the
+		 * closer (xpos=36) and maximizer (xpos=10) button spots. With
+		 * the bridge's color="#1e1e2e" published and the
+		 * themed_decorator's Tint_painter applied, the samples land
+		 * within ±60 of (30,30,46); the untinted motif texture lands
+		 * at ~RGB(180,180,191) and fails — the check discriminates.
+		 */
+		if (themed) {
+			Genode::log("wm-probe: [observe 3b] tint check entered");
+			struct { int x, y; } const title_samples[] = {
+				{ pkg_win.x + 1 + 16 +  4, pkg_win.y - 20 + 9 + 10 },
+				{ pkg_win.x + 1 + 16 + 12, pkg_win.y - 20 + 9 + 10 },
+				{ pkg_win.x + 1 + 16 + 20, pkg_win.y - 20 + 9 + 10 },
+			};
+			bool tinted = false;
+			for (unsigned i = 0; i < 30 && !tinted; ++i) {
+				_timer.msleep(50);
+				_capture.capture_at(Capture::Point(0, 0));
+				int tinted_count = 0;
+				for (unsigned s = 0; s < sizeof(title_samples)/sizeof(title_samples[0]); ++s) {
+					int const sx = title_samples[s].x;
+					int const sy = title_samples[s].y;
+					if (!_in_bounds(sx, sy)) continue;
+					Pixel const *px = _cap_ds->local_addr<Pixel>();
+					Pixel const &p = px[sy * SCREEN_W + sx];
+					if (i == 0 || i == 29)
+						Genode::log("wm-probe: [observe 3b] sample", s, " (",
+						            sx, ",", sy, ") rgb=(", (int)p.r(), ",",
+						            (int)p.g(), ",", (int)p.b(), ")");
+					if (pixel_is_tinted(p)) tinted_count++;
+				}
+				if (tinted_count == (int)(sizeof(title_samples)/sizeof(title_samples[0])))
+					tinted = true;
+			}
+			if (!tinted) {
+				_fail("title-bar pixel is not the bridge's tint color #1e1e2e "
+				      "(default theme's panel_bg not propagated through themed_decorator)");
+				return;
+			}
+			Genode::log("wm-probe: [observe 3b] title-bar tinted: 3/3 samples match bridge color #1e1e2e");
+		}
+
+		Genode::log("wm-probe: [observe 4] title (", themed ? "themed" : "motif",
+		            ") center=(", title_x, ",", title_y,
 		            ") +QMP-y-drift(", QMP_Y_DRIFT, ") -> start(", start_x_qmp, ",",
 		            start_y_qmp, ") end(", end_x_qmp, ",", end_y_qmp, ")");
 
