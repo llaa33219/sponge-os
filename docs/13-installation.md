@@ -112,12 +112,14 @@ cp genode/build/x86_64/var/run/sponge-alpha.iso \
 
 ## 3. Boot in QEMU
 
-QEMU is the supported Alpha target. Use at least 2 GiB of guest RAM. These commands boot the already-built media directly and keep the guest log in the terminal:
+QEMU is the supported Alpha target. Use at least 2 GiB of guest RAM, and pass `-machine q35 -cpu Skylake-Client` — without them QEMU 11.0.2's default machine/CPU makes the seL4 kernel fail early in `boot_sys` (`XSAVE not supported` + `boot_sys failed`; verified 2026-08-07 on QEMU 11.0.2). These commands boot the already-built media directly and keep the guest log in the terminal:
 
 ### 3.1 Disk image (the product media — installs persist)
 
 ```bash
 qemu-system-x86_64 \
+    -machine q35 \
+    -cpu Skylake-Client \
     -m 2G \
     -drive format=raw,file=var/dist/sponge-os-0.1.0-alpha-x86_64-sel4.img \
     -serial stdio \
@@ -130,6 +132,8 @@ qemu-system-x86_64 \
 
 ```bash
 qemu-system-x86_64 \
+    -machine q35 \
+    -cpu Skylake-Client \
     -m 2G \
     -boot d \
     -cdrom var/dist/sponge-os-0.1.0-alpha-x86_64-sel4.iso \
