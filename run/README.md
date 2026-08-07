@@ -564,6 +564,39 @@ A scenario defines:
   `search hello --json`; gates on the structured JSON match line
   (`"command":"search","status":"success","matches":[{"name":"hello",...}]`).
 
+- `sponge-panel-config.run` — **Phase 11 criterion 1** (base-linux):
+  the four new configd keys applied live to the panel. sponge-de runs
+  with `<config source="configd"/>` (the W2 ConfigController);
+  `sponge_de_probe`'s `panel-config` phase drives configd through the
+  real `config_request`/`config_result` channel and asserts 7
+  subphases (P1/P2 launcher-toggle height tracks `panel.height`
+  28↔64, P3–P5 `panel.visible_widgets` hides/shows clock and toggle,
+  P6 `clock.format` HH:mm→HH:mm:ss glyph growth, P7 a validator-
+  rejected write leaves the broadcast unchanged). Gates on
+  `sponge-de-probe: phase panel-config PASS`.
+
+- `sponge-panel-config-sel4.run` — Phase 11 criterion 1 on the
+  production kernel: the same 7-subphase panel-config flow on
+  base-sel4 with the interactive driver stack. Configd-write driven
+  (no QMP choreography). Gates on
+  `sponge-de-probe: phase panel-config PASS`.
+
+- `sponge-de-themed-chrome.run` — **Phase 11 criterion 3**
+  (base-sel4 + QMP): the upstream `themed_decorator` drop-in replaces
+  the stock decorator in the WM stack (child named `decorator`,
+  binary `themed_decorator`, so the Phase-10 report_rom/wm policies
+  apply verbatim). The theme tar comes from `./tool/decor_assets`
+  (upstream geometry metadata + byte-vendored font.tff); the
+  decorator's whole config (libc + vfs + policy color from the active
+  theme's panel_bg) is delivered live by `sponge_decorator_bridge`
+  via report_rom — there is no inline `<config>` (init reserves that
+  ROM label and would shadow the route). Gates: nonzero
+  `decorator_margins` (20/8/1/1), the title bar verifiably tinted by
+  the theme palette (wm_probe observe-3b, measured RGB(91,91,100) vs
+  untinted (180,180,191)), a usb-tablet QMP drag moving pkg_gui_demo
+  through the themed chrome, and `wm-probe: PASS`. The Phase-10
+  `sponge-wm-qmp.run` drag regression must stay green alongside.
+
 ## Planned additions
 
 - Spin a usable Sponge OS install workflow through Leitzentrale (the
