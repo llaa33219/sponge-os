@@ -1,0 +1,57 @@
+#!/usr/bin/env bash
+#
+# tool/test_theme_payload_size — Sponge OS theme payload-size host gate
+#                                (launcher).
+#
+# Thin shim that delegates to the canonical Mojo implementation in
+# tool/test_theme_payload_size.mojo. Resolution order for the mojo
+# binary:
+#   1. mojo on PATH
+#   2. <repo>/.venv/bin/mojo (repo-local uv/venv install)
+# If neither exists, prints install guidance and exits 127.
+#
+# Usage (see tool/test_theme_payload_size.mojo for the full contract):
+#   ./tool/test_theme_payload_size                       # default: repos/sponge/src/sponge-de/themes
+#   ./tool/test_theme_payload_size <themes-dir>         # custom directory
+#   ./tool/test_theme_payload_size help                  # show usage
+#
+# The tool asserts every shipped *.theme file is strictly below the
+# 8192-byte transport cap that Phase 11 W1 raised at
+# theme_controller.cc:155 (`Genode::String<8192>`). A theme that
+# exceeds the cap produces a non-zero exit so the run script / CI gate
+# fails loud (the §3 #1 trap closure). Pair this with the daemon-side
+# `_assert_transport_cap` warning at theme_controller.cc — both must
+# move together when the cap is raised.
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+MOJO_FILE="$SCRIPT_DIR/test_theme_payload_size.mojo"
+VENV_MOJO="$REPO_ROOT/.venv/bin/mojo"
+
+if command -v mojo >/dev/null 2>&1; then
+    MOJO_BIN="mojo"
+elif [ -x "$VENV_MOJO" ]; then
+    MOJO_BIN="$VENV_MOJO"
+else
+    cat >&2 <<EOF
+[sponge-theme-payload] mojo SDK not found on PATH and no repo-local install at
+$VENV_MOJO.
+
+The canonical Sponge OS tooling is written in Mojo (Modular's language).
+Install the Mojo SDK to use this wrapper:
+
+  https://docs.modular.com/mojo/manual/get-started/
+
+Or install it into this repository's virtualenv (pinned by uv.lock):
+
+  uv sync
+
+Once installed, run directly:
+  mojo $MOJO_FILE "$@"
+EOF
+    exit 127
+fi
+
+exec "$MOJO_BIN" "$MOJO_FILE" "$@"
