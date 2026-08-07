@@ -278,7 +278,20 @@ If you modify code, update the related documentation. Updating docs
 without code, or vice versa, is not allowed. During early scaffolding,
 docs may lead the code.
 
-### 5.5 Orchestration Artifacts
+### 5.5 Privilege Escalation: Ask the User, Never `sudo`
+
+If a task needs a host change that requires elevated privileges —
+installing a system package, writing outside the repository and the
+user's home, touching system services — an AI agent MUST NOT attempt
+it with `sudo` (or any other privilege-escalation path). Stop and
+**ask the user to run it**, presenting the exact command. Rationale:
+`sudo` can block on an interactive password prompt, and host-level
+mutations outside the repository exceed the mutation boundary spirit
+of §3.5 even where technically possible. Read-only host inspection
+never needs privileges; document the needed package in the docs and
+request the install.
+
+### 5.6 Orchestration Artifacts
 
 The directory `.omo/` (containing `plans/`, `drafts/`, `evidence/`,
 `ledger/`, `boulder`, and similar) is git-ignored orchestration scratch:
