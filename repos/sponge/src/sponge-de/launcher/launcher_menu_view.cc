@@ -245,7 +245,12 @@ void LauncherMenuView::repopulate()
 void LauncherMenuView::_apply_style(Theme::Theme const &theme)
 {
 	QScreen *screen = QGuiApplication::primaryScreen();
-	QRect const sg = screen ? screen->geometry() : QRect(0, 0, 1024, 768);
+	QRect sg = screen ? screen->geometry() : QRect(0, 0, 1024, 768);
+	/* The Genode QPA reports a degenerate 1x1 screen until nitpicker's
+	 * panorama info arrives; never trust an implausible size (see
+	 * panel_widget.cc::_apply_geometry). */
+	if (sg.width() < 64 || sg.height() < 64)
+		sg = QRect(0, 0, 1024, 768);
 
 	int const menu_w = sg.width() / 3;
 	/* Guard against the pre-paint phase when Qt hasn't yet been told

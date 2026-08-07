@@ -116,37 +116,60 @@ PanelWidget::PanelWidget(Theme::Theme const &theme, QWidget *parent)
 
 void PanelWidget::_apply_style(Theme::Theme const &theme)
 {
-	QScreen *screen = QGuiApplication::primaryScreen();
-	int const width = screen ? screen->geometry().width() : 1024;
-
-	setStyleSheet(QStringLiteral(
+	QString const css = QStringLiteral(
 		"QWidget { background-color: %1; color: %2; border: none; }"
 		"QPushButton { background-color: %3; color: %1; border-radius: 4px; }"
 		"QPushButton:pressed { background-color: %2; color: %1; }")
 		.arg(Theme::to_css(theme.panel_bg()),
 		     Theme::to_css(theme.panel_text()),
-		     Theme::to_css(theme.accent())));
+		     Theme::to_css(theme.accent()));
 
 	/*
-	 * Keep setGeometry/setFixedSize in _apply_style too — the
-	 * stylesheet change repaints the entire panel, and the theme's
-	 * panel_bg drives the new pixel content. Width is not live-
-	 * reloadable (the screen size is owned by the run scenario).
+	 * Re-applying an identical stylesheet re-polishes the whole widget
+	 * tree for no visual change; skip it. (On the Genode QPA each
+	 * redundant top-level mutation also perturbs the paint/flush
+	 * timing — see the alpha black-panel analysis in
+	 * docs/evidence/task-6-phase11-alpha-flake.md.)
 	 */
-	int const h = _height > 0 ? (int)_height : (int)theme.panel_height();
-	setGeometry(0, 0, width, h);
-	setFixedSize(width, h);
+	if (css != _applied_css) {
+		setStyleSheet(css);
+		_applied_css = css;
+	}
 }
 
 
 void PanelWidget::_apply_geometry(Theme::Theme const &theme)
 {
+	/*
+	 * The Genode QPA reports a degenerate 1x1 screen geometry until
+	 * nitpicker's panorama info arrives (QGenodeScreen ctor maps
+	 * Gui::Undefined to Area{1,1}). Whether the info has arrived by
+	 * the time the panel constructs is boot-timing dependent — a
+	 * 1-px-wide panel shows as a black/unpainted band (the alpha
+	 * flake documented in docs/evidence/task-6-phase11-alpha-flake.md).
+	 * Never trust an implausible width; fall back to the scenario's
+	 * reference width (the run scripts all use 1024).
+	 */
 	QScreen *screen = QGuiApplication::primaryScreen();
-	int const width = screen ? screen->geometry().width() : 1024;
+	int const screen_w = screen ? screen->geometry().width() : 0;
+	int const width = screen_w > 64 ? screen_w : 1024;
 	int const h     = _height > 0 ? (int)_height : (int)theme.panel_height();
 
-	setGeometry(0, 0, width, h);
-	setFixedSize(width, h);
+	/*
+	 * setGeometry/setFixedSize on the Genode QPA reach
+	 * QGenodePlatformWindow::setGeometry -> _adjust_and_set_geometry,
+	 * which re-allocates the Gui framebuffer session on EVERY call —
+	 * even a no-op one. An unchanged-size restyle would therefore
+	 * rotate the panel's buffer out from under nitpicker (the new
+	 * dataspace is zero-filled), which produced the flaky black panel
+	 * band in run/sponge-alpha.run on base-sel4. Only touch the
+	 * window geometry when it actually changes.
+	 */
+	QRect const target(0, 0, width, h);
+	if (geometry() != target) {
+		setGeometry(target);
+		setFixedSize(target.size());
+	}
 }
 
 
