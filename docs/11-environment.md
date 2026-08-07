@@ -206,6 +206,16 @@ every automated step is also a documented manual step):
 The tool is read-only against the repository: it never reverts,
 commits, or edits the ledger itself.
 
+### 4.2 Ledger candidates (intents, not patches)
+
+Design-approved patches that are NOT yet committed to the vendored
+tree. Each row records the intent, the target location, and the why,
+so the Phase that picks it up doesn't have to re-derive the analysis.
+
+| Intent | Where | Why | Phase |
+|--------|-------|-----|-------|
+| themed_decorator live asset reload | `genode/repos/gems/src/app/themed_decorator/theme.cc` (textures/font/metadata cached in function-local statics) | Phase 11's `sponge_decorator_bridge` updates the policy `color=` live, but a full chrome re-skin (new frame texture/glyphs on `theme.active` change) requires invalidating the static caches or restarting the decorator child. A minimal upstream-style patch would re-read the tar assets on config-ROM update. Diagnosis: `docs/evidence/task-4-phase11-themed-chrome.md`. | 12+ |
+
 ---
 
 ## 5. Third-Party Ports

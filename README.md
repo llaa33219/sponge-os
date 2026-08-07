@@ -70,8 +70,10 @@ See [`docs/04-components.md`](docs/04-components.md) for the detailed design.
 
 ## Current Status
 
-🟢 **Alpha 0.1.0, Archaeocyte** — Phase 7 is done with caveats, and
-Phase 10 (fully interactive desktop) is done. The verified release
+🟢 **Alpha 0.1.0, Archaeocyte** — Phase 7 is done with caveats,
+Phase 10 (fully interactive desktop) is done, and Phase 11 (DE
+customization: configd-driven panel, four shipped themes, themed
+window chrome) is done. The verified release
 boots in QEMU on seL4. See
 [`docs/13-installation.md`](docs/13-installation.md) for prerequisites,
 media commands, the quick-start tour, and the complete limitations register.
@@ -127,6 +129,17 @@ The repository currently contains:
   See `docs/evidence/phase10-index.md` and `docs/08-development.md`
   §4.4 (root cause of the former EGL hang: capability exhaustion on
   seL4, fixed by sizing `caps`; see `docs/09-roadmap.md` §11.1).
+- ✅ Phase 11 DE customization: `panel.height`, `panel.visible_widgets`,
+  `clock.format`, and `launcher.sort_by` are live `sponge_configd`
+  keys applied by Sponge DE's new `ConfigController`
+  (`run/sponge-panel-config{,-sel4}.run`); four shipped themes
+  (`default`/`light`/`dark`/`compact`) with live reload and a hardened
+  unknown-theme fallback (`run/sponge-theme.run`); and Sponge-themed
+  window chrome — upstream `themed_decorator` fed a Sponge-authored
+  theme tar (`./tool/decor_assets`) with the title-bar tint following
+  the active theme via the new `sponge_decorator_bridge`
+  (`run/sponge-de-themed-chrome.run`, drag-verified on seL4). See
+  `docs/evidence/phase11-index.md`.
 
 Verified vct boot output (base-sel4 on QEMU):
 

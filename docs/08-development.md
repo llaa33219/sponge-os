@@ -711,6 +711,54 @@ same guest.) Human input from the SDL window reaches the same driver
 chain (event_filter is enabled in the boot config), so this proves the
 script-driven QMP path is equivalent to a real user's mouse.
 
+### 4.5 Phase-11 DE customization (configd keys, themes, window chrome)
+
+Phase 11 (`docs/plans/phase11-de-customization.md`) makes the desktop
+customizable through `sponge_configd` without touching Genode
+internals. The live data path:
+
+```
+vct config <key> <value>
+  -> sponge_configd (validated, broadcast on the "config" report)
+  -> sponge-de's ConfigController (<config source="configd"/> gate)
+  -> panel / launcher re-styled live (Qt GUI thread, marshalled)
+```
+
+New keys (validation in `sponge_configd/main.cc`, full table in
+`repos/sponge/src/sponge_configd/README.md`):
+
+| Key | Type | Default | Effect |
+|---|---|---|---|
+| `panel.height` | uint 16–128 | `28` | Panel thickness; launcher toggle tracks it |
+| `panel.visible_widgets` | enum-list of `clock,launcher` | `clock,launcher` | Hide/show panel widgets live |
+| `clock.format` | printable-ASCII format string | `HH:mm` | Qt time format; invalid values fall back to `HH:mm` with a warning on the panel side |
+| `launcher.sort_by` | enum `alpha`,`manual` | `alpha` | Launcher entry ordering (manual = pkgd broadcast order) |
+| `panel.position` | enum `top`,`bottom`,`left`,`right` | `bottom` | **Boot-time only** (nitpicker domain owns placement; change the run script domain and reboot) |
+
+Automation is the default (`vct config panel.height 40` just works);
+the control escape hatch is the same channel (`vct config` per key)
+plus the theme files themselves.
+
+Themes: four shipped (`default`, `light`, `dark`, `compact` under
+`repos/sponge/src/sponge-de/themes/`); `vct theme apply <name>`
+switches live. The unknown-theme path is hardened: a
+`label_suffix=".theme"` catch-all route hands `sponge_themed` an
+empty ROM, so a typo keeps the previous theme and the daemon stays
+alive (proven by the 5-step probe in `run/sponge-theme.run`). The
+transport cap is 8192 bytes — guard it with
+`./tool/test_theme_payload_size` after editing a theme.
+
+Window chrome: `run/sponge-de-themed-chrome.run` replaces the stock
+decorator with upstream `themed_decorator`. The chrome assets live in
+`decor.tar`, authored by `./tool/decor_assets` (metadata + PNGs +
+byte-vendored `font.tff` under `tool/decor_assets_data/` — edit
+`metadata.txt` and re-run the tool to redesign the frame geometry;
+that is the documented manual step). The title-bar tint follows the
+active theme live: `sponge_decorator_bridge` watches the theme ROM
+and republishes the decorator's whole config (libc + vfs + policy
+color) through report_rom. Note that the tar *assets* are boot-time
+(static in upstream); only the policy color is live (roadmap §11.3).
+
 ---
 
 ## 5. Testing
