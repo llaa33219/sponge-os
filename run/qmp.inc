@@ -1,5 +1,5 @@
 #
-# \brief  run/qmp.inc — shared Tcl helper for driving QEMU guests via QMP
+# \brief  run/qmp.inc - shared Tcl helper for driving QEMU guests via QMP
 # \author Sponge OS contributors
 # \date   2026
 #
@@ -25,7 +25,7 @@
 # script's bounded expect on global `qemu_spawn_id` (set by the Genode
 # run tool's power_on/qemu:163, see run/sponge-power.run:228-244 for the
 # in-repo precedent) catches the marker and dispatches to the matching
-# QMP action. Every wait is bounded — fail loud, never hang.
+# QMP action. Every wait is bounded - fail loud, never hang.
 #
 # Requires: Tcl 8.x built-in `socket` (TCP only; matches `-qmp tcp:`),
 #           `expect`, no other external dependencies.
@@ -35,24 +35,24 @@
 #   Two pointer models are supported, both proven on this host (QEMU
 #   system-x86_64 11.0.2, -nographic):
 #
-#   1. Absolute (qmp_click via qmp_pointer_move) — emits QMP
+#   1. Absolute (qmp_click via qmp_pointer_move) - emits QMP
 #      input-send-event ABS_MOTION events on the usb-tablet axis
 #      (0..32767 per axis, scaled from guest pixels by 32767/1024,
 #      32767/768). Under -nographic the usb-tablet is NOT bound to a
 #      QemuConsole and nitpicker treats Input::Absolute_motion values
-#      as raw pixels — so every abs event in 0..32767 lands off-screen
+#      as raw pixels - so every abs event in 0..32767 lands off-screen
 #      on a 1024x768 display, and nitpicker's pointer sanitizer
 #      (`main.cc:780-810`) clamps all of them to the screen center
 #      (~512, 384). (Documented in
 #      docs/evidence/task-3-phase10-interactive.md §"W1's ~29px y-drift
-#      root cause — NOT a QEMU translation bug".) This is why W1's
-#      "click worked" — the demo domain (192,172,640,480) is large
+#      root cause - NOT a QEMU translation bug".) This is why W1's
+#      "click worked" - the demo domain (192,172,640,480) is large
 #      enough that the screen center lands inside it. The first-phase
 #      criterion-1 proof STILL holds (the click traverses the real
 #      usb-tablet → pc_usb_host → usb_hid → event_filter → nitpicker →
 #      sponge-de chain) but the click is not precisely targeted.
 #
-#   2. Relative (qmp_ps2_click / qmp_move_rel) — emits QMP
+#   2. Relative (qmp_ps2_click / qmp_move_rel) - emits QMP
 #      input-send-event REL events on the PS/2 mouse axis. The PS/2
 #      mouse is the QEMU-default "current" pointer device
 #      (`query-mice` shows current:true on the PS/2 mouse under
@@ -68,7 +68,7 @@
 #      pointer within ±1px of any absolute target after a clamp-to-
 #      (0,0) + coarse (rel-50) + fine (rel-1) sequence. The same
 #      hardware input chain as abs (QMP → emulated PS/2 controller
-#      → ps2 driver → event_filter → nitpicker → sponge-de) — just
+#      → ps2 driver → event_filter → nitpicker → sponge-de) - just
 #      the PS/2 branch.
 #
 #   The closed-loop move protocol (QMP-TARGET move) is also supported
@@ -96,7 +96,7 @@
 
 ##
 # Read one line from chan with a hard deadline. A stuck QMP socket must
-# fail loud — never hang the run script forever.
+# fail loud - never hang the run script forever.
 #
 proc qmp_read_line { chan {deadline_ms 5000} } {
 	set start [clock milliseconds]
@@ -144,7 +144,7 @@ proc qmp_pick_port {} {
 # Returns the channel handle. Fails loud (exit 1) on any error.
 #
 proc qmp_connect { port } {
-	# Retry the connect briefly — `-qmp ...,server=on,wait=off' means QEMU
+	# Retry the connect briefly - `-qmp ...,server=on,wait=off' means QEMU
 	# does not block on us, but in the moments after spawn the listener
 	# may not yet be ready.
 	set chan ""
@@ -163,7 +163,7 @@ proc qmp_connect { port } {
 	}
 	fconfigure $chan -buffering line -translation crlf -blocking 0
 
-	# Read QMP greeting — QEMU sends one line beginning with the literal
+	# Read QMP greeting - QEMU sends one line beginning with the literal
 	# text "QMP" wrapped in JSON. We just check for that marker; full JSON
 	# parsing is overkill here.
 	set greeting [qmp_read_line $chan 5000]
@@ -205,7 +205,7 @@ proc qmp_cmd { chan json } {
 		if {[regexp {^\{"return":} $line]} {
 			return $line
 		}
-		# Unknown line — log and continue (some QEMU versions send banners).
+		# Unknown line - log and continue (some QEMU versions send banners).
 		if {[clock milliseconds] - $start > 10000} {
 			puts stderr "\nqmp: no return for command: $json (last line: $line)"
 			exit 1
@@ -225,9 +225,9 @@ proc qmp_cmd { chan json } {
 # them to the screen center (~512, 384). The W1-era "~29px y-drift"
 # diagnosis was really screen-center-y (384) - intended-y (412) = -28,
 # not a per-event QEMU translation offset (proven by W3: NO divisor
-# choice in this proc changes the landing position — see
+# choice in this proc changes the landing position - see
 # docs/evidence/task-3-phase10-interactive.md §"W1's ~29px y-drift
-# root cause — NOT a QEMU translation bug"). The click DOES reach
+# root cause - NOT a QEMU translation bug"). The click DOES reach
 # sponge-de (criterion 1's usb-tablet chain is exercised end-to-end)
 # but is not precisely targeted. For precise targeting use
 # qmp_ps2_click or qmp_move_rel below (PS/2 relative, ±1px).
@@ -242,7 +242,7 @@ proc qmp_abs { x y } {
 # Send an absolute-axis pointer motion event via input-send-event.
 # The usb-tablet accepts abs axes; QEMU routes the event to the bound
 # usb-tablet device automatically. QMP's abs event format is per-axis
-# (one event per axis), not a combined x/y event — see the QEMU QMP
+# (one event per axis), not a combined x/y event - see the QEMU QMP
 # docs for `InputMoveEvent`. We send both axes in one input-send-event
 # call so they reach the guest atomically.
 #
@@ -257,7 +257,7 @@ proc qmp_pointer_move { chan x y } {
 ##
 # Send a button event. `state` is the literal string "down" or "up" used
 # in the JSON; `btn` is the QEMU button name ("left" / "right" / "middle"
-# — QMP's InputBtnEvent accepts these symbolic names). The JSON key is
+# - QMP's InputBtnEvent accepts these symbolic names). The JSON key is
 # `button` (not `btn`) per the QMP schema.
 #
 proc qmp_button { chan btn state } {
@@ -303,7 +303,7 @@ proc qmp_ps2_button { chan down } {
 
 
 ##
-# qmp_press — press/release at the CURRENT cursor position (no
+# qmp_press - press/release at the CURRENT cursor position (no
 # clamp, no walk). Used after the closed-loop _drive_to in the
 # W2 interactive probe has already positioned the cursor exactly:
 # dispatching qmp_ps2_click after _drive_to would re-clamp to
@@ -328,13 +328,13 @@ proc qmp_press { chan x y } {
 #
 #   Step 1: clamp pointer to (0,0). 10 × rel-100 per axis = ~1500px
 #           of negative motion, more than any screen dimension.
-#   Step 2: navigate to (x,y) — coarse (rel-50 ≈ 100px per event
+#   Step 2: navigate to (x,y) - coarse (rel-50 ≈ 100px per event
 #           through event_filter's accelerate) then fine (rel-1 ≈ 1px
 #           per event).
 #   Step 3: jiggle ±1 to advance decorator hover (harmless for plain
 #           sponge-de widgets but proven necessary for wm/decorator
 #           hover state in W3).
-#   Step 4: press BTN_LEFT (held 200ms — W3's proven hold time, long
+#   Step 4: press BTN_LEFT (held 200ms - W3's proven hold time, long
 #           enough for Qt's mousePressEvent to register).
 #   Step 5: release BTN_LEFT.
 #
@@ -343,18 +343,18 @@ proc qmp_press { chan x y } {
 # for the 48x20 S toggle and ~30px launcher entries.
 #
 proc qmp_ps2_click { chan x y } {
-	puts "\nqmp: PS/2 click -> ($x,$y) — clamp to (0,0) + nav + press/release"
+	puts "\nqmp: PS/2 click -> ($x,$y) - clamp to (0,0) + nav + press/release"
 
 	# W3's exact recipe (proven on this host per
 	# docs/evidence/task-3-phase10-interactive.md) WITH pacing
 	# added in the clamp and fine loops (Oracle's step-2 belt-and-
 	# braces; previously omitted). PS/2 event bursts without pacing
 	# can be dropped downstream (ps2 driver input queue overflow or
-	# event_filter input-side batching) — when the clamp events drop,
+	# event_filter input-side batching) - when the clamp events drop,
 	# the cursor never reaches (0,0) and the subsequent fine walk
 	# starts from the previous position, causing large drift. The
 	# coarse loop already has `after 20`. The total extra time per
-	# click at 300 fine events is ~1.5s — acceptable (click-to-
+	# click at 300 fine events is ~1.5s - acceptable (click-to-
 	# launch phase budget is ~2.4s per the eighth-pass evidence).
 
 	# Step 1: clamp to (0,0).
@@ -369,7 +369,7 @@ proc qmp_ps2_click { chan x y } {
 	for {set i 0} {$i < $cx} {incr i} { qmp_move_rel $chan x 50; after 20 }
 	for {set i 0} {$i < $cy} {incr i} { qmp_move_rel $chan y 50; after 20 }
 
-	# Step 3: fine (rel-1 ≈ 1px) — paced to avoid downstream drops.
+	# Step 3: fine (rel-1 ≈ 1px) - paced to avoid downstream drops.
 	set fx [expr {$x % 100}]
 	set fy [expr {$y % 100}]
 	puts "qmp:   fine rel-1: fx=$fx fy=$fy"
@@ -401,13 +401,13 @@ proc qmp_ps2_click { chan x y } {
 # pattern), then presses BTN_LEFT and walks the pointer to the endpoint
 # in `steps` equal increments before releasing.
 #
-# Uses the absolute-axis variant (see qmp_pointer_move) — under
+# Uses the absolute-axis variant (see qmp_pointer_move) - under
 # -nographic the precision is poor due to the abs-clamp root cause
 # documented at qmp_abs. The W3 scenario replaces this proc with its
 # own PS/2-based version (see run/sponge-wm-qmp.run).
 #
 proc qmp_drag { chan x1 y1 x2 y2 steps } {
-	# Hover jiggle — nudge ±1px a few times to trigger decorator hover.
+	# Hover jiggle - nudge ±1px a few times to trigger decorator hover.
 	qmp_pointer_move $chan $x1 $y1
 	after 30
 	qmp_pointer_move $chan [expr {$x1 + 1}] $y1
@@ -430,7 +430,7 @@ proc qmp_drag { chan x1 y1 x2 y2 steps } {
 
 ##
 # Map a single ASCII character to its QEMU keyname. Rejects unmapped
-# characters loud (the caller controls the input — see qmp_type).
+# characters loud (the caller controls the input - see qmp_type).
 #
 proc qmp_char_to_keyname { ch } {
 	scan $ch %c code
@@ -438,7 +438,7 @@ proc qmp_char_to_keyname { ch } {
 	if {$code >= 0x61 && $code <= 0x7a} { return [format %c $code] }
 	# 0-9
 	if {$code >= 0x30 && $code <= 0x39} { return [format %c $code] }
-	# A-Z (shifted) — uppercase letter; qmp send-key takes the keyname as-is
+	# A-Z (shifted) - uppercase letter; qmp send-key takes the keyname as-is
 	if {$code >= 0x41 && $code <= 0x5a} { return [format %c $code] }
 	switch -- $ch {
 		" "  { return "spc" }
@@ -448,10 +448,10 @@ proc qmp_char_to_keyname { ch } {
 		"."  { return "dot" }
 		","  { return "comma" }
 		"/"  { return "slash" }
-		"_"  { return "minus" } ;# underscore is shift+minus — caller should avoid
-		":"  { return "shift" } ;# caller should handle shift sequences explicitly
+		"_"  { return "minus" }
+		":"  { return "shift" }
 	}
-	puts stderr "\nqmp: unmapped character (code=$code, char='$ch') — extend qmp_char_to_keyname"
+	puts stderr "\nqmp: unmapped character (code=$code, char='$ch') - extend qmp_char_to_keyname"
 	exit 1
 }
 
@@ -472,7 +472,7 @@ proc qmp_type { chan string } {
 ##
 # Send a single QEMU keyname (e.g. "ret", "spc", "a") via send-key.
 # Uses the qcode/KeyValue object form ({"type":"qcode","data":"h"}),
-# the only form QEMU 11 accepts — the string form ["h"] is rejected
+# the only form QEMU 11 accepts - the string form ["h"] is rejected
 # with `Invalid parameter type for 'keys[0]', expected: object`
 # (latent W1 bug, fixed here; per W4's evidence at
 # docs/evidence/task-4-phase10-interactive.md §"Root cause #3").
@@ -501,16 +501,16 @@ proc qmp_send_key { chan keyname } {
 # guest (170,73) via usb-tablet abs + HMP mouse_button").
 #
 # `<string>` extends to end of line and must contain only mapped chars.
-# On timeout prints FAIL and exits 1 — never a silent hang.
+# On timeout prints FAIL and exits 1 - never a silent hang.
 #
 # Each numeric pattern ends with a \r*\n anchor to handle QEMU's
-# CR CR LF serial line ending (W4's fix — the click capture did not
+# CR CR LF serial line ending (W4's fix - the click capture did not
 # match with the unanchored \r?).
 #
 proc qmp_exec_target { chan timeout_s } {
 	global qemu_spawn_id
 	if {![info exists qemu_spawn_id]} {
-		puts stderr "\nqmp: qemu_spawn_id not set — qmp_exec_target must run after run_genode_until spawned QEMU"
+		puts stderr "\nqmp: qemu_spawn_id not set - qmp_exec_target must run after run_genode_until spawned QEMU"
 		exit 1
 	}
 	set timeout [expr {$timeout_s}]
@@ -522,7 +522,7 @@ proc qmp_exec_target { chan timeout_s } {
 	# per-iteration for popup-open (~200 iters × 100 ms = 20 s) and for
 	# green-pixel first paint (~2000 iters × 200 ms = 400 s). Each poll
 	# line is ~70 bytes; the green-poll alone spams ~140 KB into the
-	# spawn_id buffer. Tcl/expect's default match_max is 2000 bytes —
+	# spawn_id buffer. Tcl/expect's default match_max is 2000 bytes -
 	# under that window the QMP-TARGET markers get pushed out of the
 	# match buffer both (a) while waiting between markers (the markers
 	# were emitted but expect only retains the tail) and (b) on the
@@ -538,7 +538,7 @@ proc qmp_exec_target { chan timeout_s } {
 		# drag, type, move). The expect block matches the FIRST pattern
 		# that matches anywhere in the buffer, so a probe that emits
 		# "click" before "tablet" still has both lines in the buffer
-		# when the host starts waiting — but the host dispatches them
+		# when the host starts waiting - but the host dispatches them
 		# in the order the patterns are listed, not in arrival order.
 		# The choreography is therefore serialized: each qmp_exec_target
 		# call waits for exactly one marker and the probe emits its
@@ -625,7 +625,7 @@ proc qmp_exec_target { chan timeout_s } {
 			}
 		}
 		timeout {
-			puts stderr "\nqmp: FAIL - no QMP-TARGET marker within ${timeout_s}s (probe did not emit one — boot/render race or probe died?)"
+			puts stderr "\nqmp: FAIL - no QMP-TARGET marker within ${timeout_s}s (probe did not emit one - boot/render race or probe died?)"
 			exit 1
 		}
 	}
@@ -685,10 +685,10 @@ proc qmp_tablet_index { chan } {
 
 ##
 # Send a QMP-TARGET tablet click via the W4 tablet-abs recipe:
-#   1. HMP `mouse_set <tablet-index>' — make the usb-tablet current
-#   2. QMP input-send-event abs (scaled by qmp_abs) — position cursor
-#   3. HMP `mouse_button 1' — press
-#   4. HMP `mouse_button 0' — release
+#   1. HMP `mouse_set <tablet-index>' - make the usb-tablet current
+#   2. QMP input-send-event abs (scaled by qmp_abs) - position cursor
+#   3. HMP `mouse_button 1' - press
+#   4. HMP `mouse_button 0' - release
 # The click is deterministic on this host (verified in W4: ABS_MOTION
 # +528+396 for abs (16896,16895) lands precisely on the target pixel).
 #
@@ -709,9 +709,140 @@ proc qmp_tablet_click { chan tx ty } {
 }
 
 ##
-# Disconnect cleanly. Best-effort — closes the channel; errors are
+# Phase 12 W3b launch-only selector (the smallest possible W3b change).
+# Routes the launch-phase entry click through the W4-proven
+# qmp_tablet_click (qmp_tablet_index → HMP mouse_set → abs motion →
+# HMP mouse_button) rather than the default W3 qmp_ps2_click (clamp-
+# to-(0,0) + coarse rel-50 + fine rel-1) used by the input/panel
+# phases.
+#
+# Why the selector exists: the launch-phase click was the Phase 11
+# W5 flake (docs/evidence/task-5-phase11-sel4-interactive-FLAKE.log,
+# 3/3 fails on this host). The PS/2 REL recipe's rel-50/rel-1
+# navigation over the custom event_filter.config (which removes the
+# <accelerate> wrapper, so rel-50 → 50 px 1:1) lands the cursor at
+# (190, 120) when the probe emits QMP-TARGET click 340 170, which
+# sits ~10 px below the current popup's first-entry button rect
+# (verified empirically on this host; the W2 calibration assumed a
+# slightly different popup geometry and the rect shifted between
+# Phase 10 and Phase 11). The usb-tablet abs recipe lands exactly on
+# the literal pixel target, with no walk-halving to compensate for.
+#
+# Other markers keep their existing PS/2 REL recipe:
+#   - input phase (criterion 1): QMP-TARGET click 512 412 - demo body
+#   - panel phase S-open:        QMP-TARGET click 32 14   - panel S toggle
+#   - panel phase close:         QMP-TARGET click 512 412 - demo body
+#   - launch phase S-open:       QMP-TARGET click 32 14   - panel S toggle
+# The four above exercise the proven PS/2 REL → event_filter →
+# nitpicker → sponge-de chain (Phase 10 W3 evidence), and they pass
+# on this host. Only the launch-phase entry click was the flake.
+#
+# Marker format (kept identical to qmp_exec_target's `click` arm):
+# the probe still emits `QMP-TARGET click <gx> <gy>`. We re-route
+# that marker through qmp_tablet_click here instead of qmp_ps2_click.
+# The selector does NOT add a new marker verb - the probe's marker
+# contract is unchanged.
+#
+# Coordinate choice (empirical, see docs/evidence/task-3b-phase12-
+# launch-click.md §"Coordinate calibration"): the W2 PS/2 REL recipe
+# walked to (190, 120) inside the y:88..138 entry button rect
+# (per Phase 10 W2 evidence) and that hit the button on this host.
+# The W4 tablet-abs recipe (no walk-halving, ±0-1 px precision per
+# task-4-phase10-interactive.md) sends the cursor directly to
+# (170, 120) - popup-center x and 7 px below the W2 button-center
+# y=113, inside the 50-px-tall button rect. The probe marker is
+# (340, 170): the 340 is the W2 doubling for the PS/2 REL halving
+# (irrelevant for tablet-abs), the 170 is the W2 PS/2 REL target
+# y. The hard-coded (170, 120) target is robust under both observed
+# QPA `geometry.topLeft` mappings for the popup (`(0, 0)` and
+# `(0, 28)`, which has shifted between QEMU boots on QEMU 11.0.3).
+# Earlier attempts at `(170, 85)` (geometric center) and `(170, 113)`
+# (W2 button center) flaked out (1 PASS + 2 FAIL runs, then a kernel
+# deadlock unrelated to this change) - see the evidence file.
+#
+# Match window: identical to qmp_exec_target (200 KB) - the
+# green-pixel poll spam (~140 KB at 200 ms cadence) would otherwise
+# push the QMP-TARGET marker out of the default 2 KB expect buffer.
+#
+# Pattern: identical to qmp_exec_target's `click` arm - anchors on
+# `\r*\n` (QEMU -nographic serial emits CR CR LF, W4 fix).
+#
+proc qmp_exec_target_launch_click { chan timeout_s } {
+	global qemu_spawn_id
+	if {![info exists qemu_spawn_id]} {
+		puts stderr "\nqmp: qemu_spawn_id not set - qmp_exec_target_launch_click must run after run_genode_until spawned QEMU"
+		exit 1
+	}
+	set spawn_id $qemu_spawn_id
+	puts "\nqmp: qmp_exec_target_launch_click waiting for marker (timeout=${timeout_s}s)"
+	match_max -i $qemu_spawn_id 200000
+	expect {
+		-i $qemu_spawn_id
+		-re {QMP-TARGET click (-?\d+) (-?\d+)\r*\n} {
+			set gx $expect_out(1,string)
+			set gy $expect_out(2,string)
+			# Hard-coded empirical landing. See proc header.
+			set tx 170
+			set ty 120
+			puts "\nqmp: dispatching launch click at marker ($gx,$gy) -> tablet target ($tx,$ty) via usb-tablet abs + HMP mouse_button"
+			qmp_tablet_click $chan $tx $ty
+		}
+		timeout {
+			puts stderr "\nqmp: FAIL - no QMP-TARGET click marker within ${timeout_s}s (probe did not emit one)"
+			exit 1
+		}
+	}
+}
+
+
+##
+# Disconnect cleanly. Best-effort - closes the channel; errors are
 # ignored since QEMU may already be tearing down.
 #
 proc qmp_disconnect { chan } {
 	catch {close $chan}
+}
+
+
+##
+# Phase 12 W4 generic bounded helpers for QMP device hotplug. These
+# are the smallest-possible wrappers around qmp_cmd (the existing
+# QMP socket plumbing) - they exist so the W4 USB-keyboard scenario
+# doesn't inline device_add / device_del JSON literals in its hotplug
+# audit chain AND so any future Phase 13+ scenario that needs to
+# hotplug a USB device (or any other QEMU device type) doesn't have to
+# duplicate the JSON envelope.
+#
+# QEMU 11 accepts both `device_add` (hot-add) and `device_del` (hot-
+# remove) via QMP; the helpers below use the qcode-object-free form
+# (no input events are involved) and the JSON envelope matches the
+# qmp_cmd proc's pattern. Failures bubble up via qmp_cmd's existing
+# die-loud path (any `{"error":...}` exit 1).
+#
+# `bus' is OPTIONAL - QEMU auto-routes to the first compatible bus
+# when omitted. For the W4 use case (one xHCI controller, no UHCI/
+# EHCI), the auto-routing picks the xHCI bus correctly; callers that
+# need an explicit bus pass it as the third argument.
+#
+proc qmp_hotplug_device { chan driver id args } {
+	# Forward-pass: build the JSON argument object. The args parameter
+	# is an OPTIONAL Tcl list of additional key=value pairs (e.g.
+	# bus=xhci.0); an empty list omits the optional bus key entirely.
+	#
+	# NOTE: in Tcl, args is a list - passing "" to a function makes
+	# args a 1-element list. The conventional check for "no extra
+	# args" is [llength $args] == 0 (not $args eq {}, which has the
+	# same gotcha). If we just check $args ne "", the empty string
+	# would still enter the branch and append a stray "," producing
+	# invalid JSON. Verified empirically.
+	if {[llength $args] > 0} {
+		set json "{\"execute\":\"device_add\",\"arguments\":{\"driver\":\"$driver\",\"id\":\"$id\",$args}}"
+	} else {
+		set json "{\"execute\":\"device_add\",\"arguments\":{\"driver\":\"$driver\",\"id\":\"$id\"}}"
+	}
+	qmp_cmd $chan $json
+}
+
+proc qmp_unplug_device { chan id } {
+	qmp_cmd $chan "{\"execute\":\"device_del\",\"arguments\":{\"id\":\"$id\"}}"
 }
