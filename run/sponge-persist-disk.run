@@ -548,6 +548,13 @@ puts "sponge-persist-disk: image sha256 BEFORE boot 1: $sha_before"
 # The image attaches via image/disk's auto -drive (no -snapshot, so
 # writes persist to the .img file between boots — see power_on/qemu:117).
 #
+# Phase 12 W1 (docs/plans/phase12-hardware.md W1): pin the platform
+# explicitly. PC board default already supplies -machine q35
+# -cpu Skylake-Client; this makes the contract local and guards
+# against a silent board-default regression. Existing storage/image
+# wiring is preserved (no -snapshot, so P4 writes still survive boots).
+#
+append qemu_args " -machine q35 -cpu Skylake-Client "
 append qemu_args " -nographic -m 1G "
 
 # Helper: extract P4 from the image and read /store/installed.xml via

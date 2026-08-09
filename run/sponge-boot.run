@@ -354,6 +354,14 @@ build_boot_image $boot_modules
 # QEMU: base-sel4 needs >= 1 GiB guest RAM (docs/11 §7.2).
 # -nographic keeps it headless (serial only).
 #
+# Phase 12 W1 (docs/plans/phase12-hardware.md W1): pin the platform
+# explicitly. The PC board default (genode/repos/base/board/pc/qemu_args)
+# already supplies -machine q35 -cpu Skylake-Client, but every disk-
+# touching scenario makes the contract local so a future board-default
+# change does not silently regress storage. Existing storage/device
+# arguments and the 120 s probe timeout are preserved.
+#
+append qemu_args " -machine q35 -cpu Skylake-Client "
 append qemu_args " -nographic -m 1G "
 
 #

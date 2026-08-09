@@ -907,6 +907,13 @@ if {[file exists $ld_check]} {
 # absolute pointer. e1000 NIC for the dde_ipxe driver + user-net for
 # the 10.0.2.2 host alias.
 #
+# Phase 12 W1 (docs/plans/phase12-hardware.md W1): pin the platform
+# explicitly. PC board default already supplies -machine q35
+# -cpu Skylake-Client; this makes the contract local and guards
+# against a silent board-default regression. Existing storage/NIC/
+# device arguments and the 900 s falkon_probe gate are preserved.
+#
+append qemu_args " -machine q35 -cpu Skylake-Client "
 append qemu_args " -nographic -m 6G "
 append qemu_args " -device nec-usb-xhci,id=xhci -device usb-tablet "
 append_qemu_nic_args
