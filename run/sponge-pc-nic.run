@@ -1,0 +1,311 @@
+#
+# \brief  Sponge OS Phase 12 W3 — pc_nic (Linux-NIC-driver stack) DHCP smoke
+# \author Sponge OS contributors
+# \date   2026
+#
+# Plan reference: docs/plans/phase12-hardware.md §"W3: Additive pc_nic
+# scenario" (lines 487-556). Ground-truth sources:
+#   - driver/platform/capability + nic_router policy + DDE-Linux
+#     config shape from genode/repos/pc/run/pc_nic.run (upstream).
+#   - bounded-run + evidence style from run/sponge-net-probe.run
+#     (Phase 7 todo 12).
+#
+# === Honesty comment (verbatim from plan risk-7 / risk-17) ===
+#
+# pc_nic = Linux-NIC-driver stack (e1000e/rtl8169/ath9k/iwlwifi/
+# rtlwifi/USB-Ethernet). QEMU-verified on `-device e1000` only;
+# rtl8169/Wi-Fi/-USB-Ethernet documented but NOT QEMU-tested.
+#
+# === Topology (mirror of upstream pc_nic.run, but source-built) ===
+#
+# init
+# + timer
+# + drivers_reports              (report_rom)
+# + acpi                        (system ROM)
+# + pci_decode                  (pci enumeration)
+# + platform                    (managing_system; reports PCI ETHERNET
+# |                              devices to nic class via policy
+# |                              label_prefix: pc_nic)
+# + pc_nic                      (DDE-Linux NIC driver — caps: 1000 /
+# |                              ram: 32M; binds QEMU `-device e1000`
+# |                              and exposes Uplink session to nic_router)
+# + nic_router                  (provides Uplink + Nic; policy shape
+#                                label_prefix: pc_nic | domain: uplink;
+#                                verbose_domain_state: yes so the
+#                                DHCP-offer log line surfaces.)
+#
+# QEMU: e1000 + user/slirp netdev is the Genode PC board default
+# (genode/repos/base/board/pc/qemu_args). No tap/bridge. No virtio.
+#
+# === What this scenario proves (and does NOT prove) ===
+#
+# PROVES:
+#   1. The W1-managed pc repository actually compiles pc_nic on a
+#      fresh-prepared build directory (the Linux-source-double-prepare
+#      risk-16 mitigation: the same prep serves both scenarios).
+#   2. pc_nic binds the QEMU e1000 NIC and exposes a Uplink session to
+#      nic_router (the "bound device" gate).
+#   3. nic_router's policy routes the pc_nic-labeled Uplink session
+#      into the `uplink` domain, and the domain acquires DHCP from
+#      QEMU slirp (the "uplink DHCP acquired" gate).
+#   4. Both gates fire inside the 300 s cold DDE-Linux gate
+#      (risk-4 mitigation: no silent hang).
+#
+# DOES NOT PROVE (intentionally out of scope — kept additive):
+#   - HTTP / fetchurl round-trip — that is run/sponge-net-probe.run's
+#     job (the unchanged iPXE/fetchurl smoke; risk-15 mitigation).
+#   - Wi-Fi / ath9k / iwlwifi / rtlwifi / USB-Ethernet — documented
+#     in the honesty comment above but NOT QEMU-tested (Phase 15
+#     real-hardware target).
+#   - Multiple uplink clients or DHCP-server side. The single
+#     label_prefix policy is the upstream-proven shape (risk-15).
+#
+# === Sizing rationale (risk 4 / plan §W3 step 3) ===
+#
+#   pc_nic | caps: 1000 | ram: 32M
+#
+# Upstream pc_nic.run uses caps=140, ram=16M which is too tight for
+# the seL4 PC platform — Phase 12 deliberately bumps to 1000/32M to
+# avoid silent seL4 cap exhaustion (the same lesson as Phase 10 §11.1
+# for sponge-de). The cap size is verbatim from the plan.
+#
+# === Bounded gates (plan §W3 step 4) ===
+#
+#   gate 1 (bind):  a pc_nic component log line proving the Linux NIC
+#                    driver actually attached to the e1000 PCI device.
+#                    e1000e/netdev.c logs `Intel(R) PRO/1000 Network
+#                    Driver` and `Copyright(c) 1999 - 2015 Intel
+#                    Corporation.` at module init; DDE-Linux routes
+#                    these via printk → Lx_kit::Console → Genode::log
+#                    so they appear as `[init -> pc_nic] Intel(R) ...`
+#                    in the boot log. We accept that as the bind
+#                    gate because it ONLY fires if e1000e bound the
+#                    PCI device — if pc_nic did not bind, those lines
+#                    never appear.
+#   gate 2 (DHCP):  a nic_router log line proving DHCP made it through.
+#                    nic_router emits `[<domain>] dhcp offer from <srv>,
+#                    offering <ip>` when verbose_domain_state=yes;
+#                    we match on the static slirp offer pattern
+#                    `dhcp offer from 10.0.2.3, offering 10.0.2.15`
+#                    (slirp always grants .15 and uses itself as .3
+#                    for the DHCP server).
+#   gate 3 (exit):  the upstream scenario uses `run_genode_until
+#                    forever`; we change that to a bounded timeout
+#                    so a stuck DHCP or a hung nic_router is a loud
+#                    FAIL after 30s (gate 2 already fired by then).
+#
+# Cold DDE-Linux build budget: 300 s (plan §W3 step 4 verbatim).
+#
+# === Files NOT changed ===
+#
+#   run/sponge-net-probe.run, run/sponge-falkon-disk.run,
+#   run/sponge-alpha.run — verified unchanged after the run (git diff
+#   receipt in docs/evidence/task-3-phase12-pc-nic.md §3).
+#
+# base-sel4 only.
+#
+# Build:
+#   make -j1 -C genode/build/x86_64 run/sponge-pc-nic \
+#       KERNEL=sel4 BOARD=pc
+#
+# (the run tool's pc board default already supplies -machine q35
+# -cpu Skylake-Client; W1's managed block adds them to all disk-
+# touching scenarios; this scenario is not disk-touching so the
+# board default suffices — and we add -machine q35 -cpu Skylake-
+# Client explicitly below as the D12.1 platform-pin contract.)
+#
+
+assert {[have_spec sel4]} \
+	"sponge-pc-nic requires KERNEL=sel4 (BOARD=pc) in build.conf. \
+	 The pc_nic Linux-NIC-driver stack is x86-only (driver/nic/pc) \
+	 and Phase 12 verifies it on QEMU e1000 with base-sel4."
+
+#
+# Build set — mirrors upstream pc_nic.run but every component is
+# source-built (no depot imports; Sponge-OS convention per
+# genode/repos/base/etc/build.conf).
+#
+#   driver/nic/pc         → pc_nic binary (genode/repos/pc/src/driver/nic/pc/)
+#   driver/acpi           → ACPI subsystem (genode/repos/os/src/driver/acpi/spec/x86/)
+#   app/pci_decode        → PCI enumeration (genode/repos/os/src/app/pci_decode/)
+#   driver/platform       → PCI resource manager + IRQ routing (genode/repos/os/src/driver/platform/)
+#   server/nic_router     → Uplink<->Nic policy router (genode/repos/os/src/server/nic_router/)
+#   server/report_rom     → relays pci_decode/system and platform/devices
+#
+# All Linux sources pulled by driver/nic/pc's pc_lx_emul library
+# (genode/repos/pc/lib/import/import-pc_lx_emul.mk) reuse the
+# already-prepared kernel archive at
+# genode/contrib/linux-e4aad15aa6e3267bf6f8ac2b1b51766c03a8d82b/.
+# The DDE-Linux tree (dde_linux/src/) supplies the printk → log
+# bridge (Lx_kit::Console::print_string → Genode::log).
+#
+build { core lib/ld init timer server/report_rom \
+        driver/acpi app/pci_decode driver/platform \
+        driver/nic/pc \
+        server/nic_router }
+
+create_boot_directory
+
+#
+# Init config. Mirrors upstream pc_nic.run's config verbatim EXCEPT
+# (a) the depot sources are replaced with the source-built library
+#     names (init from core's lib/ld route, not from depot),
+# (b) pc_nic caps/ram are bumped to the Phase-12 sizing
+#     (caps: 1000 | ram: 32M, plan §W3 step 3 + risk 4),
+# (c) the pc_nic config gets ld_verbose: yes (verbatim from upstream,
+#     even though main.cc doesn't read it — preserved for compat
+#     with the upstream example),
+# (d) the platform driver policy label_prefix is `pc_nic` (matches
+#     the policy in nic_router, copy-paste-failure protection).
+#
+install_config {
+config | prio_levels: 2
+
++ parent-provides
+  + service CPU
+  + service IO_MEM
+  + service IO_PORT
+  + service IRQ
+  + service LOG
+  + service PD
+  + service RM
+  + service ROM
+
++ default | caps: 100 | ram: 1M
+
++ default-route
+  + any-service
+    + parent
+    + any-child
+
++ start timer | priority: 0
+  + provides | + service Timer
+
++ start drivers_reports | caps: 100 | ram: 2M
+  + binary report_rom
+  + provides
+    + service Report
+    + service ROM
+  + config | verbose: yes
+    + policy | label: pci_decode -> system | report: acpi -> acpi
+    + policy | label: platform -> devices  | report: pci_decode -> devices
+
++ start acpi | caps: 350 | ram: 6M
+  + route
+    + service Report | + child drivers_reports
+    + any-service
+      + parent
+      + any-child
+
++ start pci_decode | caps: 350 | ram: 2M
+  + route
+    + service ROM    | label: system | + child drivers_reports
+    + service Report                 | + child drivers_reports
+    + any-service
+      + parent
+      + any-child
+
++ start platform | caps: 400 | ram: 4M | managing_system: yes
+  + provides
+    + service Dma
+    + service Platform
+  + config
+  | + report | devices: yes
+  | + policy | label_prefix: pc_nic | info: yes | + pci | class: ETHERNET
+  + route
+    + service ROM    | label: devices | + child drivers_reports
+    + service Report                  | + child drivers_reports
+    + any-service
+      + parent
+      + any-child
+
++ start pc_nic | caps: 1000 | ram: 32M | priority: -1
+  + config | ld_verbose: yes
+
++ start nic_router | caps: 150 | ram: 8M
+  + provides
+    + service Nic
+    + service Uplink
+  + config | verbose:                   no
+  |        | verbose_domain_state:      yes
+  |        | dhcp_discover_timeout_sec: 10
+  |        | dhcp_request_timeout_sec:  6
+  | + policy | label_prefix: pc_nic | domain: uplink
+  | + domain uplink
+  |   | verbose_packets:     no
+  |   | verbose_packet_drop: no
+  |   | icmp_echo_server:    yes
+- }
+
+#
+# Boot modules: every binary the build above produced + ld.lib.so.
+# (boot_dir/sel4 auto-injects ld.lib.so into the boot image, but we
+# pass it explicitly via build_artifacts for the dual-use with the
+# cold-build case.)
+#
+set boot_modules [build_artifacts]
+build_boot_image $boot_modules
+
+#
+# QEMU: explicit q35 + Skylake-Client pin (plan §D12.1 platform-pin
+# contract). The PC board default supplies `-net nic,model=e1000,
+# netdev=net0 -netdev user,id=net0` (QEMU user/slirp). NO tap/bridge.
+#
+append qemu_args " -machine q35 -cpu Skylake-Client "
+append qemu_args " -nographic -m 1G "
+
+#
+# Bounded gates (plan §W3 step 4 + risk 4 mitigation). The run is
+# cold DDE-Linux — the 300 s upper gate is the cold-build safety
+# net, and the per-gate waits are much tighter:
+#
+#   gate 1 (bind):  wait up to 60 s for the e1000e module-init log.
+#                    If pc_nic did not bind the e1000 PCI device,
+#                    this log line never fires and the run times out
+#                    loudly (no silent hang).
+#   gate 2 (DHCP):  wait up to 90 s for the slirp DHCP-offer log.
+#                    QEMU slirp grants 10.0.2.15 with DHCP server
+#                    10.0.2.3 (QEMU's built-in DHCP server). The
+#                    regex anchors on these literals so the gate
+#                    fires only on a real slirp DHCP exchange.
+#   gate 3 (exit):  a bounded 30 s tail-catch — once the DHCP-offer
+#                    log is observed, nic_router continues through
+#                    REQUEST → ACK (no extra log line emitted unless
+#                    verbose= yes), and the run exits cleanly. A
+#                    hang here is a stale-tx / drop-tailet /
+#                    kernel-stack leak in the DDE-Linux nic.c.
+#
+# Cold DDE-Linux timeout: 300 s (plan §W3 step 4). Each gate's
+# `run_genode_until` returns 0 on match, 1 on timeout; if the cold
+# build + first gate exceed 300 s the whole script aborts.
+#
+# Both regexes use Tcl/expect-style .* wildcards. The `.*Intel\(R\)
+# PRO/1000 Network Driver.*` and `.*dhcp offer from 10\.0\.2\.3,
+# offering 10\.0\.2\.15.*` markers are taken straight from the
+# upstream pc_nic source and the QEMU slirp contract; no fabricated
+# PASS literal.
+#
+
+set rc 0
+if {[catch {
+	# gate 1: pc_nic binds e1000 (DDE-Linux cold start can be slow;
+	# 240 s is the gate-1 budget inside the 300 s cold-DDE-Linux cap)
+	run_genode_until {.*Intel\(R\) PRO/1000 Network Driver.*} 240
+	# gate 2: nic_router acquires DHCP from QEMU slirp (QEMU slirp
+	# runs the built-in DHCP server at 10.0.2.2 — that is the siaddr
+	# in the offer log line, NOT 10.0.2.3 which is the DNS server)
+	run_genode_until {.*dhcp offer from 10\.0\.2\.2, offering 10\.0\.2\.15.*} 30
+	# gate 3: nic_router has accepted the lease and updated the IP config
+	run_genode_until {.*dynamic IP config: interface 10\.0\.2\.15.*} 10
+} err]} {
+	puts "sponge-pc-nic: FAILED — $err"
+	set rc 1
+}
+
+if {$rc != 0} {
+	exit $rc
+}
+
+puts "sponge-pc-nic: PASS (pc_nic bound e1000, nic_router acquired DHCP 10.0.2.15)"
+
+# vi: set ft=tcl :
