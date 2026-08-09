@@ -759,6 +759,13 @@ build_boot_image $boot_modules
 # Qt6/Mesa + lz_runtime caps:8000/ram:1G + pkg_runtime all fit). -nographic
 # keeps it headless. nec-usb-xhci + usb-tablet give the absolute pointer.
 #
+# Phase 12 W1 (docs/plans/phase12-hardware.md W1): pin the platform
+# explicitly. PC board default already supplies -machine q35
+# -cpu Skylake-Client; this makes the contract local and guards
+# against a silent board-default regression. Existing storage/device
+# arguments and the alpha_probe timeout are preserved.
+#
+append qemu_args " -machine q35 -cpu Skylake-Client "
 append qemu_args " -nographic -m 2G "
 append qemu_args " -device nec-usb-xhci,id=xhci -device usb-tablet "
 

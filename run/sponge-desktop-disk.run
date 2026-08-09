@@ -913,6 +913,13 @@ if {[file exists $ld_check]} {
 # QEMU: -m 4G for cached_fs_rom cache + Qt6/Mesa + rump + seL4 SKIM.
 # nec-usb-xhci + usb-tablet for absolute pointer.
 #
+# Phase 12 W1 (docs/plans/phase12-hardware.md W1): pin the platform
+# explicitly. PC board default already supplies -machine q35
+# -cpu Skylake-Client; this makes the contract local and guards
+# against a silent board-default regression. Existing storage/device
+# arguments and the 900 s alpha-probe gate are preserved.
+#
+append qemu_args " -machine q35 -cpu Skylake-Client "
 append qemu_args " -nographic -m 4G "
 append qemu_args " -device nec-usb-xhci,id=xhci -device usb-tablet "
 
