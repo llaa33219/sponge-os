@@ -84,8 +84,31 @@ comptime RELEASE_NAME_PREFIX = "sponge-os-" + RELEASE_VERSION + "-"
 # Per docs/14 §8: the .img is the disk-served product (Phase 8 P2
 # desktop-from-disk + P3 SPONGE-DATA via tool/mkdata); the .iso is the
 # alpha boot-modules live/eval media (Tier 2 on RAM fs, no persistence).
-comptime DISK_SCENARIO = "sponge-desktop-disk"
+#
+# Phase 12 W2 (docs/plans/phase12-hardware.md §"W2: Storage variants
+# and product-media selector"): the product .img can be built against
+# EITHER the default AHCI Tier-0 chain OR an opt-in NVMe Tier-0 chain
+# (`--storage {ahci,nvme}`). The default stays `ahci` (current
+# behavior + artifact naming). `nvme` selects the dedicated
+# `run/sponge-desktop-disk-nvme.run` product scenario that uses one
+# explicit q35 `pcie-root-port` + `-device nvme` namespace (copied
+# from `run/sponge-boot.run`'s `SPONGE_BOOT_NVME` block, plan §W2
+# step 2 / Risk 10). The ISO path is ALWAYS `sponge-alpha` regardless
+# of the storage mode (ISO is live/eval on a RAM fs; no storage driver
+# is touched).
+comptime DISK_SCENARIO_AHCI = "sponge-desktop-disk"
+comptime DISK_SCENARIO_NVME = "sponge-desktop-disk-nvme"
 comptime ISO_SCENARIO = "sponge-alpha"
+
+# Default storage mode (the default keeps current behavior and artifact
+# naming — plan §W2 step 1: "default ahci keeps current behavior and
+# artifact naming").
+comptime DEFAULT_STORAGE_MODE = "ahci"
+
+# Allowed values for --storage. Anything else is rejected BEFORE any
+# build starts (plan §W2 step 1: "reject any other value before a
+# build starts with a concise English error and usage line").
+comptime ALLOWED_STORAGE_MODES = ["ahci", "nvme"]
 
 # Default SPONGE-DATA P4 size (MiB). Matches tool/mkdata's default and
 # docs/14 §4.3 ("P4 = 1 GiB default, configurable via tool/dist
@@ -275,19 +298,36 @@ def cmd_help() raises:
     print()
     print("Product story (docs/14-boot-storage-architecture.md §8):")
     print("  .img  the real product — 4-partition disk-served desktop")
-    print("        (run/" + DISK_SCENARIO + ") + SPONGE-DATA partition")
-    print("        (tool/mkdata). Installs persist across reboots.")
+    print("        (run/" + DISK_SCENARIO_AHCI + " by default, or")
+    print("        run/" + DISK_SCENARIO_NVME + " with --storage nvme)")
+    print("        + SPONGE-DATA partition (tool/mkdata).")
+    print("        Installs persist across reboots.")
     print("  .iso  live/eval mode — alpha boot-modules composition")
     print("        (run/" + ISO_SCENARIO + ") on a RAM filesystem.")
-    print("        Boots the same desktop; nothing persists.")
+    print("        Boots the same desktop; nothing persists. The")
+    print("        ISO path is always " + ISO_SCENARIO + "; the")
+    print("        --storage flag only affects the .img.")
+    print()
+    print("Storage mode (Phase 12 W2, docs/plans/phase12-hardware.md):")
+    print("  ahci  default; the product .img boots against the q35 ICH9")
+    print("        AHCI chain (run/" + DISK_SCENARIO_AHCI + ").")
+    print("  nvme  the product .img boots against a q35 PCIe root-port")
+    print("        + -device nvme chain (run/" + DISK_SCENARIO_NVME + "),")
+    print("        one namespace verified; multi-namespace is a known gap.")
+    print("        The same q35 + Skylake-Client pin, --include image/disk")
+    print("        plugin set, and SPONGE-DATA P4 step apply. The QEMU")
+    print("        root-port/drive/NVMe-device wiring is copied verbatim")
+    print("        from run/sponge-boot.run's SPONGE_BOOT_NVME block.")
     print()
     print("Usage:")
-    print("  mojo tool/dist.mojo                  Build product .img + .iso")
-    print("  mojo tool/dist.mojo --no-data        Skip the SPONGE-DATA P4 step")
-    print("                                       (control door; .img has 3 partitions)")
-    print("  mojo tool/dist.mojo --data-size <N>  N MiB SPONGE-DATA P4 (default "
+    print("  mojo tool/dist.mojo                       Build .img (ahci) + .iso")
+    print("  mojo tool/dist.mojo --storage ahci        Force AHCI product .img (default)")
+    print("  mojo tool/dist.mojo --storage nvme        Force NVMe product .img")
+    print("  mojo tool/dist.mojo --no-data             Skip the SPONGE-DATA P4 step")
+    print("                                            (control door; .img has 3 partitions)")
+    print("  mojo tool/dist.mojo --data-size <N>       N MiB SPONGE-DATA P4 (default "
           + String(DEFAULT_DATA_MIB) + ")")
-    print("  mojo tool/dist.mojo help             Show this help")
+    print("  mojo tool/dist.mojo help                  Show this help")
     print()
     print("Produces in var/dist/:")
     print("  " + RELEASE_NAME_PREFIX + ".img")
@@ -611,6 +651,31 @@ def print_summary(root: String) raises:
     print("  Verify:      (cd " + dist_dir + " && sha256sum -c *.sha256)")
 
 
+def is_valid_storage_mode(value: String) raises -> Bool:
+    """True iff `value` is one of the allowed --storage values.
+    Used by main() to reject --storage arguments BEFORE any build
+    starts (plan §W2 step 1: "reject any other value before a build
+    starts with a concise English error and usage line"). Hard-coded
+    rather than a comptime list to avoid the StringSlice/non-copyable
+    iterator issue (the comptime list elements are StringSlice over a
+    StaticConstantOrigin, not ImplicitlyCopyable)."""
+    if value == "ahci":
+        return True
+    if value == "nvme":
+        return True
+    return False
+
+
+def disk_scenario_for(storage_mode: String) raises -> String:
+    """Map a validated storage mode to the run/<scenario>.run product
+    scenario name. AHCI uses the canonical desktop-from-disk scenario
+    (unchanged); NVMe uses the dedicated NVMe-from-disk scenario
+    introduced by Phase 12 W2."""
+    if storage_mode == "nvme":
+        return DISK_SCENARIO_NVME
+    return DISK_SCENARIO_AHCI
+
+
 def main() raises:
     var args = argv()
 
@@ -619,6 +684,7 @@ def main() raises:
     # alone runs the build without the SPONGE-DATA step.
     var add_data = True
     var data_mib = DEFAULT_DATA_MIB
+    var storage_mode = String(DEFAULT_STORAGE_MODE)
     var i = 1
     while i < len(args):
         var a = String(args[i])
@@ -653,6 +719,35 @@ def main() raises:
             data_mib = Int(val)
             i += 1
             continue
+        if a == "--storage":
+            if i + 1 >= len(args):
+                print("error: --storage requires a value (one of: ahci, nvme)")
+                print()
+                cmd_help()
+                exit(1)
+            var candidate = String(args[i + 1])
+            if not is_valid_storage_mode(candidate):
+                print("error: --storage value '" + candidate + "' is not one of: ahci, nvme")
+                print()
+                print("Usage:")
+                cmd_help()
+                exit(1)
+            storage_mode = candidate
+            i += 2
+            continue
+        if startswith_str(a, "--storage="):
+            var builtins = Python.import_module("builtins")
+            comptime prefix_len = 10  # len("--storage=")
+            var val = String(builtins.str(a)[prefix_len:])
+            if not is_valid_storage_mode(val):
+                print("error: --storage value '" + val + "' is not one of: ahci, nvme")
+                print()
+                print("Usage:")
+                cmd_help()
+                exit(1)
+            storage_mode = val
+            i += 1
+            continue
         if a == "build":
             # 'build' is the implicit default; accept it explicitly for
             # future-proofing (a no-op alias).
@@ -684,14 +779,21 @@ def main() raises:
         print("Run './tool/build prepare' first (see docs/08-development.md §3).")
         exit(1)
 
+    var disk_scenario = disk_scenario_for(storage_mode)
+
     print("[sponge-dist] Sponge OS distribution media builder")
-    print("  product .img: " + DISK_SCENARIO + " (image/disk)")
+    if storage_mode != DEFAULT_STORAGE_MODE:
+        print("  storage mode: " + storage_mode + "  (--storage override)")
+    else:
+        print("  storage mode: " + storage_mode
+              + "  (default; explicit --storage ahci preserves this)")
+    print("  product .img: " + disk_scenario + " (image/disk)")
     if add_data:
         print("               + tool/mkdata SPONGE-DATA P4 ("
               + String(data_mib) + " MiB)")
     else:
         print("               (--no-data: SPONGE-DATA P4 step SKIPPED)")
-    print("  live/eval .iso: " + ISO_SCENARIO + " (image/iso)")
+    print("  live/eval .iso: " + ISO_SCENARIO + " (image/iso; storage-independent)")
     print("  release name: " + RELEASE_NAME_PREFIX + ".{img,iso}")
     print("  repo root:    " + root)
     print()
@@ -702,7 +804,7 @@ def main() raises:
         exit(1)
 
     # (b) Disk-image build first (the new product media).
-    var disk_rc = run_media_build("image/disk", DISK_SCENARIO, root)
+    var disk_rc = run_media_build("image/disk", disk_scenario, root)
     if disk_rc != 0:
         print()
         print("[sponge-dist] error: image/disk build failed (exit code "
@@ -714,7 +816,7 @@ def main() raises:
     # release artifact already carries P4. This is the docs/14 §4.3
     # grow/repartition step.
     var disk_src = (root + "/genode/build/x86_64/var/run/"
-        + DISK_SCENARIO + ".img")
+        + disk_scenario + ".img")
     if not os_path.isfile(disk_src):
         print()
         print("[sponge-dist] error: image/disk make exited 0 but the .img is")
@@ -747,15 +849,15 @@ def main() raises:
 
     # (d.1) Stage the disk artifact + sha256 (in-place modified by
     # mkdata if --no-data was not passed).
-    if not stage_artifact("image/disk", DISK_SCENARIO, root):
+    if not stage_artifact("image/disk", disk_scenario, root):
         exit(1)
 
     print()
     # (b.4) ISO build second (live/eval mode). The stale_state guard
     # inside run_media_build cleans var/run/<scenario>* — but note the
-    # two scenarios differ (sponge-desktop-disk vs sponge-alpha), so
-    # the prefix-clean is per-scenario and the disk build's run_dir is
-    # not touched by the ISO clean.
+    # two scenarios differ (the storage-mode scenario vs sponge-alpha),
+    # so the prefix-clean is per-scenario and the disk build's run_dir
+    # is not touched by the ISO clean.
     var iso_rc = run_media_build("image/iso", ISO_SCENARIO, root)
     if iso_rc != 0:
         print()
@@ -776,6 +878,8 @@ def main() raises:
     if add_data:
         print("  .img: 4 partitions (BIOSBOOT/ESP/GENODE/SPONGE-DATA)")
         print("        — installs persist across reboots (P3).")
+        print("        (built via run/" + disk_scenario + " — storage=" + storage_mode + ")")
     else:
         print("  .img: 3 partitions (BIOSBOOT/ESP/GENODE) — no SPONGE-DATA.")
+        print("        (built via run/" + disk_scenario + " — storage=" + storage_mode + ")")
     print("  .iso: live/eval mode (RAM filesystem; nothing persists).")
