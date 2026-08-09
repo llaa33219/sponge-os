@@ -165,7 +165,7 @@ A scenario defines:
   the staged `pkg_gui_demo` package and `wm_probe` in `inject="no"`
   observe mode. QEMU: `-m 2G`, xhci + usb-tablet, `run/qmp.inc`-driven
   PS/2 Mouse drag (proven more reliable than the usb-tablet
-  absolute-axis recipe under QEMU 11.0.2 because nitpicker's pointer
+  absolute-axis recipe under QEMU 11.0.3 because nitpicker's pointer
   sanitizer clamps every `Absolute_motion` value to screen center;
   see the qcode-block comment at the top of `run/qmp.inc`). The probe
   launches `pkg_gui_demo` via `sponge_pkgd`'s `request` channel,
@@ -596,6 +596,113 @@ A scenario defines:
   untinted (180,180,191)), a usb-tablet QMP drag moving pkg_gui_demo
   through the themed chrome, and `wm-probe: PASS`. The Phase-10
   `sponge-wm-qmp.run` drag regression must stay green alongside.
+
+- `sponge-boot-i440fx.run` — **Phase 12 — Phase-12 criterion 1 storage
+  variant (i440fx smoke)**. Storage-only i440fx/PIIX4 IDE smoke on
+  base-sel4: explicit `-machine pc -cpu Skylake-Client`, exactly one
+  boot disk, **does not start AHCI**, carries **no product `.img`**,
+  no Sponge DE, and no NVMe toggle. Reuses the Tier-0 `boot_probe`
+  pipeline (`platform`/`acpi`/`pci_decode` → IDE → `part_block` → VFS
+  → `cached_fs_rom` → `boot_probe`) and gates on `boot-probe: PASS`
+  from an IDE-backed P3 marker. `smoke-only` (not product-verified;
+  the product stays on q35). Tier-0 target ≤60 seconds. Evidence
+  `docs/evidence/phase12-boot-i440fx.log`. **Honest claim:** Phase 12
+  verified QEMU `-machine pc` PIIX4 IDE path; this is **not** a real
+  i440fx machine.
+
+- `sponge-boot-multidisk.run` — **Phase 12 — Phase-12 criterion 1
+  storage variant (q35/AHCI multi-disk order check)**. Two-disk smoke
+  on q35+Skylake-Client with q35/AHCI; the expected marker is placed
+  **only** on P3 of the **second** disk, and the QEMU drive order is
+  deliberately swapped so the success cannot come from "first disk"
+  semantics. The partition-number pin is preserved (`part_block`
+  reads by number, never auto-probes). Gates on `boot-probe: PASS`
+  reading the marker from the second disk's P3. Tier-0 target
+  ≤60 seconds. Evidence `docs/evidence/phase12-boot-multidisk.log`.
+
+- `sponge-desktop-disk-nvme.run` — **Phase 12 — Phase-12 criterion 1
+  storage variant (q35/NVMe desktop-from-disk)**. Phase 12's
+  product-media NVMe variant on q35+Skylake-Client: one namespace on
+  a `pcie-root-port`, NVMe `caps: 5000 | ram: 64M` (the sizing
+  proven by W2's quota-exhaustion canary), `<partition number="3"/>`
+  semantics preserved, plus a P3 `Number: 3` report/byte assertion
+  before the existing `alpha-probe: PASS`. NVMe is **not** the
+  default product media (the `tool/dist --storage {ahci,nvme}`
+  selector defaults to AHCI); `nvme` is opt-in. Tier-0 check target
+  near 60 seconds; full seL4 desktop is 600 s+ reality, bounded at
+  900 seconds. Evidence `docs/evidence/phase12-desktop-nvme.log`.
+  **Honest claim:** one namespace QEMU-verified; multi-namespace NVMe
+  is recorded as a Phase-12 gap in `docs/15-hardware-compatibility.md`.
+
+- `sponge-pc-nic.run` — **Phase 12 — Phase-12 criterion 2 expanded
+  driver set (pc_nic/e1000 + nic_router DHCP)**. Additive
+  Linux-backed NIC driver smoke on q35+Skylake-Client: the in-tree
+  `pc_nic` server (`genode/repos/pc/src/driver/nic/pc/`) is built from
+  the Phase-12-managed `pc` repository (added to `REPOSITORIES` in
+  W1, idempotent), QEMU exposes `-device e1000`, and the upstream
+  `nic_router` policy `label_prefix: pc_nic | domain: uplink` is
+  copied verbatim. `pc_nic` is sized `caps: 1000 | ram: 32M` (the
+  Phase-12 small-box; the upstream default of ~140 caps / 16 MiB
+  silently hangs on seL4). QEMU's user-mode slirp backend is preserved
+  (no tap/bridge). Gates in order: `pc_nic: bound device` then
+  `nic_router: uplink DHCP acquired` (300 s cold DDE-Linux gate;
+  the bounded timeout is a loud failure, not a silent hang). The
+  existing `run/sponge-net-probe.run` (iPXE/fetchurl round-trip) is
+  unchanged. Evidence `docs/evidence/phase12-pc-nic.log`. **Honest
+  claim text** (per docs/15 row):
+  "pc_nic = Linux-NIC-driver stack (e1000e/rtl8169/ath9k/iwlwifi/rtlwifi/USB-Ethernet). QEMU-verified on `-device e1000` only; rtl8169/Wi-Fi/-USB-Ethernet documented but NOT QEMU-tested."
+
+- `sponge-usb-boot.run` — **Phase 12 — Phase-12 criterion 1 storage
+  variant (BIOS-side USB stick)**. BIOS-side USB-storage attachment
+  of the existing product ISO on q35+Skylake-Client: the ISO is
+  attached via
+  `-boot menu=on -device usb-ehci -device usb-storage,drive=stick -drive id=stick,format=raw,file=<iso>,if=none`.
+  Gates on `BIOS-side USB boot verified` when the bootloader/media
+  handoff succeeds and the existing `alpha-probe: PASS` as the
+  end-to-end Alpha corroboration. **Honest claim** (scenario header
+  comment, verbatim from plan risk 1):
+  "USB boot = product media bootable as a USB stick on QEMU via
+  `-device usb-storage` (BIOS side). Genode-side `usb_block` reads
+  USB block devices AFTER `image.elf` is loaded; not a boot-path
+  claim." BIOS handoff target ≤60 seconds; full Alpha corroboration
+  is 600 s+ reality, bounded at 900 seconds. Evidence
+  `docs/evidence/phase12-usb-boot.log`.
+
+- `sponge-usb-kbd-via-qmp.run` — **Phase 12 — Phase-12 criterion 2
+  expanded driver set (USB HID keyboard via QMP)**. Reuses the
+  `run/sponge-de-sel4-interactive.run` driver stack (q35+Skylake-
+  Client, `pc_usb_host`, `usb_hid`, `event_filter`) plus the
+  Phase-12 W3b QMP choreography fix. Boots without a static
+  usb-kbd pass condition, then QMP `device_add`s a named `usb-kbd`
+  device, observes `usb_hid` devices report `KEYBOARD` and emits
+  `usb_hid: KEYBOARD detected`, QMP `device_del`s the keyboard
+  and captures the removal event, then dispatches `send-key` (the
+  QEMU-11 qcode-object form) via the QMP helper. The
+  primary required gate is the audit chain
+  `usb_hid: KEYBOARD detected` → `usb_hid: KEYBOARD removed`
+  → `sponge-usb-kbd-via-qmp: PASS` + `Run script execution
+  successful.`. The glyph-delta secondary gate is a documented
+  Phase-12 gap (probe-focus ROM quirk; the post-device_del
+  send-key travels the PS/2 path already covered by
+  `sponge-terminal-qmp.run`). 600 s+ seL4 desktop reality, bounded at
+  900 seconds. Evidence `docs/evidence/phase12-usb-kbd.log`. No
+  usb-mouse, no `i2c_hid`, no new USB controller class.
+
+- `tool/dist --storage {ahci,nvme}` — **Phase 12 — product-media
+  selector**. `tool/dist` accepts a `--storage {ahci,nvme}` option
+  (added in W2). The default is `ahci` (preserves current behavior
+  and artifact naming); `nvme` selects a one-namespace NVMe product
+  path (the `run/sponge-desktop-disk-nvme.run` topology). Invalid
+  values are rejected before a build starts with a concise English
+  error and usage line. The ISO / live media path is unchanged. See
+  `docs/evidence/task-2-phase12-storage.md` for the receipts.
+
+- `docs/15-hardware-compatibility.md` — **Phase 12 — compatibility
+  contract**. The hand-curated 5×5 surface matrix + 16-cell tuple
+  ledger (4 verified, 1 smoke-only, 11 gap) plus the six Phase-12
+  known gaps. Validated by the read-only `tool/hw_compat.mojo
+  assert` (no `generate` / `update` / repo write); reachable from
+  `./tool/build verify`.
 
 ## Planned additions
 

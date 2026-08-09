@@ -404,11 +404,42 @@ Scenarios:
 | `run/sponge-desktop-disk.run` | **Phase 8 P2**: the FULL Alpha desktop booted FROM DISK (image.elf ≤ 12 MiB; Qt6 desktop served from `/system` via `cached_fs_rom`); gates on `alpha-probe: PASS`. The disk-served half of the product `.img`. base-sel4 only; `RUN_OPT='--include image/disk'`. | ✅ (commit `e7f8b9a458`) |
 | `run/sponge-persist-disk.run` | **Phase 8 P3**: persistence on SPONGE-DATA — `sponge_pkgd`'s installed-set store survives a reboot when backed by a writable ext2 on P4 (added by `tool/mkdata`); two-boot adversarial proof. base-sel4 only; `RUN_OPT='--include image/disk'`. | ✅ (commit `f25a81dcbe`) |
 | `run/sponge-falkon-disk.run` | **Phase 8 P4**: Falkon's 509 MiB WebEngine payload booted FROM DISK (architecture PROVEN — image.elf stays at ~12 MiB; ldso resolves the 237 MiB WebEngine lib from disk; lwIP DHCPs to 10.0.2.15). First paint is blocked by a base-sel4 capability-space issue (NOT a boot/storage issue); see `docs/14` §12.4 and `docs/evidence/p4-cspace-fix.log`. base-sel4 only; `RUN_OPT='--include image/disk'`. | 🟡 architecture proven; first paint blocked (commit `bae5423d1b`) |
+| `run/sponge-boot-i440fx.run` | **Phase 12 — i440fx/PIIX4 IDE smoke** (`-machine pc`, explicit `-cpu Skylake-Client`, one disk, no AHCI, no product image, no DE). Tier-0 only; gates on `boot-probe: PASS` from the PIIX4 IDE marker. `smoke-only`, not product-verified. ≤60 s target. Evidence `docs/evidence/phase12-boot-i440fx.log`. | ✅ Phase 12 (criterion 1) |
+| `run/sponge-boot-multidisk.run` | **Phase 12 — q35/AHCI multi-disk order check**. Two disks; expected marker is on P3 of the SECOND disk; drive order is swapped so success cannot come from "first disk". Tier-0 only; gates on `boot-probe: PASS` from the second disk's P3 marker. ≤60 s target. Evidence `docs/evidence/phase12-boot-multidisk.log`. | ✅ Phase 12 (criterion 1) |
+| `run/sponge-desktop-disk-nvme.run` | **Phase 12 — q35/NVMe desktop-from-disk** (one namespace on a `pcie-root-port`, NVMe `caps: 5000 | ram: 64M`, `<partition number="3"/>` semantics preserved, P3 `Number: 3` report/byte check before `alpha-probe: PASS`). Opt-in via `./tool/dist --storage nvme`. 600 s+ full desktop reality, bounded at 900 s. Evidence `docs/evidence/phase12-desktop-nvme.log`. | ✅ Phase 12 (criterion 1) |
+| `run/sponge-pc-nic.run` | **Phase 12 — pc_nic/e1000 + nic_router DHCP** (Linux-backed `pc_nic` server, `caps: 1000 | ram: 32M`, upstream `label_prefix: pc_nic | domain: uplink` policy, QEMU user/slirp backend). Gates in order: `pc_nic: bound device` then `nic_router: uplink DHCP acquired` (300 s cold DDE-Linux gate). Evidence `docs/evidence/phase12-pc-nic.log`. | ✅ Phase 12 (criterion 2) |
+| `run/sponge-usb-boot.run` | **Phase 12 — BIOS-side USB storage attachment** (ISO attached via `-device usb-storage`; BIOS side only; gates on `BIOS-side USB boot verified` + `alpha-probe: PASS`). Evidence `docs/evidence/phase12-usb-boot.log`. | ✅ Phase 12 (criterion 1) |
+| `run/sponge-usb-kbd-via-qmp.run` | **Phase 12 — USB HID keyboard via QMP hotplug** (`pc_usb_host` → `usb_hid` → `event_filter`; ordered QMP chain: `device_add usb-kbd` → `usb_hid: KEYBOARD detected` → `device_del` → `send-key` → final PASS). The glyph-delta secondary gate is a documented Phase-12 gap (probe-focus ROM quirk). 600 s+ seL4 desktop reality, bounded at 900 s. Evidence `docs/evidence/phase12-usb-kbd.log`. | ✅ Phase 12 (criterion 2) |
 
 The source-of-truth `.run` files live in `run/`. The same files are
 discoverable through `repos/sponge/run/` via **committed relative
 symlinks** (one per scenario) so the Genode repo discovery picks them
 up regardless of which directory the build was launched from.
+
+### 4.0.1 Phase 12 — automated and manual equivalents (control escape hatch)
+
+The Phase-12 workstream introduces four new automated host checks and
+their manual equivalents. AGENTS.md §3.5 requires the manual
+equivalent for every automated step; the table below collects them in
+one place. None of the automated steps mutate the repository —
+`tool/hw_compat.mojo` is `assert`-only, `tool/patches verify` is
+read-only, and `tool/dist --storage` only chooses the per-scenario
+storage mode.
+
+| Automated step | Manual equivalent (control escape hatch) |
+|---|---|
+| `./tool/dist --storage ahci` (default — preserves current product-media behavior) | `make -C genode/build/x86_64 run/sponge-desktop-disk KERNEL=sel4 BOARD=pc RUN_OPT="--include power_on/qemu --include log/qemu --include boot_dir/sel4 --include image/disk"` (the AHCI product path; q35 + `Skylake-Client` is now the explicit pin from W1) |
+| `./tool/dist --storage nvme` (opt-in — one-namespace NVMe product path) | `make -C genode/build/x86_64 run/sponge-desktop-disk-nvme KERNEL=sel4 BOARD=pc RUN_OPT="--include power_on/qemu --include log/qemu --include boot_dir/sel4 --include image/disk"` (q35 + `Skylake-Client` + explicit pcie-root-port + `-device nvme` per the W2 storefront block) |
+| `./tool/build verify` (the Phase-12 host gate) | `./tool/patches verify && ./tool/hw_compat assert` — two separate commands so a failure stops at the first one (the plan's "stop on first failure" rule) |
+| `./tool/patches verify` (the W1 patch pre-flight, also reachable from `tool/build run`) | `git show -s <sha>` (commit exists) + `git merge-base --is-ancestor <sha> HEAD` (ancestor) + `git show --stat <sha>` (touched paths) — per ledger row. The tool is the convenience layer; the git log is the source of truth. |
+| `./tool/hw_compat assert` (the W5 compatibility validator) | Reading `docs/15-hardware-compatibility.md` by hand and verifying each `scenario`/`evidence` path resolves and each `verified`/`smoke-only` cell carries the exact marker. The validator fails fast on missing/renamed paths; the manual check is the long-form audit. |
+| Serialized Phase-12 regression sweep (W6 §7 + §8) | One of the new Phase-12 scenarios: `make -j1 -C genode/build/x86_64 run/<scenario> KERNEL=sel4 BOARD=pc [RUN_OPT="..."]`. The W6 regression evidence log records every command; the manual equivalent is the same `make` invocation per scenario. Scenarios must run **one at a time** with `make -j1` and **no concurrent make** in `genode/build/x86_64`. |
+
+The CLI flags `--storage` / `--help` / `--json` follow the vct
+convention; `--storage invalid` returns exit 2 with a concise English
+usage line and never starts a build. The full help text is in
+`tool/dist --help` and the storage-mode research / acceptance is in
+`docs/evidence/task-2-phase12-storage.md`.
 
 ### 4.1 Anatomy of a working run script
 
@@ -564,7 +595,7 @@ The dispatch contract is verified by
 `docs/evidence/task-2-phase10-interactive-dispatch-test.tcl`
 (plain `tclsh`, no deps — runs in <1 s).
 
-#### Three hard-won QEMU 11.0.2 lessons
+#### Three hard-won QEMU 11.0.3 lessons
 
 (a) **`match_max` must be raised under log floods.** Tcl/expect's
 default per-spawn-id buffer for regex matching is 2000 bytes. The
@@ -609,7 +640,7 @@ this host). The QMP `mouse_set` + `input-send-event` style used by the
 window-drag recipe needs an `after 5` (or so) between consecutive
 per-axis REL events for the controller to deliver them as discrete
 motions. The qmp.inc `qmp_ps2_click` proc paces per-axis events with
-`after 5`; this is the empirically-tuned value for QEMU 11.0.2 on
+`after 5`; this is the empirically-tuned value for QEMU 11.0.3 on
 Linux. Bumping it slower (`after 20`) is safe; faster (`after 0`)
 silently loses events.
 
@@ -636,7 +667,7 @@ silently loses events.
 
 #### Pointer model — usb-tablet-abs vs PS/2-REL tradeoffs
 
-Under QEMU 11.0.2 `-nographic`:
+Under QEMU 11.0.3 `-nographic`:
 
 - **usb-tablet absolute motion:** the click DOES reach sponge-de
   through the real usb-tablet → pc_usb_host → usb_hid → event_filter →

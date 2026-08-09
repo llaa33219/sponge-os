@@ -538,14 +538,84 @@ Phase 15 is the concrete real-hardware boot milestone.
 
 #### Completion Criteria
 
-- [ ] Boot matrix beyond the current QEMU defaults: additional machine
-  types, AHCI and NVMe storage variants, USB boot media.
-- [ ] Driver set expanded: networking beyond QEMU slirp (at least one
-  real NIC driver path), input beyond PS/2 + usb-tablet.
-- [ ] A hardware compatibility document listing tested configurations
-  and known gaps.
-- [ ] Run scenarios cover the new configurations so regressions fail
-  loudly.
+- [x] **Boot matrix beyond the current QEMU defaults**: additional
+  machine types, AHCI and NVMe storage variants, USB boot media.
+  **Traceability (criterion → scenario → exact marker → evidence,
+  all on QEMU 11.0.3 host):**
+  - *q35 + Skylake-Client explicit pin on every disk-touching script:*
+    `run/sponge-boot.run`, `run/sponge-desktop-disk.run`,
+    `run/sponge-persist-disk.run`, `run/sponge-falkon-disk.run`,
+    `run/sponge-alpha.run` all carry
+    `append qemu_args " -machine q35 -cpu Skylake-Client "` before
+    `-nographic -m` (added in W1). Evidence:
+    `docs/evidence/task-1-phase12-platform.md` (W1 pin receipt) +
+    `docs/evidence/task-0-phase12-baseline.md` (W0 baseline
+    `boot/probe: PASS ... sponge-boot-marker-v1` recovered byte-for-byte
+    after the pin).
+  - *AHCI product-media default:* `run/sponge-desktop-disk.run` →
+    `alpha-probe: PASS` (W0 baseline + W6 envelope; evidence
+    `docs/evidence/phase12-envelope-sponge-desktop-disk.log`).
+  - *NVMe product-media opt-in:* `run/sponge-desktop-disk-nvme.run` →
+    `Number: 3` P3 byte check + `alpha-probe: PASS` (one namespace,
+    NVMe `caps: 5000 | ram: 64M`). Evidence
+    `docs/evidence/phase12-desktop-nvme.log`.
+  - *i440fx IDE smoke (no AHCI, no product image):*
+    `run/sponge-boot-i440fx.run` → `boot-probe: PASS` from the
+    PIIX4-IDE-backed marker. Evidence
+    `docs/evidence/phase12-boot-i440fx.log`.
+  - *q35/AHCI multi-disk order check (P3 of second disk):*
+    `run/sponge-boot-multidisk.run` → `boot-probe: PASS` from the
+    second disk's P3 marker. Evidence
+    `docs/evidence/phase12-boot-multidisk.log`.
+  - *BIOS-side USB boot (QEMU `-device usb-storage`, BIOS side only):*
+    `run/sponge-usb-boot.run` → `BIOS-side USB boot verified` +
+    `alpha-probe: PASS`. Evidence `docs/evidence/phase12-usb-boot.log`.
+- [x] **Driver set expanded**: networking beyond QEMU slirp (at least
+  one real NIC driver path), input beyond PS/2 + usb-tablet.
+  **Traceability:**
+  - *Linux-backed `pc_nic` + QEMU e1000 + `nic_router` DHCP:*
+    `run/sponge-pc-nic.run` → `pc_nic: bound device` +
+    `nic_router: uplink DHCP acquired` (caps: 1000 | ram: 32M,
+    300 s cold-DDE-Linux gate). Evidence
+    `docs/evidence/phase12-pc-nic.log`. The change is additive —
+    every existing product/iPXE scenario is byte-for-byte untouched.
+    Honest claim text (per docs/15 matrix row):
+    "pc_nic = Linux-NIC-driver stack (e1000e/rtl8169/ath9k/iwlwifi/rtlwifi/USB-Ethernet). QEMU-verified on `-device e1000` only; rtl8169/Wi-Fi/-USB-Ethernet documented but NOT QEMU-tested."
+  - *USB HID keyboard via QMP hotplug (probe-focus ROM quirk absent;
+    PS/2 send-key path still covered by `sponge-terminal-qmp.run`):*
+    `run/sponge-usb-kbd-via-qmp.run` → ordered chain
+    `usb_hid: KEYBOARD detected` → `usb_hid: KEYBOARD removed` →
+    `sponge-usb-kbd-via-qmp: PASS` + `Run script execution
+    successful.`. Evidence `docs/evidence/phase12-usb-kbd.log`.
+    The missing glyph-delta secondary gate is recorded as a documented
+    Phase-12 gap in `docs/15-hardware-compatibility.md` (probe-focus
+    ROM quirk; see also `docs/evidence/task-4-phase12-usb.md` §3/§5
+    deviation #5).
+- [x] **A hardware compatibility document** listing tested
+  configurations and known gaps. **Traceability:**
+  `docs/15-hardware-compatibility.md` is the hand-curated 5×5 surface
+  matrix + 16-cell ledger (4 verified, 1 smoke-only, 11 gap). The
+  readability and honesty rules are enforced by
+  `tool/hw_compat.mojo assert` (additive, no `generate` / `update` /
+  repo write); the `assert` validator is reachable from
+  `./tool/build verify` and from the W6 final host verification
+  (exits 0; receipts in `docs/evidence/task-5-phase12-hw-compat.md`).
+  No `target: real-hardware` cell exists; this is a Phase-15 cell, not
+  a Phase-12 cell.
+- [x] **Run scenarios cover the new configurations so regressions
+  fail loudly.** **Traceability:** the six new Phase-12 scenarios
+  (`sponge-boot-i440fx.run`, `sponge-boot-multidisk.run`,
+  `sponge-desktop-disk-nvme.run`, `sponge-pc-nic.run`,
+  `sponge-usb-boot.run`, `sponge-usb-kbd-via-qmp.run`) plus the
+  augmented `run/qmp.inc` (the W3b launch-click fix) carry distinct
+  bounded markers and durable `docs/evidence/phase12-*.log` pointers.
+  The full serialized sweep (one scenario at a time, `make -j1`,
+  no concurrent `make` in `genode/build/x86_64`) is captured in
+  `docs/evidence/task-6-phase12-regression.md` (W6) +
+  `docs/evidence/phase12-index.md` (the evidence index). The fresh
+  build (`docs/evidence/phase12-fresh-build.log`) proves the managed
+  `pc` repository, the nine-row patch ledger, and a freshly prepared
+  build directory that compiles `sponge-pc-nic.run` first.
 
 ### Phase 13: Package Ecosystem Growth
 
@@ -646,7 +716,7 @@ releases 0.3.0-alpha.**
 
 ## 11. Current Focus
 
-Phases 0–11 are complete. Phase 7 Alpha caveats are recorded in
+Phases 0–12 are complete. Phase 7 Alpha caveats are recorded in
 [`docs/13-installation.md`](13-installation.md); Phases 8 (boot
 and storage architecture, `docs/14`) and 9 (seL4 capability-space
 scaling) resolved the two largest Alpha caveats — the boot-module
@@ -663,11 +733,21 @@ format, launcher sort), an expanded theme surface with four shipped
 themes and a hardened unknown-theme fallback, and Sponge-themed
 window chrome via the upstream `themed_decorator` drop-in fed by the
 new `sponge_decorator_bridge` (live palette-tinted title bars,
-drag-verified on seL4).
+drag-verified on seL4). **Phase 12** delivered the hardware-support
+expansion: the explicit q35+Skylake-Client pin on every disk-touching
+script, six new focused scenarios (i440fx/PIIX4 IDE smoke,
+q35/AHCI multi-disk order check, q35/NVMe desktop-from-disk,
+`pc_nic`/e1000 DHCP, BIOS-side USB storage, and USB HID keyboard via
+QMP hotplug), the `tool/dist --storage {ahci,nvme}` product-media
+selector, the hand-curated 5×5 surface matrix + 16-cell ledger in
+`docs/15-hardware-compatibility.md` (4 verified, 1 smoke-only, 11
+gap), and the read-only `tool/hw_compat.mojo assert` validator
+reachable from `./tool/build verify`. Phase 12 is **QEMU-verified
+only**; physical-hardware boot remains a Phase-15 deliverable.
 
-Next up: **Phase 12 — Hardware support expansion**, followed by the
-rest of the post-Alpha sequence defined in §10 (packages, daily
-usability, real hardware, IME, GUI installer).
+Next up: **Phase 13 — Package ecosystem growth**, followed by the
+rest of the post-Alpha sequence defined in §10 (daily usability,
+real hardware, IME, GUI installer).
 
 Deferred follow-ups (not blockers):
 
@@ -814,14 +894,34 @@ silently rot.
 
 Recorded during Phase 11 (W4/W5); none block the Phase 11 checkboxes.
 
-1. **`sponge-de-sel4-interactive.run` launch-phase click flake.** On
-   this host the W5 sweep failed 3/3: the PS/2 REL click lands ~10 px
-   below the launcher entry button (the W2-calibrated recipe's
-   geometry predates the current popup layout). The deterministic fix
-   is to switch the launch-click choreography to the usb-tablet
-   absolute path that W4 proved for drags (`qmp_tablet_index` +
-   `mouse_set` + abs events) — Phase 12 candidate. Evidence:
-   `docs/evidence/task-5-phase11-sel4-interactive-FLAKE.log`.
+1. **`sponge-de-sel4-interactive.run` launch-phase click flake.** ✅
+   **delivered in Phase 12 W3b** (resolution of the Phase-11 §11.3
+   item-1 follow-up). On the W5 Phase-11 sweep this host failed 3/3:
+   the PS/2 REL click lands ~10 px below the launcher entry button
+   (the W2-calibrated recipe's geometry predates the current popup
+   layout). The deterministic fix is to switch the launch-click
+   choreography to the usb-tablet absolute path that W4 proved for
+   drags (`qmp_tablet_index` + `mouse_set` + abs events). W3b added
+   the smallest launch-only selector in `run/qmp.inc` and changed
+   `run/sponge-de-sel4-interactive.run`'s launch-entry call site to
+   select that tablet-absolute recipe. The launch phase passed 3/3
+   back-to-back on the W3b host (`docs/evidence/task-3b-phase12-launch-click.md`)
+   and the W6 envelope re-ran the launch phase three consecutive
+   times. **Residual nondeterminism recorded as a Phase-12 gap:**
+   the launch phase retains a small empirical probability of a
+   spurious failure (the W6 envelope documented this — the
+   `sponge-de-sel4-interactive.run` ×3 gate required 3 consecutive
+   passes, and the Phase-11 launch flake signature may still strike
+   on a single attempt; the regression evidence is honest about every
+   attempt). PS/2-relative dispatch is preserved as the default for
+   the input and panel phases — the original Phase-10 recipes still
+   exercise their original path. Merely adding `-device usb-tablet`
+   was not the fix; W3b changes the choreography (workspace press →
+   workspace move → workspace release with bounded pacing) on the
+   existing device. Evidence:
+   `docs/evidence/task-5-phase11-sel4-interactive-FLAKE.log` (before
+   trace) vs. `docs/evidence/task-3b-phase12-launch-click.md` (after
+   trace).
 2. **themed_decorator live asset re-skin.** The bridge updates the
    policy `color=` live, but the frame texture/button glyphs/font in
    `decor.tar` are cached in upstream statics — a full chrome re-skin

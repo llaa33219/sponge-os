@@ -1,0 +1,1531 @@
+make: ディレクトリ '/home/luke/sponge-os/genode/build/x86_64'　に入ります
+including /home/luke/sponge-os/genode/tool/run/power_on/qemu
+including /home/luke/sponge-os/genode/tool/run/log/qemu
+including /home/luke/sponge-os/genode/tool/run/image/iso
+including /home/luke/sponge-os/genode/tool/run/boot_dir/sel4
+including /home/luke/sponge-os/repos/sponge/run/sponge-net-probe.run
+building targets:  core lib/ld init timer/hpet server/report_rom driver/acpi app/pci_decode driver/platform driver/nic server/nic_uplink driver/rtc/spec/x86 server/system_rtc app/fetchurl lib/libc lib/libm lib/zlib lib/vfs lib/curl lib/libssh lib/libssl lib/libcrypto lib/vfs_lwip lib/vfs_pipe 
+spawn make core lib/ld init timer/hpet server/report_rom driver/acpi app/pci_decode driver/platform driver/nic server/nic_uplink driver/rtc/spec/x86 server/system_rtc app/fetchurl lib/libc lib/libm lib/zlib lib/vfs lib/curl lib/libssh lib/libssl lib/libcrypto lib/vfs_lwip lib/vfs_pipe
+make[1]: ディレクトリ '/home/luke/sponge-os/genode/build/x86_64' に入ります
+Skip target driver/nic/lan9118 because it requires 'arm_v7'
+Skip target driver/nic/pc/spec/x86_32 because it requires 'x86_32'
+Skip target driver/nic/spec/linux because it requires 'linux'
+Skip target driver/nic/spec/linux_slirp because it requires 'linux'
+Skip target driver/nic/virtio/spec/arm because it requires 'arm'
+Skip target driver/nic/virtio/spec/arm_64 because it requires 'arm_64'
+Skip target driver/nic/virtio/spec/riscv because it requires 'riscv'
+Skip target driver/platform/pc/spec/x86_32 because it requires 'x86_32'
+  [00;33mLibrary[0m ld.abi.so
+  [00;33mLibrary[0m ldso_so_support.lib.a
+  [00;33mLibrary[0m kernel-sel4-pc.lib.a
+ninja: Jobserver mode detected:  -j80 --jobserver-auth=fifo:/tmp/GMfifo2470394 --no-print-directory -- DEBUG_DIR=/home/luke/sponge-os/genode/build/x86_64/debug INSTALL_DIR=/home/luke/sponge-os/genode/build/x86_64/bin BUILD_BASE_DIR=/home/luke/sponge-os/genode/build/x86_64 SHARED_LIBS= ARCHIVES= LIB=kernel-sel4-pc LIB_MK=/home/luke/sponge-os/genode/repos/base-sel4/lib/mk/spec/x86_64/kernel-sel4-pc.mk REP_DIR=/home/luke/sponge-os/genode/repos/base-sel4 KERNEL=sel4 BOARD=pc SHELL=/usr/bin/bash
+ninja: no work to do.
+  [00;33mLibrary[0m syscall-sel4-pc.lib.a
+  [00;33mLibrary[0m syscall-sel4.lib.a
+  [00;33mLibrary[0m startup-sel4.lib.a
+  [00;33mLibrary[0m base-sel4-common.lib.a
+  [00;33mLibrary[0m timeout.lib.a
+  [00;33mLibrary[0m cxx.lib.a
+  [00;33mLibrary[0m base-sel4.lib.a
+  [00;33mLibrary[0m ld-sel4.lib.so
+  [00;33mLibrary[0m ld.lib.so
+  [00;33mLibrary[0m libc.abi.so
+  [00;33mLibrary[0m libc-string.lib.a
+  [00;33mLibrary[0m libc-locale.lib.a
+  [00;33mLibrary[0m libc-stdlib.lib.a
+  [00;33mLibrary[0m libc-stdio.lib.a
+  [00;33mLibrary[0m libc-gen.lib.a
+  [00;33mLibrary[0m libc-gdtoa.lib.a
+  [00;33mLibrary[0m libc-inet.lib.a
+  [00;33mLibrary[0m libc-stdtime.lib.a
+  [00;33mLibrary[0m libc-regex.lib.a
+  [00;33mLibrary[0m libc-compat.lib.a
+  [00;33mLibrary[0m libc-setjmp.lib.a
+  [00;33mLibrary[0m libc-mem.lib.a
+  [00;33mLibrary[0m libc-resolv.lib.a
+  [00;33mLibrary[0m libc-isc.lib.a
+  [00;33mLibrary[0m libc-nameser.lib.a
+  [00;33mLibrary[0m libc-net.lib.a
+  [00;33mLibrary[0m libc-rpc.lib.a
+  [00;33mLibrary[0m libc-tzcode.lib.a
+  [00;33mLibrary[0m libc-libkern.lib.a
+  [00;33mLibrary[0m base.lib.a
+  [00;33mLibrary[0m vfs.abi.so
+  [00;33mLibrary[0m libc.lib.so
+  [00;33mLibrary[0m libm.abi.so
+  [00;33mLibrary[0m libm.lib.so
+  [00;33mLibrary[0m zlib.abi.so
+  [00;33mLibrary[0m zlib.lib.so
+  [00;33mLibrary[0m vfs.lib.so
+  [00;33mLibrary[0m curl.abi.so
+    CONVERT  symbols.s
+    ASSEMBLE symbols.o
+    MERGE    curl.abi.so
+  [00;33mLibrary[0m libssl.abi.so
+    CONVERT  symbols.s
+    ASSEMBLE symbols.o
+    MERGE    libssl.abi.so
+  [00;33mLibrary[0m libssh.abi.so
+    CONVERT  symbols.s
+    ASSEMBLE symbols.o
+    MERGE    libssh.abi.so
+  [00;33mLibrary[0m curl.lib.so
+    COMPILE  asyn-thread.o
+    COMPILE  altsvc.o
+    COMPILE  base64.o
+    COMPILE  bufref.o
+    COMPILE  bufq.o
+    COMPILE  cf-haproxy.o
+    COMPILE  cf-h1-proxy.o
+    COMPILE  cf-h2-proxy.o
+    COMPILE  cf-https-connect.o
+    COMPILE  cf-socket.o
+    COMPILE  cfilters.o
+    COMPILE  conncache.o
+    COMPILE  connect.o
+    COMPILE  content_encoding.o
+    COMPILE  cookie.o
+    COMPILE  curl_addrinfo.o
+    COMPILE  curl_des.o
+    COMPILE  curl_endian.o
+    COMPILE  curl_fnmatch.o
+    COMPILE  curl_gethostname.o
+    COMPILE  curl_get_line.o
+    COMPILE  curl_gssapi.o
+    COMPILE  curl_memrchr.o
+    COMPILE  curl_ntlm_core.o
+    COMPILE  curl_multibyte.o
+    COMPILE  curl_ntlm_wb.o
+    COMPILE  curl_path.o
+    COMPILE  curl_range.o
+    COMPILE  curl_rtmp.o
+    COMPILE  curl_sasl.o
+    COMPILE  curl_sha512_256.o
+    COMPILE  curl_sspi.o
+    COMPILE  curl_threads.o
+    COMPILE  curl_trc.o
+    COMPILE  cw-out.o
+    COMPILE  dict.o
+    COMPILE  doh.o
+    COMPILE  dynbuf.o
+    COMPILE  dynhds.o
+    COMPILE  escape.o
+    COMPILE  easy.o
+    COMPILE  file.o
+    COMPILE  fileinfo.o
+    COMPILE  formdata.o
+    COMPILE  getenv.o
+    COMPILE  ftp.o
+    COMPILE  ftplistparser.o
+    COMPILE  getinfo.o
+    COMPILE  gopher.o
+    COMPILE  hash.o
+    COMPILE  headers.o
+    COMPILE  hmac.o
+    COMPILE  hostasyn.o
+    COMPILE  hostip.o
+    COMPILE  hostip4.o
+    COMPILE  hostip6.o
+    COMPILE  hostsyn.o
+    COMPILE  hsts.o
+    COMPILE  http.o
+    COMPILE  http1.o
+    COMPILE  http2.o
+    COMPILE  http_chunks.o
+    COMPILE  http_digest.o
+    COMPILE  http_negotiate.o
+    COMPILE  http_ntlm.o
+    COMPILE  http_proxy.o
+    COMPILE  idn.o
+    COMPILE  if2ip.o
+    COMPILE  imap.o
+    COMPILE  inet_ntop.o
+    COMPILE  inet_pton.o
+    COMPILE  krb5.o
+    COMPILE  ldap.o
+    COMPILE  md4.o
+    COMPILE  llist.o
+    COMPILE  md5.o
+    COMPILE  memdebug.o
+    COMPILE  mime.o
+    COMPILE  mprintf.o
+    COMPILE  mqtt.o
+    COMPILE  multi.o
+    COMPILE  netrc.o
+    COMPILE  nonblock.o
+    COMPILE  noproxy.o
+    COMPILE  openldap.o
+    COMPILE  parsedate.o
+    COMPILE  pingpong.o
+    COMPILE  pop3.o
+    COMPILE  progress.o
+    COMPILE  psl.o
+    COMPILE  rand.o
+    COMPILE  rename.o
+    COMPILE  request.o
+    COMPILE  rtsp.o
+    COMPILE  select.o
+    COMPILE  sendf.o
+    COMPILE  setopt.o
+    COMPILE  sha256.o
+    COMPILE  share.o
+    COMPILE  slist.o
+    COMPILE  smtp.o
+    COMPILE  smb.o
+    COMPILE  socketpair.o
+    COMPILE  socks.o
+    COMPILE  socks_gssapi.o
+    COMPILE  socks_sspi.o
+    COMPILE  speedcheck.o
+    COMPILE  splay.o
+    COMPILE  strcase.o
+    COMPILE  strdup.o
+    COMPILE  strerror.o
+    COMPILE  strtok.o
+    COMPILE  strtoofft.o
+    COMPILE  system_win32.o
+    COMPILE  telnet.o
+    COMPILE  tftp.o
+    COMPILE  timediff.o
+    COMPILE  timeval.o
+    COMPILE  url.o
+    COMPILE  transfer.o
+    COMPILE  urlapi.o
+    COMPILE  vauth/cram.o
+    COMPILE  vauth/digest.o
+    COMPILE  vauth/digest_sspi.o
+    COMPILE  vauth/krb5_gssapi.o
+    COMPILE  vauth/krb5_sspi.o
+    COMPILE  vauth/ntlm.o
+    COMPILE  vauth/ntlm_sspi.o
+    COMPILE  vauth/oauth2.o
+    COMPILE  vauth/spnego_gssapi.o
+    COMPILE  vauth/spnego_sspi.o
+    COMPILE  vauth/vauth.o
+    COMPILE  version.o
+    COMPILE  vquic/curl_ngtcp2.o
+    COMPILE  vquic/curl_quiche.o
+    COMPILE  vssh/libssh.o
+    COMPILE  vssh/libssh2.o
+    COMPILE  vtls/hostcheck.o
+    COMPILE  vtls/keylog.o
+    COMPILE  vtls/openssl.o
+    COMPILE  vtls/schannel_verify.o
+    COMPILE  vtls/schannel.o
+    COMPILE  vtls/sectransp.o
+    COMPILE  vtls/vtls.o
+    COMPILE  vtls/x509asn1.o
+    COMPILE  warnless.o
+    MERGE    curl.lib.so
+  [00;33mLibrary[0m libcrypto.abi.so
+    CONVERT  symbols.s
+    ASSEMBLE symbols.o
+    MERGE    libcrypto.abi.so
+  [00;33mLibrary[0m libssh.lib.so
+    COMPILE  agent.o
+    COMPILE  base64.o
+    COMPILE  auth.o
+    COMPILE  bignum.o
+    COMPILE  buffer.o
+    COMPILE  bind.o
+    COMPILE  callbacks.o
+    COMPILE  chachapoly.o
+    COMPILE  channels.o
+    COMPILE  client.o
+    COMPILE  connect.o
+    COMPILE  config.o
+    COMPILE  connector.o
+    COMPILE  curve25519.o
+    COMPILE  dh.o
+    COMPILE  ecdh.o
+    COMPILE  ecdh_crypto.o
+    COMPILE  error.o
+    COMPILE  external/bcrypt_pbkdf.o
+    COMPILE  external/blowfish.o
+    COMPILE  external/curve25519_ref.o
+    COMPILE  external/chacha.o
+    COMPILE  external/ed25519.o
+    COMPILE  external/fe25519.o
+    COMPILE  external/ge25519.o
+    COMPILE  external/poly1305.o
+    COMPILE  external/sc25519.o
+    COMPILE  getpass.o
+    COMPILE  gzip.o
+    COMPILE  init.o
+    COMPILE  kex.o
+    COMPILE  known_hosts.o
+    COMPILE  knownhosts.o
+    COMPILE  legacy.o
+    COMPILE  libcrypto.o
+    COMPILE  log.o
+    COMPILE  match.o
+    COMPILE  messages.o
+    COMPILE  options.o
+    COMPILE  misc.o
+    COMPILE  packet.o
+    COMPILE  packet_cb.o
+    COMPILE  pcap.o
+    COMPILE  packet_crypt.o
+    COMPILE  pki.o
+    COMPILE  pki_crypto.o
+    COMPILE  pki_container_openssh.o
+    COMPILE  pki_ed25519.o
+    COMPILE  poll.o
+    COMPILE  scp.o
+    COMPILE  server.o
+    COMPILE  session.o
+    COMPILE  sftp.o
+    COMPILE  sftpserver.o
+    COMPILE  socket.o
+    COMPILE  string.o
+    COMPILE  threads.o
+    COMPILE  threads/libcrypto.o
+    COMPILE  threads/noop.o
+    COMPILE  wrapper.o
+[01m[K/home/luke/sponge-os/genode/contrib/libssh-3abfbeacd8bfe69ba0e332a193fa62889a36ae0c/src/lib/libssh/src/external/ed25519.c:80:48:[m[K [01;35m[Kwarning: [m[Kargument 1 of type ‘[01m[Kunsigned char *[m[K’ declared as a pointer [[01;35m[K]8;;https://gcc.gnu.org/onlinedocs/gcc-14.2.0/gcc/Warning-Options.html#index-Warray-parameter-Warray-parameter=]8;;[m[K]
+   80 | int crypto_sign_ed25519_keypair([01;35m[Kunsigned char *pk[m[K,
+      |                                 [01;35m[K~~~~~~~~~~~~~~~^~[m[K
+In file included from [01m[K/home/luke/sponge-os/genode/contrib/libssh-3abfbeacd8bfe69ba0e332a193fa62889a36ae0c/src/lib/libssh/src/external/ed25519.c:15[m[K:
+[01m[K/home/luke/sponge-os/genode/contrib/libssh-3abfbeacd8bfe69ba0e332a193fa62889a36ae0c/include/libssh/ed25519.h:46:48:[m[K [01;36m[Knote: [m[Kpreviously declared as an array ‘[01m[Kuint8_t[32][m[K’ {aka ‘[01m[Kunsigned char[32][m[K’}
+   46 | int crypto_sign_ed25519_keypair([01;36m[Ked25519_pubkey pk[m[K, ed25519_privkey sk);
+      |                                 [01;36m[K~~~~~~~~~~~~~~~^~[m[K
+[01m[K/home/luke/sponge-os/genode/contrib/libssh-3abfbeacd8bfe69ba0e332a193fa62889a36ae0c/src/lib/libssh/src/external/ed25519.c:81:48:[m[K [01;35m[Kwarning: [m[Kargument 2 of type ‘[01m[Kunsigned char *[m[K’ declared as a pointer [[01;35m[K]8;;https://gcc.gnu.org/onlinedocs/gcc-14.2.0/gcc/Warning-Options.html#index-Warray-parameter-Warray-parameter=]8;;[m[K]
+   81 |                                 [01;35m[Kunsigned char *sk[m[K)
+      |                                 [01;35m[K~~~~~~~~~~~~~~~^~[m[K
+[01m[K/home/luke/sponge-os/genode/contrib/libssh-3abfbeacd8bfe69ba0e332a193fa62889a36ae0c/include/libssh/ed25519.h:46:68:[m[K [01;36m[Knote: [m[Kpreviously declared as an array ‘[01m[Kuint8_t[64][m[K’ {aka ‘[01m[Kunsigned char[64][m[K’}
+   46 | int crypto_sign_ed25519_keypair(ed25519_pubkey pk, [01;36m[Ked25519_privkey sk[m[K);
+      |                                                    [01;36m[K~~~~~~~~~~~~~~~~^~[m[K
+[01m[K/home/luke/sponge-os/genode/contrib/libssh-3abfbeacd8bfe69ba0e332a193fa62889a36ae0c/src/lib/libssh/src/external/ed25519.c:117:46:[m[K [01;35m[Kwarning: [m[Kargument 5 of type ‘[01m[Kconst unsigned char *[m[K’ declared as a pointer [[01;35m[K]8;;https://gcc.gnu.org/onlinedocs/gcc-14.2.0/gcc/Warning-Options.html#index-Warray-parameter-Warray-parameter=]8;;[m[K]
+  117 |                         [01;35m[Kconst unsigned char *sk[m[K)
+      |                         [01;35m[K~~~~~~~~~~~~~~~~~~~~~^~[m[K
+[01m[K/home/luke/sponge-os/genode/contrib/libssh-3abfbeacd8bfe69ba0e332a193fa62889a36ae0c/include/libssh/ed25519.h:61:27:[m[K [01;36m[Knote: [m[Kpreviously declared as an array ‘[01m[Kconst uint8_t[64][m[K’ {aka ‘[01m[Kconst unsigned char[64][m[K’}
+   61 |     [01;36m[Kconst ed25519_privkey sk[m[K);
+      |     [01;36m[K~~~~~~~~~~~~~~~~~~~~~~^~[m[K
+[01m[K/home/luke/sponge-os/genode/contrib/libssh-3abfbeacd8bfe69ba0e332a193fa62889a36ae0c/src/lib/libssh/src/external/ed25519.c:180:51:[m[K [01;35m[Kwarning: [m[Kargument 5 of type ‘[01m[Kconst unsigned char *[m[K’ declared as a pointer [[01;35m[K]8;;https://gcc.gnu.org/onlinedocs/gcc-14.2.0/gcc/Warning-Options.html#index-Warray-parameter-Warray-parameter=]8;;[m[K]
+  180 |                              [01;35m[Kconst unsigned char *pk[m[K)
+      |                              [01;35m[K~~~~~~~~~~~~~~~~~~~~~^~[m[K
+[01m[K/home/luke/sponge-os/genode/contrib/libssh-3abfbeacd8bfe69ba0e332a193fa62889a36ae0c/include/libssh/ed25519.h:76:26:[m[K [01;36m[Knote: [m[Kpreviously declared as an array ‘[01m[Kconst uint8_t[32][m[K’ {aka ‘[01m[Kconst unsigned char[32][m[K’}
+   76 |     [01;36m[Kconst ed25519_pubkey pk[m[K);
+      |     [01;36m[K~~~~~~~~~~~~~~~~~~~~~^~[m[K
+In file included from [01m[K/home/luke/sponge-os/genode/contrib/libssh-3abfbeacd8bfe69ba0e332a193fa62889a36ae0c/src/lib/libssh/src/config.c:35[m[K:
+[01m[K/home/luke/sponge-os/genode/contrib/libssh-3abfbeacd8bfe69ba0e332a193fa62889a36ae0c/src/lib/libssh/src/config.c:[m[K In function ‘[01m[Kssh_config_match[m[K’:
+[01m[K/home/luke/sponge-os/genode/contrib/libssh-3abfbeacd8bfe69ba0e332a193fa62889a36ae0c/src/lib/libssh/src/config.c:408:28:[m[K [01;35m[Kwarning: [m[K‘[01m[K%s[m[K’ directive argument is null [[01;35m[K]8;;https://gcc.gnu.org/onlinedocs/gcc-14.2.0/gcc/Warning-Options.html#index-Wformat-overflow-Wformat-overflow=]8;;[m[K]
+  408 |     SSH_LOG(SSH_LOG_TRACE, [01;35m[K"%s '%s' against pattern '%s'%s (ok=%d)"[m[K,
+      |                            [01;35m[K^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~[m[K
+[01m[K/home/luke/sponge-os/genode/contrib/libssh-3abfbeacd8bfe69ba0e332a193fa62889a36ae0c/include/libssh/priv.h:207:34:[m[K [01;36m[Knote: [m[Kin definition of macro ‘[01m[KSSH_LOG[m[K’
+  207 |     _ssh_log(priority, __func__, [01;36m[K__VA_ARGS__[m[K)
+      |                                  [01;36m[K^~~~~~~~~~~[m[K
+[01m[K/home/luke/sponge-os/genode/contrib/libssh-3abfbeacd8bfe69ba0e332a193fa62889a36ae0c/src/lib/libssh/src/config.c:408:33:[m[K [01;36m[Knote: [m[Kformat string is defined here
+  408 |     SSH_LOG(SSH_LOG_TRACE, "%s '[01;36m[K%s[m[K' against pattern '%s'%s (ok=%d)",
+      |                                 [01;36m[K^~[m[K
+[01m[K/home/luke/sponge-os/genode/contrib/libssh-3abfbeacd8bfe69ba0e332a193fa62889a36ae0c/src/lib/libssh/src/config.c:[m[K In function ‘[01m[Kssh_config_parse_line[m[K’:
+[01m[K/home/luke/sponge-os/genode/contrib/libssh-3abfbeacd8bfe69ba0e332a193fa62889a36ae0c/src/lib/libssh/src/config.c:522:39:[m[K [01;35m[Kwarning: [m[K‘[01m[K%s[m[K’ directive argument is null [[01;35m[K]8;;https://gcc.gnu.org/onlinedocs/gcc-14.2.0/gcc/Warning-Options.html#index-Wformat-overflow-Wformat-overflow=]8;;[m[K]
+  522 |                 SSH_LOG(SSH_LOG_WARN, [01;35m[K"line: %d: Unsupported Match keyword "[m[K
+      |                                       [01;35m[K^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~[m[K
+[01m[K/home/luke/sponge-os/genode/contrib/libssh-3abfbeacd8bfe69ba0e332a193fa62889a36ae0c/include/libssh/priv.h:207:34:[m[K [01;36m[Knote: [m[Kin definition of macro ‘[01m[KSSH_LOG[m[K’
+  207 |     _ssh_log(priority, __func__, [01;36m[K__VA_ARGS__[m[K)
+      |                                  [01;36m[K^~~~~~~~~~~[m[K
+In file included from [01m[K/home/luke/sponge-os/genode/contrib/libssh-3abfbeacd8bfe69ba0e332a193fa62889a36ae0c/src/lib/libssh/src/knownhosts.c:37[m[K:
+[01m[K/home/luke/sponge-os/genode/contrib/libssh-3abfbeacd8bfe69ba0e332a193fa62889a36ae0c/src/lib/libssh/src/knownhosts.c:[m[K In function ‘[01m[Kssh_session_update_known_hosts[m[K’:
+[01m[K/home/luke/sponge-os/genode/contrib/libssh-3abfbeacd8bfe69ba0e332a193fa62889a36ae0c/src/lib/libssh/src/knownhosts.c:702:23:[m[K [01;35m[Kwarning: [m[K‘[01m[K%s[m[K’ directive argument is null [[01;35m[K]8;;https://gcc.gnu.org/onlinedocs/gcc-14.2.0/gcc/Warning-Options.html#index-Wformat-overflow-Wformat-overflow=]8;;[m[K]
+  702 |                       [01;35m[K"Cannot create %s directory."[m[K, dir);
+      |                       [01;35m[K^~~~~~~~~~~~~~~~~~~~~~~~~~~~~[m[K
+[01m[K/home/luke/sponge-os/genode/contrib/libssh-3abfbeacd8bfe69ba0e332a193fa62889a36ae0c/include/libssh/priv.h:225:43:[m[K [01;36m[Knote: [m[Kin definition of macro ‘[01m[Kssh_set_error[m[K’
+  225 |     _ssh_set_error(error, code, __func__, [01;36m[K__VA_ARGS__[m[K)
+      |                                           [01;36m[K^~~~~~~~~~~[m[K
+[01m[K/home/luke/sponge-os/genode/contrib/libssh-3abfbeacd8bfe69ba0e332a193fa62889a36ae0c/src/lib/libssh/src/knownhosts.c:702:38:[m[K [01;36m[Knote: [m[Kformat string is defined here
+  702 |                       "Cannot create [01;36m[K%s[m[K directory.", dir);
+      |                                      [01;36m[K^~[m[K
+    MERGE    libssh.lib.so
+  [00;33mLibrary[0m libssl.lib.so
+    COMPILE  d1_lib.o
+    COMPILE  d1_msg.o
+    COMPILE  bio_ssl.o
+    COMPILE  methods.o
+    COMPILE  d1_srtp.o
+    COMPILE  packet.o
+    COMPILE  pqueue.o
+    COMPILE  record/dtls1_bitmap.o
+    COMPILE  record/rec_layer_s3.o
+    COMPILE  record/ssl3_record.o
+    COMPILE  record/rec_layer_d1.o
+    COMPILE  s3_cbc.o
+    COMPILE  record/ssl3_record_tls13.o
+    COMPILE  record/ssl3_buffer.o
+    COMPILE  s3_lib.o
+    COMPILE  s3_enc.o
+    COMPILE  s3_msg.o
+    COMPILE  ssl_asn1.o
+    COMPILE  ssl_cert.o
+    COMPILE  ssl_ciph.o
+    COMPILE  ssl_err.o
+    COMPILE  ssl_conf.o
+    COMPILE  ssl_init.o
+    COMPILE  ssl_lib.o
+    COMPILE  ssl_mcnf.o
+    COMPILE  ssl_rsa.o
+    COMPILE  ssl_sess.o
+    COMPILE  ssl_stat.o
+    COMPILE  ssl_txt.o
+    COMPILE  ssl_utst.o
+    COMPILE  statem/extensions.o
+    COMPILE  statem/extensions_clnt.o
+    COMPILE  statem/extensions_cust.o
+    COMPILE  statem/extensions_srvr.o
+    COMPILE  statem/statem.o
+    COMPILE  statem/statem_clnt.o
+    COMPILE  statem/statem_dtls.o
+    COMPILE  statem/statem_lib.o
+    COMPILE  statem/statem_srvr.o
+    COMPILE  t1_enc.o
+    COMPILE  t1_lib.o
+    COMPILE  t1_trce.o
+    COMPILE  tls13_enc.o
+    COMPILE  tls_srp.o
+    MERGE    libssl.lib.so
+  [00;33mLibrary[0m libcrypto.lib.so
+    COMPILE  aes/aes_cbc.o
+    COMPILE  aes/aes_core.o
+    COMPILE  aes/aes_cfb.o
+    COMPILE  aes/aes_ecb.o
+    COMPILE  aes/aes_ige.o
+    COMPILE  aes/aes_misc.o
+    COMPILE  aes/aes_ofb.o
+    COMPILE  aes/aes_wrap.o
+    ASSEMBLE aes/asm/aesni-sha1-x86_64.o
+    ASSEMBLE aes/asm/aesni-mb-x86_64.o
+    ASSEMBLE aes/asm/aesni-sha256-x86_64.o
+    ASSEMBLE aes/asm/aesni-x86_64.o
+    ASSEMBLE aes/asm/vpaes-x86_64.o
+    COMPILE  aria/aria.o
+    COMPILE  asn1/a_bitstr.o
+    COMPILE  asn1/a_d2i_fp.o
+    COMPILE  asn1/a_digest.o
+    COMPILE  asn1/a_dup.o
+    COMPILE  asn1/a_gentm.o
+    COMPILE  asn1/a_i2d_fp.o
+    COMPILE  asn1/a_int.o
+    COMPILE  asn1/a_object.o
+    COMPILE  asn1/a_mbstr.o
+    COMPILE  asn1/a_octet.o
+    COMPILE  asn1/a_print.o
+    COMPILE  asn1/a_sign.o
+    COMPILE  asn1/a_strex.o
+    COMPILE  asn1/a_strnid.o
+    COMPILE  asn1/a_time.o
+    COMPILE  asn1/a_type.o
+    COMPILE  asn1/a_utctm.o
+    COMPILE  asn1/a_utf8.o
+    COMPILE  asn1/a_verify.o
+    COMPILE  asn1/ameth_lib.o
+    COMPILE  asn1/asn1_err.o
+    COMPILE  asn1/asn1_gen.o
+    COMPILE  asn1/asn1_item_list.o
+    COMPILE  asn1/asn1_lib.o
+    COMPILE  asn1/asn1_par.o
+    COMPILE  asn1/asn_mime.o
+    COMPILE  asn1/asn_moid.o
+    COMPILE  asn1/asn_mstbl.o
+    COMPILE  asn1/asn_pack.o
+    COMPILE  asn1/bio_asn1.o
+    COMPILE  asn1/d2i_pr.o
+    COMPILE  asn1/bio_ndef.o
+    COMPILE  asn1/evp_asn1.o
+    COMPILE  asn1/d2i_pu.o
+    COMPILE  asn1/f_int.o
+    COMPILE  asn1/f_string.o
+    COMPILE  asn1/i2d_pr.o
+    COMPILE  asn1/i2d_pu.o
+    COMPILE  asn1/n_pkey.o
+    COMPILE  asn1/nsseq.o
+    COMPILE  asn1/p5_pbe.o
+    COMPILE  asn1/p5_pbev2.o
+    COMPILE  asn1/p5_scrypt.o
+    COMPILE  asn1/p8_pkey.o
+    COMPILE  asn1/t_bitst.o
+    COMPILE  asn1/t_pkey.o
+    COMPILE  asn1/t_spki.o
+    COMPILE  asn1/tasn_dec.o
+    COMPILE  asn1/tasn_enc.o
+    COMPILE  asn1/tasn_fre.o
+    COMPILE  asn1/tasn_new.o
+    COMPILE  asn1/tasn_prn.o
+    COMPILE  asn1/tasn_scn.o
+    COMPILE  asn1/tasn_typ.o
+    COMPILE  asn1/tasn_utl.o
+    COMPILE  asn1/x_algor.o
+    COMPILE  asn1/x_bignum.o
+    COMPILE  asn1/x_info.o
+    COMPILE  asn1/x_int64.o
+    COMPILE  asn1/x_pkey.o
+    COMPILE  asn1/x_long.o
+    COMPILE  asn1/x_sig.o
+    COMPILE  asn1/x_spki.o
+    COMPILE  asn1/x_val.o
+    COMPILE  async/arch/async_null.o
+    COMPILE  async/arch/async_posix.o
+    COMPILE  async/async.o
+    COMPILE  async/async_err.o
+    COMPILE  async/async_wait.o
+    COMPILE  bf/bf_cfb64.o
+    COMPILE  bf/bf_ecb.o
+    COMPILE  bf/bf_enc.o
+    COMPILE  bf/bf_ofb64.o
+    COMPILE  bf/bf_skey.o
+    COMPILE  bio/b_addr.o
+    COMPILE  bio/b_dump.o
+    COMPILE  bio/b_print.o
+    COMPILE  bio/b_sock.o
+    COMPILE  bio/b_sock2.o
+    COMPILE  bio/bf_buff.o
+    COMPILE  bio/bf_lbuf.o
+    COMPILE  bio/bf_nbio.o
+    COMPILE  bio/bf_null.o
+    COMPILE  bio/bio_cb.o
+    COMPILE  bio/bio_err.o
+    COMPILE  bio/bio_meth.o
+    COMPILE  bio/bio_lib.o
+    COMPILE  bio/bss_acpt.o
+    COMPILE  bio/bss_bio.o
+    COMPILE  bio/bss_conn.o
+    COMPILE  bio/bss_dgram.o
+    COMPILE  bio/bss_fd.o
+    COMPILE  bio/bss_file.o
+    COMPILE  bio/bss_log.o
+    COMPILE  bio/bss_mem.o
+    COMPILE  bio/bss_null.o
+    COMPILE  bio/bss_sock.o
+    COMPILE  blake2/blake2s.o
+    COMPILE  blake2/m_blake2b.o
+    COMPILE  blake2/m_blake2s.o
+    ASSEMBLE bn/asm/rsaz-avx2.o
+    COMPILE  blake2/blake2b.o
+    ASSEMBLE bn/asm/rsaz-x86_64.o
+    ASSEMBLE bn/asm/x86_64-gf2m.o
+    COMPILE  bn/asm/x86_64-gcc.o
+    ASSEMBLE bn/asm/x86_64-mont.o
+    ASSEMBLE bn/asm/x86_64-mont5.o
+    COMPILE  bn/bn_add.o
+    COMPILE  bn/bn_const.o
+    COMPILE  bn/bn_blind.o
+    COMPILE  bn/bn_ctx.o
+    COMPILE  bn/bn_depr.o
+    COMPILE  bn/bn_dh.o
+    COMPILE  bn/bn_div.o
+    COMPILE  bn/bn_err.o
+    COMPILE  bn/bn_exp.o
+    COMPILE  bn/bn_exp2.o
+    COMPILE  bn/bn_gcd.o
+    COMPILE  bn/bn_gf2m.o
+    COMPILE  bn/bn_intern.o
+    COMPILE  bn/bn_kron.o
+    COMPILE  bn/bn_lib.o
+    COMPILE  bn/bn_mod.o
+    COMPILE  bn/bn_mont.o
+    COMPILE  bn/bn_mpi.o
+    COMPILE  bn/bn_mul.o
+    COMPILE  bn/bn_nist.o
+    COMPILE  bn/bn_prime.o
+    COMPILE  bn/bn_print.o
+    COMPILE  bn/bn_rand.o
+    COMPILE  bn/bn_recp.o
+    COMPILE  bn/bn_shift.o
+    COMPILE  bn/bn_sqr.o
+    COMPILE  bn/bn_sqrt.o
+    COMPILE  bn/bn_srp.o
+    COMPILE  bn/bn_word.o
+    COMPILE  bn/bn_x931p.o
+    COMPILE  bn/rsaz_exp.o
+    COMPILE  buffer/buf_err.o
+    COMPILE  buffer/buffer.o
+    ASSEMBLE camellia/asm/cmll-x86_64.o
+    COMPILE  camellia/cmll_cfb.o
+    COMPILE  camellia/cmll_ctr.o
+    COMPILE  camellia/cmll_misc.o
+    COMPILE  camellia/cmll_ecb.o
+    COMPILE  camellia/cmll_ofb.o
+    COMPILE  cast/c_cfb64.o
+    COMPILE  cast/c_ecb.o
+    COMPILE  cast/c_enc.o
+    COMPILE  cast/c_ofb64.o
+    COMPILE  cast/c_skey.o
+    ASSEMBLE chacha/asm/chacha-x86_64.o
+    COMPILE  cmac/cm_ameth.o
+    COMPILE  cmac/cm_pmeth.o
+    COMPILE  cmac/cmac.o
+    COMPILE  cms/cms_asn1.o
+    COMPILE  cms/cms_att.o
+    COMPILE  cms/cms_cd.o
+    COMPILE  cms/cms_dd.o
+    COMPILE  cms/cms_enc.o
+    COMPILE  cms/cms_env.o
+    COMPILE  cms/cms_ess.o
+    COMPILE  cms/cms_err.o
+    COMPILE  cms/cms_io.o
+    COMPILE  cms/cms_kari.o
+    COMPILE  cms/cms_lib.o
+    COMPILE  cms/cms_pwri.o
+    COMPILE  cms/cms_sd.o
+    COMPILE  cms/cms_smime.o
+    COMPILE  comp/c_zlib.o
+    COMPILE  comp/comp_lib.o
+    COMPILE  comp/comp_err.o
+    COMPILE  conf/conf_api.o
+    COMPILE  conf/conf_def.o
+    COMPILE  conf/conf_err.o
+    COMPILE  conf/conf_mall.o
+    COMPILE  conf/conf_lib.o
+    COMPILE  conf/conf_mod.o
+    COMPILE  conf/conf_sap.o
+    COMPILE  conf/conf_ssl.o
+    COMPILE  cpt_err.o
+    COMPILE  cryptlib.o
+    COMPILE  ct/ct_b64.o
+    COMPILE  ct/ct_err.o
+    COMPILE  ct/ct_oct.o
+    COMPILE  ct/ct_log.o
+    COMPILE  ct/ct_policy.o
+    COMPILE  ct/ct_prn.o
+    COMPILE  ct/ct_sct.o
+    COMPILE  ct/ct_sct_ctx.o
+    COMPILE  ct/ct_vfy.o
+    COMPILE  ct/ct_x509v3.o
+    COMPILE  ctype.o
+    COMPILE  des/cbc_cksm.o
+    COMPILE  des/cbc_enc.o
+    COMPILE  cversion.o
+    COMPILE  des/cfb64ede.o
+    COMPILE  des/des_enc.o
+    COMPILE  des/cfb64enc.o
+    COMPILE  des/cfb_enc.o
+    COMPILE  des/ecb3_enc.o
+    COMPILE  des/ecb_enc.o
+    COMPILE  des/fcrypt.o
+    COMPILE  des/fcrypt_b.o
+    COMPILE  des/ofb64ede.o
+    COMPILE  des/ofb_enc.o
+    COMPILE  des/ofb64enc.o
+    COMPILE  des/pcbc_enc.o
+    COMPILE  des/qud_cksm.o
+    COMPILE  des/rand_key.o
+    COMPILE  des/set_key.o
+    COMPILE  des/str2key.o
+    COMPILE  des/xcbc_enc.o
+    COMPILE  dh/dh_ameth.o
+    COMPILE  dh/dh_asn1.o
+    COMPILE  dh/dh_check.o
+    COMPILE  dh/dh_depr.o
+    COMPILE  dh/dh_err.o
+    COMPILE  dh/dh_gen.o
+    COMPILE  dh/dh_kdf.o
+    COMPILE  dh/dh_key.o
+    COMPILE  dh/dh_lib.o
+    COMPILE  dh/dh_meth.o
+    COMPILE  dh/dh_pmeth.o
+    COMPILE  dh/dh_prn.o
+    COMPILE  dh/dh_rfc5114.o
+    COMPILE  dh/dh_rfc7919.o
+    COMPILE  dsa/dsa_ameth.o
+    COMPILE  dsa/dsa_asn1.o
+    COMPILE  dsa/dsa_depr.o
+    COMPILE  dsa/dsa_err.o
+    COMPILE  dsa/dsa_gen.o
+    COMPILE  dsa/dsa_key.o
+    COMPILE  dsa/dsa_lib.o
+    COMPILE  dsa/dsa_meth.o
+    COMPILE  dsa/dsa_ossl.o
+    COMPILE  dsa/dsa_pmeth.o
+    COMPILE  dsa/dsa_prn.o
+    COMPILE  dsa/dsa_sign.o
+    COMPILE  dsa/dsa_vrf.o
+    COMPILE  dso/dso_dl.o
+    COMPILE  dso/dso_dlfcn.o
+    COMPILE  dso/dso_lib.o
+    COMPILE  dso/dso_err.o
+    COMPILE  dso/dso_openssl.o
+    COMPILE  ebcdic.o
+    ASSEMBLE ec/asm/ecp_nistz256-x86_64.o
+    ASSEMBLE ec/asm/x25519-x86_64.o
+    COMPILE  ec/curve448/arch_32/f_impl.o
+    COMPILE  ec/curve25519.o
+    COMPILE  ec/curve448/curve448.o
+    COMPILE  ec/curve448/curve448_tables.o
+    COMPILE  ec/curve448/eddsa.o
+    COMPILE  ec/curve448/f_generic.o
+    COMPILE  ec/curve448/scalar.o
+    COMPILE  ec/ec2_oct.o
+    COMPILE  ec/ec2_smpl.o
+    COMPILE  ec/ec_ameth.o
+    COMPILE  ec/ec_asn1.o
+    COMPILE  ec/ec_check.o
+    COMPILE  ec/ec_curve.o
+    COMPILE  ec/ec_cvt.o
+    COMPILE  ec/ec_err.o
+    COMPILE  ec/ec_kmeth.o
+    COMPILE  ec/ec_key.o
+    COMPILE  ec/ec_lib.o
+    COMPILE  ec/ec_mult.o
+    COMPILE  ec/ec_pmeth.o
+    COMPILE  ec/ec_oct.o
+    COMPILE  ec/ec_print.o
+    COMPILE  ec/ecdh_kdf.o
+    COMPILE  ec/ecdsa_ossl.o
+    COMPILE  ec/ecdh_ossl.o
+    COMPILE  ec/ecdsa_sign.o
+    COMPILE  ec/ecdsa_vrf.o
+    COMPILE  ec/eck_prn.o
+    COMPILE  ec/ecp_mont.o
+    COMPILE  ec/ecp_nist.o
+    COMPILE  ec/ecp_nistp224.o
+    COMPILE  ec/ecp_nistp256.o
+    COMPILE  ec/ecp_nistp521.o
+    COMPILE  ec/ecp_nistputil.o
+    COMPILE  ec/ecp_nistz256.o
+    COMPILE  ec/ecp_oct.o
+    COMPILE  ec/ecp_smpl.o
+    COMPILE  ec/ecx_meth.o
+    COMPILE  engine/eng_all.o
+    COMPILE  engine/eng_cnf.o
+    COMPILE  engine/eng_ctrl.o
+    COMPILE  engine/eng_dyn.o
+    COMPILE  engine/eng_err.o
+    COMPILE  engine/eng_fat.o
+    COMPILE  engine/eng_init.o
+    COMPILE  engine/eng_lib.o
+    COMPILE  engine/eng_list.o
+    COMPILE  engine/eng_openssl.o
+    COMPILE  engine/eng_pkey.o
+    COMPILE  engine/eng_rdrand.o
+    COMPILE  engine/eng_table.o
+    COMPILE  engine/tb_asnmth.o
+    COMPILE  engine/tb_cipher.o
+    COMPILE  engine/tb_dh.o
+    COMPILE  engine/tb_digest.o
+    COMPILE  engine/tb_dsa.o
+    COMPILE  engine/tb_eckey.o
+    COMPILE  engine/tb_pkmeth.o
+    COMPILE  engine/tb_rand.o
+    COMPILE  engine/tb_rsa.o
+    COMPILE  err/err_all.o
+    COMPILE  err/err.o
+    COMPILE  err/err_prn.o
+    COMPILE  evp/bio_b64.o
+    COMPILE  evp/bio_md.o
+    COMPILE  evp/bio_enc.o
+    COMPILE  evp/bio_ok.o
+    COMPILE  evp/c_allc.o
+    COMPILE  evp/c_alld.o
+    COMPILE  evp/cmeth_lib.o
+    COMPILE  evp/e_aes.o
+    COMPILE  evp/digest.o
+    COMPILE  evp/e_aes_cbc_hmac_sha1.o
+    COMPILE  evp/e_aes_cbc_hmac_sha256.o
+    COMPILE  evp/e_aria.o
+    COMPILE  evp/e_bf.o
+    COMPILE  evp/e_camellia.o
+    COMPILE  evp/e_cast.o
+    COMPILE  evp/e_chacha20_poly1305.o
+    COMPILE  evp/e_des.o
+    COMPILE  evp/e_des3.o
+    COMPILE  evp/e_idea.o
+    COMPILE  evp/e_null.o
+    COMPILE  evp/e_old.o
+    COMPILE  evp/e_rc2.o
+    COMPILE  evp/e_rc4.o
+    COMPILE  evp/e_rc4_hmac_md5.o
+    COMPILE  evp/e_rc5.o
+    COMPILE  evp/e_seed.o
+    COMPILE  evp/e_sm4.o
+    COMPILE  evp/e_xcbc_d.o
+    COMPILE  evp/encode.o
+    COMPILE  evp/evp_cnf.o
+    COMPILE  evp/evp_enc.o
+    COMPILE  evp/evp_key.o
+    COMPILE  evp/evp_err.o
+    COMPILE  evp/evp_lib.o
+    COMPILE  evp/evp_pbe.o
+    COMPILE  evp/m_md2.o
+    COMPILE  evp/evp_pkey.o
+    COMPILE  evp/m_md4.o
+    COMPILE  evp/m_md5.o
+    COMPILE  evp/m_md5_sha1.o
+    COMPILE  evp/m_mdc2.o
+    COMPILE  evp/m_null.o
+    COMPILE  evp/m_ripemd.o
+    COMPILE  evp/m_sha1.o
+    COMPILE  evp/m_sha3.o
+    COMPILE  evp/m_sigver.o
+    COMPILE  evp/m_wp.o
+    COMPILE  evp/names.o
+    COMPILE  evp/p5_crpt.o
+    COMPILE  evp/p5_crpt2.o
+    COMPILE  evp/p_dec.o
+    COMPILE  evp/p_enc.o
+    COMPILE  evp/p_lib.o
+    COMPILE  evp/p_open.o
+    COMPILE  evp/p_seal.o
+    COMPILE  evp/p_sign.o
+    COMPILE  evp/pbe_scrypt.o
+    COMPILE  evp/p_verify.o
+    COMPILE  evp/pmeth_fn.o
+    COMPILE  evp/pmeth_gn.o
+    COMPILE  evp/pmeth_lib.o
+    COMPILE  ex_data.o
+    COMPILE  getenv.o
+    COMPILE  hmac/hm_ameth.o
+    COMPILE  hmac/hm_pmeth.o
+    COMPILE  hmac/hmac.o
+    COMPILE  idea/i_cbc.o
+    COMPILE  idea/i_cfb64.o
+    COMPILE  idea/i_ecb.o
+    COMPILE  idea/i_ofb64.o
+    COMPILE  idea/i_skey.o
+    COMPILE  init.o
+    COMPILE  kdf/hkdf.o
+    COMPILE  kdf/kdf_err.o
+    COMPILE  kdf/scrypt.o
+    COMPILE  kdf/tls1_prf.o
+    COMPILE  lhash/lh_stats.o
+    COMPILE  lhash/lhash.o
+    COMPILE  md4/md4_dgst.o
+    COMPILE  md4/md4_one.o
+    ASSEMBLE md5/asm/md5-x86_64.o
+    COMPILE  md5/md5_dgst.o
+    COMPILE  md5/md5_one.o
+    COMPILE  mdc2/mdc2_one.o
+    COMPILE  mdc2/mdc2dgst.o
+    COMPILE  mem.o
+    COMPILE  mem_dbg.o
+    COMPILE  mem_sec.o
+    ASSEMBLE modes/asm/aesni-gcm-x86_64.o
+    ASSEMBLE modes/asm/ghash-x86_64.o
+    COMPILE  modes/ccm128.o
+    COMPILE  modes/cfb128.o
+    COMPILE  modes/cbc128.o
+    COMPILE  modes/ctr128.o
+    COMPILE  modes/cts128.o
+    COMPILE  modes/gcm128.o
+    COMPILE  modes/ocb128.o
+    COMPILE  modes/ofb128.o
+    COMPILE  modes/wrap128.o
+    COMPILE  modes/xts128.o
+    COMPILE  o_dir.o
+    COMPILE  o_fips.o
+    COMPILE  o_fopen.o
+    COMPILE  o_init.o
+    COMPILE  o_str.o
+    COMPILE  o_time.o
+    COMPILE  objects/o_names.o
+    COMPILE  objects/obj_dat.o
+    COMPILE  objects/obj_err.o
+    COMPILE  objects/obj_lib.o
+    COMPILE  objects/obj_xref.o
+    COMPILE  ocsp/ocsp_asn.o
+    COMPILE  ocsp/ocsp_cl.o
+    COMPILE  ocsp/ocsp_err.o
+    COMPILE  ocsp/ocsp_ext.o
+    COMPILE  ocsp/ocsp_ht.o
+    COMPILE  ocsp/ocsp_lib.o
+    COMPILE  ocsp/ocsp_prn.o
+    COMPILE  ocsp/ocsp_srv.o
+    COMPILE  ocsp/ocsp_vfy.o
+    COMPILE  ocsp/v3_ocsp.o
+    COMPILE  pem/pem_all.o
+    COMPILE  pem/pem_err.o
+    COMPILE  pem/pem_info.o
+    COMPILE  pem/pem_lib.o
+    COMPILE  pem/pem_oth.o
+    COMPILE  pem/pem_pk8.o
+    COMPILE  pem/pem_pkey.o
+    COMPILE  pem/pem_sign.o
+    COMPILE  pem/pem_x509.o
+    COMPILE  pem/pem_xaux.o
+    COMPILE  pem/pvkfmt.o
+    COMPILE  pkcs12/p12_add.o
+    COMPILE  pkcs12/p12_attr.o
+    COMPILE  pkcs12/p12_asn.o
+    COMPILE  pkcs12/p12_crpt.o
+    COMPILE  pkcs12/p12_crt.o
+    COMPILE  pkcs12/p12_init.o
+    COMPILE  pkcs12/p12_decr.o
+    COMPILE  pkcs12/p12_key.o
+    COMPILE  pkcs12/p12_kiss.o
+    COMPILE  pkcs12/p12_mutl.o
+    COMPILE  pkcs12/p12_npas.o
+    COMPILE  pkcs12/p12_p8d.o
+    COMPILE  pkcs12/p12_p8e.o
+    COMPILE  pkcs12/p12_sbag.o
+    COMPILE  pkcs12/p12_utl.o
+    COMPILE  pkcs12/pk12err.o
+    COMPILE  pkcs7/bio_pk7.o
+    COMPILE  pkcs7/pk7_asn1.o
+    COMPILE  pkcs7/pk7_attr.o
+    COMPILE  pkcs7/pk7_doit.o
+    COMPILE  pkcs7/pk7_lib.o
+    COMPILE  pkcs7/pk7_mime.o
+    COMPILE  pkcs7/pk7_smime.o
+    COMPILE  pkcs7/pkcs7err.o
+    ASSEMBLE poly1305/asm/poly1305-x86_64.o
+    COMPILE  poly1305/poly1305.o
+    COMPILE  poly1305/poly1305_ameth.o
+    COMPILE  poly1305/poly1305_pmeth.o
+    COMPILE  rand/drbg_ctr.o
+    COMPILE  rand/drbg_lib.o
+    COMPILE  rand/rand_egd.o
+    COMPILE  rand/rand_err.o
+    COMPILE  rand/rand_lib.o
+    COMPILE  rand/rand_unix.o
+    COMPILE  rand/randfile.o
+    COMPILE  rc2/rc2_cbc.o
+    COMPILE  rc2/rc2_ecb.o
+    COMPILE  rc2/rc2_skey.o
+    COMPILE  rc2/rc2cfb64.o
+    COMPILE  rc2/rc2ofb64.o
+    ASSEMBLE rc4/asm/rc4-md5-x86_64.o
+    ASSEMBLE rc4/asm/rc4-x86_64.o
+    COMPILE  ripemd/rmd_dgst.o
+    COMPILE  ripemd/rmd_one.o
+    COMPILE  rsa/rsa_ameth.o
+    COMPILE  rsa/rsa_asn1.o
+    COMPILE  rsa/rsa_chk.o
+    COMPILE  rsa/rsa_depr.o
+    COMPILE  rsa/rsa_crpt.o
+    COMPILE  rsa/rsa_err.o
+    COMPILE  rsa/rsa_gen.o
+    COMPILE  rsa/rsa_lib.o
+    COMPILE  rsa/rsa_meth.o
+    COMPILE  rsa/rsa_mp.o
+    COMPILE  rsa/rsa_none.o
+    COMPILE  rsa/rsa_oaep.o
+    COMPILE  rsa/rsa_ossl.o
+    COMPILE  rsa/rsa_pk1.o
+    COMPILE  rsa/rsa_pmeth.o
+    COMPILE  rsa/rsa_prn.o
+    COMPILE  rsa/rsa_pss.o
+    COMPILE  rsa/rsa_saos.o
+    COMPILE  rsa/rsa_sign.o
+    COMPILE  rsa/rsa_ssl.o
+    COMPILE  rsa/rsa_x931.o
+    COMPILE  rsa/rsa_x931g.o
+    COMPILE  seed/seed.o
+    COMPILE  seed/seed_cbc.o
+    COMPILE  seed/seed_cfb.o
+    COMPILE  seed/seed_ecb.o
+    COMPILE  seed/seed_ofb.o
+    ASSEMBLE sha/asm/keccak1600-x86_64.o
+    ASSEMBLE sha/asm/sha1-mb-x86_64.o
+    ASSEMBLE sha/asm/sha1-x86_64.o
+    ASSEMBLE sha/asm/sha256-mb-x86_64.o
+    ASSEMBLE sha/asm/sha512-x86_64.o
+    ASSEMBLE sha/asm/sha256-x86_64.o
+    COMPILE  sha/sha1_one.o
+    COMPILE  sha/sha1dgst.o
+    COMPILE  sha/sha256.o
+    COMPILE  sha/sha512.o
+    COMPILE  siphash/siphash.o
+    COMPILE  siphash/siphash_pmeth.o
+    COMPILE  siphash/siphash_ameth.o
+    COMPILE  sm2/sm2_crypt.o
+    COMPILE  sm2/sm2_err.o
+    COMPILE  sm2/sm2_pmeth.o
+    COMPILE  sm2/sm2_sign.o
+    COMPILE  sm3/m_sm3.o
+    COMPILE  sm3/sm3.o
+    COMPILE  srp/srp_lib.o
+    COMPILE  sm4/sm4.o
+    COMPILE  srp/srp_vfy.o
+    COMPILE  stack/stack.o
+    COMPILE  store/loader_file.o
+    COMPILE  store/store_init.o
+    COMPILE  store/store_lib.o
+    COMPILE  store/store_err.o
+    COMPILE  store/store_register.o
+    COMPILE  store/store_strings.o
+    COMPILE  threads_none.o
+    COMPILE  threads_pthread.o
+    COMPILE  ts/ts_asn1.o
+    COMPILE  ts/ts_conf.o
+    COMPILE  ts/ts_err.o
+    COMPILE  ts/ts_lib.o
+    COMPILE  ts/ts_req_print.o
+    COMPILE  ts/ts_req_utils.o
+    COMPILE  ts/ts_rsp_print.o
+    COMPILE  ts/ts_rsp_sign.o
+    COMPILE  ts/ts_rsp_utils.o
+    COMPILE  ts/ts_rsp_verify.o
+    COMPILE  ts/ts_verify_ctx.o
+    COMPILE  txt_db/txt_db.o
+    COMPILE  ui/ui_err.o
+    COMPILE  ui/ui_lib.o
+    COMPILE  ui/ui_null.o
+    COMPILE  ui/ui_openssl.o
+    COMPILE  ui/ui_util.o
+    COMPILE  uid.o
+    ASSEMBLE whrlpool/asm/wp-x86_64.o
+    COMPILE  whrlpool/wp_dgst.o
+    COMPILE  x509/by_dir.o
+    COMPILE  x509/by_file.o
+    COMPILE  x509/t_crl.o
+    COMPILE  x509/t_req.o
+    COMPILE  x509/t_x509.o
+    COMPILE  x509/x509_att.o
+    COMPILE  x509/x509_cmp.o
+    COMPILE  x509/x509_d2.o
+    COMPILE  x509/x509_def.o
+    COMPILE  x509/x509_err.o
+    COMPILE  x509/x509_ext.o
+    COMPILE  x509/x509_lu.o
+    COMPILE  x509/x509_meth.o
+    COMPILE  x509/x509_obj.o
+    COMPILE  x509/x509_r2x.o
+    COMPILE  x509/x509_req.o
+    COMPILE  x509/x509_set.o
+    COMPILE  x509/x509_trs.o
+    COMPILE  x509/x509_txt.o
+    COMPILE  x509/x509_v3.o
+    COMPILE  x509/x509_vfy.o
+    COMPILE  x509/x509_vpm.o
+    COMPILE  x509/x509cset.o
+    COMPILE  x509/x509name.o
+    COMPILE  x509/x509rset.o
+    COMPILE  x509/x509spki.o
+    COMPILE  x509/x509type.o
+    COMPILE  x509/x_all.o
+    COMPILE  x509/x_attrib.o
+    COMPILE  x509/x_crl.o
+    COMPILE  x509/x_exten.o
+    COMPILE  x509/x_name.o
+    COMPILE  x509/x_pubkey.o
+    COMPILE  x509/x_req.o
+    COMPILE  x509/x_x509.o
+    COMPILE  x509/x_x509a.o
+    COMPILE  x509v3/pcy_cache.o
+    COMPILE  x509v3/pcy_data.o
+    COMPILE  x509v3/pcy_lib.o
+    COMPILE  x509v3/pcy_map.o
+    COMPILE  x509v3/pcy_node.o
+    COMPILE  x509v3/pcy_tree.o
+    COMPILE  x509v3/v3_addr.o
+    COMPILE  x509v3/v3_admis.o
+    COMPILE  x509v3/v3_akey.o
+    COMPILE  x509v3/v3_akeya.o
+    COMPILE  x509v3/v3_alt.o
+    COMPILE  x509v3/v3_asid.o
+    COMPILE  x509v3/v3_bcons.o
+    COMPILE  x509v3/v3_bitst.o
+    COMPILE  x509v3/v3_conf.o
+    COMPILE  x509v3/v3_cpols.o
+    COMPILE  x509v3/v3_crld.o
+    COMPILE  x509v3/v3_enum.o
+    COMPILE  x509v3/v3_extku.o
+    COMPILE  x509v3/v3_genn.o
+    COMPILE  x509v3/v3_ia5.o
+    COMPILE  x509v3/v3_info.o
+    COMPILE  x509v3/v3_int.o
+    COMPILE  x509v3/v3_lib.o
+    COMPILE  x509v3/v3_ncons.o
+    COMPILE  x509v3/v3_pci.o
+    COMPILE  x509v3/v3_pcia.o
+    COMPILE  x509v3/v3_pku.o
+    COMPILE  x509v3/v3_pcons.o
+    COMPILE  x509v3/v3_pmaps.o
+    COMPILE  x509v3/v3_prn.o
+    COMPILE  x509v3/v3_purp.o
+    COMPILE  x509v3/v3_skey.o
+    COMPILE  x509v3/v3_sxnet.o
+    COMPILE  x509v3/v3_tlsf.o
+    COMPILE  x509v3/v3_utl.o
+    COMPILE  x509v3/v3err.o
+    ASSEMBLE x86_64cpuid.o
+    MERGE    libcrypto.lib.so
+  [00;33mLibrary[0m format.lib.a
+  [00;33mLibrary[0m lwip.lib.a
+    COMPILE  altcp.o
+    COMPILE  altcp_alloc.o
+    COMPILE  altcp_tcp.o
+    COMPILE  bridgeif.o
+    COMPILE  autoip.o
+    COMPILE  bridgeif_fdb.o
+    COMPILE  def.o
+    COMPILE  dhcp.o
+    COMPILE  dhcp6.o
+    COMPILE  dns.o
+    COMPILE  etharp.o
+    COMPILE  ethernet.o
+    COMPILE  ethip6.o
+    COMPILE  icmp.o
+    COMPILE  genode_c_api/nic_client.o
+    COMPILE  icmp6.o
+    COMPILE  igmp.o
+    COMPILE  inet_chksum.o
+    COMPILE  inet6.o
+    COMPILE  init.o
+    COMPILE  ip4.o
+    COMPILE  ip.o
+    COMPILE  ip4_addr.o
+    COMPILE  ip4_frag.o
+    COMPILE  ip6.o
+    COMPILE  ip6_addr.o
+    COMPILE  ip6_frag.o
+    COMPILE  mem.o
+    COMPILE  memp.o
+    COMPILE  mld6.o
+    COMPILE  nd6.o
+    COMPILE  netif.o
+    COMPILE  nic_netif.o
+    COMPILE  pbuf.o
+    COMPILE  printf.o
+    COMPILE  rand.o
+    COMPILE  raw.o
+    COMPILE  slipif.o
+    COMPILE  socket.o
+    COMPILE  socket_tcp.o
+    COMPILE  socket_udp.o
+    COMPILE  stats.o
+    COMPILE  sys.o
+    COMPILE  sys_arch.o
+    COMPILE  tcp.o
+    COMPILE  tcp_in.o
+    COMPILE  tcp_out.o
+    COMPILE  timeouts.o
+    COMPILE  udp.o
+    MERGE    lwip.lib.a
+  [00;33mLibrary[0m vfs_lwip.lib.so
+    COMPILE  vfs_lwip.o
+    COMPILE  vfs.o
+    MERGE    vfs_lwip.lib.so
+  [00;33mLibrary[0m vfs_pipe.lib.so
+  [01;33mProgram[0m app/fetchurl/fetchurl
+    COMPILE  component.o
+    LINK     fetchurl
+  [01;33mProgram[0m app/pci_decode/pci_decode
+  [00;33mLibrary[0m core-sel4.lib.a
+    COMPILE  version.o
+    MERGE    core-sel4.lib.a
+  [01;33mProgram[0m core/sel4/core
+  [01;33mProgram[0m driver/acpi/spec/x86/acpi
+  [00;33mLibrary[0m pc_lx_emul.lib.a
+  [00;33mLibrary[0m jitterentropy.lib.a
+  [00;33mLibrary[0m pc_linux_generated.lib.a
+  [01;33mProgram[0m driver/nic/pc/spec/x86_64/pc_nic
+  [00;33mLibrary[0m dde_ipxe_nic.lib.a
+  [00;33mLibrary[0m nic_driver.lib.a
+  [01;33mProgram[0m driver/nic/ipxe_nic
+  [01;33mProgram[0m driver/nic/virtio/spec/x86/virtio_pci_nic
+  [01;33mProgram[0m driver/platform/pc/spec/x86_64/pc_platform
+  [01;33mProgram[0m driver/platform/platform
+  [01;33mProgram[0m driver/rtc/spec/x86/pc_rtc
+  [01;33mProgram[0m init/init
+  [00;33mLibrary[0m net.lib.a
+  [01;33mProgram[0m server/nic_uplink/nic_uplink
+  [01;33mProgram[0m server/report_rom/report_rom
+  [01;33mProgram[0m server/system_rtc/system_rtc
+  [01;33mProgram[0m timer/hpet/hpet_timer
+make[1]: ディレクトリ '/home/luke/sponge-os/genode/build/x86_64' から出ます
+genode build completed
+sponge-net-probe: fixture marker = 'SPONGE-NET-PROBE-MARKER-7c9f2a3b'
+sponge-net-probe: fixture URL     = http://10.0.2.2:8765/net-fixture.txt
+sponge-net-probe: host fixture started (pids=2474999) on port 8765
+building targets: kernel/sel4 lib/ld-sel4
+spawn make kernel/sel4 lib/ld-sel4
+make[1]: ディレクトリ '/home/luke/sponge-os/genode/build/x86_64' に入ります
+  [00;33mLibrary[0m kernel-sel4-pc.lib.a
+ninja: Jobserver mode detected:  -j80 --jobserver-auth=fifo:/tmp/GMfifo2475108 --no-print-directory -- DEBUG_DIR=/home/luke/sponge-os/genode/build/x86_64/debug INSTALL_DIR=/home/luke/sponge-os/genode/build/x86_64/bin BUILD_BASE_DIR=/home/luke/sponge-os/genode/build/x86_64 SHARED_LIBS= ARCHIVES= LIB=kernel-sel4-pc LIB_MK=/home/luke/sponge-os/genode/repos/base-sel4/lib/mk/spec/x86_64/kernel-sel4-pc.mk REP_DIR=/home/luke/sponge-os/genode/repos/base-sel4 KERNEL=sel4 BOARD=pc SHELL=/usr/bin/bash
+ninja: no work to do.
+  [00;33mLibrary[0m syscall-sel4-pc.lib.a
+  [00;33mLibrary[0m syscall-sel4.lib.a
+  [00;33mLibrary[0m startup-sel4.lib.a
+  [00;33mLibrary[0m base-sel4-common.lib.a
+  [00;33mLibrary[0m timeout.lib.a
+  [00;33mLibrary[0m cxx.lib.a
+  [00;33mLibrary[0m base-sel4.lib.a
+  [00;33mLibrary[0m ldso_so_support.lib.a
+  [00;33mLibrary[0m ld-sel4.lib.so
+  [01;33mProgram[0m kernel/sel4/sel4-pc
+make[1]: ディレクトリ '/home/luke/sponge-os/genode/build/x86_64' から出ます
+genode build completed
+using 'core-sel4.a' as 'core.a'
+using 'hpet_timer' as 'timer'
+using 'ld-sel4.lib.so' as 'ld.lib.so'
+install bootloader
+creating ISO image...
+xorriso 1.5.8.pl02 : RockRidge filesystem manipulator, libburnia project.
+
+spawn qemu-system-x86_64 -accel kvm -nographic -m 1G -netdev user,id=net0 -serial mon:stdio -cdrom var/run/sponge-net-probe.iso -machine q35 -cpu Skylake-Client -net nic,model=e1000,netdev=net0
+qemu-system-x86_64: warning: host doesn't support requested feature: CPUID[eax=0Dh,ecx=01h].EAX.xsavec [bit 1]
+qemu-system-x86_64: warning: host doesn't support requested feature: CPUID[eax=0Dh,ecx=01h].EAX.xgetbv1 [bit 2]
+c[?7l[2J[0mSeaBIOS (version Arch Linux 1.17.0-2-2)
+
+
+iPXE (http://ipxe.org) 00:02.0 C900 PCI2.10 PnP PMM+3EFD3DA0+3EF33DA0 C900
+Press Ctrl-B to configure iPXE (PCI 00:02.0)...                                                                               
+
+
+Booting from Hard Disk...
+Boot failed: could not read the boot disk
+
+Booting from DVD/CD...
+error: can't find command `loadfont'.
+  Booting `Genode on seL4'
+
+[01;01H
+Bender Version 0.9-beta7-51-g28ba2ad-dirty
+Patching BDA with I/O port 0x3f8.
+Bender: Hello World.
+hwp config: eeo=na irq=na hwp=na epp=na epb=na
+Boot config: debug_port = 0x3f8
+Boot config: disable_iommu = true
+  module #0: start=0xed6f000 end=0xfdf63c0 size=0x10873c0 name='image.elf'
+	Physical Memory Region from 0 size 9fc00 type 1
+	Physical Memory Region from 9fc00 size 400 type 2
+	Physical Memory Region from f0000 size 10000 type 2
+	Physical Memory Region from 100000 size 3fedf000 type 1
+Adding physical memory region 0x100000-0x3ffdf000
+	Physical Memory Region from 3ffdf000 size 21000 type 2
+	Physical Memory Region from b0000000 size 10000000 type 2
+	Physical Memory Region from fed1c000 size 4000 type 2
+	Physical Memory Region from feffc000 size 4000 type 2
+	Physical Memory Region from fffc0000 size 40000 type 2
+Got framebuffer info in multiboot2. Current video mode is at physical address=fd000000 pitch=5120 resolution=1280x800@32 type=1
+Detected 1 boot module(s):
+Kernel loaded to: start=0x200000 end=0xe3e000 size=0xc3e000 entry=0x200298
+ACPI: RSDT paddr=0x3ffe2344
+ACPI: RSDT vaddr=0x3ffe2344
+ACPI: FADT paddr=0x3ffe213c
+ACPI: FADT vaddr=0x3ffe213c
+ACPI: FADT flags=0x84a5
+ACPI: MADT paddr=0x3ffe2230
+ACPI: MADT vaddr=0x3ffe2230
+ACPI: MADT apic_addr=0xfee00000
+ACPI: MADT flags=0x1
+ACPI: MADT_APIC apic_id=0x0
+ACPI: MADT_IOAPIC ioapic_id=0 ioapic_addr=0xfec00000 gsib=0
+ACPI: MADT_ISO bus=0 source=0 gsi=2 flags=0x0
+ACPI: MADT_ISO bus=0 source=5 gsi=5 flags=0xd
+ACPI: MADT_ISO bus=0 source=9 gsi=9 flags=0xd
+ACPI: MADT_ISO bus=0 source=10 gsi=10 flags=0xd
+ACPI: MADT_ISO bus=0 source=11 gsi=11 flags=0xd
+ACPI: 1 CPU(s) detected
+ELF-loading userland images from boot modules:
+size=0x2a65000 v_entry=0x2000018 v_start=0x2000000 v_end=0x4a65000 p_start=0xfdf7000 p_end=0x1285c000
+Moving loaded userland images to final location: from=0xfdf7000 to=0xe3e000 size=0x2a65000
+Starting node #0 with APIC ID 0
+Mapping kernel window is done
+vt-x: not supported
+available phys memory regions: 1
+  [100000..3ffdf000]
+reserved virt address space regions: 1
+  [ffffff8000200000..ffffff80038a3000]
+Booting all finished, dropped to user space
+[34mWarning: device memory in range [0000000800000000,0000001000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000001000000000,0000002000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000002000000000,0000004000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000004000000000,0000008000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000008000000000,0000408000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000408000000000,0000608000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000608000000000,0000708000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000708000000000,0000788000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000788000000000,00007c8000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [00007c8000000000,00007e8000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [00007e8000000000,00007f8000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [00007f8000000000,0000800000000000) is unavailable (due to limited untyped cnode range)[0m
+:phys_mem_16k:     Allocator 0x217a458 dump:
+ Block: [0000000000100000,0000000000a00000) size=9M avail=9M max_avail=9M
+ Block: [00000000038a4000,0000000004000000) size=7536K avail=7536K max_avail=81808K
+ Block: [0000000008000000,000000000cfe4000) size=81808K avail=81808K max_avail=81808K
+ => mem_size=100925440 (96 MB) / mem_avail=100925440 (96 MB)
+
+[34mWarning: device memory in range [0000000200000000,0000000400000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000000400000000,0000000800000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000000800000000,0000001000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000001000000000,0000002000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000002000000000,0000004000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000004000000000,0000008000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000008000000000,0000408000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000408000000000,0000608000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000608000000000,0000708000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000708000000000,0000788000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000788000000000,00007c8000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [00007c8000000000,00007e8000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [00007e8000000000,00007f8000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [00007f8000000000,0000800000000000) is unavailable (due to limited untyped cnode range)[0m
+virtual address layout of core:
+ overall    [0000000000002000,0000001000000000)
+ core image [0000000002000000,0000000004a65000)
+ ipc buffer [0000000004a65000,0000000004a66000)
+ boot_info  [0000000004a66000,0000000004a67542)
+ stack area [0000000040000000,0000000050000000)
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+Physical memory per PD at most: 512M
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+boot module 'config' (5605 bytes)
+boot module 'acpi' (190328 bytes)
+boot module 'curl.lib.so' (752816 bytes)
+boot module 'fetchurl' (85928 bytes)
+boot module 'timer' (144744 bytes)
+boot module 'init' (516744 bytes)
+boot module 'init.hsd' (4125 bytes)
+boot module 'init.xsd' (8118 bytes)
+boot module 'ipxe_nic' (378832 bytes)
+boot module 'ld.lib.so' (1112464 bytes)
+boot module 'libc.lib.so' (2022728 bytes)
+boot module 'libcrypto.lib.so' (3461688 bytes)
+boot module 'libm.lib.so' (291512 bytes)
+boot module 'libssh.lib.so' (633848 bytes)
+boot module 'libssl.lib.so' (739816 bytes)
+boot module 'nic_uplink' (196064 bytes)
+boot module 'nic_uplink.xsd' (297 bytes)
+boot module 'pc_nic' (1760344 bytes)
+boot module 'pc_platform' (724960 bytes)
+boot module 'pc_rtc' (123936 bytes)
+boot module 'pci_decode' (171336 bytes)
+boot module 'platform' (598984 bytes)
+boot module 'report_rom' (150784 bytes)
+boot module 'system_rtc' (133240 bytes)
+boot module 'vfs.lib.so' (804736 bytes)
+boot module 'vfs_lwip.lib.so' (481416 bytes)
+boot module 'vfs_pipe.lib.so' (83792 bytes)
+boot module 'virtio_pci_nic' (185544 bytes)
+boot module 'virtio_pci_nic.xsd' (1046 bytes)
+boot module 'zlib.lib.so' (108384 bytes)
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+Genode v0.1.1-alpha <local changes>
+590 MiB RAM and 523288 caps assigned to init
+[init -> timer] timers=3, clock 10000000fs , 64bit counter , legacy routing support vendor=0x8086
+[init -> timer] timer0 GSI options 0xff0104, supports periodic
+[init -> timer] timer1 GSI options 0xff0104, supports periodic
+[init -> timer] timer2 GSI options 0xff0104, supports periodic
+[init -> timer] time wraps after 5849 years
+[init -> timer] irqs=off legacy=off
+[init -> timer] Using timer 2 -> using GSI 2 edge triggered
+[init -> drivers -> nic] --- iPXE NIC driver started ---
+[init -> drivers -> acpi] Found MADT
+[init -> drivers -> acpi] MADT IRQ 0 -> GSI 2 flags: 0
+[init -> drivers -> acpi] MADT IRQ 5 -> GSI 5 flags: 13
+[init -> drivers -> acpi] MADT IRQ 9 -> GSI 9 flags: 13
+[init -> drivers -> acpi] MADT IRQ 10 -> GSI 10 flags: 13
+[init -> drivers -> acpi] MADT IRQ 11 -> GSI 11 flags: 13
+[init -> drivers -> acpi] Found HPET hw_id=0x1  vendor_id=0x8086 space_id=0x0 addr=0xfed00000 hpet_id=0x0
+[init -> drivers -> acpi] Found MCFG
+[init -> drivers -> acpi] MCFG BASE 0xb0000000 seg 0x0 bus 0x0-0xff
+[init -> drivers -> acpi] RSDT OEM 'BOCHS ', table id 'BXPC    ', revision 1, creator 'BXPC' (1)
+[init -> drivers -> acpi] [34mWarning: SMBIOSv3 entry point invalid[0m
+[init -> drivers -> acpi] SMBIOSv2 table (entry point: 0x1b6520 structures: 0xf6540)
+[init -> drivers -> nic] [36mFound:  8086:100e (rev 03)[0m
+[init -> drivers -> nic] 
+[init -> drivers -> nic] [36musing driver 82540em[0m
+[init -> drivers -> nic] 
+[init -> drivers -> nic] [36mPCI device 00:01.0 latency timer is unreasonably low at 0. Setting to 32.
+[init -> drivers -> nic] [0m
+[init -> drivers -> nic] 
+[init -> drivers -> nic] [36mbus_addr = 1a0000 len = 20000[0m
+[init -> drivers -> nic] 
+[init -> drivers -> nic] [35msnprintf not implemented[0m
+[init -> drivers -> nic] 
+[init -> drivers -> nic] throttle RX interrupt 0µs(off) -> 166µs - succeeded
+[init -> drivers -> nic] 
+[init -> drivers -> nic] MAC address 52:54:00:12:34:56
+[init -> fetchurl] lwIP Nic interface down
+[init -> fetchurl] Using DHCP for interface configuration.
+[init -> system_rtc] Set RTC base from RTC driver to 2026-8-8 14:24:5
+[init -> fetchurl] lwIP Nic interface up address=10.0.2.15 netmask=255.255.255.0 gateway=10.0.2.2 nameserver=10.0.2.3
+[init -> fetchurl] fetch http://10.0.2.2:8765/net-fixture.txt to /dev/log
+127.0.0.1 - - [08/Aug/2026 23:24:05] "GET /net-fixture.txt HTTP/1.1" 200 -
+[init -> fetchurl] SPONGE-NET-PROBE-MARKER-7c9f2a3b
+spawn qemu-system-x86_64 -accel kvm -nographic -m 1G -netdev user,id=net0 -serial mon:stdio -cdrom var/run/sponge-net-probe.iso -machine q35 -cpu Skylake-Client -net nic,model=e1000,netdev=net0
+qemu-system-x86_64: warning: host doesn't support requested feature: CPUID[eax=0Dh,ecx=01h].EAX.xsavec [bit 1]
+qemu-system-x86_64: warning: host doesn't support requested feature: CPUID[eax=0Dh,ecx=01h].EAX.xgetbv1 [bit 2]
+c[?7l[2J[0mSeaBIOS (version Arch Linux 1.17.0-2-2)
+
+
+iPXE (http://ipxe.org) 00:02.0 C900 PCI2.10 PnP PMM+3EFD3DA0+3EF33DA0 C900
+Press Ctrl-B to configure iPXE (PCI 00:02.0)...                                                                               
+
+
+Booting from Hard Disk...
+Boot failed: could not read the boot disk
+
+Booting from DVD/CD...
+error: can't find command `loadfont'.
+  Booting `Genode on seL4'
+
+[01;01H
+Bender Version 0.9-beta7-51-g28ba2ad-dirty
+Patching BDA with I/O port 0x3f8.
+Bender: Hello World.
+hwp config: eeo=na irq=na hwp=na epp=na epb=na
+Boot config: debug_port = 0x3f8
+Boot config: disable_iommu = true
+  module #0: start=0xed6f000 end=0xfdf63c0 size=0x10873c0 name='image.elf'
+	Physical Memory Region from 0 size 9fc00 type 1
+	Physical Memory Region from 9fc00 size 400 type 2
+	Physical Memory Region from f0000 size 10000 type 2
+	Physical Memory Region from 100000 size 3fedf000 type 1
+Adding physical memory region 0x100000-0x3ffdf000
+	Physical Memory Region from 3ffdf000 size 21000 type 2
+	Physical Memory Region from b0000000 size 10000000 type 2
+	Physical Memory Region from fed1c000 size 4000 type 2
+	Physical Memory Region from feffc000 size 4000 type 2
+	Physical Memory Region from fffc0000 size 40000 type 2
+Got framebuffer info in multiboot2. Current video mode is at physical address=fd000000 pitch=5120 resolution=1280x800@32 type=1
+Detected 1 boot module(s):
+Kernel loaded to: start=0x200000 end=0xe3e000 size=0xc3e000 entry=0x200298
+ACPI: RSDT paddr=0x3ffe2344
+ACPI: RSDT vaddr=0x3ffe2344
+ACPI: FADT paddr=0x3ffe213c
+ACPI: FADT vaddr=0x3ffe213c
+ACPI: FADT flags=0x84a5
+ACPI: MADT paddr=0x3ffe2230
+ACPI: MADT vaddr=0x3ffe2230
+ACPI: MADT apic_addr=0xfee00000
+ACPI: MADT flags=0x1
+ACPI: MADT_APIC apic_id=0x0
+ACPI: MADT_IOAPIC ioapic_id=0 ioapic_addr=0xfec00000 gsib=0
+ACPI: MADT_ISO bus=0 source=0 gsi=2 flags=0x0
+ACPI: MADT_ISO bus=0 source=5 gsi=5 flags=0xd
+ACPI: MADT_ISO bus=0 source=9 gsi=9 flags=0xd
+ACPI: MADT_ISO bus=0 source=10 gsi=10 flags=0xd
+ACPI: MADT_ISO bus=0 source=11 gsi=11 flags=0xd
+ACPI: 1 CPU(s) detected
+ELF-loading userland images from boot modules:
+size=0x2a65000 v_entry=0x2000018 v_start=0x2000000 v_end=0x4a65000 p_start=0xfdf7000 p_end=0x1285c000
+Moving loaded userland images to final location: from=0xfdf7000 to=0xe3e000 size=0x2a65000
+Starting node #0 with APIC ID 0
+Mapping kernel window is done
+vt-x: not supported
+available phys memory regions: 1
+  [100000..3ffdf000]
+reserved virt address space regions: 1
+  [ffffff8000200000..ffffff80038a3000]
+Booting all finished, dropped to user space
+[34mWarning: device memory in range [0000000800000000,0000001000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000001000000000,0000002000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000002000000000,0000004000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000004000000000,0000008000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000008000000000,0000408000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000408000000000,0000608000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000608000000000,0000708000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000708000000000,0000788000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000788000000000,00007c8000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [00007c8000000000,00007e8000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [00007e8000000000,00007f8000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [00007f8000000000,0000800000000000) is unavailable (due to limited untyped cnode range)[0m
+:phys_mem_16k:     Allocator 0x217a458 dump:
+ Block: [0000000000100000,0000000000a00000) size=9M avail=9M max_avail=9M
+ Block: [00000000038a4000,0000000004000000) size=7536K avail=7536K max_avail=81808K
+ Block: [0000000008000000,000000000cfe4000) size=81808K avail=81808K max_avail=81808K
+ => mem_size=100925440 (96 MB) / mem_avail=100925440 (96 MB)
+
+[34mWarning: device memory in range [0000000200000000,0000000400000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000000400000000,0000000800000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000000800000000,0000001000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000001000000000,0000002000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000002000000000,0000004000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000004000000000,0000008000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000008000000000,0000408000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000408000000000,0000608000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000608000000000,0000708000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000708000000000,0000788000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000788000000000,00007c8000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [00007c8000000000,00007e8000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [00007e8000000000,00007f8000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [00007f8000000000,0000800000000000) is unavailable (due to limited untyped cnode range)[0m
+virtual address layout of core:
+ overall    [0000000000002000,0000001000000000)
+ core image [0000000002000000,0000000004a65000)
+ ipc buffer [0000000004a65000,0000000004a66000)
+ boot_info  [0000000004a66000,0000000004a67542)
+ stack area [0000000040000000,0000000050000000)
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+Physical memory per PD at most: 512M
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+boot module 'config' (5605 bytes)
+boot module 'acpi' (190328 bytes)
+boot module 'curl.lib.so' (752816 bytes)
+boot module 'fetchurl' (85928 bytes)
+boot module 'timer' (144744 bytes)
+boot module 'init' (516744 bytes)
+boot module 'init.hsd' (4125 bytes)
+boot module 'init.xsd' (8118 bytes)
+boot module 'ipxe_nic' (378832 bytes)
+boot module 'ld.lib.so' (1112464 bytes)
+boot module 'libc.lib.so' (2022728 bytes)
+boot module 'libcrypto.lib.so' (3461688 bytes)
+boot module 'libm.lib.so' (291512 bytes)
+boot module 'libssh.lib.so' (633848 bytes)
+boot module 'libssl.lib.so' (739816 bytes)
+boot module 'nic_uplink' (196064 bytes)
+boot module 'nic_uplink.xsd' (297 bytes)
+boot module 'pc_nic' (1760344 bytes)
+boot module 'pc_platform' (724960 bytes)
+boot module 'pc_rtc' (123936 bytes)
+boot module 'pci_decode' (171336 bytes)
+boot module 'platform' (598984 bytes)
+boot module 'report_rom' (150784 bytes)
+boot module 'system_rtc' (133240 bytes)
+boot module 'vfs.lib.so' (804736 bytes)
+boot module 'vfs_lwip.lib.so' (481416 bytes)
+boot module 'vfs_pipe.lib.so' (83792 bytes)
+boot module 'virtio_pci_nic' (185544 bytes)
+boot module 'virtio_pci_nic.xsd' (1046 bytes)
+boot module 'zlib.lib.so' (108384 bytes)
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+Genode v0.1.1-alpha <local changes>
+590 MiB RAM and 523288 caps assigned to init
+[init -> timer] timers=3, clock 10000000fs , 64bit counter , legacy routing support vendor=0x8086
+[init -> timer] timer0 GSI options 0xff0104, supports periodic
+[init -> timer] timer1 GSI options 0xff0104, supports periodic
+[init -> timer] timer2 GSI options 0xff0104, supports periodic
+[init -> timer] time wraps after 5849 years
+[init -> timer] irqs=off legacy=off
+[init -> timer] Using timer 2 -> using GSI 2 edge triggered
+[init -> drivers -> acpi] Found MADT
+[init -> drivers -> acpi] MADT IRQ 0 -> GSI 2 flags: 0
+[init -> drivers -> nic] --- iPXE NIC driver started ---
+[init -> drivers -> acpi] MADT IRQ 5 -> GSI 5 flags: 13
+[init -> drivers -> acpi] MADT IRQ 9 -> GSI 9 flags: 13
+[init -> drivers -> acpi] MADT IRQ 10 -> GSI 10 flags: 13
+[init -> drivers -> acpi] MADT IRQ 11 -> GSI 11 flags: 13
+[init -> drivers -> acpi] Found HPET hw_id=0x1  vendor_id=0x8086 space_id=0x0 addr=0xfed00000 hpet_id=0x0
+[init -> drivers -> acpi] Found MCFG
+[init -> drivers -> acpi] MCFG BASE 0xb0000000 seg 0x0 bus 0x0-0xff
+[init -> drivers -> acpi] RSDT OEM 'BOCHS ', table id 'BXPC    ', revision 1, creator 'BXPC' (1)
+[init -> drivers -> acpi] [34mWarning: SMBIOSv3 entry point invalid[0m
+[init -> drivers -> acpi] SMBIOSv2 table (entry point: 0x1b6520 structures: 0xf6540)
+[init -> drivers -> nic] [36mFound:  8086:100e (rev 03)[0m
+[init -> drivers -> nic] 
+[init -> drivers -> nic] [36musing driver 82540em[0m
+[init -> drivers -> nic] 
+[init -> drivers -> nic] [36mPCI device 00:01.0 latency timer is unreasonably low at 0. Setting to 32.
+[init -> drivers -> nic] [0m
+[init -> drivers -> nic] 
+[init -> drivers -> nic] [36mbus_addr = 1a0000 len = 20000[0m
+[init -> drivers -> nic] 
+[init -> drivers -> nic] [35msnprintf not implemented[0m
+[init -> drivers -> nic] 
+[init -> drivers -> nic] throttle RX interrupt 0µs(off) -> 166µs - succeeded
+[init -> drivers -> nic] 
+[init -> drivers -> nic] MAC address 52:54:00:12:34:56
+[init -> system_rtc] Set RTC base from RTC driver to 2026-8-8 14:24:10
+[init -> fetchurl] lwIP Nic interface down
+[init -> fetchurl] Using DHCP for interface configuration.
+[init -> fetchurl] lwIP Nic interface up address=10.0.2.15 netmask=255.255.255.0 gateway=10.0.2.2 nameserver=10.0.2.3
+[init -> fetchurl] fetch http://10.0.2.2:8765/net-fixture.txt to /dev/log
+127.0.0.1 - - [08/Aug/2026 23:24:11] "GET /net-fixture.txt HTTP/1.1" 200 -
+[init -> fetchurl] SPONGE-NET-PROBE-MARKER-7c9f2a3b
+[init -> fetchurl] This is the Sponge OS network probe fixture.
+[init -> fetchurl] If this exact byte sequence appears in the Genode boot log via
+[init -> fetchurl] fetchurl, then the dde_ipxe e1000 NIC driver + the lwip vfs socket
+[init -> fetchurl] plugin + libcurl round-trip a real HTTP GET over QEMU user-mode
+[init -> fetchurl] networking on base-sel4.
+[init] child "fetchurl" exited with exit value 0sponge-net-probe: host fixture killed (cleanup receipt)
+
+Run script execution successful.
+make: ディレクトリ '/home/luke/sponge-os/genode/build/x86_64' から出ます
+EXIT=0

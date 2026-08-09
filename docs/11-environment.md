@@ -112,7 +112,7 @@ has a source. No exceptions.
 | **Genode OS Framework** | 26.05 | upstream commit `492a51024217fe74ccee1ebdfb81be97046b43eb` (`codeberg.org/genodelabs/genode` tag `26.05^{}`) | vendored at `genode/` via `git subtree`; upgrade via `git subtree pull --prefix=genode` (recorded as a dedicated commit) |
 | **Genode toolchain** | 25.05 (GCC 14.2.0, binutils 2.44) | `/usr/local/genode/tool/25.05/`, with `/usr/local/genode/tool/current -> 25.05` | external; installed by `sudo tar xPf genode-toolchain-25.05.tar.xz` from <https://genode.org/download/tool-chain> (or `genode-toolchain-bin` AUR on Arch/CachyOS). **No 26.05 toolchain tarball was published**; 25.05 is the official pairing. Genode uses a 2-year toolchain cycle. |
 | **Qt6** | 6.8.3 | `qt6_base` port (`qt6_base.hash = 67348e71a70138daef52b157470f5796f758507f`) and `qt6_api` port (`qt6_api.hash = 55bfba5647db8f93f91a61a61ee0548de108348c`) | host tools produced by `make -f tool/tool_chain_qt6 build` + `install INSTALL_LOCATION=<repo>/var/qt6-host-tools SUDO=` (build tree ~6.0 GB under `genode/contrib/qt6-host-*`, installed tools ~80 MB at `var/qt6-host-tools`), referenced by `QT_TOOLS_DIR ?= $(abspath $(GENODE_DIR)/../var/qt6-host-tools)` in `genode/repos/libports/lib/import/import-qt6.inc` (Sponge patch #3) |
-| **QEMU** | 11.0.2 | host package | managed by the operating-system package manager; no Sponge-side pinning needed |
+| **QEMU** | 11.0.3 (Phase 12 verified against QEMU 11.0.3; W0 host QEMU was 11.0.3, not the 11.0.2 pin in earlier revisions) | host package | managed by the operating-system package manager; no Sponge-side pinning needed |
 | **GNU Make** | system package | n/a | managed by the operating-system package manager |
 | **Mojo SDK** | pinned by `uv.lock` (currently 1.0.0b2) | `pyproject.toml` + `uv.lock` (committed); `uv sync` materializes the project-local `.venv` | used by host-side tooling under `tool/`; not used at runtime inside Genode |
 | **Python modules (seL4 kernel build)** | as-needed | `future jinja2 ply six lxml pyfdt jsonschema pyyaml` | `uv pip install future jinja2 ply six lxml pyfdt jsonschema pyyaml` into the same `.venv`; only required when `KERNEL ?= sel4`. (`pyyaml` is imported by seL4's `tools/config_gen.py`.) |
@@ -212,6 +212,15 @@ commits, or edits the ledger itself.
 Design-approved patches that are NOT yet committed to the vendored
 tree. Each row records the intent, the target location, and the why,
 so the Phase that picks it up doesn't have to re-derive the analysis.
+**Phase-12 candidate count discipline (W6 acceptance):** the count
+before Phase-12 workstream edits was **1 row** (the single
+`themed_decorator live asset reload` entry below); the count after
+Phase-12 is **still 1 row** — every Phase-12 criterion was met with
+in-tree paths (no vendored-tree patch was needed; the new scenarios,
+the storage selector, the matrix, and the validator are all in
+`repos/sponge/` or `tool/`). The acceptance rule from `docs/plans/phase12-hardware.md`
+(risk 11) is `count ≤ current-count + 1`; we sit at the floor. No row
+is added in this phase.
 
 | Intent | Where | Why | Phase |
 |--------|-------|-----|-------|
@@ -326,7 +335,7 @@ but not free.
    `genode-toolchain-bin` AUR package is maintained by a Genode Labs
    employee).
 
-3. **QEMU and other host packages** (`qemu-system-x86_64` 11.0.2, GNU
+3. **QEMU and other host packages** (`qemu-system-x86_64` 11.0.3, GNU
    Make, Tcl/expect, cmake, ninja). These come from the operating
    system package manager. Pinning host-package versions is the job of
    the developer's distro, not this repository.
@@ -713,12 +722,12 @@ exposed via `-qmp tcp:127.0.0.1:<port>,server=on,wait=off`; the
 scenario picks an ephemeral port via `qmp_pick_port` (Tcl
 `socket -server 0`) to avoid TIME_WAIT collisions between sequential
 QEMU respawns. **Reproducibility note:** the QEMU QMP wire protocol
-has been stable across recent QEMU versions, but specific QEMU 11.0.2
+has been stable across recent QEMU versions, but specific QEMU 11.0.3
 quirks (see below) cause some recipes to differ from older guides — a
 Phase 10 host running QEMU 7.2 will see the abs-axis clamp on a
 different y-center; the PS/2 REL recipe is robust across versions.
 
-#### QEMU 11.0.2 quirks discovered (relevant to any QMP scenario)
+#### QEMU 11.0.3 quirks discovered (relevant to any QMP scenario)
 
 These are observed-behavior caveats that the `run/qmp.inc` procs work
 around; documenting them here so the next QEMU-upgrade doesn't silently
@@ -754,8 +763,10 @@ regress Phase 10.
    and nitpicker's focus ROM flipping to the terminal domain.
    See `docs/08-development.md` §4.4 for the full set of procs.
 
-The QEMU 11.0.2 used in this development environment is the only
-QEMU version Phase 10 was verified against; a Phase 12 / Phase 15
+The QEMU 11.0.3 used in this development environment is the only
+QEMU version Phase 10 was verified against; Phase 12 verified against
+11.0.3 as well (the Phase-12 W0 envelope re-ran the eight regression
+invocations under the newer host QEMU). A Phase 12 / Phase 15
 upgrade to a newer QEMU should re-run the four Phase 10 scenarios as
 the first gate.
 

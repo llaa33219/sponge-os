@@ -1,0 +1,596 @@
+make: ディレクトリ '/home/luke/sponge-os/genode/build/x86_64'　に入ります
+including /home/luke/sponge-os/genode/tool/run/power_on/qemu
+including /home/luke/sponge-os/genode/tool/run/log/qemu
+including /home/luke/sponge-os/genode/tool/run/boot_dir/sel4
+including /home/luke/sponge-os/genode/tool/run/image/disk
+including /home/luke/sponge-os/repos/sponge/run/sponge-falkon-disk.run
+building targets:  core lib/ld init timer server/report_rom server/nitpicker driver/platform driver/acpi app/pci_decode driver/framebuffer/vesa driver/ps2 driver/usb_host/pc driver/usb_hid server/event_filter server/part_block server/vfs server/cached_fs_rom lib/vfs lib/vfs_rump sponge_configd sponge_pkgd lib/libc lib/libm lib/stdcxx lib/vfs_pipe lib/posix lib/zlib driver/ahci driver/nic server/nic_uplink driver/rtc/spec/x86 server/system_rtc test/falkon_probe
+
+spawn make core lib/ld init timer server/report_rom server/nitpicker driver/platform driver/acpi app/pci_decode driver/framebuffer/vesa driver/ps2 driver/usb_host/pc driver/usb_hid server/event_filter server/part_block server/vfs server/cached_fs_rom lib/vfs lib/vfs_rump sponge_configd sponge_pkgd lib/libc lib/libm lib/stdcxx lib/vfs_pipe lib/posix lib/zlib driver/ahci driver/nic server/nic_uplink driver/rtc/spec/x86 server/system_rtc test/falkon_probe
+make[1]: ディレクトリ '/home/luke/sponge-os/genode/build/x86_64' に入ります
+Skip target driver/nic/lan9118 because it requires 'arm_v7'
+Skip target driver/nic/pc/spec/x86_32 because it requires 'x86_32'
+Skip target driver/nic/spec/linux because it requires 'linux'
+Skip target driver/nic/spec/linux_slirp because it requires 'linux'
+Skip target driver/nic/virtio/spec/arm because it requires 'arm'
+Skip target driver/nic/virtio/spec/arm_64 because it requires 'arm_64'
+Skip target driver/nic/virtio/spec/riscv because it requires 'riscv'
+Skip target driver/platform/pc/spec/x86_32 because it requires 'x86_32'
+Skip target driver/ps2/pl050 because it requires 'arm_v7'
+Skip target driver/usb_hid/spec/arm_v7 because it requires 'arm_v7'
+Skip target driver/usb_hid/spec/arm_v8 because it requires 'arm_v8'
+Skip target driver/usb_hid/spec/x86_32 because it requires 'x86_32'
+Skip target driver/usb_host/pc/spec/x86_32 because it requires '32bit'
+  [00;33mLibrary[0m ld.abi.so
+  [00;33mLibrary[0m ldso_so_support.lib.a
+  [00;33mLibrary[0m kernel-sel4-pc.lib.a
+ninja: Jobserver mode detected:  -j80 --jobserver-auth=fifo:/tmp/GMfifo2464956 --no-print-directory -- DEBUG_DIR=/home/luke/sponge-os/genode/build/x86_64/debug INSTALL_DIR=/home/luke/sponge-os/genode/build/x86_64/bin BUILD_BASE_DIR=/home/luke/sponge-os/genode/build/x86_64 SHARED_LIBS= ARCHIVES= LIB=kernel-sel4-pc LIB_MK=/home/luke/sponge-os/genode/repos/base-sel4/lib/mk/spec/x86_64/kernel-sel4-pc.mk REP_DIR=/home/luke/sponge-os/genode/repos/base-sel4 KERNEL=sel4 BOARD=pc RUN_OPT=--include\ power_on/qemu\ --include\ log/qemu\ --include\ boot_dir/sel4\ --include\ image/disk SHELL=/usr/bin/bash
+ninja: no work to do.
+  [00;33mLibrary[0m syscall-sel4-pc.lib.a
+  [00;33mLibrary[0m syscall-sel4.lib.a
+  [00;33mLibrary[0m startup-sel4.lib.a
+  [00;33mLibrary[0m base-sel4-common.lib.a
+  [00;33mLibrary[0m timeout.lib.a
+  [00;33mLibrary[0m cxx.lib.a
+  [00;33mLibrary[0m base-sel4.lib.a
+  [00;33mLibrary[0m ld-sel4.lib.so
+  [00;33mLibrary[0m ld.lib.so
+  [00;33mLibrary[0m vfs.abi.so
+  [00;33mLibrary[0m base.lib.a
+  [00;33mLibrary[0m vfs.lib.so
+  [00;33mLibrary[0m format.lib.a
+  [00;33mLibrary[0m rump_include.lib.a
+  [00;33mLibrary[0m rump.lib.so
+  [00;33mLibrary[0m rump_tools.lib.a
+  [00;33mLibrary[0m rump_fs.lib.so
+  [00;33mLibrary[0m vfs_rump.lib.so
+  [00;33mLibrary[0m libc.abi.so
+  [00;33mLibrary[0m libc-string.lib.a
+  [00;33mLibrary[0m libc-locale.lib.a
+  [00;33mLibrary[0m libc-stdlib.lib.a
+  [00;33mLibrary[0m libc-stdio.lib.a
+  [00;33mLibrary[0m libc-gen.lib.a
+  [00;33mLibrary[0m libc-gdtoa.lib.a
+  [00;33mLibrary[0m libc-inet.lib.a
+  [00;33mLibrary[0m libc-stdtime.lib.a
+  [00;33mLibrary[0m libc-regex.lib.a
+  [00;33mLibrary[0m libc-compat.lib.a
+  [00;33mLibrary[0m libc-setjmp.lib.a
+  [00;33mLibrary[0m libc-mem.lib.a
+  [00;33mLibrary[0m libc-resolv.lib.a
+  [00;33mLibrary[0m libc-isc.lib.a
+  [00;33mLibrary[0m libc-nameser.lib.a
+  [00;33mLibrary[0m libc-net.lib.a
+  [00;33mLibrary[0m libc-rpc.lib.a
+  [00;33mLibrary[0m libc-tzcode.lib.a
+  [00;33mLibrary[0m libc-libkern.lib.a
+  [00;33mLibrary[0m libc.lib.so
+  [00;33mLibrary[0m libm.abi.so
+  [00;33mLibrary[0m libm.lib.so
+  [00;33mLibrary[0m stdcxx.abi.so
+  [00;33mLibrary[0m stdcxx-c++98.lib.a
+  [00;33mLibrary[0m stdcxx-c++11.lib.a
+  [00;33mLibrary[0m stdcxx-c++17.lib.a
+  [00;33mLibrary[0m stdcxx-c++20.lib.a
+  [00;33mLibrary[0m stdcxx.lib.so
+  [00;33mLibrary[0m vfs_pipe.lib.so
+  [00;33mLibrary[0m posix.abi.so
+  [00;33mLibrary[0m posix.lib.so
+  [00;33mLibrary[0m zlib.abi.so
+  [00;33mLibrary[0m zlib.lib.so
+  [01;33mProgram[0m app/pci_decode/pci_decode
+  [00;33mLibrary[0m core-sel4.lib.a
+    COMPILE  version.o
+    MERGE    core-sel4.lib.a
+  [01;33mProgram[0m core/sel4/core
+  [01;33mProgram[0m driver/acpi/spec/x86/acpi
+  [01;33mProgram[0m driver/ahci/ahci
+  [00;33mLibrary[0m blit.lib.a
+  [00;33mLibrary[0m x86emu.lib.a
+  [01;33mProgram[0m driver/framebuffer/vesa/vesa_fb
+  [00;33mLibrary[0m pc_lx_emul.lib.a
+  [00;33mLibrary[0m jitterentropy.lib.a
+  [00;33mLibrary[0m pc_linux_generated.lib.a
+  [01;33mProgram[0m driver/nic/pc/spec/x86_64/pc_nic
+  [00;33mLibrary[0m dde_ipxe_nic.lib.a
+    COMPILE  arch/i386/core/rdtsc_timer.o
+    COMPILE  arch/x86/core/x86_string.o
+    COMPILE  core/bitops.o
+    COMPILE  core/list.o
+    COMPILE  core/random.o
+    COMPILE  core/iobuf.o
+    COMPILE  dde.o
+    COMPILE  core/string.o
+    COMPILE  dde_support.o
+    COMPILE  drivers/bitbash/bitbash.o
+    COMPILE  drivers/bitbash/spi_bit.o
+    COMPILE  drivers/bus/pciextra.o
+    COMPILE  drivers/net/eepro100.o
+    COMPILE  drivers/net/intel.o
+    COMPILE  drivers/net/mii.o
+    COMPILE  drivers/net/realtek.o
+    COMPILE  drivers/net/tg3/tg3.o
+    COMPILE  drivers/net/tg3/tg3_phy.o
+    COMPILE  drivers/net/tg3/tg3_hw.o
+    COMPILE  drivers/nvs/nvs.o
+    COMPILE  dummies.o
+    COMPILE  net/eth_slow.o
+    COMPILE  drivers/nvs/threewire.o
+    COMPILE  net/ethernet.o
+    COMPILE  net/iobpad.o
+    COMPILE  net/netdevice.o
+    COMPILE  net/nullnet.o
+    COMPILE  nic.o
+/home/luke/sponge-os/genode/contrib/dde_ipxe-a7206d6c2a1b2de7fa7fde6733a3500411a64de2/src/lib/dde_ipxe/src/drivers/net/tg3/tg3.h: Assembler messages:
+/home/luke/sponge-os/genode/contrib/dde_ipxe-a7206d6c2a1b2de7fa7fde6733a3500411a64de2/src/lib/dde_ipxe/src/drivers/net/tg3/tg3.h:3323: Warning: no instruction mnemonic suffix given and no register operands; using default for `bt'
+/home/luke/sponge-os/genode/contrib/dde_ipxe-a7206d6c2a1b2de7fa7fde6733a3500411a64de2/src/lib/dde_ipxe/src/drivers/net/tg3/tg3.h:3350: Warning: no instruction mnemonic suffix given and no register operands; using default for `btr'
+/home/luke/sponge-os/genode/contrib/dde_ipxe-a7206d6c2a1b2de7fa7fde6733a3500411a64de2/src/lib/dde_ipxe/src/drivers/net/tg3/tg3.h: Assembler messages:
+/home/luke/sponge-os/genode/contrib/dde_ipxe-a7206d6c2a1b2de7fa7fde6733a3500411a64de2/src/lib/dde_ipxe/src/drivers/net/tg3/tg3.h:3323: Warning: no instruction mnemonic suffix given and no register operands; using default for `bt'
+In file included from [01m[K/home/luke/sponge-os/genode/repos/dde_ipxe/src/lib/dde_ipxe/include/bits/string.h:1[m[K,
+                 from [01m[K/home/luke/sponge-os/genode/contrib/dde_ipxe-a7206d6c2a1b2de7fa7fde6733a3500411a64de2/src/lib/dde_ipxe/src/include/string.h:20[m[K,
+                 from [01m[K/home/luke/sponge-os/genode/contrib/dde_ipxe-a7206d6c2a1b2de7fa7fde6733a3500411a64de2/src/lib/dde_ipxe/src/include/ipxe/uaccess.h:25[m[K,
+                 from [01m[K/home/luke/sponge-os/genode/contrib/dde_ipxe-a7206d6c2a1b2de7fa7fde6733a3500411a64de2/src/lib/dde_ipxe/src/include/ipxe/io.h:24[m[K,
+                 from [01m[K/home/luke/sponge-os/genode/repos/dde_ipxe/src/lib/dde_ipxe/include/bits/pci_io.h:1[m[K,
+                 from [01m[K/home/luke/sponge-os/genode/contrib/dde_ipxe-a7206d6c2a1b2de7fa7fde6733a3500411a64de2/src/lib/dde_ipxe/src/include/ipxe/pci_io.h:49[m[K,
+                 from [01m[K/home/luke/sponge-os/genode/contrib/dde_ipxe-a7206d6c2a1b2de7fa7fde6733a3500411a64de2/src/lib/dde_ipxe/src/include/ipxe/pci.h:24[m[K,
+                 from [01m[K/home/luke/sponge-os/genode/contrib/dde_ipxe-a7206d6c2a1b2de7fa7fde6733a3500411a64de2/src/lib/dde_ipxe/src/drivers/net/tg3/tg3_hw.c:25[m[K:
+In function ‘[01m[K__constant_memcpy[m[K’,
+    inlined from ‘[01m[Kmemcpy[m[K’ at [01m[K/home/luke/sponge-os/genode/contrib/dde_ipxe-a7206d6c2a1b2de7fa7fde6733a3500411a64de2/src/lib/dde_ipxe/src/arch/x86/include/bits/string.h:166:10[m[K,
+    inlined from ‘[01m[Ktg3_get_device_address[m[K’ at [01m[K/home/luke/sponge-os/genode/contrib/dde_ipxe-a7206d6c2a1b2de7fa7fde6733a3500411a64de2/src/lib/dde_ipxe/src/drivers/net/tg3/tg3_hw.c:1692:4[m[K:
+[01m[K/home/luke/sponge-os/genode/contrib/dde_ipxe-a7206d6c2a1b2de7fa7fde6733a3500411a64de2/src/lib/dde_ipxe/src/arch/x86/include/bits/string.h:74:44:[m[K [01;35m[Kwarning: [m[Karray subscript ‘[01m[Kconst union <anonymous>[0][m[K’ is partly outside array bounds of ‘[01m[Ku32[1][m[K’ {aka ‘[01m[Kunsigned int[1][m[K’} [[01;35m[K]8;;https://gcc.gnu.org/onlinedocs/gcc-14.2.0/gcc/Warning-Options.html#index-Warray-bounds-Warray-bounds=]8;;[m[K]
+   74 |                 dest_u->u16[0] = [01;35m[Ksrc_u->u16[0][m[K;
+      |                                  [01;35m[K~~~~~~~~~~^~~[m[K
+[01m[K/home/luke/sponge-os/genode/contrib/dde_ipxe-a7206d6c2a1b2de7fa7fde6733a3500411a64de2/src/lib/dde_ipxe/src/drivers/net/tg3/tg3_hw.c:[m[K In function ‘[01m[Ktg3_get_device_address[m[K’:
+[01m[K/home/luke/sponge-os/genode/contrib/dde_ipxe-a7206d6c2a1b2de7fa7fde6733a3500411a64de2/src/lib/dde_ipxe/src/drivers/net/tg3/tg3_hw.c:1652:13:[m[K [01;36m[Knote: [m[Kat offset 2 into object ‘[01m[Khi[m[K’ of size 4
+ 1652 |         u32 [01;36m[Khi[m[K, lo, mac_offset;
+      |             [01;36m[K^~[m[K
+In function ‘[01m[K__constant_memcpy[m[K’,
+    inlined from ‘[01m[Kmemcpy[m[K’ at [01m[K/home/luke/sponge-os/genode/contrib/dde_ipxe-a7206d6c2a1b2de7fa7fde6733a3500411a64de2/src/lib/dde_ipxe/src/arch/x86/include/bits/string.h:166:10[m[K,
+    inlined from ‘[01m[Ktg3_get_device_address[m[K’ at [01m[K/home/luke/sponge-os/genode/contrib/dde_ipxe-a7206d6c2a1b2de7fa7fde6733a3500411a64de2/src/lib/dde_ipxe/src/drivers/net/tg3/tg3_hw.c:1693:4[m[K:
+[01m[K/home/luke/sponge-os/genode/contrib/dde_ipxe-a7206d6c2a1b2de7fa7fde6733a3500411a64de2/src/lib/dde_ipxe/src/arch/x86/include/bits/string.h:77:44:[m[K [01;35m[Kwarning: [m[Karray subscript ‘[01m[Kconst union <anonymous>[0][m[K’ is partly outside array bounds of ‘[01m[Ku32[1][m[K’ {aka ‘[01m[Kunsigned int[1][m[K’} [[01;35m[K]8;;https://gcc.gnu.org/onlinedocs/gcc-14.2.0/gcc/Warning-Options.html#index-Warray-bounds-Warray-bounds=]8;;[m[K]
+   77 |                 dest_u->u32[0] = [01;35m[Ksrc_u->u32[0][m[K;
+      |                                  [01;35m[K~~~~~~~~~~^~~[m[K
+[01m[K/home/luke/sponge-os/genode/contrib/dde_ipxe-a7206d6c2a1b2de7fa7fde6733a3500411a64de2/src/lib/dde_ipxe/src/drivers/net/tg3/tg3_hw.c:[m[K In function ‘[01m[Ktg3_get_device_address[m[K’:
+/home/luke/sponge-os/genode/contrib/dde_ipxe-a7206d6c2a1b2de7fa7fde6733a3500411a64de2/src/lib/dde_ipxe/src/drivers/net/tg3/tg3.h:3340: Warning: no instruction mnemonic suffix given and no register operands; using default for `bts'
+/home/luke/sponge-os/genode/contrib/dde_ipxe-a7206d6c2a1b2de7fa7fde6733a3500411a64de2/src/lib/dde_ipxe/src/drivers/net/tg3/tg3.h:3323: Warning: no instruction mnemonic suffix given and no register operands; using default for `bt'
+[01m[K/home/luke/sponge-os/genode/contrib/dde_ipxe-a7206d6c2a1b2de7fa7fde6733a3500411a64de2/src/lib/dde_ipxe/src/drivers/net/tg3/tg3_hw.c:1652:17:[m[K [01;36m[Knote: [m[Kobject ‘[01m[Klo[m[K’ of size 4
+ 1652 |         u32 hi, [01;36m[Klo[m[K, mac_offset;
+      |                 [01;36m[K^~[m[K
+/home/luke/sponge-os/genode/contrib/dde_ipxe-a7206d6c2a1b2de7fa7fde6733a3500411a64de2/src/lib/dde_ipxe/src/drivers/net/tg3/tg3.h:3323: Warning: no instruction mnemonic suffix given and no register operands; using default for `bt'
+/home/luke/sponge-os/genode/contrib/dde_ipxe-a7206d6c2a1b2de7fa7fde6733a3500411a64de2/src/lib/dde_ipxe/src/drivers/net/tg3/tg3.h:3323: Warning: no instruction mnemonic suffix given and no register operands; using default for `bt'
+/home/luke/sponge-os/genode/contrib/dde_ipxe-a7206d6c2a1b2de7fa7fde6733a3500411a64de2/src/lib/dde_ipxe/src/drivers/net/tg3/tg3.h:3323: Warning: no instruction mnemonic suffix given and no register operands; using default for `bt'
+/home/luke/sponge-os/genode/contrib/dde_ipxe-a7206d6c2a1b2de7fa7fde6733a3500411a64de2/src/lib/dde_ipxe/src/drivers/net/tg3/tg3.h:3323: Warning: no instruction mnemonic suffix given and no register operands; using default for `bt'
+/home/luke/sponge-os/genode/contrib/dde_ipxe-a7206d6c2a1b2de7fa7fde6733a3500411a64de2/src/lib/dde_ipxe/src/drivers/net/tg3/tg3.h:3323: Warning: no instruction mnemonic suffix given and no register operands; using default for `bt'
+/home/luke/sponge-os/genode/contrib/dde_ipxe-a7206d6c2a1b2de7fa7fde6733a3500411a64de2/src/lib/dde_ipxe/src/drivers/net/tg3/tg3.h:3323: Warning: no instruction mnemonic suffix given and no register operands; using default for `bt'
+/home/luke/sponge-os/genode/contrib/dde_ipxe-a7206d6c2a1b2de7fa7fde6733a3500411a64de2/src/lib/dde_ipxe/src/drivers/net/tg3/tg3.h:3323: Warning: no instruction mnemonic suffix given and no register operands; using default for `bt'
+/home/luke/sponge-os/genode/contrib/dde_ipxe-a7206d6c2a1b2de7fa7fde6733a3500411a64de2/src/lib/dde_ipxe/src/drivers/net/tg3/tg3.h: Assembler messages:
+/home/luke/sponge-os/genode/contrib/dde_ipxe-a7206d6c2a1b2de7fa7fde6733a3500411a64de2/src/lib/dde_ipxe/src/drivers/net/tg3/tg3.h:3323: Warning: no instruction mnemonic suffix given and no register operands; using default for `bt'
+/home/luke/sponge-os/genode/contrib/dde_ipxe-a7206d6c2a1b2de7fa7fde6733a3500411a64de2/src/lib/dde_ipxe/src/drivers/net/tg3/tg3.h:3323: Warning: no instruction mnemonic suffix given and no register operands; using default for `bt'
+/home/luke/sponge-os/genode/contrib/dde_ipxe-a7206d6c2a1b2de7fa7fde6733a3500411a64de2/src/lib/dde_ipxe/src/drivers/net/tg3/tg3.h:3323: Warning: no instruction mnemonic suffix given and no register operands; using default for `bt'
+/home/luke/sponge-os/genode/contrib/dde_ipxe-a7206d6c2a1b2de7fa7fde6733a3500411a64de2/src/lib/dde_ipxe/src/drivers/net/tg3/tg3.h:3323: Warning: no instruction mnemonic suffix given and no register operands; using default for `bt'
+/home/luke/sponge-os/genode/contrib/dde_ipxe-a7206d6c2a1b2de7fa7fde6733a3500411a64de2/src/lib/dde_ipxe/src/drivers/net/tg3/tg3.h:3323: Warning: no instruction mnemonic suffix given and no register operands; using default for `bt'
+/home/luke/sponge-os/genode/contrib/dde_ipxe-a7206d6c2a1b2de7fa7fde6733a3500411a64de2/src/lib/dde_ipxe/src/drivers/net/tg3/tg3.h:3340: Warning: no instruction mnemonic suffix given and no register operands; using default for `bts'
+/home/luke/sponge-os/genode/contrib/dde_ipxe-a7206d6c2a1b2de7fa7fde6733a3500411a64de2/src/lib/dde_ipxe/src/drivers/net/tg3/tg3.h:3323: Warning: no instruction mnemonic suffix given and no register operands; using default for `bt'
+/home/luke/sponge-os/genode/contrib/dde_ipxe-a7206d6c2a1b2de7fa7fde6733a3500411a64de2/src/lib/dde_ipxe/src/drivers/net/tg3/tg3.h:3323: Warning: no instruction mnemonic suffix given and no register operands; using default for `bt'
+/home/luke/sponge-os/genode/contrib/dde_ipxe-a7206d6c2a1b2de7fa7fde6733a3500411a64de2/src/lib/dde_ipxe/src/drivers/net/tg3/tg3.h:3323: Warning: no instruction mnemonic suffix given and no register operands; using default for `bt'
+/home/luke/sponge-os/genode/contrib/dde_ipxe-a7206d6c2a1b2de7fa7fde6733a3500411a64de2/src/lib/dde_ipxe/src/drivers/net/tg3/tg3.h:3350: Warning: no instruction mnemonic suffix given and no register operands; using default for `btr'
+/home/luke/sponge-os/genode/contrib/dde_ipxe-a7206d6c2a1b2de7fa7fde6733a3500411a64de2/src/lib/dde_ipxe/src/drivers/net/tg3/tg3.h:3350: Warning: no instruction mnemonic suffix given and no register operands; using default for `btr'
+/home/luke/sponge-os/genode/contrib/dde_ipxe-a7206d6c2a1b2de7fa7fde6733a3500411a64de2/src/lib/dde_ipxe/src/drivers/net/tg3/tg3.h:3323: Warning: no instruction mnemonic suffix given and no register operands; using default for `bt'
+/home/luke/sponge-os/genode/contrib/dde_ipxe-a7206d6c2a1b2de7fa7fde6733a3500411a64de2/src/lib/dde_ipxe/src/drivers/net/tg3/tg3.h:3323: Warning: no instruction mnemonic suffix given and no register operands; using default for `bt'
+/home/luke/sponge-os/genode/contrib/dde_ipxe-a7206d6c2a1b2de7fa7fde6733a3500411a64de2/src/lib/dde_ipxe/src/drivers/net/tg3/tg3.h:3323: Warning: no instruction mnemonic suffix given and no register operands; using default for `bt'
+/home/luke/sponge-os/genode/contrib/dde_ipxe-a7206d6c2a1b2de7fa7fde6733a3500411a64de2/src/lib/dde_ipxe/src/drivers/net/tg3/tg3.h:3323: Warning: no instruction mnemonic suffix given and no register operands; using default for `bt'
+/home/luke/sponge-os/genode/contrib/dde_ipxe-a7206d6c2a1b2de7fa7fde6733a3500411a64de2/src/lib/dde_ipxe/src/drivers/net/tg3/tg3.h:3340: Warning: no instruction mnemonic suffix given and no register operands; using default for `bts'
+/home/luke/sponge-os/genode/contrib/dde_ipxe-a7206d6c2a1b2de7fa7fde6733a3500411a64de2/src/lib/dde_ipxe/src/drivers/net/tg3/tg3.h:3340: Warning: no instruction mnemonic suffix given and no register operands; using default for `bts'
+/home/luke/sponge-os/genode/contrib/dde_ipxe-a7206d6c2a1b2de7fa7fde6733a3500411a64de2/src/lib/dde_ipxe/src/drivers/net/tg3/tg3.h:3340: Warning: no instruction mnemonic suffix given and no register operands; using default for `bts'
+/home/luke/sponge-os/genode/contrib/dde_ipxe-a7206d6c2a1b2de7fa7fde6733a3500411a64de2/src/lib/dde_ipxe/src/drivers/net/tg3/tg3.h:3340: Warning: no instruction mnemonic suffix given and no register operands; using default for `bts'
+/home/luke/sponge-os/genode/contrib/dde_ipxe-a7206d6c2a1b2de7fa7fde6733a3500411a64de2/src/lib/dde_ipxe/src/drivers/net/tg3/tg3.h:3323: Warning: no instruction mnemonic suffix given and no register operands; using default for `bt'
+/home/luke/sponge-os/genode/contrib/dde_ipxe-a7206d6c2a1b2de7fa7fde6733a3500411a64de2/src/lib/dde_ipxe/src/drivers/net/tg3/tg3.h:3323: Warning: no instruction mnemonic suffix given and no register operands; using default for `bt'
+/home/luke/sponge-os/genode/contrib/dde_ipxe-a7206d6c2a1b2de7fa7fde6733a3500411a64de2/src/lib/dde_ipxe/src/drivers/net/tg3/tg3.h:3323: Warning: no instruction mnemonic suffix given and no register operands; using default for `bt'
+/home/luke/sponge-os/genode/contrib/dde_ipxe-a7206d6c2a1b2de7fa7fde6733a3500411a64de2/src/lib/dde_ipxe/src/drivers/net/tg3/tg3.h:3340: Warning: no instruction mnemonic suffix given and no register operands; using default for `bts'
+/home/luke/sponge-os/genode/contrib/dde_ipxe-a7206d6c2a1b2de7fa7fde6733a3500411a64de2/src/lib/dde_ipxe/src/drivers/net/tg3/tg3.h:3323: Warning: no instruction mnemonic suffix given and no register operands; using default for `bt'
+/home/luke/sponge-os/genode/contrib/dde_ipxe-a7206d6c2a1b2de7fa7fde6733a3500411a64de2/src/lib/dde_ipxe/src/drivers/net/tg3/tg3.h:3340: Warning: no instruction mnemonic suffix given and no register operands; using default for `bts'
+/home/luke/sponge-os/genode/contrib/dde_ipxe-a7206d6c2a1b2de7fa7fde6733a3500411a64de2/src/lib/dde_ipxe/src/drivers/net/tg3/tg3.h:3323: Warning: no instruction mnemonic suffix given and no register operands; using default for `bt'
+/home/luke/sponge-os/genode/contrib/dde_ipxe-a7206d6c2a1b2de7fa7fde6733a3500411a64de2/src/lib/dde_ipxe/src/drivers/net/tg3/tg3.h:3340: Warning: no instruction mnemonic suffix given and no register operands; using default for `bts'
+/home/luke/sponge-os/genode/contrib/dde_ipxe-a7206d6c2a1b2de7fa7fde6733a3500411a64de2/src/lib/dde_ipxe/src/drivers/net/tg3/tg3.h:3340: Warning: no instruction mnemonic suffix given and no register operands; using default for `bts'
+/home/luke/sponge-os/genode/contrib/dde_ipxe-a7206d6c2a1b2de7fa7fde6733a3500411a64de2/src/lib/dde_ipxe/src/drivers/net/tg3/tg3.h:3350: Warning: no instruction mnemonic suffix given and no register operands; using default for `btr'
+/home/luke/sponge-os/genode/contrib/dde_ipxe-a7206d6c2a1b2de7fa7fde6733a3500411a64de2/src/lib/dde_ipxe/src/drivers/net/tg3/tg3.h:3323: Warning: no instruction mnemonic suffix given and no register operands; using default for `bt'
+/home/luke/sponge-os/genode/contrib/dde_ipxe-a7206d6c2a1b2de7fa7fde6733a3500411a64de2/src/lib/dde_ipxe/src/drivers/net/tg3/tg3.h:3340: Warning: no instruction mnemonic suffix given and no register operands; using default for `bts'
+/home/luke/sponge-os/genode/contrib/dde_ipxe-a7206d6c2a1b2de7fa7fde6733a3500411a64de2/src/lib/dde_ipxe/src/drivers/net/tg3/tg3.h:3323: Warning: no instruction mnemonic suffix given and no register operands; using default for `bt'
+/home/luke/sponge-os/genode/contrib/dde_ipxe-a7206d6c2a1b2de7fa7fde6733a3500411a64de2/src/lib/dde_ipxe/src/drivers/net/tg3/tg3.h:3340: Warning: no instruction mnemonic suffix given and no register operands; using default for `bts'
+/home/luke/sponge-os/genode/contrib/dde_ipxe-a7206d6c2a1b2de7fa7fde6733a3500411a64de2/src/lib/dde_ipxe/src/drivers/net/tg3/tg3.h:3340: Warning: no instruction mnemonic suffix given and no register operands; using default for `bts'
+/home/luke/sponge-os/genode/contrib/dde_ipxe-a7206d6c2a1b2de7fa7fde6733a3500411a64de2/src/lib/dde_ipxe/src/drivers/net/tg3/tg3.h:3340: Warning: no instruction mnemonic suffix given and no register operands; using default for `bts'
+/home/luke/sponge-os/genode/contrib/dde_ipxe-a7206d6c2a1b2de7fa7fde6733a3500411a64de2/src/lib/dde_ipxe/src/drivers/net/tg3/tg3.h:3340: Warning: no instruction mnemonic suffix given and no register operands; using default for `bts'
+/home/luke/sponge-os/genode/contrib/dde_ipxe-a7206d6c2a1b2de7fa7fde6733a3500411a64de2/src/lib/dde_ipxe/src/drivers/net/tg3/tg3.h:3323: Warning: no instruction mnemonic suffix given and no register operands; using default for `bt'
+/home/luke/sponge-os/genode/contrib/dde_ipxe-a7206d6c2a1b2de7fa7fde6733a3500411a64de2/src/lib/dde_ipxe/src/drivers/net/tg3/tg3.h:3350: Warning: no instruction mnemonic suffix given and no register operands; using default for `btr'
+/home/luke/sponge-os/genode/contrib/dde_ipxe-a7206d6c2a1b2de7fa7fde6733a3500411a64de2/src/lib/dde_ipxe/src/drivers/net/tg3/tg3.h:3350: Warning: no instruction mnemonic suffix given and no register operands; using default for `btr'
+/home/luke/sponge-os/genode/contrib/dde_ipxe-a7206d6c2a1b2de7fa7fde6733a3500411a64de2/src/lib/dde_ipxe/src/drivers/net/tg3/tg3.h:3323: Warning: no instruction mnemonic suffix given and no register operands; using default for `bt'
+/home/luke/sponge-os/genode/contrib/dde_ipxe-a7206d6c2a1b2de7fa7fde6733a3500411a64de2/src/lib/dde_ipxe/src/drivers/net/tg3/tg3.h:3323: Warning: no instruction mnemonic suffix given and no register operands; using default for `bt'
+/home/luke/sponge-os/genode/contrib/dde_ipxe-a7206d6c2a1b2de7fa7fde6733a3500411a64de2/src/lib/dde_ipxe/src/drivers/net/tg3/tg3.h:3323: Warning: no instruction mnemonic suffix given and no register operands; using default for `bt'
+/home/luke/sponge-os/genode/contrib/dde_ipxe-a7206d6c2a1b2de7fa7fde6733a3500411a64de2/src/lib/dde_ipxe/src/drivers/net/tg3/tg3.h:3323: Warning: no instruction mnemonic suffix given and no register operands; using default for `bt'
+/home/luke/sponge-os/genode/contrib/dde_ipxe-a7206d6c2a1b2de7fa7fde6733a3500411a64de2/src/lib/dde_ipxe/src/drivers/net/tg3/tg3.h:3323: Warning: no instruction mnemonic suffix given and no register operands; using default for `bt'
+/home/luke/sponge-os/genode/contrib/dde_ipxe-a7206d6c2a1b2de7fa7fde6733a3500411a64de2/src/lib/dde_ipxe/src/drivers/net/tg3/tg3.h:3323: Warning: no instruction mnemonic suffix given and no register operands; using default for `bt'
+/home/luke/sponge-os/genode/contrib/dde_ipxe-a7206d6c2a1b2de7fa7fde6733a3500411a64de2/src/lib/dde_ipxe/src/drivers/net/tg3/tg3.h:3323: Warning: no instruction mnemonic suffix given and no register operands; using default for `bt'
+/home/luke/sponge-os/genode/contrib/dde_ipxe-a7206d6c2a1b2de7fa7fde6733a3500411a64de2/src/lib/dde_ipxe/src/drivers/net/tg3/tg3.h:3323: Warning: no instruction mnemonic suffix given and no register operands; using default for `bt'
+/home/luke/sponge-os/genode/contrib/dde_ipxe-a7206d6c2a1b2de7fa7fde6733a3500411a64de2/src/lib/dde_ipxe/src/drivers/net/tg3/tg3.h:3323: Warning: no instruction mnemonic suffix given and no register operands; using default for `bt'
+/home/luke/sponge-os/genode/contrib/dde_ipxe-a7206d6c2a1b2de7fa7fde6733a3500411a64de2/src/lib/dde_ipxe/src/drivers/net/tg3/tg3.h:3323: Warning: no instruction mnemonic suffix given and no register operands; using default for `bt'
+/home/luke/sponge-os/genode/contrib/dde_ipxe-a7206d6c2a1b2de7fa7fde6733a3500411a64de2/src/lib/dde_ipxe/src/drivers/net/tg3/tg3.h:3323: Warning: no instruction mnemonic suffix given and no register operands; using default for `bt'
+/home/luke/sponge-os/genode/contrib/dde_ipxe-a7206d6c2a1b2de7fa7fde6733a3500411a64de2/src/lib/dde_ipxe/src/drivers/net/tg3/tg3.h:3323: Warning: no instruction mnemonic suffix given and no register operands; using default for `bt'
+    MERGE    dde_ipxe_nic.lib.a
+  [00;33mLibrary[0m nic_driver.lib.a
+    MERGE    nic_driver.lib.a
+  [01;33mProgram[0m driver/nic/ipxe_nic
+    COMPILE  main.o
+    LINK     ipxe_nic
+  [01;33mProgram[0m driver/nic/virtio/spec/x86/virtio_pci_nic
+    COMPILE  pci_device.o
+    LINK     virtio_pci_nic
+  [01;33mProgram[0m driver/platform/pc/spec/x86_64/pc_platform
+  [01;33mProgram[0m driver/platform/platform
+  [01;33mProgram[0m driver/ps2/x86/ps2
+  [01;33mProgram[0m driver/rtc/spec/x86/pc_rtc
+    COMPILE  main.o
+    COMPILE  rtc.o
+    LINK     pc_rtc
+  [00;33mLibrary[0m virt_lx_emul.lib.a
+  [00;33mLibrary[0m virt_linux_generated.lib.a
+  [01;33mProgram[0m driver/usb_hid/spec/x86_64/usb_hid
+  [01;33mProgram[0m driver/usb_host/pc/spec/x86_64/pc_usb_host
+  [01;33mProgram[0m init/init
+  [01;33mProgram[0m server/cached_fs_rom/cached_fs_rom
+  [01;33mProgram[0m server/event_filter/event_filter
+  [00;33mLibrary[0m net.lib.a
+  [01;33mProgram[0m server/nic_uplink/nic_uplink
+    COMPILE  communication_buffer.o
+    COMPILE  main.o
+    LINK     nic_uplink
+  [01;33mProgram[0m server/nitpicker/nitpicker
+  [01;33mProgram[0m server/part_block/part_block
+  [01;33mProgram[0m server/report_rom/report_rom
+  [01;33mProgram[0m server/system_rtc/system_rtc
+    COMPILE  main.o
+    COMPILE  tm_to_secs.o
+    COMPILE  secs_to_tm.o
+    LINK     system_rtc
+  [01;33mProgram[0m server/vfs/vfs
+  [01;33mProgram[0m sponge_configd/sponge_configd
+  [01;33mProgram[0m sponge_pkgd/sponge_pkgd
+  [01;33mProgram[0m test/falkon_probe/falkon_probe
+    COMPILE  main.o
+    LINK     falkon_probe
+  [01;33mProgram[0m timer/hpet/hpet_timer
+make[1]: ディレクトリ '/home/luke/sponge-os/genode/build/x86_64' から出ます
+genode build completed
+sponge-falkon-disk: fixture URL = http://10.0.2.2:8765/net-fixture.txt
+sponge-falkon-disk: host fixture started on port 8765 (pids=2467477)
+sponge-falkon-disk: staged 64 payload files under /system/pkg/falkon/payload/ (508 MiB on the GENODE partition — NOT in image.elf)
+building targets: kernel/sel4 lib/ld-sel4
+spawn make kernel/sel4 lib/ld-sel4
+make[1]: ディレクトリ '/home/luke/sponge-os/genode/build/x86_64' に入ります
+  [00;33mLibrary[0m kernel-sel4-pc.lib.a
+ninja: Jobserver mode detected:  -j80 --jobserver-auth=fifo:/tmp/GMfifo2467697 --no-print-directory -- DEBUG_DIR=/home/luke/sponge-os/genode/build/x86_64/debug INSTALL_DIR=/home/luke/sponge-os/genode/build/x86_64/bin BUILD_BASE_DIR=/home/luke/sponge-os/genode/build/x86_64 SHARED_LIBS= ARCHIVES= LIB=kernel-sel4-pc LIB_MK=/home/luke/sponge-os/genode/repos/base-sel4/lib/mk/spec/x86_64/kernel-sel4-pc.mk REP_DIR=/home/luke/sponge-os/genode/repos/base-sel4 KERNEL=sel4 BOARD=pc RUN_OPT=--include\ power_on/qemu\ --include\ log/qemu\ --include\ boot_dir/sel4\ --include\ image/disk SHELL=/usr/bin/bash
+ninja: no work to do.
+  [00;33mLibrary[0m syscall-sel4-pc.lib.a
+  [00;33mLibrary[0m syscall-sel4.lib.a
+  [00;33mLibrary[0m startup-sel4.lib.a
+  [00;33mLibrary[0m base-sel4-common.lib.a
+  [00;33mLibrary[0m timeout.lib.a
+  [00;33mLibrary[0m cxx.lib.a
+  [00;33mLibrary[0m base-sel4.lib.a
+  [00;33mLibrary[0m ldso_so_support.lib.a
+  [00;33mLibrary[0m ld-sel4.lib.so
+  [01;33mProgram[0m kernel/sel4/sel4-pc
+make[1]: ディレクトリ '/home/luke/sponge-os/genode/build/x86_64' から出ます
+genode build completed
+using 'core-sel4.a' as 'core.a'
+using 'ld-sel4.lib.so' as 'ld.lib.so'
+using 'hpet_timer' as 'timer'
+Created image file var/run/sponge-falkon-disk.img (612120kiB)
+sponge-falkon-disk: image.elf = 12 MiB (13476800 bytes)
+sponge-falkon-disk: falkon payload on disk = 508 MiB (NOT in image.elf — the ceiling-killer proof)
+spawn qemu-system-x86_64 -accel kvm -machine q35 -cpu Skylake-Client -nographic -m 6G -device nec-usb-xhci,id=xhci -device usb-tablet -netdev user,id=net0 -serial mon:stdio -drive format=raw,file=var/run/sponge-falkon-disk.img -machine q35 -net nic,model=e1000,netdev=net0
+qemu-system-x86_64: warning: host doesn't support requested feature: CPUID[eax=0Dh,ecx=01h].EAX.xsavec [bit 1]
+qemu-system-x86_64: warning: host doesn't support requested feature: CPUID[eax=0Dh,ecx=01h].EAX.xgetbv1 [bit 2]
+c[?7l[2J[0mSeaBIOS (version Arch Linux 1.17.0-2-2)
+
+
+iPXE (http://ipxe.org) 00:02.0 C900 PCI2.10 PnP PMM+7EFD3D50+7EF33D50 C900
+Press Ctrl-B to configure iPXE (PCI 00:02.0)...                                                                               
+
+
+Booting from Hard Disk...
+GRUB loading.
+[01;01H
+Bender Version 0.9-beta7-51-g28ba2ad-dirty
+Patching BDA with I/O port 0x3f8.
+Bender: Hello World.
+hwp config: eeo=na irq=na hwp=na epp=na epb=na
+Boot config: debug_port = 0x3f8
+Boot config: disable_iommu = true
+  module #0: start=0xf11c000 end=0xfdf63c0 size=0xcda3c0 name='image.elf'
+	Physical Memory Region from 0 size 9fc00 type 1
+	Physical Memory Region from 9fc00 size 400 type 2
+	Physical Memory Region from f0000 size 10000 type 2
+	Physical Memory Region from 100000 size 7fede000 type 1
+Adding physical memory region 0x100000-0x7ffde000
+	Physical Memory Region from 7ffde000 size 22000 type 2
+	Physical Memory Region from b0000000 size 10000000 type 2
+	Physical Memory Region from fed1c000 size 4000 type 2
+	Physical Memory Region from feffc000 size 4000 type 2
+	Physical Memory Region from fffc0000 size 40000 type 2
+	Physical Memory Region from 100000000 size 100000000 type 1
+Adding physical memory region 0x100000000-0x200000000
+Got framebuffer info in multiboot2. Current video mode is at physical address=fd000000 pitch=5120 resolution=1280x800@32 type=1
+Detected 1 boot module(s):
+Kernel loaded to: start=0x200000 end=0xe3e000 size=0xc3e000 entry=0x200298
+ACPI: RSDT paddr=0x7ffe2355
+ACPI: RSDT vaddr=0x7ffe2355
+ACPI: FADT paddr=0x7ffe214d
+ACPI: FADT vaddr=0x7ffe214d
+ACPI: FADT flags=0x84a5
+ACPI: MADT paddr=0x7ffe2241
+ACPI: MADT vaddr=0x7ffe2241
+ACPI: MADT apic_addr=0xfee00000
+ACPI: MADT flags=0x1
+ACPI: MADT_APIC apic_id=0x0
+ACPI: MADT_IOAPIC ioapic_id=0 ioapic_addr=0xfec00000 gsib=0
+ACPI: MADT_ISO bus=0 source=0 gsi=2 flags=0x0
+ACPI: MADT_ISO bus=0 source=5 gsi=5 flags=0xd
+ACPI: MADT_ISO bus=0 source=9 gsi=9 flags=0xd
+ACPI: MADT_ISO bus=0 source=10 gsi=10 flags=0xd
+ACPI: MADT_ISO bus=0 source=11 gsi=11 flags=0xd
+ACPI: 1 CPU(s) detected
+ELF-loading userland images from boot modules:
+size=0x26b8000 v_entry=0x2000018 v_start=0x2000000 v_end=0x46b8000 p_start=0xfdf7000 p_end=0x124af000
+Moving loaded userland images to final location: from=0xfdf7000 to=0xe3e000 size=0x26b8000
+Starting node #0 with APIC ID 0
+Mapping kernel window is done
+vt-x: not supported
+available phys memory regions: 2
+  [100000..7ffde000]
+  [100000000..200000000]
+reserved virt address space regions: 1
+  [ffffff8000200000..ffffff80034f6000]
+Booting all finished, dropped to user space
+[34mWarning: device memory in range [0000000800000000,0000001000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000001000000000,0000002000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000002000000000,0000004000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000004000000000,0000008000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000008000000000,0000408000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000408000000000,0000608000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000608000000000,0000708000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000708000000000,0000788000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000788000000000,00007c8000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [00007c8000000000,00007e8000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [00007e8000000000,00007f8000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [00007f8000000000,0000800000000000) is unavailable (due to limited untyped cnode range)[0m
+:phys_mem_16k:     Allocator 0x217a458 dump:
+ Block: [0000000000100000,0000000000a00000) size=9M avail=9M max_avail=9M
+ Block: [00000000034f8000,0000000004000000) size=11296K avail=11296K max_avail=78048K
+ Block: [0000000008000000,000000000cc38000) size=78048K avail=78048K max_avail=78048K
+ => mem_size=100925440 (96 MB) / mem_avail=100925440 (96 MB)
+
+[34mWarning: device memory in range [0000000200000000,0000000400000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000000400000000,0000000800000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000000800000000,0000001000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000001000000000,0000002000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000002000000000,0000004000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000004000000000,0000008000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000008000000000,0000408000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000408000000000,0000608000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000608000000000,0000708000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000708000000000,0000788000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000788000000000,00007c8000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [00007c8000000000,00007e8000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [00007e8000000000,00007f8000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [00007f8000000000,0000800000000000) is unavailable (due to limited untyped cnode range)[0m
+virtual address layout of core:
+ overall    [0000000000002000,0000001000000000)
+ core image [0000000002000000,00000000046b8000)
+ ipc buffer [00000000046b8000,00000000046b9000)
+ boot_info  [00000000046b9000,00000000046ba542)
+ stack area [0000000040000000,0000000050000000)
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+Physical memory per PD at most: 512M
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+boot module 'config' (12550 bytes)
+boot module 'ld.lib.so' (1112464 bytes)
+boot module 'init' (516744 bytes)
+boot module 'timer' (144744 bytes)
+boot module 'report_rom' (150784 bytes)
+boot module 'nitpicker' (530512 bytes)
+boot module 'platform' (598984 bytes)
+boot module 'acpi' (190328 bytes)
+boot module 'pci_decode' (171336 bytes)
+boot module 'ahci' (260248 bytes)
+boot module 'part_block' (192304 bytes)
+boot module 'vfs' (250448 bytes)
+boot module 'cached_fs_rom' (165192 bytes)
+boot module 'vesa_fb' (334560 bytes)
+boot module 'ps2' (156880 bytes)
+boot module 'pc_usb_host' (1564952 bytes)
+boot module 'usb_hid' (1131360 bytes)
+boot module 'event_filter' (332104 bytes)
+boot module 'ipxe_nic' (378832 bytes)
+boot module 'nic_uplink' (196064 bytes)
+boot module 'pc_rtc' (123936 bytes)
+boot module 'system_rtc' (133240 bytes)
+boot module 'vfs.lib.so' (804736 bytes)
+boot module 'vfs_rump.lib.so' (87576 bytes)
+boot module 'rump.lib.so' (1343016 bytes)
+boot module 'rump_fs.lib.so' (1113128 bytes)
+boot module 'en_us.chargen' (8852 bytes)
+boot module 'special.chargen' (1218 bytes)
+boot module 'fb.config' (53 bytes)
+boot module 'event_filter.config' (661 bytes)
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+Genode v0.1.1-alpha <local changes>
+5714 MiB RAM and 523288 caps assigned to init
+[init -> acpi] Found MADT
+[init -> acpi] MADT IRQ 0 -> GSI 2 flags: 0
+[init -> acpi] MADT IRQ 5 -> GSI 5 flags: 13
+[init -> acpi] MADT IRQ 9 -> GSI 9 flags: 13
+[init -> acpi] MADT IRQ 10 -> GSI 10 flags: 13
+[init -> acpi] MADT IRQ 11 -> GSI 11 flags: 13
+[init -> acpi] Found HPET hw_id=0x1  vendor_id=0x8086 space_id=0x0 addr=0xfed00000 hpet_id=0x0
+[init -> acpi] Found MCFG
+[init -> acpi] MCFG BASE 0xb0000000 seg 0x0 bus 0x0-0xff
+[init -> acpi] RSDT OEM 'BOCHS ', table id 'BXPC    ', revision 1, creator 'BXPC' (1)
+[init -> ahci] --- Starting AHCI driver ---
+[init -> nic] --- iPXE NIC driver started ---
+[init -> timer] timers=3, clock 10000000fs , 64bit counter , legacy routing support vendor=0x8086
+[init -> timer] timer0 GSI options 0xff0104, supports periodic
+[init -> timer] timer1 GSI options 0xff0104, supports periodic
+[init -> timer] timer2 GSI options 0xff0104, supports periodic
+[init -> timer] time wraps after 5849 years
+[init -> timer] irqs=off legacy=off
+[init -> timer] Using timer 2 -> using GSI 2 edge triggered
+[init -> acpi] [34mWarning: SMBIOSv3 entry point invalid[0m
+[init -> acpi] SMBIOSv2 table (entry point: 0x1b64f0 structures: 0xf6510)
+[init -> fb] fb mapped to 0x6000
+[init -> fb] Found: VESA BIOS version 3.0
+[init -> fb] OEM: SeaBIOS VBE(C) 2011
+[init -> fb] Found: physical frame buffer at 0xfd000000 size: 16777216
+[init -> fb] fb mapped to 0x17000000
+[init -> fb] using 1024x768 (1024x768)
+[init -> ahci] version: major=0x1 minor=0x0
+[init -> ahci] command slots: 32
+[init -> ahci] native command queuing: yes
+[init -> ahci] 64-bit support: yes
+[init -> ahci] port scan:
+[init -> ps2] Using keyboard with scan code set 1 (xlate)
+[init -> ahci] 		#0: ATA
+[init -> ahci] 		#1:  off (unknown device signature)
+[init -> ahci] 		#2: off (ATAPI)
+[init -> ahci] 		#3:  off (unknown device signature)
+[init -> ahci] 		#4:  off (unknown device signature)
+[init -> ahci] 		#5:  off (unknown device signature)
+[init -> nic] [36mFound:  8086:100e (rev 03)[0m
+[init -> nic] 
+[init -> nic] [36musing driver 82540em[0m
+[init -> nic] 
+[init -> nic] [36mPCI device 00:01.0 latency timer is unreasonably low at 0. Setting to 32.
+[init -> nic] [0m
+[init -> nic] 
+[init -> nic] [36mbus_addr = 1a0000 len = 20000[0m
+[init -> nic] 
+[init -> usb] SLUB: HWalign=64, Order=0-1, MinObjects=0, CPUs=1, Nodes=1
+[init -> usb] NR_IRQS: 4352, nr_irqs: 4352, preallocated irqs: 256
+[init -> usb] clocksource: dde_counter: mask: 0xffffffffffffff max_cycles: 0x1d854df40, max_idle_ns: 3526361616960 ns
+[init -> ps2] detected ExPS/2 mouse - activating scroll-wheel and 5-button support
+[init -> usb] clocksource: jiffies: mask: 0xffffffff max_cycles: 0xffffffff, max_idle_ns: 7645041785100000 ns
+[init -> usb] usbcore: registered new interface driver usbfs
+[init -> usb] usbcore: registered new interface driver hub
+[init -> usb] usbcore: registered new device driver usb
+[init -> nic] [35msnprintf not implemented[0m
+[init -> nic] 
+[init -> nic] throttle RX interrupt 0µs(off) -> 166µs - succeeded
+[init -> nic] 
+[init -> nic] MAC address 52:54:00:12:34:56
+[init -> usb] clocksource: Switched to clocksource dde_counter
+[init -> usb] usbcore: registered new interface driver genode
+[init -> usb] xhci_hcd 00:03.0: xHCI Host Controller
+[init -> usb] xhci_hcd 00:03.0: new USB bus registered, assigned bus number 1
+[init -> usb] xhci_hcd 00:03.0: hcc params 0x00087001 hci version 0x100 quirks 0x0000000000000014
+[init -> system_rtc] Set RTC base from RTC driver to 2026-8-8 13:57:51
+[init -> usb] xhci_hcd 00:03.0: xHCI Host Controller
+[init -> usb] xhci_hcd 00:03.0: new USB bus registered, assigned bus number 2
+[init -> usb] xhci_hcd 00:03.0: Host supports USB 3.0 SuperSpeed
+[init -> usb] hub 1-0:1.0: USB hub found
+[init -> usb] hub 1-0:1.0: 4 ports detected
+[init -> usb] usb usb2: We don't know the algorithms for LPM for this host, disabling LPM.
+[init -> usb] hub 2-0:1.0: USB hub found
+[init -> usb] hub 2-0:1.0: 4 ports detected
+[init -> usb] sched_clock: Marking stable (142457000, 758373000)->(1030306000, -129476000)
+[init -> usb_hid] SLUB: HWalign=64, Order=0-1, MinObjects=0, CPUs=1, Nodes=1
+[init -> usb_hid] clocksource: dde_counter: mask: 0xffffffffffffff max_cycles: 0x1d854df40, max_idle_ns: 3526361616960 ns
+[init -> usb_hid] clocksource: jiffies: mask: 0xffffffff max_cycles: 0xffffffff, max_idle_ns: 7645041785100000 ns
+[init -> usb_hid] usbcore: registered new interface driver usbfs
+[init -> usb_hid] usbcore: registered new interface driver hub
+[init -> usb_hid] usbcore: registered new device driver usb
+[init -> usb_hid] clocksource: Switched to clocksource dde_counter
+[init -> usb_hid] usbcore: registered new interface driver usbhid
+[init -> usb_hid] hid_core: USB HID core driver
+[init -> usb_hid] sched_clock: Marking stable (0, 1529891000)->(1533568000, -3677000)
+[init -> part_block] GPT Partition 1: LBA 40 (101 blocks) type: '21686148-6449-6e6f-744e-656564454649' name: 'BIOSBOOT'
+[init -> part_block] GPT Partition 2: LBA 141 (4515 blocks) type: 'c12a7328-f81f-11d2-ba4b-00a0c93ec93b' name: 'GRUB2'
+[init -> part_block] GPT Partition 3: LBA 4952 (1240864 blocks) type: '0fc63daf-8483-4772-8e79-3d69d8477de4' name: 'GENODE'
+[init -> vfs] [34mWarning: ram donation is 4246742 but used RAM is 4164KB, 'rom_sys -> /'[0m
+[init -> vfs] [34mWarning: cap donation is 11 but used caps is 18, 'rom_sys -> /'[0m
+[init -> vfs] [34mWarning: ram donation is 4246742 but used RAM is 4176KB, 'rom_lib -> /'[0m
+[init -> vfs] [34mWarning: cap donation is 11 but used caps is 21, 'rom_lib -> /'[0m
+[init -> vfs] [34mWarning: ram donation is 4246742 but used RAM is 4164KB, 'rom_pkg -> /'[0m
+[init -> vfs] [34mWarning: cap donation is 11 but used caps is 18, 'rom_pkg -> /'[0m
+[init -> usb] usb 1-1: new high-speed USB device number 2 using xhci_hcd
+[init -> system -> sponge_configd] sponge_configd: ready
+[init -> system -> falkon_probe] falkon-probe: starting
+[init -> system -> falkon_probe] falkon-probe: [1] install falkon via sponge_pkgd
+[init -> system -> sponge_pkgd] sponge_pkgd: ready
+[init -> system -> sponge_pkgd] sponge_pkgd: binary_prefix=''
+[init -> system -> falkon_probe] falkon-probe: [1] install ok
+[init -> system -> falkon_probe] falkon-probe: [2] verify installed broadcast lists falkon stopped
+[init -> system -> falkon_probe] falkon-probe: [2] installed broadcast lists falkon running=no
+[init -> system -> falkon_probe] falkon-probe: [3] launch falkon via sponge_pkgd
+[init -> system -> sponge_pkgd] sponge_pkgd: launch result falkon -> ok (channel=primary)
+[init -> usb_hid] input: QEMU QEMU USB Tablet as /devices/usb-1-2/0-0:1.0/0003:0627:0001.0001/input/input0
+[init -> usb_hid] Connected device: input0 (QEMU QEMU USB Tablet at usb-usbbus-0/input0) POINTER
+[init -> usb_hid] hid-generic 0003:0627:0001.0001: input: USB HID v0.01 Mouse [QEMU QEMU USB Tablet] on usb-usbbus-0/input0
+[init -> system -> falkon_probe] falkon-probe: [3] launch ok — WebEngine first paint may take minutes under softpipe
+[init -> system -> falkon_probe] falkon-probe: [4] verify installed broadcast now lists falkon running
+[init -> system -> falkon_probe] falkon-probe: [4] installed broadcast lists falkon running=yes
+[init -> system -> falkon_probe] falkon-probe: [5] wait for falkon window render (WebEngine: be patient)
+[init -> system -> falkon_probe] falkon-probe: capture poll 0 rendered_frac=0% color_buckets=1
+[init -> system -> falkon_probe] falkon-probe: capture poll 20 rendered_frac=0% color_buckets=1
+[init -> system -> pkg_runtime -> falkon] [34mWarning: LD: Reloc_non_plt(libQt6WebEngineCore.lib.so): symbol not found: '__gcov_dump'[0m
+[init -> system -> pkg_runtime -> falkon] [34mWarning: LD: Reloc_non_plt(libQt6WebEngineCore.lib.so): symbol not found: 'OPENSSL_memory_get_size'[0m
+[init -> system -> pkg_runtime -> falkon] [34mWarning: LD: Reloc_non_plt(libQt6WebEngineCore.lib.so): symbol not found: 'OPENSSL_memory_alloc'[0m
+[init -> system -> pkg_runtime -> falkon] [34mWarning: LD: Reloc_non_plt(libQt6WebEngineCore.lib.so): symbol not found: 'ZSTD_trace_decompress_end'[0m
+[init -> system -> pkg_runtime -> falkon] [34mWarning: LD: Reloc_non_plt(libQt6WebEngineCore.lib.so): symbol not found: '__gcov_flush'[0m
+[init -> system -> pkg_runtime -> falkon] [34mWarning: LD: Reloc_non_plt(libQt6WebEngineCore.lib.so): symbol not found: 'OPENSSL_memory_free'[0m
+[init -> system -> pkg_runtime -> falkon] [34mWarning: LD: Reloc_non_plt(libQt6WebEngineCore.lib.so): symbol not found: 'ZSTD_trace_decompress_begin'[0m
+[init -> system -> pkg_runtime -> falkon] [34mWarning: LD: Reloc_non_plt(libQt6WebEngineCore.lib.so): symbol not found: 'sdallocx'[0m
+[init -> system -> pkg_runtime -> falkon] lwIP Nic interface down
+[init -> system -> pkg_runtime -> falkon] Using DHCP for interface configuration.
+[init -> system -> pkg_runtime -> falkon] lwIP Nic interface up address=10.0.2.15 netmask=255.255.255.0 gateway=10.0.2.2 nameserver=10.0.2.3
+[init -> system -> falkon_probe] falkon-probe: capture poll 40 rendered_frac=0% color_buckets=1
+[init -> system -> pkg_runtime -> falkon] [34mWarning: Libc RNG not configured[0m
+[init -> system -> pkg_runtime -> falkon] [34mWarning: ignoring unsupported RTLD_GLOBAL in dlopen()[0m
+[init -> system -> pkg_runtime -> falkon] libEGL warning: MESA-LOADER: failed to retrieve device information
+[init -> system -> pkg_runtime -> falkon] 
+[init -> system -> pkg_runtime -> falkon] libEGL warning: failed to get driver name for fd 0
+[init -> system -> pkg_runtime -> falkon] 
+[init -> system -> pkg_runtime -> falkon] Falkon: Creating new profile directory
+[init -> system -> pkg_runtime -> falkon] [34mWarning: link: link not implemented[0m
+[init -> system -> pkg_runtime -> falkon] [34mWarning: link: link not implemented[0m
+[init -> system -> pkg_runtime -> falkon] Error creating database schema "No query Unable to fetch row"
+[init -> system -> pkg_runtime -> falkon] Unable to detect GPU vendor.
+[init -> system -> pkg_runtime -> falkon] [34mWarning: minherit: minherit not implemented[0m
+[init -> system -> pkg_runtime -> falkon] Fontconfig error: Cannot load default config file: No such file: (null)
+[init -> system -> pkg_runtime -> falkon] [34mWarning: chmod: chmod not implemented[0m
+[init -> system -> pkg_runtime -> falkon] Fontconfig error: No writable cache directories
+[init -> system -> pkg_runtime -> falkon] [34mWarning: setrlimit: setrlimit not implemented[0m
+[init -> system -> pkg_runtime -> falkon] Cannot create directory //.local/share/falkon/QtWebEngine/Default. Error: FILE_ERROR_NOT_FOUND.
+[init -> system -> pkg_runtime -> falkon] Cannot create directory //.local/share/falkon/QtWebEngine/Default. Error: FILE_ERROR_NOT_FOUND.
+[init -> system -> pkg_runtime -> falkon] Falkon: 1 extensions loaded
+[init -> system -> falkon_probe] falkon-probe: capture poll 60 rendered_frac=0% color_buckets=1
+[init -> system -> pkg_runtime -> falkon] [34mWarning: __sys_statfs: statfs not implemented[0m
+[init -> system -> pkg_runtime -> falkon] [34mWarning: munmap: could not lookup plugin for address 0x40801b000, length 151552[0m
+[init -> system -> falkon_probe] falkon-probe: falkon window detected (100% non-bg, 39 distinct color buckets)
+[init -> system -> falkon_probe] falkon-probe: [6] launch nosuchpkg-16 -> not-installed
+[init -> system -> sponge_pkgd] sponge_pkgd: launch result nosuchpkg-16 -> not-installed (channel=primary)
+[init -> system -> falkon_probe] falkon-probe: [6] not-installed reported
+[init -> system -> falkon_probe] falkon-probe: [7] double-launch falkon -> already-running
+[init -> system -> sponge_pkgd] sponge_pkgd: launch result falkon -> already-running (channel=primary)
+[init -> system -> pkg_runtime -> falkon] [34mWarning: __sys_statfs: statfs not implemented[0m
+[init -> system -> falkon_probe] falkon-probe: [7] already-running reported
+[init -> system -> falkon_probe] falkon-probe: PASS
+sponge-falkon-disk: probe PASS — checking fixture GET...
+sponge-falkon-disk: fixture GET detected — falkon loaded the page from disk-served binary over the nic stack
+sponge-falkon-disk: host fixture killed (cleanup receipt)
+sponge-falkon-disk: ALL CHECKS PASSED (falkon booted from disk, window pixel-verified, fixture page loaded)
+
+Run script execution successful.
+make: ディレクトリ '/home/luke/sponge-os/genode/build/x86_64' から出ます
+EXIT=0
