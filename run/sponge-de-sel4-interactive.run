@@ -799,29 +799,46 @@ after 500
 # run/sponge-launch.run's launch_probe). After the install
 # confirms, the probe emits a QMP-TARGET click marker for the S
 # toggle (32,14) to open the popup, then a QMP-TARGET click
-# marker for the first launcher entry (170,85) — the W3
-# PS/2 REL recipe (clamp-to-(0,0) + coarse rel-50 + fine rel-1,
-# ±1px landing per qmp_ps2_click in run/qmp.inc). The full
-# click-to-launch chain runs: Qt click → LauncherController::
-# request_launch → launcher_request report → pkgd _do_launch →
-# pkg_runtime config regen → pkg_gui_demo boot → green #00ff00
-# first paint. The probe's green-pixel poll catches the first
-# paint; the run script additionally gates on pkg_gui_demo's
-# "window shown" boot marker (independent corroboration,
-# misleading_success_output defense). FATAL.
+# marker for the first launcher entry (340,170 — the W2-doubled
+# target that the PS/2 REL recipe expects; the literal pixel
+# target (170,85) is recovered by halving inside the launch-only
+# selector below). The full click-to-launch chain runs: Qt click
+# → LauncherController::request_launch → launcher_request report
+# → pkgd _do_launch → pkg_runtime config regen → pkg_gui_demo
+# boot → green #00ff00 first paint. The probe's green-pixel poll
+# catches the first paint; the run script additionally gates on
+# pkg_gui_demo's "window shown" boot marker (independent
+# corroboration, misleading_success_output defense). FATAL.
 #
 # Final-resolution geometry: the launcher entry button is now
 # ~50 px tall (was ~30 px — launcher_menu_view.cc _entry_
 # stylesheet bumped padding 6→16 px + added min-height 50 px);
 # the FIRST_ENTRY probe constant moved from (170, 73) to
-# (170, 85) accordingly. The taller button absorbs the
+# (340, 170) accordingly (the W2 doubling compensates for the
+# PS/2 REL walk-halving). The taller button absorbs the
 # ±20-30 px PS/2 REL drift observed on this host on the previous
 # ~30-px-tall buttons (run_ps1.log / run_ps2.log eighth-pass
 # evidence). See docs/evidence/task-2-phase10-interactive.md
 # §Final resolution for the full chain.
 #
+# Phase 12 W3b: the launcher entry click (the second of the two
+# qmp_exec_target calls below) is routed through the W4-proven
+# usb-tablet absolute recipe via qmp_exec_target_launch_click
+# (the launch-only selector added to run/qmp.inc). The PS/2 REL
+# recipe lands ~10 px below the button on this host (Phase 11
+# W5 flake, 3/3 failures; evidence
+# docs/evidence/task-5-phase11-sel4-interactive-FLAKE.log). The
+# tablet-abs recipe lands exactly on the literal pixel target,
+# with no walk-halving to compensate for. The S-toggle click
+# (first qmp_exec_target below) and the input/panel clicks
+# (earlier qmp_exec_target calls) retain their proven PS/2 REL
+# recipes — Phase 10 input/panel coverage stays green. The
+# launch-only selector also halves the marker coords back to
+# the literal pixel target (170, 85) before calling
+# qmp_tablet_click, undoing the W2 doubling the probe emits.
+#
 qmp_exec_target $qmp_chan 120
-qmp_exec_target $qmp_chan 120
+qmp_exec_target_launch_click $qmp_chan 120
 #
 # Re-raise match_max BEFORE each subsequent run_genode_until. The
 # run tool's wait_for_output (genode/tool/run/run:1006) starts a new
