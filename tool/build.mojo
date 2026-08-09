@@ -17,6 +17,7 @@
 #   mojo tool/build.mojo list
 #   mojo tool/build.mojo run <scenario>
 #   mojo tool/build.mojo run --manual <scenario>
+#   mojo tool/build.mojo verify          # run ./tool/patches verify and ./tool/hw_compat assert sequentially
 #   mojo tool/build.mojo help
 
 from std.sys import argv, exit
@@ -96,6 +97,45 @@ def run_argv(cmd: List[String], cwd: String) raises -> Int:
     return Int(py=rc)
 
 
+def run_argv_env(
+    cmd: List[String], cwd: String, env: PythonObject
+) raises -> Int:
+    """Phase 12 W1 patch-pre-flight helper: run a subprocess with an
+    explicit environment dict.
+
+    The default `run_argv` inherits the parent process env via
+    `subprocess.call`. That works for non-mojo targets (create_builddir,
+    prepare_port, make) but breaks the inner `./tool/patches verify` call
+    from `verify_patches_or_exit`:
+
+      * `/home/luke/sponge-os/.venv/bin/python` is a symlink to
+        `/usr/bin/python3`. The kernel resolves the symlink before
+        execve, so the spawned python sees sys.executable=/usr/bin/python3
+        and sys.prefix=/usr.
+      * Without VIRTUAL_ENV (which the agent harness does not set),
+        python cannot activate the venv site-packages on its own, so
+        `from mojo._entrypoints import exec_mojo` fails with
+        `ModuleNotFoundError: No module named 'mojo'`.
+
+    Passing VIRTUAL_ENV and PYTHONPATH explicitly is the documented
+    Python way to activate a venv for a child process without relying on
+    argv[0] resolution. This is read-only against the repository: it
+    only sets env vars, never files. The existing non-mojo callers of
+    `run_argv` are untouched.
+    """
+    var subprocess = Python.import_module("subprocess")
+    var builtins = Python.import_module("builtins")
+    var py_args = builtins.list()
+    for part in cmd:
+        py_args.append(part)
+    var rc: PythonObject
+    if cwd.byte_length() > 0:
+        rc = subprocess.call(py_args, cwd=cwd, env=env)
+    else:
+        rc = subprocess.call(py_args, env=env)
+    return Int(py=rc)
+
+
 def print_help() raises:
     print("Sponge OS build wrapper")
     print()
@@ -108,6 +148,8 @@ def print_help() raises:
     print("  list                    List available run scenarios in run/")
     print("  run <scenario>          Build and run a scenario")
     print("  run --manual <scenario> Print the manual commands instead of running")
+    print("  verify                  Run ./tool/patches verify then")
+    print("                          ./tool/hw_compat assert sequentially")
     print("  help                    Show this help")
     print()
     print("Every automated step touches only the vendored genode/ tree or the")
@@ -278,6 +320,14 @@ def cmd_prepare() raises:
     var genode_dir = root + "/genode"
     var build_dir = genode_dir + "/build/x86_64"
 
+    # Phase 12 W1 (docs/plans/phase12-hardware.md W1, risk 19): run the
+    # read-only patch-ledger verify gate as the first action of every
+    # build-related command, so the patch state is trusted before any
+    # build directory, build.conf, or scenario is touched. The gate
+    # itself never repairs, exports, drops, or modifies patches — see
+    # docs/11-environment.md §4 / §4.1 for the read-only contract.
+    verify_patches_or_exit(root)
+
     print("[sponge-build] prepare: setting up the Genode build directory")
     print()
 
@@ -421,10 +471,153 @@ def cmd_ports() raises:
     print("All ports prepared successfully.")
 
 
+def verify_patches_or_exit(root: String) raises:
+    """Phase 12 W1 patch-ledger pre-flight (risk 19).
+
+    Invokes the read-only `./tool/patches verify` contract before any
+    build-related command proceeds. The gate is intentionally narrow:
+
+      * it ONLY runs the existing read-only verify command;
+      * it NEVER repairs, exports, drops, or modifies patches
+        (docs/11-environment.md §4 / §4.1; tool/patches.mojo is
+        read-only against the repository by design);
+      * it propagates the verify exit code (non-zero = a ledger
+        mismatch, build refuses to proceed);
+      * it prints a direct message naming docs/11-environment.md §4 so
+        the user knows where to read the contract and what to do.
+
+    A non-zero exit here is the W1 loud failure mode: dropping a patch
+    silently to make the build "go" is rejected. The manual equivalent
+    of this gate is `./tool/patches verify`, also documented in §4.1.
+    """
+    var os_py = Python.import_module("os")
+    var builtins = Python.import_module("builtins")
+
+    # Build an env dict that mirrors the parent env but activates the
+    # repo-local Mojo venv explicitly, so the child python can resolve
+    # the `mojo` package (the venv python is a symlink to /usr/bin/python3
+    # — see `run_argv_env` for the full rationale). This env tweak is the
+    # minimum required to make the gate actually run; it does NOT touch
+    # the repository or the patch ledger.
+    var env = builtins.dict()
+    var parent_env = os_py.environ
+    for k in parent_env.keys():
+        env[k] = String(parent_env[k])
+    env["VIRTUAL_ENV"] = root + "/.venv"
+    env["PYTHONPATH"] = root + "/.venv/lib/python3.14/site-packages"
+    # Clear PYTHONHOME so python uses sys.prefix, not a stale override.
+    if "PYTHONHOME" in env.keys():
+        env.pop("PYTHONHOME")
+
+    print("[sponge-build] pre-flight: verifying patch ledger (read-only)")
+    var rc = run_argv_env(
+        ["./tool/patches", "verify"], cwd=root, env=env
+    )
+    if rc != 0:
+        print()
+        print("error: patch-ledger verify failed (exit code "
+              + String(rc) + ")")
+        print("The Sponge patch ledger (docs/11-environment.md §4) is")
+        print("out of sync with the vendored Genode subtree. The build")
+        print("refuses to proceed rather than drop, export, or modify a")
+        print("patch on its own. Read docs/11-environment.md §4.1 and run")
+        print("`./tool/patches list` to diagnose; do NOT bypass this gate.")
+        exit(rc)
+    print()
+
+
+def verify_hardware_compat_or_exit(root: String, env: PythonObject) raises:
+    """Phase 12 W5 hardware-compat pre-flight (risk 13 + risk 22 + risk 23 +
+    risk 24 mitigation).
+
+    Invokes the read-only `./tool/hw_compat assert` contract against the
+    committed docs/15-hardware-compatibility.md cross-product ledger.
+    The gate is intentionally narrow:
+
+      * it ONLY runs the existing read-only assert command;
+      * it NEVER edits docs/15 or invents a cell; tool/hw_compat.mojo
+        is read-only by design and has no `generate`/`update`/write
+        path (plan step 6 / risk 23);
+      * it propagates the assert exit code:
+        - 0: all rules pass (4 verified, 1 smoke-only, 11 gap);
+        - 1: one or more rule violations (missing scenario, missing
+          marker, over-budget timing, etc.);
+        - 2: a `target: real-hardware` cell was found — this is a
+          loud refusal because real hardware is a Phase 15 deliverable.
+      * it prints a direct message naming docs/15 §3 so the user knows
+        where to read the cell-contract format and what to do.
+
+    This helper is the read-only sibling of `verify_patches_or_exit`.
+    It reuses the same `run_argv_env` helper (the W1 env dict already
+    activates the repo-local Mojo venv — see `run_argv_env` docstring
+    for the full rationale). It does NOT touch the repository.
+    """
+    print("[sponge-build] pre-flight: verifying hardware compat ledger (read-only)")
+    var rc = run_argv_env(
+        ["./tool/hw_compat", "assert"], cwd=root, env=env
+    )
+    if rc != 0:
+        print()
+        print("error: hardware-compat assert failed (exit code "
+              + String(rc) + ")")
+        if rc == 2:
+            print("A `target: real-hardware` cell was found in")
+            print("docs/15-hardware-compatibility.md. Real hardware is a")
+            print("Phase 15 deliverable; not a Phase 12 cell. Read")
+            print("docs/15 §3 and the plan W5 step 5 / risk 22.")
+        else:
+            print("The cross-product ledger in docs/15-hardware-")
+            print("compatibility.md failed one or more rule checks. Read")
+            print("docs/15 §3 (Cell contract format) and the plan W5")
+            print("step 7 + risk 13 + risk 24 mitigations; do NOT bypass")
+            print("this gate.")
+        exit(rc)
+    print()
+
+
+def cmd_verify() raises:
+    """Phase 12 W5 sequential verify path.
+
+    Runs `./tool/patches verify` then `./tool/hw_compat assert`, in that
+    order, propagating either failure with a direct message. Both
+    commands are read-only against the repository; the gate never
+    repairs, exports, drops, or auto-populates anything (plan step 6 +
+    step 8 / risk 19 + risk 23).
+    """
+    var root = repo_root()
+    # Build the same env dict that activates the repo-local Mojo venv
+    # (see verify_patches_or_exit + run_argv_env for the full rationale).
+    var os_py = Python.import_module("os")
+    var builtins = Python.import_module("builtins")
+    var env = builtins.dict()
+    var parent_env = os_py.environ
+    for k in parent_env.keys():
+        env[k] = String(parent_env[k])
+    env["VIRTUAL_ENV"] = root + "/.venv"
+    env["PYTHONPATH"] = root + "/.venv/lib/python3.14/site-packages"
+    if "PYTHONHOME" in env.keys():
+        env.pop("PYTHONHOME")
+
+    print("[sponge-build] verify: running patch + hardware-compat gates sequentially")
+    print()
+    verify_patches_or_exit(root)
+    verify_hardware_compat_or_exit(root, env)
+    print("[sponge-build] verify: OK (both gates passed)")
+
+
 def cmd_run(scenario: String, manual: Bool) raises:
     var os_path = Python.import_module("os.path")
     var root = repo_root()
     var build_dir = root + "/genode/build/x86_64"
+
+    # Phase 12 W1 (docs/plans/phase12-hardware.md W1, risk 19): the
+    # patch-ledger pre-flight fires BEFORE any build step touches the
+    # shared build directory. `manual=True` only prints the manual
+    # commands and does not invoke make, so the gate is intentionally
+    # scoped to the actual build path. The gate is read-only — see
+    # docs/11-environment.md §4 / §4.1.
+    if not manual:
+        verify_patches_or_exit(root)
 
     if manual:
         print("To run scenario '" + scenario + "' manually:")
@@ -472,6 +665,10 @@ def main() raises:
 
     if subcommand == "ports":
         cmd_ports()
+        return
+
+    if subcommand == "verify":
+        cmd_verify()
         return
 
     if subcommand == "run":
