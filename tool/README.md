@@ -29,10 +29,11 @@ the idiomatic Mojo pattern for missing functionality.
 
 | Launcher              | Mojo source              | Purpose                                                      | Status |
 |-----------------------|--------------------------|--------------------------------------------------------------|--------|
-| `./tool/build`        | `tool/build.mojo`        | Top-level build wrapper (`prepare`, `ports`, `list`, `run`)  | ✅ works |
+| `./tool/build`        | `tool/build.mojo`        | Top-level build wrapper (`prepare`, `ports`, `list`, `run`, `verify`) | ✅ works |
 | `./tool/check-compile`| `tool/check_compile.mojo`| Structural sanity check for a component                      | ✅ works |
 | `./tool/patches`      | `tool/patches.mojo`      | Patch ledger manager (`list`, `verify`, `export`, `drop`)    | ✅ works |
-| `./tool/dist`         | `tool/dist.mojo`         | Alpha distribution media builder (`.img` + `.iso` into `var/dist/`) | ✅ works |
+| `./tool/dist`         | `tool/dist.mojo`         | Alpha distribution media builder (`.img` + `.iso` into `var/dist/`) with `--storage {ahci,nvme}` selector (Phase 12) | ✅ works |
+| `./tool/hw_compat`    | `tool/hw_compat.mojo`    | Read-only hardware-compatibility validator (`assert`, `help`) — validates `docs/15-hardware-compatibility.md` (Phase 12) | ✅ works |
 | `./tool/mkdata`       | `tool/mkdata.mojo`       | Grow SPONGE-DATA (P4) onto an image/disk `.img` (docs/14 §4.3; idempotent) | ✅ works |
 | `./tool/pkg_import`   | `tool/pkg_import.mojo`   | Host-side Genode depot → Sponge pkg/ repackager (Phase 7 todo 11) | ✅ works |
 | (direct)              | `tool/gen_vct_config.mojo`| Generate a vct config-ROM XML from argv                     | ✅ works |
@@ -60,6 +61,7 @@ escape hatch).
 ./tool/build list                # list run/*.run scenarios
 ./tool/build run <scenario>      # make -C genode/build/x86_64 run/<scenario>
 ./tool/build run --manual <scenario>  # only print the manual commands
+./tool/build verify              # Phase 12 host verification: ./tool/patches verify + ./tool/hw_compat assert (each must exit 0)
 ```
 
 `prepare` first switches the generated `#KERNEL ?= nova` / `BOARD ?= pc`
@@ -102,6 +104,44 @@ repository — `drop` prints manual instructions, it never reverts.
 
 The manual equivalent of each subcommand is documented in
 docs/11-environment.md §4.1.
+
+### dist (Phase 12 storage selector)
+```bash
+./tool/dist                      # build the default product media (env/config-driven)
+./tool/dist --storage ahci       # default: AHCI product-media (current behavior)
+./tool/dist --storage nvme       # opt-in: one-namespace NVMe product media
+./tool/dist --storage=unknown    # rejected before build, with usage line
+```
+
+The `--storage {ahci,nvme}` selector was added in Phase 12 W2. `ahci`
+is the default and preserves the current product-media behavior and
+artifact naming; `nvme` selects the one-namespace NVMe product path
+(`run/sponge-desktop-disk-nvme.run`). Invalid values fail loudly with
+a concise English error and usage line before any build starts. The
+ISO / live media path is unchanged regardless of `--storage`. The
+manual equivalent is the per-scenario `make -C genode/build/x86_64
+run/sponge-desktop-disk[-nvme].run` invocation (the host stays
+out-of-the-loop on storage routing). See
+`docs/evidence/task-2-phase12-storage.md` for the receipts.
+
+### hw_compat (Phase 12 compatibility validator)
+```bash
+./tool/hw_compat assert          # validate docs/15-hardware-compatibility.md read-only; exit 0 on green
+./tool/hw_compat help            # usage
+```
+
+The `assert` validator parses the hand-curated 5×5 surface matrix +
+16-cell tuple ledger in `docs/15-hardware-compatibility.md`, resolves
+every `scenario`/`evidence` path, requires the exact marker for every
+`verified`/`smoke-only` cell, requires QEMU-version + `boot_time_seconds`
++ `budget_seconds` per cell, requires the USB-boot evidence to contain
+`BIOS-side USB boot verified`, rejects any `target: real-hardware`
+with exit 2 and the exact message `real hardware is a Phase 15
+deliverable; not a Phase 12 cell`, and requires the matrix to have
+exactly 4 verified, 1 smoke-only, and 11 gap cells. The tool is
+**read-only** — there is no `generate`, `update`, `write`, or
+auto-population path. See `docs/evidence/task-5-phase12-hw-compat.md`
+for the per-failure-class validator receipts.
 
 ### gen-vct-config
 Generates the `<config><args>...</args></config>` blob that vct expects

@@ -1,0 +1,1139 @@
+make: ディレクトリ '/home/luke/sponge-os/genode/build/x86_64'　に入ります
+including /home/luke/sponge-os/genode/tool/run/power_on/qemu
+including /home/luke/sponge-os/genode/tool/run/log/qemu
+including /home/luke/sponge-os/genode/tool/run/image/iso
+including /home/luke/sponge-os/genode/tool/run/boot_dir/sel4
+including /home/luke/sponge-os/repos/sponge/run/sponge-usb-kbd-via-qmp.run
+building targets:  core lib/ld init timer server/report_rom server/nitpicker driver/acpi app/pci_decode driver/platform driver/framebuffer/vesa driver/ps2 driver/usb_host/pc driver/usb_hid server/event_filter sponge_pkgd server/terminal server/vfs server/cached_fs_rom noux-pkg/bash-minimal noux-pkg/vim-minimal lib/libc lib/libm lib/posix lib/ncurses lib/vfs lib/vfs_pipe lib/vfs_ttf test/terminal_probe test/usb_hid_probe lib/blit 
+spawn make core lib/ld init timer server/report_rom server/nitpicker driver/acpi app/pci_decode driver/platform driver/framebuffer/vesa driver/ps2 driver/usb_host/pc driver/usb_hid server/event_filter sponge_pkgd server/terminal server/vfs server/cached_fs_rom noux-pkg/bash-minimal noux-pkg/vim-minimal lib/libc lib/libm lib/posix lib/ncurses lib/vfs lib/vfs_pipe lib/vfs_ttf test/terminal_probe test/usb_hid_probe lib/blit
+make[1]: ディレクトリ '/home/luke/sponge-os/genode/build/x86_64' に入ります
+Skip target driver/platform/pc/spec/x86_32 because it requires 'x86_32'
+Skip target driver/ps2/pl050 because it requires 'arm_v7'
+Skip target driver/usb_hid/spec/arm_v7 because it requires 'arm_v7'
+Skip target driver/usb_hid/spec/arm_v8 because it requires 'arm_v8'
+Skip target driver/usb_hid/spec/x86_32 because it requires 'x86_32'
+Skip target driver/usb_host/pc/spec/x86_32 because it requires '32bit'
+  [00;33mLibrary[0m ld.abi.so
+  [00;33mLibrary[0m ldso_so_support.lib.a
+  [00;33mLibrary[0m kernel-sel4-pc.lib.a
+ninja: Jobserver mode detected:  -j80 --jobserver-auth=fifo:/tmp/GMfifo2405862 --no-print-directory -- DEBUG_DIR=/home/luke/sponge-os/genode/build/x86_64/debug INSTALL_DIR=/home/luke/sponge-os/genode/build/x86_64/bin BUILD_BASE_DIR=/home/luke/sponge-os/genode/build/x86_64 SHARED_LIBS= ARCHIVES= LIB=kernel-sel4-pc LIB_MK=/home/luke/sponge-os/genode/repos/base-sel4/lib/mk/spec/x86_64/kernel-sel4-pc.mk REP_DIR=/home/luke/sponge-os/genode/repos/base-sel4 KERNEL=sel4 BOARD=pc SHELL=/usr/bin/bash
+ninja: no work to do.
+  [00;33mLibrary[0m syscall-sel4-pc.lib.a
+  [00;33mLibrary[0m syscall-sel4.lib.a
+  [00;33mLibrary[0m startup-sel4.lib.a
+  [00;33mLibrary[0m base-sel4-common.lib.a
+  [00;33mLibrary[0m timeout.lib.a
+  [00;33mLibrary[0m cxx.lib.a
+  [00;33mLibrary[0m base-sel4.lib.a
+  [00;33mLibrary[0m ld-sel4.lib.so
+  [00;33mLibrary[0m ld.lib.so
+  [00;33mLibrary[0m libc.abi.so
+  [00;33mLibrary[0m libc-string.lib.a
+  [00;33mLibrary[0m libc-locale.lib.a
+  [00;33mLibrary[0m libc-stdlib.lib.a
+  [00;33mLibrary[0m libc-stdio.lib.a
+  [00;33mLibrary[0m libc-gen.lib.a
+  [00;33mLibrary[0m libc-gdtoa.lib.a
+  [00;33mLibrary[0m libc-inet.lib.a
+  [00;33mLibrary[0m libc-stdtime.lib.a
+  [00;33mLibrary[0m libc-regex.lib.a
+  [00;33mLibrary[0m libc-compat.lib.a
+  [00;33mLibrary[0m libc-setjmp.lib.a
+  [00;33mLibrary[0m libc-mem.lib.a
+  [00;33mLibrary[0m libc-resolv.lib.a
+  [00;33mLibrary[0m libc-isc.lib.a
+  [00;33mLibrary[0m libc-nameser.lib.a
+  [00;33mLibrary[0m libc-net.lib.a
+  [00;33mLibrary[0m libc-rpc.lib.a
+  [00;33mLibrary[0m libc-tzcode.lib.a
+  [00;33mLibrary[0m libc-libkern.lib.a
+  [00;33mLibrary[0m base.lib.a
+  [00;33mLibrary[0m vfs.abi.so
+  [00;33mLibrary[0m libc.lib.so
+  [00;33mLibrary[0m libm.abi.so
+  [00;33mLibrary[0m libm.lib.so
+  [00;33mLibrary[0m posix.abi.so
+  [00;33mLibrary[0m posix.lib.so
+  [00;33mLibrary[0m ncurses.abi.so
+    CONVERT  symbols.s
+    ASSEMBLE symbols.o
+    MERGE    ncurses.abi.so
+  [00;33mLibrary[0m ncurses.lib.so
+    COMPILE  access.o
+    COMPILE  add_tries.o
+    COMPILE  alloc_entry.o
+    COMPILE  captoinfo.o
+    COMPILE  alloc_ttype.o
+    COMPILE  codes.o
+    COMPILE  comp_captab.o
+    COMPILE  comp_error.o
+    COMPILE  comp_expand.o
+    COMPILE  comp_parse.o
+    COMPILE  comp_scan.o
+    COMPILE  comp_hash.o
+    COMPILE  db_iterator.o
+    COMPILE  define_key.o
+    COMPILE  doalloc.o
+    COMPILE  entries.o
+    COMPILE  fallback.o
+    COMPILE  free_ttype.o
+    COMPILE  getenv_num.o
+    COMPILE  hardscroll.o
+    COMPILE  hashmap.o
+    COMPILE  hashed_db.o
+    COMPILE  init_keytry.o
+    COMPILE  home_terminfo.o
+    COMPILE  key_defined.o
+    COMPILE  keybound.o
+    COMPILE  keyok.o
+    COMPILE  legacy_coding.o
+    COMPILE  lib_addch.o
+    COMPILE  lib_acs.o
+    COMPILE  lib_addstr.o
+    COMPILE  lib_baudrate.o
+    COMPILE  lib_beep.o
+    COMPILE  lib_bkgd.o
+    COMPILE  lib_box.o
+    COMPILE  lib_chgat.o
+    COMPILE  lib_clear.o
+    COMPILE  lib_clearok.o
+    COMPILE  lib_clrbot.o
+    COMPILE  lib_clreol.o
+    COMPILE  lib_color.o
+    COMPILE  lib_colorset.o
+    COMPILE  lib_cur_term.o
+    COMPILE  lib_data.o
+    COMPILE  lib_delch.o
+    COMPILE  lib_delwin.o
+    COMPILE  lib_dft_fgbg.o
+    COMPILE  lib_echo.o
+    COMPILE  lib_endwin.o
+    COMPILE  lib_erase.o
+    COMPILE  lib_flash.o
+    COMPILE  lib_freeall.o
+    COMPILE  lib_getch.o
+    COMPILE  lib_getstr.o
+    COMPILE  lib_has_cap.o
+    COMPILE  lib_hline.o
+    COMPILE  lib_immedok.o
+[01m[K/home/luke/sponge-os/genode/contrib/ncurses-b259f9aa8136195dc38361357e62355a6fe066e8/src/lib/ncurses/fallback.c:[m[K In function ‘[01m[K_nc_fallback[m[K’:
+[01m[K/home/luke/sponge-os/genode/contrib/ncurses-b259f9aa8136195dc38361357e62355a6fe066e8/src/lib/ncurses/fallback.c:1232:5:[m[K [01;35m[Kwarning: [m[Kthis ‘[01m[Kfor[m[K’ clause does not guard... [[01;35m[K]8;;https://gcc.gnu.org/onlinedocs/gcc-14.2.0/gcc/Warning-Options.html#index-Wmisleading-indentation-Wmisleading-indentation]8;;[m[K]
+ 1232 |     [01;35m[Kfor[m[K (tp = fallbacks;
+      |     [01;35m[K^~~[m[K
+    COMPILE  lib_inchstr.o
+[01m[K/home/luke/sponge-os/genode/contrib/ncurses-b259f9aa8136195dc38361357e62355a6fe066e8/src/lib/ncurses/fallback.c:1237:9:[m[K [01;36m[Knote: [m[K...this statement, but the latter is misleadingly indented as if it were guarded by the ‘[01m[Kfor[m[K’
+ 1237 |         [01;36m[Kreturn[m[K((TERMTYPE *)0);
+      |         [01;36m[K^~~~~~[m[K
+    COMPILE  lib_initscr.o
+    COMPILE  lib_insch.o
+    COMPILE  lib_insdel.o
+    COMPILE  lib_insnstr.o
+    COMPILE  lib_instr.o
+    COMPILE  lib_isendwin.o
+    COMPILE  lib_kernel.o
+    COMPILE  lib_leaveok.o
+    COMPILE  lib_longname.o
+    COMPILE  lib_mouse.o
+    COMPILE  lib_move.o
+    COMPILE  lib_mvcur.o
+    COMPILE  lib_mvwin.o
+    COMPILE  lib_napms.o
+    COMPILE  lib_newterm.o
+    COMPILE  lib_newwin.o
+    COMPILE  lib_nl.o
+    COMPILE  lib_options.o
+    COMPILE  lib_overlay.o
+    COMPILE  lib_pad.o
+    COMPILE  lib_print.o
+    COMPILE  lib_printw.o
+    COMPILE  lib_raw.o
+    COMPILE  lib_redrawln.o
+    COMPILE  lib_refresh.o
+    COMPILE  lib_restart.o
+    COMPILE  lib_scanw.o
+    COMPILE  lib_screen.o
+In file included from [01m[K/home/luke/sponge-os/genode/contrib/ncurses-b259f9aa8136195dc38361357e62355a6fe066e8/src/lib/ncurses/ncurses/tinfo/lib_cur_term.c:39[m[K:
+[01m[K/home/luke/sponge-os/genode/contrib/ncurses-b259f9aa8136195dc38361357e62355a6fe066e8/src/lib/ncurses/ncurses/tinfo/lib_cur_term.c:[m[K In function ‘[01m[Kdel_curterm[m[K’:
+[01m[K/home/luke/sponge-os/genode/contrib/ncurses-b259f9aa8136195dc38361357e62355a6fe066e8/src/lib/ncurses/ncurses/curses.priv.h:1442:26:[m[K [01;35m[Kwarning: [m[Kmacro expands to multiple statements [[01;35m[K]8;;https://gcc.gnu.org/onlinedocs/gcc-14.2.0/gcc/Warning-Options.html#index-Wmultistatement-macros-Wmultistatement-macros]8;;[m[K]
+ 1442 | #define FreeAndNull(p)   [01;35m[Kfree[m[K(p); p = 0
+      |                          [01;35m[K^~~~[m[K
+[01m[K/home/luke/sponge-os/genode/contrib/ncurses-b259f9aa8136195dc38361357e62355a6fe066e8/src/lib/ncurses/ncurses/tinfo/lib_cur_term.c:152:13:[m[K [01;36m[Knote: [m[Kin expansion of macro ‘[01m[KFreeAndNull[m[K’
+  152 |             [01;36m[KFreeAndNull[m[K(_nc_globals.home_terminfo);
+      |             [01;36m[K^~~~~~~~~~~[m[K
+    COMPILE  lib_scroll.o
+[01m[K/home/luke/sponge-os/genode/contrib/ncurses-b259f9aa8136195dc38361357e62355a6fe066e8/src/lib/ncurses/ncurses/tinfo/lib_cur_term.c:151:9:[m[K [01;36m[Knote: [m[Ksome parts of macro expansion are not guarded by this ‘[01m[Kif[m[K’ clause
+  151 |         [01;36m[Kif[m[K (_nc_globals.home_terminfo != 0)
+      |         [01;36m[K^~[m[K
+    COMPILE  lib_scrollok.o
+    COMPILE  lib_scrreg.o
+    COMPILE  lib_set_term.o
+    COMPILE  lib_setup.o
+    COMPILE  lib_slk.o
+    COMPILE  lib_slkatr_set.o
+    COMPILE  lib_slkatrof.o
+    COMPILE  lib_slkatron.o
+    COMPILE  lib_slkatrset.o
+    COMPILE  lib_slkclear.o
+    COMPILE  lib_slkattr.o
+    COMPILE  lib_slkcolor.o
+    COMPILE  lib_slklab.o
+    COMPILE  lib_slkinit.o
+[01m[K/home/luke/sponge-os/genode/contrib/ncurses-b259f9aa8136195dc38361357e62355a6fe066e8/src/lib/ncurses/ncurses/tty/lib_mvcur.c:[m[K In function ‘[01m[Konscreen_mvcur[m[K’:
+[01m[K/home/luke/sponge-os/genode/contrib/ncurses-b259f9aa8136195dc38361357e62355a6fe066e8/src/lib/ncurses/ncurses/tty/lib_mvcur.c:779:9:[m[K [01;35m[Kwarning: [m[Kunused variable ‘[01m[Kt5_cr_cost[m[K’ [[01;35m[K]8;;https://gcc.gnu.org/onlinedocs/gcc-14.2.0/gcc/Warning-Options.html#index-Wno-unused-variable-Wunused-variable]8;;[m[K]
+  779 |     int [01;35m[Kt5_cr_cost[m[K;
+      |         [01;35m[K^~~~~~~~~~[m[K
+[01m[K/home/luke/sponge-os/genode/contrib/ncurses-b259f9aa8136195dc38361357e62355a6fe066e8/src/lib/ncurses/ncurses/tty/lib_mvcur.c:778:21:[m[K [01;35m[Kwarning: [m[Kunused variable ‘[01m[Knewcost[m[K’ [[01;35m[K]8;;https://gcc.gnu.org/onlinedocs/gcc-14.2.0/gcc/Warning-Options.html#index-Wno-unused-variable-Wunused-variable]8;;[m[K]
+  778 |     int tactic = 0, [01;35m[Knewcost[m[K, usecost = INFINITY;
+      |                     [01;35m[K^~~~~~~[m[K
+    COMPILE  lib_slkrefr.o
+[01m[K/home/luke/sponge-os/genode/contrib/ncurses-b259f9aa8136195dc38361357e62355a6fe066e8/src/lib/ncurses/ncurses/tty/lib_mvcur.c:778:9:[m[K [01;35m[Kwarning: [m[Kvariable ‘[01m[Ktactic[m[K’ set but not used [[01;35m[K]8;;https://gcc.gnu.org/onlinedocs/gcc-14.2.0/gcc/Warning-Options.html#index-Wno-unused-but-set-variable-Wunused-but-set-variable]8;;[m[K]
+  778 |     int [01;35m[Ktactic[m[K = 0, newcost, usecost = INFINITY;
+      |         [01;35m[K^~~~~~[m[K
+    COMPILE  lib_slkset.o
+    COMPILE  lib_slktouch.o
+    COMPILE  lib_termcap.o
+    COMPILE  lib_termname.o
+    COMPILE  lib_tgoto.o
+    COMPILE  lib_ti.o
+    COMPILE  lib_touch.o
+    COMPILE  lib_tparm.o
+    COMPILE  lib_tputs.o
+    COMPILE  lib_trace.o
+    COMPILE  lib_tstp.o
+    COMPILE  lib_ttyflags.o
+    COMPILE  lib_twait.o
+    COMPILE  lib_ungetch.o
+    COMPILE  lib_vidattr.o
+    COMPILE  lib_vline.o
+    COMPILE  lib_wattroff.o
+    COMPILE  lib_wattron.o
+    COMPILE  lib_winch.o
+    COMPILE  lib_window.o
+    COMPILE  memmove.o
+    COMPILE  name_match.o
+    COMPILE  names.o
+    COMPILE  nc_panel.o
+    COMPILE  parse_entry.o
+    COMPILE  read_entry.o
+    COMPILE  read_termcap.o
+    COMPILE  resizeterm.o
+    COMPILE  safe_sprintf.o
+    COMPILE  setbuf.o
+    COMPILE  strings.o
+    COMPILE  tries.o
+    COMPILE  trim_sgr0.o
+    COMPILE  tty_update.o
+    COMPILE  unctrl.o
+    COMPILE  use_screen.o
+    COMPILE  use_window.o
+    COMPILE  varargs.o
+    COMPILE  version.o
+    COMPILE  visbuf.o
+    COMPILE  vsscanf.o
+    COMPILE  wresize.o
+    COMPILE  write_entry.o
+[01m[K/home/luke/sponge-os/genode/contrib/ncurses-b259f9aa8136195dc38361357e62355a6fe066e8/src/lib/ncurses/ncurses/tinfo/lib_tparm.c:336:45:[m[K [01;35m[Kwarning: [m[Kargument 2 of type ‘[01m[Kchar *[9][m[K’ with mismatched bound [[01;35m[K]8;;https://gcc.gnu.org/onlinedocs/gcc-14.2.0/gcc/Warning-Options.html#index-Warray-parameter-Warray-parameter=]8;;[m[K]
+  336 | _nc_tparm_analyze(const char *string, [01;35m[Kchar *p_is_s[NUM_PARM][m[K, int *popcount)
+      |                                       [01;35m[K~~~~~~^~~~~~~~~~~~~~~~[m[K
+In file included from [01m[K/home/luke/sponge-os/genode/contrib/ncurses-b259f9aa8136195dc38361357e62355a6fe066e8/src/lib/ncurses/ncurses/tinfo/lib_tparm.c:43[m[K:
+[01m[K/home/luke/sponge-os/genode/contrib/ncurses-b259f9aa8136195dc38361357e62355a6fe066e8/include/ncurses/tic.h:308:60:[m[K [01;36m[Knote: [m[Kpreviously declared as ‘[01m[Kchar **[m[K’
+  308 | extern NCURSES_EXPORT(int) _nc_tparm_analyze(const char *, [01;36m[Kchar **[m[K, int *);
+      |                                                            [01;36m[K^~~~~~~[m[K
+In function ‘[01m[Kforce_bar[m[K’,
+    inlined from ‘[01m[Kforce_bar[m[K’ at [01m[K/home/luke/sponge-os/genode/contrib/ncurses-b259f9aa8136195dc38361357e62355a6fe066e8/src/lib/ncurses/ncurses/tinfo/comp_parse.c:82:1[m[K:
+[01m[K/home/luke/sponge-os/genode/contrib/ncurses-b259f9aa8136195dc38361357e62355a6fe066e8/src/lib/ncurses/ncurses/tinfo/comp_parse.c:88:16:[m[K [01;35m[Kwarning: [m[K‘[01m[Kstrncpy[m[K’ specified bound depends on the length of the source argument [[01;35m[K]8;;https://gcc.gnu.org/onlinedocs/gcc-14.2.0/gcc/Warning-Options.html#index-Wno-stringop-truncation-Wstringop-truncation]8;;[m[K]
+   88 |         (void) [01;35m[Kstrncpy(dst, src, len)[m[K;
+      |                [01;35m[K^~~~~~~~~~~~~~~~~~~~~~[m[K
+[01m[K/home/luke/sponge-os/genode/contrib/ncurses-b259f9aa8136195dc38361357e62355a6fe066e8/src/lib/ncurses/ncurses/tinfo/comp_parse.c:85:22:[m[K [01;36m[Knote: [m[Klength computed here
+   85 |         size_t len = [01;36m[Kstrlen(src)[m[K;
+      |                      [01;36m[K^~~~~~~~~~~[m[K
+[01m[K/home/luke/sponge-os/genode/contrib/ncurses-b259f9aa8136195dc38361357e62355a6fe066e8/src/lib/ncurses/ncurses/tinfo/write_entry.c:[m[K In function ‘[01m[Kmake_db_root[m[K’:
+[01m[K/home/luke/sponge-os/genode/contrib/ncurses-b259f9aa8136195dc38361357e62355a6fe066e8/src/lib/ncurses/ncurses/tinfo/write_entry.c:130:37:[m[K [01;35m[Kwarning: [m[K‘[01m[K%s[m[K’ directive writing up to 1022 bytes into a region of size between 1 and 1023 [[01;35m[K]8;;https://gcc.gnu.org/onlinedocs/gcc-14.2.0/gcc/Warning-Options.html#index-Wformat-overflow-Wformat-overflow=]8;;[m[K]
+  130 |             (void) sprintf(dst, "%s/[01;35m[K%s[m[K", top, src);
+      |                                     [01;35m[K^~[m[K
+In function ‘[01m[Kmake_db_path[m[K’,
+    inlined from ‘[01m[Kmake_db_root[m[K’ at [01m[K/home/luke/sponge-os/genode/contrib/ncurses-b259f9aa8136195dc38361357e62355a6fe066e8/src/lib/ncurses/ncurses/tinfo/write_entry.c:163:15[m[K:
+[01m[K/home/luke/sponge-os/genode/contrib/ncurses-b259f9aa8136195dc38361357e62355a6fe066e8/src/lib/ncurses/ncurses/tinfo/write_entry.c:130:20:[m[K [01;36m[Knote: [m[K‘[01m[Ksprintf[m[K’ output between 2 and 2046 bytes into a destination of size 1024
+  130 |             (void) [01;36m[Ksprintf(dst, "%s/%s", top, src)[m[K;
+      |                    [01;36m[K^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~[m[K
+In file included from [01m[K/home/luke/sponge-os/genode/contrib/ncurses-b259f9aa8136195dc38361357e62355a6fe066e8/src/lib/ncurses/ncurses/tinfo/trim_sgr0.c:33[m[K:
+[01m[K/home/luke/sponge-os/genode/contrib/ncurses-b259f9aa8136195dc38361357e62355a6fe066e8/src/lib/ncurses/ncurses/tinfo/trim_sgr0.c:[m[K In function ‘[01m[K_nc_trim_sgr0[m[K’:
+[01m[K/home/luke/sponge-os/genode/contrib/ncurses-b259f9aa8136195dc38361357e62355a6fe066e8/src/lib/ncurses/ncurses/curses.priv.h:1437:40:[m[K [01;35m[Kwarning: [m[K‘[01m[Kfree[m[K’ called on a pointer to an unallocated object ‘[01m[K18446744073709551615[m[K’ [[01;35m[K]8;;https://gcc.gnu.org/onlinedocs/gcc-14.2.0/gcc/Warning-Options.html#index-Wfree-nonheap-object-Wfree-nonheap-object]8;;[m[K]
+ 1437 | #define FreeIfNeeded(p)  if ((p) != 0) [01;35m[Kfree(p)[m[K
+      |                                        [01;35m[K^~~~~~~[m[K
+[01m[K/home/luke/sponge-os/genode/contrib/ncurses-b259f9aa8136195dc38361357e62355a6fe066e8/src/lib/ncurses/ncurses/tinfo/trim_sgr0.c:316:9:[m[K [01;36m[Knote: [m[Kin expansion of macro ‘[01m[KFreeIfNeeded[m[K’
+  316 |         [01;36m[KFreeIfNeeded[m[K(end);
+      |         [01;36m[K^~~~~~~~~~~~[m[K
+[01m[K/home/luke/sponge-os/genode/contrib/ncurses-b259f9aa8136195dc38361357e62355a6fe066e8/src/lib/ncurses/ncurses/curses.priv.h:1437:40:[m[K [01;35m[Kwarning: [m[K‘[01m[Kfree[m[K’ called on a pointer to an unallocated object ‘[01m[K18446744073709551615[m[K’ [[01;35m[K]8;;https://gcc.gnu.org/onlinedocs/gcc-14.2.0/gcc/Warning-Options.html#index-Wfree-nonheap-object-Wfree-nonheap-object]8;;[m[K]
+ 1437 | #define FreeIfNeeded(p)  if ((p) != 0) [01;35m[Kfree(p)[m[K
+      |                                        [01;35m[K^~~~~~~[m[K
+[01m[K/home/luke/sponge-os/genode/contrib/ncurses-b259f9aa8136195dc38361357e62355a6fe066e8/src/lib/ncurses/ncurses/tinfo/trim_sgr0.c:249:13:[m[K [01;36m[Knote: [m[Kin expansion of macro ‘[01m[KFreeIfNeeded[m[K’
+  249 |             [01;36m[KFreeIfNeeded[m[K(off);
+      |             [01;36m[K^~~~~~~~~~~~[m[K
+    MERGE    ncurses.lib.so
+  [00;33mLibrary[0m vfs.lib.so
+  [00;33mLibrary[0m vfs_pipe.lib.so
+  [00;33mLibrary[0m ttf_font.lib.a
+  [00;33mLibrary[0m vfs_ttf.lib.so
+  [00;33mLibrary[0m blit.lib.a
+  [01;33mProgram[0m app/pci_decode/pci_decode
+  [00;33mLibrary[0m core-sel4.lib.a
+    COMPILE  version.o
+    MERGE    core-sel4.lib.a
+  [01;33mProgram[0m core/sel4/core
+  [01;33mProgram[0m driver/acpi/spec/x86/acpi
+  [00;33mLibrary[0m x86emu.lib.a
+  [00;33mLibrary[0m format.lib.a
+  [01;33mProgram[0m driver/framebuffer/vesa/vesa_fb
+  [01;33mProgram[0m driver/platform/pc/spec/x86_64/pc_platform
+  [01;33mProgram[0m driver/platform/platform
+  [01;33mProgram[0m driver/ps2/x86/ps2
+  [00;33mLibrary[0m jitterentropy.lib.a
+  [00;33mLibrary[0m virt_lx_emul.lib.a
+  [00;33mLibrary[0m virt_linux_generated.lib.a
+  [01;33mProgram[0m driver/usb_hid/spec/x86_64/usb_hid
+  [00;33mLibrary[0m pc_lx_emul.lib.a
+  [00;33mLibrary[0m pc_linux_generated.lib.a
+  [01;33mProgram[0m driver/usb_host/pc/spec/x86_64/pc_usb_host
+  [01;33mProgram[0m init/init
+  [01;33mProgram[0m noux-pkg/bash-minimal/bash-minimal
+    CONFIG   bash-minimal
+    BUILD    bash-minimal
+      [bash-minimal]  /home/luke/sponge-os/genode/contrib/bash-20c34a63efce74be02c9eb92bd8bfb53cd5122e5/src/noux-pkg/bash/eval.c: In function ‘alrm_catcher’:
+      [bash-minimal]  /home/luke/sponge-os/genode/contrib/bash-20c34a63efce74be02c9eb92bd8bfb53cd5122e5/src/noux-pkg/bash/eval.c:260:7: warning: assignment discards ‘const’ qualifier from pointer target type [-Wdiscarded-qualifiers]
+      [bash-minimal]    260 |   msg = _("\007timed out waiting for input: auto-logout\n");
+      [bash-minimal]        |       ^
+      [bash-minimal]  In file included from /home/luke/sponge-os/genode/contrib/bash-20c34a63efce74be02c9eb92bd8bfb53cd5122e5/src/noux-pkg/bash/bashintl.h:30,
+      [bash-minimal]                   from /home/luke/sponge-os/genode/contrib/bash-20c34a63efce74be02c9eb92bd8bfb53cd5122e5/src/noux-pkg/bash/error.c:39:
+      [bash-minimal]  /home/luke/sponge-os/genode/contrib/bash-20c34a63efce74be02c9eb92bd8bfb53cd5122e5/src/noux-pkg/bash/error.c: In function ‘command_errstr’:
+      [bash-minimal]  /home/luke/sponge-os/genode/contrib/bash-20c34a63efce74be02c9eb92bd8bfb53cd5122e5/src/noux-pkg/bash/include/gettext.h:46:26: warning: return discards ‘const’ qualifier from pointer target type [-Wdiscarded-qualifiers]
+      [bash-minimal]     46 | # define gettext(Msgid) ((const char *) (Msgid))
+      [bash-minimal]  /home/luke/sponge-os/genode/contrib/bash-20c34a63efce74be02c9eb92bd8bfb53cd5122e5/src/noux-pkg/bash/bashintl.h:36:25: note: in expansion of macro ‘gettext’
+      [bash-minimal]     36 | #define _(msgid)        gettext(msgid)
+      [bash-minimal]        |                         ^~~~~~~
+      [bash-minimal]  /home/luke/sponge-os/genode/contrib/bash-20c34a63efce74be02c9eb92bd8bfb53cd5122e5/src/noux-pkg/bash/error.c:435:11: note: in expansion of macro ‘_’
+      [bash-minimal]    435 |   return (_(cmd_error_table[code]));
+      [bash-minimal]        |           ^
+      [bash-minimal]  /home/luke/sponge-os/genode/contrib/bash-20c34a63efce74be02c9eb92bd8bfb53cd5122e5/src/noux-pkg/bash/locale.c: In function ‘localetrans’:
+      [bash-minimal]  /home/luke/sponge-os/genode/contrib/bash-20c34a63efce74be02c9eb92bd8bfb53cd5122e5/src/noux-pkg/bash/locale.c:458:16: warning: assignment discards ‘const’ qualifier from pointer target type [-Wdiscarded-qualifiers]
+      [bash-minimal]    458 |     translated = dgettext (default_domain, string);
+      [bash-minimal]        |                ^
+      [bash-minimal]  In file included from /home/luke/sponge-os/genode/contrib/bash-20c34a63efce74be02c9eb92bd8bfb53cd5122e5/src/noux-pkg/bash/bashintl.h:30,
+      [bash-minimal]                   from /home/luke/sponge-os/genode/contrib/bash-20c34a63efce74be02c9eb92bd8bfb53cd5122e5/src/noux-pkg/bash/test.c:55:
+      [bash-minimal]  /home/luke/sponge-os/genode/contrib/bash-20c34a63efce74be02c9eb92bd8bfb53cd5122e5/src/noux-pkg/bash/test.c: In function ‘beyond’:
+      [bash-minimal]  /home/luke/sponge-os/genode/contrib/bash-20c34a63efce74be02c9eb92bd8bfb53cd5122e5/src/noux-pkg/bash/include/gettext.h:46:26: warning: passing argument 1 of ‘test_syntax_error’ discards ‘const’ qualifier from pointer target type [-Wdiscarded-qualifiers]
+      [bash-minimal]     46 | # define gettext(Msgid) ((const char *) (Msgid))
+      [bash-minimal]        |                         ~^~~~~~~~~~~~~~~~~~~~~~~
+      [bash-minimal]  /home/luke/sponge-os/genode/contrib/bash-20c34a63efce74be02c9eb92bd8bfb53cd5122e5/src/noux-pkg/bash/bashintl.h:36:25: note: in expansion of macro ‘gettext’
+      [bash-minimal]     36 | #define _(msgid)        gettext(msgid)
+      [bash-minimal]        |                         ^~~~~~~
+      [bash-minimal]  /home/luke/sponge-os/genode/contrib/bash-20c34a63efce74be02c9eb92bd8bfb53cd5122e5/src/noux-pkg/bash/test.c:156:22: note: in expansion of macro ‘_’
+      [bash-minimal]    156 |   test_syntax_error (_("argument expected"), (char *)NULL);
+      [bash-minimal]        |                      ^
+      [bash-minimal]  /home/luke/sponge-os/genode/contrib/bash-20c34a63efce74be02c9eb92bd8bfb53cd5122e5/src/noux-pkg/bash/test.c:143:26: note: expected ‘char *’ but argument is of type ‘const char *’
+      [bash-minimal]    143 | test_syntax_error (char *format, char *arg)
+      [bash-minimal]        |                    ~~~~~~^~~~~~
+      [bash-minimal]  /home/luke/sponge-os/genode/contrib/bash-20c34a63efce74be02c9eb92bd8bfb53cd5122e5/src/noux-pkg/bash/test.c: In function ‘integer_expected_error’:
+      [bash-minimal]  /home/luke/sponge-os/genode/contrib/bash-20c34a63efce74be02c9eb92bd8bfb53cd5122e5/src/noux-pkg/bash/include/gettext.h:46:26: warning: passing argument 1 of ‘test_syntax_error’ discards ‘const’ qualifier from pointer target type [-Wdiscarded-qualifiers]
+      [bash-minimal]     46 | # define gettext(Msgid) ((const char *) (Msgid))
+      [bash-minimal]        |                         ~^~~~~~~~~~~~~~~~~~~~~~~
+      [bash-minimal]  /home/luke/sponge-os/genode/contrib/bash-20c34a63efce74be02c9eb92bd8bfb53cd5122e5/src/noux-pkg/bash/bashintl.h:36:25: note: in expansion of macro ‘gettext’
+      [bash-minimal]     36 | #define _(msgid)        gettext(msgid)
+      [bash-minimal]        |                         ^~~~~~~
+      [bash-minimal]  /home/luke/sponge-os/genode/contrib/bash-20c34a63efce74be02c9eb92bd8bfb53cd5122e5/src/noux-pkg/bash/test.c:164:22: note: in expansion of macro ‘_’
+      [bash-minimal]    164 |   test_syntax_error (_("%s: integer expected"), pch);
+      [bash-minimal]        |                      ^
+      [bash-minimal]  /home/luke/sponge-os/genode/contrib/bash-20c34a63efce74be02c9eb92bd8bfb53cd5122e5/src/noux-pkg/bash/test.c:143:26: note: expected ‘char *’ but argument is of type ‘const char *’
+      [bash-minimal]    143 | test_syntax_error (char *format, char *arg)
+      [bash-minimal]        |                    ~~~~~~^~~~~~
+      [bash-minimal]  /home/luke/sponge-os/genode/contrib/bash-20c34a63efce74be02c9eb92bd8bfb53cd5122e5/src/noux-pkg/bash/mailcheck.c: In function ‘check_mail’:
+      [bash-minimal]  /home/luke/sponge-os/genode/contrib/bash-20c34a63efce74be02c9eb92bd8bfb53cd5122e5/src/noux-pkg/bash/test.c: In function ‘term’:
+      [bash-minimal]  /home/luke/sponge-os/genode/contrib/bash-20c34a63efce74be02c9eb92bd8bfb53cd5122e5/src/noux-pkg/bash/include/gettext.h:46:26: warning: passing argument 1 of ‘test_syntax_error’ discards ‘const’ qualifier from pointer target type [-Wdiscarded-qualifiers]
+      [bash-minimal]     46 | # define gettext(Msgid) ((const char *) (Msgid))
+      [bash-minimal]        |                         ~^~~~~~~~~~~~~~~~~~~~~~~
+      [bash-minimal]  /home/luke/sponge-os/genode/contrib/bash-20c34a63efce74be02c9eb92bd8bfb53cd5122e5/src/noux-pkg/bash/bashintl.h:36:25: note: in expansion of macro ‘gettext’
+      [bash-minimal]     36 | #define _(msgid)        gettext(msgid)
+      [bash-minimal]        |                         ^~~~~~~
+      [bash-minimal]  /home/luke/sponge-os/genode/contrib/bash-20c34a63efce74be02c9eb92bd8bfb53cd5122e5/src/noux-pkg/bash/test.c:292:28: note: in expansion of macro ‘_’
+      [bash-minimal]    292 |         test_syntax_error (_("`)' expected"), (char *)NULL);
+      [bash-minimal]        |                            ^
+      [bash-minimal]  /home/luke/sponge-os/genode/contrib/bash-20c34a63efce74be02c9eb92bd8bfb53cd5122e5/src/noux-pkg/bash/test.c:143:26: note: expected ‘char *’ but argument is of type ‘const char *’
+      [bash-minimal]    143 | test_syntax_error (char *format, char *arg)
+      [bash-minimal]        |                    ~~~~~~^~~~~~
+      [bash-minimal]  /home/luke/sponge-os/genode/contrib/bash-20c34a63efce74be02c9eb92bd8bfb53cd5122e5/src/noux-pkg/bash/mailcheck.c:435:19: warning: assignment discards ‘const’ qualifier from pointer target type [-Wdiscarded-qualifiers]
+      [bash-minimal]    435 |           message = mailfiles[i]->msg ? mailfiles[i]->msg : _("You have mail in $_");
+      [bash-minimal]        |                   ^
+      [bash-minimal]  /home/luke/sponge-os/genode/contrib/bash-20c34a63efce74be02c9eb92bd8bfb53cd5122e5/src/noux-pkg/bash/include/gettext.h:46:26: warning: passing argument 1 of ‘test_syntax_error’ discards ‘const’ qualifier from pointer target type [-Wdiscarded-qualifiers]
+      [bash-minimal]     46 | # define gettext(Msgid) ((const char *) (Msgid))
+      [bash-minimal]        |                         ~^~~~~~~~~~~~~~~~~~~~~~~
+      [bash-minimal]  /home/luke/sponge-os/genode/contrib/bash-20c34a63efce74be02c9eb92bd8bfb53cd5122e5/src/noux-pkg/bash/bashintl.h:36:25: note: in expansion of macro ‘gettext’
+      [bash-minimal]     36 | #define _(msgid)        gettext(msgid)
+      [bash-minimal]        |                         ^~~~~~~
+      [bash-minimal]  /home/luke/sponge-os/genode/contrib/bash-20c34a63efce74be02c9eb92bd8bfb53cd5122e5/src/noux-pkg/bash/test.c:294:28: note: in expansion of macro ‘_’
+      [bash-minimal]    294 |         test_syntax_error (_("`)' expected, found %s"), argv[pos]);
+      [bash-minimal]        |                            ^
+      [bash-minimal]  /home/luke/sponge-os/genode/contrib/bash-20c34a63efce74be02c9eb92bd8bfb53cd5122e5/src/noux-pkg/bash/test.c:143:26: note: expected ‘char *’ but argument is of type ‘const char *’
+      [bash-minimal]    143 | test_syntax_error (char *format, char *arg)
+      [bash-minimal]        |                    ~~~~~~^~~~~~
+      [bash-minimal]  /home/luke/sponge-os/genode/contrib/bash-20c34a63efce74be02c9eb92bd8bfb53cd5122e5/src/noux-pkg/bash/mailcheck.c:460:21: warning: assignment discards ‘const’ qualifier from pointer target type [-Wdiscarded-qualifiers]
+      [bash-minimal]    460 |             message = _("You have new mail in $_");
+      [bash-minimal]        |                     ^
+      [bash-minimal]  /home/luke/sponge-os/genode/contrib/bash-20c34a63efce74be02c9eb92bd8bfb53cd5122e5/src/noux-pkg/bash/test.c: In function ‘binary_operator’:
+      [bash-minimal]  /home/luke/sponge-os/genode/contrib/bash-20c34a63efce74be02c9eb92bd8bfb53cd5122e5/src/noux-pkg/bash/include/gettext.h:46:26: warning: passing argument 1 of ‘test_syntax_error’ discards ‘const’ qualifier from pointer target type [-Wdiscarded-qualifiers]
+      [bash-minimal]     46 | # define gettext(Msgid) ((const char *) (Msgid))
+      [bash-minimal]        |                         ~^~~~~~~~~~~~~~~~~~~~~~~
+      [bash-minimal]  /home/luke/sponge-os/genode/contrib/bash-20c34a63efce74be02c9eb92bd8bfb53cd5122e5/src/noux-pkg/bash/bashintl.h:36:25: note: in expansion of macro ‘gettext’
+      [bash-minimal]     36 | #define _(msgid)        gettext(msgid)
+      [bash-minimal]        |                         ^~~~~~~
+      [bash-minimal]  /home/luke/sponge-os/genode/contrib/bash-20c34a63efce74be02c9eb92bd8bfb53cd5122e5/src/noux-pkg/bash/test.c:488:26: note: in expansion of macro ‘_’
+      [bash-minimal]    488 |       test_syntax_error (_("%s: binary operator expected"), w);
+      [bash-minimal]        |                          ^
+      [bash-minimal]  /home/luke/sponge-os/genode/contrib/bash-20c34a63efce74be02c9eb92bd8bfb53cd5122e5/src/noux-pkg/bash/test.c:143:26: note: expected ‘char *’ but argument is of type ‘const char *’
+      [bash-minimal]    143 | test_syntax_error (char *format, char *arg)
+      [bash-minimal]        |                    ~~~~~~^~~~~~
+      [bash-minimal]  /home/luke/sponge-os/genode/contrib/bash-20c34a63efce74be02c9eb92bd8bfb53cd5122e5/src/noux-pkg/bash/test.c: In function ‘two_arguments’:
+      [bash-minimal]  /home/luke/sponge-os/genode/contrib/bash-20c34a63efce74be02c9eb92bd8bfb53cd5122e5/src/noux-pkg/bash/include/gettext.h:46:26: warning: passing argument 1 of ‘test_syntax_error’ discards ‘const’ qualifier from pointer target type [-Wdiscarded-qualifiers]
+      [bash-minimal]     46 | # define gettext(Msgid) ((const char *) (Msgid))
+      [bash-minimal]        |                         ~^~~~~~~~~~~~~~~~~~~~~~~
+      [bash-minimal]  /home/luke/sponge-os/genode/contrib/bash-20c34a63efce74be02c9eb92bd8bfb53cd5122e5/src/noux-pkg/bash/bashintl.h:36:25: note: in expansion of macro ‘gettext’
+      [bash-minimal]     36 | #define _(msgid)        gettext(msgid)
+      [bash-minimal]        |                         ^~~~~~~
+      [bash-minimal]  /home/luke/sponge-os/genode/contrib/bash-20c34a63efce74be02c9eb92bd8bfb53cd5122e5/src/noux-pkg/bash/test.c:792:28: note: in expansion of macro ‘_’
+      [bash-minimal]    792 |         test_syntax_error (_("%s: unary operator expected"), argv[pos]);
+      [bash-minimal]        |                            ^
+      [bash-minimal]  /home/luke/sponge-os/genode/contrib/bash-20c34a63efce74be02c9eb92bd8bfb53cd5122e5/src/noux-pkg/bash/test.c:143:26: note: expected ‘char *’ but argument is of type ‘const char *’
+      [bash-minimal]    143 | test_syntax_error (char *format, char *arg)
+      [bash-minimal]        |                    ~~~~~~^~~~~~
+      [bash-minimal]  /home/luke/sponge-os/genode/contrib/bash-20c34a63efce74be02c9eb92bd8bfb53cd5122e5/src/noux-pkg/bash/include/gettext.h:46:26: warning: passing argument 1 of ‘test_syntax_error’ discards ‘const’ qualifier from pointer target type [-Wdiscarded-qualifiers]
+      [bash-minimal]     46 | # define gettext(Msgid) ((const char *) (Msgid))
+      [bash-minimal]        |                         ~^~~~~~~~~~~~~~~~~~~~~~~
+      [bash-minimal]  /home/luke/sponge-os/genode/contrib/bash-20c34a63efce74be02c9eb92bd8bfb53cd5122e5/src/noux-pkg/bash/bashintl.h:36:25: note: in expansion of macro ‘gettext’
+      [bash-minimal]     36 | #define _(msgid)        gettext(msgid)
+      [bash-minimal]        |                         ^~~~~~~
+      [bash-minimal]  /home/luke/sponge-os/genode/contrib/bash-20c34a63efce74be02c9eb92bd8bfb53cd5122e5/src/noux-pkg/bash/test.c:795:24: note: in expansion of macro ‘_’
+      [bash-minimal]    795 |     test_syntax_error (_("%s: unary operator expected"), argv[pos]);
+      [bash-minimal]        |                        ^
+      [bash-minimal]  /home/luke/sponge-os/genode/contrib/bash-20c34a63efce74be02c9eb92bd8bfb53cd5122e5/src/noux-pkg/bash/test.c:143:26: note: expected ‘char *’ but argument is of type ‘const char *’
+      [bash-minimal]    143 | test_syntax_error (char *format, char *arg)
+      [bash-minimal]        |                    ~~~~~~^~~~~~
+      [bash-minimal]  /home/luke/sponge-os/genode/contrib/bash-20c34a63efce74be02c9eb92bd8bfb53cd5122e5/src/noux-pkg/bash/test.c: In function ‘three_arguments’:
+      [bash-minimal]  /home/luke/sponge-os/genode/contrib/bash-20c34a63efce74be02c9eb92bd8bfb53cd5122e5/src/noux-pkg/bash/shell.c: In function ‘get_current_user_info’:
+      [bash-minimal]  /home/luke/sponge-os/genode/contrib/bash-20c34a63efce74be02c9eb92bd8bfb53cd5122e5/src/noux-pkg/bash/include/gettext.h:46:26: warning: passing argument 1 of ‘test_syntax_error’ discards ‘const’ qualifier from pointer target type [-Wdiscarded-qualifiers]
+      [bash-minimal]     46 | # define gettext(Msgid) ((const char *) (Msgid))
+      [bash-minimal]        |                         ~^~~~~~~~~~~~~~~~~~~~~~~
+      [bash-minimal]  /home/luke/sponge-os/genode/contrib/bash-20c34a63efce74be02c9eb92bd8bfb53cd5122e5/src/noux-pkg/bash/bashintl.h:36:25: note: in expansion of macro ‘gettext’
+      [bash-minimal]     36 | #define _(msgid)        gettext(msgid)
+      [bash-minimal]        |                         ^~~~~~~
+      [bash-minimal]  /home/luke/sponge-os/genode/contrib/bash-20c34a63efce74be02c9eb92bd8bfb53cd5122e5/src/noux-pkg/bash/test.c:831:24: note: in expansion of macro ‘_’
+      [bash-minimal]    831 |     test_syntax_error (_("%s: binary operator expected"), argv[pos+1]);
+      [bash-minimal]        |                        ^
+      [bash-minimal]  /home/luke/sponge-os/genode/contrib/bash-20c34a63efce74be02c9eb92bd8bfb53cd5122e5/src/noux-pkg/bash/test.c:143:26: note: expected ‘char *’ but argument is of type ‘const char *’
+      [bash-minimal]    143 | test_syntax_error (char *format, char *arg)
+      [bash-minimal]        |                    ~~~~~~^~~~~~
+      [bash-minimal]  /home/luke/sponge-os/genode/contrib/bash-20c34a63efce74be02c9eb92bd8bfb53cd5122e5/src/noux-pkg/bash/test.c: In function ‘test_command’:
+      [bash-minimal]  /home/luke/sponge-os/genode/contrib/bash-20c34a63efce74be02c9eb92bd8bfb53cd5122e5/src/noux-pkg/bash/shell.c:1905:34: warning: assignment discards ‘const’ qualifier from pointer target type [-Wdiscarded-qualifiers]
+      [bash-minimal]   1905 |           current_user.user_name = _("I have no name!");
+      [bash-minimal]        |                                  ^
+      [bash-minimal]  /home/luke/sponge-os/genode/contrib/bash-20c34a63efce74be02c9eb92bd8bfb53cd5122e5/src/noux-pkg/bash/include/gettext.h:46:26: warning: passing argument 1 of ‘test_syntax_error’ discards ‘const’ qualifier from pointer target type [-Wdiscarded-qualifiers]
+      [bash-minimal]     46 | # define gettext(Msgid) ((const char *) (Msgid))
+      [bash-minimal]        |                         ~^~~~~~~~~~~~~~~~~~~~~~~
+      [bash-minimal]  /home/luke/sponge-os/genode/contrib/bash-20c34a63efce74be02c9eb92bd8bfb53cd5122e5/src/noux-pkg/bash/bashintl.h:36:25: note: in expansion of macro ‘gettext’
+      [bash-minimal]     36 | #define _(msgid)        gettext(msgid)
+      [bash-minimal]        |                         ^~~~~~~
+      [bash-minimal]  /home/luke/sponge-os/genode/contrib/bash-20c34a63efce74be02c9eb92bd8bfb53cd5122e5/src/noux-pkg/bash/test.c:926:28: note: in expansion of macro ‘_’
+      [bash-minimal]    926 |         test_syntax_error (_("missing `]'"), (char *)NULL);
+      [bash-minimal]        |                            ^
+      [bash-minimal]  /home/luke/sponge-os/genode/contrib/bash-20c34a63efce74be02c9eb92bd8bfb53cd5122e5/src/noux-pkg/bash/test.c:143:26: note: expected ‘char *’ but argument is of type ‘const char *’
+      [bash-minimal]    143 | test_syntax_error (char *format, char *arg)
+      [bash-minimal]        |                    ~~~~~~^~~~~~
+      [bash-minimal]  /home/luke/sponge-os/genode/contrib/bash-20c34a63efce74be02c9eb92bd8bfb53cd5122e5/src/noux-pkg/bash/include/gettext.h:46:26: warning: passing argument 1 of ‘test_syntax_error’ discards ‘const’ qualifier from pointer target type [-Wdiscarded-qualifiers]
+      [bash-minimal]     46 | # define gettext(Msgid) ((const char *) (Msgid))
+      [bash-minimal]        |                         ~^~~~~~~~~~~~~~~~~~~~~~~
+      [bash-minimal]  /home/luke/sponge-os/genode/contrib/bash-20c34a63efce74be02c9eb92bd8bfb53cd5122e5/src/noux-pkg/bash/bashintl.h:36:25: note: in expansion of macro ‘gettext’
+      [bash-minimal]     36 | #define _(msgid)        gettext(msgid)
+      [bash-minimal]        |                         ^~~~~~~
+      [bash-minimal]  /home/luke/sponge-os/genode/contrib/bash-20c34a63efce74be02c9eb92bd8bfb53cd5122e5/src/noux-pkg/bash/test.c:944:28: note: in expansion of macro ‘_’
+      [bash-minimal]    944 |         test_syntax_error (_("syntax error: `%s' unexpected"), argv[pos]);
+      [bash-minimal]        |                            ^
+      [bash-minimal]  /home/luke/sponge-os/genode/contrib/bash-20c34a63efce74be02c9eb92bd8bfb53cd5122e5/src/noux-pkg/bash/test.c:143:26: note: expected ‘char *’ but argument is of type ‘const char *’
+      [bash-minimal]    143 | test_syntax_error (char *format, char *arg)
+      [bash-minimal]        |                    ~~~~~~^~~~~~
+      [bash-minimal]  /home/luke/sponge-os/genode/contrib/bash-20c34a63efce74be02c9eb92bd8bfb53cd5122e5/src/noux-pkg/bash/include/gettext.h:46:26: warning: passing argument 1 of ‘test_syntax_error’ discards ‘const’ qualifier from pointer target type [-Wdiscarded-qualifiers]
+      [bash-minimal]     46 | # define gettext(Msgid) ((const char *) (Msgid))
+      [bash-minimal]        |                         ~^~~~~~~~~~~~~~~~~~~~~~~
+      [bash-minimal]  /home/luke/sponge-os/genode/contrib/bash-20c34a63efce74be02c9eb92bd8bfb53cd5122e5/src/noux-pkg/bash/bashintl.h:36:25: note: in expansion of macro ‘gettext’
+      [bash-minimal]     36 | #define _(msgid)        gettext(msgid)
+      [bash-minimal]        |                         ^~~~~~~
+      [bash-minimal]  /home/luke/sponge-os/genode/contrib/bash-20c34a63efce74be02c9eb92bd8bfb53cd5122e5/src/noux-pkg/bash/test.c:946:28: note: in expansion of macro ‘_’
+      [bash-minimal]    946 |         test_syntax_error (_("too many arguments"), (char *)NULL);
+      [bash-minimal]        |                            ^
+      [bash-minimal]  /home/luke/sponge-os/genode/contrib/bash-20c34a63efce74be02c9eb92bd8bfb53cd5122e5/src/noux-pkg/bash/test.c:143:26: note: expected ‘char *’ but argument is of type ‘const char *’
+      [bash-minimal]    143 | test_syntax_error (char *format, char *arg)
+      [bash-minimal]        |                    ~~~~~~^~~~~~
+      [bash-minimal]  /home/luke/sponge-os/genode/contrib/bash-20c34a63efce74be02c9eb92bd8bfb53cd5122e5/src/noux-pkg/bash/trap.c: In function ‘signal_name’:
+      [bash-minimal]  /home/luke/sponge-os/genode/contrib/bash-20c34a63efce74be02c9eb92bd8bfb53cd5122e5/src/noux-pkg/bash/trap.c:224:7: warning: assignment discards ‘const’ qualifier from pointer target type [-Wdiscarded-qualifiers]
+      [bash-minimal]    224 |   ret = (sig >= BASH_NSIG || sig < 0 || signal_names[sig] == NULL)
+      [bash-minimal]        |       ^
+      [bash-minimal]  /home/luke/sponge-os/genode/contrib/bash-20c34a63efce74be02c9eb92bd8bfb53cd5122e5/src/noux-pkg/bash/builtins/common.c: In function ‘sh_invalidnum’:
+      [bash-minimal]  /home/luke/sponge-os/genode/contrib/bash-20c34a63efce74be02c9eb92bd8bfb53cd5122e5/src/noux-pkg/bash/builtins/common.c:219:9: warning: assignment discards ‘const’ qualifier from pointer target type [-Wdiscarded-qualifiers]
+      [bash-minimal]    219 |     msg = _("invalid octal number");
+      [bash-minimal]        |         ^
+      [bash-minimal]  /home/luke/sponge-os/genode/contrib/bash-20c34a63efce74be02c9eb92bd8bfb53cd5122e5/src/noux-pkg/bash/builtins/common.c:221:9: warning: assignment discards ‘const’ qualifier from pointer target type [-Wdiscarded-qualifiers]
+      [bash-minimal]    221 |     msg = _("invalid hex number");
+      [bash-minimal]        |         ^
+      [bash-minimal]  /home/luke/sponge-os/genode/contrib/bash-20c34a63efce74be02c9eb92bd8bfb53cd5122e5/src/noux-pkg/bash/builtins/common.c:223:9: warning: assignment discards ‘const’ qualifier from pointer target type [-Wdiscarded-qualifiers]
+      [bash-minimal]    223 |     msg = _("invalid number");
+      [bash-minimal]        |         ^
+      [bash-minimal]  /home/luke/sponge-os/genode/contrib/bash-20c34a63efce74be02c9eb92bd8bfb53cd5122e5/src/noux-pkg/bash/builtins/help.def: In function ‘show_manpage’:
+      [bash-minimal]  /home/luke/sponge-os/genode/contrib/bash-20c34a63efce74be02c9eb92bd8bfb53cd5122e5/src/noux-pkg/bash/builtins/help.def:313:10: warning: assignment discards ‘const’ qualifier from pointer target type [-Wdiscarded-qualifiers]
+      [bash-minimal]    313 |     line = doc ? _(doc[0]) : (char *)NULL;
+      [bash-minimal]        |          ^
+      [bash-minimal]  /home/luke/sponge-os/genode/contrib/bash-20c34a63efce74be02c9eb92bd8bfb53cd5122e5/src/noux-pkg/bash/builtins/kill.def: In function ‘kill_error’:
+      [bash-minimal]  /home/luke/sponge-os/genode/contrib/bash-20c34a63efce74be02c9eb92bd8bfb53cd5122e5/src/noux-pkg/bash/builtins/kill.def:280:7: warning: assignment discards ‘const’ qualifier from pointer target type [-Wdiscarded-qualifiers]
+      [bash-minimal]    280 |     x = _("Unknown error");
+      [bash-minimal]        |       ^
+      [bash-minimal]  /home/luke/sponge-os/genode/contrib/bash-20c34a63efce74be02c9eb92bd8bfb53cd5122e5/src/noux-pkg/bash/builtins/help.def: In function ‘dispcolumn’:
+      [bash-minimal]  /home/luke/sponge-os/genode/contrib/bash-20c34a63efce74be02c9eb92bd8bfb53cd5122e5/src/noux-pkg/bash/builtins/help.def:378:11: warning: assignment discards ‘const’ qualifier from pointer target type [-Wdiscarded-qualifiers]
+      [bash-minimal]    378 |   helpdoc = _(shell_builtins[i].short_doc);
+      [bash-minimal]        |           ^
+      [bash-minimal]  /home/luke/sponge-os/genode/contrib/bash-20c34a63efce74be02c9eb92bd8bfb53cd5122e5/src/noux-pkg/bash/builtins/help.def:397:11: warning: assignment discards ‘const’ qualifier from pointer target type [-Wdiscarded-qualifiers]
+      [bash-minimal]    397 |   helpdoc = _(shell_builtins[i+height].short_doc);
+      [bash-minimal]        |           ^
+      [bash-minimal]  /home/luke/sponge-os/genode/contrib/bash-20c34a63efce74be02c9eb92bd8bfb53cd5122e5/src/noux-pkg/bash/builtins/help.def: In function ‘wdispcolumn’:
+      [bash-minimal]  /home/luke/sponge-os/genode/contrib/bash-20c34a63efce74be02c9eb92bd8bfb53cd5122e5/src/noux-pkg/bash/builtins/help.def:418:11: warning: assignment discards ‘const’ qualifier from pointer target type [-Wdiscarded-qualifiers]
+      [bash-minimal]    418 |   helpdoc = _(shell_builtins[i].short_doc);
+      [bash-minimal]        |           ^
+      [bash-minimal]  /home/luke/sponge-os/genode/contrib/bash-20c34a63efce74be02c9eb92bd8bfb53cd5122e5/src/noux-pkg/bash/builtins/help.def:467:11: warning: assignment discards ‘const’ qualifier from pointer target type [-Wdiscarded-qualifiers]
+      [bash-minimal]    467 |   helpdoc = _(shell_builtins[i+height].short_doc);
+      [bash-minimal]        |           ^
+      [bash-minimal]  /home/luke/sponge-os/genode/contrib/bash-20c34a63efce74be02c9eb92bd8bfb53cd5122e5/src/noux-pkg/bash/execute_cmd.c: In function ‘init_notfound_str’:
+      [bash-minimal]  /home/luke/sponge-os/genode/contrib/bash-20c34a63efce74be02c9eb92bd8bfb53cd5122e5/src/noux-pkg/bash/execute_cmd.c:5762:18: warning: assignment discards ‘const’ qualifier from pointer target type [-Wdiscarded-qualifiers]
+      [bash-minimal]   5762 |     notfound_str = _("command not found");
+      [bash-minimal]        |                  ^
+      [bash-minimal]  
+      [bash-minimal]  	  ***********************************************************
+      [bash-minimal]  	  *                                                         *
+      [bash-minimal]  	  * GNU bash, version 5.3.0(1)-release (x86_64-pc-elf)
+      [bash-minimal]  	  *                                                         *
+      [bash-minimal]  	  ***********************************************************
+      [bash-minimal]  
+      [bash-minimal]  making lib/glob/libglob.a in ./lib/glob
+      [bash-minimal]  making lib/sh/libsh.a in ./lib/sh
+      [bash-minimal]  making lib/readline/libreadline.a in ./lib/readline
+      [bash-minimal]  making lib/termcap/libtermcap.a in ./lib/termcap
+      [bash-minimal]  making lib/tilde/libtilde.a in ./lib/tilde
+      [bash-minimal]  making lib/readline/libhistory.a in ./lib/readline
+      [bash-minimal]  /home/luke/sponge-os/genode/contrib/bash-20c34a63efce74be02c9eb92bd8bfb53cd5122e5/src/noux-pkg/bash/parse.y: In function ‘report_syntax_error’:
+      [bash-minimal]  /home/luke/sponge-os/genode/contrib/bash-20c34a63efce74be02c9eb92bd8bfb53cd5122e5/src/noux-pkg/bash/parse.y:6905:15: warning: assignment discards ‘const’ qualifier from pointer target type [-Wdiscarded-qualifiers]
+      [bash-minimal]   6905 |           msg = EOF_Reached ? _("syntax error: unexpected end of file") : _("syntax error");
+      [bash-minimal]        |               ^
+      [bash-minimal]  /home/luke/sponge-os/genode/contrib/bash-20c34a63efce74be02c9eb92bd8bfb53cd5122e5/src/noux-pkg/bash/redir.c: In function ‘redirection_error’:
+      [bash-minimal]  /home/luke/sponge-os/genode/contrib/bash-20c34a63efce74be02c9eb92bd8bfb53cd5122e5/src/noux-pkg/bash/redir.c:146:14: warning: assignment discards ‘const’ qualifier from pointer target type [-Wdiscarded-qualifiers]
+      [bash-minimal]    146 |     filename = _("file descriptor out of range");
+      [bash-minimal]        |              ^
+      [bash-minimal]  /home/luke/sponge-os/genode/contrib/bash-20c34a63efce74be02c9eb92bd8bfb53cd5122e5/src/noux-pkg/bash/redir.c:194:14: warning: assignment discards ‘const’ qualifier from pointer target type [-Wdiscarded-qualifiers]
+      [bash-minimal]    194 |     filename = _("file descriptor out of range");
+      [bash-minimal]        |              ^
+      [bash-minimal]  -rwxr-xr-x 1 luke luke 4571568  8월  8일  19:21 bash
+    INSTALL  bash-minimal
+  [01;33mProgram[0m noux-pkg/vim-minimal/vim-minimal
+# let the configure script update the Makefile time stamp
+    CONFIG   vim-minimal
+    BUILD    vim-minimal
+      [vim-minimal]  Starting make in the src directory.
+      [vim-minimal]  If there are problems, cd to the src directory and run make there
+      [vim-minimal]  creating auto/pathdef.c
+      [vim-minimal]    /usr/local/genode/tool/25.05/bin/genode-x86-gcc   -nostdlib -Wl,-melf_x86_64 -Wl,-gc-sections -Wl,-z -Wl,max-page-size=0x1000 -Wl,-z -Wl,noexecstack -Wl,--hash-style=sysv -Wl,--dynamic-list=/home/luke/sponge-os/genode/repos/base/src/ld/genode_dyn.dl -nostdlib -Wl,-nostdlib -Wl,-Ttext=0x01000000 -m64 -mcmodel=large -march=x86-64-v2 -m64 -mcmodel=large -march=x86-64-v2 -Wl,-T/home/luke/sponge-os/genode/repos/base/src/ld/genode_dyn.ld -Wl,-rpath-link=/home/luke/sponge-os/genode/build/x86_64/noux-pkg/vim-minimal -Wl,--dynamic-linker=ld.lib.so -Wl,--eh-frame-hdr 	-o vim objects/buffer.o objects/blowfish.o objects/charset.o objects/diff.o objects/digraph.o objects/edit.o objects/eval.o objects/ex_cmds.o objects/ex_cmds2.o objects/ex_docmd.o objects/ex_eval.o objects/ex_getln.o objects/fileio.o objects/fold.o objects/getchar.o objects/hardcopy.o objects/hashtab.o  objects/if_cscope.o objects/if_xcmdsrv.o objects/main.o objects/mark.o objects/memfile.o objects/memline.o objects/menu.o objects/message.o objects/misc1.o objects/misc2.o objects/move.o objects/mbyte.o objects/normal.o objects/ops.o objects/option.o objects/os_unix.o objects/pathdef.o objects/popupmnu.o objects/quickfix.o objects/regexp.o objects/screen.o objects/search.o objects/sha256.o objects/spell.o objects/syntax.o  objects/tag.o objects/term.o objects/ui.o objects/undo.o objects/window.o             objects/version.o       -lm -L/home/luke/sponge-os/genode/build/x86_64/noux-pkg/vim-minimal -l:libgcc.a -l:libc.lib.so -l:libm.lib.so -l:ncurses.lib.so -l:posix.lib.so -l:libgcc.a -lncurses          
+      [vim-minimal]  link.sh: OK, linking works, let's try omitting a few libraries.
+      [vim-minimal]  link.sh: See auto/link.log for details.
+      [vim-minimal]  link.sh: Using unmodified link command
+      [vim-minimal]    /usr/local/genode/tool/25.05/bin/genode-x86-gcc   -nostdlib -Wl,-melf_x86_64 -Wl,-gc-sections -Wl,-z -Wl,max-page-size=0x1000 -Wl,-z -Wl,noexecstack -Wl,--hash-style=sysv -Wl,--dynamic-list=/home/luke/sponge-os/genode/repos/base/src/ld/genode_dyn.dl -nostdlib -Wl,-nostdlib -Wl,-Ttext=0x01000000 -m64 -mcmodel=large -march=x86-64-v2 -m64 -mcmodel=large -march=x86-64-v2 -Wl,-T/home/luke/sponge-os/genode/repos/base/src/ld/genode_dyn.ld -Wl,-rpath-link=/home/luke/sponge-os/genode/build/x86_64/noux-pkg/vim-minimal -Wl,--dynamic-linker=ld.lib.so -Wl,--eh-frame-hdr 	-o vim objects/buffer.o objects/blowfish.o objects/charset.o objects/diff.o objects/digraph.o objects/edit.o objects/eval.o objects/ex_cmds.o objects/ex_cmds2.o objects/ex_docmd.o objects/ex_eval.o objects/ex_getln.o objects/fileio.o objects/fold.o objects/getchar.o objects/hardcopy.o objects/hashtab.o  objects/if_cscope.o objects/if_xcmdsrv.o objects/main.o objects/mark.o objects/memfile.o objects/memline.o objects/menu.o objects/message.o objects/misc1.o objects/misc2.o objects/move.o objects/mbyte.o objects/normal.o objects/ops.o objects/option.o objects/os_unix.o objects/pathdef.o objects/popupmnu.o objects/quickfix.o objects/regexp.o objects/screen.o objects/search.o objects/sha256.o objects/spell.o objects/syntax.o  objects/tag.o objects/term.o objects/ui.o objects/undo.o objects/window.o             objects/version.o       -lm -L/home/luke/sponge-os/genode/build/x86_64/noux-pkg/vim-minimal -l:libgcc.a -l:libc.lib.so -l:libm.lib.so -l:ncurses.lib.so -l:posix.lib.so -l:libgcc.a -lncurses          
+      [vim-minimal]  link.sh: Linked OK
+    INSTALL  vim-minimal
+  [01;33mProgram[0m server/cached_fs_rom/cached_fs_rom
+  [01;33mProgram[0m server/event_filter/event_filter
+  [01;33mProgram[0m server/nitpicker/nitpicker
+  [01;33mProgram[0m server/report_rom/report_rom
+  [01;33mProgram[0m server/terminal/terminal
+    COMPILE  main.o
+    LINK     terminal
+  [01;33mProgram[0m server/vfs/vfs
+  [01;33mProgram[0m sponge_pkgd/sponge_pkgd
+  [01;33mProgram[0m test/terminal_probe/terminal_probe
+    COMPILE  main.o
+    LINK     terminal_probe
+  [01;33mProgram[0m test/usb_hid_probe/usb_hid_probe
+    COMPILE  main.o
+    LINK     usb_hid_probe
+  [01;33mProgram[0m timer/hpet/hpet_timer
+make[1]: ディレクトリ '/home/luke/sponge-os/genode/build/x86_64' から出ます
+genode build completed
+building targets: kernel/sel4 lib/ld-sel4
+spawn make kernel/sel4 lib/ld-sel4
+make[1]: ディレクトリ '/home/luke/sponge-os/genode/build/x86_64' に入ります
+  [00;33mLibrary[0m kernel-sel4-pc.lib.a
+ninja: Jobserver mode detected:  -j80 --jobserver-auth=fifo:/tmp/GMfifo2418047 --no-print-directory -- DEBUG_DIR=/home/luke/sponge-os/genode/build/x86_64/debug INSTALL_DIR=/home/luke/sponge-os/genode/build/x86_64/bin BUILD_BASE_DIR=/home/luke/sponge-os/genode/build/x86_64 SHARED_LIBS= ARCHIVES= LIB=kernel-sel4-pc LIB_MK=/home/luke/sponge-os/genode/repos/base-sel4/lib/mk/spec/x86_64/kernel-sel4-pc.mk REP_DIR=/home/luke/sponge-os/genode/repos/base-sel4 KERNEL=sel4 BOARD=pc SHELL=/usr/bin/bash
+ninja: no work to do.
+  [00;33mLibrary[0m syscall-sel4-pc.lib.a
+  [00;33mLibrary[0m syscall-sel4.lib.a
+  [00;33mLibrary[0m startup-sel4.lib.a
+  [00;33mLibrary[0m base-sel4-common.lib.a
+  [00;33mLibrary[0m timeout.lib.a
+  [00;33mLibrary[0m cxx.lib.a
+  [00;33mLibrary[0m base-sel4.lib.a
+  [00;33mLibrary[0m ldso_so_support.lib.a
+  [00;33mLibrary[0m ld-sel4.lib.so
+  [01;33mProgram[0m kernel/sel4/sel4-pc
+make[1]: ディレクトリ '/home/luke/sponge-os/genode/build/x86_64' から出ます
+genode build completed
+using 'core-sel4.a' as 'core.a'
+using 'hpet_timer' as 'timer'
+using 'ld-sel4.lib.so' as 'ld.lib.so'
+install bootloader
+creating ISO image...
+xorriso 1.5.8.pl02 : RockRidge filesystem manipulator, libburnia project.
+
+spawn qemu-system-x86_64 -accel kvm -machine q35 -cpu Skylake-Client -nographic -m 2G -device nec-usb-xhci,id=xhci -device usb-tablet -qmp tcp:127.0.0.1:25145,server=on,wait=off -serial mon:stdio -cdrom var/run/sponge-usb-kbd-via-qmp.iso -machine q35 -net nic,model=e1000,netdev=net0 -netdev user,id=net0
+qemu-system-x86_64: warning: host doesn't support requested feature: CPUID[eax=0Dh,ecx=01h].EAX.xsavec [bit 1]
+qemu-system-x86_64: warning: host doesn't support requested feature: CPUID[eax=0Dh,ecx=01h].EAX.xgetbv1 [bit 2]
+c[?7l[2J[0mSeaBIOS (version Arch Linux 1.17.0-2-2)
+
+
+iPXE (http://ipxe.org) 00:02.0 C900 PCI2.10 PnP PMM+7EFD3D50+7EF33D50 C900
+Press Ctrl-B to configure iPXE (PCI 00:02.0)...                                                                               
+
+
+Booting from Hard Disk...
+Boot failed: could not read the boot disk
+
+Booting from DVD/CD...
+error: can't find command `loadfont'.
+  Booting `Genode on seL4'
+
+
+Bender Version 0.9-beta7-51-g28ba2ad-dirty
+Patching BDA with I/O port 0x3f8.
+Bender: Hello World.
+hwp config: eeo=na irq=na hwp=na epp=na epb=na
+Boot config: debug_port = 0x3f8
+Boot config: disable_iommu = true
+  module #0: start=0xeca9000 end=0xfdf63c0 size=0x114d3c0 name='image.elf'
+	Physical Memory Region from 0 size 9fc00 type 1
+	Physical Memory Region from 9fc00 size 400 type 2
+	Physical Memory Region from f0000 size 10000 type 2
+	Physical Memory Region from 100000 size 7fede000 type 1
+Adding physical memory region 0x100000-0x7ffde000
+	Physical Memory Region from 7ffde000 size 22000 type 2
+	Physical Memory Region from b0000000 size 10000000 type 2
+	Physical Memory Region from fed1c000 size 4000 type 2
+	Physical Memory Region from feffc000 size 4000 type 2
+	Physical Memory Region from fffc0000 size 40000 type 2
+Got framebuffer info in multiboot2. Current video mode is at physical address=fd000000 pitch=5120 resolution=1280x800@32 type=1
+Detected 1 boot module(s):
+Kernel loaded to: start=0x200000 end=0xe3e000 size=0xc3e000 entry=0x200298
+ACPI: RSDT paddr=0x7ffe2355
+ACPI: RSDT vaddr=0x7ffe2355
+ACPI: FADT paddr=0x7ffe214d
+ACPI: FADT vaddr=0x7ffe214d
+ACPI: FADT flags=0x84a5
+ACPI: MADT paddr=0x7ffe2241
+ACPI: MADT vaddr=0x7ffe2241
+ACPI: MADT apic_addr=0xfee00000
+ACPI: MADT flags=0x1
+ACPI: MADT_APIC apic_id=0x0
+ACPI: MADT_IOAPIC ioapic_id=0 ioapic_addr=0xfec00000 gsib=0
+ACPI: MADT_ISO bus=0 source=0 gsi=2 flags=0x0
+ACPI: MADT_ISO bus=0 source=5 gsi=5 flags=0xd
+ACPI: MADT_ISO bus=0 source=9 gsi=9 flags=0xd
+ACPI: MADT_ISO bus=0 source=10 gsi=10 flags=0xd
+ACPI: MADT_ISO bus=0 source=11 gsi=11 flags=0xd
+ACPI: 1 CPU(s) detected
+ELF-loading userland images from boot modules:
+size=0x2b2c000 v_entry=0x2000018 v_start=0x2000000 v_end=0x4b2c000 p_start=0xfdf7000 p_end=0x12923000
+Moving loaded userland images to final location: from=0xfdf7000 to=0xe3e000 size=0x2b2c000
+Starting node #0 with APIC ID 0
+Mapping kernel window is done
+vt-x: not supported
+available phys memory regions: 1
+  [100000..7ffde000]
+reserved virt address space regions: 1
+  [ffffff8000200000..ffffff800396a000]
+Booting all finished, dropped to user space
+[34mWarning: device memory in range [0000000800000000,0000001000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000001000000000,0000002000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000002000000000,0000004000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000004000000000,0000008000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000008000000000,0000408000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000408000000000,0000608000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000608000000000,0000708000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000708000000000,0000788000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000788000000000,00007c8000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [00007c8000000000,00007e8000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [00007e8000000000,00007f8000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [00007f8000000000,0000800000000000) is unavailable (due to limited untyped cnode range)[0m
+:phys_mem_16k:     Allocator 0x217a658 dump:
+ Block: [0000000000100000,0000000000a00000) size=9M avail=9M max_avail=9M
+ Block: [000000000396c000,0000000004000000) size=6736K avail=6736K max_avail=82608K
+ Block: [0000000008000000,000000000d0ac000) size=82608K avail=82608K max_avail=82608K
+ => mem_size=100925440 (96 MB) / mem_avail=100925440 (96 MB)
+
+[34mWarning: device memory in range [0000000200000000,0000000400000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000000400000000,0000000800000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000000800000000,0000001000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000001000000000,0000002000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000002000000000,0000004000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000004000000000,0000008000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000008000000000,0000408000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000408000000000,0000608000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000608000000000,0000708000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000708000000000,0000788000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000788000000000,00007c8000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [00007c8000000000,00007e8000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [00007e8000000000,00007f8000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [00007f8000000000,0000800000000000) is unavailable (due to limited untyped cnode range)[0m
+virtual address layout of core:
+ overall    [0000000000002000,0000001000000000)
+ core image [0000000002000000,0000000004b2c000)
+ ipc buffer [0000000004b2c000,0000000004b2d000)
+ boot_info  [0000000004b2d000,0000000004b2e542)
+ stack area [0000000040000000,0000000050000000)
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+Physical memory per PD at most: 512M
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+boot module 'config' (10615 bytes)
+boot module 'acpi' (190328 bytes)
+boot module 'bash-minimal.tar' (1423360 bytes)
+boot module 'cached_fs_rom' (165192 bytes)
+boot module 'event_filter' (332104 bytes)
+boot module 'timer' (144744 bytes)
+boot module 'init' (516744 bytes)
+boot module 'init.hsd' (4125 bytes)
+boot module 'init.xsd' (8118 bytes)
+boot module 'ld.lib.so' (1112464 bytes)
+boot module 'libc.lib.so' (2022728 bytes)
+boot module 'libm.lib.so' (291512 bytes)
+boot module 'ncurses.lib.so' (356648 bytes)
+boot module 'nitpicker' (530512 bytes)
+boot module 'pc_platform' (724960 bytes)
+boot module 'pc_usb_host' (1564952 bytes)
+boot module 'pci_decode' (171336 bytes)
+boot module 'platform' (598984 bytes)
+boot module 'posix.lib.so' (34144 bytes)
+boot module 'ps2' (156880 bytes)
+boot module 'report_rom' (150784 bytes)
+boot module 'sponge_pkgd' (218544 bytes)
+boot module 'terminal' (315248 bytes)
+boot module 'terminal_probe' (135840 bytes)
+boot module 'usb_hid' (1131360 bytes)
+boot module 'usb_hid_probe' (35440 bytes)
+boot module 'vesa_fb' (334560 bytes)
+boot module 'vfs' (250448 bytes)
+boot module 'vfs.lib.so' (804736 bytes)
+boot module 'vfs_pipe.lib.so' (83792 bytes)
+boot module 'vfs_ttf.lib.so' (294312 bytes)
+boot module 'vim-minimal.tar' (2457600 bytes)
+boot module 'VeraMono.ttf' (49224 bytes)
+boot module 'pkg_terminal.xml' (8678 bytes)
+boot module 'pkg_index.xml' (48 bytes)
+boot module 'drivers.config' (4910 bytes)
+boot module 'fb.config' (53 bytes)
+boot module 'event_filter.config' (579 bytes)
+boot module 'en_us.chargen' (8852 bytes)
+boot module 'special.chargen' (1218 bytes)
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+Genode v0.1.1-alpha <local changes>
+1614 MiB RAM and 523288 caps assigned to init
+[init -> timer] timers=3, clock 10000000fs , 64bit counter , legacy routing support vendor=0x8086
+[init -> timer] timer0 GSI options 0xff0104, supports periodic
+[init -> timer] timer1 GSI options 0xff0104, supports periodic
+[init -> timer] timer2 GSI options 0xff0104, supports periodic
+[init -> timer] time wraps after 5849 years
+[init -> timer] irqs=off legacy=off
+[init -> timer] Using timer 2 -> using GSI 2 edge triggered
+[init -> drivers] [34mWarning: event_filter: configured caps exceed available caps, proceed with 30[0m
+[init -> drivers -> acpi] Found MADT
+[init -> drivers -> acpi] MADT IRQ 0 -> GSI 2 flags: 0
+[init -> drivers -> acpi] MADT IRQ 5 -> GSI 5 flags: 13
+[init -> drivers -> acpi] MADT IRQ 9 -> GSI 9 flags: 13
+[init -> drivers -> acpi] MADT IRQ 10 -> GSI 10 flags: 13
+[init -> drivers -> acpi] MADT IRQ 11 -> GSI 11 flags: 13
+[init -> drivers -> acpi] Found HPET hw_id=0x1  vendor_id=0x8086 space_id=0x0 addr=0xfed00000 hpet_id=0x0
+[init -> drivers -> acpi] Found MCFG
+[init -> drivers -> acpi] MCFG BASE 0xb0000000 seg 0x0 bus 0x0-0xff
+[init -> drivers -> acpi] RSDT OEM 'BOCHS ', table id 'BXPC    ', revision 1, creator 'BXPC' (1)
+[init -> sponge_pkgd] sponge_pkgd: ready
+[init -> sponge_pkgd] sponge_pkgd: binary_prefix=''
+[init -> drivers] child "event_filter" requests resources: cap_quota=3
+[init -> drivers -> acpi] [34mWarning: SMBIOSv3 entry point invalid[0m
+[init -> drivers -> acpi] SMBIOSv2 table (entry point: 0x1b6510 structures: 0xf6530)
+[init -> terminal_probe] terminal-probe: starting
+
+qmp: boot gate passed, entering rendezvous
+[init -> terminal_probe] terminal-probe: [1] install terminal via sponge_pkgd
+[init -> drivers -> fb] fb mapped to 0x6000
+[init -> drivers -> fb] Found: VESA BIOS version 3.0
+[init -> drivers -> fb] OEM: SeaBIOS VBE(C) 2011
+[init -> drivers -> fb] Found: physical frame buffer at 0xfd000000 size: 16777216
+[init -> drivers -> fb] fb mapped to 0x17000000
+[init -> drivers -> fb] using 1024x768 (1024x768)
+
+qmp: rendezvous saw fb marker
+[init -> drivers -> usb] SLUB: HWalign=64, Order=0-1, MinObjects=0, CPUs=1, Nodes=1
+[init -> drivers -> usb] NR_IRQS: 4352, nr_irqs: 4352, preallocated irqs: 256
+[init -> drivers -> usb] clocksource: dde_counter: mask: 0xffffffffffffff max_cycles: 0x1d854df40, max_idle_ns: 3526361616960 ns
+[34mWarning: flush page table entries - mapping cache full - PD: init -> drivers -> fb out of CAP[0m
+[init -> drivers -> usb] clocksource: jiffies: mask: 0xffffffff max_cycles: 0xffffffff, max_idle_ns: 7645041785100000 ns
+[init -> drivers -> usb] usbcore: registered new interface driver usbfs
+[init -> drivers -> usb] usbcore: registered new interface driver hub
+[init -> drivers -> usb] usbcore: registered new device driver usb
+[init -> drivers -> usb] clocksource: Switched to clocksource dde_counter
+[init -> drivers -> usb] usbcore: registered new interface driver genode
+[init -> drivers -> usb] xhci_hcd 00:03.0: xHCI Host Controller
+[init -> drivers -> usb] xhci_hcd 00:03.0: new USB bus registered, assigned bus number 1
+[init -> drivers -> usb] xhci_hcd 00:03.0: hcc params 0x00087001 hci version 0x100 quirks 0x0000000000000014
+[init -> drivers -> usb] xhci_hcd 00:03.0: xHCI Host Controller
+[init -> drivers -> usb] xhci_hcd 00:03.0: new USB bus registered, assigned bus number 2
+[init -> drivers -> usb] xhci_hcd 00:03.0: Host supports USB 3.0 SuperSpeed
+[init -> drivers -> usb] hub 1-0:1.0: USB hub found
+[init -> drivers -> usb] hub 1-0:1.0: 4 ports detected
+[init -> drivers -> usb] usb usb2: We don't know the algorithms for LPM for this host, disabling LPM.
+[init -> drivers -> usb] hub 2-0:1.0: USB hub found
+[init -> drivers -> usb] hub 2-0:1.0: 4 ports detected
+[init -> drivers -> usb] sched_clock: Marking stable (30029000, 143318000)->(240491000, -67144000)
+[init -> drivers -> usb_hid] SLUB: HWalign=64, Order=0-1, MinObjects=0, CPUs=1, Nodes=1
+[init -> drivers -> usb_hid] clocksource: dde_counter: mask: 0xffffffffffffff max_cycles: 0x1d854df40, max_idle_ns: 3526361616960 ns
+[init -> drivers -> usb_hid] clocksource: jiffies: mask: 0xffffffff max_cycles: 0xffffffff, max_idle_ns: 7645041785100000 ns
+[init -> drivers -> usb_hid] usbcore: registered new interface driver usbfs
+[init -> drivers -> usb_hid] usbcore: registered new interface driver hub
+[init -> drivers -> usb_hid] usbcore: registered new device driver usb
+[init -> drivers -> usb_hid] clocksource: Switched to clocksource dde_counter
+[init -> drivers -> usb_hid] usbcore: registered new interface driver usbhid
+[init -> drivers -> usb_hid] hid_core: USB HID core driver
+[init -> drivers -> usb_hid] sched_clock: Marking stable (0, 465791000)->(468397000, -2606000)
+[init -> terminal_probe] terminal-probe: [1] install ok
+[init -> terminal_probe] terminal-probe: [2] verify installed broadcast lists terminal
+[init -> terminal_probe] terminal-probe: [2] installed broadcast lists terminal
+[init -> terminal_probe] terminal-probe: [3] launch terminal via sponge_pkgd
+[init -> sponge_pkgd] sponge_pkgd: launch result terminal -> ok (channel=primary)
+[init -> pkg_runtime -> terminal -> vfs] [34mWarning: ram donation is 4246742 but used RAM is 4164KB, 'vfs_rom -> /'[0m
+[init -> pkg_runtime -> terminal -> vfs] [34mWarning: cap donation is 11 but used caps is 18, 'vfs_rom -> /'[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> drivers -> fb out of CAP[0m
+[init -> terminal_probe] terminal-probe: [3] launch ok
+[init -> terminal_probe] terminal-probe: [4] wait for terminal window + bash prompt
+[init -> drivers -> usb] usb 1-1: new high-speed USB device number 2 using xhci_hcd
+[init -> terminal_probe] terminal-probe: capture poll 0 bg=0x1e1e2e glyphs=98
+[init -> terminal_probe] terminal-probe: [4] terminal window detected (98 glyph pixels)
+[ini
+qmp: rendezvous saw terminal window detected
+t -> terminal_probe] terminal-probe: [5] qmp mode — host-driven focus click at (528,396) + type 'echo ok'
+[init -> terminal_probe] terminal-probe: pre-marker focus: 'focus
+[init -> terminal_probe] -
+[init -> terminal_probe] '
+[init -> terminal_probe] terminal-probe: pre-marker hover: 'hover | label: pkg_runtime -> terminal -> terminal ->  | color: #ffffff | domain: term | xpos: 511 | ypos: 383
+[init -> terminal_probe] -
+[init -> terminal_probe] '
+[init -> terminal_probe] QMP-TARGET click 528 396
+
+qmp: rendezvous saw click marker (528,396)
+[init -> drivers -> usb_hid] input: QEMU QEMU USB Tablet as /devices/usb-1-2/0-0:1.0/0003:0627:0001.0001/input/input0
+[init -> terminal_probe] QMP-TARGET type echo ok
+
+qmp: rendezvous saw type marker 'echo ok'
+
+qmp: rendezvous complete, connecting QMP port 25145
+
+qmp: connected, dispatching tablet focus click + send-key
+
+qmp: hotplug usb-kbd (id=ukbd1) via QMP device_add
+[init -> terminal_probe] terminal-probe: echo poll 0 glyphs=98
+[init -> drivers -> usb] usb 1-2: new high-speed USB device number 3 using xhci_hcd
+[init -> drivers -> usb_hid_probe] usb_hid: KEYBOARD detected
+qmp: unplug ukbd1 via QMP device_del
+
+[init -> drivers -> usb] usb 1-2: USB disconnect, device number 3
+[init -> drivers -> usb_hid_probe] usb_hid: KEYBOARD removed
+
+qmp: reconnecting QMP port 25145 after hotplug
+
+qmp: reconnected
+
+qmp: rendezvous complete, dispatching tablet focus click + send-key
+
+qmp: absolute tablet mouse index: '3'
+
+qmp: dispatching type 'echo ok' + Return
+
+qmp: dispatch complete, awaiting PASS
+sponge-usb-kbd-via-qmp: PASS (QMP hotplug audit chain: device_add -> KEYBOARD detected -> device_del -> KEYBOARD removed -> send-key dispatched)
+[init -> terminal_probe] terminal-probe: echo poll 10 glyphs=98
+[init -> terminal_probe] terminal-probe: echo poll 20 glyphs=98
+[init -> terminal_probe] terminal-probe: echo poll 30 glyphs=98
+[init -> terminal_probe] terminal-probe: echo poll 40 glyphs=98
+[init -> terminal_probe] terminal-probe: echo poll 50 glyphs=98
+[init -> terminal_probe] terminal-probe: echo-poll focus: 'focus
+[init -> terminal_probe] -
+[init -> terminal_probe] '
+[init -> terminal_probe] terminal-probe: echo-poll hover: 'hover | label: pkg_runtime -> terminal -> terminal ->  | color: #ffffff | domain: term | xpos: 511 | ypos: 383
+[init -> terminal_probe] -
+[init -> terminal_probe] '
+[init -> terminal_probe] terminal-probe: echo poll 60 glyphs=98
+[init -> terminal_probe] terminal-probe: echo poll 70 glyphs=98
+[init -> terminal_probe] terminal-probe: echo poll 80 glyphs=98
+[init -> terminal_probe] terminal-probe: echo poll 90 glyphs=98
+[init -> terminal_probe] terminal-probe: echo poll 100 glyphs=98
+[init -> terminal_probe] terminal-probe: echo-poll focus: 'focus
+[init -> terminal_probe] -
+[init -> terminal_probe] '
+[init -> terminal_probe] terminal-probe: echo-poll hover: 'hover | label: pkg_runtime -> terminal -> terminal ->  | color: #ffffff | domain: term | xpos: 511 | ypos: 383
+[init -> terminal_probe] -
+[init -> terminal_probe] '
+[init -> terminal_probe] terminal-probe: echo poll 110 glyphs=98
+[init -> terminal_probe] terminal-probe: echo poll 120 glyphs=98
+[init -> terminal_probe] terminal-probe: echo poll 130 glyphs=98
+[init -> terminal_probe] terminal-probe: echo poll 140 glyphs=98
+[init -> terminal_probe] terminal-probe: echo poll 150 glyphs=98
+[init -> terminal_probe] terminal-probe: echo-poll focus: 'focus
+[init -> terminal_probe] -
+[init -> terminal_probe] '
+[init -> terminal_probe] terminal-probe: echo-poll hover: 'hover | label: pkg_runtime -> terminal -> terminal ->  | color: #ffffff | domain: term | xpos: 511 | ypos: 383
+[init -> terminal_probe] -
+[init -> terminal_probe] '
+[init -> terminal_probe] terminal-probe: echo poll 160 glyphs=98
+[init -> terminal_probe] terminal-probe: echo poll 170 glyphs=98
+[init -> terminal_probe] terminal-probe: echo poll 180 glyphs=98
+[init -> terminal_probe] terminal-probe: echo poll 190 glyphs=98
+[init -> terminal_probe] terminal-probe: echo poll 200 glyphs=98
+[init -> terminal_probe] terminal-probe: echo-poll focus: 'focus
+[init -> terminal_probe] -
+[init -> terminal_probe] '
+[init -> terminal_probe] terminal-probe: echo-poll hover: 'hover | label: pkg_runtime -> terminal -> terminal ->  | color: #ffffff | domain: term | xpos: 511 | ypos: 383
+[init -> terminal_probe] -
+[init -> terminal_probe] '
+[init -> terminal_probe] terminal-probe: echo poll 210 glyphs=98
+[init -> terminal_probe] terminal-probe: echo poll 220 glyphs=98
+[init -> terminal_probe] terminal-probe: echo poll 230 glyphs=98
+[init -> terminal_probe] terminal-probe: echo poll 240 glyphs=98
+[init -> terminal_probe] terminal-probe: echo poll 250 glyphs=98
+[init -> terminal_probe] terminal-probe: echo-poll focus: 'focus
+[init -> terminal_probe] -
+[init -> terminal_probe] '
+[init -> terminal_probe] terminal-probe: echo-poll hover: 'hover | label: pkg_runtime -> terminal -> terminal ->  | color: #ffffff | domain: term | xpos: 511 | ypos: 383
+[init -> terminal_probe] -
+[init -> terminal_probe] '
+[init -> terminal_probe] terminal-probe: echo poll 260 glyphs=98
+[init -> terminal_probe] terminal-probe: echo poll 270 glyphs=98
+[init -> terminal_probe] terminal-probe: echo poll 280 glyphs=98
+[init -> terminal_probe] terminal-probe: echo poll 290 glyphs=98
+[init -> terminal_probe] terminal-probe: echo poll 300 glyphs=98
+[init -> terminal_probe] terminal-probe: echo-poll focus: 'focus
+[init -> terminal_probe] -
+[init -> terminal_probe] '
+[init -> terminal_probe] terminal-probe: echo-poll hover: 'hover | label: pkg_runtime -> terminal -> terminal ->  | color: #ffffff | domain: term | xpos: 511 | ypos: 383
+[init -> terminal_probe] -
+[init -> terminal_probe] '
+[init -> terminal_probe] terminal-probe: echo poll 310 glyphs=98
+[init -> terminal_probe] terminal-probe: echo poll 320 glyphs=98
+[init -> terminal_probe] terminal-probe: echo poll 330 glyphs=98
+[init -> terminal_probe] terminal-probe: echo poll 340 glyphs=98
+[init -> terminal_probe] terminal-probe: echo poll 350 glyphs=98
+[init -> terminal_probe] terminal-probe: echo-poll focus: 'focus
+[init -> terminal_probe] -
+[init -> terminal_probe] '
+[init -> terminal_probe] terminal-probe: echo-poll hover: 'hover | label: pkg_runtime -> terminal -> terminal ->  | color: #ffffff | domain: term | xpos: 511 | ypos: 383
+[init -> terminal_probe] -
+[init -> terminal_probe] '
+[init -> terminal_probe] terminal-probe: echo poll 360 glyphs=98
+[init -> terminal_probe] terminal-probe: echo poll 370 glyphs=98
+[init -> terminal_probe] terminal-probe: echo poll 380 glyphs=98
+[init -> terminal_probe] terminal-probe: echo poll 390 glyphs=98
+[init -> terminal_probe] terminal-probe: echo poll 400 glyphs=98
+[init -> terminal_probe] terminal-probe: echo-poll focus: 'focus
+[init -> terminal_probe] -
+[init -> terminal_probe] '
+[init -> terminal_probe] terminal-probe: echo-poll hover: 'hover | label: pkg_runtime -> terminal -> terminal ->  | color: #ffffff | domain: term | xpos: 511 | ypos: 383
+[init -> terminal_probe] -
+[init -> terminal_probe] '
+[init -> terminal_probe] terminal-probe: echo poll 410 glyphs=98
+[init -> terminal_probe] terminal-probe: echo poll 420 glyphs=98
+[init -> terminal_probe] terminal-probe: echo poll 430 glyphs=98
+[init -> terminal_probe] terminal-probe: echo poll 440 glyphs=98
+[init -> terminal_probe] terminal-probe: echo poll 450 glyphs=98
+[init -> terminal_probe] terminal-probe: echo-poll focus: 'focus
+[init -> terminal_probe] -
+[init -> terminal_probe] '
+[init -> terminal_probe] terminal-probe: echo-poll hover: 'hover | label: pkg_runtime -> terminal -> terminal ->  | color: #ffffff | domain: term | xpos: 511 | ypos: 383
+[init -> terminal_probe] -
+[init -> terminal_probe] '
+[init -> terminal_probe] terminal-probe: echo poll 460 glyphs=98
+[init -> terminal_probe] terminal-probe: echo poll 470 glyphs=98
+[init -> terminal_probe] terminal-probe: echo poll 480 glyphs=98
+[init -> terminal_probe] terminal-probe: echo poll 490 glyphs=98
+[init -> terminal_probe] terminal-probe: echo poll 500 glyphs=98
+[init -> terminal_probe] terminal-probe: echo-poll focus: 'focus
+[init -> terminal_probe] -
+[init -> terminal_probe] '
+[init -> terminal_probe] terminal-probe: echo-poll hover: 'hover | label: pkg_runtime -> terminal -> terminal ->  | color: #ffffff | domain: term | xpos: 511 | ypos: 383
+[init -> terminal_probe] -
+[init -> terminal_probe] '
+[init -> terminal_probe] terminal-probe: echo poll 510 glyphs=98
+[init -> terminal_probe] terminal-probe: echo poll 520 glyphs=98
+[init -> terminal_probe] terminal-probe: echo poll 530 glyphs=98
+[init -> terminal_probe] terminal-probe: echo poll 540 glyphs=98
+[init -> terminal_probe] terminal-probe: echo poll 550 glyphs=98
+[init -> terminal_probe] terminal-probe: echo-poll focus: 'focus
+[init -> terminal_probe] -
+[init -> terminal_probe] '
+[init -> terminal_probe] terminal-probe: echo-poll hover: 'hover | label: pkg_runtime -> terminal -> terminal ->  | color: #ffffff | domain: term | xpos: 511 | ypos: 383
+[init -> terminal_probe] -
+[init -> terminal_probe] '
+[init -> terminal_probe] terminal-probe: echo poll 560 glyphs=98
+[init -> terminal_probe] terminal-probe: echo poll 570 glyphs=98
+[init -> terminal_probe] terminal-probe: echo poll 580 glyphs=98
+[init -> terminal_probe] terminal-probe: echo poll 590 glyphs=98
+[init -> terminal_probe] terminal-probe: echo poll 600 glyphs=98
+[init -> terminal_probe] terminal-probe: echo-poll focus: 'focus
+[init -> terminal_probe] -
+[init -> terminal_probe] '
+[init -> terminal_probe] terminal-probe: echo-poll hover: 'hover | label: pkg_runtime -> terminal -> terminal ->  | color: #ffffff | domain: term | xpos: 511 | ypos: 383
+[init -> terminal_probe] -
+[init -> terminal_probe] '
+[init -> terminal_probe] terminal-probe: echo poll 610 glyphs=98
+[init -> terminal_probe] terminal-probe: echo poll 620 glyphs=98
+[init -> terminal_probe] terminal-probe: echo poll 630 glyphs=98
+[init -> terminal_probe] terminal-probe: echo poll 640 glyphs=98
+[init -> terminal_probe] terminal-probe: echo poll 650 glyphs=98
+[init -> terminal_probe] terminal-probe: echo-poll focus: 'focus
+[init -> terminal_probe] -
+[init -> terminal_probe] '
+[init -> terminal_probe] terminal-probe: echo-poll hover: 'hover | label: pkg_runtime -> terminal -> terminal ->  | color: #ffffff | domain: term | xpos: 511 | ypos: 383
+[init -> terminal_probe] -
+[init -> terminal_probe] '
+[init -> terminal_probe] terminal-probe: echo poll 660 glyphs=98
+[init -> terminal_probe] terminal-probe: echo poll 670 glyphs=98
+[init -> terminal_probe] terminal-probe: echo poll 680 glyphs=98
+[init -> terminal_probe] terminal-probe: echo poll 690 glyphs=98
+[init -> terminal_probe] terminal-probe: echo poll 700 glyphs=98
+[init -> terminal_probe] terminal-probe: echo-poll focus: 'focus
+[init -> terminal_probe] -
+[init -> terminal_probe] '
+[init -> terminal_probe] terminal-probe: echo-poll hover: 'hover | label: pkg_runtime -> terminal -> terminal ->  | color: #ffffff | domain: term | xpos: 511 | ypos: 383
+[init -> terminal_probe] -
+[init -> terminal_probe] '
+[init -> terminal_probe] terminal-probe: echo poll 710 glyphs=98
+[init -> terminal_probe] terminal-probe: echo poll 720 glyphs=98
+[init -> terminal_probe] terminal-probe: echo poll 730 glyphs=98
+[init -> terminal_probe] terminal-probe: echo poll 740 glyphs=98
+[init -> terminal_probe] terminal-probe: echo poll 750 glyphs=98
+[init -> terminal_probe] terminal-probe: echo-poll focus: 'focus
+[init -> terminal_probe] -
+[init -> terminal_probe] '
+[init -> terminal_probe] terminal-probe: echo-poll hover: 'hover | label: pkg_runtime -> terminal -> terminal ->  | color: #ffffff | domain: term | xpos: 511 | ypos: 383
+[init -> terminal_probe] -
+[init -> terminal_probe] '
+[init -> terminal_probe] terminal-probe: echo poll 760 glyphs=98
+[init -> terminal_probe] terminal-probe: echo poll 770 glyphs=98
+[init -> terminal_probe] terminal-probe: echo poll 780 glyphs=98
+[init -> terminal_probe] terminal-probe: echo poll 790 glyphs=98
+[init -> terminal_probe] terminal-probe: echo poll 800 glyphs=98
+[init -> terminal_probe] terminal-probe: echo-poll focus: 'focus
+[init -> terminal_probe] -
+[init -> terminal_probe] '
+[init -> terminal_probe] terminal-probe: echo-poll hover: 'hover | label: pkg_runtime -> terminal -> terminal ->  | color: #ffffff | domain: term | xpos: 511 | ypos: 383
+[init -> terminal_probe] -
+[init -> terminal_probe] '
+[init -> terminal_probe] terminal-probe: echo poll 810 glyphs=98
+[init -> terminal_probe] terminal-probe: echo poll 820 glyphs=98
+[init -> terminal_probe] terminal-probe: echo poll 830 glyphs=98
+[init -> terminal_probe] terminal-probe: echo poll 840 glyphs=98
+[init -> terminal_probe] terminal-probe: echo poll 850 glyphs=98
+[init -> terminal_probe] terminal-probe: echo-poll focus: 'focus
+[init -> terminal_probe] -
+[init -> terminal_probe] '
+[init -> terminal_probe] terminal-probe: echo-poll hover: 'hover | label: pkg_runtime -> terminal -> terminal ->  | color: #ffffff | domain: term | xpos: 511 | ypos: 383
+[init -> terminal_probe] -
+[init -> terminal_probe] '
+[init -> terminal_probe] terminal-probe: echo poll 860 glyphs=98
+[init -> terminal_probe] terminal-probe: echo poll 870 glyphs=98
+[init -> terminal_probe] terminal-probe: echo poll 880 glyphs=98
+[init -> terminal_probe] terminal-probe: echo poll 890 glyphs=98
+[init -> terminal_probe] terminal-probe: echo poll 900 glyphs=98
+[init -> terminal_probe] terminal-probe: echo-poll focus: 'focus
+[init -> terminal_probe] -
+[init -> terminal_probe] '
+[init -> terminal_probe] terminal-probe: echo-poll hover: 'hover | label: pkg_runtime -> terminal -> terminal ->  | color: #ffffff | domain: term | xpos: 511 | ypos: 383
+[init -> terminal_probe] -
+[init -> terminal_probe] '
+[init -> terminal_probe] terminal-probe: echo poll 910 glyphs=98
+[init -> terminal_probe] terminal-probe: echo poll 920 glyphs=98
+[init -> terminal_probe] terminal-probe: echo poll 930 glyphs=98
+[init -> terminal_probe] terminal-probe: echo poll 940 glyphs=98
+[init -> terminal_probe] terminal-probe: echo poll 950 glyphs=98
+[init -> terminal_probe] terminal-probe: echo-poll focus: 'focus
+[init -> terminal_probe] -
+[init -> terminal_probe] '
+[init -> terminal_probe] terminal-probe: echo-poll hover: 'hover | label: pkg_runtime -> terminal -> terminal ->  | color: #ffffff | domain: term | xpos: 511 | ypos: 383
+[init -> terminal_probe] -
+[init -> terminal_probe] '
+[init -> terminal_probe] terminal-probe: echo poll 960 glyphs=98
+[init -> terminal_probe] terminal-probe: echo poll 970 glyphs=98
+[init -> terminal_probe] terminal-probe: echo poll 980 glyphs=98
+[init -> terminal_probe] terminal-probe: echo poll 990 glyphs=98
+[init -> terminal_probe] terminal-probe: echo poll 1000 glyphs=98
+[init -> terminal_probe] terminal-probe: echo-poll focus: 'focus
+[init -> terminal_probe] -
+[init -> terminal_probe] '
+[init -> terminal_probe] terminal-probe: echo-poll hover: 'hover | label: pkg_runtime -> terminal -> terminal ->  | color: #ffffff | domain: term | xpos: 511 | ypos: 383
+[init -> terminal_probe] -
+[init -> terminal_probe] '
+[init -> terminal_probe] terminal-probe: echo poll 1010 glyphs=98
+[init -> terminal_probe] terminal-probe: echo poll 1020 glyphs=98
+[init -> terminal_probe] terminal-probe: echo poll 1030 glyphs=98
+[init -> terminal_probe] terminal-probe: echo poll 1040 glyphs=98
+[init -> terminal_probe] terminal-probe: echo poll 1050 glyphs=98
+[init -> terminal_probe] terminal-probe: echo-poll focus: 'focus
+[init -> terminal_probe] -
+[init -> terminal_probe] '
+[init -> terminal_probe] terminal-probe: echo-poll hover: 'hover | label: pkg_runtime -> terminal -> terminal ->  | color: #ffffff | domain: term | xpos: 511 | ypos: 383
+[init -> terminal_probe] -
+[init -> terminal_probe] '
+[init -> terminal_probe] terminal-probe: echo poll 1060 glyphs=98
+[init -> terminal_probe] terminal-probe: echo poll 1070 glyphs=98
+[init -> terminal_probe] terminal-probe: echo poll 1080 glyphs=98
+[init -> terminal_probe] terminal-probe: echo poll 1090 glyphs=98
+[init -> terminal_probe] terminal-probe: echo poll 1100 glyphs=98
+[init -> terminal_probe] terminal-probe: echo-poll focus: 'focus
+[init -> terminal_probe] -
+[init -> terminal_probe] '
+[init -> terminal_probe] terminal-probe: echo-poll hover: 'hover | label: pkg_runtime -> terminal -> terminal ->  | color: #ffffff | domain: term | xpos: 511 | ypos: 383
+[init -> terminal_probe] -
+[init -> terminal_probe] '
+[init -> terminal_probe] terminal-probe: echo poll 1110 glyphs=98
+[init -> terminal_probe] terminal-probe: echo poll 1120 glyphs=98
+[init -> terminal_probe] terminal-probe: echo poll 1130 glyphs=98
+[init -> terminal_probe] terminal-probe: echo poll 1140 glyphs=98
+[init -> terminal_probe] terminal-probe: echo poll 1150 glyphs=98
+[init -> terminal_probe] terminal-probe: echo-poll focus: 'focus
+[init -> terminal_probe] -
+[init -> terminal_probe] '
+[init -> terminal_probe] terminal-probe: echo-poll hover: 'hover | label: pkg_runtime -> terminal -> terminal ->  | color: #ffffff | domain: term | xpos: 511 | ypos: 383
+[init -> terminal_probe] -
+[init -> terminal_probe] '
+[init -> terminal_probe] terminal-probe: echo poll 1160 glyphs=98
+[init -> terminal_probe] terminal-probe: echo poll 1170 glyphs=98
+[init -> terminal_probe] terminal-probe: echo poll 1180 glyphs=98
+[init -> terminal_probe] terminal-probe: echo poll 1190 glyphs=98
+[init -> terminal_probe] [31mError: terminal-probe: FAIL keystroke did not round-trip to a render change[0m
+[init] child "terminal_probe" exited with exit value 1
+[34mWarning: flush page table entries - mapping cache full - PD: init -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> drivers -> fb out of CAP[0m
+qmp: secondary glyph-delta gate did NOT fire (timeout) - primary audit chain still passes
+
+Run script execution successful.
+make: ディレクトリ '/home/luke/sponge-os/genode/build/x86_64' から出ます
+EXIT=0
