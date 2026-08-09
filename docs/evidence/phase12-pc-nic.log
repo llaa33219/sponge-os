@@ -1,0 +1,922 @@
+make: ディレクトリ '/home/luke/sponge-os/genode/build/x86_64'　に入ります
+including /home/luke/sponge-os/genode/tool/run/power_on/qemu
+including /home/luke/sponge-os/genode/tool/run/log/qemu
+including /home/luke/sponge-os/genode/tool/run/image/iso
+including /home/luke/sponge-os/genode/tool/run/boot_dir/sel4
+including /home/luke/sponge-os/repos/sponge/run/sponge-pc-nic.run
+building targets:  core lib/ld init timer server/report_rom driver/acpi app/pci_decode driver/platform driver/nic/pc server/nic_router 
+spawn make core lib/ld init timer server/report_rom driver/acpi app/pci_decode driver/platform driver/nic/pc server/nic_router
+make[1]: ディレクトリ '/home/luke/sponge-os/genode/build/x86_64' に入ります
+Skip target driver/nic/pc/spec/x86_32 because it requires 'x86_32'
+Skip target driver/platform/pc/spec/x86_32 because it requires 'x86_32'
+  [00;33mLibrary[0m ld.abi.so
+  [00;33mLibrary[0m ldso_so_support.lib.a
+  [00;33mLibrary[0m kernel-sel4-pc.lib.a
+ninja: Jobserver mode detected:  -j80 --jobserver-auth=fifo:/tmp/GMfifo2072880 --no-print-directory -- DEBUG_DIR=/home/luke/sponge-os/genode/build/x86_64/debug INSTALL_DIR=/home/luke/sponge-os/genode/build/x86_64/bin BUILD_BASE_DIR=/home/luke/sponge-os/genode/build/x86_64 SHARED_LIBS= ARCHIVES= LIB=kernel-sel4-pc LIB_MK=/home/luke/sponge-os/genode/repos/base-sel4/lib/mk/spec/x86_64/kernel-sel4-pc.mk REP_DIR=/home/luke/sponge-os/genode/repos/base-sel4 KERNEL=sel4 BOARD=pc SHELL=/usr/bin/bash
+ninja: no work to do.
+  [00;33mLibrary[0m syscall-sel4-pc.lib.a
+  [00;33mLibrary[0m syscall-sel4.lib.a
+  [00;33mLibrary[0m startup-sel4.lib.a
+  [00;33mLibrary[0m base-sel4-common.lib.a
+  [00;33mLibrary[0m timeout.lib.a
+  [00;33mLibrary[0m cxx.lib.a
+  [00;33mLibrary[0m base-sel4.lib.a
+  [00;33mLibrary[0m ld-sel4.lib.so
+  [00;33mLibrary[0m ld.lib.so
+  [00;33mLibrary[0m base.lib.a
+  [01;33mProgram[0m app/pci_decode/pci_decode
+  [00;33mLibrary[0m core-sel4.lib.a
+    COMPILE  version.o
+    MERGE    core-sel4.lib.a
+  [01;33mProgram[0m core/sel4/core
+  [01;33mProgram[0m driver/acpi/spec/x86/acpi
+  [00;33mLibrary[0m pc_lx_emul.lib.a
+  [00;33mLibrary[0m jitterentropy.lib.a
+  [00;33mLibrary[0m pc_linux_generated.lib.a
+  [01;33mProgram[0m driver/nic/pc/spec/x86_64/pc_nic
+  [01;33mProgram[0m driver/platform/pc/spec/x86_64/pc_platform
+  [01;33mProgram[0m driver/platform/platform
+  [01;33mProgram[0m init/init
+  [00;33mLibrary[0m net.lib.a
+  [01;33mProgram[0m server/nic_router/nic_router
+  [01;33mProgram[0m server/report_rom/report_rom
+  [01;33mProgram[0m timer/hpet/hpet_timer
+make[1]: ディレクトリ '/home/luke/sponge-os/genode/build/x86_64' から出ます
+genode build completed
+building targets: kernel/sel4 lib/ld-sel4
+spawn make kernel/sel4 lib/ld-sel4
+make[1]: ディレクトリ '/home/luke/sponge-os/genode/build/x86_64' に入ります
+  [00;33mLibrary[0m kernel-sel4-pc.lib.a
+ninja: Jobserver mode detected:  -j80 --jobserver-auth=fifo:/tmp/GMfifo2073214 --no-print-directory -- DEBUG_DIR=/home/luke/sponge-os/genode/build/x86_64/debug INSTALL_DIR=/home/luke/sponge-os/genode/build/x86_64/bin BUILD_BASE_DIR=/home/luke/sponge-os/genode/build/x86_64 SHARED_LIBS= ARCHIVES= LIB=kernel-sel4-pc LIB_MK=/home/luke/sponge-os/genode/repos/base-sel4/lib/mk/spec/x86_64/kernel-sel4-pc.mk REP_DIR=/home/luke/sponge-os/genode/repos/base-sel4 KERNEL=sel4 BOARD=pc SHELL=/usr/bin/bash
+ninja: no work to do.
+  [00;33mLibrary[0m syscall-sel4-pc.lib.a
+  [00;33mLibrary[0m syscall-sel4.lib.a
+  [00;33mLibrary[0m startup-sel4.lib.a
+  [00;33mLibrary[0m base-sel4-common.lib.a
+  [00;33mLibrary[0m timeout.lib.a
+  [00;33mLibrary[0m cxx.lib.a
+  [00;33mLibrary[0m base-sel4.lib.a
+  [00;33mLibrary[0m ldso_so_support.lib.a
+  [00;33mLibrary[0m ld-sel4.lib.so
+  [01;33mProgram[0m kernel/sel4/sel4-pc
+make[1]: ディレクトリ '/home/luke/sponge-os/genode/build/x86_64' から出ます
+genode build completed
+using 'core-sel4.a' as 'core.a'
+using 'hpet_timer' as 'timer'
+using 'ld-sel4.lib.so' as 'ld.lib.so'
+install bootloader
+creating ISO image...
+xorriso 1.5.8.pl02 : RockRidge filesystem manipulator, libburnia project.
+
+spawn qemu-system-x86_64 -accel kvm -machine q35 -cpu Skylake-Client -nographic -m 1G -serial mon:stdio -cdrom var/run/sponge-pc-nic.iso -machine q35 -net nic,model=e1000,netdev=net0 -netdev user,id=net0
+qemu-system-x86_64: warning: host doesn't support requested feature: CPUID[eax=0Dh,ecx=01h].EAX.xsavec [bit 1]
+qemu-system-x86_64: warning: host doesn't support requested feature: CPUID[eax=0Dh,ecx=01h].EAX.xgetbv1 [bit 2]
+c[?7l[2J[0mSeaBIOS (version Arch Linux 1.17.0-2-2)
+
+
+iPXE (http://ipxe.org) 00:02.0 C900 PCI2.10 PnP PMM+3EFD3DA0+3EF33DA0 C900
+Press Ctrl-B to configure iPXE (PCI 00:02.0)...                                                                               
+
+
+Booting from Hard Disk...
+Boot failed: could not read the boot disk
+
+Booting from DVD/CD...
+error: can't find command `loadfont'.
+  Booting `Genode on seL4'
+
+[01;01H
+Bender Version 0.9-beta7-51-g28ba2ad-dirty
+Patching BDA with I/O port 0x3f8.
+Bender: Hello World.
+hwp config: eeo=na irq=na hwp=na epp=na epb=na
+Boot config: debug_port = 0x3f8
+Boot config: disable_iommu = true
+  module #0: start=0xf6e0000 end=0xfdf63c0 size=0x7163c0 name='image.elf'
+	Physical Memory Region from 0 size 9fc00 type 1
+	Physical Memory Region from 9fc00 size 400 type 2
+	Physical Memory Region from f0000 size 10000 type 2
+	Physical Memory Region from 100000 size 3fedf000 type 1
+Adding physical memory region 0x100000-0x3ffdf000
+	Physical Memory Region from 3ffdf000 size 21000 type 2
+	Physical Memory Region from b0000000 size 10000000 type 2
+	Physical Memory Region from fed1c000 size 4000 type 2
+	Physical Memory Region from feffc000 size 4000 type 2
+	Physical Memory Region from fffc0000 size 40000 type 2
+Got framebuffer info in multiboot2. Current video mode is at physical address=fd000000 pitch=5120 resolution=1280x800@32 type=1
+Detected 1 boot module(s):
+Kernel loaded to: start=0x200000 end=0xe3e000 size=0xc3e000 entry=0x200298
+ACPI: RSDT paddr=0x3ffe2344
+ACPI: RSDT vaddr=0x3ffe2344
+ACPI: FADT paddr=0x3ffe213c
+ACPI: FADT vaddr=0x3ffe213c
+ACPI: FADT flags=0x84a5
+ACPI: MADT paddr=0x3ffe2230
+ACPI: MADT vaddr=0x3ffe2230
+ACPI: MADT apic_addr=0xfee00000
+ACPI: MADT flags=0x1
+ACPI: MADT_APIC apic_id=0x0
+ACPI: MADT_IOAPIC ioapic_id=0 ioapic_addr=0xfec00000 gsib=0
+ACPI: MADT_ISO bus=0 source=0 gsi=2 flags=0x0
+ACPI: MADT_ISO bus=0 source=5 gsi=5 flags=0xd
+ACPI: MADT_ISO bus=0 source=9 gsi=9 flags=0xd
+ACPI: MADT_ISO bus=0 source=10 gsi=10 flags=0xd
+ACPI: MADT_ISO bus=0 source=11 gsi=11 flags=0xd
+ACPI: 1 CPU(s) detected
+ELF-loading userland images from boot modules:
+size=0x20f4000 v_entry=0x2000018 v_start=0x2000000 v_end=0x40f4000 p_start=0xfdf7000 p_end=0x11eeb000
+Moving loaded userland images to final location: from=0xfdf7000 to=0xe3e000 size=0x20f4000
+Starting node #0 with APIC ID 0
+Mapping kernel window is done
+vt-x: not supported
+available phys memory regions: 1
+  [100000..3ffdf000]
+reserved virt address space regions: 1
+  [ffffff8000200000..ffffff8002f32000]
+Booting all finished, dropped to user space
+[34mWarning: device memory in range [0000000800000000,0000001000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000001000000000,0000002000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000002000000000,0000004000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000004000000000,0000008000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000008000000000,0000408000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000408000000000,0000608000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000608000000000,0000708000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000708000000000,0000788000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000788000000000,00007c8000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [00007c8000000000,00007e8000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [00007e8000000000,00007f8000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [00007f8000000000,0000800000000000) is unavailable (due to limited untyped cnode range)[0m
+:phys_mem_16k:     Allocator 0x217a258 dump:
+ Block: [0000000000100000,0000000000a00000) size=9M avail=9M max_avail=9M
+ Block: [0000000002f34000,0000000003000000) size=816K avail=816K max_avail=88528K
+ Block: [0000000008000000,000000000d674000) size=88528K avail=88528K max_avail=88528K
+ => mem_size=100925440 (96 MB) / mem_avail=100925440 (96 MB)
+
+[34mWarning: device memory in range [0000000200000000,0000000400000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000000400000000,0000000800000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000000800000000,0000001000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000001000000000,0000002000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000002000000000,0000004000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000004000000000,0000008000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000008000000000,0000408000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000408000000000,0000608000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000608000000000,0000708000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000708000000000,0000788000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000788000000000,00007c8000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [00007c8000000000,00007e8000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [00007e8000000000,00007f8000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [00007f8000000000,0000800000000000) is unavailable (due to limited untyped cnode range)[0m
+virtual address layout of core:
+ overall    [0000000000002000,0000001000000000)
+ core image [0000000002000000,00000000040f4000)
+ ipc buffer [00000000040f4000,00000000040f5000)
+ boot_info  [00000000040f5000,00000000040f6542)
+ stack area [0000000040000000,0000000050000000)
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+Physical memory per PD at most: 512M
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+boot module 'config' (1935 bytes)
+boot module 'acpi' (190328 bytes)
+boot module 'timer' (144744 bytes)
+boot module 'init' (516744 bytes)
+boot module 'init.hsd' (4125 bytes)
+boot module 'init.xsd' (8118 bytes)
+boot module 'ld.lib.so' (1112464 bytes)
+boot module 'nic_router' (609088 bytes)
+boot module 'nic_router.hsd' (4758 bytes)
+boot module 'nic_router.xsd' (7871 bytes)
+boot module 'pc_nic' (1760344 bytes)
+boot module 'pc_platform' (724960 bytes)
+boot module 'pci_decode' (171336 bytes)
+boot module 'platform' (598984 bytes)
+boot module 'report_rom' (150784 bytes)
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+Genode v0.1.1-alpha <local changes>
+600 MiB RAM and 523288 caps assigned to init
+[init -> acpi] Found MADT
+[init -> acpi] MADT IRQ 0 -> GSI 2 flags: 0
+[init -> acpi] MADT IRQ 5 -> GSI 5 flags: 13
+[init -> acpi] MADT IRQ 9 -> GSI 9 flags: 13
+[init -> acpi] MADT IRQ 10 -> GSI 10 flags: 13
+[init -> acpi] MADT IRQ 11 -> GSI 11 flags: 13
+[init -> acpi] Found HPET hw_id=0x1  vendor_id=0x8086 space_id=0x0 addr=0xfed00000 hpet_id=0x0
+[init -> acpi] Found MCFG
+[init -> acpi] MCFG BASE 0xb0000000 seg 0x0 bus 0x0-0xff
+[init -> acpi] RSDT OEM 'BOCHS ', table id 'BXPC    ', revision 1, creator 'BXPC' (1)
+[init -> timer] timers=3, clock 10000000fs , 64bit counter , legacy routing support vendor=0x8086
+[init -> timer] timer0 GSI options 0xff0104, supports periodic
+[init -> timer] timer1 GSI options 0xff0104, supports periodic
+[init -> timer] timer2 GSI options 0xff0104, supports periodic
+[init -> timer] time wraps after 5849 years
+[init -> timer] irqs=off legacy=off
+[init -> timer] Using timer 2 -> using GSI 2 edge triggered
+[init -> drivers_reports] report 'acpi -> acpi'
+[init -> drivers_reports]   acpi
+[init -> drivers_reports]   + sci_int | irq: 9
+[init -> drivers_reports]   + reset | io_port: 0xcf9 | value: 15
+[init -> drivers_reports]   + table WAET | addr: 0x3ffe231c | size: 40
+[init -> drivers_reports]   + table MCFG | addr: 0x3ffe22e0 | size: 60
+[init -> drivers_reports]   + table HPET | addr: 0x3ffe22a8 | size: 56
+[init -> drivers_reports]   + table APIC | addr: 0x3ffe2230 | size: 120
+[init -> drivers_reports]   + table DSDT | addr: 0x3ffe0040 | size: 8444
+[init -> drivers_reports]   + table FACP | addr: 0x3ffe213c | size: 244
+[init -> drivers_reports]   + table RSDT | addr: 0x3ffe2344 | size: 56
+[init -> drivers_reports]   + root_bridge | bdf: 0x0
+[init -> drivers_reports]   + bdf | start: 0 | count: 65536 | base: 0xb0000000
+[init -> drivers_reports]   + irq_override | irq: 11 | gsi: 11 | flags: 0xd
+[init -> drivers_reports]   + irq_override | irq: 10 | gsi: 10 | flags: 0xd
+[init -> drivers_reports]   + irq_override | irq: 9 | gsi: 9 | flags: 0xd
+[init -> drivers_reports]   + irq_override | irq: 5 | gsi: 5 | flags: 0xd
+[init -> drivers_reports]   + irq_override | irq: 0 | gsi: 2 | flags: 0x0
+[init -> drivers_reports]   + ioapic | id: 0 | base_irq: 0 | addr: 0xfec00000
+[init -> drivers_reports]   -
+[init -> nic_router] [uplink] dynamic IP config: none
+[init -> nic_router] [uplink] NIC sessions: 0
+[init -> drivers_reports] report 'pci_decode -> devices'
+[init -> drivers_reports]   devices
+[init -> drivers_reports]   + device 00:00.0 | type: pci
+[init -> drivers_reports]     + pci-config | address: 0xb0000000 | bus: 0x0 | device: 0x0 | function: 0x0 | vendor_id: 0x8086 | device_id: 0x29c0 | class: 0x60000 | revision: 0x0 | bridge: yes | io_base_limit: 0x0 | memory_base:
+[init -> drivers_reports]    0x0 | memory_limit: 0x0 | prefetch_memory_base: 0x0 | prefetch_memory_base_upper: 0x0 | prefetch_memory_limit_upper: 0x11001af4 | io_base_limit_upper: 0x0 | expansion_rom_base: 0x0 | bridge_control: 
+[init -> drivers_reports]   0x0
+[init -> drivers_reports]   + device 00:01.0 | type: pci
+[init -> drivers_reports]     + pci-config | address: 0xb0008000 | bus: 0x0 | device: 0x1 | function: 0x0 | vendor_id: 0x1234 | device_id: 0x1111 | class: 0x30000 | revision: 0x2 | bridge: no | sub_vendor_id: 0x1af4 | sub_device
+[init -> acpi] [34mWarning: SMBIOSv3 entry point invalid[0m
+[init -> acpi] SMBIOSv2 table (entry point: 0x1b6520 structures: 0xf6540)
+[init -> drivers_reports]   _id: 0x1100
+[init -> drivers_reports]     + io_mem | pci_bar: 0 | address: 0xfd000000 | size: 0x1000000 | prefetchable: true | wc: true
+[init -> drivers_reports]     + io_mem | pci_bar: 2 | address: 0xfebf0000 | size: 0x1000
+[init -> drivers_reports]   + device 00:02.0 | type: pci
+[init -> drivers_reports]     + pci-config | address: 0xb0010000 | bus: 0x0 | device: 0x2 | function: 0x0 | vendor_id: 0x8086 | device_id: 0x100e | class: 0x20000 | revision: 0x3 | bridge: no | sub_vendor_id: 0x1af4 | sub_device
+[init -> drivers_reports]   _id: 0x1100
+[init -> drivers_reports]     + io_mem | pci_bar: 0 | address: 0xfebc0000 | size: 0x20000
+[init -> drivers_reports]     + io_port_range | pci_bar: 1 | address: 0xc000 | size: 0x40
+[init -> drivers_reports]     + irq | polarity: high | mode: level | number: 11
+[init -> drivers_reports]   + device 00:1f.0 | type: pci
+[init -> drivers_reports]     + pci-config | address: 0xb00f8000 | bus: 0x0 | device: 0x1f | function: 0x0 | vendor_id: 0x8086 | device_id: 0x2918 | class: 0x60100 | revision: 0x2 | bridge: yes | io_base_limit: 0x0 | memory_base
+[init -> drivers_reports]   : 0x0 | memory_limit: 0x0 | prefetch_memory_base: 0x0 | prefetch_memory_base_upper: 0x0 | prefetch_memory_limit_upper: 0x11001af4 | io_base_limit_upper: 0x0 | expansion_rom_base: 0x0 | bridge_control:
+[init -> drivers_reports]    0x0
+[init -> drivers_reports]   + device 00:1f.2 | type: pci | msi: 1
+[init -> drivers_reports]     + pci-config | address: 0xb00fa000 | bus: 0x0 | device: 0x1f | function: 0x2 | vendor_id: 0x8086 | device_id: 0x2922 | class: 0x10601 | revision: 0x2 | bridge: no | sub_vendor_id: 0x1af4 | sub_devic
+[init -> drivers_reports]   e_id: 0x1100
+[init -> drivers_reports]     + io_port_range | pci_bar: 4 | address: 0xc080 | size: 0x20
+[init -> drivers_reports]     + io_mem | pci_bar: 5 | address: 0xfebf1000 | size: 0x1000
+[init -> drivers_reports]     + irq | polarity: high | mode: level | number: 10
+[init -> drivers_reports]   + device 00:1f.3 | type: pci
+[init -> drivers_reports]     + pci-config | address: 0xb00fb000 | bus: 0x0 | device: 0x1f | function: 0x3 | vendor_id: 0x8086 | device_id: 0x2930 | class: 0xc0500 | revision: 0x2 | bridge: no | sub_vendor_id: 0x1af4 | sub_devic
+[init -> drivers_reports]   e_id: 0x1100
+[init -> drivers_reports]     + io_port_range | pci_bar: 4 | address: 0x700 | size: 0x40
+[init -> drivers_reports]     + irq | polarity: high | mode: level | number: 10
+[init -> drivers_reports]   + device ps2
+[init -> drivers_reports]     + irq | number: 1
+[init -> drivers_reports]     + irq | number: 12
+[init -> drivers_reports]     + io_port_range | address: 0x60 | size: 1
+[init -> drivers_reports]     + io_port_range | address: 0x64 | size: 1
+[init -> drivers_reports]   + device pit
+[init -> drivers_reports]     + irq | number: 0
+[init -> drivers_reports]     + io_port_range | address: 0x40 | size: 4
+[init -> drivers_reports]   + device acpi | type: acpi
+[init -> drivers_reports]     + irq | number: 9
+[init -> drivers_reports]   + device ioapic0 | type: ioapic
+[init -> drivers_reports]     + io_mem | address: 0xfec00000 | size: 0x1000
+[init -> drivers_reports]     + property irq_start | value: 0
+[init -> drivers_reports]   + device INT34C5 | type: acpi
+[init -> drivers_reports]     + irq | number: 14 | mode: level | polarity: low
+[init -> drivers_reports]     + io_mem | address: 0xfd690000 | size: 0x1000
+[init -> drivers_reports]     + io_mem | address: 0xfd6a0000 | size: 0x1000
+[init -> drivers_reports]     + io_mem | address: 0xfd6d0000 | size: 0x1000
+[init -> drivers_reports]     + io_mem | address: 0xfd6e0000 | size: 0x1000
+[init -> drivers_reports]   + device STARLITE_TOUCH | type: acpi
+[init -> drivers_reports]     + irq | number: 104 | mode: level | polarity: low
+[init -> drivers_reports]   + device INTC1083 | type: acpi
+[init -> drivers_reports]     + irq | number: 14 | mode: level | polarity: low
+[init -> drivers_reports]     + io_mem | address: 0xe0d50000 | size: 0x1000
+[init -> drivers_reports]     + io_mem | address: 0xe0d40000 | size: 0x1000
+[init -> drivers_reports]     + io_mem | address: 0xe0d30000 | size: 0x1000
+[init -> drivers_reports]     + io_mem | address: 0xe0d20000 | size: 0x1000
+[init -> drivers_reports]     + io_mem | address: 0xe0d10000 | size: 0x1000
+[init -> drivers_reports]   -
+[init -> drivers_reports] report 'acpi -> smbios_table'
+[init -> drivers_reports]   _SM_-L
+[init -> pc_nic]   0x1000000 .. 0x16dfffff: linker area
+[init -> pc_nic]   0x40000000 .. 0x4fffffff: stack area
+[init -> pc_nic]   0x30000 .. 0x198fff: ld.lib.so
+[init -> pc_nic] SLUB: HWalign=64, Order=0-1, MinObjects=0, CPUs=1, Nodes=1
+[init -> pc_nic] NR_IRQS: 4352, nr_irqs: 4352, preallocated irqs: 256
+[init -> pc_nic] clocksource: dde_counter: mask: 0xffffffffffffff max_cycles: 0x1d854df40, max_idle_ns: 3526361616960 ns
+[init -> pc_nic] clocksource: jiffies: mask: 0xffffffff max_cycles: 0xffffffff, max_idle_ns: 7645041785100000 ns
+[init -> pc_nic] clocksource: Switched to clocksource dde_counter
+[init -> pc_nic] netdev: Intel(R) PRO/1000 Network Driver
+spawn qemu-system-x86_64 -accel kvm -machine q35 -cpu Skylake-Client -nographic -m 1G -serial mon:stdio -cdrom var/run/sponge-pc-nic.iso -machine q35 -net nic,model=e1000,netdev=net0 -netdev user,id=net0
+qemu-system-x86_64: warning: host doesn't support requested feature: CPUID[eax=0Dh,ecx=01h].EAX.xsavec [bit 1]
+qemu-system-x86_64: warning: host doesn't support requested feature: CPUID[eax=0Dh,ecx=01h].EAX.xgetbv1 [bit 2]
+c[?7l[2J[0mSeaBIOS (version Arch Linux 1.17.0-2-2)
+
+
+iPXE (http://ipxe.org) 00:02.0 C900 PCI2.10 PnP PMM+3EFD3DA0+3EF33DA0 C900
+Press Ctrl-B to configure iPXE (PCI 00:02.0)...                                                                               
+
+
+Booting from Hard Disk...
+Boot failed: could not read the boot disk
+
+Booting from DVD/CD...
+error: can't find command `loadfont'.
+  Booting `Genode on seL4'
+
+[01;01H
+Bender Version 0.9-beta7-51-g28ba2ad-dirty
+Patching BDA with I/O port 0x3f8.
+Bender: Hello World.
+hwp config: eeo=na irq=na hwp=na epp=na epb=na
+Boot config: debug_port = 0x3f8
+Boot config: disable_iommu = true
+  module #0: start=0xf6e0000 end=0xfdf63c0 size=0x7163c0 name='image.elf'
+	Physical Memory Region from 0 size 9fc00 type 1
+	Physical Memory Region from 9fc00 size 400 type 2
+	Physical Memory Region from f0000 size 10000 type 2
+	Physical Memory Region from 100000 size 3fedf000 type 1
+Adding physical memory region 0x100000-0x3ffdf000
+	Physical Memory Region from 3ffdf000 size 21000 type 2
+	Physical Memory Region from b0000000 size 10000000 type 2
+	Physical Memory Region from fed1c000 size 4000 type 2
+	Physical Memory Region from feffc000 size 4000 type 2
+	Physical Memory Region from fffc0000 size 40000 type 2
+Got framebuffer info in multiboot2. Current video mode is at physical address=fd000000 pitch=5120 resolution=1280x800@32 type=1
+Detected 1 boot module(s):
+Kernel loaded to: start=0x200000 end=0xe3e000 size=0xc3e000 entry=0x200298
+ACPI: RSDT paddr=0x3ffe2344
+ACPI: RSDT vaddr=0x3ffe2344
+ACPI: FADT paddr=0x3ffe213c
+ACPI: FADT vaddr=0x3ffe213c
+ACPI: FADT flags=0x84a5
+ACPI: MADT paddr=0x3ffe2230
+ACPI: MADT vaddr=0x3ffe2230
+ACPI: MADT apic_addr=0xfee00000
+ACPI: MADT flags=0x1
+ACPI: MADT_APIC apic_id=0x0
+ACPI: MADT_IOAPIC ioapic_id=0 ioapic_addr=0xfec00000 gsib=0
+ACPI: MADT_ISO bus=0 source=0 gsi=2 flags=0x0
+ACPI: MADT_ISO bus=0 source=5 gsi=5 flags=0xd
+ACPI: MADT_ISO bus=0 source=9 gsi=9 flags=0xd
+ACPI: MADT_ISO bus=0 source=10 gsi=10 flags=0xd
+ACPI: MADT_ISO bus=0 source=11 gsi=11 flags=0xd
+ACPI: 1 CPU(s) detected
+ELF-loading userland images from boot modules:
+size=0x20f4000 v_entry=0x2000018 v_start=0x2000000 v_end=0x40f4000 p_start=0xfdf7000 p_end=0x11eeb000
+Moving loaded userland images to final location: from=0xfdf7000 to=0xe3e000 size=0x20f4000
+Starting node #0 with APIC ID 0
+Mapping kernel window is done
+vt-x: not supported
+available phys memory regions: 1
+  [100000..3ffdf000]
+reserved virt address space regions: 1
+  [ffffff8000200000..ffffff8002f32000]
+Booting all finished, dropped to user space
+[34mWarning: device memory in range [0000000800000000,0000001000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000001000000000,0000002000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000002000000000,0000004000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000004000000000,0000008000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000008000000000,0000408000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000408000000000,0000608000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000608000000000,0000708000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000708000000000,0000788000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000788000000000,00007c8000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [00007c8000000000,00007e8000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [00007e8000000000,00007f8000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [00007f8000000000,0000800000000000) is unavailable (due to limited untyped cnode range)[0m
+:phys_mem_16k:     Allocator 0x217a258 dump:
+ Block: [0000000000100000,0000000000a00000) size=9M avail=9M max_avail=9M
+ Block: [0000000002f34000,0000000003000000) size=816K avail=816K max_avail=88528K
+ Block: [0000000008000000,000000000d674000) size=88528K avail=88528K max_avail=88528K
+ => mem_size=100925440 (96 MB) / mem_avail=100925440 (96 MB)
+
+[34mWarning: device memory in range [0000000200000000,0000000400000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000000400000000,0000000800000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000000800000000,0000001000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000001000000000,0000002000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000002000000000,0000004000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000004000000000,0000008000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000008000000000,0000408000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000408000000000,0000608000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000608000000000,0000708000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000708000000000,0000788000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000788000000000,00007c8000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [00007c8000000000,00007e8000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [00007e8000000000,00007f8000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [00007f8000000000,0000800000000000) is unavailable (due to limited untyped cnode range)[0m
+virtual address layout of core:
+ overall    [0000000000002000,0000001000000000)
+ core image [0000000002000000,00000000040f4000)
+ ipc buffer [00000000040f4000,00000000040f5000)
+ boot_info  [00000000040f5000,00000000040f6542)
+ stack area [0000000040000000,0000000050000000)
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+Physical memory per PD at most: 512M
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+boot module 'config' (1935 bytes)
+boot module 'acpi' (190328 bytes)
+boot module 'timer' (144744 bytes)
+boot module 'init' (516744 bytes)
+boot module 'init.hsd' (4125 bytes)
+boot module 'init.xsd' (8118 bytes)
+boot module 'ld.lib.so' (1112464 bytes)
+boot module 'nic_router' (609088 bytes)
+boot module 'nic_router.hsd' (4758 bytes)
+boot module 'nic_router.xsd' (7871 bytes)
+boot module 'pc_nic' (1760344 bytes)
+boot module 'pc_platform' (724960 bytes)
+boot module 'pci_decode' (171336 bytes)
+boot module 'platform' (598984 bytes)
+boot module 'report_rom' (150784 bytes)
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+Genode v0.1.1-alpha <local changes>
+600 MiB RAM and 523288 caps assigned to init
+[init -> timer] timers=3, clock 10000000fs , 64bit counter , legacy routing support vendor=0x8086
+[init -> timer] timer0 GSI options 0xff0104, supports periodic
+[init -> timer] timer1 GSI options 0xff0104, supports periodic
+[init -> timer] timer2 GSI options 0xff0104, supports periodic
+[init -> timer] time wraps after 5849 years
+[init -> timer] irqs=off legacy=off
+[init -> acpi] Found MADT
+[init -> acpi] MADT IRQ 0 -> GSI 2 flags: 0
+[init -> acpi] MADT IRQ 5 -> GSI 5 flags: 13
+[init -> acpi] MADT IRQ 9 -> GSI 9 flags: 13
+[init -> acpi] MADT IRQ 10 -> GSI 10 flags: 13
+[init -> acpi] MADT IRQ 11 -> GSI 11 flags: 13
+[init -> acpi] Found HPET hw_id=0x1  vendor_id=0x8086 space_id=0x0 addr=0xfed00000 hpet_id=0x0
+[init -> timer] Using timer 2 -> using GSI 2 edge triggered
+[init -> acpi] Found MCFG
+[init -> acpi] MCFG BASE 0xb0000000 seg 0x0 bus 0x0-0xff
+[init -> acpi] RSDT OEM 'BOCHS ', table id 'BXPC    ', revision 1, creator 'BXPC' (1)
+[init -> drivers_reports] report 'acpi -> acpi'
+[init -> drivers_reports]   acpi
+[init -> drivers_reports]   + sci_int | irq: 9
+[init -> drivers_reports]   + reset | io_port: 0xcf9 | value: 15
+[init -> drivers_reports]   + table WAET | addr: 0x3ffe231c | size: 40
+[init -> drivers_reports]   + table MCFG | addr: 0x3ffe22e0 | size: 60
+[init -> drivers_reports]   + table HPET | addr: 0x3ffe22a8 | size: 56
+[init -> drivers_reports]   + table APIC | addr: 0x3ffe2230 | size: 120
+[init -> drivers_reports]   + table DSDT | addr: 0x3ffe0040 | size: 8444
+[init -> drivers_reports]   + table FACP | addr: 0x3ffe213c | size: 244
+[init -> drivers_reports]   + table RSDT | addr: 0x3ffe2344 | size: 56
+[init -> drivers_reports]   + root_bridge | bdf: 0x0
+[init -> drivers_reports]   + bdf | start: 0 | count: 65536 | base: 0xb0000000
+[init -> drivers_reports]   + irq_override | irq: 11 | gsi: 11 | flags: 0xd
+[init -> drivers_reports]   + irq_override | irq: 10 | gsi: 10 | flags: 0xd
+[init -> drivers_reports]   + irq_override | irq: 9 | gsi: 9 | flags: 0xd
+[init -> drivers_reports]   + irq_override | irq: 5 | gsi: 5 | flags: 0xd
+[init -> drivers_reports]   + irq_override | irq: 0 | gsi: 2 | flags: 0x0
+[init -> drivers_reports]   + ioapic | id: 0 | base_irq: 0 | addr: 0xfec00000
+[init -> drivers_reports]   -
+[init -> nic_router] [uplink] dynamic IP config: none
+[init -> nic_router] [uplink] NIC sessions: 0
+[init -> acpi] [34mWarning: SMBIOSv3 entry point invalid[0m
+[init -> acpi] SMBIOSv2 table (entry point: 0x1b6520 structures: 0xf6540)
+[init -> drivers_reports] report 'pci_decode -> devices'
+[init -> drivers_reports]   devices
+[init -> drivers_reports]   + device 00:00.0 | type: pci
+[init -> drivers_reports]     + pci-config | address: 0xb0000000 | bus: 0x0 | device: 0x0 | function: 0x0 | vendor_id: 0x8086 | device_id: 0x29c0 | class: 0x60000 | revision: 0x0 | bridge: yes | io_base_limit: 0x0 | memory_base:
+[init -> drivers_reports]    0x0 | memory_limit: 0x0 | prefetch_memory_base: 0x0 | prefetch_memory_base_upper: 0x0 | prefetch_memory_limit_upper: 0x11001af4 | io_base_limit_upper: 0x0 | expansion_rom_base: 0x0 | bridge_control: 
+[init -> drivers_reports]   0x0
+[init -> drivers_reports]   + device 00:01.0 | type: pci
+[init -> drivers_reports]     + pci-config | address: 0xb0008000 | bus: 0x0 | device: 0x1 | function: 0x0 | vendor_id: 0x1234 | device_id: 0x1111 | class: 0x30000 | revision: 0x2 | bridge: no | sub_vendor_id: 0x1af4 | sub_device
+[init -> drivers_reports]   _id: 0x1100
+[init -> drivers_reports]     + io_mem | pci_bar: 0 | address: 0xfd000000 | size: 0x1000000 | prefetchable: true | wc: true
+[init -> drivers_reports]     + io_mem | pci_bar: 2 | address: 0xfebf0000 | size: 0x1000
+[init -> drivers_reports]   + device 00:02.0 | type: pci
+[init -> drivers_reports]     + pci-config | address: 0xb0010000 | bus: 0x0 | device: 0x2 | function: 0x0 | vendor_id: 0x8086 | device_id: 0x100e | class: 0x20000 | revision: 0x3 | bridge: no | sub_vendor_id: 0x1af4 | sub_device
+[init -> drivers_reports]   _id: 0x1100
+[init -> drivers_reports]     + io_mem | pci_bar: 0 | address: 0xfebc0000 | size: 0x20000
+[init -> drivers_reports]     + io_port_range | pci_bar: 1 | address: 0xc000 | size: 0x40
+[init -> drivers_reports]     + irq | polarity: high | mode: level | number: 11
+[init -> drivers_reports]   + device 00:1f.0 | type: pci
+[init -> drivers_reports]     + pci-config | address: 0xb00f8000 | bus: 0x0 | device: 0x1f | function: 0x0 | vendor_id: 0x8086 | device_id: 0x2918 | class: 0x60100 | revision: 0x2 | bridge: yes | io_base_limit: 0x0 | memory_base
+[init -> drivers_reports]   : 0x0 | memory_limit: 0x0 | prefetch_memory_base: 0x0 | prefetch_memory_base_upper: 0x0 | prefetch_memory_limit_upper: 0x11001af4 | io_base_limit_upper: 0x0 | expansion_rom_base: 0x0 | bridge_control:
+[init -> drivers_reports]    0x0
+[init -> drivers_reports]   + device 00:1f.2 | type: pci | msi: 1
+[init -> drivers_reports]     + pci-config | address: 0xb00fa000 | bus: 0x0 | device: 0x1f | function: 0x2 | vendor_id: 0x8086 | device_id: 0x2922 | class: 0x10601 | revision: 0x2 | bridge: no | sub_vendor_id: 0x1af4 | sub_devic
+[init -> drivers_reports]   e_id: 0x1100
+[init -> drivers_reports]     + io_port_range | pci_bar: 4 | address: 0xc080 | size: 0x20
+[init -> drivers_reports]     + io_mem | pci_bar: 5 | address: 0xfebf1000 | size: 0x1000
+[init -> drivers_reports]     + irq | polarity: high | mode: level | number: 10
+[init -> drivers_reports]   + device 00:1f.3 | type: pci
+[init -> drivers_reports]     + pci-config | address: 0xb00fb000 | bus: 0x0 | device: 0x1f | function: 0x3 | vendor_id: 0x8086 | device_id: 0x2930 | class: 0xc0500 | revision: 0x2 | bridge: no | sub_vendor_id: 0x1af4 | sub_devic
+[init -> drivers_reports]   e_id: 0x1100
+[init -> drivers_reports]     + io_port_range | pci_bar: 4 | address: 0x700 | size: 0x40
+[init -> drivers_reports]     + irq | polarity: high | mode: level | number: 10
+[init -> drivers_reports]   + device ps2
+[init -> drivers_reports]     + irq | number: 1
+[init -> drivers_reports]     + irq | number: 12
+[init -> drivers_reports]     + io_port_range | address: 0x60 | size: 1
+[init -> drivers_reports]     + io_port_range | address: 0x64 | size: 1
+[init -> drivers_reports]   + device pit
+[init -> drivers_reports]     + irq | number: 0
+[init -> drivers_reports]     + io_port_range | address: 0x40 | size: 4
+[init -> drivers_reports]   + device acpi | type: acpi
+[init -> drivers_reports]     + irq | number: 9
+[init -> drivers_reports]   + device ioapic0 | type: ioapic
+[init -> drivers_reports]     + io_mem | address: 0xfec00000 | size: 0x1000
+[init -> drivers_reports]     + property irq_start | value: 0
+[init -> drivers_reports]   + device INT34C5 | type: acpi
+[init -> drivers_reports]     + irq | number: 14 | mode: level | polarity: low
+[init -> drivers_reports]     + io_mem | address: 0xfd690000 | size: 0x1000
+[init -> drivers_reports]     + io_mem | address: 0xfd6a0000 | size: 0x1000
+[init -> drivers_reports]     + io_mem | address: 0xfd6d0000 | size: 0x1000
+[init -> drivers_reports]     + io_mem | address: 0xfd6e0000 | size: 0x1000
+[init -> drivers_reports]   + device STARLITE_TOUCH | type: acpi
+[init -> drivers_reports]     + irq | number: 104 | mode: level | polarity: low
+[init -> drivers_reports]   + device INTC1083 | type: acpi
+[init -> drivers_reports]     + irq | number: 14 | mode: level | polarity: low
+[init -> drivers_reports]     + io_mem | address: 0xe0d50000 | size: 0x1000
+[init -> drivers_reports]     + io_mem | address: 0xe0d40000 | size: 0x1000
+[init -> drivers_reports]     + io_mem | address: 0xe0d30000 | size: 0x1000
+[init -> drivers_reports]     + io_mem | address: 0xe0d20000 | size: 0x1000
+[init -> drivers_reports]     + io_mem | address: 0xe0d10000 | size: 0x1000
+[init -> drivers_reports]   -
+[init -> drivers_reports] report 'acpi -> smbios_table'
+[init -> drivers_reports]   _SM_-L
+[init -> pc_nic]   0x1000000 .. 0x16dfffff: linker area
+[init -> pc_nic]   0x40000000 .. 0x4fffffff: stack area
+[init -> pc_nic]   0x30000 .. 0x198fff: ld.lib.so
+[init -> pc_nic] SLUB: HWalign=64, Order=0-1, MinObjects=0, CPUs=1, Nodes=1
+[init -> pc_nic] NR_IRQS: 4352, nr_irqs: 4352, preallocated irqs: 256
+[init -> pc_nic] clocksource: dde_counter: mask: 0xffffffffffffff max_cycles: 0x1d854df40, max_idle_ns: 3526361616960 ns
+[init -> pc_nic] clocksource: jiffies: mask: 0xffffffff max_cycles: 0xffffffff, max_idle_ns: 7645041785100000 ns
+[init -> pc_nic] clocksource: Switched to clocksource dde_counter
+[init -> pc_nic] netdev: Intel(R) PRO/1000 Network Driver
+[init -> pc_nic] netdev: Copyright(c) 1999 - 2015 Intel Corporation.
+[init -> pc_nic] e1000_main: Intel(R) PRO/1000 Network Driver
+[init -> pc_nic] e1000_main: Copyright (c) 1999-2006 Intel Corporation.
+[init -> drivers_reports] report 'platform -> devices'
+[init -> drivers_reports]   devices | resumed: 0
+[init -> drivers_reports]   + device 00:00.0 | type: pci | used: false
+[init -> drivers_reports]     + pci-config | vendor_id: 0x8086 | device_id: 0x29c0 | class: 0x60000 | revision: 0x0 | sub_vendor_id: 0xffff | sub_device_id: 0xffff
+[init -> drivers_reports]   + device 00:01.0 | type: pci | used: false
+[init -> drivers_reports]     + io_mem | pci_bar: 0 | phys_addr: 0xfd000000 | size: 0x1000000 | wc: true
+[init -> drivers_reports]     + io_mem | pci_bar: 2 | phys_addr: 0xfebf0000 | size: 0x1000
+[init -> drivers_reports]     + pci-config | vendor_id: 0x1234 | device_id: 0x1111 | class: 0x30000 | revision: 0x2 | sub_vendor_id: 0x1af4 | sub_device_id: 0x1100
+[init -> drivers_reports]   + device 00:02.0 | type: pci | used: true
+[init -> drivers_reports]     + io_mem | pci_bar: 0 | phys_addr: 0xfebc0000 | size: 0x20000
+[init -> drivers_reports]     + irq | number: 11
+[init -> drivers_reports]     + io_port_range | pci_bar: 1 | phys_addr: 0xc000 | size: 0x40
+[init -> drivers_reports]     + pci-config | vendor_id: 0x8086 | device_id: 0x100e | class: 0x20000 | revision: 0x3 | sub_vendor_id: 0x1af4 | sub_device_id: 0x1100
+[init -> drivers_reports]   + device 00:1f.0 | type: pci | used: false
+[init -> drivers_reports]     + pci-config | vendor_id: 0x8086 | device_id: 0x2918 | class: 0x60100 | revision: 0x2 | sub_vendor_id: 0xffff | sub_device_id: 0xffff
+[init -> drivers_reports]   + device 00:1f.2 | type: pci | used: false | msi: 1
+[init -> drivers_reports]     + io_mem | pci_bar: 5 | phys_addr: 0xfebf1000 | size: 0x1000
+[init -> drivers_reports]     + irq | number: 10 | shared: true
+[init -> drivers_reports]     + io_port_range | pci_bar: 4 | phys_addr: 0xc080 | size: 0x20
+[init -> drivers_reports]     + pci-config | vendor_id: 0x8086 | device_id: 0x2922 | class: 0x10601 | revision: 0x2 | sub_vendor_id: 0x1af4 | sub_device_id: 0x1100
+[init -> drivers_reports]   + device 00:1f.3 | type: pci | used: false
+[init -> drivers_reports]     + irq | number: 10 | shared: true
+[init -> drivers_reports]     + io_port_range | pci_bar: 4 | phys_addr: 0x700 | size: 0x40
+[init -> drivers_reports]     + pci-config | vendor_id: 0x8086 | device_id: 0x2930 | class: 0xc0500 | revision: 0x2 | sub_vendor_id: 0x1af4 | sub_device_id: 0x1100
+[init -> drivers_reports]   + device ps2 | type:  | used: false
+[init -> drivers_reports]     + irq | number: 1
+[init -> drivers_reports]     + irq | number: 12
+[init -> drivers_reports]     + io_port_range | phys_addr: 0x60 | size: 0x1
+[init -> drivers_reports]     + io_port_range | phys_addr: 0x64 | size: 0x1
+[init -> drivers_reports]   + device pit | type:  | used: false
+[init -> drivers_reports]     + irq | number: 0
+[init -> drivers_reports]     + io_port_range | phys_addr: 0x40 | size: 0x4
+[init -> drivers_reports]   + device acpi | type: acpi | used: false
+[init -> drivers_reports]     + irq | number: 9
+[init -> drivers_reports]   + device ioapic0 | type: ioapic | used: false
+[init -> drivers_reports]     + io_mem | phys_addr: 0xfec00000 | size: 0x1000
+[init -> drivers_reports]     + property irq_start | value: 0
+[init -> drivers_reports]   + device INT34C5 | type: acpi | used: false
+[init -> drivers_reports]     + io_mem | phys_addr: 0xfd690000 | size: 0x1000
+[init -> drivers_reports]     + io_mem | phys_addr: 0xfd6a0000 | size: 0x1000
+[init -> drivers_reports]     + io_mem | phys_addr: 0xfd6d0000 | size: 0x1000
+[init -> drivers_reports]     + io_mem | phys_addr: 0xfd6e0000 | size: 0x1000
+[init -> drivers_reports]     + irq | number: 14 | shared: true
+[init -> drivers_reports]   + device STARLITE_TOUCH | type: acpi | used: false
+[init -> drivers_reports]     + irq | number: 104
+[init -> drivers_reports]   + device INTC1083 | type: acpi | used: false
+[init -> drivers_reports]     + io_mem | phys_addr: 0xe0d50000 | size: 0x1000
+[init -> drivers_reports]     + io_mem | phys_addr: 0xe0d40000 | size: 0x1000
+[init -> drivers_reports]     + io_mem | phys_addr: 0xe0d30000 | size: 0x1000
+[init -> drivers_reports]     + io_mem | phys_addr: 0xe0d20000 | size: 0x1000
+[init -> drivers_reports]     + io_mem | phys_addr: 0xe0d10000 | size: 0x1000
+[init -> drivers_reports]     + irq | number: 14 | shared: true
+[init -> drivers_reports]   -
+[init -> pc_nic] e1000 00:02.0 eth0: (PCI:33MHz:32-bit) 52:54:00:12:34:56
+[init -> pc_nic] e1000 00:02.0 eth0: Intel(R) PRO/1000 Network Connection
+[init -> pc_nic] sched_clock: Marking stable (728283000, 13649000)->(775150000, -33218000)
+[init -> pc_nic] e1000_main: eth0 NIC Link is Up 1000 Mbps Full Duplex, Flow Control: RX
+[init -> pc_nic] create uplink for net device eth0
+[init -> nic_router] [uplink] NIC sessions: 1
+[init -> nic_router] [uplink] dhcp offer from 10.0.2.2, offering 10.0.2.15, subnet-mask 25spawn qemu-system-x86_64 -accel kvm -machine q35 -cpu Skylake-Client -nographic -m 1G -serial mon:stdio -cdrom var/run/sponge-pc-nic.iso -machine q35 -net nic,model=e1000,netdev=net0 -netdev user,id=net0
+qemu-system-x86_64: warning: host doesn't support requested feature: CPUID[eax=0Dh,ecx=01h].EAX.xsavec [bit 1]
+qemu-system-x86_64: warning: host doesn't support requested feature: CPUID[eax=0Dh,ecx=01h].EAX.xgetbv1 [bit 2]
+c[?7l[2J[0mSeaBIOS (version Arch Linux 1.17.0-2-2)
+
+
+iPXE (http://ipxe.org) 00:02.0 C900 PCI2.10 PnP PMM+3EFD3DA0+3EF33DA0 C900
+Press Ctrl-B to configure iPXE (PCI 00:02.0)...                                                                               
+
+
+Booting from Hard Disk...
+Boot failed: could not read the boot disk
+
+Booting from DVD/CD...
+error: can't find command `loadfont'.
+  Booting `Genode on seL4'
+
+[01;01H
+Bender Version 0.9-beta7-51-g28ba2ad-dirty
+Patching BDA with I/O port 0x3f8.
+Bender: Hello World.
+hwp config: eeo=na irq=na hwp=na epp=na epb=na
+Boot config: debug_port = 0x3f8
+Boot config: disable_iommu = true
+  module #0: start=0xf6e0000 end=0xfdf63c0 size=0x7163c0 name='image.elf'
+	Physical Memory Region from 0 size 9fc00 type 1
+	Physical Memory Region from 9fc00 size 400 type 2
+	Physical Memory Region from f0000 size 10000 type 2
+	Physical Memory Region from 100000 size 3fedf000 type 1
+Adding physical memory region 0x100000-0x3ffdf000
+	Physical Memory Region from 3ffdf000 size 21000 type 2
+	Physical Memory Region from b0000000 size 10000000 type 2
+	Physical Memory Region from fed1c000 size 4000 type 2
+	Physical Memory Region from feffc000 size 4000 type 2
+	Physical Memory Region from fffc0000 size 40000 type 2
+Got framebuffer info in multiboot2. Current video mode is at physical address=fd000000 pitch=5120 resolution=1280x800@32 type=1
+Detected 1 boot module(s):
+Kernel loaded to: start=0x200000 end=0xe3e000 size=0xc3e000 entry=0x200298
+ACPI: RSDT paddr=0x3ffe2344
+ACPI: RSDT vaddr=0x3ffe2344
+ACPI: FADT paddr=0x3ffe213c
+ACPI: FADT vaddr=0x3ffe213c
+ACPI: FADT flags=0x84a5
+ACPI: MADT paddr=0x3ffe2230
+ACPI: MADT vaddr=0x3ffe2230
+ACPI: MADT apic_addr=0xfee00000
+ACPI: MADT flags=0x1
+ACPI: MADT_APIC apic_id=0x0
+ACPI: MADT_IOAPIC ioapic_id=0 ioapic_addr=0xfec00000 gsib=0
+ACPI: MADT_ISO bus=0 source=0 gsi=2 flags=0x0
+ACPI: MADT_ISO bus=0 source=5 gsi=5 flags=0xd
+ACPI: MADT_ISO bus=0 source=9 gsi=9 flags=0xd
+ACPI: MADT_ISO bus=0 source=10 gsi=10 flags=0xd
+ACPI: MADT_ISO bus=0 source=11 gsi=11 flags=0xd
+ACPI: 1 CPU(s) detected
+ELF-loading userland images from boot modules:
+size=0x20f4000 v_entry=0x2000018 v_start=0x2000000 v_end=0x40f4000 p_start=0xfdf7000 p_end=0x11eeb000
+Moving loaded userland images to final location: from=0xfdf7000 to=0xe3e000 size=0x20f4000
+Starting node #0 with APIC ID 0
+Mapping kernel window is done
+vt-x: not supported
+available phys memory regions: 1
+  [100000..3ffdf000]
+reserved virt address space regions: 1
+  [ffffff8000200000..ffffff8002f32000]
+Booting all finished, dropped to user space
+[34mWarning: device memory in range [0000000800000000,0000001000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000001000000000,0000002000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000002000000000,0000004000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000004000000000,0000008000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000008000000000,0000408000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000408000000000,0000608000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000608000000000,0000708000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000708000000000,0000788000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000788000000000,00007c8000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [00007c8000000000,00007e8000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [00007e8000000000,00007f8000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [00007f8000000000,0000800000000000) is unavailable (due to limited untyped cnode range)[0m
+:phys_mem_16k:     Allocator 0x217a258 dump:
+ Block: [0000000000100000,0000000000a00000) size=9M avail=9M max_avail=9M
+ Block: [0000000002f34000,0000000003000000) size=816K avail=816K max_avail=88528K
+ Block: [0000000008000000,000000000d674000) size=88528K avail=88528K max_avail=88528K
+ => mem_size=100925440 (96 MB) / mem_avail=100925440 (96 MB)
+
+[34mWarning: device memory in range [0000000200000000,0000000400000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000000400000000,0000000800000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000000800000000,0000001000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000001000000000,0000002000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000002000000000,0000004000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000004000000000,0000008000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000008000000000,0000408000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000408000000000,0000608000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000608000000000,0000708000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000708000000000,0000788000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000788000000000,00007c8000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [00007c8000000000,00007e8000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [00007e8000000000,00007f8000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [00007f8000000000,0000800000000000) is unavailable (due to limited untyped cnode range)[0m
+virtual address layout of core:
+ overall    [0000000000002000,0000001000000000)
+ core image [0000000002000000,00000000040f4000)
+ ipc buffer [00000000040f4000,00000000040f5000)
+ boot_info  [00000000040f5000,00000000040f6542)
+ stack area [0000000040000000,0000000050000000)
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+Physical memory per PD at most: 512M
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+boot module 'config' (1935 bytes)
+boot module 'acpi' (190328 bytes)
+boot module 'timer' (144744 bytes)
+boot module 'init' (516744 bytes)
+boot module 'init.hsd' (4125 bytes)
+boot module 'init.xsd' (8118 bytes)
+boot module 'ld.lib.so' (1112464 bytes)
+boot module 'nic_router' (609088 bytes)
+boot module 'nic_router.hsd' (4758 bytes)
+boot module 'nic_router.xsd' (7871 bytes)
+boot module 'pc_nic' (1760344 bytes)
+boot module 'pc_platform' (724960 bytes)
+boot module 'pci_decode' (171336 bytes)
+boot module 'platform' (598984 bytes)
+boot module 'report_rom' (150784 bytes)
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+Genode v0.1.1-alpha <local changes>
+600 MiB RAM and 523288 caps assigned to init
+[init -> acpi] Found MADT
+[init -> acpi] MADT IRQ 0 -> GSI 2 flags: 0
+[init -> acpi] MADT IRQ 5 -> GSI 5 flags: 13
+[init -> acpi] MADT IRQ 9 -> GSI 9 flags: 13
+[init -> acpi] MADT IRQ 10 -> GSI 10 flags: 13
+[init -> timer] timers=3, clock 10000000fs , 64bit counter , legacy routing support vendor=0x8086
+[init -> timer] timer0 GSI options 0xff0104, supports periodic
+[init -> timer] timer1 GSI options 0xff0104, supports periodic
+[init -> timer] timer2 GSI options 0xff0104, supports periodic
+[init -> timer] time wraps after 5849 years
+[init -> timer] irqs=off legacy=off
+[init -> acpi] MADT IRQ 11 -> GSI 11 flags: 13
+[init -> acpi] Found HPET hw_id=0x1  vendor_id=0x8086 space_id=0x0 addr=0xfed00000 hpet_id=0x0
+[init -> timer] Using timer 2 -> using GSI 2 edge triggered
+[init -> acpi] Found MCFG
+[init -> acpi] MCFG BASE 0xb0000000 seg 0x0 bus 0x0-0xff
+[init -> acpi] RSDT OEM 'BOCHS ', table id 'BXPC    ', revision 1, creator 'BXPC' (1)
+[init -> drivers_reports] report 'acpi -> acpi'
+[init -> drivers_reports]   acpi
+[init -> drivers_reports]   + sci_int | irq: 9
+[init -> drivers_reports]   + reset | io_port: 0xcf9 | value: 15
+[init -> drivers_reports]   + table WAET | addr: 0x3ffe231c | size: 40
+[init -> drivers_reports]   + table MCFG | addr: 0x3ffe22e0 | size: 60
+[init -> drivers_reports]   + table HPET | addr: 0x3ffe22a8 | size: 56
+[init -> drivers_reports]   + table APIC | addr: 0x3ffe2230 | size: 120
+[init -> drivers_reports]   + table DSDT | addr: 0x3ffe0040 | size: 8444
+[init -> drivers_reports]   + table FACP | addr: 0x3ffe213c | size: 244
+[init -> drivers_reports]   + table RSDT | addr: 0x3ffe2344 | size: 56
+[init -> drivers_reports]   + root_bridge | bdf: 0x0
+[init -> nic_router] [uplink] dynamic IP config: none
+[init -> nic_router] [uplink] NIC sessions: 0
+[init -> drivers_reports]   + bdf | start: 0 | count: 65536 | base: 0xb0000000
+[init -> drivers_reports]   + irq_override | irq: 11 | gsi: 11 | flags: 0xd
+[init -> drivers_reports]   + irq_override | irq: 10 | gsi: 10 | flags: 0xd
+[init -> drivers_reports]   + irq_override | irq: 9 | gsi: 9 | flags: 0xd
+[init -> drivers_reports]   + irq_override | irq: 5 | gsi: 5 | flags: 0xd
+[init -> drivers_reports]   + irq_override | irq: 0 | gsi: 2 | flags: 0x0
+[init -> drivers_reports]   + ioapic | id: 0 | base_irq: 0 | addr: 0xfec00000
+[init -> drivers_reports]   -
+[init -> acpi] [34mWarning: SMBIOSv3 entry point invalid[0m
+[init -> acpi] SMBIOSv2 table (entry point: 0x1b6520 structures: 0xf6540)
+[init -> drivers_reports] report 'acpi -> smbios_table'
+[init -> drivers_reports]   _SM_-L
+[init -> drivers_reports] report 'pci_decode -> devices'
+[init -> drivers_reports]   devices
+[init -> drivers_reports]   + device 00:00.0 | type: pci
+[init -> drivers_reports]     + pci-config | address: 0xb0000000 | bus: 0x0 | device: 0x0 | function: 0x0 | vendor_id: 0x8086 | device_id: 0x29c0 | class: 0x60000 | revision: 0x0 | bridge: yes | io_base_limit: 0x0 | memory_base:
+[init -> drivers_reports]    0x0 | memory_limit: 0x0 | prefetch_memory_base: 0x0 | prefetch_memory_base_upper: 0x0 | prefetch_memory_limit_upper: 0x11001af4 | io_base_limit_upper: 0x0 | expansion_rom_base: 0x0 | bridge_control: 
+[init -> drivers_reports]   0x0
+[init -> drivers_reports]   + device 00:01.0 | type: pci
+[init -> drivers_reports]     + pci-config | address: 0xb0008000 | bus: 0x0 | device: 0x1 | function: 0x0 | vendor_id: 0x1234 | device_id: 0x1111 | class: 0x30000 | revision: 0x2 | bridge: no | sub_vendor_id: 0x1af4 | sub_device
+[init -> drivers_reports]   _id: 0x1100
+[init -> drivers_reports]     + io_mem | pci_bar: 0 | address: 0xfd000000 | size: 0x1000000 | prefetchable: true | wc: true
+[init -> drivers_reports]     + io_mem | pci_bar: 2 | address: 0xfebf0000 | size: 0x1000
+[init -> drivers_reports]   + device 00:02.0 | type: pci
+[init -> drivers_reports]     + pci-config | address: 0xb0010000 | bus: 0x0 | device: 0x2 | function: 0x0 | vendor_id: 0x8086 | device_id: 0x100e | class: 0x20000 | revision: 0x3 | bridge: no | sub_vendor_id: 0x1af4 | sub_device
+[init -> drivers_reports]   _id: 0x1100
+[init -> drivers_reports]     + io_mem | pci_bar: 0 | address: 0xfebc0000 | size: 0x20000
+[init -> drivers_reports]     + io_port_range | pci_bar: 1 | address: 0xc000 | size: 0x40
+[init -> drivers_reports]     + irq | polarity: high | mode: level | number: 11
+[init -> drivers_reports]   + device 00:1f.0 | type: pci
+[init -> drivers_reports]     + pci-config | address: 0xb00f8000 | bus: 0x0 | device: 0x1f | function: 0x0 | vendor_id: 0x8086 | device_id: 0x2918 | class: 0x60100 | revision: 0x2 | bridge: yes | io_base_limit: 0x0 | memory_base
+[init -> drivers_reports]   : 0x0 | memory_limit: 0x0 | prefetch_memory_base: 0x0 | prefetch_memory_base_upper: 0x0 | prefetch_memory_limit_upper: 0x11001af4 | io_base_limit_upper: 0x0 | expansion_rom_base: 0x0 | bridge_control:
+[init -> drivers_reports]    0x0
+[init -> drivers_reports]   + device 00:1f.2 | type: pci | msi: 1
+[init -> drivers_reports]     + pci-config | address: 0xb00fa000 | bus: 0x0 | device: 0x1f | function: 0x2 | vendor_id: 0x8086 | device_id: 0x2922 | class: 0x10601 | revision: 0x2 | bridge: no | sub_vendor_id: 0x1af4 | sub_devic
+[init -> drivers_reports]   e_id: 0x1100
+[init -> drivers_reports]     + io_port_range | pci_bar: 4 | address: 0xc080 | size: 0x20
+[init -> drivers_reports]     + io_mem | pci_bar: 5 | address: 0xfebf1000 | size: 0x1000
+[init -> drivers_reports]     + irq | polarity: high | mode: level | number: 10
+[init -> drivers_reports]   + device 00:1f.3 | type: pci
+[init -> drivers_reports]     + pci-config | address: 0xb00fb000 | bus: 0x0 | device: 0x1f | function: 0x3 | vendor_id: 0x8086 | device_id: 0x2930 | class: 0xc0500 | revision: 0x2 | bridge: no | sub_vendor_id: 0x1af4 | sub_devic
+[init -> drivers_reports]   e_id: 0x1100
+[init -> drivers_reports]     + io_port_range | pci_bar: 4 | address: 0x700 | size: 0x40
+[init -> drivers_reports]     + irq | polarity: high | mode: level | number: 10
+[init -> drivers_reports]   + device ps2
+[init -> drivers_reports]     + irq | number: 1
+[init -> drivers_reports]     + irq | number: 12
+[init -> drivers_reports]     + io_port_range | address: 0x60 | size: 1
+[init -> drivers_reports]     + io_port_range | address: 0x64 | size: 1
+[init -> drivers_reports]   + device pit
+[init -> drivers_reports]     + irq | number: 0
+[init -> drivers_reports]     + io_port_range | address: 0x40 | size: 4
+[init -> drivers_reports]   + device acpi | type: acpi
+[init -> drivers_reports]     + irq | number: 9
+[init -> drivers_reports]   + device ioapic0 | type: ioapic
+[init -> drivers_reports]     + io_mem | address: 0xfec00000 | size: 0x1000
+[init -> drivers_reports]     + property irq_start | value: 0
+[init -> drivers_reports]   + device INT34C5 | type: acpi
+[init -> drivers_reports]     + irq | number: 14 | mode: level | polarity: low
+[init -> drivers_reports]     + io_mem | address: 0xfd690000 | size: 0x1000
+[init -> drivers_reports]     + io_mem | address: 0xfd6a0000 | size: 0x1000
+[init -> drivers_reports]     + io_mem | address: 0xfd6d0000 | size: 0x1000
+[init -> drivers_reports]     + io_mem | address: 0xfd6e0000 | size: 0x1000
+[init -> drivers_reports]   + device STARLITE_TOUCH | type: acpi
+[init -> drivers_reports]     + irq | number: 104 | mode: level | polarity: low
+[init -> drivers_reports]   + device INTC1083 | type: acpi
+[init -> drivers_reports]     + irq | number: 14 | mode: level | polarity: low
+[init -> drivers_reports]     + io_mem | address: 0xe0d50000 | size: 0x1000
+[init -> drivers_reports]     + io_mem | address: 0xe0d40000 | size: 0x1000
+[init -> drivers_reports]     + io_mem | address: 0xe0d30000 | size: 0x1000
+[init -> drivers_reports]     + io_mem | address: 0xe0d20000 | size: 0x1000
+[init -> drivers_reports]     + io_mem | address: 0xe0d10000 | size: 0x1000
+[init -> drivers_reports]   -
+[init -> pc_nic]   0x1000000 .. 0x16dfffff: linker area
+[init -> pc_nic]   0x40000000 .. 0x4fffffff: stack area
+[init -> pc_nic]   0x30000 .. 0x198fff: ld.lib.so
+[init -> pc_nic] SLUB: HWalign=64, Order=0-1, MinObjects=0, CPUs=1, Nodes=1
+[init -> pc_nic] NR_IRQS: 4352, nr_irqs: 4352, preallocated irqs: 256
+[init -> pc_nic] clocksource: dde_counter: mask: 0xffffffffffffff max_cycles: 0x1d854df40, max_idle_ns: 3526361616960 ns
+[init -> pc_nic] clocksource: jiffies: mask: 0xffffffff max_cycles: 0xffffffff, max_idle_ns: 7645041785100000 ns
+[init -> pc_nic] clocksource: Switched to clocksource dde_counter
+[init -> pc_nic] netdev: Intel(R) PRO/1000 Network Driver
+[init -> pc_nic] netdev: Copyright(c) 1999 - 2015 Intel Corporation.
+[init -> pc_nic] e1000_main: Intel(R) PRO/1000 Network Driver
+[init -> pc_nic] e1000_main: Copyright (c) 1999-2006 Intel Corporation.
+[init -> drivers_reports] report 'platform -> devices'
+[init -> drivers_reports]   devices | resumed: 0
+[init -> drivers_reports]   + device 00:00.0 | type: pci | used: false
+[init -> drivers_reports]     + pci-config | vendor_id: 0x8086 | device_id: 0x29c0 | class: 0x60000 | revision: 0x0 | sub_vendor_id: 0xffff | sub_device_id: 0xffff
+[init -> drivers_reports]   + device 00:01.0 | type: pci | used: false
+[init -> drivers_reports]     + io_mem | pci_bar: 0 | phys_addr: 0xfd000000 | size: 0x1000000 | wc: true
+[init -> drivers_reports]     + io_mem | pci_bar: 2 | phys_addr: 0xfebf0000 | size: 0x1000
+[init -> drivers_reports]     + pci-config | vendor_id: 0x1234 | device_id: 0x1111 | class: 0x30000 | revision: 0x2 | sub_vendor_id: 0x1af4 | sub_device_id: 0x1100
+[init -> drivers_reports]   + device 00:02.0 | type: pci | used: true
+[init -> drivers_reports]     + io_mem | pci_bar: 0 | phys_addr: 0xfebc0000 | size: 0x20000
+[init -> drivers_reports]     + irq | number: 11
+[init -> drivers_reports]     + io_port_range | pci_bar: 1 | phys_addr: 0xc000 | size: 0x40
+[init -> drivers_reports]     + pci-config | vendor_id: 0x8086 | device_id: 0x100e | class: 0x20000 | revision: 0x3 | sub_vendor_id: 0x1af4 | sub_device_id: 0x1100
+[init -> drivers_reports]   + device 00:1f.0 | type: pci | used: false
+[init -> drivers_reports]     + pci-config | vendor_id: 0x8086 | device_id: 0x2918 | class: 0x60100 | revision: 0x2 | sub_vendor_id: 0xffff | sub_device_id: 0xffff
+[init -> drivers_reports]   + device 00:1f.2 | type: pci | used: false | msi: 1
+[init -> drivers_reports]     + io_mem | pci_bar: 5 | phys_addr: 0xfebf1000 | size: 0x1000
+[init -> drivers_reports]     + irq | number: 10 | shared: true
+[init -> drivers_reports]     + io_port_range | pci_bar: 4 | phys_addr: 0xc080 | size: 0x20
+[init -> drivers_reports]     + pci-config | vendor_id: 0x8086 | device_id: 0x2922 | class: 0x10601 | revision: 0x2 | sub_vendor_id: 0x1af4 | sub_device_id: 0x1100
+[init -> drivers_reports]   + device 00:1f.3 | type: pci | used: false
+[init -> drivers_reports]     + irq | number: 10 | shared: true
+[init -> drivers_reports]     + io_port_range | pci_bar: 4 | phys_addr: 0x700 | size: 0x40
+[init -> drivers_reports]     + pci-config | vendor_id: 0x8086 | device_id: 0x2930 | class: 0xc0500 | revision: 0x2 | sub_vendor_id: 0x1af4 | sub_device_id: 0x1100
+[init -> drivers_reports]   + device ps2 | type:  | used: false
+[init -> drivers_reports]     + irq | number: 1
+[init -> drivers_reports]     + irq | number: 12
+[init -> drivers_reports]     + io_port_range | phys_addr: 0x60 | size: 0x1
+[init -> drivers_reports]     + io_port_range | phys_addr: 0x64 | size: 0x1
+[init -> drivers_reports]   + device pit | type:  | used: false
+[init -> drivers_reports]     + irq | number: 0
+[init -> drivers_reports]     + io_port_range | phys_addr: 0x40 | size: 0x4
+[init -> drivers_reports]   + device acpi | type: acpi | used: false
+[init -> drivers_reports]     + irq | number: 9
+[init -> drivers_reports]   + device ioapic0 | type: ioapic | used: false
+[init -> drivers_reports]     + io_mem | phys_addr: 0xfec00000 | size: 0x1000
+[init -> drivers_reports]     + property irq_start | value: 0
+[init -> drivers_reports]   + device INT34C5 | type: acpi | used: false
+[init -> drivers_reports]     + io_mem | phys_addr: 0xfd690000 | size: 0x1000
+[init -> drivers_reports]     + io_mem | phys_addr: 0xfd6a0000 | size: 0x1000
+[init -> drivers_reports]     + io_mem | phys_addr: 0xfd6d0000 | size: 0x1000
+[init -> drivers_reports]     + io_mem | phys_addr: 0xfd6e0000 | size: 0x1000
+[init -> drivers_reports]     + irq | number: 14 | shared: true
+[init -> drivers_reports]   + device STARLITE_TOUCH | type: acpi | used: false
+[init -> drivers_reports]     + irq | number: 104
+[init -> drivers_reports]   + device INTC1083 | type: acpi | used: false
+[init -> drivers_reports]     + io_mem | phys_addr: 0xe0d50000 | size: 0x1000
+[init -> drivers_reports]     + io_mem | phys_addr: 0xe0d40000 | size: 0x1000
+[init -> drivers_reports]     + io_mem | phys_addr: 0xe0d30000 | size: 0x1000
+[init -> drivers_reports]     + io_mem | phys_addr: 0xe0d20000 | size: 0x1000
+[init -> drivers_reports]     + io_mem | phys_addr: 0xe0d10000 | size: 0x1000
+[init -> drivers_reports]     + irq | number: 14 | shared: true
+[init -> drivers_reports]   -
+[init -> pc_nic] e1000 00:02.0 eth0: (PCI:33MHz:32-bit) 52:54:00:12:34:56
+[init -> pc_nic] e1000 00:02.0 eth0: Intel(R) PRO/1000 Network Connection
+[init -> pc_nic] sched_clock: Marking stable (857094000, 16107000)->(912995000, -39794000)
+[init -> pc_nic] e1000_main: eth0 NIC Link is Up 1000 Mbps Full Duplex, Flow Control: RX
+[init -> pc_nic] create uplink for net device eth0
+[init -> nic_router] [uplink] NIC sessions: 1
+[init -> nic_router] [uplink] dhcp offer from 10.0.2.2, offering 10.0.2.15, subnet-mask 255.255.255.0, gateway 10.0.2.2, DNS server 10.0.2.3
+[init -> nic_router] [uplink] dynamic IP config: interface 10.0.2.15/24, gateway sponge-pc-nic: PASS (pc_nic bound e1000, nic_router acquired DHCP 10.0.2.15)
+
+Run script execution successful.
+make: ディレクトリ '/home/luke/sponge-os/genode/build/x86_64' から出ます
