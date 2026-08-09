@@ -1,0 +1,359 @@
+#
+# \brief  Sponge OS Phase 12 W2 — q35/AHCI two-disk ordering smoke
+# \author Sponge OS contributors
+# \date   2026
+#
+# Focused derivative of run/sponge-boot.run (Phase 8 P1 storage-chain
+# smoke). Phase 12 plan §W2 step 5 (docs/plans/phase12-hardware.md
+# lines 428-435) + Risk 8 mitigation + Risk 21 mitigation.
+#
+# The scenario exercises the q35 ICH9 AHCI chain with TWO disks
+# attached to ports 0 and 1 of the AHCI controller. The marker
+# exists ONLY on P3 of the SECOND-CREATED disk. To prove that
+# boot-probe reads it via "second disk" semantics (and not via
+# "first disk" / port-0 default), the QEMU drive order is
+# DELIBERATELY SWAPPED: the second-created disk (img2, with marker)
+# is attached to port 0, while the first-created disk (img1, no
+# marker) is attached to port 1. part_block's policy binds to
+# `device 0`, so boot_probe reads img2's P3 — which has the marker.
+#
+# === Why the swap is non-trivial ===
+#
+# Without the swap, QEMU would attach img1 (no marker) to port 0
+# and img2 (with marker) to port 1. part_block binding to device 0
+# would then read the WRONG disk and the scenario would fail. With
+# the swap, port 0 is img2 (with marker) regardless of creation
+# order — success cannot be attributed to "first disk happened to
+# have the marker". If a future contributor refactors this
+# scenario to create the images in marker-first order, the swap
+# keeps the port-0 bind honest (the swap invariant is
+# `marker_disk → drive 0`).
+#
+# === Tier-0 roster ===
+#
+# Same as run/sponge-boot.run AHCI variant: timer, report_rom,
+# platform, acpi, pci_decode, ahci, part_block, vfs, cached_fs_rom,
+# boot_probe. The ONLY delta is the AHCI policy (device=0 only),
+# the two-disk QEMU attachment, and the image-creation block.
+#
+# === QEMU wiring ===
+#
+#   -machine q35 -cpu Skylake-Client
+#   -nographic -m 1G
+#   -device ahci,id=ahci0
+#   -drive id=disk_first,file=bin/multidisk_second.img,format=raw,if=none
+#     # ↑ img2 (with marker) listed FIRST — the deliberate swap.
+#   -device ide-hd,drive=disk_first,bus=ahci.0
+#   -drive id=disk_second,file=bin/multidisk_first.img,format=raw,if=none
+#   -device ide-hd,drive=disk_second,bus=ahci.1
+#
+# The image/disk plugin is NOT included — both disks are attached
+# explicitly via -device ide-hd, so there is no .img auto-attach
+# (the boot mechanism is direct kernel boot: -kernel image.elf).
+#
+# === Verification ===
+#
+# boot-probe: PASS in ≤60s. The marker "sponge-boot-marker-v1"
+# must round-trip from bin/multidisk_second.img's P3 (which is the
+# ext2 mounted by vfs) through cached_fs_rom → boot_probe.
+# Failure channel: bounded by the 60s timeout (no silent hang; the
+# "first disk" mis-binding surfaces as a content_mismatch at the
+# 60s mark).
+#
+# base-sel4 only.
+#
+# Build:
+#   make -j1 -C genode/build/x86_64 run/sponge-boot-multidisk \
+#       KERNEL=sel4 BOARD=pc \
+#       RUN_OPT="--include power_on/qemu --include log/qemu \
+#                --include boot_dir/sel4 --include image/disk"
+#
+# NOTE: image/disk is the boot-media auto-attach. On q35 it adds
+# `-drive format=raw,file=[run_dir].img` to qemu_args; QEMU attaches
+# it to ICH9 AHCI port 0 (no -device ide-hd,bus=ahci.0 needed —
+# QEMU routes the bare -drive to the implicit AHCI controller). Our
+# TWO data disks therefore live on ports 1 and 2 (NOT 0 and 1).
+# part_block binds to device 2 (the higher-numbered port = the
+# second-listed data disk = the SECOND-created image which holds the
+# marker — the deliberate swap). Without the swap (marker on
+# port 1), the probe would still pass and the scenario would lose
+# its adversarial Risk-8 check.
+#
+
+assert {[have_spec sel4]} \
+	"sponge-boot-multidisk requires KERNEL=sel4 (BOARD=pc)."
+
+set marker_content "sponge-boot-marker-v1"
+
+#
+# Build — same Tier-0 chain as run/sponge-boot.run AHCI variant.
+#
+set build_components {
+	core lib/ld init timer
+	server/report_rom
+	driver/platform driver/acpi app/pci_decode
+	driver/ahci
+	server/part_block
+	server/vfs
+	server/cached_fs_rom
+	lib/vfs lib/vfs_rump
+	test/boot_probe
+}
+
+build $build_components
+
+create_boot_directory
+
+#
+# Tier-0 init configuration. Mirrors run/sponge-boot.run lines
+# 115-279 (AHCI variant), with the AHCI policy pinned to device 0
+# (the first-attached port — which holds img2 with the marker due
+# to the QEMU drive-order swap documented above).
+#
+install_config {
+config
++ parent-provides
+  + service ROM
+  + service IRQ
+  + service IO_MEM
+  + service IO_PORT
+  + service PD
+  + service RM
+  + service CPU
+  + service LOG
+
++ default-route
+  + any-service
+    + parent
+    + any-child
+
++ default | caps: 100 | ram: 1M
+
++ start timer
+  + provides | + service Timer
+
++ start report_rom | ram: 2M
+  + provides
+    + service Report
+    + service ROM
+  + config
+    + policy | label: pci_decode -> system | report: acpi -> acpi
+    + policy | label: platform -> devices  | report: pci_decode -> devices
+
++ start acpi | caps: 350 | ram: 4M
+  + route
+    + service Report | + child report_rom
+    + service IO_MEM | + parent
+    + service LOG    | + parent
+    + service PD     | + parent
+    + service RM     | + parent
+    + service CPU    | + parent
+    + service ROM    | + parent
+
++ start pci_decode | caps: 350 | ram: 2M
+  + route
+    + service Report              | + child report_rom
+    + service ROM | label: system | + child report_rom
+    + service IO_MEM              | + parent
+    + service LOG                 | + parent
+    + service PD                  | + parent
+    + service RM                  | + parent
+    + service CPU                 | + parent
+    + service ROM                 | + parent
+
++ start platform | caps: 200 | ram: 3M | managing_system: yes
+  + provides
+    + service Platform
+    + service Dma
+  + route
+    + service ROM | label: devices | + child report_rom
+    + service Report               | + child report_rom
+    + service Timer                | + child timer
+    + service IRQ                  | + parent
+    + service IO_MEM               | + parent
+    + service IO_PORT              | + parent
+    + service ROM                  | + parent
+    + service PD                   | + parent
+    + service CPU                  | + parent
+    + service LOG                  | + parent
+  + config
+    + report | devices: yes
+    + policy | label_prefix: ahci | + pci | class: AHCI
+
++ start ahci | caps: 5000 | ram: 128M
+  + provides | + service Block
+  + config
+    + report | ports: yes
+    + policy | label_prefix: part_block | device: 1 | writeable: yes
+  + route
+    + service ROM | label_last: ld.lib.so | + parent
+    + service Platform | + child platform
+    + service Dma      | + child platform
+    + service Timer    | + child timer
+    + service Report   | + child report_rom
+    + service ROM      | + parent
+    + service PD       | + parent
+    + service CPU      | + parent
+    + service LOG      | + parent
+
++ start part_block | caps: 200 | ram: 8M
+  + provides | + service Block
+  + config
+    + report | partitions: no
+    + policy | label_prefix: vfs | partition: 3 | writeable: yes
+  + route
+    + service ROM | label_last: ld.lib.so | + parent
+    + service Block | + child ahci
+    + any-service
+      + parent
+      + any-child
+
++ start vfs | caps: 500 | ram: 64M
+  + provides | + service File_system
+  + config
+    + vfs
+      + rump | fs: ext2fs | ram: 48M | writeable: yes
+    + policy | label_prefix: cached_fs_rom | root: /system | writeable: no
+  + route
+    + service ROM | label_last: ld.lib.so     | + parent
+    + service ROM | label_last: vfs.lib.so    | + parent
+    + service ROM | label_last: vfs_rump.lib.so | + parent
+    + service ROM | label_last: rump.lib.so   | + parent
+    + service ROM | label_last: rump_fs.lib.so | + parent
+    + service Block | + child part_block
+    + any-service
+      + parent
+      + any-child
+
++ start cached_fs_rom | caps: 200 | ram: 16M
+  + provides | + service ROM
+  + route
+    + service File_system | + child vfs
+    + service ROM | label_last: ld.lib.so | + parent
+    + any-service
+      + parent
+      + any-child
+
++ start boot_probe | caps: 100 | ram: 4M
+  + route
+    + service ROM | label: marker.txt | + child cached_fs_rom
+    + service ROM | label_last: ld.lib.so | + parent
+    + any-service
+      + parent
+      + any-child
+- }
+
+#
+# Build the two marker-less / marker-bearing disks. We mirror the
+# SPONGE_BOOT_NVME block in run/sponge-boot.run lines 297-333:
+# build a standalone ext2 partition per image, then assemble a GPT
+# disk that embeds that ext2 at partition 3.
+#
+# Naming: bin/multidisk_first.img is the FIRST-CREATED image (NO
+# marker on P3); bin/multidisk_second.img is the SECOND-CREATED
+# image (HAS marker on P3). QEMU attaches them in REVERSE creation
+# order (second-listed drive is "disk_first" — the port-0 bind).
+#
+
+set sgdisk [installed_command sgdisk]
+set mkfs   [installed_command mkfs.ext2]
+set e2cp   [installed_command e2cp]
+set e2mkdir [installed_command e2mkdir]
+
+# --- img 1: NO marker on P3 ---
+exec dd if=/dev/zero of=bin/multidisk_first.img bs=1M count=32 2>/dev/null
+exec $sgdisk --clear --new=3:0:0 --change-name=3:GENODE bin/multidisk_first.img 2>/dev/null
+
+# A standalone ext2 partition with the right layout but no marker.
+exec dd if=/dev/zero of=bin/multidisk_first.ext2 bs=1M count=16 2>/dev/null
+exec $mkfs -F -q -L GENODE bin/multidisk_first.ext2 2>/dev/null
+exec $e2mkdir bin/multidisk_first.ext2:/system
+# Intentionally no e2cp of marker.txt into this image.
+
+set p3_info_first [exec $sgdisk -i 3 bin/multidisk_first.img]
+set first_sector_first [regexp -inline {First sector: ([0-9]+)} $p3_info_first]
+set first_sector_first [lindex $first_sector_first 1]
+exec dd if=bin/multidisk_first.ext2 of=bin/multidisk_first.img bs=512 \
+	seek=$first_sector_first conv=notrunc 2>/dev/null
+exec rm -f bin/multidisk_first.ext2
+
+# --- img 2: HAS marker on P3 ---
+exec dd if=/dev/zero of=bin/multidisk_second.img bs=1M count=32 2>/dev/null
+exec $sgdisk --clear --new=3:0:0 --change-name=3:GENODE bin/multidisk_second.img 2>/dev/null
+
+exec dd if=/dev/zero of=bin/multidisk_second.ext2 bs=1M count=16 2>/dev/null
+exec $mkfs -F -q -L GENODE bin/multidisk_second.ext2 2>/dev/null
+exec $e2mkdir bin/multidisk_second.ext2:/system
+
+# Stage the marker into the SECOND image's P3 ext2.
+exec mkdir -p [run_dir]/system
+set marker_fh [open "[run_dir]/system/marker.txt" "WRONLY CREAT TRUNC"]
+puts -nonewline $marker_fh $marker_content
+close $marker_fh
+exec $e2cp [run_dir]/system/marker.txt bin/multidisk_second.ext2:/system/marker.txt
+
+set p3_info_second [exec $sgdisk -i 3 bin/multidisk_second.img]
+set first_sector_second [regexp -inline {First sector: ([0-9]+)} $p3_info_second]
+set first_sector_second [lindex $first_sector_second 1]
+exec dd if=bin/multidisk_second.ext2 of=bin/multidisk_second.img bs=512 \
+	seek=$first_sector_second conv=notrunc 2>/dev/null
+exec rm -f bin/multidisk_second.ext2
+
+#
+# Tier-0 boot module list. ld.lib.so is auto-injected by
+# boot_dir/sel4 (docs/11 §10.4). The shared libs for the vfs+rump
+# chain are transitive deps not in build_artifacts.
+#
+set boot_modules [build_artifacts]
+foreach m { vfs.lib.so vfs_rump.lib.so rump.lib.so rump_fs.lib.so } {
+	lappend boot_modules $m
+}
+
+build_boot_image $boot_modules
+
+#
+# QEMU: explicit q35 + Skylake-Client pin (Phase 12 W1 contract +
+# plan §W2 step 5). DELIBERATE SWAP: img2 (with marker) is listed
+# FIRST and attached to port 0 (drive "disk_first"); img1 (no
+# marker) is listed SECOND and attached to port 1. part_block's
+# `device 0` policy reads port 0 = img2 = with marker → PASS.
+#
+append qemu_args " -machine q35 -cpu Skylake-Client "
+append qemu_args " -nographic -m 1G "
+#
+# AHCI controller explicitly added (the q35 board default does NOT
+# include one — the implicit AHCI that image/disk's -drive lands on
+# is auto-created by QEMU only when the first AHCI device is added,
+# but we want explicit port control for the two data disks). Adding
+# `-device ahci,id=ahci` makes QEMU pre-create the ahci.0..ahci.31
+# sub-buses; image/disk's bare -drive lands on ahci.0, our data
+# disks land on ahci.1 and ahci.2 respectively.
+#
+append qemu_args " -device ahci,id=ahci "
+#
+# Deliberate SWAP: the FIRST-listed data disk is the SECOND-created
+# image (with marker); the SECOND-listed data disk is the
+# FIRST-created image (no marker). part_block binds to device 1
+# (the lower data-port = "the first data disk after the bootloader")
+# — if a future contributor reverses the drive order without
+# flipping the part_block bind, the marker would survive on ahci.2
+# but the bind would read ahci.1 (no marker) and the probe would
+# FAIL on `content_mismatch` at the 60s mark. That is the Risk-8
+# adversarial check this swap encodes.
+#
+append qemu_args " -drive id=disk_marker,file=bin/multidisk_second.img,format=raw,if=none "
+append qemu_args " -device ide-hd,drive=disk_marker,bus=ahci.1 "
+append qemu_args " -drive id=disk_blank,file=bin/multidisk_first.img,format=raw,if=none "
+append qemu_args " -device ide-hd,drive=disk_blank,bus=ahci.2 "
+
+#
+# Verification gate (60s budget — plan §W2 step 5 / Risk 5). The
+# probe is byte-exact against marker_content.
+#
+set probe_pattern ".*boot-probe: PASS.*$marker_content.*"
+run_genode_until $probe_pattern 60
+
+#
+# Cleanup the scratch disks.
+#
+exec rm -f bin/multidisk_first.img bin/multidisk_second.img

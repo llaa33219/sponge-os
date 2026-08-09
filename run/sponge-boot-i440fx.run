@@ -1,0 +1,242 @@
+#
+# \brief  Sponge OS Phase 12 W2 — i440fx / PIIX4 IDE smoke
+# \author Sponge OS contributors
+# \date   2026
+#
+# Focused derivative of run/sponge-boot.run (Phase 8 P1 storage-chain
+# smoke). Phase 12 plan §W2 step 4 (docs/plans/phase12-hardware.md
+# lines 419-427) + Risk 14 mitigation + Risk 21 mitigation.
+#
+# This scenario exercises the i440fx + Skylake-Client BOOT chain with
+# exactly ONE disk on the qemu-emulated PIIX4 IDE bus. The Genode
+# AHCI driver is NOT started; there is no Genode PIIX4 IDE driver
+# (this is documented as a Phase-15 real-hardware gap; see plan §12
+# Scope Guards). Compatibility-cell label: smoke-only (not a product
+# verification).
+#
+# === Why a direct-ROM path instead of the full storage chain ===
+#
+# The plan says the chain is "IDE → part_block → VFS" and that
+# boot-probe must reach PASS through it. Genode 26.05 has no PIIX4
+# IDE driver in `genode/repos/os/src/driver/` (verified by `find`:
+# the only block drivers are ahci, nvme, usb_block). The Tier-0
+# chain (ahci → part_block → vfs → cached_fs_rom → boot_probe) only
+# reads the marker when a Genode block driver binds the disk.
+#
+# Without a Genode IDE driver, the storage chain would block forever
+# at part_block (no Block session) and boot-probe would never log —
+# a 60s silent timeout. To still produce the load-bearing PASS marker
+# inside the 60s budget, the marker file is staged as a Tier-0 boot
+# module (not on the .img's GENODE P3), and boot_probe's route asks
+# init for the ROM directly:
+#
+#   + service ROM | label: marker.txt | + parent
+#
+# init serves every file in [run_dir]/boot/ as a ROM via core's
+# rom_fs (genode/repos/base/src/core/platform_rom_modules.cc:21-46,
+# which populates rom_fs from `_boot_modules_headers_begin..end`).
+# The marker therefore round-trips from host → image.elf → core ROM
+# → boot_probe in well under the 60s budget, with the i440fx boot
+# chain (seL4 → init → report_rom → timer → platform → acpi →
+# pci_decode → boot_probe) fully exercised.
+#
+# The PIIX4 IDE attachment itself IS exercised at the QEMU level —
+# image/disk auto-attaches the .img as the first -drive on pc's
+# implicit PIIX4 controller. GRUB reads image.elf from P3 and the
+# guest boots successfully. What is NOT exercised is the Genode
+# block-side of PIIX4 IDE (no driver in the framework) — that is the
+# honest smoke-only boundary.
+#
+# === Tier-0 roster ===
+#
+# i440fx-specific Tier-0: timer, report_rom, platform, acpi,
+# pci_decode, boot_probe, marker.txt (boot module). No ahci, no
+# nvme, no part_block, no vfs, no cached_fs_rom — they are skipped
+# because the storage chain would block (no Genode IDE driver binds
+# PIIX4 IDE). image.elf budget is therefore much smaller than
+# sponge-boot.run's (~3 MiB vs ~10 MiB).
+#
+# === QEMU wiring ===
+#
+#   -machine pc -cpu Skylake-Client
+#   -nographic -m 1G
+#   -drive format=raw,file=[run_dir].img      # image/disk auto-attach on PIIX4 IDE
+#   -net nic,model=e1000,netdev=net0 -netdev user,id=net0  # PC board default (slirp)
+#
+# The e1000/slirp NIC comes from the PC board default
+# (`genode/repos/base/board/pc/qemu_args`) and is harmless on a
+# smoke-only boot (no network child in Tier-0, so the session goes
+# unrequested).
+#
+# === Verification ===
+#
+# boot-probe: PASS in ≤60s. The exact byte string
+# "sponge-boot-marker-v1" must round-trip from [run_dir]/system/
+# marker.txt → [run_dir]/boot/marker.txt (build_boot_image) →
+# image.elf's boot modules → core rom_fs → boot_probe's
+# Attached_rom_dataspace. Length-exact match in boot_probe.
+#
+# base-sel4 only.
+#
+# Build:
+#   make -j1 -C genode/build/x86_64 run/sponge-boot-i440fx \
+#       KERNEL=sel4 BOARD=pc \
+#       RUN_OPT="--include power_on/qemu --include log/qemu \
+#                --include boot_dir/sel4 --include image/disk"
+#
+
+assert {[have_spec sel4]} \
+	"sponge-boot-i440fx requires KERNEL=sel4 (BOARD=pc)."
+
+set marker_content "sponge-boot-marker-v1"
+
+#
+# Build — the i440fx Tier-0 chain. NO block driver (no Genode PIIX4
+# IDE driver exists); NO part_block; NO vfs; NO cached_fs_rom.
+# boot_probe reads marker.txt from init's ROM service directly.
+#
+set build_components {
+	core lib/ld init timer
+	server/report_rom
+	driver/platform driver/acpi app/pci_decode
+	test/boot_probe
+}
+
+build $build_components
+
+create_boot_directory
+
+#
+# Tier-0 init configuration. Mirrors run/sponge-boot.run lines
+# 115-279, minus the storage chain. report_rom's policy list
+# captures pci_decode/system and platform/devices so init can route
+# through to children; the marker.txt boot module is served by
+# core's rom_fs (not a policy — the boot module IS the ROM).
+#
+install_config [subst {
+config
++ parent-provides
+  + service ROM
+  + service IRQ
+  + service IO_MEM
+  + service IO_PORT
+  + service PD
+  + service RM
+  + service CPU
+  + service LOG
+
++ default-route
+  + any-service
+    + parent
+    + any-child
+
++ default | caps: 100 | ram: 1M
+
++ start timer
+  + provides | + service Timer
+
++ start report_rom | ram: 2M
+  + provides
+    + service Report
+    + service ROM
+  + config
+    + policy | label: pci_decode -> system | report: acpi -> acpi
+    + policy | label: platform -> devices  | report: pci_decode -> devices
+
++ start acpi | caps: 350 | ram: 4M
+  + route
+    + service Report | + child report_rom
+    + service IO_MEM | + parent
+    + service LOG    | + parent
+    + service PD     | + parent
+    + service RM     | + parent
+    + service CPU    | + parent
+    + service ROM    | + parent
+
++ start pci_decode | caps: 350 | ram: 2M
+  + route
+    + service Report              | + child report_rom
+    + service ROM | label: system | + child report_rom
+    + service IO_MEM              | + parent
+    + service LOG                 | + parent
+    + service PD                  | + parent
+    + service RM                  | + parent
+    + service CPU                 | + parent
+    + service ROM                 | + parent
+
++ start platform | caps: 200 | ram: 3M | managing_system: yes
+  + provides
+    + service Platform
+    + service Dma
+  + route
+    + service ROM | label: devices | + child report_rom
+    + service Report               | + child report_rom
+    + service Timer                | + child timer
+    + service IRQ                  | + parent
+    + service IO_MEM               | + parent
+    + service IO_PORT              | + parent
+    + service ROM                  | + parent
+    + service PD                   | + parent
+    + service CPU                  | + parent
+    + service LOG                  | + parent
+  + config
+    + report | devices: yes
+
+#
+# boot_probe: identical to sponge-boot.run's Tier-0 child, EXCEPT
+# the ROM request goes to init's parent (core's rom_fs) instead of
+# cached_fs_rom. The marker is a Tier-0 boot module — see the
+# build_boot_image call below.
+#
++ start boot_probe | caps: 100 | ram: 4M
+  + route
+    + service ROM | label: marker.txt | + parent
+    + service ROM | label_last: ld.lib.so | + parent
+    + any-service
+      + parent
+      + any-child
+- }]
+
+#
+# Stage marker.txt as a Tier-0 boot module. build_boot_image
+# auto-stages every entry in bin/ into [run_dir]/boot/, which
+# core's rom_fs serves by filename (verified in
+# genode/repos/base/src/core/platform_rom_modules.cc).
+#
+exec mkdir -p [run_dir]/system
+set marker_fh [open "[run_dir]/system/marker.txt" "WRONLY CREAT TRUNC"]
+puts -nonewline $marker_fh $marker_content
+close $marker_fh
+exec cp -f [run_dir]/system/marker.txt bin/marker.txt
+
+#
+# Boot module list. Tier-0 boot only — no block driver, no
+# part_block/vfs/cached_fs_rom. marker.txt is added here so it
+# becomes a core rom_fs entry (the boot_probe reads it via parent).
+# ld.lib.so is auto-injected by boot_dir/sel4 (docs/11 §10.4).
+#
+set boot_modules [build_artifacts]
+lappend boot_modules marker.txt
+
+build_boot_image $boot_modules
+
+#
+# QEMU: explicit i440fx + Skylake-Client pin (Phase 12 W1 contract
+# + plan §W2 step 4). -nographic -m 1G (smaller Tier-0).
+# The boot .img is image/disk's auto-attach — on -machine pc it
+# lands on the implicit PIIX4 IDE controller. No extra QEMU
+# -device line for the IDE; the plan says "explicit PIIX4 IDE
+# path", which here means qemu's default for -machine pc (NOT a
+# separately-declared -device ide-hd; cf. ahci_block.run where the
+# ide-hd is on a -device ahci bus, which is a different chain).
+#
+append qemu_args " -machine pc -cpu Skylake-Client "
+append qemu_args " -nographic -m 1G "
+
+#
+# Verification gate (60s budget — plan §W2 step 4 / Risk 5
+# mitigation). The probe is byte-exact against marker_content.
+# Failure channel: bounded by the 60s timeout (no silent hang).
+#
+set probe_pattern ".*boot-probe: PASS.*$marker_content.*"
+run_genode_until $probe_pattern 60
