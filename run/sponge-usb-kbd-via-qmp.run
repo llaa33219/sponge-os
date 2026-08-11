@@ -83,7 +83,10 @@ build { core lib/ld init timer server/report_rom server/nitpicker \
          sponge_pkgd \
          server/terminal server/vfs server/cached_fs_rom \
          noux-pkg/bash-minimal noux-pkg/vim-minimal \
-         lib/libc lib/libm lib/posix lib/ncurses \
+         noux-pkg/coreutils-minimal noux-pkg/grep noux-pkg/sed \
+         noux-pkg/tar noux-pkg/less noux-pkg/findutils \
+         noux-pkg/diffutils noux-pkg/which \
+         lib/libc lib/libm lib/posix lib/ncurses lib/pcre \
          lib/vfs lib/vfs_pipe lib/vfs_ttf \
          test/terminal_probe test/usb_hid_probe lib/blit }
 
@@ -327,7 +330,7 @@ config
       + parent
       + any-child
 
-+ start pkg_runtime | caps: 1500 | ram: 256M
++ start pkg_runtime | caps: 1500 | ram: 320M
   + binary init
   + route
     + service ROM | label: config | + child report_rom
@@ -337,7 +340,7 @@ config
       + parent
       + any-child
 
-+ start pkg_runtime | caps: 1500 | ram: 256M
++ start pkg_runtime | caps: 1500 | ram: 320M
   + binary init
   + route
     + service ROM | label: config | + child report_rom

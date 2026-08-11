@@ -1,9 +1,13 @@
 <!--
-  terminal — the Sponge OS terminal package (Phase 7 todo 13).
+  terminal — the Sponge OS terminal package (Phase 7 todo 13, extended
+  in Phase 13 W2 with the CLI toolset per
+  docs/plans/phase13-package-ecosystem.md D13.1/D13.2).
 
   A source-built terminal stack: the gems graphical `terminal` server
   (genode/repos/gems/src/server/terminal) hosting a Noux `bash-minimal`
-  shell (and `vim-minimal` editor) via the four-child sub-init composition
+  shell, a `vim-minimal` editor, and the Phase-13 CLI toolset tars
+  (coreutils-minimal, grep, sed, tar, less, findutils, diffutils, which)
+  via the four-child sub-init composition
   pioneered by the upstream system_shell pkg
   (genode/repos/ports/recipes/raw/system_shell/system_shell.config):
 
@@ -11,7 +15,7 @@
                                 window; font loaded from the VeraMono.ttf
                                 ROM via the vfs_ttf plugin.
       vfs       (os server)     mounts bash-minimal.tar + vim-minimal.tar
-                                and exposes /dev/terminal (the VFS
+                                + the Phase-13 toolset tars and exposes /dev/terminal (the VFS
                                 <terminal/> plugin, os/src/lib/vfs/
                                 terminal_file_system.h) which bridges the
                                 terminal server's Terminal session to a
@@ -41,11 +45,11 @@
 -->
 <package>
   <name>terminal</name>
-  <version>1.0</version>
-  <description>Terminal with bash and vim.</description>
+  <version>1.1</version>
+  <description>Terminal with bash, vim, and a UNIX CLI toolset (coreutils, grep, sed, tar, less, findutils, diffutils, which).</description>
 
   <binary>init</binary>
-  <quota ram="160M" caps="1100"/>
+  <quota ram="224M" caps="1100"/>
 
   <launcher category="System"/>
 
@@ -133,15 +137,30 @@
          a RAM-backed /tmp. The vfs_rom policy lets cached_fs_rom read
          the /bin/* ELFs out of this file system.
     -->
-    <start name="vfs" caps="250" ram="32M">
+    <start name="vfs" caps="250" ram="48M">
       <provides><service name="File_system"/></provides>
       <config>
         <vfs>
           <tar name="bash-minimal.tar"/>
           <tar name="vim-minimal.tar"/>
+          <!--
+               Phase 13 CLI toolset (docs/plans/phase13-package-ecosystem.md
+               D13.1/D13.2): a working terminal needs file ops, search,
+               stream editing, and archiving, not just bash+vim. The tars
+               unpack their binaries into /bin alongside bash.
+          -->
+          <tar name="coreutils-minimal.tar"/>
+          <tar name="grep.tar"/>
+          <tar name="sed.tar"/>
+          <tar name="tar.tar"/>
+          <tar name="less.tar"/>
+          <tar name="findutils.tar"/>
+          <tar name="diffutils.tar"/>
+          <tar name="which.tar"/>
           <dir name="dev">
             <zero/>
             <null/>
+            <log/>
             <terminal/>
             <inline name="rtc">2018-01-01 00:01</inline>
           </dir>
@@ -182,16 +201,16 @@
          TERM=screen makes bash emit the prompt + echo typed chars, which
          is what the terminal renders and the verification probe sees.
     -->
-    <start name="/bin/bash" caps="450" ram="32M">
+    <start name="/bin/bash" caps="450" ram="64M">
       <config>
         <libc stdin="/dev/terminal" stdout="/dev/terminal" stderr="/dev/terminal"
               rtc="/dev/rtc" pipe="/pipe"/>
         <vfs> <fs/> </vfs>
         <arg value="bash"/>
-        <env name="TERM"  value="screen"/>
-        <env name="PATH"  value="/bin"/>
-        <env name="PS1"   value="sponge:$PWD> "/>
-        <env name="SHELL" value="/bin/bash"/>
+        <env name="TERM">screen</env>
+        <env name="PATH">/bin</env>
+        <env name="PS1">sponge:$PWD&gt; </env>
+        <env name="SHELL">/bin/bash</env>
       </config>
       <route>
         <service name="File_system"><child name="vfs"/></service>

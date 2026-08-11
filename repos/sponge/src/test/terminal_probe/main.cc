@@ -113,6 +113,17 @@ int const SCAN_X1 = TERM_X + 440;
 int const SCAN_Y1 = TERM_Y + 44;
 
 /*
+ * Toolset-step scan depth (Phase 13): the synthetic band above covers
+ * only the first ~3 text lines, which saturate after the prompt +
+ * echo + flush-error lines — everything bash prints afterwards lands
+ * below the band and is invisible to the glyph counter (observed:
+ * constant 1149 across a 10 s poll while bash executed commands).
+ * The toolset step scans nine lines instead, deep enough to contain
+ * the `ls -l /bin` listing's first rows.
+ */
+int const TOOLSET_SCAN_Y1 = TERM_Y + 150;
+
+/*
  * QMP-mode scan region: with vesa_fb present, the terminal's Gui session
  * sees TWO nitpicker capture clients, which makes Gui window() return
  * the domain rect (64,48,800,600) instead of the single-client
@@ -264,12 +275,13 @@ struct Terminal_probe
 		return Genode::String<32>("");
 	}
 
-	unsigned _count_glyphs()
+	unsigned _count_glyphs(int y1_force = -1)
 	{
 		int const x0 = _qmp_mode() ? QMP_SCAN_X0 : SCAN_X0;
 		int const y0 = _qmp_mode() ? QMP_SCAN_Y0 : SCAN_Y0;
 		int const x1 = _qmp_mode() ? QMP_SCAN_X1 : SCAN_X1;
-		int const y1 = _qmp_mode() ? QMP_SCAN_Y1 : SCAN_Y1;
+		int const y1 = y1_force >= 0 ? y1_force
+		             : _qmp_mode() ? QMP_SCAN_Y1 : SCAN_Y1;
 
 		Pixel const *px = _cap_ds->local_addr<Pixel>();
 		unsigned n = 0;
@@ -330,6 +342,7 @@ struct Terminal_probe
 		 */
 		unsigned const max_iters = _qmp_mode() ? 2400u : 700u;
 		bool poked = false;
+		unsigned prev_g = 0, stable = 0;
 		for (unsigned i = 0; i < max_iters && _ok; ++i) {
 			_timer.msleep(100);
 			_capture.capture_at(Capture::Point(0, 0));
@@ -343,9 +356,30 @@ struct Terminal_probe
 				            " bg=", Genode::Hex(bg.pixel),
 				            " glyphs=", g);
 
+			/*
+			 * Accept the baseline only after the glyph count has been
+			 * non-zero AND unchanged for several consecutive samples.
+			 * First-non-zero is not enough: the prompt render can
+			 * settle in stages (QMP mode's recovery poke below prints
+			 * a fresh prompt, and vesa_fb's mode set can force a full
+			 * repaint right around the same window). Accepting mid-
+			 * settle made the later increase spontaneous, so the
+			 * keystroke gate fired BEFORE the host dispatched anything
+			 * (observed on seL4: baseline 98 accepted mid-settle, then
+			 * 355 at echo poll 0 with no host input — a false PASS
+			 * that also raced the host's expect protocol into a
+			 * timeout).
+			 */
 			if (pixel_is_bg(bg) && g > 0) {
-				baseline_glyphs = g;
-				return true;
+				stable = (g == prev_g) ? stable + 1 : 1;
+				prev_g = g;
+				if (stable >= 5) {
+					baseline_glyphs = g;
+					return true;
+				}
+			} else {
+				stable = 0;
+				prev_g = 0;
 			}
 
 			/*
@@ -540,6 +574,86 @@ struct Terminal_probe
 		if (!echoed) {
 			_fail("keystroke did not round-trip to a render change");
 			return;
+		}
+
+		/*
+		 * (6) Phase-13 CLI toolset assertion (synthetic mode only;
+		 * docs/plans/phase13-package-ecosystem.md D13.2). Type
+		 * "ls -l /bin" + '\n' through the same Press_char path
+		 * (KEY_UNKNOWN + codepoint, the touch_keyboard convention —
+		 * terminal's handle_press switches on the codepoint, so
+		 * '\n' executes the line, matching the chargen KEY_ENTER
+		 * mapping to ascii 10). With the toolset tars mounted,
+		 * coreutils `ls` prints a one-line-per-entry listing that
+		 * fills the scan band; without them bash prints a single
+		 * short "command not found" line. Requiring the post-command
+		 * glyph count to grow by at least 8x the echo increment
+		 * separates the two outcomes with a wide margin (the error
+		 * line is ~4x; a band-filling listing is ~20x). QMP mode
+		 * keeps its driver-chain contract unchanged — the toolset
+		 * is package content, verified on the synthetic path.
+		 */
+		if (!_qmp_mode()) {
+			unsigned const echo_inc    = after_glyphs > baseline_glyphs
+			                           ? after_glyphs - baseline_glyphs : 1u;
+
+			/*
+			 * Flush the echoed 'aaaaaaaa' line first: noux bash links
+			 * no readline (docs/11 port table), so Ctrl-U cannot
+			 * discard the pending line — executing it and re-baselining
+			 * past the resulting "command not found" line keeps that
+			 * error text out of the toolset margin below.
+			 *
+			 * Then clear the screen via bash's builtin printf (the
+			 * gems terminal interprets the TERM=screen ANSI codes):
+			 * the glyph-scan band only covers the top ~3 lines of the
+			 * window, so without a clear the band saturates once three
+			 * text lines exist and every further render is invisible
+			 * to _count_glyphs (observed: 1149 constant while bash
+			 * kept executing below the band). After the clear the band
+			 * holds only the fresh prompt, and the ls listing fills it
+			 * again from line one.
+			 */
+			_event.with_batch([&](Event::Session_client::Batch &batch) {
+				batch.submit(Input::Press_char { Input::KEY_UNKNOWN,
+				                                 Input::Codepoint { '\n' } });
+				batch.submit(Input::Release    { Input::KEY_UNKNOWN });
+			});
+			_timer.msleep(1500);
+			_capture.capture_at(Capture::Point(0, 0));
+			unsigned const tool_base = _count_glyphs(TOOLSET_SCAN_Y1);
+
+			char const *cmd = "ls -l /bin 2>/dev/log\n";
+			for (char const *c = cmd; *c; ++c) {
+				_event.with_batch([&](Event::Session_client::Batch &batch) {
+					batch.submit(Input::Press_char { Input::KEY_UNKNOWN,
+					                                 Input::Codepoint { Genode::uint32_t(*c) } });
+					batch.submit(Input::Release    { Input::KEY_UNKNOWN });
+				});
+				_timer.msleep(60);
+			}
+
+			bool listed = false;
+			for (unsigned i = 0; i < 100 && _ok; ++i) {
+				_timer.msleep(100);
+				_capture.capture_at(Capture::Point(0, 0));
+				unsigned const g = _count_glyphs(TOOLSET_SCAN_Y1);
+				if (i % 10 == 0)
+					log("terminal-probe: toolset poll ", i,
+					    " glyphs=", g, " (need > ",
+					    tool_base + 8 * echo_inc, ")");
+				if (g > tool_base + 8 * echo_inc) {
+					listed = true;
+					log("terminal-probe: toolset listing confirmed "
+					    "(glyphs ", tool_base, " -> ", g, ")");
+					break;
+				}
+			}
+			if (!listed) {
+				_fail("ls -l /bin did not render a listing "
+				      "(CLI toolset tars missing?)");
+				return;
+			}
 		}
 
 		log("terminal-probe: PASS");
