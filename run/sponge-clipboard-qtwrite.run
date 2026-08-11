@@ -568,12 +568,12 @@ after 500
 # QGenodeClipboard::setMimeData → Report session → upstream server.
 # This is the single Qt → server write the scenario proves.
 #
-puts "\nqmp: send Ctrl-A (select all, via input-send-event)"
-qmp_cmd $qmp_chan {{"execute":"input-send-event","arguments":{"events":[{"type":"key","data":{"down":true,"key":{"type":"qcode","data":"ctrl"}}},{"type":"key","data":{"down":true,"key":{"type":"qcode","data":"a"}}},{"type":"key","data":{"down":false,"key":{"type":"qcode","data":"a"}}},{"type":"key","data":{"down":false,"key":{"type":"qcode","data":"ctrl"}}}]}}}
-after 200
+puts "\nqmp: send Ctrl-A (select all, via QEMU send-key composite)"
+qmp_cmd $qmp_chan {{"execute":"send-key","arguments":{"keys":[{"type":"qcode","data":"ctrl"},{"type":"qcode","data":"a"}]}}}
+after 250
 puts "\nqmp: send Ctrl-C (copy -> QGenodeClipboard -> server)"
-qmp_cmd $qmp_chan {{"execute":"input-send-event","arguments":{"events":[{"type":"key","data":{"down":true,"key":{"type":"qcode","data":"ctrl"}}},{"type":"key","data":{"down":true,"key":{"type":"qcode","data":"c"}}},{"type":"key","data":{"down":false,"key":{"type":"qcode","data":"c"}}},{"type":"key","data":{"down":false,"key":{"type":"qcode","data":"ctrl"}}}]}}}
-after 1500
+qmp_cmd $qmp_chan {{"execute":"send-key","arguments":{"keys":[{"type":"qcode","data":"ctrl"},{"type":"qcode","data":"c"}]}}}
+after 2000
 
 #
 # Final gate: the probe emits exactly "clipboard-probe: PASS" once
