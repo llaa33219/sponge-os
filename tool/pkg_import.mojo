@@ -389,11 +389,15 @@ def session_name(req_tag: String) raises -> String:
     if req_tag == "timer":
         return "Timer"
     if req_tag == "nic":
-        return "NIC"
+        # Genode service names are exactly "Nic" / "Rtc" (see
+        # pkg/falkon/metadata.xml header note) — not NIC / RTC.
+        return "Nic"
     if req_tag == "gpu":
-        return "GPU"
+        # A depot runtime that requires <gpu/> is served by Genode's
+        # Gui service (GPU sessions are exposed as a Gui subinterface).
+        return "Gui"
     if req_tag == "rtc":
-        return "RTC"
+        return "Rtc"
     if req_tag == "capture":
         return "Capture"
     if req_tag == "play":
