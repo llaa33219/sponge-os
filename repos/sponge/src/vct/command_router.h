@@ -19,11 +19,16 @@
 
 namespace Sponge::Vct {
 
+class NotifierReporter;
+
 class CommandRouter
 {
 	public:
 
 		explicit CommandRouter(Genode::Env &env) : _env(env) {}
+
+		/* Wire the notifier reporter for completion notifications. */
+		void attach_notifier(NotifierReporter *reporter) { _notifier = reporter; }
 
 		/* Look up args.subcommand, construct the matching Command, and
 		 * execute it with `args`. Returns the command's exit code. */
@@ -32,6 +37,7 @@ class CommandRouter
 	private:
 
 		Genode::Env &_env;
+		NotifierReporter *_notifier { nullptr };
 };
 
 }  /* namespace Sponge::Vct */

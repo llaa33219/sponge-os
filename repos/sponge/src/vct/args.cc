@@ -143,6 +143,13 @@ Args Sponge::Vct::parse_args(char const *data, Genode::size_t size)
 	if (looks_like_xml(data, size)) {
 		try {
 			Genode::Xml_node const config(data, size);
+			if (config.has_attribute("enable_notifications")) {
+				Genode::String<8> const v = config.attribute_value("enable_notifications", Genode::String<8>("yes"));
+				out.enable_notifications = (v == Genode::String<8>("yes"))
+				                        || (v == Genode::String<8>("true"))
+				                        || (v == Genode::String<8>("on"))
+				                        || (v == Genode::String<8>("1"));
+			}
 			/* The standard config ROM form is <config><args><arg>...</arg></args></config>.
 			 * Descend into <args> before iterating <arg> children. A previous
 			 * flat iteration found nothing and silently fell back to the
@@ -165,6 +172,11 @@ Args Sponge::Vct::parse_args(char const *data, Genode::size_t size)
 	} else {
 		Genode::Hid_node const config(Genode::Const_byte_range_ptr(data, size));
 		if (config.has_type("config")) {
+			Genode::String<8> const v = config.attribute_value("enable_notifications", Genode::String<8>("yes"));
+			out.enable_notifications = (v == Genode::String<8>("yes"))
+			                        || (v == Genode::String<8>("true"))
+			                        || (v == Genode::String<8>("on"))
+			                        || (v == Genode::String<8>("1"));
 			config.for_each_sub_node([&](Genode::Hid_node const &node) {
 				if (!node.has_type("args"))
 					return;

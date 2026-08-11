@@ -15,6 +15,7 @@
 #include <base/heap.h>
 
 #include "command_router.h"
+#include "notifier_reporter.h"
 
 namespace Sponge::Vct {
 
@@ -30,11 +31,12 @@ class Main
 
 	private:
 
-		Genode::Env                   &_env;
-		Genode::Heap                   _heap       { &_env.ram(), &_env.rm() };
-		/* "config" ROM supplied by init; carries <args><arg>...</arg></args>. */
-		Genode::Attached_rom_dataspace _config_rom { _env, "config" };
-		CommandRouter                  _router     { _env };
+	Genode::Env                   &_env;
+	Genode::Heap                   _heap       { &_env.ram(), &_env.rm() };
+	/* "config" ROM supplied by init; carries <args><arg>...</arg></args>. */
+	Genode::Attached_rom_dataspace _config_rom { _env, "config" };
+	NotifierReporter               _notifier   { _env };
+	CommandRouter                  _router     { _env };
 };
 
 }  /* namespace Sponge::Vct */

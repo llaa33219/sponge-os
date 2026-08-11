@@ -10,6 +10,7 @@
 #include "commands.h"
 
 #include "init_state.h"
+#include "notifier_reporter.h"
 
 #include <base/attached_rom_dataspace.h>
 #include <base/log.h>
@@ -557,6 +558,15 @@ int InstallCommand::_render_install_human(Genode::Xml_node const &result)
 		            " (registration deferred to Phase 5)");
 	});
 
+	if (_notifier) {
+		Genode::String<256> const body =
+			(pos == 0) ? Genode::String<256>("already installed")
+			           : Genode::String<256>(added_buf);
+		_notifier->post("install completed", pkg.string(),
+		                "info", 5000);
+		(void)body;
+	}
+
 	return 0;
 }
 
@@ -725,6 +735,10 @@ int RemoveCommand::_render_human(Genode::Xml_node const &result)
 	else
 		Genode::log("Components removed: ", Genode::String<256>(removed_buf));
 	Genode::log("Removed package: ", pkg);
+
+	if (_notifier)
+		_notifier->post("remove completed", pkg.string(), "info", 5000);
+
 	return 0;
 }
 
@@ -1602,6 +1616,9 @@ int PowerCommand::execute(Args const &args)
 	system_report.generate_xml([&] (Genode::Xml_generator &g) {
 		g.attribute("state", state);
 	});
+
+	if (_notifier)
+		_notifier->post(verb, state, "info", 5000);
 
 	/*
 	 * Emit --json BEFORE the bounded wait: on shutdown, acpica's
