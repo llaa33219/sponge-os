@@ -146,6 +146,19 @@ The repository currently contains:
   the active theme via the new `sponge_decorator_bridge`
   (`run/sponge-de-themed-chrome.run`, drag-verified on seL4). See
   `docs/evidence/phase11-index.md`.
+- ✅ Phase 14 W7 window management: the panel tasklist
+  (`repos/sponge/src/sponge-de/panel/tasklist/`) is the deterministic
+  minimize/restore/close path for the window stack (U3 — no
+  decorative-only minimize). The `TasklistController` subscribes to
+  wm's `window_list` and the layouter's `window_layout` reports;
+  per-window click writes the layouter's `rules` ROM (in
+  `rules="rom"` mode) and emits a `focus_request` report. The
+  `TasklistWidget` is rendered as a horizontal strip inside the
+  panel QHBoxLayout, with three visual states (Normal-Visible,
+  Normal-Visible-Focused, Minimized). The state machine
+  (`docs/plans/wm-state-table.md`) is exercised by the
+  `run/sponge-wm-tasks.run` acceptance scenario. See
+  `docs/05-sponge-de.md` §4.6.
 
 Verified vct boot output (base-sel4 on QEMU):
 
