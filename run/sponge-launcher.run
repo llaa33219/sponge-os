@@ -159,26 +159,21 @@ config
       + any-child
 - }
 
-build_boot_image [build_artifacts]
+#
+# Stage every non-build-artifact boot module into bin/ BEFORE
+# build_boot_image. On base-sel4 the boot image is a single packed
+# image.elf (not a run_dir/genode/ directory of files like base-linux),
+# so modules added after build_boot_image never reach the guest
+# (docs/11-environment.md §10.4). The reference implementation of this
+# pattern is run/sponge-de-sel4-interactive.run.
+#
+exec mkdir -p bin
 
 #
-# Qt6 shared libraries and runtime tars (built by separate cmake targets).
+# qt6_dejavusans.tar raw recipe is depot-only; mirror its content here
+# from the qt6_base port sources (same as run/sponge-de-test.run).
 #
-foreach lib { libQt6Core.lib.so libQt6Gui.lib.so libQt6Widgets.lib.so \
-              libqgenode.lib.so \
-              qt6_libqgenode.tar qt6_dejavusans.tar } {
-	set src "bin/$lib"
-	set dst "[run_dir]/genode/$lib"
-	if {[file exists $src] && ![file exists $dst]} {
-		exec cp -L $src $dst
-	}
-}
-
-#
-# qt6_dejavusans.tar raw recipe is depot-only; mirror its content here from
-# the qt6_base port sources (same as run/sponge-de-test.run).
-#
-set dejavu_dst "[run_dir]/genode/qt6_dejavusans.tar"
+set dejavu_dst "bin/qt6_dejavusans.tar"
 if {![file exists $dejavu_dst]} {
 	set dejavu_src [glob -nocomplain "${genode_dir}/contrib/qt6_base-*/src/lib/qt6_base/src/3rdparty/wasm/DejaVuSans.ttf"]
 	if {[llength $dejavu_src] == 0} {
@@ -196,9 +191,8 @@ if {![file exists $dejavu_dst]} {
 # produces themed panel + launcher styling. Same as run/sponge-de-test.run.
 #
 set theme_src "${genode_dir}/repos/sponge/src/sponge-de/themes/default.theme"
-set theme_dst "[run_dir]/genode/default.theme"
-if {[file exists $theme_src] && ![file exists $theme_dst]} {
-	exec cp -L $theme_src $theme_dst
+if {![file exists "bin/default.theme"] && [file exists $theme_src]} {
+	exec cp -L $theme_src "bin/default.theme"
 }
 
 #
@@ -208,20 +202,41 @@ if {[file exists $theme_src] && ![file exists $theme_dst]} {
 set staged_pkgs { hello ncurses nano }
 foreach pkg $staged_pkgs {
 	set src "${genode_dir}/../pkg/$pkg/metadata.xml"
-	set dst "[run_dir]/genode/pkg_$pkg.xml"
+	set dst "bin/pkg_$pkg.xml"
 	if {![file exists $src]} {
 		error "package metadata not found: $src"
 	}
-	exec cp -L $src $dst
+	if {![file exists $dst]} {
+		exec cp -L $src $dst
+	}
 }
 
-set index_fh [open "[run_dir]/genode/pkg_index.xml" w]
+set index_fh [open "bin/pkg_index.xml" w]
 puts $index_fh "<packages>"
 foreach pkg $staged_pkgs {
 	puts $index_fh "  <pkg name=\"$pkg\"/>"
 }
 puts $index_fh "</packages>"
 close $index_fh
+
+#
+# Full boot module list (build_artifacts + the Qt6 shared libs + the
+# qt6_*.tar tars + the default theme ROM module + the staged package
+# metadata/index). Each non-artifact is listed explicitly so the run
+# tool's build_boot_image picks it up from bin/ and packs it into
+# image.elf on base-sel4.
+#
+set boot_modules [build_artifacts]
+foreach m { libQt6Core.lib.so libQt6Gui.lib.so libQt6Widgets.lib.so \
+            libqgenode.lib.so \
+            qt6_libqgenode.tar qt6_dejavusans.tar \
+            default.theme \
+            pkg_hello.xml pkg_ncurses.xml pkg_nano.xml \
+            pkg_index.xml } {
+	lappend boot_modules $m
+}
+
+build_boot_image $boot_modules
 
 append qemu_args " -nographic -m 2G "
 
