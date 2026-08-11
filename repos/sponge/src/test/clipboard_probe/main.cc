@@ -203,6 +203,7 @@ char const *_qt_write_sentinel = nullptr;
 	{
 		Genode::size_t const needle_len = Genode::strlen(needle);
 		bool logged_invalid = false;
+		Genode::size_t last_size = 0;
 		for (unsigned i = 0; i < poll_iters && _ok; ++i) {
 		try {
 			_clipboard_rom.update();
@@ -233,6 +234,24 @@ char const *_qt_write_sentinel = nullptr;
 						            n, " bytes, poll ", i, ")");
 						return true;
 					}
+				}
+				if (n != last_size) {
+					Genode::size_t const dump = n < 96 ? n : 96;
+					Genode::log("clipboard-probe: ROM size change ", last_size,
+					            " -> ", n, " bytes (first ", dump, " bytes):");
+					Genode::size_t i2;
+					for (i2 = 0; i2 + 16 <= dump; i2 += 16) {
+						char buf[17];
+						Genode::size_t jj;
+						for (jj = 0; jj < 16; ++jj) {
+							char c = raw[i2 + jj];
+							buf[jj] = (c >= 32 && c < 127) ? c : '.';
+						}
+						buf[16] = '\0';
+						Genode::log("clipboard-probe:  ", i2, ": '",
+						            (char const *)buf, "'");
+					}
+					last_size = n;
 				}
 				if (i % 10 == 0)
 					Genode::log("clipboard-probe: clipboard ROM poll ", i,
