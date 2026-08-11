@@ -12,39 +12,26 @@
  *     inside the panel's Gui session.
  *   - Each task entry is a fixed-width button (TASK_W ×
  *     theme.panel_height). The widget adaptively renders as many
- *     entries as fit; overflow is hidden (the layout window is
- *     bounded by the panel's available width).
+ *     entries as fit; overflow is hidden.
  *   - The widget subscribes to the TasklistController's
  *     tasks_changed signal and re-paints when the set changes.
  *
  * Visual state per entry:
- *   - Normal-Visible:        themed accent background, themed text.
- *   - Normal-Visible-Focused: theme.accent background, theme.panel_text
- *                            text (reversed colors — the "focused" body).
- *   - Minimized:             theme.separator background, dimmed text
- *                            (theme.separator is the visually muted
- *                            theme key).
- *   - Has-Alpha:             a small left-edge badge to distinguish
- *                            alpha windows (Qt apps) from opaque
- *                            windows. The badge is a 2px-wide
- *                            theme.accent strip.
+ *   - Normal-Visible:        themed panel_bg background, themed text.
+ *   - Normal-Visible-Focused: themed accent background, panel_text
+ *                            text (reversed).
+ *   - Minimized:             themed separator background, dimmed text.
+ *   - Has-Alpha:             a small left-edge badge (2 px accent stripe).
  *
  * Click handling:
- *   - Each task entry is a clickable region. mousePressEvent maps
- *     the click x to the entry index, then emits the task_clicked
- *     signal with the entry's label. The TasklistController handles
- *     the click (focus_request + rules update).
- *
- * Threading:
- *   The widget is paint-only. The controller marshals the task list
- *   from the entrypoint thread via QMetaObject::invokeMethod before
- *   emitting tasks_changed.
- *
- * The widget re-styles on theme reload via the standard restyle()
- * call path (mirrors PanelWidget::restyle).
+ *   - mousePressEvent maps the click x to the entry index, then
+ *     emits task_clicked with the entry's label.
+ *   - mouseDoubleClickEvent emits task_toggle_maximized.
  */
 
 #pragma once
+
+#include "task_info.h"
 
 #include <QList>
 #include <QObject>
@@ -54,37 +41,9 @@
 class QMouseEvent;
 class QPaintEvent;
 
+namespace Sponge::Sponge_DE { namespace Theme { struct Theme; } }
+
 namespace Sponge::Sponge_DE {
-
-namespace Theme { struct Theme; }
-
-/*
- * POD struct for a single task entry. The controller owns the
- * state; the widget receives a QList<TaskInfo> in applyEntries().
- *
- * `label` is the layouter's Window::Label (the wm session label,
- * e.g. "pkg_runtime -> pkg_gui_demo"). It is the stable identifier
- * the controller uses for focus_request and rules updates.
- *
- * `title` is the layouter's <window title="..."> attribute (the
- * concat of label + " " + the Qt window title). It's the
- * user-visible label rendered on the entry.
- *
- * `x`, `y`, `w`, `h` are the tracked window's geometry (from the
- * window_layout report). Used by the controller only — the widget
- * does not paint the geometry but may render it as a tooltip.
- */
-struct TaskInfo {
-	QString  label;
-	QString  title;
-	int      x      { 0 };
-	int      y      { 0 };
-	unsigned w      { 0 };
-	unsigned h      { 0 };
-	bool     focused   { false };
-	bool     minimized { false };
-	bool     has_alpha { false };
-};
 
 class TasklistWidget : public QWidget
 {
@@ -104,11 +63,7 @@ class TasklistWidget : public QWidget
 		 */
 		void restyle(Theme::Theme const &theme);
 
-		/*
-		 * Replace the rendered task list. Called on the GUI thread
-		 * (via the controller's QMetaObject::invokeMethod marshalling).
-		 * Empty list renders an empty strip.
-		 */
+		/* Replace the rendered task list. GUI-thread only. */
 		void applyEntries(QList<TaskInfo> entries);
 
 		/* The number of currently visible tasks. */
@@ -116,14 +71,10 @@ class TasklistWidget : public QWidget
 
 	signals:
 
-		/* Emitted from the GUI thread when the user clicks an
-		 * entry. The label is the TaskInfo::label of the clicked
-		 * entry; the controller decides what to do based on the
-		 * window's tracked state. */
+		/* Emitted from the GUI thread when the user clicks an entry. */
 		void task_clicked(QString label);
 
-		/* Emitted when the user double-clicks an entry — the
-		 * controller calls this the toggle-maximized action. */
+		/* Emitted when the user double-clicks an entry. */
 		void task_toggle_maximized(QString label);
 
 	private:
@@ -131,12 +82,7 @@ class TasklistWidget : public QWidget
 		void _apply_style(Theme::Theme const &theme);
 		void _apply_geometry(Theme::Theme const &theme);
 
-		/* The fixed task-entry width. 96 px is enough for
-		 * "pkg_gui_demo" + the "Focused" text. */
 		static constexpr int TASK_W = 96;
-
-		/* Task entry vertical padding (top + bottom). The widget
-		 * entry draws inside the panel's height minus 2*pad. */
 		static constexpr int TASK_PAD = 2;
 
 		QList<TaskInfo> _entries;
