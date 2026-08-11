@@ -125,9 +125,11 @@ has no attributes.
 
 ### 4.2 Annotated Example: `hello`
 
-A minimal GUI-free package. The `hello` binary only writes to `LOG`
-and reads the user's terminal via `File_system`, so it declares nothing
-beyond its name, version, and a single `File_system` session.
+A minimal GUI-free package. The `hello` binary only writes to `LOG`,
+so it declares nothing beyond its identity: omitting `<sessions>`
+entirely means "parent-provided services only" (§4.1), which is why
+this package installs and starts even in a minimal scenario with no
+vfs or nitpicker.
 
 ```xml
 <package>
@@ -147,13 +149,7 @@ beyond its name, version, and a single `File_system` session.
   <!-- Dependency graph (empty here; hello has no deps) -->
   <dependencies/>
 
-  <!-- Required sessions (omitted means: parent-provided services only) -->
-  <sessions>
-    <session name="File_system"
-              default-route="vfs"
-              readonly="yes"
-              subpath="/app/hello"/>
-  </sessions>
+  <!-- No <sessions> element: parent-provided services only (§4.1) -->
 </package>
 ```
 
@@ -174,7 +170,7 @@ is the shape a typical GUI application has.
   <launcher category="Editors"/>
 
   <dependencies>
-    <pkg>libncurses</pkg>
+    <pkg>ncurses</pkg>
   </dependencies>
 
   <sessions>
