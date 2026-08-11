@@ -105,6 +105,7 @@ build { core lib/ld init timer server/report_rom server/nitpicker \
          server/rom_filter app/themed_decorator app/backdrop \
          server/gui_fb server/gui_fader \
          server/fs_report server/fs_rom server/vfs \
+         server/clipboard \
          app/sculpt_manager app/menu_view \
          lz_watch test/lz_probe test/lz_viewer test/lz_edit_probe \
          test/alpha_probe \
@@ -637,7 +638,7 @@ config
       + any-child
 
 + start sponge-de | caps: 1000 | ram: 128M
-  + config
+  + config | clipboard: yes
     + theme | source: themed
     + launcher | source: pkgd
     + vfs
@@ -659,6 +660,28 @@ config
     + service ROM | label: installed | + child report_rom
     + service ROM | label: theme | + child report_rom
     + service ROM | label: mesa_gpu.lib.so | + parent | label: mesa_gpu-softpipe.lib.so
+    + any-service
+      + parent
+      + any-child
+
+#
+# Upstream clipboard server (Phase 14 W5). Single-domain permissive
+# flow (D14.2 default — `match_labels: no` + `<flow from="default"
+# to="default"/>`). The Alpha desktop (sponge-de) opens its
+# QGenodeClipboard session against this server via the per-label
+# routes above; the cross-component write/paste proof is
+# run/sponge-clipboard.run, and the focus-gating sub-scenario is
+# run/sponge-clipboard-focus.run.
+#
++ start clipboard | caps: 100 | ram: 4M
+  + provides
+    + service ROM
+    + service Report
+  + config | verbose: no | match_labels: no
+    + default-policy | domain: default
+    + flow | from: default | to: default
+  + route
+    + service ROM    | label: focus | + child report_rom
     + any-service
       + parent
       + any-child
