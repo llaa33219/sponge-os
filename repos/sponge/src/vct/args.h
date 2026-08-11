@@ -70,6 +70,10 @@ struct Args
 
 	/* Non-zero means the user's invocation was truncated. */
 	unsigned dropped { 0 };
+
+	/* Phase 14 W4: notifications on install/remove/shutdown/reboot.
+	 * Default ON; opt out via <config enable_notifications="no">. */
+	bool enable_notifications { true };
 };
 
 /* Parse the config ROM bytes (HID or XML) into Args. */

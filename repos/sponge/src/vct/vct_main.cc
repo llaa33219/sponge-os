@@ -17,6 +17,7 @@ using namespace Sponge::Vct;
 Main::Main(Genode::Env &env) : _env(env)
 {
 	Genode::log("vct (", Sponge::VERSION_STRING, " / ", Sponge::CODENAME, ") starting");
+	_router.attach_notifier(&_notifier);
 }
 
 

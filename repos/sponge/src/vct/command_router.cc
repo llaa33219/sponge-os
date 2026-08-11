@@ -15,6 +15,7 @@
 
 #include "command_router.h"
 #include "commands.h"
+#include "notifier_reporter.h"
 
 #include <base/log.h>
 
@@ -27,6 +28,15 @@ using namespace Sponge::Vct;
 int CommandRouter::dispatch(Args const &args)
 {
 	char const *const cmd = args.subcommand.string();
+
+	/*
+	 * The notifier is only attached when enable_notifications is on
+	 * (default ON, opt-out via <config enable_notifications="no">).
+	 * Disabling both silences the "notifier unavailable" warning path
+	 * and the actual post (the latter is a no-op when the daemon is
+	 * absent anyway, but the optional gate keeps the contract crisp).
+	 */
+	NotifierReporter *nf = args.enable_notifications ? _notifier : nullptr;
 
 	if (Genode::strcmp(cmd, "status") == 0) {
 		StatusCommand c { _env };
@@ -52,11 +62,11 @@ int CommandRouter::dispatch(Args const &args)
 		return c.execute(args);
 	}
 	if (Genode::strcmp(cmd, "install") == 0) {
-		InstallCommand c { _env };
+		InstallCommand c { _env, nf };
 		return c.execute(args);
 	}
 	if (Genode::strcmp(cmd, "remove") == 0) {
-		RemoveCommand c { _env };
+		RemoveCommand c { _env, nf };
 		return c.execute(args);
 	}
 	if (Genode::strcmp(cmd, "launch") == 0) {
@@ -64,7 +74,7 @@ int CommandRouter::dispatch(Args const &args)
 		return c.execute(args);
 	}
 	if (Genode::strcmp(cmd, "shutdown") == 0 || Genode::strcmp(cmd, "reboot") == 0) {
-		PowerCommand c { _env };
+		PowerCommand c { _env, nf };
 		return c.execute(args);
 	}
 	if (Genode::strcmp(cmd, "search") == 0) {

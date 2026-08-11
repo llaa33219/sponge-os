@@ -8,6 +8,12 @@
  * connections (sponge_pkgd, sponge_configd) land in Phase 4+.
  *
  * Real backends are added in Phase 4+ (see docs/09-roadmap.md).
+ *
+ * Phase 14 W4: commands that emit completion notifications
+ * (install / remove / shutdown / reboot) hold a NotifierReporter
+ * reference. The reporter is optional (nullptr disables posting),
+ * which preserves the existing short-lived test scenarios where
+ * no sponge_notifier is in the topology.
  */
 
 #pragma once
@@ -17,6 +23,8 @@
 #include "command.h"
 
 namespace Sponge::Vct {
+
+class NotifierReporter;
 
 class HelpCommand : public Command
 {
@@ -73,12 +81,18 @@ class ComponentListCommand : public Command
 class InstallCommand : public Command
 {
 	public:
-		explicit InstallCommand(Genode::Env &env) : _env(env) {}
+		InstallCommand(InstallCommand const &) = delete;
+		InstallCommand &operator=(InstallCommand const &) = delete;
+
+		explicit InstallCommand(Genode::Env &env,
+		                       NotifierReporter *notifier = nullptr)
+		: _env(env), _notifier(notifier) {}
 		char const *name()    const override { return "install"; }
 		char const *summary() const override { return "Install a Sponge OS package."; }
 		int execute(Args const &args) override;
 	private:
 		Genode::Env &_env;
+		NotifierReporter *_notifier { nullptr };
 
 		int _render_explain_human(Genode::Xml_node const &result);
 		int _render_explain_json(Genode::Xml_node const &result);
@@ -96,12 +110,18 @@ class InstallCommand : public Command
 class RemoveCommand : public Command
 {
 	public:
-		explicit RemoveCommand(Genode::Env &env) : _env(env) {}
+		RemoveCommand(RemoveCommand const &) = delete;
+		RemoveCommand &operator=(RemoveCommand const &) = delete;
+
+		explicit RemoveCommand(Genode::Env &env,
+		                      NotifierReporter *notifier = nullptr)
+		: _env(env), _notifier(notifier) {}
 		char const *name()    const override { return "remove"; }
 		char const *summary() const override { return "Remove an installed Sponge OS package."; }
 		int execute(Args const &args) override;
 	private:
 		Genode::Env &_env;
+		NotifierReporter *_notifier { nullptr };
 
 		int _render_human(Genode::Xml_node const &result);
 		int _render_json(Genode::Xml_node const &result);
@@ -281,7 +301,12 @@ class LaunchCommand : public Command
 class PowerCommand : public Command
 {
 	public:
-		explicit PowerCommand(Genode::Env &env) : _env(env) {}
+		PowerCommand(PowerCommand const &) = delete;
+		PowerCommand &operator=(PowerCommand const &) = delete;
+
+		explicit PowerCommand(Genode::Env &env,
+		                      NotifierReporter *notifier = nullptr)
+		: _env(env), _notifier(notifier) {}
 		/* name() is "power"; the router dispatches both "shutdown" and
 		 * "reboot" to this class, which inspects args.subcommand. */
 		char const *name()    const override { return "power"; }
@@ -289,6 +314,7 @@ class PowerCommand : public Command
 		int execute(Args const &args) override;
 	private:
 		Genode::Env &_env;
+		NotifierReporter *_notifier { nullptr };
 
 		void _print_help(Args const &args, char const *verb);
 };
