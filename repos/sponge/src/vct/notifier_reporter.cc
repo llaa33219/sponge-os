@@ -27,7 +27,7 @@ NotifierReporter::NotifierReporter(Genode::Env &env)
 	 * D14.1 contract: never a silent drop, never a crash.
 	 */
 	try {
-		_request.construct(_env, "request", "notif_request");
+		_request.construct(_env, "notif_request", "notif_request");
 		_enabled = true;
 		Genode::log("vct: notifier poster wired to sponge_notifier");
 	}
@@ -78,15 +78,13 @@ void NotifierReporter::post(char const *title, char const *body,
 
 	Genode::String<32> source("vct");
 	_request->generate_xml([&](Genode::Xml_generator &g) {
-		g.node("notif_request", [&] {
-			g.node("notification", [&] {
-				g.attribute("source", source);
-				g.attribute("kind",   k);
-				g.attribute("ttl_ms", ttl_ms);
-				g.node("title", [&] { g.append_sanitized(title); });
-				if (body && body[0] != '\0')
-					g.node("body", [&] { g.append_sanitized(body); });
-			});
+		g.node("notification", [&] {
+			g.attribute("source", source);
+			g.attribute("kind",   k);
+			g.attribute("ttl_ms", ttl_ms);
+			g.node("title", [&] { g.append_sanitized(title); });
+			if (body && body[0] != '\0')
+				g.node("body", [&] { g.append_sanitized(body); });
 		});
 	});
 }

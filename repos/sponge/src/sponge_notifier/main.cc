@@ -245,11 +245,6 @@ void Sponge::Notif::Main::_handle_notif_request()
 	if (!_notif_request.valid())
 		return;
 
-	/*
-	 * report_rom's initial empty buffer is a valid (empty) ROM, so
-	 * an "empty" request is a no-op, not an error. We only act when
-	 * the content actually carries a <notif_request> root.
-	 */
 	try {
 		Genode::Xml_node const root = _notif_request.xml();
 		if (!root.has_type("notif_request"))
