@@ -70,6 +70,26 @@ def port_list() -> List[String]:
         # `ttf-bitstream-vera` (Vera font set) is staged as a runtime ROM
         # by the alpha desktop scenario (run/sponge-alpha.run).
         "ttf-bitstream-vera",
+        # Phase 13 (package ecosystem): noux CLI toolset mounted into
+        # pkg/terminal's vfs (coreutils/grep/sed/tar/less/findutils/
+        # diffutils/which), and the mupdf stack behind pkg/pdf_view
+        # (openjpeg + jbig2dec are mupdf's image-decoder deps).
+        "coreutils",
+        "grep",
+        "sed",
+        "tar",
+        "less",
+        "findutils",
+        "diffutils",
+        "which",
+        "mupdf",
+        "openjpeg",
+        "jbig2dec",
+        # `pcre` is the regex library behind noux-pkg/grep + sed;
+        # `qt6_tools` supplies the calculatorform example sources
+        # mirrored by recipes/src/qt6_calculatorform (pkg/calculator).
+        "pcre",
+        "qt6_tools",
     ]
 
 
