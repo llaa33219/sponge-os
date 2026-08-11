@@ -1,0 +1,314 @@
+#
+# \brief  Sponge notification daemon scenario (Phase 14 W4)
+# \author Sponge OS contributors
+# \date   2026
+#
+# Acceptance boot for D14.1 — the Sponge-native notification daemon
+# `sponge_notifier` (repos/sponge/src/sponge_notifier), modeled on the
+# established sponge_pkgd / sponge_configd / sponge_themed Report/ROM
+# bus pattern (docs/04-components.md §5; AGENTS.md §1.2). The scenario
+# is the cross-component proof: the daemon is one component, the
+# notifier widget is inside sponge-de, and notify_probe is a third
+# component that drives the bus and verifies the popover on the live
+# desktop (U2-shaped proof, scaled down to a single QEMU boot).
+#
+# Topology (base-sel4 + QMP, headless):
+#
+#   init
+#   + timer
+#   + report_rom      (relays the four notification channels:
+#                      notif_request, notifications, notif_ack,
+#                      notif_config)
+#   + nitpicker       (Gui/Capture/Event; panel domain for the notifier
+#                      popover rect — the popover is painted into the
+#                      panel domain at fixed geometry so the probe can
+#                      sample it deterministically)
+#   + drivers         (sub-init copied from run/sponge-de-sel4-
+#                      interactive.run: vesa_fb/ps2/usb_hid/pc_usb_host/
+#                      event_filter + xhci + usb-tablet. The QMP
+#                      listener is enabled for the manual interactive
+#                      viewing escape hatch — the probe itself is
+#                      Capture-only.)
+#   + sponge_notifier (Phase 14 W4 NEW: owns the notification store;
+#                      Timer-driven TTL expiry; single Expanding_
+#                      reporter publishing the "notifications" ROM;
+#                      ROM("notif_request") input; config ROM optional)
+#   + sponge-de       (Qt6 DE; phase 14 W4 adds the notifier_widget
+#                      that subscribes to the notifications ROM and
+#                      renders the popover)
+#   + notify_probe    (Phase 14 W4 NEW: posts the sentinel, polls the
+#                      notifications ROM, Capture-polls the popover
+#                      rect for open/close TTL transition, logs
+#                      "notify-probe: PASS")
+#
+# Report_rom policies (mirror the sponge_configd / sponge_pkgd /
+# sponge_themed wire style):
+#   sponge_notifier -> notif_request  <-  notify_probe -> notif_request
+#   sponge_notifier -> notifications  ->  notify_probe -> notifications
+#                                       ->  sponge-de     -> notifications
+#   sponge_notifier -> notif_config   <-  (init's inline config served
+#                                          verbatim; the daemon's
+#                                          request has no separate route)
+#
+# AGENTS.md §4.2 / docs/08-development.md §4.1: builds lib/ld + core +
+# init + sponge_notifier + sponge-de + notify_probe and passes
+# [build_artifacts] to build_boot_image so init.xsd + ld.lib.so + the
+# daemons + the probe are all staged. base-sel4 only.
+#
+# The companion --without-notifier variant (run/sponge-notify-
+# without-notifier.run) wires the same topology but OMITS
+# sponge_notifier — it exists to exercise vct's "notifier unavailable"
+# warning path (the control-philosophy contract from D14.1: never a
+# silent drop, never a crash, just one warning per dropped notification).
+#
+
+assert {[have_spec sel4]} \
+	"sponge-notify requires KERNEL=sel4 (BOARD=pc) in build.conf. \
+	 The scenario drives real PC hardware (vesa_fb/ps2/usb_hid) and \
+	 Qt6/Mesa-on-seL4 desktop rendering, which base-linux cannot \
+	 provide."
+
+build { core lib/ld init timer server/report_rom server/nitpicker \
+         driver/acpi app/pci_decode driver/platform \
+         driver/framebuffer/vesa driver/ps2 \
+         driver/usb_host/pc driver/usb_hid server/event_filter \
+         sponge_notifier \
+         sponge-de \
+         test/notify_probe \
+         qt6/base lib/libc lib/libm lib/stdcxx lib/mesa \
+         lib/mesa_gpu-softpipe lib/egl lib/softpipe lib/libdrm lib/expat \
+         lib/qt6_component lib/vfs lib/vfs_pipe lib/vfs_gpu lib/rom_filter \
+         lib/zlib lib/libpng lib/blit lib/file }
+
+create_boot_directory
+
+install_config {
+config
++ parent-provides
+  + service ROM
+  + service PD
+  + service RM
+  + service CPU
+  + service LOG
+  + service IRQ
+  + service IO_MEM
+  + service IO_PORT
+
++ default | caps: 200 | ram: 4M
++ default-route
+  + any-service
+    + parent
+    + any-child
+
++ start timer
+  + provides | + service Timer
+
++ start report_rom | ram: 4M
+  + provides
+    + service Report
+    + service ROM
+  + config | verbose: yes
+    # notification bus (Phase 14 W4)
+    + policy | label: sponge_notifier -> notif_request | report: notify_probe -> notif_request
+    + policy | label: notify_probe     -> notifications | report: sponge_notifier -> notifications
+    + policy | label: sponge-de        -> notifications | report: sponge_notifier -> notifications
+    # sponge-de's bus (mirrors sponge-de-test.run)
+    + policy | label: sponge_de_probe -> sponge_de_input | report: sponge-de -> input
+    + policy | label: sponge-de -> applied_theme | (no report — reflects empty)
+    # sponge-de's existing ROM needs (default theme; ROM routes via parent)
+    + policy | label: notify_probe -> result | report: sponge_pkgd -> result
+
++ start nitpicker | ram: 8M
+  + provides
+    + service Gui
+    + service Capture
+    + service Event
+  + route
+    + service Report | + child report_rom
+    + service Timer  | + child timer
+    + any-service
+      + parent
+      + any-child
+  + config
+    + capture
+    + event
+    # Panel domain: hosts the top bar (panel_widget) AND the notifier
+    # popover (notifier_widget). The popover is painted at a fixed
+    # geometry (POPOVER_X, POPOVER_Y, POPOVER_W, POPOVER_H from
+    # test/notify_probe/main.cc) just below the panel bar — the probe
+    # samples that rect to detect the open/close transitions.
+    + domain panel | layer: 1 | content: client | label: no
+                   | hover: always | focus: click | ypos: 0 | height: 96
+    + domain demo | layer: 2 | content: client | label: no
+                  | hover: always | focus: click
+                  | xpos: 192 | ypos: 172 | width: 640 | height: 480
+    + domain default | layer: 3 | content: client | label: no
+                     | hover: always | focus: click | ypos: 96 | height: -96
+    + policy | label_prefix: sponge-de -> Sponge Panel | domain: panel
+    + policy | label_prefix: sponge-de -> Sponge Notification Popover | domain: panel
+    + policy | label_prefix: sponge-de -> Sponge DE Demo | domain: demo
+    + default-policy | domain: default
+    + background | color: #1e1e2e
+
++ start drivers | caps: 1500 | ram: 96M | managing_system: yes
+  + binary init
+  + route
+    + service ROM | label: config | + parent | label: drivers.config
+    + service Timer               | + child timer
+    + service Capture             | + child nitpicker
+    + service Event               | + child nitpicker
+    + any-service                 | + parent
+  + config
+    + parent-provides
+      + service IRQ
+      + service IO_MEM
+      + service IO_PORT
+      + service ROM
+      + service PD
+      + service RM
+      + service CPU
+      + service LOG
+      + service Timer
+      + service Capture
+      + service Event
+    + default | caps: 60
+    + default-route
+      + any-service
+        + parent
+        + any-child
+    + start vesa_fb | caps: 100 | ram: 8M
+      + provides | + service Framebuffer
+    + start ps2 | caps: 100 | ram: 4M
+      + provides | + service Input
+    + start pc_usb_host | caps: 100 | ram: 8M
+      + provides | + service Usb
+    + start usb_hid | caps: 200 | ram: 8M
+      + provides
+        + service Input
+        + service Report
+      + config | hid: yes
+    + start event_filter | caps: 100 | ram: 4M
+      + provides | + service Event
+      + config
+        + input
+          + extract | + rng | + node output
+        + output
+          + default
+          + client | name: sponge-de
+    + start platform | caps: 100 | ram: 4M
+      + provides | + service Platform
+    + start acpi | caps: 100 | ram: 4M
+      + provides | + service Power
+    + start pci_decode | caps: 100 | ram: 4M
+      + provides | + service PCI
+
++ start sponge_notifier | caps: 100 | ram: 8M
+  + route
+    + service Timer   | + child timer
+    + service Report  | + child report_rom
+    + service ROM
+      + label: notif_request | + child report_rom
+      + label: notifications | + child report_rom
+      + any-label            | + parent
+    + any-service
+      + parent
+      + any-child
+
+# sponge-de on seL4: caps 1000, ram 128M (proven sizing — docs/09 §11.1).
++ start sponge-de | caps: 1000 | ram: 128M
+  + config
+    + vfs
+      + dir dev
+        + log
+        + inline rtc | : 2018-01-01 00:01
+      + dir pipe | + pipe
+      + tar qt6_dejavusans.tar
+      + tar qt6_libqgenode.tar
+    + libc | stdout: /dev/log | stderr: /dev/log | pipe: /pipe | rtc: /dev/rtc
+  + route
+    + service Gui    | + child nitpicker
+    + service Report
+      + label: applied_theme | + child report_rom
+      + label: input         | + child report_rom
+      + label: notif_request | + child report_rom
+      + any-label            | + child report_rom
+    + service ROM
+      + label: default.theme | + parent
+      + label: notifications | + child report_rom
+      + label: mesa_gpu.lib.so | + parent | label: mesa_gpu-softpipe.lib.so
+      + any-label            | + parent
+    + any-service
+      + parent
+      + any-child
+
++ start notify_probe | caps: 100 | ram: 16M
+  + route
+    + service Capture | + child nitpicker
+    + service Timer   | + child timer
+    + service Report  | label: notif_request | + child report_rom
+    + service ROM
+      + label: notifications | + child report_rom
+      + label: result        | + child report_rom
+      + any-label            | + parent
+    + any-service
+      + parent
+      + any-child
+- }
+
+#
+# Stage every non-build-artifact boot module into bin/ BEFORE
+# build_boot_image (base-sel4: the boot image is a single packed
+# image.elf; modules added after build_boot_image never reach the
+# guest — docs/11 §10.4).
+#
+exec mkdir -p bin
+
+# DejaVuSans font, mirrored from the qt6_base port sources (the
+# qt6_dejavusans.tar raw recipe is depot-only, so for a source build
+# we pack it here).
+set dejavu_dst "bin/qt6_dejavusans.tar"
+if {![file exists $dejavu_dst]} {
+	set dejavu_src [glob -nocomplain "${genode_dir}/contrib/qt6_base-*/src/lib/qt6_base/src/3rdparty/wasm/DejaVuSans.ttf"]
+	if {[llength $dejavu_src] == 0} {
+		error "DejaVuSans.ttf not found in the qt6_base port sources"
+	}
+	set staging "[run_dir]/dejavusans-staging"
+	file mkdir "$staging/qt/lib/fonts"
+	file copy -force [lindex $dejavu_src 0] "$staging/qt/lib/fonts/DejaVuSans.ttf"
+	exec tar -cf $dejavu_dst -C $staging qt
+	file delete -force $staging
+}
+
+# Default theme for sponge-de.
+set theme_src "${genode_dir}/repos/sponge/src/sponge-de/themes/default.theme"
+if {![file exists "bin/default.theme"] && [file exists $theme_src]} {
+	exec cp -L $theme_src "bin/default.theme"
+}
+
+# Full boot module list (build_artifacts + Qt6 shared libs + qt6_*.tar
+# tars + default theme).
+set boot_modules [build_artifacts]
+foreach m { libQt6Core.lib.so libQt6Gui.lib.so libQt6Widgets.lib.so \
+            libqgenode.lib.so \
+            qt6_libqgenode.tar qt6_dejavusans.tar \
+            default.theme } {
+	lappend boot_modules $m
+}
+
+build_boot_image $boot_modules
+
+#
+# Harmless on base-linux; required for base-sel4/QEMU to avoid opening
+# a graphical QEMU window.
+#
+append qemu_args " -nographic -m 1G "
+
+#
+# Automated verification: the probe emits exactly "notify-probe: PASS"
+# once the sentinel has appeared in the notifications ROM, the popover
+# has been Capture-verified open, the TTL elapsed, the popover has been
+# Capture-verified closed, and the sentinel was re-confirmed absent. The
+# gate is fail-loud on timeout (bounded 240 s — generous for the Qt6
+# first paint under softpipe on base-sel4).
+#
+run_genode_until {.*notify-probe: PASS.*} 240
