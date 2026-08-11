@@ -1,0 +1,288 @@
+#
+# \brief  Sponge OS calculator package scenario (Phase 13, W3 —
+#         docs/plans/phase13-package-ecosystem.md D13.3).
+# \author Sponge OS contributors
+# \date   2026
+#
+# Verifies pkg/calculator end to end in a single headless Genode
+# instance: the calculator_probe drives sponge_pkgd to install and
+# launch the `calculator` package (the source-built qt6_calculatorform
+# example, the in-tree target `app/qt6/examples/calculatorform` per
+# genode/repos/libports/src/app/qt6/examples/calculatorform/target.mk),
+# then proves inside one headless Genode instance (no host display,
+# no fb_sdl):
+#
+#   (a) the `installed` broadcast lists calculator (the vct list-
+#       equivalent check) with running="no" after install — calculator
+#       has no <autostart/> so install left it STOPPED,
+#       docs/12 §9.2.1;
+#   (b) the broadcast's `running` attribute transitions no -> yes on
+#       launch (the lifecycle check, docs/12 §9.2.1);
+#   (c) the Qt6 calculatorform window actually renders into
+#       nitpicker's composited screen — verified by reading pixels
+#       through a Capture session over the 480x320 sample area at
+#       (0, 0) that contains the
+#       (0, 0, 400, 300)-geometry widget (the .ui file sets the
+#       geometry; main.cpp just calls calculator.show() with no
+#       explicit move, so the window lands at the screen origin
+#       through QGenodePlatformWindow — verified by
+#       genode/contrib/qt6_base-*/src/lib/qt6_base/src/plugins/
+#       platforms/genode/qgenodeplatformwindow.cpp:677
+#       _adjust_and_set_geometry(geometry()) in the constructor):
+#       the calculatorform widget renders two QSpinBoxes
+#       (inputSpinBox1, inputSpinBox2) with white background + dark
+#       border + arrow buttons, three small text labels ("Input 1",
+#       "Input 2", "Output"), two operator labels ("+", "=") and a
+#       sunken-framed outputWidget showing the sum "0" — all
+#       distinct from the nitpicker #1e1e2e background. Required
+#       signals: rendered_frac >= 0.30 AND distinct_color_buckets
+#       >= 8 (together they cleanly distinguish a real Qt render
+#       from an empty or single-color buffer; the
+#       misleading_success_output class — a bare exit-0 is not
+#       enough);
+#   (d) pkgd's launch error paths return clear statuses
+#       (`not-installed`, `already-running`), never a crash.
+#
+# The package is source-built
+# (genode/repos/libports/src/app/qt6/examples/calculatorform/target.mk
+# produces the `calculatorform` binary from the QMAKE_PROJECT_FILE
+# `$(QT6_TOOLS_DIR)/examples/designer/calculatorform/calculatorform.pro`)
+# — no depot import, no prebuilt payload. The metadata at
+# pkg/calculator/metadata.xml is hand-written (no tool/pkg_import
+# drives it; pkg_import is depot-only, Phase 7 todo 11). The
+# binary's requirements — caps=1000, ram=64M — are the Qt6/Mesa
+# softpipe GUI floor (docs/09-roadmap.md §11.1: capability exhaustion
+# on seL4 was the root cause of the EGL hang; the floor is set to
+# 1000). Launcher category: Utilities (the brief, Phase 13 W3).
+#
+# Topology (kernel-agnostic — base-linux native or base-sel4 QEMU,
+# same as run/sponge-textedit.run and run/sponge-files.run; the
+# acceptance run uses KERNEL=sel4 BOARD=pc per the todo, base-linux
+# is the fast iteration path):
+#
+#   init
+#   + timer
+#   + report_rom     (relays request/result/runtime/installed)
+#   + nitpicker      (Gui/Capture/Event; "calc" domain hosts the
+#                     window)
+#   + sponge_pkgd    (owns pkg_runtime's config via the "runtime"
+#                     report; broadcasts the "installed" set)
+#   + pkg_runtime    (binary init; config ROM <- report_rom
+#                     "runtime"; hosts the calculatorform child
+#                     after launch)
+#   + calculator_probe (installs+launches calculator; pixel-
+#                       verifies window; exercises pkgd error
+#                       paths)
+#
+# report_rom policies (full labels include the child-name prefix):
+#   sponge_pkgd's ROM "request"      <- calculator_probe's "request"
+#   calculator_probe's ROM "result"  <- sponge_pkgd's "result"
+#   calculator_probe's ROM "installed" <- sponge_pkgd's "installed"
+#   pkg_runtime's ROM "config"       <- sponge_pkgd's "runtime"
+#
+
+build { core lib/ld init timer server/report_rom server/nitpicker \
+        sponge_pkgd test/calculator_probe \
+        app/qt6/examples/calculatorform \
+        qt6/base lib/libc lib/libm lib/stdcxx lib/mesa \
+        lib/mesa_gpu-softpipe lib/egl lib/softpipe lib/libdrm lib/expat \
+        lib/freetype lib/jpeg \
+        lib/qt6_component lib/vfs lib/vfs_pipe lib/vfs_gpu lib/rom_filter \
+        lib/zlib lib/libpng lib/blit }
+
+create_boot_directory
+
+install_config {
+config
++ parent-provides
+  + service ROM
+  + service PD
+  + service CPU
+  + service LOG
+  + service IRQ
+  + service IO_MEM
+  + service IO_PORT
+
++ default | caps: 200 | ram: 4M
++ default-route
+  + any-service
+    + parent
+    + any-child
+
++ start timer
+  + provides | + service Timer
+
++ start report_rom | ram: 8M
+  + provides
+    + service Report
+    + service ROM
+  + config | verbose: no
+    + policy | label: sponge_pkgd -> request        | report: calculator_probe -> request
+    + policy | label: calculator_probe -> result    | report: sponge_pkgd -> result
+    + policy | label: calculator_probe -> installed | report: sponge_pkgd -> installed
+    + policy | label: pkg_runtime -> config         | report: sponge_pkgd -> runtime
+
++ start nitpicker | ram: 8M
+  + provides
+    + service Gui
+    + service Capture
+    + service Event
+  + route
+    + service Report | + child report_rom
+    + service Timer | + child timer
+    + any-service
+      + parent
+      + any-child
+  + config
+    + capture
+    + event
+    #
+    # The calculatorform widget is at the screen origin (0, 0) with
+    # geometry (0, 0, 400, 300) (the .ui file's geometry property;
+    # main.cpp just calls calculator.show() with no explicit move()).
+    # A full-screen calc domain at (0, 0) covers the widget plus
+    # generous slack for any layout-driven sizeHint expansion (the
+    # QGridLayout's Expanding spacers can slightly enlarge the
+    # sizeHint beyond 400x300). The probe's sample area is the
+    # 480x320 rectangle (0, 0) to (480, 320) — comfortably inside
+    # the domain and containing the widget for both the 400x300
+    # geometry and any layout-enlarged sizeHint.
+    #
+    + domain calc | layer: 2 | content: client | label: no
+                  | hover: always | focus: click
+                  | xpos: 0 | ypos: 0 | width: 1024 | height: 768
+    + domain default | layer: 3 | content: client | label: no
+                     | hover: always | focus: click | ypos: 0 | height: 0
+    + default-policy | domain: calc
+    + background | color: #1e1e2e
+
++ start sponge_pkgd | caps: 200 | ram: 16M
+  + route
+    + service ROM | label_last: request | + child report_rom
+    + service Report | + child report_rom
+    + any-service
+      + parent
+      + any-child
+
++ start pkg_runtime | caps: 1500 | ram: 256M
+  + binary init
+  + route
+    + service ROM | label: config | + child report_rom
+    + service ROM | label_last: mesa_gpu.lib.so | + parent | label: mesa_gpu-softpipe.lib.so
+    + service Gui | + child nitpicker
+    + service Report | + child report_rom
+    + any-service
+      + parent
+      + any-child
+
++ start calculator_probe | caps: 200 | ram: 16M
+  + route
+    + service Capture | + child nitpicker
+    + service Timer | + child timer
+    + service ROM | label_last: result | + child report_rom
+    + service ROM | label_last: installed | + child report_rom
+    + service Report | + child report_rom
+    + any-service
+      + parent
+      + any-child
+- }
+
+#
+# Stage the calculator package metadata + the derived index (same
+# scheme as run/sponge-textedit.run / run/sponge-files.run).
+#
+set staged_pkgs { calculator }
+foreach pkg $staged_pkgs {
+	set src "${genode_dir}/../pkg/$pkg/metadata.xml"
+	if {![file exists $src]} {
+		error "package metadata not found: $src"
+	}
+	exec cp -L $src "bin/pkg_$pkg.xml"
+}
+
+set index_fh [open "bin/pkg_index.xml" w]
+puts $index_fh "<packages>"
+foreach pkg $staged_pkgs {
+	puts $index_fh "  <pkg name=\"$pkg\"/>"
+}
+puts $index_fh "</packages>"
+close $index_fh
+
+#
+# qt6_dejavusans.tar raw recipe is depot-only; mirror its content into
+# bin/ from the qt6_base port sources (same as run/sponge-textedit.run
+# / run/sponge-pkg-gui.run). The qt6_dejavusans.tar carries the
+# DejaVuSans.ttf that the calculatorform widget uses for its "Input 1"
+# / "Input 2" / "Output" / "+" / "=" / "0" QLabel text.
+#
+set dejavu_dst "bin/qt6_dejavusans.tar"
+if {![file exists $dejavu_dst]} {
+	set dejavu_src [glob -nocomplain "${genode_dir}/contrib/qt6_base-*/src/lib/qt6_base/src/3rdparty/wasm/DejaVuSans.ttf"]
+	if {[llength $dejavu_src] == 0} {
+		error "DejaVuSans.ttf not found in the qt6_base port sources"
+	}
+	set staging "[run_dir]/dejavusans-staging"
+	file mkdir "$staging/qt/lib/fonts"
+	file copy -force [lindex $dejavu_src 0] "$staging/qt/lib/fonts/DejaVuSans.ttf"
+	exec tar -cf $dejavu_dst -C "$staging" qt
+	file delete -force $staging
+}
+
+#
+# Full boot module list. The Qt6 shared libs + tars are cmake-built by
+# qt6/base and land in bin/; they are NOT in [build_artifacts], so they
+# are listed explicitly (base-sel4's boot_dir/sel4 plugin packs a single
+# image.elf from bin/ at this point and needs every module named). The
+# calculatorform binary is the only source-built payload in this
+# scenario (the in-tree target
+# `app/qt6/examples/calculatorform` produced it from the qt6_tools
+# port's `calculatorform.pro` — note: NO libQt6PrintSupport.lib.so
+# here, unlike textedit; the calculatorform UI does not reference any
+# printing-related Qt class, so the PrintSupport shared library is
+# not linked and not staged):
+#   - common Qt6 libs: libQt{Core,Gui,Widgets}, libqgenode,
+#     egl/mesa/glapi/libdrm/libpng/freetype/jpeg/expat/zlib,
+#     stdcxx/libc/libm, vfs/vfs_gpu/vfs_pipe, qt6_component
+#   - Qt6 data tars:    qt6_libqgenode.tar (plugins),
+#                       qt6_dejavusans.tar (font)
+#   - mesa_gpu alias:   mesa_gpu-softpipe.lib.so (re-exported under
+#                       the mesa_gpu.lib.so label by pkg_runtime's
+#                       route)
+#   - app payload:      calculatorform (binary — produced by the
+#                       build target above)
+#   - staged metadata:  pkg_calculator.xml, pkg_index.xml
+#
+set boot_modules [build_artifacts]
+foreach m { calculatorform \
+            libQt6Core.lib.so libQt6Gui.lib.so libQt6Widgets.lib.so \
+            libqgenode.lib.so qt6_libqgenode.tar qt6_dejavusans.tar \
+            egl.lib.so mesa.lib.so glapi.lib.so mesa_gpu-softpipe.lib.so \
+            libdrm.lib.so libpng.lib.so freetype.lib.so jpeg.lib.so \
+            expat.lib.so zlib.lib.so \
+            stdcxx.lib.so libc.lib.so libm.lib.so \
+            qt6_component.lib.so \
+            vfs.lib.so vfs_gpu.lib.so vfs_pipe.lib.so \
+            pkg_calculator.xml pkg_index.xml } {
+	lappend boot_modules $m
+}
+
+build_boot_image $boot_modules
+
+#
+# QEMU: -nographic for headless, -m 2G for Qt6/Mesa softpipe +
+# pkg_runtime's 256M allocation (generous on seL4; harmless overhead
+# on linux).
+#
+append qemu_args " -nographic -m 2G "
+
+#
+# Automated verification (fail-loud, docs/09-roadmap.md §11.1):
+# calculator_probe logs PASS once it has installed+launched calculator
+# via sponge_pkgd AND pixel-verified the rendered window AND exercised
+# the pkgd error paths. On timeout (probe did not reach PASS — e.g.
+# the missing-binary failure mode) the run tool errors out — never a
+# silent hang. The generous timeout covers the qt6_calculatorform
+# first paint under softpipe Mesa on seL4 (~60-180s; faster on linux).
+# Bounded per the hung_or_long_commands adversarial class.
+#
+run_genode_until {.*calculator-probe: PASS.*} 420

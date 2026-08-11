@@ -1,0 +1,98 @@
+<!--
+     calculator — the Sponge OS calculator package (Phase 13, W3 —
+     docs/plans/phase13-package-ecosystem.md D13.3).
+
+     A source-built Qt6 calculator (the upstream qt6_calculatorform
+     example). The calculatorform sources are mirrored into
+     genode/repos/libports/recipes/src/qt6_calculatorform/ from the
+     qt6_tools port dir + repos/libports/src/app/qt6/examples/calculatorform/
+     (the recipe content.mk at lines 1-17). The in-tree Genode target
+     `app/qt6/examples/calculatorform` (verified at
+     genode/repos/libports/src/app/qt6/examples/calculatorform/target.mk)
+     produces the `calculatorform` binary, so the package is a true
+     source-built Sponge-OS package — no depot import, no prebuilt
+     payload. AGENTS.md §5.2 (do not re-implement, do not silently
+     change vendored tree).
+
+     Authored after pkg/textedit (Phase 7 todo 14) and pkg/files
+     (Phase 7 todo 15). The widget is a QWidget (NOT QMainWindow like
+     the text editor) hosting a QGridLayout with two QSpinBoxes
+     (inputSpinBox1, inputSpinBox2), three QLabels ("Input 1", "Input 2",
+     "Output"), two centred operator labels ("+", "="), and a sunken-
+     framed QLabel (outputWidget) that shows the sum of the two inputs
+     (calculatorform.cpp:12-25 — the slot `updateResult` connects both
+     spinbox valueChanged signals to a single `outputWidget->setText(
+     QString::number(spinBox1 + spinBox2))'). The two `+`/`=` labels
+     sit at row 0, columns 1/4; the three "Input 1"/"Input 2"/"Output"
+     VBox columns sit at row 0, columns 0/3/5; horizontal/vertical
+     spacers fill the remaining grid cells. Initial geometry in the UI
+     file is 400x300; on QGenodeScreen (reports the full nitpicker
+     panorama) the widget's layout sizeHint puts the window roughly
+     centred with a ~400x300 footprint — generous enough that the boot
+     probe needs a wideralled sample window than textedit's (which
+     uses a fixed 512x512 at (256,128)).
+
+     The metadata <config> below is emitted verbatim into the
+     generated <start> node by sponge_pkgd's runtime-config generator
+     (Phase 7 todo 8). It carries the same libc+vfs+Qt-tar boilerplate
+     as pkg/textedit/metadata.xml, minus the `<rom name="textedit.config"/>`
+     mount — calculatorform does not read an external config (the
+     constructor just calls ui.setupUi(this) and connects two signals,
+     calculatorform.cpp:7-13; nothing on disk is consulted):
+       - libc wiring (stdout/stderr to /dev/log; pipe for Qt; rtc)
+       - <vfs> with /dev/log, /dev/rtc, /pipe, qt6_dejavusans.tar
+         (DejaVuSans.ttf at /qt/lib/fonts/), qt6_libqgenode.tar
+         (Qt QPA plugins).
+
+     Component openings (all default-route="parent" — minimum privilege
+     per AGENTS.md §1.2; resolved through pkg_runtime's extended
+     parent-provides, docs/12 §7.2):
+       Gui    — for the calculator window.
+       Report — for any future state-report (calculatorform writes
+                none in the upstream example; the session is declared
+                so the door is open for future diagnostic Reports).
+       ROM    — for libc/ld.so.1, the calculatorform binary ROM (the
+                pkg_runtime routes the <binary> attribute to a ROM
+                session), and the font/plugin tar ROMs.
+       Timer  — for Qt's event loop QTimer ticks.
+
+     Quota: caps=1000, ram=64M — the Qt6/Mesa softpipe GUI floor
+     (docs/09-roadmap.md §11.1: capability exhaustion on seL4 was the
+     root cause of the EGL hang; the floor is set to 1000).
+
+     Launcher category: Utilities (the brief, Phase 13 W3).
+     Modelled on pkg/textedit/metadata.xml (Phase 7 todo 14), which
+     was authored by tool/pkg_import from the depot pkg archive; the
+     calculator is source-built, so this metadata is hand-written (no
+     tool drives it).
+-->
+<package>
+  <name>calculator</name>
+  <version>1.0</version>
+  <description>Source-built Qt6 calculator (the upstream qt6_calculatorform example: two spinboxes + live sum).</description>
+
+  <binary>calculatorform</binary>
+  <quota ram="64M" caps="1000"/>
+
+  <config>
+    <libc stdout="/dev/log" stderr="/dev/log" pipe="/pipe" rtc="/dev/rtc"/>
+    <vfs>
+      <dir name="dev">
+        <log/>
+        <inline name="rtc">2018-01-01 00:01</inline>
+      </dir>
+      <dir name="pipe"><pipe/></dir>
+      <tar name="qt6_dejavusans.tar"/>
+      <tar name="qt6_libqgenode.tar"/>
+    </vfs>
+  </config>
+
+  <launcher category="Utilities"/>
+
+  <sessions>
+    <session name="Gui"    default-route="parent"/>
+    <session name="Report" default-route="parent"/>
+    <session name="ROM"    default-route="parent"/>
+    <session name="Timer"  default-route="parent"/>
+  </sessions>
+</package>
