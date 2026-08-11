@@ -34,6 +34,16 @@ window on nitpicker, and input reaches the widgets:
   app windows route through Genode's `wm` + `window_layouter` +
   `decorator` and become decorated/movable (verified by a synthetic
   drag); the panel stays a fixed nitpicker-domain surface
+- ✅ **Phase 14 W4: notifications.** `sponge-de` subscribes to the
+  `sponge_notifier` daemon's `notifications` ROM and renders a themed
+  popover (panel/notifier_widget.{h,cc}). Posts on theme apply
+  (`ThemeController`), config change (`ConfigController`), and
+  package install completion (`LauncherController`). Opt-in via
+  `<notifier source="daemon"/>` in the component config. Acceptance
+  probe `run/sponge-notify.run` (base-sel4) emits the sentinel and
+  verifies the popover + the TTL expiry; the companion
+  `run/sponge-notify-without-notifier.run` demonstrates the
+  absent-daemon warning path.
 
 The interactive escape hatch is `run/sponge-de.run` (fb_sdl window on
 the host display, base-linux).
@@ -51,6 +61,12 @@ src/sponge-de/
 │   └── README.md
 ├── themes/
 │   └── default.theme    # Catppuccin Mocha default theme
+├── panel/
+│   ├── panel_widget.{h,cc}  # the themed panel
+│   ├── notifier_widget.{h,cc} # the themed popover (Phase 14 W4)
+│   ├── notifier_controller.{h,cc} # ROM bridge (Phase 14 W4)
+│   ├── notify_poster.{h,cc} # Report session writer (Phase 14 W4)
+│   └── README.md
 └── README.md            # this file
 ```
 
@@ -64,7 +80,7 @@ into separate components is considered from Phase 5 onward.
 sponge-de (currently: single component)
   ├─ panel
   ├─ launcher (initially integrated, candidate for split into sponge_launcher later)
-  ├─ notifications
+  ├─ notifications (subscribes to sponge_notifier, Phase 14 W4)
   ├─ windows
   ├─ settings
   └─ theme
