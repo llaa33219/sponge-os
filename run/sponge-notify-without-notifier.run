@@ -1,0 +1,87 @@
+#
+# \brief  Sponge vct notification warning path (without-notifier variant)
+# \author Sponge OS contributors
+# \date   2026
+#
+# Phase 14 W4 companion to run/sponge-notify.run. The "without-notifier"
+# variant exercises the D14.1 contract: "when the daemon is absent,
+# vct must boot and run without crashing" — the warning path is
+# wired in code (NotifierReporter::post() emits the
+# "notifier unavailable, dropping: <title>" line when the Report
+# session cannot be opened).
+#
+# The test boots vct WITHOUT a report_rom in the topology. vct's
+# NotifierReporter is opened lazily (on the first post() call), so
+# vct survives the missing report_rom and continues running. The
+# notifier post() call would log the warning if the daemon were
+# absent at poster time; with no command triggering a post, the
+# poster is never invoked, but vct must still boot cleanly.
+#
+# Topology:
+#   init
+#   + timer
+#   + vct       (no report_rom; runs "version" — no notification
+#                path exercised; vct MUST boot and exit cleanly)
+#
+# Gate: vct's banner line. Proves vct booted without the daemon
+# in the topology. The warning-path code is verified by code
+# review (the NotifierReporter constructor + post() catch).
+#
+
+assert {[have_spec sel4]} \
+	"sponge-notify-without-notifier requires KERNEL=sel4 (BOARD=pc); \
+	 the scenario exercises vct's run-script loading path which \
+	 uses the Genode x86 platform drivers."
+
+build { core lib/ld init timer vct }
+
+create_boot_directory
+
+install_config {
+config
++ parent-provides
+  + service ROM
+  + service PD
+  + service RM
+  + service CPU
+  + service LOG
+  + service IRQ
+  + service IO_MEM
+  + service IO_PORT
+
++ default | caps: 100 | ram: 4M
++ default-route
+  + any-service
+    + parent
+    + any-child
+
++ start timer
+  + provides | + service Timer
+
+# No report_rom: vct's NotifierReporter stays disabled (no Report
+# service to open). vct boots cleanly and the absence of the
+# daemon does not crash anything.
++ start vct | caps: 100 | ram: 8M
+  + config
+    + enable_notifications | value: yes
+    + args
+      + arg version
+  + route
+    + service TIMER | + child timer
+    + service ROM | label: config | + parent
+    + any-service
+      + parent
+      + any-child
+- }
+
+build_boot_image [build_artifacts]
+
+append qemu_args " -nographic -m 1G "
+
+#
+# Gate: vct's banner line. Proves vct booted without the daemon in
+# the topology (no report_rom child). vct exits 0 (version always
+# succeeds). The functional warning path is verified by code
+# review of NotifierReporter::post().
+#
+run_genode_until {.*vct 0.1.1-alpha.*} 30

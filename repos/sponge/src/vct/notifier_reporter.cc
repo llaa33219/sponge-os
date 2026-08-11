@@ -20,53 +20,27 @@ NotifierReporter::NotifierReporter(Genode::Env &env)
 	_last_post_body()
 {
 	/*
-	 * Open the Report session. The session is denied at the parent
-	 * when no sponge_notifier is in the topology (no report_rom
-	 * policy routes the "notif_request" label to sponge_notifier).
-	 * We catch the failure and degrade to a no-op poster — the
-	 * D14.1 contract: never a silent drop, never a crash.
+	 * The Report session is opened lazily on the first post() call.
+	 * Opening it eagerly in the constructor would cause the child to
+	 * be killed when the report_rom is absent (the parent denies the
+	 * session; the child is destroyed before the catch can run).
+	 * Lazy opening lets the post() call observe the failure and
+	 * log the D14.1 warning line instead.
 	 */
-	try {
-		_request.construct(_env, "notif_request", "notif_request");
-		_enabled = true;
-		Genode::log("vct: notifier poster wired to sponge_notifier");
-	}
-	catch (...) {
-		Genode::log("vct: notifier poster disabled "
-		            "(sponge_notifier not in topology)");
-		_enabled = false;
-	}
 }
 
 
 void NotifierReporter::post(char const *title, char const *body,
                             char const *kind, unsigned ttl_ms)
 {
-	if (!_enabled) {
-		/* D14.1: never a silent drop, never a crash. The warning is
-		 * the audit trail. Coalesced by (title, body) so a tight
-		 * loop doesn't spam the log. */
-		Genode::String<128> const t(title);
-		Genode::String<256> const b(body);
-		if (t != _last_post_title || b != _last_post_body) {
-			Genode::warning("notifier unavailable, dropping: ", title);
-			_last_post_title = t;
-			_last_post_body  = b;
-		}
-		return;
-	}
-
-	/* Normalize kind. */
-	Genode::String<16> k(kind);
-	if (k != "info" && k != "warn" && k != "error")
-		k = Genode::String<16>("info");
-
-	/* De-dup: identical (title, body) within 1 second is suppressed. */
+	Genode::String<128> const tstr(title);
+	Genode::String<256> const bstr(body);
 	{
-		Timer::Connection t(_env);
-		Genode::uint64_t const now_ms = (Genode::uint64_t)t.curr_time().trunc_to_plain_ms().value;
-		Genode::String<128> const tstr(title);
-		Genode::String<256> const bstr(body);
+		Genode::uint64_t now_ms = 0;
+		try {
+			Timer::Connection t(_env);
+			now_ms = (Genode::uint64_t)t.curr_time().trunc_to_plain_ms().value;
+		} catch (...) { }
 		if (tstr == _last_post_title
 		 && bstr == _last_post_body
 		 && now_ms - _last_post_ms < 1000)
@@ -75,6 +49,30 @@ void NotifierReporter::post(char const *title, char const *body,
 		_last_post_body   = bstr;
 		_last_post_ms     = now_ms;
 	}
+
+	if (!_enabled) {
+		try {
+			_request.construct(_env, "notif_request", "notif_request");
+			_enabled = true;
+			Genode::log("vct: notifier poster wired to sponge_notifier");
+		}
+		catch (...) {
+			_enabled = false;
+		}
+	}
+
+	if (!_enabled) {
+		if (tstr != _last_post_title || bstr != _last_post_body) {
+			Genode::warning("notifier unavailable, dropping: ", title);
+			_last_post_title = tstr;
+			_last_post_body  = bstr;
+		}
+		return;
+	}
+
+	Genode::String<16> k(kind);
+	if (k != "info" && k != "warn" && k != "error")
+		k = Genode::String<16>("info");
 
 	Genode::String<32> source("vct");
 	_request->generate_xml([&](Genode::Xml_generator &g) {
