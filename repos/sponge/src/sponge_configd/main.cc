@@ -729,62 +729,66 @@ void Sponge::Configd::Main::_save_store()
 	Genode::Vfs::File_system &vfs = _vfs_env->root_dir();
 
 	/*
-	 * Truncate-write if the file exists, create-if-missing otherwise.
-	 * ram FS's CREATE mode rejects pre-existing files, so we open
-	 * twice: first without CREATE (succeeds on subsequent saves),
-	 * then with CREATE as a fallback (succeeds on the first save).
-	 *
-	 * A follow-up commit adds the write-tmp + rename path for
-	 * crash-consistency (docs/12 §13.2). The current direct-
-	 * overwrite mode satisfies the per-set durability contract but
-	 * is NOT crash-consistent — a power loss mid-write can leave a
-	 * torn store, which the loader handles by warning and starting
-	 * empty (same safe-state contract).
+	 * Crash-consistent write (Phase 4 §13.2): write STORE_TMP_PATH
+	 * first, then rename over STORE_PATH. A torn mid-write leaves the
+	 * previous store intact and the tmp as garbage for the next boot's
+	 * _load_store to warn-and-discard. The rename is atomic on the
+	 * single-writer vfs.
 	 */
-	Genode::Vfs::Vfs_handle *handle { nullptr };
-	Genode::Vfs::Directory_service::Open_result open_result =
-		vfs.open(STORE_PATH,
+	Genode::Vfs::Vfs_handle *tmp_handle { nullptr };
+	Genode::Vfs::Directory_service::Open_result tmp_open =
+		vfs.open(STORE_TMP_PATH,
 		         Genode::Vfs::Directory_service::OPEN_MODE_WRONLY,
-		         &handle, _heap);
-	if (open_result == Genode::Vfs::Directory_service::OPEN_ERR_UNACCESSIBLE) {
-		open_result = vfs.open(STORE_PATH,
+		         &tmp_handle, _heap);
+	if (tmp_open == Genode::Vfs::Directory_service::OPEN_ERR_UNACCESSIBLE) {
+		tmp_open = vfs.open(STORE_TMP_PATH,
 		         Genode::Vfs::Directory_service::OPEN_MODE_WRONLY
 		         | Genode::Vfs::Directory_service::OPEN_MODE_CREATE,
-		         &handle, _heap);
+		         &tmp_handle, _heap);
 	}
-	if (open_result != Genode::Vfs::Directory_service::OPEN_OK) {
-		Genode::warning("sponge_configd: cannot open store for write");
+	if (tmp_open != Genode::Vfs::Directory_service::OPEN_OK) {
+		Genode::warning("sponge_configd: cannot open store tmp for write");
 		return;
 	}
-	Genode::Vfs::Vfs_handle::Guard guard(handle);
+	Genode::Vfs::Vfs_handle::Guard tmp_guard(tmp_handle);
 
-	handle->fs().ftruncate(handle, len);
+	tmp_handle->fs().ftruncate(tmp_handle, len);
 
-	Genode::size_t off { 0 };
-	bool ok { true };
-	while (off < len) {
-		handle->seek(off);
-		Genode::size_t n { 0 };
-		Genode::Vfs::File_io_service::Write_result const w =
-			handle->fs().write(handle,
-			    Genode::Const_byte_range_ptr(buf + off, len - off), n);
-		if (w == Genode::Vfs::File_io_service::WRITE_OK) {
-			if (n == 0) { ok = false; break; }
-			off += n;
-		} else if (w == Genode::Vfs::File_io_service::WRITE_ERR_WOULD_BLOCK) {
+	{
+		Genode::size_t off { 0 };
+		bool ok { true };
+		while (off < len) {
+			tmp_handle->seek(off);
+			Genode::size_t n { 0 };
+			Genode::Vfs::File_io_service::Write_result const w =
+				tmp_handle->fs().write(tmp_handle,
+				    Genode::Const_byte_range_ptr(buf + off, len - off), n);
+			if (w == Genode::Vfs::File_io_service::WRITE_OK) {
+				if (n == 0) { ok = false; break; }
+				off += n;
+			} else if (w == Genode::Vfs::File_io_service::WRITE_ERR_WOULD_BLOCK) {
+				_vfs_env->io().commit_and_wait();
+			} else {
+				ok = false; break;
+			}
+		}
+
+		tmp_handle->fs().queue_sync(tmp_handle);
+		while (tmp_handle->fs().complete_sync(tmp_handle) ==
+		       Genode::Vfs::File_io_service::SYNC_QUEUED)
 			_vfs_env->io().commit_and_wait();
-		} else {
-			ok = false; break;
+
+		if (!ok) {
+			Genode::warning("sponge_configd: store tmp write incomplete");
+			return;
 		}
 	}
+	/* (tmp_handle + tmp_guard released here by RAII scope exit) */
 
-	handle->fs().queue_sync(handle);
-	while (handle->fs().complete_sync(handle) ==
-	       Genode::Vfs::File_io_service::SYNC_QUEUED)
-		_vfs_env->io().commit_and_wait();
-
-	if (!ok)
-		Genode::warning("sponge_configd: store write incomplete");
+	if (vfs.rename(STORE_TMP_PATH, STORE_PATH) !=
+	    Genode::Vfs::Directory_service::RENAME_OK) {
+		Genode::warning("sponge_configd: store rename failed");
+	}
 }
 
 
