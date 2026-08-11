@@ -72,12 +72,17 @@ A web view appears inside Sponge DE. URL: http://init.local/
 vct starts the Leitzentrale component, and Sponge DE (or a dedicated
 web-view component) shows it as a window.
 
-### 3.2 Sponge DE Menu (Planned)
+### 3.2 Sponge DE Menu (Deferred to Phase 15+)
 
-System menu on the panel → "Advanced Mode" → "Open Leitzentrale".
+A panel menu entry of the form
+System menu → "Advanced Mode" → "Open Leitzentrale" is part of the
+long-term design but is **not delivered** in this release. The menu
+entry is deferred to Phase 15+. Until then, the `vct leitzentrale`
+CLI command (§3.1) is the only way to open Leitzentrale.
 
-The menu item is placed where a beginner would not click it, but it is
-not hidden. Clicking it shows a confirmation dialog along the lines of
+When the menu entry is implemented, the design intent is: the menu
+item is placed where a beginner would not click it, but it is not
+hidden. Clicking it shows a confirmation dialog along the lines of
 "This mode directly modifies the system's detailed configuration.
 Continue?".
 
