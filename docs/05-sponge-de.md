@@ -205,7 +205,14 @@ How Sponge DE stays light under Genode's resource constraints:
   Phase 15+.
 - Clipboard is settled: Phase 14 reuses the upstream Genode
   `os/src/server/clipboard` binary as-is, per decision D14.2 in
-  `docs/plans/phase14-daily-desktop.md`.
+  `docs/plans/phase14-daily-desktop.md`. The Qt6 side is bridged by
+  the vendored `qgenodeclipboard.cpp` (in `qt6_base`); the
+  cross-component write/paste proof lives in
+  `run/sponge-clipboard.run` (sentinel byte-for-byte in the
+  server-side ROM, plus a best-effort visual paste check) and the
+  focus-aware write gating is exercised by
+  `run/sponge-clipboard-focus.run` (`match_labels="yes"` sub-scenario,
+  server denies cross-domain writes).
 
 Notification backend is settled: Phase 14 builds the Sponge-native
 `sponge_notifier` daemon, per decision D14.1 in
