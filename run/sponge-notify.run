@@ -212,6 +212,7 @@ config
 # sponge-de on seL4: caps 1000, ram 128M (proven sizing — docs/09 §11.1).
 + start sponge-de | caps: 1000 | ram: 128M
   + config
+    + notifier | source: daemon
     + vfs
       + dir dev
         + log

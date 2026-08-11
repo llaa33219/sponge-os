@@ -118,6 +118,7 @@ class NotifierController : public QObject
 		bool _read_payload(QString &payload);
 		void _on_rom();   /* entrypoint thread: read ROM, marshal */
 		void _poll();     /* GUI thread: pull + apply */
+		void _lazy_open(); /* GUI thread: lazy session opening */
 
 	signals:
 
