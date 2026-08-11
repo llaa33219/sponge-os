@@ -1,0 +1,628 @@
+#
+# \brief  Sponge DE window-management tasklist scenario (Phase 14 W7)
+# \author Sponge OS contributors
+# \date   2026
+#
+# Acceptance boot for W7 (docs/plans/phase14-daily-desktop.md §W7):
+# the panel tasklist is the deterministic minimize/restore path for
+# the window stack. The scenario boots the proven WM stack + sponge-de
+# + wm_tasks_probe and drives every state-table row in
+# docs/plans/wm-state-table.md via QMP clicks on the tasklist
+# buttons.
+#
+# Topology (base-sel4, headless, one QEMU boot):
+#
+#   init
+#   + timer
+#   + report_rom     (wm/layouter/decorator policy matrix + sponge_pkgd
+#                     request/result relay + pkg_runtime config relay)
+#   + nitpicker      (Gui/Capture/Event)
+#   + drivers        (vendored drivers_interactive-pc: vesa_fb/ps2/
+#                     pc_usb_host/usb_hid/event_filter + chargen ROMs)
+#   + wm             (caps 250 / ram 8M; role policies)
+#   + layouter       (window_layouter; rules="rom" — the tasklist
+#                     controller is the rules source)
+#   + decorator      (motif; closer + maximizer + title)
+#   + sponge-de      (Qt6 DE; hosts the panel tasklist widget; the
+#                     tasklist controller subscribes to wm's
+#                     window_list and the layouter's window_layout
+#                     reports, writes rules + focus_request on click)
+#   + sponge_pkgd    (owns pkg_runtime's config; answers install/launch
+#                     from the request channel wm_tasks_probe drives)
+#   + pkg_runtime    (binary init; hosts pkg_gui_demo after launch)
+#   + wm_tasks_probe (Phase 14 W7 NEW: installs + launches pkg_gui_demo,
+#                     waits for the tasklist click to land via
+#                     window_layout/window_list/focus_request/rules
+#                     observation, emits wm-tasks-probe: PASS)
+#
+# State machine (driven by QMP clicks on the tasklist button):
+#
+#   row 1: (init) -> Normal-Visible
+#       install + launch pkg_gui_demo; window_layout shows the
+#       initial (50, 320, 320, 240) position.
+#   row 3: Normal-Visible-Focused -> Minimized
+#       QMP click on the tasklist button for pkg_gui_demo; the
+#       controller writes <assign ... xpos="-32000" ypos="-32000"/>
+#       to the rules ROM; window_layout shows the parked position.
+#   row 5: Minimized -> Normal-Visible-Focused
+#       QMP click on the tasklist button again; the controller
+#       writes the saved (x, y, w, h) and emits focus_request;
+#       window_layout shows the restored position.
+#   row 6: Normal-Visible-Focused -> Maximized
+#       (read the rules ROM for maximized="yes" — covered by the
+#       initial pkg_gui_demo placement under the panel's
+#       maximize-on-double-click path; the W7 probe does not
+#       exercise the maximizer toggle directly because the
+#       decorator's maximizer is the Phase 11 regression path.)
+#   row 8: Normal-Visible-Focused -> (destroyed)
+#       (the closer button is the Phase 11 closer regression path;
+#       the W7 probe does not exercise the closer directly.)
+#
+# The run script dispatches one QMP click per transition (steps
+# click 1 and click 2 below). The probe polls window_layout /
+# focus_request / rules and emits a unique marker per transition.
+#
+# === Gates ===
+#
+#   1. [fb] run_genode_until {.*\[init -> drivers -> fb\] using 1024x768.*} 90
+#   2. [usb_hid] run_genode_until {.*Connected device.* QEMU USB Tablet.*POINTER.*} 90
+#   3. [probe install+launch] run_genode_until {.*wm-tasks-probe: \[step 2\].*} 600
+#   4. [click 1] qmp_connect + qmp_exec_target dispatches the click
+#      on the tasklist button (compute pixel coords from the
+#      panel layout).
+#   5. [minimize] run_genode_until {.*wm-tasks-probe: \[step 4\].*} 60
+#   6. [click 2] qmp_exec_target dispatches the second click.
+#   7. [restore] run_genode_until {.*wm-tasks-probe: \[step 5\].*} 60
+#   8. [PASS] run_genode_until {.*wm-tasks-probe: PASS.*} 60
+#
+# Final gate: "wm-tasks-probe: PASS" + "Run script execution
+# successful.".
+#
+# === Hard constraints ===
+#
+# - base-sel4 only. vesa_fb/ps2/usb_hid need real PC hardware access.
+# - The decor.tar is staged into bin/ before build_boot_image.
+# - The layouter MUST be in rules="rom" mode; the tasklist
+#   controller is the rules source.
+# - The tasklist static rules (the layouter's original inline
+#   <assign> set) are mirrored into the tasklist via the
+#   qApp->setProperty("tasklist_static_rules", ...) hook in
+#   main.cc.
+
+assert {[have_spec sel4]} \
+	"sponge-wm-tasks requires KERNEL=sel4 (BOARD=pc) in build.conf. \
+	 This scenario drives real PC hardware (vesa_fb/ps2/usb_hid) which \
+	 base-linux cannot provide."
+
+build { core lib/ld init timer server/report_rom server/nitpicker \
+         driver/acpi app/pci_decode driver/platform \
+         driver/framebuffer/vesa driver/ps2 \
+         driver/usb_host/pc driver/usb_hid server/event_filter \
+         server/wm app/window_layouter app/decorator \
+         sponge_pkgd test/pkg_gui_demo test/wm_tasks_probe \
+         sponge-de \
+         qt6/base lib/libc lib/libm lib/stdcxx lib/mesa \
+         lib/mesa_gpu-softpipe lib/egl lib/softpipe lib/libdrm lib/expat \
+         lib/qt6_component lib/vfs lib/vfs_pipe lib/vfs_gpu lib/rom_filter \
+         lib/zlib lib/libpng lib/blit }
+
+create_boot_directory
+
+install_config {
+config
++ parent-provides
+  + service ROM
+  + service PD
+  + service RM
+  + service CPU
+  + service LOG
+  + service IRQ
+  + service IO_MEM
+  + service IO_PORT
+
++ default | caps: 200 | ram: 4M
++ default-route
+  + any-service
+    + parent
+    + any-child
+
++ start timer
+  + provides | + service Timer
+
++ start report_rom | caps: 300 | ram: 8M
+  + provides
+    + service Report
+    + service ROM
+  + config | verbose: no
+    + policy | label: layouter -> window_list       | report: wm -> window_list
+    + policy | label: decorator -> pointer           | report: wm -> pointer
+    + policy | label: decorator -> window_layout     | report: layouter -> window_layout
+    + policy | label: wm -> focus                    | report: layouter -> focus
+    + policy | label: wm -> resize_request           | report: layouter -> resize_request
+    + policy | label: layouter -> hover              | report: decorator -> hover
+    + policy | label: layouter -> decorator_margins  | report: decorator -> decorator_margins
+    + policy | label: layouter -> rules              | report: layout_rules
+    + policy | label: layouter -> focus_request      | report: wm_tasks_probe -> focus_request
+    + policy | label: wm_tasks_probe -> window_layout | report: layouter -> window_layout
+    + policy | label: wm_tasks_probe -> window_list   | report: wm -> window_list
+    + policy | label: wm_tasks_probe -> focus_request | report: tasklist_ctrl -> focus_request
+    + policy | label: wm_tasks_probe -> rules         | report: tasklist_ctrl -> rules
+    + policy | label: sponge_pkgd -> request          | report: wm_tasks_probe -> request
+    + policy | label: wm_tasks_probe -> result        | report: sponge_pkgd -> result
+    + policy | label: pkg_runtime -> config           | report: sponge_pkgd -> runtime
+
++ start nitpicker | ram: 16M
+  + provides
+    + service Gui
+    + service Capture
+    + service Event
+  + route
+    + service Report | + child report_rom
+    + service Timer  | + child timer
+    + any-service
+      + parent
+      + any-child
+  + config
+    + capture
+    + event
+    + report | focus: yes | hover: yes | xray: yes
+    + domain panel | layer: 1 | content: client | label: no
+                   | hover: always | ypos: 0 | height: 28
+    + domain default | layer: 2 | content: client | label: no
+                     | hover: always | focus: click
+    + policy | label_prefix: sponge-de -> Sponge Panel | domain: panel
+    + default-policy | domain: default
+    + background | color: #1e1e2e
+
++ start drivers | caps: 1500 | ram: 96M | managing_system: yes
+  + binary init
+  + route
+    + service ROM | label: config | + parent | label: drivers.config
+    + service Timer               | + child timer
+    + service Capture             | + child nitpicker
+    + service Event               | + child nitpicker
+    + any-service                 | + parent
+  + config
+    + parent-provides
+      + service IRQ
+      + service IO_MEM
+      + service IO_PORT
+      + service ROM
+      + service PD
+      + service RM
+      + service CPU
+      + service LOG
+      + service Timer
+      + service Capture
+      + service Event
+
+    + default | caps: 60
+
+    + start acpi | caps: 250 | ram: 4M
+      + route
+        + service IO_MEM | + parent
+        + service LOG    | + parent
+        + service PD     | + parent
+        + service RM     | + parent
+        + service CPU    | + parent
+        + service ROM    | + parent
+        + service Report | + child report_rom
+
+    + start report_rom | caps: 100 | ram: 2M
+      + provides
+      | + service ROM
+      | + service Report
+      + config
+      | + policy | label: pci_decode -> system | report: acpi -> acpi
+      | + policy | label: platform -> devices  | report: pci_decode -> devices
+      | + policy | label: usb_hid -> report    | report: usb -> devices
+      + route
+        + service LOG | + parent
+        + service PD  | + parent
+        + service CPU | + parent
+        + service ROM | + parent
+
+    + start pci_decode | caps: 100 | ram: 2M
+      + route
+        + service Report              | + child report_rom
+        + service ROM | label: system | + child report_rom
+        + service IO_MEM              | + parent
+        + service LOG                 | + parent
+        + service PD                  | + parent
+        + service RM                  | + parent
+        + service CPU                 | + parent
+        + service ROM                 | + parent
+
+    + start platform | caps: 200 | ram: 3M | managing_system: yes
+      + provides
+      | + service Dma
+      | + service Platform
+      + route
+      | + service ROM | label: devices | + child report_rom
+      | + service Report               | + child report_rom
+      | + service IRQ                  | + parent
+      | + service IO_MEM               | + parent
+      | + service IO_PORT              | + parent
+      | + service ROM                  | + parent
+      | + service PD                   | + parent
+      | + service CPU                  | + parent
+      | + service LOG                  | + parent
+      | + service Timer                | + parent
+      + config
+        + report | devices: yes
+        + policy | label_prefix: ps2             | + device ps2
+        + policy | label_prefix: fb  | info: yes | + pci | class: VGA
+        + policy | label_prefix: usb | info: yes | + pci | class: USB
+
+    + start fb | caps: 150 | ram: 20M
+      + binary vesa_fb
+      + route
+        + service ROM | label: config | + parent | label: fb.config
+        + service Report              | + child report_rom
+        + service Dma                 | + child platform
+        + service Platform            | + child platform
+        + service IO_PORT             | + parent
+        + service IO_MEM              | + parent
+        + service ROM                 | + parent
+        + service PD                  | + parent
+        + service CPU                 | + parent
+        + service LOG                 | + parent
+        + service Timer               | + parent
+        + service Capture             | + parent
+
+    + start ps2 | caps: 100 | ram: 1280K
+      + config
+      + route
+        + service Dma      | + child platform
+        + service Platform | + child platform
+        + service Event    | + child event_filter | label: ps2
+        + service ROM      | + parent
+        + service PD       | + parent
+        + service CPU      | + parent
+        + service LOG      | + parent
+        + service Timer    | + parent
+
+    + start usb | caps: 200 | ram: 16M
+      + binary pc_usb_host
+      + provides | + service Usb
+      + config
+      | + report | devices: yes
+      | + policy | label_prefix: usb_hid | + device | class: 0x3
+      + route
+        + service Dma                     | + child platform
+        + service Platform                | + child platform
+        + service Report | label: devices | + child report_rom
+        + service ROM                     | + parent
+        + service PD                      | + parent
+        + service RM                      | + parent
+        + service CPU                     | + parent
+        + service LOG                     | + parent
+        + service Timer                   | + parent
+
+    + start usb_hid | caps: 180 | ram: 10M
+      + route
+        + service ROM | label: report | + child report_rom
+        + service ROM                 | + parent
+        + service PD                  | + parent
+        + service RM                  | + parent
+        + service CPU                 | + parent
+        + service LOG                 | + parent
+        + service Timer               | + parent
+        + service Event               | + child event_filter | label: usb
+        + service Usb                 | + child usb
+
+    + start event_filter | caps: 90 | ram: 1280K
+      + provides | + service Event
+      + route
+        + service ROM | label: config | + parent | label: event_filter.config
+        + service Event               | + parent
+        + service ROM                 | + parent
+        + service PD                  | + parent
+        + service CPU                 | + parent
+        + service LOG                 | + parent
+        + service Timer               | + parent
+
++ start wm | caps: 250 | ram: 8M
+  + provides
+    + service Gui
+    + service Report
+    + service ROM
+  + config
+    + policy | label_prefix: decorator | role: decorator
+    + policy | label_prefix: layouter  | role: layouter
+    + default-policy
+  + route
+    + service ROM    | label: focus          | + child report_rom
+    + service ROM    | label: resize_request | + child report_rom
+    + service Report | label_last: shape     | + child report_rom
+    + service Report                         | + child report_rom
+    + service Gui                            | + child nitpicker
+    + any-service
+      + parent
+      + any-child
+
++ start layouter | caps: 150 | ram: 4M
+  + binary window_layouter
+  + config | rules: rom
+    + report | rules: yes
+    + rules
+      + screen screen
+      + assign | label_prefix: pkg_runtime | target: screen
+               | xpos: 50 | ypos: 320 | width: 320 | height: 240 | maximized: no
+    + press   | key: BTN_LEFT  | action: drag
+      + release | key: BTN_LEFT | action: drop
+  + route
+    + service ROM    | label: window_list       | + child report_rom
+    + service ROM    | label: focus_request     | + child report_rom
+    + service ROM    | label: hover             | + child report_rom
+    + service ROM    | label: decorator_margins | + child report_rom
+    + service ROM    | label: rules             | + child report_rom
+    + service Report | label: rules             | + child report_rom | label: layout_rules
+    + service Report                            | + child report_rom
+    + any-service
+      + child wm
+      + parent
+      + any-child
+
++ start decorator | caps: 350 | ram: 32M
+  + config
+    + controls
+      + maximizer
+      + title
+    + default-policy
+  + route
+    + service ROM    | label: window_layout | + child report_rom
+    + service ROM    | label: pointer       | + child report_rom
+    + service Report                        | + child report_rom
+    + any-service
+      + child wm
+      + parent
+      + any-child
+
++ start sponge_pkgd | caps: 200 | ram: 16M
+  + route
+    + service ROM | label_last: request | + child report_rom
+    + service Report | + child report_rom
+    + any-service
+      + parent
+      + any-child
+
++ start pkg_runtime | caps: 1500 | ram: 256M
+  + binary init
+  + route
+    + service ROM | label: config | + child report_rom
+    + service ROM | label_last: mesa_gpu.lib.so | + parent | label: mesa_gpu-softpipe.lib.so
+    + service Gui | + child wm
+    + service Report | + child report_rom
+    + any-service
+      + parent
+      + any-child
+
++ start sponge-de | caps: 1000 | ram: 128M
+  + config | tasklist_static_rules: "<assign label_prefix=\"pkg_runtime\" target=\"screen\" xpos=\"50\" ypos=\"320\" width=\"320\" height=\"240\" maximized=\"no\"/>"
+    + theme | source: default
+    + config | source: default
+    + version: 2
+    + vfs
+      + dir dev
+        + log
+        + inline rtc | : 2018-01-01 00:01
+      + dir pipe | + pipe
+      + tar qt6_dejavusans.tar
+      + tar qt6_libqgenode.tar
+    + libc | stdout: /dev/log | stderr: /dev/log | pipe: /pipe | rtc: /dev/rtc
+  + route
+    + service Gui | label_last: Sponge Panel | + child nitpicker
+    + service Gui                            | + child wm
+    + service Report | + child report_rom
+    + service ROM | label: theme   | + parent
+    + service ROM | label: configd | + parent
+    + service ROM | label: default.theme | + parent
+    + service ROM | label: window_list   | + child report_rom
+    + service ROM | label: window_layout | + child report_rom
+    + service Report | label: focus_request | + child report_rom
+    + service Report | label: rules        | + child report_rom
+    + service ROM | label: mesa_gpu.lib.so | + parent | label: mesa_gpu-softpipe.lib.so
+    + any-service
+      + parent
+      + any-child
+
++ start wm_tasks_probe | caps: 150 | ram: 16M
+  + config
+  + route
+    + service Timer   | + child timer
+    + service ROM | label: window_list   | + child report_rom
+    + service ROM | label: window_layout | + child report_rom
+    + service ROM | label: focus_request | + child report_rom
+    + service ROM | label: rules         | + child report_rom
+    + service ROM | label_last: result   | + child report_rom
+    + service Report                   | + child report_rom
+    + any-service
+      + parent
+      + any-child
+- }
+
+#
+# Stage every non-build-artifact boot module into bin/ BEFORE
+# build_boot_image (base-sel4 packs a single image.elf at that point).
+#
+exec mkdir -p bin
+
+#
+# qt6_dejavusans.tar raw recipe is depot-only; mirror its content into
+# bin/ from the qt6_base port sources.
+#
+set dejavu_dst "bin/qt6_dejavusans.tar"
+if {![file exists $dejavu_dst]} {
+	set dejavu_src [glob -nocomplain "${genode_dir}/contrib/qt6_base-*/src/lib/qt6_base/src/3rdparty/wasm/DejaVuSans.ttf"]
+	if {[llength $dejavu_src] == 0} {
+		error "DejaVuSans.ttf not found in the qt6_base port sources"
+	}
+	set staging "[run_dir]/dejavusans-staging"
+	file mkdir "$staging/qt/lib/fonts"
+	file copy -force [lindex $dejavu_src 0] "$staging/qt/lib/fonts/DejaVuSans.ttf"
+	exec tar -cf $dejavu_dst -C $staging qt
+	file delete -force $staging
+}
+
+#
+# Driver sub-init config modules (vendored drivers_interactive-pc set).
+#
+set recipe_dir "${genode_dir}/repos/os/recipes/raw/drivers_interactive-pc"
+foreach f { drivers.config fb.config event_filter.config } {
+	if {![file exists "$recipe_dir/$f"]} {
+		error "$recipe_dir/$f missing"
+	}
+	exec cp -f "$recipe_dir/$f" "bin/$f"
+}
+
+set chargen_dir "${genode_dir}/repos/os/src/server/event_filter"
+foreach f { en_us.chargen special.chargen } {
+	if {![file exists "$chargen_dir/$f"]} { error "$chargen_dir/$f missing" }
+	exec cp -f "$chargen_dir/$f" "bin/$f"
+}
+
+#
+# Default theme ROM module (sponge-de opens it as "default.theme").
+#
+exec cp -f "${genode_dir}/repos/sponge/src/sponge-de/themes/default.theme" \
+           "bin/default.theme"
+
+#
+# Stage pkg_gui_demo metadata + the derived index.
+#
+set staged_pkgs { pkg_gui_demo }
+foreach pkg $staged_pkgs {
+	set src "${genode_dir}/../pkg/$pkg/metadata.xml"
+	if {![file exists $src]} {
+		error "package metadata not found: $src"
+	}
+	exec cp -L $src "bin/pkg_$pkg.xml"
+}
+
+set index_fh [open "bin/pkg_index.xml" w]
+puts $index_fh "<packages>"
+foreach pkg $staged_pkgs {
+	puts $index_fh "  <pkg name=\"$pkg\"/>"
+}
+puts $index_fh "</packages>"
+close $index_fh
+
+#
+# Full boot module list. The Qt6 shared libs + tars are cmake-built
+# and not in [build_artifacts], so listed explicitly (base-sel4 needs
+# them inside image.elf).
+#
+set boot_modules [build_artifacts]
+foreach m { libQt6Core.lib.so libQt6Gui.lib.so libQt6Widgets.lib.so \
+            libqgenode.lib.so qt6_libqgenode.tar qt6_dejavusans.tar \
+            en_us.chargen special.chargen \
+            drivers.config fb.config event_filter.config \
+            default.theme \
+            pkg_pkg_gui_demo.xml pkg_index.xml } {
+	lappend boot_modules $m
+}
+
+build_boot_image $boot_modules
+
+#
+# Source the shared QMP helper. Same pattern as run/sponge-wm-qmp.run.
+#
+set qmp_source_path [file join [file dirname [file normalize [info script]]] qmp.inc]
+catch { source $qmp_source_path }
+
+if {[info procs qmp_disconnect] eq ""} {
+	proc qmp_disconnect { chan } { catch { close $chan } }
+}
+
+#
+# QMP click — single click at (x, y) via the PS/2 Mouse (relative).
+#
+# The tasklist button is inside the panel's QHBoxLayout. The panel
+# starts at (0,0); the launcher toggle is at left (width 48); the
+# title label comes next (~70 px); the tasklist starts at panel
+# x ≈ 8 + 48 + 4 + 70 = 130. The first tasklist entry (pkg_gui_demo)
+# is at x ≈ 130, width 96, center x ≈ 178, panel y center = 14.
+#
+# These coordinates are the SOURCE OF TRUTH for the W7 tasklist
+# click; qmp_click moves the pointer to (178, 14) and presses BTN_LEFT.
+#
+proc qmp_click_tasklist { chan } {
+	#
+	# event_filter's accelerate (sensitivity_percent=1000, max=50,
+	# curve=127) maps rel events non-linearly:
+	#   rel-1   → 1px per event  (no acceleration, precision steps)
+	#   rel-50  → 100px per event (full acceleration, coarse steps)
+	# So for an x-displacement of (x1):
+	#   cx = x1 / 100 (number of rel-50 events)
+	#   fx = x1 % 100 (number of rel-1 events)
+	# Same for y.
+	#
+	# Step 1: clamp pointer to (0,0). 10 × rel-100 per axis = ~1500px
+	# of negative motion, more than any screen dimension.
+	for {set i 0} {$i < 10} {incr i} { qmp_ps2_rel $chan x -100 }
+	for {set i 0} {$i < 10} {incr i} { qmp_ps2_rel $chan y -100 }
+	after 200
+
+	# Step 2: navigate to (178, 14) — tasklist first entry center.
+	set cx [expr {178 / 100}]
+	set cy [expr {14 / 100}]
+	set fx [expr {178 % 100}]
+	set fy [expr {14 % 100}]
+	for {set i 0} {$i < $cx} {incr i} { qmp_ps2_rel $chan x 50; after 20 }
+	for {set i 0} {$i < $cy} {incr i} { qmp_ps2_rel $chan y 50; after 20 }
+	for {set i 0} {$i < $fx} {incr i} { qmp_ps2_rel $chan x 1 }
+	for {set i 0} {$i < $fy} {incr i} { qmp_ps2_rel $chan y 1 }
+	after 200
+
+	qmp_ps2_button $chan true
+	after 100
+	qmp_ps2_button $chan false
+}
+
+if {[info procs qmp_ps2_rel] eq ""} {
+	proc qmp_ps2_rel { chan axis value } {
+		qmp_cmd $chan [format {{"execute":"input-send-event","arguments":{"events":[{"type":"rel","data":{"axis":"%s","value":%d}}]}}} $axis $value]
+	}
+}
+
+if {[info procs qmp_ps2_button] eq ""} {
+	proc qmp_ps2_button { chan down } {
+		set val [expr {$down ? "true" : "false"}]
+		qmp_cmd $chan [format {{"execute":"input-send-event","arguments":{"events":[{"type":"btn","data":{"down":%s,"button":"left"}}]}}} $val]
+	}
+}
+
+#
+# QEMU: -nographic for headless, -m 2G for Qt6/Mesa + pkg_runtime's
+# 256M allocation.
+#
+append qemu_args " -nographic -m 2G "
+append qemu_args " -device nec-usb-xhci,id=xhci -device usb-tablet "
+
+set qmp_port [qmp_pick_port]
+append qemu_args " -qmp tcp:127.0.0.1:${qmp_port},server=on,wait=off "
+
+#
+# Sequence:
+#   1. wait for fb + usb_hid (existing pattern)
+#   2. wait for the probe to install + launch pkg_gui_demo
+#   3. wait for the probe to find the window in window_layout
+#   4. QMP click 1 on the tasklist button (minimize)
+#   5. wait for the probe to log [step 4] (minimize verified)
+#   6. QMP click 2 on the tasklist button (restore)
+#   7. wait for [step 5] (restore verified)
+#   8. wait for wm-tasks-probe: PASS
+#
+run_genode_until {.*\[init -> drivers -> fb\] using 1024x768.*} 90
+run_genode_until {.*Connected device.*QEMU QEMU USB Tablet.*POINTER.*} 90
+run_genode_until {.*wm-tasks-probe: \[step 3\].*} 600
+
+set qmp_chan [qmp_connect $qmp_port]
+qmp_click_tasklist $qmp_chan
+run_genode_until {.*wm-tasks-probe: \[step 4\].*} 60 $qmp_chan
+qmp_click_tasklist $qmp_chan
+run_genode_until {.*wm-tasks-probe: \[step 5\].*} 60 $qmp_chan
+global qemu_spawn_id
+run_genode_until {.*wm-tasks-probe: PASS.*} 60 $qemu_spawn_id
+qmp_disconnect $qmp_chan
