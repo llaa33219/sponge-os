@@ -1,0 +1,442 @@
+#
+# \brief  Sponge DE QGenodeScreen 1x1-stale race probe (Phase 14 W3 / D14.8(b))
+# \author Sponge OS contributors
+# \date   2026
+#
+# Focused cold-boot reproducer for the QGenodeScreen 1x1-stale race
+# that the Phase 11 alpha-flake review suspected
+# (docs/evidence/task-6-phase11-alpha-flake.md). The Phase 11 fix
+# added a width-floor guard in panel_widget.cc::_apply_geometry
+# (width = screen_w > 64 ? screen_w : 1024); this scenario is the
+# instrument D14.8(b) requires to decide whether a follow-up vendored
+# patch to QGenodeScreen is in-scope or Re-scoped.
+#
+# Topology (modeled on the proven base-sel4 interactive reference
+# run/sponge-de-sel4-interactive.run, MINUS the launch/inject plumbing
+# — no sponge_pkgd, no pkg_runtime, no input-relay ROM, no QMP
+# choreography):
+#
+#   init
+#   + timer
+#   + nitpicker         (Gui/Capture/Event)
+#   + drivers           (sub-init; vesa_fb + ps2 + usb_hid + xHCI +
+#                        event_filter + acpi + pci_decode + platform;
+#                        carries the same interactive-PC stack as
+#                        run/sponge-de-sel4-interactive.run so cold-
+#                        boot timing matches the proven reference)
+#   + sponge-de         (caps: 1000 / ram: 128M; same proven sizing
+#                        from run/sponge-de-sel4-interactive.run —
+#                        the Phase 10 §11.1 capability-exhaustion
+#                        fix that closed the original EGL-on-seL4
+#                        hang)
+#   + qscreen_race_probe (a small plain-Genode component;
+#                        repos/sponge/src/test/qscreen_race_probe/;
+#                        reads nitpicker's composited pixels through
+#                        a Capture session, polls a 60s cold-boot
+#                        window for the demo-domain themed window_bg
+#                        color, then logs
+#                          qscreen-race-probe: trial verdict clean|race
+#                        — the run script gates on that regex)
+#
+# What this scenario proves / does not prove:
+#
+#   PROVES — the FIRST capture sample after component construction
+#   (no warm-up) on a heavy seL4 topology:
+#     (a) the panel band (512,14) reads 0x0 (black, 1x28-degenerate
+#         race signature) OR 0x1e1e2e (nitpicker bg, normal pre-paint
+#         state), AND
+#     (b) within a bounded 60s cold-boot window, the demo-domain
+#         center (512,412) either paints the themed window_bg
+#         #313244 (race did NOT reproduce) OR stays at nitpicker bg
+#         forever (race DID reproduce — the panel-construction 1x1
+#         path pinned Qt to a screen it cannot recover from without
+#         a follow-up geometry event).
+#   DOES NOT — apply any vendored-tree patch (AGENTS.md §5.2 — W3
+#   is an investigation workstream, not a fix workstream; per the
+#   plan). The verdict lines from the 10 trials are the input D14.8(b)
+#   uses to decide.
+#
+# Automated verification: a single regex gate on the probe's verdict
+# line (the run tool records the trial as PASS for both "clean" and
+# "race" verdicts; the verdict content is consumed by the evidence
+# log, not by a hard pass/fail gate — per D14.8(b) "≥ 3 of 10 cold-
+# boot trials" is a counting policy, not a hard threshold).
+#
+# Kernel matrix: base-sel4 only (the race is an seL4 timing-class
+# symptom; base-linux's Genode core runs init synchronously and
+# nitpicker's panorama info is always ready before sponge-de
+# constructs).
+#
+
+assert {[have_spec sel4]} \
+	"sponge-de-qscreen-race-probe requires KERNEL=sel4 (BOARD=pc) in build.conf. \
+	 The QGenodeScreen 1x1-stale race is an seL4 timing-class symptom; \
+	 base-linux's core runs init synchronously and never reproduces."
+
+build { core lib/ld init timer server/report_rom server/nitpicker \
+         driver/acpi app/pci_decode driver/platform \
+         driver/framebuffer/vesa driver/ps2 \
+         driver/usb_host/pc driver/usb_hid \
+         server/event_filter \
+         sponge-de test/qscreen_race_probe \
+         qt6/base lib/libc lib/libm lib/stdcxx lib/mesa \
+         lib/mesa_gpu-softpipe lib/egl lib/softpipe lib/libdrm lib/expat \
+         lib/qt6_component lib/vfs lib/vfs_pipe lib/vfs_gpu lib/rom_filter \
+         lib/zlib lib/libpng lib/blit }
+
+create_boot_directory
+
+install_config {
+config
++ parent-provides
+  + service ROM
+  + service PD
+  + service RM
+  + service CPU
+  + service LOG
+  + service IRQ
+  + service IO_MEM
+  + service IO_PORT
+
++ default | caps: 200 | ram: 4M
++ default-route
+  + any-service
+    + parent
+    + any-child
+
++ start timer
+  + provides | + service Timer
+
++ start report_rom | caps: 100 | ram: 4M
+  + provides
+    + service Report
+    + service ROM
+  + config | verbose: no
+
++ start nitpicker | ram: 16M
+  + provides
+    + service Gui
+    + service Capture
+    + service Event
+  + route
+    + service Report | + child report_rom
+    + service Timer  | + child timer
+    + any-service
+      + parent
+      + any-child
+  + config
+    + capture
+    + event
+    + domain panel | layer: 1 | content: client | label: no
+                   | hover: always | focus: click | ypos: 0 | height: 28
+    + domain launcher | layer: 4 | content: client | label: no
+                      | hover: always | focus: click
+                      | xpos: 0 | ypos: 28 | width: 341 | height: 480
+    + domain demo | layer: 2 | content: client | label: no
+                  | hover: always | focus: click
+                  | xpos: 192 | ypos: 172 | width: 640 | height: 480
+    + domain default | layer: 3 | content: client | label: no
+                     | hover: always | focus: click | ypos: 28 | height: -28
+    + policy | label_prefix: sponge-de -> Sponge Panel   | domain: panel
+    + policy | label_prefix: sponge-de -> Sponge Launcher | domain: launcher
+    + policy | label_prefix: sponge-de -> Sponge DE Demo | domain: demo
+    + default-policy | domain: default
+    + background | color: #1e1e2e
+
++ start drivers | caps: 1500 | ram: 96M | managing_system: yes
+  + binary init
+  + route
+    + service ROM | label: config | + parent | label: drivers.config
+    + service Timer               | + child timer
+    + service Capture             | + child nitpicker
+    + service Event               | + child nitpicker
+    + any-service                 | + parent
+  + config
+    + parent-provides
+      + service IRQ
+      + service IO_MEM
+      + service IO_PORT
+      + service ROM
+      + service PD
+      + service RM
+      + service CPU
+      + service LOG
+      + service Timer
+      + service Capture
+      + service Event
+
+    + default | caps: 60
+
+    + start acpi | caps: 250 | ram: 4M
+      + route
+        + service IO_MEM | + parent
+        + service LOG    | + parent
+        + service PD     | + parent
+        + service RM     | + parent
+        + service CPU    | + parent
+        + service ROM    | + parent
+        + service Report | + child report_rom
+
+    + start report_rom | caps: 100 | ram: 2M
+      + provides
+      | + service ROM
+      | + service Report
+      + config
+      | + policy | label: pci_decode -> system | report: acpi -> acpi
+      | + policy | label: platform -> devices  | report: pci_decode -> devices
+      | + policy | label: usb_hid -> report    | report: usb -> devices
+      + route
+        + service LOG | + parent
+        + service PD  | + parent
+        + service CPU | + parent
+        + service ROM | + parent
+
+    + start pci_decode | caps: 100 | ram: 2M
+      + route
+        + service Report              | + child report_rom
+        + service ROM | label: system | + child report_rom
+        + service IO_MEM              | + parent
+        + service LOG                 | + parent
+        + service PD                  | + parent
+        + service RM                  | + parent
+        + service CPU                 | + parent
+        + service ROM                 | + parent
+
+    + start platform | caps: 200 | ram: 3M | managing_system: yes
+      + provides
+      | + service Dma
+      | + service Platform
+      + route
+      | + service ROM | label: devices | + child report_rom
+      | + service Report               | + child report_rom
+      | + service IRQ                  | + parent
+      | + service IO_MEM               | + parent
+      | + service IO_PORT              | + parent
+      | + service ROM                  | + parent
+      | + service PD                   | + parent
+      | + service CPU                  | + parent
+      | + service LOG                  | + parent
+      | + service Timer                | + parent
+      + config
+        + report | devices: yes
+        + policy | label_prefix: ps2             | + device ps2
+        + policy | label_prefix: fb  | info: yes | + pci | class: VGA
+        + policy | label_prefix: usb | info: yes | + pci | class: USB
+
+    + start fb | caps: 150 | ram: 20M
+      + binary vesa_fb
+      + route
+        + service ROM | label: config | + parent | label: fb.config
+        + service Report              | + child report_rom
+        + service Dma                 | + child platform
+        + service Platform            | + child platform
+        + service IO_PORT             | + parent
+        + service IO_MEM              | + parent
+        + service ROM                 | + parent
+        + service PD                  | + parent
+        + service CPU                 | + parent
+        + service LOG                 | + parent
+        + service Timer               | + parent
+        + service Capture             | + parent
+
+    + start ps2 | caps: 100 | ram: 1280K
+      + config
+      + route
+        + service Dma      | + child platform
+        + service Platform | + child platform
+        + service Event    | + child event_filter | label: ps2
+        + service ROM      | + parent
+        + service PD       | + parent
+        + service CPU      | + parent
+        + service LOG      | + parent
+        + service Timer    | + parent
+
+    + start usb | caps: 200 | ram: 16M
+      + binary pc_usb_host
+      + provides | + service Usb
+      + config
+      | + report | devices: yes
+      | + policy | label_prefix: usb_hid | + device | class: 0x3
+      + route
+        + service Dma                     | + child platform
+        + service Platform                | + child platform
+        + service Report | label: devices | + child report_rom
+        + service ROM                     | + parent
+        + service PD                      | + parent
+        + service RM                      | + parent
+        + service CPU                     | + parent
+        + service LOG                     | + parent
+        + service Timer                   | + parent
+
+    + start usb_hid | caps: 180 | ram: 10M
+      + route
+        + service ROM | label: report | + child report_rom
+        + service ROM                 | + parent
+        + service PD                  | + parent
+        + service RM                  | + parent
+        + service CPU                 | + parent
+        + service LOG                 | + parent
+        + service Timer               | + parent
+        + service Event               | + child event_filter | label: usb
+        + service Usb                 | + child usb
+
+    + start event_filter | caps: 90 | ram: 1280K
+      + provides | + service Event
+      + route
+        + service ROM | label: config | + parent | label: event_filter.config
+        + service Event               | + parent
+        + service ROM                 | + parent
+        + service PD                  | + parent
+        + service CPU                 | + parent
+        + service LOG                 | + parent
+        + service Timer               | + parent
+
++ start sponge-de | caps: 1000 | ram: 128M
+  + config
+    + vfs
+      + dir dev
+        + log
+        + inline rtc | : 2018-01-01 00:01
+      + dir pipe | + pipe
+      + tar qt6_dejavusans.tar
+      + tar qt6_libqgenode.tar
+    + libc | stdout: /dev/log | stderr: /dev/log | pipe: /pipe | rtc: /dev/rtc
+  + route
+    + service Gui | label_last: Sponge Panel   | + child nitpicker
+    + service Gui | label_last: Sponge Launcher | + child nitpicker
+    + service Gui                              | + child nitpicker
+    + service Report | label: shape  | + child report_rom
+    + service ROM | label: default.theme        | + parent
+    + service ROM | label: mesa_gpu.lib.so | + parent | label: mesa_gpu-softpipe.lib.so
+    + any-service
+      + parent
+      + any-child
+
++ start qscreen_race_probe | caps: 100 | ram: 16M
+  + route
+    + service Capture | + child nitpicker
+    + service Timer   | + child timer
+    + any-service
+      + parent
+      + any-child
+- }
+
+#
+# Stage every non-build-artifact boot module into bin/ BEFORE
+# build_boot_image (base-sel4 packs image.elf in one shot; modules
+# added after build_boot_image never reach the guest — Phase 10 §11.2
+# item 3 / docs/11-environment.md §10.4).
+#
+exec mkdir -p bin
+
+#
+# qt6_dejavusans.tar is not a build output; source-build it from the
+# qt6_base port's bundled DejaVuSans.ttf (mirrors
+# repos/libports/recipes/raw/qt6_dejavusans/).
+#
+set dejavu_dst "bin/qt6_dejavusans.tar"
+if {![file exists $dejavu_dst]} {
+	set dejavu_src [glob -nocomplain "${genode_dir}/contrib/qt6_base-*/src/lib/qt6_base/src/3rdparty/wasm/DejaVuSans.ttf"]
+	if {[llength $dejavu_src] == 0} {
+		error "DejaVuSans.ttf not found in the qt6_base port sources"
+	}
+	set staging "[run_dir]/dejavusans-staging"
+	file mkdir "$staging/qt/lib/fonts"
+	file copy -force [lindex $dejavu_src 0] "$staging/qt/lib/fonts/DejaVuSans.ttf"
+	exec tar -cf $dejavu_dst -C $staging qt
+	file delete -force $staging
+}
+
+#
+# Driver sub-init config modules (vendored recipes/raw/drivers_interactive-pc/).
+#
+set recipe_dir "${genode_dir}/repos/os/recipes/raw/drivers_interactive-pc"
+foreach f { drivers.config fb.config } {
+	if {![file exists "$recipe_dir/$f"]} {
+		error "$recipe_dir/$f missing (vendored drivers_interactive-pc recipe drifted?)"
+	}
+	exec cp -f "$recipe_dir/$f" "bin/$f"
+}
+
+#
+# event_filter.config — copy the vendored recipe verbatim (this
+# scenario does not exercise input so the W3 accelerate-removal
+# deviation is unnecessary; the standard recipe is fine and matches
+# every other Phase 10+ base-sel4 interactive scenario for symmetry).
+#
+exec cp -f "${genode_dir}/repos/os/recipes/raw/drivers_interactive-pc/event_filter.config" \
+           "bin/event_filter.config"
+
+#
+# Chargen ROM modules (event_filter keyboard map).
+#
+set chargen_dir "${genode_dir}/repos/os/src/server/event_filter"
+foreach f { en_us.chargen special.chargen } {
+	if {![file exists "$chargen_dir/$f"]} {
+		error "$chargen_dir/$f missing (event_filter sources drifted?)"
+	}
+	exec cp -f "$chargen_dir/$f" "bin/$f"
+}
+
+#
+# Default theme ROM module.
+#
+exec cp -f "${genode_dir}/repos/sponge/src/sponge-de/themes/default.theme" \
+           "bin/default.theme"
+
+#
+# Full boot module list (every non-build-artifact module staged
+# explicitly; matches run/sponge-de-sel4-interactive.run's pattern).
+#
+set boot_modules [build_artifacts]
+foreach m { libQt6Core.lib.so libQt6Gui.lib.so libQt6Widgets.lib.so \
+            libqgenode.lib.so qt6_libqgenode.tar qt6_dejavusans.tar \
+            drivers.config fb.config event_filter.config \
+            en_us.chargen special.chargen \
+            default.theme } {
+	lappend boot_modules $m
+}
+
+build_boot_image $boot_modules
+
+#
+# QEMU: base-sel4 needs >= 1 GiB guest RAM (seL4 SKIM window + kernel
+# structures; docs/11-environment.md §7.2). The drivers sub-init +
+# sponge-de sizing stays at the proven reference budget. -nographic
+# keeps it headless (serial only). NO -qmp: the probe does not
+# require host-driven input — the only variable under test is the
+# cold-boot timing race, and adding QMP machinery would introduce
+# its own timing noise (TCP connect latency, expect round-trips).
+#
+append qemu_args " -nographic -m 2G "
+
+#
+# Automated verification (D14.8(b) instrument):
+#
+#   (1) DISPLAY: vesa_fb sets the mode and maps the physical VESA
+#       framebuffer (vesa_fb is consuming nitpicker's Capture session,
+#       i.e. driving the real display with nitpicker's composited
+#       output). The Phase 10 §11.1 capability-exhaustion fix that
+#       closed the original EGL-on-seL4 hang uses the same 1024x768
+#       mode-set gate.
+#   (2) QSCREEN VERDICT: the probe logs
+#         qscreen-race-probe: trial verdict clean|race
+#       exactly once per trial. The regex below matches BOTH
+#       verdicts — the evidence log applies D14.8(b)'s counting
+#       policy ("race" if >= 3 of 10 trials reproduce the 1x1-stale
+#       symptom, otherwise "Re-scoped"). A trial that never reaches
+#       a verdict line within the bounded window fails loud (the
+#       run_genode_until timeout means the probe hung, which is
+#       itself a race signature worth recording in the evidence log
+#       as a separate "hang" verdict).
+#
+# Note: this scenario intentionally does NOT mirror the proven
+# reference's second gate (`Connected device.*POINTER.*` from usb_hid).
+# The race probe does not exercise input — adding the xHCI + usb-tablet
+# QEMU devices would introduce boot-timing noise that swamps the
+# single-frame race signal the probe is trying to measure. Dropping
+# usb_hid also lets the scenario run faster (the proven reference's
+# 600s+ budget includes input-driver bring-up).
+#
+run_genode_until {.*\[init -> drivers -> fb\] using 1024x768.*} 90
+run_genode_until {.*qscreen-race-probe: trial verdict (clean|race).*} 90
