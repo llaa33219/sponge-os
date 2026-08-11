@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: LicenseRef-SpongeOS-Proprietary
  *
- * sponge_configd — configuration backend daemon (Phase 5a).
+ * sponge_configd — configuration backend daemon (Phase 5a, Phase 14 W6).
  *
  * A long-lived, signal-driven Genode component. It watches a
  * "config_request" ROM (relayed by report_rom from vct's request
@@ -20,6 +20,10 @@
  *   - get:  return one key's value (error if the key is unknown).
  *   - set:  validate + store one key/value, regenerate the broadcast
  *           (error if the key is unknown or the value is invalid).
+ *           When the component's <config> carries a <vfs> node, the
+ *           new store is also persisted to that File_system (Phase 14
+ *           W6 — closes the Phase 4 / Phase 13 "settings revert on
+ *           reboot" carryover).
  *   - list: enumerate every known key/value, name-sorted.
  *
  * The store is flat and dotted (theme.active, panel.position). Keys are
@@ -27,9 +31,10 @@
  * silent write. The registry carries each key's type so set can reject
  * an out-of-range enum before touching the store.
  *
- * Determinism: list and the broadcast emit keys in name-sorted order
- * with a fixed attribute order and no volatile fields, so a watcher's
- * config-diff is stable across unrelated sets.
+ * Determinism: list, the broadcast, and the on-disk store all emit
+ * keys in name-sorted order with a fixed attribute order and no
+ * volatile fields, so a watcher's config-diff is stable across
+ * unrelated sets.
  */
 
 #include <base/attached_rom_dataspace.h>
@@ -37,9 +42,11 @@
 #include <base/heap.h>
 #include <base/log.h>
 #include <os/reporter.h>
+#include <os/vfs.h>
 #include <report_session/connection.h>
 #include <util/reconstructible.h>
 #include <util/string.h>
+#include <vfs/simple_env.h>
 #include <util/xml_generator.h>
 #include <util/xml_node.h>
 
@@ -128,12 +135,36 @@ class Sponge::Configd::Main
 		 * computed, never settable via config_set. Only enabled when the
 		 * configd config ROM contains <lz_model/>, so scenarios without the
 		 * Leitzentrale subsystem don't try to open a non-existent ROM.
+		 *
+		 * Phase 14 W6: the same <config> gate also activates the optional
+		 * persistent store when the config carries a <vfs> node (same
+		 * opt-in contract as sponge_pkgd, docs/12 §13.4).
 		 */
 		Genode::Attached_rom_dataspace _config_rom { _env, "config" };
 		Genode::Constructible<Genode::Attached_rom_dataspace> _lz_model_rom { };
 		Genode::Signal_handler<Main> _lz_model_handler {
 			_env.ep(), *this, &Main::_handle_lz_model };
 		bool _lz_diverged { false };
+
+		/*
+		 * Optional persistent store (Phase 14 W6 — closes the Phase 4 /
+		 * Phase 13 "settings revert on reboot" carryover). Activated
+		 * only when this component's <config> carries a <vfs> node;
+		 * otherwise _vfs_env stays deconstructed and the store
+		 * load/save paths are no-ops (Phase 5a byte-identical in-memory
+		 * behaviour). Single XML file at STORE_PATH on whatever
+		 * File_system session the <vfs> mounts. The store is
+		 * single-writer (Phase 4 §13.2 contract); crash-consistent
+		 * writes (write-tmp + rename) are added by a follow-up commit
+		 * on top of this initial activation.
+		 */
+		static char        const STORE_PATH[];
+		static char        const STORE_TMP_PATH[];
+		static unsigned    const STORE_VERSION;
+		static Genode::size_t const STORE_BUF;
+
+		Genode::Heap                                _heap     { _env.ram(), _env.rm() };
+		Genode::Constructible<Genode::Vfs::Simple_env> _vfs_env { };
 
 		void _handle_lz_model();
 
@@ -171,6 +202,12 @@ class Sponge::Configd::Main
 		void _report_set_ok(char const *key, char const *value);
 		void _report_list_ok();
 		void _report_error(char const *op, char const *key, char const *message);
+
+		/* ---- persistent store (optional) ---- */
+		bool _store_enabled() const { return _vfs_env.constructed(); }
+		void _init_store();
+		void _load_store();
+		void _save_store();
 };
 
 
@@ -458,6 +495,16 @@ void Sponge::Configd::Main::_do_set(char const *key, char const *value)
 
 	_values[idx] = Genode::String<128>(value);
 
+	/*
+	 * Persist the new store BEFORE regenerating the broadcast. If the
+	 * save fails, the in-memory + broadcast change still proceeds
+	 * (the cross-reboot durability is lost for that one mutation,
+	 * see _save_store comment). The ordering matches docs/12 §13.3
+	 * so a crash between the set response and a watcher reading the
+	 * new broadcast still has the durable copy on disk.
+	 */
+	_save_store();
+
 	/* Regenerate the broadcast so every watcher sees the new store. */
 	_generate_broadcast();
 
@@ -521,6 +568,226 @@ void Sponge::Configd::Main::_handle_lz_model()
 }
 
 
+/* ===================== persistent store (optional) ===================== */
+
+/*
+ * Build the Vfs environment only when the component <config> carries a
+ * <vfs> node. With no <vfs> node the store stays disabled and the
+ * daemon behaves byte-identically to the in-memory Phase 5a build —
+ * the opt-in contract that keeps every non-persistent scenario
+ * working unchanged (sponge_pkgd's pattern, docs/12 §13.4).
+ */
+void Sponge::Configd::Main::_init_store()
+{
+	_config_rom.update();
+	if (!_config_rom.valid())
+		return;
+
+	try {
+		_config_rom.node().with_optional_sub_node("vfs",
+			[&](Genode::Node const &vfs_node) {
+				_vfs_env.construct(_env, _heap, vfs_node);
+				Genode::log("sponge_configd: persistent store enabled at ", STORE_PATH);
+			});
+	} catch (Genode::Xml_node::Invalid_syntax) {
+		Genode::warning("sponge_configd: malformed <config> — persistence disabled");
+	}
+}
+
+
+/*
+ * Restore _values[] from the store. Every failure mode — missing
+ * file, empty/oversized, unreadable, wrong root element, unsupported
+ * version, malformed XML — resolves to the same safe state: an empty
+ * store plus a warning, never a crash (docs/12 §13.2 contract). The
+ * caller re-applies registry defaults for any keys still empty after
+ * the load, so a partial / torn store recovers gracefully: present
+ * keys are honored, missing keys fall back to their defaults.
+ */
+void Sponge::Configd::Main::_load_store()
+{
+	if (!_store_enabled()) return;
+
+	Genode::Vfs::File_system &vfs = _vfs_env->root_dir();
+
+	Genode::Vfs::Directory_service::Stat stat { };
+	if (vfs.stat(STORE_PATH, stat) != Genode::Vfs::Directory_service::STAT_OK) {
+		Genode::log("sponge_configd: no store — starting with defaults");
+		return;
+	}
+	if (stat.size == 0 || stat.size > STORE_BUF) {
+		Genode::warning("sponge_configd: store size ", stat.size,
+		                " out of range — starting with defaults");
+		return;
+	}
+
+	Genode::Vfs::Vfs_handle *handle { nullptr };
+	if (vfs.open(STORE_PATH, Genode::Vfs::Directory_service::OPEN_MODE_RDONLY,
+	             &handle, _heap) != Genode::Vfs::Directory_service::OPEN_OK) {
+		Genode::warning("sponge_configd: store open failed — starting with defaults");
+		return;
+	}
+	Genode::Vfs::Vfs_handle::Guard guard(handle);
+
+	char buf[STORE_BUF] { };
+	Genode::size_t total { 0 };
+	bool ok { true };
+	while (total < stat.size) {
+		handle->seek(total);
+		handle->fs().queue_read(handle, stat.size - total);
+		Genode::size_t n { 0 };
+		Genode::Vfs::File_io_service::Read_result r;
+		while ((r = handle->fs().complete_read(handle,
+		            Genode::Byte_range_ptr(buf + total, sizeof(buf) - total),
+		            n)) == Genode::Vfs::File_io_service::READ_QUEUED)
+			_vfs_env->io().commit_and_wait();
+		if (r != Genode::Vfs::File_io_service::READ_OK || n == 0) {
+			ok = false; break;
+		}
+		total += n;
+	}
+
+	if (!ok || total == 0) {
+		Genode::warning("sponge_configd: store unreadable — starting with defaults");
+		return;
+	}
+
+	unsigned restored { 0 };
+	try {
+		Genode::Xml_node const root(buf, total);
+		if (!root.has_type("sponge-config")) {
+			Genode::warning("sponge_configd: store root is not <sponge-config> "
+			                "— starting with defaults");
+			return;
+		}
+		unsigned const version = root.attribute_value("version", 0U);
+		if (version != STORE_VERSION) {
+			Genode::warning("sponge_configd: store version ", version,
+			                " unsupported (expected ", STORE_VERSION,
+			                ") — starting with defaults");
+			return;
+		}
+		root.for_each_sub_node("entry", [&](Genode::Xml_node const &n) {
+			Genode::String<128> const key =
+				n.attribute_value("name", Genode::String<128>());
+			Genode::String<128> const val =
+				n.attribute_value("value", Genode::String<128>());
+			unsigned idx { 0 };
+			if (Genode::strcmp(key.string(), "") != 0 &&
+			    Genode::strcmp(val.string(), "") != 0 &&
+			    _find_key(key.string(), idx)) {
+				_values[idx] = val;
+				++restored;
+			}
+		});
+	} catch (Genode::Xml_node::Invalid_syntax) {
+		Genode::warning("sponge_configd: store is not valid XML — starting with defaults");
+		for (unsigned i = 0; i < _num_keys; ++i) _values[i] = Genode::String<128>();
+		return;
+	}
+
+	Genode::log("sponge_configd: restored ", restored, " key(s) from store");
+}
+
+
+/*
+ * Persist _values[] to the store. Output is name-sorted with a fixed
+ * attribute order so the file is byte-stable for a given store
+ * (matching the determinism contract of the broadcast generator). A
+ * failed write is logged but never blocks the set: the in-memory
+ * state and the broadcast still reflect the requested change, only
+ * the across-reboot durability is lost for that one mutation.
+ *
+ * The <lz_diverged> mirrored key is NOT persisted — it is computed
+ * live from the lz_model ROM on every broadcast and would just be
+ * stale on the next boot.
+ */
+void Sponge::Configd::Main::_save_store()
+{
+	if (!_store_enabled()) return;
+
+	unsigned order[MAX_KEYS] { };
+	_sorted_order(order);
+
+	char buf[STORE_BUF] { };
+	Genode::size_t pos { 0 };
+	auto append = [&buf, &pos](char const *s) {
+		while (*s && pos + 1 < sizeof(buf)) buf[pos++] = *s++;
+	};
+	append("<sponge-config version=\"1\">");
+	for (unsigned i = 0; i < _num_keys; ++i) {
+		unsigned const idx = order[i];
+		append("<entry name=\"");
+		append(_registry[idx].name);
+		append("\" value=\"");
+		append(_values[idx].string());
+		append("\"/>");
+	}
+	append("</sponge-config>");
+	Genode::size_t const len = pos;
+
+	Genode::Vfs::File_system &vfs = _vfs_env->root_dir();
+
+	/*
+	 * Truncate-write if the file exists, create-if-missing otherwise.
+	 * ram FS's CREATE mode rejects pre-existing files, so we open
+	 * twice: first without CREATE (succeeds on subsequent saves),
+	 * then with CREATE as a fallback (succeeds on the first save).
+	 *
+	 * A follow-up commit adds the write-tmp + rename path for
+	 * crash-consistency (docs/12 §13.2). The current direct-
+	 * overwrite mode satisfies the per-set durability contract but
+	 * is NOT crash-consistent — a power loss mid-write can leave a
+	 * torn store, which the loader handles by warning and starting
+	 * empty (same safe-state contract).
+	 */
+	Genode::Vfs::Vfs_handle *handle { nullptr };
+	Genode::Vfs::Directory_service::Open_result open_result =
+		vfs.open(STORE_PATH,
+		         Genode::Vfs::Directory_service::OPEN_MODE_WRONLY,
+		         &handle, _heap);
+	if (open_result == Genode::Vfs::Directory_service::OPEN_ERR_UNACCESSIBLE) {
+		open_result = vfs.open(STORE_PATH,
+		         Genode::Vfs::Directory_service::OPEN_MODE_WRONLY
+		         | Genode::Vfs::Directory_service::OPEN_MODE_CREATE,
+		         &handle, _heap);
+	}
+	if (open_result != Genode::Vfs::Directory_service::OPEN_OK) {
+		Genode::warning("sponge_configd: cannot open store for write");
+		return;
+	}
+	Genode::Vfs::Vfs_handle::Guard guard(handle);
+
+	handle->fs().ftruncate(handle, len);
+
+	Genode::size_t off { 0 };
+	bool ok { true };
+	while (off < len) {
+		handle->seek(off);
+		Genode::size_t n { 0 };
+		Genode::Vfs::File_io_service::Write_result const w =
+			handle->fs().write(handle,
+			    Genode::Const_byte_range_ptr(buf + off, len - off), n);
+		if (w == Genode::Vfs::File_io_service::WRITE_OK) {
+			if (n == 0) { ok = false; break; }
+			off += n;
+		} else if (w == Genode::Vfs::File_io_service::WRITE_ERR_WOULD_BLOCK) {
+			_vfs_env->io().commit_and_wait();
+		} else {
+			ok = false; break;
+		}
+	}
+
+	handle->fs().queue_sync(handle);
+	while (handle->fs().complete_sync(handle) ==
+	       Genode::Vfs::File_io_service::SYNC_QUEUED)
+		_vfs_env->io().commit_and_wait();
+
+	if (!ok)
+		Genode::warning("sponge_configd: store write incomplete");
+}
+
+
 void Sponge::Configd::Main::_report_get_ok(char const *key, char const *value)
 {
 	_result_reporter.generate_xml([&](Genode::Xml_generator &g) {
@@ -580,17 +847,41 @@ void Sponge::Configd::Main::_report_error(char const *op, char const *key,
 
 /* ===================== component wiring ===================== */
 
+/* Store layout (Phase 14 W6). The path is at the <vfs> mount root;
+ * the .tmp sibling is reserved for the atomic-rename path added in
+ * the fix(configd) follow-up commit. */
+char const Sponge::Configd::Main::STORE_PATH[]     = "/store.xml";
+char const Sponge::Configd::Main::STORE_TMP_PATH[] = "/store.xml.tmp";
+unsigned const     Sponge::Configd::Main::STORE_VERSION  = 1;
+Genode::size_t const Sponge::Configd::Main::STORE_BUF    = 4096;
+
+
 Sponge::Configd::Main::Main(Genode::Env &env) : _env(env)
 {
 	Genode::log("sponge_configd: ready");
 
-	/* Apply registry defaults so the store is never empty and the
-	 * initial broadcast reflects a usable configuration. */
-	for (unsigned i = 0; i < _num_keys; ++i)
-		_values[i] = Genode::String<128>(_registry[i].default_value);
+	/*
+	 * Optional persistent store: activate it if <config> declares a
+	 * <vfs>, then reload the previously-persisted store (if any). In
+	 * the non-persistent scenarios both calls are no-ops. Load runs
+	 * BEFORE defaults are applied so a restored boot sees the
+	 * persisted values, not the registry defaults.
+	 */
+	_init_store();
+	_load_store();
 
-	/* Publish the default store before any watcher can request it
-	 * (init starts children in config order). */
+	/* Apply registry defaults so the store is never empty and the
+	 * initial broadcast reflects a usable configuration. Defaults
+	 * only fill in keys that were absent from the on-disk store (a
+	 * restored key wins over its default). */
+	for (unsigned i = 0; i < _num_keys; ++i)
+		if (Genode::strcmp(_values[i].string(), "") == 0)
+			_values[i] = Genode::String<128>(_registry[i].default_value);
+
+	/* Publish the store before any watcher can request it (init
+	 * starts children in config order). On a restored boot this
+	 * already carries the persisted values, so sponge_themed /
+	 * sponge-de see them right away. */
 	_generate_broadcast();
 
 	_request_rom.sigh(_request_handler);

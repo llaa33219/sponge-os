@@ -20,7 +20,7 @@
 #   probe's ROM "config"                  <- sponge_configd's "config" broadcast
 #
 
-build { core lib/ld init timer server/report_rom sponge_configd \
+build { core lib/ld init timer server/report_rom lib/vfs sponge_configd \
         test/pkg_seq_probe }
 
 create_boot_directory
@@ -32,6 +32,8 @@ config
   + service PD
   + service CPU
   + service ROM
+  + service IO_MEM
+  + service IRQ
 
 + default-route
   + any-service
