@@ -95,6 +95,17 @@ foreach theme { default light } {
 	}
 }
 
+#
+# Empty qt_config boot module for the clipboard_probe. The probe
+# reads this at startup; an absent qt_write_sentinel attribute means
+# the probe runs in its default mode (in this scenario, the probe
+# writes its own sentinel and the server's focus gating rejects the
+# write, proving the focus-aware path).
+#
+set qtc_fh [open "bin/qt_config" w]
+puts $qtc_fh "<config/>"
+close $qtc_fh
+
 set dejavu_dst "bin/qt6_dejavusans.tar"
 if {![file exists $dejavu_dst]} {
 	set dejavu_src [glob -nocomplain "${genode_dir}/contrib/qt6_base-*/src/lib/qt6_base/src/3rdparty/wasm/DejaVuSans.ttf"]
@@ -309,6 +320,7 @@ config
     + service Report | label_last: focus         | + child report_rom
     + service Report | label_last: clipboard     | + child clipboard
     + service ROM    | label_last: clipboard     | + child clipboard
+    + service ROM    | label: qt_config         | + parent
     + service ROM    | label_last: result        | + child report_rom
     + service ROM    | label_last: installed     | + child report_rom
     + service ROM    | label_last: focus         | + child report_rom
@@ -324,6 +336,7 @@ foreach m { libQt6Core.lib.so libQt6Gui.lib.so libQt6Widgets.lib.so \
             en_us.chargen special.chargen \
             drivers.config fb.config event_filter.config \
             default.theme light.theme \
+            qt_config \
             egl.lib.so mesa.lib.so glapi.lib.so mesa_gpu-softpipe.lib.so \
             libdrm.lib.so libpng.lib.so freetype.lib.so jpeg.lib.so \
             expat.lib.so zlib.lib.so \
