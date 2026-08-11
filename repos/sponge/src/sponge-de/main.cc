@@ -118,6 +118,17 @@ void Libc::Component::construct(Libc::Env &env)
 		notifier_ctrl.attach_widget(&notifier_popover);
 
 		PanelWidget panel(theme_ctrl.initial());
+
+		/* Tasklist widget + insertion BEFORE the panel is shown. The
+		 * widget is inserted into the panel's QHBoxLayout immediately
+		 * so the panel's first paint includes the tasklist slot. If
+		 * we show() the panel first and insert the tasklist later, the
+		 * layout change triggers a panel re-paint that races with
+		 * the demo window's first paint and can delay it past the
+		 * Phase-7 sponge-de-test acceptance probe's 60s budget. */
+		Sponge::Sponge_DE::TasklistWidget tasklist_widget(theme_ctrl.initial(), &panel);
+		panel.attach_tasklist(&tasklist_widget);
+
 		panel.show();
 		panel.set_launcher_view(&launcher_view);
 		theme_ctrl.attach_panel(&panel);
@@ -132,13 +143,6 @@ void Libc::Component::construct(Libc::Env &env)
 
 		theme_ctrl.attach_launcher(&launcher_view);
 
-		/* Tasklist widget + insertion + wiring. The widget is
-		 * inserted into the panel's QHBoxLayout by the panel itself
-		 * the first time the tasklist reports data. The controller
-		 * is the bridge between wm's window_list/ window_layout
-		 * reports and the widget's task list. */
-		Sponge::Sponge_DE::TasklistWidget tasklist_widget(theme_ctrl.initial(), &panel);
-		panel.attach_tasklist(&tasklist_widget);
 		tasklist_ctrl.attach_widget(&tasklist_widget);
 		theme_ctrl.attach_tasklist(&tasklist_widget);
 		QObject::connect(&tasklist_widget, &Sponge::Sponge_DE::TasklistWidget::task_clicked,
