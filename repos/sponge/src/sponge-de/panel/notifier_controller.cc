@@ -22,30 +22,13 @@ NotifierController::NotifierController(Genode::Env &env, QObject *parent)
 	QObject(parent), _env(env)
 {
 	/*
-	 * Try to open the notifications ROM. If no sponge_notifier is in
-	 * the topology (the run scenario did not include it, or no
-	 * report_rom policy routes the label), the session is denied at
-	 * the parent. The catch block keeps the controller's ROM
-	 * Constructible deconstructed forever — a clean no-op fallback.
+	 * The notifications ROM is opened lazily on the first poll cycle
+	 * (NOT in the constructor). Opening it eagerly would cause the
+	 * child to be killed by the parent when the report_rom is absent
+	 * (the parent denies the session; the child is destroyed before
+	 * the catch can run). Lazy opening guarantees that _poll() sees
+	 * the failure and degrades to no-op.
 	 */
-	try {
-		_notif_rom.construct(_env, "notifications");
-		_sigh.construct(_env.ep(), *this, &NotifierController::_on_rom);
-		_notif_rom->sigh(*_sigh);
-		_notif_rom->update();
-		_poll_timer = new QTimer(this);
-		_poll_timer->setInterval(250);
-		connect(_poll_timer, &QTimer::timeout,
-		        this, &NotifierController::_poll);
-		_poll_timer->start();
-
-		/* Drain any pre-sigh content. */
-		_on_rom();
-	}
-	catch (Genode::Rom_connection::Rom_connection_failed) {
-		Genode::log("notifier_controller: sponge_notifier ROM not available, "
-		            "popover disabled");
-	}
 }
 
 
@@ -66,7 +49,6 @@ bool NotifierController::_read_payload(QString &payload)
 	if (!_notif_rom->valid())
 		return false;
 
-	/* Read the raw bytes; the GUI thread parses them. */
 	char const *const base = _notif_rom->local_addr<char>();
 	Genode::size_t  const sz  = _notif_rom->size();
 	payload = QString::fromUtf8(base, (int)sz);
@@ -74,10 +56,33 @@ bool NotifierController::_read_payload(QString &payload)
 }
 
 
+/*
+ * Lazy session opening. The first time _poll() runs, attempt to open
+ * the notifications ROM. If the parent denies the session (no
+ * report_rom in the topology, or no policy routes the label), the
+ * catch keeps the controller's NOTIF_ROM deconstructed forever — a
+ * clean no-op fallback. The widget is still attached; it just stays
+ * hidden because the entries list is empty.
+ */
+void NotifierController::_lazy_open()
+{
+	if (_notif_rom.constructed())
+		return;
+	try {
+		_notif_rom.construct(_env, "notifications");
+		_sigh.construct(_env.ep(), *this, &NotifierController::_on_rom);
+		_notif_rom->sigh(*_sigh);
+		_notif_rom->update();
+	}
+	catch (...) {
+		Genode::log("notifier_controller: sponge_notifier ROM not available, "
+		            "popover disabled");
+	}
+}
+
+
 void NotifierController::_on_rom()
 {
-	/* Runs on the Genode entrypoint thread. Read the ROM, marshal
-	 * the payload to the GUI thread. */
 	QString payload;
 	if (!_read_payload(payload))
 		return;
@@ -90,8 +95,18 @@ void NotifierController::_on_rom()
 
 void NotifierController::_poll()
 {
-	/* Same dest as the signal handler, but pulled from the GUI thread
-	 * so the QTimer + sigh both funnel into applyEntries. */
+	_lazy_open();
+	if (!_notif_rom.constructed())
+		return;
+
+	if (!_poll_timer) {
+		_poll_timer = new QTimer(this);
+		_poll_timer->setInterval(250);
+		connect(_poll_timer, &QTimer::timeout,
+		        this, &NotifierController::_poll);
+		_poll_timer->start();
+	}
+
 	QString payload;
 	if (!_read_payload(payload))
 		return;
@@ -135,10 +150,6 @@ void NotifierController::applyEntries(QString payload)
 			QString const kind = QString::fromUtf8(
 				n.attribute_value("kind", Genode::String<16>("info")).string());
 
-			/*
-			 * Flatten to a single line the widget's painter can draw.
-			 * Format: "[kind] title — body" (body omitted if empty).
-			 */
 			QString line;
 			if (!kind.isEmpty())
 				line = QStringLiteral("[%1] %2").arg(kind, title);
