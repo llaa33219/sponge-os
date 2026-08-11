@@ -138,6 +138,122 @@ the main `run/sponge-notify.run` scenario on the same build.
 
 ---
 
+## 4.6 Window Management (Phase 14 D14.3 — Implemented)
+
+Window management is **real minimize + restore** (per U3, Phases 11 +
+14). No decorative-only minimize button is shipped; every minimize is
+paired with a deterministic restore path.
+
+### State machine
+
+The four states a window can be in (`docs/plans/wm-state-table.md`):
+
+| State | Description |
+|---|---|
+| `Normal-Visible` | Window is placed and visible, not focused |
+| `Normal-Visible-Focused` | Window is placed, visible, and focused |
+| `Maximized` | Window is placed and full-screen |
+| `Minimized` | Window is parked off-screen at `(x=-32000, y=-32000)` |
+
+The state transitions are driven by:
+
+- **Tasklist click** (the panel tasklist — see below) — minimize,
+  restore, focus.
+- **Decorator close button** (the upstream themed_decorator's
+  `<closer/>` element, the existing Phase 11 path) — destroys the
+  window.
+- **Decorator maximizer button** (the upstream themed_decorator's
+  `<maximizer/>` element) — toggles between Normal-Visible and
+  Maximized.
+
+Off-screen parking coordinates `(x=-32000, y=-32000)` are well
+outside `nitpicker`'s int32 view space; the saved geometry is the
+last-known visible position.
+
+### The panel tasklist (the deterministic restore path)
+
+Sponge-DE renders a horizontal tasklist inside the panel's
+QHBoxLayout, between the title label and the stretch zone. Each entry
+is a fixed-width (96 px) button that renders one window known to `wm`.
+Click behavior:
+
+- Click on a `Normal-Visible(-Focused)` entry → minimize (park off-screen).
+- Click on a `Minimized` entry → restore to the saved geometry + grant
+  focus (focus-after-restore per U3).
+- Double-click → toggle maximizer.
+
+The tasklist is the **required** restore path for the window stack
+(U3). The tasklist is NOT decorative: each click is bound to a
+state-machine transition that round-trips through the layouter.
+
+### Architecture
+
+```
+wm ──[Report "window_list"]──> report_rom ──[ROM "window_list"]──> TasklistController
+wm ──[Report "window_list"]──> report_rom ──[ROM "window_list"]──> wm_tasks_probe (read-only)
+layouter ──[Report "window_layout"]──> report_rom ──[ROM "window_layout"]──> TasklistController
+sponge-de ──[Report "focus_request"]──> report_rom ──[ROM "focus_request"]──> layouter
+sponge-de ──[Report "rules"]──> report_rom ──[ROM "rules"]──> layouter (rules="rom" mode)
+```
+
+The `TasklistController` (sources/sponge-de/panel/tasklist_controller.{h,cc}):
+
+- Subscribes to the wm `window_list` report and the layouter
+  `window_layout` report (the two together give the controller
+  per-window identity + geometry).
+- Tracks `(x, y, w, h, focused, minimized, has_alpha)` per window.
+- On user click, writes the `rules` ROM (the layouter's
+  `rules="rom"` mode) and emits a `focus_request` report.
+- Is the **SOLE writer** of the `focus_request` and `rules` reports
+  (AGENTS.md §1.2: report_rom is single-writer per label).
+
+The `TasklistWidget` (sources/sponge-de/panel/tasklist_widget.{h,cc}):
+
+- Horizontal Qt widget inside the panel's QHBoxLayout.
+- Three visual states per entry: `Normal-Visible` (default bg),
+  `Normal-Visible-Focused` (accent bg), `Minimized` (separator bg).
+- 2 px accent strip on the left edge for `has_alpha` windows.
+- Re-styles on every theme reload via the standard `restyle()` path.
+
+### Acceptance probe
+
+`run/sponge-wm-tasks.run` (base-sel4 + QMP) is the W7 acceptance
+scenario. The probe (`test/wm_tasks_probe/`) drives the state machine
+end-to-end:
+
+```
+wm-tasks-probe: [step 1] install pkg_gui_demo
+wm-tasks-probe: [step 2] launch pkg_gui_demo
+wm-tasks-probe: [step 3] window_layout: pkg_gui_demo at (50,320,320,240) \
+                  [row 1: (init) -> Normal-Visible]
+wm-tasks-probe: [step 4] window_layout: pkg_gui_demo parked at (-32000,-32000) \
+                  [row 3: Normal-Visible-Focused -> Minimized]
+wm-tasks-probe: [step 5] window_layout: pkg_gui_demo restored at (50,320,320,240) \
+                  [row 5: Minimized -> Normal-Visible-Focused]
+wm-tasks-probe: [step 6] focus_request label='pkg_runtime -> pkg_gui_demo' \
+                  [focus-after-restore per U3]
+wm-tasks-probe: PASS
+```
+
+The probe reads the layouter's `window_layout` and the tasklist
+controller's `focus_request` / `rules` reports. The run script
+dispatches the QMP clicks on the tasklist button between probes.
+
+### D14.8(d) — the `<minimizer/>` button on the decorator
+
+The Phase 11 themed_decorator ships only `<closer/>` and
+`<maximizer/>` buttons. Adding a `<minimizer/>` button requires a
+vendored patch to `theme.h`, `theme.cc`, and `window.h` in
+`genode/repos/gems/src/app/themed_decorator/`. Per the D14.8(d)
+patch policy, this is **deferred to Phase 15+** as a follow-up:
+the tasklist is the deterministic minimize path, and the
+`<closer/>` / `<maximizer/>` buttons cover the remaining state
+transitions through the existing upstream action pipeline. The
+deferred work is tracked in `docs/11-environment.md` §4.2 + the
+Wave-5 paper-cut sweep.
+
+---
+
 ## 5. User Scenarios
 
 How Sponge DE should present itself to an everyday user:
@@ -146,7 +262,9 @@ How Sponge DE should present itself to an everyday user:
 
 - A clean wallpaper and a minimal panel.
 - Genode terminology (`init`, `nitpicker`, and the like) is not visible.
-- The panel contains the launcher and clock — nothing more.
+- The panel contains the launcher, the tasklist (one button per
+  running app, dimmed when minimized, highlighted when focused),
+  and the clock — nothing more.
 - A system tray and additional applets arrive in a later release; the
   panel today is intentionally minimal.
 - A "first-time user guide" is optional and not forced.
@@ -198,11 +316,14 @@ How Sponge DE stays light under Genode's resource constraints:
 
 ## 7. Open Design Questions
 
-- How to split roles exactly between `nitpicker` and Sponge DE
-  (who is responsible for window placement?). Remains open for
-  Phase 15+.
 - Priority and timing of multi-monitor support. Remains open for
   Phase 15+.
+- Window management is settled: Phase 14 ships the panel tasklist
+  as the deterministic minimize+restore path (D14.3), with the
+  decorator's `<closer/>` and `<maximizer/>` buttons covering the
+  remaining state transitions. The `<minimizer/>` button on the
+  decorator is deferred to Phase 15+ as a follow-up
+  (D14.8(d) candidate — see §4.6).
 - Clipboard is settled: Phase 14 reuses the upstream Genode
   `os/src/server/clipboard` binary as-is, per decision D14.2 in
   `docs/plans/phase14-daily-desktop.md`. The Qt6 side is bridged by
