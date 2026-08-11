@@ -65,6 +65,7 @@ class PanelWidget;
 class Main;
 class LauncherMenuView;
 class NotifyPoster;
+class TasklistWidget;
 
 class ThemeController : public QObject
 {
@@ -87,6 +88,12 @@ class ThemeController : public QObject
 		void attach_panel(PanelWidget *panel);
 		void attach_main(Main *main);
 		void attach_launcher(LauncherMenuView *launcher);
+
+		/* Wire the tasklist widget for live re-style (Phase 14 W7).
+		 * The controller calls tasklist_widget->restyle() on every
+		 * successful theme apply so the tasklist colors track the
+		 * active theme. */
+		void attach_tasklist(TasklistWidget *widget);
 
 		/* Wire a NotifyPoster for theme-apply event notifications.
 		 * The controller calls poster->post("theme applied", name)
@@ -117,6 +124,7 @@ class ThemeController : public QObject
 		PanelWidget       *_panel    { nullptr };
 		Main               *_main     { nullptr };
 		LauncherMenuView   *_launcher { nullptr };
+		TasklistWidget    *_tasklist { nullptr };
 		NotifyPoster      *_notify    { nullptr };
 
 		bool     _live         { false };

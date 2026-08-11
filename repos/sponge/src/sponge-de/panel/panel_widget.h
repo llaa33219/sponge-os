@@ -48,6 +48,7 @@ namespace Sponge::Sponge_DE {
 
 namespace Theme { struct Theme; }
 class LauncherMenuView;
+class TasklistWidget;
 
 class PanelWidget : public QWidget
 {
@@ -74,6 +75,19 @@ class PanelWidget : public QWidget
 		 * the launcher button click.
 		 */
 		void set_launcher_view(LauncherMenuView *view) { _launcher_view = view; }
+
+		/*
+		 * Attach the tasklist widget (Phase 14 W7). The widget is
+		 * inserted into the panel QHBoxLayout between the title
+		 * label and the stretch zone. The widget is owned
+		 * externally (constructed by main.cc), but its lifetime
+		 * must outlive the panel (the panel's layout will paint
+		 * the widget when the layout is updated).
+		 *
+		 * restyle() fan-out includes the tasklist widget so its
+		 * colors track the active theme.
+		 */
+		void attach_tasklist(TasklistWidget *widget);
 
 		/*
 		 * Per-instance configd overrides (set by the apply* slots).
@@ -128,6 +142,7 @@ class PanelWidget : public QWidget
 		QTimer      *_clock_timer     { nullptr };
 
 		LauncherMenuView *_launcher_view { nullptr };
+		TasklistWidget   *_tasklist_widget { nullptr };
 
 		/* Cached configd overrides. */
 		unsigned _height            { 0 };   /* 0 = use theme.panel_height() */
