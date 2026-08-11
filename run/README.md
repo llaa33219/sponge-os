@@ -727,6 +727,18 @@ A scenario defines:
   bright-on-dark against the `#1e1e2e` background). Kernel-agnostic;
   gates on `pdf-view-probe: PASS`.
 
+- `sponge-configd-persist.run` — **Phase 14 W1 skeleton** (W6
+  deliverable scenario; only the build list + config + route + gated
+  run_genode_until land in W1). Boots `sponge_configd` with the
+  report_rom wire contract for `config_request` / `config_result` /
+  `config` broadcast (mirrors `run/sponge-config-probe.run`); the W6
+  implementation commit will add `test/configd_persist_probe/`, drive
+  the three-write sequence (`panel.height=64`, `panel.visible_widgets=
+  clock`, `panel.height=28`), restart the daemon (or re-read the on-
+  disk store), and assert the broadcast carries `panel.height=28` after
+  restart. The W1 skeleton times out at the gated `configd-persist-
+  probe: PASS` marker — that is the EXPECTED FAIL until W6 lands.
+
 - `sponge-terminal.run` toolset extension — **Phase 13 W2**: the
   terminal package now mounts the CLI toolset tars
   (`coreutils-minimal`, `grep`, `sed`, `tar`, `less`, `findutils`,
