@@ -12,11 +12,15 @@
 # changes without issuing requests. It is regenerated on every successful
 # set and emitted once at startup with the defaults.
 #
-# Needs only Report + ROM sessions (minimum privilege). Purely
-# signal-driven — no Timer, no libc, no Qt, no exceptions.
+# Sessions: Report + ROM always; an optional File_system session (via the
+# Vfs library, gated by <config>'s <vfs> node) backs the persistent
+# store (Phase 14 W6 — closes the Phase 4 / Phase 13 "settings revert
+# on reboot" carryover). Without <vfs> the daemon behaves byte-identically
+# to the Phase 5a in-memory build. Purely signal-driven — no Timer, no
+# libc, no Qt, no exceptions.
 
 TARGET   := sponge_configd
 SRC_CC   := main.cc
-LIBS     := base
+LIBS     := base vfs
 INC_DIR  := $(PRG_DIR)/include \
             $(REP_DIR)/include

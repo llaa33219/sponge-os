@@ -31,7 +31,7 @@
 # on every successful set (and once at startup with the defaults).
 #
 
-build { core lib/ld init timer server/report_rom sponge_configd vct }
+build { core lib/ld init timer server/report_rom lib/vfs sponge_configd vct }
 
 create_boot_directory
 
@@ -42,6 +42,8 @@ config
   + service PD
   + service CPU
   + service ROM
+  + service IO_MEM
+  + service IRQ
 
 + default-route
   + any-service
