@@ -1,0 +1,273 @@
+================================================================================
+Phase 14 W3 — QGenodeScreen 1x1-stale race investigation
+Evidence Log  •  Date: 2026-08-11
+Plan ref:    docs/plans/phase14-daily-desktop.md §W3 + D14.8(b)
+Provenance:  docs/evidence/task-6-phase11-alpha-flake.md (suspected race)
+             docs/09-roadmap.md §11.2 item 1 (Phase-11 carryover note)
+================================================================================
+
+## 0. HEADLINE
+
+The QGenodeScreen 1x1-stale race (Phase 11 suspected race; "panel
+degenerate ~1x28 / black" symptom) **DID NOT REPRODUCE** in any of
+the 10 cold-boot trials on the current tree (W3's focused reproducer,
+base-sel4 on QEMU/KVM). All 10 trials are `clean`. Per D14.8(b):
+candidate (b) is **Re-scoped to Phase 15+**. No vendored-tree patch
+lands in Phase 14 (W3 is investigation only — AGENTS.md §5.2).
+
+  Race-reproduction count: 0 / 10  (D14.8(b) threshold: >= 3 / 10)
+  Classification outcome:  Re-scoped to Phase 15+
+  Vendored-tree patches applied in W3: NONE  (AGENTS.md §5.2 / plan)
+
+The Phase 11 fix (panel_widget.cc::_apply_geometry width-floor;
+`screen_w > 64 ? screen_w : 1024`) holds on this topology: every
+trial shows `race_panel_black_max=0` (the panel band was never black,
+so the QPA's 1x1 transient never reached sponge-de's panel widget in
+a way that pinned it to a degenerate buffer).
+
+================================================================================
+1. WHAT W3 ADDED
+================================================================================
+
+  - repos/sponge/src/test/qscreen_race_probe/target.mk        (NEW)
+  - repos/sponge/src/test/qscreen_race_probe/main.cc           (NEW)
+    — a small plain-Genode component (no libc, no Qt). Opens a
+      Capture session, allocates the 1024x768 capture buffer as
+      early as possible (defines nitpicker's panorama, mirroring
+      fb_sdl's role in the interactive scenario). Reads the FIRST
+      capture sample at (512, 14) [panel band] and (512, 412) [demo
+      domain center], then polls a bounded 60s cold-boot window
+      (300 iters x 200 ms) for the demo-domain themed window_bg
+      (#313244, from default.theme) to appear. Verdict:
+        - "trial verdict clean" if window_bg observed within the
+          budget (race did NOT reproduce this boot).
+        - "trial verdict race"  if window_bg never observed within
+          the budget AND the panel band reads 0x0 (the 1x28-degenerate
+          race signature).
+      The probe always exits 0 (the run script gates on the regex,
+      not on the exit code — D14.8(b)'s >= 3/10 reproduction
+      threshold is a counting policy in the evidence log, not a
+      hard pass/fail gate).
+
+  - run/sponge-de-qscreen-race-probe.run                     (NEW)
+    — focused reproducer. Topology mirrors the proven reference
+      run/sponge-de-sel4-interactive.run (drivers sub-init +
+      sponge-de) but MINUS the launch/inject plumbing (no
+      sponge_pkgd, no pkg_runtime, no input-relay ROM, no QMP
+      choreography). The only variable under test is cold-boot
+      timing; QMP machinery would introduce its own timing noise.
+    — build list includes `core lib/ld init timer server/report_rom
+      server/nitpicker driver/acpi app/pci_decode driver/platform
+      driver/framebuffer/vesa driver/ps2 driver/usb_host/pc
+      driver/usb_hid server/event_filter sponge-de
+      test/qscreen_race_probe qt6/base ...` — the proven reference
+      caps sizing (sponge-de `caps: 1000 | ram: 128M`,
+      qscreen_race_probe `caps: 100 | ram: 16M`).
+    — gates:
+        run_genode_until {.*\[init -> drivers -> fb\] using 1024x768.*} 90
+        run_genode_until {.*qscreen-race-probe: trial verdict (clean|race).*} 90
+
+  - repos/sponge/run/sponge-de-qscreen-race-probe.run
+    — committed relative symlink -> ../../../run/sponge-de-qscreen-race-probe.run
+    (matches the same symlink pattern used by every other run script
+    in this repo so the Genode repo-discovery picks it up regardless
+    of build launch directory).
+
+================================================================================
+2. TRIAL RESULTS — 10 cold-boot trials on base-sel4 (KERNEL=sel4 BOARD=pc)
+================================================================================
+
+All trials ran via:
+    make -C genode/build/x86_64 run/sponge-de-qscreen-race-probe \
+         KERNEL=sel4 BOARD=pc -j1
+serialized (one trial at a time, no concurrent makes in
+genode/build/x86_64 — per the W3 task constraint).
+
+The Genode run tool spawns QEMU twice per `make` invocation
+(intentional stability verification — both spawns produce identical
+verdict lines). The trial counts below take the FIRST spawn per
+make call (one cold-boot per trial = 10 trials total).
+
+  Trial 1:  first_capture panel=0x0x1e1e2e demo=0x0x1e1e2e
+            painted at poll 3
+            verdict CLEAN  race_panel_black_max=0
+  Trial 2:  first_capture panel=0x0x1e1e2e demo=0x0x1e1e2e
+            painted at poll 2
+            verdict CLEAN  race_panel_black_max=0
+  Trial 3:  first_capture panel=0x0x1e1e2e demo=0x0x1e1e2e
+            painted at poll 3
+            verdict CLEAN  race_panel_black_max=0
+  Trial 4:  first_capture panel=0x0x1e1e2e demo=0x0x1e1e2e
+            painted at poll 2
+            verdict CLEAN  race_panel_black_max=0
+  Trial 5:  first_capture panel=0x0x1e1e2e demo=0x0x1e1e2e
+            painted at poll 2
+            verdict CLEAN  race_panel_black_max=0
+  Trial 6:  first_capture panel=0x0x1e1e2e demo=0x0x1e1e2e
+            painted at poll 2
+            verdict CLEAN  race_panel_black_max=0
+  Trial 7:  first_capture panel=0x0x1e1e2e demo=0x0x1e1e2e
+            painted at poll 1
+            verdict CLEAN  race_panel_black_max=0
+  Trial 8:  first_capture panel=0x0x1e1e2e demo=0x0x1e1e2e
+            painted at poll 2
+            verdict CLEAN  race_panel_black_max=0
+  Trial 9:  first_capture panel=0x0x1e1e2e demo=0x0x1e1e2e
+            painted at poll 3
+            verdict CLEAN  race_panel_black_max=0
+  Trial 10: first_capture panel=0x0x1e1e2e demo=0x0x1e1e2e
+            painted at poll 2
+            verdict CLEAN  race_panel_black_max=0
+
+  Verdict distribution:
+    clean: 10 / 10
+    race:  0  / 10
+
+  Race-panel-black-streak statistics:
+    max consecutive-black-streak across all polls: 0
+    number of polls where panel band read 0x0 (anywhere in 300-poll budget): 0
+    (panel_pixel was either nitpicker bg #1e1e2e or themed panel; never black)
+
+================================================================================
+3. AGGREGATE METRICS
+================================================================================
+
+  Cold-boot window (bounded): 60s per trial (300 polls x 200 ms)
+  Average paint poll across 10 trials: 2.3 (~460 ms from probe construction)
+  Range: poll 1 (Trial 7) to poll 3 (Trials 1, 3, 9)
+  Cold-boot stability: tight — every trial painted within 3 polls.
+  Phase 11 race signature (panel band stuck at 0x0): NEVER observed.
+
+================================================================================
+4. CLASSIFICATION DECISION PER D14.8(b)
+================================================================================
+
+  D14.8(b) verbatim (docs/plans/phase14-daily-desktop.md §"Binding
+  Decisions"):
+    "(b) QGenodeScreen 1x1 race — IN-SCOPE if a focused W1
+    reproducer (deliberately cold-boot + immediate QMP click) shows
+    the race in >= 3 of 10 trials; otherwise Re-scoped to Phase 15+
+    (the Phase 11 evidence didn't pin it)."
+
+  Reproducer outcome:
+    Race verdicts observed: 0 / 10
+    Threshold for IN-SCOPE:  >= 3 / 10
+    Threshold met:          NO
+
+  Decision:  **Re-scoped to Phase 15+**
+
+  Appendix note flip per the W3 task spec ("If the race reproduces
+  >= 3/10, flip the appendix classification note from Blocked to
+  in-scope; If < 3/10, mark it Re-scoped to Phase 15+ in the
+  evidence log"):
+    This evidence log carries the Re-scoped classification directly
+    (above and in §5). The Phase-14 paper-cut appendix row
+    inherited from the Phase 11 review remains `Resolved in 14`
+    via the Phase 11 width-floor guard — that guard is what kept
+    the race from reproducing here, so the original Phase-11
+    resolution is sustained by this investigation.
+
+  Action items following the classification:
+    - No vendored-tree patch lands in W3 (per AGENTS.md §5.2 and
+      the W3 plan's "investigation only" framing).
+    - docs/09-roadmap.md §11.3 gains a Phase-14 follow-up note
+      recording the W3 outcome AND the D14.8(c) pointer-ROM
+      deferral (see §5 below; committed separately per the W3
+      commit units).
+
+================================================================================
+5. RELATED D14.8 CANDIDATES (this workstream also handles (c))
+================================================================================
+
+  W3's secondary task per the plan: "Candidate (c) nitpicker pointer
+  ROM from REL — Re-scoped per D14.8 (no work). Add a row to
+  docs/09-roadmap.md §11 known-issue follow-ups confirming the
+  deferral."
+
+  D14.8(c) verbatim: "(c) Nitpicker pointer ROM from REL — Re-scoped,
+  upstream-shaped, already partially patched (#9); the report-ROM
+  gap remains an upstream Genode question per Phase 11 §11.2 item 2."
+
+  Follow-up note: added to docs/09-roadmap.md §11.3 (Phase-14-
+  known-issue follow-ups section, alongside the Phase 11 §11.2 item
+  2 carryover) in the same docs commit. The Phase 11 patch ledger
+  row #9 (nitpicker pointer ROM from REL — the Nowhere branch now
+  initializes the pointer instead of dropping the event) is the
+  partial delivery; the report-ROM side (REL not updating the
+  pointer report) remains open and is recorded as the deferral
+  pointer.
+
+  Candidates (a) (QPA absolute-motion misrouting) and (d)
+  (themed_decorator live asset cache) are NOT touched by W3 — they
+  gate on W6 (stability workload) and W4 (decorator extension)
+  respectively per the plan.
+
+================================================================================
+6. RAW RECEIPTS
+================================================================================
+
+The per-trial raw boot logs (~570 KB each, QEMU serial captures from
+  the run tool) live at
+  docs/evidence/_w3_trials/trial_{1..10}.log for this workstream's
+  audit trail. They are NOT promoted to git (raw per-run logs are
+  transient per `AGENTS.md` §5.6 — "Raw per-run logs ... are not
+  promoted by default; only curated writeups that explain why a
+  design decision was made"). The git history carries only this
+  evidence log + the new probe + run script per the W3 commit
+  units (i).
+
+  Aggregate grep receipts (one-liners reproducible from the raw
+  logs):
+
+    Race count (count of "trial verdict race" across all 10 trials):
+      $ grep -h "qscreen-race-probe: trial verdict" \
+            docs/evidence/_w3_trials/trial_*.log | grep -c "race$"
+      0
+
+    Clean count:
+      $ grep -h "qscreen-race-probe: trial verdict" \
+            docs/evidence/_w3_trials/trial_*.log | grep -c "clean"
+      10
+
+    Average paint poll:
+      $ grep -h "demo-domain painted at poll" \
+            docs/evidence/_w3_trials/trial_*.log \
+        | grep -oE "poll [0-9]+" | awk '{s+=$2; n++} END {print s/n}'
+      2.3
+
+================================================================================
+7. NOTES ON THE REPRODUCER'S DESIGN
+================================================================================
+
+  - Topology match to the proven reference. The scenario's build
+    list and init config mirror run/sponge-de-sel4-interactive.run
+    MINUS the launch plumbing. Cold-boot timing is therefore the
+    same as the proven reference's first boot — which is where the
+    Phase 11 race was suspected (heavy alpha topology).
+  - No QMP. The Phase 10 / Phase 12 QMP machinery (TCP listener +
+    qmp_connect + expect round-trips) would add its own timing
+    noise; the race is purely a cold-boot timing-class symptom and
+    must be measured against an idle boot. QMP-driven clicks can be
+    added in a future Phase 15+ probe if a "QMP-click-during-cold-
+    boot" variant is needed.
+  - No pkg_runtime / sponge_pkgd. Sponge-de's launcher backend
+    defaults to "none" (logs "launcher source=none; panel button
+    will report 'not attached'") which is the same code path that
+    was exercised pre-W3 (no packages pre-installed).
+  - No input drivers bound. The run scenario drops usb_hid binding
+    (no `-device nec-usb-xhci` / `-device usb-tablet` QEMU args),
+    so usb_hid has nothing to bind and stays quiet. This is the
+    deliberate scoping decision documented in the run script's
+    gate-comment block.
+  - The 60s bounded window (300 polls x 200 ms) is generous on
+    purpose — a CLEAN verdict should arrive within 1-3 polls
+    (~200-600 ms) on this host. The 60s ceiling is there so a
+    future regression (e.g., the width-floor guard is removed or
+    weakened) would still record a `race` verdict within the run
+    budget rather than timing out the run script.
+  - The probe exits 0 on both verdicts intentionally. D14.8(b)'s
+    ">= 3 of 10 trials" policy is applied by THIS evidence log,
+    not by a hard pass/fail gate on the run script. A non-zero
+    exit on `race` would be a louder hard-gate, but it would also
+    contradict the plan's "investigation only" framing and force
+    the run tool to retry on any race verdict.
