@@ -396,7 +396,7 @@ An ISO is physically read-only. Options:
 | new `run/sponge-boot.run` | Tier-0-only minimal boot proving the storage chain (the new smoke test) |
 | `tool/dist.mojo` | stages `/system` into the run dir (auto-e2cp'd into GENODE by image/disk), adds the §4.3 P4 grow/repartition sequence, `--data-size` flag, enlarged default `--image-disk_size` |
 | `sponge_pkgd` | package binaries route via rom_sys (label-based ROM routing to cached_fs_rom); store path becomes a writable fs session (already implemented — just wired to vfs_data); the generated start nodes gain the uniform `label_last="ld.lib.so" → parent` route (§4.6) |
-| `sponge_configd` | gains the same writable store wiring for config persistence |
+| `sponge_configd` | gains the same writable store wiring for config persistence — delivered in Phase 14 W6 (`run/sponge-configd-persist.run` proves the mechanism on a RAM vfs; the product-media wiring against `/store/config.xml` on SPONGE-DATA is the same code path with a different mount root and a `/store` parent directory pre-created by the install media — the daemon expects the parent directory to exist before the first save, the same as `sponge_pkgd`) |
 | `pkg/<name>/metadata.xml` | unchanged (the repo format survives; the repo's *location* moves to `/system/pkg`) |
 | `docs/08, 11, 13` | development flow update, dde_rump port row, QEMU nvme/ahci args, limitations rewrite (falkon + persistence caveats removed when delivered) |
 | focused scenarios (`sponge-terminal` etc.) | unchanged — they remain the component-level dev gates |
