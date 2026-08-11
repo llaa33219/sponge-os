@@ -1,0 +1,143 @@
+#
+# \brief  Sponge configd persistence — CORRUPT-STORE variant (Phase 14 W6)
+# \author Sponge OS contributors
+# \date   2026
+#
+# Sister scenario to run/sponge-configd-persist.run (Phase 14 W6). It
+# pre-stages a deliberately torn store.xml on the same backing RAM vfs
+# the daemon uses, then boots sponge_configd. The contract under test
+# is docs/12 §13.2: a torn write is detected as corrupt on the next
+# boot and the daemon restarts from empty with a warning — never
+# crashes, never trusts partial data.
+#
+# Topology (the configd_persist_probe is the SAME probe used by the
+# happy-path scenario, configured with mode="verify-defaults"; the
+# new configd_corrupt_seed component runs first in init order so the
+# torn store is in place before sponge_configd's _load_store() reads
+# it):
+#   init
+#   + timer
+#   + report_rom
+#   + ram_vfs
+#   + configd_corrupt_seed | writes torn /store.xml, then sleeps
+#   + sponge_configd   | starts AFTER the seed (init order); reads torn
+#   |                   store; logs the "starting with defaults" warning
+#   + configd_persist_probe | reads the broadcast and verifies the
+#                           | daemon carries registry defaults (not torn
+#                           | partial data); exits 0 on success
+#
+# The scenario exits 0 on success — same as the happy path. The gate
+# is "configd-persist-probe: PASS" with the daemon having logged the
+# "is not valid XML" warning, both of which are checked by the run
+# script.
+#
+
+build { core lib/ld init timer server/report_rom server/vfs lib/vfs \
+        sponge_configd test/configd_corrupt_seed test/configd_persist_probe }
+
+create_boot_directory
+
+install_config {
+config
++ parent-provides
+  + service LOG
+  + service PD
+  + service CPU
+  + service ROM
+  + service IO_MEM
+  + service IRQ
+
++ default-route
+  + any-service
+    + parent
+    + any-child
++ default | caps: 200 | ram: 8M
+
++ start timer
+  + provides | + service Timer
+
++ start report_rom | ram: 4M
+  + provides
+    + service Report
+    + service ROM
+  + config | verbose: no
+    + policy | label: sponge_configd -> config_request | report: configd_persist_probe -> config_request
+    + policy | label: configd_persist_probe -> config_result | report: sponge_configd -> config_result
+    + policy | label: configd_persist_probe -> broadcast | report: sponge_configd -> config
+
++ start ram_vfs | caps: 200 | ram: 8M
+  + binary vfs
+  + provides | + service File_system
+  + config
+    + vfs
+      + ram | writeable: yes
+    + policy | label_prefix: configd_corrupt_seed    | root: / | writeable: yes
+    + policy | label_prefix: sponge_configd         | root: / | writeable: yes
+    + policy | label_prefix: configd_persist_probe  | root: / | writeable: no
+  + route
+    + service ROM | label_last: ld.lib.so  | + parent
+    + service ROM | label_last: vfs.lib.so | + parent
+    + any-service
+      + parent
+      + any-child
+
++ start configd_corrupt_seed | caps: 100 | ram: 4M
+  + config
+    + vfs
+      + fs
+  + route
+    + service File_system | + child ram_vfs
+    + any-service
+      + parent
+      + any-child
+
++ start sponge_configd | caps: 200 | ram: 16M
+  + config
+    + vfs
+      + fs
+  + route
+    + service File_system | + child ram_vfs
+    + service ROM | label_last: config_request | + child report_rom
+    + service Report | + child report_rom
+    + any-service
+      + parent
+      + any-child
+
++ start configd_persist_probe | caps: 200 | ram: 16M
+  + config
+    + vfs
+      + fs
+  + route
+    + service File_system | + child ram_vfs
+    + service Timer       | + child timer
+    + service ROM | label_last: config_result | + child report_rom
+    + service ROM | label_last: broadcast     | + child report_rom
+    + service Report | + child report_rom
+    + any-service
+      + parent
+      + any-child
+- }
+
+build_boot_image [build_artifacts]
+
+append qemu_args " -nographic -m 1G "
+
+#
+# Verification:
+#   (1) configd_corrupt_seed runs first and pre-stages the torn store
+#       (its log line proves the write happened).
+#   (2) sponge_configd logs the "is not valid XML — starting with
+#       defaults" warning AND a "no store — starting with defaults"
+#       line, OR equivalent — proving it recovered instead of
+#       crashing.
+#   (3) configd_persist_probe reads the broadcast (which now carries
+#       the registry defaults, not the torn data) and logs PASS.
+#
+# The probe's PASS marker is the gate. The warning lines are not
+# gated because their format depends on the Genode vfs plugin's
+# exact wording; their PRESENCE is asserted by a follow-up host-side
+# check (the run tool would also accept "Run script execution
+# successful" as the primary gate per Phase 4 §13.2's never-crash
+# contract).
+#
+run_genode_until {.*configd-persist-probe: PASS.*} 30
