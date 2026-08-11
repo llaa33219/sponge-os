@@ -29,6 +29,8 @@ INCLUDEPATH += $$PWD \
 SOURCES  += main.cc \
             sponge_de_main.cc \
             panel/panel_widget.cc \
+            panel/notifier_widget.cc \
+            panel/notifier_controller.cc \
             launcher/launcher_controller.cc \
             launcher/launcher_menu_view.cc \
             theme/theme_loader.cc \
@@ -38,6 +40,8 @@ SOURCES  += main.cc \
 
 HEADERS  += sponge_de_main.h \
             panel/panel_widget.h \
+            panel/notifier_widget.h \
+            panel/notifier_controller.h \
             launcher/launcher_controller.h \
             launcher/launcher_menu_view.h \
             theme/theme_loader.h \
