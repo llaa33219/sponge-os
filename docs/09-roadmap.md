@@ -46,10 +46,10 @@ Phase 10: Sponge DE — fully interactive desktop  ✅ done
 Phase 11: DE customization and panel strengthening  ✅ done
    |
    v
-Phase 12: Hardware support expansion
+Phase 12: Hardware support expansion  ✅ done (QEMU-verified matrix)
    |
    v
-Phase 13: Package ecosystem growth
+Phase 13: Package ecosystem growth  ✅ done (criterion 3 partial: importer breadth deferred, D13.5)
    |
    v
 Phase 14: Sponge DE as a daily-usable desktop
