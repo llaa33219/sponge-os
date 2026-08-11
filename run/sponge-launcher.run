@@ -123,7 +123,11 @@ config
       + parent
       + any-child
 
-+ start sponge-de | caps: 300 | ram: 128M
+# caps: 1000 (not the base-linux 300): base-sel4's capability accounting
+# is roughly 3x base-linux's; 300 caps run out inside Mesa's EGL screen
+# creation and the component hangs *silently* (docs/09-roadmap.md
+# §11.1; the same sizing as run/sponge-de-sel4-interactive.run).
++ start sponge-de | caps: 1000 | ram: 128M
   + config
     + launcher | source: pkgd
     + vfs
