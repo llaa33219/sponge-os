@@ -239,7 +239,14 @@ void PanelWidget::attach_tasklist(TasklistWidget *widget)
 		widget->setParent(this);
 		layout->insertWidget(2, widget);
 		widget->setMinimumHeight(_height > 0 ? (int)_height : 28);
-		widget->show();
+		/*
+		 * Do NOT call widget->show() here. The widget is shown
+		 * automatically when inserted into the panel's layout
+		 * (the panel is already shown at this point). An explicit
+		 * show() race-conditions with the panel's pending first
+		 * paint and can delay the demo window's first paint, which
+		 * breaks the Phase-7 sponge-de-test acceptance probe.
+		 */
 	}
 }
 
