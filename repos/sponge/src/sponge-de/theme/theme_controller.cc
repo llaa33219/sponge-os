@@ -7,6 +7,8 @@
 #include "theme_controller.h"
 
 #include "launcher/launcher_menu_view.h"
+#include "panel/notifier_widget.h"
+#include "panel/notify_poster.h"
 #include "panel/panel_widget.h"
 #include "sponge_de_main.h"
 #include "theme/theme_loader.h"
@@ -221,6 +223,16 @@ void ThemeController::applyTheme(QString name, QString ini)
 
 	_live_applied = true;
 	_publish_applied(name.toUtf8().constData());
+
+	if (_notify)
+		_notify->post(QStringLiteral("theme applied"), name,
+		              QStringLiteral("info"), 5000);
+}
+
+
+void ThemeController::attach_notify_poster(NotifyPoster *poster)
+{
+	_notify = poster;
 }
 
 

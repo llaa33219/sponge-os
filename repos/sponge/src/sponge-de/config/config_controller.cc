@@ -7,6 +7,8 @@
 #include "config_controller.h"
 
 #include "launcher/launcher_menu_view.h"
+#include "panel/notifier_widget.h"
+#include "panel/notify_poster.h"
 #include "panel/panel_widget.h"
 
 #include <base/log.h>
@@ -359,5 +361,25 @@ void ConfigController::_emit_changed(QString const &panel_height,
 		            " visible=", panel_visible_widgets.toUtf8().constData(),
 		            " clock=", clock_format.toUtf8().constData(),
 		            " sort=", launcher_sort_by.toUtf8().constData(), ")");
+
+		if (_notify) {
+			QString title = QStringLiteral("config applied");
+			QString body;
+			if (panel_height != _last_panel_height)
+				body += QStringLiteral("panel.height=%1 ").arg(panel_height);
+			if (panel_visible_widgets != _last_panel_visible_widgets)
+				body += QStringLiteral("panel.visible_widgets=%1 ").arg(panel_visible_widgets);
+			if (clock_format != _last_clock_format)
+				body += QStringLiteral("clock.format=%1 ").arg(clock_format);
+			if (launcher_sort_by != _last_launcher_sort_by)
+				body += QStringLiteral("launcher.sort_by=%1 ").arg(launcher_sort_by);
+			_notify->post(title, body.trimmed(), QStringLiteral("info"), 3000);
+		}
 	}
+}
+
+
+void ConfigController::attach_notify_poster(NotifyPoster *poster)
+{
+	_notify = poster;
 }
