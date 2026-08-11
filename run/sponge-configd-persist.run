@@ -1,52 +1,48 @@
 #
-# \brief  Sponge configd persistence scenario — SKELETON (Phase 14 W1)
+# \brief  Sponge configd persistence scenario (Phase 14 W6)
 # \author Sponge OS contributors
 # \date   2026
 #
 # Phase 14 W6 deliverable scenario (docs/plans/phase14-daily-desktop.md
 # §W6): boots sponge_configd with <vfs>-activated persistence, drives a
 # three-write sequence (panel.height=64, panel.visible_widgets=clock,
-# panel.height=28), restarts the daemon, and asserts the broadcast
-# carries panel.height=28 after restart (the most-recent value).
+# panel.height=28), and asserts that the durable store.xml on the
+# backing vfs carries the most-recent value plus the intermediate
+# write (no clobber between writes). This is the persistence proof:
+# a fresh boot of sponge_configd against the same store.xml would
+# reload exactly these values via the same code path.
 #
-# This file is a W1-AUTHORED SKELETON only (per the W1 plan, step 3):
-# the build list + config + route + gated run_genode_until are in place,
-# but the actual configd-persist probe component (the writer/restarter/
-# reader) does NOT exist yet. The W6 implementation commit will add
-# `test/configd_persist_probe/` to the build list and a start node here,
-# then the gated run_genode_until will flip to PASS once the probe emits
-# `configd-persist-probe: PASS`.
-#
-# Until W6 lands, this scenario boots sponge_configd alone and times out
-# at the expected sentry (no `configd-persist-probe: PASS` in the log).
-# That timeout is the intended FAIL — the scenario proves the build list
-# + routing + boot image are sound, and the run tool's run_genode_until
-# gate is the W6 acceptance gate.
-#
-# Topology (skeleton; W6 expands):
+# Topology:
 #   init
 #   + timer
-#   + report_rom     (relays config_request / config_result / config
-#                     between sponge_configd and the future probe)
-#   + sponge_configd (no <vfs> yet — Phase 4 follow-up #2 added the
-#                     conditional path; W6 turns the vfs on by default
-#                     for the Alpha media with a write-tmp + rename
-#                     atomic store write — docs/12 §13.2 contract)
+#   + report_rom       (relays config_request / config_result / config
+#                       between sponge_configd and configd_persist_probe)
+#   + ram_vfs          (writable RAM-backed File_system, both
+#                       sponge_configd and configd_persist_probe mount
+#                       this via their <vfs> nodes — the daemon writes
+#                       /var/sponge_configd/store.xml; the probe reads
+#                       /store.xml from the same backing store)
+#   + sponge_configd   (<vfs> gate active, persists on every set)
+#   + configd_persist_probe (drives the 3-write sequence, reads the
+#                             store.xml back, asserts content)
 #
-# report_rom policies (labels mirror run/sponge-config-probe.run so the
-# W6 probe can be added with the same wire contract):
-#   sponge_configd's ROM "config_request" <- (probe's "config_request" report)
-#   probe's ROM "config_result"           <- sponge_configd's "config_result"
-#   probe's ROM "config"                  <- sponge_configd's "config" broadcast
+# report_rom policies (labels mirror run/sponge-config-probe.run):
+#   sponge_configd's ROM "config_request" <- configd_persist_probe's report
+#   configd_persist_probe's ROM "config_result" <- sponge_configd's report
+#   configd_persist_probe's ROM "config"        <- sponge_configd's broadcast
 #
-# AGENTS.md §4.2 / docs/08-development.md §4.1: this scenario builds
-# lib/ld + core init sponge_configd and passes [build_artifacts] to
-# build_boot_image so init.xsd + ld.lib.so + the configd binary are all
-# staged. Kernel-agnostic in shape (sponge_configd has no Qt6 dep); the
-# acceptance run uses KERNEL=sel4 BOARD=pc to match the W1 envelope.
+# ram_vfs policy (both clients label it the same way so each gets a
+# fresh File_system session routed to the ram_vfs server):
+#   sponge_configd -> <the configured label>            -> child ram_vfs
+#   configd_persist_probe -> <the configured label>      -> child ram_vfs
+#
+# AGENTS.md §4.2: this scenario builds lib/ld + core init and passes
+# [build_artifacts] to build_boot_image so init.xsd + ld.lib.so + the
+# binaries are all staged. Acceptance on base-sel4 (KERNEL=sel4 BOARD=pc).
 #
 
-build { core lib/ld init timer server/report_rom sponge_configd }
+build { core lib/ld init timer server/report_rom server/vfs lib/vfs \
+        sponge_configd test/configd_persist_probe }
 
 create_boot_directory
 
@@ -57,9 +53,8 @@ config
   + service PD
   + service CPU
   + service ROM
-  + service IRQ
   + service IO_MEM
-  + service IO_PORT
+  + service IRQ
 
 + default-route
   + any-service
@@ -74,14 +69,47 @@ config
   + provides
     + service Report
     + service ROM
-  + config | verbose: yes
+  + config | verbose: no
     + policy | label: sponge_configd -> config_request | report: configd_persist_probe -> config_request
     + policy | label: configd_persist_probe -> config_result | report: sponge_configd -> config_result
-    + policy | label: configd_persist_probe -> config | report: sponge_configd -> config
+    + policy | label: configd_persist_probe -> broadcast | report: sponge_configd -> config
+
++ start ram_vfs | caps: 200 | ram: 8M
+  + binary vfs
+  + provides | + service File_system
+  + config
+    + vfs
+      + ram | writeable: yes
+    + policy | label_prefix: sponge_configd        | root: / | writeable: yes
+    + policy | label_prefix: configd_persist_probe | root: / | writeable: no
+  + route
+    + service ROM | label_last: ld.lib.so  | + parent
+    + service ROM | label_last: vfs.lib.so | + parent
+    + any-service
+      + parent
+      + any-child
 
 + start sponge_configd | caps: 200 | ram: 16M
+  + config
+    + vfs
+      + fs
   + route
+    + service File_system | + child ram_vfs
     + service ROM | label_last: config_request | + child report_rom
+    + service Report | + child report_rom
+    + any-service
+      + parent
+      + any-child
+
++ start configd_persist_probe | caps: 200 | ram: 16M
+  + config
+    + vfs
+      + fs
+  + route
+    + service File_system | + child ram_vfs
+    + service Timer       | + child timer
+    + service ROM | label_last: config_result | + child report_rom
+    + service ROM | label_last: broadcast     | + child report_rom
     + service Report | + child report_rom
     + any-service
       + parent
@@ -97,20 +125,12 @@ build_boot_image [build_artifacts]
 append qemu_args " -nographic -m 1G "
 
 #
-# Verification: the W6 implementation commit will add
-# test/configd_persist_probe/ to the build list and a start node here
-# (wired to the report_rom policies above), and the probe will:
-#   (1) set panel.height=64, panel.visible_widgets=clock, panel.height=28
-#       (three writes, via the config_request channel)
-#   (2) restart sponge_configd (or re-read the on-disk store from the
-#       booted scenario — the exact transport choice is part of W6
-#       sub-design, recorded in the W6 commit)
-#   (3) read the config broadcast ROM and assert panel.height=28 is
-#       present (the most-recent value) — the persistence proof
-#   (4) log "configd-persist-probe: PASS"
-#
-# Until that probe exists, the run_genode_until below times out at the
-# PASS marker. That timeout is the EXPECTED FAIL for the W1 skeleton
-# and proves the build list + boot image + report_rom routes are sound.
+# Verification: the probe writes panel.height=64, panel.visible_widgets=clock,
+# panel.height=28 in order through the config_request channel, asserts the
+# broadcast carries the latest value after each set, and reads back
+# store.xml from the same vfs to prove the durable copy carries both the
+# most-recent value AND the intermediate value (no clobber). On success it
+# logs "configd-persist-probe: PASS". A corrupt store.xml is exercised by
+# the sister scenario run/sponge-configd-persist-corrupt.run.
 #
 run_genode_until {.*configd-persist-probe: PASS.*} 30
