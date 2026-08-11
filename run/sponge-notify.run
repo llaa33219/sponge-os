@@ -108,14 +108,11 @@ config
     + service Report
     + service ROM
   + config | verbose: yes
-    # notification bus (Phase 14 W4)
     + policy | label: sponge_notifier -> notif_request | report: notify_probe -> notif_request
-    + policy | label: notify_probe     -> notifications | report: sponge_notifier -> notifications
-    + policy | label: sponge-de        -> notifications | report: sponge_notifier -> notifications
-    # sponge-de's bus (mirrors sponge-de-test.run)
+    + policy | label: notify_probe -> notifications | report: sponge_notifier -> notifications
+    + policy | label: sponge-de -> notifications | report: sponge_notifier -> notifications
     + policy | label: sponge_de_probe -> sponge_de_input | report: sponge-de -> input
-    + policy | label: sponge-de -> applied_theme | (no report — reflects empty)
-    # sponge-de's existing ROM needs (default theme; ROM routes via parent)
+    + policy | label: sponge-de -> applied_theme | report: sponge-de -> applied_theme
     + policy | label: notify_probe -> result | report: sponge_pkgd -> result
 
 + start nitpicker | ram: 8M
@@ -204,12 +201,10 @@ config
 
 + start sponge_notifier | caps: 100 | ram: 8M
   + route
-    + service Timer   | + child timer
-    + service Report  | + child report_rom
-    + service ROM
-      + label: notif_request | + child report_rom
-      + label: notifications | + child report_rom
-      + any-label            | + parent
+    + service Timer | + child timer
+    + service Report | + child report_rom
+    + service ROM | label: notif_request | + child report_rom
+    + service ROM | label: notifications | + child report_rom
     + any-service
       + parent
       + any-child
@@ -226,17 +221,13 @@ config
       + tar qt6_libqgenode.tar
     + libc | stdout: /dev/log | stderr: /dev/log | pipe: /pipe | rtc: /dev/rtc
   + route
-    + service Gui    | + child nitpicker
-    + service Report
-      + label: applied_theme | + child report_rom
-      + label: input         | + child report_rom
-      + label: notif_request | + child report_rom
-      + any-label            | + child report_rom
-    + service ROM
-      + label: default.theme | + parent
-      + label: notifications | + child report_rom
-      + label: mesa_gpu.lib.so | + parent | label: mesa_gpu-softpipe.lib.so
-      + any-label            | + parent
+    + service Gui | + child nitpicker
+    + service Report | label: applied_theme | + child report_rom
+    + service Report | label: input         | + child report_rom
+    + service Report | label: notif_request | + child report_rom
+    + service ROM | label: default.theme | + parent
+    + service ROM | label: notifications | + child report_rom
+    + service ROM | label: mesa_gpu.lib.so | + parent | label: mesa_gpu-softpipe.lib.so
     + any-service
       + parent
       + any-child
@@ -245,11 +236,9 @@ config
   + route
     + service Capture | + child nitpicker
     + service Timer   | + child timer
-    + service Report  | label: notif_request | + child report_rom
-    + service ROM
-      + label: notifications | + child report_rom
-      + label: result        | + child report_rom
-      + any-label            | + parent
+    + service Report | label: notif_request | + child report_rom
+    + service ROM   | label: notifications | + child report_rom
+    + service ROM   | label: result        | + child report_rom
     + any-service
       + parent
       + any-child

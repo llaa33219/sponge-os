@@ -28,7 +28,7 @@ NotifyPoster::NotifyPoster(Genode::Env &env, QObject *parent)
 	 * `post()` slot logs a warning once per unique dropped title.
 	 */
 	try {
-		_request.construct(_env, "request", "notif_request");
+		_request.construct(_env, "notif_request", "notif_request");
 		_enabled = true;
 		Genode::log("sponge-de: notify poster wired to sponge_notifier");
 	}
@@ -73,15 +73,13 @@ void NotifyPoster::post(QString title, QString body, QString kind, unsigned ttl_
 
 	Genode::String<96>  source("sponge-de");
 	_request->generate_xml([&](Genode::Xml_generator &g) {
-		g.node("notif_request", [&] {
-			g.node("notification", [&] {
-				g.attribute("source", source);
-				g.attribute("kind",   kind.toUtf8().constData());
-				g.attribute("ttl_ms", ttl_ms);
-				g.node("title", [&] { g.append_sanitized(title.toUtf8().constData()); });
-				if (!body.isEmpty())
-					g.node("body", [&] { g.append_sanitized(body.toUtf8().constData()); });
-			});
+		g.node("notification", [&] {
+			g.attribute("source", source);
+			g.attribute("kind",   kind.toUtf8().constData());
+			g.attribute("ttl_ms", ttl_ms);
+			g.node("title", [&] { g.append_sanitized(title.toUtf8().constData()); });
+			if (!body.isEmpty())
+				g.node("body", [&] { g.append_sanitized(body.toUtf8().constData()); });
 		});
 	});
 }
