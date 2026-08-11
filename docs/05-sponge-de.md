@@ -95,8 +95,9 @@ How Sponge DE should present itself to an everyday user:
 
 - A clean wallpaper and a minimal panel.
 - Genode terminology (`init`, `nitpicker`, and the like) is not visible.
-- The panel contains the launcher, system tray, and clock — nothing
-  more.
+- The panel contains the launcher and clock — nothing more.
+- A system tray and additional applets arrive in a later release; the
+  panel today is intentionally minimal.
 - A "first-time user guide" is optional and not forced.
 
 ### 5.2 Launching an App
@@ -123,9 +124,9 @@ How Sponge DE should present itself to an everyday user:
 
 - `vct leitzentrale` opens the Leitzentrale window for direct
   manipulation of the system component tree.
-- This is not hidden, but it is placed somewhere a beginner would not
-  click. A "this mode directly edits the system's detailed
-  configuration — continue?" confirmation dialog is shown.
+- In this release the only way to open Leitzentrale is the
+  `vct leitzentrale` CLI command; a panel menu entry is deferred to a
+  later release.
 
 ---
 
@@ -147,9 +148,14 @@ How Sponge DE stays light under Genode's resource constraints:
 ## 7. Open Design Questions
 
 - How to split roles exactly between `nitpicker` and Sponge DE
-  (who is responsible for window placement?).
-- Notification backend design: reuse Genode's standard notification
-  service, or build a Sponge-native notification daemon.
-- Priority and timing of multi-monitor support.
+  (who is responsible for window placement?). Remains open for
+  Phase 15+.
+- Priority and timing of multi-monitor support. Remains open for
+  Phase 15+.
+- Clipboard is settled: Phase 14 reuses the upstream Genode
+  `os/src/server/clipboard` binary as-is, per decision D14.2 in
+  `docs/plans/phase14-daily-desktop.md`.
 
-These items are settled by experiments in the prototype phase.
+Notification backend is settled: Phase 14 builds the Sponge-native
+`sponge_notifier` daemon, per decision D14.1 in
+`docs/plans/phase14-daily-desktop.md`. (Removed from this list.)
