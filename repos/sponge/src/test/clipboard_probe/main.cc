@@ -102,6 +102,13 @@ unsigned const CLIPBOARD_POLL_ITERS = 60;   /* ~6 s for the write to propagate;
                                             * path complete within seconds
                                             * (the focus scenario's FAIL gate
                                             * is the same timeout). */
+unsigned const QT_WRITE_POLL_ITERS = 1500;  /* ~150 s for the Qt → server write;
+                                            * the run script's QMP choreography
+                                            * (focus + type + Ctrl-A + Ctrl-C)
+                                            * takes ~30 s including the
+                                            * textedit rendering wait, and
+                                            * Qt's input handling latency on
+                                            * seL4+Mesa adds another 30 s. */
 unsigned const DOC_BASELINE_ITERS  = 20;   /* ~2 s for the baseline snapshot to settle */
 unsigned const DOC_TYPED_ITERS     = 100;  /* ~50 s for the typed text to render */
 unsigned const TICK_MS             = 100;
@@ -121,6 +128,9 @@ unsigned const TYPED_FLOOR = 30;
 
 struct Clipboard_probe
 {
+	Clipboard_probe(Clipboard_probe const &) = delete;
+	Clipboard_probe &operator=(Clipboard_probe const &) = delete;
+
 	Genode::Env &_env;
 
 	Timer::Connection   _timer   { _env };
@@ -139,6 +149,25 @@ struct Clipboard_probe
  */
 Genode::Attached_rom_dataspace  _clipboard_rom    { _env, "clipboard" };
 Genode::Expanding_reporter     _clipboard_report { _env, "clipboard", "clipboard" };
+
+/*
+ * Optional config ROM (labeled "qt_config"). The run scenario
+ * stages a "qt_config" boot module with an XML body of the form
+ *
+ *   <config qt_write_sentinel="..."/>
+ *
+ * and the probe's route `+ service ROM | label: qt_config | + parent`
+ * lets init serve that ROM module to the probe. If the ROM is
+ * present and carries the attribute, the probe enters QT-WRITE
+ * mode — it does NOT write its own sentinel; instead it polls for
+ * the specified sentinel written by textedit's Qt side (via QMP
+ * type + Ctrl-A + Ctrl-C). The probe uses Constructible so the
+ * session is only opened when the run scenario provides the
+ * module (the primary scenario doesn't, so the probe runs in
+ * the default probe-write mode).
+ */
+Genode::Constructible<Genode::Attached_rom_dataspace> _qt_config_rom { };
+char const *_qt_write_sentinel = nullptr;
 
 /*
  * Producer for the sponge_configd "config_request" ROM. With no
@@ -166,40 +195,66 @@ Genode::Expanding_reporter     _clipboard_report { _env, "clipboard", "clipboard
 	}
 
 	/*
-	 * Wait for the sentinel to appear byte-for-byte in the probe's own
-	 * "clipboard" ROM. Returns true on success, false on timeout.
-	 */
-	bool _wait_sentinel_in_rom()
+		 * Wait for `needle` to appear byte-for-byte in the probe's own
+		 * "clipboard" ROM. Returns true on success, false on timeout.
+		 */
+	bool _wait_for_needle(char const *needle, unsigned poll_iters = CLIPBOARD_POLL_ITERS,
+	                       char const *log_label = SENTINEL)
 	{
-		Genode::size_t const sentinel_len = Genode::strlen(SENTINEL);
-		for (unsigned i = 0; i < CLIPBOARD_POLL_ITERS && _ok; ++i) {
+		Genode::size_t const needle_len = Genode::strlen(needle);
+		bool logged_invalid = false;
+		for (unsigned i = 0; i < poll_iters && _ok; ++i) {
+		try {
 			_clipboard_rom.update();
+		} catch (...) {
+			if (!logged_invalid) {
+				Genode::log("clipboard-probe: clipboard ROM update threw at poll ", i);
+				logged_invalid = true;
+			}
+			_timer.msleep(TICK_MS);
+			continue;
+		}
 			if (_clipboard_rom.valid()) {
 				char const *raw = _clipboard_rom.local_addr<char>();
 				Genode::size_t const n = _clipboard_rom.size();
-				if (n >= sentinel_len) {
+				if (n >= needle_len) {
 					bool found = false;
 					for (Genode::size_t k = 0;
-					     k + sentinel_len <= n && !found; ++k) {
+					     k + needle_len <= n && !found; ++k) {
 						bool eq = true;
 						for (Genode::size_t j = 0;
-						     j < sentinel_len && eq; ++j)
-							eq = (raw[k + j] == SENTINEL[j]);
+						     j < needle_len && eq; ++j)
+							eq = (raw[k + j] == needle[j]);
 						if (eq) found = true;
 					}
 					if (found) {
-						Genode::log("clipboard-probe: sentinel present in clipboard ROM (",
-						            n, " bytes)");
+						Genode::log("clipboard-probe: ", log_label,
+						            " present in clipboard ROM (",
+						            n, " bytes, poll ", i, ")");
 						return true;
 					}
 				}
 				if (i % 10 == 0)
 					Genode::log("clipboard-probe: clipboard ROM poll ", i,
 					            " size=", n);
+				logged_invalid = false;
+			} else {
+				if (!logged_invalid) {
+					Genode::log("clipboard-probe: clipboard ROM invalid at poll ", i);
+					logged_invalid = true;
+				}
 			}
 			_timer.msleep(TICK_MS);
 		}
 		return false;
+	}
+
+	/*
+	 * Wait for the sentinel to appear byte-for-byte in the probe's own
+	 * "clipboard" ROM. Returns true on success, false on timeout.
+	 */
+	bool _wait_sentinel_in_rom() {
+		return _wait_for_needle(SENTINEL, CLIPBOARD_POLL_ITERS, "sentinel");
 	}
 
 	/*
@@ -237,6 +292,25 @@ Genode::Expanding_reporter     _clipboard_report { _env, "clipboard", "clipboard
 		using namespace Genode;
 
 		log("clipboard-probe: starting");
+
+		/* Detect qt-write mode via the qt_config ROM (the run scenario
+		 * stages a "qt_config" boot module with the qt_write_sentinel
+		 * attribute). The probe just polls the bus for the bytes. */
+		try {
+			if (!_qt_config_rom.constructed()) {
+				_qt_config_rom.construct(_env, "qt_config");
+			}
+			_qt_config_rom->update();
+			if (_qt_config_rom->valid()) {
+				Genode::Node const cfg = _qt_config_rom->node();
+				if (cfg.has_attribute("qt_write_sentinel")) {
+					_qt_write_sentinel = cfg.attribute_value("qt_write_sentinel",
+					                                          Genode::String<256>()).string();
+					log("clipboard-probe: qt-write mode (waiting for '",
+					    _qt_write_sentinel, "')");
+				}
+			}
+		} catch (...) { }
 
 		/* Publish an empty config_request so sponge_configd's ROM
 		 * module is registered (empty but valid) — without this
@@ -285,6 +359,47 @@ Genode::Expanding_reporter     _clipboard_report { _env, "clipboard", "clipboard
 				log("clipboard-probe: textedit rendered (title-bar frac=", frac, "%)");
 				break;
 			}
+		}
+
+		if (_qt_write_sentinel) {
+			/*
+			 * QT-WRITE mode — wait for textedit's QGenodeClipboard
+			 * to write the QMP-typed sentinel through the bus.
+			 * The probe does NOT write its own sentinel; textedit's
+			 * Qt side is the writer. The data crosses the address-
+			 * space boundary via the upstream server (textedit's
+			 * Qt in one address space, the probe's ROM reader in
+			 * another — D14.2 U2-shaped proof, reversed direction).
+			 *
+			 * First, write a sentinel so the clipboard server has
+			 * content (the probe's "ping" — the server's ROM module
+			 * is created lazily and is otherwise empty/invalid until
+			 * a writer submits). Then immediately overwrite with
+			 * an empty write so the server-side module transitions
+			 * cleanly to the "reader" side. The probe will then poll
+			 * for textedit's Qt-written sentinel.
+			 */
+			log("clipboard-probe: [qt] priming the clipboard server's ROM module");
+			_clipboard_report.generate([&] (Genode::Generator &g) {
+				g.attribute("qt_write_ping", "1");
+			});
+			_clipboard_rom.update();
+			log("clipboard-probe: [qt] ROM valid after priming: ",
+			    _clipboard_rom.valid() ? "yes" : "no");
+
+			log("clipboard-probe: [qt] wait for textedit's Qt write to propagate");
+			if (!_wait_for_needle(_qt_write_sentinel, QT_WRITE_POLL_ITERS,
+			                       "qt-write sentinel")) {
+				_fail("qt-write sentinel did not appear in the clipboard ROM "
+				      "(textedit's QGenodeClipboard -> Report -> server path "
+				      "did not propagate)");
+				return;
+			}
+			log("clipboard-probe: PASS (Qt -> server write path verified; "
+			    "textedit's QGenodeClipboard::setMimeData -> upstream clipboard "
+			    "server -> probe's ROM reader, byte-for-byte)");
+			_env.parent().exit(0);
+			return;
 		}
 
 		/*
