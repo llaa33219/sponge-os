@@ -1,0 +1,81 @@
+<!--
+     pdf_view — the Sponge OS PDF viewer package (Phase 13 W4, D13.3).
+
+     A source-built mupdf-based viewer (upstream app/pdf_view at
+     genode/repos/libports/src/app/pdf_view). The component binary is
+     named `pdf_view' (matches the upstream binary and the package
+     name, so <binary> matches <name> and the runtime-config generator
+     emits a plain <start name="pdf_view"> — no <binary> element needed).
+
+     The metadata <config> below is emitted verbatim into the
+     pkg_runtime <start> node by sponge_pkgd's runtime-config generator
+     (docs/12 §7.2 rule 4). It carries:
+
+       - libc wiring (stdout/stderr to /dev/log — no pipe/rtc because
+         pdf_view never opens the console or a real-time clock; mupdf
+         does not need them)
+       - a <vfs> with:
+           /dev/log           libc plumbing (Genode::log sink)
+           /sample.pdf        the bundled sample PDF (mounted from the
+                              boot module of the same name; pdf_view's
+                              scandir("/", ...) finds it via its .pdf
+                              suffix, see main.cc:239-254)
+
+     HOW PDF_VIEW LOCATES THE PDF (the <rom name="..."/> MUST match
+     the boot module filename):
+         genode/repos/libports/src/app/pdf_view/main.cc:240
+           if (scandir("/", &list, pdf_select, alphasort) > 0) {
+               char const *file_name = list[0]->d_name;
+               int fd = open(file_name, O_BINARY | O_RDONLY, 0666);
+               ...
+               pdfapp_open(&_pdfapp, (char *)file_name, fd, 0);
+     pdf_select (main.cc:62-69) accepts any name ending in ".pdf".
+     scandir with alphasort returns the first alphabetical match. The
+     boot module of that same name MUST therefore be staged by the run
+     scenario (see run/sponge-pdf-view.run) — a mismatch leaves the
+     VFS empty and pdf_view exits with "failed to find a PDF to open"
+     (main.cc:251).
+
+     Quota (ram="1G" caps="256") matches upstream run/mupdf.run:81
+     verbatim — mupdf's font cache and rendered-page buffers are
+     memory-hungry on first paint (docs/13 §6 register entry: mupdf
+     is the heaviest non-Falkon component in the Alpha app set).
+
+     Only Gui is declared as a session: pdf_view's main.cc opens a
+     single Gui::Connection which bundles both framebuffer (Gui) and
+     event (Input) sessions (genode/repos/libports/include/gui_session/
+     connection.h). The run scenario routes Input explicitly to the
+     nitpicker child inside pkg_runtime; the any-service -> any-child
+     fallback would also reach nitpicker (which provides both Gui and
+     Input), but the explicit route is cheaper and self-documenting.
+
+     No File_system, Report, or Timer session is requested:
+     minimum privilege (AGENTS.md §1.2). pdf_view never opens
+     files outside its VFS, never emits a report, and never needs a
+     timer — the mupdf event loop is driven by Genode's input
+     signal handler (main.cc:107-111).
+  -->
+<package>
+  <name>pdf_view</name>
+  <version>1.0</version>
+  <description>MuPDF-based PDF viewer (renders a single PDF page via the upstream app/pdf_view).</description>
+
+  <binary>pdf_view</binary>
+  <quota ram="1G" caps="256"/>
+
+  <launcher category="Utilities"/>
+
+  <dependencies/>
+
+  <config>
+    <libc stdout="/dev/log" stderr="/dev/log"/>
+    <vfs>
+      <dir name="dev"><log/></dir>
+      <rom name="sample.pdf"/>
+    </vfs>
+  </config>
+
+  <sessions>
+    <session name="Gui" default-route="parent"/>
+  </sessions>
+</package>
