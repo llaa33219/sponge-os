@@ -1,0 +1,439 @@
+#
+# \brief  Sponge OS Qt-setText() clipboard write harness scenario
+#        (Phase 14 W5 follow-on diagnostic).
+# \author Sponge OS contributors
+# \date   2026
+#
+# Oracle consultation (see docs/evidence/phase14-w5-qtwrite-failure.md)
+# settled the next decisive experiment after four hypotheses were
+# ruled out for textedit's failing Ctrl-C → bus write: a programmatic
+# Qt harness that isolates QGenodeClipboard::setMimeData from every
+# keyboard/shortcut/focus variable. That harness is
+# `repos/sponge/src/test/clipboard_qtsettext/`; this scenario boots it
+# and proves the bridge end-to-end via the same
+# clipboard_probe-in-watch-mode bus observation pattern.
+#
+# Topology (cloned from run/sponge-clipboard-qtwrite.run, MINUS the
+# QMP choreography and the textedit launch):
+#
+#   init
+#   + timer
+#   + report_rom     (focus + clipboard request/result ROM relay)
+#   + nitpicker      (Gui/Capture/Event; single "default" domain —
+#                     the harness has no widget to focus; the
+#                     clipboard_probe publishes a synthetic focus
+#                     report with domain="default" so the upstream
+#                     server's write_permitted check passes)
+#   + drivers        (sub-init; vesa_fb/ps2/usb_hid + xhci + usb-tablet.
+#                     QEMU boots headless; no QMP choreography here —
+#                     the harness writes synthetically from a QTimer
+#                     so the keyboard chain is irrelevant. Drivers
+#                     are kept so Qt's QGenodeScreen can construct
+#                     on the seL4/Mesa/softpipe stack without caps
+#                     surprises — matches the W5 qtwrite sister
+#                     scenario verbatim for topology parity.)
+#   + sponge_configd | sponge_themed | sponge_pkgd
+#                     (live theme + package backends; the harness
+#                     does not need them but the run keeps the
+#                     Alpha topology intact for comparison with the
+#                     W5 sister scenarios — the same env-side
+#                     resource pressure is what seL4 cap-floor
+#                     sizing was tuned for, docs/09 §11.1).
+#   + clipboard      (upstream os/src/server/clipboard;
+#                     match_labels="no", default-domain permissive
+#                     flow — the same permissive config the W5
+#                     primary and qtwrite use; we are not testing
+#                     focus gating here, we are testing the
+#                     QGenodeClipboard bridge in isolation).
+#   + clipboard_qtsettext  (NEW: the Qt harness. Direct child of
+#                     init (textedit-equivalent topology), domain
+#                     "default" per the H1 §domain analysis in the
+#                     evidence log. Report + ROM session routes
+#                     mirror the sponge-de start-node style
+#                     verbatim from run/sponge-clipboard.run)
+#   + clipboard_probe (qt-watch mode via <config
+#                     qt_watch_sentinel="sponge qt-settext
+#                     sentinel phase 14"/>; the probe does NOT
+#                     prime the bus — it reads-only, polls for the
+#                     needle, emits "clipboard-probe: PASS" on
+#                     byte-match. Same DOMAIN=default fake-focus
+#                     publisher as the W5 primary / qtwrite / focus
+#                     scenarios.)
+#
+# Choreography: zero QMP. The harness writes 500 ms after
+# `QGuiApplication::exec()` enters the event loop, emits
+# `BEFORE-setText` + `AFTER-setText` qDebug() markers for
+# run-log correlation, then exits. The run gates on
+# `clipboard-probe: PASS` (probe-side byte-match in the bus ROM
+# is the structural acceptance).
+#
+# Verdict:
+#   PASS = bridge healthy: QGenodeClipboard::setMimeData +
+#          Reporter::generate + server-side write_content all
+#          function independently of keyboard/shortcut/focus.
+#   FAIL = bridge broken at one of the three stages above; see
+#          the harness's qDebug() markers in the run log.
+#
+# AGENTS.md §4.2 / docs/08-development.md §4.1: builds lib/ld +
+# core + init <components>; passes [build_artifacts] to
+# build_boot_image. base-sel4 only.
+#
+
+assert {[have_spec sel4]} \
+	"sponge-clipboard-qtsettext requires KERNEL=sel4 (BOARD=pc) in build.conf. \
+	 The scenario drives Qt6/Mesa-on-seL4 desktop rendering for the \
+	 QGenodeScreen (so QGuiApplication::clipboard() can construct the \
+	 QPlatformClipboard), which base-linux cannot provide."
+
+build { core lib/ld init timer server/report_rom server/nitpicker \
+        driver/acpi app/pci_decode driver/platform \
+        driver/framebuffer/vesa driver/ps2 \
+        driver/usb_host/pc driver/usb_hid server/event_filter \
+        server/clipboard \
+        sponge_configd sponge_themed sponge_pkgd \
+        test/clipboard_probe test/clipboard_qtsettext \
+        qt6/base lib/libc lib/libm lib/stdcxx lib/mesa \
+        lib/mesa_gpu-softpipe lib/egl lib/softpipe lib/libdrm lib/expat \
+        lib/freetype lib/jpeg \
+        lib/qt6_component lib/vfs lib/vfs_pipe lib/vfs_gpu lib/rom_filter \
+        lib/zlib lib/libpng lib/blit lib/file }
+
+create_boot_directory
+
+#
+# Stage every non-build-artifact boot module into bin/ BEFORE
+# build_boot_image (base-sel4: the boot image is a single packed
+# image.elf; modules added after build_boot_image never reach the
+# guest — docs/11 §10.4).
+#
+exec mkdir -p bin
+
+#
+# Vendor driver configs (copied from run/sponge-de-sel4-interactive.run).
+#
+set recipe_dir "${genode_dir}/repos/os/recipes/raw/drivers_interactive-pc"
+foreach f { drivers.config fb.config event_filter.config } {
+	if {![file exists "$recipe_dir/$f"]} {
+		error "$recipe_dir/$f missing (vendored drivers_interactive-pc recipe drifted?)"
+	}
+	exec cp -f "$recipe_dir/$f" "bin/$f"
+}
+
+#
+# Keyboard layouts consumed by event_filter.
+#
+set chargen_dir "${genode_dir}/repos/os/src/server/event_filter"
+foreach f { en_us.chargen special.chargen } {
+	if {![file exists "$chargen_dir/$f"]} { error "$chargen_dir/$f missing" }
+	exec cp -f "$chargen_dir/$f" "bin/$f"
+}
+
+#
+# Theme files staged so sponge_themed can resolve the default theme.
+#
+foreach theme { default light } {
+	set theme_src "${genode_dir}/repos/sponge/src/sponge-de/themes/${theme}.theme"
+	set theme_dst "bin/${theme}.theme"
+	if {[file exists $theme_src] && ![file exists $theme_dst]} {
+		exec cp -fL $theme_src $theme_dst
+	}
+}
+
+#
+# qt-watch sentinel — the byte string the harness writes via
+# QGuiApplication::clipboard()->setText() and the probe polls for
+# in its own bus ROM. MUST match SENTINEL in
+# repos/sponge/src/test/clipboard_qtsettext/main.cc byte-for-byte.
+#
+set qt_sentinel "sponge qt-settext sentinel phase 14"
+
+#
+# Stage the qt_config ROM module — the probe reads this at startup
+# to enter qt-watch mode. Empty `<config/>` is enough for the run's
+# qt_config to be served; we will write the real qt-watch attribute
+# below.
+#
+set qtc_fh [open "bin/qt_config" w]
+puts $qtc_fh "<config qt_watch_sentinel=\"$qt_sentinel\"/>"
+close $qtc_fh
+
+#
+# DejaVuSans font, mirrored from the qt6_base port sources (the
+# qt6_dejavusans.tar raw recipe is depot-only, so for a source build
+# we pack it here).
+#
+set dejavu_dst "bin/qt6_dejavusans.tar"
+if {![file exists $dejavu_dst]} {
+	set dejavu_src [glob -nocomplain "${genode_dir}/contrib/qt6_base-*/src/lib/qt6_base/src/3rdparty/wasm/DejaVuSans.ttf"]
+	if {[llength $dejavu_src] == 0} {
+		error "DejaVuSans.ttf not found in the qt6_base port sources"
+	}
+	set staging "[run_dir]/dejavusans-staging"
+	file mkdir "$staging/qt/lib/fonts"
+	file copy -force [lindex $dejavu_src 0] "$staging/qt/lib/fonts/DejaVuSans.ttf"
+	exec tar -cf $dejavu_dst -C $staging qt
+	file delete -force $staging
+}
+
+install_config {
+config
++ parent-provides
+  + service ROM
+  + service PD
+  + service RM
+  + service CPU
+  + service LOG
+  + service IRQ
+  + service IO_MEM
+  + service IO_PORT
+
++ default | caps: 200 | ram: 4M
++ default-route
+  + any-service
+    + parent
+    + any-child
+
++ start timer
+  + provides | + service Timer
+
++ start report_rom | caps: 300 | ram: 8M
+  + provides
+    + service Report
+    + service ROM
+  + config | verbose: no
+    + policy | label: sponge_pkgd -> request           | report: clipboard_probe -> request
+    + policy | label: clipboard_probe -> result         | report: sponge_pkgd -> result
+    + policy | label: clipboard_probe -> installed      | report: sponge_pkgd -> installed
+    + policy | label: pkg_runtime -> config             | report: sponge_pkgd -> runtime
+    + policy | label: sponge-de -> theme                | report: sponge_themed -> theme
+    + policy | label: sponge_themed -> config           | report: sponge_configd -> config
+    + policy | label: sponge_configd -> config_request  | report: clipboard_probe -> config_request
+    + policy | label: clipboard -> focus                | report: clipboard_probe -> focus
+    + policy | label: clipboard_probe -> focus          | report: clipboard_probe -> focus
+
++ start nitpicker | ram: 16M
+  + provides
+    + service Gui
+    + service Capture
+    + service Event
+  + route
+    + service Report | + child report_rom
+    + service Timer  | + child timer
+    + any-service
+      + parent
+      + any-child
+  + config
+    + capture
+    + event
+    + report | focus: yes | clicked: yes | hover: yes | pointer: yes | keystate: yes
+    + domain demo | layer: 2 | content: client | label: no
+                  | hover: always | focus: click
+                  | xpos: 0 | ypos: 0 | width: 1024 | height: 768
+    + domain default | layer: 3 | content: client | label: no
+                     | hover: always | focus: click
+    + default-policy | domain: default
+    + background | color: #1e1e2e
+
++ start drivers | caps: 1500 | ram: 96M | managing_system: yes
+  + binary init
+  + route
+    + service ROM | label: config | + parent | label: drivers.config
+    + service Timer               | + child timer
+    + service Capture             | + child nitpicker
+    + service Event               | + child nitpicker
+    + any-service                 | + parent
+  + config
+    + parent-provides
+      + service IRQ
+      + service IO_MEM
+      + service IO_PORT
+      + service ROM
+      + service PD
+      + service RM
+      + service CPU
+      + service LOG
+      + service Timer
+      + service Capture
+      + service Event
+    + default | caps: 60
+    + default-route
+      + any-service
+        + parent
+        + any-child
+    + start vesa_fb | caps: 100 | ram: 8M
+      + provides | + service Framebuffer
+    + start ps2 | caps: 100 | ram: 4M
+      + provides | + service Input
+    + start pc_usb_host | caps: 100 | ram: 8M
+      + provides | + service Usb
+    + start usb_hid | caps: 200 | ram: 8M
+      + provides
+        + service Input
+        + service Report
+      + config | hid: yes
+    + start event_filter | caps: 100 | ram: 4M
+      + provides | + service Event
+      + config
+        + output
+          + chargen
+            + merge
+              + input ps2
+              + input usb
+          + mod2
+            + key KEY_LEFTCTRL
+            + key KEY_RIGHTCTRL
+          + repeat | delay_ms: 230 | rate_ms: 90
+          + include | rom: en_us.chargen
+          + include | rom: special.chargen
+        + policy | label: ps2 | input: ps2
+        + policy | label: usb | input: usb
+    + start platform | caps: 100 | ram: 4M
+      + provides | + service Platform
+    + start acpi | caps: 100 | ram: 4M
+      + provides | + service Power
+    + start pci_decode | caps: 100 | ram: 4M
+      + provides | + service PCI
+
++ start sponge_configd | caps: 200 | ram: 16M
+  + route
+    + service ROM | label_last: config_request | + child report_rom
+    + service Report | + child report_rom
+    + any-service
+      + parent
+      + any-child
+
++ start sponge_themed | caps: 200 | ram: 8M
+  + route
+    + service ROM | label_last: config         | + child report_rom
+    + service ROM | label_last: default.theme | + parent
+    + service ROM | label_last: light.theme   | + parent
+    + service Report | + child report_rom
+    + any-service
+      + parent
+      + any-child
+
++ start sponge_pkgd | caps: 200 | ram: 16M
+  + route
+    + service ROM | label_last: request | + child report_rom
+    + service Report | + child report_rom
+    + any-service
+      + parent
+      + any-child
+
+#
+# Upstream clipboard server (genode/repos/os/src/server/clipboard).
+# Permissive default-domain flow + match_labels="no" (the W5
+# primary topology verbatim — we are not testing focus gating
+# here, we are testing the QGenodeClipboard bridge in isolation).
+#
++ start clipboard | caps: 100 | ram: 4M
+  + provides
+    + service ROM
+    + service Report
+  + config | verbose: yes | match_labels: no
+    + default-policy | domain: default
+    + flow | from: default | to: default
+  + route
+    + service ROM    | label: focus | + child report_rom
+    + any-service
+      + parent
+      + any-child
+
+#
+# The harness itself. Same Report + ROM session-label routes as the
+# sponge-de start-node style in run/sponge-clipboard.run (label_last
+# "clipboard" -> child clipboard, on both Report and ROM). Sizing
+# matches the textedit/sponge-de pattern (1000 caps, 128M) — Qt6 +
+# Mesa softpipe + the seL4 cap floor per docs/09 §11.1.
+#
++ start clipboard_qtsettext | caps: 1000 | ram: 128M
+  + config | clipboard: yes
+    + libc | stdout: /dev/log | stderr: /dev/log | pipe: /pipe | rtc: /dev/rtc
+    + vfs
+      + dir dev
+        + log
+        + inline rtc | : 2018-01-01 00:01
+      + dir pipe | + pipe
+      + tar qt6_dejavusans.tar
+      + tar qt6_libqgenode.tar
+  + route
+    + service Gui | + child nitpicker
+    + service Report | label_last: clipboard | + child clipboard
+    + service ROM    | label_last: clipboard | + child clipboard
+    + service ROM | label: mesa_gpu.lib.so | + parent | label: mesa_gpu-softpipe.lib.so
+    + any-service
+      + parent
+      + any-child
+
+#
+# clipboard_probe in qt-watch mode (no priming; pure-read polling
+# for the harness's setText bytes).
+#
++ start clipboard_probe | caps: 100 | ram: 16M
+  + route
+    + service Capture | + child nitpicker
+    + service Timer   | + child timer
+    + service Report | label_last: request       | + child report_rom
+    + service Report | label_last: config_request | + child report_rom
+    + service Report | label_last: focus         | + child report_rom
+    + service Report | label_last: clipboard     | + child clipboard
+    + service ROM    | label_last: clipboard     | + child clipboard
+    + service ROM    | label: qt_config         | + parent
+    + service ROM    | label_last: result        | + child report_rom
+    + service ROM    | label_last: installed     | + child report_rom
+    + service ROM    | label_last: focus         | + child report_rom
+    + service ROM    | label_last: clicked       | + child report_rom
+    + any-service
+      + parent
+- }
+
+#
+# Full boot module list. The Qt6 shared libs + tars are cmake-built
+# by qt6/base and land in bin/; they are NOT in [build_artifacts], so
+# listed explicitly (base-sel4 needs them inside image.elf).
+#
+set boot_modules [build_artifacts]
+foreach m { libQt6Core.lib.so libQt6Gui.lib.so \
+            libqgenode.lib.so qt6_libqgenode.tar qt6_dejavusans.tar \
+            en_us.chargen special.chargen \
+            drivers.config fb.config event_filter.config \
+            default.theme light.theme \
+            qt_config \
+            egl.lib.so mesa.lib.so glapi.lib.so mesa_gpu-softpipe.lib.so \
+            libdrm.lib.so libpng.lib.so freetype.lib.so jpeg.lib.so \
+            expat.lib.so zlib.lib.so \
+            stdcxx.lib.so libc.lib.so libm.lib.so \
+            qt6_component.lib.so \
+            vfs.lib.so vfs_gpu.lib.so vfs_pipe.lib.so \
+            clipboard_qtsettext } {
+	lappend boot_modules $m
+}
+
+build_boot_image $boot_modules
+
+#
+# QEMU: -nographic for headless, -m 2G for Qt6/Mesa softpipe on
+# seL4 (matches the W5 sister scenarios). xhci + usb-tablet are
+# kept for parity; no QMP choreography is needed (the harness
+# writes synthetically from a QTimer).
+#
+append qemu_args " -machine q35 -cpu Skylake-Client "
+append qemu_args " -nographic -m 2G "
+append qemu_args " -device nec-usb-xhci,id=xhci -device usb-tablet "
+
+#
+# Final gate: the probe emits exactly "clipboard-probe: PASS" once
+# the qt-watch sentinel (the harness's setText bytes) appears
+# byte-for-byte in the probe's own "clipboard" ROM. The harness's
+# qDebug() markers (`BEFORE-setText`, `AFTER-setText`) provide
+# client-side correlation in the log.
+#
+# 60 s allows 500 ms QTimer grace + ~1200 polls × ~50 ms each;
+# the harness exits at ~600 ms; the probe's needle search spans
+# the window. The probe runs in qt-watch mode (no priming),
+# so any needle match is the harness's bytes — there is no
+# confounding write from the probe itself.
+#
+run_genode_until {.*clipboard-probe: PASS.*} 120
+
+puts "\nqtsettext: clipboard Qt -> server write harness PASSED"
