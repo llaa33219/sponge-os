@@ -1,0 +1,352 @@
+#
+# \brief  Clipboard focus-gating sub-scenario (Phase 14 W5 — match_labels=yes proof)
+# \author Sponge OS contributors
+# \date   2026
+#
+# Companion to run/sponge-clipboard.run: exercises the
+# `match_labels="yes"` path of the upstream os/src/server/clipboard
+# server, which gates writes by the focused nitpicker domain's
+# session label (the Phase 14 D14.2 follow-on — focus-aware
+# write gating).
+#
+# The proof: the upstream server's write_permitted check
+# (genode/repos/os/src/server/clipboard/main.cc:254) is
+#
+#   bool write_permitted(...) {
+#       bool const domain_matches =
+#           _focused_domain.valid() && _domain(writer) == _focused_domain;
+#       if ((!_match_labels || _client_label_matches_focus(_label(writer)))
+#           && domain_matches)
+#           return true;
+#       warning("unexpected attempt by '", writer.label(), "' "
+#               "to write to '", module.name(), "'");
+#       return false;
+#   }
+#
+# With match_labels: yes, the writer's session label MUST be a
+# prefix of the focused nitpicker session's label. When the
+# probe publishes a focus event for a session whose label is
+# NOT a prefix of the probe's own session label, the server
+# denies the write (logged as "unexpected attempt by ..."). The
+# probe's structural proof is that its own "clipboard" ROM stays
+# empty after the write attempt — the sentinel bytes never
+# propagate. The probe times out on the byte-match
+# (CLIPBOARD_POLL_ITERS ~5 min) and exits FAIL; the run gates on
+# that FAIL marker.
+#
+# Topology (base-sel4, headless):
+#   init
+#   + timer
+#   + report_rom     (focus + clipboard channels)
+#   + nitpicker      (single domain, focus + clicked reports)
+#   + drivers        (sub-init, interactive-PC)
+#   + sponge_configd | sponge_themed | sponge_pkgd | sponge-de
+#   + clipboard      (match_labels: yes — focus-gating path)
+#   + clipboard_probe (writer; publishes a NON-matching focus
+#                     label so the server denies its write)
+#
+# AGENTS.md §4.2 / docs/08-development.md §4.1: builds lib/ld +
+# core + init + the binaries and passes [build_artifacts] to
+# build_boot_image. base-sel4 only.
+#
+
+assert {[have_spec sel4]} \
+	"sponge-clipboard-focus requires KERNEL=sel4 (BOARD=pc) in build.conf. \
+	 The scenario drives real PC hardware (vesa_fb/ps2/usb_hid) and \
+	 Qt6/Mesa-on-seL4 desktop rendering, which base-linux cannot provide."
+
+build { core lib/ld init timer server/report_rom server/nitpicker \
+        driver/acpi app/pci_decode driver/platform \
+        driver/framebuffer/vesa driver/ps2 \
+        driver/usb_host/pc driver/usb_hid server/event_filter \
+        server/clipboard \
+        sponge_configd sponge_themed sponge_pkgd \
+        sponge-de \
+        test/clipboard_probe \
+        qt6/base lib/libc lib/libm lib/stdcxx lib/mesa \
+        lib/mesa_gpu-softpipe lib/egl lib/softpipe lib/libdrm lib/expat \
+        lib/freetype lib/jpeg \
+        lib/qt6_component lib/vfs lib/vfs_pipe lib/vfs_gpu lib/rom_filter \
+        lib/zlib lib/libpng lib/blit lib/file }
+
+create_boot_directory
+
+exec mkdir -p bin
+
+set recipe_dir "${genode_dir}/repos/os/recipes/raw/drivers_interactive-pc"
+foreach f { drivers.config fb.config event_filter.config } {
+	if {![file exists "$recipe_dir/$f"]} {
+		error "$recipe_dir/$f missing (vendored drivers_interactive-pc recipe drifted?)"
+	}
+	exec cp -f "$recipe_dir/$f" "bin/$f"
+}
+
+set chargen_dir "${genode_dir}/repos/os/src/server/event_filter"
+foreach f { en_us.chargen special.chargen } {
+	if {![file exists "$chargen_dir/$f"]} { error "$chargen_dir/$f missing" }
+	exec cp -f "$chargen_dir/$f" "bin/$f"
+}
+
+foreach theme { default light } {
+	set theme_src "${genode_dir}/repos/sponge/src/sponge-de/themes/${theme}.theme"
+	set theme_dst "bin/${theme}.theme"
+	if {[file exists $theme_src] && ![file exists $theme_dst]} {
+		exec cp -fL $theme_src $theme_dst
+	}
+}
+
+set dejavu_dst "bin/qt6_dejavusans.tar"
+if {![file exists $dejavu_dst]} {
+	set dejavu_src [glob -nocomplain "${genode_dir}/contrib/qt6_base-*/src/lib/qt6_base/src/3rdparty/wasm/DejaVuSans.ttf"]
+	if {[llength $dejavu_src] == 0} {
+		error "DejaVuSans.ttf not found in the qt6_base port sources"
+	}
+	set staging "[run_dir]/dejavusans-staging"
+	file mkdir "$staging/qt/lib/fonts"
+	file copy -force [lindex $dejavu_src 0] "$staging/qt/lib/fonts/DejaVuSans.ttf"
+	exec tar -cf $dejavu_dst -C $staging qt
+	file delete -force $staging
+}
+
+
+install_config {
+config
++ parent-provides
+  + service ROM
+  + service PD
+  + service RM
+  + service CPU
+  + service LOG
+  + service IRQ
+  + service IO_MEM
+  + service IO_PORT
+
++ default | caps: 200 | ram: 4M
++ default-route
+  + any-service
+    + parent
+    + any-child
+
++ start timer
+  + provides | + service Timer
+
++ start report_rom | caps: 300 | ram: 8M
+  + provides
+    + service Report
+    + service ROM
+  + config | verbose: no
+    + policy | label: clipboard_probe -> result    | report: sponge_pkgd -> result
+    + policy | label: clipboard_probe -> installed | report: sponge_pkgd -> installed
+    + policy | label: clipboard_probe -> config_request | report: clipboard_probe -> config_request
+    + policy | label: sponge-de -> theme           | report: sponge_themed -> theme
+    + policy | label: sponge_themed -> config      | report: sponge_configd -> config
+    + policy | label: sponge_configd -> config_request | report: clipboard_probe -> config_request
+    + policy | label: clipboard -> focus           | report: clipboard_probe -> focus
+    + policy | label: clipboard_probe -> focus     | report: clipboard_probe -> focus
+    + policy | label: sponge-de -> input           | report: sponge-de -> input
+
++ start nitpicker | ram: 16M
+  + provides
+    + service Gui
+    + service Capture
+    + service Event
+  + route
+    + service Report | + child report_rom
+    + service Timer  | + child timer
+    + any-service
+      + parent
+      + any-child
+  + config
+    + capture
+    + event
+    + report | focus: yes | clicked: yes | hover: yes | pointer: yes
+    + domain demo | layer: 2 | content: client | label: no
+                  | hover: always | focus: click
+                  | xpos: 192 | ypos: 172 | width: 640 | height: 480
+    + domain default | layer: 4 | content: client | label: no
+                     | hover: always | focus: click | ypos: 28 | height: -28
+    + default-policy | domain: default
+    + background | color: #1e1e2e
+
++ start drivers | caps: 1500 | ram: 96M | managing_system: yes
+  + binary init
+  + route
+    + service ROM | label: config | + parent | label: drivers.config
+    + service Timer               | + child timer
+    + service Capture             | + child nitpicker
+    + service Event               | + child nitpicker
+    + any-service                 | + parent
+  + config
+    + parent-provides
+      + service IRQ
+      + service IO_MEM
+      + service IO_PORT
+      + service ROM
+      + service PD
+      + service RM
+      + service CPU
+      + service LOG
+      + service Timer
+      + service Capture
+      + service Event
+    + default | caps: 60
+    + default-route
+      + any-service
+        + parent
+        + any-child
+    + start vesa_fb | caps: 100 | ram: 8M
+      + provides | + service Framebuffer
+    + start ps2 | caps: 100 | ram: 4M
+      + provides | + service Input
+    + start pc_usb_host | caps: 100 | ram: 8M
+      + provides | + service Usb
+    + start usb_hid | caps: 200 | ram: 8M
+      + provides
+        + service Input
+        + service Report
+      + config | hid: yes
+    + start event_filter | caps: 100 | ram: 4M
+      + provides | + service Event
+      + config
+        + output
+          + chargen
+            + merge
+              + input ps2
+              + input usb
+          + mod2
+            + key KEY_LEFTCTRL
+            + key KEY_RIGHTCTRL
+          + repeat | delay_ms: 230 | rate_ms: 90
+          + include | rom: en_us.chargen
+          + include | rom: special.chargen
+        + policy | label: ps2 | input: ps2
+        + policy | label: usb | input: usb
+    + start platform | caps: 100 | ram: 4M
+      + provides | + service Platform
+    + start acpi | caps: 100 | ram: 4M
+      + provides | + service Power
+    + start pci_decode | caps: 100 | ram: 4M
+      + provides | + service PCI
+
++ start sponge_configd | caps: 200 | ram: 16M
+  + route
+    + service ROM | label_last: config_request | + child report_rom
+    + service Report | + child report_rom
+    + any-service
+      + parent
+      + any-child
+
++ start sponge_themed | caps: 200 | ram: 8M
+  + route
+    + service ROM | label_last: config | + child report_rom
+    + service ROM | label_last: default.theme | + parent
+    + service ROM | label_last: light.theme   | + parent
+    + service Report | + child report_rom
+    + any-service
+      + parent
+      + any-child
+
++ start sponge_pkgd | caps: 200 | ram: 16M
+  + route
+    + service ROM | label_last: request | + child report_rom
+    + service Report | + child report_rom
+    + any-service
+      + parent
+      + any-child
+
++ start sponge-de | caps: 1000 | ram: 128M
+  + config | clipboard: yes
+    + theme | source: themed
+    + vfs
+      + dir dev
+        + log
+        + inline rtc | : 2018-01-01 00:01
+      + dir pipe | + pipe
+      + tar qt6_dejavusans.tar
+      + tar qt6_libqgenode.tar
+    + libc | stdout: /dev/log | stderr: /dev/log | pipe: /pipe | rtc: /dev/rtc
+  + route
+    + service Gui | + child nitpicker
+    + service Report | label: input | + child report_rom
+    + service Report | label: applied_theme | + child report_rom
+    + service Report | label: shape | + child report_rom
+    + service Report | label: launcher | + child report_rom
+    + service ROM | label: theme | + child report_rom
+    + service ROM | label: installed | + child report_rom
+    + service ROM | label: default.theme | + parent
+    + service ROM | label: mesa_gpu.lib.so | + parent | label: mesa_gpu-softpipe.lib.so
+    + service Report | label_last: clipboard | + child clipboard
+    + service ROM    | label_last: clipboard | + child clipboard
+    + any-service
+      + parent
+      + any-child
+
+#
+# Upstream clipboard server with `match_labels: yes` — focus-aware
+# write gating. The default flow is single-domain permissive
+# (`<flow from="default" to="default"/>`) so reads still flow, but
+# writes must match the focused nitpicker session label.
+#
++ start clipboard | caps: 100 | ram: 4M
+  + provides
+    + service ROM
+    + service Report
+  + config | verbose: yes | match_labels: yes
+    + default-policy | domain: default
+    + flow | from: default | to: default
+  + route
+    + service ROM    | label: focus | + child report_rom
+    + any-service
+      + parent
+      + any-child
+
++ start clipboard_probe | caps: 100 | ram: 16M
+  + route
+    + service Capture | + child nitpicker
+    + service Timer   | + child timer
+    + service Report | label_last: request       | + child report_rom
+    + service Report | label_last: config_request | + child report_rom
+    + service Report | label_last: focus         | + child report_rom
+    + service Report | label_last: clipboard     | + child clipboard
+    + service ROM    | label_last: clipboard     | + child clipboard
+    + service ROM    | label_last: result        | + child report_rom
+    + service ROM    | label_last: installed     | + child report_rom
+    + service ROM    | label_last: focus         | + child report_rom
+    + service ROM    | label_last: clicked       | + child report_rom
+    + any-service
+      + parent
+- }
+
+set boot_modules [build_artifacts]
+foreach m { libQt6Core.lib.so libQt6Gui.lib.so libQt6Widgets.lib.so \
+            libQt6PrintSupport.lib.so \
+            libqgenode.lib.so qt6_libqgenode.tar qt6_dejavusans.tar \
+            en_us.chargen special.chargen \
+            drivers.config fb.config event_filter.config \
+            default.theme light.theme \
+            egl.lib.so mesa.lib.so glapi.lib.so mesa_gpu-softpipe.lib.so \
+            libdrm.lib.so libpng.lib.so freetype.lib.so jpeg.lib.so \
+            expat.lib.so zlib.lib.so \
+            stdcxx.lib.so libc.lib.so libm.lib.so \
+            qt6_component.lib.so \
+            vfs.lib.so vfs_gpu.lib.so vfs_pipe.lib.so } {
+	lappend boot_modules $m
+}
+
+build_boot_image $boot_modules
+
+append qemu_args " -machine q35 -cpu Skylake-Client "
+append qemu_args " -nographic -m 1G "
+append qemu_args " -device nec-usb-xhci,id=xhci -device usb-tablet "
+
+#
+# The probe writes the sentinel and waits for it to appear in
+# its own ROM. With `match_labels: yes` and a focus label that
+# doesn't prefix the probe's session label, the server denies
+# the write. The probe times out on the byte-match
+# (CLIPBOARD_POLL_ITERS ~5 min) and exits FAIL — the run gates
+# on that FAIL marker. The denials are observable in the boot
+# log as `unexpected attempt by 'clipboard_probe -> clipboard'`
+# (the server's warning).
+#
+run_genode_until {.*clipboard-probe: FAIL.*} 60
