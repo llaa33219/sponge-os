@@ -32,6 +32,8 @@ SOURCES  += main.cc \
             panel/notifier_widget.cc \
             panel/notifier_controller.cc \
             panel/notify_poster.cc \
+            panel/tasklist_widget.cc \
+            panel/tasklist_controller.cc \
             launcher/launcher_controller.cc \
             launcher/launcher_menu_view.cc \
             theme/theme_loader.cc \
@@ -44,6 +46,8 @@ HEADERS  += sponge_de_main.h \
             panel/notifier_widget.h \
             panel/notifier_controller.h \
             panel/notify_poster.h \
+            panel/tasklist_widget.h \
+            panel/tasklist_controller.h \
             launcher/launcher_controller.h \
             launcher/launcher_menu_view.h \
             theme/theme_loader.h \

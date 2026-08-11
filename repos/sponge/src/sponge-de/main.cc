@@ -43,6 +43,8 @@
 #include "panel/notifier_widget.h"
 #include "panel/notify_poster.h"
 #include "panel/panel_widget.h"
+#include "panel/tasklist_controller.h"
+#include "panel/tasklist_widget.h"
 #include "sponge_de_main.h"
 #include "theme/theme_controller.h"
 #include "theme/theme_loader.h"
@@ -93,6 +95,14 @@ void Libc::Component::construct(Libc::Env &env)
 		NotifyPoster       notify_poster(env);
 		NotifierController notifier_ctrl(env);
 
+		/* Tasklist controller (Phase 14 W7). Subscribes to wm's
+		 * `window_list` and the layouter's `window_layout` reports;
+		 * writes the `focus_request` and `rules` reports on click.
+		 * The widget is a passive paint target inside the panel —
+		 * it receives the tracked task list via the standard
+		 * tasks_changed signal. */
+		TasklistController tasklist_ctrl(env);
+
 		/*
 		 * Launcher data path. Constructed before the panel because the
 		 * panel's launcher button shows/hides its popup. The view is
@@ -120,6 +130,42 @@ void Libc::Component::construct(Libc::Env &env)
 		Genode::log("sponge-de: window shown");
 
 		theme_ctrl.attach_launcher(&launcher_view);
+
+		/* Tasklist widget + insertion + wiring. The widget is
+		 * inserted into the panel's QHBoxLayout by the panel itself
+		 * the first time the tasklist reports data. The controller
+		 * is the bridge between wm's window_list/ window_layout
+		 * reports and the widget's task list. */
+		TasklistWidget tasklist_widget(theme_ctrl.initial());
+		panel.attach_tasklist(&tasklist_widget);
+		tasklist_ctrl.attach_widget(&tasklist_widget);
+		theme_ctrl.attach_tasklist(&tasklist_widget);
+		connect(&tasklist_widget, &TasklistWidget::task_clicked,
+		        &tasklist_ctrl, &TasklistController::on_task_clicked);
+		connect(&tasklist_widget, &TasklistWidget::task_toggle_maximized,
+		        &tasklist_ctrl, &TasklistController::on_toggle_maximized);
+
+		/*
+		 * Mirror the layouter's inline `<rules>` so the controller
+		 * can re-emit them when the tasklist switches the layouter
+		 * to `rules="rom"` mode. Without the mirror, the tasklist
+		 * becomes the rules source and loses the static placements.
+		 *
+		 * The run script sets `rules="rom"` on the layouter ONLY
+		 * when the tasklist is the rules source (the W7 scenario
+		 * uses this); other scenarios use the inline rules and the
+		 * tasklist still reads window_list/ window_layout but its
+		 * click handler is not connected to the layouter. The
+		 * static rules are populated by the run script via the
+		 * tasklist's qApp property (see panel_widget.h).
+		 */
+		{
+			QString const s = qApp->property("tasklist_static_rules").toString();
+			if (!s.isEmpty()) {
+				QStringList const parts = s.split(QChar(0x1f));
+				tasklist_ctrl.set_static_rules(parts);
+			}
+		}
 
 		/* Wire the notify poster to every event-emitting controller. */
 		theme_ctrl.attach_notify_poster(&notify_poster);

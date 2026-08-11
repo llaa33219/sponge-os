@@ -10,8 +10,10 @@
 #include "panel/notifier_widget.h"
 #include "panel/notify_poster.h"
 #include "panel/panel_widget.h"
+#include "panel/tasklist_widget.h"
 #include "sponge_de_main.h"
 #include "theme/theme_loader.h"
+#include "theme/theme_qt.h"
 
 #include <base/log.h>
 #include <util/hid.h>
@@ -120,6 +122,7 @@ ThemeController::ThemeController(Genode::Env &env, QObject *parent)
 void ThemeController::attach_panel(PanelWidget *panel) { _panel = panel; }
 void ThemeController::attach_main(Main *main)         { _main  = main; }
 void ThemeController::attach_launcher(LauncherMenuView *launcher) { _launcher = launcher; }
+void ThemeController::attach_tasklist(TasklistWidget *widget) { _tasklist = widget; }
 
 
 /*
@@ -217,9 +220,31 @@ void ThemeController::applyTheme(QString name, QString ini)
 	qApp->setFont(QFont(_theme.default_font().family.string(),
 	                    (int)_theme.default_font().size));
 
+	/*
+	 * Phase 14 W7: publish the active theme's palette as qApp
+	 * properties so widgets that paint per-state colors (the
+	 * tasklist widget) can read the resolved values without
+	 * holding a Theme reference. The properties are integer
+	 * hex literals (e.g. "#1e1e2e"); the widget reads them as
+	 * strings. Identity-check-then-set avoids the QPA's
+	 * redundant-top-level-mutation penalty.
+	 */
+	auto publish_color = [](char const *key, auto const &color) {
+		QString const css = QString::fromUtf8(Sponge_DE::Theme::to_css(color));
+		if (qApp->property(key).toString() != css)
+			qApp->setProperty(key, css);
+	};
+	publish_color("theme_panel_bg",   _theme.panel_bg());
+	publish_color("theme_panel_text", _theme.panel_text());
+	publish_color("theme_accent",     _theme.accent());
+	publish_color("theme_separator",  _theme.separator());
+	publish_color("theme_window_bg",  _theme.window_bg());
+	publish_color("theme_title_text", _theme.title_text());
+
 	if (_panel)   _panel->restyle(_theme);
 	if (_main)    _main->restyle(_theme);
 	if (_launcher) _launcher->restyle(_theme);
+	if (_tasklist) _tasklist->restyle(_theme);
 
 	_live_applied = true;
 	_publish_applied(name.toUtf8().constData());
@@ -261,6 +286,26 @@ void ThemeController::_fallback_default_theme()
 	catch (Genode::Rom_connection::Rom_connection_failed) {
 		Genode::warning("sponge-de: default.theme ROM unavailable, using built-in defaults");
 	}
+
+	/*
+	 * Publish the resolved palette to qApp properties so the
+	 * tasklist widget (constructed before the first theme apply in
+	 * some scenarios) can read the active colors. The properties
+	 * are set unconditionally here — identity-check on the next
+	 * applyTheme() will skip the redundant set.
+	 */
+	qApp->setProperty("theme_panel_bg",
+	                  QString::fromUtf8(Sponge_DE::Theme::to_css(_theme.panel_bg())));
+	qApp->setProperty("theme_panel_text",
+	                  QString::fromUtf8(Sponge_DE::Theme::to_css(_theme.panel_text())));
+	qApp->setProperty("theme_accent",
+	                  QString::fromUtf8(Sponge_DE::Theme::to_css(_theme.accent())));
+	qApp->setProperty("theme_separator",
+	                  QString::fromUtf8(Sponge_DE::Theme::to_css(_theme.separator())));
+	qApp->setProperty("theme_window_bg",
+	                  QString::fromUtf8(Sponge_DE::Theme::to_css(_theme.window_bg())));
+	qApp->setProperty("theme_title_text",
+	                  QString::fromUtf8(Sponge_DE::Theme::to_css(_theme.title_text())));
 
 	_publish_applied("default");
 }

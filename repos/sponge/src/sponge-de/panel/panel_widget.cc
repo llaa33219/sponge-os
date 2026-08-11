@@ -35,6 +35,7 @@
 #include <QTimer>
 
 #include "launcher/launcher_menu_view.h"
+#include "tasklist_widget.h"
 #include "theme/theme_loader.h"
 #include "theme/theme_qt.h"
 
@@ -176,9 +177,15 @@ void PanelWidget::_apply_geometry(Theme::Theme const &theme)
 void PanelWidget::_build_layout(Theme::Theme const &theme)
 {
 	/*
-	 * The horizontal box: [launcher toggle] [title] [stretch] [clock].
+	 * The horizontal box: [launcher toggle] [title] [tasklist] [stretch] [clock].
 	 * _apply_layout re-applies margins/spacing/sizes without
 	 * recreating the children.
+	 *
+	 * Phase 14 W7: the tasklist is inserted between the title label
+	 * and the stretch zone. The tasklist absorbs the slack so the
+	 * clock stays right-aligned. The widget is attached later via
+	 * attach_tasklist(); the layout slot is reserved here so the
+	 * stretch behaviour is correct from the first paint.
 	 */
 	auto *layout = new QHBoxLayout(this);
 	int const pad = (int)theme.padding();
@@ -214,8 +221,31 @@ void PanelWidget::_build_layout(Theme::Theme const &theme)
 
 	layout->addWidget(_launcher_toggle);
 	layout->addWidget(_title_label);
-	layout->addStretch();
+	layout->addStretch();  /* The tasklist absorbs the slack; the
+	                          stretch ensures the clock stays at
+	                          the right edge even when the tasklist
+	                          is empty. */
 	layout->addWidget(_clock_label);
+}
+
+
+void PanelWidget::attach_tasklist(TasklistWidget *widget)
+{
+	_tasklist_widget = widget;
+
+	if (!widget) return;
+
+	/* Insert the tasklist widget into the QHBoxLayout at index 2
+	 * (between `_title_label` and the stretch). The widget's
+	 * parent is the panel so it gets cleaned up with the panel. */
+	if (auto *layout = qobject_cast<QHBoxLayout *>(this->layout())) {
+		/* The stretch is at index 2 currently; insert the tasklist
+		 * at index 2 (BEFORE the stretch). */
+		widget->setParent(this);
+		layout->insertWidget(2, widget);
+		widget->setMinimumHeight(_height > 0 ? (int)_height : 28);
+		widget->show();
+	}
 }
 
 
@@ -254,26 +284,36 @@ void PanelWidget::_apply_visibility()
 	 * is absent. Order-insensitive, whitespace-trimmed.
 	 *
 	 * Default list ("clock,launcher") keeps both visible; setting
-	 * "launcher" hides the toggle, setting "clock" hides the label.
-	 * An empty list hides both (validator rejects empty lists at
-	 * the configd side, so this is a defensive default).
+	 * "launcher" hides the toggle, setting "clock" hides the label,
+	 * setting "tasklist" hides the tasklist widget. An empty list
+	 * hides everything (validator rejects empty lists at the
+	 * configd side, so this is a defensive default).
+	 *
+	 * Phase 14 W7: the tasklist visibility token is added; the
+	 * validator sponge_configd accepts "tasklist" as a valid
+	 * token. The default theme ships "clock,launcher,tasklist" so
+	 * the tasklist is visible by default.
 	 */
 	bool show_launcher { false };
 	bool show_clock    { false };
+	bool show_tasklist { false };
 
 	QStringList tokens = _visible_widgets.split(QLatin1Char(','));
 	for (QString &t : tokens) {
 		QString const tok = t.trimmed();
 		if      (tok == QLatin1String("launcher")) show_launcher = true;
 		else if (tok == QLatin1String("clock"))    show_clock    = true;
+		else if (tok == QLatin1String("tasklist")) show_tasklist = true;
 	}
 
 	if (_launcher_toggle)
 		_launcher_toggle->setVisible(show_launcher);
 	if (_title_label)
-		_title_label->setVisible(show_launcher || show_clock);
+		_title_label->setVisible(show_launcher || show_clock || show_tasklist);
 	if (_clock_label)
 		_clock_label->setVisible(show_clock);
+	if (_tasklist_widget)
+		_tasklist_widget->setVisible(show_tasklist);
 }
 
 
@@ -315,12 +355,17 @@ void PanelWidget::restyle(Theme::Theme const &theme)
 	 * layout (margins/spacing/launcher size — uses _height if set),
 	 * visibility (per the latest visible_widgets), clock format (per
 	 * the latest _clock_format), then update() repaints.
+	 *
+	 * Phase 14 W7: the tasklist widget is restyled alongside the
+	 * panel so its colors track the active theme.
 	 */
 	_apply_style(theme);
 	_apply_geometry(theme);
 	_apply_layout(theme);
 	_apply_visibility();
 	_apply_clock_format(theme);
+	if (_tasklist_widget)
+		_tasklist_widget->restyle(theme);
 	update();
 }
 
