@@ -167,7 +167,10 @@ Genode::Expanding_reporter     _clipboard_report { _env, "clipboard", "clipboard
  * the default probe-write mode).
  */
 Genode::Constructible<Genode::Attached_rom_dataspace> _qt_config_rom { };
+Genode::String<256> _qt_write_sentinel_buf { };
+Genode::String<256> _qt_watch_sentinel_buf { };
 char const *_qt_write_sentinel = nullptr;
+char const *_qt_watch_sentinel = nullptr;
 
 /*
  * Producer for the sponge_configd "config_request" ROM. With no
@@ -312,9 +315,24 @@ char const *_qt_write_sentinel = nullptr;
 
 		log("clipboard-probe: starting");
 
-		/* Detect qt-write mode via the qt_config ROM (the run scenario
-		 * stages a "qt_config" boot module with the qt_write_sentinel
-		 * attribute). The probe just polls the bus for the bytes. */
+		/* Detect qt-write / qt-watch mode via the qt_config ROM (the
+		 * run scenario stages a "qt_config" boot module with the
+		 * qt_write_sentinel or qt_watch_sentinel attribute). The probe
+		 * dispatches on which attribute is set:
+		 *
+		 *   qt_write_sentinel: the QMP-driven Ctrl-C chain is the
+		 *     writer; the probe primes the ROM once (so the server-side
+		 *     module is created lazily and is otherwise empty/invalid)
+		 *     then polls the bus for the QMP-typed sentinel written by
+		 *     textedit's QGenodeClipboard.
+		 *
+		 *   qt_watch_sentinel: a Qt-side sender — e.g. a programmatic
+		 *     harness that calls QGuiApplication::clipboard()->setText
+		 *     directly, with no widget / focus / shortcut pipeline — is
+		 *     the writer. The probe does NOT prime (the writer is
+		 *     external and the bus may not even need a priming to be
+		 *     valid). Pure read on the bus, byte-for-byte.
+		 */
 		try {
 			if (!_qt_config_rom.constructed()) {
 				_qt_config_rom.construct(_env, "qt_config");
@@ -322,9 +340,18 @@ char const *_qt_write_sentinel = nullptr;
 			_qt_config_rom->update();
 			if (_qt_config_rom->valid()) {
 				Genode::Node const cfg = _qt_config_rom->node();
-				if (cfg.has_attribute("qt_write_sentinel")) {
-					_qt_write_sentinel = cfg.attribute_value("qt_write_sentinel",
-					                                          Genode::String<256>()).string();
+				if (cfg.has_attribute("qt_watch_sentinel")) {
+					_qt_watch_sentinel_buf =
+						cfg.attribute_value("qt_watch_sentinel",
+						                    Genode::String<256>());
+					_qt_watch_sentinel = _qt_watch_sentinel_buf.string();
+					log("clipboard-probe: qt-watch mode (pure-read; waiting for '",
+					    _qt_watch_sentinel, "')");
+				} else if (cfg.has_attribute("qt_write_sentinel")) {
+					_qt_write_sentinel_buf =
+						cfg.attribute_value("qt_write_sentinel",
+						                    Genode::String<256>());
+					_qt_write_sentinel = _qt_write_sentinel_buf.string();
 					log("clipboard-probe: qt-write mode (waiting for '",
 					    _qt_write_sentinel, "')");
 				}
@@ -360,24 +387,67 @@ char const *_qt_write_sentinel = nullptr;
 		 * title bar rendering (a strip unique to textedit above
 		 * sponge-de's demo at y=172). The marker is emitted AFTER
 		 * sponge-de's "panel and window shown" so it survives the
-		 * run_genode_until expect (which consumes earlier markers). */
-		for (unsigned i = 0; i < 1500 && _ok; ++i) {
-			_timer.msleep(TICK_MS);
-			_capture.capture_at(Capture::Point(0, 0));
-			Pixel const *px = _cap_ds->local_addr<Pixel>();
-			unsigned total = 0, textpx = 0;
-			for (int y = 128; y < 168; y += 2) {
-				for (int x = 256; x < 768; x += 2) {
-					++total;
-					Pixel const &p = px[y * SCREEN_W + x];
-					if (p.r() + p.g() + p.b() >= 600) ++textpx;
+		 * run_genode_until expect (which consumes earlier markers).
+		 *
+		 * Skipped in qt-watch mode: the qt-watch sender has no
+		 * textedit window to render (the harness is a QGuiApplication,
+		 * no widget); gating on a missing title bar would burn the
+		 * full 150 s budget before any bus read happens. */
+		if (!_qt_watch_sentinel) {
+			for (unsigned i = 0; i < 1500 && _ok; ++i) {
+				_timer.msleep(TICK_MS);
+				_capture.capture_at(Capture::Point(0, 0));
+				Pixel const *px = _cap_ds->local_addr<Pixel>();
+				unsigned total = 0, textpx = 0;
+				for (int y = 128; y < 168; y += 2) {
+					for (int x = 256; x < 768; x += 2) {
+						++total;
+						Pixel const &p = px[y * SCREEN_W + x];
+						if (p.r() + p.g() + p.b() >= 600) ++textpx;
+					}
+				}
+				unsigned const frac = total ? textpx * 100U / total : 0;
+				if (frac >= 2) {
+					log("clipboard-probe: textedit rendered (title-bar frac=", frac, "%)");
+					break;
 				}
 			}
-			unsigned const frac = total ? textpx * 100U / total : 0;
-			if (frac >= 2) {
-				log("clipboard-probe: textedit rendered (title-bar frac=", frac, "%)");
-				break;
+		}
+
+		if (_qt_watch_sentinel) {
+			/*
+			 * QT-WATCH mode — pure read on the bus; an external Qt
+			 * component (the qtsettext harness; or any future
+			 * programmatic Qt sender) is the writer. The probe
+			 * does NOT prime the bus (the writer is external and
+			 * the harness/external-side bus presence is verified by
+			 * the needle match itself). Polls the bus for the
+			 * specified needle and exits 0 on byte-for-byte match.
+			 *
+			 * Use case: isolating QGenodeClipboard::setMimeData from
+			 * the keyboard chain (focus/shortcut/QTextEdit priority
+			 * variables) without modifying the vendored tree. The
+			 * harness writes via QGuiApplication::clipboard()-
+			 * >setText() on a QTimer::singleShot, then exits; the
+			 * probe's ROM has its own lifetime and reads the bus
+			 * until the needle appears.
+			 */
+			log("clipboard-probe: [qt-watch] pure read on the bus for the "
+			    "Qt-side writer's content; no priming");
+			log("clipboard-probe: [qt-watch] wait for sender's write to propagate");
+			if (!_wait_for_needle(_qt_watch_sentinel, QT_WRITE_POLL_ITERS,
+			                       "qt-watch sentinel")) {
+				_fail("qt-watch sentinel did not appear in the clipboard ROM "
+				      "(the Qt-side writer's QGenodeClipboard::setMimeData -> "
+				      "Report -> server path did not propagate)");
+				return;
 			}
+			log("clipboard-probe: PASS (Qt -> server write path verified; "
+			    "QGenodeClipboard::setMimeData -> upstream clipboard server "
+			    "-> probe's ROM reader, byte-for-byte; "
+			    "no widget/focus/shortcut pipeline involved)");
+			_env.parent().exit(0);
+			return;
 		}
 
 		if (_qt_write_sentinel) {
