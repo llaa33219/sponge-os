@@ -11,27 +11,13 @@
  *
  * Phase 11 W2 — constructor-only state was extracted into private
  * methods so live-reloadable keys (panel.height, panel.visible_widgets,
- * clock.format) reach the widget without a rebuild:
+ * clock.format) reach the widget without a rebuild.
  *
- *   _build_layout(theme)         — creates launcher toggle, title, clock QLabel
- *   _apply_style(theme)          — restyles stylesheet
- *   _apply_geometry(theme,h)     — sets fixed-size + outer geometry
- *   _apply_layout(theme)         — re-applies margins/spacing/sizes
- *   _apply_visibility(list)      — hides launcher toggle / clock label
- *   _apply_clock_format(theme,f) — re-applies the clock format
- *
- * restyle() re-applies everything via these helpers; the apply* slots
- * are bound to ConfigController signals (panel_height_changed,
- * panel_visible_widgets_changed, clock_format_changed). The
- * ConfigController marshals all configd sigh callbacks to the GUI
- * thread via QMetaObject::invokeMethod, so the apply* slots are
- * guaranteed to run on the GUI thread — never call them from a
- * non-GUI thread.
- *
- * Q_OBJECT IS used (a deliberate change from the pre-W2 version, which
- * avoided moc via functor/lambda connections) — the three apply* slots
- * need to be connectable from ConfigController's Qt-5-style
- * pointer-to-member connect() and require the moc pass.
+ * Phase 14 W7 — adds the tasklist widget as a slot in the panel
+ * QHBoxLayout between the title label and the stretch zone. The tasklist
+ * is the deterministic minimize/restore path for the window stack
+ * (U3 / D14.3). The widget is owned externally (defined in the
+ * tasklist_widget.h header) and inserted via attach_tasklist().
  */
 
 #pragma once
@@ -63,9 +49,7 @@ class PanelWidget : public QWidget
 		 * a new theme AND from the latest configd-broadcast values
 		 * (cached in _height, _visible_widgets, _clock_format).
 		 * Called on the GUI thread by ThemeController after a live
-		 * theme reload — never from a ROM signal handler. Rebuilding
-		 * the widget stylesheet and calling update() repaints without
-		 * recreating the window.
+		 * theme reload.
 		 */
 		void restyle(Theme::Theme const &theme);
 
@@ -81,8 +65,7 @@ class PanelWidget : public QWidget
 		 * inserted into the panel QHBoxLayout between the title
 		 * label and the stretch zone. The widget is owned
 		 * externally (constructed by main.cc), but its lifetime
-		 * must outlive the panel (the panel's layout will paint
-		 * the widget when the layout is updated).
+		 * must outlive the panel.
 		 *
 		 * restyle() fan-out includes the tasklist widget so its
 		 * colors track the active theme.
@@ -101,27 +84,19 @@ class PanelWidget : public QWidget
 
 		/*
 		 * GUI thread ONLY (connected to ConfigController's
-		 * panel_height_changed signal, which is emitted on the GUI
-		 * thread via QMetaObject::invokeMethod marshalling — failure-
-		 * point 2 enforcement). Updates the cached override and
-		 * reapplies geometry.
+		 * panel_height_changed signal).
 		 */
 		void applyHeight(unsigned h);
 
 		/*
-		 * GUI thread ONLY. Updates the cached visible-widgets list and
-		 * hides whichever child is no longer in the list. The list is
-		 * "clock,launcher" by default.
+		 * GUI thread ONLY. Updates the cached visible-widgets list.
+		 * The list is "clock,launcher,tasklist" by default.
 		 */
 		void applyVisibleWidgets(QString list);
 
 		/*
 		 * GUI thread ONLY. Updates the cached clock format and
-		 * refreshes the clock label. SEMANTIC fallback here (Qt
-		 * side): if the format string produces garbage
-		 * (QDateTime::toString yields empty or the previous text
-		 * unchanged after substitution), fall back to "HH:mm" and
-		 * emit Genode::warning ONCE per bad value (failure-point 9).
+		 * refreshes the clock label.
 		 */
 		void applyClockFormat(QString format);
 
@@ -141,20 +116,15 @@ class PanelWidget : public QWidget
 		QLabel      *_clock_label     { nullptr };
 		QTimer      *_clock_timer     { nullptr };
 
-		LauncherMenuView *_launcher_view { nullptr };
+		LauncherMenuView *_launcher_view   { nullptr };
 		TasklistWidget   *_tasklist_widget { nullptr };
 
 		/* Cached configd overrides. */
-		unsigned _height            { 0 };   /* 0 = use theme.panel_height() */
-		QString  _visible_widgets { QStringLiteral("clock,launcher") };
+		unsigned _height            { 0 };
+		QString  _visible_widgets { QStringLiteral("clock,launcher,tasklist") };
 		QString  _clock_format      { QStringLiteral("HH:mm") };
-		QString  _applied_css;             /* stylesheet currently on the widget */
+		QString  _applied_css;
 
-		/*
-		 * De-dup for the clock-format fallback warning: one warning
-		 * per bad format value (failure-point 9: do not spam the log
-		 * every minute on the QTimer tick).
-		 */
 		QString _warned_format;
 };
 

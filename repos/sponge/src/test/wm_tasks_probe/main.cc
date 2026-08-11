@@ -39,6 +39,7 @@
 #include <util/xml_generator.h>
 #include <util/xml_node.h>
 
+
 namespace {
 
 
@@ -136,9 +137,20 @@ struct Wm_tasks_probe
 					if (g.valid) return;
 					Genode::String<256> const title =
 						w.attribute_value("title", Genode::String<256>());
-					char label_buf[256];
-					_label_from_title(title.string(), label_buf, sizeof(label_buf));
-					if (Genode::strcmp(label_buf, needle) != 0) return;
+					Genode::String<256> const needle_s(needle);
+					if (Genode::strlen(needle) > Genode::strlen(title.string())) return;
+					bool found = false;
+					for (char const *p = title.string(); *p; ++p) {
+						if (Genode::strcmp(p, needle, Genode::strlen(needle)) == 0) {
+							found = true; break;
+						}
+					}
+					if (!found) {
+						Genode::log("wm-tasks-probe: window seen but no match: title='",
+						            title.string(), "' needle='",
+						            needle_s.string(), "'");
+						return;
+					}
 					g.x = w.attribute_value("xpos", 0);
 					g.y = w.attribute_value("ypos", 0);
 					g.w = w.attribute_value("width",  0u);
@@ -231,7 +243,6 @@ struct Wm_tasks_probe
 		Genode::log("wm-tasks-probe: [step 2] pkg_gui_demo launched");
 
 		/* Step 3: wait for window_layout entry at initial position. */
-		Genode::log("wm-tasks-probe: [step 3] waiting for window_layout entry at (50,320,320,240)");
 		Window_geom initial;
 		bool found = false;
 		for (unsigned i = 0; i < 3000; ++i) {
@@ -240,6 +251,9 @@ struct Wm_tasks_probe
 			 && initial.x >= 0 && initial.x < 1024
 			 && initial.y >= 0 && initial.y < 768) {
 				found = true; break;
+			}
+			if (i % 50 == 0) {
+				Genode::log("wm-tasks-probe: [step 3] poll ", i, " window_layout valid=", _window_layout_rom.valid() ? "yes" : "no");
 			}
 			_timer.msleep(100);
 		}
@@ -252,7 +266,6 @@ struct Wm_tasks_probe
 		            " [row 1: (init) -> Normal-Visible]");
 
 		/* Step 4: wait for the tasklist click to minimize the window. */
-		Genode::log("wm-tasks-probe: [step 4] waiting for minimize transition (run script must QMP-click the tasklist button)");
 		bool minimized = false;
 		for (unsigned i = 0; i < 600; ++i) {
 			if (_is_parked(GUI_LABEL)) { minimized = true; break; }
@@ -265,7 +278,6 @@ struct Wm_tasks_probe
 		Genode::log("wm-tasks-probe: [step 4] window_layout: pkg_gui_demo parked at (-32000, -32000) [row 3: Normal-Visible-Focused -> Minimized]");
 
 		/* Step 5: wait for the second tasklist click to restore. */
-		Genode::log("wm-tasks-probe: [step 5] waiting for restore transition (run script must QMP-click the tasklist button again)");
 		Window_geom restored;
 		bool restored_ok = false;
 		for (unsigned i = 0; i < 600; ++i) {

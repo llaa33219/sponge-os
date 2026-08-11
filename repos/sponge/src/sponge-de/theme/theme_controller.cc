@@ -224,13 +224,11 @@ void ThemeController::applyTheme(QString name, QString ini)
 	 * Phase 14 W7: publish the active theme's palette as qApp
 	 * properties so widgets that paint per-state colors (the
 	 * tasklist widget) can read the resolved values without
-	 * holding a Theme reference. The properties are integer
-	 * hex literals (e.g. "#1e1e2e"); the widget reads them as
-	 * strings. Identity-check-then-set avoids the QPA's
-	 * redundant-top-level-mutation penalty.
+	 * holding a Theme reference. Identity-check-then-set avoids
+	 * the QPA's redundant-top-level-mutation penalty.
 	 */
-	auto publish_color = [](char const *key, auto const &color) {
-		QString const css = QString::fromUtf8(Sponge_DE::Theme::to_css(color));
+	auto publish_color = [&](char const *key, auto const &color) {
+		QString const css = Theme::to_css(color);
 		if (qApp->property(key).toString() != css)
 			qApp->setProperty(key, css);
 	};
@@ -295,17 +293,17 @@ void ThemeController::_fallback_default_theme()
 	 * applyTheme() will skip the redundant set.
 	 */
 	qApp->setProperty("theme_panel_bg",
-	                  QString::fromUtf8(Sponge_DE::Theme::to_css(_theme.panel_bg())));
+	                  Theme::to_css(_theme.panel_bg()));
 	qApp->setProperty("theme_panel_text",
-	                  QString::fromUtf8(Sponge_DE::Theme::to_css(_theme.panel_text())));
+	                  Theme::to_css(_theme.panel_text()));
 	qApp->setProperty("theme_accent",
-	                  QString::fromUtf8(Sponge_DE::Theme::to_css(_theme.accent())));
+	                  Theme::to_css(_theme.accent()));
 	qApp->setProperty("theme_separator",
-	                  QString::fromUtf8(Sponge_DE::Theme::to_css(_theme.separator())));
+	                  Theme::to_css(_theme.separator()));
 	qApp->setProperty("theme_window_bg",
-	                  QString::fromUtf8(Sponge_DE::Theme::to_css(_theme.window_bg())));
+	                  Theme::to_css(_theme.window_bg()));
 	qApp->setProperty("theme_title_text",
-	                  QString::fromUtf8(Sponge_DE::Theme::to_css(_theme.title_text())));
+	                  Theme::to_css(_theme.title_text()));
 
 	_publish_applied("default");
 }
