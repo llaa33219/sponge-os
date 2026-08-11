@@ -626,13 +626,28 @@ adding a new package becomes a documented, low-friction process.
 
 #### Completion Criteria
 
-- [ ] Additional everyday packages shipped in `pkg/` (choices driven
-  by the daily-use goals of Phase 14).
-- [ ] Package authoring documented end-to-end: metadata format,
+- [x] Additional everyday packages shipped in `pkg/` (choices driven
+  by the daily-use goals of Phase 14). — **Phase 13 W2–W4**: the
+  `terminal` package now ships a UNIX CLI toolset
+  (coreutils/grep/sed/tar/less/findutils/diffutils/which, mounted as
+  noux tars in its vfs, per the D13.1 decision that CLI tools are not
+  standalone packages), plus two new source-built GUI packages:
+  `calculator` (qt6_calculatorform) and `pdf_view` (mupdf). All three
+  are boot-verified on base-sel4: `run/sponge-terminal.run`,
+  `run/sponge-calculator.run`, `run/sponge-pdf-view.run`.
+- [x] Package authoring documented end-to-end: metadata format,
   payload staging, index generation, and testing (`docs/12` extended
-  or a new authoring guide).
+  or a new authoring guide). — `docs/16-package-authoring.md`
+  (three authoring paths, boot-verification contract, pitfalls
+  incl. the latent Phase-7 `<env>` format bug found and fixed in W2).
 - [ ] `tool/pkg_import.mojo` (or successor) covers the common import
-  cases; each new package has a boot-verified run scenario.
+  cases; each new package has a boot-verified run scenario. — **partial**:
+  the scenarios are delivered (above), and the importer's session-name
+  casing defects were fixed (`Nic`/`Rtc`/`Gui`), but the broader
+  importer coverage (non-Qt6 config shapes, session attributes,
+  `--dry-run`) is deferred per D13.5 — the common depot-pkg import
+  case was already covered in Phase 7, and the Phase 13 additions
+  exercised the source-built path instead.
 
 ### Phase 14: Sponge DE as a Daily-Usable Desktop
 
@@ -745,9 +760,23 @@ gap), and the read-only `tool/hw_compat.mojo assert` validator
 reachable from `./tool/build verify`. Phase 12 is **QEMU-verified
 only**; physical-hardware boot remains a Phase-15 deliverable.
 
-Next up: **Phase 13 — Package ecosystem growth**, followed by the
-rest of the post-Alpha sequence defined in §10 (daily usability,
-real hardware, IME, GUI installer).
+**Phase 13** grew the package ecosystem: the `terminal` package gained
+a full UNIX CLI toolset (coreutils/grep/sed/tar/less/findutils/
+diffutils/which as noux tar mounts, D13.1), two source-built GUI
+packages joined `pkg/` (`calculator` from the qt6_tools example,
+`pdf_view` from mupdf), each with a boot-verified probe scenario on
+base-sel4; the end-to-end authoring guide landed as
+`docs/16-package-authoring.md`; `tool/pkg_import`'s session-name
+casing defects were fixed; and the toolset work exposed and repaired
+a latent Phase-7 bug (the `<env name=... value=...>` form yields
+empty variables — no external command could ever have run from the
+Alpha terminal) plus the mid-settle prompt-detection race behind a
+terminal-qmp host-protocol timeout. The third criterion's importer
+breadth remains partially deferred (D13.5).
+
+Next up: **Phase 14 — Sponge DE as a daily-usable desktop**, followed
+by the rest of the post-Alpha sequence defined in §10 (real hardware,
+IME, GUI installer).
 
 Deferred follow-ups (not blockers):
 

@@ -704,6 +704,44 @@ A scenario defines:
   assert` (no `generate` / `update` / repo write); reachable from
   `./tool/build verify`.
 
+- `sponge-calculator.run` — **Phase 13 W3**: the calculator package
+  (`pkg/calculator`), a source-built Qt6 app (the upstream
+  `qt6_calculatorform` Designer example, built in-tree as
+  `app/qt6/examples/calculatorform` from the `qt6_tools` port — no
+  depot import). The `calculator_probe` drives `sponge_pkgd` to
+  install and launch `calculator`, verifies the `installed` broadcast,
+  pixel-verifies the rendered window via Capture (rendered-fraction +
+  color-diversity), and exercises pkgd's `not-installed` /
+  `already-running` error paths. Kernel-agnostic; gates on
+  `calculator-probe: PASS`.
+
+- `sponge-pdf-view.run` — **Phase 13 W4**: the PDF viewer package
+  (`pkg/pdf_view`), the source-built mupdf `app/pdf_view` with a
+  bundled one-page `pkg/pdf_view/payload/sample.pdf` staged as a boot
+  module. `pdf_view` locates the document by `scandir("/")` for the
+  first `*.pdf` name in its vfs, so the metadata's
+  `<rom name="sample.pdf"/>` mount and the scenario's staged boot
+  module must carry the SAME filename (docs/16 §3.2). The
+  `pdf_view_probe` installs + launches via `sponge_pkgd` and
+  pixel-verifies the rendered page via Capture (a rendered PDF page is
+  bright-on-dark against the `#1e1e2e` background). Kernel-agnostic;
+  gates on `pdf-view-probe: PASS`.
+
+- `sponge-terminal.run` toolset extension — **Phase 13 W2**: the
+  terminal package now mounts the CLI toolset tars
+  (`coreutils-minimal`, `grep`, `sed`, `tar`, `less`, `findutils`,
+  `diffutils`, `which`) in its vfs, and the `terminal_probe` asserts
+  them end-to-end by typing `ls -l /bin` through the synthetic
+  Press_char path and requiring the rendered listing's glyph jump
+  (docs/plans/phase13-package-ecosystem.md D13.1/D13.2). The same fix
+  repaired a latent Phase-7 bug: the metadata's `<env>` nodes used the
+  `name`+`value`-attribute form, which libc's
+  `populate_args_and_env` parses as the content form with empty
+  content, so every variable (including `PATH`) was silently empty —
+  external commands could never have run from the Alpha terminal.
+  `pkg/terminal/metadata.xml` now uses the content form
+  (`<env name="PATH">/bin</env>`); see docs/16 §5 pitfall 1.
+
 ## Planned additions
 
 - Spin a usable Sponge OS install workflow through Leitzentrale (the

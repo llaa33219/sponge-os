@@ -90,9 +90,15 @@ The repository currently contains:
   and `--manual` escape hatches
 - ✅ Alpha 0.1.0 seL4 disk image and ISO boot in QEMU to the themed desktop
   (`run/sponge-alpha.run` and the media scenarios)
-- ✅ Alpha packages verified in QEMU: terminal with bash/vim, Qt6 text
-  editor, and Sponge file manager (`run/sponge-terminal.run`,
-  `run/sponge-textedit.run`, `run/sponge-files.run`)
+- ✅ Alpha packages verified in QEMU: terminal with bash/vim and a UNIX
+  CLI toolset (coreutils, grep, sed, tar, less, findutils, diffutils,
+  which — Phase 13), Qt6 text editor, and Sponge file manager
+  (`run/sponge-terminal.run`, `run/sponge-textedit.run`,
+  `run/sponge-files.run`)
+- ✅ Phase 13 packages: Qt6 calculator (`run/sponge-calculator.run`)
+  and mupdf PDF viewer with bundled sample document
+  (`run/sponge-pdf-view.run`), both source-built and boot-verified on
+  base-sel4; authoring guide at `docs/16-package-authoring.md`
 - ✅ Falkon is packaged, boots from disk, AND reaches first paint on the Alpha seL4 media (Phase 9 closed the capability-chain blocker); see
   [`docs/13-installation.md`](docs/13-installation.md#6-known-limitations)
 - ⚠️ Alpha installs enable pre-staged packages and do not persist across
@@ -173,6 +179,8 @@ All detailed documentation lives in [`docs/`](docs/).
 - [11 - Development Environment & Reproducibility](docs/11-environment.md)
 - [13 - Installation and Alpha Quick Start](docs/13-installation.md)
 - [14 - Boot & Storage Architecture (Proposal)](docs/14-boot-storage-architecture.md)
+- [15 - Hardware Compatibility](docs/15-hardware-compatibility.md)
+- [16 - Package Authoring Guide](docs/16-package-authoring.md)
 
 Contributors and AI agents must read [`AGENTS.md`](AGENTS.md) first.
 
