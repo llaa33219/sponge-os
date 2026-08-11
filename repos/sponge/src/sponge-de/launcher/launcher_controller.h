@@ -54,6 +54,7 @@
 #include <util/xml_node.h>
 
 #include <QObject>
+#include <QSet>
 #include <QString>
 #include <QVector>
 
@@ -62,6 +63,7 @@ class QTimer;
 namespace Sponge::Sponge_DE {
 
 class LauncherMenuView;
+class NotifyPoster;
 
 class LauncherController : public QObject
 {
@@ -87,6 +89,9 @@ class LauncherController : public QObject
 		/* Wire the view. The controller calls repopulate() on it
 		 * whenever the parsed list changes. */
 		void attach_view(LauncherMenuView *view) { _view = view; }
+
+		/* Wire a NotifyPoster for package-install event notifications. */
+		void attach_notify_poster(NotifyPoster *poster) { _notify = poster; }
 
 		bool live_list_seen() const { return _live_list_seen; }
 
@@ -141,9 +146,13 @@ class LauncherController : public QObject
 
 		QTimer  *_poll_timer { nullptr };
 		LauncherMenuView *_view { nullptr };
+		NotifyPoster    *_notify { nullptr };
 
 		QVector<App> _apps;
 		bool _live_list_seen { false };
+
+		/* De-dup for install notifications. */
+		QSet<QString> _prev_names;
 
 		QString _last_result_signature;
 

@@ -103,6 +103,7 @@ namespace Sponge::Sponge_DE {
 
 class PanelWidget;
 class LauncherMenuView;
+class NotifyPoster;
 
 /*
  * Read <config source="configd"/> from the component config. Mirrors
@@ -145,6 +146,10 @@ class ConfigController : public QObject
 		void attach_panel(PanelWidget *panel);
 		void attach_launcher(LauncherMenuView *launcher);
 
+		/* Wire a NotifyPoster for config-change event notifications.
+		 * Posts on every successful configd set. Optional. */
+		void attach_notify_poster(NotifyPoster *poster);
+
 	private slots:
 
 		/*
@@ -175,6 +180,7 @@ class ConfigController : public QObject
 
 		PanelWidget     *_panel    { nullptr };
 		LauncherMenuView *_launcher { nullptr };
+		NotifyPoster    *_notify   { nullptr };
 
 		/*
 		 * Last-applied values (one per key). Used by applyConfig to

@@ -16,6 +16,14 @@
  * QTimer (same non-blocking pattern as ThemeController) and publishes a
  * `launcher` report for headless verification. Click-to-launch itself
  * is intentionally deferred (see launcher_menu_view.cc).
+ *
+ * Phase 14 W4: notifications. The NotifyPoster owns the "notif_request"
+ * Report session and is the in-sponge-de writer of the notification
+ * bus. NotifierController subscribes to the daemon's "notifications"
+ * ROM and pushes the active list to NotifierWidget (the themed popover).
+ * ThemeController / ConfigController / LauncherController each emit
+ * event notifications through the poster on theme apply, config change,
+ * and package install.
  */
 
 #include <base/attached_rom_dataspace.h>
@@ -31,6 +39,9 @@
 #include "config/config_controller.h"
 #include "launcher/launcher_controller.h"
 #include "launcher/launcher_menu_view.h"
+#include "panel/notifier_controller.h"
+#include "panel/notifier_widget.h"
+#include "panel/notify_poster.h"
 #include "panel/panel_widget.h"
 #include "sponge_de_main.h"
 #include "theme/theme_controller.h"
@@ -78,6 +89,10 @@ void Libc::Component::construct(Libc::Env &env)
 		 */
 		ConfigController config_ctrl(env);
 
+		/* Notification daemon bridge (Phase 14 W4). */
+		NotifyPoster       notify_poster(env);
+		NotifierController notifier_ctrl(env);
+
 		/*
 		 * Launcher data path. Constructed before the panel because the
 		 * panel's launcher button shows/hides its popup. The view is
@@ -87,6 +102,9 @@ void Libc::Component::construct(Libc::Env &env)
 		LauncherController launcher_ctrl(env);
 		LauncherMenuView   launcher_view(launcher_ctrl, theme_ctrl.initial());
 		launcher_ctrl.attach_view(&launcher_view);
+
+		NotifierWidget notifier_popover(theme_ctrl.initial());
+		notifier_ctrl.attach_widget(&notifier_popover);
 
 		PanelWidget panel(theme_ctrl.initial());
 		panel.show();
@@ -103,10 +121,13 @@ void Libc::Component::construct(Libc::Env &env)
 
 		theme_ctrl.attach_launcher(&launcher_view);
 
+		/* Wire the notify poster to every event-emitting controller. */
+		theme_ctrl.attach_notify_poster(&notify_poster);
+		config_ctrl.attach_notify_poster(&notify_poster);
+		launcher_ctrl.attach_notify_poster(&notify_poster);
+
 		/* Marker matched by run/sponge-de.run for automated verification. */
 		Genode::log("sponge-de: panel and window shown");
-
-		Genode::warning("not implemented: notifications (Phase 5)");
 
 		app.connect(&app, SIGNAL(lastWindowClosed()), SLOT(quit()));
 

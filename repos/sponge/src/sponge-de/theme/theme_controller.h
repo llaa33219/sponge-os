@@ -64,6 +64,7 @@ namespace Sponge::Sponge_DE {
 class PanelWidget;
 class Main;
 class LauncherMenuView;
+class NotifyPoster;
 
 class ThemeController : public QObject
 {
@@ -86,6 +87,11 @@ class ThemeController : public QObject
 		void attach_panel(PanelWidget *panel);
 		void attach_main(Main *main);
 		void attach_launcher(LauncherMenuView *launcher);
+
+		/* Wire a NotifyPoster for theme-apply event notifications.
+		 * The controller calls poster->post("theme applied", name)
+		 * on every successful live theme reload. Optional. */
+		void attach_notify_poster(NotifyPoster *poster);
 
 		/* True once at least one themed report has been applied. */
 		bool live_applied() const { return _live_applied; }
@@ -111,6 +117,7 @@ class ThemeController : public QObject
 		PanelWidget       *_panel    { nullptr };
 		Main               *_main     { nullptr };
 		LauncherMenuView   *_launcher { nullptr };
+		NotifyPoster      *_notify    { nullptr };
 
 		bool     _live         { false };
 		bool     _live_applied { false };

@@ -6,11 +6,13 @@
 #include "launcher_controller.h"
 
 #include "launcher_menu_view.h"
+#include "panel/notify_poster.h"
 
 #include <base/log.h>
 #include <util/hid.h>
 #include <util/string.h>
 
+#include <QSet>
 #include <QTimer>
 
 using namespace Sponge::Sponge_DE;
@@ -185,6 +187,20 @@ bool LauncherController::_try_parse(Genode::Xml_node const &root)
 
 	Genode::log("sponge-de: launcher list updated (",
 	            (unsigned)_apps.size(), " app", _apps.size() == 1 ? "" : "s", ")");
+
+	if (_notify) {
+		for (App const &app : parsed) {
+			if (!_prev_names.contains(app.name)) {
+				_notify->post(QStringLiteral("package installed"),
+				              app.name,
+				              QStringLiteral("info"),
+				              5000);
+			}
+		}
+		_prev_names.clear();
+		for (App const &app : parsed)
+			_prev_names.insert(app.name);
+	}
 
 	emit appsChanged();
 	return true;
