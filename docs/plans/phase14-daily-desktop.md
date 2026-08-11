@@ -194,6 +194,28 @@ Highlights relevant to the design decisions:
 
 ---
 
+### Decision closure notes (updated during execution)
+
+- **D14.2 closure (2026-08-11).** Sub-design settled: the vendored
+  qt6_base QPA already ships `QGenodeClipboard` (REUSE verdict — no
+  Sponge `QPlatformClipboard` subclass was written; the
+  `repos/sponge/src/sponge-de/clipboard/` path is dead). Delivered
+  proofs: `run/sponge-clipboard.run` (cross-component bus write → Qt
+  paste), `run/sponge-clipboard-qtsettext.run` (Qt→server write path
+  healthy via a programmatic `QGuiApplication::clipboard()->setText()`
+  harness — decisive verdict per Oracle consultation),
+  `run/sponge-clipboard-focus.run` (`match_labels="yes"` gating).
+  **Known limitation:** keyboard Ctrl-C inside the `qt6_textedit`
+  example does not fire `setMimeData` on base-sel4 (evidence:
+  `docs/evidence/phase14-w5-qtwrite-failure.md`); the failure is
+  downstream of the bridge in the shortcut/input layer and is a
+  Phase-15+ item (disposition matrix row, `Blocked`-with-evidence).
+  **Consequence for W8:** the workflow scenario's copy step uses the
+  `clipboard_qtsettext` harness as the writer (separate address space;
+  U2 still holds), not textedit Ctrl-C.
+
+---
+
 ## Work Items
 
 ### TDD convention (applies to every work item)
