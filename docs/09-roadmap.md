@@ -963,8 +963,62 @@ Recorded during Phase 11 (W4/W5); none block the Phase 11 checkboxes.
    visibility toggle or WM-managed panel placement — Phase 12+ open
    question (documented in `sponge_configd/README.md`).
 4. **Partial drag delta on themed chrome.** The W4 themed drag moved
-   pkg_gui_demo (50,320)→(68,330) instead of the dispatched
-   +100/+100 — the mechanics (press→DRAG→move) are verified; the
-   partial delta matches the Phase-10 W6 host-timing variance class.
-   Hardening candidate: paced tablet steps with per-step hover
-   confirmation.
+    pkg_gui_demo (50,320)→(68,330) instead of the dispatched
+    +100/+100 — the mechanics (press→DRAG→move) are verified; the
+    partial delta matches the Phase-10 W6 host-timing variance class.
+    Hardening candidate: paced tablet steps with per-step hover
+    confirmation.
+
+### 11.4 Phase-14-known-issue follow-ups (W3)
+
+Recorded during Phase 14 W3 (vendored-patch investigation, D14.8);
+none of the items below are blockers for the Phase 14 checkboxes
+(the W3 workstream is investigation only — `AGENTS.md` §5.2 — no
+vendored-tree patches land here). Each item carries the same
+disposition rule as the Phase-10 / Phase-11 follow-ups above
+(recorded but not silently absorbed).
+
+ 1. **QGenodeScreen 1x1-stale race — D14.8(b) outcome:** **Re-scoped
+    to Phase 15+.** The Phase 11 alpha-flake review
+    (`docs/evidence/task-6-phase11-alpha-flake.md`) suspected a race
+    where `QGenodeScreen` publishes a 1x1 screen geometry until
+    nitpicker's panorama info arrives — late on heavy seL4
+    topologies — and sponge-de's `PanelWidget::_apply_geometry`
+    trusted that width. The Phase 11 fix added a width-floor guard
+    (`screen_w > 64 ? screen_w : 1024`) and the alpha sweep went 6/6
+    green. The Phase 14 W3 workstream re-tested that fix with a
+    focused cold-boot reproducer
+    (`run/sponge-de-qscreen-race-probe.run`,
+    `repos/sponge/src/test/qscreen_race_probe/`): 10 cold-boot trials
+    on base-sel4, every trial logged
+    `qscreen-race-probe: trial verdict clean race_panel_black_max=0`
+    (panel band was never black, demo-domain window_bg painted
+    within 1–3 polls in every trial). Per D14.8(b)'s "≥ 3 of 10"
+    threshold, candidate (b) is **Re-scoped to Phase 15+** with the
+    width-floor guard kept as the resolution path. No vendored-tree
+    patch lands in Phase 14 — the investigation confirms the Phase
+    11 fix is sufficient on the proven-reference topology. If Phase 15
+    discovers a new topology where the width-floor guard does NOT
+    hold (e.g., real-hardware boot, multi-monitor, or a
+    faster-boot configuration that exposes the race), the focused
+    reproducer can be re-run unchanged. Evidence:
+    `docs/evidence/task-3-phase14-qscreen-race.log`.
+
+ 2. **Nitpicker pointer ROM from REL — D14.8(c) deferral
+    confirmed.** The Phase 11 §11.2 item-2 carryover
+    (`nitpicker::Session::pointer` report ROM receives
+    `report_pointer_position` only on explicit `absolute_motion` —
+    PS/2 REL updates the cursor internally but does NOT set the
+    `_pointer` value the report reads from) was **partially** patched
+    in Phase 11 (patch-ledger row #9: REL `Nowhere` branch now
+    initializes the pointer instead of dropping the event), but the
+    report-ROM side remains open. Per D14.8(c) this is **Re-scoped**
+    to upstream Genode (not absorbed as a Phase-14 Sponge patch)
+    because the proper fix belongs in nitpicker's `user_state.cc`
+    REL→`_pointer` propagation path — a vendored-tree patch would
+    violate `AGENTS.md` §5.2's "minimal local patches" rule. No W3
+    code changes; the deferral pointer is recorded here for the
+    Phase-15+ planner. Trigger for re-opening: any concrete Phase-15
+    run scenario (real-hardware pointer, multi-monitor) exposes a
+    visible discrepancy between cursor-on-screen and the
+    `nitpicker::Session::pointer` report.
