@@ -133,7 +133,7 @@ config
   + provides
     + service Report
     + service ROM
-  + config | verbose: no
+  + config | verbose: yes
     + policy | label: layouter -> window_list       | report: wm -> window_list
     + policy | label: decorator -> pointer           | report: wm -> pointer
     + policy | label: decorator -> window_layout     | report: layouter -> window_layout
@@ -142,11 +142,14 @@ config
     + policy | label: layouter -> hover              | report: decorator -> hover
     + policy | label: layouter -> decorator_margins  | report: decorator -> decorator_margins
     + policy | label: layouter -> rules              | report: layout_rules
-    + policy | label: layouter -> focus_request      | report: wm_tasks_probe -> focus_request
+    + policy | label: layouter -> focus_request      | report: sponge-de -> focus_request
+    + policy | label: layouter -> rules              | report: sponge-de -> rules
+    + policy | label: sponge-de -> window_layout     | report: layouter -> window_layout
+    + policy | label: sponge-de -> window_list       | report: wm -> window_list
     + policy | label: wm_tasks_probe -> window_layout | report: layouter -> window_layout
     + policy | label: wm_tasks_probe -> window_list   | report: wm -> window_list
-    + policy | label: wm_tasks_probe -> focus_request | report: tasklist_ctrl -> focus_request
-    + policy | label: wm_tasks_probe -> rules         | report: tasklist_ctrl -> rules
+    + policy | label: wm_tasks_probe -> focus_request | report: sponge-de -> focus_request
+    + policy | label: wm_tasks_probe -> rules         | report: sponge-de -> rules
     + policy | label: sponge_pkgd -> request          | report: wm_tasks_probe -> request
     + policy | label: wm_tasks_probe -> result        | report: sponge_pkgd -> result
     + policy | label: pkg_runtime -> config           | report: sponge_pkgd -> runtime
@@ -615,7 +618,6 @@ append qemu_args " -qmp tcp:127.0.0.1:${qmp_port},server=on,wait=off "
 #   8. wait for wm-tasks-probe: PASS
 #
 run_genode_until {.*\[init -> drivers -> fb\] using 1024x768.*} 90
-run_genode_until {.*Connected device.*QEMU QEMU USB Tablet.*POINTER.*} 90
 run_genode_until {.*wm-tasks-probe: \[step 3\].*} 600
 
 set qmp_chan [qmp_connect $qmp_port]

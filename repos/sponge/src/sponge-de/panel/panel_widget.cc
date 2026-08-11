@@ -235,12 +235,7 @@ void PanelWidget::attach_tasklist(TasklistWidget *widget)
 
 	if (!widget) return;
 
-	/* Insert the tasklist widget into the QHBoxLayout at index 2
-	 * (between `_title_label` and the stretch). The widget's
-	 * parent is the panel so it gets cleaned up with the panel. */
 	if (auto *layout = qobject_cast<QHBoxLayout *>(this->layout())) {
-		/* The stretch is at index 2 currently; insert the tasklist
-		 * at index 2 (BEFORE the stretch). */
 		widget->setParent(this);
 		layout->insertWidget(2, widget);
 		widget->setMinimumHeight(_height > 0 ? (int)_height : 28);

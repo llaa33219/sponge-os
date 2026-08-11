@@ -48,6 +48,7 @@ HEADERS  += sponge_de_main.h \
             panel/notify_poster.h \
             panel/tasklist_widget.h \
             panel/tasklist_controller.h \
+            panel/task_info.h \
             launcher/launcher_controller.h \
             launcher/launcher_menu_view.h \
             theme/theme_loader.h \
