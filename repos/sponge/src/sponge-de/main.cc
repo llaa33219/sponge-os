@@ -30,6 +30,7 @@
 #include <base/log.h>
 #include <libc/component.h>
 #include <rom_session/connection.h>
+#include <util/string.h>
 
 #include <QApplication>
 #include <QFont>
@@ -136,34 +137,58 @@ void Libc::Component::construct(Libc::Env &env)
 		 * the first time the tasklist reports data. The controller
 		 * is the bridge between wm's window_list/ window_layout
 		 * reports and the widget's task list. */
-		TasklistWidget tasklist_widget(theme_ctrl.initial());
+		Sponge::Sponge_DE::TasklistWidget tasklist_widget(theme_ctrl.initial(), &panel);
 		panel.attach_tasklist(&tasklist_widget);
 		tasklist_ctrl.attach_widget(&tasklist_widget);
 		theme_ctrl.attach_tasklist(&tasklist_widget);
-		connect(&tasklist_widget, &TasklistWidget::task_clicked,
-		        &tasklist_ctrl, &TasklistController::on_task_clicked);
-		connect(&tasklist_widget, &TasklistWidget::task_toggle_maximized,
-		        &tasklist_ctrl, &TasklistController::on_toggle_maximized);
+		QObject::connect(&tasklist_widget, &Sponge::Sponge_DE::TasklistWidget::task_clicked,
+		                 &tasklist_ctrl, &TasklistController::on_task_clicked);
+		QObject::connect(&tasklist_widget, &Sponge::Sponge_DE::TasklistWidget::task_toggle_maximized,
+		                 &tasklist_ctrl, &TasklistController::on_toggle_maximized);
 
 		/*
 		 * Mirror the layouter's inline `<rules>` so the controller
 		 * can re-emit them when the tasklist switches the layouter
-		 * to `rules="rom"` mode. Without the mirror, the tasklist
-		 * becomes the rules source and loses the static placements.
+		 * to `rules="rom"` mode. The run script sets the
+		 * tasklist_static_rules attribute on the sponge-de <config>;
+		 * the QApplication parsing path reads it via the same HID/XML
+		 * parser used for <theme source="..."> and <config
+		 * source="..."> below.
 		 *
-		 * The run script sets `rules="rom"` on the layouter ONLY
-		 * when the tasklist is the rules source (the W7 scenario
-		 * uses this); other scenarios use the inline rules and the
-		 * tasklist still reads window_list/ window_layout but its
-		 * click handler is not connected to the layouter. The
-		 * static rules are populated by the run script via the
-		 * tasklist's qApp property (see panel_widget.h).
+		 * The static rules are stored as a single string with
+		 * unit-separator (0x1f) delimiters because the rules may
+		 * contain shell-special characters that qApp->setProperty
+		 * would otherwise mangle.
 		 */
 		{
-			QString const s = qApp->property("tasklist_static_rules").toString();
-			if (!s.isEmpty()) {
-				QStringList const parts = s.split(QChar(0x1f));
-				tasklist_ctrl.set_static_rules(parts);
+			Genode::Attached_rom_dataspace config_rom(env, "config");
+			config_rom.update();
+			if (config_rom.valid()) {
+				Genode::String<8192> const raw =
+					config_rom.node().attribute_value("tasklist_static_rules",
+					                                  Genode::String<8192>());
+				if (raw.length() > 0) {
+					/*
+					 * The static rules are a single XML <assign> element
+					 * with shell-escaped quotes. Split on the unit
+					 * separator to recover the list (the run script
+					 * uses a single 0x1f to allow multiple assignments;
+					 * today's run scripts use exactly one).
+					 */
+					QStringList parts;
+					QString cur;
+					for (unsigned i = 0; i < raw.length(); ++i) {
+						char c = raw.string()[i];
+						if (c == 0x1f) {
+							parts.append(cur);
+							cur = QString();
+						} else {
+							cur += QChar(c);
+						}
+					}
+					parts.append(cur);
+					tasklist_ctrl.set_static_rules(parts);
+				}
 			}
 		}
 
