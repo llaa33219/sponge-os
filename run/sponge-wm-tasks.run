@@ -403,6 +403,7 @@ config
 
 + start sponge-de | caps: 1000 | ram: 128M
   + config | tasklist_static_rules: "<assign label_prefix=\"pkg_runtime\" target=\"screen\" xpos=\"50\" ypos=\"320\" width=\"320\" height=\"240\" maximized=\"no\"/>"
+    + tasklist | source: wm
     + theme | source: default
     + config | source: default
     + version: 2
@@ -470,14 +471,49 @@ if {![file exists $dejavu_dst]} {
 
 #
 # Driver sub-init config modules (vendored drivers_interactive-pc set).
+# drivers.config and fb.config are copied verbatim from the vendored
+# recipe. event_filter.config is WRITTEN locally (same as
+# run/sponge-de-sel4-interactive.run) to add the <scale> transform on
+# the usb input branch: nitpicker treats the usb-tablet's absolute
+# coordinates (0..32767) as raw pixels, so without the scale every QMP
+# tablet event is clamped to the screen center (~512, 384) and the
+# tasklist button at (178, 14) can never be hit.
 #
 set recipe_dir "${genode_dir}/repos/os/recipes/raw/drivers_interactive-pc"
-foreach f { drivers.config fb.config event_filter.config } {
+foreach f { drivers.config fb.config } {
 	if {![file exists "$recipe_dir/$f"]} {
 		error "$recipe_dir/$f missing"
 	}
 	exec cp -f "$recipe_dir/$f" "bin/$f"
 }
+
+set ef_fh [open "bin/event_filter.config" w]
+puts $ef_fh {config
++ output
+  + chargen
+    + merge
+    | + transform
+    | | + scale | x: 0.0312517 | y: 0.0234382
+    | | + input usb
+    | + button-scroll
+    | |   + input ps2
+    | |   + vertical   | button: BTN_MIDDLE | speed_percent: -10
+    | |   + horizontal | button: BTN_MIDDLE | speed_percent: -10
+  + mod1
+  | + key KEY_LEFTSHIFT
+  | + key KEY_RIGHTSHIFT
+  + mod2
+  | + key KEY_LEFTCTRL
+  | + key KEY_RIGHTCTRL
+  + mod3
+  | + key KEY_RIGHTALT | . AltGr
+  + repeat | delay_ms: 230 | rate_ms: 90
+  + include | rom: en_us.chargen
+  + include | rom: special.chargen
++ policy | label: ps2 | input: ps2
++ policy | label: usb | input: usb
+-}
+close $ef_fh
 
 set chargen_dir "${genode_dir}/repos/os/src/server/event_filter"
 foreach f { en_us.chargen special.chargen } {
@@ -551,49 +587,10 @@ if {[info procs qmp_disconnect] eq ""} {
 # click; qmp_click moves the pointer to (178, 14) and presses BTN_LEFT.
 #
 proc qmp_click_tasklist { chan } {
-	#
-	# event_filter's accelerate (sensitivity_percent=1000, max=50,
-	# curve=127) maps rel events non-linearly:
-	#   rel-1   → 1px per event  (no acceleration, precision steps)
-	#   rel-50  → 100px per event (full acceleration, coarse steps)
-	# So for an x-displacement of (x1):
-	#   cx = x1 / 100 (number of rel-50 events)
-	#   fx = x1 % 100 (number of rel-1 events)
-	# Same for y.
-	#
-	# Step 1: clamp pointer to (0,0). 10 × rel-100 per axis = ~1500px
-	# of negative motion, more than any screen dimension.
-	for {set i 0} {$i < 10} {incr i} { qmp_ps2_rel $chan x -100 }
-	for {set i 0} {$i < 10} {incr i} { qmp_ps2_rel $chan y -100 }
-	after 200
-
-	# Step 2: navigate to (178, 14) — tasklist first entry center.
-	set cx [expr {178 / 100}]
-	set cy [expr {14 / 100}]
-	set fx [expr {178 % 100}]
-	set fy [expr {14 % 100}]
-	for {set i 0} {$i < $cx} {incr i} { qmp_ps2_rel $chan x 50; after 20 }
-	for {set i 0} {$i < $cy} {incr i} { qmp_ps2_rel $chan y 50; after 20 }
-	for {set i 0} {$i < $fx} {incr i} { qmp_ps2_rel $chan x 1 }
-	for {set i 0} {$i < $fy} {incr i} { qmp_ps2_rel $chan y 1 }
-	after 200
-
-	qmp_ps2_button $chan true
-	after 100
-	qmp_ps2_button $chan false
-}
-
-if {[info procs qmp_ps2_rel] eq ""} {
-	proc qmp_ps2_rel { chan axis value } {
-		qmp_cmd $chan [format {{"execute":"input-send-event","arguments":{"events":[{"type":"rel","data":{"axis":"%s","value":%d}}]}}} $axis $value]
-	}
-}
-
-if {[info procs qmp_ps2_button] eq ""} {
-	proc qmp_ps2_button { chan down } {
-		set val [expr {$down ? "true" : "false"}]
-		qmp_cmd $chan [format {{"execute":"input-send-event","arguments":{"events":[{"type":"btn","data":{"down":%s,"button":"left"}}]}}} $val]
-	}
+	# Absolute usb-tablet click at the tasklist's first entry center
+	# (178, 14) — the proven Phase-12 W3b path (PS/2 relative motion
+	# is unreliable for precise widget hits on nitpicker).
+	qmp_tablet_click $chan 178 14
 }
 
 #
@@ -618,13 +615,13 @@ append qemu_args " -qmp tcp:127.0.0.1:${qmp_port},server=on,wait=off "
 #   8. wait for wm-tasks-probe: PASS
 #
 run_genode_until {.*\[init -> drivers -> fb\] using 1024x768.*} 90
-run_genode_until {.*wm-tasks-probe: \[step 3\].*} 600
+global qemu_spawn_id
+run_genode_until {.*wm-tasks-probe: \[step 3\].*} 600 $qemu_spawn_id
 
 set qmp_chan [qmp_connect $qmp_port]
 qmp_click_tasklist $qmp_chan
-run_genode_until {.*wm-tasks-probe: \[step 4\].*} 60 $qmp_chan
+run_genode_until {.*wm-tasks-probe: \[step 4\].*} 60 $qemu_spawn_id
 qmp_click_tasklist $qmp_chan
-run_genode_until {.*wm-tasks-probe: \[step 5\].*} 60 $qmp_chan
-global qemu_spawn_id
+run_genode_until {.*wm-tasks-probe: \[step 5\].*} 60 $qemu_spawn_id
 run_genode_until {.*wm-tasks-probe: PASS.*} 60 $qemu_spawn_id
 qmp_disconnect $qmp_chan

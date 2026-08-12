@@ -521,6 +521,7 @@ config
 
 + start sponge-de | caps: 1000 | ram: 128M
   + config
+    + tasklist | source: wm
     + theme | source: themed
     + config | source: configd
     + version: 2

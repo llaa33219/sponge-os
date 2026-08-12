@@ -183,6 +183,7 @@ config
 
 + start sponge-de | caps: 300 | ram: 128M
   + config
+    + tasklist | source: wm
     + vfs
       + dir dev
         + log
