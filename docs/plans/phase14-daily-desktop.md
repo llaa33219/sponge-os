@@ -636,7 +636,7 @@ window-management scenario is boot-verified.
   is exercised end-to-end (every row in the table has a probe
   sub-step).
 - `sponge-alpha.run`, `sponge-de-themed-chrome.run`,
-  `sponge-wm-qmp.run` regressions still PASS.
+  `sponge-wm-qmp.run`, `sponge-de-test.run` regressions still PASS.
 
 **Commit units**: (i) `feat(decorator): extend themed_decorator
 controls (closer + minimizer) via sponge_decorator_bridge`;
