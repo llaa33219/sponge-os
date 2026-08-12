@@ -117,6 +117,38 @@ void Libc::Component::construct(Libc::Env &env)
 		NotifierWidget notifier_popover(theme_ctrl.initial());
 		notifier_ctrl.attach_widget(&notifier_popover);
 
+		/*
+		 * Phase 14 W7 tasklist activation gate (mirrors the
+		 * <theme source="themed"/> / <config source="configd"/> and
+		 * the W4 <notifier source="daemon"/> pattern): the tasklist
+		 * is only wired when the component config carries
+		 * <tasklist source="wm"/>. In topologies without the wm
+		 * stack (run/sponge-de-test.run, run/sponge-launcher.run,
+		 * ...) the controller's window_list/window_layout ROM
+		 * sessions would have no producer and their first update()
+		 * would block the GUI thread — gating here keeps the
+		 * no-wm topologies untouched.
+		 */
+		bool tasklist_enabled { false };
+		{
+			Genode::Attached_rom_dataspace const config(env, "config");
+			config.node().with_optional_sub_node("tasklist",
+				[&] (Genode::Node const &n) {
+					tasklist_enabled =
+						n.attribute_value("source",
+						                  Genode::String<16>())
+						== "wm";
+				});
+
+			if (tasklist_enabled) {
+				Genode::String<512> const static_rules =
+					config.node().attribute_value("tasklist_static_rules",
+					                              Genode::String<512>());
+				if (static_rules.valid())
+					tasklist_ctrl.set_static_rules(static_rules.string());
+			}
+		}
+
 		PanelWidget panel(theme_ctrl.initial());
 
 		/* Tasklist widget + insertion BEFORE the panel is shown. The
@@ -126,8 +158,11 @@ void Libc::Component::construct(Libc::Env &env)
 		 * layout change triggers a panel re-paint that races with
 		 * the demo window's first paint and can delay it past the
 		 * Phase-7 sponge-de-test acceptance probe's 60s budget. */
-		Sponge::Sponge_DE::TasklistWidget tasklist_widget(theme_ctrl.initial(), &panel);
-		panel.attach_tasklist(&tasklist_widget);
+		Genode::Constructible<Sponge::Sponge_DE::TasklistWidget> tasklist_widget { };
+		if (tasklist_enabled) {
+			tasklist_widget.construct(theme_ctrl.initial(), &panel);
+			panel.attach_tasklist(&*tasklist_widget);
+		}
 
 		panel.show();
 		panel.set_launcher_view(&launcher_view);
@@ -143,63 +178,20 @@ void Libc::Component::construct(Libc::Env &env)
 
 		theme_ctrl.attach_launcher(&launcher_view);
 
-		tasklist_ctrl.attach_widget(&tasklist_widget);
-		theme_ctrl.attach_tasklist(&tasklist_widget);
-		QObject::connect(&tasklist_widget, &Sponge::Sponge_DE::TasklistWidget::task_clicked,
-		                 &tasklist_ctrl, &TasklistController::on_task_clicked);
-		QObject::connect(&tasklist_widget, &Sponge::Sponge_DE::TasklistWidget::task_toggle_maximized,
-		                 &tasklist_ctrl, &TasklistController::on_toggle_maximized);
-
-		/*
-		 * Mirror the layouter's inline `<rules>` so the controller
-		 * can re-emit them when the tasklist switches the layouter
-		 * to `rules="rom"` mode. The run script sets the
-		 * tasklist_static_rules attribute on the sponge-de <config>;
-		 * the QApplication parsing path reads it via the same HID/XML
-		 * parser used for <theme source="..."> and <config
-		 * source="..."> below.
-		 *
-		 * The static rules are stored as a single string with
-		 * unit-separator (0x1f) delimiters because the rules may
-		 * contain shell-special characters that qApp->setProperty
-		 * would otherwise mangle.
-		 */
-		{
-			Genode::Attached_rom_dataspace config_rom(env, "config");
-			config_rom.update();
-			if (config_rom.valid()) {
-				Genode::String<8192> const raw =
-					config_rom.node().attribute_value("tasklist_static_rules",
-					                                  Genode::String<8192>());
-				if (raw.length() > 0) {
-					/*
-					 * The static rules are a single XML <assign> element
-					 * with shell-escaped quotes. Split on the unit
-					 * separator to recover the list (the run script
-					 * uses a single 0x1f to allow multiple assignments;
-					 * today's run scripts use exactly one).
-					 */
-					QStringList parts;
-					QString cur;
-					for (unsigned i = 0; i < raw.length(); ++i) {
-						char c = raw.string()[i];
-						if (c == 0x1f) {
-							parts.append(cur);
-							cur = QString();
-						} else {
-							cur += QChar(c);
-						}
-					}
-					parts.append(cur);
-					tasklist_ctrl.set_static_rules(parts);
-				}
-			}
+		if (tasklist_enabled) {
+			tasklist_ctrl.attach_widget(&*tasklist_widget);
+			theme_ctrl.attach_tasklist(&*tasklist_widget);
+			QObject::connect(&*tasklist_widget, &Sponge::Sponge_DE::TasklistWidget::task_clicked,
+			                 &tasklist_ctrl, &TasklistController::on_task_clicked);
+			QObject::connect(&*tasklist_widget, &Sponge::Sponge_DE::TasklistWidget::task_toggle_maximized,
+			                 &tasklist_ctrl, &TasklistController::on_toggle_maximized);
 		}
 
 		/* Wire the notify poster to every event-emitting controller. */
 		theme_ctrl.attach_notify_poster(&notify_poster);
 		config_ctrl.attach_notify_poster(&notify_poster);
 		launcher_ctrl.attach_notify_poster(&notify_poster);
+		Genode::log("sponge-de: after attach_notify_poster");
 
 		/* Marker matched by run/sponge-de.run for automated verification. */
 		Genode::log("sponge-de: panel and window shown");
