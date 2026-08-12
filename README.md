@@ -159,6 +159,23 @@ The repository currently contains:
   (`docs/plans/wm-state-table.md`) is exercised by the
   `run/sponge-wm-tasks.run` acceptance scenario. See
   `docs/05-sponge-de.md` §4.6.
+- 🚧 Phase 14 W8 everyday-workflow scenario: `run/sponge-de-workflow.run`
+  composes the proven W4-W7 pieces (sponge-de + tasklist +
+  clipboard + qtsettext harness) into a single base-sel4 boot and
+  drives the 7-step sequence end-to-end (boot → launch
+  terminal/textedit/calculator → real work → cross-component
+  clipboard → minimize/restore via tasklist → acpica S5
+  shutdown). Steps 1-4 pass end-to-end (the cross-component
+  clipboard proof is the bus observation in step 4 — U2 holds
+  because the `clipboard_qtsettext` harness and the workflow
+  probe are separate address spaces). Steps 5-7 are documented
+  but blocked by a layouter user_state timing race on the
+  heavier workflow stack (the W7 tasklist recipe works on the
+  standalone wm-tasks topology but the workflow's prior QMP
+  walks leave the cursor in the default domain; ps2 input queue
+  drops some rel events). Tracked in
+  `docs/evidence/phase14-w8-workflow-scenario.md` (issues A, B,
+  C; honest claims #1 + #2).
 
 Verified vct boot output (base-sel4 on QEMU):
 
