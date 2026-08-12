@@ -24,6 +24,12 @@ TasklistWidget::TasklistWidget(Theme::Theme const &theme, QWidget *parent)
 	QWidget(parent),
 	_panel_height { (int)theme.panel_height() }
 {
+	/* The panel's QHBoxLayout gives a plain QWidget with no size
+	 * policy a zero-width slot; the tasklist must claim width for
+	 * its entries or clicks can never land on it. */
+	setSizePolicy(QSizePolicy::MinimumExpanding, QSizePolicy::Fixed);
+	setMinimumWidth(TASK_W);
+
 	_apply_style(theme);
 	_apply_geometry(theme);
 }
@@ -62,6 +68,7 @@ void TasklistWidget::restyle(Theme::Theme const &theme)
 void TasklistWidget::applyEntries(QList<TaskInfo> entries)
 {
 	_entries = std::move(entries);
+	setMinimumWidth(qMax(1, _entries.size()) * TASK_W);
 	update();
 }
 
@@ -139,6 +146,8 @@ void TasklistWidget::mousePressEvent(QMouseEvent *event)
 {
 	int const x = event->x();
 	int const y = event->y();
+	Genode::log("tasklist_widget: press at local (", x, ",", y, ") entries=",
+	            (int)_entries.size(), " w=", width(), " h=", height());
 	if (y < TASK_PAD || y > height() - TASK_PAD) return;
 
 	int const idx = x / TASK_W;

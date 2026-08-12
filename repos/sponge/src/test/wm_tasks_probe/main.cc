@@ -102,7 +102,7 @@ struct Wm_tasks_probe
 	{
 		_result.update();
 		if (!_result.valid()) return Genode::String<32>();
-		Genode::Xml_node const r = _result.xml();
+		Genode::Node const r = _result.node();
 		if (!r.has_type("result")) return Genode::String<32>();
 		if (r.attribute_value("op",  Genode::String<32>()) != Genode::String<32>(op))  return Genode::String<32>();
 		if (r.attribute_value("pkg", Genode::String<128>()) != Genode::String<128>(pkg)) return Genode::String<32>();
@@ -130,10 +130,29 @@ struct Wm_tasks_probe
 		_window_layout_rom.update();
 		if (!_window_layout_rom.valid()) return g;
 
-		try {
-			Genode::Xml_node const root = _window_layout_rom.xml();
-			root.for_each_sub_node("boundary", [&](Genode::Xml_node const &boundary) {
-				boundary.for_each_sub_node("window", [&](Genode::Xml_node const &w) {
+		/* diagnostic: dump the raw window_layout payload on change */
+		static Genode::size_t last_len = 0;
+		{
+			char const *raw = _window_layout_rom.local_addr<char>();
+			Genode::size_t const cur = Genode::strlen(raw);
+			if (cur != last_len) {
+				last_len = cur;
+				char snippet[201];
+				Genode::size_t const n = cur < 200 ? cur : 200;
+				Genode::memcpy(snippet, raw, n);
+				snippet[n] = '\0';
+				for (char *c = snippet; *c; ++c)
+					if (*c == '\n') *c = '|';
+				Genode::log("wm-tasks-probe: window_layout raw(len=",
+				            cur, "): '",
+				            static_cast<char const *>(snippet), "'");
+			}
+		}
+
+		{
+			Genode::Node const root = _window_layout_rom.node();
+			root.for_each_sub_node("boundary", [&](Genode::Node const &boundary) {
+				boundary.for_each_sub_node("window", [&](Genode::Node const &w) {
 					if (g.valid) return;
 					Genode::String<256> const title =
 						w.attribute_value("title", Genode::String<256>());
@@ -158,7 +177,7 @@ struct Wm_tasks_probe
 					g.valid = true;
 				});
 			});
-		} catch (Genode::Xml_node::Invalid_syntax) { }
+		}
 		return g;
 	}
 
@@ -174,10 +193,10 @@ struct Wm_tasks_probe
 	{
 		_focus_request_rom.update();
 		if (!_focus_request_rom.valid()) return Genode::String<256>();
-		try {
-			Genode::Xml_node const root = _focus_request_rom.xml();
+		{
+			Genode::Node const root = _focus_request_rom.node();
 			return root.attribute_value("label", Genode::String<256>());
-		} catch (Genode::Xml_node::Invalid_syntax) { return Genode::String<256>(); }
+		}
 	}
 
 	Window_geom _rule_for(char const *label, bool *maximized = nullptr)
@@ -186,9 +205,9 @@ struct Wm_tasks_probe
 		_rules_rom.update();
 		if (!_rules_rom.valid()) return g;
 
-		try {
-			Genode::Xml_node const root = _rules_rom.xml();
-			root.for_each_sub_node("assign", [&](Genode::Xml_node const &a) {
+		{
+			Genode::Node const root = _rules_rom.node();
+			root.for_each_sub_node("assign", [&](Genode::Node const &a) {
 				Genode::String<256> const l =
 					a.attribute_value("label", Genode::String<256>());
 				if (l != Genode::String<256>(label)) return;
@@ -200,7 +219,7 @@ struct Wm_tasks_probe
 				if (maximized)
 					*maximized = a.attribute_value("maximized", false);
 			});
-		} catch (Genode::Xml_node::Invalid_syntax) { }
+		}
 		return g;
 	}
 
