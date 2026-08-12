@@ -72,6 +72,17 @@ namespace {
  * future paste-direction test (no control chars, all printable ASCII,
  * all lowercase). Mirrors the Phase 14 W5 evidence log's lowercase-
  * only convention (qmp.inc's char map).
+ *
+ * NOTE (Phase 14 W8): the workflow scenario reuses this harness as
+ * the cross-component writer (D14.2 closure). The original harness
+ * exits 30 s after setText to keep the upstream clipboard server's
+ * `_last_writer` alive long enough for the W5 probe's needle match.
+ * The W8 workflow takes longer (install + launch packages + type
+ * + paste) and needs the harness to stay alive through the paste
+ * step. The W8 run scenario sets `<config keep_alive_ms="600000"/>`
+ * (10 minutes) so the harness outlives the workflow. The default
+ * 30000 ms is preserved for the W5 sister scenarios — the only
+ * behavior change is the configurable timeout.
  */
 char const *SENTINEL = "sponge qt-settext sentinel phase 14";
 
@@ -101,6 +112,29 @@ struct Harness
 
 		Genode::Node const cfg = _config_rom.node();
 		return cfg.attribute_value("clipboard", false);
+	}
+
+	/*
+	 * Read <config keep_alive_ms="N"/> from the inline "config" ROM.
+	 * The grace window after setText must keep the harness alive
+	 * long enough for any reader (clipboard_probe in W5 / the W8
+	 * workflow_probe) to see the bus write before the harness exits
+	 * and the upstream clipboard server drops its `_last_writer`
+	 * registration (the harness's Reporter session closes on exit,
+	 * and the server's `read_content()` returns 0 the moment the
+	 * writer unregisters — see
+	 * docs/evidence/phase14-w5-qtwrite-failure.md §"timing"). The
+	 * default 30 000 ms matches the original W5 behavior; the W8
+	 * workflow scenario sets a longer value (10 minutes) so the
+	 * paste step finds the bus still populated.
+	 */
+	unsigned keep_alive_ms() const
+	{
+		if (!_config_rom.valid())
+			return 30000;
+
+		Genode::Node const cfg = _config_rom.node();
+		return cfg.attribute_value<unsigned>("keep_alive_ms", 30000);
 	}
 
 	void announce(char const *prefix) const
@@ -180,14 +214,16 @@ void Libc::Component::construct(Libc::Env &env)
 			 */
 			harness.announce("AFTER-setText");
 
+			unsigned const alive_ms = harness.keep_alive_ms();
 			Genode::log("clipboard_qtsettext: setText() returned, keeping "
-			            "Reporter session alive 30 s so the probe can read "
+			            "Reporter session alive ", alive_ms, " ms so the probe can read "
 			            "the bus before our exit cleans up the writer "
 			            "(the upstream server's read_content() returns 0 "
-			            "the moment the writer unregisters)");
+			            "the moment the writer unregisters; the W8 workflow "
+			            "scenario sets a long value via <config keep_alive_ms=\"N\"/>)");
 
-			QTimer::singleShot(30'000, [&] {
-				Genode::log("clipboard_qtsettext: 30 s grace expired, exiting "
+			QTimer::singleShot(alive_ms, [alive_ms, &env] {
+				Genode::log("clipboard_qtsettext: ", alive_ms, " ms grace expired, exiting "
 				            "with status 0 (probe should have already PASSed)");
 				env.parent().exit(0);
 			});
