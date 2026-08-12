@@ -51,7 +51,7 @@ class TasklistController : public QObject
 		/* Toggle maximized. */
 		void on_toggle_maximized(QString label);
 
-		void set_static_rules(QStringList static_assigns);
+		void set_static_rules(QString const &rules_xml);
 
 	private:
 
@@ -70,7 +70,7 @@ class TasklistController : public QObject
 
 		Sponge::Sponge_DE::TasklistWidget *_widget { nullptr };
 
-		QStringList _static_rules;
+		QString _static_rules_xml;
 
 		unsigned _focus_request_id { 0 };
 
@@ -121,6 +121,8 @@ class TasklistController : public QObject
 		void _publish_rules_for(QString const &label);
 
 		void _compose_rules(Genode::Xml_generator &g, QString const &target_label);
+
+		void _emit_static_rules(Genode::Xml_generator &g) const;
 
 		void _append_assign_for(Genode::Xml_generator &g, Window_state const &w) const;
 

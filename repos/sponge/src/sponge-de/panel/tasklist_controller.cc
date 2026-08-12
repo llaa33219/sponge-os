@@ -9,6 +9,7 @@
 #include "tasklist_widget.h"
 
 #include <base/log.h>
+#include <base/node.h>
 #include <util/string.h>
 
 #include <QMetaObject>
@@ -32,9 +33,9 @@ void TasklistController::attach_widget(Sponge::Sponge_DE::TasklistWidget *widget
 }
 
 
-void TasklistController::set_static_rules(QStringList static_rules)
+void TasklistController::set_static_rules(QString const &rules_xml)
 {
-	_static_rules = std::move(static_rules);
+	_static_rules_xml = rules_xml;
 }
 
 
@@ -307,17 +308,17 @@ void TasklistController::on_task_clicked(QString label)
 
 	if (st->minimized) {
 		/* Restore. */
-		_publish_rules_for(label);
-		_publish_focus_request(label);
 		st->minimized = false;
 		st->focused   = true;
+		_publish_rules_for(label);
+		_publish_focus_request(label);
 		Genode::log("tasklist_controller: restore ", label.toUtf8().constData(),
 		            " -> (", st->x, ",", st->y, ") ", st->w, "x", st->h);
 	} else {
 		/* Minimize (off-screen). */
-		_publish_rules_for(label);
 		st->minimized = true;
 		st->focused   = false;
+		_publish_rules_for(label);
 		Genode::log("tasklist_controller: minimize ", label.toUtf8().constData());
 	}
 
@@ -371,6 +372,8 @@ void TasklistController::_compose_rules(Genode::Xml_generator &g, QString const 
 			g.attribute("name", "screen");
 		});
 
+		_emit_static_rules(g);
+
 		for (auto const &w : _tracked) {
 			_append_assign_for(g, w);
 		}
@@ -386,6 +389,40 @@ void TasklistController::_compose_rules(Genode::Xml_generator &g, QString const 
 	});
 
 	(void)target_label;
+}
+
+
+void TasklistController::_emit_static_rules(Genode::Xml_generator &g) const
+{
+	if (_static_rules_xml.isEmpty())
+		return;
+
+	try {
+		QByteArray const bytes = _static_rules_xml.toUtf8();
+		Genode::Node const fragment(Genode::Const_byte_range_ptr(
+			bytes.constData(), Genode::size_t(bytes.size())));
+
+		auto emit_assign = [&] (Genode::Node const &asg) {
+			g.node("assign", [&] {
+				asg.for_each_attribute([&] (Genode::Node::Attribute const &attr) {
+					char value[256];
+					Genode::size_t const n =
+						attr.value.num_bytes < sizeof(value) - 1
+						? attr.value.num_bytes : sizeof(value) - 1;
+					Genode::memcpy(value, attr.value.start, n);
+					value[n] = '\0';
+					g.attribute(attr.name.string(), value);
+				});
+			});
+		};
+
+		if (fragment.has_type("assign"))
+			emit_assign(fragment);
+		else
+			fragment.for_each_sub_node("assign", emit_assign);
+	} catch (...) {
+		Genode::warning("tasklist: malformed tasklist_static_rules ignored");
+	}
 }
 
 
