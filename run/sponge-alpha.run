@@ -665,6 +665,7 @@ config
 
 + start sponge-de | caps: 1000 | ram: 128M
   + config | clipboard: yes
+    + tasklist | source: wm
     + theme | source: themed
     + launcher | source: pkgd
     + vfs
