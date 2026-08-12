@@ -587,9 +587,23 @@ if {[info procs qmp_disconnect] eq ""} {
 # click; qmp_click moves the pointer to (178, 14) and presses BTN_LEFT.
 #
 proc qmp_click_tasklist { chan } {
-	# Absolute usb-tablet click at the tasklist's first entry center
-	# (178, 14) — the proven Phase-12 W3b path (PS/2 relative motion
-	# is unreliable for precise widget hits on nitpicker).
+	# usb-tablet absolute click at the tasklist's first entry center
+	# (178, 14). The wm-tasks event_filter config includes a usb
+	# <transform><scale/></transform> that maps the tablet's
+	# 0..32767 device coordinates back to screen pixels, so the
+	# qmp_tablet_click land position equals the target pixel.
+	#
+	# The H5 hypothesis: a QEMU usb-tablet cold-start quirk — events
+	# are dropped until the guest has polled. Send an HMP mouse_move
+	# warm-up first to ensure the tablet reports a fresh HID state
+	# to usb_hid, then dispatch the real click.
+	qmp_hmp $chan "mouse_set 3"
+	qmp_hmp $chan "mouse_move 0 0"
+	after 50
+	qmp_hmp $chan "mouse_button 1"
+	after 50
+	qmp_hmp $chan "mouse_button 0"
+	after 200
 	qmp_tablet_click $chan 178 14
 }
 
