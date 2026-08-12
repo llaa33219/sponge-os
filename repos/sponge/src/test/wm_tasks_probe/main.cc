@@ -130,25 +130,6 @@ struct Wm_tasks_probe
 		_window_layout_rom.update();
 		if (!_window_layout_rom.valid()) return g;
 
-		/* diagnostic: dump the raw window_layout payload on change */
-		static Genode::size_t last_len = 0;
-		{
-			char const *raw = _window_layout_rom.local_addr<char>();
-			Genode::size_t const cur = Genode::strlen(raw);
-			if (cur != last_len) {
-				last_len = cur;
-				char snippet[201];
-				Genode::size_t const n = cur < 200 ? cur : 200;
-				Genode::memcpy(snippet, raw, n);
-				snippet[n] = '\0';
-				for (char *c = snippet; *c; ++c)
-					if (*c == '\n') *c = '|';
-				Genode::log("wm-tasks-probe: window_layout raw(len=",
-				            cur, "): '",
-				            static_cast<char const *>(snippet), "'");
-			}
-		}
-
 		{
 			Genode::Node const root = _window_layout_rom.node();
 			root.for_each_sub_node("boundary", [&](Genode::Node const &boundary) {
@@ -179,6 +160,26 @@ struct Wm_tasks_probe
 			});
 		}
 		return g;
+	}
+
+	bool _in_window_list(char const *needle)
+	{
+		_window_list_rom.update();
+		if (!_window_list_rom.valid()) return false;
+
+		bool found = false;
+		{
+			Genode::Node const root = _window_list_rom.node();
+			root.for_each_sub_node("window", [&](Genode::Node const &w) {
+				if (found) return;
+				Genode::String<256> const label =
+					w.attribute_value("label", Genode::String<256>());
+				if (Genode::strcmp(label.string(), needle,
+				                   Genode::strlen(needle)) == 0)
+					found = true;
+			});
+		}
+		return found;
 	}
 
 	bool _is_parked(char const *label)
@@ -283,6 +284,24 @@ struct Wm_tasks_probe
 		Genode::log("wm-tasks-probe: [step 3] window_layout: pkg_gui_demo at (",
 		            initial.x, ",", initial.y, ") ", initial.w, "x", initial.h,
 		            " [row 1: (init) -> Normal-Visible]");
+
+		/* Step 3b: the tasklist's identity source is window_list (it
+		 * lags window_layout). The run script clicks the tasklist on
+		 * the step-3 marker, so the marker must only print once the
+		 * window is also in window_list — otherwise the click hits an
+		 * empty tasklist. */
+		bool listed = false;
+		for (unsigned i = 0; i < 600; ++i) {
+			if (_in_window_list(GUI_LABEL)) { listed = true; break; }
+			_timer.msleep(100);
+		}
+		if (!listed) {
+			_fail("pkg_gui_demo never appeared in window_list (tasklist identity source)");
+			return;
+		}
+		/* settle: tasklist controller polls at 250ms + Qt queued delivery */
+		_timer.msleep(1000);
+		Genode::log("wm-tasks-probe: [step 3] pkg_gui_demo in window_list (tasklist entry live)");
 
 		/* Step 4: wait for the tasklist click to minimize the window. */
 		bool minimized = false;
