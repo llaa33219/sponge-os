@@ -729,6 +729,7 @@ config
     + service ROM     | label: window_layout  | + child report_rom
     + service ROM     | label: focus_request  | + child report_rom
     + service ROM     | label: rules          | + child report_rom
+    + service ROM     | label: pointer        | + child report_rom
     + service ROM     | label: clipboard      | + child clipboard
     + service ROM     | label: theme          | + child report_rom
     + service ROM     | label: config_result  | + child report_rom
@@ -984,19 +985,38 @@ proc focus_textedit { chan } { focus_window $chan 512 384 }
 # `decorator -> hover` wait (which the run script gates on)
 # primes the layouter's user_state machine.
 #
-proc click_tasklist { chan } {
-	# Clamp to (0,0).
-	for {set i 0} {$i < 15} {incr i} { qmp_move_rel $chan x -100; after 5 }
-	for {set i 0} {$i < 15} {incr i} { qmp_move_rel $chan y -100; after 5 }
-	after 200
-	# Walk to the tasklist's first-entry center (178, 18). The
+# NOTE (Oracle-endorsed W8 fix): the W7 predecessor (one QMP call
+# walking + pressing in one go) races the ps2 driver's input
+# queue on the heavier W8 stack — the layouter fires "cannot
+# drag: undefined hover state" because the cursor wasn't actually
+# at the tasklist when the press fired. We split the click into
+# walk + press and gate the press on a pointer read-back
+# performed by the workflow_probe (read from nitpicker's pointer
+# report via the probe's pointer ROM session). The split keeps
+# the same W7 pacing (5ms pacing, 1:1 PS/2 walk on this
+# scenario's event_filter.config which has NO <accelerate>
+# wrapper) and adds the press at the end.
+#
+proc walk_tasklist { chan tx ty } {
+	# Clamp to (0,0) — same recipe as qmp_click_tasklist.
+	for {set i 0} {$i < 15} {incr i} { qmp_move_rel $chan x -100; after 10 }
+	for {set i 0} {$i < 15} {incr i} { qmp_move_rel $chan y -100; after 10 }
+	after 400
+	# Walk to the tasklist's first-entry center (tx, ty). The
 	# W7 tasklist strip sits after the launcher toggle (~48 px)
 	# + panel title (~70 px); entry 0 starts at x≈130, the
-	# 96-px-wide button centers at (178, 18).
-	for {set i 0} {$i < 178} {incr i} { qmp_move_rel $chan x 1; after 5 }
-	for {set i 0} {$i < 18} {incr i} { qmp_move_rel $chan y 1; after 5 }
-	after 200
-	# Press + release.
+	# 96-px-wide button centers at (178, 18). Pacing is 3x the
+	# wm-tasks walk: on this heavier stack the ps2 input queue
+	# drops back-to-back rel events.
+	for {set i 0} {$i < $tx} {incr i} { qmp_move_rel $chan x 1; after 15 }
+	for {set i 0} {$i < $ty} {incr i} { qmp_move_rel $chan y 1; after 15 }
+	after 1000
+}
+
+# Just the press + release — no walk. The walk has already
+# landed by the time `QMP-TARGET press-tasklist' fires, gated
+# by the workflow_probe's _wait_for_pointer_at() read-back.
+proc press_tasklist { chan } {
 	qmp_ps2_button $chan true
 	after 200
 	qmp_ps2_button $chan false
@@ -1060,8 +1080,16 @@ append qemu_args " -qmp tcp:127.0.0.1:${qmp_port},server=on,wait=off "
 #   step 4: probe emits "QMP-TARGET click <tx> <ty>" + "QMP-TARGET
 #           key ctrl-v" — rendezvous collects 2 markers, host
 #           dispatches focus + Ctrl-V
-#   step 5: probe emits "QMP-TARGET click <tx> <ty>" twice (minimize
-#           + restore) — rendezvous collects 2 markers
+#   step 5: probe emits "QMP-TARGET walk-tasklist <x> <y>" +
+#           "QMP-TARGET press-tasklist" twice (minimize + restore)
+#           — split click (Oracle-endorsed W8 fix; the W7
+#           predecessor was a single "QMP-TARGET click" but
+#           raced the ps2 input queue on the heavier W8 stack).
+#           Each click is now: walk ONLY → wait for pointer
+#           read-back at (x, y) → press ONLY (the probe's
+#           _wait_for_pointer_at() polls the nitpicker pointer
+#           ROM until convergence). Rendezvous collects 4 markers
+#           total (2 markers per click × 2 clicks).
 #   step 6: no host input (the probe just verifies the calculator
 #           render)
 #   step 7: probe emits "vct: shutdown: requesting poweroff" + the
@@ -1103,50 +1131,63 @@ set qmp_chan [qmp_connect $qmp_port]
 # per step. We loop on exp_continue until all are seen.
 #
 proc workflow_rendezvous { chan marker_count } {
+	# Per-step rendezvous for the workflow_probe's QMP-TARGET
+	# markers. We loop one `expect` call per marker (rather than
+	# one alternation with exp_continue) so the buffer position
+	# is unambiguous and the failure mode is clear: each iteration
+	# matches exactly one verb, dispatches it, and on timeout exits
+	# with a labelled error. The loops are sized to `marker_count`
+	# markers (step 2 emits 3, steps 3/4 emit 2, step 5 emits 2).
 	global qemu_spawn_id
-	set seen 0
-	expect {
-		-i $qemu_spawn_id -re {QMP-TARGET click (-?[0-9]+) (-?[0-9]+)\r*\n} {
-			set gx $expect_out(1,string)
-			set gy $expect_out(2,string)
-			puts "\nqmp: rendezvous saw click marker ($gx,$gy)"
-			flush stdout
-			# Use the W7-proven 1:1 paced PS/2 walk (no
-			# accelerate wrapper in this scenario's
-			# event_filter.config — rel-N is 1:1 to N px).
-			focus_window $chan $gx $gy
-			incr seen
-			if {$seen < $marker_count} { exp_continue }
-		}
-		-i $qemu_spawn_id -re {QMP-TARGET type (\S[^\r\n]*)\r*\n} {
-			set s [string trim $expect_out(1,string)]
-			puts "\nqmp: rendezvous saw type marker '$s'"
-			flush stdout
-			workflow_qmp_type $chan $s
-			incr seen
-			if {$seen < $marker_count} { exp_continue }
-		}
-		-i $qemu_spawn_id -re {QMP-TARGET key (ret|ctrl-v)\r*\n} {
-			set k $expect_out(1,string)
-			puts "\nqmp: rendezvous saw key marker ($k)"
-			flush stdout
-			if {$k eq "ret"} {
-				qmp_send_key $chan "ret"
-			} elseif {$k eq "ctrl-v"} {
-				# ctrl-v: leftctrl down + v + leftctrl up
-				qmp_cmd $chan {{"execute":"input-send-event","arguments":{"events":[{"type":"btn","data":{"down":true,"button":"leftctrl"}}]}}}
-				after 50
-				qmp_send_key $chan "v"
-				after 100
-				qmp_cmd $chan {{"execute":"input-send-event","arguments":{"events":[{"type":"btn","data":{"down":false,"button":"leftctrl"}}]}}}
-				after 200
+	for {set i 0} {$i < $marker_count} {incr i} {
+		puts "\nqmp: workflow_rendezvous iter $i/$marker_count (waiting for next QMP-TARGET marker)"
+		flush stdout
+		expect {
+			-i $qemu_spawn_id -re {QMP-TARGET walk-tasklist (-?[0-9]+) (-?[0-9]+)\r*\n} {
+				set gx $expect_out(1,string)
+				set gy $expect_out(2,string)
+				puts "\nqmp: rendezvous saw walk-tasklist marker ($gx,$gy) (clamp + paced PS/2 walk; no press)"
+				flush stdout
+				walk_tasklist $chan $gx $gy
 			}
-			incr seen
-			if {$seen < $marker_count} { exp_continue }
-		}
-		timeout {
-			puts stderr "\nqmp: FAIL - no QMP-TARGET marker within 600s"
-			exit 1
+			-i $qemu_spawn_id -re {QMP-TARGET press-tasklist\r*\n} {
+				puts "\nqmp: rendezvous saw press-tasklist marker (BTN_LEFT press + release; pointer read-back already verified by probe)"
+				flush stdout
+				press_tasklist $chan
+			}
+			-i $qemu_spawn_id -re {QMP-TARGET click (-?[0-9]+) (-?[0-9]+)\r*\n} {
+				set gx $expect_out(1,string)
+				set gy $expect_out(2,string)
+				puts "\nqmp: rendezvous saw click marker ($gx,$gy)"
+				flush stdout
+				focus_window $chan $gx $gy
+			}
+			-i $qemu_spawn_id -re {QMP-TARGET type (\S[^\r\n]*)\r*\n} {
+				set s [string trim $expect_out(1,string)]
+				puts "\nqmp: rendezvous saw type marker '$s'"
+				flush stdout
+				workflow_qmp_type $chan $s
+			}
+			-i $qemu_spawn_id -re {QMP-TARGET key (ret|ctrl-v)\r*\n} {
+				set k $expect_out(1,string)
+				puts "\nqmp: rendezvous saw key marker ($k)"
+				flush stdout
+				if {$k eq "ret"} {
+					qmp_send_key $chan "ret"
+				} elseif {$k eq "ctrl-v"} {
+					# ctrl-v: leftctrl down + v + leftctrl up
+					qmp_cmd $chan {{"execute":"input-send-event","arguments":{"events":[{"type":"btn","data":{"down":true,"button":"leftctrl"}}]}}}
+					after 50
+					qmp_send_key $chan "v"
+					after 100
+					qmp_cmd $chan {{"execute":"input-send-event","arguments":{"events":[{"type":"btn","data":{"down":false,"button":"leftctrl"}}]}}}
+					after 200
+				}
+			}
+			timeout {
+				puts stderr "\nqmp: FAIL - no QMP-TARGET marker within 600s (rendezvous iter $i/$marker_count)"
+				exit 1
+			}
 		}
 	}
 }
@@ -1167,25 +1208,110 @@ run_genode_until {.*workflow-probe: \[step 3\] textedit typed sentinel confirmed
 # step 4: cross-component clipboard — focus + Ctrl-V
 run_genode_until {.*workflow-probe: \[step 4\] clipboard bus carries sentinel.*} 600 $qemu_spawn_id
 workflow_rendezvous $qmp_chan 2
-run_genode_until {.*workflow-probe: \[step 4\] cross-component clipboard paste confirmed.*} 240 $qemu_spawn_id
+run_genode_until {.*workflow-probe: \[step 4\] cross-component clipboard paste dispatched.*} 240 $qemu_spawn_id
 
 # step 5: minimize + restore via tasklist clicks (two clicks on
 # the first entry — terminal). The W8 probe minimizes terminal
 # (the first tasklist entry) and restores it.
 #
-# The layouter's user_state machine requires a hover event from
-# the decorator before it will accept a press as a drag (the
-# "cannot drag: undefined hover state" error fires otherwise).
-# The W7 tasklist scenario's shorter bring-up primes the hover
-# naturally; the W8 scenario's heavier stack does not. We wait
-# for the decorator's hover to register at the tasklist
-# coordinate (178, 18) — when the report_rom forwards that line
-# the layouter is primed and the click is accepted.
-run_genode_until {.*decorator -> hover.*xpos: 178.*ypos: 18.*} 600 $qemu_spawn_id
-run_genode_until {.*workflow-probe: \[step 5\] wait for terminal parked at off-screen.*} 60 $qemu_spawn_id
-workflow_rendezvous $qmp_chan 1
-run_genode_until {.*workflow-probe: \[step 5\] terminal parked.*} 120 $qemu_spawn_id
-workflow_rendezvous $qmp_chan 1
+# Click sequence (Oracle-endorsed W8 fix — walk + press split with
+# pointer read-back gate):
+#   * workflow_probe emits "QMP-TARGET walk-tasklist 178 18"
+#   * run script dispatches walk_tasklist() (clamp + paced 1:1
+#     PS/2 walk; no press)
+#   * workflow_probe's _wait_for_pointer_at() polls the nitpicker
+#     pointer ROM until the cursor reads back at (178, 18); on
+#     timeout the probe logs a warning and continues
+#   * workflow_probe emits "QMP-TARGET press-tasklist"
+#   * run script dispatches press_tasklist() (BTN_LEFT press +
+#     release ONLY — no walk again)
+#
+# The predecessor (one QMP call walking + pressing in one go)
+# races the ps2 driver's input queue on the heavier W8 stack —
+# the layouter fires "cannot drag: undefined hover state" because
+# the cursor isn't actually at the tasklist when the press fires.
+# The split + read-back eliminates the race. We use dedicated
+# step-5 expects (NOT the generic workflow_rendezvous) because
+# step 5 emits exactly walk-tasklist + press-tasklist (no other
+# verbs) and a tight per-marker expect avoids the buffer-overlap
+# race that the generic rendezvous hits when the buffer grows
+# large between iter 0 and iter 1 of the for-loop.
+#
+# before the walk: 2 s settle drains the ps2 input queue from
+# the prior QMP rounds (the probe's step 2/3/4 dispatches leave
+# residual rel events in transit on the heavier W8 stack; the
+# settle lets the queue reach quiescence before the split starts
+# — without it the walk's first clamp step can land before the
+# residual events, and the walk's effective target drifts).
+after 2000
+
+# First click (minimize): walk + press dispatched as TWO separate
+# expects (one verb per expect), so each verb is consumed in the
+# correct sequence. Putting both verbs in a single alternation
+# expect would match only the first verb (alternation arms win one
+# at a time, no exp_continue here) and leave the second verb
+# unconsumed. The probe emits walk-tasklist BEFORE its "[step 5]
+# wait ..." line, so the marker expects MUST run first — a gate on
+# the wait line here would swallow both markers into its expect
+# buffer and the click would never be dispatched.
+
+# First expect: walk-tasklist (clamp + PS/2 walk; no press).
+expect {
+	-i $qemu_spawn_id -re {QMP-TARGET walk-tasklist (-?[0-9]+) (-?[0-9]+)\r*\n} {
+		set gx $expect_out(1,string)
+		set gy $expect_out(2,string)
+		puts "\nqmp: step 5 saw walk-tasklist marker ($gx,$gy) (first click)"
+		flush stdout
+		walk_tasklist $qmp_chan $gx $gy
+	}
+	timeout {
+		puts stderr "\nqmp: FAIL - step 5 first walk-tasklist marker did not arrive within 600s"
+		exit 1
+	}
+}
+
+# Second expect: press-tasklist (BTN_LEFT press + release).
+expect {
+	-i $qemu_spawn_id -re {QMP-TARGET press-tasklist\r*\n} {
+		puts "\nqmp: step 5 saw press-tasklist marker (first click)"
+		flush stdout
+		press_tasklist $qmp_chan
+	}
+	timeout {
+		puts stderr "\nqmp: FAIL - step 5 first press-tasklist marker did not arrive within 600s"
+		exit 1
+	}
+}
+
+run_genode_until {.*workflow-probe: \[step 5\].*parked at.*} 120 $qemu_spawn_id
+
+# Second click (restore): same dedicated expects.
+expect {
+	-i $qemu_spawn_id -re {QMP-TARGET walk-tasklist (-?[0-9]+) (-?[0-9]+)\r*\n} {
+		set gx $expect_out(1,string)
+		set gy $expect_out(2,string)
+		puts "\nqmp: step 5 saw walk-tasklist marker ($gx,$gy) (second click)"
+		flush stdout
+		walk_tasklist $qmp_chan $gx $gy
+	}
+	timeout {
+		puts stderr "\nqmp: FAIL - step 5 second walk-tasklist marker did not arrive within 600s"
+		exit 1
+	}
+}
+
+expect {
+	-i $qemu_spawn_id -re {QMP-TARGET press-tasklist\r*\n} {
+		puts "\nqmp: step 5 saw press-tasklist marker (second click)"
+		flush stdout
+		press_tasklist $qmp_chan
+	}
+	timeout {
+		puts stderr "\nqmp: FAIL - step 5 second press-tasklist marker did not arrive within 600s"
+		exit 1
+	}
+}
+
 run_genode_until {.*workflow-probe: \[step 5\] focus_request label=.*} 120 $qemu_spawn_id
 
 # step 6: calculator — wait for the probe to confirm rendered

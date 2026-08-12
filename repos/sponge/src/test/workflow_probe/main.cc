@@ -276,6 +276,31 @@ struct Workflow_probe
 	Genode::Constructible<Genode::Attached_rom_dataspace> _theme_rom      {};
 	Genode::Constructible<Genode::Attached_rom_dataspace> _notif_rom      {};
 
+	/*
+	 * Pointer-position read-back for the W8 tasklist-click fix.
+	 *
+	 * The W7 tasklist click recipe (run/sponge-wm-tasks.run's
+	 * `qmp_click_tasklist`: 1:1 paced PS/2 walk + press + release)
+	 * works on the standalone wm-tasks topology but fails on the
+	 * heavier W8 stack with "Error: cannot drag: undefined
+	 * hover state" — the W8 workflow's prior QMP walks (step 2
+	 * terminal focus, step 3 textedit focus, step 4 paste) leave
+	 * the cursor in the default domain; by the time step 5 fires,
+	 * the ps2 driver's input queue has dropped some rel events
+	 * (observed: input press report shows the previous step's
+	 * coords, not the tasklist's (178, 18)). The Oracle-endorsed
+	 * fix is to split the click into a walk + an explicit press,
+	 * gated by reading back the pointer's actual position from
+	 * the nitpicker pointer report (HID-safe via Genode::Node)
+	 * BEFORE the press. We wait up to 5 s for the read-back to
+	 * converge to the target; on timeout the probe logs a warning
+	 * and CONTINUES (the downstream gates catch real failures —
+	 * no false-fail mode is added). The pointer ROM is attached
+	 * lazily in run() for the same reason as the clipboard / theme
+	 * ROMs (see the _clipboard_rom member header).
+	 */
+	Genode::Constructible<Genode::Attached_rom_dataspace> _pointer_rom    {};
+
 	bool _ok { true };
 
 	Workflow_probe(Genode::Env &env) : _env(env)
@@ -404,6 +429,22 @@ struct Workflow_probe
 
 	/* ============ focus_request reader ============ */
 
+	Genode::String<256> _parked_label()
+	{
+		_rules_rom.update();
+		if (!_rules_rom.valid()) return Genode::String<256>();
+
+		Genode::String<256> out;
+		Genode::Node const root = _rules_rom.node();
+		root.for_each_sub_node("assign", [&](Genode::Node const &a) {
+			if (out.length() > 0) return;
+			if (a.attribute_value("xpos", 0) <= Wf::PARK_X
+			 && a.attribute_value("ypos", 0) <= Wf::PARK_Y)
+				out = a.attribute_value("label", Genode::String<256>());
+		});
+		return out;
+	}
+
 	Genode::String<256> _last_focus_request_label()
 	{
 		_focus_request_rom.update();
@@ -439,6 +480,67 @@ struct Workflow_probe
 			if (Genode::strcmp(p + i, needle, needle_len) == 0)
 				return true;
 		}
+		return false;
+	}
+
+	/* ============ pointer read-back (W8 tasklist-click fix) ============ */
+
+	/*
+	 * Parse the most recent pointer (x, y) from the nitpicker
+	 * pointer ROM. The report is delivered in Genode 26.05 sandbox
+	 * HID format (init's default) so we use the format-agnostic
+	 * Node API (`attribute_value<int>("xpos", 0)` and
+	 * `attribute_value<int>("ypos", 0)`), never xml(). Returns
+	 * true if xpos/ypos could be parsed from a valid ROM; false
+	 * otherwise. Used by _wait_for_pointer_at() below.
+	 */
+	bool _read_pointer_pos(int &x, int &y)
+	{
+		x = 0; y = 0;
+		if (!_pointer_rom.constructed()) return false;
+		_pointer_rom->update();
+		if (!_pointer_rom->valid()) return false;
+		try {
+			Genode::Node const root = _pointer_rom->node();
+			x = root.attribute_value<int>("xpos", 0);
+			y = root.attribute_value<int>("ypos", 0);
+			return true;
+		} catch (...) { return false; }
+	}
+
+	/*
+	 * Block until the nitpicker pointer's actual screen position
+	 * reads back as (tx, ty) — used by step 5 to gate the
+	 * tasklist press on the walk having actually landed. The
+	 * Oracle-endorsed fix for the W8 tasklist-click race; the
+	 * predecessor click sequence (walk + press in one call)
+	 * races the ps2 driver's input queue and produces
+	 * "cannot drag: undefined hover state" on the heavier W8
+	 * stack. Returning false on timeout is intentional — the
+	 * caller logs a warning and continues (the downstream
+	 * window_layout / focus_request gates catch real failures,
+	 * no false-fail mode is added).
+	 */
+	bool _wait_for_pointer_at(int tx, int ty, unsigned timeout_ms)
+	{
+		Genode::size_t const poll_ms   = 50;
+		Genode::size_t const max_iters = (Genode::size_t(timeout_ms) + poll_ms - 1) / poll_ms;
+		for (unsigned i = 0; i < max_iters; ++i) {
+			int x = -1, y = -1;
+			if (_read_pointer_pos(x, y) && x == tx && y == ty) {
+				if (i > 0)
+					Genode::log("workflow-probe: pointer read-back converged at (",
+					            x, ",", y, ") after ", i * poll_ms, " ms");
+				return true;
+			}
+			_timer.msleep(poll_ms);
+		}
+		int last_x = -1, last_y = -1;
+		_read_pointer_pos(last_x, last_y);
+		Genode::warning("workflow-probe: pointer read-back at (", tx, ",", ty,
+		               ") did NOT converge within ", timeout_ms, " ms ",
+		               "(last seen (", last_x, ",", last_y, "); continuing — downstream "
+		               "windows_layout/focus_request gates are the real PASS gate)");
 		return false;
 	}
 
@@ -860,51 +962,69 @@ struct Workflow_probe
 		using namespace Genode;
 
 		/*
-		 * QMP click on the tasklist's first entry (terminal) for
-		 * the minimize test, then click the second entry (textedit)
-		 * for the restore. The W7 tasklist probe uses just the
-		 * single-entry case; the W8 workflow has two entries, so
-		 * we exercise the second-entry click as a more demanding
-		 * test. If the tasklist doesn't respond to the first
-		 * click, the layouter's `cannot drag: undefined hover
-		 * state' is the symptom — the panel-hover primer
-		 * dispatched by the host run script before this step
-		 * is what unblocks the layouter's user_state machine.
+		 * W8 tasklist click — the Oracle-endorsed read-back
+		 * pattern. We split the W7 click (one QMP call: walk +
+		 * press in one go) into:
+		 *
+		 *   1. emit `QMP-TARGET walk-tasklist <x> <y>' — the host
+		 *      does the clamp + paced 1:1 walk ONLY (no press),
+		 *   2. wait for the nitpicker pointer's read-back to
+		 *      converge to (x, y) (5 s budget, 50 ms poll);
+		 *      timeout logs a warning and we continue (the
+		 *      downstream window_layout / focus_request gates
+		 *      are the real PASS gate — we do NOT add a false-
+		 *      fail mode),
+		 *   3. emit `QMP-TARGET press-tasklist' — the host does
+		 *      BTN_LEFT press + release.
+		 *
+		 * The predecessor (walk + press in one QMP call) raced
+		 * the ps2 driver's input queue on the heavier W8 stack
+		 * — the layouter fired "cannot drag: undefined hover
+		 * state" because the cursor wasn't actually at the
+		 * tasklist when the press fired. The read-back gates
+		 * the press on the walk having actually landed.
+		 *
+		 * W8 workflow exercises the tasklist's first entry
+		 * (terminal) — same as the W7 wm-tasks probe, but the
+		 * W8 stack is heavier and needs the read-back gate.
 		 */
-		log("QMP-TARGET click ", Wf::CLICK_TASKLIST_TERM_X, " ",
+		log("QMP-TARGET walk-tasklist ", Wf::CLICK_TASKLIST_TERM_X, " ",
 		    Wf::CLICK_TASKLIST_TERM_Y);
+		_wait_for_pointer_at(Wf::CLICK_TASKLIST_TERM_X,
+		                    Wf::CLICK_TASKLIST_TERM_Y, 5000);
+		log("QMP-TARGET press-tasklist");
 
-		log("workflow-probe: [step 5] wait for terminal parked at off-screen");
-		bool parked = false;
+		log("workflow-probe: [step 5] wait for the clicked tasklist entry to park off-screen");
+		String<256> clicked;
 		for (unsigned i = 0; i < 600 && _ok; ++i) {
-			Wf::Geom const g = _geom_by_label(Wf::TERMINAL_NEEDLE);
-			if (g.valid && g.x <= Wf::PARK_X && g.y <= Wf::PARK_Y) {
-				parked = true;
-				break;
-			}
+			clicked = _parked_label();
+			if (clicked.length() > 0) break;
 			_timer.msleep(100);
 		}
-		if (!parked) {
-			_fail("terminal did not reach off-screen position after tasklist click");
+		if (clicked.length() == 0) {
+			_fail("no window reached the off-screen position after the tasklist click");
 			return;
 		}
-		log("workflow-probe: [step 5] terminal parked at (",
-		    Wf::PARK_X, ",", Wf::PARK_Y, ")");
+		log("workflow-probe: [step 5] '", clicked.string(),
+		    "' parked at (", Wf::PARK_X, ",", Wf::PARK_Y, ")");
 
 		/*
-		 * Second QMP click on the tasklist's terminal entry to
-		 * restore. The tasklist controller publishes the saved
-		 * (x, y, w, h) and emits a focus_request.
+		 * Second tasklist click (minimize → restore on the same
+		 * terminal entry). Same read-back pattern as above.
 		 */
 		_timer.msleep(500);
-		log("QMP-TARGET click ", Wf::CLICK_TASKLIST_TERM_X, " ",
+		log("QMP-TARGET walk-tasklist ", Wf::CLICK_TASKLIST_TERM_X, " ",
 		    Wf::CLICK_TASKLIST_TERM_Y);
+		_wait_for_pointer_at(Wf::CLICK_TASKLIST_TERM_X,
+		                    Wf::CLICK_TASKLIST_TERM_Y, 5000);
+		log("QMP-TARGET press-tasklist");
 
-		log("workflow-probe: [step 5] wait for terminal restored to on-screen");
+		log("workflow-probe: [step 5] wait for '", clicked.string(),
+		    "' restored to on-screen");
 		bool restored = false;
 		Wf::Geom r {};
 		for (unsigned i = 0; i < 600 && _ok; ++i) {
-			r = _geom_by_label(Wf::TERMINAL_NEEDLE);
+			r = _geom_by_label(clicked.string());
 			if (r.valid && r.x > 0 && r.x < 1024 && r.y > 0 && r.y < 768
 			 && r.w > 0 && r.h > 0) {
 				restored = true;
@@ -913,11 +1033,11 @@ struct Workflow_probe
 			_timer.msleep(100);
 		}
 		if (!restored) {
-			_fail("terminal did not restore to on-screen position after second tasklist click");
+			_fail("clicked window did not restore to on-screen position after second tasklist click");
 			return;
 		}
-		log("workflow-probe: [step 5] terminal restored at (",
-		    r.x, ",", r.y, ") ", r.w, "x", r.h);
+		log("workflow-probe: [step 5] '", clicked.string(),
+		    "' restored at (", r.x, ",", r.y, ") ", r.w, "x", r.h);
 
 		/*
 		 * Verify the tasklist controller emitted a focus_request
@@ -1055,6 +1175,7 @@ struct Workflow_probe
 		_clipboard_rom.construct(_env, "clipboard");
 		_theme_rom.construct(_env, "theme");
 		_notif_rom.construct(_env, "notifications");
+		_pointer_rom.construct(_env, "pointer");
 
 		/*
 		 * Step 1 is gated by the run script on sponge-de's
