@@ -35,7 +35,8 @@
 #                     window_layout/window_list/focus_request/rules
 #                     observation, emits wm-tasks-probe: PASS)
 #
-# State machine (driven by QMP clicks on the tasklist button):
+# State machine (driven by QMP clicks on the tasklist button + the
+# decorator's closer):
 #
 #   row 1: (init) -> Normal-Visible
 #       install + launch pkg_gui_demo; window_layout shows the
@@ -48,15 +49,30 @@
 #       QMP click on the tasklist button again; the controller
 #       writes the saved (x, y, w, h) and emits focus_request;
 #       window_layout shows the restored position.
-#   row 6: Normal-Visible-Focused -> Maximized
-#       (read the rules ROM for maximized="yes" — covered by the
-#       initial pkg_gui_demo placement under the panel's
-#       maximize-on-double-click path; the W7 probe does not
-#       exercise the maximizer toggle directly because the
-#       decorator's maximizer is the Phase 11 regression path.)
-#   row 8: Normal-Visible-Focused -> (destroyed)
-#       (the closer button is the Phase 11 closer regression path;
-#       the W7 probe does not exercise the closer directly.)
+#   row 8 / 9 / 10 / 11: Visible(-Focused|Maximized|Minimized) -> (destroyed)
+#       QMP click on the decorator's closer button — the rightmost
+#       title-bar control of the motif-decorated pkg_gui_demo.
+#       The closer click is dispatched BEFORE the maximize toggle
+#       on purpose: after the toggle, the window's outer rect grows
+#       to (0, 0, 1024, 768) and the title bar (y=4..20) sits
+#       inside the panel layer (y=0..28), making the closer at
+#       pixel (1012, 12) unreachable from a host-driven PS/2 click
+#       (the panel absorbs the click). Driving the closer while the
+#       window is still at (50, 320, 320, 240) — closer rect
+#       (354, 304, 370, 320), center (362, 312) — keeps it under
+#       the panel's y range. The run script then re-launches
+#       pkg_gui_demo for the maximize-toggle coverage below.
+#   row 6 / row 7: Normal-Visible-Focused <-> Maximized
+#       QMP double-click on the tasklist button — the tasklist
+#       widget's mouseDoubleClickEvent emits task_toggle_maximized,
+#       the controller flips st->maximized and publishes rules
+#       with maximized="yes" / "no". The first double-click covers
+#       row 6 (Visible -> Maximized); the second covers row 7
+#       (Maximized -> Normal-Visible, focus preserved across the
+#       toggle). After the toggle the window sits at the maximized
+#       geometry (4, 20, 1016, 744); the closer is unreachable
+#       there but the probe has already covered rows 8..11 before
+#       the re-launch.
 #
 # The run script dispatches one QMP click per transition (steps
 # click 1 and click 2 below). The probe polls window_layout /
@@ -65,15 +81,19 @@
 # === Gates ===
 #
 #   1. [fb] run_genode_until {.*\[init -> drivers -> fb\] using 1024x768.*} 90
-#   2. [usb_hid] run_genode_until {.*Connected device.* QEMU USB Tablet.*POINTER.*} 90
-#   3. [probe install+launch] run_genode_until {.*wm-tasks-probe: \[step 2\].*} 600
-#   4. [click 1] qmp_connect + qmp_exec_target dispatches the click
-#      on the tasklist button (compute pixel coords from the
-#      panel layout).
-#   5. [minimize] run_genode_until {.*wm-tasks-probe: \[step 4\].*} 60
-#   6. [click 2] qmp_exec_target dispatches the second click.
-#   7. [restore] run_genode_until {.*wm-tasks-probe: \[step 5\].*} 60
-#   8. [PASS] run_genode_until {.*wm-tasks-probe: PASS.*} 60
+#   2. [probe in window_list] run_genode_until {.*wm-tasks-probe: \[step 3\] pkg_gui_demo in window_list.*} 600
+#   3. [click 1 - minimize]       qmp_click_tasklist;         wait for [step 4] 120
+#   4. [click 2 - restore]        qmp_click_tasklist;         wait for [step 6] 120
+#      (steps 5/6 + the focus-after-restore verification log fire in
+#      the same instant; gate on step 6 to interleave the next QMP
+#      action with the closer click).
+#   5. [closer click - destroy]   qmp_click_decor_closer;     wait for [step 7] 120
+#      (the closer click is dispatched while the window is still at
+#      the non-maximized position (50, 320, 320, 240); closer pixel
+#      (362, 312) is below the panel layer and clickable).
+#   6. [re-launch wait]           wait for [step 9] (probe re-launches + waits for geometry)
+#   7. [double-click 1 - maximize] qmp_doubleclick_tasklist; wait for [step 10] 120
+#   8. [double-click 2 - unmaximize] qmp_doubleclick_tasklist; wait for [step 11] 120
 #
 # Final gate: "wm-tasks-probe: PASS" + "Run script execution
 # successful.".
@@ -369,8 +389,8 @@ config
 + start decorator | caps: 350 | ram: 32M
   + config
     + controls
-      + maximizer
       + title
+      + closer
     + default-policy
   + route
     + service ROM    | label: window_layout | + child report_rom
@@ -608,6 +628,96 @@ proc qmp_click_tasklist { chan } {
 }
 
 #
+# QMP double-click at the same (178, 18) target as qmp_click_tasklist.
+# Same 1:1 paced PS/2 walk; the double-click is two press/release pairs
+# separated by < Qt's doubleClickInterval (~400 ms). Qt recognizes
+# the pattern and emits mouseDoubleClickEvent instead of a second
+# mousePressEvent, which is what TasklistWidget needs to fire the
+# task_toggle_maximized signal (TasklistController::on_toggle_maximized
+# publishes the rules with maximized="yes"/"no").
+#
+# Note: the FIRST press also emits task_clicked (Qt ALWAYS fires
+# mousePressEvent for the first click of a double-click). So this
+# proc drives the chain Visible -> Minimized -> Maximized in one
+# double-click — the controller ends up writing the visible-tasklist
+# geometry into the rules, with maximized="yes", because the
+# recompute_tracked path restores st->x/st->y from the last on-screen
+# geometry when a window is parked. The probe checks the FINAL
+# rules state after a settle delay, so the intermediate flicker
+# does not matter.
+#
+proc qmp_doubleclick_tasklist { chan } {
+	# Clamp to (0,0) + walk to (178, 18) — identical to the single-
+	# click walk.
+	for {set i 0} {$i < 15} {incr i} { qmp_move_rel $chan x -100; after 5 }
+	for {set i 0} {$i < 15} {incr i} { qmp_move_rel $chan y -100; after 5 }
+	after 200
+	for {set i 0} {$i < 178} {incr i} { qmp_move_rel $chan x 1; after 5 }
+	for {set i 0} {$i < 18} {incr i} { qmp_move_rel $chan y 1; after 5 }
+	after 200
+
+	# First press/release.
+	qmp_ps2_button $chan true
+	after 100
+	qmp_ps2_button $chan false
+	# Inter-click delay must stay inside Qt's default
+	# doubleClickInterval (400 ms). 150 ms gives the queued events
+	# time to settle in nitpicker / sponge-de.
+	after 150
+
+	# Second press/release (Qt recognizes as double-click).
+	qmp_ps2_button $chan true
+	after 100
+	qmp_ps2_button $chan false
+	after 200
+}
+
+#
+# QMP click on the decorator's CLOSER button.
+#
+# The motif decorator (genode/repos/gems/src/app/decorator/) has
+# fixed geometry:
+#   _border_size = 4, _title_height = 16, _icon_size = {16, 16}
+#   border.top = _border_size + _title_height = 20
+#   border.{bottom,left,right} = _border_size = 4
+# (See genode/repos/gems/src/app/decorator/window.h:115-118.)
+#
+# pkg_gui_demo content position at the time of the closer click is
+# (50, 320, 320, 240) — the run script dispatches the closer BEFORE
+# the maximize toggle on purpose (see the state-machine table at
+# the top of the file). The non-maximized position keeps the title
+# bar BELOW the panel layer (y=0..28): title-bar inner rect is at
+# y=304..320. y=312 is outside the panel layer, so the closer pixel
+# is reachable from a host-driven PS/2 click.
+#
+# Outer rect (non-maximized window including decorator border + title):
+#   (50-4, 320-20) .. (50+320+4, 320+240+4) = (46, 300) .. (374, 564)
+# Title bar (controls_rect, inside the border):
+#   (50, 304) .. (370, 320), height = _title_height = 16
+# Right-side controls are drawn from right to left starting at
+# (controls_rect.p1.x + controls_rect.w - _icon_size.w,
+#  controls_rect.p1.y). With the controls block
+# <controls><title/><closer/></controls> (title first, closer last),
+# the closer is the rightmost control:
+#   rect (354, 304) .. (370, 320), center (362, 312).
+#
+proc qmp_click_decor_closer { chan } {
+	set tx 362
+	set ty 312
+	# Clamp to (0,0) + walk to (tx, ty) — same 1:1 paced PS/2 walk.
+	for {set i 0} {$i < 15} {incr i} { qmp_move_rel $chan x -100; after 5 }
+	for {set i 0} {$i < 15} {incr i} { qmp_move_rel $chan y -100; after 5 }
+	after 200
+	for {set i 0} {$i < $tx} {incr i} { qmp_move_rel $chan x 1; after 5 }
+	for {set i 0} {$i < $ty} {incr i} { qmp_move_rel $chan y 1; after 5 }
+	after 200
+	qmp_ps2_button $chan true
+	after 200
+	qmp_ps2_button $chan false
+	after 100
+}
+
+#
 # QEMU: -nographic for headless, -m 2G for Qt6/Mesa + pkg_runtime's
 # 256M allocation.
 #
@@ -620,24 +730,49 @@ append qemu_args " -qmp tcp:127.0.0.1:${qmp_port},server=on,wait=off "
 #
 # Sequence:
 #   1. wait for fb + usb_hid (existing pattern)
-#   2. wait for the probe to install + launch pkg_gui_demo
-#   3. wait for the probe to find the window in window_layout
-#   4. QMP click 1 on the tasklist button (minimize)
-#   5. wait for the probe to log [step 4] (minimize verified)
-#   6. QMP click 2 on the tasklist button (restore)
-#   7. wait for [step 5] (restore verified)
-#   8. wait for wm-tasks-probe: PASS
+#   2. wait for the probe to find pkg_gui_demo in window_list
+#   3. QMP click 1 on the tasklist button (minimize) — row 3
+#   4. wait for the probe to log [step 4] (minimize verified)
+#   5. QMP click 2 on the tasklist button (restore) — row 5
+#   6. wait for [step 6] (restore + focus-after-restore verified)
+#   7. QMP click on the decorator's closer button (destroy) — rows 8..11
+#      (window is at (50, 320, 320, 240); closer at (362, 312))
+#   8. wait for [step 7] (window vanished from window_list)
+#   9. wait for [step 9] (probe re-launched + new window at initial position)
+#  10. QMP double-click 1 on the tasklist button (maximize) — row 6
+#  11. wait for [step 10] (maximized="yes" in rules)
+#  12. QMP double-click 2 on the tasklist button (unmaximize) — row 7
+#  13. wait for [step 11] (maximized="no" in rules)
+#  14. wait for wm-tasks-probe: PASS
 #
 run_genode_until {.*\[init -> drivers -> fb\] using 1024x768.*} 90
 global qemu_spawn_id
 run_genode_until {.*wm-tasks-probe: \[step 3\] pkg_gui_demo in window_list.*} 600 $qemu_spawn_id
 
 set qmp_chan [qmp_connect $qmp_port]
+
+# row 3: Visible-Focused -> Minimized
 qmp_click_tasklist $qmp_chan
 run_genode_until {.*wm-tasks-probe: \[step 4\].*} 120 $qemu_spawn_id
+
+# row 5: Minimized -> Visible-Focused (and step 6 focus-after-restore)
 qmp_click_tasklist $qmp_chan
-# Gate directly on PASS: steps 5-6 and PASS fire in the same instant,
-# and an intermediate gate would swallow the PASS line into the same
-# expect chunk (the probe itself fails loudly if restore/verify break).
+run_genode_until {.*wm-tasks-probe: \[step 6\].*} 120 $qemu_spawn_id
+
+# rows 8 / 9 / 10 / 11: any state -> (destroyed) via the decorator's closer.
+# Window is still at (50, 320, 320, 240); closer at (362, 312) is below
+# the panel layer's y=0..28 and reachable. The probe re-launches
+# pkg_gui_demo for the maximize-toggle coverage below.
+qmp_click_decor_closer $qmp_chan
+run_genode_until {.*wm-tasks-probe: \[step 7\].*} 120 $qemu_spawn_id
+run_genode_until {.*wm-tasks-probe: \[step 9\].*} 600 $qemu_spawn_id
+
+# row 6 / row 7: Visible <-> Maximized (double-click toggle)
+qmp_doubleclick_tasklist $qmp_chan
+run_genode_until {.*wm-tasks-probe: \[step 10\].*} 120 $qemu_spawn_id
+qmp_doubleclick_tasklist $qmp_chan
+run_genode_until {.*wm-tasks-probe: \[step 11\].*} 120 $qemu_spawn_id
+
 run_genode_until {.*wm-tasks-probe: PASS.*} 120 $qemu_spawn_id
+
 qmp_disconnect $qmp_chan
