@@ -146,8 +146,6 @@ void TasklistWidget::mousePressEvent(QMouseEvent *event)
 {
 	int const x = event->x();
 	int const y = event->y();
-	Genode::log("tasklist_widget: press at local (", x, ",", y, ") entries=",
-	            (int)_entries.size(), " w=", width(), " h=", height());
 	if (y < TASK_PAD || y > height() - TASK_PAD) return;
 
 	int const idx = x / TASK_W;

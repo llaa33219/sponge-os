@@ -141,11 +141,27 @@ void Libc::Component::construct(Libc::Env &env)
 				});
 
 			if (tasklist_enabled) {
-				Genode::String<512> const static_rules =
-					config.node().attribute_value("tasklist_static_rules",
-					                              Genode::String<512>());
-				if (static_rules.valid())
-					tasklist_ctrl.set_static_rules(static_rules.string());
+				config.node().with_optional_sub_node("tasklist_static_rules",
+					[&] (Genode::Node const &rules) {
+						QString fragment;
+						rules.for_each_sub_node("assign",
+							[&] (Genode::Node const &a) {
+								fragment += QStringLiteral("<assign");
+								a.for_each_attribute(
+									[&] (Genode::Node::Attribute const &attr) {
+										QString const value = QString::fromUtf8(
+											attr.value.start, (qsizetype)attr.value.num_bytes);
+										fragment += QStringLiteral(" ");
+										fragment += attr.name.string();
+										fragment += QStringLiteral("=\"");
+										fragment += value;
+										fragment += QStringLiteral("\"");
+									});
+								fragment += QStringLiteral("/>");
+							});
+						if (!fragment.isEmpty())
+							tasklist_ctrl.set_static_rules(fragment);
+					});
 			}
 		}
 
