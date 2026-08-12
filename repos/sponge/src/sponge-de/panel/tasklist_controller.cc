@@ -30,6 +30,21 @@ void TasklistController::attach_widget(Sponge::Sponge_DE::TasklistWidget *widget
 	_lazy_open();
 	if (_rules_reporter.constructed())
 		_publish_rules_for(QString());
+
+	/*
+	 * Bootstrap the initial window state. The ROM signal handlers are
+	 * edge-triggered and miss the initial data when the ROMs are
+	 * already at their current version. The periodic poll below is
+	 * the reliable fallback.
+	 */
+	applyUpdates();
+
+	if (!_poll_timer) {
+		_poll_timer = new QTimer(this);
+		_poll_timer->setInterval(50);
+		connect(_poll_timer, &QTimer::timeout, this, &TasklistController::applyUpdates);
+		_poll_timer->start();
+	}
 }
 
 
@@ -189,76 +204,82 @@ void TasklistController::_recompute_tracked()
 	if (_window_layout_rom.constructed())
 		_window_layout_rom->update();
 
+	/*
+	 * window_layout is the primary source of windows (not the wm's
+	 * window_list). The wm only adds a view to its window_list report
+	 * after wm->geometry() is called; a view whose geometry is still
+	 * pending is absent from window_list but already present in
+	 * window_layout. Using window_layout ensures the tasklist shows
+	 * every visible view.
+	 *
+	 * The ROM content is in Genode's HID format (since Genode 26.05);
+	 * parsed with the format-agnostic Genode::Node API.
+	 */
 	QList<Window_state> new_tracked;
-	if (_window_list_rom.constructed() && _window_list_rom->valid()) {
-		try {
-			Genode::Xml_node const root = _window_list_rom->xml();
-			root.for_each_sub_node("window", [&](Genode::Xml_node const &n) {
-				Genode::String<256> const label =
-					n.attribute_value("label", Genode::String<256>());
-				if (label.length() == 0) return;
-
-				Window_state st;
-				st.label = QString::fromUtf8(label.string());
-				st.w     = n.attribute_value("width",  0u);
-				st.h     = n.attribute_value("height", 0u);
-				st.has_alpha  = n.attribute_value("has_alpha",  false);
-				st.hidden     = n.attribute_value("hidden",     false);
-				st.resizeable = n.attribute_value("resizeable", true);
-
-				for (auto const &prev : _tracked) {
-					if (prev.label == st.label) {
-						st.x              = prev.x;
-						st.y              = prev.y;
-						st.focused        = prev.focused;
-						st.minimized      = prev.minimized;
-						st.maximized      = prev.maximized;
-						st.geometry_known = prev.geometry_known;
-						break;
-					}
-				}
-
-				new_tracked.append(st);
-			});
-		} catch (Genode::Xml_node::Invalid_syntax) {
-			Genode::warning("tasklist_controller: window_list XML invalid");
-		}
-	}
-
 	if (_window_layout_rom.constructed() && _window_layout_rom->valid()) {
 		try {
-			Genode::Xml_node const root = _window_layout_rom->xml();
-			root.for_each_sub_node("boundary", [&](Genode::Xml_node const &boundary) {
-				boundary.for_each_sub_node("window", [&](Genode::Xml_node const &w) {
+			Genode::Node const root = _window_layout_rom->node();
+			root.for_each_sub_node("boundary", [&](Genode::Node const &boundary) {
+				boundary.for_each_sub_node("window", [&](Genode::Node const &w) {
 					Genode::String<256> const title =
 						w.attribute_value("title", Genode::String<256>());
 					if (title.length() == 0) return;
 
+					/* window_layout title = wm_label + " " + Qt title */
 					QString const qtitle = QString::fromUtf8(title.string());
 					int const sp = qtitle.indexOf(' ');
 					QString const label_str =
 						(sp < 0) ? qtitle : qtitle.left(sp);
 
-					for (auto &st : new_tracked) {
-						if (st.label != label_str) continue;
-						st.x = w.attribute_value("xpos", 0);
-						st.y = w.attribute_value("ypos", 0);
-						st.w = w.attribute_value("width",  0u);
-						st.h = w.attribute_value("height", 0u);
-						st.geometry_known = true;
-						st.focused = w.attribute_value("focused", false);
+					Window_state st;
+					st.label        = label_str;
+					st.x            = w.attribute_value("xpos", 0);
+					st.y            = w.attribute_value("ypos", 0);
+					st.w            = w.attribute_value("width",  0u);
+					st.h            = w.attribute_value("height", 0u);
+					st.geometry_known = true;
+					st.focused      = w.attribute_value("focused", false);
 
-						if (st.x <= -32000 && st.y <= -32000) {
-							st.minimized = true;
-						} else {
-							st.minimized = false;
-						}
+					if (st.x <= -32000 && st.y <= -32000)
+						st.minimized = true;
+
+					for (auto const &prev : _tracked) {
+						if (prev.label != st.label) continue;
+						st.has_alpha  = prev.has_alpha;
+						st.hidden     = prev.hidden;
+						st.resizeable = prev.resizeable;
+						st.maximized  = prev.maximized;
 						break;
 					}
+
+					new_tracked.append(st);
 				});
 			});
-		} catch (Genode::Xml_node::Invalid_syntax) {
-			Genode::warning("tasklist_controller: window_layout XML invalid");
+		} catch (...) {
+			Genode::warning("tasklist_controller: window_layout Node invalid");
+		}
+	}
+
+	/* Enrich with wm-only attributes (has_alpha, hidden, resizeable). */
+	if (_window_list_rom.constructed() && _window_list_rom->valid()) {
+		try {
+			Genode::Node const root = _window_list_rom->node();
+			root.for_each_sub_node("window", [&](Genode::Node const &n) {
+				Genode::String<256> const label =
+					n.attribute_value("label", Genode::String<256>());
+				if (label.length() == 0) return;
+
+				QString const label_str = QString::fromUtf8(label.string());
+				for (auto &st : new_tracked) {
+					if (st.label != label_str) continue;
+					st.has_alpha  = n.attribute_value("has_alpha",  st.has_alpha);
+					st.hidden     = n.attribute_value("hidden",     st.hidden);
+					st.resizeable = n.attribute_value("resizeable", st.resizeable);
+					break;
+				}
+			});
+		} catch (...) {
+			Genode::warning("tasklist_controller: window_list Node invalid");
 		}
 	}
 
