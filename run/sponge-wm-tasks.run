@@ -141,7 +141,6 @@ config
     + policy | label: wm -> resize_request           | report: layouter -> resize_request
     + policy | label: layouter -> hover              | report: decorator -> hover
     + policy | label: layouter -> decorator_margins  | report: decorator -> decorator_margins
-    + policy | label: layouter -> rules              | report: layout_rules
     + policy | label: layouter -> focus_request      | report: sponge-de -> focus_request
     + policy | label: layouter -> rules              | report: sponge-de -> rules
     + policy | label: sponge-de -> window_layout     | report: layouter -> window_layout
@@ -170,7 +169,7 @@ config
     + event
     + report | focus: yes | hover: yes | xray: yes
     + domain panel | layer: 1 | content: client | label: no
-                   | hover: always | ypos: 0 | height: 28
+                   | hover: always | focus: click | ypos: 0 | height: 28
     + domain default | layer: 2 | content: client | label: no
                      | hover: always | focus: click
     + policy | label_prefix: sponge-de -> Sponge Panel | domain: panel
@@ -402,8 +401,11 @@ config
       + any-child
 
 + start sponge-de | caps: 1000 | ram: 128M
-  + config | tasklist_static_rules: "<assign label_prefix=\"pkg_runtime\" target=\"screen\" xpos=\"50\" ypos=\"320\" width=\"320\" height=\"240\" maximized=\"no\"/>"
+  + config
     + tasklist | source: wm
+    + tasklist_static_rules
+      + assign | label_prefix: pkg_runtime | target: screen
+               | xpos: 50 | ypos: 320 | width: 320 | height: 240 | maximized: no
     + theme | source: default
     + config | source: default
     + version: 2
@@ -587,24 +589,22 @@ if {[info procs qmp_disconnect] eq ""} {
 # click; qmp_click moves the pointer to (178, 14) and presses BTN_LEFT.
 #
 proc qmp_click_tasklist { chan } {
-	# usb-tablet absolute click at the tasklist's first entry center
-	# (178, 14). The wm-tasks event_filter config includes a usb
-	# <transform><scale/></transform> that maps the tablet's
-	# 0..32767 device coordinates back to screen pixels, so the
-	# qmp_tablet_click land position equals the target pixel.
-	#
-	# The H5 hypothesis: a QEMU usb-tablet cold-start quirk — events
-	# are dropped until the guest has polled. Send an HMP mouse_move
-	# warm-up first to ensure the tablet reports a fresh HID state
-	# to usb_hid, then dispatch the real click.
-	qmp_hmp $chan "mouse_set 3"
-	qmp_hmp $chan "mouse_move 0 0"
-	after 50
-	qmp_hmp $chan "mouse_button 1"
-	after 50
-	qmp_hmp $chan "mouse_button 0"
+	# Honest 1:1 paced PS/2 walk (this scenario's event_filter.config
+	# has no <accelerate> wrapper, so rel-N maps to N pixels 1:1 —
+	# qmp_ps2_click's coarse rel-50 step assumes the accelerate LUT's
+	# 2x mapping and would undershoot by (x/100)*50 px). Clamp to
+	# (0,0), then walk to the tasklist's first-entry center (178, 18)
+	# (widget global (130,4), entry 0 is 96x28 -> center (178,18)).
+	for {set i 0} {$i < 15} {incr i} { qmp_move_rel $chan x -100; after 5 }
+	for {set i 0} {$i < 15} {incr i} { qmp_move_rel $chan y -100; after 5 }
 	after 200
-	qmp_tablet_click $chan 178 14
+	for {set i 0} {$i < 178} {incr i} { qmp_move_rel $chan x 1; after 5 }
+	for {set i 0} {$i < 18} {incr i} { qmp_move_rel $chan y 1; after 5 }
+	after 200
+	qmp_ps2_button $chan true
+	after 200
+	qmp_ps2_button $chan false
+	after 100
 }
 
 #
@@ -630,12 +630,14 @@ append qemu_args " -qmp tcp:127.0.0.1:${qmp_port},server=on,wait=off "
 #
 run_genode_until {.*\[init -> drivers -> fb\] using 1024x768.*} 90
 global qemu_spawn_id
-run_genode_until {.*wm-tasks-probe: \[step 3\].*} 600 $qemu_spawn_id
+run_genode_until {.*wm-tasks-probe: \[step 3\] pkg_gui_demo in window_list.*} 600 $qemu_spawn_id
 
 set qmp_chan [qmp_connect $qmp_port]
 qmp_click_tasklist $qmp_chan
-run_genode_until {.*wm-tasks-probe: \[step 4\].*} 60 $qemu_spawn_id
+run_genode_until {.*wm-tasks-probe: \[step 4\].*} 120 $qemu_spawn_id
 qmp_click_tasklist $qmp_chan
-run_genode_until {.*wm-tasks-probe: \[step 5\].*} 60 $qemu_spawn_id
-run_genode_until {.*wm-tasks-probe: PASS.*} 60 $qemu_spawn_id
+# Gate directly on PASS: steps 5-6 and PASS fire in the same instant,
+# and an intermediate gate would swallow the PASS line into the same
+# expect chunk (the probe itself fails loudly if restore/verify break).
+run_genode_until {.*wm-tasks-probe: PASS.*} 120 $qemu_spawn_id
 qmp_disconnect $qmp_chan
