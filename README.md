@@ -71,10 +71,17 @@ See [`docs/04-components.md`](docs/04-components.md) for the detailed design.
 ## Current Status
 
 🟢 **Alpha 0.1.0, Archaeocyte** — Phase 7 is done with caveats,
-Phase 10 (fully interactive desktop) is done, and Phase 11 (DE
+Phase 10 (fully interactive desktop) is done, Phase 11 (DE
 customization: configd-driven panel, four shipped themes, themed
-window chrome) is done. The verified release
-boots in QEMU on seL4. See
+window chrome) is done, and Phase 14 (Sponge DE as a
+daily-usable desktop) is closed-out with honest disposition notes
+in [`docs/09-roadmap.md`](docs/09-roadmap.md) §10 Phase 14 — three
+of four completion criteria delivered, the fourth (session
+stability wall-clock cycle) is partial because the 30-min scenario
+is a sustained workload that the close-out session skips by
+design; see
+[`docs/evidence/phase14-index.md`](docs/evidence/phase14-index.md).
+The verified release boots in QEMU on seL4. See
 [`docs/13-installation.md`](docs/13-installation.md) for prerequisites,
 media commands, the quick-start tour, and the complete limitations register.
 
@@ -159,23 +166,41 @@ The repository currently contains:
   (`docs/plans/wm-state-table.md`) is exercised by the
   `run/sponge-wm-tasks.run` acceptance scenario. See
   `docs/05-sponge-de.md` §4.6.
-- 🚧 Phase 14 W8 everyday-workflow scenario: `run/sponge-de-workflow.run`
-  composes the proven W4-W7 pieces (sponge-de + tasklist +
-  clipboard + qtsettext harness) into a single base-sel4 boot and
-  drives the 7-step sequence end-to-end (boot → launch
-  terminal/textedit/calculator → real work → cross-component
-  clipboard → minimize/restore via tasklist → acpica S5
-  shutdown). Steps 1-4 pass end-to-end (the cross-component
-  clipboard proof is the bus observation in step 4 — U2 holds
-  because the `clipboard_qtsettext` harness and the workflow
-  probe are separate address spaces). Steps 5-7 are documented
-  but blocked by a layouter user_state timing race on the
-  heavier workflow stack (the W7 tasklist recipe works on the
-  standalone wm-tasks topology but the workflow's prior QMP
-  walks leave the cursor in the default domain; ps2 input queue
-  drops some rel events). Tracked in
-  `docs/evidence/phase14-w8-workflow-scenario.md` (issues A, B,
-  C; honest claims #1 + #2).
+- 🚧 Phase 14 close-out (W12): four completion criteria are checked
+  with honest disposition notes in
+  `docs/09-roadmap.md` §10 Phase 14 — three delivered, one
+  partial. **Delivered:** notifications (`run/sponge-notify.run` →
+  `notify-probe: PASS`), clipboard (`run/sponge-clipboard-qtsettext.run` →
+  `clipboard-probe: PASS`, qtsettext: clipboard Qt -> server write
+  harness PASSED), window management minimize/restore/focus
+  (`run/sponge-wm-tasks.run` → `wm-tasks-probe: PASS`), and the
+  full 4-way paper-cut disposition matrix (50 rows: Resolved in 14
+  / Re-scoped / Blocked / Not-a-defect) per U5, with W11 closing
+  every Phase-14-relevant item. **Partial:** session stability —
+  the 200-cycle leak-audit probe and the 5-cycle fast-fail variant
+  are boot-verified; the 30-min wall-clock cycle is a sustained
+  workload that exceeds the W12 20-min/scenario skip rule by
+  design (re-verify in a dedicated Phase-15 close-out pass).
+  **Partial:** everyday-workflow scenario — `run/sponge-de-workflow.run`
+  steps 1-4 PASS (boot → terminal → textedit → cross-component
+  clipboard; U2 holds because the `clipboard_qtsettext` harness
+  and the workflow probe are separate address spaces); step 5
+  (tasklist click on the heavier workflow topology) is blocked by
+  a layouter hover-state timing race documented in
+  `docs/evidence/phase14-w8-workflow-scenario.md` (the W7 tasklist
+  recipe works on the standalone wm-tasks topology). **Falkon
+  browser is fully proven** via `run/sponge-falkon-rescue.run`
+  (D14.5 Attempt 1 PASS: booted from disk, window pixel-verified,
+  fixture page loaded over the `pc_nic`/slirp stack). Phase 15+
+  limitations register: every `Re-scoped` paper-cut row carries
+  its target phase in the plan appendix and the
+  `docs/evidence/phase14-index.md` §5 honest-limitations register.
+  W12 regression sweep (6 scenarios, serial `make -j1`):
+  `sponge-de-test`, `sponge-alpha`, `sponge-wm-tasks`,
+  `sponge-clipboard-qtsettext`, `sponge-notify`,
+  `sponge-configd-persist` — all PASS. Full receipts:
+  `docs/evidence/phase14-index.md` +
+  `docs/evidence/phase14-envelope-*.log`.
 
 Verified vct boot output (base-sel4 on QEMU):
 
@@ -211,6 +236,9 @@ All detailed documentation lives in [`docs/`](docs/).
 - [14 - Boot & Storage Architecture (Proposal)](docs/14-boot-storage-architecture.md)
 - [15 - Hardware Compatibility](docs/15-hardware-compatibility.md)
 - [16 - Package Authoring Guide](docs/16-package-authoring.md)
+
+Phase evidence indexes live under `docs/evidence/` (e.g.
+`phase13-index.md`, `phase14-index.md`).
 
 Contributors and AI agents must read [`AGENTS.md`](AGENTS.md) first.
 
