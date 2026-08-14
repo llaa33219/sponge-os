@@ -3,10 +3,18 @@
 # \author Sponge OS contributors
 # \date   2026
 #
-# Verifies that `vct status` reads the live init state report via a
-# sub-init + report_rom relay (the standard Genode pattern). The state
-# report is enabled on the nested `system` init, routed to the sibling
-# report_rom, and consumed by vct as a ROM module labelled "state".
+# Verifies that `vct status --resources` reads the live init state
+# report via a sub-init + report_rom relay (the standard Genode
+# pattern). The state report is enabled on the nested `system` init,
+# routed to the sibling report_rom, and consumed by vct as a ROM
+# module labelled "state".
+#
+# Phase 14 W11 #43 closure: the `--resources` flag renders the
+# RAM + caps breakdown from the live state report (one line per
+# resource + a per-child line). The gate waits for `PER-CHILD:`
+# as the structural proof that the resources branch ran
+# end-to-end. The plain `vct status` summary path (Phase 2) is
+# unchanged — this scenario adds the resources-mode assertion.
 #
 # Kernel-agnostic: runs on base-linux and base-sel4.
 #
@@ -57,10 +65,11 @@ config
         + any-child
     + report | init_ram: yes | child_ram: yes | child_caps: yes | delay_ms: 1000
     + default | caps: 200 | ram: 8M
-    + start vct
+    + start vct | caps: 200 | ram: 8M
       + config
         + args
           + arg status
+          + arg "--resources"
   + route
     + service ROM | label_last: state | + child report_rom
     + service Report | + child report_rom
@@ -75,4 +84,13 @@ build_boot_image [build_artifacts]
 
 append qemu_args " -nographic -m 1G "
 
-run_genode_until {.*(components:|env: connected).* } 30
+#
+# vct is invoked with `status --resources`; the gate waits for the
+# resources header line (the plain `components:` summary from the
+# Phase 2 gate is replaced by the resources-mode output when
+# `--resources` is set, so the regex below is the structural proof
+# that the new branch ran end-to-end). The init state report's
+# `delay_ms=1000` + the bounded 60 s run budget are loud failure
+# guards — never a silent hang (docs/09-roadmap.md §11.1 lesson).
+#
+run_genode_until {.*PER-CHILD:.*} 60

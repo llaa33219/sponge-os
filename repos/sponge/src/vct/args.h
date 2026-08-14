@@ -61,10 +61,14 @@ struct Args
 	/* Second positional (e.g. config value for "config set"). */
 	Genode::String<128> positional2 { "" };
 
-	bool explain { false };   /* --explain : dry-run, no execution   */
-	bool manual  { false };   /* --manual  : step-by-step prompt     */
-	bool json    { false };   /* --json    : machine-readable output */
-	bool verbose { false };   /* --verbose : debug-level logging     */
+	bool explain    { false };   /* --explain    : dry-run, no execution        */
+	bool manual     { false };   /* --manual     : step-by-step prompt          */
+	bool json       { false };   /* --json       : machine-readable output      */
+	bool verbose    { false };   /* --verbose    : debug-level logging          */
+	bool resources  { false };   /* --resources  : vct status resource breakdown
+	                             * (Phase 14 W11 #43). Reads ram_used /
+	                             * cap_used from the live init state report
+	                             * and renders one line per resource.       */
 
 	Genode::String<8> lang { "en" };
 
