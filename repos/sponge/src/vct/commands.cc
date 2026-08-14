@@ -44,6 +44,7 @@ int HelpCommand::execute(Args const &args)
 		Genode::log("");
 		Genode::log("사용 가능한 하위 명령어:");
 		Genode::log("  vct status                시스템 상태 요약 보기");
+		Genode::log("  vct status --resources    RAM/cap 사용량 + 자식별 통계");
 		Genode::log("  vct version               vct / Sponge OS 버전 출력");
 		Genode::log("  vct help                  이 도움말 출력");
 		Genode::log("  vct component list        실행 중인 컴포넌트 목록 보기");
@@ -66,6 +67,7 @@ int HelpCommand::execute(Args const &args)
 	} else {
 		Genode::log("Available subcommands (some are planned, see docs/06-vct.md):");
 		Genode::log("  vct status                Show system status");
+		Genode::log("  vct status --resources    Show live RAM + cap usage breakdown");
 		Genode::log("  vct version               Print vct / Sponge OS version");
 		Genode::log("  vct help                  Show this help");
 		Genode::log("  vct component list        List the running components");
@@ -110,7 +112,83 @@ int VersionCommand::execute(Args const &args)
 
 int StatusCommand::execute(Args const &args)
 {
+	/*
+	 * Phase 14 W11 #43: --resources renders the focused RAM + caps
+	 * breakdown from the live init state report, closing the
+	 * commands.cc:158 placeholder. Plain status keeps its summary
+	 * shape. --json composes with both modes.
+	 */
 	InitStateReader state { _env };
+
+	if (args.resources) {
+		if (!state.available()) {
+			Genode::warning("vct: init state report unavailable — "
+			                "cannot show resources");
+			return 1;
+		}
+
+		if (args.json) {
+			Genode::log("{\"command\":\"status\",\"resources\":true,"
+			            "\"ram\":{\"used\":\"",
+			            Genode::Number_of_bytes(state.total_ram_used()),
+			            "\",\"quota\":\"",
+			            Genode::Number_of_bytes(state.total_ram_quota()),
+			            "\",\"avail\":\"",
+			            Genode::Number_of_bytes(state.total_ram_avail()),
+			            "\"},\"caps\":{\"used\":",
+			            state.total_caps_used(),
+			            ",\"quota\":",
+			            state.total_caps_quota(),
+			            ",\"avail\":",
+			            state.total_caps_avail(),
+			            "},\"children\":[");
+			bool first = true;
+			state.for_each_child([&] (InitStateReader::Child const &c) {
+				Genode::log(first ? " {" : " ,{",
+				            "\"name\":\"", c.name, "\","
+				            "\"binary\":\"", c.binary, "\","
+				            "\"state\":\"", c.state, "\","
+				            "\"ram\":{\"used\":\"",
+				            Genode::Number_of_bytes(c.ram_used),
+				            "\",\"quota\":\"",
+				            Genode::Number_of_bytes(c.ram_quota),
+				            "\"},\"caps\":{\"used\":",
+				            c.cap_used, ",\"quota\":",
+				            c.cap_quota, "}}");
+				first = false;
+			});
+			Genode::log("]}");
+			return 0;
+		}
+
+		Genode::log("=== Sponge OS status --resources ===");
+		Genode::log("vct version: ", Sponge::VERSION_STRING);
+		Genode::log("kernel base: ", Sponge::PLATFORM_BASE);
+		Genode::log("");
+		Genode::log("RESOURCE         USED          QUOTA          AVAIL");
+		Genode::log("init RAM       ",
+		            Genode::Number_of_bytes(state.total_ram_used()), "   ",
+		            Genode::Number_of_bytes(state.total_ram_quota()), "   ",
+		            Genode::Number_of_bytes(state.total_ram_avail()));
+		if (state.total_caps_quota() > 0 || state.total_caps_used() > 0) {
+			Genode::log("init caps      ",
+			            state.total_caps_used(), "         ",
+			            state.total_caps_quota(), "         ",
+			            state.total_caps_avail());
+		}
+		Genode::log("");
+		Genode::log("PER-CHILD:");
+		Genode::log("NAME                       BINARY                 RAM(used/quota)        CAPS(used/quota)        STATE");
+		Genode::log("----                       ------                 ---------------        ----------------        -----");
+		state.for_each_child([&] (InitStateReader::Child const &c) {
+			Genode::log(c.name, "  ", c.binary, "  ",
+			            Genode::Number_of_bytes(c.ram_used), "/",
+			            Genode::Number_of_bytes(c.ram_quota), "        ",
+			            c.cap_used, "/", c.cap_quota, "        ",
+			            c.state);
+		});
+		return 0;
+	}
 
 	if (args.json) {
 		if (state.available()) {
@@ -156,7 +234,8 @@ int StatusCommand::execute(Args const &args)
 	} else {
 		Genode::log("env:         connected (default sessions)");
 		Genode::warning("vct: init state report unavailable — showing scaffold data");
-		Genode::warning("not implemented: live component / resource statistics (Phase 4).");
+		Genode::warning("not implemented: live component / resource statistics "
+		                "(Phase 14 W11 #43 closes this for --resources).");
 	}
 
 	return 0;

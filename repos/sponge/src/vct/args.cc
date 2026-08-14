@@ -66,6 +66,15 @@ void apply_token(Genode::String<128> const &token, Args &out)
 		out.verbose = true;
 		return;
 	}
+	/*
+	 * Phase 14 W11 #43: status-only flag — triggers the focused
+	 * RAM/cap breakdown in vct status (one-line per resource from
+	 * the live init state report).
+	 */
+	if (Genode::strcmp(t, "--resources") == 0) {
+		out.resources = true;
+		return;
+	}
 	if (Genode::strcmp(t, "--help") == 0 ||
 	    Genode::strcmp(t, "-h") == 0) {
 		out.subcommand = Genode::String<32>("help");
