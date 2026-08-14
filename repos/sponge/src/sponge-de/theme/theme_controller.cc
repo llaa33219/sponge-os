@@ -125,6 +125,21 @@ void ThemeController::attach_launcher(LauncherMenuView *launcher) { _launcher = 
 void ThemeController::attach_tasklist(TasklistWidget *widget) { _tasklist = widget; }
 
 
+ThemeController::~ThemeController()
+{
+	/*
+ * Phase 14 W11 #48: stop the 250 ms theme-reload poll timer
+ * before QObject parent-child cleanup runs. Closes the leak-audit
+ * failure mode where a queued timeout fires during destruction.
+ */
+	if (_poll_timer) {
+		_poll_timer->stop();
+		_poll_timer->deleteLater();
+		_poll_timer = nullptr;
+	}
+}
+
+
 /*
  * Genode entrypoint dispatcher thread. Reads the ROM and marshals to the
  * GUI thread. NEVER touches a QWidget or QApplication here. (When the

@@ -93,6 +93,8 @@ class LauncherController : public QObject
 		/* Wire a NotifyPoster for package-install event notifications. */
 		void attach_notify_poster(NotifyPoster *poster) { _notify = poster; }
 
+		~LauncherController() override;
+
 		bool live_list_seen() const { return _live_list_seen; }
 
 		/*

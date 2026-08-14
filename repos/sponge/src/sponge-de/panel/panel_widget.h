@@ -43,6 +43,15 @@ class PanelWidget : public QWidget
 	public:
 
 		explicit PanelWidget(Theme::Theme const &theme, QWidget *parent = nullptr);
+		~PanelWidget() override;
+
+		/*
+ * Phase 14 W11 #47: explicit destructor stops the 1 s clock timer
+ * before QObject parent-child cleanup runs (the parent-owned QTimer
+ * would stop on deleteChildren anyway, but the explicit stop
+ * guarantees no queued timeout fires during destruction — the
+ * failure-mode that surfaces as a leak-audit regression).
+ */
 
 		/*
 		 * Re-apply colors/geometry/layout/visibility/clock-format from

@@ -90,6 +90,8 @@ class NotifierController : public QObject
 		 * signal fans out to the widget's applyEntries(). */
 		void attach_widget(NotifierWidget *widget);
 
+		~NotifierController() override;
+
 	private slots:
 
 		/* GUI thread. Parses the marshalled payload, emits

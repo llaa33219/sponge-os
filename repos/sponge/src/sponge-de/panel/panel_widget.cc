@@ -115,6 +115,23 @@ PanelWidget::PanelWidget(Theme::Theme const &theme, QWidget *parent)
 }
 
 
+PanelWidget::~PanelWidget()
+{
+	/*
+	 * Phase 14 W11 #47: stop the 1 s clock timer explicitly before
+	 * QObject's parent-child cleanup runs. The `new QTimer(this)`
+	 * ownership would stop it on deleteChildren anyway, but the
+	 * explicit stop closes the failure-mode where a queued timeout
+	 * fires during destruction (the leak-audit regression).
+	 */
+	if (_clock_timer) {
+		_clock_timer->stop();
+		_clock_timer->deleteLater();
+		_clock_timer = nullptr;
+	}
+}
+
+
 void PanelWidget::_apply_style(Theme::Theme const &theme)
 {
 	QString const css = QStringLiteral(

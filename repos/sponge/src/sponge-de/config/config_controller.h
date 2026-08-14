@@ -150,6 +150,8 @@ class ConfigController : public QObject
 		 * Posts on every successful configd set. Optional. */
 		void attach_notify_poster(NotifyPoster *poster);
 
+	~ConfigController() override;
+
 	private slots:
 
 		/*
