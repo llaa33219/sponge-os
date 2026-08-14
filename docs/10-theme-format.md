@@ -158,17 +158,11 @@ parser understands, it logs a warning and falls back to the default theme.
 | `warning_bg`| color | #f9e2af       | Warning indicator background |
 | `warning_text`| color | #f9e2af     | Warning state text |
 
-**Deprecated aliases** (Phase 11 transitional — removal planned for
-Phase 12): the legacy `error`, `success`, and `warning` keys are
-accepted by the parser and treated as if the corresponding `_bg` key
-had been written. A theme may carry either form, but not both for the
-same state — the `_bg` form wins on conflict.
-
-| Alias key   | Treated as    | Notes |
-|-------------|---------------|-------|
-| `error`     | `error_bg`    | Deprecated alias: same value as `error_bg` |
-| `success`   | `success_bg`  | Deprecated alias: same value as `success_bg` |
-| `warning`   | `warning_bg`  | Deprecated alias: same value as `warning_bg` |
+> **Phase 14 W11 cleanup:** the Phase-11 transitional aliases
+> (`error`, `success`, `warning` keys mapped to the `_bg` value) have
+> been removed from the parser. A theme file carrying these bare keys
+> logs an `unknown key` warning per §9 and the value is ignored; the
+> canonical `*_bg` / `*_text` split is the only accepted surface.
 
 ### 4.3 `[fonts]` — Typography
 
@@ -176,8 +170,14 @@ same state — the `_bg` form wins on conflict.
 |----------------|--------|---------|---------|
 | `default_family` | string | "DejaVu Sans" | UI font family |
 | `default_size`   | int    | 11      | UI font size in points |
-| `title_family`   | string | "DejaVu Sans" | Window title font family |
 | `title_size`     | int    | 12      | Window title font size in points |
+
+> **Phase 14 W11 cleanup:** the `title_family` key (a Phase-5
+> placeholder for a per-theme title-bar font family) has been removed
+> from the parser. The vendor-upstream themed decorator owns the
+> title-bar font (the byte-vendored `font.tff` asset in `decor.tar`)
+> — there is no per-theme key for it and never will be. See the
+> footnote in §4.5.
 
 ### 4.4 `[layout]` — Panel and Spacing
 
@@ -188,18 +188,14 @@ same state — the `_bg` form wins on conflict.
 | `padding`        | int   | 8       | Internal padding in pixels |
 | `margin`         | int   | 4       | External spacing in pixels |
 | `launcher_width` | int   | 48      | Launcher button width in pixels |
-| `icon_size`      | int   | 24      | Panel icon size in pixels |
 
-**Documented no-op keys** (Phase 11 — parser accepts but does not yet
-route; Phase-12 promotion requires the W2 panel-config construction
-migration to finish). These keys keep a stable home in the format so
-that user themes authored today continue to parse unchanged; the
-consumer side is wired in a later phase.
-
-| Key                              | Type | Default | Meaning |
-|----------------------------------|------|---------|---------|
-| `panel.popup_width`              | int  | 341     | Launcher popup width in pixels (= `1024 / 3`). Documented no-op in Phase 11 — parsed, not yet routed to `LauncherMenuView` (the popup width is still hardcoded to one third of the screen width). |
-| `panel.popup_entry_min_height`   | int  | 50      | Launcher popup entry minimum height in pixels. Documented no-op in Phase 11 — parsed, not yet routed to `LauncherMenuView` (entry height follows `theme.padding()`). |
+> **Phase 14 W11 cleanup:** the documented no-op keys `icon_size`,
+> `panel.popup_width`, and `panel.popup_entry_min_height` have been
+> removed from the parser. They were parsed and stored in Phase 11
+> but never routed to a consumer; the launcher popup width is
+> hardcoded to one third of the screen width and the entry height
+> follows `theme.padding()`. A theme carrying any of these keys logs
+> an `unknown key` warning per §9 and the value is ignored.
 
 ### 4.5 `[window]` — Window Decoration
 
@@ -248,7 +244,6 @@ warning_text   = #f9e2af
 [fonts]
 default_family = DejaVu Sans
 default_size   = 11
-title_family   = DejaVu Sans
 title_size     = 12
 
 [layout]
@@ -257,10 +252,6 @@ panel_height   = 28
 padding        = 8
 margin         = 4
 launcher_width = 48
-icon_size      = 24
-# Documented no-op keys (parsed, not yet routed in Phase 11):
-panel.popup_width            = 341
-panel.popup_entry_min_height = 50
 
 [window]
 border_radius = 6

@@ -13,14 +13,16 @@ separator      = #45475a
 window_bg      = #313244
 window_border  = #45475a
 title_text     = #cdd6f4
-error          = #f38ba8
-success        = #a6e3a1
-warning        = #f9e2af
+error_bg       = #f38ba8
+error_text     = #f38ba8
+success_bg     = #a6e3a1
+success_text   = #a6e3a1
+warning_bg     = #f9e2af
+warning_text   = #f9e2af
 
 [fonts]
 default_family = DejaVu Sans
 default_size   = 11
-title_family   = DejaVu Sans
 title_size     = 12
 
 [layout]
@@ -29,7 +31,6 @@ panel_height   = 28
 padding        = 8
 margin         = 4
 launcher_width = 48
-icon_size      = 24
 
 [window]
 border_radius = 6
