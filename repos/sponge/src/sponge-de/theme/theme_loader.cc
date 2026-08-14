@@ -184,14 +184,6 @@ bool ThemeLoader::_apply_key(char const *key, Genode::size_t key_len,
 		else if (Genode::strcmp(key_buf, "success_text")  == 0) target = &_theme->_success_text;
 		else if (Genode::strcmp(key_buf, "warning_bg")    == 0) target = &_theme->_warning_bg;
 		else if (Genode::strcmp(key_buf, "warning_text")  == 0) target = &_theme->_warning_text;
-		/*
-		 * Deprecated aliases: legacy `error`/`success`/`warning` map to
-		 * the *_bg value (the canonical split-bg-vs-text surface is in
-		 * §4.2). Removal planned for Phase 12.
-		 */
-		else if (Genode::strcmp(key_buf, "error")         == 0) target = &_theme->_error_bg;
-		else if (Genode::strcmp(key_buf, "success")       == 0) target = &_theme->_success_bg;
-		else if (Genode::strcmp(key_buf, "warning")       == 0) target = &_theme->_warning_bg;
 
 		if (target) {
 			if (!_parse_color(value, value_len, *target)) {
@@ -215,9 +207,6 @@ bool ThemeLoader::_apply_key(char const *key, Genode::size_t key_len,
 				return false;
 			}
 			return true;
-		}
-		if (Genode::strcmp(key_buf, "title_family") == 0) {
-			return _parse_string(value, value_len, _theme->_title_font.family);
 		}
 		if (Genode::strcmp(key_buf, "title_size") == 0) {
 			if (!_parse_uint(value, value_len, _theme->_title_font.size)) {
@@ -275,37 +264,14 @@ bool ThemeLoader::_apply_key(char const *key, Genode::size_t key_len,
 			}
 			return true;
 		}
-		if (Genode::strcmp(key_buf, "icon_size") == 0) {
-			if (!_parse_uint(value, value_len, _theme->_icon_size)) {
-				Genode::warning("theme: parse error at line ", line_no,
-				                ": invalid icon_size");
-				_ok = false;
-				return false;
-			}
-			return true;
-		}
 		/*
-		 * Documented no-op layout keys (Phase 11). Parsed and stored;
-		 * not yet routed to any consumer (Phase-12 promotion).
+		 * Phase 14 W11 #18: parsed-but-unused keys
+		 * (`icon_size`, `panel.popup_width`, `panel.popup_entry_min_height`)
+		 * have been removed. The fallback "unknown key" warning at the
+		 * bottom of this function is the documented behavior for any
+		 * theme file that still carries them — surfaces the cleanup
+		 * as a one-shot reminder rather than a silent drop.
 		 */
-		if (Genode::strcmp(key_buf, "panel.popup_width") == 0) {
-			if (!_parse_uint(value, value_len, _theme->_popup_width)) {
-				Genode::warning("theme: parse error at line ", line_no,
-				                ": invalid panel.popup_width");
-				_ok = false;
-				return false;
-			}
-			return true;
-		}
-		if (Genode::strcmp(key_buf, "panel.popup_entry_min_height") == 0) {
-			if (!_parse_uint(value, value_len, _theme->_popup_entry_min_height)) {
-				Genode::warning("theme: parse error at line ", line_no,
-				                ": invalid panel.popup_entry_min_height");
-				_ok = false;
-				return false;
-			}
-			return true;
-		}
 	}
 	else if (Genode::strcmp(section, "window") == 0) {
 		if (Genode::strcmp(key_buf, "border_radius") == 0) {

@@ -5,8 +5,9 @@
 #     (the effective panel height comes from configd panel.height, default
 #     28 — see docs/10-theme-format.md §4.4).
 #   - panel_position is intentionally absent (configd owns it, D2.2).
-#   - panel.popup_* keys are NOT included here; they are documented no-ops
-#     that ship in the format but no v1 theme carries them.
+#   - panel.popup_* keys are NOT included here; they were removed in
+#     Phase 14 W11 along with `icon_size` and the Phase-11 deprecated
+#     `error`/`success`/`warning` aliases (see §4.2/§4.4).
 # See docs/10-theme-format.md for the format specification.
 
 [meta]
@@ -30,7 +31,6 @@ warning_text   = #f9e2af
 [fonts]
 default_family = DejaVu Sans
 default_size   = 10
-title_family   = DejaVu Sans
 title_size     = 12
 
 [layout]
@@ -38,7 +38,6 @@ panel_height   = 24
 padding        = 4
 margin         = 2
 launcher_width = 32
-icon_size      = 24
 
 [window]
 border_radius = 6

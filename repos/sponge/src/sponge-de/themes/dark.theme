@@ -24,14 +24,12 @@ warning_text   = #eed49f
 [fonts]
 default_family = DejaVu Sans
 default_size   = 11
-title_family   = DejaVu Sans
 title_size     = 12
 
 [layout]
 padding        = 8
 margin         = 4
 launcher_width = 48
-icon_size      = 24
 
 [window]
 border_radius = 6

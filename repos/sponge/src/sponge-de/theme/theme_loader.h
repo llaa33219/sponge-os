@@ -61,10 +61,10 @@ struct Theme
 
 		/*
 		 * Error / success / warning colors split into background vs text
-		 * variants. The legacy `error`/`success`/`warning` getters are
-		 * kept as DEPRECATED ALIASES for the *_bg value so existing
-		 * consumer code continues to compile (Phase 11 transition;
-		 * removal in Phase 12 per docs/10-theme-format.md §4.2).
+		 * variants (Phase 14 W11 #17: the Phase-11 deprecated
+		 * `error`/`success`/`warning` aliases have been removed — use
+		 * the *_bg / *_text getters directly). See
+		 * docs/10-theme-format.md §4.2.
 		 */
 		Color error_bg()      const { return _error_bg; }
 		Color error_text()    const { return _error_text; }
@@ -72,11 +72,6 @@ struct Theme
 		Color success_text()  const { return _success_text; }
 		Color warning_bg()    const { return _warning_bg; }
 		Color warning_text()  const { return _warning_text; }
-
-		/* Deprecated alias getters (return the _bg value). */
-		Color error()         const { return _error_bg; }
-		Color success()       const { return _success_bg; }
-		Color warning()       const { return _warning_bg; }
 
 		/* fonts */
 		Font const &default_font() const { return _default_font; }
@@ -88,17 +83,15 @@ struct Theme
 		unsigned padding()             const { return _padding; }
 		unsigned margin()              const { return _margin; }
 		unsigned launcher_width()      const { return _launcher_width; }
-		unsigned icon_size()           const { return _icon_size; }
 
 		/*
-		 * Documented no-op layout keys (Phase 11). Parsed but not yet
-		 * routed to a consumer; Phase-12 promotion requires the W2
-		 * construction migration to finish. The accessor surface is in
-		 * place so a future consumer can wire them without a format
-		 * change. See docs/10-theme-format.md §4.4.
+		 * Phase 14 W11 #18: the documented no-op layout keys
+		 * (`icon_size`, `title_family`, `panel.popup_width`,
+		 * `panel.popup_entry_min_height`) have been removed from the
+		 * parser and from the accessors. They were never routed to a
+		 * consumer in Phase 11/13 and there is no plan to do so. See
+		 * docs/10-theme-format.md §4.3 / §4.4.
 		 */
-		unsigned popup_width()            const { return _popup_width; }
-		unsigned popup_entry_min_height() const { return _popup_entry_min_height; }
 
 		/* window */
 		unsigned border_radius() const { return _border_radius; }
@@ -137,9 +130,6 @@ struct Theme
 		unsigned _padding             { 8 };
 		unsigned _margin              { 4 };
 		unsigned _launcher_width        { 48 };
-		unsigned _icon_size           { 24 };
-		unsigned _popup_width            { 341 };
-		unsigned _popup_entry_min_height { 50 };
 
 		unsigned _border_radius { 6 };
 		unsigned _border_width  { 1 };
