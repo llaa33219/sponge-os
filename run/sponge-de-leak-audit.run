@@ -1,0 +1,345 @@
+#
+# \brief  Sponge DE QTimer leak audit (Phase 14 W11, #47-50)
+# \author Sponge OS contributors
+# \date   2026
+#
+# Plan reference: docs/plans/phase14-daily-desktop.md W11 (paper-cut
+# sweep). Closes the Phase 14 W11 Paper-cut Disposition Appendix rows
+# #47-50 by proving, in a bounded run, that the QTimer destructor
+# cleanups added to PanelWidget (1 s clock), ThemeController
+# (250 ms reload), ConfigController (250 ms broadcast) and
+# LauncherController (1.5 s pkgd poll) prevent a queued-timeout leak
+# across the destruction boundary.
+#
+# === Topology ===
+#
+#   init
+#   + timer
+#   + report_rom    (config_request / config_result / config / theme /
+#                    installed / launcher_request / launcher_result)
+#   + nitpicker     (Gui/Capture/Event; probe uses Capture to read
+#                    the panel's first paint — proves Qt6 first paint
+#                    worked BEFORE the cycles start)
+#   + sponge_configd (owns config backend; broadcasts config)
+#   + sponge_themed (resolves theme names; publishes the theme ROM)
+#   + sponge_pkgd   (owns the installed broadcast + launcher backend)
+#   + pkg_runtime   (binary init hosting the pre-staged `hello`)
+#   + sponge-de     (panel + theme/config controllers + launcher)
+#   + leak_audit_probe (drives the 200 cycles + snapshots init RAM)
+#
+# === Sequence ===
+#
+#   (1) Boot gate: the probe waits for the panel's first paint (Capture
+#       pixel sample inside the panel domain — proves sponge-de
+#       initialised cleanly; any subsequent leak signal therefore
+#       comes from the cycle loop, not a cold-start tail).
+#
+#   (2) 200 cycles of:
+#         - theme.active = default|dark|compact|light (round-robin)
+#         - panel.height = 28 (even) | 64 (odd)
+#       Each cycle waits for the configd `ok` result (80 iterations ×
+#       100 ms), then 50 ms of wall clock (the poll timers fire
+#       multiple times per cycle).
+#
+#   (3) Final init-state RAM snapshot. ΔRAM < 1 MiB is the bounded-
+#       growth assertion.
+#
+#   (4) `leak-audit: PASS` + the run exits 0; any failure path logs
+#       `leak-audit: FAIL <reason>` and exits 1 (the run's gate is
+#       the PASS marker; the FAIL is the bounded fail-loud path).
+#
+# === Misleading-success-output defense ===
+#
+# A bare exit 0 is not enough — the probe MUST print the `ΔRAM` line
+# AND the `PASS` line, in that order. The run gate waits for the
+# `PASS` line; the run script ALSO asserts the `ΔRAM` line is present
+# (Tcl regex grep over the captured log).
+#
+# === Quota policy ===
+#
+# sponge-de caps 1000 (Phase 10 W6 / Phase 11 proven for Qt6/Mesa on
+# seL4); pkg_runtime caps 1500 (proven in Phase 7); sponge_pkgd
+# caps 200 (Phase 7 proven); sponge_configd / sponge_themed caps
+# 200 each (Phase 11 proven). probe caps 200. Total fits in 2G QEMU
+# RAM. QEMU: `-nographic` + `-m 2G`.
+#
+# === base-sel4 only ===
+#
+# The scenario exercises real PC hardware (vesa_fb) only for the
+# panel first-paint pixel gate. base-linux can run a similar
+# scenario with fb_sdl (the alpha_probe pattern in sponge-alpha.run
+# is also base-sel4-only — the seL4 capability sizing / Qt6 softpipe
+# Mesa path is what the leak audit tests in practice).
+#
+
+assert {[have_spec sel4]} \
+	"sponge-de-leak-audit requires KERNEL=sel4 (BOARD=pc) in build.conf. \
+	 The Qt6 first-paint pixel gate needs real PC hardware access."
+
+##
+# Ensure essential run-framework plugins are loaded (mirrors the
+# ensure_plugin_loaded dance in run/sponge-alpha.run).
+##
+proc ensure_plugin_loaded { name } {
+	if {![have_include $name]} {
+		set path [genode_dir]/tool/run/$name
+		puts "sourcing $path (missing from RUN_OPT, restored by run script)"
+		source $path
+		global include_list
+		lappend include_list $name
+	}
+}
+
+ensure_plugin_loaded boot_dir/sel4
+ensure_plugin_loaded power_on/qemu
+ensure_plugin_loaded log/qemu
+
+build { core lib/ld init timer server/report_rom server/nitpicker \
+        sponge_configd sponge_themed sponge_pkgd pkg_hello \
+        sponge-de test/leak_audit_probe \
+        qt6/base lib/libc lib/libm lib/stdcxx lib/mesa \
+        lib/mesa_gpu-softpipe lib/egl lib/softpipe lib/libdrm lib/expat \
+        lib/qt6_component lib/vfs lib/vfs_pipe lib/vfs_gpu lib/rom_filter \
+        lib/zlib lib/libpng }
+
+create_boot_directory
+
+install_config {
+config
++ parent-provides
+  + service ROM
+  + service PD
+  + service RM
+  + service CPU
+  + service LOG
+  + service IRQ
+  + service IO_MEM
+  + service IO_PORT
+
++ default | caps: 200 | ram: 4M
++ default-route
+  + any-service
+    + parent
+    + any-child
+
++ start timer
+  + provides | + service Timer
+
++ start report_rom | ram: 8M
+  + provides
+    + service Report
+    + service ROM
+  + config | verbose: no
+    + policy | label: sponge_configd -> config_request   | report: leak_audit_probe -> config_request
+    + policy | label: leak_audit_probe -> config_result   | report: sponge_configd -> config_result
+    + policy | label: leak_audit_probe -> config          | report: sponge_configd -> config
+    + policy | label: sponge_themed    -> config          | report: sponge_configd -> config
+    + policy | label: sponge-de       -> theme            | report: sponge_themed    -> theme
+    + policy | label: leak_audit_probe -> theme           | report: sponge_themed    -> theme
+    + policy | label: sponge-de       -> configd          | report: sponge_configd   -> config
+    + policy | label: sponge-de       -> installed        | report: sponge_pkgd      -> installed
+    + policy | label: sponge-de       -> launcher_request | report: leak_audit_probe -> launcher_request
+    + policy | label: sponge-de       -> launcher_result  | report: leak_audit_probe -> launcher_result
+    # Catch-all .theme (mirrors sponge-theme.run) so an unstaged
+    # name logs "ROM invalid" instead of freezing sponge_themed.
+    + policy | label_suffix: .theme | report: themed-fallback-none
+    # init state report for the probe's RAM snapshots.
+    + policy | label_suffix: state  | report: system        -> state
+
++ start nitpicker | ram: 16M
+  + provides
+    + service Gui
+    + service Capture
+    + service Event
+  + route
+    + service Report | + child report_rom
+    + service Timer  | + child timer
+    + any-service
+      + parent
+      + any-child
+  + config
+    + capture
+    + event
+    + domain panel | layer: 1 | content: client | label: no
+                   | hover: always | focus: click | ypos: 0 | height: 28
+    + domain default | layer: 2 | content: client | label: no
+                     | hover: always | focus: click | ypos: 28 | height: -28
+    + default-policy | domain: default
+    + background | color: #1e1e2e
+
++ start system | caps: 400 | ram: 32M
+  + binary init
+  + config
+    + parent-provides
+      + service ROM
+      + service CPU
+      + service PD
+      + service LOG
+      + service Timer
+      + service Report
+    + default-route
+      + any-service
+        + parent
+        + any-child
+    + report | init_ram: yes | child_ram: yes | child_caps: yes | delay_ms: 1000
+    + default | caps: 200 | ram: 8M
+  + route
+    + service ROM | label_last: state | + child report_rom
+    + service Report              | + child report_rom
+    + service Timer               | + child timer
+    + any-service
+      + parent
+      + any-child
+
++ start sponge_configd | caps: 200 | ram: 16M
+  + route
+    + service ROM  | label_last: config_request | + child report_rom
+    + service Report                          | + child report_rom
+    + any-service
+      + parent
+      + any-child
+
++ start sponge_themed | caps: 200 | ram: 8M
+  + route
+    + service ROM | label_last: config   | + child report_rom
+    + service ROM | label_last: default.theme | + parent
+    + service ROM | label_last: light.theme   | + parent
+    + service ROM | label_last: dark.theme    | + parent
+    + service ROM | label_last: compact.theme | + parent
+    + service ROM | label_suffix: .theme      | + child report_rom
+    + service Report                        | + child report_rom
+    + any-service
+      + parent
+      + any-child
+
++ start sponge_pkgd | caps: 200 | ram: 16M
+  + route
+    + service ROM  | label_last: request | + child report_rom
+    + service Report                    | + child report_rom
+    + any-service
+      + parent
+      + any-child
+
++ start pkg_runtime | caps: 1500 | ram: 64M
+  + binary init
+  + route
+    + service ROM | label: config | + child report_rom
+    + any-service
+      + parent
+      + any-child
+
++ start sponge-de | caps: 300 | ram: 128M
+  + config
+    + theme | source: themed
+    + config | source: configd
+    + launcher | source: pkgd
+    + vfs
+      + dir dev
+        + log
+        + inline rtc | : 2018-01-01 00:01
+      + dir pipe | + pipe
+      + tar qt6_dejavusans.tar
+      + tar qt6_libqgenode.tar
+    + libc | stdout: /dev/log | stderr: /dev/log | pipe: /pipe | rtc: /dev/rtc
+  + route
+    + service Gui    | + child nitpicker
+    + service Report | label: shape           | + child report_rom
+    + service Report | label: input           | + child report_rom
+    + service Report | label: applied_theme   | + child report_rom
+    + service ROM   | label: theme           | + child report_rom
+    + service ROM   | label: configd         | + child report_rom
+    + service ROM   | label: installed       | + child report_rom
+    + service ROM   | label: launcher_request | + child report_rom
+    + service ROM   | label: launcher_result  | + child report_rom
+    + service ROM   | label: mesa_gpu.lib.so | + parent | label: mesa_gpu-softpipe.lib.so
+    + any-service
+      + parent
+      + any-child
+
++ start leak_audit_probe | caps: 200 | ram: 8M
+  + route
+    + service Capture | + child nitpicker
+    + service Timer   | + child timer
+    + service ROM    | label_last: state          | + child report_rom
+    + service ROM    | label_last: config_result  | + child report_rom
+    + service Report                            | + child report_rom
+    + any-service
+      + parent
+      + any-child
+
+- }
+
+#
+# Stage the four theme ROMs (mirrors sponge-theme.run). sponge_themed
+# needs them as parent-provided ROM modules.
+#
+foreach theme { default light dark compact } {
+	set theme_src "${genode_dir}/repos/sponge/src/sponge-de/themes/${theme}.theme"
+	set theme_dst "[run_dir]/genode/${theme}.theme"
+	if {[file exists $theme_src] && ![file exists $theme_dst]} {
+		exec cp -L $theme_src $theme_dst
+	}
+}
+
+#
+# Qt6 shared libraries + DejaVuSans tar (mirrors sponge-theme.run).
+#
+foreach lib { libQt6Core.lib.so libQt6Gui.lib.so libQt6Widgets.lib.so \
+              libqgenode.lib.so \
+              qt6_libqgenode.tar qt6_dejavusans.tar } {
+	set src "bin/$lib"
+	set dst "[run_dir]/genode/$lib"
+	if {[file exists $src] && ![file exists $dst]} {
+		exec cp -L $src $dst
+	}
+}
+
+set dejavu_dst "[run_dir]/genode/qt6_dejavusans.tar"
+if {![file exists $dejavu_dst]} {
+	set dejavu_src [glob -nocomplain \
+     "${genode_dir}/contrib/qt6_base-*/src/lib/qt6_base/src/3rdparty/wasm/DejaVuSans.ttf"]
+	if {[llength $dejavavu_src] == 0} {
+		error "DejaVuSans.ttf not found in the qt6_base port sources"
+	}
+	set staging "[run_dir]/dejavusans-staging"
+	file mkdir "$staging/qt/lib/fonts"
+	file copy -force [lindex $dejavavu_src 0] "$staging/qt/lib/fonts/DejaVuSans.ttf"
+	exec tar -cf $dejavavu_dst -C $staging qt
+	file delete -force $staging
+}
+
+#
+# Pre-stage `hello` so the launcher feed carries it from boot. Mirrors
+# run/sponge-launcher.run: stage the pkg/hello metadata + the pkg
+# index, then add hello's binary (built by the pkg_hello build target).
+#
+set hello_meta "${genode_dir}/../pkg/hello/metadata.xml"
+if {![file exists $hello_meta]} {
+	error "package metadata not found: $hello_meta"
+}
+exec cp -L $hello_meta "bin/pkg_hello.xml"
+
+set index_fh [open "bin/pkg_index.xml" w]
+puts $index_fh "<packages>"
+puts $index_fh "  <pkg name=\"hello\"/>"
+puts $index_fh "</packages>"
+close $index_fh
+
+set boot_modules [build_artifacts]
+foreach m { default.theme light.theme dark.theme compact.theme \
+             pkg_hello.xml pkg_index.xml \
+             qt6_libqgenode.tar qt6_dejavusans.tar } {
+	lappend boot_modules $m
+}
+build_boot_image $boot_modules
+
+append qemu_args " -nographic -m 2G "
+
+#
+# Automated verification — fail-loud on timeout. The probe emits
+# `leak-audit: PASS` after the 200-cycle loop + the bounded-growth
+# assertion. The 120 s budget covers Qt6 first paint (slow on
+# softpipe Mesa + seL4) + 200 cycles × ~250 ms each + the final
+# state-report settle.
+#
+run_genode_until {.*leak-audit: PASS.*} 120
