@@ -1,0 +1,2578 @@
+=== Build start: 2026. 08. 14. (금) 09:37:42 KST ===
+including /home/luke/sponge-os/genode/tool/run/image/disk
+including /home/luke/sponge-os/repos/sponge/run/sponge-falkon-rescue.run
+sourcing /home/luke/sponge-os/genode/tool/run/boot_dir/sel4 (missing from RUN_OPT, restored by run script)
+sourcing /home/luke/sponge-os/genode/tool/run/power_on/qemu (missing from RUN_OPT, restored by run script)
+sourcing /home/luke/sponge-os/genode/tool/run/log/qemu (missing from RUN_OPT, restored by run script)
+building targets:  core lib/ld init timer server/report_rom server/nitpicker driver/platform driver/acpi app/pci_decode driver/framebuffer/vesa driver/ps2 driver/usb_host/pc driver/usb_hid server/event_filter server/part_block server/vfs server/cached_fs_rom lib/vfs lib/vfs_rump sponge_configd sponge_pkgd lib/libc lib/libm lib/stdcxx lib/vfs_pipe lib/posix lib/zlib driver/ahci driver/nic server/nic_uplink driver/rtc/spec/x86 server/system_rtc test/falkon_probe
+
+spawn make core lib/ld init timer server/report_rom server/nitpicker driver/platform driver/acpi app/pci_decode driver/framebuffer/vesa driver/ps2 driver/usb_host/pc driver/usb_hid server/event_filter server/part_block server/vfs server/cached_fs_rom lib/vfs lib/vfs_rump sponge_configd sponge_pkgd lib/libc lib/libm lib/stdcxx lib/vfs_pipe lib/posix lib/zlib driver/ahci driver/nic server/nic_uplink driver/rtc/spec/x86 server/system_rtc test/falkon_probe
+make[1]: ディレクトリ '/home/luke/sponge-os/genode/build/x86_64_w10' に入ります
+Skip target driver/nic/lan9118 because it requires 'arm_v7'
+Skip target driver/nic/pc/spec/x86_32 because it requires 'x86_32'
+Skip target driver/nic/spec/linux because it requires 'linux'
+Skip target driver/nic/spec/linux_slirp because it requires 'linux'
+Skip target driver/nic/virtio/spec/arm because it requires 'arm'
+Skip target driver/nic/virtio/spec/arm_64 because it requires 'arm_64'
+Skip target driver/nic/virtio/spec/riscv because it requires 'riscv'
+Skip target driver/platform/pc/spec/x86_32 because it requires 'x86_32'
+Skip target driver/ps2/pl050 because it requires 'arm_v7'
+Skip target driver/usb_hid/spec/arm_v7 because it requires 'arm_v7'
+Skip target driver/usb_hid/spec/arm_v8 because it requires 'arm_v8'
+Skip target driver/usb_hid/spec/x86_32 because it requires 'x86_32'
+Skip target driver/usb_host/pc/spec/x86_32 because it requires '32bit'
+  [00;33mLibrary[0m ld.abi.so
+  [00;33mLibrary[0m ldso_so_support.lib.a
+  [00;33mLibrary[0m kernel-sel4-pc.lib.a
+ninja: Jobserver mode detected:  -j80 --jobserver-auth=fifo:/tmp/GMfifo2627458 --no-print-directory -- DEBUG_DIR=/home/luke/sponge-os/genode/build/x86_64_w10/debug INSTALL_DIR=/home/luke/sponge-os/genode/build/x86_64_w10/bin BUILD_BASE_DIR=/home/luke/sponge-os/genode/build/x86_64_w10 SHARED_LIBS= ARCHIVES= LIB=kernel-sel4-pc LIB_MK=/home/luke/sponge-os/genode/repos/base-sel4/lib/mk/spec/x86_64/kernel-sel4-pc.mk REP_DIR=/home/luke/sponge-os/genode/repos/base-sel4 KERNEL=sel4 BOARD=pc RUN_OPT=--include\ image/disk SHELL=/usr/bin/bash
+ninja: no work to do.
+  [00;33mLibrary[0m syscall-sel4-pc.lib.a
+  [00;33mLibrary[0m syscall-sel4.lib.a
+  [00;33mLibrary[0m startup-sel4.lib.a
+  [00;33mLibrary[0m base-sel4-common.lib.a
+  [00;33mLibrary[0m timeout.lib.a
+  [00;33mLibrary[0m cxx.lib.a
+  [00;33mLibrary[0m base-sel4.lib.a
+  [00;33mLibrary[0m ld-sel4.lib.so
+  [00;33mLibrary[0m ld.lib.so
+  [00;33mLibrary[0m vfs.abi.so
+  [00;33mLibrary[0m base.lib.a
+  [00;33mLibrary[0m vfs.lib.so
+    COMPILE  file_system_factory.o
+    MERGE    vfs.lib.so
+  [00;33mLibrary[0m format.lib.a
+  [00;33mLibrary[0m rump_include.lib.a
+mkdir -p /home/luke/sponge-os/genode/build/x86_64_w10/var/libcache/rump
+    MERGE    rump_include.lib.a
+  [00;33mLibrary[0m rump.lib.so
+    COMPILE  __main.o
+    COMPILE  bootstrap.o
+    COMPILE  dummies.o
+    COMPILE  env.o
+    COMPILE  hypercall.o
+    COMPILE  io.o
+    COMPILE  rump_x86_cpu_counter.o
+    COMPILE  rump_x86_cpu.o
+    COMPILE  rump_x86_pmap.o
+    COMPILE  rump_x86_spinlock.o
+    COMPILE  rump_x86_spl.o
+    COMPILE  accessors.o
+    COMPILE  bswap16.o
+    COMPILE  bswap32.o
+    COMPILE  clock_subr.o
+    COMPILE  cdbr.o
+    COMPILE  cons.o
+    COMPILE  consttime_memequal.o
+    COMPILE  cprng_fast.o
+    COMPILE  cpuset.o
+    COMPILE  crc32.o
+    COMPILE  devsw.o
+    COMPILE  emul.o
+    COMPILE  etfs_wrap.o
+    COMPILE  explicit_memset.o
+    COMPILE  ffs.o
+    COMPILE  getfstypename.o
+    COMPILE  heapsort.o
+    COMPILE  hyperentropy.o
+    COMPILE  imax.o
+    COMPILE  imin.o
+    COMPILE  inet_addr.o
+    COMPILE  init_sysctl_base.o
+    COMPILE  intoa.o
+    COMPILE  intr.o
+    COMPILE  kern_assert.o
+    COMPILE  kern_auth.o
+    COMPILE  kern_cfglock.o
+    COMPILE  kern_descrip.o
+    COMPILE  kern_event.o
+    COMPILE  kern_hook.o
+    COMPILE  kern_ksyms.o
+    COMPILE  kern_ktrace.o
+    COMPILE  kern_malloc.o
+    COMPILE  kern_module.o
+    COMPILE  kern_mutex_obj.o
+    COMPILE  kern_ntptime.o
+    COMPILE  kern_proc.o
+    COMPILE  kern_prot.o
+    COMPILE  kern_rate.o
+    COMPILE  kern_resource.o
+    COMPILE  kern_rndpool.o
+    COMPILE  kern_rndq.o
+    COMPILE  kern_rndsink.o
+    COMPILE  kern_select_50.o
+    COMPILE  kern_stub.o
+    COMPILE  kern_syscall.o
+    COMPILE  kern_sysctl.o
+    COMPILE  kern_tc.o
+    COMPILE  kern_time_50.o
+    COMPILE  kern_time.o
+    COMPILE  kern_timeout.o
+    COMPILE  kern_uidinfo.o
+    COMPILE  kern_xxx.o
+    COMPILE  klock.o
+    COMPILE  kobj_machdep.o
+    COMPILE  kobj_rename.o
+    COMPILE  lmax.o
+    COMPILE  lmin.o
+    COMPILE  locks_up.o
+    COMPILE  ltsleep.o
+    COMPILE  lwproc.o
+    COMPILE  max.o
+    COMPILE  mcount.o
+    COMPILE  md4c.o
+    COMPILE  md5c.o
+    COMPILE  memchr.o
+    COMPILE  memcmp.o
+    COMPILE  memcpy.o
+    COMPILE  memmove.o
+    COMPILE  memset.o
+    COMPILE  mertwist.o
+    COMPILE  min.o
+    COMPILE  mi_vector_hash.o
+    COMPILE  murmurhash.o
+    COMPILE  nist_ctr_drbg.o
+    COMPILE  param.o
+    COMPILE  pmatch.o
+    COMPILE  popcount32.o
+    COMPILE  popcount64.o
+    COMPILE  ppath_extant.o
+    COMPILE  ppath_kmem_alloc.o
+    COMPILE  ppath.o
+    COMPILE  proc_compare.o
+    COMPILE  prop_array.o
+    COMPILE  prop_array_util.o
+    COMPILE  prop_bool.o
+    COMPILE  prop_data.o
+    COMPILE  prop_dictionary.o
+    COMPILE  prop_dictionary_util.o
+    COMPILE  prop_ingest.o
+    COMPILE  prop_kern.o
+    COMPILE  prop_number.o
+    COMPILE  prop_object.o
+    COMPILE  prop_stack.o
+    COMPILE  prop_string.o
+    COMPILE  ptree.o
+    COMPILE  random.o
+    COMPILE  rb.o
+    COMPILE  rijndael-alg-fst.o
+    COMPILE  rijndael-api-fst.o
+    COMPILE  rijndael.o
+    COMPILE  rmd160.o
+    COMPILE  rngtest.o
+    COMPILE  rumpcopy.o
+    COMPILE  rumpkern_if_wrappers.o
+    COMPILE  rump.o
+    COMPILE  rumpkern_syscalls.o
+    COMPILE  rump_syscalls.o
+    COMPILE  scanc.o
+    COMPILE  scheduler.o
+    COMPILE  secmodel.o
+    COMPILE  secmodel_suser.o
+    COMPILE  sha1.o
+    COMPILE  sha2.o
+    COMPILE  signals.o
+    COMPILE  skpc.o
+    COMPILE  sleepq.o
+    COMPILE  snprintb.o
+    COMPILE  strcasecmp.o
+    COMPILE  strcat.o
+    COMPILE  strchr.o
+    COMPILE  strcmp.o
+    COMPILE  strcpy.o
+    COMPILE  strcspn.o
+    COMPILE  strlcat.o
+[01m[K/home/luke/sponge-os/genode/contrib/dde_rump-19d6de3e1210c7f1c033d46d4178694d263cf0c1/src/lib/dde_rump/src/common/lib/libc/hash/sha2/sha2.c:575:22:[m[K [01;35m[Kwarning: [m[Kargument 1 of type ‘[01m[K__uint8_t[][m[K’ {aka ‘[01m[Kunsigned char[][m[K’} with mismatched bound [[01;35m[K]8;;https://gcc.gnu.org/onlinedocs/gcc-14.2.0/gcc/Warning-Options.html#index-Warray-parameter-Warray-parameter=]8;;[m[K]
+  575 | SHA256_Final(uint8_t digest[], SHA256_CTX *context)
+In file included from [01m[K/home/luke/sponge-os/genode/contrib/dde_rump-19d6de3e1210c7f1c033d46d4178694d263cf0c1/src/lib/dde_rump/src/sys/sys/inttypes.h:39[m[K,
+                 from [01m[K/home/luke/sponge-os/genode/contrib/dde_rump-19d6de3e1210c7f1c033d46d4178694d263cf0c1/src/lib/dde_rump/src/sys/sys/param.h:100[m[K,
+                 from [01m[K/home/luke/sponge-os/genode/contrib/dde_rump-19d6de3e1210c7f1c033d46d4178694d263cf0c1/src/lib/dde_rump/src/common/lib/libc/hash/sha2/sha2.c:48[m[K:
+[01m[K/home/luke/sponge-os/genode/contrib/dde_rump-19d6de3e1210c7f1c033d46d4178694d263cf0c1/src/lib/dde_rump/src/sys/sys/stdint.h:45:25:[m[K [01;36m[Knote: [m[Kpreviously declared as ‘[01m[K__uint8_t[32][m[K’ {aka ‘[01m[Kunsigned char[32][m[K’}
+   45 | #define uint8_t         __uint8_t
+[01m[K/home/luke/sponge-os/genode/contrib/dde_rump-19d6de3e1210c7f1c033d46d4178694d263cf0c1/src/lib/dde_rump/src/sys/sys/sha2.h:91:18:[m[K [01;36m[Knote: [m[Kin expansion of macro ‘[01m[Kuint8_t[m[K’
+   91 | int SHA256_Final([01;36m[Kuint8_t[m[K[SHA256_DIGEST_LENGTH], SHA256_CTX*);
+      |                  [01;36m[K^~~~~~~[m[K
+[01m[K/home/luke/sponge-os/genode/contrib/dde_rump-19d6de3e1210c7f1c033d46d4178694d263cf0c1/src/lib/dde_rump/src/common/lib/libc/hash/sha2/sha2.c:609:22:[m[K [01;35m[Kwarning: [m[Kargument 1 of type ‘[01m[K__uint8_t[][m[K’ {aka ‘[01m[Kunsigned char[][m[K’} with mismatched bound [[01;35m[K]8;;https://gcc.gnu.org/onlinedocs/gcc-14.2.0/gcc/Warning-Options.html#index-Warray-parameter-Warray-parameter=]8;;[m[K]
+  609 | SHA224_Final(uint8_t digest[], SHA224_CTX *context)
+[01m[K/home/luke/sponge-os/genode/contrib/dde_rump-19d6de3e1210c7f1c033d46d4178694d263cf0c1/src/lib/dde_rump/src/sys/sys/stdint.h:45:25:[m[K [01;36m[Knote: [m[Kpreviously declared as ‘[01m[K__uint8_t[28][m[K’ {aka ‘[01m[Kunsigned char[28][m[K’}
+   45 | #define uint8_t         __uint8_t
+[01m[K/home/luke/sponge-os/genode/contrib/dde_rump-19d6de3e1210c7f1c033d46d4178694d263cf0c1/src/lib/dde_rump/src/sys/sys/sha2.h:81:18:[m[K [01;36m[Knote: [m[Kin expansion of macro ‘[01m[Kuint8_t[m[K’
+   81 | int SHA224_Final([01;36m[Kuint8_t[m[K[SHA224_DIGEST_LENGTH], SHA224_CTX*);
+      |                  [01;36m[K^~~~~~~[m[K
+    COMPILE  strlcpy.o
+[01m[K/home/luke/sponge-os/genode/contrib/dde_rump-19d6de3e1210c7f1c033d46d4178694d263cf0c1/src/lib/dde_rump/src/common/lib/libc/hash/sha2/sha2.c:902:22:[m[K [01;35m[Kwarning: [m[Kargument 1 of type ‘[01m[K__uint8_t[][m[K’ {aka ‘[01m[Kunsigned char[][m[K’} with mismatched bound [[01;35m[K]8;;https://gcc.gnu.org/onlinedocs/gcc-14.2.0/gcc/Warning-Options.html#index-Warray-parameter-Warray-parameter=]8;;[m[K]
+  902 | SHA512_Final(uint8_t digest[], SHA512_CTX *context)
+[01m[K/home/luke/sponge-os/genode/contrib/dde_rump-19d6de3e1210c7f1c033d46d4178694d263cf0c1/src/lib/dde_rump/src/sys/sys/stdint.h:45:25:[m[K [01;36m[Knote: [m[Kpreviously declared as ‘[01m[K__uint8_t[64][m[K’ {aka ‘[01m[Kunsigned char[64][m[K’}
+   45 | #define uint8_t         __uint8_t
+[01m[K/home/luke/sponge-os/genode/contrib/dde_rump-19d6de3e1210c7f1c033d46d4178694d263cf0c1/src/lib/dde_rump/src/sys/sys/sha2.h:111:18:[m[K [01;36m[Knote: [m[Kin expansion of macro ‘[01m[Kuint8_t[m[K’
+  111 | int SHA512_Final([01;36m[Kuint8_t[m[K[SHA512_DIGEST_LENGTH], SHA512_CTX*);
+      |                  [01;36m[K^~~~~~~[m[K
+[01m[K/home/luke/sponge-os/genode/contrib/dde_rump-19d6de3e1210c7f1c033d46d4178694d263cf0c1/src/lib/dde_rump/src/common/lib/libc/hash/sha2/sha2.c:949:22:[m[K [01;35m[Kwarning: [m[Kargument 1 of type ‘[01m[K__uint8_t[][m[K’ {aka ‘[01m[Kunsigned char[][m[K’} with mismatched bound [[01;35m[K]8;;https://gcc.gnu.org/onlinedocs/gcc-14.2.0/gcc/Warning-Options.html#index-Warray-parameter-Warray-parameter=]8;;[m[K]
+  949 | SHA384_Final(uint8_t digest[], SHA384_CTX *context)
+[01m[K/home/luke/sponge-os/genode/contrib/dde_rump-19d6de3e1210c7f1c033d46d4178694d263cf0c1/src/lib/dde_rump/src/sys/sys/stdint.h:45:25:[m[K [01;36m[Knote: [m[Kpreviously declared as ‘[01m[K__uint8_t[48][m[K’ {aka ‘[01m[Kunsigned char[48][m[K’}
+   45 | #define uint8_t         __uint8_t
+[01m[K/home/luke/sponge-os/genode/contrib/dde_rump-19d6de3e1210c7f1c033d46d4178694d263cf0c1/src/lib/dde_rump/src/sys/sys/sha2.h:101:18:[m[K [01;36m[Knote: [m[Kin expansion of macro ‘[01m[Kuint8_t[m[K’
+  101 | int SHA384_Final([01;36m[Kuint8_t[m[K[SHA384_DIGEST_LENGTH], SHA384_CTX*);
+      |                  [01;36m[K^~~~~~~[m[K
+    COMPILE  strlen.o
+    COMPILE  strncasecmp.o
+    COMPILE  strncmp.o
+    COMPILE  strncat.o
+    COMPILE  strncpy.o
+    COMPILE  strnlen.o
+    COMPILE  strpbrk.o
+    COMPILE  strrchr.o
+    COMPILE  strsep.o
+    COMPILE  strspn.o
+    COMPILE  strstr.o
+    COMPILE  strtoimax.o
+    COMPILE  strtoll.o
+    COMPILE  strtoull.o
+    COMPILE  strtoul.o
+    COMPILE  strtoumax.o
+    COMPILE  subr_callback.o
+    COMPILE  subr_copy.o
+    COMPILE  subr_cprng.o
+    COMPILE  subr_device.o
+    COMPILE  subr_devsw.o
+    COMPILE  subr_evcnt.o
+    COMPILE  subr_hash.o
+    COMPILE  subr_extent.o
+    COMPILE  subr_humanize.o
+    COMPILE  subr_iostat.o
+    COMPILE  subr_kcpuset.o
+    COMPILE  subr_kmem.o
+    COMPILE  subr_kobj.o
+    COMPILE  subr_log.o
+    COMPILE  subr_lwp_specificdata.o
+    COMPILE  subr_once.o
+    COMPILE  subr_pcq.o
+    COMPILE  subr_percpu.o
+    COMPILE  subr_pool.o
+    COMPILE  subr_prf.o
+    COMPILE  subr_pserialize.o
+    COMPILE  subr_specificdata.o
+    COMPILE  subr_time.o
+    COMPILE  subr_vmem.o
+    COMPILE  subr_workqueue.o
+    COMPILE  subr_xcall.o
+    COMPILE  syscalls.o
+    COMPILE  sys_descrip.o
+    COMPILE  sys_generic.o
+    COMPILE  sys_module.o
+    COMPILE  sys_pipe.o
+    COMPILE  sys_select.o
+    COMPILE  threads.o
+    COMPILE  uipc_sem.o
+    COMPILE  ulmax.o
+In file included from [01m[K/home/luke/sponge-os/genode/contrib/dde_rump-19d6de3e1210c7f1c033d46d4178694d263cf0c1/src/lib/dde_rump/src/sys/kern/subr_evcnt.c:79[m[K:
+In function ‘[01m[Ksysctl_doevcnt[m[K’,
+    inlined from ‘[01m[Ksysctl_doevcnt[m[K’ at [01m[K/home/luke/sponge-os/genode/contrib/dde_rump-19d6de3e1210c7f1c033d46d4178694d263cf0c1/src/lib/dde_rump/src/sys/kern/subr_evcnt.c:227:1[m[K:
+[01m[K/home/luke/sponge-os/genode/contrib/dde_rump-19d6de3e1210c7f1c033d46d4178694d263cf0c1/src/lib/dde_rump/src/sys/kern/subr_evcnt.c:293:45:[m[K [01;35m[Kwarning: [m[Karray subscript 0 is outside the bounds of an interior zero-length array ‘[01m[Kchar[0][m[K’ [[01;35m[K]8;;https://gcc.gnu.org/onlinedocs/gcc-14.2.0/gcc/Warning-Options.html#index-Wzero-length-bounds-Wzero-length-bounds]8;;[m[K]
+  293 |                 KASSERT([01;35m[Kxevs->evs.ev_strings[0][m[K != 0);
+      |                         [01;35m[K~~~~~~~~~~~~~~~~~~~~^~~[m[K
+[01m[K/home/luke/sponge-os/genode/contrib/dde_rump-19d6de3e1210c7f1c033d46d4178694d263cf0c1/src/lib/dde_rump/src/sys/sys/cdefs.h:461:51:[m[K [01;36m[Knote: [m[Kin definition of macro ‘[01m[K__predict_true[m[K’
+  461 | #define __predict_true(exp)     __builtin_expect(([01;36m[Kexp[m[K) != 0, 1)
+      |                                                   [01;36m[K^~~[m[K
+[01m[K/home/luke/sponge-os/genode/contrib/dde_rump-19d6de3e1210c7f1c033d46d4178694d263cf0c1/src/lib/dde_rump/src/sys/kern/subr_evcnt.c:293:17:[m[K [01;36m[Knote: [m[Kin expansion of macro ‘[01m[KKASSERT[m[K’
+  293 |                 [01;36m[KKASSERT[m[K(xevs->evs.ev_strings[0] != 0);
+      |                 [01;36m[K^~~~~~~[m[K
+In file included from [01m[K/home/luke/sponge-os/genode/contrib/dde_rump-19d6de3e1210c7f1c033d46d4178694d263cf0c1/src/lib/dde_rump/src/sys/kern/subr_evcnt.c:86[m[K:
+[01m[K/home/luke/sponge-os/genode/contrib/dde_rump-19d6de3e1210c7f1c033d46d4178694d263cf0c1/src/lib/dde_rump/src/sys/sys/sysctl.h:[m[K In function ‘[01m[Ksysctl_doevcnt[m[K’:
+[01m[K/home/luke/sponge-os/genode/contrib/dde_rump-19d6de3e1210c7f1c033d46d4178694d263cf0c1/src/lib/dde_rump/src/sys/sys/sysctl.h:824:25:[m[K [01;36m[Knote: [m[Kwhile referencing ‘[01m[Kev_strings[m[K’
+  824 |         char            [01;36m[Kev_strings[m[K[0];
+      |                         [01;36m[K^~~~~~~~~~[m[K
+    COMPILE  ulmin.o
+    COMPILE  uvm_aobj.o
+    COMPILE  uvm_object.o
+    COMPILE  uvm_readahead.o
+In file included from [01m[K/home/luke/sponge-os/genode/contrib/dde_rump-19d6de3e1210c7f1c033d46d4178694d263cf0c1/src/lib/dde_rump/src/sys/sys/systm.h:418[m[K,
+                 from [01m[K/home/luke/sponge-os/genode/contrib/dde_rump-19d6de3e1210c7f1c033d46d4178694d263cf0c1/src/lib/dde_rump/src/sys/sys/timevar.h:66[m[K,
+                 from [01m[K/home/luke/sponge-os/genode/contrib/dde_rump-19d6de3e1210c7f1c033d46d4178694d263cf0c1/src/lib/dde_rump/src/sys/sys/time.h:262[m[K,
+                 from [01m[K/home/luke/sponge-os/genode/contrib/dde_rump-19d6de3e1210c7f1c033d46d4178694d263cf0c1/src/lib/dde_rump/src/sys/sys/param.h:142[m[K,
+                 from [01m[K/home/luke/sponge-os/genode/contrib/dde_rump-19d6de3e1210c7f1c033d46d4178694d263cf0c1/src/lib/dde_rump/src/sys/kern/subr_evcnt.c:82[m[K:
+In function ‘[01m[Ksysctl_fillevcnt[m[K’,
+    inlined from ‘[01m[Ksysctl_doevcnt[m[K’ at [01m[K/home/luke/sponge-os/genode/contrib/dde_rump-19d6de3e1210c7f1c033d46d4178694d263cf0c1/src/lib/dde_rump/src/sys/kern/subr_evcnt.c:282:28[m[K,
+    inlined from ‘[01m[Ksysctl_doevcnt[m[K’ at [01m[K/home/luke/sponge-os/genode/contrib/dde_rump-19d6de3e1210c7f1c033d46d4178694d263cf0c1/src/lib/dde_rump/src/sys/kern/subr_evcnt.c:227:1[m[K:
+[01m[K/home/luke/sponge-os/genode/contrib/dde_rump-19d6de3e1210c7f1c033d46d4178694d263cf0c1/src/lib/dde_rump/src/sys/lib/libkern/libkern.h:338:33:[m[K [01;35m[Kwarning: [m[K‘[01m[K__builtin_strcpy[m[K’ offset [1, 256] is out of the bounds [0, 0] [[01;35m[K]8;;https://gcc.gnu.org/onlinedocs/gcc-14.2.0/gcc/Warning-Options.html#index-Warray-bounds-Warray-bounds=]8;;[m[K]
+  338 | #define strcpy(d, s)            [01;35m[K__builtin_strcpy(d, s)[m[K
+      |                                 [01;35m[K^~~~~~~~~~~~~~~~~~~~~~[m[K
+[01m[K/home/luke/sponge-os/genode/contrib/dde_rump-19d6de3e1210c7f1c033d46d4178694d263cf0c1/src/lib/dde_rump/src/sys/kern/subr_evcnt.c:219:17:[m[K [01;36m[Knote: [m[Kin expansion of macro ‘[01m[Kstrcpy[m[K’
+  219 |                 [01;36m[Kstrcpy[m[K(xevs->evs.ev_strings + ev->ev_grouplen + 1, ev->ev_name);
+      |                 [01;36m[K^~~~~~[m[K
+[01m[K/home/luke/sponge-os/genode/contrib/dde_rump-19d6de3e1210c7f1c033d46d4178694d263cf0c1/src/lib/dde_rump/src/sys/lib/libkern/libkern.h:338:33:[m[K [01;35m[Kwarning: [m[K‘[01m[K__builtin_strcpy[m[K’ writing 1 or more bytes into a region of size 0 overflows the destination [[01;35m[K]8;;https://gcc.gnu.org/onlinedocs/gcc-14.2.0/gcc/Warning-Options.html#index-Wno-stringop-overflow-Wstringop-overflow=]8;;[m[K]
+  338 | #define strcpy(d, s)            [01;35m[K__builtin_strcpy(d, s)[m[K
+      |                                 [01;35m[K^~~~~~~~~~~~~~~~~~~~~~[m[K
+[01m[K/home/luke/sponge-os/genode/contrib/dde_rump-19d6de3e1210c7f1c033d46d4178694d263cf0c1/src/lib/dde_rump/src/sys/kern/subr_evcnt.c:218:17:[m[K [01;36m[Knote: [m[Kin expansion of macro ‘[01m[Kstrcpy[m[K’
+  218 |                 [01;36m[Kstrcpy[m[K(xevs->evs.ev_strings, ev->ev_group);
+      |                 [01;36m[K^~~~~~[m[K
+[01m[K/home/luke/sponge-os/genode/contrib/dde_rump-19d6de3e1210c7f1c033d46d4178694d263cf0c1/src/lib/dde_rump/src/sys/sys/sysctl.h:[m[K In function ‘[01m[Ksysctl_doevcnt[m[K’:
+[01m[K/home/luke/sponge-os/genode/contrib/dde_rump-19d6de3e1210c7f1c033d46d4178694d263cf0c1/src/lib/dde_rump/src/sys/sys/sysctl.h:824:25:[m[K [01;36m[Knote: [m[Kdestination object ‘[01m[Kev_strings[m[K’ of size 0
+  824 |         char            [01;36m[Kev_strings[m[K[0];
+      |                         [01;36m[K^~~~~~~~~~[m[K
+    COMPILE  uvm_swapstub.o
+    COMPILE  vm.o
+    COMPILE  vnode_if.o
+    COMPILE  xlat_mbr_fstype.o
+    COMPILE  atomic.o
+    COMPILE  byte_swap_2.o
+    COMPILE  byte_swap_4.o
+    COMPILE  byte_swap_8.o
+    COMPILE  sync.o
+    COMPILE  vers.o
+    MERGE    rump.lib.so
+  [00;33mLibrary[0m rump_tools.lib.a
+    MERGE    rump_tools.lib.a
+[01m[K/home/luke/sponge-os/genode/contrib/dde_rump-19d6de3e1210c7f1c033d46d4178694d263cf0c1/src/lib/dde_rump/src/usr.bin/config/mkmakefile.c:[m[K 関数 ‘[01m[Kemitsubs[m[K’ 内:
+[01m[K/home/luke/sponge-os/genode/contrib/dde_rump-19d6de3e1210c7f1c033d46d4178694d263cf0c1/src/lib/dde_rump/src/usr.bin/config/mkmakefile.c:238:25:[m[K [01;35m[Kwarning: [m[Kassignment discards ‘[01m[Kconst[m[K’ qualifier from pointer target type [[01;35m[K]8;;https://gcc.gnu.org/onlinedocs/gcc-16.1.0/gcc/Warning-Options.html#index-Wdiscarded-qualifiers-Wdiscarded-qualifiers]8;;[m[K]
+  238 |                 nextpct [01;35m[K=[m[K strchr(line, '%');
+      |                         [01;35m[K^[m[K
+  [00;33mLibrary[0m rump_fs.lib.so
+    COMPILE  rump_dev.o
+    COMPILE  subr_autoconf.o
+    COMPILE  kern_pmf.o
+    COMPILE  dk.o
+    COMPILE  dksubr.o
+    COMPILE  subr_disk.o
+    COMPILE  subr_disk_mbr.o
+    COMPILE  subr_disk_open.o
+    COMPILE  bufq_disksort.o
+    COMPILE  compat.o
+    COMPILE  devnull.o
+    COMPILE  kern_physio.o
+    COMPILE  genfs_vfsops.o
+    COMPILE  rumpfs.o
+    COMPILE  rumpvnode_if.o
+    COMPILE  sync_subr.o
+    COMPILE  vfs_cache.o
+    COMPILE  vfs_hooks.o
+    COMPILE  vfs_mount.o
+    COMPILE  vfs_syscalls.o
+    COMPILE  vfs_wapbl.o
+    COMPILE  bufq_fcfs.o
+    COMPILE  dead_vfsops.o
+    COMPILE  firmload.o
+    COMPILE  genfs_vnops.o
+    COMPILE  mfs_miniroot.o
+    COMPILE  rumpvfs_if_wrappers.o
+    COMPILE  spec_vnops.o
+    COMPILE  sync_vnops.o
+    COMPILE  vfs_cwd.o
+    COMPILE  vfs_init.o
+    COMPILE  vfs_quotactl.o
+    COMPILE  vfs_trans.o
+    COMPILE  vfs_xattr.o
+    COMPILE  bufq_priocscan.o
+    COMPILE  dead_vnops.o
+    COMPILE  genfs_io.o
+    COMPILE  kern_ktrace_vfs.o
+    COMPILE  quota1_subr.o
+    COMPILE  rump_vfs.o
+    COMPILE  subr_bufq.o
+    COMPILE  uvm_vnode.o
+    COMPILE  vfs_dirhash.o
+    COMPILE  vfs_lockf.o
+    COMPILE  vfs_subr.o
+    COMPILE  vfs_vnode.o
+    COMPILE  vm_vfs.o
+    COMPILE  bufq_readprio.o
+    COMPILE  devnodes.o
+    COMPILE  genfs_rename.o
+    COMPILE  kern_module_vfs.o
+    COMPILE  rumpblk.o
+    COMPILE  rumpvfs_syscalls.o
+    COMPILE  subr_kobj_vfs.o
+    COMPILE  vfs_bio.o
+    COMPILE  vfs_getcwd.o
+    COMPILE  vfs_lookup.o
+    COMPILE  vfs_syscalls_50.o
+    COMPILE  vfs_vnops.o
+    COMPILE  sync_thread.o
+    COMPILE  ufs_bmap.o
+    COMPILE  ufs_inode.o
+    COMPILE  ufs_lookup.o
+    COMPILE  ufs_vfsops.o
+    COMPILE  ufs_vnops.o
+    COMPILE  ufs_extattr.o
+    COMPILE  ufs_quota.o
+    COMPILE  ufs_wapbl.o
+    COMPILE  quota2_subr.o
+    COMPILE  ufs_dirhash.o
+    COMPILE  ufs_quota2.o
+    COMPILE  ufs_rename.o
+    COMPILE  ffs_alloc.o
+    COMPILE  ffs_balloc.o
+    COMPILE  ffs_inode.o
+    COMPILE  ffs_tables.o
+    COMPILE  ffs_snapshot.o
+    COMPILE  ffs_vnops.o
+    COMPILE  ffs_appleufs.o
+    COMPILE  ffs_bswap.o
+    COMPILE  ffs_quota2.o
+    COMPILE  ffs_subr.o
+    COMPILE  ffs_vfsops.o
+In file included from [01m[K/home/luke/sponge-os/genode/repos/dde_rump/src/lib/rump/sync_thread.c:16[m[K:
+[01m[K/home/luke/sponge-os/genode/contrib/dde_rump-19d6de3e1210c7f1c033d46d4178694d263cf0c1/src/lib/dde_rump/src/sys/sys/vfs_syscalls.h:84:28:[m[K [01;35m[Kwarning: [m[K‘[01m[Kstruct cwdinfo[m[K’ declared inside parameter list will not be visible outside of this definition or declaration
+   84 | void    change_root(struct [01;35m[Kcwdinfo[m[K *, struct vnode *, struct lwp *);
+      |                            [01;35m[K^~~~~~~[m[K
+    COMPILE  ffs_wapbl.o
+    COMPILE  ext2fs_balloc.o
+    COMPILE  ext2fs_alloc.o
+    COMPILE  ext2fs_bmap.o
+    COMPILE  ext2fs_bswap.o
+    COMPILE  ext2fs_inode.o
+    COMPILE  ext2fs_lookup.o
+    COMPILE  ext2fs_readwrite.o
+    COMPILE  ext2fs_rename.o
+    COMPILE  ext2fs_subr.o
+    COMPILE  ext2fs_vfsops.o
+    COMPILE  ext2fs_vnops.o
+    COMPILE  cd9660_bmap.o
+    COMPILE  cd9660_lookup.o
+    COMPILE  cd9660_node.o
+    COMPILE  cd9660_util.o
+    COMPILE  cd9660_vfsops.o
+    COMPILE  cd9660_vnops.o
+    COMPILE  cd9660_rrip.o
+    COMPILE  msdosfs_conv.o
+    COMPILE  msdosfs_denode.o
+    COMPILE  msdosfs_fat.o
+    COMPILE  msdosfs_lookup.o
+[01m[K/home/luke/sponge-os/genode/contrib/dde_rump-19d6de3e1210c7f1c033d46d4178694d263cf0c1/src/lib/dde_rump/src/sys/ufs/ufs/ufs_lookup.c:[m[K In function ‘[01m[Kufs_dirempty[m[K’:
+[01m[K/home/luke/sponge-os/genode/contrib/dde_rump-19d6de3e1210c7f1c033d46d4178694d263cf0c1/src/lib/dde_rump/src/sys/ufs/ufs/ufs_lookup.c:1194:23:[m[K [01;35m[Kwarning: [m[Karray subscript ‘[01m[Kstruct direct[0][m[K’ is partly outside array bounds of ‘[01m[Kstruct dirtemplate[1][m[K’ [[01;35m[K]8;;https://gcc.gnu.org/onlinedocs/gcc-14.2.0/gcc/Warning-Options.html#index-Warray-bounds-Warray-bounds=]8;;[m[K]
+ 1194 |                 if (dp[01;35m[K->[m[Kd_reclen == 0)
+      |                       [01;35m[K^~[m[K
+[01m[K/home/luke/sponge-os/genode/contrib/dde_rump-19d6de3e1210c7f1c033d46d4178694d263cf0c1/src/lib/dde_rump/src/sys/ufs/ufs/ufs_lookup.c:1176:28:[m[K [01;36m[Knote: [m[Kobject ‘[01m[Kdbuf[m[K’ of size 24
+ 1176 |         struct dirtemplate [01;36m[Kdbuf[m[K;
+      |                            [01;36m[K^~~~[m[K
+[01m[K/home/luke/sponge-os/genode/contrib/dde_rump-19d6de3e1210c7f1c033d46d4178694d263cf0c1/src/lib/dde_rump/src/sys/ufs/ufs/ufs_lookup.c:1197:23:[m[K [01;35m[Kwarning: [m[Karray subscript ‘[01m[Kstruct direct[0][m[K’ is partly outside array bounds of ‘[01m[Kstruct dirtemplate[1][m[K’ [[01;35m[K]8;;https://gcc.gnu.org/onlinedocs/gcc-14.2.0/gcc/Warning-Options.html#index-Warray-bounds-Warray-bounds=]8;;[m[K]
+ 1197 |                 if (dp[01;35m[K->[m[Kd_ino == 0 || ufs_rw32(dp->d_ino, needswap) == UFS_WINO)
+      |                       [01;35m[K^~[m[K
+[01m[K/home/luke/sponge-os/genode/contrib/dde_rump-19d6de3e1210c7f1c033d46d4178694d263cf0c1/src/lib/dde_rump/src/sys/ufs/ufs/ufs_lookup.c:1176:28:[m[K [01;36m[Knote: [m[Kobject ‘[01m[Kdbuf[m[K’ of size 24
+ 1176 |         struct dirtemplate [01;36m[Kdbuf[m[K;
+      |                            [01;36m[K^~~~[m[K
+[01m[K/home/luke/sponge-os/genode/contrib/dde_rump-19d6de3e1210c7f1c033d46d4178694d263cf0c1/src/lib/dde_rump/src/sys/ufs/ufs/ufs_lookup.c:1204:36:[m[K [01;35m[Kwarning: [m[Karray subscript ‘[01m[Kstruct direct[0][m[K’ is partly outside array bounds of ‘[01m[Kstruct dirtemplate[1][m[K’ [[01;35m[K]8;;https://gcc.gnu.org/onlinedocs/gcc-14.2.0/gcc/Warning-Options.html#index-Warray-bounds-Warray-bounds=]8;;[m[K]
+ 1204 |                         namlen = dp[01;35m[K->[m[Kd_namlen;
+      |                                    [01;35m[K^~[m[K
+[01m[K/home/luke/sponge-os/genode/contrib/dde_rump-19d6de3e1210c7f1c033d46d4178694d263cf0c1/src/lib/dde_rump/src/sys/ufs/ufs/ufs_lookup.c:1176:28:[m[K [01;36m[Knote: [m[Kobject ‘[01m[Kdbuf[m[K’ of size 24
+ 1176 |         struct dirtemplate [01;36m[Kdbuf[m[K;
+      |                            [01;36m[K^~~~[m[K
+[01m[K/home/luke/sponge-os/genode/contrib/dde_rump-19d6de3e1210c7f1c033d46d4178694d263cf0c1/src/lib/dde_rump/src/sys/ufs/ufs/ufs_lookup.c:1202:36:[m[K [01;35m[Kwarning: [m[Karray subscript ‘[01m[Kstruct direct[0][m[K’ is partly outside array bounds of ‘[01m[Kstruct dirtemplate[1][m[K’ [[01;35m[K]8;;https://gcc.gnu.org/onlinedocs/gcc-14.2.0/gcc/Warning-Options.html#index-Warray-bounds-Warray-bounds=]8;;[m[K]
+ 1202 |                         namlen = dp[01;35m[K->[m[Kd_type;
+      |                                    [01;35m[K^~[m[K
+[01m[K/home/luke/sponge-os/genode/contrib/dde_rump-19d6de3e1210c7f1c033d46d4178694d263cf0c1/src/lib/dde_rump/src/sys/ufs/ufs/ufs_lookup.c:1176:28:[m[K [01;36m[Knote: [m[Kobject ‘[01m[Kdbuf[m[K’ of size 24
+ 1176 |         struct dirtemplate [01;36m[Kdbuf[m[K;
+      |                            [01;36m[K^~~~[m[K
+[01m[K/home/luke/sponge-os/genode/contrib/dde_rump-19d6de3e1210c7f1c033d46d4178694d263cf0c1/src/lib/dde_rump/src/sys/ufs/ufs/ufs_lookup.c:1213:23:[m[K [01;35m[Kwarning: [m[Karray subscript ‘[01m[Kstruct direct[0][m[K’ is partly outside array bounds of ‘[01m[Kstruct dirtemplate[1][m[K’ [[01;35m[K]8;;https://gcc.gnu.org/onlinedocs/gcc-14.2.0/gcc/Warning-Options.html#index-Warray-bounds-Warray-bounds=]8;;[m[K]
+ 1213 |                 if (dp[01;35m[K->[m[Kd_name[0] != '.')
+      |                       [01;35m[K^~[m[K
+[01m[K/home/luke/sponge-os/genode/contrib/dde_rump-19d6de3e1210c7f1c033d46d4178694d263cf0c1/src/lib/dde_rump/src/sys/ufs/ufs/ufs_lookup.c:1176:28:[m[K [01;36m[Knote: [m[Kobject ‘[01m[Kdbuf[m[K’ of size 24
+ 1176 |         struct dirtemplate [01;36m[Kdbuf[m[K;
+      |                            [01;36m[K^~~~[m[K
+[01m[K/home/luke/sponge-os/genode/contrib/dde_rump-19d6de3e1210c7f1c033d46d4178694d263cf0c1/src/lib/dde_rump/src/sys/ufs/ufs/ufs_lookup.c:1223:23:[m[K [01;35m[Kwarning: [m[Karray subscript ‘[01m[Kstruct direct[0][m[K’ is partly outside array bounds of ‘[01m[Kstruct dirtemplate[1][m[K’ [[01;35m[K]8;;https://gcc.gnu.org/onlinedocs/gcc-14.2.0/gcc/Warning-Options.html#index-Warray-bounds-Warray-bounds=]8;;[m[K]
+ 1223 |                 if (dp[01;35m[K->[m[Kd_name[1] == '.' &&
+      |                       [01;35m[K^~[m[K
+[01m[K/home/luke/sponge-os/genode/contrib/dde_rump-19d6de3e1210c7f1c033d46d4178694d263cf0c1/src/lib/dde_rump/src/sys/ufs/ufs/ufs_lookup.c:1176:28:[m[K [01;36m[Knote: [m[Kobject ‘[01m[Kdbuf[m[K’ of size 24
+ 1176 |         struct dirtemplate [01;36m[Kdbuf[m[K;
+      |                            [01;36m[K^~~~[m[K
+    COMPILE  msdosfs_vfsops.o
+    COMPILE  msdosfs_vnops.o
+    COMPILE  autoconf.o
+[01m[K/home/luke/sponge-os/genode/contrib/dde_rump-19d6de3e1210c7f1c033d46d4178694d263cf0c1/src/lib/dde_rump/src/sys/fs/msdosfs/msdosfs_vnops.c:[m[K In function ‘[01m[Kmsdosfs_readdir[m[K’:
+[01m[K/home/luke/sponge-os/genode/contrib/dde_rump-19d6de3e1210c7f1c033d46d4178694d263cf0c1/src/lib/dde_rump/src/sys/fs/msdosfs/msdosfs_vnops.c:1577:52:[m[K [01;35m[Kwarning: [m[K‘[01m[Kdos2unixfn[m[K’ accessing 11 bytes in a region of size 8 [[01;35m[K]8;;https://gcc.gnu.org/onlinedocs/gcc-14.2.0/gcc/Warning-Options.html#index-Wno-stringop-overflow-Wstringop-overflow=]8;;[m[K]
+ 1577 |                                 dirbuf->d_namlen = [01;35m[Kdos2unixfn(dentp->deName,[m[K
+      |                                                    [01;35m[K^~~~~~~~~~~~~~~~~~~~~~~~~[m[K
+ 1578 | [01;35m[K                                    (u_char *)dirbuf->d_name,[m[K
+      |                                     [01;35m[K~~~~~~~~~~~~~~~~~~~~~~~~~[m[K
+ 1579 | [01;35m[K                                    pmp->pm_flags & MSDOSFSMNT_SHORTNAME)[m[K;
+      |                                     [01;35m[K~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~[m[K
+[01m[K/home/luke/sponge-os/genode/contrib/dde_rump-19d6de3e1210c7f1c033d46d4178694d263cf0c1/src/lib/dde_rump/src/sys/fs/msdosfs/msdosfs_vnops.c:1577:52:[m[K [01;36m[Knote: [m[Kreferencing argument 1 of type ‘[01m[Ku_char[11][m[K’ {aka ‘[01m[Kunsigned char[11][m[K’}
+In file included from [01m[K/home/luke/sponge-os/genode/contrib/dde_rump-19d6de3e1210c7f1c033d46d4178694d263cf0c1/src/lib/dde_rump/src/sys/fs/msdosfs/msdosfs_vnops.c:77[m[K:
+[01m[K/home/luke/sponge-os/genode/contrib/dde_rump-19d6de3e1210c7f1c033d46d4178694d263cf0c1/src/lib/dde_rump/src/sys/fs/msdosfs/direntry.h:135:9:[m[K [01;36m[Knote: [m[Kin a call to function ‘[01m[Kdos2unixfn[m[K’
+  135 | int     [01;36m[Kdos2unixfn[m[K(u_char dn[11], u_char *un, int lower);
+      |         [01;36m[K^~~~~~~~~~[m[K
+[01m[K/home/luke/sponge-os/genode/contrib/dde_rump-19d6de3e1210c7f1c033d46d4178694d263cf0c1/src/lib/dde_rump/src/sys/ufs/ext2fs/ext2fs_lookup.c:[m[K In function ‘[01m[Kext2fs_dirempty[m[K’:
+[01m[K/home/luke/sponge-os/genode/contrib/dde_rump-19d6de3e1210c7f1c033d46d4178694d263cf0c1/src/lib/dde_rump/src/sys/ufs/ext2fs/ext2fs_lookup.c:964:23:[m[K [01;35m[Kwarning: [m[Karray subscript ‘[01m[Kstruct ext2fs_direct[0][m[K’ is partly outside array bounds of ‘[01m[Kstruct ext2fs_dirtemplate[1][m[K’ [[01;35m[K]8;;https://gcc.gnu.org/onlinedocs/gcc-14.2.0/gcc/Warning-Options.html#index-Warray-bounds-Warray-bounds=]8;;[m[K]
+  964 |                 if (dp[01;35m[K->[m[Ke2d_reclen == 0)
+      |                       [01;35m[K^~[m[K
+[01m[K/home/luke/sponge-os/genode/contrib/dde_rump-19d6de3e1210c7f1c033d46d4178694d263cf0c1/src/lib/dde_rump/src/sys/ufs/ext2fs/ext2fs_lookup.c:947:35:[m[K [01;36m[Knote: [m[Kobject ‘[01m[Kdbuf[m[K’ of size 24
+  947 |         struct ext2fs_dirtemplate [01;36m[Kdbuf[m[K;
+      |                                   [01;36m[K^~~~[m[K
+[01m[K/home/luke/sponge-os/genode/contrib/dde_rump-19d6de3e1210c7f1c033d46d4178694d263cf0c1/src/lib/dde_rump/src/sys/ufs/ext2fs/ext2fs_lookup.c:967:23:[m[K [01;35m[Kwarning: [m[Karray subscript ‘[01m[Kstruct ext2fs_direct[0][m[K’ is partly outside array bounds of ‘[01m[Kstruct ext2fs_dirtemplate[1][m[K’ [[01;35m[K]8;;https://gcc.gnu.org/onlinedocs/gcc-14.2.0/gcc/Warning-Options.html#index-Warray-bounds-Warray-bounds=]8;;[m[K]
+  967 |                 if (dp[01;35m[K->[m[Ke2d_ino == 0)
+      |                       [01;35m[K^~[m[K
+[01m[K/home/luke/sponge-os/genode/contrib/dde_rump-19d6de3e1210c7f1c033d46d4178694d263cf0c1/src/lib/dde_rump/src/sys/ufs/ext2fs/ext2fs_lookup.c:947:35:[m[K [01;36m[Knote: [m[Kobject ‘[01m[Kdbuf[m[K’ of size 24
+  947 |         struct ext2fs_dirtemplate [01;36m[Kdbuf[m[K;
+      |                                   [01;36m[K^~~~[m[K
+[01m[K/home/luke/sponge-os/genode/contrib/dde_rump-19d6de3e1210c7f1c033d46d4178694d263cf0c1/src/lib/dde_rump/src/sys/ufs/ext2fs/ext2fs_lookup.c:970:28:[m[K [01;35m[Kwarning: [m[Karray subscript ‘[01m[Kstruct ext2fs_direct[0][m[K’ is partly outside array bounds of ‘[01m[Kstruct ext2fs_dirtemplate[1][m[K’ [[01;35m[K]8;;https://gcc.gnu.org/onlinedocs/gcc-14.2.0/gcc/Warning-Options.html#index-Warray-bounds-Warray-bounds=]8;;[m[K]
+  970 |                 namlen = dp[01;35m[K->[m[Ke2d_namlen;
+      |                            [01;35m[K^~[m[K
+[01m[K/home/luke/sponge-os/genode/contrib/dde_rump-19d6de3e1210c7f1c033d46d4178694d263cf0c1/src/lib/dde_rump/src/sys/ufs/ext2fs/ext2fs_lookup.c:947:35:[m[K [01;36m[Knote: [m[Kobject ‘[01m[Kdbuf[m[K’ of size 24
+  947 |         struct ext2fs_dirtemplate [01;36m[Kdbuf[m[K;
+      |                                   [01;36m[K^~~~[m[K
+[01m[K/home/luke/sponge-os/genode/contrib/dde_rump-19d6de3e1210c7f1c033d46d4178694d263cf0c1/src/lib/dde_rump/src/sys/ufs/ext2fs/ext2fs_lookup.c:973:23:[m[K [01;35m[Kwarning: [m[Karray subscript ‘[01m[Kstruct ext2fs_direct[0][m[K’ is partly outside array bounds of ‘[01m[Kstruct ext2fs_dirtemplate[1][m[K’ [[01;35m[K]8;;https://gcc.gnu.org/onlinedocs/gcc-14.2.0/gcc/Warning-Options.html#index-Warray-bounds-Warray-bounds=]8;;[m[K]
+  973 |                 if (dp[01;35m[K->[m[Ke2d_name[0] != '.')
+      |                       [01;35m[K^~[m[K
+[01m[K/home/luke/sponge-os/genode/contrib/dde_rump-19d6de3e1210c7f1c033d46d4178694d263cf0c1/src/lib/dde_rump/src/sys/ufs/ext2fs/ext2fs_lookup.c:947:35:[m[K [01;36m[Knote: [m[Kobject ‘[01m[Kdbuf[m[K’ of size 24
+  947 |         struct ext2fs_dirtemplate [01;36m[Kdbuf[m[K;
+      |                                   [01;36m[K^~~~[m[K
+[01m[K/home/luke/sponge-os/genode/contrib/dde_rump-19d6de3e1210c7f1c033d46d4178694d263cf0c1/src/lib/dde_rump/src/sys/ufs/ext2fs/ext2fs_lookup.c:982:23:[m[K [01;35m[Kwarning: [m[Karray subscript ‘[01m[Kstruct ext2fs_direct[0][m[K’ is partly outside array bounds of ‘[01m[Kstruct ext2fs_dirtemplate[1][m[K’ [[01;35m[K]8;;https://gcc.gnu.org/onlinedocs/gcc-14.2.0/gcc/Warning-Options.html#index-Warray-bounds-Warray-bounds=]8;;[m[K]
+  982 |                 if (dp[01;35m[K->[m[Ke2d_name[1] == '.' && fs2h32(dp->e2d_ino) == parentino)
+      |                       [01;35m[K^~[m[K
+[01m[K/home/luke/sponge-os/genode/contrib/dde_rump-19d6de3e1210c7f1c033d46d4178694d263cf0c1/src/lib/dde_rump/src/sys/ufs/ext2fs/ext2fs_lookup.c:947:35:[m[K [01;36m[Knote: [m[Kobject ‘[01m[Kdbuf[m[K’ of size 24
+  947 |         struct ext2fs_dirtemplate [01;36m[Kdbuf[m[K;
+      |                                   [01;36m[K^~~~[m[K
+[01m[K/home/luke/sponge-os/genode/contrib/dde_rump-19d6de3e1210c7f1c033d46d4178694d263cf0c1/src/lib/dde_rump/src/sys/fs/msdosfs/msdosfs_fat.c:[m[K In function ‘[01m[Kfreeclusterchain[m[K’:
+[01m[K/home/luke/sponge-os/genode/contrib/dde_rump-19d6de3e1210c7f1c033d46d4178694d263cf0c1/src/lib/dde_rump/src/sys/fs/msdosfs/msdosfs_fat.c:921:17:[m[K [01;35m[Kwarning: [m[K‘[01m[Kbn[m[K’ may be used uninitialized [[01;35m[K]8;;https://gcc.gnu.org/onlinedocs/gcc-14.2.0/gcc/Warning-Options.html#index-Wmaybe-uninitialized-Wmaybe-uninitialized]8;;[m[K]
+  921 |                 [01;35m[Kupdatefats(pmp, bp, bn)[m[K;
+      |                 [01;35m[K^~~~~~~~~~~~~~~~~~~~~~~[m[K
+[01m[K/home/luke/sponge-os/genode/contrib/dde_rump-19d6de3e1210c7f1c033d46d4178694d263cf0c1/src/lib/dde_rump/src/sys/fs/msdosfs/msdosfs_fat.c:876:16:[m[K [01;36m[Knote: [m[K‘[01m[Kbn[m[K’ was declared here
+  876 |         u_long [01;36m[Kbn[m[K, bo, bsize, byteoffset;
+      |                [01;36m[K^~[m[K
+    MERGE    rump_fs.lib.so
+  [00;33mLibrary[0m vfs_rump.lib.so
+    COMPILE  random.o
+    COMPILE  vfs_rump.o
+    MERGE    vfs_rump.lib.so
+  [00;33mLibrary[0m libc.abi.so
+    CONVERT  symbols.s
+    ASSEMBLE symbols.o
+    MERGE    libc.abi.so
+  [00;33mLibrary[0m libc-string.lib.a
+    COMPILE  bcmp.o
+    COMPILE  bcopy.o
+    COMPILE  bzero.o
+    COMPILE  ffsl.o
+    COMPILE  ffs.o
+    COMPILE  ffsll.o
+    COMPILE  flsl.o
+    COMPILE  fls.o
+    COMPILE  flsll.o
+    COMPILE  memccpy.o
+    COMPILE  memchr.o
+    COMPILE  memcmp.o
+    COMPILE  memmem.o
+    COMPILE  memcpy.o
+    COMPILE  memrchr.o
+    COMPILE  memmove.o
+    COMPILE  memset.o
+    COMPILE  memset_s.o
+    COMPILE  stpcpy.o
+    COMPILE  stpncpy.o
+    COMPILE  strcasecmp.o
+    COMPILE  strcasestr.o
+    COMPILE  strcat.o
+    COMPILE  strchr.o
+    COMPILE  strchrnul.o
+    COMPILE  strcmp.o
+    COMPILE  strcpy.o
+    COMPILE  strcspn.o
+    COMPILE  strdup.o
+    COMPILE  strerror.o
+    COMPILE  strlcat.o
+    COMPILE  strlcpy.o
+    COMPILE  strlen.o
+    COMPILE  strncat.o
+    COMPILE  strmode.o
+    COMPILE  strncmp.o
+    COMPILE  strncpy.o
+    COMPILE  strndup.o
+    COMPILE  strnlen.o
+    COMPILE  strnstr.o
+    COMPILE  strpbrk.o
+    COMPILE  strrchr.o
+    COMPILE  strsep.o
+    COMPILE  strsignal.o
+    COMPILE  strspn.o
+    COMPILE  strstr.o
+    COMPILE  strtok.o
+    COMPILE  swab.o
+    COMPILE  timingsafe_bcmp.o
+    COMPILE  timingsafe_memcmp.o
+    COMPILE  wcpcpy.o
+    COMPILE  wcpncpy.o
+    COMPILE  wcscasecmp.o
+    COMPILE  wcscat.o
+    COMPILE  wcschr.o
+    COMPILE  wcscmp.o
+    COMPILE  wcscpy.o
+    COMPILE  wcscspn.o
+    COMPILE  wcsdup.o
+    COMPILE  wcslcat.o
+    COMPILE  wcslcpy.o
+    COMPILE  wcslen.o
+    COMPILE  wcsncasecmp.o
+    COMPILE  wcsncat.o
+    COMPILE  wcsncmp.o
+    COMPILE  wcsncpy.o
+    COMPILE  wcsnlen.o
+    COMPILE  wcspbrk.o
+    COMPILE  wcsrchr.o
+    COMPILE  wcsspn.o
+    COMPILE  wcsstr.o
+    COMPILE  wcstok.o
+    COMPILE  wcswidth.o
+    COMPILE  wmemchr.o
+    COMPILE  wmemcmp.o
+    COMPILE  wmemcpy.o
+    COMPILE  wmemmove.o
+    COMPILE  wmemset.o
+    MERGE    libc-string.lib.a
+  [00;33mLibrary[0m libc-locale.lib.a
+    COMPILE  btowc.o
+    COMPILE  c16rtomb_iconv.o
+    COMPILE  c32rtomb.o
+    COMPILE  collate.o
+    COMPILE  collcmp.o
+    COMPILE  ctype.o
+    COMPILE  euc.o
+    COMPILE  fix_grouping.o
+    COMPILE  isctype.o
+    COMPILE  ldpart.o
+    COMPILE  iswctype.o
+    COMPILE  lmessages.o
+    COMPILE  lmonetary.o
+    COMPILE  lnumeric.o
+    COMPILE  localeconv.o
+    COMPILE  mblen.o
+    COMPILE  mbrlen.o
+    COMPILE  mbrtoc16.o
+    COMPILE  mbrtoc32.o
+    COMPILE  mbrtowc.o
+    COMPILE  mbsnrtowcs.o
+    COMPILE  mbsrtowcs.o
+    COMPILE  mbstowcs.o
+    COMPILE  mbtowc.o
+    COMPILE  nextwctype.o
+    COMPILE  nl_langinfo.o
+    COMPILE  nolocale.o
+    COMPILE  nomacros.o
+    COMPILE  none.o
+    COMPILE  rpmatch.o
+    COMPILE  rune.o
+    COMPILE  runetype.o
+    COMPILE  table.o
+    COMPILE  tolower.o
+    COMPILE  toupper.o
+    COMPILE  wcrtomb.o
+    COMPILE  wcsftime.o
+    COMPILE  wcsnrtombs.o
+    COMPILE  wcsrtombs.o
+    COMPILE  wcstod.o
+    COMPILE  wcstof.o
+    COMPILE  wcstoimax.o
+    COMPILE  wcstol.o
+    COMPILE  wcstold.o
+    COMPILE  wcstoll.o
+    COMPILE  wcstombs.o
+    COMPILE  wcstoul.o
+    COMPILE  wcstoull.o
+    COMPILE  wcstoumax.o
+    COMPILE  wctob.o
+    COMPILE  wctomb.o
+    COMPILE  wctrans.o
+    COMPILE  wctype.o
+    COMPILE  wcwidth.o
+    MERGE    libc-locale.lib.a
+  [00;33mLibrary[0m libc-stdlib.lib.a
+    COMPILE  _Exit.o
+    COMPILE  abs.o
+    COMPILE  atof.o
+    COMPILE  a64l.o
+    COMPILE  abort.o
+    COMPILE  atoi.o
+    COMPILE  atol.o
+    COMPILE  bsearch.o
+    COMPILE  atoll.o
+    COMPILE  bsearch_b.o
+    COMPILE  cxa_thread_atexit.o
+    COMPILE  cxa_thread_atexit_impl.o
+    COMPILE  div.o
+    COMPILE  getenv.o
+    COMPILE  getopt.o
+    COMPILE  getopt_long.o
+    COMPILE  getsubopt.o
+    COMPILE  hcreate.o
+    COMPILE  hcreate_r.o
+    COMPILE  hdestroy_r.o
+    COMPILE  heapsort_b.o
+    COMPILE  heapsort.o
+    COMPILE  imaxabs.o
+    COMPILE  imaxdiv.o
+    COMPILE  insque.o
+    COMPILE  hsearch_r.o
+    COMPILE  l64a.o
+    COMPILE  labs.o
+    COMPILE  ldiv.o
+In file included from [01m[K/home/luke/sponge-os/genode/contrib/libc-d6a3665f0d2778ce8928c66302f1694cdc0d8480/src/lib/libc/lib/libc/stdlib/bsearch.c:42[m[K,
+                 from [01m[K/home/luke/sponge-os/genode/contrib/libc-d6a3665f0d2778ce8928c66302f1694cdc0d8480/src/lib/libc/lib/libc/stdlib/bsearch_b.c:29[m[K:
+[01m[K/home/luke/sponge-os/genode/contrib/libc-d6a3665f0d2778ce8928c66302f1694cdc0d8480/src/lib/libc/lib/libc/include/block_abi.h:45:9:[m[K [01;35m[Kwarning: [m[Kanonymous struct declared inside parameter list will not be visible outside of this definition or declaration
+   45 |         [01;35m[Kstruct[m[K {\
+      |         [01;35m[K^~~~~~[m[K
+[01m[K/home/luke/sponge-os/genode/contrib/libc-d6a3665f0d2778ce8928c66302f1694cdc0d8480/src/lib/libc/lib/libc/stdlib/bsearch.c:67:5:[m[K [01;36m[Knote: [m[Kin expansion of macro ‘[01m[KDECLARE_BLOCK[m[K’
+   67 |     [01;36m[KDECLARE_BLOCK[m[K(int, compar, const void *, const void *))
+      |     [01;36m[K^~~~~~~~~~~~~[m[K
+    COMPILE  llabs.o
+    COMPILE  lldiv.o
+    COMPILE  lsearch.o
+    COMPILE  merge.o
+    COMPILE  mergesort_b.o
+    COMPILE  ptsname.o
+    COMPILE  qsort_r.o
+    COMPILE  qsort.o
+    COMPILE  quick_exit.o
+    COMPILE  radixsort.o
+    COMPILE  rand.o
+    COMPILE  random.o
+    COMPILE  reallocarray.o
+    COMPILE  reallocf.o
+    COMPILE  realpath.o
+    COMPILE  remque.o
+    COMPILE  set_constraint_handler_s.o
+    COMPILE  strfmon.o
+    COMPILE  strtoimax.o
+    COMPILE  strtol.o
+    COMPILE  strtold.o
+    COMPILE  strtoll.o
+    COMPILE  strtonum.o
+    COMPILE  strtoq.o
+    COMPILE  strtoul.o
+    COMPILE  strtoull.o
+    COMPILE  strtoumax.o
+    COMPILE  strtouq.o
+    COMPILE  tdelete.o
+    COMPILE  tfind.o
+    COMPILE  tsearch.o
+    COMPILE  twalk.o
+    MERGE    libc-stdlib.lib.a
+  [00;33mLibrary[0m libc-stdio.lib.a
+    COMPILE  asprintf.o
+    COMPILE  _flock_stub.o
+    COMPILE  clrerr.o
+    COMPILE  fclose.o
+    COMPILE  fcloseall.o
+    COMPILE  dprintf.o
+    COMPILE  fdopen.o
+    COMPILE  feof.o
+    COMPILE  ferror.o
+    COMPILE  fflush.o
+    COMPILE  fgetc.o
+    COMPILE  fgetln.o
+    COMPILE  fgetpos.o
+    COMPILE  fgets.o
+    COMPILE  fgetwc.o
+    COMPILE  fgetwln.o
+    COMPILE  fgetws.o
+    COMPILE  findfp.o
+    COMPILE  flags.o
+    COMPILE  fileno.o
+    COMPILE  fmemopen.o
+    COMPILE  fopen.o
+    COMPILE  fopencookie.o
+    COMPILE  fprintf.o
+    COMPILE  fpurge.o
+    COMPILE  fputc.o
+    COMPILE  fputs.o
+    COMPILE  fputwc.o
+    COMPILE  fputws.o
+    COMPILE  fread.o
+    COMPILE  freopen.o
+    COMPILE  fscanf.o
+    COMPILE  fseek.o
+    COMPILE  fsetpos.o
+    COMPILE  ftell.o
+    COMPILE  funopen.o
+    COMPILE  fvwrite.o
+    COMPILE  fwalk.o
+    COMPILE  fwide.o
+    COMPILE  fwprintf.o
+    COMPILE  fwrite.o
+    COMPILE  fwscanf.o
+    COMPILE  getc.o
+    COMPILE  getchar.o
+    COMPILE  getline.o
+    COMPILE  getdelim.o
+    COMPILE  gets.o
+    COMPILE  gets_s.o
+    COMPILE  getw.o
+    COMPILE  getwc.o
+    COMPILE  getwchar.o
+    COMPILE  makebuf.o
+    COMPILE  mktemp.o
+    COMPILE  open_memstream.o
+    COMPILE  open_wmemstream.o
+    COMPILE  perror.o
+    COMPILE  printf-pos.o
+    COMPILE  printf.o
+    COMPILE  putc.o
+    COMPILE  puts.o
+    COMPILE  putchar.o
+    COMPILE  putw.o
+    COMPILE  putwc.o
+    COMPILE  putwchar.o
+    COMPILE  refill.o
+    COMPILE  remove.o
+    COMPILE  rewind.o
+    COMPILE  rget.o
+    COMPILE  scanf.o
+    COMPILE  setbuf.o
+    COMPILE  setbuffer.o
+    COMPILE  setvbuf.o
+    COMPILE  snprintf.o
+    COMPILE  sprintf.o
+    COMPILE  sscanf.o
+    COMPILE  stdio.o
+    COMPILE  swprintf.o
+    COMPILE  swscanf.o
+    COMPILE  tempnam.o
+    COMPILE  tmpfile.o
+    COMPILE  tmpnam.o
+    COMPILE  ungetc.o
+    COMPILE  ungetwc.o
+    COMPILE  vasprintf.o
+    COMPILE  vdprintf.o
+    COMPILE  vfprintf.o
+    COMPILE  vfscanf.o
+    COMPILE  vfwprintf.o
+    COMPILE  vfwscanf.o
+    COMPILE  vprintf.o
+    COMPILE  vscanf.o
+    COMPILE  vsnprintf.o
+    COMPILE  vsprintf.o
+    COMPILE  vsscanf.o
+    COMPILE  vswprintf.o
+    COMPILE  vswscanf.o
+    COMPILE  vwprintf.o
+    COMPILE  vwscanf.o
+    COMPILE  wbuf.o
+    COMPILE  wprintf.o
+    COMPILE  wscanf.o
+    COMPILE  wsetup.o
+    COMPILE  xprintf.o
+    COMPILE  xprintf_errno.o
+    COMPILE  xprintf_float.o
+    COMPILE  xprintf_hexdump.o
+    COMPILE  xprintf_int.o
+    COMPILE  xprintf_quote.o
+    COMPILE  xprintf_str.o
+    COMPILE  xprintf_time.o
+    COMPILE  xprintf_vis.o
+    MERGE    libc-stdio.lib.a
+  [00;33mLibrary[0m libc-gen.lib.a
+    COMPILE  __pthread_mutex_init_calloc_cb_stub.o
+    COMPILE  __getosreldate.o
+    COMPILE  __xuname.o
+    COMPILE  _once_stub.o
+    COMPILE  _pthread_stubs.o
+    COMPILE  _rand48.o
+    COMPILE  _thread_init.o
+    COMPILE  alarm.o
+    COMPILE  arc4random-compat.o
+    COMPILE  arc4random.o
+    COMPILE  arc4random_uniform.o
+    COMPILE  assert.o
+    COMPILE  auxv.o
+    COMPILE  basename.o
+    COMPILE  basename_compat.o
+    COMPILE  check_utility_compat.o
+    COMPILE  clock_getcpuclockid.o
+    COMPILE  closedir.o
+    COMPILE  confstr.o
+    COMPILE  crypt.o
+    COMPILE  ctermid.o
+    COMPILE  dirfd.o
+    COMPILE  dirname.o
+    COMPILE  dirname_compat.o
+    COMPILE  dlfcn.o
+    COMPILE  drand48.o
+    COMPILE  dup3.o
+    COMPILE  erand48.o
+    COMPILE  err.o
+    COMPILE  errlst.o
+    COMPILE  errno.o
+    COMPILE  exec.o
+    COMPILE  fdevname.o
+    COMPILE  flt_rounds.o
+    COMPILE  fmtcheck.o
+    COMPILE  fmtmsg.o
+    COMPILE  fnmatch.o
+    COMPILE  fpclassify.o
+    COMPILE  fpgetmask.o
+    COMPILE  fpgetprec.o
+    COMPILE  fpgetround.o
+    COMPILE  fpgetsticky.o
+    COMPILE  fpsetmask.o
+    COMPILE  fpsetprec.o
+    COMPILE  fpsetround.o
+    COMPILE  fstab.o
+    COMPILE  ftok.o
+    COMPILE  fts-compat.o
+    COMPILE  fts.o
+    COMPILE  ftw.o
+    COMPILE  getbootfile.o
+    COMPILE  getbsize.o
+    COMPILE  getcap.o
+    COMPILE  getcontextx.o
+    COMPILE  getcwd.o
+    COMPILE  getdomainname.o
+    COMPILE  getgrouplist.o
+    COMPILE  gethostname.o
+    COMPILE  getloadavg.o
+    COMPILE  getlogin.o
+    COMPILE  getmntinfo.o
+    COMPILE  getnetgrent.o
+    COMPILE  getpagesize.o
+    COMPILE  getpeereid.o
+    COMPILE  getprogname.o
+    COMPILE  getttyent.o
+    COMPILE  getusershell.o
+    COMPILE  glob.o
+    COMPILE  infinity.o
+    COMPILE  initgroups.o
+    COMPILE  interposing_table.o
+    COMPILE  isatty.o
+    COMPILE  isinf.o
+    COMPILE  isnan.o
+    COMPILE  jrand48.o
+    COMPILE  lcong48.o
+    COMPILE  ldexp.o
+    COMPILE  libc_dlopen.o
+    COMPILE  lrand48.o
+    COMPILE  makecontext.o
+    COMPILE  modf.o
+    COMPILE  mrand48.o
+    COMPILE  nftw.o
+    COMPILE  nice.o
+    COMPILE  nlist.o
+    COMPILE  nrand48.o
+    COMPILE  opendir.o
+    COMPILE  pause.o
+    COMPILE  pmadvise.o
+    COMPILE  popen.o
+    COMPILE  posix_spawn.o
+    COMPILE  psignal.o
+    COMPILE  pw_scan.o
+    COMPILE  readdir.o
+    COMPILE  recvmmsg.o
+    COMPILE  rewinddir.o
+    COMPILE  scandir.o
+    COMPILE  seed48.o
+    COMPILE  seekdir.o
+    COMPILE  semctl.o
+    COMPILE  sendmmsg.o
+    COMPILE  setdomainname.o
+    COMPILE  sethostname.o
+    COMPILE  setjmperr.o
+    COMPILE  setmode.o
+    COMPILE  setprogname.o
+    COMPILE  siglist.o
+    COMPILE  signalcontext.o
+    COMPILE  sigsetjmp.o
+    COMPILE  sigsetops.o
+    COMPILE  srand48.o
+    COMPILE  statvfs.o
+    COMPILE  stringlist.o
+    COMPILE  strtofflags.o
+    COMPILE  sysctl.o
+    COMPILE  sysctlbyname.o
+    COMPILE  sysctlnametomib.o
+    COMPILE  syslog.o
+    COMPILE  telldir.o
+    COMPILE  termios.o
+    COMPILE  time.o
+    COMPILE  times.o
+    COMPILE  timespec_get.o
+    COMPILE  timezone.o
+    COMPILE  tls.o
+    COMPILE  ttyname.o
+    COMPILE  ttyslot.o
+    COMPILE  ualarm.o
+    COMPILE  ulimit.o
+    COMPILE  uname.o
+    COMPILE  unvis-compat.o
+    COMPILE  utime.o
+    COMPILE  wordexp.o
+    MERGE    libc-gen.lib.a
+  [00;33mLibrary[0m libc-gdtoa.lib.a
+    COMPILE  _hldtoa.o
+    COMPILE  _hdtoa.o
+    COMPILE  _ldtoa.o
+    COMPILE  dtoa.o
+    COMPILE  dmisc.o
+    COMPILE  g_Qfmt.o
+    COMPILE  g__fmt.o
+    COMPILE  g_ddfmt.o
+    COMPILE  g_ffmt.o
+    COMPILE  g_xLfmt.o
+    COMPILE  g_dfmt.o
+    COMPILE  g_xfmt.o
+    COMPILE  gdtoa.o
+    COMPILE  gethex.o
+    COMPILE  glue.o
+    COMPILE  gmisc.o
+    COMPILE  hd_init.o
+    COMPILE  hexnan.o
+    COMPILE  machdep_ldisd.o
+    COMPILE  misc.o
+    COMPILE  printf.o
+    COMPILE  smisc.o
+    COMPILE  strtoIQ.o
+    COMPILE  strtoIdd.o
+    COMPILE  strtoId.o
+    COMPILE  strtoIg.o
+    COMPILE  strtoIx.o
+    COMPILE  strtoIf.o
+    COMPILE  strtoIxL.o
+    COMPILE  strtod.o
+    COMPILE  strtodI.o
+    COMPILE  strtodg.o
+    COMPILE  strtof.o
+    COMPILE  strtopQ.o
+    COMPILE  strtopd.o
+    COMPILE  strtopdd.o
+    COMPILE  strtopf.o
+    COMPILE  strtopx.o
+    COMPILE  strtopxL.o
+    COMPILE  strtorQ.o
+    COMPILE  strtord.o
+    COMPILE  strtordd.o
+    COMPILE  strtorf.o
+    COMPILE  strtorx.o
+    COMPILE  strtorxL.o
+    COMPILE  sum.o
+    COMPILE  ulp.o
+    MERGE    libc-gdtoa.lib.a
+  [00;33mLibrary[0m libc-inet.lib.a
+    COMPILE  inet_addr.o
+    COMPILE  inet_cidr_ntop.o
+    COMPILE  inet_cidr_pton.o
+    COMPILE  inet_lnaof.o
+    COMPILE  inet_makeaddr.o
+    COMPILE  inet_net_ntop.o
+    COMPILE  inet_net_pton.o
+    COMPILE  inet_netof.o
+    COMPILE  inet_neta.o
+    COMPILE  inet_network.o
+    COMPILE  inet_ntoa.o
+    COMPILE  inet_ntop.o
+    COMPILE  inet_pton.o
+    COMPILE  nsap_addr.o
+    MERGE    libc-inet.lib.a
+  [00;33mLibrary[0m libc-stdtime.lib.a
+    COMPILE  strftime.o
+    COMPILE  timelocal.o
+    COMPILE  strptime.o
+    COMPILE  time32.o
+    MERGE    libc-stdtime.lib.a
+  [00;33mLibrary[0m libc-regex.lib.a
+    COMPILE  regcomp.o
+    COMPILE  regerror.o
+    COMPILE  regfree.o
+    COMPILE  regexec.o
+    MERGE    libc-regex.lib.a
+  [00;33mLibrary[0m libc-compat.lib.a
+    COMPILE  creat.o
+    COMPILE  gethostid.o
+    COMPILE  getwd.o
+    COMPILE  killpg.o
+    COMPILE  sethostid.o
+    COMPILE  setpgrp.o
+    COMPILE  setruid.o
+    COMPILE  setrgid.o
+    COMPILE  sigcompat.o
+    MERGE    libc-compat.lib.a
+  [00;33mLibrary[0m libc-setjmp.lib.a
+    COMPILE  _setjmp.o
+    COMPILE  setjmp.o
+    MERGE    libc-setjmp.lib.a
+  [00;33mLibrary[0m libc-mem.lib.a
+    COMPILE  libc_mem_alloc.o
+    MERGE    libc-mem.lib.a
+  [00;33mLibrary[0m libc-resolv.lib.a
+    COMPILE  herror.o
+    COMPILE  h_errno.o
+    COMPILE  res_comp.o
+    COMPILE  mtctxres.o
+    COMPILE  res_data.o
+    COMPILE  res_findzonecut.o
+    COMPILE  res_init.o
+    COMPILE  res_mkquery.o
+    COMPILE  res_mkupdate.o
+    COMPILE  res_query.o
+    COMPILE  res_send.o
+    COMPILE  res_state.o
+    COMPILE  res_update.o
+    MERGE    libc-resolv.lib.a
+  [00;33mLibrary[0m libc-isc.lib.a
+    COMPILE  ev_streams.o
+    COMPILE  ev_timers.o
+    MERGE    libc-isc.lib.a
+  [00;33mLibrary[0m libc-nameser.lib.a
+    COMPILE  ns_name.o
+    COMPILE  ns_netint.o
+    COMPILE  ns_parse.o
+    COMPILE  ns_print.o
+    COMPILE  ns_samedomain.o
+    COMPILE  ns_ttl.o
+    MERGE    libc-nameser.lib.a
+  [00;33mLibrary[0m libc-net.lib.a
+    COMPILE  base64.o
+    COMPILE  gai_strerror.o
+    COMPILE  getaddrinfo.o
+    COMPILE  gethostbyht.o
+    COMPILE  gethostnamadr.o
+    COMPILE  gethostbydns.o
+    COMPILE  getnameinfo.o
+    COMPILE  getprotoent.o
+    COMPILE  getprotoname.o
+    COMPILE  getservent.o
+    COMPILE  map_v4v6.o
+    COMPILE  name6.o
+    COMPILE  nsdispatch.o
+    CONVERT  nslexer.c
+    CONVERT  nsparser.c
+    COMPILE  sendmsg.o
+    COMPILE  vars.o
+    COMPILE  nslexer.o
+    COMPILE  nsparser.o
+    MERGE    libc-net.lib.a
+  [00;33mLibrary[0m libc-rpc.lib.a
+    COMPILE  bindresvport.o
+    MERGE    libc-rpc.lib.a
+  [00;33mLibrary[0m libc-tzcode.lib.a
+    COMPILE  asctime.o
+    COMPILE  localtime.o
+    COMPILE  difftime.o
+    MERGE    libc-tzcode.lib.a
+  [00;33mLibrary[0m libc-libkern.lib.a
+    COMPILE  explicit_bzero.o
+    MERGE    libc-libkern.lib.a
+  [00;33mLibrary[0m libc.lib.so
+    COMPILE  atexit.o
+    COMPILE  alarm.o
+    COMPILE  call_func.o
+    COMPILE  component.o
+    COMPILE  dynamic_linker.o
+    COMPILE  dummies.o
+    COMPILE  environ.o
+    COMPILE  errno.o
+    COMPILE  execve.o
+    COMPILE  exit.o
+    COMPILE  fd_alloc.o
+    COMPILE  file_operations.o
+    COMPILE  genode.o
+    COMPILE  fork.o
+    COMPILE  getgrent.o
+    COMPILE  getpwent.o
+    COMPILE  getrandom.o
+    COMPILE  issetugid.o
+    COMPILE  kernel.o
+    COMPILE  malloc.o
+    COMPILE  kqueue.o
+    COMPILE  plugin.o
+    COMPILE  plugin_registry.o
+    COMPILE  poll.o
+    COMPILE  pread_pwrite.o
+    COMPILE  progname.o
+    COMPILE  pthread.o
+    COMPILE  pthread_create.o
+    COMPILE  readv_writev.o
+    COMPILE  rlimit.o
+    COMPILE  rwlock.o
+    COMPILE  select.o
+    COMPILE  semaphore.o
+    COMPILE  signal.o
+    COMPILE  sleep.o
+    COMPILE  socket_errno.o
+    COMPILE  socket_fs_plugin.o
+    COMPILE  socket_operations.o
+    COMPILE  spinlock.o
+    COMPILE  strcoll.o
+    COMPILE  strxfrm.o
+    COMPILE  syscall.o
+    COMPILE  sysctl.o
+    COMPILE  time.o
+    COMPILE  vfs_plugin.o
+    COMPILE  wcscoll.o
+    COMPILE  wcsxfrm.o
+    MERGE    libc.lib.so
+  [00;33mLibrary[0m libm.abi.so
+    CONVERT  symbols.s
+    ASSEMBLE symbols.o
+    MERGE    libm.abi.so
+  [00;33mLibrary[0m libm.lib.so
+    COMPILE  b_exp.o
+    COMPILE  b_log.o
+    COMPILE  b_tgamma.o
+    COMPILE  catrig.o
+    COMPILE  e_acos.o
+    COMPILE  catrigf.o
+    COMPILE  catrigl.o
+    COMPILE  e_acosf.o
+    COMPILE  e_acosh.o
+    COMPILE  e_acoshf.o
+    COMPILE  e_acoshl.o
+    COMPILE  e_asin.o
+    COMPILE  e_acosl.o
+    COMPILE  e_asinl.o
+    COMPILE  e_asinf.o
+    COMPILE  e_atan2.o
+    COMPILE  e_atan2f.o
+    COMPILE  e_atan2l.o
+    COMPILE  e_atanhl.o
+    COMPILE  e_atanh.o
+    COMPILE  e_atanhf.o
+    COMPILE  e_cosh.o
+    COMPILE  e_coshl.o
+    COMPILE  e_exp.o
+    COMPILE  e_coshf.o
+    COMPILE  e_expf.o
+    COMPILE  e_fmod.o
+    COMPILE  e_fmodf.o
+    COMPILE  e_fmodl.o
+    COMPILE  e_gamma.o
+    COMPILE  e_gamma_r.o
+    COMPILE  e_gammaf.o
+    COMPILE  e_hypot.o
+    COMPILE  e_gammaf_r.o
+    COMPILE  e_hypotf.o
+    COMPILE  e_hypotl.o
+    COMPILE  e_j0.o
+    COMPILE  e_j0f.o
+    COMPILE  e_j1.o
+    COMPILE  e_jn.o
+    COMPILE  e_j1f.o
+    COMPILE  e_jnf.o
+    COMPILE  e_lgamma.o
+    COMPILE  e_lgamma_r.o
+    COMPILE  e_lgammaf.o
+    COMPILE  e_lgammaf_r.o
+    COMPILE  e_lgammal.o
+    COMPILE  e_lgammal_r.o
+    COMPILE  e_log.o
+    COMPILE  e_log10.o
+    COMPILE  e_log10f.o
+    COMPILE  e_log2.o
+    COMPILE  e_log2f.o
+    COMPILE  e_logf.o
+    COMPILE  e_pow.o
+    COMPILE  e_powf.o
+    COMPILE  e_powl.o
+    COMPILE  e_remainder.o
+    COMPILE  e_remainderf.o
+    COMPILE  e_remainderl.o
+    COMPILE  e_scalb.o
+    COMPILE  e_scalbf.o
+    COMPILE  e_sinh.o
+    COMPILE  e_sinhf.o
+    COMPILE  e_sinhl.o
+    COMPILE  e_sqrt.o
+    COMPILE  e_sqrtf.o
+    COMPILE  e_sqrtl.o
+    COMPILE  imprecise.o
+    COMPILE  invtrig.o
+    COMPILE  isinf.o
+    COMPILE  k_cos.o
+    COMPILE  k_cosf.o
+    COMPILE  k_cosl.o
+    COMPILE  k_exp.o
+    COMPILE  k_expf.o
+    COMPILE  k_sin.o
+    COMPILE  k_rem_pio2.o
+    COMPILE  k_sinl.o
+    COMPILE  k_sinf.o
+    COMPILE  k_tan.o
+    COMPILE  k_tanl.o
+    COMPILE  k_tanf.o
+    COMPILE  s_asinh.o
+    COMPILE  s_asinhf.o
+    COMPILE  msun/amd64/fenv.o
+    COMPILE  s_asinhl.o
+    COMPILE  s_atan.o
+    COMPILE  s_atanf.o
+    COMPILE  s_atanl.o
+    COMPILE  s_carg.o
+    COMPILE  s_cargf.o
+    COMPILE  s_cargl.o
+    COMPILE  s_cbrt.o
+    COMPILE  s_cbrtl.o
+    COMPILE  s_cbrtf.o
+    COMPILE  s_ccosh.o
+    COMPILE  s_ccoshf.o
+    COMPILE  s_ceil.o
+    COMPILE  s_ceilf.o
+    COMPILE  s_ceill.o
+    COMPILE  s_cexp.o
+    COMPILE  s_cexpf.o
+    COMPILE  s_cimag.o
+    COMPILE  s_cimagf.o
+    COMPILE  s_cimagl.o
+    COMPILE  s_clog.o
+    COMPILE  s_clogf.o
+    COMPILE  s_clogl.o
+    COMPILE  s_conj.o
+    COMPILE  s_conjf.o
+    COMPILE  s_conjl.o
+    COMPILE  s_copysign.o
+    COMPILE  s_copysignf.o
+    COMPILE  s_copysignl.o
+    COMPILE  s_cosf.o
+    COMPILE  s_cosl.o
+    COMPILE  s_cpow.o
+    COMPILE  s_cos.o
+    COMPILE  s_cpowf.o
+    COMPILE  s_cpowl.o
+    COMPILE  s_cproj.o
+    COMPILE  s_cprojf.o
+    COMPILE  s_cprojl.o
+    COMPILE  s_creal.o
+    COMPILE  s_crealf.o
+    COMPILE  s_creall.o
+    COMPILE  s_csinhf.o
+    COMPILE  s_csinh.o
+    COMPILE  s_csqrt.o
+    COMPILE  s_csqrtf.o
+    COMPILE  s_csqrtl.o
+    COMPILE  s_ctanh.o
+    COMPILE  s_ctanhf.o
+    COMPILE  s_erf.o
+    COMPILE  s_erff.o
+    COMPILE  s_erfl.o
+    COMPILE  s_exp2.o
+    COMPILE  s_expl.o
+    COMPILE  s_exp2f.o
+    COMPILE  s_expm1.o
+    COMPILE  s_expm1f.o
+    COMPILE  s_fabs.o
+    COMPILE  s_fabsf.o
+    COMPILE  s_fdim.o
+    COMPILE  s_fabsl.o
+    COMPILE  s_finite.o
+    COMPILE  s_finitef.o
+    COMPILE  s_floor.o
+    COMPILE  s_floorf.o
+    COMPILE  s_floorl.o
+    COMPILE  s_fmaf.o
+    COMPILE  s_fma.o
+    COMPILE  s_fmal.o
+    COMPILE  s_fmax.o
+    COMPILE  s_fmaxf.o
+    COMPILE  s_fmaxl.o
+    COMPILE  s_fminf.o
+    COMPILE  s_fmin.o
+    COMPILE  s_fminl.o
+    COMPILE  s_frexpf.o
+    COMPILE  s_frexp.o
+    COMPILE  s_frexpl.o
+    COMPILE  s_ilogb.o
+    COMPILE  s_ilogbf.o
+    COMPILE  s_ilogbl.o
+    COMPILE  s_isnormal.o
+    COMPILE  s_isnan.o
+    COMPILE  s_isfinite.o
+    COMPILE  s_llrint.o
+    COMPILE  s_llrintl.o
+    COMPILE  s_llrintf.o
+    COMPILE  s_llround.o
+    COMPILE  s_llroundf.o
+    COMPILE  s_llroundl.o
+    COMPILE  s_log1p.o
+    COMPILE  s_log1pf.o
+    COMPILE  s_logbf.o
+    COMPILE  s_logbl.o
+    COMPILE  s_logl.o
+    COMPILE  s_logb.o
+    COMPILE  s_lrint.o
+    COMPILE  s_lrintf.o
+    COMPILE  s_lrintl.o
+    COMPILE  s_lround.o
+    COMPILE  s_lroundl.o
+    COMPILE  s_lroundf.o
+    COMPILE  s_modf.o
+    COMPILE  s_modff.o
+    COMPILE  s_modfl.o
+    COMPILE  s_nan.o
+    COMPILE  s_nanl.o
+    COMPILE  s_nearbyint.o
+    COMPILE  s_nextafter.o
+    COMPILE  s_nextafterf.o
+    COMPILE  s_nextafterl.o
+    COMPILE  s_nexttoward.o
+    COMPILE  s_nexttowardf.o
+    COMPILE  s_remquo.o
+    COMPILE  s_remquof.o
+    COMPILE  s_remquol.o
+    COMPILE  s_rint.o
+    COMPILE  s_rintf.o
+    COMPILE  s_rintl.o
+    COMPILE  s_round.o
+    COMPILE  s_roundf.o
+    COMPILE  s_roundl.o
+    COMPILE  s_scalbln.o
+    COMPILE  s_scalbn.o
+    COMPILE  s_scalbnf.o
+    COMPILE  s_scalbnl.o
+    COMPILE  s_signbit.o
+    COMPILE  s_signgam.o
+    COMPILE  s_significand.o
+    COMPILE  s_significandf.o
+    COMPILE  s_sin.o
+    COMPILE  s_sincos.o
+    COMPILE  s_sincosf.o
+    COMPILE  s_sincosl.o
+    COMPILE  s_sinf.o
+    COMPILE  s_sinl.o
+    COMPILE  s_tan.o
+    COMPILE  s_tanf.o
+    COMPILE  s_tanh.o
+    COMPILE  s_tanhf.o
+    COMPILE  s_tanhl.o
+    COMPILE  s_tanl.o
+    COMPILE  s_tgammaf.o
+    COMPILE  s_trunc.o
+    COMPILE  s_truncf.o
+    COMPILE  s_truncl.o
+    COMPILE  w_cabs.o
+    COMPILE  w_cabsf.o
+    COMPILE  w_cabsl.o
+    COMPILE  w_drem.o
+    COMPILE  w_dremf.o
+    MERGE    libm.lib.so
+  [00;33mLibrary[0m stdcxx.abi.so
+    CONVERT  symbols.s
+    ASSEMBLE symbols.o
+    MERGE    stdcxx.abi.so
+  [00;33mLibrary[0m stdcxx-c++98.lib.a
+    COMPILE  allocator-inst.o
+    COMPILE  bitmap_allocator.o
+    COMPILE  atomicity.o
+    COMPILE  basic_file_stdio.o
+    COMPILE  c_locale.o
+    COMPILE  codecvt.o
+    COMPILE  collate_members.o
+    COMPILE  codecvt_members.o
+    COMPILE  collate_members_cow.o
+    COMPILE  compatibility-debug_list.o
+    COMPILE  compatibility-debug_list-2.o
+    COMPILE  compatibility-ldbl.o
+    COMPILE  compatibility.o
+    COMPILE  complex_io.o
+    COMPILE  concept-inst.o
+    COMPILE  cow-istream-string.o
+    COMPILE  ctype_configure_char.o
+    COMPILE  ext-inst.o
+    COMPILE  ctype_members.o
+    COMPILE  globals_io.o
+    COMPILE  hash_tr1.o
+    COMPILE  hashtable_tr1.o
+    COMPILE  ios_failure.o
+    COMPILE  ios_init.o
+    COMPILE  ios_locale.o
+    COMPILE  istream-string.o
+    COMPILE  istream.o
+    COMPILE  list-aux-2.o
+    COMPILE  list-aux.o
+    COMPILE  list.o
+    COMPILE  list_associated-2.o
+    COMPILE  list_associated.o
+    COMPILE  locale.o
+    COMPILE  locale_facets.o
+    COMPILE  math_stubs_float.o
+    COMPILE  math_stubs_long_double.o
+    COMPILE  messages_members.o
+    COMPILE  messages_members_cow.o
+    COMPILE  misc-inst.o
+    COMPILE  monetary_members.o
+    COMPILE  monetary_members_cow.o
+    COMPILE  mt_allocator.o
+    COMPILE  numeric_members.o
+    COMPILE  numeric_members_cow.o
+    COMPILE  parallel_settings.o
+    COMPILE  pool_allocator.o
+    COMPILE  stdexcept.o
+    COMPILE  streambuf.o
+    COMPILE  time_members.o
+    COMPILE  tree.o
+    COMPILE  valarray.o
+    MERGE    stdcxx-c++98.lib.a
+  [00;33mLibrary[0m stdcxx-c++11.lib.a
+    COMPILE  assert_fail.o
+    COMPILE  codecvt.o
+    COMPILE  compatibility-atomic-c++0x.o
+    COMPILE  chrono.o
+    COMPILE  compatibility-c++0x.o
+    COMPILE  compatibility-chrono.o
+    COMPILE  compatibility-condvar.o
+    COMPILE  compatibility-ldbl-alt128-cxx11.o
+    COMPILE  compatibility-ldbl-alt128.o
+    COMPILE  compatibility-thread-c++0x.o
+    COMPILE  condition_variable.o
+    COMPILE  cow-fstream-inst.o
+    COMPILE  cow-locale_init.o
+    COMPILE  cow-shim_facets.o
+    COMPILE  cow-sstream-inst.o
+    COMPILE  cow-stdexcept.o
+    COMPILE  cow-string-inst.o
+    COMPILE  cow-wstring-inst.o
+    COMPILE  cow-string-io-inst.o
+    COMPILE  ctype.o
+    COMPILE  cow-wstring-io-inst.o
+    COMPILE  cxx11-hash_tr1.o
+    COMPILE  cxx11-ios_failure.o
+    COMPILE  cxx11-locale-inst.o
+    COMPILE  cxx11-shim_facets.o
+    COMPILE  cxx11-stdexcept.o
+    COMPILE  cxx11-wlocale-inst.o
+    COMPILE  debug.o
+    COMPILE  ext11-inst.o
+    COMPILE  fstream-inst.o
+    COMPILE  functexcept.o
+    COMPILE  functional.o
+    COMPILE  futex.o
+    COMPILE  future.o
+    COMPILE  hash_c++0x.o
+    COMPILE  hashtable_c++0x.o
+    COMPILE  ios-inst.o
+    COMPILE  ios.o
+    COMPILE  ios_errcat.o
+    COMPILE  iostream-inst.o
+    COMPILE  istream-inst.o
+    COMPILE  limits.o
+    COMPILE  locale-inst.o
+    COMPILE  locale_init.o
+    COMPILE  localename.o
+    COMPILE  mutex.o
+    COMPILE  ostream-inst.o
+    COMPILE  placeholders.o
+    COMPILE  random.o
+    COMPILE  regex.o
+    COMPILE  shared_ptr.o
+    COMPILE  snprintf_lite.o
+    COMPILE  sso_string.o
+    COMPILE  sstream-inst.o
+    COMPILE  streambuf-inst.o
+    COMPILE  string-inst.o
+    COMPILE  string-io-inst.o
+    COMPILE  system_error.o
+    COMPILE  thread.o
+    COMPILE  wlocale-inst.o
+    COMPILE  wstring-inst.o
+    COMPILE  wstring-io-inst.o
+    MERGE    stdcxx-c++11.lib.a
+  [00;33mLibrary[0m stdcxx-c++17.lib.a
+    COMPILE  cow-fs_dir.o
+    COMPILE  cow-fs_path.o
+    COMPILE  cow-fs_ops.o
+    COMPILE  floating_from_chars.o
+    COMPILE  cow-string-inst.o
+    COMPILE  floating_to_chars.o
+    COMPILE  fs_ops.o
+    COMPILE  fs_dir.o
+    COMPILE  fs_path.o
+    COMPILE  memory_resource.o
+    COMPILE  ostream-inst.o
+    COMPILE  string-inst.o
+    MERGE    stdcxx-c++17.lib.a
+  [00;33mLibrary[0m stdcxx-c++20.lib.a
+    COMPILE  sstream-inst.o
+    COMPILE  tzdb.o
+[01m[K/home/luke/sponge-os/genode/contrib/stdcxx-41f7b34917a64abd5f045066a0072654b39a7b39/src/lib/stdcxx/src/c++20/tzdb.cc:[m[K In static member function ‘[01m[Kstatic std::pair<std::vector<std::chrono::leap_second>, bool> std::chrono::tzdb_list::_Node::[01;32m[K_S_read_leap_seconds[m[K()[m[K’:
+[01m[K/home/luke/sponge-os/genode/contrib/stdcxx-41f7b34917a64abd5f045066a0072654b39a7b39/src/lib/stdcxx/src/c++20/tzdb.cc:1146:10:[m[K [01;35m[Kwarning: [m[Kvariable ‘[01m[Kexpires[m[K’ set but not used [[01;35m[K]8;;https://gcc.gnu.org/onlinedocs/gcc-14.2.0/gcc/Warning-Options.html#index-Wno-unused-but-set-variable-Wunused-but-set-variable]8;;[m[K]
+ 1146 |     auto [01;35m[Kexpires[m[K = sys_days{2024y/12/28};
+      |          [01;35m[K^~~~~~~[m[K
+    MERGE    stdcxx-c++20.lib.a
+  [00;33mLibrary[0m stdcxx.lib.so
+    COMPILE  bad_array_length.o
+    COMPILE  bad_alloc.o
+    COMPILE  bad_array_new.o
+    COMPILE  bad_typeid.o
+    COMPILE  bad_cast.o
+    COMPILE  del_op.o
+    COMPILE  del_opa.o
+    COMPILE  del_opant.o
+    COMPILE  del_ops.o
+    COMPILE  del_opnt.o
+    COMPILE  del_opsa.o
+    COMPILE  del_opv.o
+    COMPILE  del_opva.o
+    COMPILE  del_opvant.o
+    COMPILE  del_opvnt.o
+    COMPILE  del_opvs.o
+    COMPILE  eh_aux_runtime.o
+    COMPILE  del_opvsa.o
+    COMPILE  eh_ptr.o
+    COMPILE  hash_bytes.o
+    COMPILE  new_handler.o
+    COMPILE  new_op.o
+    COMPILE  new_opa.o
+    COMPILE  new_opant.o
+    COMPILE  new_opnt.o
+    COMPILE  new_opv.o
+    COMPILE  new_opva.o
+    COMPILE  new_opvant.o
+    COMPILE  new_opvnt.o
+    COMPILE  tinfo.o
+    MERGE    stdcxx.lib.so
+  [00;33mLibrary[0m vfs_pipe.lib.so
+    COMPILE  plugin.o
+    MERGE    vfs_pipe.lib.so
+  [00;33mLibrary[0m posix.abi.so
+    CONVERT  symbols.s
+    ASSEMBLE symbols.o
+    MERGE    posix.abi.so
+  [00;33mLibrary[0m posix.lib.so
+    COMPILE  construct.o
+    MERGE    posix.lib.so
+  [00;33mLibrary[0m zlib.abi.so
+    CONVERT  symbols.s
+    ASSEMBLE symbols.o
+    MERGE    zlib.abi.so
+  [00;33mLibrary[0m zlib.lib.so
+    COMPILE  compress.o
+    COMPILE  adler32.o
+    COMPILE  crc32.o
+    COMPILE  deflate.o
+    COMPILE  gzlib.o
+    COMPILE  gzclose.o
+    COMPILE  gzwrite.o
+    COMPILE  gzread.o
+    COMPILE  infback.o
+    COMPILE  inffast.o
+    COMPILE  inflate.o
+    COMPILE  inftrees.o
+    COMPILE  trees.o
+    COMPILE  uncompr.o
+    COMPILE  zutil.o
+    MERGE    zlib.lib.so
+  [01;33mProgram[0m app/pci_decode/pci_decode
+  [00;33mLibrary[0m core-sel4.lib.a
+    COMPILE  version.o
+    MERGE    core-sel4.lib.a
+  [01;33mProgram[0m core/sel4/core
+  [01;33mProgram[0m driver/acpi/spec/x86/acpi
+  [01;33mProgram[0m driver/ahci/ahci
+    COMPILE  main.o
+    LINK     ahci
+  [00;33mLibrary[0m blit.lib.a
+  [00;33mLibrary[0m x86emu.lib.a
+    COMPILE  decode.o
+    COMPILE  fpu.o
+    COMPILE  ops.o
+    COMPILE  prim_ops.o
+    COMPILE  ops2.o
+    COMPILE  sys.o
+[01m[K/home/luke/sponge-os/genode/contrib/x86emu-8a1c3aa1d592fd3e5a1b0798471f8364870b79ae/src/lib/x86emu/contrib/prim_ops.c:[m[K In function ‘[01m[Ksbb_word[m[K’:
+[01m[K/home/luke/sponge-os/genode/contrib/x86emu-8a1c3aa1d592fd3e5a1b0798471f8364870b79ae/src/lib/x86emu/contrib/prim_ops.c:1832:5:[m[K [01;35m[Kwarning: [m[Kthis ‘[01m[Kelse[m[K’ clause does not guard... [[01;35m[K]8;;https://gcc.gnu.org/onlinedocs/gcc-14.2.0/gcc/Warning-Options.html#index-Wmisleading-indentation-Wmisleading-indentation]8;;[m[K]
+ 1832 |     [01;35m[Kelse[m[K
+      |     [01;35m[K^~~~[m[K
+In file included from [01m[K/home/luke/sponge-os/genode/contrib/x86emu-8a1c3aa1d592fd3e5a1b0798471f8364870b79ae/src/lib/x86emu/contrib/x86emu.h:54[m[K,
+                 from [01m[K/home/luke/sponge-os/genode/contrib/x86emu-8a1c3aa1d592fd3e5a1b0798471f8364870b79ae/src/lib/x86emu/contrib/x86emu/x86emui.h:64[m[K,
+                 from [01m[K/home/luke/sponge-os/genode/contrib/x86emu-8a1c3aa1d592fd3e5a1b0798471f8364870b79ae/src/lib/x86emu/contrib/prim_ops.c:103[m[K:
+[01m[K/home/luke/sponge-os/genode/contrib/x86emu-8a1c3aa1d592fd3e5a1b0798471f8364870b79ae/src/lib/x86emu/contrib/x86emu/regs.h:212:3:[m[K [01;36m[Knote: [m[K...this statement, but the latter is misleadingly indented as if it were guarded by the ‘[01m[Kelse[m[K’
+  212 |   [01;36m[Kif[m[K (COND) SET_FLAG(FLAG); else CLEAR_FLAG(FLAG)
+      |   [01;36m[K^~[m[K
+[01m[K/home/luke/sponge-os/genode/contrib/x86emu-8a1c3aa1d592fd3e5a1b0798471f8364870b79ae/src/lib/x86emu/contrib/prim_ops.c:1834:9:[m[K [01;36m[Knote: [m[Kin expansion of macro ‘[01m[KCONDITIONAL_SET_FLAG[m[K’
+ 1834 |         [01;36m[KCONDITIONAL_SET_FLAG[m[K(res & 0x8000, F_SF);
+      |         [01;36m[K^~~~~~~~~~~~~~~~~~~~[m[K
+[01m[K/home/luke/sponge-os/genode/contrib/x86emu-8a1c3aa1d592fd3e5a1b0798471f8364870b79ae/src/lib/x86emu/contrib/prim_ops.c:[m[K In function ‘[01m[Ksbb_long[m[K’:
+[01m[K/home/luke/sponge-os/genode/contrib/x86emu-8a1c3aa1d592fd3e5a1b0798471f8364870b79ae/src/lib/x86emu/contrib/prim_ops.c:1857:5:[m[K [01;35m[Kwarning: [m[Kthis ‘[01m[Kelse[m[K’ clause does not guard... [[01;35m[K]8;;https://gcc.gnu.org/onlinedocs/gcc-14.2.0/gcc/Warning-Options.html#index-Wmisleading-indentation-Wmisleading-indentation]8;;[m[K]
+ 1857 |     [01;35m[Kelse[m[K
+      |     [01;35m[K^~~~[m[K
+[01m[K/home/luke/sponge-os/genode/contrib/x86emu-8a1c3aa1d592fd3e5a1b0798471f8364870b79ae/src/lib/x86emu/contrib/x86emu/regs.h:212:3:[m[K [01;36m[Knote: [m[K...this statement, but the latter is misleadingly indented as if it were guarded by the ‘[01m[Kelse[m[K’
+  212 |   [01;36m[Kif[m[K (COND) SET_FLAG(FLAG); else CLEAR_FLAG(FLAG)
+      |   [01;36m[K^~[m[K
+[01m[K/home/luke/sponge-os/genode/contrib/x86emu-8a1c3aa1d592fd3e5a1b0798471f8364870b79ae/src/lib/x86emu/contrib/prim_ops.c:1859:9:[m[K [01;36m[Knote: [m[Kin expansion of macro ‘[01m[KCONDITIONAL_SET_FLAG[m[K’
+ 1859 |         [01;36m[KCONDITIONAL_SET_FLAG[m[K(res & 0x80000000, F_SF);
+      |         [01;36m[K^~~~~~~~~~~~~~~~~~~~[m[K
+    MERGE    x86emu.lib.a
+  [01;33mProgram[0m driver/framebuffer/vesa/vesa_fb
+    COMPILE  hw_emul.o
+    COMPILE  framebuffer.o
+    COMPILE  ifx86emu.o
+    COMPILE  main.o
+    LINK     vesa_fb
+  [00;33mLibrary[0m pc_lx_emul.lib.a
+  [00;33mLibrary[0m jitterentropy.lib.a
+  [00;33mLibrary[0m pc_linux_generated.lib.a
+  [01;33mProgram[0m driver/nic/pc/spec/x86_64/pc_nic
+  [00;33mLibrary[0m dde_ipxe_nic.lib.a
+  [00;33mLibrary[0m nic_driver.lib.a
+  [01;33mProgram[0m driver/nic/ipxe_nic
+  [01;33mProgram[0m driver/nic/virtio/spec/x86/virtio_pci_nic
+  [01;33mProgram[0m driver/platform/pc/spec/x86_64/pc_platform
+  [01;33mProgram[0m driver/platform/platform
+  [01;33mProgram[0m driver/ps2/x86/ps2
+    COMPILE  main.o
+    LINK     ps2
+  [01;33mProgram[0m driver/rtc/spec/x86/pc_rtc
+  [00;33mLibrary[0m virt_lx_emul.lib.a
+    MERGE    virt_lx_emul.lib.a
+  [00;33mLibrary[0m virt_linux_generated.lib.a
+    CONFIG   Linux
+    MERGE    virt_linux_generated.lib.a
+      [Linux]    GEN     Makefile
+      [Linux]    HOSTCC  scripts/basic/fixdep
+      [Linux]    GEN     Makefile
+      [Linux]    HOSTCC  scripts/kconfig/conf.o
+      [Linux]    HOSTCC  scripts/kconfig/confdata.o
+      [Linux]    LEX     scripts/kconfig/lexer.lex.c
+      [Linux]    HOSTCC  scripts/kconfig/expr.o
+      [Linux]    YACC    scripts/kconfig/parser.tab.[ch]
+      [Linux]    HOSTCC  scripts/kconfig/menu.o
+      [Linux]    HOSTCC  scripts/kconfig/preprocess.o
+      [Linux]    HOSTCC  scripts/kconfig/symbol.o
+      [Linux]    HOSTCC  scripts/kconfig/util.o
+      [Linux]    HOSTCC  scripts/kconfig/lexer.lex.o
+      [Linux]    HOSTCC  scripts/kconfig/parser.tab.o
+      [Linux]    HOSTLD  scripts/kconfig/conf
+      [Linux]  #
+      [Linux]  # configuration written to .config
+      [Linux]  #
+      [Linux]    GEN     Makefile
+      [Linux]  Using .config as base
+      [Linux]  Merging /home/luke/sponge-os/genode/contrib/linux-e4aad15aa6e3267bf6f8ac2b1b51766c03a8d82b/src/linux/kernel/configs/tiny.config
+      [Linux]  Value of CONFIG_CC_OPTIMIZE_FOR_SIZE is redefined by fragment /home/luke/sponge-os/genode/contrib/linux-e4aad15aa6e3267bf6f8ac2b1b51766c03a8d82b/src/linux/kernel/configs/tiny.config:
+      [Linux]  Previous value: # CONFIG_CC_OPTIMIZE_FOR_SIZE is not set
+      [Linux]  New value: CONFIG_CC_OPTIMIZE_FOR_SIZE=y
+      [Linux]  
+      [Linux]  Value of CONFIG_KERNEL_XZ is redefined by fragment /home/luke/sponge-os/genode/contrib/linux-e4aad15aa6e3267bf6f8ac2b1b51766c03a8d82b/src/linux/kernel/configs/tiny.config:
+      [Linux]  Previous value: # CONFIG_KERNEL_XZ is not set
+      [Linux]  New value: CONFIG_KERNEL_XZ=y
+      [Linux]  
+      [Linux]  Value of CONFIG_SLUB_TINY is redefined by fragment /home/luke/sponge-os/genode/contrib/linux-e4aad15aa6e3267bf6f8ac2b1b51766c03a8d82b/src/linux/kernel/configs/tiny.config:
+      [Linux]  Previous value: # CONFIG_SLUB_TINY is not set
+      [Linux]  New value: CONFIG_SLUB_TINY=y
+      [Linux]  
+      [Linux]  Merging /home/luke/sponge-os/genode/contrib/linux-e4aad15aa6e3267bf6f8ac2b1b51766c03a8d82b/src/linux/arch/x86/configs/tiny.config
+      [Linux]  Value of CONFIG_UNWINDER_GUESS is redefined by fragment /home/luke/sponge-os/genode/contrib/linux-e4aad15aa6e3267bf6f8ac2b1b51766c03a8d82b/src/linux/arch/x86/configs/tiny.config:
+      [Linux]  Previous value: # CONFIG_UNWINDER_GUESS is not set
+      [Linux]  New value: CONFIG_UNWINDER_GUESS=y
+      [Linux]  
+      [Linux]  #
+      [Linux]  # merged configuration written to .config (needs make)
+      [Linux]  #
+      [Linux]    GEN     Makefile
+      [Linux]  #
+      [Linux]  # configuration written to .config
+      [Linux]  #
+      [Linux]    GEN     Makefile
+      [Linux]  #
+      [Linux]  # configuration written to .config
+      [Linux]  #
+      [Linux]    SYNC    include/config/auto.conf
+      [Linux]    GEN     Makefile
+      [Linux]    GEN     Makefile
+      [Linux]    WRAP    arch/x86/include/generated/uapi/asm/bpf_perf_event.h
+      [Linux]    WRAP    arch/x86/include/generated/uapi/asm/errno.h
+      [Linux]    UPD     include/generated/uapi/linux/version.h
+      [Linux]    WRAP    arch/x86/include/generated/uapi/asm/fcntl.h
+      [Linux]    WRAP    arch/x86/include/generated/uapi/asm/ioctl.h
+      [Linux]    WRAP    arch/x86/include/generated/uapi/asm/ioctls.h
+      [Linux]    UPD     arch/x86/include/generated/asm/cpufeaturemasks.h
+      [Linux]    WRAP    arch/x86/include/generated/uapi/asm/param.h
+      [Linux]    WRAP    arch/x86/include/generated/uapi/asm/ipcbuf.h
+      [Linux]    WRAP    arch/x86/include/generated/uapi/asm/poll.h
+      [Linux]    SYSHDR  arch/x86/include/generated/uapi/asm/unistd_32.h
+      [Linux]    WRAP    arch/x86/include/generated/uapi/asm/socket.h
+      [Linux]    SYSHDR  arch/x86/include/generated/uapi/asm/unistd_64.h
+      [Linux]    WRAP    arch/x86/include/generated/uapi/asm/sockios.h
+      [Linux]    SYSHDR  arch/x86/include/generated/uapi/asm/unistd_x32.h
+      [Linux]    WRAP    arch/x86/include/generated/uapi/asm/resource.h
+      [Linux]    SYSTBL  arch/x86/include/generated/asm/syscalls_32.h
+      [Linux]    WRAP    arch/x86/include/generated/uapi/asm/termbits.h
+      [Linux]    WRAP    arch/x86/include/generated/uapi/asm/termios.h
+      [Linux]    UPD     include/config/kernel.release
+      [Linux]    SYSHDR  arch/x86/include/generated/asm/unistd_32_ia32.h
+      [Linux]    WRAP    arch/x86/include/generated/uapi/asm/types.h
+      [Linux]    SYSHDR  arch/x86/include/generated/asm/unistd_64_x32.h
+      [Linux]    SYSTBL  arch/x86/include/generated/asm/syscalls_64.h
+      [Linux]    HOSTCC  arch/x86/tools/relocs_32.o
+      [Linux]    HOSTCC  arch/x86/tools/relocs_64.o
+      [Linux]    HOSTCC  arch/x86/tools/relocs_common.o
+      [Linux]    UPD     include/generated/compile.h
+      [Linux]    WRAP    arch/x86/include/generated/asm/early_ioremap.h
+      [Linux]    WRAP    arch/x86/include/generated/asm/fprobe.h
+      [Linux]    UPD     include/generated/utsrelease.h
+      [Linux]    WRAP    arch/x86/include/generated/asm/mcs_spinlock.h
+      [Linux]    WRAP    arch/x86/include/generated/asm/mmzone.h
+      [Linux]    HOSTCC  scripts/sorttable
+      [Linux]    WRAP    arch/x86/include/generated/asm/irq_regs.h
+      [Linux]    WRAP    arch/x86/include/generated/asm/kmap_size.h
+      [Linux]    WRAP    arch/x86/include/generated/asm/local64.h
+      [Linux]    WRAP    arch/x86/include/generated/asm/mmiowb.h
+      [Linux]    WRAP    arch/x86/include/generated/asm/module.lds.h
+      [Linux]    WRAP    arch/x86/include/generated/asm/rwonce.h
+      [Linux]    DESCEND objtool
+      [Linux]    INSTALL /home/luke/sponge-os/genode/build/x86_64_w10/var/libcache/virt_linux_generated/tools/objtool/libsubcmd/include/subcmd/help.h
+      [Linux]    INSTALL /home/luke/sponge-os/genode/build/x86_64_w10/var/libcache/virt_linux_generated/tools/objtool/libsubcmd/include/subcmd/pager.h
+      [Linux]    INSTALL /home/luke/sponge-os/genode/build/x86_64_w10/var/libcache/virt_linux_generated/tools/objtool/libsubcmd/include/subcmd/exec-cmd.h
+      [Linux]    INSTALL /home/luke/sponge-os/genode/build/x86_64_w10/var/libcache/virt_linux_generated/tools/objtool/libsubcmd/include/subcmd/parse-options.h
+      [Linux]    INSTALL /home/luke/sponge-os/genode/build/x86_64_w10/var/libcache/virt_linux_generated/tools/objtool/libsubcmd/include/subcmd/run-command.h
+      [Linux]    INSTALL libsubcmd_headers
+      [Linux]    HOSTLD  arch/x86/tools/relocs
+      [Linux]    CC      scripts/mod/empty.o
+      [Linux]    HOSTCC  scripts/mod/mk_elfconfig
+      [Linux]    CC      scripts/mod/devicetable-offsets.s
+      [Linux]    CC      /home/luke/sponge-os/genode/build/x86_64_w10/var/libcache/virt_linux_generated/tools/objtool/libsubcmd/exec-cmd.o
+      [Linux]    CC      /home/luke/sponge-os/genode/build/x86_64_w10/var/libcache/virt_linux_generated/tools/objtool/libsubcmd/help.o
+      [Linux]    CC      /home/luke/sponge-os/genode/build/x86_64_w10/var/libcache/virt_linux_generated/tools/objtool/libsubcmd/pager.o
+      [Linux]    CC      /home/luke/sponge-os/genode/build/x86_64_w10/var/libcache/virt_linux_generated/tools/objtool/libsubcmd/parse-options.o
+      [Linux]    CC      /home/luke/sponge-os/genode/build/x86_64_w10/var/libcache/virt_linux_generated/tools/objtool/libsubcmd/run-command.o
+      [Linux]    CC      /home/luke/sponge-os/genode/build/x86_64_w10/var/libcache/virt_linux_generated/tools/objtool/libsubcmd/sigchain.o
+      [Linux]    CC      /home/luke/sponge-os/genode/build/x86_64_w10/var/libcache/virt_linux_generated/tools/objtool/libsubcmd/subcmd-config.o
+      [Linux]    MKELF   scripts/mod/elfconfig.h
+      [Linux]    HOSTCC  scripts/mod/modpost.o
+      [Linux]    HOSTCC  scripts/mod/sumversion.o
+      [Linux]    HOSTCC  scripts/mod/symsearch.o
+      [Linux]    UPD     scripts/mod/devicetable-offsets.h
+      [Linux]    HOSTCC  scripts/mod/file2alias.o
+      [Linux]    LD      /home/luke/sponge-os/genode/build/x86_64_w10/var/libcache/virt_linux_generated/tools/objtool/libsubcmd/libsubcmd-in.o
+      [Linux]    AR      /home/luke/sponge-os/genode/build/x86_64_w10/var/libcache/virt_linux_generated/tools/objtool/libsubcmd/libsubcmd.a
+      [Linux]    CC      /home/luke/sponge-os/genode/build/x86_64_w10/var/libcache/virt_linux_generated/tools/objtool/weak.o
+      [Linux]    CC      /home/luke/sponge-os/genode/build/x86_64_w10/var/libcache/virt_linux_generated/tools/objtool/check.o
+      [Linux]    CC      /home/luke/sponge-os/genode/build/x86_64_w10/var/libcache/virt_linux_generated/tools/objtool/special.o
+      [Linux]    CC      /home/luke/sponge-os/genode/build/x86_64_w10/var/libcache/virt_linux_generated/tools/objtool/elf.o
+      [Linux]    CC      /home/luke/sponge-os/genode/build/x86_64_w10/var/libcache/virt_linux_generated/tools/objtool/builtin-check.o
+      [Linux]    CC      /home/luke/sponge-os/genode/build/x86_64_w10/var/libcache/virt_linux_generated/tools/objtool/objtool.o
+      [Linux]    MKDIR   /home/luke/sponge-os/genode/build/x86_64_w10/var/libcache/virt_linux_generated/tools/objtool/arch/x86/
+      [Linux]    CC      /home/luke/sponge-os/genode/build/x86_64_w10/var/libcache/virt_linux_generated/tools/objtool/orc_gen.o
+      [Linux]    MKDIR   /home/luke/sponge-os/genode/build/x86_64_w10/var/libcache/virt_linux_generated/tools/objtool/arch/x86/lib/
+      [Linux]    CC      /home/luke/sponge-os/genode/build/x86_64_w10/var/libcache/virt_linux_generated/tools/objtool/orc_dump.o
+      [Linux]    CC      /home/luke/sponge-os/genode/build/x86_64_w10/var/libcache/virt_linux_generated/tools/objtool/libstring.o
+      [Linux]    MKDIR   /home/luke/sponge-os/genode/build/x86_64_w10/var/libcache/virt_linux_generated/tools/objtool/arch/x86/
+      [Linux]    CC      /home/luke/sponge-os/genode/build/x86_64_w10/var/libcache/virt_linux_generated/tools/objtool/libctype.o
+      [Linux]    CC      /home/luke/sponge-os/genode/build/x86_64_w10/var/libcache/virt_linux_generated/tools/objtool/arch/x86/special.o
+      [Linux]    GEN     /home/luke/sponge-os/genode/build/x86_64_w10/var/libcache/virt_linux_generated/tools/objtool/arch/x86/lib/inat-tables.c
+      [Linux]    CC      /home/luke/sponge-os/genode/build/x86_64_w10/var/libcache/virt_linux_generated/tools/objtool/librbtree.o
+      [Linux]    CC      /home/luke/sponge-os/genode/build/x86_64_w10/var/libcache/virt_linux_generated/tools/objtool/str_error_r.o
+      [Linux]    CC      /home/luke/sponge-os/genode/build/x86_64_w10/var/libcache/virt_linux_generated/tools/objtool/arch/x86/orc.o
+      [Linux]    CC      /home/luke/sponge-os/genode/build/x86_64_w10/var/libcache/virt_linux_generated/tools/objtool/arch/x86/decode.o
+      [Linux]    HOSTLD  scripts/mod/modpost
+      [Linux]    CC      kernel/bounds.s
+      [Linux]    CHKSHA1 /home/luke/sponge-os/genode/contrib/linux-e4aad15aa6e3267bf6f8ac2b1b51766c03a8d82b/src/linux/include/linux/atomic/atomic-arch-fallback.h
+      [Linux]    CHKSHA1 /home/luke/sponge-os/genode/contrib/linux-e4aad15aa6e3267bf6f8ac2b1b51766c03a8d82b/src/linux/include/linux/atomic/atomic-instrumented.h
+      [Linux]    CHKSHA1 /home/luke/sponge-os/genode/contrib/linux-e4aad15aa6e3267bf6f8ac2b1b51766c03a8d82b/src/linux/include/linux/atomic/atomic-long.h
+      [Linux]    UPD     include/generated/timeconst.h
+      [Linux]    UPD     include/generated/bounds.h
+      [Linux]    CC      arch/x86/kernel/asm-offsets.s
+      [Linux]    UPD     include/generated/asm-offsets.h
+      [Linux]    CC      kernel/sched/rq-offsets.s
+      [Linux]    LD      /home/luke/sponge-os/genode/build/x86_64_w10/var/libcache/virt_linux_generated/tools/objtool/arch/x86/objtool-in.o
+      [Linux]    UPD     include/generated/rq-offsets.h
+      [Linux]    CALL    /home/luke/sponge-os/genode/contrib/linux-e4aad15aa6e3267bf6f8ac2b1b51766c03a8d82b/src/linux/scripts/checksyscalls.sh
+      [Linux]    LD      /home/luke/sponge-os/genode/build/x86_64_w10/var/libcache/virt_linux_generated/tools/objtool/objtool-in.o
+      [Linux]    LINK    /home/luke/sponge-os/genode/build/x86_64_w10/var/libcache/virt_linux_generated/tools/objtool/objtool
+  [01;33mProgram[0m driver/usb_hid/spec/x86_64/usb_hid
+    COMPILE  drivers/base/bus.o
+    COMPILE  arch/x86/lib/hweight.o
+    COMPILE  drivers/base/class.o
+    COMPILE  drivers/base/core.o
+    COMPILE  drivers/base/devres.o
+    COMPILE  drivers/base/dd.o
+    COMPILE  drivers/base/driver.o
+    COMPILE  drivers/base/property.o
+    COMPILE  drivers/hid/hid-apple.o
+    COMPILE  drivers/hid/hid-cherry.o
+    COMPILE  drivers/hid/hid-core.o
+    COMPILE  drivers/hid/hid-generic.o
+    COMPILE  drivers/hid/hid-holtek-mouse.o
+    COMPILE  drivers/hid/hid-input.o
+    COMPILE  drivers/hid/hid-magicmouse.o
+    COMPILE  drivers/hid/hid-microsoft.o
+    COMPILE  drivers/hid/hid-multitouch.o
+    COMPILE  drivers/hid/hid-quirks.o
+    COMPILE  drivers/hid/usbhid/hid-core.o
+    COMPILE  drivers/hid/wacom_sys.o
+    COMPILE  drivers/hid/wacom_wac.o
+    COMPILE  drivers/input/input-mt.o
+    COMPILE  drivers/usb/core/config.o
+    COMPILE  drivers/input/input.o
+    COMPILE  drivers/usb/core/driver.o
+    COMPILE  drivers/usb/core/generic.o
+    COMPILE  drivers/usb/core/hub.o
+    COMPILE  drivers/usb/core/message.o
+    COMPILE  drivers/usb/core/quirks.o
+    COMPILE  drivers/usb/core/urb.o
+    COMPILE  drivers/usb/core/usb.o
+    COMPILE  dummies.o
+    COMPILE  fs/nls/nls_base.o
+    COMPILE  generated_dummies.o
+    COMPILE  genode_c_api/event.o
+    COMPILE  genode_c_api/usb_client.o
+    COMPILE  kernel/kthread.o
+    COMPILE  kernel/locking/mutex.o
+    COMPILE  kernel/locking/osq_lock.o
+    COMPILE  kernel/locking/rwsem.o
+    COMPILE  kernel/notifier.o
+    COMPILE  kernel/sched/build_utility.o
+    COMPILE  kernel/smpboot.o
+    COMPILE  kernel/softirq.o
+    COMPILE  kernel/time/clockevents.o
+    COMPILE  kernel/time/clocksource.o
+    COMPILE  kernel/time/hrtimer.o
+    COMPILE  kernel/time/jiffies.o
+    COMPILE  kernel/time/ntp.o
+    COMPILE  kernel/time/sleep_timeout.o
+    COMPILE  kernel/time/tick-broadcast.o
+    COMPILE  kernel/time/tick-common.o
+    COMPILE  kernel/time/tick-oneshot.o
+    COMPILE  kernel/time/tick-sched.o
+    COMPILE  kernel/time/time.o
+    COMPILE  kernel/time/timeconv.o
+    COMPILE  kernel/time/timecounter.o
+    COMPILE  kernel/time/timekeeping.o
+    COMPILE  kernel/time/timer.o
+    COMPILE  kernel/time/timer_list.o
+    COMPILE  kernel/time/timer_migration.o
+    COMPILE  kernel/workqueue.o
+    COMPILE  lib/bitmap.o
+    COMPILE  lib/ctype.o
+    COMPILE  lib/find_bit.o
+    COMPILE  lib/hexdump.o
+    COMPILE  lib/idr.o
+    COMPILE  lib/kasprintf.o
+    COMPILE  lib/kfifo.o
+    COMPILE  lib/klist.o
+    COMPILE  lib/kobject.o
+    COMPILE  lib/math/reciprocal_div.o
+    COMPILE  lib/kstrtox.o
+    COMPILE  lib/radix-tree.o
+    COMPILE  lib/siphash.o
+    COMPILE  lib/string.o
+    COMPILE  lib/string_helpers.o
+    COMPILE  lib/vsprintf.o
+    COMPILE  lib/xarray.o
+    COMPILE  lx_emul/alloc.o
+    COMPILE  lx_emul.o
+    COMPILE  lx_emul/clocksource.o
+    COMPILE  lx_emul/debug.o
+    COMPILE  lx_emul/event.o
+    COMPILE  lx_emul/init.o
+    COMPILE  lx_emul/irq_flags.o
+    COMPILE  lx_emul/irqchip.o
+    COMPILE  lx_emul/log.o
+    COMPILE  lx_emul/page_virt.o
+    COMPILE  lx_emul/random.o
+    COMPILE  lx_emul/shadow/arch/x86/kernel/irq.o
+    COMPILE  lx_emul/shadow/arch/x86/kernel/setup_percpu.o
+    COMPILE  lx_emul/shadow/drivers/char/random.o
+    COMPILE  lx_emul/shadow/drivers/input/evdev.o
+    COMPILE  lx_emul/shadow/drivers/input/input-leds.o
+    COMPILE  lx_emul/shadow/fs/exec.o
+    COMPILE  lx_emul/shadow/kernel/cpu.o
+    COMPILE  lx_emul/shadow/kernel/exit.o
+    COMPILE  lx_emul/shadow/kernel/fork.o
+    COMPILE  lx_emul/shadow/kernel/irq_work.o
+    COMPILE  lx_emul/shadow/kernel/locking/spinlock.o
+    COMPILE  lx_emul/shadow/kernel/pid.o
+    COMPILE  lx_emul/shadow/kernel/printk/printk.o
+    COMPILE  lx_emul/shadow/kernel/rcu/srcutree.o
+    COMPILE  lx_emul/shadow/kernel/rcu/tree.o
+    COMPILE  lx_emul/shadow/kernel/sched/core.o
+    COMPILE  lx_emul/shadow/kernel/sched/cputime.o
+    COMPILE  lx_emul/shadow/kernel/sched/fair.o
+    COMPILE  lx_emul/shadow/kernel/sched/sched.o
+    COMPILE  lx_emul/shadow/kernel/smp.o
+    COMPILE  lx_emul/shadow/kernel/stop_machine.o
+    COMPILE  lx_emul/shadow/lib/delay.o
+    COMPILE  lx_emul/shadow/mm/page_alloc.o
+    COMPILE  lx_emul/shadow/mm/percpu.o
+    COMPILE  lx_emul/shadow/mm/vmalloc.o
+    COMPILE  lx_emul/shadow/mm/vmstat.o
+    COMPILE  lx_emul/spec/x86/start.o
+    COMPILE  lx_emul/start.o
+    COMPILE  lx_emul/task.o
+    COMPILE  lx_emul/time.o
+    COMPILE  lx_emul/time_initial.o
+    COMPILE  lx_emul/virt/common_dummies.o
+    COMPILE  lx_emul/virt/irq.o
+    COMPILE  lx_emul/virt/shadow/drivers/usb/core/buffer.o
+    COMPILE  lx_emul/virt/shadow/drivers/usb/core/hcd.o
+    COMPILE  lx_emul/virt/spec/x86/dummies_arch.o
+    COMPILE  lx_emul/virt/usb_client.o
+    COMPILE  lx_emul/virt_to_page.o
+    COMPILE  lx_kit/console.o
+    COMPILE  lx_kit/env.o
+    COMPILE  lx_kit/init.o
+    COMPILE  lx_kit/memory_non_dma.o
+    COMPILE  lx_kit/memory.o
+    COMPILE  lx_kit/scheduler.o
+    COMPILE  lx_kit/spec/x86_64/setjmp.o
+    COMPILE  lx_kit/task.o
+    COMPILE  lx_kit/timeout.o
+    COMPILE  lx_user.o
+    COMPILE  main.o
+    COMPILE  mm/memblock.o
+    COMPILE  mm/slab_common.o
+    COMPILE  mm/slub.o
+    COMPILE  mm/util.o
+    CONFIG   initcall_table.c
+    COMPILE  initcall_table.o
+    LINK     usb_hid
+  [01;33mProgram[0m driver/usb_host/pc/spec/x86_64/pc_usb_host
+gcc -I/home/luke/sponge-os/genode/build/x86_64_w10/var/libcache/pc_linux_generated/include/generated /home/luke/sponge-os/genode/contrib/linux-e4aad15aa6e3267bf6f8ac2b1b51766c03a8d82b/src/linux/lib/crc/gen_crc32table.c -o gen_crc32table
+    COMPILE  lib/ctype.o
+    COMPILE  lib/find_bit.o
+    COMPILE  lib/debug_locks.o
+    COMPILE  lib/hexdump.o
+    COMPILE  lib/idr.o
+    COMPILE  lib/iomap.o
+    COMPILE  lib/irq_regs.o
+    COMPILE  lib/kasprintf.o
+    COMPILE  lib/klist.o
+    COMPILE  lib/kobject.o
+    COMPILE  lib/kstrtox.o
+    COMPILE  lib/list_sort.o
+    COMPILE  lib/math/reciprocal_div.o
+    COMPILE  lib/maple_tree.o
+    COMPILE  lib/radix-tree.o
+    COMPILE  lib/rbtree.o
+    COMPILE  lib/scatterlist.o
+    COMPILE  lib/siphash.o
+    COMPILE  lib/sort.o
+    COMPILE  lib/string.o
+    COMPILE  lib/string_helpers.o
+    COMPILE  lib/timerqueue.o
+    COMPILE  lib/vsprintf.o
+    COMPILE  lib/xarray.o
+    COMPILE  lx_emul.o
+    COMPILE  lx_emul/alloc.o
+    COMPILE  lx_emul/clock.o
+    COMPILE  lx_emul/clocksource.o
+    COMPILE  lx_emul/debug.o
+    COMPILE  lx_emul/init.o
+    COMPILE  lx_emul/io_mem.o
+    COMPILE  lx_emul/io_port.o
+    COMPILE  lx_emul/irq.o
+    COMPILE  lx_emul/irq_flags.o
+    COMPILE  lx_emul/irqchip.o
+    COMPILE  lx_emul/log.o
+    COMPILE  lx_emul/page_virt.o
+    COMPILE  lx_emul/pci.o
+    COMPILE  lx_emul/pci_bus.o
+    COMPILE  lx_emul/random.o
+    COMPILE  lx_emul/shadow/arch/x86/kernel/irq.o
+    COMPILE  lx_emul/shadow/arch/x86/kernel/setup_percpu.o
+    COMPILE  lx_emul/shadow/drivers/acpi/bus.o
+    COMPILE  lx_emul/shadow/drivers/acpi/device_sysfs.o
+    COMPILE  lx_emul/shadow/drivers/acpi/glue.o
+    COMPILE  lx_emul/shadow/drivers/acpi/property.o
+    COMPILE  lx_emul/shadow/drivers/acpi/scan.o
+    COMPILE  lx_emul/shadow/drivers/acpi/utils.o
+    COMPILE  lx_emul/shadow/drivers/char/random.o
+    COMPILE  lx_emul/shadow/drivers/clk/clk-devres.o
+    COMPILE  lx_emul/shadow/drivers/clk/clk.o
+    COMPILE  lx_emul/shadow/drivers/clk/clkdev.o
+    COMPILE  lx_emul/shadow/drivers/pci/host-bridge.o
+    COMPILE  lx_emul/shadow/drivers/pci/pci-sysfs.o
+    COMPILE  lx_emul/shadow/drivers/pci/pci.o
+    COMPILE  lx_emul/shadow/drivers/pci/search.o
+    COMPILE  lx_emul/shadow/drivers/pci/setup-irq.o
+    COMPILE  lx_emul/shadow/drivers/pci/setup-res.o
+    COMPILE  lx_emul/shadow/fs/exec.o
+    COMPILE  lx_emul/shadow/fs/libfs.o
+    COMPILE  lx_emul/shadow/fs/sysfs/dir.o
+    COMPILE  lx_emul/shadow/fs/sysfs/file.o
+    COMPILE  lx_emul/shadow/fs/sysfs/group.o
+    COMPILE  lx_emul/shadow/fs/sysfs/symlink.o
+    COMPILE  lx_emul/shadow/kernel/cpu.o
+    COMPILE  lx_emul/shadow/kernel/dma/mapping.o
+    COMPILE  lx_emul/shadow/kernel/exit.o
+    COMPILE  lx_emul/shadow/kernel/fork.o
+    COMPILE  lx_emul/shadow/kernel/irq/spurious.o
+    COMPILE  lx_emul/shadow/kernel/irq_work.o
+    COMPILE  lx_emul/shadow/kernel/locking/spinlock.o
+    COMPILE  lx_emul/shadow/kernel/pid.o
+    COMPILE  lx_emul/shadow/kernel/printk/printk.o
+    COMPILE  lx_emul/shadow/kernel/rcu/tree.o
+    COMPILE  lx_emul/shadow/kernel/sched/core.o
+    COMPILE  lx_emul/shadow/kernel/sched/cputime.o
+    COMPILE  lx_emul/shadow/kernel/sched/fair.o
+    COMPILE  lx_emul/shadow/kernel/sched/sched.o
+    COMPILE  lx_emul/shadow/kernel/stop_machine.o
+    COMPILE  lx_emul/shadow/kernel/smp.o
+    COMPILE  lx_emul/shadow/lib/delay.o
+    COMPILE  lx_emul/shadow/lib/devres.o
+    COMPILE  lx_emul/shadow/lib/kobject_uevent.o
+    COMPILE  lx_emul/shadow/lib/logic_iomem.o
+    COMPILE  lx_emul/shadow/lib/smp_processor_id.o
+    COMPILE  lx_emul/shadow/mm/dmapool.o
+    COMPILE  lx_emul/shadow/mm/page_alloc.o
+    COMPILE  lx_emul/shadow/mm/percpu.o
+    COMPILE  lx_emul/shadow/mm/vmalloc.o
+    COMPILE  lx_emul/shadow/mm/vmstat.o
+    COMPILE  lx_emul/shared_dma_buffer.o
+    COMPILE  lx_emul/spec/x86/start.o
+    COMPILE  lx_emul/start.o
+    COMPILE  lx_emul/task.o
+    COMPILE  lx_emul/time.o
+    COMPILE  lx_emul/time_initial.o
+    COMPILE  lx_emul/usb.o
+    COMPILE  lx_emul/virt_to_page.o
+    COMPILE  lx_kit/console.o
+    COMPILE  lx_kit/device.o
+    COMPILE  lx_kit/env.o
+    COMPILE  lx_kit/init.o
+    COMPILE  lx_kit/memory.o
+    COMPILE  lx_kit/memory_dma.o
+    COMPILE  lx_kit/scheduler.o
+    COMPILE  lx_kit/task.o
+    COMPILE  lx_kit/spec/x86_64/setjmp.o
+    COMPILE  lx_kit/timeout.o
+    COMPILE  mm/memblock.o
+    COMPILE  main.o
+    COMPILE  mm/mempool.o
+    COMPILE  mm/slab_common.o
+    COMPILE  mm/slub.o
+    COMPILE  mm/util.o
+    COMPILE  common_dummies.o
+    COMPILE  arch/x86/lib/hweight.o
+    COMPILE  drivers/base/bus.o
+    COMPILE  drivers/base/class.o
+    COMPILE  drivers/base/component.o
+    COMPILE  drivers/base/core.o
+    COMPILE  drivers/base/driver.o
+    COMPILE  drivers/base/dd.o
+    COMPILE  drivers/base/devres.o
+    COMPILE  drivers/base/platform.o
+    COMPILE  drivers/base/property.o
+    COMPILE  drivers/usb/common/common.o
+    COMPILE  drivers/pci/pci-driver.o
+    COMPILE  drivers/usb/core/buffer.o
+    COMPILE  drivers/usb/core/config.o
+    COMPILE  drivers/usb/core/devio.o
+    COMPILE  drivers/usb/core/devices.o
+    COMPILE  drivers/usb/core/driver.o
+    COMPILE  drivers/usb/core/endpoint.o
+    COMPILE  drivers/usb/core/file.o
+    COMPILE  drivers/usb/core/generic.o
+    COMPILE  drivers/usb/core/hcd-pci.o
+    COMPILE  drivers/usb/core/hcd.o
+    COMPILE  drivers/usb/core/hub.o
+    COMPILE  drivers/usb/core/message.o
+    COMPILE  drivers/usb/core/notify.o
+    COMPILE  drivers/usb/core/phy.o
+    COMPILE  drivers/usb/core/port.o
+    COMPILE  drivers/usb/core/quirks.o
+    COMPILE  drivers/usb/core/sysfs.o
+    COMPILE  drivers/usb/core/urb.o
+    COMPILE  drivers/usb/core/usb.o
+    COMPILE  drivers/usb/host/ehci-hcd.o
+    COMPILE  drivers/usb/host/ehci-pci.o
+    COMPILE  drivers/usb/host/ohci-hcd.o
+    COMPILE  drivers/usb/host/ohci-pci.o
+    COMPILE  drivers/usb/host/pci-quirks.o
+    COMPILE  drivers/usb/host/uhci-hcd.o
+    COMPILE  drivers/usb/host/xhci-dbg.o
+    COMPILE  drivers/usb/host/xhci-ext-caps.o
+    COMPILE  drivers/usb/host/xhci-hub.o
+    COMPILE  drivers/usb/host/xhci-pci.o
+    COMPILE  drivers/usb/host/xhci-mem.o
+    COMPILE  drivers/usb/host/xhci-ring.o
+    COMPILE  drivers/usb/host/xhci-trace.o
+    COMPILE  drivers/usb/host/xhci.o
+    COMPILE  fs/nls/nls_base.o
+    COMPILE  generated_dummies.o
+    COMPILE  dummies.o
+    COMPILE  genode_c_api/usb.o
+    COMPILE  kernel/async.o
+    COMPILE  kernel/irq/chip.o
+    COMPILE  kernel/irq/devres.o
+    COMPILE  kernel/irq/handle.o
+    COMPILE  kernel/irq/irqdesc.o
+    COMPILE  kernel/irq/irqdomain.o
+    COMPILE  kernel/irq/manage.o
+    COMPILE  kernel/irq/resend.o
+    COMPILE  kernel/kthread.o
+    COMPILE  kernel/locking/mutex.o
+    COMPILE  kernel/locking/osq_lock.o
+    COMPILE  kernel/locking/rwsem.o
+    COMPILE  kernel/notifier.o
+    COMPILE  kernel/panic.o
+    COMPILE  kernel/resource.o
+    COMPILE  kernel/sched/build_utility.o
+    COMPILE  kernel/smpboot.o
+    COMPILE  kernel/softirq.o
+    COMPILE  kernel/time/clockevents.o
+    COMPILE  kernel/time/clocksource.o
+    COMPILE  kernel/time/hrtimer.o
+    COMPILE  kernel/time/jiffies.o
+    COMPILE  kernel/time/ntp.o
+    COMPILE  kernel/time/sleep_timeout.o
+    COMPILE  kernel/time/tick-broadcast.o
+    COMPILE  kernel/time/tick-common.o
+    COMPILE  kernel/time/tick-oneshot.o
+    COMPILE  kernel/time/tick-sched.o
+    COMPILE  kernel/time/time.o
+    COMPILE  kernel/time/timeconv.o
+    COMPILE  kernel/time/timecounter.o
+    COMPILE  kernel/time/timekeeping.o
+    COMPILE  kernel/time/timer.o
+    COMPILE  kernel/time/timer_list.o
+    COMPILE  kernel/time/timer_migration.o
+    COMPILE  kernel/workqueue.o
+    COMPILE  lib/bitmap.o
+./gen_crc32table > crc32table.h
+    COMPILE  lib/crc/crc32-main.o
+    CONFIG   initcall_table.c
+    COMPILE  initcall_table.o
+    LINK     pc_usb_host
+  [01;33mProgram[0m init/init
+  [01;33mProgram[0m server/cached_fs_rom/cached_fs_rom
+    COMPILE  main.o
+    LINK     cached_fs_rom
+  [01;33mProgram[0m server/event_filter/event_filter
+    COMPILE  main.o
+    LINK     event_filter
+  [00;33mLibrary[0m net.lib.a
+  [01;33mProgram[0m server/nic_uplink/nic_uplink
+  [01;33mProgram[0m server/nitpicker/nitpicker
+  [01;33mProgram[0m server/part_block/part_block
+    COMPILE  main.o
+    LINK     part_block
+  [01;33mProgram[0m server/report_rom/report_rom
+  [01;33mProgram[0m server/system_rtc/system_rtc
+  [01;33mProgram[0m server/vfs/vfs
+    COMPILE  main.o
+    LINK     vfs
+  [01;33mProgram[0m sponge_configd/sponge_configd
+    COMPILE  main.o
+    LINK     sponge_configd
+  [01;33mProgram[0m sponge_pkgd/sponge_pkgd
+  [01;33mProgram[0m test/falkon_probe/falkon_probe
+  [01;33mProgram[0m timer/hpet/hpet_timer
+make[1]: ディレクトリ '/home/luke/sponge-os/genode/build/x86_64_w10' から出ます
+genode build completed
+sponge-falkon-rescue: fixture URL = http://10.0.2.2:8765/net-fixture.txt
+sponge-falkon-rescue: host fixture started on port 8765 (pids=2648059)
+sponge-falkon-rescue: staged 64 payload files under /system/pkg/falkon/payload/ (508 MiB on the GENODE partition — NOT in image.elf)
+building targets: kernel/sel4 lib/ld-sel4
+spawn make kernel/sel4 lib/ld-sel4
+make[1]: ディレクトリ '/home/luke/sponge-os/genode/build/x86_64_w10' に入ります
+  [00;33mLibrary[0m kernel-sel4-pc.lib.a
+ninja: Jobserver mode detected:  -j80 --jobserver-auth=fifo:/tmp/GMfifo2648277 --no-print-directory -- DEBUG_DIR=/home/luke/sponge-os/genode/build/x86_64_w10/debug INSTALL_DIR=/home/luke/sponge-os/genode/build/x86_64_w10/bin BUILD_BASE_DIR=/home/luke/sponge-os/genode/build/x86_64_w10 SHARED_LIBS= ARCHIVES= LIB=kernel-sel4-pc LIB_MK=/home/luke/sponge-os/genode/repos/base-sel4/lib/mk/spec/x86_64/kernel-sel4-pc.mk REP_DIR=/home/luke/sponge-os/genode/repos/base-sel4 KERNEL=sel4 BOARD=pc RUN_OPT=--include\ image/disk SHELL=/usr/bin/bash
+ninja: no work to do.
+  [00;33mLibrary[0m syscall-sel4-pc.lib.a
+  [00;33mLibrary[0m syscall-sel4.lib.a
+  [00;33mLibrary[0m startup-sel4.lib.a
+  [00;33mLibrary[0m base-sel4-common.lib.a
+  [00;33mLibrary[0m timeout.lib.a
+  [00;33mLibrary[0m cxx.lib.a
+  [00;33mLibrary[0m base-sel4.lib.a
+  [00;33mLibrary[0m ldso_so_support.lib.a
+  [00;33mLibrary[0m ld-sel4.lib.so
+  [01;33mProgram[0m kernel/sel4/sel4-pc
+make[1]: ディレクトリ '/home/luke/sponge-os/genode/build/x86_64_w10' から出ます
+genode build completed
+using 'core-sel4.a' as 'core.a'
+using 'ld-sel4.lib.so' as 'ld.lib.so'
+using 'hpet_timer' as 'timer'
+Created image file var/run/sponge-falkon-rescue.img (546608kiB)
+sponge-falkon-rescue: image.elf = 12 MiB (13476800 bytes)
+sponge-falkon-rescue: falkon payload on disk = 508 MiB (NOT in image.elf — the ceiling-killer proof)
+spawn qemu-system-x86_64 -accel kvm -machine q35 -cpu Skylake-Client -nographic -m 6G -device nec-usb-xhci,id=xhci -device usb-tablet -netdev user,id=net0 -serial mon:stdio -drive format=raw,file=var/run/sponge-falkon-rescue.img -machine q35 -net nic,model=e1000,netdev=net0
+qemu-system-x86_64: warning: host doesn't support requested feature: CPUID[eax=0Dh,ecx=01h].EAX.xsavec [bit 1]
+qemu-system-x86_64: warning: host doesn't support requested feature: CPUID[eax=0Dh,ecx=01h].EAX.xgetbv1 [bit 2]
+c[?7l[2J[0mSeaBIOS (version Arch Linux 1.17.0-2-2)
+
+
+iPXE (http://ipxe.org) 00:02.0 C900 PCI2.10 PnP PMM+7EFD3D50+7EF33D50 C900
+Press Ctrl-B to configure iPXE (PCI 00:02.0)...                                                                               
+
+
+Booting from Hard Disk...
+GRUB loading.
+[01;01H
+Bender Version 0.9-beta7-51-g28ba2ad-dirty
+Patching BDA with I/O port 0x3f8.
+Bender: Hello World.
+hwp config: eeo=na irq=na hwp=na epp=na epb=na
+Boot config: debug_port = 0x3f8
+Boot config: disable_iommu = true
+  module #0: start=0xf11c000 end=0xfdf63c0 size=0xcda3c0 name='image.elf'
+	Physical Memory Region from 0 size 9fc00 type 1
+	Physical Memory Region from 9fc00 size 400 type 2
+	Physical Memory Region from f0000 size 10000 type 2
+	Physical Memory Region from 100000 size 7fede000 type 1
+Adding physical memory region 0x100000-0x7ffde000
+	Physical Memory Region from 7ffde000 size 22000 type 2
+	Physical Memory Region from b0000000 size 10000000 type 2
+	Physical Memory Region from fed1c000 size 4000 type 2
+	Physical Memory Region from feffc000 size 4000 type 2
+	Physical Memory Region from fffc0000 size 40000 type 2
+	Physical Memory Region from 100000000 size 100000000 type 1
+Adding physical memory region 0x100000000-0x200000000
+Got framebuffer info in multiboot2. Current video mode is at physical address=fd000000 pitch=5120 resolution=1280x800@32 type=1
+Detected 1 boot module(s):
+Kernel loaded to: start=0x200000 end=0xe3e000 size=0xc3e000 entry=0x200298
+ACPI: RSDT paddr=0x7ffe2355
+ACPI: RSDT vaddr=0x7ffe2355
+ACPI: FADT paddr=0x7ffe214d
+ACPI: FADT vaddr=0x7ffe214d
+ACPI: FADT flags=0x84a5
+ACPI: MADT paddr=0x7ffe2241
+ACPI: MADT vaddr=0x7ffe2241
+ACPI: MADT apic_addr=0xfee00000
+ACPI: MADT flags=0x1
+ACPI: MADT_APIC apic_id=0x0
+ACPI: MADT_IOAPIC ioapic_id=0 ioapic_addr=0xfec00000 gsib=0
+ACPI: MADT_ISO bus=0 source=0 gsi=2 flags=0x0
+ACPI: MADT_ISO bus=0 source=5 gsi=5 flags=0xd
+ACPI: MADT_ISO bus=0 source=9 gsi=9 flags=0xd
+ACPI: MADT_ISO bus=0 source=10 gsi=10 flags=0xd
+ACPI: MADT_ISO bus=0 source=11 gsi=11 flags=0xd
+ACPI: 1 CPU(s) detected
+ELF-loading userland images from boot modules:
+size=0x26b8000 v_entry=0x2000018 v_start=0x2000000 v_end=0x46b8000 p_start=0xfdf7000 p_end=0x124af000
+Moving loaded userland images to final location: from=0xfdf7000 to=0xe3e000 size=0x26b8000
+Starting node #0 with APIC ID 0
+Mapping kernel window is done
+vt-x: not supported
+available phys memory regions: 2
+  [100000..7ffde000]
+  [100000000..200000000]
+reserved virt address space regions: 1
+  [ffffff8000200000..ffffff80034f6000]
+Booting all finished, dropped to user space
+[34mWarning: device memory in range [0000000800000000,0000001000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000001000000000,0000002000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000002000000000,0000004000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000004000000000,0000008000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000008000000000,0000408000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000408000000000,0000608000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000608000000000,0000708000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000708000000000,0000788000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000788000000000,00007c8000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [00007c8000000000,00007e8000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [00007e8000000000,00007f8000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [00007f8000000000,0000800000000000) is unavailable (due to limited untyped cnode range)[0m
+:phys_mem_16k:     Allocator 0x217a458 dump:
+ Block: [0000000000100000,0000000000a00000) size=9M avail=9M max_avail=9M
+ Block: [00000000034f8000,0000000004000000) size=11296K avail=11296K max_avail=78048K
+ Block: [0000000008000000,000000000cc38000) size=78048K avail=78048K max_avail=78048K
+ => mem_size=100925440 (96 MB) / mem_avail=100925440 (96 MB)
+
+[34mWarning: device memory in range [0000000200000000,0000000400000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000000400000000,0000000800000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000000800000000,0000001000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000001000000000,0000002000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000002000000000,0000004000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000004000000000,0000008000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000008000000000,0000408000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000408000000000,0000608000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000608000000000,0000708000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000708000000000,0000788000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000788000000000,00007c8000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [00007c8000000000,00007e8000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [00007e8000000000,00007f8000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [00007f8000000000,0000800000000000) is unavailable (due to limited untyped cnode range)[0m
+virtual address layout of core:
+ overall    [0000000000002000,0000001000000000)
+ core image [0000000002000000,00000000046b8000)
+ ipc buffer [00000000046b8000,00000000046b9000)
+ boot_info  [00000000046b9000,00000000046ba542)
+ stack area [0000000040000000,0000000050000000)
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+Physical memory per PD at most: 512M
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+boot module 'config' (12550 bytes)
+boot module 'ld.lib.so' (1112464 bytes)
+boot module 'init' (516744 bytes)
+boot module 'timer' (144744 bytes)
+boot module 'report_rom' (150784 bytes)
+boot module 'nitpicker' (530512 bytes)
+boot module 'platform' (598984 bytes)
+boot module 'acpi' (190328 bytes)
+boot module 'pci_decode' (171336 bytes)
+boot module 'ahci' (260248 bytes)
+boot module 'part_block' (192304 bytes)
+boot module 'vfs' (250448 bytes)
+boot module 'cached_fs_rom' (165192 bytes)
+boot module 'vesa_fb' (334560 bytes)
+boot module 'ps2' (156880 bytes)
+boot module 'pc_usb_host' (1564952 bytes)
+boot module 'usb_hid' (1131360 bytes)
+boot module 'event_filter' (332104 bytes)
+boot module 'ipxe_nic' (378832 bytes)
+boot module 'nic_uplink' (196064 bytes)
+boot module 'pc_rtc' (123936 bytes)
+boot module 'system_rtc' (133240 bytes)
+boot module 'vfs.lib.so' (804736 bytes)
+boot module 'vfs_rump.lib.so' (87576 bytes)
+boot module 'rump.lib.so' (1343016 bytes)
+boot module 'rump_fs.lib.so' (1113128 bytes)
+boot module 'en_us.chargen' (8852 bytes)
+boot module 'special.chargen' (1218 bytes)
+boot module 'fb.config' (53 bytes)
+boot module 'event_filter.config' (661 bytes)
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+Genode v0.1.1-alpha-91-g2bc8ab4a14 <local changes>
+5714 MiB RAM and 523288 caps assigned to init
+[init -> acpi] Found MADT
+[init -> acpi] MADT IRQ 0 -> GSI 2 flags: 0
+[init -> acpi] MADT IRQ 5 -> GSI 5 flags: 13
+[init -> acpi] MADT IRQ 9 -> GSI 9 flags: 13
+[init -> acpi] MADT IRQ 10 -> GSI 10 flags: 13
+[init -> acpi] MADT IRQ 11 -> GSI 11 flags: 13
+[init -> acpi] Found HPET hw_id=0x1  vendor_id=0x8086 space_id=0x0 addr=0xfed00000 hpet_id=0x0
+[init -> acpi] Found MCFG
+[init -> acpi] MCFG BASE 0xb0000000 seg 0x0 bus 0x0-0xff
+[init -> acpi] RSDT OEM 'BOCHS ', table id 'BXPC    ', revision 1, creator 'BXPC' (1)
+[init -> timer] timers=3, clock 10000000fs , 64bit counter , legacy routing support vendor=0x8086
+[init -> timer] timer0 GSI options 0xff0104, supports periodic
+[init -> timer] timer1 GSI options 0xff0104, supports periodic
+[init -> timer] timer2 GSI options 0xff0104, supports periodic
+[init -> timer] time wraps after 5849 years
+[init -> timer] irqs=off legacy=off
+[init -> timer] Using timer 2 -> using GSI 2 edge triggered
+[init -> ahci] --- Starting AHCI driver ---
+[init -> acpi] [34mWarning: SMBIOSv3 entry point invalid[0m
+[init -> acpi] SMBIOSv2 table (entry point: 0x1b64f0 structures: 0xf6510)
+[init -> nic] --- iPXE NIC driver started ---
+[init -> fb] fb mapped to 0x6000
+[init -> fb] Found: VESA BIOS version 3.0
+[init -> fb] OEM: SeaBIOS VBE(C) 2011
+[init -> fb] Found: physical frame buffer at 0xfd000000 size: 16777216
+[init -> fb] fb mapped to 0x17000000
+[init -> fb] using 1024x768 (1024x768)
+[init -> ahci] version: major=0x1 minor=0x0
+[init -> ahci] command slots: 32
+[init -> ahci] native command queuing: yes
+[init -> ahci] 64-bit support: yes
+[init -> ahci] port scan:
+[init -> ps2] Using keyboard with scan code set 1 (xlate)
+[init -> nic] [36mFound:  8086:100e (rev 03)[0m
+[init -> nic] 
+[init -> nic] [36musing driver 82540em[0m
+[init -> nic] 
+[init -> nic] [36mPCI device 00:01.0 latency timer is unreasonably low at 0. Setting to 32.
+[init -> nic] [0m
+[init -> nic] 
+[init -> nic] [36mbus_addr = 1a0000 len = 20000[0m
+[init -> nic] 
+[init -> system_rtc] Set RTC base from RTC driver to 2026-8-14 0:41:20
+[init -> ahci] 		#0: ATA
+[init -> ahci] 		#1:  off (unknown device signature)
+[init -> ahci] 		#2: off (ATAPI)
+[init -> ahci] 		#3:  off (unknown device signature)
+[init -> ahci] 		#4:  off (unknown device signature)
+[init -> ahci] 		#5:  off (unknown device signature)
+[init -> usb] SLUB: HWalign=64, Order=0-1, MinObjects=0, CPUs=1, Nodes=1
+[init -> usb] NR_IRQS: 4352, nr_irqs: 4352, preallocated irqs: 256
+[init -> usb] clocksource: dde_counter: mask: 0xffffffffffffff max_cycles: 0x1d854df40, max_idle_ns: 3526361616960 ns
+[init -> ps2] detected ExPS/2 mouse - activating scroll-wheel and 5-button support
+[init -> usb] clocksource: jiffies: mask: 0xffffffff max_cycles: 0xffffffff, max_idle_ns: 7645041785100000 ns
+[init -> usb] usbcore: registered new interface driver usbfs
+[init -> usb] usbcore: registered new interface driver hub
+[init -> usb] usbcore: registered new device driver usb
+[init -> usb] clocksource: Switched to clocksource dde_counter
+[init -> usb] usbcore: registered new interface driver genode
+[init -> usb] xhci_hcd 00:03.0: xHCI Host Controller
+[init -> usb] xhci_hcd 00:03.0: new USB bus registered, assigned bus number 1
+[init -> usb] xhci_hcd 00:03.0: hcc params 0x00087001 hci version 0x100 quirks 0x0000000000000014
+[init -> usb] xhci_hcd 00:03.0: xHCI Host Controller
+[init -> usb] xhci_hcd 00:03.0: new USB bus registered, assigned bus number 2
+[init -> usb] xhci_hcd 00:03.0: Host supports USB 3.0 SuperSpeed
+[init -> usb] hub 1-0:1.0: USB hub found
+[init -> usb] hub 1-0:1.0: 4 ports detected
+[init -> usb] usb usb2: We don't know the algorithms for LPM for this host, disabling LPM.
+[init -> usb] hub 2-0:1.0: USB hub found
+[init -> usb] hub 2-0:1.0: 4 ports detected
+[init -> nic] [35msnprintf not implemented[0m
+[init -> nic] 
+[init -> usb] sched_clock: Marking stable (34117000, 386363000)->(465765000, -45285000)
+[init -> nic] throttle RX interrupt 0µs(off) -> 166µs - succeeded
+[init -> nic] 
+[init -> nic] MAC address 52:54:00:12:34:56
+[init -> usb_hid] SLUB: HWalign=64, Order=0-1, MinObjects=0, CPUs=1, Nodes=1
+[init -> usb_hid] clocksource: dde_counter: mask: 0xffffffffffffff max_cycles: 0x1d854df40, max_idle_ns: 3526361616960 ns
+[init -> usb_hid] clocksource: jiffies: mask: 0xffffffff max_cycles: 0xffffffff, max_idle_ns: 7645041785100000 ns
+[init -> usb_hid] usbcore: registered new interface driver usbfs
+[init -> usb_hid] usbcore: registered new interface driver hub
+[init -> usb_hid] usbcore: registered new device driver usb
+[init -> usb_hid] clocksource: Switched to clocksource dde_counter
+[init -> usb_hid] usbcore: registered new interface driver usbhid
+[init -> usb_hid] hid_core: USB HID core driver
+[init -> usb_hid] sched_clock: Marking stable (0, 1001648000)->(1012176000, -10528000)
+[init -> part_block] GPT Partition 1: LBA 40 (101 blocks) type: '21686148-6449-6e6f-744e-656564454649' name: 'BIOSBOOT'
+[init -> part_block] GPT Partition 2: LBA 141 (4515 blocks) type: 'c12a7328-f81f-11d2-ba4b-00a0c93ec93b' name: 'GRUB2'
+[init -> part_block] GPT Partition 3: LBA 4952 (1107560 blocks) type: '0fc63daf-8483-4772-8e79-3d69d8477de4' name: 'GENODE'
+[init -> vfs] [34mWarning: ram donation is 4246742 but used RAM is 4164KB, 'rom_lib -> /'[0m
+[init -> vfs] [34mWarning: cap donation is 11 but used caps is 18, 'rom_lib -> /'[0m
+[init -> vfs] [34mWarning: ram donation is 4246742 but used RAM is 4176KB, 'rom_sys -> /'[0m
+[init -> vfs] [34mWarning: cap donation is 11 but used caps is 21, 'rom_sys -> /'[0m
+[init -> vfs] [34mWarning: ram donation is 4246742 but used RAM is 4164KB, 'rom_pkg -> /'[0m
+[init -> vfs] [34mWarning: cap donation is 11 but used caps is 18, 'rom_pkg -> /'[0m
+[init -> usb] usb 1-1: new high-speed USB device number 2 using xhci_hcd
+[init -> system -> sponge_configd] sponge_configd: ready
+[init -> system -> falkon_probe] falkon-probe: starting
+[init -> system -> sponge_pkgd] sponge_pkgd: ready
+[init -> system -> falkon_probe] falkon-probe: [1] install falkon via sponge_pkgd
+[init -> system -> sponge_pkgd] sponge_pkgd: binary_prefix=''
+[init -> usb_hid] input: QEMU QEMU USB Tablet as /devices/usb-1-2/0-0:1.0/0003:0627:0001.0001/input/input0
+[init -> usb_hid] Connected device: input0 (QEMU QEMU USB Tablet at usb-usbbus-0/input0) POINTER
+[init -> usb_hid] hid-generic 0003:0627:0001.0001: input: USB HID v0.01 Mouse [QEMU QEMU USB Tablet] on usb-usbbus-0/input0
+[init -> system -> falkon_probe] falkon-probe: [1] install ok
+[init -> system -> falkon_probe] falkon-probe: [2] verify installed broadcast lists falkon stopped
+[init -> system -> falkon_probe] falkon-probe: [2] installed broadcast lists falkon running=no
+[init -> system -> falkon_probe] falkon-probe: [3] launch falkon via sponge_pkgd
+[init -> system -> sponge_pkgd] sponge_pkgd: launch result falkon -> ok (channel=primary)
+[init -> system -> falkon_probe] falkon-probe: [3] launch ok — WebEngine first paint may take minutes under softpipe
+[init -> system -> falkon_probe] falkon-probe: [4] verify installed broadcast now lists falkon running
+[init -> system -> falkon_probe] falkon-probe: [4] installed broadcast lists falkon running=yes
+[init -> system -> falkon_probe] falkon-probe: [5] wait for falkon window render (WebEngine: be patient)
+[init -> system -> falkon_probe] falkon-probe: capture poll 0 rendered_frac=0% color_buckets=1
+[init -> system -> falkon_probe] falkon-probe: capture poll 20 rendered_frac=0% color_buckets=1
+[init -> system -> pkg_runtime -> falkon] [34mWarning: LD: Reloc_non_plt(libQt6WebEngineCore.lib.so): symbol not found: '__gcov_dump'[0m
+[init -> system -> pkg_runtime -> falkon] [34mWarning: LD: Reloc_non_plt(libQt6WebEngineCore.lib.so): symbol not found: 'OPENSSL_memory_get_size'[0m
+[init -> system -> pkg_runtime -> falkon] [34mWarning: LD: Reloc_non_plt(libQt6WebEngineCore.lib.so): symbol not found: 'OPENSSL_memory_alloc'[0m
+[init -> system -> pkg_runtime -> falkon] [34mWarning: LD: Reloc_non_plt(libQt6WebEngineCore.lib.so): symbol not found: 'ZSTD_trace_decompress_end'[0m
+[init -> system -> pkg_runtime -> falkon] [34mWarning: LD: Reloc_non_plt(libQt6WebEngineCore.lib.so): symbol not found: '__gcov_flush'[0m
+[init -> system -> pkg_runtime -> falkon] [34mWarning: LD: Reloc_non_plt(libQt6WebEngineCore.lib.so): symbol not found: 'OPENSSL_memory_free'[0m
+[init -> system -> pkg_runtime -> falkon] [34mWarning: LD: Reloc_non_plt(libQt6WebEngineCore.lib.so): symbol not found: 'ZSTD_trace_decompress_begin'[0m
+[init -> system -> pkg_runtime -> falkon] [34mWarning: LD: Reloc_non_plt(libQt6WebEngineCore.lib.so): symbol not found: 'sdallocx'[0m
+[init -> system -> falkon_probe] falkon-probe: capture poll 40 rendered_frac=0% color_buckets=1
+[init -> system -> pkg_runtime -> falkon] lwIP Nic interface down
+[init -> system -> pkg_runtime -> falkon] Using DHCP for interface configuration.
+[init -> system -> pkg_runtime -> falkon] lwIP Nic interface up address=10.0.2.15 netmask=255.255.255.0 gateway=10.0.2.2 nameserver=10.0.2.3
+[init -> system -> falkon_probe] falkon-probe: capture poll 60 rendered_frac=0% color_buckets=1
+[init -> system -> pkg_runtime -> falkon] [34mWarning: Libc RNG not configured[0m
+[init -> system -> pkg_runtime -> falkon] [34mWarning: ignoring unsupported RTLD_GLOBAL in dlopen()[0m
+[init -> system -> pkg_runtime -> falkon] libEGL warning: MESA-LOADER: failed to retrieve device information
+[init -> system -> pkg_runtime -> falkon] 
+[init -> system -> pkg_runtime -> falkon] libEGL warning: failed to get driver name for fd 0
+[init -> system -> pkg_runtime -> falkon] 
+[init -> system -> pkg_runtime -> falkon] Falkon: Creating new profile directory
+[init -> system -> pkg_runtime -> falkon] [34mWarning: link: link not implemented[0m
+[init -> system -> pkg_runtime -> falkon] [34mWarning: link: link not implemented[0m
+[init -> system -> pkg_runtime -> falkon] Error creating database schema "No query Unable to fetch row"
+[init -> system -> pkg_runtime -> falkon] Unable to detect GPU vendor.
+[init -> system -> pkg_runtime -> falkon] [34mWarning: minherit: minherit not implemented[0m
+[init -> system -> pkg_runtime -> falkon] Fontconfig error: Cannot load default config file: No such file: (null)
+[init -> system -> falkon_probe] falkon-probe: capture poll 80 rendered_frac=0% color_buckets=1
+[init -> system -> pkg_runtime -> falkon] [34mWarning: chmod: chmod not implemented[0m
+[init -> system -> pkg_runtime -> falkon] Fontconfig error: No writable cache directories
+[init -> system -> pkg_runtime -> falkon] [34mWarning: setrlimit: setrlimit not implemented[0m
+[init -> system -> pkg_runtime -> falkon] Cannot create directory //.local/share/falkon/QtWebEngine/Default. Error: FILE_ERROR_NOT_FOUND.
+[init -> system -> pkg_runtime -> falkon] Cannot create directory //.local/share/falkon/QtWebEngine/Default. Error: FILE_ERROR_NOT_FOUND.
+[init -> system -> pkg_runtime -> falkon] Falkon: 1 extensions loaded
+[init -> system -> pkg_runtime -> falkon] [34mWarning: __sys_statfs: statfs not implemented[0m
+[init -> system -> pkg_runtime -> falkon] [34mWarning: munmap: could not lookup plugin for address 0x40801b000, length 151552[0m
+[init -> system -> falkon_probe] falkon-probe: falkon window detected (100% non-bg, 46 distinct color buckets)
+[init -> system -> falkon_probe] falkon-probe: [6] launch nosuchpkg-16 -> not-installed
+[init -> system -> sponge_pkgd] sponge_pkgd: launch result nosuchpkg-16 -> not-installed (channel=primary)
+[init -> system -> falkon_probe] falkon-probe: [6] not-installed reported
+[init -> system -> falkon_probe] falkon-probe: [7] double-launch falkon -> already-running
+[init -> system -> sponge_pkgd] sponge_pkgd: launch result falkon -> already-running (channel=primary)
+[init -> system -> pkg_runtime -> falkon] [34mWarning: __sys_statfs: statfs not implemented[0m
+[init -> system -> falkon_probe] falkon-probe: [7] already-running reported
+[init -> system -> falkon_probe] falkon-probe: PASS
+sponge-falkon-rescue: probe PASS — checking fixture GET...
+sponge-falkon-rescue: fixture GET detected — falkon loaded the page from disk-served binary over the nic stack
+sponge-falkon-rescue: host fixture killed (cleanup receipt)
+sponge-falkon-rescue: ALL CHECKS PASSED (falkon booted from disk, window pixel-verified, fixture page loaded)
+
+Run script execution successful.
+=== Build end: 2026. 08. 14. (금) 09:41:48 KST exit=0 ===
