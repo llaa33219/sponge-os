@@ -68,6 +68,20 @@ void TasklistController::_on_window_layout_rom()
 }
 
 
+TasklistController::~TasklistController()
+{
+	/*
+ * Phase 14 W11: stop the window_list poll timer before QObject
+ * parent-child cleanup runs.
+ */
+	if (_poll_timer) {
+		_poll_timer->stop();
+		_poll_timer->deleteLater();
+		_poll_timer = nullptr;
+	}
+}
+
+
 void TasklistController::_poll()
 {
 	_lazy_open();

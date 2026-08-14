@@ -140,6 +140,22 @@ bool LauncherController::_read_and_parse()
 }
 
 
+LauncherController::~LauncherController()
+{
+	/*
+ * Phase 14 W11 #50: stop the 1.5 s pkgd-installed poll timer before
+ * QObject parent-child cleanup runs. Also kills any in-flight
+ * _poll_launch_result single-shot deferrals (queued via
+ * QTimer::singleShot at request_launch time).
+ */
+	if (_poll_timer) {
+		_poll_timer->stop();
+		_poll_timer->deleteLater();
+		_poll_timer = nullptr;
+	}
+}
+
+
 bool LauncherController::_try_parse(Genode::Xml_node const &root)
 {
 	if (!root.has_type("installed"))

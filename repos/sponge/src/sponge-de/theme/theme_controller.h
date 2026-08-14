@@ -103,6 +103,8 @@ class ThemeController : public QObject
 		/* True once at least one themed report has been applied. */
 		bool live_applied() const { return _live_applied; }
 
+	~ThemeController() override;
+
 	private slots:
 
 		/* GUI thread: parse the marshalled INI and re-style. Invoked via

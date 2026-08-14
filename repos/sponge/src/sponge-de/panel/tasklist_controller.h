@@ -53,6 +53,8 @@ class TasklistController : public QObject
 
 		void set_static_rules(QString const &rules_xml);
 
+		~TasklistController() override;
+
 	private:
 
 		Genode::Env &_env;

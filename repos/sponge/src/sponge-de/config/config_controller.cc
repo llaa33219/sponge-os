@@ -383,3 +383,17 @@ void ConfigController::attach_notify_poster(NotifyPoster *poster)
 {
 	_notify = poster;
 }
+
+
+ConfigController::~ConfigController()
+{
+	/*
+ * Phase 14 W11 #49: stop the 250 ms configd-broadcast poll timer
+ * before QObject parent-child cleanup runs.
+ */
+	if (_poll_timer) {
+		_poll_timer->stop();
+		_poll_timer->deleteLater();
+		_poll_timer = nullptr;
+	}
+}

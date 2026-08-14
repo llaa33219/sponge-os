@@ -56,6 +56,20 @@ bool NotifierController::_read_payload(QString &payload)
 }
 
 
+NotifierController::~NotifierController()
+{
+	/*
+ * Phase 14 W11: stop the 250 ms notifications poll timer before
+ * QObject parent-child cleanup runs.
+ */
+	if (_poll_timer) {
+		_poll_timer->stop();
+		_poll_timer->deleteLater();
+		_poll_timer = nullptr;
+	}
+}
+
+
 /*
  * Lazy session opening. The first time _poll() runs, attempt to open
  * the notifications ROM. If the parent denies the session (no
