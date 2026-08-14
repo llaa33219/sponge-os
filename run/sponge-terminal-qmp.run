@@ -56,19 +56,26 @@ assert {[have_spec sel4]} \
 	 base-linux cannot provide; run/sponge-terminal.run remains the \
 	 kernel-agnostic synthetic regression tier."
 
+#
+# Source the shared terminal-runtime build + staging include (Phase 14
+# W11 #33). The include owns the bash + UNIX toolset vfs block; this
+# scenario's only terminal-related addition is the standard QMP
+# driver sub-init (acpi/pci_decode/platform/vesa_fb/ps2/pc_usb_host/
+# usb_hid/event_filter) which sits ABOVE the include in the build list.
+#
+set terminal_inc [file join [file dirname [file normalize [info script]]] terminal_runtime.inc]
+if {[catch {source $terminal_inc} term_inc_err]} {
+	puts stderr "\nFAIL: could not source $terminal_inc: $term_inc_err"
+	exit 1
+}
+
 build { core lib/ld init timer server/report_rom server/nitpicker \
         driver/acpi app/pci_decode driver/platform \
         driver/framebuffer/vesa driver/ps2 \
         driver/usb_host/pc driver/usb_hid server/event_filter \
         sponge_pkgd \
-        server/terminal server/vfs server/cached_fs_rom \
-        noux-pkg/bash-minimal noux-pkg/vim-minimal \
-        noux-pkg/coreutils-minimal noux-pkg/grep noux-pkg/sed \
-        noux-pkg/tar noux-pkg/less noux-pkg/findutils \
-        noux-pkg/diffutils noux-pkg/which \
-        lib/libc lib/libm lib/posix lib/ncurses lib/pcre \
-        lib/vfs lib/vfs_pipe lib/vfs_ttf \
-        test/terminal_probe lib/blit }
+        {*}$terminal_runtime::extra_packages \
+        {*}$terminal_runtime::extra_libs }
 
 create_boot_directory
 
@@ -326,37 +333,11 @@ config
 - }
 
 #
-# Stage the terminal package metadata + the derived index (same scheme
-# as run/sponge-terminal.run).
+# Stage the terminal package metadata + the derived index + the
+# VeraMono.ttf font ROM via the shared terminal_runtime include
+# (Phase 14 W11 #33).
 #
-set staged_pkgs { terminal }
-foreach pkg $staged_pkgs {
-	set src "${genode_dir}/../pkg/$pkg/metadata.xml"
-	if {![file exists $src]} {
-		error "package metadata not found: $src"
-	}
-	exec cp -L $src "bin/pkg_$pkg.xml"
-}
-
-set index_fh [open "bin/pkg_index.xml" w]
-puts $index_fh "<packages>"
-foreach pkg $staged_pkgs {
-	puts $index_fh "  <pkg name=\"$pkg\"/>"
-}
-puts $index_fh "</packages>"
-close $index_fh
-
-#
-# VeraMono.ttf — the gems terminal server's monospace font, loaded from a
-# ROM via the vfs_ttf plugin (terminal README pattern). Staged from the
-# prepared ttf-bitstream-vera port.
-#
-set vera_dir [lindex [glob -nocomplain \
-    "${genode_dir}/contrib/ttf-bitstream-vera-*/ttf/bitstream-vera"] 0]
-if {$vera_dir eq ""} {
-	error "ttf-bitstream-vera port not prepared; run: ./genode/tool/ports/prepare_port ttf-bitstream-vera"
-}
-exec cp -fL "$vera_dir/VeraMono.ttf" "bin/VeraMono.ttf"
+terminal_stage_vera_metadata "bin"
 
 #
 # Driver sub-init config modules + event_filter keyboard layouts
@@ -428,8 +409,14 @@ foreach f { en_us.chargen special.chargen } {
 # (docs/11-environment.md §10.4).
 #
 set boot_modules [build_artifacts]
-foreach m { VeraMono.ttf pkg_terminal.xml pkg_index.xml \
-            drivers.config fb.config event_filter.config \
+#
+# Append the staged terminal boot-modules (VeraMono.ttf + pkg_terminal.xml
+# + pkg_index.xml) via the shared include (Phase 14 W11 #33). The driver
+# configs and chargen layouts are scenario-specific — they stay in this
+# scenario's foreach loop.
+#
+terminal_append_boot_modules boot_modules
+foreach m { drivers.config fb.config event_filter.config \
             en_us.chargen special.chargen } {
 	lappend boot_modules $m
 }

@@ -229,6 +229,37 @@ A scenario defines:
   object`), `qmp_type` (char → QEMU keyname map), `qmp_exec_target`
   (bounded `expect` on global `qemu_spawn_id` for QMP-TARGET markers
   emitted by probes; FAIL + exit 1 on timeout), `qmp_disconnect`.
+
+- `run/terminal_runtime.inc` — shared Tcl include for the three
+  terminal-hosting scenarios (`sponge-terminal.run`,
+  `sponge-terminal-qmp.run`, `sponge-usb-kbd-via-qmp.run`).
+  Centralizes the bash + UNIX toolset vfs block
+  (`server/terminal server/vfs server/cached_fs_rom` +
+  `noux-pkg/bash-minimal` + `noux-pkg/vim-minimal` +
+  `noux-pkg/coreutils-minimal` + `noux-pkg/grep` + `noux-pkg/sed` +
+  `noux-pkg/tar` + `noux-pkg/less` + `noux-pkg/findutils` +
+  `noux-pkg/diffutils` + `noux-pkg/which` + `lib/libc lib/libm
+  lib/posix lib/ncurses lib/pcre` + `lib/vfs lib/vfs_pipe
+  lib/vfs_ttf`), the staged boot modules (`VeraMono.ttf` +
+  `pkg_terminal.xml` + `pkg_index.xml`), and the
+  `pkg/terminal/metadata.xml` + on-image repo index staging
+  (Phase 14 W11 paper-cut #33). Adds a new CLI tool to the
+  toolset in one file instead of three; failing to update the
+  include previously left a scenario with a stale toolset
+  (Phase 13's `coreutils-minimal` carryover hit this exact
+  drift in the W1 scenario). Each scenario sources the
+  include via:
+  ```
+  source [file join [file dirname [file normalize [info script]]] \
+                      terminal_runtime.inc]
+  ```
+  then uses `{*}$terminal_runtime::extra_packages` and
+  `{*}$terminal_runtime::extra_libs` inside its `build { ... }`
+  block, `terminal_stage_vera_metadata "bin"` for the staged
+  files, and `terminal_append_boot_modules boot_modules` to
+  append the staged files to its `[build_artifacts]` list.
+  Errors loudly if `pkg/terminal/metadata.xml` or the
+  `ttf-bitstream-vera` port is missing.
   Patterns anchor on `\r*\n` because QEMU's `-nographic` serial emits
   CR CR LF (verified). The `match_max -i $qemu_spawn_id 200000`
   raise inside `qmp_exec_target` is required under log floods (see
