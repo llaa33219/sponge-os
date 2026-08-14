@@ -38,16 +38,24 @@
 #   pkg_runtime's ROM "config"      <- sponge_pkgd's "runtime" report
 #
 
+#
+# Source the shared terminal-runtime build + staging include (Phase 14
+# W11 #33). The include owns the bash + UNIX toolset vfs block + the
+# VeraMono.ttf + pkg metadata staging; this scenario sources it so the
+# terminal-package closure lives in one place across the three
+# terminal-hosting scenarios (sponge-terminal.run / terminal-qmp.run /
+# usb-kbd-via-qmp.run). See run/terminal_runtime.inc for the contract.
+#
+set terminal_inc [file join [file dirname [file normalize [info script]]] terminal_runtime.inc]
+if {[catch {source $terminal_inc} term_inc_err]} {
+	puts stderr "\nFAIL: could not source $terminal_inc: $term_inc_err"
+	exit 1
+}
+
 build { core lib/ld init timer server/report_rom server/nitpicker \
         sponge_pkgd \
-        server/terminal server/vfs server/cached_fs_rom \
-        noux-pkg/bash-minimal noux-pkg/vim-minimal \
-        noux-pkg/coreutils-minimal noux-pkg/grep noux-pkg/sed \
-        noux-pkg/tar noux-pkg/less noux-pkg/findutils \
-        noux-pkg/diffutils noux-pkg/which \
-        lib/libc lib/libm lib/posix lib/ncurses lib/pcre \
-        lib/vfs lib/vfs_pipe lib/vfs_ttf \
-        test/terminal_probe lib/blit }
+        {*}$terminal_runtime::extra_packages \
+        {*}$terminal_runtime::extra_libs }
 
 create_boot_directory
 
@@ -135,37 +143,11 @@ config
 - }
 
 #
-# Stage the terminal package metadata + the derived index (same scheme
-# as run/sponge-pkg-gui.run).
+# Stage the terminal package metadata + the derived index + the
+# VeraMono.ttf font ROM via the shared terminal_runtime include
+# (Phase 14 W11 #33).
 #
-set staged_pkgs { terminal }
-foreach pkg $staged_pkgs {
-	set src "${genode_dir}/../pkg/$pkg/metadata.xml"
-	if {![file exists $src]} {
-		error "package metadata not found: $src"
-	}
-	exec cp -L $src "bin/pkg_$pkg.xml"
-}
-
-set index_fh [open "bin/pkg_index.xml" w]
-puts $index_fh "<packages>"
-foreach pkg $staged_pkgs {
-	puts $index_fh "  <pkg name=\"$pkg\"/>"
-}
-puts $index_fh "</packages>"
-close $index_fh
-
-#
-# VeraMono.ttf — the gems terminal server's monospace font, loaded from a
-# ROM via the vfs_ttf plugin (terminal README pattern). Staged from the
-# prepared ttf-bitstream-vera port.
-#
-set vera_dir [lindex [glob -nocomplain \
-    "${genode_dir}/contrib/ttf-bitstream-vera-*/ttf/bitstream-vera"] 0]
-if {$vera_dir eq ""} {
-	error "ttf-bitstream-vera port not prepared; run: ./genode/tool/ports/prepare_port ttf-bitstream-vera"
-}
-exec cp -fL "$vera_dir/VeraMono.ttf" "bin/VeraMono.ttf"
+terminal_stage_vera_metadata "bin"
 
 #
 # Boot modules. [build_artifacts] carries core/ld/init/nitpicker/
@@ -173,14 +155,13 @@ exec cp -fL "$vera_dir/VeraMono.ttf" "bin/VeraMono.ttf"
 # terminal_probe plus the noux tars (bash-minimal.tar, vim-minimal.tar)
 # and the shared libs they link (libc/libm/posix/ncurses/vfs/vfs_pipe/
 # vfs_ttf .lib.so). The font ROM and the staged package metadata are
-# extras (not build targets), so they are appended explicitly — base-sel4
-# packs a single image.elf from bin/ at build_boot_image and needs every
-# module named (docs/11-environment.md §10.4).
+# extras (not build targets), so they are appended explicitly via the
+# shared include — base-sel4 packs a single image.elf from bin/ at
+# build_boot_image and needs every module named (docs/11-environment.md
+# §10.4).
 #
 set boot_modules [build_artifacts]
-foreach m { VeraMono.ttf pkg_terminal.xml pkg_index.xml } {
-	lappend boot_modules $m
-}
+terminal_append_boot_modules boot_modules
 
 build_boot_image $boot_modules
 
