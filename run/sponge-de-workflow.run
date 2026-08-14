@@ -386,7 +386,6 @@ config
       | + policy | label: pci_decode -> system | report: acpi -> acpi
       | + policy | label: platform -> devices  | report: pci_decode -> devices
       | + policy | label: usb_hid -> report    | report: usb -> devices
-      | + policy | label: acpica -> system     | report: system
       + route
         + service LOG | + parent
         + service PD  | + parent
@@ -1309,11 +1308,60 @@ run_genode_until {.*vct: shutdown: requesting poweroff.*} 120 $qemu_spawn_id
 # effect tears QEMU down.
 run_genode_until {.*workflow-probe: PASS.*} 60 $qemu_spawn_id
 
-# The acpica's boot-time read of the "system" ROM races the probe's
-# initial publication (init starts children in config order; the
-# acpica reads before the probe constructs). The shutdown INTENT is
-# proven by the audit line + the system Report publication. The
-# acpica S5 path itself is proven separately by run/sponge-power.run.
-# Terminate QEMU directly after PASS.
-puts "\nsponge-de-workflow: PASS - workflow completed; probe published shutdown intent (vct: shutdown: requesting poweroff)"
-exit 0
+#
+# After PASS + the shutdown audit line, the workflow_probe publishes
+# `<system state="poweroff"/>` over its labeled `system` Report
+# session. The outer init's report_rom relays it as the `system` ROM
+# (policy `label_suffix: system | report: workflow_probe -> system`).
+# In a fully-fixed setup the acpica (inside the drivers sub-init)
+# would forward its `system` ROM session up to the outer init's
+# report_rom via `<service ROM label_last="system" | + child
+# report_rom>`, observe the `poweroff` state, and call
+# `AcpiEnterSleepState(5)` (S5) to power QEMU off. Today the
+# acpica boot-time `system` ROM read races the probe's initial
+# publication (init starts children in config order; the acpica
+# ctor opens the ROM before the probe's report_rom has any data)
+# so the acpica's session is denied and the S5 path does not
+# actually fire inside this scenario — the upstream `system`
+# ROM bridge (a `<label_last="system" | + child report_rom>` route
+# on the drivers sub-init) is documented as a Phase-15+ hardening
+# item (see docs/evidence/phase14-w8-workflow-scenario.md §"Issue D").
+# The acpica S5 path itself is verified separately by
+# run/sponge-power.run (which boots a minimal acpica + vct
+# topology and observes QEMU exit).
+#
+# Verification (fail-loud, mirror of run/sponge-power.run's final
+# gates — see that scenario's header for the full adversarial-class
+# rationale): the bounded `expect` below disambiguates QEMU exit
+# (eof = acpica acted = PASS) from the audit line without a real
+# poweroff (FAIL) or a hard timeout (FAIL).
+#
+global qemu_spawn_id
+set spawn_id $qemu_spawn_id
+set timeout 20
+expect {
+    -i $qemu_spawn_id
+    -re {.*System service \(acpica\) unavailable.*} {
+        puts stderr "\nsponge-de-workflow: FAIL - acpica reported unavailable (audit ran but no poweroff)"
+        exit 1
+    }
+    eof {
+        puts "\nsponge-de-workflow: PASS - workflow completed end-to-end; QEMU exited cleanly after acpica S5 (workflow-probe: PASS + vct: shutdown: requesting poweroff)"
+    }
+    timeout {
+        # Today's workflow does not actually fire acpica S5 — the
+        # boot-time ROM race documented above means the probe's
+        # shutdown intent is published, the audit line is logged,
+        # but the `system` ROM never reaches the acpica inside this
+        # scenario. Until the drivers sub-init's `system` ROM bridge
+        # (Issue D in phase14-w8-workflow-scenario.md) is fixed, the
+        # run script's `eof` branch never fires and this `timeout`
+        # branch is what the scenario lands on every run. We still
+        # report FAIL loudly (per docs/09-roadmap.md §11.1) — the
+        # probe reaching PASS proves the 7-step structural end-to-end
+        # is correct, the missing QEMU exit proves the S5 wiring is
+        # not actually exercised by this scenario.
+        puts stderr "\nsponge-de-workflow: FAIL - QEMU did not exit within 20s of the PASS marker (acpica S5 did not take effect; see phase14-w8-workflow-scenario.md §\"Issue D\")"
+        exit 1
+    }
+}
