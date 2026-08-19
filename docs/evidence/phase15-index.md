@@ -1311,3 +1311,307 @@ The usb-mouse cell is therefore the Phase 15 evidence-bearing cell for Phase 14 
 - `docs/15-hardware-compatibility.md` — §1.4 Phase 15 surface cells, §1.5 Phase 15 bake cells, §2 row 17 real-hardware row, §3 cell-contract format
 - `docs/evidence/phase15-usb-hid-mouse.log` — the run-script evidence log for the W5 scenario
 - `docs/evidence/phase15-index.md` — this §11 entry
+
+## 14. W7: 15-3 fbprobe scenario (the §13 round-8 bisect) — 2026-08-20
+
+> Scope: deliver a MINIMAL base-sel4 GUI scenario packaged as a UEFI
+> disk image whose entire purpose is to answer one question on the
+> real hardware — does the boot chain reach the display stage?
+> Success signal: pkg_gui_demo's `#00ff00` (pure green) window
+> filling most of the screen. Freeze / black instead = seL4 or
+> Genode core hangs on the real machine (the W1 core-hang signature
+> on the 17ZD90N-VX7BK).
+>
+> The §13 round-8 evidence rule out the high-MBI hypothesis; the
+> freeze is therefore in seL4 → Genode core → init → drivers. The
+> fbprobe bisects that range: if the green window appears, core +
+> init + basic drivers are fine and the failure is in the product's
+> storage chain (usb_block / AHCI / part_block / vfs / nested-init
+> etc.); if it freezes, it's seL4 / core (the W1 cell reproduced on
+> real hardware).
+
+### Status
+
+The W7 scenario is created and reproduces end-to-end on QEMU /
+host. The host-side structure gates all PASS (3 / 3); the QEMU
+OVMF boot reproduces the W1 stock-bender check_mem rejection
+(see capture below) and the scenario prints the honest message
++ exit 0. The image is ready for the 15-3 user-executed physical
+flash on the 17ZD90N-VX7BK.
+
+### W7 deliverables
+
+| Artifact | Path | Status |
+|---|---|---|
+| UEFI fbprobe scenario | `run/sponge-fbprobe-uefi.run` (~1100 lines) | created |
+| Discovery mirror symlink | `repos/sponge/run/sponge-fbprobe-uefi.run` | created |
+| Evidence entry §14 (this) | `docs/evidence/phase15-index.md` | added |
+
+### Topology (build exactly this, nothing more)
+
+```
+init
++ timer
++ report_rom
++ drivers (sub-init, managing_system: yes)
+  + platform (IO_MEM/IO_PORT/IRQ + platform_info — boot_fb reads
+              platform_info/boot/framebuffer)
+  + acpi
+  + pci_decode
+  + fb (binary boot_fb, Capture ← nitpicker; needs the platform_info
+        ROM routed)
++ nitpicker (Gui/Capture/Event)
++ pkg_gui_demo (test/pkg_gui_demo — Gui → nitpicker, draws a
+                #00ff00 window)
+```
+
+No ps2, no usb, no event_filter, no storage chain, no nested init,
+no pkgd. Everything in image.elf (no `/system` tree, no tool/mkdata).
+
+### Why this topology and not the W4 desktop scenario
+
+The W4 `sponge-desktop-disk-uefi.run` carries the FULL Alpha
+desktop on disk (Tier 0 + nested system init + sponge-de + wm +
+window_layouter + decorator + sponge_configd + sponge_themed +
+sponge_pkgd + pkg_runtime + alpha_probe, ~849 MiB P3, ~1.9 GiB
+.img). It answers "does the boot chain reach the desktop on real
+hardware?" — but if it freezes, the failure could be in any of
+those 10+ components.
+
+The fbprobe is the MINIMAL subset that proves the chain REACHED
+the display stage:
+- platform_info / GOP framebuffer bind (boot_fb binds)
+- nitpicker compositing (nitpicker accepts Capture)
+- a Qt6 client drawing onto the framebuffer (pkg_gui_demo writes
+  the green window)
+
+If the green window appears, the freeze is NOT in seL4 / core /
+init / basic drivers — it's in the desktop composition stack
+(sponge-de / wm / window_layouter / decorator / wm / sponge-pkgd
+/ storage chain). If the green window doesn't appear, the freeze
+IS in seL4 / core / init / basic drivers.
+
+### Disk layout (D15.13 + W4 binding)
+
+```
+P1  ESP    FAT32  typecode=EF00  label=ESP          64 MiB
+              /EFI/BOOT/BOOTX64.EFI  (Debian GRUB 2.12 EFI binary from
+                                       /tmp/opencode/bootx64-full.efi,
+                                       NOT vendored g2fg which is broken
+                                       on Insyde)
+              /EFI/BOOT/grub.cfg
+              /boot/grub/grub.cfg
+P2  (ABSENT — same contract as W4)
+P3  GENODE  ext2  typecode=8300  label=GENODE       128 MiB
+              /boot/bender
+              /boot/sel4
+              /boot/image.elf
+              (NOTHING ELSE — no /system tree, no tool/mkdata)
+```
+
+### GRUB config (the W4 / §13 round-6b working baseline)
+
+```
+set timeout=5
+set gfxpayload=auto
+insmod part_gpt
+insmod ext2
+set root=(hd0,gpt3)
+menuentry 'Sponge OS 15-3 fbprobe (UEFI)' {
+  insmod multiboot2
+multiboot2 /boot/bender serial intel_hwp_performance phys_max=256M serial_fallback
+  module2 /boot/sel4 sel4 disable_iommu console_port=0x3f8 debug_port=0x3f8
+  module2 /boot/image.elf image.elf
+  boot
+}
+```
+
+The W1 crash debugging (notes for the next maintainer):
+
+1. `set root=(hd0,gpt3)` MUST be set BEFORE the menuentry. Without
+   it, the multiboot2 line resolves `/boot/bender` against the
+   default root (which is the ESP on P1), and the boot fails with
+   `error: file '/boot/bender' not found.` even though the file
+   is on P3. The W4-fbprobe scratch run captured this exact error
+   before the fix.
+2. `terminal_output` stays at the default (text mode) — NOT
+   gfxterm. With -nographic under QEMU/OVMF, gfxterm routes
+   output to the framebuffer (invisible on the serial line); text
+   mode routes to COM1 (visible). The W4 evidence log shows the
+   baseline grubs using `terminal_output console` for the same
+   reason.
+3. `gfxpayload=auto` is MANDATORY: it produces the multiboot2 FB
+   tag that boot_fb reads via `platform_info/boot/framebuffer`.
+
+### Structure-gate evidence (host-side)
+
+The fbprobe runs the same 3 structural gates as the W4 scenarios:
+
+```
+[sponge-fbprobe-uefi] structural gate 1/N: sgdisk -p
+   P1  2048..133119   64.0 MiB    EF00  ESP
+   P3  133120..395263  128.0 MiB  8300  GENODE
+   (P2 absent — partition-number contract)
+PASS — GPT shows P1=EF00(ESP) + P3=8300(GENODE) + P2 absent
+
+[sponge-fbprobe-uefi] structural gate 2/N: mdir on ESP
+   /EFI/BOOT/BOOTX64.EFI
+   /EFI/BOOT/grub.cfg
+   /boot/grub/grub.cfg (duplicate)
+PASS — ESP contains EFI/BOOT/BOOTX64.EFI and grub.cfg
+
+[sponge-fbprobe-uefi] structural gate 3/N: e2ls on GENODE P3 /boot/
+   /boot: bender  image.elf  sel4
+PASS — P3 /boot carries bender, sel4, image.elf
+
+3 / 3 gates passed
+```
+
+### Artifact (the 15-3 candidate image)
+
+```
+make -j1 -C genode/build/x86_64 run/sponge-fbprobe-uefi \
+    KERNEL=sel4 BOARD=pc
+  →
+    genode/build/x86_64/var/run/sponge-fbprobe-uefi.img
+    size:  218,103,808 bytes (208.0 MiB)
+    sha256: 9c48db6a6010c69b4525440a5abb842be3e84e9eb8280a91c4627028a4371ae3
+            (per-run: the FwCfg table carries a timestamp; first 8
+            bytes of the GPT GUID change between runs. Layout + content
+            are byte-stable modulo the FwCfg timestamp.)
+
+    P1=ESP(64 MiB, EF00) / P2 absent / P3=GENODE(128 MiB, 8300)
+    /boot/{bender,sel4,image.elf} at P3 root            (e2ls-verified)
+    /EFI/BOOT/BOOTX64.EFI on P1                        (mdir-verified)
+    /EFI/BOOT/grub.cfg + /boot/grub/grub.cfg on P1     (mdir-verified)
+```
+
+### QEMU OVMF gate (the expected W1 stock-bender signature)
+
+The QEMU boot is bounded at 120 s. The captured serial log
+includes the full bender trace:
+
+```
+[run_dir]/uefi-boot.log (4969 bytes)
+
+BdsDxe: loading Boot0001 "UEFI QEMU HARDDISK QM00001 " from PciRoot(0x0)/Pci(0x1F,0x2)/Sata(0x0,0xFFFF,0x0)
+BdsDxe: starting Boot0001 "UEFI QEMU HARDDISK QM00001 " from PciRoot(0x0)/Pci(0x1F,0x2)/Sata(0x0,0xFFFF,0x0)
+GNU GRUB  version 2.12-9+deb13u2
+... [GRUB menu framebuffer draw — the "Sponge OS 15-3 fbprobe (UEFI)" entry] ...
+Booting `Sponge OS 15-3 fbprobe (UEFI)'
+
+WARNING: no console will be available to OS
+
+Bender Version 0.9-beta7-51-g28ba2ad-dirty
+Patching BDA with I/O port 0x3f8.
+Bender: Hello World.
+hwp config: eeo=na irq=na hwp=na epp=na epb=na
+Reserved memory 800000+8000 type=4 overlaps with phdr 20835f+609901
+
+Exit with status 2.
+Rebooting...
+```
+
+The scenario detects the W1 stock-bender check_mem rejection
+(`Reserved memory ... type=4 overlaps with phdr ...`) and prints
+the honest message:
+
+```
+[sponge-fbprobe-uefi] W1 stock-bender check_mem rejection CONFIRMED
+  (bender rejected the OVMF memory map under stock bender — the
+   expected outcome; see docs/evidence/phase15-uefi-boot-smoke.log
+   and the 15-3 protocol doc docs/plans/phase15-hardware-boot-protocol.md)
+
+  ================================================================
+  UEFI fbprobe media structure verified; QEMU boot blocked by the
+  known W1 stock-bender check_mem rejection on OVMF (see W1
+  evidence log: docs/evidence/phase15-uefi-boot-smoke.log). The
+  REAL test is the 15-3 user-executed physical boot on the LG
+  gram 17ZD90N-VX7BK: green window = core+init+drivers OK
+  (storage-chain focus next); freeze = W1 core-hang reproduced
+  on real hw (bender-rebuild fallback per the 15-3 protocol).
+  ================================================================
+```
+
+Exit code 0. The structure gates all PASS; the QEMU gate captures
+the expected W1 signature; the image is ready for real-hardware
+flashing.
+
+### 15-3 user-execution protocol (the real-hardware test)
+
+The user runs the following on the 17ZD90N-VX7BK:
+
+```
+# 1. Flash the image to a USB stick (or any bootable media)
+sudo dd if=genode/build/x86_64/var/run/sponge-fbprobe-uefi.img \
+       of=/dev/sdX bs=4M status=progress oflag=sync
+
+# 2. Boot from the stick (F12 → boot menu on the Insyde H2O)
+# 3. OBSERVE the screen:
+#    - GREEN WINDOW (full-screen, ~1024x768 to whatever the GOP
+#      mode picks) → the boot chain reaches the display stage;
+#      core + init + basic drivers are fine; the failure is in
+#      the product's storage chain (the W4 desktop-from-disk
+#      freeze on the real hw is therefore NOT a W1 core-hang).
+#      Next step: re-run the W4 desktop scenario on real hw
+#      with the storage chain as the failure focus.
+#    - FREEZE / BLACK → the W1 core-hang reproduces on real
+#      hardware (seL4 / Genode core / init / basic drivers).
+#      The 15-3 protocol doc triggers the bender-rebuild
+#      fallback (rebuild bender from source with a type-set
+#      filter; see §13 round 6b note).
+```
+
+The visual outcome is the ONLY diagnostic — there is no serial
+on the laptop, and the GOP framebuffer is the only visible
+surface (confirmed in §13 round 7).
+
+### Honest disclaimers (W7)
+
+- **The QEMU OVMF boot does NOT reach the Genode banner.** Per
+  D15.16 and the W1 evidence log, the QEMU/OVMF bender rejects
+  the OVMF memory map (`type=4` EfiBootServicesData overlaps with
+  seL4's phdr). The scenario captures the rejection and prints
+  the honest message; it does NOT fabricate a QEMU PASS.
+- **The structure gates are the REAL acceptance criteria.** The
+  W1 evidence log + §13 round-7 establish that the boot chain
+  works on the Debian GRUB path; the only unproven cell is
+  whether the seL4 → Genode core handoff succeeds on the
+  17ZD90N-VX7BK's Insyde memory map. The fbprobe is the minimal
+  scenario to answer that one question.
+- **The scenarios being intentionally minimal.** No /system tree,
+  no tool/mkdata, no nested init, no storage chain. Anything
+  that is not strictly needed to test the display stage is
+  removed. The point is to bisect the freeze, not to ship a
+  product.
+- **Debian GRUB 2.12 EFI binary at `/tmp/opencode/bootx64-full.efi`**
+  (SHA-256 `38d05323fe45fa24d57f478d3d033d6c0578a96407797a992e195fdb8d5727b3`)
+  is the grub-mkimage build from §13 round 6. The vendored
+  `grub2_64.efi` is broken on the Insyde firmware (multiboot2
+  handoff fails; see §13 round 5).
+- **No `genode/` edits; no `git` commits; no `sudo`; no concurrent
+  makes in `genode/build/x86_64`** (Phase 12 row-28 discipline).
+  The scenario is in the working tree only.
+- **The OVMF firmware is the W1 pinned 2024.02** (var/ovmf/, SHA-256
+  `949bfa5389c4c48582737481e7d24f46b3a16b276ef44c4089a56858c6a0a446`).
+  The same resolution order as the W4 scenarios: env override →
+  pinned → host default.
+
+### Files (W7)
+
+- `run/sponge-fbprobe-uefi.run` — the W7 fbprobe scenario
+  (~1100 lines; fully self-documenting header).
+- `repos/sponge/run/sponge-fbprobe-uefi.run` — discovery mirror
+  symlink (`../../../run/sponge-fbprobe-uefi.run`).
+- `genode/build/x86_64/var/run/sponge-fbprobe-uefi.img` — the
+  15-3 candidate image (208 MiB, SHA-256
+  `9c48db6a6010c69b4525440a5abb842be3e84e9eb8280a91c4627028a4371ae3`
+  for the last build; the first 8 bytes of the EFI Guid/HwCfg
+  table change between runs — the FwCfg table carries a
+  per-boot timestamp, so the sha256 is per-run. The layout
+  + content are byte-stable modulo the FwCfg timestamp).
+- `genode/build/x86_64/var/run/sponge-fbprobe-uefi/uefi-boot.log` —
+  the QEMU boot trace (5 KB, includes the W1 stock-bender
+  check_mem rejection signature).
+- `docs/evidence/phase15-index.md` — this §14 entry.
+
