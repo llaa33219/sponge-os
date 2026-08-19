@@ -1,0 +1,312 @@
+including /home/luke/sponge-os/genode/tool/run/power_on/qemu
+including /home/luke/sponge-os/genode/tool/run/log/qemu
+including /home/luke/sponge-os/genode/tool/run/image/iso
+including /home/luke/sponge-os/genode/tool/run/boot_dir/sel4
+including /home/luke/sponge-os/repos/sponge/run/sponge-usb-hid-mouse.run
+building targets:  core lib/ld init timer server/report_rom server/nitpicker driver/acpi app/pci_decode driver/platform driver/framebuffer/vesa driver/ps2 driver/usb_host/pc driver/usb_hid server/event_filter test/usb_hid_probe test/usb_hid_mouse_probe 
+spawn make core lib/ld init timer server/report_rom server/nitpicker driver/acpi app/pci_decode driver/platform driver/framebuffer/vesa driver/ps2 driver/usb_host/pc driver/usb_hid server/event_filter test/usb_hid_probe test/usb_hid_mouse_probe
+make[1]: ディレクトリ '/home/luke/sponge-os/genode/build/x86_64' に入ります
+Skip target driver/platform/pc/spec/x86_32 because it requires 'x86_32'
+Skip target driver/ps2/pl050 because it requires 'arm_v7'
+Skip target driver/usb_hid/spec/arm_v7 because it requires 'arm_v7'
+Skip target driver/usb_hid/spec/arm_v8 because it requires 'arm_v8'
+Skip target driver/usb_hid/spec/x86_32 because it requires 'x86_32'
+Skip target driver/usb_host/pc/spec/x86_32 because it requires '32bit'
+  [00;33mLibrary[0m ld.abi.so
+  [00;33mLibrary[0m ldso_so_support.lib.a
+  [00;33mLibrary[0m kernel-sel4-pc.lib.a
+ninja: Jobserver mode detected:  -j80 --jobserver-auth=fifo:/tmp/GMfifo1795552 --no-print-directory -- DEBUG_DIR=/home/luke/sponge-os/genode/build/x86_64/debug INSTALL_DIR=/home/luke/sponge-os/genode/build/x86_64/bin BUILD_BASE_DIR=/home/luke/sponge-os/genode/build/x86_64 SHARED_LIBS= ARCHIVES= LIB=kernel-sel4-pc LIB_MK=/home/luke/sponge-os/genode/repos/base-sel4/lib/mk/spec/x86_64/kernel-sel4-pc.mk REP_DIR=/home/luke/sponge-os/genode/repos/base-sel4 SHELL=/usr/bin/bash
+ninja: no work to do.
+  [00;33mLibrary[0m syscall-sel4-pc.lib.a
+  [00;33mLibrary[0m syscall-sel4.lib.a
+  [00;33mLibrary[0m startup-sel4.lib.a
+  [00;33mLibrary[0m base-sel4-common.lib.a
+  [00;33mLibrary[0m timeout.lib.a
+  [00;33mLibrary[0m cxx.lib.a
+  [00;33mLibrary[0m base-sel4.lib.a
+  [00;33mLibrary[0m ld-sel4.lib.so
+  [00;33mLibrary[0m ld.lib.so
+  [00;33mLibrary[0m base.lib.a
+  [01;33mProgram[0m app/pci_decode/pci_decode
+  [00;33mLibrary[0m core-sel4.lib.a
+    COMPILE  version.o
+    MERGE    core-sel4.lib.a
+  [01;33mProgram[0m core/sel4/core
+  [01;33mProgram[0m driver/acpi/spec/x86/acpi
+  [00;33mLibrary[0m blit.lib.a
+  [00;33mLibrary[0m x86emu.lib.a
+  [00;33mLibrary[0m format.lib.a
+  [01;33mProgram[0m driver/framebuffer/vesa/vesa_fb
+  [01;33mProgram[0m driver/platform/pc/spec/x86_64/pc_platform
+  [01;33mProgram[0m driver/platform/platform
+  [01;33mProgram[0m driver/ps2/x86/ps2
+  [00;33mLibrary[0m jitterentropy.lib.a
+  [00;33mLibrary[0m virt_lx_emul.lib.a
+  [00;33mLibrary[0m virt_linux_generated.lib.a
+  [01;33mProgram[0m driver/usb_hid/spec/x86_64/usb_hid
+  [00;33mLibrary[0m pc_lx_emul.lib.a
+  [00;33mLibrary[0m pc_linux_generated.lib.a
+  [01;33mProgram[0m driver/usb_host/pc/spec/x86_64/pc_usb_host
+  [01;33mProgram[0m init/init
+  [01;33mProgram[0m server/event_filter/event_filter
+  [01;33mProgram[0m server/nitpicker/nitpicker
+  [01;33mProgram[0m server/report_rom/report_rom
+  [01;33mProgram[0m test/usb_hid_mouse_probe/usb_hid_mouse_probe
+  [01;33mProgram[0m test/usb_hid_probe/usb_hid_probe
+  [01;33mProgram[0m timer/hpet/hpet_timer
+make[1]: ディレクトリ '/home/luke/sponge-os/genode/build/x86_64' から出ます
+genode build completed
+building targets: kernel/sel4 lib/ld-sel4
+spawn make kernel/sel4 lib/ld-sel4
+make[1]: ディレクトリ '/home/luke/sponge-os/genode/build/x86_64' に入ります
+  [00;33mLibrary[0m kernel-sel4-pc.lib.a
+ninja: Jobserver mode detected:  -j80 --jobserver-auth=fifo:/tmp/GMfifo1795981 --no-print-directory -- DEBUG_DIR=/home/luke/sponge-os/genode/build/x86_64/debug INSTALL_DIR=/home/luke/sponge-os/genode/build/x86_64/bin BUILD_BASE_DIR=/home/luke/sponge-os/genode/build/x86_64 SHARED_LIBS= ARCHIVES= LIB=kernel-sel4-pc LIB_MK=/home/luke/sponge-os/genode/repos/base-sel4/lib/mk/spec/x86_64/kernel-sel4-pc.mk REP_DIR=/home/luke/sponge-os/genode/repos/base-sel4 SHELL=/usr/bin/bash
+ninja: no work to do.
+  [00;33mLibrary[0m syscall-sel4-pc.lib.a
+  [00;33mLibrary[0m syscall-sel4.lib.a
+  [00;33mLibrary[0m startup-sel4.lib.a
+  [00;33mLibrary[0m base-sel4-common.lib.a
+  [00;33mLibrary[0m timeout.lib.a
+  [00;33mLibrary[0m cxx.lib.a
+  [00;33mLibrary[0m base-sel4.lib.a
+  [00;33mLibrary[0m ldso_so_support.lib.a
+  [00;33mLibrary[0m ld-sel4.lib.so
+  [01;33mProgram[0m kernel/sel4/sel4-pc
+make[1]: ディレクトリ '/home/luke/sponge-os/genode/build/x86_64' から出ます
+genode build completed
+using 'core-sel4.a' as 'core.a'
+using 'hpet_timer' as 'timer'
+using 'ld-sel4.lib.so' as 'ld.lib.so'
+install bootloader
+creating ISO image...
+xorriso 1.5.8.pl02 : RockRidge filesystem manipulator, libburnia project.
+
+spawn qemu-system-x86_64 -accel kvm -machine q35 -cpu Skylake-Client -nographic -m 2G -device nec-usb-xhci,id=xhci -qmp tcp:127.0.0.1:35161,server=on,wait=off -serial mon:stdio -cdrom var/run/sponge-usb-hid-mouse.iso -machine q35 -net nic,model=e1000,netdev=net0 -netdev user,id=net0
+qemu-system-x86_64: warning: host doesn't support requested feature: CPUID[eax=0Dh,ecx=01h].EAX.xsavec [bit 1]
+qemu-system-x86_64: warning: host doesn't support requested feature: CPUID[eax=0Dh,ecx=01h].EAX.xgetbv1 [bit 2]
+c[?7l[2J[0mSeaBIOS (version Arch Linux 1.17.0-2-2)
+
+
+iPXE (http://ipxe.org) 00:02.0 C900 PCI2.10 PnP PMM+7EFD3D50+7EF33D50 C900
+Press Ctrl-B to configure iPXE (PCI 00:02.0)...                                                                               
+
+
+Booting from Hard Disk...
+Boot failed: could not read the boot disk
+
+Booting from DVD/CD...
+error: can't find command `loadfont'.
+  Booting `Genode on seL4'
+
+[01;01H
+Bender Version 0.9-beta7-51-g28ba2ad-dirty
+Patching BDA with I/O port 0x3f8.
+Bender: Hello World.
+hwp config: eeo=na irq=na hwp=na epp=na epb=na
+Boot config: debug_port = 0x3f8
+Boot config: disable_iommu = true
+  module #0: start=0xf529000 end=0xfdf63c0 size=0x8cd3c0 name='image.elf'
+	Physical Memory Region from 0 size 9fc00 type 1
+	Physical Memory Region from 9fc00 size 400 type 2
+	Physical Memory Region from f0000 size 10000 type 2
+	Physical Memory Region from 100000 size 7fedf000 type 1
+Adding physical memory region 0x100000-0x7ffdf000
+	Physical Memory Region from 7ffdf000 size 21000 type 2
+	Physical Memory Region from b0000000 size 10000000 type 2
+	Physical Memory Region from fed1c000 size 4000 type 2
+	Physical Memory Region from feffc000 size 4000 type 2
+	Physical Memory Region from fffc0000 size 40000 type 2
+Got framebuffer info in multiboot2. Current video mode is at physical address=fd000000 pitch=5120 resolution=1280x800@32 type=1
+Detected 1 boot module(s):
+Kernel loaded to: start=0x200000 end=0xe3e000 size=0xc3e000 entry=0x200298
+ACPI: RSDT paddr=0x7ffe2355
+ACPI: RSDT vaddr=0x7ffe2355
+ACPI: FADT paddr=0x7ffe214d
+ACPI: FADT vaddr=0x7ffe214d
+ACPI: FADT flags=0x84a5
+ACPI: MADT paddr=0x7ffe2241
+ACPI: MADT vaddr=0x7ffe2241
+ACPI: MADT apic_addr=0xfee00000
+ACPI: MADT flags=0x1
+ACPI: MADT_APIC apic_id=0x0
+ACPI: MADT_IOAPIC ioapic_id=0 ioapic_addr=0xfec00000 gsib=0
+ACPI: MADT_ISO bus=0 source=0 gsi=2 flags=0x0
+ACPI: MADT_ISO bus=0 source=5 gsi=5 flags=0xd
+ACPI: MADT_ISO bus=0 source=9 gsi=9 flags=0xd
+ACPI: MADT_ISO bus=0 source=10 gsi=10 flags=0xd
+ACPI: MADT_ISO bus=0 source=11 gsi=11 flags=0xd
+ACPI: 1 CPU(s) detected
+ELF-loading userland images from boot modules:
+size=0x22ab000 v_entry=0x2000018 v_start=0x2000000 v_end=0x42ab000 p_start=0xfdf7000 p_end=0x120a2000
+Moving loaded userland images to final location: from=0xfdf7000 to=0xe3e000 size=0x22ab000
+Starting node #0 with APIC ID 0
+Mapping kernel window is done
+vt-x: not supported
+available phys memory regions: 1
+  [100000..7ffdf000]
+reserved virt address space regions: 1
+  [ffffff8000200000..ffffff80030e9000]
+Booting all finished, dropped to user space
+[34mWarning: device memory in range [0000000800000000,0000001000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000001000000000,0000002000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000002000000000,0000004000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000004000000000,0000008000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000008000000000,0000408000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000408000000000,0000608000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000608000000000,0000708000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000708000000000,0000788000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000788000000000,00007c8000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [00007c8000000000,00007e8000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [00007e8000000000,00007f8000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [00007f8000000000,0000800000000000) is unavailable (due to limited untyped cnode range)[0m
+:phys_mem_16k:     Allocator 0x217a358 dump:
+ Block: [0000000000100000,0000000000a00000) size=9M avail=9M max_avail=9M
+ Block: [00000000030ec000,0000000004000000) size=15440K avail=15440K max_avail=73904K
+ Block: [0000000008000000,000000000c82c000) size=73904K avail=73904K max_avail=73904K
+ => mem_size=100925440 (96 MB) / mem_avail=100925440 (96 MB)
+
+[34mWarning: device memory in range [0000000200000000,0000000400000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000000400000000,0000000800000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000000800000000,0000001000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000001000000000,0000002000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000002000000000,0000004000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000004000000000,0000008000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000008000000000,0000408000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000408000000000,0000608000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000608000000000,0000708000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000708000000000,0000788000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [0000788000000000,00007c8000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [00007c8000000000,00007e8000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [00007e8000000000,00007f8000000000) is unavailable (due to limited untyped cnode range)[0m
+[34mWarning: device memory in range [00007f8000000000,0000800000000000) is unavailable (due to limited untyped cnode range)[0m
+virtual address layout of core:
+ overall    [0000000000002000,0000001000000000)
+ core image [0000000002000000,00000000042ab000)
+ ipc buffer [00000000042ab000,00000000042ac000)
+ boot_info  [00000000042ac000,00000000042ad542)
+ stack area [0000000040000000,0000000050000000)
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+Physical memory per PD at most: 512M
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+boot module 'config' (9192 bytes)
+boot module 'acpi' (190328 bytes)
+boot module 'event_filter' (332104 bytes)
+boot module 'timer' (144744 bytes)
+boot module 'init' (516744 bytes)
+boot module 'init.hsd' (4125 bytes)
+boot module 'init.xsd' (8118 bytes)
+boot module 'ld.lib.so' (1112464 bytes)
+boot module 'nitpicker' (530512 bytes)
+boot module 'pc_platform' (724960 bytes)
+boot module 'pc_usb_host' (1564952 bytes)
+boot module 'pci_decode' (171336 bytes)
+boot module 'platform' (598984 bytes)
+boot module 'ps2' (156880 bytes)
+boot module 'report_rom' (150784 bytes)
+boot module 'usb_hid' (1131360 bytes)
+boot module 'usb_hid_mouse_probe' (39840 bytes)
+boot module 'usb_hid_probe' (35472 bytes)
+boot module 'vesa_fb' (334560 bytes)
+boot module 'drivers.config' (4987 bytes)
+boot module 'fb.config' (53 bytes)
+boot module 'event_filter.config' (579 bytes)
+boot module 'en_us.chargen' (8852 bytes)
+boot module 'special.chargen' (1218 bytes)
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+Genode v0.1.1-alpha-104-g5d82ae54d2 <local changes>
+1622 MiB RAM and 523288 caps assigned to init
+[init -> timer] timers=3, clock 10000000fs , 64bit counter , legacy routing support vendor=0x8086
+[init -> timer] timer0 GSI options 0xff0104, supports periodic
+[init -> timer] timer1 GSI options 0xff0104, supports periodic
+[init -> timer] timer2 GSI options 0xff0104, supports periodic
+[init -> timer] time wraps after 5849 years
+[init -> timer] irqs=off legacy=off
+[init -> timer] Using timer 2 -> using GSI 2 edge triggered
+[init -> drivers -> acpi] Found MADT
+[init -> drivers -> acpi] MADT IRQ 0 -> GSI 2 flags: 0
+[init -> drivers -> acpi] MADT IRQ 5 -> GSI 5 flags: 13
+[init -> drivers -> acpi] MADT IRQ 9 -> GSI 9 flags: 13
+[init -> drivers -> acpi] MADT IRQ 10 -> GSI 10 flags: 13
+[init -> drivers -> acpi] MADT IRQ 11 -> GSI 11 flags: 13
+[init -> drivers -> acpi] Found HPET hw_id=0x1  vendor_id=0x8086 space_id=0x0 addr=0xfed00000 hpet_id=0x0
+[init -> drivers -> acpi] Found MCFG
+[init -> drivers -> acpi] MCFG BASE 0xb0000000 seg 0x0 bus 0x0-0xff
+[init -> drivers -> acpi] RSDT OEM 'BOCHS ', table id 'BXPC    ', revision 1, creator 'BXPC' (1)
+[init -> drivers -> acpi] [34mWarning: SMBIOSv3 entry point invalid[0m
+[init -> drivers -> acpi] SMBIOSv2 table (entry point: 0x1b6510 structures: 0xf6530)
+[init -> drivers -> fb] fb mapped to 0x6000
+[init -> drivers -> ps2] Using keyboard with scan code set 1 (xlate)
+[init -> drivers -> fb] Found: VESA BIOS version 3.0
+[init -> drivers -> fb] OEM: SeaBIOS VBE(C) 2011
+[init -> drivers -> fb] Found: physical frame buffer at 0xfd000000 size: 16777216
+[init -> drivers -> fb] fb mapped to 0x17000000
+[init -> drivers -> fb] using 1024x768
+qmp: fb gate passed, connecting QMP port 35161
+
+qmp: connected
+
+qmp: hotplug usb-mouse (id=umouse1) via QMP device_add
+ (1024x768)
+[init -> drivers -> usb] SLUB: HWalign=64, Order=0-1, MinObjects=0, CPUs=1, Nodes=1
+[init -> drivers -> usb] NR_IRQS: 4352, nr_irqs: 4352, preallocated irqs: 256
+[init -> drivers -> usb] clocksource: dde_counter: mask: 0xffffffffffffff max_cycles: 0x1d854df40, max_idle_ns: 3526361616960 ns
+[init -> drivers -> ps2] detected ExPS/2 mouse - activating scroll-wheel and 5-button support
+[34mWarning: flush page table entries - mapping cache full - PD: init -> drivers -> fb out of CAP[0m
+[init -> drivers -> usb] clocksource: jiffies: mask: 0xffffffff max_cycles: 0xffffffff, max_idle_ns: 7645041785100000 ns
+[init -> drivers -> usb] usbcore: registered new interface driver usbfs
+[init -> drivers -> usb] usbcore: registered new interface driver hub
+[init -> drivers -> usb] usbcore: registered new device driver usb
+[init -> drivers -> usb] clocksource: Switched to clocksource dde_counter
+[init -> drivers -> usb] usbcore: registered new interface driver genode
+[init -> drivers -> usb] xhci_hcd 00:03.0: xHCI Host Controller
+[init -> drivers -> usb] xhci_hcd 00:03.0: new USB bus registered, assigned bus number 1
+[init -> drivers -> usb] xhci_hcd 00:03.0: hcc params 0x00087001 hci version 0x100 quirks 0x0000000000000014
+[init -> drivers -> usb] xhci_hcd 00:03.0: xHCI Host Controller
+[init -> drivers -> usb] xhci_hcd 00:03.0: new USB bus registered, assigned bus number 2
+[init -> drivers -> usb] xhci_hcd 00:03.0: Host supports USB 3.0 SuperSpeed
+[init -> drivers -> usb] hub 1-0:1.0: USB hub found
+[init -> drivers -> usb] hub 1-0:1.0: 4 ports detected
+[init -> drivers -> usb] usb usb2: We don't know the algorithms for LPM for this host, disabling LPM.
+[init -> drivers -> usb] hub 2-0:1.0: USB hub found
+[init -> drivers -> usb] hub 2-0:1.0: 4 ports detected
+[init -> drivers -> usb] sched_clock: Marking stable (47032000, 160335000)->(315598000, -108231000)
+[init -> drivers -> usb_hid] SLUB: HWalign=64, Order=0-1, MinObjects=0, CPUs=1, Nodes=1
+[init -> drivers -> usb_hid] clocksource: dde_counter: mask: 0xffffffffffffff max_cycles: 0x1d854df40, max_idle_ns: 3526361616960 ns
+[init -> drivers -> usb_hid] clocksource: jiffies: mask: 0xffffffff max_cycles: 0xffffffff, max_idle_ns: 7645041785100000 ns
+[init -> drivers -> usb_hid] usbcore: registered new interface driver usbfs
+[init -> drivers -> usb_hid] usbcore: registered new interface driver hub
+[init -> drivers -> usb_hid] usbcore: registered new device driver usb
+[init -> drivers -> usb_hid] clocksource: Switched to clocksource dde_counter
+[init -> drivers -> usb_hid] usbcore: registered new interface driver usbhid
+[init -> drivers -> usb_hid] hid_core: USB HID core driver
+[init -> drivers -> usb_hid] sched_clock: Marking stable (0, 511444000)->(515208000, -3764000)
+[init -> drivers -> usb] usb 1-1: new high-speed USB device number 2 using xhci_hcd
+[init -> drivers -> usb_hid_mouse_probe] usb_hid_mouse_probe: devices report MOUSE present
+[init -> drivers -> usb_hid_mouse_probe] usb_hid_mouse_probe: POINTER_BIND observed
+[init -> drivers -> usb_hid_probe] usb_hid: MOUSE detected
+qmp: dispatching REL motion sequence (right-down-left-up loop)
+
+qmp: dispatching BTN_LEFT press
+
+qmp: dispatching BTN_LEFT release
+
+[init -> drivers -> usb_hid] input: QEMU QEMU USB Mouse as /devices/usb-1-2/0-0:1.0/0003:0627:0001.0001/input/input0
+[init -> drivers -> usb_hid] Connected device: input0 (QEMU QEMU USB Mouse at usb-usbbus-0/input0) MOUSE
+[init -> drivers -> usb_hid] hid-generic 0003:0627:0001.0001: input: USB HID v0.01 Mouse [QEMU QEMU USB Mouse] on usb-usbbus-0/input0
+qmp: secondary pointer observation window closed (no further ROM updates expected; gap row #2 evidence recorded)
+
+qmp: unplug umouse1 via QMP device_del
+[init -> drivers -> usb] usb 1-1: USB disconnect, device number 2
+[init -> drivers -> usb_hid] usb usb-1-2: USB disconnect, device number 1
+[init -> drivers -> usb_hid_mouse_probe] usb_hid_mouse_probe: devices report MOUSE absent
+[init -> drivers -> usb_hid_probe] usb_hid: MOUSE removed
+[init -> drivers -> usb_hid] Disconnected device: input0
+[init -> drivers -> usb_hid_mouse_probe] usb_hid_mouse_probe: POINTER_UNBIND observed
+qmp: usb_hid_mouse_probe secondary unbind marker observed (POINTER_UNBIND observed)
+qmp: secondary usb_hid_mouse_probe unbind observation window closed (no further markers expected)
+sponge-usb-hid-mouse: PASS (QMP hotplug audit chain: device_add -> MOUSE detected -> REL motion + BTN_LEFT -> device_del -> MOUSE removed)
+
+Run script execution successful.

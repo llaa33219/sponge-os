@@ -1,22 +1,25 @@
-# usb_hid_probe — Phase 12 W4 USB HID hotplug probe
+# usb_hid_probe — USB HID hotplug probe (Phase 12 W4 + Phase 15 W5)
 
 > `docs/plans/phase12-hardware.md` §"W4: USB boot and USB keyboard
-> scenarios", Risk 20 mitigation.
+> scenarios" Risk 20 mitigation; `docs/plans/phase15-real-hardware-
+> boot.md` §W5 USB-mouse envelope.
 
 A tiny Genode component (no libc, no Qt) that watches the
 `pc_usb_host` devices report relayed through the drivers sub-init's
 report_rom (policy `label: usb_hid -> report | report: usb ->
-devices`) and emits two literal markers on the lifecycle of a USB
-keyboard device entry:
+devices`) and emits lifecycle markers for two USB HID device
+classes:
 
-| Transition | Marker (literal)              | When                                |
-|------------|------------------------------|--------------------------------------|
-| add        | `usb_hid: KEYBOARD detected` | a device entry containing "Keyboard" first appears in the report |
-| remove     | `usb_hid: KEYBOARD removed`  | the previously-present Keyboard entry disappears on a subsequent report update |
+| Device class | Transition | Marker (literal)           | When                                                                                  |
+|--------------|------------|---------------------------|----------------------------------------------------------------------------------------|
+| USB keyboard | add        | `usb_hid: KEYBOARD detected` | a device entry containing "Keyboard" first appears in the report                     |
+| USB keyboard | remove     | `usb_hid: KEYBOARD removed`  | the previously-present Keyboard entry disappears on a subsequent report update       |
+| USB mouse    | add        | `usb_hid: MOUSE detected`    | a device entry containing "Mouse" first appears in the report (Phase 15 W5)         |
+| USB mouse    | remove     | `usb_hid: MOUSE removed`     | the previously-present Mouse entry disappears on a subsequent report update          |
 
-The probe does NOT exit on either marker; both events are observed
-transitions on a single continuous probe. It is torn down by
-init at end-of-scenario.
+The probe does NOT exit on any marker; all four events are
+observed transitions on a single continuous probe. It is torn down
+by init at end-of-scenario.
 
 ## What it does
 
