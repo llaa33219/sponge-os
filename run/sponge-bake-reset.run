@@ -1,0 +1,139 @@
+#
+# Phase 15 W3 production-kernel reset proof. This scenario uses the focused
+# probe channel rather than a second vct process because report_rom has one
+# writer per config_request slot and static init cannot start short-lived vct
+# only after the probe's override. The probe sends the exact request used by
+# BakeCommand: set bake.applied=no. The real vct binary is built here, while
+# its command surface is covered by the shared implementation/build gate.
+#
+
+assert {[have_spec sel4]} \
+	"sponge-bake-reset requires KERNEL=sel4 (BOARD=pc)."
+
+build { core lib/ld init timer server/report_rom server/vfs \
+        server/cached_fs_rom lib/vfs sponge_configd vct test/bake_probe }
+
+create_boot_directory
+
+install_config {
+config
++ parent-provides
+  + service LOG
+  + service PD
+  + service CPU
+  + service ROM
+  + service IO_MEM
+  + service IRQ
+
++ default-route
+  + any-service
+    + parent
+    + any-child
++ default | caps: 200 | ram: 8M
+
++ start timer
+  + provides | + service Timer
+
++ start bake_vfs | caps: 200 | ram: 8M
+  + binary vfs
+  + provides | + service File_system
+  + config
+    + vfs
+      + dir system
+        + dir bake
+          + rom config.defaults
+          + rom bake_manifest.json
+    + policy | label_prefix: rom_bake | root: /system/bake | writeable: no
+  + route
+    + service ROM | label_last: ld.lib.so | + parent
+    + service ROM | label_last: vfs.lib.so | + parent
+    + service ROM | label: config.defaults | + parent
+    + service ROM | label: bake_manifest.json | + parent
+    + any-service
+      + parent
+      + any-child
+
++ start rom_bake | caps: 200 | ram: 8M
+  + binary cached_fs_rom
+  + provides | + service ROM
+  + route
+    + service File_system | + child bake_vfs
+    + service ROM | label_last: ld.lib.so | + parent
+    + any-service
+      + parent
+      + any-child
+
++ start report_rom | ram: 4M
+  + provides
+    + service Report
+    + service ROM
+  + config | verbose: no
+    + policy | label: sponge_configd -> config_request | report: bake_probe -> config_request
+    + policy | label: bake_probe -> config_result      | report: sponge_configd -> config_result
+    + policy | label: bake_probe -> broadcast          | report: sponge_configd -> config
+
++ start ram_vfs | caps: 200 | ram: 8M
+  + binary vfs
+  + provides | + service File_system
+  + config
+    + vfs
+      + ram | writeable: yes
+    + policy | label_prefix: sponge_configd | root: / | writeable: yes
+  + route
+    + service ROM | label_last: ld.lib.so | + parent
+    + service ROM | label_last: vfs.lib.so | + parent
+    + any-service
+      + parent
+      + any-child
+
++ start sponge_configd | caps: 300 | ram: 16M
+  + config
+    + bake
+    + vfs
+      + fs
+  + route
+    + service File_system | + child ram_vfs
+    + service ROM | label: bake_config_defaults | + child rom_bake | label: config.defaults
+    + service ROM | label: bake_manifest        | + child rom_bake | label: bake_manifest.json
+    + service ROM | label_last: config_request  | + child report_rom
+    + service Report | + child report_rom
+    + any-service
+      + parent
+      + any-child
+
++ start bake_probe | caps: 200 | ram: 8M
+  + config | mode: reset
+  + route
+    + service Timer | + child timer
+    + service ROM | label: config_result | + child report_rom
+    + service ROM | label: broadcast     | + child report_rom
+    + service Report | + child report_rom
+    + any-service
+      + parent
+      + any-child
+- }
+
+exec mkdir -p bin
+set defaults [open "bin/config.defaults" w]
+puts $defaults {panel.height=28}
+puts $defaults {panel.visible_widgets=clock,launcher}
+puts $defaults {clock.format=HH:mm}
+puts $defaults {launcher.sort_by=alpha}
+close $defaults
+set manifest [open "bin/bake_manifest.json" w]
+puts $manifest {{
+  "schema": "bake.config_version",
+  "schema_version": 1,
+  "profile": "minimal",
+  "profile_config_version": 1,
+  "mode": "img",
+  "theme": "default"
+}}
+close $manifest
+
+set boot_modules [build_artifacts]
+lappend boot_modules config.defaults bake_manifest.json
+build_boot_image $boot_modules
+append qemu_args " -nographic -m 1G "
+run_genode_until {.*bake-reset-probe: PASS.*} 120
+puts "sponge-bake-reset: PASS"
