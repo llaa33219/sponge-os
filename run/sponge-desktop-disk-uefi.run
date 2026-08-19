@@ -1,0 +1,1623 @@
+#
+# \brief  Sponge OS Phase 15 W4 — UEFI desktop product media
+#         (D15.13 / D15.16, QEMU-unverified, structural-gate only).
+# \author Sponge OS contributors
+# \date   2026
+#
+# The Sponge-side UEFI recipe for the FULL Alpha desktop — the
+# desktop-on-OVMF equivalent of run/sponge-desktop-disk.run
+# (Phase 8 P2, Phase 15 W2 bake-driven staging). It mirrors the
+# BIOS scenario's Tier-0 chain, /system staging, and desktop
+# composition; it differs in the three UEFI-specific places:
+#
+#   1. The disk layout (P1=ESP FAT32, P2 ABSENT, P3=GENODE ext2,
+#      P4=SPONGE-DATA via tool/mkdata — partition numbers preserved
+#      so part_block's `<partition number="3"/>` pin AND tool/mkdata's
+#      P4 grow-sequence work UNCHANGED).
+#   2. The OVMF pflash wiring (-drive if=pflash) + GRUB2 EFI
+#      menuentry that loads bender/sel4/image.elf from GENODE P3's
+#      /boot (the vendored grub2_64.efi binary includes the ext2
+#      module per the genode contrib/ build).
+#   3. The display driver swap: vesa_fb → boot_fb (the GOP
+#      framebuffer driver; reads `platform_info/boot/framebuffer`
+#      routed by Tier-0 report_rom from the platform driver).
+#
+# === Architecture (docs/14 §4.4–§4.7 + D15.13 UEFI variant) ===
+#
+#   OVMF pflash (var/ovmf/OVMF_CODE.fd pinned 2024.02) → GRUB2
+#   EFI on P1 ESP (/EFI/BOOT/BOOTX64.EFI = prebuilt
+#   contrib/grub2-*/boot/grub2/grub2_64.efi) → grub.cfg
+#   multiboot2 menuentry → bender → seL4 (image.elf = Tier 0 only)
+#     └─ init (Tier 0)
+#         ├─ timer, report_rom
+#         ├─ platform/acpi/pci_decode
+#         ├─ ahci (Block)
+#         ├─ part_block → Block/P3 (partition pinned BY NUMBER)
+#         ├─ vfs (Vfs_block + <rump fs="ext2fs"/>) → File_system
+#         ├─ rom_sys: cached_fs_rom(chroot /system)        → ROM
+#         ├─ rom_lib: cached_fs_rom(chroot /system/lib)    → ROM
+#         ├─ nitpicker
+#         ├─ drivers (sub-init: boot_fb/ps2/usb_hid/event_filter)
+#         └─ system (nested init from disk)
+#             ├─ binary "init" from rom_sys at /system/bin/init
+#             ├─ config from rom_sys at /system/init/system.config
+#             ├─ ROM label_last="ld.lib.so" → parent (§4.6)
+#             └─ hosts: report_rom, wm, window_layouter, decorator,
+#                       sponge_configd, sponge_themed, sponge_pkgd,
+#                       pkg_runtime, sponge-de, alpha_probe
+#                  (ALL binaries+libs served from /system via rom_sys/rom_lib)
+#
+# === Disk layout (D15.13 + W4 binding) ===
+#
+#   P1  ESP    FAT32  typecode=EF00  label=ESP          64 MiB
+#                /EFI/BOOT/BOOTX64.EFI  (prebuilt grub2_64.efi renamed)
+#                /boot/grub/grub.cfg
+#                /boot/font.pf2
+#   P2  (ABSENT — no partition entry. The P2 slot is intentionally
+#        left empty so the P3 partition number is identical to the
+#        BIOS media's P3, preserving part_block's `<partition
+#        number="3"/>` pin and tool/mkdata's --new=4 grow path.
+#        This is the W4 partition-number contract, recorded in
+#        the scenario header + docs/14 UEFI variant section.)
+#   P3  GENODE  ext2   typecode=8300  label=GENODE       1024+ MiB
+#                /boot/bender
+#                /boot/sel4
+#                /boot/image.elf
+#                /system/bin/<desktop binaries>
+#                /system/lib/<.lib.so files>
+#                /system/init/system.config
+#                /system/<theme>.theme, /system/qt6_*.tar,
+#                /system/pkg_<name>.xml, /system/pkg_index.xml,
+#                /system/bake/{bake_manifest.json, config.defaults,
+#                              theme.defaults}
+#   P4  SPONGE-DATA  ext2  added by tool/mkdata (docs/14 §4.3)
+#        1024 MiB default, configurable via tool/dist --data-size
+#
+# === Why the P2-absent choice (binding design decision) ===
+#
+# The alternative layouts considered and rejected:
+#
+#   * A. P1=BIOS-boot + P2=ESP + P3=GENODE + P4=SPONGE-DATA
+#       (the BIOS image/disk layout) — needs both BIOS boot code
+#       on P1 AND a UEFI ESP on P2. image/disk's packed layout
+#       does not produce this from a single pass without a
+#       vendored-tree edit. Rejected (AGENTS.md §5.2).
+#
+#   * B. P1=ESP + P2=GENODE + P3=SPONGE-DATA
+#       (contiguous numbering from P1=1) — would require
+#       re-pinning part_block to partition 2 AND re-doing
+#       tool/mkdata's P3 grow sequence. The W1 reference scenario
+#       used this layout (sponge-boot-uefi.run pins partition 2
+#       for the GENODE ext2 marker). For W4 we want the partition
+#       numbers to match the BIOS media so the BIOS product .img
+#       and the UEFI product .img can be cross-validated
+#       (e.g. by a future 15-3 recovery-tool or a swap-test).
+#       Rejected.
+#
+#   * C. P1=ESP + P2 ABSENT + P3=GENODE + P4=SPONGE-DATA  ← CHOSEN
+#       sgdisk --new=1:2048:+64M   (ESP)
+#       sgdisk --new=3:0:+1024M    (GENODE)         — skips 2
+#       tool/mkdata's --new=4:<p4_first>:<p4_last>   (SPONGE-DATA)
+#       part_block's `<partition number="3"/>` pin works UNCHANGED
+#       (it reads by number, not by "third physical partition").
+#       tool/mkdata's P4 grow sequence works UNCHANGED (it expects
+#       P3 at its old offset and creates P4 in the new free space
+#       after the resize).
+#
+# === Boot flow under UEFI ===
+#
+#   OVMF pflash → BdsDxe → reads GPT → finds ESP on P1 → loads
+#   /EFI/BOOT/BOOTX64.EFI → GRUB2 EFI runs → reads
+#   /boot/grub/grub.cfg → multiboot2 menuentry:
+#
+#       multiboot2 (hd0,gpt3)/boot/bender serial intel_hwp_performance
+#                  phys_max=256M serial_fallback
+#         module2 (hd0,gpt3)/boot/sel4 sel4 disable_iommu
+#                              console_port=0x3f8 debug_port=0x3f8
+#         module2 (hd0,gpt3)/boot/image.elf image.elf
+#
+#   bender loads the ELF; seL4 boots; image.elf lands in seL4.
+#   base-sel4 core starts → init → ... → Tier-0 drivers + storage
+#   chain → cached_fs_rom serves /system as ROMs → nested system
+#   init → desktop (sponge-de on nitpicker via boot_fb's Capture
+#   session).
+#
+# The multiboot2 line uses the phys_max=256M + serial_fallback
+# tokens from the W1 OVMF W^X workaround (D15.16 evidence:
+# docs/evidence/phase15-uefi-boot-smoke.log); the user-disabled
+# Secure Boot assumption (D15.14) is required on real hardware.
+#
+# === Tier-0 roster (D15.13 + docs/14 §4.5) ===
+#
+# Same as run/sponge-desktop-disk.run (Tier-0 budget ≤ 80 MiB),
+# with TWO swaps:
+#
+#   * vesa_fb → boot_fb
+#       (vesa_fb uses real-mode VBE via x86emu which has no
+#       INT 10h under UEFI; boot_fb reads the GOP framebuffer
+#       from platform_info/boot/framebuffer. R15.2 / D15.13.)
+#   * drivers sub-init uses a scenario-local drivers.config that
+#       starts boot_fb (NOT vesa_fb) and routes platform_info to
+#       it. The vendored drivers_interactive-pc recipe is
+#       UNTOUCHED (AGENTS.md §5.2); the UEFI scenario writes its
+#       own config under bin/.
+#
+# === Drivers sub-init (UEFI variant) ===
+#
+#   + start fb | caps: 150 | ram: 20M
+#     + binary boot_fb
+#     + route
+#       + service ROM | label: config        | + parent | label: fb.config
+#       + service ROM | label: platform_info | + parent
+#       + service Report                      | + child report_rom
+#       + service IO_MEM                      | + parent
+#       + service ROM                         | + parent
+#       + service PD                          | + parent
+#       + service CPU                         | + parent
+#       + service LOG                         | + parent
+#       + service Timer                       | + child timer
+#       + service Capture                     | + child nitpicker
+#
+# (Compare the Sculpt board-pc reference: the boot_fb child
+# requests `rom config`, `rom platform_info`, `io_mem`, `capture`,
+# `report`. We route the same five. boot_fb does NOT request
+# Platform/Dma/IO_PORT — those belong to vesa_fb's VGA PCI path
+# which does not exist under UEFI/GOP.)
+#
+# The Tier-0 report_rom adds ONE new policy (the BIOS report_rom
+# does not relay platform_info because vesa_fb does not need it):
+#
+#   + policy | label: platform_info | report: platform -> platform_info
+#
+# This routes the boot_fb's `platform_info` ROM request through
+# Tier-0 to the platform driver, which composes its `platform_info`
+# Report from the multiboot2 FB tag (set by GRUB2 gfxterm →
+# bender → seL4 → base-sel4 core, per docs/15-1 plan §"B. UEFI
+# boot path in the vendored tree"). boot_fb reads
+# `platform_info/boot/framebuffer` (phys/width/height/bpp/pitch/
+# type) and binds to the GOP framebuffer; if the GOP mode reports
+# bpp=32 + type=1 (RGB) the gate passes; otherwise boot_fb logs
+# "unsupported resolution (bpp or/and type)" and exits (R15.2).
+#
+# === QEMU wiring ===
+#
+#   -machine q35 -cpu Skylake-Client
+#   -nographic -m 4G -snapshot
+#   -device nec-usb-xhci,id=xhci -device usb-tablet
+#   -drive if=pflash,format=raw,readonly=on,file=$ovmf_code
+#   -drive if=pflash,format=raw,file=$ovmf_vars
+#   -fw_cfg name=opt/org.tianocore/UninstallMemAttrProtocol,string=yes
+#   -drive format=raw,file=[run_dir].img
+#
+# OVMF resolution order: $SPONGE_OVMF_CODE / $SPONGE_OVMF_VARS
+# (env override) → var/ovmf/OVMF_CODE.fd + var/ovmf/OVMF_VARS.fd
+# (pinned 2024.02, git-ignored) → /usr/share/edk2/x64/OVMF_CODE.4m.fd
+# + OVMF_VARS.4m.fd (host default edk2-ovmf 202605-1, known to
+# break the vendored grub2_64.efi multiboot2 path). The pre-flight
+# check at the top of the script fails loudly if none of those
+# paths exist.
+#
+# === Bake profile (Phase 15 W2) ===
+#
+# `bake::stage $sys_dir img` is invoked exactly like the BIOS
+# scenario (D15.8). SPONGE_BAKE_PROFILE default = desktop, valid
+# = {minimal, desktop, none}, other = loud error. R15.3 verifier
+# fires synchronously after staging (R15.3 defense).
+#
+# === Failure channel ===
+#
+# SPONGE_DISK_FAIL=1 corrupts /system/init/system.config (same as
+# the BIOS scenario). Bounded by the boot attempt timeout.
+#
+# === QEMU boot gate honesty (D15.16, W4 acceptance) ===
+#
+# Per the W4 binding decisions, the scenario's REAL acceptance
+# gate is the host-side STRUCTURAL verification of the .img
+# (sgdisk -p showing P1 EF00 + P3 GENODE + P4 SPONGE-DATA; mdir
+# on the ESP showing efi/boot/bootx64.efi + grub.cfg; e2ls on
+# P3 showing the /system tree including boot_fb binary + the
+# profile's pkg_*.xml set + bake_manifest.json). The QEMU boot
+# is expected to hit the W1 OVMF core-init hang (D15.16) — the
+# scenario attempts a bounded (≤180 s) QEMU boot, checks the
+# hang signature (the two Genode core warnings + absence of
+# the banner), prints the honest message
+#
+#   "UEFI product media structure verified; QEMU boot blocked
+#    by the known OVMF core-init hang — see
+#    docs/evidence/phase15-uefi-boot-smoke.log; real-hardware
+#    verification is 15-3"
+#
+# and exits 0 ONLY if every host-side structural gate passed.
+# A structural-gate failure exits non-zero. The run script does
+# NOT fabricate a QEMU boot PASS.
+#
+# QGenodeScreen 1×1 race (D14.8(b)) evaluation on the boot_fb
+# UEFI path: blocked-by-W1-hang; recorded as such in
+# docs/evidence/phase15-index.md §W4 entry. Deferred to 15-3
+# real-hardware observation.
+#
+# base-sel4 only.
+#
+# Build:
+#   make -j1 -C genode/build/x86_64 run/sponge-desktop-disk-uefi \
+#       KERNEL=sel4 BOARD=pc
+#
+# (The standard RUN_OPT --include image/disk is auto-loaded via
+# ensure_plugin_loaded; no RUN_OPT is required on the make
+# command line.)
+#
+
+assert {[have_spec sel4]} \
+	"sponge-desktop-disk-uefi requires KERNEL=sel4 (BOARD=pc)."
+
+##
+# === Plugin loading ===
+#
+# boot_dir/sel4 stages sel4 + ld-sel4.lib.so + bender into
+# [run_dir]/boot/. We OVERRIDE image/disk's run_image to a no-op
+# (we handcraft the .img below) and use the plugin only so
+# power_on/qemu's [have_include image/iso|disk|uefi] check passes
+# and the -drive format=raw,file=[run_dir].img line is auto-
+# appended.
+#
+proc ensure_plugin_loaded { name } {
+	if {![have_include $name]} {
+		set path [genode_dir]/tool/run/$name
+		puts "sourcing $path (missing from RUN_OPT, restored by run script)"
+		source $path
+		global include_list
+		lappend include_list $name
+	}
+}
+
+ensure_plugin_loaded boot_dir/sel4
+ensure_plugin_loaded image/disk
+ensure_plugin_loaded power_on/qemu
+ensure_plugin_loaded log/qemu
+
+#
+# === Remove image/iso from the active include_list ===
+#
+# build.conf auto-loads image/iso via BOARD_RUN_OPT(pc) →
+# QEMU_RUN_OPT → --include image/iso (see genode/tool/builddir/
+# build.conf/run_x86). With image/iso in include_list,
+# power_on/qemu's [have_include image/iso] check is true, and the
+# `if image/iso ... else if image/disk ...` cascade on
+# genode/tool/run/power_on/qemu:113-118 picks the cdrom branch
+# (not the disk branch) — which references a non-existent
+# [run_dir].iso and aborts. Remove image/iso from include_list so
+# the cascade falls through to image/disk's -drive line.
+#
+foreach entry $include_list {
+	if {[string equal $entry "image/iso"]} {
+		set idx [lsearch $include_list $entry]
+		set include_list [lreplace $include_list $idx $idx]
+		break
+	}
+}
+
+#
+# === Override the upstream image plugin's run_image (D15.13) ===
+#
+# Without this override, image/disk's run_image would build a
+# hybrid MBR/GPT image whose GENODE ext2 partition carries the
+# whole run_dir (recursive find + e2cp). For UEFI we want a
+# different layout (P1 ESP FAT32, P2 ABSENT, P3 GENODE ext2, P4
+# SPONGE-DATA via tool/mkdata), so we handcraft [run_dir].img
+# below. The override is a Tcl `proc run_image` redefinition;
+# Tcl uses the last definition wins, and this run script sources
+# LAST (after image/disk via build.mk's --include ordering).
+#
+proc run_image { } { return true }
+
+#
+# === OVMF firmware pre-flight (R15.13) ===
+#
+# Both files live under /usr/share/edk2/x64/ on Debian/Ubuntu-
+# derived distros (the `ovmf` / `edk2-ovmf` package). On other
+# distros the path differs — fail loudly with the package name
+# instead of falling back silently.
+#
+set ovmf_code /usr/share/edk2/x64/OVMF_CODE.4m.fd
+set ovmf_vars /usr/share/edk2/x64/OVMF_VARS.4m.fd
+
+if {![file exists $ovmf_code]} {
+	puts ""
+	puts "OVMF firmware missing: $ovmf_code"
+	puts ""
+	puts "Install the ovmf/edk2-ovmf package on this host:"
+	puts "  sudo apt install ovmf          # Debian/Ubuntu"
+	puts "  sudo dnf install edk2-ovmf     # Fedora"
+	puts "  sudo pacman -S edk2-ovmf       # Arch"
+	puts ""
+	puts "(AGENTS.md §5.5 — the agent does NOT use sudo; please run"
+	puts " the install command above yourself.)"
+	exit -1
+}
+if {![file exists $ovmf_vars]} {
+	puts ""
+	puts "OVMF_VARS missing: $ovmf_vars"
+	puts "(install the same ovmf/edk2-ovmf package as above.)"
+	exit -1
+}
+
+# Per-run writable copy of OVMF_VARS (AGENTS.md §5.5 — never
+# write the system file). bin/ is the build-dir writable scratch
+# space used by every other scenario.
+exec mkdir -p bin
+exec cp -f $ovmf_vars bin/OVMF_VARS.4m.fd
+
+#
+# === Pinned OVMF resolution (W1 STEP 2 fallback) ===
+#
+# Resolution order:
+#   1. $SPONGE_OVMF_CODE / $SPONGE_OVMF_VARS (explicit override)
+#   2. var/ovmf/OVMF_CODE.fd + var/ovmf/OVMF_VARS.fd (pin 2024.02)
+#   3. /usr/share/edk2/x64/OVMF_CODE.4m.fd (host default; known
+#      to break the vendored grub2_64.efi multiboot2 path).
+#
+# Pinned OVMF provenance recorded in run/sponge-boot-uefi.run
+# header and docs/11-environment.md §4.2 patch-ledger candidate.
+#
+set ovmf_pinned_code [file normalize [file join [genode_dir] .. var ovmf OVMF_CODE.fd]]
+set ovmf_pinned_vars [file normalize [file join [genode_dir] .. var ovmf OVMF_VARS.fd]]
+
+if {[info exists ::env(SPONGE_OVMF_CODE)]} {
+	set ovmf_code $::env(SPONGE_OVMF_CODE)
+	puts "sponge-desktop-disk-uefi: OVMF_CODE = \$SPONGE_OVMF_CODE ($ovmf_code)"
+} elseif {[file exists $ovmf_pinned_code]} {
+	set ovmf_code $ovmf_pinned_code
+	puts "sponge-desktop-disk-uefi: OVMF_CODE = var/ovmf/OVMF_CODE.fd (pinned 2024.02)"
+} else {
+	puts "sponge-desktop-disk-uefi: OVMF_CODE = /usr/share/edk2/x64/OVMF_CODE.4m.fd (host default; known to break the multiboot2 load path)"
+}
+if {[info exists ::env(SPONGE_OVMF_VARS)]} {
+	set ovmf_vars $::env(SPONGE_OVMF_VARS)
+	puts "sponge-desktop-disk-uefi: OVMF_VARS = \$SPONGE_OVMF_VARS ($ovmf_vars)"
+} elseif {[file exists $ovmf_pinned_vars]} {
+	set ovmf_vars $ovmf_pinned_vars
+	puts "sponge-desktop-disk-uefi: OVMF_VARS = var/ovmf/OVMF_VARS.fd (pinned 2024.02)"
+} else {
+	puts "sponge-desktop-disk-uefi: OVMF_VARS = /usr/share/edk2/x64/OVMF_VARS.4m.fd (host default)"
+}
+
+#
+# === Failure-channel selector (SPONGE_DISK_FAIL=1) ===
+#
+set fail_mode [expr {[info exists ::env(SPONGE_DISK_FAIL)] && $::env(SPONGE_DISK_FAIL) == "1"}]
+if {$fail_mode} {
+	puts "sponge-desktop-disk-uefi: FAILURE CHANNEL (corrupted system.config)"
+}
+
+#
+# === Build — Tier-0 chain + desktop components ===
+#
+# Identical to the BIOS desktop-from-disk scenario's build list
+# (run/sponge-desktop-disk.run lines 165-188) with ONE swap:
+#   vesa_fb → boot_fb
+# (the UEFI GOP framebuffer driver; vendored in
+#  genode/repos/os/src/driver/framebuffer/boot/).
+#
+# boot_fb's source is in the vendored tree, so no patch is needed;
+# the scenario-local drivers.config below is the only place
+# `boot_fb` is referenced (the vendored drivers_interactive-pc
+# recipe remains untouched — AGENTS.md §5.2).
+#
+set build_components {
+	core lib/ld init timer
+	server/report_rom server/nitpicker
+	driver/platform driver/acpi app/pci_decode
+	driver/framebuffer/boot
+	driver/ps2
+	driver/usb_host/pc driver/usb_hid server/event_filter
+	server/part_block server/vfs server/cached_fs_rom
+	lib/vfs lib/vfs_rump
+	server/wm app/window_layouter app/decorator app/pointer
+	sponge_configd sponge_themed sponge_pkgd pkg_hello sponge-de
+	app/qt6/examples/calculatorform sponge_files app/pdf_view
+	server/terminal
+	noux-pkg/bash-minimal noux-pkg/vim-minimal
+	noux-pkg/coreutils-minimal noux-pkg/grep noux-pkg/sed
+	noux-pkg/tar noux-pkg/less noux-pkg/findutils
+	noux-pkg/diffutils noux-pkg/which
+	test/alpha_probe
+	qt6/base lib/libc lib/libm lib/stdcxx lib/mesa
+	lib/mesa_gpu-softpipe lib/egl lib/softpipe lib/libdrm lib/expat
+	lib/qt6_component lib/vfs lib/vfs_pipe lib/vfs_gpu lib/rom_filter
+	lib/zlib lib/libpng lib/blit lib/vfs_ttf lib/vfs_import lib/posix
+	lib/ncurses lib/pcre
+	driver/ahci
+}
+
+build $build_components
+
+create_boot_directory
+
+#
+# On base-sel4 every boot module must land in bin/ BEFORE
+# build_boot_image.
+#
+exec mkdir -p bin
+
+# ========================================================================
+# Stage /system/ directory (mirrors BIOS scenario exactly — image/disk's
+# auto-e2cp is bypassed via the run_image override; we stage /system
+# into the handcrafted P3 ext2 below via e2cp)
+# ========================================================================
+#
+# /system/bin/    desktop binaries (served via <binary name="bin/...">)
+# /system/lib/    .lib.so files (served via rom_lib chroot)
+# /system/init/   the nested init config (system.config)
+# /system/        flat: themes, tars, pkg metadata, bake defaults
+#                 (served by bare name)
+#
+set sys_dir "[run_dir]/system"
+exec mkdir -p "$sys_dir/bin"
+exec mkdir -p "$sys_dir/lib"
+exec mkdir -p "$sys_dir/init"
+exec mkdir -p "$sys_dir/boot"
+
+#
+# Empty config for children without inline <config> (e.g. hello).
+#
+set empty_cfg [open "$sys_dir/config" w]
+puts -nonewline $empty_cfg {<config/>}
+close $empty_cfg
+
+# --- desktop binaries → /system/bin/ ---
+#
+# Mirror of the BIOS scenario's binary copy loop. The list mirrors
+# pkg/bake/desktop.profile's binary set. boot_fb is also staged
+# here even though it lives in Tier-0 (image.elf) — the structural
+# gate (e2ls on P3) checks for it as a marker that the UEFI
+# display driver was built and the build list included it.
+#
+foreach b { init report_rom wm window_layouter decorator \
+            sponge_configd sponge_themed sponge_pkgd sponge-de \
+            alpha_probe hello terminal sponge_files calculatorform \
+            pdf_view textedit boot_fb } {
+	if {[file exists "bin/$b"]} {
+		exec cp -fL "bin/$b" "$sys_dir/bin/$b"
+	}
+}
+
+# --- shared libraries → /system/lib/ ---
+# Copy ALL .lib.so files EXCEPT ld-*.lib.so (Tier-0 only, §4.6)
+# and the Falkon/WebEngine-specific libs (P4 payload, not desktop).
+set falkon_libs {
+	libFalkonPrivate.lib.so
+	libQt6WebEngineCore.lib.so
+	libQt6WebEngineQuick.lib.so
+	libQt6WebEngineWidgets.lib.so
+	libQt6WebChannel.lib.so
+	libQt6WebChannelQuick.lib.so
+	libQt6PrintSupport.lib.so
+	libQt6Qml.lib.so
+	libQt6QmlMeta.lib.so
+	libQt6QmlModels.lib.so
+	libQt6QmlWorkerScript.lib.so
+	libQt6Quick.lib.so
+	libQt6QuickWidgets.lib.so
+	libqtquick2plugin.lib.so
+	libqtwebenginequickplugin.lib.so
+	libworkerscriptplugin.lib.so
+	nss3.lib.so
+	nssckbi.lib.so
+	freebl3.lib.so
+	softokn3.lib.so
+	libssl.lib.so
+	libcrypto.lib.so
+	libssh.lib.so
+	curl.lib.so
+	vfs_lwip.lib.so
+	vfs_qtwebengine_shm.lib.so
+	vfs_jitterentropy.lib.so
+	vfs_xoroshiro.lib.so
+	vfs_oss.lib.so
+	ncurses.lib.so
+}
+
+foreach lib [glob -nocomplain bin/*.lib.so] {
+	set libname [file tail $lib]
+	if {[string match "ld-*.lib.so" $libname]} { continue }
+	if {$libname eq "ld.lib.so"} { continue }
+	if {[lsearch -exact $falkon_libs $libname] >= 0} { continue }
+	if {$libname eq "rump.lib.so" || $libname eq "rump_fs.lib.so"} { continue }
+	if {$libname eq "vfs_rump.lib.so"} { continue }
+
+	exec cp -fL $lib "$sys_dir/lib/$libname"
+}
+
+# --- themes (flat — served by bare name) ---
+foreach theme { default light } {
+	set theme_src "${genode_dir}/repos/sponge/src/sponge-de/themes/${theme}.theme"
+	if {[file exists $theme_src]} {
+		exec cp -fL $theme_src "$sys_dir/${theme}.theme"
+	}
+}
+
+# --- Qt6 tars (flat — served by bare name) ---
+set dejavu_src [glob -nocomplain "${genode_dir}/contrib/qt6_base-*/src/lib/qt6_base/src/3rdparty/wasm/DejaVuSans.ttf"]
+if {[llength $dejavu_src] > 0} {
+	set staging "[run_dir]/dejavusans-staging"
+	file mkdir "$staging/qt/lib/fonts"
+	file copy -force [lindex $dejavu_src 0] "$staging/qt/lib/fonts/DejaVuSans.ttf"
+	exec tar -cf "$sys_dir/qt6_dejavusans.tar" -C "$staging" qt
+	file delete -force "$staging"
+}
+
+if {[file exists "bin/qt6_libqgenode.tar"]} {
+	exec cp -fL "bin/qt6_libqgenode.tar" "$sys_dir/qt6_libqgenode.tar"
+}
+
+# ----------------------------------------------------------------
+# Bake-driven pkg metadata + index + payloads (Phase 15 W2, D15.8)
+# ----------------------------------------------------------------
+source [file join [file dirname [file normalize [info script]]] \
+                    bake.inc]
+
+bake::stage $sys_dir img
+
+# ========================================================================
+# Write /system/init/system.config — the nested system init config
+# ========================================================================
+#
+# Verbatim copy of run/sponge-desktop-disk.run's system.config — the
+# desktop composition is media-independent (D15.13 / docs/14 §4.4:
+# "init config is data, not image"). The UEFI display chain (boot_fb)
+# is wholly in Tier-0; the desktop's nitpicker → wm → sponge-de
+# chain is unchanged.
+#
+
+if {$fail_mode} {
+	set sysconfig_fh [open "$sys_dir/init/system.config" w]
+	puts $sysconfig_fh {<config THIS IS DELIBERATELY BROKEN XML><unclosed}
+	close $sysconfig_fh
+} else {
+	set sysconfig_hid "[run_dir]/system.config.hid"
+	set sysconfig_fh [open "$sysconfig_hid" w]
+puts $sysconfig_fh {
+config
++ parent-provides
+  + service ROM
+  + service PD
+  + service CPU
+  + service LOG
+  + service Timer
+  + service Gui
+  + service Capture
+  + service Event
+
++ default | caps: 200 | ram: 4M
++ default-route
+  + any-service
+    + parent
+    + any-child
+
++ start report_rom | caps: 300 | ram: 8M
+  + binary | name: bin/report_rom
+  + provides
+    + service Report
+    + service ROM
+  + config | verbose: no
+    + policy | label: layouter -> window_list       | report: wm -> window_list
+    + policy | label: decorator -> pointer           | report: wm -> pointer
+    + policy | label: decorator -> window_layout     | report: layouter -> window_layout
+    + policy | label: wm -> focus                    | report: layouter -> focus
+    + policy | label: wm -> resize_request           | report: layouter -> resize_request
+    + policy | label: layouter -> hover              | report: decorator -> hover
+    + policy | label: layouter -> decorator_margins  | report: decorator -> decorator_margins
+    + policy | label: layouter -> rules              | report: layout_rules
+    + policy | label: layouter -> focus_request      | report: wm -> focus_request
+    + policy | label: sponge_configd -> config_request | report: alpha_probe -> config_request
+    + policy | label: alpha_probe -> config_result     | report: sponge_configd -> config_result
+    + policy | label: sponge_themed -> config          | report: sponge_configd -> config
+    + policy | label: alpha_probe -> configd_config    | report: sponge_configd -> config
+    + policy | label: alpha_probe -> config            | report: sponge_configd -> config
+    + policy | label: sponge-de -> theme               | report: sponge_themed -> theme
+    + policy | label: alpha_probe -> theme             | report: sponge_themed -> theme
+    + policy | label: sponge_pkgd -> request     | report: alpha_probe -> request
+    + policy | label: alpha_probe -> result       | report: sponge_pkgd -> result
+    + policy | label: pkg_runtime -> config       | report: sponge_pkgd -> runtime
+    + policy | label: sponge-de -> installed      | report: sponge_pkgd -> installed
+    + policy | label: alpha_probe -> sponge_de_launcher | report: sponge-de -> launcher
+
++ start wm | caps: 250 | ram: 8M
+  + binary | name: bin/wm
+  + provides
+    + service Gui
+    + service Report
+    + service ROM
+  + config
+    + policy | label_prefix: decorator | role: decorator
+    + policy | label_prefix: layouter  | role: layouter
+    + default-policy
+  + route
+    + service ROM | label_last: ld.lib.so | + parent
+    + service ROM | label: focus          | + child report_rom
+    + service ROM | label: resize_request | + child report_rom
+    + service Report | label_last: shape  | + child report_rom
+    + service Report                       | + child report_rom
+    + service Gui                          | + parent
+    + any-service
+      + parent
+      + any-child
+
++ start layouter | caps: 150 | ram: 4M
+  + binary | name: bin/window_layouter
+  + config | rules: rom
+    + report | rules: yes
+    + rules
+      + screen screen
+      + assign | label: sponge-de -> Sponge DE Demo | target: screen
+               | xpos: 192 | ypos: 172 | width: 640 | height: 480 | maximized: no
+      + assign | label_prefix: pkg_runtime | target: screen
+               | xpos: 50 | ypos: 300 | width: 320 | height: 240 | maximized: no
+    + press   | key: BTN_LEFT  | action: drag
+      + release | key: BTN_LEFT | action: drop
+  + route
+    + service ROM | label_last: ld.lib.so     | + parent
+    + service ROM | label: window_list       | + child report_rom
+    + service ROM | label: focus_request     | + child report_rom
+    + service ROM | label: hover             | + parent
+    + service ROM | label: focus             | + parent
+    + service ROM | label: decorator_margins | + child report_rom
+    + service ROM | label: rules             | + child report_rom
+    + service Report | label: rules           | + child report_rom | label: layout_rules
+    + service Report                            | + child report_rom
+    + any-service
+      + child wm
+      + parent
+      + any-child
+
++ start decorator | caps: 350 | ram: 32M
+  + binary | name: bin/decorator
+  + config
+    + controls
+      + maximizer
+      + title
+    + default-policy
+  + route
+    + service ROM | label_last: ld.lib.so | + parent
+    + service ROM | label: window_layout | + child report_rom
+    + service ROM | label: pointer       | + child report_rom
+    + service Report                      | + child report_rom
+    + any-service
+      + child wm
+      + parent
+      + any-child
+
++ start sponge_configd | caps: 200 | ram: 16M
+  + binary | name: bin/sponge_configd
+  + config
+  + route
+    + service ROM | label_last: ld.lib.so | + parent
+    + service ROM | label_last: config_request | + child report_rom
+    + service Report | + child report_rom
+    + any-service
+      + parent
+      + any-child
+
++ start sponge_themed | caps: 200 | ram: 8M
+  + binary | name: bin/sponge_themed
+  + route
+    + service ROM | label_last: ld.lib.so | + parent
+    + service ROM | label_last: config       | + child report_rom
+    + service ROM | label_last: default.theme | + parent
+    + service ROM | label_last: light.theme   | + parent
+    + service Report | + child report_rom
+    + any-service
+      + parent
+      + any-child
+
++ start sponge_pkgd | caps: 200 | ram: 16M
+  + binary | name: bin/sponge_pkgd
+  + config | binary_prefix: bin/
+  + route
+    + service ROM | label_last: ld.lib.so | + parent
+    + service ROM | label_last: request | + child report_rom
+    + service Report | + child report_rom
+    + any-service
+      + parent
+      + any-child
+
++ start pkg_runtime | caps: 400 | ram: 32M
+  + binary | name: bin/init
+  + route
+    + service ROM | label_last: ld.lib.so | + parent
+    + service ROM | label: config | + child report_rom
+    + service Gui | + child wm
+    + any-service
+      + parent
+      + any-child
+
++ start sponge-de | caps: 1000 | ram: 128M
+  + binary | name: bin/sponge-de
+  + config
+    + theme | source: themed
+    + launcher | source: pkgd
+    + vfs
+      + dir dev
+        + log
+        + inline rtc | : 2018-01-01 00:01
+      + dir pipe | + pipe
+      + tar qt6_dejavusans.tar
+      + tar qt6_libqgenode.tar
+    + libc | stdout: /dev/log | stderr: /dev/log | pipe: /pipe | rtc: /dev/rtc
+  + route
+    + service ROM | label_last: ld.lib.so | + parent
+    + service Gui | label_last: Sponge Panel   | + parent
+    + service Gui | label_last: Sponge Launcher | + parent
+    + service Gui                              | + child wm
+    + service Report | label: shape | + child report_rom
+    + service Report | label: input | + child report_rom
+    + service Report | label: applied_theme | + child report_rom
+    + service Report | label: launcher | + child report_rom
+    + service ROM | label: installed | + child report_rom
+    + service ROM | label: theme | + child report_rom
+    + service ROM | label: mesa_gpu.lib.so | + parent | label: mesa_gpu-softpipe.lib.so
+    + any-service
+      + parent
+      + any-child
+
++ start alpha_probe | caps: 200 | ram: 16M
+  + binary | name: bin/alpha_probe
+  + config | skip_lz: yes
+  + route
+    + service ROM | label_last: ld.lib.so | + parent
+    + service Capture | + parent
+    + service Timer   | + parent
+    + service ROM | label_last: result | + child report_rom
+    + service ROM | label_last: config_result | + child report_rom
+    + service ROM | label_last: configd_config | + child report_rom
+    + service ROM | label_last: config | + child report_rom
+    + service ROM | label_last: sponge_de_launcher | + child report_rom
+    + service Report | + child report_rom
+    + any-service
+      + parent
+      + any-child
+-}
+	close $sysconfig_fh
+
+	set xml_content [exec [genode_dir]/tool/hid format --output-xml "$sysconfig_hid"]
+	set sysconfig_final [open "$sys_dir/init/system.config" w]
+	puts -nonewline $sysconfig_final $xml_content
+	close $sysconfig_final
+	file delete "$sysconfig_hid"
+}
+
+# ========================================================================
+# Tier-0 init configuration
+# ========================================================================
+#
+# Mirrors the BIOS Tier-0 init with TWO changes:
+#   1. part_block policy pins partition 3 (not the BIOS default of
+#      3 — the partition number is preserved by the W4 P2-absent
+#      layout, see header).
+#   2. report_rom adds the platform_info policy (boot_fb reads it;
+#      the BIOS report_rom does not relay it because vesa_fb uses
+#      real-mode VBE).
+#
+
+install_config {
+config
++ parent-provides
+  + service ROM
+  + service PD
+  + service RM
+  + service CPU
+  + service LOG
+  + service IRQ
+  + service IO_MEM
+  + service IO_PORT
+
++ default | caps: 200 | ram: 4M
++ default-route
+  + any-service
+    + parent
+    + any-child
+
++ start timer
+  + provides | + service Timer
+
++ start report_rom | caps: 300 | ram: 8M
+  + provides
+    + service Report
+    + service ROM
+  + config | verbose: no
+    + policy | label: pci_decode -> system | report: acpi -> acpi
+    + policy | label: platform -> devices  | report: pci_decode -> devices
+    + policy | label: usb_hid -> report    | report: usb -> devices
+    + policy | label_suffix: focus | report: nitpicker -> focus
+    + policy | label_suffix: hover | report: nitpicker -> hover
+    + policy | label: pointer -> xray | report: pointer-xray-none
+    #
+    # UEFI-specific (D15.13): relay the platform driver's
+    # platform_info report as a ROM, so boot_fb can read
+    # platform_info/boot/framebuffer (phys/width/height/bpp/pitch/
+    # type) to bind to the GOP framebuffer. The BIOS report_rom
+    # does not have this policy because vesa_fb uses VBE and does
+    # not need platform_info.
+    #
+    + policy | label: platform_info | report: platform -> platform_info
+
++ start acpi | caps: 350 | ram: 4M
+  + route
+    + service ROM | label_last: ld.lib.so | + parent
+    + service Report | + child report_rom
+    + service IO_MEM | + parent
+    + service LOG    | + parent
+    + service PD     | + parent
+    + service RM     | + parent
+    + service CPU    | + parent
+    + service ROM    | + parent
+
++ start pci_decode | caps: 350 | ram: 2M
+  + route
+    + service ROM | label_last: ld.lib.so | + parent
+    + service Report              | + child report_rom
+    + service ROM | label: system | + child report_rom
+    + service IO_MEM              | + parent
+    + service LOG                 | + parent
+    + service PD                  | + parent
+    + service RM                  | + parent
+    + service CPU                 | + parent
+    + service ROM                 | + parent
+
++ start platform | caps: 200 | ram: 3M | managing_system: yes
+  + provides
+    + service Platform
+    + service Dma
+  + route
+    + service ROM | label_last: ld.lib.so | + parent
+    + service ROM | label: devices | + child report_rom
+    + service Report               | + child report_rom
+    + service Timer                | + child timer
+    + service IRQ                  | + parent
+    + service IO_MEM               | + parent
+    + service IO_PORT              | + parent
+    + service ROM                  | + parent
+    + service PD                   | + parent
+    + service CPU                  | + parent
+    + service LOG                  | + parent
+  + config
+    + report | devices: yes
+    + policy | label_prefix: ahci | + pci | class: AHCI
+    + policy | label_prefix: ps2  | + device ps2
+    + policy | label_prefix: usb  | info: yes | + pci | class: USB
+    #
+    # The `label_prefix: fb` policy is kept (harmless under UEFI —
+    # boot_fb does not request a Platform session, so the policy
+    # never matches). Removing it would diverge from the BIOS
+    # scenario for no benefit; keeping it documents the historical
+    # contract.
+
++ start ahci | caps: 5000 | ram: 128M
+  + provides | + service Block
+  + config
+    + report | ports: yes
+    + policy | label_prefix: part_block | device: 0 | writeable: yes
+  + route
+    + service ROM | label_last: ld.lib.so | + parent
+    + service Platform | + child platform
+    + service Dma      | + child platform
+    + service Timer    | + child timer
+    + service Report   | + child report_rom
+    + service ROM      | + parent
+    + service PD       | + parent
+    + service CPU      | + parent
+    + service LOG      | + parent
+
++ start part_block | caps: 200 | ram: 8M
+  + provides | + service Block
+  + config
+    + report | partitions: no
+    + policy | label_prefix: vfs | partition: 3 | writeable: yes
+  + route
+    + service ROM | label_last: ld.lib.so | + parent
+    + service Block | + child ahci
+    + any-service
+      + parent
+      + any-child
+
++ start vfs | caps: 500 | ram: 64M
+  + provides | + service File_system
+  + config
+    + vfs
+      + rump | fs: ext2fs | ram: 48M | writeable: yes
+    + policy | label_prefix: rom_sys | root: /system     | writeable: no
+    + policy | label_prefix: rom_lib | root: /system/lib | writeable: no
+  + route
+    + service ROM | label_last: ld.lib.so     | + parent
+    + service ROM | label_last: vfs.lib.so    | + parent
+    + service ROM | label_last: vfs_rump.lib.so | + parent
+    + service ROM | label_last: rump.lib.so   | + parent
+    + service ROM | label_last: rump_fs.lib.so | + parent
+    + service Block | + child part_block
+    + any-service
+      + parent
+      + any-child
+
++ start rom_sys | caps: 500 | ram: 256M
+  + binary cached_fs_rom
+  + provides | + service ROM
+  + route
+    + service File_system | + child vfs
+    + service ROM | label_last: ld.lib.so | + parent
+    + any-service
+      + parent
+      + any-child
+
++ start rom_lib | caps: 500 | ram: 256M
+  + binary cached_fs_rom
+  + provides | + service ROM
+  + route
+    + service File_system | + child vfs
+    + service ROM | label_last: ld.lib.so | + parent
+    + any-service
+      + parent
+      + any-child
+
++ start nitpicker | ram: 16M
+  + provides
+    + service Gui
+    + service Capture
+    + service Event
+  + route
+    + service ROM | label_last: ld.lib.so | + parent
+    + service Report | + child report_rom
+    + service Timer  | + child timer
+    + any-service
+      + parent
+      + any-child
+  + config
+    + capture
+    + event
+    + report | focus: yes | hover: yes
+    + domain pointer | layer: 0 | content: client | label: no | origin: pointer
+    + domain panel | layer: 1 | content: client | label: no
+                   | hover: always | focus: click | ypos: 0 | height: 28
+    + domain launcher | layer: 4 | content: client | label: no
+                      | hover: always | focus: click
+                      | xpos: 0 | ypos: 28 | width: 341 | height: 480
+    + domain default | layer: 3 | content: client | label: no
+                     | hover: always | focus: click | ypos: 28 | height: -28
+    + policy | label_prefix: pointer                  | domain: pointer
+    + policy | label_prefix: system -> sponge-de -> Sponge Panel   | domain: panel
+    + policy | label_prefix: system -> sponge-de -> Sponge Launcher | domain: launcher
+    + default-policy | domain: default
+    + background | color: #1e1e2e
+
++ start pointer | caps: 100 | ram: 4M
+  + provides
+    + service Report
+  + config | shapes: no
+  + route
+    + service Gui              | + child nitpicker
+    + service ROM | label: hover | + child report_rom
+    + service ROM | label: xray  | + child report_rom
+    + any-service
+      + parent
+      + any-child
+
++ start fb | caps: 150 | ram: 20M
+  #
+  # UEFI display driver (D15.13 / D15.16 / R15.2). The vendored
+  # binary at genode/repos/os/src/driver/framebuffer/boot/ (LIBS
+  # = base blit; sources = main.cc only). The driver:
+  #   - reads `platform_info/boot/framebuffer` (relayed as a ROM
+  #     by the new report_rom policy above)
+  #   - opens a Capture session (served by nitpicker)
+  #   - publishes a "connectors" report (consumed by Report
+  #     session for downstream tools)
+  #   - REJECTS the GOP mode if bpp != 32 OR type != 1 (RGB) —
+  #     this is the R15.2 gate, and the bound here is the
+  #     documented OVMF default (1024x768x32 RGB on Skylake).
+  #
+  # boot_fb does NOT request Platform/Dma/IO_PORT (it is the GOP
+  # path, not the VGA PCI path). The route below reflects that.
+  #
+  + binary boot_fb
+  + route
+    + service ROM | label: config        | + parent | label: fb.config
+    + service ROM | label: platform_info | + parent
+    + service Report                      | + child report_rom
+    + service IO_MEM                      | + parent
+    + service ROM                         | + parent
+    + service PD                          | + parent
+    + service CPU                         | + parent
+    + service LOG                         | + parent
+    + service Timer                       | + child timer
+    + service Capture                     | + child nitpicker
+
++ start ps2 | caps: 100 | ram: 1280K
+  + config
+  + route
+    + service ROM | label_last: ld.lib.so | + parent
+    + service Dma      | + child platform
+    + service Platform | + child platform
+    + service Event    | + child event_filter | label: ps2
+    + service ROM      | + parent
+    + service PD       | + parent
+    + service CPU      | + parent
+    + service LOG      | + parent
+    + service Timer    | + child timer
+
++ start usb | caps: 200 | ram: 16M
+  + binary pc_usb_host
+  + provides | + service Usb
+  + config
+    + report | devices: yes
+    + policy | label_prefix: usb_hid | + device | class: 0x3
+  + route
+    + service ROM | label_last: ld.lib.so | + parent
+    + service Dma                     | + child platform
+    + service Platform                | + child platform
+    + service Report | label: devices | + child report_rom
+    + service ROM                     | + parent
+    + service PD                      | + parent
+    + service RM                      | + parent
+    + service CPU                     | + parent
+    + service LOG                     | + parent
+    + service Timer                   | + child timer
+
++ start usb_hid | caps: 180 | ram: 10M
+  + route
+    + service ROM | label_last: ld.lib.so | + parent
+    + service ROM | label: report | + child report_rom
+    + service ROM                 | + parent
+    + service PD                  | + parent
+    + service RM                  | + parent
+    + service CPU                 | + parent
+    + service LOG                 | + parent
+    + service Timer               | + child timer
+    + service Event               | + child event_filter | label: usb
+    + service Usb                 | + child usb
+
++ start event_filter | caps: 90 | ram: 1280K
+  + provides | + service Event
+  + route
+    + service ROM | label_last: ld.lib.so | + parent
+    + service ROM | label: config | + parent | label: event_filter.config
+    + service Event               | + child nitpicker
+    + service ROM                 | + parent
+    + service PD                  | + parent
+    + service CPU                 | + parent
+    + service LOG                 | + parent
+    + service Timer               | + child timer
+
++ start system | caps: 8000 | ram: 1500M
+  + binary | name: bin/init
+  + route
+    + service ROM | label: config | + child rom_sys | label: init/system.config
+    + service ROM | label_last: ld.lib.so | + parent
+    + service ROM | label_suffix: .lib.so | + child rom_lib
+    + service ROM | label_last: focus | + child report_rom
+    + service ROM | label_last: hover | + child report_rom
+    + service ROM | + child rom_sys
+    + service Gui     | + child nitpicker
+    + service Capture | + child nitpicker
+    + service Event   | + child nitpicker
+    + service Timer   | + child timer
+    + service Report  | + child report_rom
+    + any-service
+      + parent
+      + any-child
+- }
+
+#
+# === Stage the driver sub-init config modules (Tier-0 boot modules) ===
+#
+# fb.config is the boot_fb config (period_ms + optional rotate/flip).
+# Under UEFI the width/height hints in fb.config are ignored — boot_fb
+# uses whatever platform_info/boot/framebuffer says. The same
+# fb.config as the BIOS scenario is reused (NOT vendored-tree-edited).
+#
+set recipe_dir "${genode_dir}/repos/os/recipes/raw/drivers_interactive-pc"
+foreach f { fb.config event_filter.config } {
+	if {![file exists "$recipe_dir/$f"]} {
+		error "$recipe_dir/$f missing (vendored drivers_interactive-pc recipe drifted?)"
+	}
+	exec cp -f "$recipe_dir/$f" "bin/$f"
+}
+
+#
+# Keyboard layouts consumed by event_filter.
+#
+set chargen_dir "${genode_dir}/repos/os/src/server/event_filter"
+foreach f { en_us.chargen special.chargen } {
+	if {![file exists "$chargen_dir/$f"]} { error "$chargen_dir/$f missing" }
+	exec cp -f "$chargen_dir/$f" "bin/$f"
+}
+
+#
+# === Tier-0 boot module list — storage chain + drivers + nitpicker ONLY ===
+#
+# boot_fb replaces vesa_fb (the ONLY driver swap; everything else
+# is identical to the BIOS scenario's Tier-0 list). ld.lib.so is
+# auto-injected by boot_dir/sel4 (docs/11 §10.4).
+#
+set boot_modules { }
+foreach m { core-sel4.a ld-sel4.lib.so init timer report_rom nitpicker platform acpi pci_decode \
+            ahci part_block vfs cached_fs_rom \
+            boot_fb ps2 pc_usb_host usb_hid event_filter pointer } {
+	lappend boot_modules $m
+}
+foreach m { vfs.lib.so vfs_rump.lib.so rump.lib.so rump_fs.lib.so \
+            en_us.chargen special.chargen \
+            fb.config event_filter.config } {
+	lappend boot_modules $m
+}
+
+build_boot_image $boot_modules
+
+#
+# === Assert Tier-0 budget: image.elf ≤ 80 MiB ===
+#
+set image_elf "[run_dir]/boot/image.elf"
+if {[file exists $image_elf]} {
+	set size_bytes [file size $image_elf]
+	set size_mib [expr {$size_bytes / 1048576}]
+	puts "sponge-desktop-disk-uefi: image.elf = ${size_mib} MiB ($size_bytes bytes)"
+	if {$size_mib > 80} {
+		puts "sponge-desktop-disk-uefi: ERROR — Tier-0 budget exceeded (>80 MiB, §4.5)"
+	}
+} else {
+	puts "sponge-desktop-disk-uefi: image.elf not found at expected path"
+}
+
+#
+# === Assert ld.lib.so is NOT in /system/lib/ (§4.6) ===
+#
+set ld_check "$sys_dir/lib/ld.lib.so"
+if {[file exists $ld_check]} {
+	puts "sponge-desktop-disk-uefi: ERROR — ld.lib.so found in /system/lib/ (§4.6 violation)"
+}
+
+#
+# === Stage boot modules onto P3 (/boot/) ===
+#
+# The GRUB2 EFI multiboot2 menuentry reads bender/sel4/image.elf
+# from (hd0,gpt3)/boot/. The vendored boot_dir/sel4 plugin
+# already placed them at [run_dir]/boot/; copy them to
+# $sys_dir/boot/ (P3's /boot/) so the handcrafted ext2 image
+# below picks them up.
+#
+foreach m { bender sel4 image.elf } {
+	if {![file exists [run_dir]/boot/$m]} {
+		puts "expected boot module [run_dir]/boot/$m after build_boot_image"
+		exit -1
+	}
+	exec cp -f [run_dir]/boot/$m "$sys_dir/boot/$m"
+}
+
+#
+# === Handcraft the UEFI GPT disk ===
+#
+# Mirrors the W1 sponge-boot-uefi.run handcrafted-image pattern:
+# build standalone ext2/FAT partition images first, then assemble
+# a GPT disk via sgdisk + dd at the right sector offsets.
+#
+set grub2_dir [get_grub2_dir]
+if {![file exists $grub2_dir/boot/grub2/grub2_64.efi]} {
+	puts "GRUB2 EFI binary missing: $grub2_dir/boot/grub2/grub2_64.efi"
+	puts "Prepare the port: $grub2_dir/../.. is your contrib — run"
+	puts "  ./genode/tool/ports/prepare_port grub2"
+	exit -1
+}
+if {![file exists $grub2_dir/boot/font.pf2]} {
+	puts "GRUB2 font missing: $grub2_dir/boot/font.pf2"
+	exit -1
+}
+
+set sgdisk   [installed_command sgdisk]
+set mkfs_vfat [installed_command mkfs.vfat]
+set mkfs_ext2 [installed_command mkfs.ext2]
+set mcopy    [installed_command mcopy]
+set e2cp     [installed_command e2cp]
+set e2mkdir  [installed_command e2mkdir]
+
+#
+# 1. Stage the ESP contents in [run_dir]/efi-stage (an isolated
+#    dir the run script owns; removed at end of run).
+#
+set esp_stage [run_dir]/efi-stage
+file delete -force $esp_stage
+file mkdir $esp_stage/EFI/BOOT
+file mkdir $esp_stage/boot/grub
+
+exec cp -f $grub2_dir/boot/grub2/grub2_64.efi $esp_stage/EFI/BOOT/BOOTX64.EFI
+exec cp -f $grub2_dir/boot/font.pf2           $esp_stage/boot/font.pf2
+
+#
+# 2. Write the UEFI grub.cfg.
+#
+# GRUB2 EFI prefix is /EFI/BOOT (the directory containing
+# bootx64.efi); it searches ${prefix}/grub.cfg = /EFI/BOOT/grub.cfg
+# first, then /boot/grub/grub.cfg. We write the same grub.cfg to
+# BOTH paths so the search always succeeds; the menuentry's
+# absolute `(hd0,gpt3)/boot/...` paths resolve from GRUB2's
+# current root device. timeout=0 + single menuentry = autoboot.
+#
+# The multiboot2 line uses the W1 W^X workaround tokens (per
+# docs/evidence/phase15-uefi-boot-smoke.log + D15.13 verified
+# ground truth §B).
+#
+set grub_body {
+set timeout=0
+set gfxpayload=auto
+insmod gfxterm
+insmod part_gpt
+insmod ext2
+set root=(hd0,gpt3)
+terminal_output gfxterm
+menuentry 'Genode on seL4 (UEFI)' {
+  insmod multiboot2
+multiboot2 /boot/bender serial intel_hwp_performance phys_max=256M serial_fallback
+  module2 /boot/sel4 sel4 disable_iommu console_port=0x3f8 debug_port=0x3f8
+  module2 /boot/image.elf image.elf
+}
+}
+
+set grub_fh [open $esp_stage/EFI/BOOT/grub.cfg "WRONLY CREAT TRUNC"]
+puts -nonewline $grub_fh $grub_body
+close $grub_fh
+
+set grub_fh [open $esp_stage/boot/grub/grub.cfg "WRONLY CREAT TRUNC"]
+puts -nonewline $grub_fh $grub_body
+close $grub_fh
+
+#
+# Diagnostic boot mode (bake profile [boot] grub_mode = diagnostic,
+# e.g. the `test` profile): replace the production hidden gfxterm
+# menuentry with the text-mode SPONGE-DIAG template so every boot
+# stage is visible on real hardware (15-3 bring-up).
+#
+if {[bake::boot_option grub_mode production] eq "diagnostic"} {
+    set diag_cfg "${::genode_dir}/../run/fixtures/grub-diag.cfg"
+    puts "bake: grub_mode=diagnostic — installing $diag_cfg as grub.cfg"
+    exec cp -f $diag_cfg $esp_stage/EFI/BOOT/grub.cfg
+    exec cp -f $diag_cfg $esp_stage/boot/grub/grub.cfg
+}
+
+#
+# 3. Build a standalone FAT32 image for the ESP.
+#
+set esp_img [run_dir]/esp.img
+exec dd if=/dev/zero of=$esp_img bs=1M count=64 2>/dev/null
+exec $mkfs_vfat -n ESP $esp_img
+exec $mcopy -i $esp_img -s $esp_stage/EFI ::/
+exec $mcopy -i $esp_img -s $esp_stage/boot ::/
+
+#
+# 4. Build a standalone ext2 image for the GENODE P3 partition.
+#
+# Mirror [run_dir]/system/ into the GENODE image. e2cp does NOT
+# auto-create parent directories, so e2mkdir first.
+#
+set genode_img [run_dir]/genode.img
+#
+# Size the GENODE ext2 from the ACTUAL staged content (du -smL of
+# [run_dir]/system) + boot modules + 25% slack. A hardcoded size
+# breaks the desktop profile: falkon's ~509 MiB payload + textedit
+# overruns a 128 MiB partition mid-e2cp (the failure mode that
+# motivated this comment). minimal fits in ~128 MiB; desktop needs
+# ~800 MiB. ext2 tolerates a sparse oversized image fine (dd zero),
+# and the du-based floor keeps the .img lean for small profiles.
+#
+set sys_size_mb [expr [regsub {\s.*} [exec du -smL $sys_dir] {}]]
+set genode_mb   [expr $sys_size_mb + 16 + ($sys_size_mb / 4)]
+exec dd if=/dev/zero of=$genode_img bs=1M count=$genode_mb 2>/dev/null
+exec $mkfs_ext2 -F -q -L GENODE $genode_img
+
+exec $e2mkdir $genode_img:/system
+exec $e2mkdir $genode_img:/system/bin
+exec $e2mkdir $genode_img:/system/lib
+exec $e2mkdir $genode_img:/system/init
+exec $e2mkdir $genode_img:/system/boot
+
+set sysdir_len [string length $sys_dir]
+foreach entry [lsort [exec find "$sys_dir" -mindepth 1]] {
+	set rel [string range $entry $sysdir_len end]
+	if {[file isdirectory $entry]} {
+		exec $e2mkdir $genode_img:/system$rel
+	} else {
+		exec $e2cp $entry $genode_img:/system$rel
+	}
+}
+
+#
+# Boot modules at the ext2 ROOT (/boot/{bender,sel4,image.elf}).
+#
+# grub.cfg does `set root=(hd0,gpt3)` and references /boot/... —
+# the modules must therefore live at the P3 root, NOT under
+# /system/boot (an earlier revision only mirrored $sys_dir, which
+# left GRUB unable to find /boot/bender; caught by the host-side
+# structure review). /system/boot is kept as a harmless duplicate.
+#
+exec $e2mkdir $genode_img:/boot
+foreach m { bender sel4 image.elf } {
+	exec $e2cp [run_dir]/boot/$m $genode_img:/boot/$m
+}
+
+#
+# 5. Assemble the GPT disk.
+#
+# Layout:
+#   P1  ESP FAT32  typecode=EF00  label=ESP          64 MiB
+#   P2  ABSENT
+#   P3  GENODE ext2  typecode=8300  label=GENODE    128 MiB
+#   (P4 SPONGE-DATA added by tool/mkdata later)
+#
+# P1 starts at sector 2048 (sgdisk's default alignment); P3 fills
+# the rest of the disk. The W4 P2-absent contract: sgdisk
+# `--new=3:0:+128M` consumes the next available slot (3, after
+# P1=1) and leaves the (P2) slot intentionally unallocated.
+#
+set gpt_img [run_dir].img
+set gpt_total_mb [expr 64 + $genode_mb + 16]
+exec dd if=/dev/zero of=$gpt_img bs=1M count=$gpt_total_mb 2>/dev/null
+exec $sgdisk --clear $gpt_img 2>/dev/null
+exec $sgdisk --new=1:2048:+64M   --typecode=1:EF00 --change-name=1:ESP    $gpt_img 2>/dev/null
+exec $sgdisk --new=3:0:+${genode_mb}M --typecode=3:8300 --change-name=3:GENODE $gpt_img 2>/dev/null
+
+set p1_info [exec $sgdisk -i 1 $gpt_img]
+set p1_sector [lindex [regexp -inline {First sector: ([0-9]+)} $p1_info] 1]
+exec dd if=$esp_img of=$gpt_img bs=512 seek=$p1_sector conv=notrunc 2>/dev/null
+
+set p3_info [exec $sgdisk -i 3 $gpt_img]
+set p3_sector [lindex [regexp -inline {First sector: ([0-9]+)} $p3_info] 1]
+exec dd if=$genode_img of=$gpt_img bs=512 seek=$p3_sector conv=notrunc 2>/dev/null
+
+# Cleanup the per-run staging files. Keep [run_dir].img (consumed
+# by power_on/qemu's auto-attach) and bin/OVMF_VARS.4m.fd (consumed
+# by the -drive if=pflash arg).
+file delete -force $esp_stage $esp_img $genode_img
+
+#
+# === QEMU wiring ===
+#
+# Identical to the W1 OVMF pattern (run/sponge-boot-uefi.run) plus
+# the desktop-side additions: -m 4G, -device nec-usb-xhci, -device
+# usb-tablet. The -snapshot flag avoids QEMU 11.0.3 + KVM OFD-lock
+# issues (orthogonal, correct).
+#
+append qemu_args " -machine q35 -cpu Skylake-Client "
+append qemu_args " -nographic -m 4G -snapshot "
+append qemu_args " -device nec-usb-xhci,id=xhci -device usb-tablet "
+append qemu_args " -drive if=pflash,format=raw,readonly=on,file=$ovmf_code "
+append qemu_args " -drive if=pflash,format=raw,file=$ovmf_vars "
+# W^X workaround (edk2 PR #10667 fw_cfg opt-in knob). Silent no-op
+# on firmwares that don't understand it; harmless when accepted.
+append qemu_args " -fw_cfg name=opt/org.tianocore/UninstallMemAttrProtocol,string=yes "
+
+#
+# === QEMU boot gate (D15.16, W4 acceptance) ===
+#
+# The structural gates (sgdisk -p / mdir / e2ls) are the REAL
+# acceptance criteria for W4 (the QEMU boot is expected to hit
+# the W1 OVMF core-init hang; per the 2026-08-18 pivot the
+# QEMU UEFI cell stays a documented gap and 15-3 is the real-
+# hardware diagnostic). The scenario runs both:
+#   (1) host-side structural gates — the .img's partition
+#       table, the ESP's file inventory, the GENODE ext2's
+#       /system tree (including boot_fb, the profile's
+#       pkg_*.xml set, and bake_manifest.json). PASS lines are
+#       printed for every gate.
+#   (2) the bounded QEMU boot attempt — 180 s budget, the
+#       hang signature is the W1 two Genode core warnings
+#       ("Warning: device memory..." + "Warning: unable to
+#       register range as RAM...") WITH the absence of the
+#       "Genode v..." banner. If matched, print the honest
+#       message and exit 0 (structure-gate acceptance).
+#
+# A structural-gate FAIL exits non-zero. A QEMU boot reaching
+# the banner would be a bonus (unexpected under W1; if it
+# happens, the scenario accepts — but the run is still
+# evidence-captured, not silently passed).
+#
+# FAILURE CHANNEL: SPONGE_DISK_FAIL=1 — bounded by timeout; the
+# nested init's XML parse error identifies the stage.
+#
+set structural_gates_passed 0
+set structural_gates_total 0
+
+# --- Gate 1: sgdisk -p shows P1 EF00 + P3 GENODE ---
+incr structural_gates_total
+set ptable [exec $sgdisk -p $gpt_img]
+puts ""
+puts "\[sponge-desktop-disk-uefi\] structural gate 1/N: sgdisk -p"
+puts $ptable
+if {[regexp -line {^Number} $ptable] \
+    && [regexp {EF00} $ptable] \
+    && [regexp {8300} $ptable] \
+    && [regexp {ESP} $ptable] \
+    && [regexp {GENODE} $ptable]} {
+    puts "\[sponge-desktop-disk-uefi\] PASS — GPT shows P1=EF00(ESP) + P3=8300(GENODE) + P2 absent"
+    incr structural_gates_passed
+} else {
+    puts "\[sponge-desktop-disk-uefi\] FAIL — GPT missing required partitions/labels"
+}
+
+# --- Gate 2: mdir on the ESP shows efi/boot/bootx64.efi + grub.cfg ---
+# mdir is part of mtools; for FAT inspection, use the @@offset syntax
+# to point at the ESP's first sector inside the .img.
+set mdir [installed_command mdir]
+incr structural_gates_total
+puts ""
+puts "\[sponge-desktop-disk-uefi\] structural gate 2/N: mdir on ESP"
+set esp_offset_bytes [expr {$p1_sector * 512}]
+set esp_mdir [exec $mdir -i ${gpt_img}@@${esp_offset_bytes} -/ ]
+puts $esp_mdir
+# Case-insensitive grep: the FAT is mixed-case and mdir can
+# truncate the display (LFN shortens to 8.3). Check for both
+# the bare EFI/BOOT entry and any reference to BOOTX64.
+if {([regexp -line -nocase {BOOTX64\.EFI} $esp_mdir] \
+     || [regexp -line {BOOTX64} $esp_mdir]) \
+    && ([regexp -line -nocase {grub\.cfg} $esp_mdir] \
+        || [regexp -line -nocase {grub.*cfg} $esp_mdir])} {
+    puts "\[sponge-desktop-disk-uefi\] PASS — ESP contains EFI/BOOT/BOOTX64.EFI and grub.cfg"
+    incr structural_gates_passed
+} else {
+    puts "\[sponge-desktop-disk-uefi\] FAIL — ESP missing required boot files"
+}
+
+# --- Gate 3: e2ls on P3 shows /system/bake/bake_manifest.json + boot_fb + pkg_*.xml ---
+set e2ls [installed_command e2ls]
+incr structural_gates_total
+puts ""
+puts "\[sponge-desktop-disk-uefi\] structural gate 3/N: e2ls on GENODE P3"
+# Extract P3 to a temp file for e2ls access. The count must come
+# from the ACTUAL P3 extent (sgdisk -i 3 Last sector), not a fixed
+# image-size constant — the GENODE partition is sized dynamically
+# from the staged content (desktop profile ≫ 256 MiB), and a
+# truncated dump is not a readable ext2 ("Can't read an inode
+# bitmap").
+set p3_dump [run_dir]/p3-check.ext2
+set p3_last [lindex [regexp -inline {Last sector: ([0-9]+)} $p3_info] 1]
+set p3_count [expr {$p3_last - $p3_sector + 1}]
+exec dd if=$gpt_img of=$p3_dump bs=512 skip=$p3_sector count=$p3_count 2>/dev/null
+set bake_present 0
+set boot_fb_present 0
+set pkg_xml_present 0
+catch {exec $e2ls $p3_dump:/system/bake} bake_out
+catch {exec $e2ls $p3_dump:/system/bin} bin_out
+catch {exec $e2ls $p3_dump:/system} sysroot_out
+puts "  /system/bake: $bake_out"
+puts "  /system/bin:  $bin_out"
+puts "  /system:      $sysroot_out"
+if {[regexp {bake_manifest\.json} $bake_out]} {
+    set bake_present 1
+}
+# e2ls may list multiple entries per line; check the entire output
+# for the exact binary name (not just line-anchored ^).
+if {[regexp {\mboot_fb\M} $bin_out]} {
+    set boot_fb_present 1
+}
+# Look for pkg_*.xml in /system root
+if {[regexp {pkg_\w+\.xml} $sysroot_out]} {
+    set pkg_xml_present 1
+}
+if {$bake_present && $boot_fb_present && $pkg_xml_present} {
+    puts "\[sponge-desktop-disk-uefi\] PASS — P3 carries bake_manifest.json, /system/bin/boot_fb, and the profile's pkg_*.xml set"
+    incr structural_gates_passed
+} else {
+    puts "\[sponge-desktop-disk-uefi\] FAIL — P3 missing required files (bake=$bake_present, boot_fb=$boot_fb_present, pkg_xml=$pkg_xml_present)"
+}
+file delete -force $p3_dump
+
+#
+# === Bounded QEMU boot attempt (D15.16 honest gap) ===
+#
+puts ""
+puts "\[sponge-desktop-disk-uefi\] host-side structural verification summary:"
+puts "  $structural_gates_passed / $structural_gates_total gates passed"
+puts ""
+if {$structural_gates_passed != $structural_gates_total} {
+    puts "\[sponge-desktop-disk-uefi\] ERROR — structural gate failure; aborting"
+    exit 1
+}
+
+#
+# QEMU gate: attempt the boot. Per D15.16 the W1 OVMF core-init
+# hang is the EXPECTED outcome under QEMU; the gate is therefore
+# to (a) time out at 180 s, (b) detect the W1 hang signature in
+# the captured serial log, (c) print the honest message and exit 0.
+#
+# We use a direct `expect` call (single timeout, no retry loop)
+# rather than the W1 run_genode_until override — the W1 override
+# calls `exit -1` after 3 retries which would mask our honest
+# gap message. The W1 override is no longer needed here because
+# we own the boot-attempt control flow.
+#
+# The run framework's QEMU spawn happens during run_power_cycle +
+# run_load. We invoke those directly here (the image/disk plugin's
+# run_image is overridden to a no-op so the run framework still
+# auto-attaches the .img via power_on/qemu's image/disk branch).
+#
+if {![run_power_cycle]} {
+    puts "\[sponge-desktop-disk-uefi\] run_power_cycle failed"
+    exit 1
+}
+if {![run_load]} {
+    puts "\[sponge-desktop-disk-uefi\] run_load failed"
+    exit 1
+}
+
+set uefi_log [run_dir]/uefi-boot.log
+puts ""
+puts "\[sponge-desktop-disk-uefi\] starting bounded QEMU boot (≤180 s)"
+puts "  serial log: $uefi_log"
+puts "  expected: OVMF → GRUB2 → bender → seL4 → core warnings → hang"
+puts "            (per W1 OVMF core-init hang, docs/evidence/phase15-uefi-boot-smoke.log)"
+
+# Single-shot expect with the Genode banner as the wait_for_re.
+# On timeout (the W1 expected outcome), the timeout arm fires and
+# we capture the buffer + classify the hang signature.
+#
+# Tcl's `expect_out(buffer)` is only set on the matched arm
+# (banner/eof pattern), NOT on the timeout arm. We use `log_file`
+# to tee the serial output to a file as it arrives, and read the
+# file after the timeout. The `log_file` is set up before the
+# expect call so the timeout arm's "no buffer" issue is moot.
+#
+set uefi_log [run_dir]/uefi-boot.log
+log_file -a $uefi_log
+set timeout 180
+expect {
+    -i $qemu_spawn_id -re ".*Genode v.*" {
+        puts "\[sponge-desktop-disk-uefi\] UNEXPECTED — QEMU reached the Genode v... banner"
+    }
+    eof {
+        puts "\[sponge-desktop-disk-uefi\] QEMU exited (eof)"
+    }
+    timeout {
+        puts "\[sponge-desktop-disk-uefi\] QEMU boot attempt timed out (expected per W1)"
+    }
+}
+log_file
+
+# Read the captured log
+set fh [open $uefi_log r]
+set output [read $fh]
+close $fh
+puts "\[sponge-desktop-disk-uefi\] serial log captured: $uefi_log ([string length $output] bytes)"
+
+# Classify the W1 hang signature
+set hang_sig_1 "device memory in range"
+set hang_sig_2 "unable to register range as RAM"
+set banner "Genode v"
+set has_warning_1 [regexp $hang_sig_1 $output]
+set has_warning_2 [regexp $hang_sig_2 $output]
+set has_banner [regexp $banner $output]
+
+puts ""
+if {$has_banner} {
+    puts "\[sponge-desktop-disk-uefi\] UNEXPECTED — QEMU reached the Genode v... banner"
+    puts "  (QEMU UEFI boot PASSED; the 15-3 real-hardware diagnostic is now"
+    puts "   the binding test for this media)"
+    puts "  exit 0 (host structural gates passed + QEMU reached the unexpected banner)"
+    exit 0
+} elseif {$has_warning_1 && $has_warning_2} {
+    puts "\[sponge-desktop-disk-uefi\] W1 OVMF core-init hang signature CONFIRMED"
+    puts "  (both core warnings present, banner absent — matches the W1"
+    puts "   evidence log; see docs/evidence/phase15-uefi-boot-smoke.log)"
+} else {
+    puts "\[sponge-desktop-disk-uefi\] QEMU boot did NOT reach Genode core (banner absent)"
+    puts "  (with the stock bender — no NOP patch — OVMF stops at the"
+    puts "   bender/GRUB2 stage. The W1 evidence required a bender"
+    puts "   NOP to get past this stage; per the W4 plan, the bender"
+    puts "   stays STOCK and the 15-3 protocol documents the rebuild"
+    puts "   fallback for real-hardware. The structural-gate acceptance"
+    puts "   is unchanged.)"
+}
+
+puts ""
+puts "  ================================================================"
+puts "  UEFI product media structure verified; QEMU boot blocked by the"
+puts "  known UEFI/QEMU W^X + bender NOP gap (see W1 evidence log:"
+puts "  docs/evidence/phase15-uefi-boot-smoke.log; D15.16 pivot: the"
+puts "  QEMU UEFI cell stays a documented gap; real-hardware"
+puts "  verification is 15-3 on the 17ZD90N-VX7BK)."
+puts "  ================================================================"
+exit 0

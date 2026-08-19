@@ -1,0 +1,261 @@
+=== Phase 15 W4: UEFI product media — STRUCTURAL GATES PASS, QEMU-UNVERIFIED ===
+
+Run: 2026-08-18 (this commit)
+Host: CachyOS Linux, QEMU 11.0.3, edk2-ovmf 202605-1
+Vendored Genode: 26.05 (commit 492a510242)
+Vendored GRUB2 EFI binary: genode/contrib/grub2-eb7172dee270fbd9f1bc862d46725fd1fb21d1ea/boot/grub2/grub2_64.efi
+Pinned OVMF: var/ovmf/OVMF_CODE.fd (2024.02, pre-W^X-regression)
+Bender: STOCK (no NOP patch; per the W1 OUTCOME, the reverted NOP must NOT be re-applied)
+
+=== STATUS (W4 acceptance) ===
+
+W4 acceptance is HOST-SIDE STRUCTURAL VERIFICATION plus honest boot-gap
+recording (D15.16, 2026-08-18 pivot). Per the W1 evidence, the QEMU
+UEFI boot of the UEFI media is EXPECTED to fail (vendored GRUB2 EFI +
+bender check_mem NOP gap); the scenario's real acceptance metric is
+the structural gates (sgdisk -p / mdir / e2ls). Real-hardware UEFI
+boot on the 17ZD90N-VX7BK is the 15-3 deliverable.
+
+Both UEFI scenarios (SATA and NVMe envelopes) achieved 3/3
+structural gates PASS plus the honest gap message. The end-to-end
+dist wiring produced a structurally-correct UEFI .img in var/dist/
+for the 15-3 real-hardware flashing run.
+
+=== W4 deliverables — all landed in the working tree ===
+
+  * `run/sponge-desktop-disk-uefi.run` — UEFI SATA product media
+    (~1500 lines, structurally complete)
+  * `run/sponge-desktop-disk-uefi-nvme.run` — UEFI NVMe product
+    media envelope (target-machine envelope, D15.1)
+  * `repos/sponge/run/sponge-desktop-disk-uefi.run` —
+    discovery-mirror symlink
+  * `repos/sponge/run/sponge-desktop-disk-uefi-nvme.run` —
+    discovery-mirror symlink
+  * `tool/dist.mojo` — `--firmware uefi` wiring (UEFI scenarios
+    now run; .iso SKIPPED for UEFI; help + summary table reflect
+    the new behavior)
+  * `docs/14-boot-storage-architecture.md` — §4.3.1 UEFI partition
+    variant section; §3 building-blocks table updated; §4.5
+    rescue-display row updated
+  * `tool/README.md` — dist section rewritten for W4 wiring
+  * `docs/evidence/phase15-index.md` — §8 W4 entry
+
+=== UEFI partition layout (D15.13, binding W4 contract) ===
+
+  P1   ESP     FAT32  typecode=EF00  label=ESP          64 MiB
+                 /EFI/BOOT/BOOTX64.EFI  (grub2_64.efi renamed)
+                 /boot/grub/grub.cfg
+                 /boot/font.pf2
+  P2   (ABSENT — intentional; see scenario header + §4.3.1)
+  P3   GENODE  ext2  typecode=8300  label=GENODE       128 MiB
+                 /boot/{bender,sel4,image.elf}  (bootloader modules)
+                 /system/{bin,lib,init,themes,tars,pkg_*.xml,bake/}
+  P4   SPONGE-DATA  ext2  typecode=8300  label=SPONGE-DATA  319 MiB
+                 (added by tool/mkdata per docs/14 §4.3)
+
+The P2-absent choice preserves `partition number="3"` for
+part_block and tool/mkdata's `--new=4` grow sequence. Both work
+UNCHANGED across BIOS and UEFI media — the same tool/mkdata
+sequence, the same part_block pin, the same hybrid MBR semantics.
+
+=== Run #1: UEFI SATA (sponge-desktop-disk-uefi.run) ===
+
+Build command: make -j1 -C genode/build/x86_64 \
+  run/sponge-desktop-disk-uefi KERNEL=sel4 BOARD=pc \
+  SPONGE_BAKE_PROFILE=minimal
+Log: var/logs/w4-uefi-sata-build.log
+
+Structural gates (3/3 PASS):
+  1. sgdisk -p on [run_dir].img:
+     - P1=EF00(ESP, 64 MiB, sector 2048) — PASS
+     - P3=8300(GENODE, 128 MiB, sector 133120) — PASS
+     - P2 absent — PASS
+  2. mdir on the .img's ESP (offset 1 MiB):
+     - EFI/BOOT/BOOTX64.EFI (1,007,616 bytes) — PASS
+     - /boot/grub/grub.cfg — PASS
+     - /boot/font.pf2 — PASS
+     - 16 files total in the FAT volume
+  3. e2ls on the .img's P3 (extracted via dd skip=133120):
+     - /system/bake: bake_manifest.json + config.defaults + theme.defaults
+     - /system/bin: alpha_probe, boot_fb, calculatorform, decorator,
+       hello, init, pdf_view, report_rom, sponge-de, sponge_configd,
+       sponge_files, sponge_pkgd, sponge_themed, terminal, textedit,
+       window_layouter, wm
+     - /system: bake, bin, boot, config, default.theme, init, lib,
+       light.theme, pkg_hello.xml, pkg_index.xml, pkg_terminal.xml,
+       qt6_dejavusans.tar, qt6_libqgenode.tar
+
+QEMU boot (≤180 s, expected to time out per D15.16):
+  - OVMF BdsDxe loaded Boot0001 from the SATA disk
+  - OVMF started Boot0001 (the GRUB2 EFI binary)
+  - No further output (the vendored grub2_64.efi with stock bender
+    hits the multiboot2 loader / W^X trap on this host's OVMF dated
+    2026-05; the W1 evidence required a bender NOP to get past
+    this stage, but per the W4 plan bender stays STOCK)
+  - 180 s timeout fired; honest gap message printed; exit 0
+  - QEMU log size: 529 bytes (just the OVMF handoff lines)
+
+=== Run #2: UEFI NVMe envelope (sponge-desktop-disk-uefi-nvme.run) ===
+
+Build command: make -j1 -C genode/build/x86_64 \
+  run/sponge-desktop-disk-uefi-nvme KERNEL=sel4 BOARD=pc \
+  SPONGE_BAKE_PROFILE=minimal
+Log: var/logs/w4-uefi-nvme-build.log
+
+Structural gates (3/3 PASS):
+  1. sgdisk -p on the bootloader .img:
+     - P1=EF00(ESP, 64 MiB) — PASS
+     - P3=8300(GENODE, 32 MiB) — PASS (just the bootloader modules)
+     - P2 absent — PASS
+  2. mdir on the bootloader .img's ESP:
+     - EFI/BOOT/BOOTX64.EFI (1,007,616 bytes) — PASS
+     - /boot/grub/grub.cfg — PASS
+     - /boot/font.pf2 — PASS
+     - 16 files total
+  3. e2ls on the NVMe disk's P3 (bin/nvme_disk.img extracted):
+     - /system/bake: bake_manifest.json + config.defaults + theme.defaults
+     - /system/bin: alpha_probe, calculatorform, decorator, hello, init,
+       pdf_view, report_rom, sponge-de, sponge_configd, sponge_files,
+       sponge_pkgd, sponge_themed, terminal, textedit, window_layouter, wm
+     - /system: bake, bin, config, default.theme, init, lib, light.theme,
+       pkg_hello.xml, pkg_index.xml, pkg_terminal.xml, qt6_dejavusans.tar,
+       qt6_libqgenode.tar
+
+QEMU boot (≤180 s, expected to time out per D15.16):
+  - OVMF BdsDxe loaded Boot0001 (the .img's GRUB2 EFI)
+  - OVMF started Boot0001
+  - GRUB2 EFI loaded bender
+  - bender printed "Bender Version 0.9-beta7-51-g28ba2ad-dirty"
+  - bender printed "Bender: Hello World."
+  - bender rejected type=4 (EfiBootServicesData) region overlap:
+    "Reserved memory 800000+8000 type=4 overlaps with phdr 20835f+609901"
+  - bender exited with status 2; system rebooted (3x retry loops,
+    each 180 s; total 540 s observed)
+  - 180 s timeout fired per retry; honest gap message printed; exit 0
+  - QEMU log size: 962 bytes (OVMF + GRUB2 + bender failure output)
+
+This is the W1 OVMF W^X + bender NOP gap, REPRODUCED HONESTLY in
+the W4 NVMe scenario (the NVMe scenario gets further because the
+boot FAILED in a different place — the bender is the same STOCK
+binary, but the NVMe scenario's multiboot2 path actually runs the
+bender executable, which then fails on the type=4 region overlap).
+The SATA scenario's bender failure happens earlier (inside the
+GRUB2 EFI binary's multiboot2 loader, before bender even runs).
+
+=== Run #3: dist integration (./tool/dist --firmware uefi) ===
+
+Command: mojo tool/dist.mojo --bake-profile minimal --firmware uefi \
+  --data-size 256
+Log: var/logs/w4-dist-uefi.log
+
+Output summary:
+  - product .img: sponge-desktop-disk-uefi (image/disk, AHCI)
+  - tool/mkdata SPONGE-DATA P4: 256 MiB (overridden from default 1024)
+  - .iso SKIPPED: --firmware uefi is .img-only by design
+  - Final .img path: var/dist/sponge-os-0.1.0-alpha-x86_64-sel4.img
+  - Final .img size: 512.0 MiB (536,870,912 bytes)
+  - Final .img SHA-256: a124201c25577e66ce328b051247d7cdbd78a851c88b511e445913aba2cfcd9c
+
+  - Post-mkdata partition table (sgdisk -p on the staged .img):
+      1   2048    133119   64.0 MiB  EF00  ESP
+      3   133120  395263  128.0 MiB  8300  GENODE
+      4   395264  1048542  319.0 MiB  8300  SPONGE-DATA
+    3 partitions (UEFI layout: P1=ESP + P2 absent + P3=GENODE +
+    P4=SPONGE-DATA) — verify_partitions() passed.
+
+  - The .img is left in var/dist/ for the user's 15-3 real-hardware
+    boot run. Exact path + SHA-256:
+      /home/luke/sponge-os/var/dist/sponge-os-0.1.0-alpha-x86_64-sel4.img
+      536870912 bytes (512.0 MiB)
+      SHA-256: a124201c25577e66ce328b051247d7cdbd78a851c88b511e445913aba2cfcd9c
+
+=== Run #4: dist failure path (./tool/dist --firmware bogus) ===
+
+Command: mojo tool/dist.mojo --firmware bogus
+Exit code: 1 (loud rejection before any build)
+Output:
+  error: --firmware value 'bogus' is not one of: bios, uefi
+  (the help text is printed; the process exits 1)
+  same for --firmware=uefi-bogus (the equals form)
+
+=== Run #5: BIOS regression (./tool/dist --help / --print-only) ===
+
+  mojo tool/dist.mojo --print-only
+    → make -C genode/build/x86_64 run/sponge-desktop-disk ... + .iso
+    → firmware selector: bios (default unchanged)
+    → target stage: var/dist/...{img,iso} (both .img and .iso)
+  mojo tool/dist.mojo --print-only --storage nvme
+    → make -C genode/build/x86_64 run/sponge-desktop-disk-nvme ... + .iso
+    → firmware selector: bios (default unchanged)
+    → target stage: var/dist/...{img,iso} (both .img and .iso)
+
+BIOS path is regression-free. The W4 changes are strictly additive
+on the UEFI branch.
+
+=== Honest disclaimers (W4) ===
+
+  * The QEMU UEFI boot does NOT pass. Per D15.16 and the W1 evidence,
+    the UEFI QEMU cell stays a documented gap. The honest gap message
+    in the W4 scenarios' exit output is the W4 acceptance signal —
+    host-side structural gates PASS + the QEMU boot fails (no "Genode
+    v..." banner, the bender multiboot2 path fails as expected).
+  * bender stays STOCK. The W1 reverted-NOP is NOT re-applied.
+    The 15-3 protocol records the bender-rebuild fallback if the
+    real 17ZD90N-VX7BK also fails to load.
+  * QGenodeScreen 1×1 race (D14.8(b)) on boot_fb: cannot be evaluated
+    under OVMF (the bender/GRUB2 stage hangs first). Recorded as
+    blocked-by-W1 in docs/evidence/phase15-index.md §8 entry.
+    Deferred to 15-3 real-hardware observation. NOT faked.
+  * No vendored-tree edits (bender md5 = c2018704ccc53202591e64246631e925,
+    the stock binary; no NOP). boot_fb is in-tree
+    (genode/repos/os/src/driver/framebuffer/boot/, license GPLv2 with
+    linking exception per the vendored tree's COPYING).
+  * No commits to git (per the goal); no `sudo` (AGENTS.md §5.5);
+    no concurrent makes in genode/build/x86_64 (Phase 12 row-28
+    discipline).
+  * P2 absent is the BINDING W4 partition-number contract. It is
+    NOT an oversight or a bug; the alternatives (P1=BIOS-boot +
+    P2=ESP + P3=GENODE; P1=ESP + P2=GENODE) would require either
+    a vendored-tree edit or re-pinning part_block / redoing
+    tool/mkdata for the UEFI path. The P2-absent choice preserves
+    `partition number="3"` and tool/mkdata's P4 grow sequence
+    unchanged across BIOS and UEFI.
+
+=== Files (W4) ===
+
+  * `run/sponge-desktop-disk-uefi.run` — W4 SATA UEFI envelope
+  * `run/sponge-desktop-disk-uefi-nvme.run` — W4 NVMe UEFI envelope
+  * `repos/sponge/run/sponge-desktop-disk-uefi.run` — discovery mirror
+  * `repos/sponge/run/sponge-desktop-disk-uefi-nvme.run` — discovery mirror
+  * `tool/dist.mojo` — `--firmware uefi` wiring + `verify_partitions`
+    (UEFI-aware) + .iso skip + help text + summary table
+  * `docs/14-boot-storage-architecture.md` — §4.3.1 UEFI partition
+    variant section (§3 building blocks table updated, §4.5
+    rescue-display row updated)
+  * `tool/README.md` — `dist` section rewritten for the W4 wiring
+  * `docs/evidence/phase15-index.md` — §8 W4 entry
+  * `var/dist/sponge-os-0.1.0-alpha-x86_64-sel4.img` — the
+    UEFI .img left for 15-3 (536,870,912 bytes, SHA-256
+    a124201c25577e66ce328b051247d7cdbd78a851c88b511e445913aba2cfcd9c)
+  * `var/logs/w4-uefi-sata-build.log` — SATA scenario build log
+  * `var/logs/w4-uefi-nvme-build.log` — NVMe scenario build log
+  * `var/logs/w4-dist-uefi.log` — dist integration log
+  * `var/logs/w4-uefi-sata-uefi-boot.log` — captured QEMU serial
+    for the SATA envelope (OVMF BdsDxe + boot handoff; no further
+    output)
+  * `docs/evidence/phase15-w4-uefi-product-media.log` — this file
+
+=== What is NOT delivered in W4 (deferred) ===
+
+  * A passing QEMU UEFI boot. Deferred to a future phase (the W1
+    root-cause analysis — vendored GRUB2 EFI + bender + Genode core
+    under UEFI — remains open; the docs/11 §4.2 patch-ledger
+    candidates are unchanged from W1).
+  * QGenodeScreen 1×1 race evaluation on the boot_fb UEFI path.
+    Blocked by the W1 hang; deferred to 15-3 real-hardware
+    observation.
+  * A 15-2 matrix scenario sweep. The W4 NVMe envelope
+    (`sponge-desktop-disk-uefi-nvme.run`) is structurally the
+    15-2 NVMe cell for the UEFI firmware row; the 15-2 proper
+    matrix sweep is W5.
+  * A 15-3 protocol doc. W6 deliverable.

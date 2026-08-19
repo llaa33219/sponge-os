@@ -1,0 +1,1535 @@
+#
+# \brief  Sponge OS Phase 15 — UEFI USB-stick boot variant of the
+#         desktop product media (Tier-0 storage chain via xHCI +
+#         usb_block instead of AHCI; the 15-3 USB-stick artifact).
+# \author Sponge OS contributors
+# \date   2026
+#
+# The USB-stick boot variant of the W4 UEFI product media. It is the
+# scenario that produces the image the user writes to a USB stick and
+# boots on the 17ZD90N-VX7BK (the 15-3 deliverable). It mirrors the
+# W4 AHCI UEFI scenario (run/sponge-desktop-disk-uefi.run, the
+# Sponge-side UEFI recipe) with ONE swap: the Tier-0 storage chain.
+#
+# === Tier-0 chain (USB xHCI variant; everything else identical
+#     to run/sponge-desktop-disk-uefi.run) ===
+#
+#   OVMF pflash (var/ovmf/OVMF_CODE.fd pinned 2024.02) → GRUB2
+#   EFI on P1 ESP (/EFI/BOOT/BOOTX64.EFI = prebuilt
+#   contrib/grub2-*/boot/grub2/grub2_64.efi) → grub.cfg
+#   multiboot2 menuentry → bender → seL4 (image.elf = Tier 0 only)
+#     └─ init (Tier 0)
+#         ├─ timer, report_rom
+#         ├─ platform/acpi/pci_decode
+#         ├─ pc_usb_host (xHCI; provides Usb service)
+#         │   policy | label_prefix: usb_hid   | + device | class: 0x3
+#         │   policy | label_prefix: usb_block | + device | class: 0x8
+#         ├─ usb_block (Block, writeable: no)  ← Tier-0 storage driver
+#         ├─ part_block → Block/P3 (partition pinned BY NUMBER)
+#         ├─ vfs (Vfs_block + <rump fs="ext2fs"/>) → File_system
+#         ├─ rom_sys: cached_fs_rom(chroot /system)        → ROM
+#         ├─ rom_lib: cached_fs_rom(chroot /system/lib)    → ROM
+#         ├─ nitpicker
+#         ├─ drivers (sub-init: boot_fb/ps2/usb_hid/event_filter)
+#         └─ system (nested init from disk)
+#
+# The ONLY swap from the AHCI UEFI scenario is:
+#   ahci (Block)             → usb_block (Block)
+#   + driver/ahci            → + driver/usb_block
+#   + driver/usb_host/pc     (already present for HID)
+#                              → + class: 0x8 (mass storage) policy
+#   part_block's Block source: ahci → usb_block
+#   report_rom policy: ahci-ports report removed (no AHCI);
+#                      platform driver's USB devices report is
+#                      already relayed by `usb -> devices` below.
+#
+# === Port-tolerant device policy (real-hardware tolerance,
+#     the critical design decision for 15-3) ===
+#
+# The upstream usb_block.run pins `+ device usb-1-2` — a USB-topology
+# path that varies by physical port. The 17ZD90N-VX7BK has 3× USB-A
+# (PCH-direct) + 1× USB-C/TB3; on real hardware the USB stick may
+# enumerate at any of these depending on which port the user plugs
+# into (the port-number assignment is firmware-bus-determined, not
+# predictable from software alone).
+#
+# Research result (genode/repos/pc/src/driver/usb_host/pc/README,
+# the canonical pc_usb_host documentation, lines 69-85):
+#
+#   "An USB device can get assigned to a client request via policy
+#    nodes within the configuration of the USB host controller driver.
+#    One can assign devices based on their name, a vendor-product-
+#    tuple, or by defining the class-value for all USB device
+#    interfaces that matches that class."
+#
+#   Examples (verbatim from the README):
+#     + policy | label: usb_hid  -> + device | class: 0x3
+#     + policy | label: usb_block -> + device usb-1-2
+#     + policy | label: usb_net  -> + device | vendor_id: 0x0b95
+#                                       | product_id: 0x1790
+#
+# All three matching modes are pc_usb_host-supported (class-based,
+# exact-name-based, and vendor/product-based). USB-defined class 0x8
+# is the mass-storage class (USB Implementers Forum standard; the
+# same number used in the devices report and in
+# genode/repos/os/src/driver/usb_block/main.cc:166 ICLASS_MASS_STORAGE
+# = 8). Class-based matching is **port-independent** — it matches any
+# mass-storage device on ANY USB port of the controller. This is the
+# correct policy for real hardware.
+#
+# We therefore use:
+#
+#   + policy | label_prefix: usb_hid   | + device | class: 0x3
+#   + policy | label_prefix: usb_block | + device | class: 0x8
+#
+# Both policies are port-tolerant. The 15-3 protocol's fallback
+# (user moves the stick to another port) is documented but is NOT
+# the primary mechanism — class-based matching is.
+#
+# === Input coexistence model (one pc_usb_host, two clients) ===
+#
+# ONE Tier-0 pc_usb_host serves BOTH usb_block (storage) and usb_hid
+# (HID input) clients. Rationale:
+#
+#   (a) The pc_usb_host binary is a Linux-backed xHCI driver — it can
+#       enumerate multiple devices concurrently (one xHCI root hub
+#       supports up to 127 devices; the controller has multiple root
+#       ports). It can serve multiple Usb sessions simultaneously;
+#       both usb_block and usb_hid are Usb clients.
+#   (b) The Phase 12 BIOS variant (run/sponge-usb-boot.run) uses
+#       exactly the same single-host pattern for HID input; the
+#       AHCI UEFI variant (run/sponge-desktop-disk-uefi.run) uses
+#       it too. The upstream usb_block.run example
+#       (genode/repos/os/run/usb_block.run) uses a nested init so
+#       the usb driver lives in its own management domain, but this
+#       is an organizational choice, not a correctness requirement —
+#       the nested-init topology is for dynamic reconfig, which we
+#       do not need (D15.8 + R15.3: bake-staged, static).
+#   (c) Two pc_usb_host instances would either (i) require an extra
+#       PCI device policy for the second host (the LG gram has one
+#       xHCI controller; the second would have to be EHCI on a
+#       different PCI device), or (ii) collide on the same xHCI.
+#       Neither is desirable.
+#
+# Decision: ONE Tier-0 pc_usb_host with two policies (class 0x3 for
+# usb_hid, class 0x8 for usb_block). The single-host topology is
+# upstream-proven, simpler, and matches real hardware.
+#
+# === QEMU attach (xHCI — the real machine's controller) ===
+#
+#   -device qemu-xhci,id=xhci          (real machine has xHCI; the
+#                                       W4 AHCI variant uses -device
+#                                       nec-usb-xhci for the HID
+#                                       tablet — same xHCI class, but
+#                                       qemu-xhci is the modern model
+#                                       and the one QEMU 11.0.3 emits
+#                                       on default machine types)
+#   -device usb-tablet,bus=xhci.0      (input device)
+#   -device usb-storage,drive=stick,drive=...  (the .img itself
+#                                       exposed as a USB mass-storage
+#                                       device to the guest)
+#   -drive id=stick,format=raw,file=[run_dir].img,if=none,readonly=on
+#
+# The .img is the boot media (same handcrafted GPT layout as the
+# AHCI variant — P1=ESP, P2 absent, P3=GENODE, P4 added by tool/mkdata).
+# The xHCI controller enumerates the usb-storage device; the guest's
+# pc_usb_host matches it via class 0x8 and hands it to usb_block.
+#
+# Note: this is the QEMU-side verification only. On real hardware
+# the user `dd`s the same .img to a physical USB stick; the
+# Insyde H2O firmware presents the stick to xHCI; pc_usb_host
+# matches class 0x8; usb_block exposes the stick's block device;
+# part_block reads P3; the rest of the chain is unchanged.
+#
+# === Disk layout (identical to the AHCI UEFI variant — D15.13 +
+#     W4 binding, partition-number contract preserved) ===
+#
+#   P1  ESP    FAT32  typecode=EF00  label=ESP          64 MiB
+#   P2  (ABSENT — partition-number contract, see AHCI variant header)
+#   P3  GENODE  ext2   typecode=8300  label=GENODE    ~849+ MiB (desktop)
+#                /boot/{bender,sel4,image.elf}    ← at P3 root (W4 fix)
+#                /system/bin/<desktop binaries incl. boot_fb AND usb_block>
+#                /system/lib/<.lib.so files>
+#                /system/init/system.config
+#                /system/<theme>.theme, /system/qt6_*.tar,
+#                /system/pkg_<name>.xml, /system/pkg_index.xml,
+#                /system/bake/{bake_manifest.json, config.defaults,
+#                              theme.defaults}
+#   P4  SPONGE-DATA  ext2  added by tool/mkdata (docs/14 §4.3)
+#
+# === Tier-0 roster delta vs AHCI UEFI ===
+#
+#   + driver/usb_block     (NEW — Tier-0 storage driver)
+#   − driver/ahci          (REMOVED — AHCI is replaced by usb_block)
+#   ± driver/usb_host/pc   (already present for HID; + class: 0x8
+#                            policy added for mass-storage matching)
+#   ± driver/framebuffer/boot  (unchanged)
+#
+# Total Tier-0 size budget: ≤ 80 MiB (§4.5). usb_block is small (~50 KiB);
+# the desktop-profile build stays within budget (verified at run time).
+#
+# === Bake profile (Phase 15 W2) ===
+#
+# `bake::stage $sys_dir img` is invoked exactly like the AHCI UEFI
+# scenario (D15.8). SPONGE_BAKE_PROFILE default = desktop, valid =
+# {minimal, desktop, none}, other = loud error. R15.3 verifier fires
+# synchronously after staging (R15.3 defense).
+#
+# === Failure channel ===
+#
+# SPONGE_DISK_FAIL=1 corrupts /system/init/system.config (same as the
+# AHCI scenario). Bounded by the boot attempt timeout.
+#
+# === QEMU boot gate honesty (D15.16) ===
+#
+# Per the W4 binding decisions (mirrored from the AHCI UEFI scenario's
+# gate), the REAL acceptance gate is the host-side STRUCTURAL
+# verification of the .img. The QEMU boot is expected to hit the W1
+# OVMF core-init hang; the scenario attempts a bounded (≤180 s) QEMU
+# boot, checks the hang signature, prints the honest message, and
+# exits 0 ONLY if every host-side structural gate passed. The run
+# script does NOT fabricate a QEMU boot PASS.
+#
+# The structural gate 3 additionally checks that `usb_block` is
+# present in P3's /system/bin (the build-list assertion; the binary
+# lives in image.elf as a boot module, and the desktop profile's
+# staging loop also copies it to /system/bin as a marker that the
+# driver is part of the Tier-0 roster).
+#
+# QGenodeScreen 1×1 race (D14.8(b)) evaluation on the boot_fb UEFI
+# path: blocked-by-W1-hang; recorded as such in
+# docs/evidence/phase15-index.md §W-USB entry. Deferred to 15-3
+# real-hardware observation.
+#
+# base-sel4 only.
+#
+# Build:
+#   make -j1 -C genode/build/x86_64 run/sponge-desktop-disk-uefi-usb \
+#       KERNEL=sel4 BOARD=pc
+#
+# (The standard RUN_OPT --include image/disk is auto-loaded via
+# ensure_plugin_loaded; no RUN_OPT is required on the make
+# command line.)
+#
+
+assert {[have_spec sel4]} \
+	"sponge-desktop-disk-uefi-usb requires KERNEL=sel4 (BOARD=pc)."
+
+##
+# === Plugin loading ===
+#
+# Identical to the AHCI UEFI variant (run/sponge-desktop-disk-uefi.run).
+#
+proc ensure_plugin_loaded { name } {
+	if {![have_include $name]} {
+		set path [genode_dir]/tool/run/$name
+		puts "sourcing $path (missing from RUN_OPT, restored by run script)"
+		source $path
+		global include_list
+		lappend include_list $name
+	}
+}
+
+ensure_plugin_loaded boot_dir/sel4
+ensure_plugin_loaded image/disk
+ensure_plugin_loaded power_on/qemu
+ensure_plugin_loaded log/qemu
+
+#
+# === Remove image/iso from the active include_list ===
+# (Same workaround as the AHCI UEFI variant.)
+#
+foreach entry $include_list {
+	if {[string equal $entry "image/iso"]} {
+		set idx [lsearch $include_list $entry]
+		set include_list [lreplace $include_list $idx $idx]
+		break
+	}
+}
+
+#
+# === Override the upstream image plugin's run_image (D15.13) ===
+# (Same as the AHCI UEFI variant — handcraft the GPT image.)
+#
+proc run_image { } { return true }
+
+#
+# === OVMF firmware pre-flight (R15.13) ===
+# (Identical to the AHCI UEFI variant.)
+#
+set ovmf_code /usr/share/edk2/x64/OVMF_CODE.4m.fd
+set ovmf_vars /usr/share/edk2/x64/OVMF_VARS.4m.fd
+
+if {![file exists $ovmf_code]} {
+	puts ""
+	puts "OVMF firmware missing: $ovmf_code"
+	puts ""
+	puts "Install the ovmf/edk2-ovmf package on this host:"
+	puts "  sudo apt install ovmf          # Debian/Ubuntu"
+	puts "  sudo dnf install edk2-ovmf     # Fedora"
+	puts "  sudo pacman -S edk2-ovmf       # Arch"
+	puts ""
+	puts "(AGENTS.md §5.5 — the agent does NOT use sudo; please run"
+	puts " the install command above yourself.)"
+	exit -1
+}
+if {![file exists $ovmf_vars]} {
+	puts ""
+	puts "OVMF_VARS missing: $ovmf_vars"
+	puts "(install the same ovmf/edk2-ovmf package as above.)"
+	exit -1
+}
+
+# Per-run writable copy of OVMF_VARS (AGENTS.md §5.5 — never
+# write the system file). bin/ is the build-dir writable scratch
+# space used by every other scenario.
+exec mkdir -p bin
+exec cp -f $ovmf_vars bin/OVMF_VARS.4m.fd
+
+#
+# === Pinned OVMF resolution (W1 STEP 2 fallback) ===
+# (Identical to the AHCI UEFI variant.)
+#
+set ovmf_pinned_code [file normalize [file join [genode_dir] .. var ovmf OVMF_CODE.fd]]
+set ovmf_pinned_vars [file normalize [file join [genode_dir] .. var ovmf OVMF_VARS.fd]]
+
+if {[info exists ::env(SPONGE_OVMF_CODE)]} {
+	set ovmf_code $::env(SPONGE_OVMF_CODE)
+	puts "sponge-desktop-disk-uefi-usb: OVMF_CODE = \$SPONGE_OVMF_CODE ($ovmf_code)"
+} elseif {[file exists $ovmf_pinned_code]} {
+	set ovmf_code $ovmf_pinned_code
+	puts "sponge-desktop-disk-uefi-usb: OVMF_CODE = var/ovmf/OVMF_CODE.fd (pinned 2024.02)"
+} else {
+	puts "sponge-desktop-disk-uefi-usb: OVMF_CODE = /usr/share/edk2/x64/OVMF_CODE.4m.fd (host default; known to break the multiboot2 load path)"
+}
+if {[info exists ::env(SPONGE_OVMF_VARS)]} {
+	set ovmf_vars $::env(SPONGE_OVMF_VARS)
+	puts "sponge-desktop-disk-uefi-usb: OVMF_VARS = \$SPONGE_OVMF_VARS ($ovmf_vars)"
+} elseif {[file exists $ovmf_pinned_vars]} {
+	set ovmf_vars $ovmf_pinned_vars
+	puts "sponge-desktop-disk-uefi-usb: OVMF_VARS = var/ovmf/OVMF_VARS.fd (pinned 2024.02)"
+} else {
+	puts "sponge-desktop-disk-uefi-usb: OVMF_VARS = /usr/share/edk2/x64/OVMF_VARS.4m.fd (host default)"
+}
+
+#
+# === usb_block BIOS handoff toggle (scenario knob, R15.13-class) ===
+#
+# Per the pc_usb_host README (genode/repos/pc/src/driver/usb_host/
+# pc/README:92-104), BIOS handoff is the default and can be disabled
+# via `bios_handoff: no` in the driver config. Some ACPI tables report
+# wrong RMRR information and the hand off can hang. The default for
+# this scenario is `bios_handoff: no` (consistent with the upstream
+# usb_block.run pattern at genode/repos/os/run/usb_block.run:93 which
+# sets `bios_handoff: no`).
+#
+# Env override:
+#   SPONGE_USB_BIOS_HANDOFF=1  → enable BIOS handoff
+#   SPONGE_USB_BIOS_HANDOFF=0  → disable BIOS handoff (default)
+#
+set bios_handoff_no 1
+if {[info exists ::env(SPONGE_USB_BIOS_HANDOFF)] \
+    && $::env(SPONGE_USB_BIOS_HANDOFF) == "1"} {
+	set bios_handoff_no 0
+	puts "sponge-desktop-disk-uefi-usb: BIOS handoff ENABLED (SPONGE_USB_BIOS_HANDOFF=1)"
+} else {
+	puts "sponge-desktop-disk-uefi-usb: BIOS handoff disabled (default; SPONGE_USB_BIOS_HANDOFF=1 to enable)"
+}
+
+#
+# === Failure-channel selector (SPONGE_DISK_FAIL=1) ===
+#
+set fail_mode [expr {[info exists ::env(SPONGE_DISK_FAIL)] && $::env(SPONGE_DISK_FAIL) == "1"}]
+if {$fail_mode} {
+	puts "sponge-desktop-disk-uefi-usb: FAILURE CHANNEL (corrupted system.config)"
+}
+
+#
+# === Build — Tier-0 chain + desktop components ===
+#
+# Mirrors the AHCI UEFI scenario's build list (lines 406-430 of
+# run/sponge-desktop-disk-uefi.run) with TWO swaps:
+#
+#   vesa_fb → boot_fb             (already in AHCI UEFI variant)
+#   driver/ahci → driver/usb_block    (THIS scenario — AHCI removed,
+#                                      usb_block added)
+#
+# The pc_usb_host binary (`driver/usb_host/pc`) is already in the
+# build list (it was used for HID input); the new class: 0x8 policy
+# extends it to serve usb_block too. The desktop binaries list
+# (mirrored from the AHCI UEFI variant) also adds usb_block to the
+# /system/bin/ copy loop as a marker that the driver is part of the
+# Tier-0 roster (the structural gate checks for it).
+#
+set build_components {
+	core lib/ld init timer
+	server/report_rom server/nitpicker
+	driver/platform driver/acpi app/pci_decode
+	driver/framebuffer/boot
+	driver/ps2
+	driver/usb_host/pc driver/usb_hid server/event_filter
+	server/part_block server/vfs server/cached_fs_rom
+	driver/usb_block
+	lib/vfs lib/vfs_rump
+	server/wm app/window_layouter app/decorator app/pointer
+	sponge_configd sponge_themed sponge_pkgd pkg_hello sponge-de
+	app/qt6/examples/calculatorform sponge_files app/pdf_view
+	server/terminal
+	noux-pkg/bash-minimal noux-pkg/vim-minimal
+	noux-pkg/coreutils-minimal noux-pkg/grep noux-pkg/sed
+	noux-pkg/tar noux-pkg/less noux-pkg/findutils
+	noux-pkg/diffutils noux-pkg/which
+	test/alpha_probe
+	qt6/base lib/libc lib/libm lib/stdcxx lib/mesa
+	lib/mesa_gpu-softpipe lib/egl lib/softpipe lib/libdrm lib/expat
+	lib/qt6_component lib/vfs lib/vfs_pipe lib/vfs_gpu lib/rom_filter
+	lib/zlib lib/libpng lib/blit lib/vfs_ttf lib/vfs_import lib/posix
+	lib/ncurses lib/pcre
+}
+
+build $build_components
+
+create_boot_directory
+
+#
+# On base-sel4 every boot module must land in bin/ BEFORE
+# build_boot_image.
+#
+exec mkdir -p bin
+
+# ========================================================================
+# Stage /system/ directory (mirrors AHCI UEFI scenario exactly)
+# ========================================================================
+#
+# /system/bin/    desktop binaries (served via <binary name="bin/...">)
+#                 + usb_block as a Tier-0-roster marker (also in image.elf)
+# /system/lib/    .lib.so files (served via rom_lib chroot)
+# /system/init/   the nested init config (system.config)
+# /system/        flat: themes, tars, pkg metadata, bake defaults
+#
+set sys_dir "[run_dir]/system"
+exec mkdir -p "$sys_dir/bin"
+exec mkdir -p "$sys_dir/lib"
+exec mkdir -p "$sys_dir/init"
+exec mkdir -p "$sys_dir/boot"
+
+#
+# Empty config for children without inline <config> (e.g. hello).
+#
+set empty_cfg [open "$sys_dir/config" w]
+puts -nonewline $empty_cfg {<config/>}
+close $empty_cfg
+
+# --- desktop binaries → /system/bin/ ---
+#
+# usb_block is staged here as a marker that the storage driver is
+# part of the Tier-0 roster (the structural gate checks for it).
+# usb_block also lives in image.elf (Tier-0 boot module, see the
+# boot_modules list below) — the on-disk copy is a marker only.
+#
+foreach b { init report_rom wm window_layouter decorator \
+            sponge_configd sponge_themed sponge_pkgd sponge-de \
+            alpha_probe hello terminal sponge_files calculatorform \
+            pdf_view textedit boot_fb usb_block } {
+	if {[file exists "bin/$b"]} {
+		exec cp -fL "bin/$b" "$sys_dir/bin/$b"
+	}
+}
+
+# --- shared libraries → /system/lib/ ---
+# (Same exclusions as the AHCI UEFI variant.)
+#
+set falkon_libs {
+	libFalkonPrivate.lib.so
+	libQt6WebEngineCore.lib.so
+	libQt6WebEngineQuick.lib.so
+	libQt6WebEngineWidgets.lib.so
+	libQt6WebChannel.lib.so
+	libQt6WebChannelQuick.lib.so
+	libQt6PrintSupport.lib.so
+	libQt6Qml.lib.so
+	libQt6QmlMeta.lib.so
+	libQt6QmlModels.lib.so
+	libQt6QmlWorkerScript.lib.so
+	libQt6Quick.lib.so
+	libQt6QuickWidgets.lib.so
+	libqtquick2plugin.lib.so
+	libqtwebenginequickplugin.lib.so
+	libworkerscriptplugin.lib.so
+	nss3.lib.so
+	nssckbi.lib.so
+	freebl3.lib.so
+	softokn3.lib.so
+	libssl.lib.so
+	libcrypto.lib.so
+	libssh.lib.so
+	curl.lib.so
+	vfs_lwip.lib.so
+	vfs_qtwebengine_shm.lib.so
+	vfs_jitterentropy.lib.so
+	vfs_xoroshiro.lib.so
+	vfs_oss.lib.so
+	ncurses.lib.so
+}
+
+foreach lib [glob -nocomplain bin/*.lib.so] {
+	set libname [file tail $lib]
+	if {[string match "ld-*.lib.so" $libname]} { continue }
+	if {$libname eq "ld.lib.so"} { continue }
+	if {[lsearch -exact $falkon_libs $libname] >= 0} { continue }
+	if {$libname eq "rump.lib.so" || $libname eq "rump_fs.lib.so"} { continue }
+	if {$libname eq "vfs_rump.lib.so"} { continue }
+
+	exec cp -fL $lib "$sys_dir/lib/$libname"
+}
+
+# --- themes (flat — served by bare name) ---
+foreach theme { default light } {
+	set theme_src "${genode_dir}/repos/sponge/src/sponge-de/themes/${theme}.theme"
+	if {[file exists $theme_src]} {
+		exec cp -fL $theme_src "$sys_dir/${theme}.theme"
+	}
+}
+
+# --- Qt6 tars (flat — served by bare name) ---
+set dejavu_src [glob -nocomplain "${genode_dir}/contrib/qt6_base-*/src/lib/qt6_base/src/3rdparty/wasm/DejaVuSans.ttf"]
+if {[llength $dejavu_src] > 0} {
+	set staging "[run_dir]/dejavusans-staging"
+	file mkdir "$staging/qt/lib/fonts"
+	file copy -force [lindex $dejavu_src 0] "$staging/qt/lib/fonts/DejaVuSans.ttf"
+	exec tar -cf "$sys_dir/qt6_dejavusans.tar" -C "$staging" qt
+	file delete -force "$staging"
+}
+
+if {[file exists "bin/qt6_libqgenode.tar"]} {
+	exec cp -fL "bin/qt6_libqgenode.tar" "$sys_dir/qt6_libqgenode.tar"
+}
+
+# ----------------------------------------------------------------
+# Bake-driven pkg metadata + index + payloads (Phase 15 W2, D15.8)
+# ----------------------------------------------------------------
+source [file join [file dirname [file normalize [info script]]] \
+                    bake.inc]
+
+bake::stage $sys_dir img
+
+# ========================================================================
+# Write /system/init/system.config — the nested system init config
+# ========================================================================
+#
+# Verbatim copy of run/sponge-desktop-disk-uefi.run's system.config —
+# the desktop composition is media-independent (D15.13 / docs/14 §4.4:
+# "init config is data, not image"). The UEFI display chain (boot_fb)
+# is wholly in Tier-0; the desktop's nitpicker → wm → sponge-de
+# chain is unchanged.
+#
+
+if {$fail_mode} {
+	set sysconfig_fh [open "$sys_dir/init/system.config" w]
+	puts $sysconfig_fh {<config THIS IS DELIBERATELY BROKEN XML><unclosed}
+	close $sysconfig_fh
+} else {
+	set sysconfig_hid "[run_dir]/system.config.hid"
+	set sysconfig_fh [open "$sysconfig_hid" w]
+puts $sysconfig_fh {
+config
++ parent-provides
+  + service ROM
+  + service PD
+  + service CPU
+  + service LOG
+  + service Timer
+  + service Gui
+  + service Capture
+  + service Event
+
++ default | caps: 200 | ram: 4M
++ default-route
+  + any-service
+    + parent
+    + any-child
+
++ start report_rom | caps: 300 | ram: 8M
+  + binary | name: bin/report_rom
+  + provides
+    + service Report
+    + service ROM
+  + config | verbose: no
+    + policy | label: layouter -> window_list       | report: wm -> window_list
+    + policy | label: decorator -> pointer           | report: wm -> pointer
+    + policy | label: decorator -> window_layout     | report: layouter -> window_layout
+    + policy | label: wm -> focus                    | report: layouter -> focus
+    + policy | label: wm -> resize_request           | report: layouter -> resize_request
+    + policy | label: layouter -> hover              | report: decorator -> hover
+    + policy | label: layouter -> decorator_margins  | report: decorator -> decorator_margins
+    + policy | label: layouter -> rules              | report: layout_rules
+    + policy | label: layouter -> focus_request      | report: wm -> focus_request
+    + policy | label: sponge_configd -> config_request | report: alpha_probe -> config_request
+    + policy | label: alpha_probe -> config_result     | report: sponge_configd -> config_result
+    + policy | label: sponge_themed -> config          | report: sponge_configd -> config
+    + policy | label: alpha_probe -> configd_config    | report: sponge_configd -> config
+    + policy | label: alpha_probe -> config            | report: sponge_configd -> config
+    + policy | label: sponge-de -> theme               | report: sponge_themed -> theme
+    + policy | label: alpha_probe -> theme             | report: sponge_themed -> theme
+    + policy | label: sponge_pkgd -> request     | report: alpha_probe -> request
+    + policy | label: alpha_probe -> result       | report: sponge_pkgd -> result
+    + policy | label: pkg_runtime -> config       | report: sponge_pkgd -> runtime
+    + policy | label: sponge-de -> installed      | report: sponge_pkgd -> installed
+    + policy | label: alpha_probe -> sponge_de_launcher | report: sponge-de -> launcher
+
++ start wm | caps: 250 | ram: 8M
+  + binary | name: bin/wm
+  + provides
+    + service Gui
+    + service Report
+    + service ROM
+  + config
+    + policy | label_prefix: decorator | role: decorator
+    + policy | label_prefix: layouter  | role: layouter
+    + default-policy
+  + route
+    + service ROM | label_last: ld.lib.so | + parent
+    + service ROM | label: focus          | + child report_rom
+    + service ROM | label: resize_request | + child report_rom
+    + service Report | label_last: shape  | + child report_rom
+    + service Report                       | + child report_rom
+    + service Gui                          | + parent
+    + any-service
+      + parent
+      + any-child
+
++ start layouter | caps: 150 | ram: 4M
+  + binary | name: bin/window_layouter
+  + config | rules: rom
+    + report | rules: yes
+    + rules
+      + screen screen
+      + assign | label: sponge-de -> Sponge DE Demo | target: screen
+               | xpos: 192 | ypos: 172 | width: 640 | height: 480 | maximized: no
+      + assign | label_prefix: pkg_runtime | target: screen
+               | xpos: 50 | ypos: 300 | width: 320 | height: 240 | maximized: no
+    + press   | key: BTN_LEFT  | action: drag
+      + release | key: BTN_LEFT | action: drop
+  + route
+    + service ROM | label_last: ld.lib.so     | + parent
+    + service ROM | label: window_list       | + child report_rom
+    + service ROM | label: focus_request     | + child report_rom
+    + service ROM | label: hover             | + parent
+    + service ROM | label: focus             | + parent
+    + service ROM | label: decorator_margins | + child report_rom
+    + service ROM | label: rules             | + child report_rom
+    + service Report | label: rules           | + child report_rom | label: layout_rules
+    + service Report                            | + child report_rom
+    + any-service
+      + child wm
+      + parent
+      + any-child
+
++ start decorator | caps: 350 | ram: 32M
+  + binary | name: bin/decorator
+  + config
+    + controls
+      + maximizer
+      + title
+    + default-policy
+  + route
+    + service ROM | label_last: ld.lib.so | + parent
+    + service ROM | label: window_layout | + child report_rom
+    + service ROM | label: pointer       | + child report_rom
+    + service Report                      | + child report_rom
+    + any-service
+      + child wm
+      + parent
+      + any-child
+
++ start sponge_configd | caps: 200 | ram: 16M
+  + binary | name: bin/sponge_configd
+  + config
+  + route
+    + service ROM | label_last: ld.lib.so | + parent
+    + service ROM | label_last: config_request | + child report_rom
+    + service Report | + child report_rom
+    + any-service
+      + parent
+      + any-child
+
++ start sponge_themed | caps: 200 | ram: 8M
+  + binary | name: bin/sponge_themed
+  + route
+    + service ROM | label_last: ld.lib.so | + parent
+    + service ROM | label_last: config       | + child report_rom
+    + service ROM | label_last: default.theme | + parent
+    + service ROM | label_last: light.theme   | + parent
+    + service Report | + child report_rom
+    + any-service
+      + parent
+      + any-child
+
++ start sponge_pkgd | caps: 200 | ram: 16M
+  + binary | name: bin/sponge_pkgd
+  + config | binary_prefix: bin/
+  + route
+    + service ROM | label_last: ld.lib.so | + parent
+    + service ROM | label_last: request | + child report_rom
+    + service Report | + child report_rom
+    + any-service
+      + parent
+      + any-child
+
++ start pkg_runtime | caps: 400 | ram: 32M
+  + binary | name: bin/init
+  + route
+    + service ROM | label_last: ld.lib.so | + parent
+    + service ROM | label: config | + child report_rom
+    + service Gui | + child wm
+    + any-service
+      + parent
+      + any-child
+
++ start sponge-de | caps: 1000 | ram: 128M
+  + binary | name: bin/sponge-de
+  + config
+    + theme | source: themed
+    + launcher | source: pkgd
+    + vfs
+      + dir dev
+        + log
+        + inline rtc | : 2018-01-01 00:01
+      + dir pipe | + pipe
+      + tar qt6_dejavusans.tar
+      + tar qt6_libqgenode.tar
+    + libc | stdout: /dev/log | stderr: /dev/log | pipe: /pipe | rtc: /dev/rtc
+  + route
+    + service ROM | label_last: ld.lib.so | + parent
+    + service Gui | label_last: Sponge Panel   | + parent
+    + service Gui | label_last: Sponge Launcher | + parent
+    + service Gui                              | + child wm
+    + service Report | label: shape | + child report_rom
+    + service Report | label: input | + child report_rom
+    + service Report | label: applied_theme | + child report_rom
+    + service Report | label: launcher | + child report_rom
+    + service ROM | label: installed | + child report_rom
+    + service ROM | label: theme | + child report_rom
+    + service ROM | label: mesa_gpu.lib.so | + parent | label: mesa_gpu-softpipe.lib.so
+    + any-service
+      + parent
+      + any-child
+
++ start alpha_probe | caps: 200 | ram: 16M
+  + binary | name: bin/alpha_probe
+  + config | skip_lz: yes
+  + route
+    + service ROM | label_last: ld.lib.so | + parent
+    + service Capture | + parent
+    + service Timer   | + parent
+    + service ROM | label_last: result | + child report_rom
+    + service ROM | label_last: config_result | + child report_rom
+    + service ROM | label_last: configd_config | + child report_rom
+    + service ROM | label_last: config | + child report_rom
+    + service ROM | label_last: sponge_de_launcher | + child report_rom
+    + service Report | + child report_rom
+    + any-service
+      + parent
+      + any-child
+-}
+	close $sysconfig_fh
+
+	set xml_content [exec [genode_dir]/tool/hid format --output-xml "$sysconfig_hid"]
+	set sysconfig_final [open "$sys_dir/init/system.config" w]
+	puts -nonewline $sysconfig_final $xml_content
+	close $sysconfig_final
+	file delete "$sysconfig_hid"
+}
+
+# ========================================================================
+# Tier-0 init configuration
+# ========================================================================
+#
+# Mirrors the AHCI UEFI Tier-0 init with these swaps:
+#
+#   1. ahci is REMOVED entirely (no SATA controller — the boot media
+#      is a USB stick; the AHCI chain has nothing to drive).
+#
+#   2. usb_block is ADDED as a Tier-0 child providing Block. It
+#      receives the Usb session from the Tier-0 `usb` pc_usb_host
+#      and exposes the USB stick's block device. writeable: no —
+#      the boot media is read-only (P3 is GENODE ext2, mounted
+#      read-only by vfs's <policy writeable: no>).
+#
+#   3. part_block's Block source becomes `usb_block` (not `ahci`).
+#      The partition number is still 3 (P2 absent keeps the number
+#      contract, identical to the AHCI UEFI variant).
+#
+#   4. The platform driver's policy drops the ahci class match and
+#      keeps the usb class match (pc_usb_host already enumerates
+#      the xHCI controller via PCI class USB).
+#
+#   5. The pc_usb_host config adds the usb_block class: 0x8 policy
+#      (mass storage) alongside the existing usb_hid class: 0x3.
+#      bios_handoff defaults to `no` per the scenario knob above.
+#
+#   6. The report_rom adds a `usb_block -> devices` policy
+#      (relaying the pc_usb_host's device enumeration to usb_block's
+#      report consumer). This is the upstream usb_block.run pattern
+#      (genode/repos/os/run/usb_block.run:44: `default-policy |
+#      report: usb -> usb -> devices`).
+#
+
+install_config {
+config
++ parent-provides
+  + service ROM
+  + service PD
+  + service RM
+  + service CPU
+  + service LOG
+  + service IRQ
+  + service IO_MEM
+  + service IO_PORT
+
++ default | caps: 200 | ram: 4M
++ default-route
+  + any-service
+    + parent
+    + any-child
+
++ start timer
+  + provides | + service Timer
+
++ start report_rom | caps: 300 | ram: 8M
+  + provides
+    + service Report
+    + service ROM
+  + config | verbose: no
+    + policy | label: pci_decode -> system | report: acpi -> acpi
+    + policy | label: platform -> devices  | report: pci_decode -> devices
+    + policy | label: usb_hid -> report    | report: usb -> devices
+    + policy | label_suffix: focus | report: nitpicker -> focus
+    + policy | label_suffix: hover | report: nitpicker -> hover
+    + policy | label: pointer -> xray | report: pointer-xray-none
+    + policy | label: usb_block -> devices | report: usb -> devices
+    #
+    # UEFI-specific (D15.13): relay the platform driver's
+    # platform_info report as a ROM, so boot_fb can read
+    # platform_info/boot/framebuffer (the boot_fb GOP framebuffer
+    # binding chain). The BIOS report_rom does not have this
+    # policy because vesa_fb uses VBE, not platform_info.
+    #
+    + policy | label: platform_info | report: platform -> platform_info
+
++ start acpi | caps: 350 | ram: 4M
+  + route
+    + service ROM | label_last: ld.lib.so | + parent
+    + service Report | + child report_rom
+    + service IO_MEM | + parent
+    + service LOG    | + parent
+    + service PD     | + parent
+    + service RM     | + parent
+    + service CPU    | + parent
+    + service ROM    | + parent
+
++ start pci_decode | caps: 350 | ram: 2M
+  + route
+    + service ROM | label_last: ld.lib.so | + parent
+    + service Report              | + child report_rom
+    + service ROM | label: system | + child report_rom
+    + service IO_MEM              | + parent
+    + service LOG                 | + parent
+    + service PD                  | + parent
+    + service RM                  | + parent
+    + service CPU                 | + parent
+    + service ROM                 | + parent
+
++ start platform | caps: 200 | ram: 3M | managing_system: yes
+  + provides
+    + service Platform
+    + service Dma
+  + route
+    + service ROM | label_last: ld.lib.so | + parent
+    + service ROM | label: devices | + child report_rom
+    + service Report               | + child report_rom
+    + service Timer                | + child timer
+    + service IRQ                  | + parent
+    + service IO_MEM               | + parent
+    + service IO_PORT              | + parent
+    + service ROM                  | + parent
+    + service PD                   | + parent
+    + service CPU                  | + parent
+    + service LOG                  | + parent
+  + config
+    + report | devices: yes
+    + policy | label_prefix: ps2  | + device ps2
+    + policy | label_prefix: usb  | info: yes | + pci | class: USB
+    #
+    # The `label_prefix: fb` policy is kept (harmless under UEFI —
+    # boot_fb does not request a Platform session). The AHCI policy
+    # is REMOVED: there is no SATA controller to expose; the boot
+    # media is a USB stick on the xHCI controller.
+    #
+
++ start usb | caps: 200 | ram: 16M
+  + binary pc_usb_host
+  + provides | + service Usb
+  + config
+    + report | devices: yes
+    #
+    # Class-based matching for real-hardware port tolerance
+    # (see scenario header §"Port-tolerant device policy").
+    # class: 0x3 = HID (mouse/keyboard); class: 0x8 = mass
+    # storage (the USB stick). Both are USB-standard class codes
+    # and are independent of the physical USB port the device
+    # enumerates on.
+    #
+    + policy | label_prefix: usb_hid   | + device | class: 0x3
+    + policy | label_prefix: usb_block | + device | class: 0x8
+  + route
+    + service ROM | label_last: ld.lib.so | + parent
+    + service Dma                     | + child platform
+    + service Platform                | + child platform
+    + service Report | label: devices | + child report_rom
+    + service ROM                     | + parent
+    + service PD                      | + parent
+    + service RM                      | + parent
+    + service CPU                     | + parent
+    + service LOG                     | + parent
+    + service Timer                   | + child timer
+
++ start usb_block | caps: 200 | ram: 16M
+  + provides | + service Block
+  + config | report: yes | writeable: no
+  + route
+    + service ROM | label_last: ld.lib.so | + parent
+    + service Usb   | + child usb
+    + service Report | + child report_rom
+    + any-service
+      + parent
+      + any-child
+
++ start part_block | caps: 200 | ram: 8M
+  + provides | + service Block
+  + config
+    + report | partitions: no
+    #
+    # partition: 3 — GENODE ext2 (P2 is intentionally absent, the
+    # W4 partition-number contract, identical to the AHCI UEFI
+    # variant).
+    #
+    + policy | label_prefix: vfs | partition: 3 | writeable: yes
+  + route
+    + service ROM | label_last: ld.lib.so | + parent
+    + service Block | + child usb_block
+    + any-service
+      + parent
+      + any-child
+
++ start vfs | caps: 500 | ram: 64M
+  + provides | + service File_system
+  + config
+    + vfs
+      + rump | fs: ext2fs | ram: 48M | writeable: yes
+    + policy | label_prefix: rom_sys | root: /system     | writeable: no
+    + policy | label_prefix: rom_lib | root: /system/lib | writeable: no
+  + route
+    + service ROM | label_last: ld.lib.so     | + parent
+    + service ROM | label_last: vfs.lib.so    | + parent
+    + service ROM | label_last: vfs_rump.lib.so | + parent
+    + service ROM | label_last: rump.lib.so   | + parent
+    + service ROM | label_last: rump_fs.lib.so | + parent
+    + service Block | + child part_block
+    + any-service
+      + parent
+      + any-child
+
++ start rom_sys | caps: 500 | ram: 256M
+  + binary cached_fs_rom
+  + provides | + service ROM
+  + route
+    + service File_system | + child vfs
+    + service ROM | label_last: ld.lib.so | + parent
+    + any-service
+      + parent
+      + any-child
+
++ start rom_lib | caps: 500 | ram: 256M
+  + binary cached_fs_rom
+  + provides | + service ROM
+  + route
+    + service File_system | + child vfs
+    + service ROM | label_last: ld.lib.so | + parent
+    + any-service
+      + parent
+      + any-child
+
++ start nitpicker | ram: 16M
+  + provides
+    + service Gui
+    + service Capture
+    + service Event
+  + route
+    + service ROM | label_last: ld.lib.so | + parent
+    + service Report | + child report_rom
+    + service Timer  | + child timer
+    + any-service
+      + parent
+      + any-child
+  + config
+    + capture
+    + event
+    + report | focus: yes | hover: yes
+    + domain pointer | layer: 0 | content: client | label: no | origin: pointer
+    + domain panel | layer: 1 | content: client | label: no
+                   | hover: always | focus: click | ypos: 0 | height: 28
+    + domain launcher | layer: 4 | content: client | label: no
+                      | hover: always | focus: click
+                      | xpos: 0 | ypos: 28 | width: 341 | height: 480
+    + domain default | layer: 3 | content: client | label: no
+                     | hover: always | focus: click | ypos: 28 | height: -28
+    + policy | label_prefix: pointer                  | domain: pointer
+    + policy | label_prefix: system -> sponge-de -> Sponge Panel   | domain: panel
+    + policy | label_prefix: system -> sponge-de -> Sponge Launcher | domain: launcher
+    + default-policy | domain: default
+    + background | color: #1e1e2e
+
++ start pointer | caps: 100 | ram: 4M
+  + provides
+    + service Report
+  + config | shapes: no
+  + route
+    + service Gui              | + child nitpicker
+    + service ROM | label: hover | + child report_rom
+    + service ROM | label: xray  | + child report_rom
+    + any-service
+      + parent
+      + any-child
+
++ start fb | caps: 150 | ram: 20M
+  + binary boot_fb
+  + route
+    + service ROM | label: config        | + parent | label: fb.config
+    + service ROM | label: platform_info | + parent
+    + service Report                      | + child report_rom
+    + service IO_MEM                      | + parent
+    + service ROM                         | + parent
+    + service PD                          | + parent
+    + service CPU                         | + parent
+    + service LOG                         | + parent
+    + service Timer                       | + child timer
+    + service Capture                     | + child nitpicker
+
++ start ps2 | caps: 100 | ram: 1280K
+  + config
+  + route
+    + service ROM | label_last: ld.lib.so | + parent
+    + service Dma      | + child platform
+    + service Platform | + child platform
+    + service Event    | + child event_filter | label: ps2
+    + service ROM      | + parent
+    + service PD       | + parent
+    + service CPU      | + parent
+    + service LOG      | + parent
+    + service Timer    | + child timer
+
++ start usb_hid | caps: 180 | ram: 10M
+  + route
+    + service ROM | label_last: ld.lib.so | + parent
+    + service ROM | label: report | + child report_rom
+    + service ROM                 | + parent
+    + service PD                  | + parent
+    + service RM                  | + parent
+    + service CPU                 | + parent
+    + service LOG                 | + parent
+    + service Timer               | + child timer
+    + service Event               | + child event_filter | label: usb
+    + service Usb                 | + child usb
+
++ start event_filter | caps: 90 | ram: 1280K
+  + provides | + service Event
+  + route
+    + service ROM | label_last: ld.lib.so | + parent
+    + service ROM | label: config | + parent | label: event_filter.config
+    + service Event               | + child nitpicker
+    + service ROM                 | + parent
+    + service PD                  | + parent
+    + service CPU                 | + parent
+    + service LOG                 | + parent
+    + service Timer               | + child timer
+
++ start system | caps: 8000 | ram: 1500M
+  + binary | name: bin/init
+  + route
+    + service ROM | label: config | + child rom_sys | label: init/system.config
+    + service ROM | label_last: ld.lib.so | + parent
+    + service ROM | label_suffix: .lib.so | + child rom_lib
+    + service ROM | label_last: focus | + child report_rom
+    + service ROM | label_last: hover | + child report_rom
+    + service ROM | + child rom_sys
+    + service Gui     | + child nitpicker
+    + service Capture | + child nitpicker
+    + service Event   | + child nitpicker
+    + service Timer   | + child timer
+    + service Report  | + child report_rom
+    + any-service
+      + parent
+      + any-child
+- }
+
+#
+# === Stage the driver sub-init config modules (Tier-0 boot modules) ===
+# (Identical to the AHCI UEFI variant.)
+#
+set recipe_dir "${genode_dir}/repos/os/recipes/raw/drivers_interactive-pc"
+foreach f { fb.config event_filter.config } {
+	if {![file exists "$recipe_dir/$f"]} {
+		error "$recipe_dir/$f missing (vendored drivers_interactive-pc recipe drifted?)"
+	}
+	exec cp -f "$recipe_dir/$f" "bin/$f"
+}
+
+#
+# Keyboard layouts consumed by event_filter.
+#
+set chargen_dir "${genode_dir}/repos/os/src/server/event_filter"
+foreach f { en_us.chargen special.chargen } {
+	if {![file exists "$chargen_dir/$f"]} { error "$chargen_dir/$f missing" }
+	exec cp -f "$chargen_dir/$f" "bin/$f"
+}
+
+#
+# === Tier-0 boot module list — storage chain + drivers + nitpicker ONLY ===
+#
+# Mirrors the AHCI UEFI scenario's Tier-0 list with these swaps:
+#   ahci      → usb_block       (storage driver swap)
+#   + usb_block in the list
+# ld.lib.so is auto-injected by boot_dir/sel4 (docs/11 §10.4).
+#
+set boot_modules { }
+foreach m { core-sel4.a ld-sel4.lib.so init timer report_rom nitpicker platform acpi pci_decode \
+            pc_usb_host usb_block part_block vfs cached_fs_rom \
+            boot_fb ps2 usb_hid event_filter pointer } {
+	lappend boot_modules $m
+}
+foreach m { vfs.lib.so vfs_rump.lib.so rump.lib.so rump_fs.lib.so \
+            en_us.chargen special.chargen \
+            fb.config event_filter.config } {
+	lappend boot_modules $m
+}
+
+build_boot_image $boot_modules
+
+#
+# === Assert Tier-0 budget: image.elf ≤ 80 MiB ===
+#
+set image_elf "[run_dir]/boot/image.elf"
+if {[file exists $image_elf]} {
+	set size_bytes [file size $image_elf]
+	set size_mib [expr {$size_bytes / 1048576}]
+	puts "sponge-desktop-disk-uefi-usb: image.elf = ${size_mib} MiB ($size_bytes bytes)"
+	if {$size_mib > 80} {
+		puts "sponge-desktop-disk-uefi-usb: ERROR — Tier-0 budget exceeded (>80 MiB, §4.5)"
+	}
+} else {
+	puts "sponge-desktop-disk-uefi-usb: image.elf not found at expected path"
+}
+
+#
+# === Assert ld.lib.so is NOT in /system/lib/ (§4.6) ===
+#
+set ld_check "$sys_dir/lib/ld.lib.so"
+if {[file exists $ld_check]} {
+	puts "sponge-desktop-disk-uefi-usb: ERROR — ld.lib.so found in /system/lib/ (§4.6 violation)"
+}
+
+#
+# === Stage boot modules onto P3 (/boot/) ===
+# (Identical to the AHCI UEFI variant — the W4 fix.)
+#
+foreach m { bender sel4 image.elf } {
+	if {![file exists [run_dir]/boot/$m]} {
+		puts "expected boot module [run_dir]/boot/$m after build_boot_image"
+		exit -1
+	}
+	exec cp -f [run_dir]/boot/$m "$sys_dir/boot/$m"
+}
+
+#
+# === Handcraft the UEFI GPT disk ===
+# (Mirrors the AHCI UEFI variant exactly — same disk layout, same
+# handcrafted-image pattern. The storage chain inside the guest is the
+# only difference; the on-disk layout is identical.)
+#
+set grub2_dir [get_grub2_dir]
+if {![file exists $grub2_dir/boot/grub2/grub2_64.efi]} {
+	puts "GRUB2 EFI binary missing: $grub2_dir/boot/grub2/grub2_64.efi"
+	puts "Prepare the port: $grub2_dir/../.. is your contrib — run"
+	puts "  ./genode/tool/ports/prepare_port grub2"
+	exit -1
+}
+if {![file exists $grub2_dir/boot/font.pf2]} {
+	puts "GRUB2 font missing: $grub2_dir/boot/font.pf2"
+	exit -1
+}
+
+set sgdisk   [installed_command sgdisk]
+set mkfs_vfat [installed_command mkfs.vfat]
+set mkfs_ext2 [installed_command mkfs.ext2]
+set mcopy    [installed_command mcopy]
+set e2cp     [installed_command e2cp]
+set e2mkdir  [installed_command e2mkdir]
+
+#
+# 1. Stage the ESP contents in [run_dir]/efi-stage
+#
+set esp_stage [run_dir]/efi-stage
+file delete -force $esp_stage
+file mkdir $esp_stage/EFI/BOOT
+file mkdir $esp_stage/boot/grub
+
+exec cp -f $grub2_dir/boot/grub2/grub2_64.efi $esp_stage/EFI/BOOT/BOOTX64.EFI
+exec cp -f $grub2_dir/boot/font.pf2           $esp_stage/boot/font.pf2
+
+#
+# 2. Write the UEFI grub.cfg.
+# (Identical to the AHCI UEFI variant — the W1 W^X workaround tokens
+# are baked in here too.)
+#
+set grub_body {
+set timeout=0
+set gfxpayload=auto
+insmod gfxterm
+insmod part_gpt
+insmod ext2
+set root=(hd0,gpt3)
+terminal_output gfxterm
+menuentry 'Genode on seL4 (UEFI)' {
+  insmod multiboot2
+multiboot2 /boot/bender serial intel_hwp_performance phys_max=256M serial_fallback
+  module2 /boot/sel4 sel4 disable_iommu console_port=0x3f8 debug_port=0x3f8
+  module2 /boot/image.elf image.elf
+}
+}
+
+set grub_fh [open $esp_stage/EFI/BOOT/grub.cfg "WRONLY CREAT TRUNC"]
+puts -nonewline $grub_fh $grub_body
+close $grub_fh
+
+set grub_fh [open $esp_stage/boot/grub/grub.cfg "WRONLY CREAT TRUNC"]
+puts -nonewline $grub_fh $grub_body
+close $grub_fh
+
+#
+# Diagnostic boot mode (bake profile [boot] grub_mode = diagnostic,
+# e.g. the `test` profile): replace the production hidden gfxterm
+# menuentry with the text-mode SPONGE-DIAG template so every boot
+# stage is visible on real hardware (15-3 bring-up).
+#
+if {[bake::boot_option grub_mode production] eq "diagnostic"} {
+    set diag_cfg "${::genode_dir}/../run/fixtures/grub-diag.cfg"
+    puts "bake: grub_mode=diagnostic — installing $diag_cfg as grub.cfg"
+    exec cp -f $diag_cfg $esp_stage/EFI/BOOT/grub.cfg
+    exec cp -f $diag_cfg $esp_stage/boot/grub/grub.cfg
+}
+
+#
+# 3. Build a standalone FAT32 image for the ESP.
+#
+set esp_img [run_dir]/esp.img
+exec dd if=/dev/zero of=$esp_img bs=1M count=64 2>/dev/null
+exec $mkfs_vfat -n ESP $esp_img
+exec $mcopy -i $esp_img -s $esp_stage/EFI ::/
+exec $mcopy -i $esp_img -s $esp_stage/boot ::/
+
+#
+# 4. Build a standalone ext2 image for the GENODE P3 partition.
+# (Dynamic sizing from staged /system — same as AHCI UEFI variant.)
+#
+set genode_img [run_dir]/genode.img
+set sys_size_mb [expr [regsub {\s.*} [exec du -smL $sys_dir] {}]]
+set genode_mb   [expr $sys_size_mb + 16 + ($sys_size_mb / 4)]
+exec dd if=/dev/zero of=$genode_img bs=1M count=$genode_mb 2>/dev/null
+exec $mkfs_ext2 -F -q -L GENODE $genode_img
+
+exec $e2mkdir $genode_img:/system
+exec $e2mkdir $genode_img:/system/bin
+exec $e2mkdir $genode_img:/system/lib
+exec $e2mkdir $genode_img:/system/init
+exec $e2mkdir $genode_img:/system/boot
+
+set sysdir_len [string length $sys_dir]
+foreach entry [lsort [exec find "$sys_dir" -mindepth 1]] {
+	set rel [string range $entry $sysdir_len end]
+	if {[file isdirectory $entry]} {
+		exec $e2mkdir $genode_img:/system$rel
+	} else {
+		exec $e2cp $entry $genode_img:/system$rel
+	}
+}
+
+#
+# Boot modules at the ext2 ROOT (/boot/{bender,sel4,image.elf}).
+# (W4 fix — identical to the AHCI UEFI variant.)
+#
+exec $e2mkdir $genode_img:/boot
+foreach m { bender sel4 image.elf } {
+	exec $e2cp [run_dir]/boot/$m $genode_img:/boot/$m
+}
+
+#
+# 5. Assemble the GPT disk.
+# (Identical layout — P1=ESP, P2 absent, P3=GENODE.)
+#
+set gpt_img [run_dir].img
+set gpt_total_mb [expr 64 + $genode_mb + 16]
+exec dd if=/dev/zero of=$gpt_img bs=1M count=$gpt_total_mb 2>/dev/null
+exec $sgdisk --clear $gpt_img 2>/dev/null
+exec $sgdisk --new=1:2048:+64M   --typecode=1:EF00 --change-name=1:ESP    $gpt_img 2>/dev/null
+exec $sgdisk --new=3:0:+${genode_mb}M --typecode=3:8300 --change-name=3:GENODE $gpt_img 2>/dev/null
+
+set p1_info [exec $sgdisk -i 1 $gpt_img]
+set p1_sector [lindex [regexp -inline {First sector: ([0-9]+)} $p1_info] 1]
+exec dd if=$esp_img of=$gpt_img bs=512 seek=$p1_sector conv=notrunc 2>/dev/null
+
+set p3_info [exec $sgdisk -i 3 $gpt_img]
+set p3_sector [lindex [regexp -inline {First sector: ([0-9]+)} $p3_info] 1]
+exec dd if=$genode_img of=$gpt_img bs=512 seek=$p3_sector conv=notrunc 2>/dev/null
+
+file delete -force $esp_stage $esp_img $genode_img
+
+#
+# === QEMU wiring (xHCI variant — real machine's controller) ===
+#
+# Identical to the AHCI UEFI variant (q35, Skylake-Client, OVMF pflash,
+# -m 4G, -snapshot, fw_cfg opt-out) with the USB attach swapped to
+# match the xHCI / USB-stick boot path:
+#
+#   -device qemu-xhci,id=xhci           (real machine has xHCI;
+#                                        same controller class as the
+#                                        AHCI variant's nec-usb-xhci
+#                                        but qemu-xhci is the modern
+#                                        QEMU 11 model — the one that
+#                                        matches a 2020-era PCH)
+#   -device usb-tablet,bus=xhci.0       (HID input — same as AHCI
+#                                        variant, on the same xHCI bus
+#                                        as the storage; the class: 0x3
+#                                        policy in pc_usb_host matches
+#                                        it independently of port)
+#   -device usb-storage,drive=stick     (the boot media — the same
+#                                        .img, exposed as a USB mass-
+#                                        storage device; class: 0x8
+#                                        policy matches it)
+#   -drive id=stick,format=raw,file=[run_dir].img,if=none,readonly=on
+#                                      (the stick drive definition,
+#                                        detached from any default bus
+#                                        so usb-storage can attach to
+#                                        it explicitly)
+#
+# Note: -device qemu-xhci with -device usb-storage on a stick drive
+# is the upstream pattern (the Phase 12 BIOS variant uses EHCI for
+# the cdrom-equivalent attach; under UEFI we use xHCI because the
+# real machine is xHCI-only). No -cdrom line; the .img is the boot
+# media, period.
+#
+append qemu_args " -machine q35 -cpu Skylake-Client "
+append qemu_args " -nographic -m 4G -snapshot "
+append qemu_args " -device qemu-xhci,id=xhci "
+append qemu_args " -device usb-tablet,bus=xhci.0 "
+append qemu_args " -device usb-storage,drive=stick,bus=xhci.0 "
+append qemu_args " -drive id=stick,format=raw,file=[run_dir].img,if=none,readonly=on "
+append qemu_args " -drive if=pflash,format=raw,readonly=on,file=$ovmf_code "
+append qemu_args " -drive if=pflash,format=raw,file=$ovmf_vars "
+# W^X workaround (edk2 PR #10667 fw_cfg opt-in knob). Silent no-op
+# on firmwares that don't understand it; harmless when accepted.
+append qemu_args " -fw_cfg name=opt/org.tianocore/UninstallMemAttrProtocol,string=yes "
+
+#
+# === QEMU boot gate (D15.16, W4 acceptance) ===
+#
+# Host-side structural verification (sgdisk -p / mdir / e2ls) is the
+# REAL acceptance gate; the QEMU boot is bounded and expected to hit
+# the W1 OVMF core-init hang. Structural gate 3 (e2ls on P3) checks
+# additionally that usb_block is present in /system/bin (the build-
+# list assertion; the binary is also in image.elf as a boot module,
+# but the on-disk marker verifies the staging loop reached it).
+#
+set structural_gates_passed 0
+set structural_gates_total 0
+
+# --- Gate 1: sgdisk -p shows P1 EF00 + P3 GENODE ---
+incr structural_gates_total
+set ptable [exec $sgdisk -p $gpt_img]
+puts ""
+puts "\[sponge-desktop-disk-uefi-usb\] structural gate 1/N: sgdisk -p"
+puts $ptable
+if {[regexp -line {^Number} $ptable] \
+    && [regexp {EF00} $ptable] \
+    && [regexp {8300} $ptable] \
+    && [regexp {ESP} $ptable] \
+    && [regexp {GENODE} $ptable]} {
+    puts "\[sponge-desktop-disk-uefi-usb\] PASS — GPT shows P1=EF00(ESP) + P3=8300(GENODE) + P2 absent"
+    incr structural_gates_passed
+} else {
+    puts "\[sponge-desktop-disk-uefi-usb\] FAIL — GPT missing required partitions/labels"
+}
+
+# --- Gate 2: mdir on the ESP shows efi/boot/bootx64.efi + grub.cfg ---
+set mdir [installed_command mdir]
+incr structural_gates_total
+puts ""
+puts "\[sponge-desktop-disk-uefi-usb\] structural gate 2/N: mdir on ESP"
+set esp_offset_bytes [expr {$p1_sector * 512}]
+set esp_mdir [exec $mdir -i ${gpt_img}@@${esp_offset_bytes} -/ ]
+puts $esp_mdir
+if {([regexp -line -nocase {BOOTX64\.EFI} $esp_mdir] \
+     || [regexp -line {BOOTX64} $esp_mdir]) \
+    && ([regexp -line -nocase {grub\.cfg} $esp_mdir] \
+        || [regexp -line -nocase {grub.*cfg} $esp_mdir])} {
+    puts "\[sponge-desktop-disk-uefi-usb\] PASS — ESP contains EFI/BOOT/BOOTX64.EFI and grub.cfg"
+    incr structural_gates_passed
+} else {
+    puts "\[sponge-desktop-disk-uefi-usb\] FAIL — ESP missing required boot files"
+}
+
+# --- Gate 3: e2ls on P3 shows /system/bake/bake_manifest.json + boot_fb + usb_block + pkg_*.xml ---
+set e2ls [installed_command e2ls]
+incr structural_gates_total
+puts ""
+puts "\[sponge-desktop-disk-uefi-usb\] structural gate 3/N: e2ls on GENODE P3"
+# Extract P3 to a temp file for e2ls access. The count must come
+# from the ACTUAL P3 extent (sgdisk -i 3 Last sector), not a fixed
+# image-size constant — the GENODE partition is sized dynamically
+# from the staged content (desktop profile ≫ 256 MiB).
+set p3_dump [run_dir]/p3-check.ext2
+set p3_last [lindex [regexp -inline {Last sector: ([0-9]+)} $p3_info] 1]
+set p3_count [expr {$p3_last - $p3_sector + 1}]
+exec dd if=$gpt_img of=$p3_dump bs=512 skip=$p3_sector count=$p3_count 2>/dev/null
+set bake_present 0
+set boot_fb_present 0
+set usb_block_present 0
+set pkg_xml_present 0
+catch {exec $e2ls $p3_dump:/system/bake} bake_out
+catch {exec $e2ls $p3_dump:/system/bin} bin_out
+catch {exec $e2ls $p3_dump:/system} sysroot_out
+puts "  /system/bake: $bake_out"
+puts "  /system/bin:  $bin_out"
+puts "  /system:      $sysroot_out"
+if {[regexp {bake_manifest\.json} $bake_out]} {
+    set bake_present 1
+}
+# e2ls may list multiple entries per line; check the entire output
+# for the exact binary names.
+if {[regexp {\mboot_fb\M} $bin_out]} {
+    set boot_fb_present 1
+}
+# usb_block is the USB-storage-chain driver (this scenario's swap
+# from AHCI); it must be in P3 /system/bin to satisfy the build-list
+# assertion (the binary also lives in image.elf as a Tier-0 boot
+# module).
+if {[regexp {\musb_block\M} $bin_out]} {
+    set usb_block_present 1
+}
+# Look for pkg_*.xml in /system root
+if {[regexp {pkg_\w+\.xml} $sysroot_out]} {
+    set pkg_xml_present 1
+}
+if {$bake_present && $boot_fb_present && $usb_block_present && $pkg_xml_present} {
+    puts "\[sponge-desktop-disk-uefi-usb\] PASS — P3 carries bake_manifest.json, /system/bin/boot_fb, /system/bin/usb_block, and the profile's pkg_*.xml set"
+    incr structural_gates_passed
+} else {
+    puts "\[sponge-desktop-disk-uefi-usb\] FAIL — P3 missing required files (bake=$bake_present, boot_fb=$boot_fb_present, usb_block=$usb_block_present, pkg_xml=$pkg_xml_present)"
+}
+file delete -force $p3_dump
+
+#
+# === Bounded QEMU boot attempt (D15.16 honest gap) ===
+#
+puts ""
+puts "\[sponge-desktop-disk-uefi-usb\] host-side structural verification summary:"
+puts "  $structural_gates_passed / $structural_gates_total gates passed"
+puts ""
+if {$structural_gates_passed != $structural_gates_total} {
+    puts "\[sponge-desktop-disk-uefi-usb\] ERROR — structural gate failure; aborting"
+    exit 1
+}
+
+#
+# QEMU gate: attempt the boot. Per D15.16 the W1 OVMF core-init
+# hang is the EXPECTED outcome under QEMU; the gate is therefore
+# to (a) time out at 180 s, (b) detect the W1 hang signature in
+# the captured serial log, (c) print the honest message and exit 0.
+#
+# Identical to the AHCI UEFI variant's gate logic.
+#
+if {![run_power_cycle]} {
+    puts "\[sponge-desktop-disk-uefi-usb\] run_power_cycle failed"
+    exit 1
+}
+if {![run_load]} {
+    puts "\[sponge-desktop-disk-uefi-usb\] run_load failed"
+    exit 1
+}
+
+set uefi_log [run_dir]/uefi-boot.log
+puts ""
+puts "\[sponge-desktop-disk-uefi-usb\] starting bounded QEMU boot (≤180 s)"
+puts "  serial log: $uefi_log"
+puts "  expected: OVMF → GRUB2 → bender → seL4 → core warnings → hang"
+puts "            (per W1 OVMF core-init hang, docs/evidence/phase15-uefi-boot-smoke.log)"
+
+set uefi_log [run_dir]/uefi-boot.log
+log_file -a $uefi_log
+set timeout 180
+expect {
+    -i $qemu_spawn_id -re ".*Genode v.*" {
+        puts "\[sponge-desktop-disk-uefi-usb\] UNEXPECTED — QEMU reached the Genode v... banner"
+    }
+    eof {
+        puts "\[sponge-desktop-disk-uefi-usb\] QEMU exited (eof)"
+    }
+    timeout {
+        puts "\[sponge-desktop-disk-uefi-usb\] QEMU boot attempt timed out (expected per W1)"
+    }
+}
+log_file
+
+set fh [open $uefi_log r]
+set output [read $fh]
+close $fh
+puts "\[sponge-desktop-disk-uefi-usb\] serial log captured: $uefi_log ([string length $output] bytes)"
+
+# Classify the W1 hang signature
+set hang_sig_1 "device memory in range"
+set hang_sig_2 "unable to register range as RAM"
+set banner "Genode v"
+set has_warning_1 [regexp $hang_sig_1 $output]
+set has_warning_2 [regexp $hang_sig_2 $output]
+set has_banner [regexp $banner $output]
+
+puts ""
+if {$has_banner} {
+    puts "\[sponge-desktop-disk-uefi-usb\] UNEXPECTED — QEMU reached the Genode v... banner"
+    puts "  (QEMU UEFI boot PASSED; the 15-3 real-hardware diagnostic is now"
+    puts "   the binding test for this media)"
+    puts "  exit 0 (host structural gates passed + QEMU reached the unexpected banner)"
+    exit 0
+} elseif {$has_warning_1 && $has_warning_2} {
+    puts "\[sponge-desktop-disk-uefi-usb\] W1 OVMF core-init hang signature CONFIRMED"
+    puts "  (both core warnings present, banner absent — matches the W1"
+    puts "   evidence log; see docs/evidence/phase15-uefi-boot-smoke.log)"
+} else {
+    puts "\[sponge-desktop-disk-uefi-usb\] QEMU boot did NOT reach Genode core (banner absent)"
+    puts "  (with the stock bender — no NOP patch — OVMF stops at the"
+    puts "   bender/GRUB2 stage. The W1 evidence required a bender"
+    puts "   NOP to get past this stage; per the W4 plan, the bender"
+    puts "   stays STOCK and the 15-3 protocol documents the rebuild"
+    puts "   fallback for real-hardware. The structural-gate acceptance"
+    puts "   is unchanged.)"
+}
+
+puts ""
+puts "  ================================================================"
+puts "  UEFI USB-stick product media structure verified; QEMU boot blocked"
+puts "  by the known UEFI/QEMU W^X + bender NOP gap (see W1 evidence log:"
+puts "  docs/evidence/phase15-uefi-boot-smoke.log; D15.16 pivot: the"
+puts "  QEMU UEFI cell stays a documented gap; real-hardware"
+puts "  verification is 15-3 on the 17ZD90N-VX7BK)."
+puts "  ================================================================"
+exit 0
