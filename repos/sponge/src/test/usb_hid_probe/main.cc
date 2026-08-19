@@ -1,75 +1,96 @@
 /*
  * SPDX-License-Identifier: LicenseRef-SpongeOS-Proprietary
  *
- * usb_hid_probe — Phase 12 W4 USB HID hotplug probe (docs/plans/
- * phase12-hardware.md §"W4: USB boot and USB keyboard scenarios",
- * Risk 20 mitigation).
+ * usb_hid_probe — USB HID hotplug probe (Phase 12 W4 + Phase 15 W5;
+ * docs/plans/phase12-hardware.md §"W4: USB boot and USB keyboard
+ * scenarios" Risk 20 mitigation, docs/plans/phase15-real-hardware-
+ * boot.md §W5 USB-mouse envelope).
  *
  * Opens ROM "report" — the pc_usb_host (drivers/usb_host/pc) device
  * enumeration report relayed through the drivers sub-init's
  * report_rom (policy "label: usb_hid -> report | report: usb ->
  * devices" in run/sponge-de-sel4-interactive.run:271 and friends).
  *
- * Watches the ROM for the lifecycle of a USB keyboard device:
+ * Watches the ROM for the lifecycle of two USB HID device classes:
  *
- *   - When a device entry containing the substring "Keyboard" appears
- *     (case-sensitive; matches the QEMU usb-kbd device model name in
- *     the pc_usb_host devices report's `<device name="...">` attribute
- *     — see genode/repos/pc/src/driver/usb_host/pc/README for the
- *     report format), logs:
+ *   1. USB keyboard (Phase 12 W4 contract):
  *
- *         usb_hid: KEYBOARD detected
+ *        - "Keyboard" substring first appears (QEMU usb-kbd model
+ *          hot-plugged) → logs "usb_hid: KEYBOARD detected" once.
+ *        - "Keyboard" substring disappears on a subsequent update
+ *          (QEMU device_del succeeded) → logs "usb_hid: KEYBOARD
+ *          removed" once.
  *
- *     exactly once. The plan risk-20 ordered chain uses this literal
- *     marker as the distinguishing gate that a PS/2-only run cannot
- *     satisfy (the report only gains a Keyboard entry when the QEMU
- *     usb-kbd hotplug succeeds).
+ *   2. USB mouse (Phase 15 W5 contract, docs/15-hardware-
+ *      compatibility.md §"Phase 15 cells"):
  *
- *   - When the previously-present Keyboard entry disappears on a
- *     subsequent ROM update (the QMP device_del succeeded), logs:
+ *        - "Mouse" substring first appears (QEMU usb-mouse model
+ *          hot-plugged, after the existing usb-tablet baseline is
+ *          already bound) → logs "usb_hid: MOUSE detected" once.
+ *        - "Mouse" substring disappears on a subsequent update
+ *          (QEMU device_del succeeded) → logs "usb_hid: MOUSE
+ *          removed" once.
  *
- *         usb_hid: KEYBOARD removed
+ * Both substring searches are case-sensitive byte scans across the
+ * whole ROM. The pc_usb_host devices report emits device names as
+ * `<device name="...">` attributes (see
+ * genode/repos/pc/src/driver/usb_host/pc/README for the schema).
+ * The QEMU usb-kbd model surfaces as "QEMU USB Keyboard" (the
+ * "Keyboard" substring catches it); the QEMU usb-mouse model
+ * surfaces as "QEMU USB Mouse" (the "Mouse" substring catches it).
  *
- *     exactly once. The plan risk-20 ordered chain uses this marker to
- *     gate the subsequent send-key step (the keyboard must be removed
- *     before the run script proceeds).
+ * The two lifecycles are observed independently — one and the same
+ * ROM update can advance both if both devices are present (the
+ * Phase 15 W5 scenario boots WITHOUT a mouse, then QMP hot-plugs
+ * one, so by construction only the MOUSE transitions fire). A
+ * future scenario that hot-plugs BOTH could see both lifecycles
+ * interleaved; the probe treats them as two parallel state
+ * machines with the same ROM-update source.
  *
- * The probe does NOT exit on either marker — both events are observed
- * transitions on a single continuous probe. The probe keeps observing
- * until the parent (init) tears it down via env.parent().exit() at
- * the end of the run script.
+ * The probe does NOT exit on any marker — both events are
+ * observed transitions on a single continuous probe. The probe
+ * keeps observing until the parent (init) tears it down via
+ * env.parent().exit() at the end of the run script.
  *
  * === Probe semantics ===
  *
  *   - The ROM arrives asynchronously (report_rom creates an empty
  *     module on the first reader lookup, before the writer has
  *     published). The probe subscribes to ROM update signals and
- *     scans on every update; an "is_present" boolean tracks the
- *     transition.
+ *     scans on every update; per-device "is_present" booleans
+ *     track the transitions.
  *
- *   - "Keyboard" is a substring search of the whole report; the
- *     pc_usb_host devices report emits the device name as the
- *     `<device name="...">` attribute (e.g.
- *     `<device name="usb-1-1" ...>`). The QEMU usb-kbd device model
- *     surfaces under the bus-id assigned by QEMU at hotplug time.
- *     The substring "Keyboard" inside the device name is what
- *     identifies it as a keyboard (the QEMU device model's
+ *   - "Keyboard" / "Mouse" are substring searches of the whole
+ *     report; the pc_usb_host devices report emits the device
+ *     name as the `<device name="...">` attribute (e.g.
+ *     `<device name="usb-1-1" ...>`). The QEMU usb-kbd device
+ *     model surfaces under the bus-id assigned by QEMU at hotplug
+ *     time. The substring "Keyboard" inside the device name is
+ *     what identifies it as a keyboard (the QEMU device model's
  *     internal product string is exposed in the `<config>` /
- *     `<interface>` block too, but the device-name attribute is the
- *     cleanest discriminator). If the future QEMU version surfaces
- *     a different attribute, the substring match is robust enough to
- *     catch it as long as "Keyboard" appears in any field.
+ *     `<interface>` block too, but the device-name attribute is
+ *     the cleanest discriminator). The same substring rule
+ *     applies to the usb-mouse model.
  *
  *   - The probe does NOT distinguish "keyboard" from "keypad" or
  *     other HID keyboard-class devices. Both carry "Keyboard" or
- *     close, so the substring is sufficient for the W4 audit chain.
- *     A more precise class-only check would require parsing the
- *     `<interface class="0x3 subclass="0x1">` block; the substring
- *     approach is intentionally simple.
+ *     close, so the substring is sufficient for the W4 audit
+ *     chain. A more precise class-only check would require
+ *     parsing the `<interface class="0x3 subclass="0x1">` block;
+ *     the substring approach is intentionally simple.
  *
- *   - On ROM signal: scan the new content. If Keyboard was absent
- *     and is now present → log "detected". If Keyboard was present
- *     and is now absent → log "removed". Otherwise no log line.
+ *   - The Mouse substring is also fuzzy: any USB device whose
+ *     surfaced name contains "Mouse" matches. The QEMU usb-mouse
+ *     device model name is "QEMU USB Mouse" so this catches the
+ *     intended case. A wired/wireless OEM mouse with a different
+ *     product string ("Logitech M525" etc.) would NOT match —
+ *     but the Phase 15 W5 scenario targets QEMU, where the
+ *     QEMU-model-name substring holds.
+ *
+ *   - On ROM signal: scan the new content. If Keyboard/Mouse was
+ *     absent and is now present → log "detected". If present and
+ *     is now absent → log "removed". Otherwise no log line. Each
+ *     lifecyele is independent.
  *
  * === Failure modes ===
  *
@@ -79,14 +100,19 @@
  *     FAIL rather than spinning forever (the run script's bounded
  *     run_genode_until timeout is the ultimate backstop).
  *
- *   - Keyboard never appears (QMP device_add was rejected by QEMU,
- *     or the device model lacks a Keyboard surface): no "detected"
- *     log line, the run script's gate waits until timeout and fails
- *     loudly.
+ *   - Keyboard / Mouse never appears (QMP device_add was rejected
+ *     by QEMU, or the device model lacks the surface): no
+ *     "detected" log line, the run script's gate waits until
+ *     timeout and fails loudly.
  *
- *   - Keyboard stays after device_del (QEMU ignored device_del): no
- *     "removed" log line, the run script's gate waits until timeout
- *     and fails loudly.
+ *   - Keyboard / Mouse stays after device_del (QEMU ignored
+ *     device_del): no "removed" log line, the run script's gate
+ *     waits until timeout and fails loudly.
+ *
+ *   - A non-keyboard/non-mouse USB device (a tablet, a hub) appears
+ *     in the report: substrings absent → no transition logged.
+ *     Test still passes (the marker is a function of the
+ *     substrings only).
  */
 
 #include <base/attached_rom_dataspace.h>
@@ -124,6 +150,11 @@ struct Main
 	bool    _done_detect { false };
 	bool    _done_remove { false };
 
+	bool    _mouse_seen { false };
+	bool    _mouse_present { false };
+	bool    _mouse_done_detect { false };
+	bool    _mouse_done_remove { false };
+
 	Main(Env &env) : _env(env)
 	{
 		_report_rom.sigh(_update_handler);
@@ -146,27 +177,42 @@ struct Main
 			? _report_rom.size() : MAX_ROM_BYTES;
 
 		/*
-		 * Substring scan: locate "Keyboard" anywhere in the report.
-		 * The pc_usb_host devices report uses '<device name="...">'
-		 * attributes that contain the QEMU device model's product
-		 * string; the usb-kbd model names itself "Keyboard" in that
-		 * string. A simple byte-search is robust against future
-		 * schema changes as long as the surface token stays the same.
+		 * Substring scans: locate "Keyboard" / "Mouse" anywhere in
+		 * the report. The pc_usb_host devices report uses
+		 * '<device name="...">' attributes that contain the QEMU
+		 * device model's product string; the usb-kbd model names
+		 * itself "Keyboard" in that string; the usb-mouse model
+		 * names itself "Mouse". A simple byte-search is robust
+		 * against future schema changes as long as the surface
+		 * tokens stay the same.
 		 */
-		bool const now_present = _substring(base, avail, "Keyboard");
+		bool const now_keyboard_present = _substring(base, avail, "Keyboard");
+		bool const now_mouse_present    = _substring(base, avail, "Mouse");
 
-		if (now_present && !_keyboard_seen) {
+		if (now_keyboard_present && !_keyboard_seen) {
 			_keyboard_seen = true;
 			log("usb_hid: KEYBOARD detected");
 			_done_detect = true;
 		}
 
-		if (!now_present && _keyboard_seen) {
+		if (!now_keyboard_present && _keyboard_seen) {
 			log("usb_hid: KEYBOARD removed");
 			_done_remove = true;
 		}
 
-		_keyboard_present = now_present;
+		if (now_mouse_present && !_mouse_seen) {
+			_mouse_seen = true;
+			log("usb_hid: MOUSE detected");
+			_mouse_done_detect = true;
+		}
+
+		if (!now_mouse_present && _mouse_seen) {
+			log("usb_hid: MOUSE removed");
+			_mouse_done_remove = true;
+		}
+
+		_keyboard_present = now_keyboard_present;
+		_mouse_present    = now_mouse_present;
 	}
 
 	static bool _substring(char const *base, size_t avail, char const *needle)
