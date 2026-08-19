@@ -1,0 +1,135 @@
+#
+# Phase 15 W3: baked defaults seed once, then persistent user state wins.
+# The base-linux lx_fs topology is intentional: two fresh core/init boots can
+# share one host-backed configd store without the unrelated P4 disk-driver
+# stack. The production-kernel reset path is covered by sponge-bake-reset.run.
+#
+
+assert {[have_spec linux]} \
+	"sponge-bake-firstboot requires KERNEL=linux (BOARD=pc)."
+
+build { core lib/ld init timer server/report_rom server/lx_fs \
+        server/cached_fs_rom lib/vfs sponge_configd test/bake_probe }
+
+create_boot_directory
+
+install_config {
+config
++ parent-provides
+  + service LOG
+  + service PD
+  + service CPU
+  + service ROM
+
++ default-route
+  + any-service
+    + parent
+    + any-child
++ default | caps: 200 | ram: 8M
+
++ start timer
+  + provides | + service Timer
+
++ start lx_fs | ld: no
+  + provides | + service File_system
+  + config
+    + policy | label_prefix: rom_bake      | root: /system/bake | writeable: no
+    + policy | label_prefix: sponge_configd | root: /persist     | writeable: yes
+
++ start rom_bake | caps: 200 | ram: 8M
+  + binary cached_fs_rom
+  + provides | + service ROM
+  + route
+    + service File_system | + child lx_fs
+    + any-service
+      + parent
+      + any-child
+
++ start report_rom | ram: 4M
+  + provides
+    + service Report
+    + service ROM
+  + config | verbose: no
+    + policy | label: sponge_configd -> config_request | report: bake_probe -> config_request
+    + policy | label: bake_probe -> config_result      | report: sponge_configd -> config_result
+    + policy | label: bake_probe -> broadcast          | report: sponge_configd -> config
+
++ start sponge_configd | caps: 300 | ram: 16M
+  + config
+    + bake
+    + vfs
+      + fs
+  + route
+    + service File_system | + child lx_fs
+    + service ROM | label: bake_config_defaults | + child rom_bake | label: config.defaults
+    + service ROM | label: bake_manifest        | + child rom_bake | label: bake_manifest.json
+    + service ROM | label_last: config_request  | + child report_rom
+    + service Report | + child report_rom
+    + any-service
+      + parent
+      + any-child
+
++ start bake_probe | caps: 200 | ram: 8M
+  + route
+    + service Timer | + child timer
+    + service ROM | label: config | + parent | label: bake_probe_config
+    + service ROM | label: config_result | + child report_rom
+    + service ROM | label: broadcast     | + child report_rom
+    + service Report | + child report_rom
+    + any-service
+      + parent
+      + any-child
+- }
+
+set bake_dir "[run_dir]/genode/system/bake"
+file mkdir $bake_dir
+set defaults [open "$bake_dir/config.defaults" w]
+puts $defaults {panel.height=28}
+puts $defaults {panel.visible_widgets=clock,launcher}
+puts $defaults {clock.format=HH:mm}
+puts $defaults {launcher.sort_by=alpha}
+close $defaults
+set manifest [open "$bake_dir/bake_manifest.json" w]
+puts $manifest {{
+  "schema": "bake.config_version",
+  "schema_version": 1,
+  "profile": "minimal",
+  "profile_config_version": 1,
+  "mode": "img",
+  "theme": "default"
+}}
+close $manifest
+file mkdir "[run_dir]/genode/persist"
+
+build_boot_image [build_artifacts]
+append qemu_args " -nographic -m 512M "
+
+proc write_bake_probe_mode { mode } {
+	set config [open "[run_dir]/genode/bake_probe_config" w]
+	puts $config "<config mode=\"$mode\"/>"
+	close $config
+}
+
+puts "--- bake first boot: seed defaults and write user override ---"
+write_bake_probe_mode firstboot-write
+run_genode_until {.*bake-firstboot-probe: PASS boot1.*} 60
+
+set store_path "[run_dir]/genode/persist/store.xml"
+if {![file exists $store_path]} {
+	puts stderr "sponge-bake-firstboot: FAIL store.xml absent after boot 1"
+	exit 1
+}
+set store_file [open $store_path r]
+set store_data [read $store_file]
+close $store_file
+if {![regexp {<entry name="bake.applied" value="yes"/>} $store_data] ||
+    ![regexp {<entry name="panel.height" value="64"/>} $store_data]} {
+	puts stderr "sponge-bake-firstboot: FAIL boot-1 store lacks sentinel or override: $store_data"
+	exit 1
+}
+puts "sponge-bake-firstboot: boot1 store has bake.applied=yes panel.height=64"
+
+puts "--- bake second boot: restored override must suppress re-seed ---"
+write_bake_probe_mode firstboot-read
+run_genode_until {.*bake-firstboot-probe: PASS boot2.*} 60
+puts "sponge-bake-firstboot: PASS"
