@@ -151,6 +151,7 @@ struct Cell(Copyable, Movable):
     var budget: String
     var target: String
     var reason: String
+    var qemu_envelope: String
 
     def __init__(
         out self,
@@ -165,6 +166,7 @@ struct Cell(Copyable, Movable):
         budget: String,
         target: String,
         reason: String,
+        qemu_envelope: String,
     ):
         self.row_index = row_index
         self.raw = raw
@@ -177,6 +179,7 @@ struct Cell(Copyable, Movable):
         self.budget = budget
         self.target = target
         self.reason = reason
+        self.qemu_envelope = qemu_envelope
 
 
 def normalize_cell(row_index: Int, raw: String, cells: List[String]) raises -> Cell:
@@ -188,7 +191,9 @@ def normalize_cell(row_index: Int, raw: String, cells: List[String]) raises -> C
     #   1: "#"  2: Machine  3: CPU  4: Storage  5: NIC  6: Input
     #   7: Status  8: Scenario  9: Marker  10: Evidence  11: QEMU
     #   12: boot_time_seconds  13: budget_seconds  14: Target
-    #   15: Reason  16: ""
+    #   15: Reason  16: qemu_envelope (Phase 15 D15.11 — present
+    #       ONLY on real-hardware gap rows; absent on qemu rows)
+    #   17: ""
     var cell = Cell(
         row_index=row_index,
         raw=raw,
@@ -201,6 +206,7 @@ def normalize_cell(row_index: Int, raw: String, cells: List[String]) raises -> C
         budget=String(cells[13]),
         target=String(cells[14]),
         reason=String(cells[15]) if len(cells) > 15 else String(""),
+        qemu_envelope=String(cells[16]) if len(cells) > 16 else String(""),
     )
     return cell^
 
@@ -214,10 +220,17 @@ def parse_cross_product(doc: String) raises -> List[Cell]:
     ignored — it is a textual description, not a row list.
     """
     var lines = split_lines(doc)
-    var start = find_section(lines, "## 2. 16-cell cross-product ledger")
+    # Phase 15: the heading is now "## 2. 17-cell cross-product ledger";
+    # Phase 12 baseline was "## 2. 16-cell cross-product ledger". Try
+    # the Phase 15 spelling first, then fall back to the Phase 12
+    # spelling.
+    var start = find_section(lines, "## 2. 17-cell cross-product ledger")
+    if start < 0:
+        start = find_section(lines, "## 2. 16-cell cross-product ledger")
     if start < 0:
         print("error: could not find cross-product section heading in docs/15")
-        print("expected line starting with: ## 2. 16-cell cross-product ledger")
+        print("expected line starting with: ## 2. 17-cell cross-product ledger")
+        print("                  or: ## 2. 16-cell cross-product ledger")
         exit(EXIT_RULE_FAIL)
 
     # The header row of the cross-product table is the first table row
@@ -243,7 +256,10 @@ def parse_cross_product(doc: String) raises -> List[Cell]:
         if not stripped.startswith("|"):
             break
         var row_cells = split_cells(line)
-        if len(row_cells) < 16:
+        # Phase 12 schema: 17 total cells (15 data + leading/trailing).
+        # Phase 15 D15.11 adds an optional 16th data column
+        # (`qemu_envelope`) for real-hardware rows. We accept both.
+        if len(row_cells) < 17:
             print(
                 "error: cross-product row " + String(row_index + 1)
                 + " has fewer than 15 data columns (got "
@@ -321,20 +337,43 @@ def cmd_assert(doc_path: String) raises:
     var doc = read_text_file(doc_path)
 
     # Structural check 1: the section heading must exist.
-    if doc.find("## 2. 16-cell cross-product ledger") < 0:
+    # Phase 12: "## 2. 16-cell cross-product ledger".
+    # Phase 15 D15.11: the heading changed to "## 2. 17-cell cross-product
+    # ledger" (one row added — the single real-hardware row). Accept
+    # either spelling.
+    if doc.find("## 2. 17-cell cross-product ledger") < 0
+       and doc.find("## 2. 16-cell cross-product ledger") < 0:
         print("FAIL: cross-product section heading missing")
-        print("expected line starting with: ## 2. 16-cell cross-product ledger")
+        print("expected line starting with: ## 2. 17-cell cross-product ledger")
+        print("                  or: ## 2. 16-cell cross-product ledger")
         exit(EXIT_RULE_FAIL)
 
     # Structural check 2: the mandated summary row text must be
-    # present (risk 24 mitigation).
-    if doc.find(
+    # present (risk 24 mitigation + Phase 15 D15.11).
+    # Phase 12: "Phase 12 status: 4 verified, 1 smoke-only, 11 gap cells."
+    # Phase 15: the headline was extended with the D15.11 + cell counts.
+    # Accept either phrasing (the Phase 15 headline now reads
+    # "Phase 12 status: 4 verified, 1 smoke-only, 11 gap cells." for
+    # backward compatibility + "Combined cross-product (validator-
+    # enforced): 4 verified, 1 smoke-only, 12 gap = 17 cells." for the
+    # D15.11 amendment).
+    var found_summary = doc.find(
         "Phase 12 status: 4 verified, 1 smoke-only, 11 gap cells."
-    ) < 0:
+    ) >= 0
+    var found_combined = doc.find(
+        "Combined cross-product"
+    ) >= 0 and doc.find(
+        "1 smoke-only, 12 gap"
+    ) >= 0
+    if not found_summary and not found_combined:
         print("FAIL: mandated summary row missing")
         print(
-            "expected exact text: Phase 12 status: 4 verified, 1"
-            " smoke-only, 11 gap cells."
+            "expected exact text: 'Phase 12 status: 4 verified, 1"
+            " smoke-only, 11 gap cells.'"
+        )
+        print(
+            "                or: 'Combined cross-product (...) 1 smoke-only,"
+            " 12 gap = 17 cells.'"
         )
         exit(EXIT_RULE_FAIL)
 
@@ -342,9 +381,10 @@ def cmd_assert(doc_path: String) raises:
     print("  parsed " + String(len(cells)) + " cross-product cell(s)")
     print()
 
-    if len(cells) != 16:
+    if len(cells) != 17:
         print(
-            "FAIL: cross-product must contain exactly 16 cells (got "
+            "FAIL: cross-product must contain exactly 17 cells (Phase 12"
+            + " 16 + Phase 15 D15.11 1 real-hardware row; got "
             + String(len(cells)) + ")"
         )
         exit(EXIT_RULE_FAIL)
@@ -358,16 +398,62 @@ def cmd_assert(doc_path: String) raises:
         var row = String(cell.row_index)
         var status = String(cell.status)
 
-        # Plan step 7 / risk 22: any `target: real-hardware` is rejected
-        # with exit 2 and the exact message — this is checked
-        # unconditionally, before the per-status branching, so a real-
-        # hardware cell never reaches the gap/verified branch.
+        # Plan D15.11 (Phase 15, 2026-08-17): a `target: real-hardware`
+        # cell is admitted ONLY if it carries BOTH:
+        #
+        #   (a) a `qemu-envelope:` field naming a real-existing
+        #       scenario file under run/, AND
+        #   (b) `status: gap` (any stronger status — `verified` or
+        #       `smoke-only` — is still rejected with exit 2 until
+        #       15-3 physical-boot evidence lands; the single 17ZD90N
+        #       row flips to verified only then).
+        #
+        # The Phase 12 reject rule (target: real-hardware without
+        # an envelope) is preserved: any real-hardware cell without
+        # a qemu-envelope is rejected with exit 2.
+        #
+        # This branch is checked unconditionally, before per-status
+        # branching, so a real-hardware cell never reaches the
+        # gap/verified branch until both D15.11 conditions hold.
         if cell.target == "real-hardware":
-            print(
-                "FAIL cell #" + row + ": target: real-hardware is rejected"
-            )
-            print("  " + REAL_HARDWARE_MSG)
-            exit(EXIT_REAL_HARDWARE)
+            # D15.11 (a): qemu-envelope must be present AND the file
+            # must resolve to an existing scenario.
+            if cell.qemu_envelope.byte_length() == 0:
+                print(
+                    "FAIL cell #" + row
+                    + ": target: real-hardware requires a qemu-envelope:"
+                    + " field (D15.11 (a) — policy lifted in Phase 15"
+                    + " only for cells with a QEMU envelope link)"
+                )
+                print("  " + REAL_HARDWARE_MSG)
+                exit(EXIT_REAL_HARDWARE)
+            if not scenario_exists(cell.qemu_envelope):
+                print(
+                    "FAIL cell #" + row
+                    + ": target: real-hardware qemu-envelope scenario does"
+                    + " not exist: " + cell.qemu_envelope
+                    + " (D15.11 (a))"
+                )
+                print("  " + REAL_HARDWARE_MSG)
+                exit(EXIT_REAL_HARDWARE)
+            # D15.11 (b): status must be `gap`; anything stronger
+            # (verified, smoke-only) is rejected until 15-3 evidence.
+            if status != STATUS_GAP:
+                print(
+                    "FAIL cell #" + row
+                    + ": target: real-hardware with status '" + status
+                    + "' is rejected (D15.11 (b) — stronger status"
+                    + " requires 15-3 physical-boot evidence; the"
+                    + " single 17ZD90N row may flip to verified only"
+                    + " after the user-executed physical boot)"
+                )
+                print("  " + REAL_HARDWARE_MSG)
+                exit(EXIT_REAL_HARDWARE)
+            # All D15.11 conditions hold; fall through to per-status
+            # branching with status=gap (the gap-cell rule).
+            gap += 1
+            failures += check_gap_cell(cell)
+            continue
 
         if status != STATUS_VERIFIED and status != STATUS_SMOKE and status != STATUS_GAP:
             print(
@@ -393,7 +479,12 @@ def cmd_assert(doc_path: String) raises:
     print("  cross-product counts: " + String(verified) + " verified, "
           + String(smoke) + " smoke-only, " + String(gap) + " gap")
 
-    # Plan step 7: exactly 4 verified, 1 smoke-only, 11 gap.
+    # Phase 12 plan step 7: exactly 4 verified, 1 smoke-only, 11 gap.
+    # Phase 15 D15.11 / R15.7: +1 gap (the single real-hardware row)
+    # is admitted in Phase 15 (cell #17, target: real-hardware,
+    # qemu-envelope required, status: gap); no other Phase-15 changes
+    # to the cross-product counts. Total: 4 verified, 1 smoke-only,
+    # 12 gap = 17 cells.
     if verified != 4:
         print(
             "FAIL: expected exactly 4 verified cells (got "
@@ -406,9 +497,10 @@ def cmd_assert(doc_path: String) raises:
             + String(smoke) + ")"
         )
         failures += 1
-    if gap != 11:
+    if gap != 12:
         print(
-            "FAIL: expected exactly 11 gap cells (got "
+            "FAIL: expected exactly 12 gap cells (Phase 12 11 gap +"
+            + " Phase 15 D15.11 1 real-hardware gap; got "
             + String(gap) + ")"
         )
         failures += 1
@@ -427,7 +519,7 @@ def cmd_assert(doc_path: String) raises:
         )
         exit(EXIT_RULE_FAIL)
 
-    print("assert: OK (4 verified, 1 smoke-only, 11 gap — all rules pass)")
+    print("assert: OK (4 verified, 1 smoke-only, 12 gap — all rules pass)")
     exit(EXIT_OK)
 
 
