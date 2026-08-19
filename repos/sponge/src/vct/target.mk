@@ -4,6 +4,7 @@ SRC_CC   := main.cc \
             args.cc \
             command_router.cc \
             commands.cc \
+            bake_command.cc \
             init_state.cc \
             notifier_reporter.cc
 LIBS     := base sponge_backend_client

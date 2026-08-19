@@ -69,7 +69,9 @@ struct Args
 	                             * (Phase 14 W11 #43). Reads ram_used /
 	                             * cap_used from the live init state report
 	                             * and renders one line per resource.       */
+	bool help       { false };   /* --help       : command-specific help          */
 
+	Genode::String<32> profile { "" }; /* --profile <name> : bake profile filter */
 	Genode::String<8> lang { "en" };
 
 	/* Non-zero means the user's invocation was truncated. */

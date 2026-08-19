@@ -279,6 +279,31 @@ present), and the literal `list` dispatches to the bulk read. Export
 and import stay on the table so the API surface is honest, but the
 parser does not route them yet either (AGENTS.md §5.3).
 
+#### `vct bake`
+
+```
+vct bake list [--profile <name>] [--json] [--lang ko]
+vct bake show [--profile <name>] [--json] [--lang ko]
+vct bake reset [--profile <name>] [--manual] [--json] [--lang ko]
+vct bake --help
+```
+
+`list` reports the single profile discoverable in this medium's
+`bake_manifest.json`; non-baked media reports `No bake manifest on this
+media.` rather than inventing a profile. `show` reads the same manifest,
+the baked `config.defaults`, and `sponge_configd`'s broadcast ROM to show
+profile/version/applied state plus each baked value beside its current
+value. `vct status` includes `bake: <profile> @ v<version>` or `bake: none`.
+
+`reset` sends the normal configuration-backend request
+`bake.applied=no`. `sponge_configd` then validates and reapplies every
+baked key, restores the baked theme, sets `bake.applied=yes`, persists the
+store, and broadcasts the result. Only keys present in `config.defaults`
+plus `theme.active` are reset; user keys outside that baked set are left
+untouched. `--manual` exposes this as read state, request reseed, then
+persist/broadcast steps. `--profile` filters against the profile actually
+present on the media; it never fetches or synthesizes another profile.
+
 ### 4.5 Hardware
 
 | Command | Purpose |

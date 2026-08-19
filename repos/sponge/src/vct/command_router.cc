@@ -93,6 +93,10 @@ int CommandRouter::dispatch(Args const &args)
 		ConfigCommand c { _env };
 		return c.execute(args);
 	}
+	if (Genode::strcmp(cmd, "bake") == 0) {
+		BakeCommand c { _env };
+		return c.execute(args);
+	}
 	if (Genode::strcmp(cmd, "theme") == 0) {
 		ThemeCommand c { _env };
 		return c.execute(args);
