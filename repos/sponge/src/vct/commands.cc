@@ -28,6 +28,34 @@ using namespace Sponge;
 using namespace Sponge::Vct;
 using Sponge::Backend::ReportRomClient;
 
+namespace {
+
+bool read_config_key(Genode::Env &env, char const *name,
+                     Genode::String<128> &value)
+{
+	try {
+		Genode::Attached_rom_dataspace config { env, "configd" };
+		config.update();
+		if (!config.valid()) return false;
+		bool found { false };
+		config.xml().for_each_sub_node("key", [&] (Genode::Xml_node const &key) {
+			if (!found && key.attribute_value("name", Genode::String<64>()) ==
+			              Genode::String<64>(name)) {
+				value = key.attribute_value("value", Genode::String<128>());
+				found = true;
+			}
+		});
+		return found;
+	}
+	catch (Genode::Rom_connection::Rom_connection_failed) { return false; }
+	catch (Genode::Service_denied) { return false; }
+	catch (Genode::Out_of_ram) { return false; }
+	catch (Genode::Out_of_caps) { return false; }
+	catch (Genode::Xml_node::Invalid_syntax) { return false; }
+}
+
+}  /* namespace */
+
 
 /* ===================== HelpCommand ===================== */
 
@@ -60,6 +88,9 @@ int HelpCommand::execute(Args const &args)
 		Genode::log("  vct config <key>          설정 값 조회");
 		Genode::log("  vct config <key> <value>  설정 값 변경");
 		Genode::log("  vct config list           전체 설정 키 목록");
+		Genode::log("  vct bake show            베이크 프로필과 현재 설정 비교");
+		Genode::log("  vct bake list            이 미디어의 베이크 프로필 보기");
+		Genode::log("  vct bake reset           베이크 기본값 다시 적용");
 		Genode::log("  vct theme apply <name>    바탕화면 테마 적용");
 		Genode::log("  vct leitzentrale          전문가 제어 창 열기 (끄기: vct leitzentrale off)");
 		Genode::log("");
@@ -83,6 +114,9 @@ int HelpCommand::execute(Args const &args)
 		Genode::log("  vct config <key>          Get a configuration value");
 		Genode::log("  vct config <key> <value>  Set a configuration value");
 		Genode::log("  vct config list           List all configuration keys");
+		Genode::log("  vct bake show            Compare baked defaults with current values");
+		Genode::log("  vct bake list            Show the profile carried by this media");
+		Genode::log("  vct bake reset           Restore this media's baked defaults");
 		Genode::log("  vct theme apply <name>    Apply a desktop theme");
 		Genode::log("  vct leitzentrale          Open the Leitzentrale expert window (off: vct leitzentrale off)");
 		Genode::log("");
@@ -119,6 +153,11 @@ int StatusCommand::execute(Args const &args)
 	 * shape. --json composes with both modes.
 	 */
 	InitStateReader state { _env };
+	Genode::String<128> bake_profile { };
+	Genode::String<128> bake_version { };
+	bool const have_bake = read_config_key(_env, "bake.profile", bake_profile) &&
+	                       read_config_key(_env, "bake.version", bake_version) &&
+	                       bake_profile != Genode::String<128>("none");
 
 	if (args.resources) {
 		if (!state.available()) {
@@ -164,6 +203,10 @@ int StatusCommand::execute(Args const &args)
 		Genode::log("=== Sponge OS status --resources ===");
 		Genode::log("vct version: ", Sponge::VERSION_STRING);
 		Genode::log("kernel base: ", Sponge::PLATFORM_BASE);
+		if (have_bake)
+			Genode::log("bake:        ", bake_profile, " @ v", bake_version);
+		else
+			Genode::log("bake:        none");
 		Genode::log("");
 		Genode::log("RESOURCE         USED          QUOTA          AVAIL");
 		Genode::log("init RAM       ",
@@ -192,17 +235,27 @@ int StatusCommand::execute(Args const &args)
 
 	if (args.json) {
 		if (state.available()) {
-			Genode::log("{\"command\":\"status\",\"ram_quota\":\"",
-			            Genode::Number_of_bytes(state.total_ram_quota()),
-			            "\",\"ram_used\":\"",
-			            Genode::Number_of_bytes(state.total_ram_used()),
-			            "\",\"ram_avail\":\"",
-			            Genode::Number_of_bytes(state.total_ram_avail()),
-			            "\",\"components\":",
-			            state.child_count(),
-			            ",\"version\":\"",
-			            Sponge::VERSION_STRING,
-			            "\"}");
+			if (have_bake)
+				Genode::log("{\"command\":\"status\",\"ram_quota\":\"",
+				            Genode::Number_of_bytes(state.total_ram_quota()),
+				            "\",\"ram_used\":\"",
+				            Genode::Number_of_bytes(state.total_ram_used()),
+				            "\",\"ram_avail\":\"",
+				            Genode::Number_of_bytes(state.total_ram_avail()),
+				            "\",\"components\":", state.child_count(),
+				            ",\"version\":\"", Sponge::VERSION_STRING,
+				            "\",\"bake\":{\"profile\":\"", bake_profile,
+				            "\",\"version\":", bake_version, "}}");
+			else
+				Genode::log("{\"command\":\"status\",\"ram_quota\":\"",
+				            Genode::Number_of_bytes(state.total_ram_quota()),
+				            "\",\"ram_used\":\"",
+				            Genode::Number_of_bytes(state.total_ram_used()),
+				            "\",\"ram_avail\":\"",
+				            Genode::Number_of_bytes(state.total_ram_avail()),
+				            "\",\"components\":", state.child_count(),
+				            ",\"version\":\"", Sponge::VERSION_STRING,
+				            "\",\"bake\":null}");
 		} else {
 			Genode::log("{\"command\":\"status\",\"ram_quota\":0,\"ram_used\":0,\"ram_avail\":0,\"components\":0,\"version\":\"",
 			            Sponge::VERSION_STRING,
@@ -215,6 +268,10 @@ int StatusCommand::execute(Args const &args)
 	Genode::log("vct version: ", Sponge::VERSION_STRING);
 	Genode::log("codename:    ", Sponge::CODENAME);
 	Genode::log("kernel base: ", Sponge::PLATFORM_BASE);
+	if (have_bake)
+		Genode::log("bake:        ", bake_profile, " @ v", bake_version);
+	else
+		Genode::log("bake:        none");
 
 	if (state.available()) {
 		if (state.has_error()) {

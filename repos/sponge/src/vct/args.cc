@@ -30,6 +30,15 @@ Genode::String<8> language_from_equals_form(Genode::String<128> const &token)
 }
 
 
+Genode::String<128> value_from_equals_form(Genode::String<128> const &token)
+{
+	char const *const t = token.string();
+	char const *eq = t;
+	while (*eq != '\0' && *eq != '=') eq++;
+	return *eq == '=' ? Genode::String<128>(eq + 1) : Genode::String<128>();
+}
+
+
 bool starts_with(char const *str, char const *prefix)
 {
 	while (*prefix != '\0') {
@@ -77,7 +86,7 @@ void apply_token(Genode::String<128> const &token, Args &out)
 	}
 	if (Genode::strcmp(t, "--help") == 0 ||
 	    Genode::strcmp(t, "-h") == 0) {
-		out.subcommand = Genode::String<32>("help");
+		out.help = true;
 		return;
 	}
 	if (Genode::strcmp(t, "--version") == 0 ||
@@ -93,6 +102,10 @@ void apply_token(Genode::String<128> const &token, Args &out)
 
 	if (starts_with(t, "--lang=" )) {
 		out.lang = language_from_equals_form(token);
+		return;
+	}
+	if (starts_with(t, "--profile=")) {
+		out.profile = Genode::String<32>(value_from_equals_form(token));
 		return;
 	}
 
@@ -212,9 +225,21 @@ Args Sponge::Vct::parse_args(char const *data, Genode::size_t size)
 			}
 			continue;
 		}
+		if (Genode::strcmp(t, "--profile") == 0) {
+			if (i + 1 < token_count) {
+				out.profile = Genode::String<32>(tokens[i + 1]);
+				i++;
+			} else {
+				Genode::warning("vct: --profile requires a profile name");
+			}
+			continue;
+		}
 
 		apply_token(token, out);
 	}
+
+	if (out.help && out.subcommand == Genode::String<32>("status"))
+		out.subcommand = Genode::String<32>("help");
 
 	if (out.dropped > 0) {
 		Genode::warning("vct: dropped ", out.dropped,

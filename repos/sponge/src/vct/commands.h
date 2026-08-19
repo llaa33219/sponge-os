@@ -59,6 +59,21 @@ class StatusCommand : public Command
 		Genode::Env &_env;
 };
 
+class BakeCommand : public Command
+{
+	public:
+		explicit BakeCommand(Genode::Env &env) : _env(env) {}
+		char const *name()    const override { return "bake"; }
+		char const *summary() const override { return "Inspect or restore baked media defaults."; }
+		int execute(Args const &args) override;
+	private:
+		Genode::Env &_env;
+		void _print_help(Args const &args);
+		int _list(Args const &args);
+		int _show(Args const &args);
+		int _reset(Args const &args);
+};
+
 class ComponentListCommand : public Command
 {
 	public:
