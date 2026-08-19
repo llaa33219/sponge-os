@@ -60,6 +60,9 @@ name-sorted:
 
 | key                      | type          | allowed values / constraint                    | default         |
 |--------------------------|---------------|-----------------------------------------------|-----------------|
+| `bake.applied`           | enum          | `yes`, `no` (`no` is the reset trigger)       | `no`            |
+| `bake.profile`           | string        | manifest profile; read-only to users          | `none`          |
+| `bake.version`           | uint          | manifest `profile_config_version`; read-only  | `0`             |
 | `clock.format`           | format string | non-empty, ≤64 printable ASCII characters    | `HH:mm`         |
 | `leitzentrale.enabled`   | enum          | `true`, `false`                               | `false`         |
 | `launcher.sort_by`       | enum          | `manual`, `alpha`                             | `alpha`         |
@@ -68,10 +71,26 @@ name-sorted:
 | `panel.visible_widgets`  | enum-list     | comma-separated `clock`, `launcher` tokens  | `clock,launcher`|
 | `theme.active`           | string        | any non-empty value                           | `light`         |
 
-All seven keys run on both kernel tags and are live-reloadable from the
+All ten stored keys run on both kernel tags and are live-reloadable from the
 configd broadcast. `panel.position` remains a boot-time placement choice:
 configd persists the value in memory, while the run script/domain owns the
 actual panel placement and a reboot is required after changing it.
+
+## Baked defaults (Phase 15 W3)
+
+A deployment opts in with `<bake/>` in configd's component config and routes
+`/system/bake/config.defaults` and `bake_manifest.json` as ROM labels
+`bake_config_defaults` and `bake_manifest`. If the restored store does not
+carry `bake.applied=yes`, configd validates each baked key through the same
+closed registry used by user writes, skips invalid/unknown lines with a
+warning, records profile/version/applied metadata, and saves once. A restored
+`bake.applied=yes` suppresses seeding so user changes survive reboot.
+
+Setting `bake.applied=no` is the explicit reset request used by `vct bake
+reset`: configd reapplies only the baked keys plus `theme.active`, leaving
+all other user keys untouched, then persists and broadcasts with
+`bake.applied=yes`. Without `<bake/>`, no bake ROM sessions are requested and
+pre-Phase-15 behavior is unchanged.
 
 ## Persistence (Phase 14 W6)
 
