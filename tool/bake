@@ -1,0 +1,56 @@
+#!/usr/bin/env bash
+#
+# tool/bake — Sponge OS bake-profile inspector + post-build P3 injector
+# (launcher).
+#
+# Thin shim that delegates to the canonical Mojo implementation in
+# tool/bake.mojo. Resolution order for the mojo binary:
+#   1. mojo on PATH
+#   2. <repo>/.venv/bin/mojo (repo-local uv/venv install)
+# If neither exists, prints install guidance and exits 127.
+#
+# Usage (see tool/bake.mojo for the full contract):
+#   ./tool/bake --list
+#   ./tool/bake --show <profile>
+#   ./tool/bake --img <file> --profile <name> [--dry-run]
+#   ./tool/bake help
+#
+# The tool is the host-side, post-build half of the bake machinery
+# (Phase 15 W2b, D15.8). The staging-time half is run/bake.inc (W2a).
+# See docs/plans/phase15-real-hardware-boot.md for the binding plan,
+# docs/14-boot-storage-architecture.md §4.3 for the GENODE P3 layout
+# this tool mutates, and docs/08-development.md §11 for the manual
+# escape hatch (AGENTS.md §3.5).
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+MOJO_FILE="$SCRIPT_DIR/bake.mojo"
+VENV_MOJO="$REPO_ROOT/.venv/bin/mojo"
+
+if command -v mojo >/dev/null 2>&1; then
+    MOJO_BIN="mojo"
+elif [ -x "$VENV_MOJO" ]; then
+    MOJO_BIN="$VENV_MOJO"
+else
+    cat >&2 <<EOF
+[sponge-bake] mojo SDK not found on PATH and no repo-local install at
+$VENV_MOJO.
+
+The canonical Sponge OS tooling is written in Mojo (Modular's language).
+Install the Mojo SDK to use this wrapper:
+
+  https://docs.modular.com/mojo/manual/get-started/
+
+Or install it into this repository's virtualenv (pinned by uv.lock):
+
+  uv sync
+
+Once installed, run directly:
+  mojo $MOJO_FILE "$@"
+EOF
+    exit 127
+fi
+
+exec "$MOJO_BIN" "$MOJO_FILE" "$@"

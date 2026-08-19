@@ -29,10 +29,11 @@ the idiomatic Mojo pattern for missing functionality.
 
 | Launcher              | Mojo source              | Purpose                                                      | Status |
 |-----------------------|--------------------------|--------------------------------------------------------------|--------|
+| `./tool/bake`         | `tool/bake.mojo`         | Bake-profile inspector (`--list`, `--show`) + post-build P3 injector (`--img`, idempotent, sgdisk-verified, D15.5 size-budget) — Phase 15 W2b | ✅ works |
 | `./tool/build`        | `tool/build.mojo`        | Top-level build wrapper (`prepare`, `ports`, `list`, `run`, `verify`) | ✅ works |
 | `./tool/check-compile`| `tool/check_compile.mojo`| Structural sanity check for a component                      | ✅ works |
 | `./tool/patches`      | `tool/patches.mojo`      | Patch ledger manager (`list`, `verify`, `export`, `drop`)    | ✅ works |
-| `./tool/dist`         | `tool/dist.mojo`         | Alpha distribution media builder (`.img` + `.iso` into `var/dist/`) with `--storage {ahci,nvme}` selector (Phase 12) | ✅ works |
+| `./tool/dist`         | `tool/dist.mojo`         | Alpha distribution media builder (`.img` + `.iso` into `var/dist/`) with `--storage {ahci,nvme,usb}` (Phase 12 + Phase 15 15-3) + `--bake-profile {minimal,desktop,none}` + `--firmware {bios,uefi}` (Phase 15 W2/W4; `--firmware uefi` produces a UEFI .img + skips the .iso; `--storage usb` is UEFI-only and produces the 15-3 USB-stick artifact) | ✅ works |
 | `./tool/hw_compat`    | `tool/hw_compat.mojo`    | Read-only hardware-compatibility validator (`assert`, `help`) — validates `docs/15-hardware-compatibility.md` (Phase 12) | ✅ works |
 | `./tool/mkdata`       | `tool/mkdata.mojo`       | Grow SPONGE-DATA (P4) onto an image/disk `.img` (docs/14 §4.3; idempotent) | ✅ works |
 | `./tool/pkg_import`   | `tool/pkg_import.mojo`   | Host-side Genode depot → Sponge pkg/ repackager (Phase 7 todo 11) | ✅ works |
@@ -105,24 +106,147 @@ repository — `drop` prints manual instructions, it never reverts.
 The manual equivalent of each subcommand is documented in
 docs/11-environment.md §4.1.
 
-### dist (Phase 12 storage selector)
+### dist (Phase 12 storage selector + Phase 15 W2 bake-profile + W4 firmware + 15-3 USB)
 ```bash
-./tool/dist                      # build the default product media (env/config-driven)
-./tool/dist --storage ahci       # default: AHCI product-media (current behavior)
-./tool/dist --storage nvme       # opt-in: one-namespace NVMe product media
-./tool/dist --storage=unknown    # rejected before build, with usage line
+./tool/dist                              # build the default product media (env/config-driven)
+./tool/dist --storage ahci               # default: AHCI product-media (current behavior)
+./tool/dist --storage nvme               # opt-in: one-namespace NVMe product media
+./tool/dist --storage usb                # Phase 15 15-3: USB-stick product media (UEFI only;
+                                         #   see --firmware uefi for the QEMU-status note)
+./tool/dist --storage usb --firmware bios # rejected before build: BIOS branch is ahci/nvme only;
+                                         #   the BIOS-side USB-stick attach is the Phase 12
+                                         #   `sponge-usb-boot.run` precedent, not a new product
+./tool/dist --storage=unknown            # rejected before build, with usage line
+./tool/dist --bake-profile minimal       # pass SPONGE_BAKE_PROFILE=minimal to make (smallest media)
+./tool/dist --bake-profile desktop       # default: everyday-default media (every pre-staged package + Falkon)
+./tool/dist --bake-profile none          # bake.inc escape hatch (today's hello-only behavior)
+./tool/dist --bake-profile=bogus         # rejected before build, with usage line
+./tool/dist --firmware bios              # default: BIOS/GRUB2 boot chain (only verified path)
+./tool/dist --firmware uefi              # Phase 15 W4 + 15-3: UEFI/OVMF product media
+                                         #   (structural-gate only; .img-only by design — no .iso;
+                                         #   the QEMU UEFI boot is expected to hit the W1 OVMF
+                                         #   core-init hang; real-hardware verification is 15-3)
+./tool/dist --firmware=bogus             # rejected before build, with usage line
+./tool/dist --print-only                 # print the make+env+mkdata commands without running
 ```
 
-The `--storage {ahci,nvme}` selector was added in Phase 12 W2. `ahci`
-is the default and preserves the current product-media behavior and
-artifact naming; `nvme` selects the one-namespace NVMe product path
-(`run/sponge-desktop-disk-nvme.run`). Invalid values fail loudly with
-a concise English error and usage line before any build starts. The
-ISO / live media path is unchanged regardless of `--storage`. The
-manual equivalent is the per-scenario `make -C genode/build/x86_64
-run/sponge-desktop-disk[-nvme].run` invocation (the host stays
-out-of-the-loop on storage routing). See
-`docs/evidence/task-2-phase12-storage.md` for the receipts.
+The `--storage {ahci,nvme,usb}` selector was added across Phase 12
+W2 and Phase 15 15-3. `ahci` is the default and preserves the
+current product-media behavior and artifact naming; `nvme` selects
+the one-namespace NVMe product path
+(`run/sponge-desktop-disk-nvme.run`); `usb` (UEFI only) selects the
+15-3 USB-stick product path (`run/sponge-desktop-disk-uefi-usb.run`)
+with a Tier-0 xHCI + `usb_block` storage chain. Invalid values fail
+loudly with a concise English error and usage line before any build
+starts. The `--storage usb --firmware bios` combination is rejected
+with the precise reason (the BIOS-side USB-stick attach is the
+Phase 12 `sponge-usb-boot.run` precedent which boots the existing
+ISO from a USB stick — it is not a new product image). The ISO /
+live media path is unchanged regardless of `--storage`.
+
+The `--bake-profile {minimal,desktop,none}` selector was added in
+Phase 15 W2 (docs/plans/phase15-real-hardware-boot.md D15.3/D15.4/D15.8).
+The value is passed as `SPONGE_BAKE_PROFILE=<name>` in the environment
+of every `make` invocation, which `run/bake.inc` reads inside each
+product-media run script before `build_boot_image` (the primary
+staging-time mechanism — staging-time is what makes bake uniform
+across `.img`/`.iso`/UEFI media). `desktop` is the default; `none`
+is `run/bake.inc`'s escape hatch that reproduces today's hardcoded
+hello-only behavior (AGENTS.md §1.1). Invalid values fail loudly
+before any build. The summary table prints the active profile.
+
+The `--firmware {bios,uefi}` selector was added in Phase 15 W2
+(D15.16) and **wired to live scenarios in W4**. `bios` is the
+default and the only verified path on the 17ZD90N-VX7BK target
+machine. `uefi` selects one of three Phase-15 run scenarios:
+
+* `--storage ahci` (default) → `run/sponge-desktop-disk-uefi.run`
+  (the Sponge-side UEFI recipe, D15.13; handcrafted GPT with
+  P1=ESP + P2 absent + P3=GENODE + P4=SPONGE-DATA; the SATA
+  UEFI envelope).
+* `--storage nvme` → `run/sponge-desktop-disk-uefi-nvme.run`
+  (the target-machine NVMe envelope, D15.1; the .img is the
+  bootloader, a separate NVMe disk is the desktop).
+* `--storage usb` (Phase 15 15-3) →
+  `run/sponge-desktop-disk-uefi-usb.run` (the USB-stick product
+  media; Tier-0 xHCI + `usb_block` storage chain with
+  port-tolerant class: 0x3 / class: 0x8 policies on a single
+  pc_usb_host serving both storage and HID input).
+
+All three UEFI scenarios pass the host-side structural gates
+(sgdisk -p / mdir / e2ls; the USB variant additionally asserts
+`usb_block` presence in P3 /system/bin/). The QEMU boot of any
+is EXPECTED to hit the W1 OVMF core-init hang — the scenario's
+acceptance is host-side structural verification + honest gap
+recording, NOT a QEMU boot PASS (D15.16, 2026-08-18 pivot). The
+real-hardware diagnostic on 15-3 is the path that determines
+whether the `uefi` flag gains a working implementation.
+`--firmware uefi` produces ONLY the `.img` (no `.iso` — El
+Torito is BIOS-only). `--storage usb` is UEFI-only; the
+combination `--storage usb --firmware bios` is rejected with
+the precise reason. Invalid firmware values (e.g.
+`--firmware=bogus`) fail loudly before any build. The manual
+equivalent for storage is the per-scenario
+`make -C genode/build/x86_64 run/<scenario>.run` invocation;
+for bake-profile, the same with `SPONGE_BAKE_PROFILE=<name>`
+in the environment.
+
+Reproducibility (R15.4): two consecutive `tool/dist --bake-profile <X>`
+builds must produce images with the same staged-content manifest.
+Byte-identical sha256 requires `mkfs.ext2` to seed deterministic
+timestamps, which the vendored tree does not yet do; staged-content
+manifest equality (the `bake_manifest.json` embedded in the image,
+verified by `tool/bake.mojo`'s idempotency check) is the gate we
+currently meet. See `docs/plans/phase15-real-hardware-boot.md` §"R15.4"
+and the W1 evidence log.
+
+### bake (Phase 15 W2b — post-build P3 injector)
+```bash
+./tool/bake --list                       # print profiles under pkg/bake/ (name + description)
+./tool/bake --show minimal               # parse profile; print packages, config, theme, payload sizes
+./tool/bake --show bogus                 # loud error (exit 2) on unknown profile or config_version!=1
+./tool/bake --img <file> --profile minimal         # inject profile into .img's GENODE P3 (idempotent)
+./tool/bake --img <file> --profile minimal --dry-run # print the staging plan without writing
+./tool/bake --img <file> --profile desktop         # + Falkon + textedit + pdf_view payloads
+./tool/bake --img <file> --profile bogus           # loud error before any disk write
+./tool/bake help                          # full usage
+```
+
+`tool/bake.mojo` is the post-build half of the bake machinery (D15.8);
+`run/bake.inc` is the staging-time half consumed by every product-media
+run script. `--list` and `--show` are read-only and fast (no image
+involved). `--img` extracts P3 to a temp file with `dd`, mutates the
+ext2 with `e2cp`/`e2mkdir`/`e2ls` (e2tools — the same host-side tool
+set `image/disk` uses), then writes it back with `dd ... conv=notrunc`
+so any P4 (`tool/mkdata`'s SPONGE-DATA) survives the write.
+
+The injector enforces:
+* **D15.10 config_version=1** (loud error on anything else — bumps
+  are breaking-only).
+* **D15.5 size budget** (minimal ≤ 1 GiB, desktop ≤ 2 GiB total
+  `.img`; refusal happens BEFORE any write, exit 2).
+* **R15.3 T1 defense** (refuses to inject a package whose
+  `<binary>` is neither in `pkg/<name>/payload/` nor in the image's
+  `/system/bin` — baked metadata without its binary is the plan's
+  trap T1).
+* **Idempotency** (re-running with the same profile compares the
+  current `bake_manifest.json` against what we would write —
+  identical profile + packages + theme + payloads-present →
+  no-op, exit 0).
+* **sgdisk pre/post** (P3 must be present and named `GENODE`
+  before; first/last sectors + name unchanged after — the
+  misleading-success-output defense, mirroring `tool/mkdata`).
+
+Exit codes: 0 ok (created or already-present), 1
+usage/host-tool/io failure, 2 profile/validation/budget refusal
+(mirrors `tool/mkdata`'s scheme).
+
+The manual equivalent of every `--img` step is the documented
+`dd → e2mkdir → e2cp → dd (NOTRUC) → sgdisk` sequence in
+`docs/08-development.md §11` plus `tool/mkdata`'s partition-verification
+check (AGENTS.md §3.5 control escape hatch). The fast-iteration
+profile-switch story is: `./tool/dist` once, then `--img` many
+times against the produced `.img` to compare profile outcomes.
 
 ### hw_compat (Phase 12 compatibility validator)
 ```bash

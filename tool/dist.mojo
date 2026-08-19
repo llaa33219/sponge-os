@@ -72,6 +72,7 @@
 
 from std.sys import argv, exit
 from std.python import Python, PythonObject
+from std.collections import Dict
 
 # Alpha release identity (kept in sync with include/sponge/version.h
 # and docs/09-roadmap.md). The release artifact names embed this.
@@ -98,6 +99,30 @@ comptime RELEASE_NAME_PREFIX = "sponge-os-" + RELEASE_VERSION + "-"
 # is touched).
 comptime DISK_SCENARIO_AHCI = "sponge-desktop-disk"
 comptime DISK_SCENARIO_NVME = "sponge-desktop-disk-nvme"
+# Phase 15 W4 (D15.13, D15.16): UEFI product-media scenarios. The
+# Sponge-side UEFI recipe (D15.13: handcrafted GPT with P1=ESP
+# FAT32, P2 ABSENT, P3=GENODE ext2, P4=SPONGE-DATA via tool/mkdata;
+# the partition-number pin and tool/mkdata's P4 grow sequence work
+# UNCHANGED because P2 is intentionally absent). The SATA UEFI
+# scenario builds the full structure into a single handcrafted .img;
+# the NVMe envelope is the target-machine envelope (D15.1). Both
+# scenarios are QEMU-unverified per D15.16 (the W1 OVMF core-init
+# hang is the expected QEMU outcome; structural-gate acceptance
+# only; real-hardware verification is 15-3).
+comptime DISK_SCENARIO_UEFI = "sponge-desktop-disk-uefi"
+comptime DISK_SCENARIO_UEFI_NVME = "sponge-desktop-disk-uefi-nvme"
+# Phase 15 15-3: UEFI USB-stick product-media scenario. The Tier-0
+# storage chain swaps AHCI for xHCI + usb_block (class: 0x8 mass-
+# storage policy); everything else is identical to the AHCI UEFI
+# scenario (same disk layout, same GRUB2 EFI multiboot2 chain, same
+# boot_fb display driver). The 15-3 deliverable burns this .img to a
+# USB stick and boots the 17ZD90N-VX7BK from it. Per the BIOS branch's
+# policy (see `is_valid_storage_mode`), `--storage usb` is UEFI-only
+# here — the BIOS branch stays AHCI/NVMe (the BIOS-side USB-stick
+# attach is the Phase 12 `sponge-usb-boot.run` precedent; combining
+# USB-boot with BIOS GRUB is a different code path the current tree
+# does not support end-to-end, so the combination is rejected loudly).
+comptime DISK_SCENARIO_UEFI_USB = "sponge-desktop-disk-uefi-usb"
 comptime ISO_SCENARIO = "sponge-alpha"
 
 # Default storage mode (the default keeps current behavior and artifact
@@ -106,14 +131,48 @@ comptime ISO_SCENARIO = "sponge-alpha"
 comptime DEFAULT_STORAGE_MODE = "ahci"
 
 # Allowed values for --storage. Anything else is rejected BEFORE any
-# build starts (plan §W2 step 1: "reject any other value before a
-# build starts with a concise English error and usage line").
-comptime ALLOWED_STORAGE_MODES = ["ahci", "nvme"]
+# build starts (plan §W2 step 1: "reject any other value before a build
+# starts with a concise English error and usage line"). The `usb`
+# value is UEFI-only — `is_valid_storage_mode_for_firmware` enforces
+# that constraint at the firmware/storage combination boundary (a
+# `bios` + `usb` request is rejected with the precise reason: the
+# BIOS-side USB-stick attach is the Phase 12 precedent, not the
+# product media).
+comptime ALLOWED_STORAGE_MODES = ["ahci", "nvme", "usb"]
 
 # Default SPONGE-DATA P4 size (MiB). Matches tool/mkdata's default and
 # docs/14 §4.3 ("P4 = 1 GiB default, configurable via tool/dist
 # --data-size").
 comptime DEFAULT_DATA_MIB = 1024
+
+# Phase 15 W2 (docs/plans/phase15-real-hardware-boot.md D15.3/D15.4/
+# D15.8): bake profile selector. Passed to `make` as the env var
+# SPONGE_BAKE_PROFILE=<name>, which run/bake.inc reads inside the run
+# script before build_boot_image (D15.8's primary staging-time
+# mechanism). Default: desktop — the Phase 15 everyday-defaults
+# profile; the run scripts already default to desktop when the env
+# var is unset, but tool/dist makes it explicit (R15.14 — silent
+# default drift is the trap to avoid). The "none" sentinel is
+# run/bake.inc's escape hatch (AGENTS.md §1.1): reproduces today's
+# hardcoded hello-only behavior. Invalid values are rejected before
+# any build (per the Phase 12 W2 storage-mode convention).
+comptime DEFAULT_BAKE_PROFILE = "desktop"
+comptime ALLOWED_BAKE_PROFILES = ["minimal", "desktop", "test", "none"]
+
+# Phase 15 W4 (D15.13, D15.16): firmware selector. `bios` is the
+# default and the only fully verified path on the 17ZD90N-VX7BK
+# target (15-3 real-hardware UEFI diagnostic is decoupled from
+# this flag — see D15.16). `uefi` is the W4 scope: it now runs the
+# Sponge-side UEFI recipe (D15.13) and produces a .img that passes
+# the host-side structural gates (sgdisk -p, mdir, e2ls). Per
+# D15.16 the QEMU boot of the UEFI .img is EXPECTED to hit the
+# W1 OVMF core-init hang; the scenario's acceptance is structural
+# verification + honest gap recording, NOT a QEMU boot PASS. The
+# ISO half does not apply to UEFI (El Torito is BIOS-only) — for
+# `--firmware uefi` dist produces ONLY the .img and the summary
+# says so explicitly.
+comptime DEFAULT_FIRMWARE = "bios"
+comptime ALLOWED_FIRMWARE = ["bios", "uefi"]
 
 # Each host tool the media build path can invoke, mapped to its
 # Debian/Ubuntu package. Multiple tools can come from one package; the
@@ -197,6 +256,30 @@ def run_argv_streaming_clean_env(cmd: List[String]) raises -> Int:
     for k in ["MOJO_PYTHON_LIBRARY", "PYTHONEXECUTABLE", "PYTHONHOME"]:
         if k in env:
             env.pop(k, None)
+    var py_args = builtins.list()
+    for part in cmd:
+        py_args.append(part)
+    return Int(py=subprocess.call(py_args, env=env))
+
+
+def run_argv_streaming_with_env(cmd: List[String], extra_env: Dict[String, String]) raises -> Int:
+    """Run a command streaming stdout/stderr to the terminal,
+    with extra_env added on top of the parent environment (so the
+    make invocation sees SPONGE_BAKE_PROFILE=<name> from Phase 15
+    W2). Mirrors run_argv_streaming_clean_env's env-strip policy:
+    we still strip MOJO_PYTHON_LIBRARY / PYTHONEXECUTABLE / PYTHONHOME
+    so a child Mojo (when invoked indirectly) doesn't pick up the
+    parent's libpython pointers."""
+    var os_py = Python.import_module("os")
+    var subprocess = Python.import_module("subprocess")
+    var builtins = Python.import_module("builtins")
+    var env = os_py.environ.copy()
+    for k in ["MOJO_PYTHON_LIBRARY", "PYTHONEXECUTABLE", "PYTHONHOME"]:
+        if k in env:
+            env.pop(k, None)
+    for key in extra_env:
+        var k = String(key)
+        env[k] = extra_env[k]
     var py_args = builtins.list()
     for part in cmd:
         py_args.append(part)
@@ -297,49 +380,121 @@ def cmd_help() raises:
     print("Sponge OS distribution media builder")
     print()
     print("Product story (docs/14-boot-storage-architecture.md §8):")
-    print("  .img  the real product — 4-partition disk-served desktop")
-    print("        (run/" + DISK_SCENARIO_AHCI + " by default, or")
-    print("        run/" + DISK_SCENARIO_NVME + " with --storage nvme)")
-    print("        + SPONGE-DATA partition (tool/mkdata).")
-    print("        Installs persist across reboots.")
+    print("  .img  the real product — disk-served desktop")
+    print("        (BIOS path: 4-partition P1=BIOS-boot + P2=ESP + P3=GENODE")
+    print("                              + P4=SPONGE-DATA via tool/mkdata;")
+    print("         UEFI path: 3-partition P1=ESP + P2 absent + P3=GENODE")
+    print("                              + P4=SPONGE-DATA via tool/mkdata —")
+    print("                              P2 is intentionally absent so P3/P4")
+    print("                              partition numbers match the BIOS media,")
+    print("                              per the W4 partition-number contract,")
+    print("                              D15.13).")
+    print("        Install/launch scenarios: --storage {ahci,nvme,usb},")
+    print("                                 --firmware {bios,uefi}")
+    print("        (--storage usb is UEFI-only; BIOS branch is ahci/nvme.)")
+    print("        Installs persist across reboots on P3.")
     print("  .iso  live/eval mode — alpha boot-modules composition")
     print("        (run/" + ISO_SCENARIO + ") on a RAM filesystem.")
-    print("        Boots the same desktop; nothing persists. The")
-    print("        ISO path is always " + ISO_SCENARIO + "; the")
-    print("        --storage flag only affects the .img.")
+    print("        Boots the same desktop; nothing persists. BIOS only")
+    print("        (El Torito is BIOS-only; --firmware uefi SKIPS the .iso).")
     print()
-    print("Storage mode (Phase 12 W2, docs/plans/phase12-hardware.md):")
+    print("Storage mode (Phase 12 W2 + Phase 15 15-3):")
     print("  ahci  default; the product .img boots against the q35 ICH9")
-    print("        AHCI chain (run/" + DISK_SCENARIO_AHCI + ").")
+    print("        AHCI chain (run/" + DISK_SCENARIO_AHCI + " for BIOS,")
+    print("        run/" + DISK_SCENARIO_UEFI + " for UEFI).")
     print("  nvme  the product .img boots against a q35 PCIe root-port")
-    print("        + -device nvme chain (run/" + DISK_SCENARIO_NVME + "),")
+    print("        + -device nvme chain (run/" + DISK_SCENARIO_NVME + " for BIOS,")
+    print("        run/" + DISK_SCENARIO_UEFI_NVME + " for UEFI),")
     print("        one namespace verified; multi-namespace is a known gap.")
     print("        The same q35 + Skylake-Client pin, --include image/disk")
     print("        plugin set, and SPONGE-DATA P4 step apply. The QEMU")
     print("        root-port/drive/NVMe-device wiring is copied verbatim")
     print("        from run/sponge-boot.run's SPONGE_BOOT_NVME block.")
+    print("  usb   Phase 15 15-3: the USB-stick product media (UEFI only).")
+    print("        The product .img boots against a Tier-0 xHCI + usb_block")
+    print("        storage chain (run/" + DISK_SCENARIO_UEFI_USB + "); the")
+    print("        user `dd`s the .img to a USB stick and the Insyde H2O")
+    print("        firmware on the 17ZD90N-VX7BK presents it to xHCI.")
+    print("        pc_usb_host matches by class (0x3 for HID, 0x8 for mass")
+    print("        storage) so the policy is port-independent on real")
+    print("        hardware. --storage usb + --firmware bios is rejected")
+    print("        loudly (the BIOS-side USB-stick attach is the Phase 12")
+    print("        `sponge-usb-boot.run` precedent which boots the existing")
+    print("        ISO from a USB stick; it is not a new product image).")
+    print()
+    print("Bake profile (Phase 15 W2, docs/plans/phase15-real-hardware-boot.md")
+    print("D15.3/D15.4/D15.8): passed to `make` as SPONGE_BAKE_PROFILE=<name>,")
+    print("which run/bake.inc reads inside the run script before")
+    print("build_boot_image (the primary staging-time mechanism).")
+    print("  minimal  Smallest usable media (Sponge DE + terminal package).")
+    print("  desktop  Everyday-default (every pre-staged package + Falkon).")
+    print("  none     bake.inc escape hatch (AGENTS.md §1.1); reproduces")
+    print("           today's hardcoded hello-only behavior.")
+    print()
+    print("Firmware (Phase 15 W2/W4, D15.13/D15.16):")
+    print("  bios  default; BIOS/GRUB2 boot chain.")
+    print("  uefi  Phase 15 W4: Sponge-side UEFI recipe (D15.13). Produces")
+    print("        a UEFI .img that passes the host-side structural gates")
+    print("        (sgdisk -p, mdir, e2ls). Per D15.16, the QEMU UEFI")
+    print("        boot of this media is EXPECTED to hit the W1 OVMF")
+    print("        core-init hang (genode's vendored GRUB2 EFI is broken")
+    print("        under host OVMF dated 2026-05; see")
+    print("        docs/evidence/phase15-uefi-boot-smoke.log). The scenario's")
+    print("        acceptance is host-side structural verification + honest")
+    print("        gap recording, NOT a QEMU boot PASS. Real-hardware")
+    print("        verification is 15-3 (target machine: 17ZD90N-VX7BK,")
+    print("        2020 Insyde H2O — predates the W^X/fragmentation era).")
+    print("        --firmware uefi produces ONLY the .img (no .iso).")
     print()
     print("Usage:")
     print("  mojo tool/dist.mojo                       Build .img (ahci) + .iso")
     print("  mojo tool/dist.mojo --storage ahci        Force AHCI product .img (default)")
     print("  mojo tool/dist.mojo --storage nvme        Force NVMe product .img")
+    print("  mojo tool/dist.mojo --storage usb         Force USB-stick product .img (UEFI only;")
+    print("                                            --firmware uefi implicit requirement)")
+    print("  mojo tool/dist.mojo --bake-profile {minimal,desktop,test,none}")
+    print("                                            Bake-profile selector (default desktop)")
+    print("  mojo tool/dist.mojo --firmware bios       BIOS/GRUB2 boot chain (default)")
+    print("  mojo tool/dist.mojo --firmware uefi       UEFI/OVMF boot chain (Phase 15 W4;")
+    print("                                            .img-only by design — no .iso)")
     print("  mojo tool/dist.mojo --no-data             Skip the SPONGE-DATA P4 step")
     print("                                            (control door; .img has 3 partitions)")
     print("  mojo tool/dist.mojo --data-size <N>       N MiB SPONGE-DATA P4 (default "
           + String(DEFAULT_DATA_MIB) + ")")
+    print("  mojo tool/dist.mojo --print-only          Print the would-be make + mkdata +")
+    print("                                            env (SPONGE_BAKE_PROFILE=...) commands")
+    print("                                            and exit; no build is run")
     print("  mojo tool/dist.mojo help                  Show this help")
     print()
+    print("Reproducibility (R15.4): the bake profile is an explicit input,")
+    print("so two consecutive builds with the same --bake-profile must")
+    print("produce content-equal images modulo host-side timestamps")
+    print("(mkfs.ext2, the GPT write). The post-build verification prints")
+    print("artifact size + sha256 prefix; full hashes live in <name>.sha256")
+    print("sidecars in var/dist/. Byte-identical rebuild requires mkfs.ext2")
+    print("to seed deterministic timestamps, which is not yet in the")
+    print("vendored tree; staged-content manifest equality is the gate we")
+    print("currently meet (the bake_manifest.json embedded in the image is")
+    print("the manifest; tool/bake.mojo's idempotency check is the same).")
+    print()
     print("Produces in var/dist/:")
-    print("  " + RELEASE_NAME_PREFIX + ".img")
-    print("  " + RELEASE_NAME_PREFIX + ".img.sha256")
-    print("  " + RELEASE_NAME_PREFIX + ".iso")
-    print("  " + RELEASE_NAME_PREFIX + ".iso.sha256")
+    print("  BIOS path:")
+    print("    " + RELEASE_NAME_PREFIX + ".img       (4-partition disk-served desktop)")
+    print("    " + RELEASE_NAME_PREFIX + ".img.sha256")
+    print("    " + RELEASE_NAME_PREFIX + ".iso       (live/eval, BIOS El Torito)")
+    print("    " + RELEASE_NAME_PREFIX + ".iso.sha256")
+    print("  UEFI path (--firmware uefi):")
+    print("    " + RELEASE_NAME_PREFIX + ".img       (3-partition: P1=ESP + P2 absent + P3=GENODE + P4=SPONGE-DATA)")
+    print("    " + RELEASE_NAME_PREFIX + ".img.sha256")
+    print("    (no .iso — El Torito is BIOS-only)")
     print()
     print("The tool checks the host tools listed in docs/11-environment.md")
     print("§7.3 (xorriso, gptfdisk/sgdisk, mtools/mcopy, e2tools, dosfstools,")
     print("e2fsprogs, coreutils/truncate) up front, runs the disk and ISO media")
     print("builds via make, grows the SPONGE-DATA P4 via tool/mkdata (docs/14")
-    print("§4.3), and copies the artifacts to var/dist/.")
+    print("§4.3), and copies the artifacts to var/dist/. For --firmware uefi")
+    print("the .iso build is SKIPPED (El Torito is BIOS-only) and only the")
+    print(".img + .sha256 sidecar are staged.")
     print()
     print("The tool never boot-verifies the media itself; each run scenario")
     print("already gates on its PASS marker during the make invocation")
@@ -441,11 +596,18 @@ def startswith_str(s: String, prefix: String) raises -> Bool:
     return Bool(py=builtins.bool(builtins.str(s).startswith(prefix)))
 
 
-def run_media_build(mode: String, scenario: String, root: String) raises -> Int:
+def run_media_build(mode: String, scenario: String, root: String,
+                    bake_profile: String) raises -> Int:
     """Invoke the make target for one media mode (`image/disk` or
     `image/iso`) on the given scenario. Streams make's output.
     Cleans var/run/<scenario>* first so this mode's image plugin sees
-    a clean run_dir (stale_state guard)."""
+    a clean run_dir (stale_state guard).
+
+    Phase 15 W2: passes SPONGE_BAKE_PROFILE=<bake_profile> in the
+    child's environment so run/bake.inc (sourced by the scenario
+    before build_boot_image) reads it (D15.8 — the primary
+    staging-time mechanism). `none` is a valid value here (bake.inc
+    honors it as the escape hatch / regression baseline)."""
     var build_dir = root + "/genode/build/x86_64"
     var run_root = build_dir + "/var/run"
 
@@ -467,8 +629,11 @@ def run_media_build(mode: String, scenario: String, root: String) raises -> Int:
     print("[sponge-dist] starting " + mode + " media build (scenario: "
           + scenario + ")")
     print("  cmd: " + join_with_space(make_args))
+    print("  env: SPONGE_BAKE_PROFILE=" + bake_profile)
     print()
-    var rc = run_argv_streaming(make_args, cwd="")
+    var extra_env: Dict[String, String] = Dict[String, String]()
+    extra_env["SPONGE_BAKE_PROFILE"] = bake_profile
+    var rc = run_argv_streaming_with_env(make_args, extra_env)
     print()
     print("[sponge-dist] " + mode + " make exit code: " + String(rc))
     return rc
@@ -502,11 +667,18 @@ def run_mkdata(root: String, img_path: String, data_mib: Int) raises -> Int:
     return rc
 
 
-def verify_four_partitions(img_path: String) raises -> Bool:
-    """Run sgdisk -p on the produced .img and assert it shows >= 4
-    partitions with P4 named SPONGE-DATA. This is the misleading_
-    success_output defense — the build's exit code alone is not enough;
-    the actual partition table must show the 4 partitions we claim.
+def verify_partitions(img_path: String, firmware: String) raises -> Bool:
+    """Run sgdisk -p on the produced .img and assert the partition
+    table matches the firmware contract.
+      - BIOS: 4 partitions (P1 BIOS-boot, P2 ESP, P3 GENODE,
+              P4 SPONGE-DATA added by tool/mkdata). P4 must be
+              named SPONGE-DATA.
+      - UEFI: 3 partitions (P1 ESP, P2 ABSENT by the W4 partition-
+              number contract — see D15.13 + run/sponge-desktop-
+              disk-uefi.run header, P3 GENODE, P4 SPONGE-DATA
+              added by tool/mkdata). P4 must be named SPONGE-DATA.
+    The misleading_success_output defense: the build's exit code
+    alone is not enough; the actual partition table must match.
     Returns True on success, False (with diagnostic) on failure."""
     var subprocess = Python.import_module("subprocess")
     var builtins = Python.import_module("builtins")
@@ -525,7 +697,8 @@ def verify_four_partitions(img_path: String) raises -> Bool:
     if Bool(py=builtins.bool(out_obj)):
         out_str = String(out_obj.decode("utf-8", "replace"))
     var rc = Int(py=p.returncode)
-    print("[sponge-dist] sgdisk -p verification of " + img_path)
+    print("[sponge-dist] sgdisk -p verification of " + img_path
+          + " (firmware=" + firmware + ")")
     print(out_str)
     if rc != 0:
         print("[sponge-dist] ERROR: sgdisk -p exited " + String(rc))
@@ -545,15 +718,27 @@ def verify_four_partitions(img_path: String) raises -> Bool:
                 part_count += 1
                 if contains_substring(String(line_py), "SPONGE-DATA"):
                     saw_sponge_data = True
-    if part_count < 4:
-        print("[sponge-dist] ERROR: expected >= 4 partitions, sgdisk -p shows "
+    var expected_min = 4
+    if firmware == "uefi":
+        # UEFI layout: P1=ESP, P2 absent, P3=GENODE, P4=SPONGE-DATA.
+        # P2 is intentionally not allocated so the P3/P4 partition
+        # numbers are identical to the BIOS media (P3/P4 work
+        # unchanged). 3 partitions total.
+        expected_min = 3
+    if part_count < expected_min:
+        print("[sponge-dist] ERROR: expected >= " + String(expected_min)
+              + " partitions for firmware=" + firmware + ", sgdisk -p shows "
               + String(part_count))
         return False
     if not saw_sponge_data:
         print("[sponge-dist] ERROR: no partition named SPONGE-DATA in table")
         return False
-    print("[sponge-dist] OK — " + String(part_count) + " partitions present, "
-          + "P4 = SPONGE-DATA")
+    if firmware == "uefi":
+        print("[sponge-dist] OK — " + String(part_count)
+              + " partitions present (P1=ESP, P2 absent, P3=GENODE, P4=SPONGE-DATA)")
+    else:
+        print("[sponge-dist] OK — " + String(part_count)
+              + " partitions present (P1=BIOS-boot, P2=ESP, P3=GENODE, P4=SPONGE-DATA)")
     return True
 
 
@@ -611,13 +796,17 @@ def stage_artifact(mode: String, scenario: String, root: String) raises -> Bool:
     return True
 
 
-def print_summary(root: String) raises:
+def print_summary(root: String, bake_profile: String, firmware: String, storage_mode: String) raises:
     var os_path = Python.import_module("os.path")
     var builtins = Python.import_module("builtins")
     var dist_dir = root + "/var/dist"
 
     print()
     print("[sponge-dist] summary")
+    print()
+    print("  bake profile: " + bake_profile)
+    print("  firmware:     " + firmware)
+    print("  storage:      " + storage_mode)
     print()
     print("  artifact                                            size       sha256 (prefix)")
     print("  --------                                            ----       ---------------")
@@ -627,7 +816,18 @@ def print_summary(root: String) raises:
         var name = RELEASE_NAME_PREFIX + "." + ext
         var path = dist_dir + "/" + name
         if not os_path.isfile(path):
+            if ext == "iso" and firmware == "uefi":
+                # UEFI media is .img-only by design (El Torito is
+                # BIOS-only). Don't print "MISSING" — explain the
+                # intentional skip in the summary.
+                continue
             print("  " + name + "    MISSING")
+            continue
+        if ext == "iso" and firmware == "uefi":
+            # A stale .iso from a prior BIOS build may be present in
+            # var/dist/; skip it in the UEFI summary (the .iso was
+            # not staged in this run, so it does not belong to the
+            # current artifact set).
             continue
         var bytes = file_size(path)
         var size_str = fmt_human_size(bytes)
@@ -646,6 +846,10 @@ def print_summary(root: String) raises:
         var size_padded = pad_right(size_str, 10)
         print("  " + name_padded + "  " + size_padded + "  " + digest_prefix)
 
+    if firmware == "uefi":
+        print()
+        print("  (.iso SKIPPED: --firmware uefi is .img-only by design;")
+        print("   El Torito is BIOS-only — no UEFI equivalent)")
     print()
     print("  Full hashes: <artifact>.sha256 sidecars in " + dist_dir)
     print("  Verify:      (cd " + dist_dir + " && sha256sum -c *.sha256)")
@@ -658,19 +862,87 @@ def is_valid_storage_mode(value: String) raises -> Bool:
     starts with a concise English error and usage line"). Hard-coded
     rather than a comptime list to avoid the StringSlice/non-copyable
     iterator issue (the comptime list elements are StringSlice over a
-    StaticConstantOrigin, not ImplicitlyCopyable)."""
+    StaticConstantOrigin, not ImplicitlyCopyable). The `usb` value is
+    accepted here at the syntax level; the firmware/storage combination
+    is validated separately in `is_valid_storage_mode_for_firmware`."""
     if value == "ahci":
         return True
     if value == "nvme":
         return True
+    if value == "usb":
+        return True
     return False
 
 
-def disk_scenario_for(storage_mode: String) raises -> String:
-    """Map a validated storage mode to the run/<scenario>.run product
-    scenario name. AHCI uses the canonical desktop-from-disk scenario
-    (unchanged); NVMe uses the dedicated NVMe-from-disk scenario
-    introduced by Phase 12 W2."""
+def is_valid_storage_mode_for_firmware(storage_mode: String, firmware: String) raises -> Bool:
+    """Validate the (storage_mode, firmware) combination. The `usb`
+    storage mode is UEFI-only — the BIOS branch does not produce a
+    USB-stick product image end-to-end (the BIOS-side USB-stick attach
+    is the Phase 12 `sponge-usb-boot.run` precedent, which boots the
+    existing ISO from a USB mass-storage device; it is not a new
+    product image). Combining `bios` + `usb` would mean the user
+    wants a BIOS-bootable USB-stick product image, which the current
+    tree does not support — `is_valid_storage_mode_for_firmware`
+    returns False in that case, and main() prints the exact reason
+    before any build runs."""
+    if storage_mode == "usb" and firmware == "bios":
+        return False
+    return True
+
+
+def is_valid_bake_profile(value: String) raises -> Bool:
+    """True iff `value` is one of the allowed --bake-profile values
+    (D15.3/D15.4/D15.8). Used by main() to reject invalid values
+    BEFORE any build starts (mirrors is_valid_storage_mode's
+    fail-loud policy). The "none" sentinel is a valid value — it
+    reproduces today's hello-only behavior (bake.inc escape hatch)."""
+    if value == "minimal":
+        return True
+    if value == "desktop":
+        return True
+    if value == "test":
+        return True
+    if value == "none":
+        return True
+    return False
+
+
+def is_valid_firmware(value: String) raises -> Bool:
+    """True iff `value` is one of the allowed --firmware values
+    (D15.13/D15.16). Currently ` BIOS` is the only fully verified
+    path; `uefi` is the W4 scope (per 2026-08-18 pivot the QEMU
+    UEFI cell stays a documented gap; 15-3 is the real-hardware
+    diagnostic). When uefi is requested, main() exits loudly
+    instead of silently ignoring."""
+    if value == "bios":
+        return True
+    if value == "uefi":
+        return True
+    return False
+
+
+def disk_scenario_for(storage_mode: String, firmware: String) raises -> String:
+    """Map the validated (storage_mode, firmware) pair to the
+    run/<scenario>.run product scenario name.
+      - BIOS + AHCI: canonical desktop-from-disk (unchanged)
+      - BIOS + NVMe: dedicated NVMe-from-disk (Phase 12 W2)
+      - UEFI + AHCI: Sponge-side UEFI recipe (Phase 15 W4, D15.13)
+      - UEFI + NVMe: target-machine NVMe envelope (Phase 15 W4, D15.1)
+      - UEFI + USB: USB-stick product media (Phase 15 15-3)
+    The five-way split is intentional — each cell maps to a
+    distinct run script with a distinct disk layout, BIOS/UEFI
+    chain, and structural-gate set. Rejecting unknown combinations
+    defensively (a missing row falls through to the BIOS+AHCI
+    default rather than silently using the wrong script). The
+    firmware/storage combination is validated by main() before
+    this proc is called; we still fall through defensively for any
+    unanticipated pair."""
+    if firmware == "uefi":
+        if storage_mode == "nvme":
+            return DISK_SCENARIO_UEFI_NVME
+        if storage_mode == "usb":
+            return DISK_SCENARIO_UEFI_USB
+        return DISK_SCENARIO_UEFI
     if storage_mode == "nvme":
         return DISK_SCENARIO_NVME
     return DISK_SCENARIO_AHCI
@@ -685,6 +957,9 @@ def main() raises:
     var add_data = True
     var data_mib = DEFAULT_DATA_MIB
     var storage_mode = String(DEFAULT_STORAGE_MODE)
+    var bake_profile = String(DEFAULT_BAKE_PROFILE)
+    var firmware = String(DEFAULT_FIRMWARE)
+    var print_only = False
     var i = 1
     while i < len(args):
         var a = String(args[i])
@@ -693,6 +968,15 @@ def main() raises:
             return
         if a == "--no-data":
             add_data = False
+            i += 1
+            continue
+        if a == "--print-only":
+            # Diagnostic: do the full pre-flight (host-tool check,
+            # build_dir check), print the make command + env, but do
+            # NOT invoke make, mkdata, or stage_artifact. Useful for
+            # confirming --bake-profile / --storage / --firmware
+            # propagation without paying for a full build.
+            print_only = True
             i += 1
             continue
         if a == "--data-size":
@@ -721,13 +1005,13 @@ def main() raises:
             continue
         if a == "--storage":
             if i + 1 >= len(args):
-                print("error: --storage requires a value (one of: ahci, nvme)")
+                print("error: --storage requires a value (one of: ahci, nvme, usb)")
                 print()
                 cmd_help()
                 exit(1)
             var candidate = String(args[i + 1])
             if not is_valid_storage_mode(candidate):
-                print("error: --storage value '" + candidate + "' is not one of: ahci, nvme")
+                print("error: --storage value '" + candidate + "' is not one of: ahci, nvme, usb")
                 print()
                 print("Usage:")
                 cmd_help()
@@ -740,12 +1024,76 @@ def main() raises:
             comptime prefix_len = 10  # len("--storage=")
             var val = String(builtins.str(a)[prefix_len:])
             if not is_valid_storage_mode(val):
-                print("error: --storage value '" + val + "' is not one of: ahci, nvme")
+                print("error: --storage value '" + val + "' is not one of: ahci, nvme, usb")
                 print()
-                print("Usage:")
                 cmd_help()
                 exit(1)
             storage_mode = val
+            i += 1
+            continue
+        if a == "--bake-profile":
+            if i + 1 >= len(args):
+                print("error: --bake-profile requires a value (one of: minimal, desktop, test, none)")
+                print()
+                cmd_help()
+                exit(1)
+            var candidate = String(args[i + 1])
+            if not is_valid_bake_profile(candidate):
+                print("error: --bake-profile value '" + candidate
+                      + "' is not one of: minimal, desktop, test, none")
+                print()
+                cmd_help()
+                exit(1)
+            bake_profile = candidate
+            i += 2
+            continue
+        if startswith_str(a, "--bake-profile="):
+            var builtins = Python.import_module("builtins")
+            comptime prefix_len = 15  # len("--bake-profile=")
+            var val = String(builtins.str(a)[prefix_len:])
+            if not is_valid_bake_profile(val):
+                print("error: --bake-profile value '" + val
+                      + "' is not one of: minimal, desktop, test, none")
+                print()
+                cmd_help()
+                exit(1)
+            bake_profile = val
+            i += 1
+            continue
+        if a == "--firmware":
+            if i + 1 >= len(args):
+                print("error: --firmware requires a value (one of: bios, uefi)")
+                print()
+                cmd_help()
+                exit(1)
+            var candidate = String(args[i + 1])
+            if not is_valid_firmware(candidate):
+                print("error: --firmware value '" + candidate
+                      + "' is not one of: bios, uefi")
+                print()
+                cmd_help()
+                exit(1)
+            # Phase 15 W4: --firmware uefi is now ACCEPTED (the W4
+            # scenarios are structurally correct; per D15.16 the
+            # QEMU UEFI boot is expected to hit the W1 OVMF core-
+            # init hang and the scenario's acceptance is host-side
+            # structural verification only). The default stays bios
+            # for the regression baseline.
+            firmware = candidate
+            i += 2
+            continue
+        if startswith_str(a, "--firmware="):
+            var builtins = Python.import_module("builtins")
+            comptime prefix_len = 11  # len("--firmware=")
+            var val = String(builtins.str(a)[prefix_len:])
+            if not is_valid_firmware(val):
+                print("error: --firmware value '" + val
+                      + "' is not one of: bios, uefi")
+                print()
+                cmd_help()
+                exit(1)
+            # See the --firmware handling above.
+            firmware = val
             i += 1
             continue
         if a == "build":
@@ -770,6 +1118,33 @@ def main() raises:
               + " MiB is below the 8 MiB ext2 comfort floor")
         exit(1)
 
+    # Validate the firmware/storage combination. `usb` is UEFI-only
+    # (the BIOS branch's product media does not have a USB-stick
+    # variant — the BIOS-side USB-stick attach is the Phase 12
+    # `sponge-usb-boot.run` precedent which boots the existing ISO
+    # from a USB mass-storage device; it is not a new product image).
+    # The check is loud + early so the user knows exactly why before
+    # any build runs.
+    if not is_valid_storage_mode_for_firmware(storage_mode, firmware):
+        print("error: --storage " + storage_mode + " is not supported with --firmware "
+              + firmware + ".")
+        print()
+        print("  --storage usb is UEFI-only. The BIOS branch's product media")
+        print("  supports --storage {ahci,nvme} only. The BIOS-side USB-stick")
+        print("  attach is the Phase 12 precedent at run/sponge-usb-boot.run,")
+        print("  which boots the existing ISO from a USB mass-storage device")
+        print("  — it is not a new product image.")
+        print()
+        print("  Use one of:")
+        print("    --storage usb --firmware uefi    (the 15-3 USB-stick artifact)")
+        print("    --storage ahci --firmware bios   (the default desktop media)")
+        print("    --storage nvme --firmware bios   (the NVMe BIOS product media)")
+        print("    --storage ahci --firmware uefi   (the SATA UEFI product media)")
+        print("    --storage nvme --firmware uefi   (the NVMe UEFI target-machine envelope)")
+        print()
+        cmd_help()
+        exit(1)
+
     var root = repo_root()
     var os_path = Python.import_module("os.path")
 
@@ -779,7 +1154,7 @@ def main() raises:
         print("Run './tool/build prepare' first (see docs/08-development.md §3).")
         exit(1)
 
-    var disk_scenario = disk_scenario_for(storage_mode)
+    var disk_scenario = disk_scenario_for(storage_mode, firmware)
 
     print("[sponge-dist] Sponge OS distribution media builder")
     if storage_mode != DEFAULT_STORAGE_MODE:
@@ -787,13 +1162,28 @@ def main() raises:
     else:
         print("  storage mode: " + storage_mode
               + "  (default; explicit --storage ahci preserves this)")
+    if bake_profile != DEFAULT_BAKE_PROFILE:
+        print("  bake profile: " + bake_profile + "  (--bake-profile override)")
+    else:
+        print("  bake profile: " + bake_profile
+              + "  (default; explicit --bake-profile desktop preserves this)")
+    if firmware != DEFAULT_FIRMWARE:
+        print("  firmware:     " + firmware + "  (--firmware override; "
+              + "produces ONLY the .img, no .iso)")
+    else:
+        print("  firmware:     " + firmware
+              + "  (default; uefi is Phase 15 W4 scope, .img-only by design)")
     print("  product .img: " + disk_scenario + " (image/disk)")
     if add_data:
         print("               + tool/mkdata SPONGE-DATA P4 ("
               + String(data_mib) + " MiB)")
     else:
         print("               (--no-data: SPONGE-DATA P4 step SKIPPED)")
-    print("  live/eval .iso: " + ISO_SCENARIO + " (image/iso; storage-independent)")
+    if firmware == "uefi":
+        print("  live/eval .iso: SKIPPED (UEFI media is .img-only;")
+        print("                    El Torito is BIOS-only — no equivalent)")
+    else:
+        print("  live/eval .iso: " + ISO_SCENARIO + " (image/iso; storage-independent)")
     print("  release name: " + RELEASE_NAME_PREFIX + ".{img,iso}")
     print("  repo root:    " + root)
     print()
@@ -803,8 +1193,50 @@ def main() raises:
     if not check_host_tools():
         exit(1)
 
+    # (a.5) Diagnostic --print-only: emit the make command + env +
+    # mkdata invocation we WOULD run, then exit cleanly. No disk
+    # writes, no actual build. Lets the user verify flag propagation
+    # cheaply (the alternative is a full media build that takes
+    # 5+ minutes per mode).
+    if print_only:
+        var build_dir_pp = root + "/genode/build/x86_64"
+        print("[sponge-dist] --print-only: would invoke")
+        print()
+        print("  make -C " + build_dir_pp + " run/" + disk_scenario
+              + " KERNEL=sel4 BOARD=pc RUN_OPT=--include image/disk")
+        print("    env: SPONGE_BAKE_PROFILE=" + bake_profile)
+        print()
+        if add_data:
+            print("  tool/mkdata <staged.img> --data-size "
+                  + String(data_mib) + "  (would grow P4 SPONGE-DATA)")
+        else:
+            print("  (--no-data: tool/mkdata SKIPPED)")
+        print()
+        if firmware == "uefi":
+            print("  (.iso SKIPPED: --firmware uefi is .img-only;")
+            print("   El Torito is BIOS-only — no UEFI equivalent)")
+        else:
+            print("  make -C " + build_dir_pp + " run/" + ISO_SCENARIO
+                  + " KERNEL=sel4 BOARD=pc RUN_OPT=--include image/iso")
+            print("    env: SPONGE_BAKE_PROFILE=" + bake_profile)
+            print()
+            print("  (no mkdata after ISO build; the ISO path is media-only)")
+        print()
+        if firmware == "uefi":
+            print("  target stage: var/dist/" + RELEASE_NAME_PREFIX
+                  + ".img + .sha256 sidecar (no .iso)")
+        else:
+            print("  target stage: var/dist/" + RELEASE_NAME_PREFIX
+                  + ".{img,iso} + .sha256 sidecars")
+        print("  firmware selector: " + firmware
+              + (String("") if firmware == DEFAULT_FIRMWARE
+                  else "  (--firmware override)"))
+        print()
+        print("[sponge-dist] --print-only done; no build was run.")
+        return
+
     # (b) Disk-image build first (the new product media).
-    var disk_rc = run_media_build("image/disk", disk_scenario, root)
+    var disk_rc = run_media_build("image/disk", disk_scenario, root, bake_profile)
     if disk_rc != 0:
         print()
         print("[sponge-dist] error: image/disk build failed (exit code "
@@ -835,17 +1267,22 @@ def main() raises:
             exit(mkdata_rc)
         # (b.3) Misleading-success-output defense: actually inspect the
         # partition table we just produced. The build exit code alone
-        # is not enough — the .img must really show 4 partitions.
-        if not verify_four_partitions(disk_src):
+        # is not enough — the .img must really show the expected
+        # partition count + SPONGE-DATA name (firmware-dependent).
+        if not verify_partitions(disk_src, firmware):
             print()
             print("[sponge-dist] error: post-mkdata partition verification")
-            print("  failed. The .img does not carry the expected 4 partitions.")
+            print("  failed. The .img does not carry the expected partition")
+            print("  layout for firmware=" + firmware + ".")
             exit(1)
     else:
         print()
         print("[sponge-dist] --no-data: SPONGE-DATA P4 step skipped; the .img")
-        print("  carries the 3 image/disk partitions only (P1 BIOS-boot +")
-        print("  P2 ESP + P3 GENODE). Persistence will not work on this media.")
+        if firmware == "uefi":
+            print("  carries the UEFI layout (P1=ESP + P2 absent + P3=GENODE).")
+        else:
+            print("  carries the 3 image/disk partitions only (P1 BIOS-boot +")
+            print("  P2 ESP + P3 GENODE). Persistence will not work on this media.")
 
     # (d.1) Stage the disk artifact + sha256 (in-place modified by
     # mkdata if --no-data was not passed).
@@ -853,33 +1290,51 @@ def main() raises:
         exit(1)
 
     print()
-    # (b.4) ISO build second (live/eval mode). The stale_state guard
-    # inside run_media_build cleans var/run/<scenario>* — but note the
-    # two scenarios differ (the storage-mode scenario vs sponge-alpha),
-    # so the prefix-clean is per-scenario and the disk build's run_dir
-    # is not touched by the ISO clean.
-    var iso_rc = run_media_build("image/iso", ISO_SCENARIO, root)
-    if iso_rc != 0:
-        print()
-        print("[sponge-dist] error: image/iso build failed (exit code "
-              + String(iso_rc) + "). Aborting.")
-        exit(iso_rc)
+    # (b.4) ISO build second (live/eval mode). SKIPPED for UEFI
+    # (El Torito is BIOS-only; UEFI media is .img-only). The
+    # stale_state guard inside run_media_build cleans
+    # var/run/<scenario>* — but note the two scenarios differ (the
+    # storage-mode scenario vs sponge-alpha), so the prefix-clean
+    # is per-scenario and the disk build's run_dir is not touched
+    # by the ISO clean.
+    if firmware == "uefi":
+        print("[sponge-dist] --firmware uefi: skipping .iso build (El Torito")
+        print("  is BIOS-only; UEFI media is .img-only by design, see D15.16).")
+    else:
+        var iso_rc = run_media_build("image/iso", ISO_SCENARIO, root, bake_profile)
+        if iso_rc != 0:
+            print()
+            print("[sponge-dist] error: image/iso build failed (exit code "
+                  + String(iso_rc) + "). Aborting.")
+            exit(iso_rc)
 
-    # (d.2) Stage the ISO artifact + sha256.
-    if not stage_artifact("image/iso", ISO_SCENARIO, root):
-        exit(1)
+        # (d.2) Stage the ISO artifact + sha256.
+        if not stage_artifact("image/iso", ISO_SCENARIO, root):
+            exit(1)
 
     # (e) Summary table.
-    print_summary(root)
+    print_summary(root, bake_profile, firmware, storage_mode)
 
     print()
     print("[sponge-dist] done: product media built and staged in "
           + root + "/var/dist/")
-    if add_data:
-        print("  .img: 4 partitions (BIOSBOOT/ESP/GENODE/SPONGE-DATA)")
-        print("        — installs persist across reboots (P3).")
-        print("        (built via run/" + disk_scenario + " — storage=" + storage_mode + ")")
+    if firmware == "uefi":
+        if add_data:
+            print("  .img: UEFI layout (P1=ESP + P2 absent + P3=GENODE + P4=SPONGE-DATA)")
+            print("        — installs persist across reboots (P3).")
+            print("        (built via run/" + disk_scenario + " — storage=" + storage_mode
+                  + ")")
+        else:
+            print("  .img: UEFI layout (P1=ESP + P2 absent + P3=GENODE) — no SPONGE-DATA.")
+            print("        (built via run/" + disk_scenario + " — storage=" + storage_mode
+                  + ")")
+        print("  .iso: SKIPPED (UEFI media is .img-only; El Torito is BIOS-only)")
     else:
-        print("  .img: 3 partitions (BIOSBOOT/ESP/GENODE) — no SPONGE-DATA.")
-        print("        (built via run/" + disk_scenario + " — storage=" + storage_mode + ")")
-    print("  .iso: live/eval mode (RAM filesystem; nothing persists).")
+        if add_data:
+            print("  .img: 4 partitions (BIOSBOOT/ESP/GENODE/SPONGE-DATA)")
+            print("        — installs persist across reboots (P3).")
+            print("        (built via run/" + disk_scenario + " — storage=" + storage_mode + ")")
+        else:
+            print("  .img: 3 partitions (BIOSBOOT/ESP/GENODE) — no SPONGE-DATA.")
+            print("        (built via run/" + disk_scenario + " — storage=" + storage_mode + ")")
+        print("  .iso: live/eval mode (RAM filesystem; nothing persists).")
