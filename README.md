@@ -81,6 +81,15 @@ stability wall-clock cycle) is partial because the 30-min scenario
 is a sustained workload that the close-out session skips by
 design; see
 [`docs/evidence/phase14-index.md`](docs/evidence/phase14-index.md).
+**Phase 15 (real-hardware boot) is in flight:** 15-1 (bake
+profiles `minimal`/`desktop` via `run/bake.inc` + `tool/bake` +
+first-boot configd seeding + `vct bake`; UEFI product media via
+`tool/dist --firmware uefi`) and 15-2 (usb-mouse envelope,
+hardware-matrix update with the D15.11 real-hardware admission
+policy, 9-scenario regression sweep all-PASS) are done; 15-3 (the
+user's physical USB boot on the LG gram 17ZD90N) is pending — see
+[`docs/plans/phase15-real-hardware-boot.md`](docs/plans/phase15-real-hardware-boot.md)
+and [`docs/plans/phase15-hardware-boot-protocol.md`](docs/plans/phase15-hardware-boot-protocol.md).
 The verified release boots in QEMU on seL4. See
 [`docs/13-installation.md`](docs/13-installation.md) for prerequisites,
 media commands, the quick-start tour, and the complete limitations register.
