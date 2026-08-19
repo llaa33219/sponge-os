@@ -1,22 +1,35 @@
 # 15 - Hardware Compatibility
 
-> Status: hand-curated public hardware contract (Phase 12, `docs/plans/phase12-hardware.md` §W5).
+> Status: hand-curated public hardware contract (Phase 12 base +
+> Phase 15 W5 addendum; `docs/plans/phase12-hardware.md` §W5,
+> `docs/plans/phase15-real-hardware-boot.md` §"Hardware Matrix Contract").
 >
 > **Phase 12 status: 4 verified, 1 smoke-only, 11 gap cells.**
+> **Phase 15 addendum (D15.11): +1 gap cell (the single 17ZD90N real-
+> hardware row, `target: real-hardware` with `qemu-envelope:`).**
+> **Phase 15 surface cells (§1.4 + §1.5): +6 verified cells (4 bake
+> profile boots + 2 first-boot/reset) + 3 gap cells (UEFI/boot_fb,
+> UEFI+NVMe, UEFI+USB-stick).**
+> **Combined cross-product (validator-enforced): 4 verified,
+> 1 smoke-only, 12 gap = 17 cells.**
 >
 > This document is **human-curated**. `tool/hw_compat.mojo assert`
 > validates it read-only; there is no `generate`, `update`, or
 > auto-population path (plan risk 23, plan step 6). Every non-gap cell
 > is backed by a scenario under `run/`, an evidence log under
-> `docs/evidence/phase12-*.log` or `docs/evidence/task-0-phase12-baseline.md`,
-> a measured `boot_time_seconds`, a declared `budget_seconds`, and the
-> `QEMU emulator version 11.0.3` queried before every run
-> (`docs/evidence/task-0-phase12-baseline.md` §"Effective PC board default").
+> `docs/evidence/phase12-*.log`, `docs/evidence/phase15-*.log`, or
+> `docs/evidence/phase15-index.md`, a measured `boot_time_seconds`, a
+> declared `budget_seconds`, and the `QEMU emulator version 11.0.3`
+> queried before every run (`docs/evidence/task-0-phase12-baseline.md`
+> §"Effective PC board default").
 >
-> **Real hardware is a Phase 15 deliverable; not a Phase 12 cell.**
-> No cell in §1, §2, or §3 carries `target: real-hardware`. Physical-machine
-> verification remains the Phase 15 milestone; Phase 12 is QEMU-verified
-> only.
+> **Real hardware is admitted under D15.11 (Phase 15 W5) ONLY as a
+> `gap` row that carries a `qemu-envelope:` link to an existing
+> scenario; no other `target: real-hardware` form is accepted.** The
+> single real-hardware row (LG gram 17ZD90N-VX7BK, status gap, qemu-
+> envelope `run/sponge-desktop-disk-uefi-usb.run`) is the only row of
+> this kind; it flips to `verified` in 15-3 after the user-executed
+> physical-boot evidence lands (D15.11 + R15.7).
 
 ---
 
@@ -276,17 +289,88 @@ source).
 
 ---
 
-## 2. 16-cell cross-product ledger
+### 1.4 Phase 15 surface cells (firmware / display / storage / input)
+
+Phase 15 extends the primary surface with the cells the target
+machine (LG gram 17ZD90N-VX7BK) and the 15-3 physical-boot
+milestone require. The 16-cell cross-product ledger in §2 stays
+as the Phase 12 base; the Phase 15 cells below are admitted to
+§1 only (the cross-product count rule in §2.2 reflects the
+single D15.11 real-hardware row addition).
+
+The Phase 15 firmware axis is the new surface dimension; the
+BIOS/GRUB2 path is the verified Phase 12 baseline (unchanged).
+UEFI/OVMF is a Phase 15 surface addition that is structurally
+complete (D15.13) but QEMU-unverified (D15.16, the W1 OVMF core-
+init hang) and real-hardware pending (the 15-3 milestone).
+
+| Surface | Phase 15 variant | Status | Reason | Scenario / evidence / QEMU / budget |
+|---|---|---|---|---|
+| Firmware | UEFI/OVMF + boot_fb (desktop) | gap | W1 OVMF core-init hang under host OVMF dated 2026-05; the Sponge-side UEFI recipe is structurally complete (D15.13, handcrafted GPT P1=ESP + P3=GENODE, GRUB2 EFI multiboot2 → bender → seL4) but the host-side Genode core under UEFI hangs between Platform construction and the `Genode v...` banner. Real-hardware 2020-era Insyde H2O is expected to NOT have this hang; verified once a physical 17ZD90N boot lands in 15-3 | scenario `run/sponge-desktop-disk-uefi.run`; evidence `docs/evidence/phase15-w4-uefi-product-media.log` + `docs/evidence/phase15-index.md` §8 + §9; QEMU-verified = NO (host hang); 15-3 = pending (the user-executed 17ZD90N protocol); budget n/a (host-side boot timeout 180 s per the W4 acceptance contract; the scenario's structural-gate PASS is host-side sgdisk + mdir + e2ls only, NOT a QEMU boot PASS) |
+| Firmware | UEFI/OVMF + NVMe (desktop) | gap | same W1 OVMF core-init hang; the Sponge-side UEFI NVMe envelope (D15.1, the target-machine's controller class) is structurally complete (D15.13, handcrafted NVMe disk + UEFI image) but inherits the W1 hang. Real-hardware 2020 Insyde H2O is expected to boot the same chain (the 17ZD90N's PM981a/PM991 NVMe is in the QEMU-verified `nvme` driver path per Phase 12 W2); verified once a physical 17ZD90N boot lands in 15-3 | scenario `run/sponge-desktop-disk-uefi-nvme.run`; evidence `docs/evidence/phase15-w4-uefi-product-media.log` + `docs/evidence/phase15-index.md` §8; QEMU-verified = NO; 15-3 = pending; budget n/a |
+| Firmware | UEFI/OVMF + USB-stick (Tier-0 xHCI + usb_block) | gap | same W1 OVMF core-init hang; the Sponge-side UEFI USB-stick envelope (D15.1 15-3 deliverable) is structurally complete (D15.13, handcrafted USB-stick image with one `pc_usb_host` serving both usb_hid class 0x3 and usb_block class 0x8). Note: BIOS-side USB-stick boot is a Phase 12 verified row (`sponge-usb-boot.run` SeaBIOS → GRUB2 → Bender via `-device usb-storage`); the Phase 15 cell is the UEFI-side xHCI + `usb_block` envelope, NOT a new product image. Real-hardware 17ZD90N uses xHCI on Insyde H2O; verified once a physical boot lands in 15-3 | scenario `run/sponge-desktop-disk-uefi-usb.run`; evidence `docs/evidence/phase15-w4-uefi-product-media.log` + `docs/evidence/phase15-index.md` §10; QEMU-verified = NO; 15-3 = pending; budget n/a |
+| Input | usb-mouse HID (relative motion) | verified | the QPA → `usb-tablet` absolute-input path is a Phase 11/12 baseline; the new usb-mouse HID path uses pc_usb_host class 0x3 + usb_hid (Linux hid-core hid-generic) + event_filter REL forwarding. The audit chain (QMP `device_add usb-mouse` → `usb_hid: MOUSE detected` → REL motion + BTN_LEFT via `qmp_move_rel` + `qmp_ps2_button` → QMP `device_del` → `usb_hid: MOUSE removed`) passes end-to-end. The Phase 14 row #2 nitpicker pointer-ROM gap ("nitpicker pointer ROM only updates on absolute_motion") and row #12 cursor-invisible-under-PS/2-only-input are cross-referenced as honest gap-row evidence from the scenario's secondary observation; the usb-mouse cell is precisely their Phase 15 envelope. The QPA → usb-mouse relative-motion patch candidate from `docs/15-hardware-compatibility.md` §4.1 row 4 (Phase 12+ gap) remains open as a Phase 16+ item | scenario `run/sponge-usb-hid-mouse.run`; evidence `docs/evidence/phase15-usb-hid-mouse.log`; QEMU 11.0.3; boot_time 175 s; budget 600 s; target qemu |
+
+**UEFI cells honesty note:** all three UEFI surface cells are
+**host-side structurally verified** (the Sponge-side recipe
+produces a real `.img` with the documented partition layout,
+ESP + GENODE + SPONGE-DATA, with the boot modules on the ext2
+root per the W4 orchestrator's `grub.cfg`-vs-`e2ls` path-
+consistency fix) but **NOT QEMU-boot-verified** — the QEMU
+boot is expected to hit the W1 OVMF core-init hang (D15.16).
+Per the W4 binding decisions, the real acceptance gate is
+host-side structural verification + honest gap recording, NOT
+a fabricated QEMU boot PASS. The cells are honest `gap` until
+15-3 lands. Do NOT mark any UEFI cell `verified` before then
+(plan MUST NOT HAVE: "No fabricated scenario PASS. Do not mark
+any UEFI cell verified (all are gap per the W1 outcome).").
+
+### 1.5 Phase 15 bake cells (profile boots + first-boot/reset)
+
+The Phase 15 bake machinery (D15.3/D15.4/D15.8) introduces
+profile-driven media (`pkg/bake/{minimal,desktop}.profile`)
+and first-boot sentinel-based P4 seeding (D15.9). The cells
+below are the bake profile-boot and first-boot/reset envelopes
+proven in W2a + W3. They are added to §1 as new surface cells
+(they do NOT appear in the §2 cross-product because the cross-
+product dimensions do not include bake profile or sentinel
+state — the bake envelope is orthogonal to the HW combinations).
+
+| Surface | Phase 15 variant | Status | Reason | Scenario / evidence / QEMU / budget |
+|---|---|---|---|---|
+| Bake profile | sponge-alpha.run × profile=desktop (Falkon + every default package staged) | verified | bake::stage lands 7 packages + manifest in `[run_dir]/bin/`; R15.3 verifier fires synchronously after staging; `alpha-probe: PASS` (criteria a/b/c/d — themed panel + launcher + configd + lz) on q35/Skylake-Client; the 2 GiB D15.5 budget is 33% used. Falkon is install-enabled but not runtime-runnable from this scenario (a documented gap; the rom_pkg re-export wiring is W5/W6 scope) | scenario `run/sponge-alpha.run` with `SPONGE_BAKE_PROFILE=desktop`; evidence `docs/evidence/phase15-index.md` §6 cell 1; QEMU 11.0.3; budget n/a (regression envelope from Phase 14) |
+| Bake profile | sponge-alpha.run × profile=minimal | verified | bake::stage lands 2 packages + manifest in `[run_dir]/bin/`; reproduces today's hello-only regression baseline; `alpha-probe: PASS` on q35/Skylake-Client | scenario `run/sponge-alpha.run` with `SPONGE_BAKE_PROFILE=minimal`; evidence `docs/evidence/phase15-index.md` §6 (no separate log; the W2a evidence records the desktop=none PASS); QEMU 11.0.3; budget n/a |
+| Bake profile | sponge-desktop-disk.run × profile=desktop | verified | bake::stage lands 7 packages + 509 MiB falkon payload + 65 MiB textedit payload + manifest + bake defaults into P3; the desktop profile's source-built binaries (terminal/textedit/files/calculator/pdf_view) are added to the scenario's build list; `alpha-probe: PASS` (criteria a/b/c — desktop; lz deferred); the 2 GiB budget has 1.4 GiB headroom | scenario `run/sponge-desktop-disk.run` with `SPONGE_BAKE_PROFILE=desktop`; evidence `docs/evidence/phase15-index.md` §6 cell 3; QEMU 11.0.3; budget 2 GiB (D15.5 hard gate; observed 718 MB) |
+| Bake profile | sponge-desktop-disk.run × profile=minimal | verified | bake::stage lands 2 packages + manifest; no payloads; `alpha-probe: PASS` on q35/Skylake-Client; image 104 MB / 1 GiB budget = 10% used | scenario `run/sponge-desktop-disk.run` with `SPONGE_BAKE_PROFILE=minimal`; evidence `docs/evidence/phase15-index.md` §6 cell 4; QEMU 11.0.3; budget 1 GiB (observed 104 MB) |
+| Bake first-boot | sentinel-based P4 seeding (apply baked defaults once, user edits survive reboot) | verified | `bake.applied=yes` sentinel in the atomic `store.xml` write; first boot applies baked defaults, second boot preserves user edits across reboots without re-seeding; proven via `bake-firstboot-probe: PASS boot1` + `bake-firstboot-probe: PASS boot2` on base-linux (two fresh core/init boots over a shared writable config store); host-side `store.xml` inspection independently requires both the sentinel and the user override after boot 1 | scenario `run/sponge-bake-firstboot.run`; evidence `docs/evidence/phase15-index.md` §7; budget n/a |
+| Bake reset | `vct bake reset` restores baked defaults after user override | verified | `vct bake reset` (`set bake.applied=no`) drives the seed-once-via-sentinel workflow; the proven scenario on base-sel4 + QEMU (the vct binary is built in the base-sel4 scenario; the reset chain runs via a focused probe on the same config request channel) asserts override → reset → restored baked values → `bake.applied=yes` broadcast → persisted | scenario `run/sponge-bake-reset.run`; evidence `docs/evidence/phase15-index.md` §7; budget n/a |
+
+**Bake cells honesty note:** the 4 bake profile cells reproduce
+the Phase 12 alpha-probe verified chain with a profile-driven
+staging layer (no new component, no new scenario, no new boot
+module); the verified status is inherited from the underlying
+alpha-probe evidence + the bake profile's R15.3 verifier. The
+2 first-boot/reset cells are NEW scenarios that add the
+sentinel-based seeding envelope (D15.9). Both bake-reset and
+bake-firstboot are observed to PASS in their respective
+scenarios (see `docs/evidence/phase15-index.md` §7). No fabricated
+PASS — every verified cell maps to a real QEMU boot + an
+evidence log.
+
+---
+
+## 2. 17-cell cross-product ledger
 
 The cross-product is a separate ledger from §1's primary matrix.
 Plan step 2 / risk 24: do not imply the cross-product was run when
 only a focused scenario proved one concern. The ledger below maps
-**2 machines × 1 CPU × 2 storage × 2 NIC × 2 input = 16** cells and
-publishes exactly 4 verified, 1 smoke-only, and 11 gap cells. Plan
-risk 24 requires this exact 4/1/11 count plus a non-zero verified
-count.
+**2 machines × 1 CPU × 2 storage × 2 NIC × 2 input = 16** Phase 12
+cells plus the Phase 15 D15.11 **single real-hardware row** for the
+17ZD90N-VX7BK target machine (row 17), totaling **17 cells**:
+4 verified, 1 smoke-only, and 12 gap cells. Plan risk 24 requires
+this exact 4/1/12 count plus a non-zero verified count.
 
-Tuple dimensions:
+Tuple dimensions (Phase 12 base):
 
 - **Machine** ∈ {q35, i440fx}
 - **CPU** = Skylake-Client (single value)
@@ -295,31 +379,46 @@ Tuple dimensions:
 - **NIC** ∈ {ipxe/e1000, pc_nic/e1000}
 - **Input** ∈ {PS/2+usb-tablet, usb-kbd}
 
+Phase 15 D15.11 addition (single row, OUTSIDE the combo):
+
+- **Row 17**: a dedicated cell for the LG gram 17ZD90N-VX7BK target
+  machine. The cross-product dimensions are NOT extended; the row
+  carries the actual machine name in the **Machine** column and the
+  literal `target: real-hardware` in the **Target** column. Status
+  is **gap** with a `qemu-envelope: run/sponge-desktop-disk-uefi-usb.run`
+  link. The row flips to `verified` after the user-executed 15-3
+  physical-boot evidence lands (D15.11 + R15.7).
+
 Each row below is one cell with the full cell contract fields. Empty
 cells in the non-gap columns are gap cells (no fabricated scenario,
 no fabricated PASS marker). The `Reason` column is non-empty only
-for gap cells (per plan step 7 / risk 23 + risk 24).
+for gap cells (per plan step 7 / risk 23 + risk 24). The Phase 15
+`qemu-envelope` column is non-empty ONLY for the Phase 15
+real-hardware row; for every other row it is empty. The validator
+enforces both rules (no fabricated `qemu-envelope`, no
+`real-hardware` without `qemu-envelope`).
 
-| # | Machine | CPU | Storage | NIC | Input | Status | Scenario | Marker | Evidence | QEMU | boot_time_seconds | budget_seconds | Target | Reason |
-|---:|---|---|---|---|---|---|---|---|---|---:|---:|---:|---|---|
-| 1 | q35 | Skylake-Client | AHCI | ipxe/e1000 | PS/2+tablet | verified | run/sponge-boot.run | boot-probe: PASS (22 bytes: "sponge-boot-marker-v1.") | docs/evidence/task-0-phase12-baseline.md | 11.0.3 | 13 | 60 | qemu |  |
-| 2 | q35 | Skylake-Client | AHCI | ipxe/e1000 | usb-kbd | verified | run/sponge-usb-kbd-via-qmp.run | sponge-usb-kbd-via-qmp: PASS (QMP hotplug audit chain: device_add -> KEYBOARD detected -> device_del -> KEYBOARD removed -> send-key dispatched) | docs/evidence/phase12-usb-kbd.log | 11.0.3 | 436 | 900 | qemu |  |
-| 3 | q35 | Skylake-Client | AHCI | pc_nic/e1000 | PS/2+tablet | verified | run/sponge-pc-nic.run | sponge-pc-nic: PASS (pc_nic bound e1000, nic_router acquired DHCP 10.0.2.15) | docs/evidence/phase12-pc-nic.log | 11.0.3 | 21 | 300 | qemu |  |
-| 4 | q35 | Skylake-Client | AHCI | pc_nic/e1000 | usb-kbd | gap |  |  |  |  |  |  | phase-15+ | no Phase-12 scenario combines pc_nic (driver/nic/pc) with usb-kbd HID input on AHCI storage; the two chains are disjoint capability chains and were never bridged in a single boot |
-| 5 | q35 | Skylake-Client | NVMe | ipxe/e1000 | PS/2+tablet | verified | run/sponge-desktop-disk-nvme.run | alpha-probe: PASS | docs/evidence/phase12-desktop-nvme.log | 11.0.3 | 46 | 900 | qemu |  |
-| 6 | q35 | Skylake-Client | NVMe | ipxe/e1000 | usb-kbd | gap |  |  |  |  |  |  | phase-15+ | no Phase-12 scenario combines NVMe storage with usb-kbd HID input; the W4 input scenario uses a CDROM-boot ISO, not the NVMe driver path |
-| 7 | q35 | Skylake-Client | NVMe | pc_nic/e1000 | PS/2+tablet | gap |  |  |  |  |  |  | phase-15+ | no Phase-12 scenario combines NVMe storage with pc_nic driver stack; the W3 scenario uses a CDROM-boot ISO, not the NVMe driver path |
-| 8 | q35 | Skylake-Client | NVMe | pc_nic/e1000 | usb-kbd | gap |  |  |  |  |  |  | phase-15+ | no Phase-12 scenario combines NVMe + pc_nic + usb-kbd; all three Phase-12 driver chains are disjoint and were never bridged in a single boot |
-| 9 | i440fx | Skylake-Client | AHCI | ipxe/e1000 | PS/2+tablet | smoke-only | run/sponge-boot-i440fx.run | boot-probe: PASS (22 bytes: "sponge-boot-marker-v1.") | docs/evidence/phase12-boot-i440fx.log | 11.0.3 | 11 | 60 | qemu |  |
-| 10 | i440fx | Skylake-Client | AHCI | ipxe/e1000 | usb-kbd | gap |  |  |  |  |  |  | phase-15+ | no Phase-12 scenario combines i440fx (PIIX4 IDE) with usb-kbd HID input; the W4 input scenario pins q35/Skylake-Client and the i440fx smoke does not start usb_hid |
-| 11 | i440fx | Skylake-Client | AHCI | pc_nic/e1000 | PS/2+tablet | gap |  |  |  |  |  |  | phase-15+ | no Phase-12 scenario combines i440fx with pc_nic; pc_nic's DDE-Linux platform-driver chain requires q35 enumeration, not PIIX4 IDE |
-| 12 | i440fx | Skylake-Client | AHCI | pc_nic/e1000 | usb-kbd | gap |  |  |  |  |  |  | phase-15+ | no Phase-12 scenario combines i440fx + pc_nic + usb-kbd; i440fx + pc_nic alone is already gap and the usb-kbd input adds a second disjoint chain |
-| 13 | i440fx | Skylake-Client | NVMe | ipxe/e1000 | PS/2+tablet | gap |  |  |  |  |  |  | phase-15+ | i440fx does not auto-attach NVMe and Phase 12 has no i440fx + NVMe product path (plan D12.2 / §"Verified Ground Truth") |
-| 14 | i440fx | Skylake-Client | NVMe | ipxe/e1000 | usb-kbd | gap |  |  |  |  |  |  | phase-15+ | no i440fx + NVMe + usb-kbd combo exists; Phase 12 only verifies i440fx IDE and q35 NVMe as disjoint single-concern smokes |
-| 15 | i440fx | Skylake-Client | NVMe | pc_nic/e1000 | PS/2+tablet | gap |  |  |  |  |  |  | phase-15+ | no i440fx + NVMe + pc_nic combo exists; pc_nic requires q35 enumeration and i440fx lacks NVMe auto-attach |
-| 16 | i440fx | Skylake-Client | NVMe | pc_nic/e1000 | usb-kbd | gap |  |  |  |  |  |  | phase-15+ | no i440fx + NVMe + pc_nic + usb-kbd combo exists; all three Phase-12 driver chains are disjoint from the i440fx PIIX4 IDE topology |
+| # | Machine | CPU | Storage | NIC | Input | Status | Scenario | Marker | Evidence | QEMU | boot_time_seconds | budget_seconds | Target | Reason | qemu-envelope |
+|---:|---|---|---|---|---|---|---|---|---|---:|---:|---:|---|---|---|---|
+| 1 | q35 | Skylake-Client | AHCI | ipxe/e1000 | PS/2+tablet | verified | run/sponge-boot.run | boot-probe: PASS (22 bytes: "sponge-boot-marker-v1.") | docs/evidence/task-0-phase12-baseline.md | 11.0.3 | 13 | 60 | qemu |  |  |
+| 2 | q35 | Skylake-Client | AHCI | ipxe/e1000 | usb-kbd | verified | run/sponge-usb-kbd-via-qmp.run | sponge-usb-kbd-via-qmp: PASS (QMP hotplug audit chain: device_add -> KEYBOARD detected -> device_del -> KEYBOARD removed -> send-key dispatched) | docs/evidence/phase12-usb-kbd.log | 11.0.3 | 436 | 900 | qemu |  |  |
+| 3 | q35 | Skylake-Client | AHCI | pc_nic/e1000 | PS/2+tablet | verified | run/sponge-pc-nic.run | sponge-pc-nic: PASS (pc_nic bound e1000, nic_router acquired DHCP 10.0.2.15) | docs/evidence/phase12-pc-nic.log | 11.0.3 | 21 | 300 | qemu |  |  |
+| 4 | q35 | Skylake-Client | AHCI | pc_nic/e1000 | usb-kbd | gap |  |  |  |  |  |  | phase-15+ | no Phase-12 scenario combines pc_nic (driver/nic/pc) with usb-kbd HID input on AHCI storage; the two chains are disjoint capability chains and were never bridged in a single boot |  |
+| 5 | q35 | Skylake-Client | NVMe | ipxe/e1000 | PS/2+tablet | verified | run/sponge-desktop-disk-nvme.run | alpha-probe: PASS | docs/evidence/phase12-desktop-nvme.log | 11.0.3 | 46 | 900 | qemu |  |  |
+| 6 | q35 | Skylake-Client | NVMe | ipxe/e1000 | usb-kbd | gap |  |  |  |  |  |  | phase-15+ | no Phase-12 scenario combines NVMe storage with usb-kbd HID input; the W4 input scenario uses a CDROM-boot ISO, not the NVMe driver path |  |
+| 7 | q35 | Skylake-Client | NVMe | pc_nic/e1000 | PS/2+tablet | gap |  |  |  |  |  |  | phase-15+ | no Phase-12 scenario combines NVMe storage with pc_nic driver stack; the W3 scenario uses a CDROM-boot ISO, not the NVMe driver path |  |
+| 8 | q35 | Skylake-Client | NVMe | pc_nic/e1000 | usb-kbd | gap |  |  |  |  |  |  | phase-15+ | no Phase-12 scenario combines NVMe + pc_nic + usb-kbd; all three Phase-12 driver chains are disjoint and were never bridged in a single boot |  |
+| 9 | i440fx | Skylake-Client | AHCI | ipxe/e1000 | PS/2+tablet | smoke-only | run/sponge-boot-i440fx.run | boot-probe: PASS (22 bytes: "sponge-boot-marker-v1.") | docs/evidence/phase12-boot-i440fx.log | 11.0.3 | 11 | 60 | qemu |  |  |
+| 10 | i440fx | Skylake-Client | AHCI | ipxe/e1000 | usb-kbd | gap |  |  |  |  |  |  | phase-15+ | no Phase-12 scenario combines i440fx (PIIX4 IDE) with usb-kbd HID input; the W4 input scenario pins q35/Skylake-Client and the i440fx smoke does not start usb_hid |  |
+| 11 | i440fx | Skylake-Client | AHCI | pc_nic/e1000 | PS/2+tablet | gap |  |  |  |  |  |  | phase-15+ | no Phase-12 scenario combines i440fx with pc_nic; pc_nic's DDE-Linux platform-driver chain requires q35 enumeration, not PIIX4 IDE |  |
+| 12 | i440fx | Skylake-Client | AHCI | pc_nic/e1000 | usb-kbd | gap |  |  |  |  |  |  | phase-15+ | no Phase-12 scenario combines i440fx + pc_nic + usb-kbd; i440fx + pc_nic alone is already gap and the usb-kbd input adds a second disjoint chain |  |
+| 13 | i440fx | Skylake-Client | NVMe | ipxe/e1000 | PS/2+tablet | gap |  |  |  |  |  |  | phase-15+ | i440fx does not auto-attach NVMe and Phase 12 has no i440fx + NVMe product path (plan D12.2 / §"Verified Ground Truth") |  |
+| 14 | i440fx | Skylake-Client | NVMe | ipxe/e1000 | usb-kbd | gap |  |  |  |  |  |  | phase-15+ | no i440fx + NVMe + usb-kbd combo exists; Phase 12 only verifies i440fx IDE and q35 NVMe as disjoint single-concern smokes |  |
+| 15 | i440fx | Skylake-Client | NVMe | pc_nic/e1000 | PS/2+tablet | gap |  |  |  |  |  |  | phase-15+ | no i440fx + NVMe + pc_nic combo exists; pc_nic requires q35 enumeration and i440fx lacks NVMe auto-attach |  |
+| 16 | i440fx | Skylake-Client | NVMe | pc_nic/e1000 | usb-kbd | gap |  |  |  |  |  |  | phase-15+ | no i440fx + NVMe + pc_nic + usb-kbd combo exists; all three Phase-12 driver chains are disjoint from the i440fx PIIX4 IDE topology |  |
+| 17 | LG gram 17ZD90N-VX7BK (i7-1065G7 / Iris Plus G7 / 8 GiB / NVMe SSD / xHCI / Insyde H2O UEFI-only) | Skylake-Client (x86_64) | NVMe (PM981a/PM991 — single-namespace expected) | none functional (no Ethernet; Wi-Fi AX201 CNVio2 = unsupported Genode wifi) | PS/2 keyboard (i8042) + USB HID mouse (15-3 protocol — trackpad dead, USB mouse required; R15.10) | gap |  |  |  |  |  |  | real-hardware | 15-3 physical boot pending (user-executed); the QEMU envelope `run/sponge-desktop-disk-uefi-usb.run` is structurally verified (W4 + W-USB, host-side sgdisk + mdir + e2ls) but QEMU-boot-blocked by the W1 OVMF core-init hang; real-hardware verification on the 17ZD90N's 2020 Insyde H2O is the 15-3 deliverable. The cell flips to verified only after the user-executed physical-boot evidence lands (D15.11 + R15.7). | run/sponge-desktop-disk-uefi-usb.run |
 
-**Cell counts:** 4 verified (cells 1, 2, 3, 5) + 1 smoke-only (cell 9) + 11 gap (cells 4, 6, 7, 8, 10, 11, 12, 13, 14, 15, 16) = 16 cells (matches plan step 2 + risk 24).
+**Cell counts:** 4 verified (cells 1, 2, 3, 5) + 1 smoke-only (cell 9) + 12 gap (cells 4, 6, 7, 8, 10, 11, 12, 13, 14, 15, 16, 17) = 17 cells (matches Phase 12 plan step 2 + risk 24 + Phase 15 D15.11). The Phase 15 single real-hardware row is row 17.
 
 ### 2.1 Sub-pointer map (BIOS-side USB media + multi-disk)
 
@@ -348,6 +447,7 @@ qemu: 11.0.3
 boot_time_seconds: <measured integer>
 budget_seconds: <declared integer>
 target: qemu
+qemu-envelope: <empty for Phase 12 cells>
 ```
 
 Rules the validator enforces on non-gap cells (plan step 7):
@@ -360,6 +460,10 @@ Rules the validator enforces on non-gap cells (plan step 7):
 - `boot_time_seconds ≤ budget_seconds` (over-budget = loud failure).
 - For USB-boot evidence (`*usb-boot.log`), the evidence additionally
   contains the literal `BIOS-side USB boot verified`.
+- `qemu-envelope:` is empty for Phase 12 cells (and empty for any
+  non-gap cell — only the Phase 15 real-hardware gap row carries
+  the field, and a gap row may NOT carry scenario/marker/evidence
+  per §3.2 below).
 
 ### 3.2 Gap cell
 
@@ -367,21 +471,38 @@ Rules the validator enforces on non-gap cells (plan step 7):
 status: gap
 reason: <non-empty reason>
 target: phase-XX
+qemu-envelope: <empty for Phase 12 gap cells; OR `run/<scenario>.run` for Phase 15 real-hardware rows>
 ```
 
-Rules the validator enforces on gap cells (plan step 7):
+Rules the validator enforces on gap cells (plan step 7 + Phase 15 D15.11):
 
 - The `status` value is exactly `gap`.
 - `reason` is non-empty.
-- `target` is non-empty and is a phase designation (never `real-hardware`).
-- `target: real-hardware` is rejected with exit 2 and the exact message
-  `real hardware is a Phase 15 deliverable; not a Phase 12 cell`.
+- `target` is non-empty and is either a phase designation (`phase-XX`)
+  OR (Phase 15 D15.11) the literal `real-hardware` for a real-
+  hardware row.
+- A `target: real-hardware` row is admitted ONLY when BOTH:
+  (a) `qemu-envelope:` is non-empty AND names an existing scenario
+  file under `run/`; AND
+  (b) `status:` is exactly `gap` (any stronger status — `verified`
+  or `smoke-only` — is rejected with exit 2 until the 15-3
+  physical-boot evidence lands; D15.11 + R15.7).
+- A `target: real-hardware` row WITHOUT a `qemu-envelope:` is
+  rejected with exit 2 and the exact message
+  `real hardware is a Phase 15 deliverable; not a Phase 12 cell`
+  (the original Phase 12 reject rule; preserved verbatim).
+- The `qemu-envelope` cell column is empty for every non-real-
+  hardware row (Phase 12 + Phase 15 surface cells).
 
 ### 3.3 Aggregate rules
 
 - The cross-product cell counts are exactly 4 verified, 1 smoke-only,
-  and 11 gap. Any other distribution is a loud failure.
+  and 12 gap (Phase 12 11 gap + Phase 15 D15.11 1 real-hardware
+  gap). Any other distribution is a loud failure.
 - The verified count is non-zero (at least one verified cell).
+- Exactly ONE row carries `target: real-hardware` (D15.11). Multiple
+  real-hardware rows are rejected (the validator's real-hardware
+  branch fires on the first such row and exits 2).
 - The document is never modified by the validator. `tool/hw_compat.mojo`
   has no `generate`, `update`, or repository-writing path
   (plan step 6 / risk 23).
