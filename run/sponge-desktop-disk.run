@@ -1,5 +1,6 @@
 #
 # \brief  Sponge OS Phase 8 P2 — desktop from disk
+#         (bake-driven staging, Phase 15 W2, D15.3/D15.4/D15.8).
 # \author Sponge OS contributors
 # \date   2026
 #
@@ -68,11 +69,35 @@
 # alpha-probe (with skip_lz=yes) asserts three criteria:
 #   (a) themed panel pixel rendered on nitpicker
 #   (b) launcher report carries hello/Utilities
+#       (with the bake-driven default profile enabled, the launcher
+#        also carries terminal/textedit/files/calculator/pdf_view/falkon
+#        — install-enabled on the staged media; alpha-probe only
+#        asserts hello is present, so the additional installs do not
+#        change the gate.)
 #   (c) configd broadcast ROM is live
 # Criterion (d) lz_viewer is deferred to P5.
 # The run gates on "alpha-probe: PASS" with a bounded timeout.
 #
 # The image.elf size is printed and asserted ≤ 80 MiB (§4.5 target).
+#
+# === Bake profile (Phase 15 W2, D15.3/D15.4/D15.8/R15.3) ===
+#
+# Package staging is profile-driven via run/bake.inc (sourced below,
+# after the plugin-load helpers). For .img media the mode is FULL bake:
+# pkg_<name>.xml + the synthesized pkg_index.xml + every payload file
+# under pkg/<name>/payload/ is copied to /system before image/disk
+# auto-e2cps the run_dir.
+#
+# Env override:
+#   SPONGE_BAKE_PROFILE  default: desktop
+#                        valid:   minimal, desktop, none
+#                        other:   loud error (lists valid profiles)
+#
+# Run matrix (W2a evidence):
+#   SPONGE_BAKE_PROFILE=desktop (default) => alpha-probe: PASS
+#   SPONGE_BAKE_PROFILE=minimal           => alpha-probe: PASS
+#   SPONGE_BAKE_PROFILE=none               => alpha-probe: PASS (regression)
+#   SPONGE_BAKE_PROFILE=invalid            => loud error, no .img
 #
 # === Failure channel ===
 #
@@ -147,11 +172,18 @@ set build_components {
 	lib/vfs lib/vfs_rump
 	server/wm app/window_layouter app/decorator app/pointer
 	sponge_configd sponge_themed sponge_pkgd pkg_hello sponge-de
+	app/qt6/examples/calculatorform sponge_files app/pdf_view
+	server/terminal
+	noux-pkg/bash-minimal noux-pkg/vim-minimal
+	noux-pkg/coreutils-minimal noux-pkg/grep noux-pkg/sed
+	noux-pkg/tar noux-pkg/less noux-pkg/findutils
+	noux-pkg/diffutils noux-pkg/which
 	test/alpha_probe
-	qt6/base lib/libc lib/libm lib/stdcxx lib/mesa \
-	lib/mesa_gpu-softpipe lib/egl lib/softpipe lib/libdrm lib/expat \
-	lib/qt6_component lib/vfs lib/vfs_pipe lib/vfs_gpu lib/rom_filter \
-	lib/zlib lib/libpng lib/blit lib/vfs_ttf lib/vfs_import lib/posix \
+	qt6/base lib/libc lib/libm lib/stdcxx lib/mesa
+	lib/mesa_gpu-softpipe lib/egl lib/softpipe lib/libdrm lib/expat
+	lib/qt6_component lib/vfs lib/vfs_pipe lib/vfs_gpu lib/rom_filter
+	lib/zlib lib/libpng lib/blit lib/vfs_ttf lib/vfs_import lib/posix
+	lib/ncurses lib/pcre
 	driver/ahci
 }
 
@@ -200,10 +232,28 @@ puts -nonewline $empty_cfg {<config/>}
 close $empty_cfg
 
 # --- desktop binaries → /system/bin/ ---
+#
+# Bake-enabled source-built packages (terminal/textedit/files/
+# calculator/pdf_view) and the desktop chrome both land here. The
+# iteration is profile-driven via bake::stage's manifest — every
+# binary the [packages] section names (AND whose <binary> differs
+# from the same name as <name>) is staged here. For consistency,
+# the list below mirrors what's in pkg/bake/desktop.profile.
+#
 foreach b { init report_rom wm window_layouter decorator \
             sponge_configd sponge_themed sponge_pkgd sponge-de \
-            alpha_probe hello } {
-	exec cp -fL "bin/$b" "$sys_dir/bin/$b"
+            alpha_probe hello terminal sponge_files calculatorform \
+            pdf_view textedit } {
+	#
+	# Some packages (terminal) use a different binary name from
+	# their package name (pkg/terminal has <binary>init</binary> —
+	# already covered by `init` above). Skip-don't-error: a
+	# package whose payload has already covered the binary does
+	# NOT need this copy loop.
+	#
+	if {[file exists "bin/$b"]} {
+		exec cp -fL "bin/$b" "$sys_dir/bin/$b"
+	}
 }
 
 # --- shared libraries → /system/lib/ ---
@@ -284,19 +334,36 @@ if {[file exists "bin/qt6_libqgenode.tar"]} {
 	exec cp -fL "bin/qt6_libqgenode.tar" "$sys_dir/qt6_libqgenode.tar"
 }
 
-# --- package metadata (flat — pkgd opens ROM "pkg_<name>.xml") ---
-foreach pkg { hello } {
-	set src "${genode_dir}/../pkg/$pkg/metadata.xml"
-	if {[file exists $src]} {
-		exec cp -fL $src "$sys_dir/pkg_$pkg.xml"
-	}
-}
+# ----------------------------------------------------------------
+# Bake-driven pkg metadata + index + payloads (Phase 15 W2, D15.8)
+# ----------------------------------------------------------------
+#
+# Source run/bake.inc (the canonical Phase 15 W2 shared include) and
+# invoke bake::stage for FULL img-mode staging: pkg_<name>.xml +
+# the synthesized pkg_index.xml + every pkg/<name>/payload/* file
+# under $sys_dir. R15.3 verifier fires synchronously after staging;
+# any missing artifact errors loudly and exits before image assembly
+# (no silent or misleading-success run).
+#
+# On success, /system also gains the bake defaults tree at
+# $sys_dir/bake/{bake_manifest.json, config.defaults, theme.defaults};
+# the W3 first-boot sentinel (sponge_configd + .bake-seed) will read
+# them on the desk media path. iso media lands the same files under
+# bin/bake/ via the corresponding sponge-alpha.run call.
+#
+source [file join [file dirname [file normalize [info script]]] \
+                    bake.inc]
 
-set index_fh [open "$sys_dir/pkg_index.xml" w]
-puts $index_fh "<packages>"
-puts $index_fh "  <pkg name=\"hello\"/>"
-puts $index_fh "</packages>"
-close $index_fh
+bake::stage $sys_dir img
+
+#
+# NOTE: the source-built binaries (init, sponge-de, sponge_configd,
+# sponge_themed, sponge_pkgd, hello, etc.) are copied in the
+# `desktop binaries -> /system/bin/` block above. The R15.3 verifier
+# checks those binaries exist in bin/ after the scenario's `build {}`
+# block but does NOT copy them itself — that remains the scenario's
+# responsibility (this scenario already does so above).
+#
 
 # ========================================================================
 # Write /system/init/system.config — the nested system init config
