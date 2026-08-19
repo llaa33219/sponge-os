@@ -1,5 +1,6 @@
 #
-# \brief  Sponge OS Alpha unified desktop scenario (Phase 7, todo 4)
+# \brief  Sponge OS Alpha unified desktop scenario (Phase 7, todo 4;
+#         bake-driven, Phase 15 W2). Docs: D15.3/D15.4/D15.8.
 # \author Sponge OS contributors
 # \date   2026
 #
@@ -7,6 +8,27 @@
 # Alpha desktop: real PC drivers + wm/decorator + live theme pipeline +
 # launcher feed (pkgd) + Leitzentrale subsystem — all on seL4, pixel-
 # and report-verified by a single composite probe.
+#
+# === Bake profile (Phase 15 W2, D15.3/D15.4/D15.8) ===
+#
+# Package staging is profile-driven via run/bake.inc (the canonical
+# shared include sourced later in this file). Env override:
+#
+#   SPONGE_BAKE_PROFILE  default: desktop
+#                        valid:   minimal, desktop, none
+#                        other:   loud error (lists valid profiles)
+#
+# Mode for the .iso media (live/eval) is metadata-only — no payloads
+# are extracted, because on live media installs are pre-enabled (no
+# binary on the optical disk; a future remote-repo phase ships the
+# payload). Falkon's 509 MiB payload would not survive the boot-module
+# ceiling anyway (Phase 7 todo 16 evidence).
+#
+# Run matrix (W2a evidence):
+#   SPONGE_BAKE_PROFILE=desktop (default) => alpha-probe: PASS
+#   SPONGE_BAKE_PROFILE=none               => alpha-probe: PASS (regression)
+#   SPONGE_BAKE_PROFILE=invalid            => loud error, no boot
+#
 #
 # Merge map (each set is lifted verbatim from its proven scenario):
 #
@@ -238,26 +260,18 @@ foreach theme { default light } {
 }
 
 #
-# Stage package metadata + the derived index so sponge_pkgd can resolve
-# `hello` (same scheme as run/sponge-launcher.run).
+# Stage package metadata + the derived index via bake::stage (Phase 15 W2,
+# D15.8 — primary mechanism is staging-time). For the .iso media mode
+# is metadata-only: install-means-enable on read-only optical media.
 #
-set staged_pkgs { hello }
-foreach pkg $staged_pkgs {
-	set src "${genode_dir}/../pkg/$pkg/metadata.xml"
-	set dst "bin/pkg_$pkg.xml"
-	if {![file exists $src]} {
-		error "package metadata not found: $src"
-	}
-	exec cp -fL $src $dst
-}
+# The exact set staged is controlled by SPONGE_BAKE_PROFILE (default
+# 'desktop'; 'none' reproduces today's hello-only staging verbatim as the
+# escape hatch / regression baseline).
+#
+source [file join [file dirname [file normalize [info script]]] \
+                    bake.inc]
 
-set index_fh [open "bin/pkg_index.xml" w]
-puts $index_fh "<packages>"
-foreach pkg $staged_pkgs {
-	puts $index_fh "  <pkg name=\"$pkg\"/>"
-}
-puts $index_fh "</packages>"
-close $index_fh
+bake::stage bin iso
 
 #
 # Top-level init configuration (merged from the five source scenarios).
@@ -787,18 +801,34 @@ if {![file exists $dejavu_dst]} {
 # not in [build_artifacts], so listed explicitly (base-sel4 needs them
 # inside image.elf).
 #
+# Bake-driven staging (Phase 15 W2): the package metadata files
+# (pkg_<name>.xml + pkg_index.xml) and the bake defaults
+# (bake/bake_manifest.json + bake/config.defaults + bake/theme.defaults)
+# are produced by bake::stage above; include every pkg_<name>.xml that
+# ended up in bin/ as a boot module. The bake defaults are *not*
+# boot modules (they are future W3 read-only defaults for in-system
+# vct/sponge_configd consumption on the iso media path; today we just
+# plant them on disk so future scenarios can pick them up).
+#
 set boot_modules [build_artifacts]
 foreach m { libQt6Core.lib.so libQt6Gui.lib.so libQt6Widgets.lib.so \
             libqgenode.lib.so qt6_libqgenode.tar qt6_dejavusans.tar \
             en_us.chargen special.chargen \
             drivers.config fb.config event_filter.config \
             default.theme light.theme \
-            pkg_hello.xml pkg_index.xml \
             model.tar Vera.ttf VeraMono.ttf \
             drop_shadow.png genode_logo.png \
             runtime_config VERSION build_info \
             lz_runtime.config leitzentrale.config lz_bridge.config } {
 	lappend boot_modules $m
+}
+
+# Stage every pkg_<name>.xml + pkg_index.xml that bake::stage dropped
+# into bin/. For each profile they exactly mirror the [packages]
+# enabled set; this iteration picks up desktop's full list (8 incl.
+# hello) or minimal's two (hello + terminal) or none's one (hello).
+foreach f [lsort [glob -nocomplain bin/pkg_*.xml bin/pkg_index.xml]] {
+	lappend boot_modules [file tail $f]
 }
 
 build_boot_image $boot_modules
