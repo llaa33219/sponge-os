@@ -92,6 +92,8 @@ to runtime RAM and capability budgets, addressed in §11.
 | ROM-from-fs (uncached) | `genode/repos/os/src/server/fs_rom/` | in-tree |
 | ROM-from-tar | `genode/repos/os/src/server/tar_rom/` | in-tree |
 | Boot disk image tool | `genode/tool/run/image/disk` (GPT: P1 BIOS-boot, P2 ESP, P3 GENODE ext2; whole run dir is `e2cp`'d into P3, lines 79-90) | in use today |
+| UEFI GOP display driver | `genode/repos/os/src/driver/framebuffer/boot/` (boot_fb, reads `platform_info/boot/framebuffer`; requires bpp=32 + type=RGB) | in-tree, **used by `sponge-desktop-disk-uefi[-nvme].run`** |
+| GRUB2 EFI binary (UEFI bootloader) | `genode/contrib/grub2-*/boot/grub2/grub2_64.efi` (alex-ab fork, GRUB 2.12+; modules include multiboot2, efi_gop, gfxterm_background, png, fat, ext2) | in-tree, prebuilt |
 | Reference architecture | Sculpt OS: `genode/repos/gems/run/sculpt.run`, `genode/repos/gems/sculpt/option/sculpt:234-272` (`depot` chroot → `depot_rom` cached_fs_rom → `runtime` monitor), `genode/repos/gems/src/app/sculpt_manager/runtime/prepare.cc` (`/config/<VERSION>/` overlay) | production-proven |
 
 There is **no ext3/ext4** in the tree. Journaling is unavailable;
@@ -199,6 +201,95 @@ Default sizes (QEMU/dev images): P3 = system content ×1.5
 (~1.5–2 GiB with Falkon staged), P4 = 1 GiB default, configurable via
 `tool/dist --data-size`.
 
+#### 4.3.1 UEFI partition variant (Phase 15 W4, D15.13)
+
+The UEFI media path is the Sponge-side recipe
+(`run/sponge-desktop-disk-uefi.run` and `-nvme.run`); the vendored
+`genode/tool/run/image/uefi` is **unexercised and rejected** per
+D15.13 (it copies only top-level run_dir entries — the `/system`
+tree would silently not land — and hardcodes `/usr/share/ovmf/OVMF.fd`
+plus a single FAT partition with no docs/14 4-partition layout).
+The Sponge-side variant uses the same handcrafted-image pattern
+proven in `run/sponge-boot-i440fx.run` and
+`run/sponge-boot-multidisk.run` (sgdisk + mkfs + e2cp + dd outside
+the Genode image plugins), and appends its own OVMF pflash args to
+qemu_args.
+
+| # | Name | FS | Content | Writable by |
+|---|---|---|---|---|
+| 1 | `ESP` (FAT32 EF00) | FAT | `EFI/BOOT/BOOTX64.EFI` (renamed `grub2_64.efi`), `/boot/grub/grub.cfg`, `/boot/font.pf2` | image build |
+| 2 | **(ABSENT)** | — | The P2 slot is intentionally not allocated so P3/P4 partition numbers are identical to the BIOS media; part_block's `<partition number="3"/>` pin and tool/mkdata's P4 grow sequence work **unchanged** | — |
+| 3 | `GENODE` (ext2 8300) | ext2 | `/boot/{bender,sel4,image.elf}` (bootloader modules read by GRUB2 EFI's multiboot2 menuentry) + `/system` (Tier 1) | image build now; system-update path later |
+| 4 | `SPONGE-DATA` | ext2 | `/store`, `/home` (Tier 2) | pkgd, configd, apps |
+
+The P2-absent choice is binding. The alternatives considered and
+rejected (recorded in the W4 run-script header):
+
+* **A.** P1=BIOS-boot + P2=ESP + P3=GENODE + P4=SPONGE-DATA (the
+  BIOS image/disk layout, two firmware-resident partitions) —
+  rejected because image/disk does not produce this without a
+  vendored-tree edit (AGENTS.md §5.2 prohibition).
+* **B.** P1=ESP + P2=GENODE + P3=SPONGE-DATA (contiguous from
+  P1=1) — rejected because the W1 reference scenario's
+  part_block pin was on partition 2, and switching to this
+  layout would re-pin part_block AND re-do tool/mkdata's
+  P3 grow sequence for the UEFI path only. W4 wants the
+  partition numbers to match the BIOS media so the two
+  product .img files can be cross-validated (e.g. by a
+  future 15-3 recovery-tool or a swap-test).
+* **C.** **CHOSEN:** P1=ESP + P2 ABSENT + P3=GENODE + P4=SPONGE-DATA.
+  `sgdisk --new=1:2048:+64M` creates P1 (the ESP); the next
+  `sgdisk --new=3:0:+1024M` skips the P2 slot and creates P3
+  directly. part_block's `<partition number="3"/>` policy
+  works unchanged. tool/mkdata's `truncate + sgdisk
+  --delete=3 + --move-second-header + --new=3 + --new=4 +
+  mkfs.ext2 -E offset=…` works unchanged. The P2 slot is
+  never allocated, so the partition count after mkdata is 3
+  (P1, P3, P4) instead of 4; the structural verifier
+  (`verify_partitions` in `tool/dist.mojo`) handles both
+  layouts.
+
+Display chain under UEFI (R15.2 / D15.13):
+
+```
+OVMF GOP → GRUB2 gfxterm (insmod gfxterm + set gfxpayload=auto)
+         → multiboot2 FB tag (type 8) → bender → seL4
+         (MULTIBOOT2_TAG_FB, boot_sys.c:683-687) →
+         SEL4_BOOTINFO_HEADER_X86_FRAMEBUFFER → base-sel4 core
+         (platform.cc:463-490) → platform_info/boot/framebuffer
+         (phys/width/height/bpp/pitch/type) → boot_fb → Capture
+         session (served by nitpicker) → desktop stack
+```
+
+`boot_fb` (`genode/repos/os/src/driver/framebuffer/boot/`) is the
+UEFI display driver; `vesa_fb` is the BIOS one. The drivers
+sub-init config in `sponge-desktop-disk-uefi.run` is
+scenario-local (under `bin/`, never edits the vendored
+`drivers_interactive-pc` recipe) and starts `boot_fb` instead
+of `vesa_fb`. boot_fb requires bpp=32 + type=1 (RGB) and
+rejects other GOP modes (R15.2); the OVMF default of
+1024×768×32 RGB on Skylake-Client satisfies.
+
+GRUB2 EFI multiboot2 menuentry (W1 OVMF W^X workaround tokens
+per `docs/evidence/phase15-uefi-boot-smoke.log`, D15.13 verified
+ground truth §B):
+
+```
+set root=(hd0,gpt3)
+menuentry 'Genode on seL4 (UEFI)' {
+  insmod multiboot2
+multiboot2 /boot/bender serial intel_hwp_performance phys_max=256M serial_fallback
+  module2 /boot/sel4 sel4 disable_iommu console_port=0x3f8 debug_port=0x3f8
+  module2 /boot/image.elf image.elf
+}
+```
+
+The vendored `grub2_64.efi` (alex-ab fork, GRUB 2.12+, commit
+`1bc67dc` from 2025-03-06, built with `--disable-shim-lock`)
+includes the `ext2` module, so GRUB can read the GENODE
+partition's `/boot/` from (hd0,gpt3). `font.pf2` is loaded by
+gfxterm's `terminal_output`.
+
 ### 4.4 Boot flow
 
 ```
@@ -260,11 +351,17 @@ Concretely:
 | ahci (or nvme), part_block | all package payloads |
 | vfs, vfs_rump, libc (driver deps) | themes, fonts beyond the console font |
 | cached_fs_rom | Qt6/Mesa libraries |
-| **rescue display: vesa_fb, minimal nitpicker, console logger** (§4.7) | Leitzentrale subsystem |
+| **rescue display: vesa_fb (BIOS) or boot_fb (UEFI), minimal nitpicker, console logger** (§4.7) | Leitzentrale subsystem |
 | (the init config for the above) | |
 
 Target: Tier 0 ≤ 80 MiB including the rescue display, i.e. 3× headroom
-under the ~256 MiB ceiling.
+under the ~256 MiB ceiling. The UEFI display driver is `boot_fb`
+(reads `platform_info/boot/framebuffer` from the GOP framebuffer,
+§4.3.1); the BIOS display driver is `vesa_fb` (real-mode VBE via
+x86emu). The two are NEVER mixed — a UEFI scenario that starts
+vesa_fb hangs at the first VBE call (no INT 10h under UEFI, and
+the seL4 multiboot2 path hard-wires `vbeMode = -1`,
+`genode/repos/base-sel4/src/kernel/boot_sys.c:623`).
 
 ### 4.6 The ld.lib.so rule (bootstrap-cycle avoidance)
 
