@@ -147,6 +147,16 @@ class Sponge::Configd::Main
 		bool _lz_diverged { false };
 
 		/*
+		 * Optional read-only bake inputs. The parent opts in with a <bake/>
+		 * node and routes the files served from /system/bake under these
+		 * explicit labels. With no <bake/> node no sessions are requested,
+		 * preserving the pre-Phase-15 deployment contract.
+		 */
+		Genode::Constructible<Genode::Attached_rom_dataspace> _bake_defaults_rom { };
+		Genode::Constructible<Genode::Attached_rom_dataspace> _bake_manifest_rom { };
+		bool _bake_available { false };
+
+		/*
 		 * Optional persistent store (Phase 14 W6 — closes the Phase 4 /
 		 * Phase 13 "settings revert on reboot" carryover). Activated
 		 * only when this component's <config> carries a <vfs> node;
@@ -203,6 +213,12 @@ class Sponge::Configd::Main
 		void _report_list_ok();
 		void _report_error(char const *op, char const *key, char const *message);
 
+		/* ---- bake defaults (optional) ---- */
+		void _init_bake();
+		bool _apply_bake_defaults();
+		bool _apply_validated_value(char const *key, char const *value,
+		                            char const *source);
+
 		/* ---- persistent store (optional) ---- */
 		bool _store_enabled() const { return _vfs_env.constructed(); }
 		void _init_store();
@@ -212,6 +228,12 @@ class Sponge::Configd::Main
 
 
 Sponge::Configd::Main::Key_def const Sponge::Configd::Main::_registry[MAX_KEYS] = {
+	{ "bake.applied",          true,
+	  { "yes", "no" }, 2, "no", Sponge::Configd::Main::Key_def::Kind::Enum, 0, 0 },
+	{ "bake.profile",          false,
+	  { }, 0, "none", Sponge::Configd::Main::Key_def::Kind::String, 0, 0 },
+	{ "bake.version",          false,
+	  { }, 0, "0", Sponge::Configd::Main::Key_def::Kind::UintRange, 0, ~0U },
 	{ "clock.format",          false,
 	  { }, 0, "HH:mm", Sponge::Configd::Main::Key_def::Kind::FormatString, 0, 0 },
 	{ "leitzentrale.enabled",  true,
@@ -230,7 +252,7 @@ Sponge::Configd::Main::Key_def const Sponge::Configd::Main::_registry[MAX_KEYS] 
 	  { }, 0, "light", Sponge::Configd::Main::Key_def::Kind::String, 0, 0 },
 };
 
-unsigned const Sponge::Configd::Main::_num_keys = 7;
+unsigned const Sponge::Configd::Main::_num_keys = 10;
 
 
 /* ===================== registry helpers ===================== */
@@ -411,6 +433,27 @@ void Sponge::Configd::Main::_sorted_order(unsigned *order) const
 
 /* ===================== request handling ===================== */
 
+bool Sponge::Configd::Main::_apply_validated_value(char const *key,
+                                                    char const *value,
+                                                    char const *source)
+{
+	unsigned idx { 0 };
+	if (!_find_key(key, idx)) {
+		Genode::warning("sponge_configd: ", source, " skipped unknown key '", key, "'");
+		return false;
+	}
+
+	Genode::String<256> why { };
+	if (!_value_valid(idx, value, why)) {
+		Genode::warning("sponge_configd: ", source, " skipped ", why);
+		return false;
+	}
+
+	_values[idx] = Genode::String<128>(value);
+	return true;
+}
+
+
 void Sponge::Configd::Main::_handle_request()
 {
 	_request_rom.update();
@@ -480,6 +523,26 @@ void Sponge::Configd::Main::_do_get(char const *key)
 
 void Sponge::Configd::Main::_do_set(char const *key, char const *value)
 {
+	if (Genode::strcmp(key, "bake.applied") == 0 &&
+	    Genode::strcmp(value, "no") == 0) {
+		if (!_apply_bake_defaults()) {
+			_report_error("set", key, "baked defaults are unavailable");
+			return;
+		}
+		_save_store();
+		_generate_broadcast();
+		_report_set_ok(key, value);
+		return;
+	}
+
+	if (Genode::strcmp(key, "bake.applied") == 0 ||
+	    Genode::strcmp(key, "bake.profile") == 0 ||
+	    Genode::strcmp(key, "bake.version") == 0) {
+		_report_error("set", key,
+		              "bake metadata is read-only (use bake.applied=no to reset)");
+		return;
+	}
+
 	unsigned idx { 0 };
 	if (!_find_key(key, idx)) {
 		_report_error("set", key,
@@ -565,6 +628,157 @@ void Sponge::Configd::Main::_handle_lz_model()
 		_lz_diverged = diverged;
 		_generate_broadcast();
 	}
+}
+
+
+/* ===================== bake defaults (optional) ===================== */
+
+void Sponge::Configd::Main::_init_bake()
+{
+	_config_rom.update();
+	if (!_config_rom.valid()) return;
+
+	bool enabled { false };
+	try {
+		_config_rom.node().with_optional_sub_node("bake",
+			[&](Genode::Node const &) { enabled = true; });
+	} catch (Genode::Xml_node::Invalid_syntax) {
+		Genode::warning("sponge_configd: malformed <config> — bake defaults disabled");
+		return;
+	}
+	if (!enabled) return;
+
+	try {
+		_bake_defaults_rom.construct(_env, "bake_config_defaults");
+		_bake_manifest_rom.construct(_env, "bake_manifest");
+		_bake_defaults_rom->update();
+		_bake_manifest_rom->update();
+		_bake_available = _bake_defaults_rom->valid() && _bake_manifest_rom->valid();
+		if (_bake_available)
+			Genode::log("sponge_configd: baked defaults available");
+		else
+			Genode::warning("sponge_configd: bake ROMs routed but invalid");
+	}
+	catch (Genode::Rom_connection::Rom_connection_failed) {
+		Genode::warning("sponge_configd: bake ROM connection failed");
+	}
+	catch (Genode::Service_denied) {
+		Genode::warning("sponge_configd: bake ROM service denied");
+	}
+	catch (Genode::Out_of_ram) {
+		Genode::warning("sponge_configd: no RAM for bake ROM sessions");
+	}
+	catch (Genode::Out_of_caps) {
+		Genode::warning("sponge_configd: no caps for bake ROM sessions");
+	}
+}
+
+
+bool Sponge::Configd::Main::_apply_bake_defaults()
+{
+	if (!_bake_available) return false;
+
+	_bake_defaults_rom->update();
+	_bake_manifest_rom->update();
+	if (!_bake_defaults_rom->valid() || !_bake_manifest_rom->valid())
+		return false;
+
+	char const *manifest = _bake_manifest_rom->local_addr<char const>();
+	Genode::size_t const manifest_size = _bake_manifest_rom->size();
+
+	auto find_json_value = [&] (char const *name, char *out,
+	                           Genode::size_t out_size, bool quoted) {
+		Genode::String<96> const token("\"", name, "\"");
+		Genode::size_t const token_len = Genode::strlen(token.string());
+		for (Genode::size_t i = 0; i + token_len < manifest_size; ++i) {
+			if (Genode::strcmp(manifest + i, token.string(), token_len) != 0)
+				continue;
+			Genode::size_t p = i + token_len;
+			while (p < manifest_size && (manifest[p] == ' ' || manifest[p] == '\t' ||
+			       manifest[p] == '\r' || manifest[p] == '\n')) ++p;
+			if (p >= manifest_size || manifest[p++] != ':') return false;
+			while (p < manifest_size && (manifest[p] == ' ' || manifest[p] == '\t' ||
+			       manifest[p] == '\r' || manifest[p] == '\n')) ++p;
+			if (quoted && (p >= manifest_size || manifest[p++] != '"')) return false;
+			Genode::size_t n { 0 };
+			while (p < manifest_size && n + 1 < out_size) {
+				char const c = manifest[p++];
+				if ((quoted && c == '"') || (!quoted && (c < '0' || c > '9')))
+					break;
+				out[n++] = c;
+			}
+			out[n] = 0;
+			return n > 0;
+		}
+		return false;
+	};
+
+	char schema[16] { };
+	char version[16] { };
+	char profile[128] { };
+	char theme[128] { };
+	if (!find_json_value("schema_version", schema, sizeof(schema), false) ||
+	    !find_json_value("profile_config_version", version, sizeof(version), false) ||
+	    !find_json_value("profile", profile, sizeof(profile), true) ||
+	    Genode::strcmp(schema, "1") != 0 || Genode::strcmp(version, "1") != 0) {
+		Genode::warning("sponge_configd: unsupported or malformed bake manifest");
+		return false;
+	}
+	bool const have_theme = find_json_value("theme", theme, sizeof(theme), true);
+
+	unsigned applied { 0 };
+	char const *defaults = _bake_defaults_rom->local_addr<char const>();
+	Genode::size_t const defaults_size = _bake_defaults_rom->size();
+	Genode::size_t line_start { 0 };
+	while (line_start < defaults_size && defaults[line_start] != 0) {
+		Genode::size_t line_end = line_start;
+		while (line_end < defaults_size && defaults[line_end] != '\n') ++line_end;
+
+		Genode::size_t first = line_start;
+		Genode::size_t last = line_end;
+		while (first < last && (defaults[first] == ' ' || defaults[first] == '\t' ||
+		       defaults[first] == '\r')) ++first;
+		while (last > first && (defaults[last - 1] == ' ' || defaults[last - 1] == '\t' ||
+		       defaults[last - 1] == '\r')) --last;
+
+		if (first < last && defaults[first] != '#') {
+			Genode::size_t eq = first;
+			while (eq < last && defaults[eq] != '=') ++eq;
+			if (eq == last) {
+				Genode::warning("sponge_configd: bake defaults skipped malformed line");
+			} else {
+				Genode::size_t key_last = eq;
+				while (key_last > first && (defaults[key_last - 1] == ' ' ||
+				       defaults[key_last - 1] == '\t')) --key_last;
+				Genode::size_t value_first = eq + 1;
+				while (value_first < last && (defaults[value_first] == ' ' ||
+				       defaults[value_first] == '\t')) ++value_first;
+
+				char key[128] { };
+				char value[128] { };
+				Genode::size_t const key_len = key_last - first;
+				Genode::size_t const value_len = last - value_first;
+				if (key_len == 0 || key_len >= sizeof(key) || value_len >= sizeof(value)) {
+					Genode::warning("sponge_configd: bake defaults skipped oversized line");
+				} else {
+					for (Genode::size_t i = 0; i < key_len; ++i) key[i] = defaults[first + i];
+					for (Genode::size_t i = 0; i < value_len; ++i) value[i] = defaults[value_first + i];
+					if (_apply_validated_value(key, value, "bake defaults")) ++applied;
+				}
+			}
+		}
+		line_start = line_end + 1;
+	}
+
+	if (have_theme && _apply_validated_value("theme.active", theme, "bake manifest"))
+		++applied;
+	_apply_validated_value("bake.profile", profile, "bake manifest");
+	_apply_validated_value("bake.version", version, "bake manifest");
+	_apply_validated_value("bake.applied", "yes", "bake sentinel");
+
+	Genode::log("sponge_configd: applied ", applied, " baked default(s) from profile '",
+	            Genode::String<128>(profile), "' @ v", Genode::String<16>(version));
+	return true;
 }
 
 
@@ -881,6 +1095,14 @@ Sponge::Configd::Main::Main(Genode::Env &env) : _env(env)
 	for (unsigned i = 0; i < _num_keys; ++i)
 		if (Genode::strcmp(_values[i].string(), "") == 0)
 			_values[i] = Genode::String<128>(_registry[i].default_value);
+
+	_init_bake();
+	unsigned bake_applied_idx { 0 };
+	if (_bake_available &&
+	    _find_key("bake.applied", bake_applied_idx) &&
+	    Genode::strcmp(_values[bake_applied_idx].string(), "yes") != 0 &&
+	    _apply_bake_defaults())
+		_save_store();
 
 	/* Publish the store before any watcher can request it (init
 	 * starts children in config order). On a restored boot this
