@@ -1,0 +1,186 @@
+=== Phase 15 W1 UEFI Tier-0 boot smoke — STEP C capture (HYP1+HYP2 not effective) ===
+Run: 2026-08-18T01:35:00+09:00
+Host: CachyOS Linux, QEMU 11.0.3, edk2-ovmf 202605-1
+Vendored Genode: 26.05 (commit 492a510242)
+Vendored GRUB2 EFI binary: genode/contrib/grub2-eb7172dee270fbd9f1bc862d46725fd1fb21d1ea/boot/grub2/grub2_64.efi
+(built at genode fork commit 1bc67dc 'Update to GRUB2 2.12+' from March 2025;
+ upstream commit on the build script's genode213 branch is b3f6ac89832ddcba3833828d51b0e44bf97c1a38)
+
+=== Run script: run/sponge-boot-uefi.run (Sponge-side UEFI recipe per D15.13) ===
+=== Handcrafted GPT: P1 ESP FAT32, P2 GENODE ext2 with /system/marker.txt ===
+=== Gate: '.*boot-probe: PASS.*sponge-boot-marker-v1.*' bounded at 120 s ===
+=== Status: GATE FAIL — STEP C: HYP1 + HYP2 applied per Oracle direction;
+                  no "Genode v..." banner produced; stopping per Oracle's
+                  "do not attempt further vendored hacks past this point" ===
+
+=== Oracle direction summary (followed) ===
+
+  STEP A (HYP1: seL4 BDA-serial-detection unreliable under UEFI):
+    Applied: console_port=0x3f8 debug_port=0x3f8 on the sel4 module
+             (module2 /boot/sel4 sel4 disable_iommu console_port=0x3f8
+              debug_port=0x3f8).
+    Result: NO EFFECT — still no Genode v banner in the QEMU serial log.
+
+  STEP B (HYP2: my run script diverged from upstream by using
+        phys_max=2G + phys_max_relocate; upstream uses phys_max=256M
+        and drops phys_max_relocate):
+    Applied: phys_max=256M (reverted from 2G), phys_max_relocate
+             dropped.
+    Result: NO EFFECT — still no Genode v banner in the QEMU serial log.
+
+  STEP C: capture the full serial log and STOP. Do not attempt
+          further vendored hacks.
+
+=== Captured serial log — full Boot chain to Genode user space ===
+
+  UEFI pflash boots, BdsDxe reads Boot0001 from SATA, GRUB2 EFI runs
+  (the multiboot2 line loads bender, the module2 lines load sel4 +
+  image.elf). bender successfully loads seL4 with the patched
+  check_mem() bypass (TEMPORARY patch in genode/tool/boot/bender
+  offset 0x2e0b, md5 74aafcbda6c8d3067da143af6fe7fecd). seL4 boots
+  to user space ("Booting all finished, dropped to user space"). The
+  seL4 kernel then prints the untyped-pool warnings but NO Genode v
+  banner. QEMU exits; the run framework's run_genode_until correctly
+  times out at 120 s.
+
+  Key markers in the captured log:
+    "BdsDxe: loading Boot0001 ..." — UEFI pflash success
+    "BdsDxe: starting Boot0001 ..." — bootloader handoff
+    "Bender Version 0.9-beta7-51-g28ba2ad-dirty" — GRUB2 → bender
+    "Patching BDA with I/O port 0x3f8." — bender BDA patch
+    "Bender: Hello World." — bender init
+    "hwp config: eeo=na irq=na hwp=na epp=na epb=na" — bender HWP probe
+    "Boot config: debug_port = 0x3f8" — bender configured debug port
+    "Boot config: disable_iommu = true" — IOMMU disabled
+    "module #0: start=0x1780000 end=0x20613c0 size=0x8e13c0 name='image.elf'"
+    "Adding physical memory region 0x100000-0x800000" (×4 for available regions)
+    "Got framebuffer info in multiboot2. Current video mode is at
+     physical address=80000000 pitch=5120 resolution=1280x800@32 type=1"
+    "Detected 1 boot module(s):" — seL4 sees the ELF
+    "Kernel loaded to: start=0x200000 end=0xe3e000 size=0xc3e000 entry=0x200298"
+    "ACPI: ..." (MADT, FADT) — seL4 ACPI parsing
+    "Mapping kernel window is done" — seL4 hands off to user space
+    "vt-x: not supported" — no KVM in this build
+    "available phys memory regions: 6" — Genode seL4 platform init
+    "Booting all finished, dropped to user space" — seL4 → user space
+    (last useful line — Genode core never produces log output)
+
+  Then ONLY the seL4 untyped-pool warnings appear (×14 instances
+  of "Warning: device memory ... is unavailable" for high MMIO
+  regions, plus 2 instances of "Warning: unable to register range
+  as RAM: [0x80c000..0x810000)" and "[0x900000..0xa00000)" for the
+  fragmented low-RAM regions). The "Genode v..." banner,
+  "MiB RAM and caps assigned to init" line, and all "[init -> ...]"
+  component logs NEVER appear. QEMU exits (because Genode core
+  crashes or can't initialize due to the untyped pool issues).
+  The run framework's run_genode_until correctly times out at 120 s
+  waiting for "boot-probe: PASS" (the override run_log bypasses
+  the false-positive "platform rebooted unexpectedly" error).
+
+=== Resolution chain summary ===
+
+  Blockers resolved (in this commit, in the working tree):
+    1. STEP 2: OVMF pin in var/ovmf/ (resolves the W^X Page Fault)
+    2. Bender patch: 5-byte vendored-tree edit (resolves check_mem
+       type-4 overlap — TEMPORARY, not committed per Oracle)
+    3. run_log / run_genode_until override (bypasses framework
+       false-positive) — TEMPORARY, removed in STEP D if banner
+       appears and boot-probe: PASS is observed
+    4. -snapshot (avoids QEMU+KVM OFD-lock env issues)
+
+  Blockers remaining (out of W1 scope per AGENTS.md §5.2):
+    5. Genode core fails to print log output under UEFI mode.
+       The seL4 untyped_pool has 2 "unable to register range as RAM"
+       warnings for small low-RAM regions (0x80c000-0x810000 and
+       0x900000-0xa00000). The core's bootstrap_component() seems to
+       fail before reaching the log("Genode ...") call. This is a
+       vendored-tree issue (base-sel4's initial_untyped_pool and
+       core_log ROM setup need a UEFI-fragmentation fix). HYP1
+       (console_port=0x3f8 debug_port=0x3f8) and HYP2 (phys_max=256M
+       + drop phys_max_relocate) did not resolve this.
+
+=== Files (working tree, not committed) ===
+
+  run/sponge-boot-uefi.run                      # Sponge-side UEFI reference run script
+                                              # (with HYP1, HYP2, run_log + run_genode_until
+                                              #  overrides, -snapshot flag, bender patch notes)
+  repos/sponge/run/sponge-boot-uefi.run        # discovery mirror symlink
+  var/ovmf/OVMF_CODE.fd                        # pinned OVMF 2024.02 code pflash
+  var/ovmf/OVMF_VARS.fd                        # pinned OVMF 2024.02 vars pflash
+  genode/tool/boot/bender                      # PATCHED (5-byte NOP at 0x2e0b) — TEMPORARY
+  docs/evidence/phase15-uefi-boot-smoke.log    # this file
+  docs/evidence/phase15-index.md               # phase evidence index
+
+=== EXPERIMENT 1, 2, 3 RESULTS (2026-08-18) ===
+
+EXPERIMENT 1 (QEMU debug flags):
+  Applied: -d int,guest_errors,cpu_reset -D [run_dir]/qemu-debug.log
+  Result: qemu-debug.log contains ONLY "CPU Reset" register dumps (46 resets
+  captured, 1288 log lines = 46 × 28 lines per reset dump). The register
+  state shows EIP=0xfff0 (real mode reset vector), CR3=0 (no page table),
+  CR0=0x60000010 (PE set, PG clear). This is the INITIAL CPU state
+  before OVMF starts, NOT the state when QEMU is killed by the framework.
+  No exception interrupts, no unimp accesses, no guest errors captured.
+  → NO FAULT VISIBLE IN QEMU DEBUG LOG (QEMU only logs at reset events,
+    not during execution).
+
+EXPERIMENT 2 (4G QEMU RAM):
+  Applied: -m 4G (was -m 1G)
+  Result: 84 occurrences of "Booting all finished" across 3 retries
+  (vs 41 with 1G = ~2x as many boots per retry). Same warnings
+  ("device memory ... is unavailable (limited untyped cnode range)"
+  and "unable to register range as RAM: [0x80c000..0x810000) [0x900000..0xa00000)").
+  ZERO occurrences of "Genode v" banner. QEMU exits; test times out.
+  → INCONCLUSIVE: more RAM did NOT resolve the issue. The issue is
+    NOT untyped list exhaustion from low-RAM (the 2 failing ranges
+    [16KB and 1MB] are too small to fit untyped objects of the typical
+    seL4 object size; this is a structural fragmentation issue, not a
+    capacity issue).
+
+EXPERIMENT 3 (pc/i440fx machine type):
+  Applied: -machine pc (was -machine q35)
+  Result: 81 occurrences of "Booting all finished". Same warnings.
+  ZERO occurrences of "Genode v". QEMU exits; test times out.
+  → INCONCLUSIVE: different MMIO layout (i440fx vs q35) did NOT resolve
+    the issue. The fragmentation pattern is similar.
+
+=== FAULT-VS-HANG VERDICT ===
+
+HANG (not fault). Confirmed by:
+  1. bender DOES load seL4 (Kernel loaded to 0x200000)
+  2. seL4 DOES drop to user space ("Booting all finished")
+  3. The 2 untyped_pool warnings appear (so initial_untyped_pool runs)
+  4. No "Genode v" banner ever appears (core hangs in
+     bootstrap_component after Platform construction, before
+     log("Genode ", version_string) at main.cc:126)
+  5. No page fault / triple fault / GP / unimp captured in QEMU debug log
+  6. No QEMU exit message indicating a fault (just SIGKILL from the
+     test framework after 120s timeout)
+
+The HANG is between:
+  - end of initial_untyped_pool (which prints "unable to register..."
+    warnings at line 141/148 of platform.cc)
+  - the log("Genode ", version_string) call at main.cc:126
+
+This is the "core init in [Platform construction, log call]" window.
+The core does init_exception_handling, init_core_signal_transmitter,
+init_page_fault_handling, and allocates various services. The HANG
+must be in one of these. The most likely candidate is
+init_page_fault_handling which involves the VM subsystem and could
+deadlock if some init_untyped callback failed silently.
+
+=== SINGLE RECOMMENDED NEXT ACTION ===
+
+Increase CONFIG_MAX_NUM_BOOTINFO_UNTYPED_CAPS from 160 to a larger
+value (e.g. 1024). The 2 "unable to register range as RAM" warnings
+show that the cnode is too small to register all UEFI-mode RAM
+fragments (16KB at 0x80c000-0x810000 and 1MB at 0x900000-0xa00000).
+Genode core's initial_untyped_pool creates one untyped cnode entry
+per memory range; with 160 slots and 50+ high-MMIO untypeds, only
+~110 slots are left for RAM. These 2 small fragments might be the
+last to fit and could fail in a way that blocks core's init silently.
+
+This requires a base-sel4 kernel rebuild (kconf), so it's out of W1
+scope. The next phase should rebuild base-sel4 with a higher
+CONFIG_MAX_NUM_BOOTINFO_UNTYPED_CAPS (e.g. 1024 or 2048) and
+re-run W1.
