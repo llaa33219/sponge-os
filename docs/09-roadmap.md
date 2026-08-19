@@ -707,6 +707,29 @@ tasks — not a demo, but a desktop one can actually sit down and use.
 
 ### Phase 15: Real-Hardware Boot
 
+> Work plan: `docs/plans/phase15-real-hardware-boot.md` (2026-08-17).
+> User-directed decomposition: 15-1 bake-customizable + UEFI media,
+> 15-2 QEMU hardware-diversity matrix, 15-3 physical boot by the user.
+> Target machine (D15.1): LG gram 17 (2020) 17ZD90N-VX7BK.
+>
+> **Progress (2026-08-18):** 15-1 and 15-2 are done. 15-1 shipped the
+> bake system (`pkg/bake/{minimal,desktop}.profile`, `run/bake.inc`,
+> `tool/bake`, first-boot seeding in `sponge_configd`, `vct bake
+> list/show/reset`), the UEFI product media
+> (`run/sponge-desktop-disk-uefi{,-nvme,-usb}.run`, `boot_fb` display
+> path, `tool/dist --firmware uefi`), and the 15-3 desktop USB-boot
+> artifact (`./tool/dist --bake-profile desktop --firmware uefi
+> --storage usb`). 15-2 shipped the usb-mouse HID envelope
+> (`run/sponge-usb-hid-mouse.run`), the D15.11 `tool/hw_compat`
+> real-hardware admission policy, and the updated
+> `docs/15-hardware-compatibility.md` (4 verified / 1 smoke-only /
+> 12 gap incl. the single 17ZD90N real-hardware gap row); a 9-scenario
+> serial regression sweep is all-PASS. The UEFI QEMU cells are honest
+> gaps (W1 OVMF core-init hang, D15.16). **15-3 is pending on the
+> user's physical boot** per
+> `docs/plans/phase15-hardware-boot-protocol.md`; criteria 1, 2, 4
+> close (or are re-scoped) from that evidence.
+
 #### Goal
 
 Sponge OS boots successfully on at least one physical machine — the
