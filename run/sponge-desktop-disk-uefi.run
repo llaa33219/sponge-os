@@ -144,7 +144,7 @@
 #
 # === Drivers sub-init (UEFI variant) ===
 #
-#   + start fb | caps: 150 | ram: 20M
+#   + start fb | caps: 6000 | ram: 20M  # Phase 15: boot_fb maps the whole GOP framebuffer; 150 caps exhausted the PD mapping cache (out of CAP)
 #     + binary boot_fb
 #     + route
 #       + service ROM | label: config        | + parent | label: fb.config
@@ -1000,7 +1000,7 @@ config
       + parent
       + any-child
 
-+ start fb | caps: 150 | ram: 20M
++ start fb | caps: 6000 | ram: 20M  # Phase 15: boot_fb maps the whole GOP framebuffer; 150 caps exhausted the PD mapping cache (out of CAP)
   #
   # UEFI display driver (D15.13 / D15.16 / R15.2). The vendored
   # binary at genode/repos/os/src/driver/framebuffer/boot/ (LIBS
@@ -1250,7 +1250,7 @@ exec cp -f $grub2_dir/boot/font.pf2           $esp_stage/boot/font.pf2
 #
 set grub_body {
 set timeout=0
-set gfxpayload=1024x768x32  # Phase 15: force 32bpp; auto picked 800x600x24 which boot_fb rejects (R15.2)
+set gfxpayload=2560x1600x32,1024x768x32,auto  # Phase 15: native 17ZD90N panel mode first (32bpp, boot_fb needs it), 1024x768x32 for OVMF, auto last
 insmod gfxterm
 insmod part_gpt
 insmod ext2
