@@ -657,10 +657,14 @@ build_boot_image $boot_modules
 # for avoiding image/uefi).
 #
 set grub2_dir [get_grub2_dir]
-if {![file exists $grub2_dir/boot/grub2/grub2_64.efi]} {
-	puts "GRUB2 EFI binary missing: $grub2_dir/boot/grub2/grub2_64.efi"
-	puts "Prepare the port: $grub2_dir/../.. is your contrib — run"
-	puts "  ./genode/tool/ports/prepare_port grub2"
+# Phase 15: use the Sponge-owned full GRUB (run/fixtures/grubx64-full.efi,
+# a Debian grub-mkimage 2.12 build with the complete module set). The
+# vendored g2fg grub2_64.efi's multiboot2 handoff freezes on the real
+# 17ZD90N Insyde firmware (15-3 bring-up log round 5).
+set sponge_grub_efi "[genode_dir]/../run/fixtures/grubx64-full.efi"
+if {![file exists $sponge_grub_efi]} {
+	puts "GRUB2 EFI binary missing: $sponge_grub_efi"
+	puts "This is the Sponge-owned full GRUB (see run/fixtures/README)."
 	exit -1
 }
 if {![file exists $grub2_dir/boot/font.pf2]} {
@@ -684,7 +688,7 @@ file delete -force $esp_stage
 file mkdir $esp_stage/EFI/BOOT
 file mkdir $esp_stage/boot/grub
 
-exec cp -f $grub2_dir/boot/grub2/grub2_64.efi $esp_stage/EFI/BOOT/BOOTX64.EFI
+exec cp -f $sponge_grub_efi                  $esp_stage/EFI/BOOT/BOOTX64.EFI
 exec cp -f $grub2_dir/boot/font.pf2           $esp_stage/boot/font.pf2
 
 # Copy the three Tier-0 boot modules off [run_dir]/boot/.
