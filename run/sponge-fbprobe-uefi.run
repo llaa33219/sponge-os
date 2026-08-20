@@ -576,7 +576,7 @@ config
         #
         + policy | label_prefix: fb  | info: yes | + pci | class: VGA
 
-    + start fb | caps: 150 | ram: 20M
+    + start fb | caps: 6000 | ram: 20M
       + binary boot_fb
       + route
         + service ROM | label: config        | + parent | label: fb.config
@@ -588,7 +588,7 @@ config
         + service CPU                         | + parent
         + service LOG                         | + parent
         + service Timer                       | + parent
-        + service Capture                     | + child nitpicker
+        + service Capture                     | + parent
 
 # pkg_gui_demo — direct child of init (no nested pkg_runtime;
 # this is the MINIMAL probe). The inline <config> matches the
