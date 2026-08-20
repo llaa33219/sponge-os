@@ -1,0 +1,25 @@
+--- a/src/kernel/sel4/src/kernel/boot.c
++++ b/src/kernel/sel4/src/kernel/boot.c
+@@ -970,8 +970,20 @@
+                 /* the region overlaps with the start of the available region.
+                  * trim start of the available region */
+                 avail_reg[a].start = MIN(avail_reg[a].end, reserved[r].end);
+-                reserve_region(pptr_to_paddr_reg(reserved[r]));
+-                r++;
++                /* Sponge OS Phase 15 (UEFI): only advance r when the
++                 * reserved region is fully consumed within this avail
++                 * region. Upstream advanced r unconditionally, so when a
++                 * large reserved block (the kernel+userland image under
++                 * UEFI) spans MANY avail fragments, the fragments after
++                 * the first were never subtracted and leaked into freemem
++                 * — producing reserved/free overlap and overlapping
++                 * untyped caps that crash the kernel during core's
++                 * Untyped_Retype. (avail_reg[a].end is unchanged by the
++                 * start-trim above.) */
++                if (reserved[r].end <= avail_reg[a].end) {
++                    reserve_region(pptr_to_paddr_reg(reserved[r]));
++                    r++;
++                }
+             } else {
+                 assert(reserved[r].start < avail_reg[a].end);
+                 /* take the first chunk of the available region and move
