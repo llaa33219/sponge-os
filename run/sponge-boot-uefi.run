@@ -809,7 +809,7 @@ file delete -force $esp_stage $esp_img $genode_img
 # is what run/sponge-boot.run uses; explicit pin avoids a future
 # board-default regression.
 #
-append qemu_args " -machine q35 -cpu Skylake-Client -s -gdb tcp::1234 "
+append qemu_args " -machine q35 -cpu Skylake-Client "
 append qemu_args " -nographic -m 1G -snapshot "
 append qemu_args " -drive if=pflash,format=raw,readonly=on,file=$ovmf_code "
 append qemu_args " -drive if=pflash,format=raw,file=$ovmf_vars "
