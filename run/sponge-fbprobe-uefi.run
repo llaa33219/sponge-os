@@ -351,7 +351,7 @@ if {[info exists ::env(SPONGE_OVMF_VARS)]} {
 # /tmp/opencode/bootx64-full.efi (built and verified on this host;
 # the SHA-256 is recorded in §13).
 #
-set debian_grub_efi /tmp/opencode/bootx64-full.efi
+set debian_grub_efi [genode_dir]/../run/fixtures/grubx64-full.efi
 if {![file exists $debian_grub_efi]} {
 	puts ""
 	puts "Debian GRUB 2.12 EFI binary missing: $debian_grub_efi"
@@ -768,7 +768,10 @@ exec cp -f $debian_grub_efi $esp_stage/EFI/BOOT/BOOTX64.EFI
 #
 set grub_body {
 set timeout=5
-set gfxpayload=auto
+# Force 32 bpp: gfxpayload=auto picked 800x600x24 on OVMF and boot_fb
+# rejects bpp!=32 (R15.2). 1024x768x32 is a universally available VESA
+# mode for this diagnostic; the product media uses the native panel mode.
+set gfxpayload=1024x768x32
 insmod part_gpt
 insmod ext2
 set root=(hd0,gpt3)
