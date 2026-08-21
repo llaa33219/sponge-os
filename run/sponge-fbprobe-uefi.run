@@ -768,10 +768,15 @@ exec cp -f $debian_grub_efi $esp_stage/EFI/BOOT/BOOTX64.EFI
 #
 set grub_body {
 set timeout=5
-# Force 32 bpp: gfxpayload=auto picked 800x600x24 on OVMF and boot_fb
-# rejects bpp!=32 (R15.2). 1024x768x32 is a universally available VESA
-# mode for this diagnostic; the product media uses the native panel mode.
-set gfxpayload=1024x768x32
+# Force the firmware's text console for GRUB's UI (the 17ZD90N HiDPI
+# panel may not offer a graphics mode GRUB's gfxterm can use, which
+# would leave the menu invisible). The FB tag for boot_fb comes from
+# gfxpayload, independent of GRUB's UI terminal.
+terminal_input console
+terminal_output console
+# Native 17ZD90N panel mode first (2560x1600x32, 32bpp which boot_fb
+# needs), 1024x768x32 for OVMF, auto last.
+set gfxpayload=2560x1600x32,1024x768x32,auto
 insmod part_gpt
 insmod ext2
 set root=(hd0,gpt3)
