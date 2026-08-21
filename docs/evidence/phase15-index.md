@@ -872,6 +872,37 @@ User-executed physical boots per
 
 **15-3 status (blocked on this):** the UEFI boot chain is now clean up to Genode core (Debian GRUB + principled bender), but base-sel4 under UEFI generates an inconsistent untyped list that crashes the kernel during core init. base-sel4+UEFI is upstream-untested territory (Sculpt on PC uses base-nova). The kernel patch is the Phase 15 critical path.
 
+## 14. Kernel fix + real-hardware display-path findings (2026-08-20/21)
+
+**FIXED (committed):** the seL4 kernel `init_freemem` overlap patch
+(`docs/patches/sel4-uefi-untyped-overlap.patch`, ledger row 11) resolves
+the UEFI core crash — OVMF Tier-0 smoke reaches `boot-probe: PASS` with
+zero registration warnings, and the full UEFI desktop chain reaches
+`alpha-probe: PASS` (themed panel + launcher feed + configd broadcast)
+with the complete fixed chain (full GRUB + principled bender + kernel
+patch + 32bpp + fb caps 6000). **The UEFI boot path is fully verified
+on QEMU/OVMF.**
+
+**REMAINING real-hardware blocker (display):** on the 17ZD90N the OS
+chain is fixed, but GRUB cannot produce a working framebuffer for the
+payload on the real iGPU GOP. Evidence: the fbprobe2 GOP-draw probe
+(a bare multiboot2 kernel that fills the GOP framebuffer green, no OS
+chain) freezes at GRUB's `WARNING: no console will be available to OS`
+on real hardware — while the SAME image draws a full green screen on
+OVMF. `videoinfo` on the panel shows valid 32bpp direct-color modes
+(0x000 2560x1600x32 native, mask 8/8/8/8; EDID preferred 2560x1600),
+so the panel is fine — the gap is GRUB's `gfxpayload`/video-driver
+path not producing the multiboot2 FB tag on this real GOP. The black
+screen on the production desktop image is the same root cause (no FB
+tag → boot_fb can't bind → no desktop, regardless of the OS chain
+being fixed).
+
+**Status of Phase 15 criteria:** the OS/boot chain is proven end-to-end
+on QEMU (kernel fix is the durable achievement). The real-hardware
+display path (GRUB → multiboot2 FB tag → boot_fb) on the 17ZD90N's
+iGPU GOP is the open item — a GRUB video-driver-on-real-GOP issue, not
+a Sponge OS or seL4 one.
+
 Host-side notes: the full GRUB was built with Debian's
 `grub-mkimage` (extracted `grub-efi-amd64-bin` + `grub-common` +
 runtime libs into /tmp via `ar`+`tar` — this host has no dpkg/apt
