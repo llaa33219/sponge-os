@@ -712,8 +712,8 @@ tasks — not a demo, but a desktop one can actually sit down and use.
 > 15-2 QEMU hardware-diversity matrix, 15-3 physical boot by the user.
 > Target machine (D15.1): LG gram 17 (2020) 17ZD90N-VX7BK.
 >
-> **Progress (2026-08-18):** 15-1 and 15-2 are done. 15-1 shipped the
-> bake system (`pkg/bake/{minimal,desktop}.profile`, `run/bake.inc`,
+> **Progress (2026-08-21):** 15-1 and 15-2 are done. 15-1 shipped the
+> bake system (`pkg/bake/{minimal,desktop,test}.profile`, `run/bake.inc`,
 > `tool/bake`, first-boot seeding in `sponge_configd`, `vct bake
 > list/show/reset`), the UEFI product media
 > (`run/sponge-desktop-disk-uefi{,-nvme,-usb}.run`, `boot_fb` display
@@ -724,11 +724,22 @@ tasks — not a demo, but a desktop one can actually sit down and use.
 > real-hardware admission policy, and the updated
 > `docs/15-hardware-compatibility.md` (4 verified / 1 smoke-only /
 > 12 gap incl. the single 17ZD90N real-hardware gap row); a 9-scenario
-> serial regression sweep is all-PASS. The UEFI QEMU cells are honest
-> gaps (W1 OVMF core-init hang, D15.16). **15-3 is pending on the
-> user's physical boot** per
-> `docs/plans/phase15-hardware-boot-protocol.md`; criteria 1, 2, 4
-> close (or are re-scoped) from that evidence.
+> serial regression sweep is all-PASS.
+>
+> **15-3 (in progress, real-hardware):** the UEFI boot chain is proven
+> end-to-end on QEMU/OVMF — the desktop reaches `alpha-probe: PASS`.
+> Three real bugs were fixed along the way (vendored g2fg GRUB2
+> multiboot2 broken on the Insyde firmware → full GRUB;
+> bender `check_mem` too strict for UEFI maps → source rebuild;
+> **seL4 kernel `init_freemem` produced overlapping untyped caps under
+> fragmented UEFI maps → fixed**). On the physical 17ZD90N the chain
+> reaches GRUB, but GRUB cannot produce a working payload framebuffer
+> on the real iGPU GOP (`no console will be available to OS`; the
+> fbprobe2 GOP-draw probe freezes there, the panel itself is fine per
+> `videoinfo`) — a GRUB video-driver-on-real-GOP gap, to be resumed.
+> Full bring-up log: `docs/evidence/phase15-index.md` §13–§14.
+> Criteria 1/2/4 remain OPEN until the real-hardware display path works.
+> See `docs/plans/phase15-hardware-boot-protocol.md`.
 
 #### Goal
 

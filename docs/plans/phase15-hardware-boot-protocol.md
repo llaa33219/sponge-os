@@ -1,16 +1,52 @@
 # Phase 15-3 — Real-Hardware Boot Protocol (User-Executed)
 
-> Status: drafted 2026-08-18, ahead of W4 (UEFI product media). The media
-> this protocol boots does not exist until W4 lands
-> (`./tool/dist --bake-profile desktop --firmware uefi`); this document is
-> the agreed procedure for when it does. Plan reference:
-> `docs/plans/phase15-real-hardware-boot.md` (D15.1 target machine, D15.14
-> Secure Boot handling, D15.16 early-pull of 15-3).
+> Status: **in progress — the OS/boot chain is fixed and QEMU-verified;
+> the real-hardware display path (GRUB → multiboot2 FB tag → boot_fb) on
+> the 17ZD90N's iGPU GOP is the open blocker** (2026-08-21). The boot
+> chain is proven end-to-end on OVMF (`alpha-probe: PASS`). See "Current
+> state" below before running.
+> Plan reference: `docs/plans/phase15-real-hardware-boot.md` (D15.1 target
+> machine, D15.14 Secure Boot handling, D15.16 pivot). Bring-up log:
+> `docs/evidence/phase15-index.md` §13–§14.
 >
 > **Who does what:** the user executes every step on the physical machine
 > and every `sudo` command on the host. The agent prepares the media,
 > this protocol, and analyzes the captured evidence afterwards. The agent
 > never runs `sudo` (AGENTS.md §5.5).
+
+## Current state (2026-08-21)
+
+Fixed and committed (the OS/boot chain is proven on QEMU/OVMF):
+
+- Vendored g2fg GRUB2 multiboot2 broken on the Insyde firmware → the
+  UEFI scenarios now stage a full GRUB 2.12 (`run/fixtures/grubx64-full.efi`).
+- bender `check_mem` too strict for UEFI maps → principled source rebuild
+  (`docs/11` patch-ledger row 10).
+- **seL4 kernel `init_freemem` produced overlapping untyped caps under
+  fragmented UEFI maps → fixed** (ledger row 11). This was the main
+  hang: OVMF smoke now `boot-probe: PASS`, desktop `alpha-probe: PASS`.
+
+Open blocker (to resume later):
+
+- **Display:** on the physical 17ZD90N, GRUB does not produce a working
+  payload framebuffer on the real iGPU GOP. The fbprobe2 GOP-draw probe
+  freezes at `WARNING: no console will be available to OS`; `videoinfo`
+  shows the panel offers valid 32bpp direct-color modes (native
+  2560x1600x32, EDID preferred 2560x1600). This is a
+  GRUB-video-driver-on-real-GOP gap, not a Sponge/seL4 one. The
+  production desktop image shows a black screen for the same reason.
+
+## Resume notes (when display work continues)
+
+- The chain up to the display is proven; the only open piece is getting
+  a valid framebuffer to `boot_fb` on the real panel.
+- Diagnostic tools already in the repo: `run/fixtures/fbprobe2.s` (the
+  GOP-draw probe), the `test` bake profile (visible GRUB stage markers),
+  and `videoinfo` on the full GRUB.
+- Angles not yet tried: forcing gfxterm with the native mode only;
+  having Genode locate the GOP framebuffer without GRUB's FB tag
+  (a Genode/bootloader-side change); a different GRUB build/version;
+  upstream (Genode/seL4) engagement on the base-sel4 UEFI + GOP path.
 
 ## 0. What this boot proves (and does not)
 
