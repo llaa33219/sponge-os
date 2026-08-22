@@ -67,7 +67,17 @@ Open blocker (being worked):
     → (b) or (d); desktop → done.
   - entry 5 gfxterm + `cutmem 1G`: banner appears where entry 4 was
     black → (c) confirmed (MBI was above 4 GiB); keep cutmem or patch
-    bender's allocation.
+    bender's allocation. Mechanism source-verified in morbo
+    (`/tmp/opencode/morbo/standalone/`, branch genode_bender @77a6918):
+    bender NEVER enables paging (no CR3/CR0.PG writes anywhere; the
+    `REGISTER_SETTER` macros in `include/asm.h` have no call sites),
+    the multiboot2 MBI address arrives in 32-bit EBX
+    (`start.asm:110`), and module `mod_start`/`mod_end` are u32 per
+    the spec (`mbi2.c`) — so bender's entire reachable space is
+    0–4 GiB physical, and an Insyde high placement (v7: GRUB data at
+    0x100360000) truncates to garbage. Caveat for interpretation:
+    entry 5 only discriminates (c) if the FB tag IS emitted (i.e. (b)
+    is false); with no tag, 4 and 5 are both black regardless.
   - entry 6 text console: control (no FB tag; kernel fb console stays
     disabled by design).
 - Diagnostic tools in the repo: `run/fixtures/fbprobe2.s` (GOP-draw
