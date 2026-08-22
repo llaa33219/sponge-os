@@ -59,6 +59,26 @@ Open blocker (being worked):
   before reading anything. cutmem not curing the chain either weakens
   (c) or shows cutmem does not constrain the multiboot2 MBI placement.
 
+- **Round v10 results (user-reported on the 17ZD90N):** fbprobe3 hung
+  BLACK on all entries (plain / +cutmem 1G / +1024x768x32) — never
+  green, never the no-tag reset. Since the no-tag case resets and it
+  never fired, GRUB almost certainly DOES emit a framebuffer tag on
+  Insyde; the remaining candidates are the framebuffer address being
+  >= 4 GiB (the "high GOP framebuffer" hypothesis — also explains the
+  kernel fb-console death, whose identity-phase writes only reach the
+  low 4 GiB, and predicts boot_fb's IO_MEM failure like the xhci BAR
+  at 32 GiB), or the MBI itself above 4 GiB. cutmem not changing the
+  outcome argues against MBI placement.
+- **Round v11 (in flight):** kernel fixes delegated — fb_console
+  defers all drawing until the direct map covers the FB (safe to
+  512 GiB), and device-untyped coverage is extended above the
+  memory-map top (row-13 candidate); QEMU verification harness uses
+  virtio-vga, whose 64-bit BAR forces the OVMF GOP framebuffer above
+  4 GiB (reproducing the hypothesized real-hw condition). fbprobe4
+  (`run/fixtures/fbprobe4.s`) adds a reset-timing ladder (~3 s magic /
+  ~6 s MBI-high / ~12 s no-tag / ~24 s FB-high / black bpp / green
+  OK). Media: `var/dist/sponge-diag-v11-uefi.img`.
+
 ## Resume notes (display work in progress)
 
 - The chain up to the display is proven; the only open piece is getting
