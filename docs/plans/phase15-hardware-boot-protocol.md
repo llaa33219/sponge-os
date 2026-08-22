@@ -69,15 +69,19 @@ Open blocker (being worked):
   low 4 GiB, and predicts boot_fb's IO_MEM failure like the xhci BAR
   at 32 GiB), or the MBI itself above 4 GiB. cutmem not changing the
   outcome argues against MBI placement.
-- **Round v11 (in flight):** kernel fixes delegated — fb_console
-  defers all drawing until the direct map covers the FB (safe to
-  512 GiB), and device-untyped coverage is extended above the
-  memory-map top (row-13 candidate); QEMU verification harness uses
-  virtio-vga, whose 64-bit BAR forces the OVMF GOP framebuffer above
-  4 GiB (reproducing the hypothesized real-hw condition). fbprobe4
-  (`run/fixtures/fbprobe4.s`) adds a reset-timing ladder (~3 s magic /
-  ~6 s MBI-high / ~12 s no-tag / ~24 s FB-high / black bpp / green
-  OK). Media: `var/dist/sponge-diag-v11-uefi.img`.
+- **Round v11 (ready for the user):** kernel fixes landed —
+  fb_console defers all drawing until the direct map covers the FB
+  (safe to 512 GiB; ledger row 12 regenerated) and device-untyped
+  coverage is extended above the memory-map top (ledger row 13,
+  LOW+HIGH split, `SPONGE_DEVICE_UNTYPED_TOP=2^40`). Caveat: QEMU
+  keeps the GOP at 2 GiB even with virtio-vga, so the high-FB path is
+  verified-by-construction only; the 17ZD90N is the binding test.
+  fbprobe4 (`run/fixtures/fbprobe4.s`) adds a reset-timing ladder
+  (~3 s magic / ~6 s MBI-high / ~12 s no-tag / ~24 s FB-high / black
+  bpp / green OK). Media: `var/dist/sponge-diag-v11-uefi.img`.
+  OVMF rehearsal 2026-08-23: v11-1 = 100% green; v11-4 chain boots to
+  `sponge_configd: ready` with the fb-console log on the framebuffer
+  (pixel-verified, low-FB regression of the refactored console).
 
 ## Resume notes (display work in progress)
 
