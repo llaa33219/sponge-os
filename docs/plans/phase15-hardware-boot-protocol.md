@@ -26,27 +26,55 @@ Fixed and committed (the OS/boot chain is proven on QEMU/OVMF):
   fragmented UEFI maps → fixed** (ledger row 11). This was the main
   hang: OVMF smoke now `boot-probe: PASS`, desktop `alpha-probe: PASS`.
 
-Open blocker (to resume later):
+Open blocker (being worked):
 
 - **Display:** on the physical 17ZD90N, GRUB does not produce a working
   payload framebuffer on the real iGPU GOP. The fbprobe2 GOP-draw probe
   freezes at `WARNING: no console will be available to OS`; `videoinfo`
   shows the panel offers valid 32bpp direct-color modes (native
-  2560x1600x32, EDID preferred 2560x1600). This is a
-  GRUB-video-driver-on-real-GOP gap, not a Sponge/seL4 one. The
-  production desktop image shows a black screen for the same reason.
+  2560x1600x32, EDID preferred 2560x1600).
+- **Round v8→v9 (fb-console kernel):** the vendored seL4 kernel now
+  carries an early framebuffer text console (docs/11 ledger row 12,
+  `docs/patches/sel4-early-fb-console.patch`, OVMF-verified per
+  `docs/evidence/phase15-fb-console/`). The production image rebuilt
+  with this kernel (sha256 prefix `f0bcea6b9866`) still boots to a
+  black screen on the 17ZD90N — the `sel4 fb console: ready` banner
+  never appears. That means one of: (a) GRUB cannot drive the Insyde
+  GOP in graphics mode at all, (b) GRUB sets the mode but emits no
+  usable multiboot2 FB tag, (c) bender (32-bit, <4 GiB initial page
+  tables) dies reading an MBI placed above 4 GiB (v7 forensics: Insyde
+  loads GRUB data at 0x100360000), or (d) the GOP LFB is not the
+  scanned-out buffer.
 
-## Resume notes (when display work continues)
+## Resume notes (display work in progress)
 
 - The chain up to the display is proven; the only open piece is getting
   a valid framebuffer to `boot_fb` on the real panel.
-- Diagnostic tools already in the repo: `run/fixtures/fbprobe2.s` (the
-  GOP-draw probe), the `test` bake profile (visible GRUB stage markers),
-  and `videoinfo` on the full GRUB.
-- Angles not yet tried: forcing gfxterm with the native mode only;
-  having Genode locate the GOP framebuffer without GRUB's FB tag
-  (a Genode/bootloader-side change); a different GRUB build/version;
-  upstream (Genode/seL4) engagement on the base-sel4 UEFI + GOP path.
+- **Current diagnostic: `var/dist/sponge-diag-v9-uefi.img`** — the
+  fb-console production image with the ESP grub.cfg swapped for
+  `run/fixtures/grub-diag.cfg` v9 (a visible text-mode menu; zero new
+  code). It bisects the four layers above:
+  - entries 1/2 `videotest 2560x1600x32` / `1024x768x32`: pattern
+    visible → GRUB can drive the GOP (rules out (a)); GRUB error text
+    or black → (a) confirmed, iterate `gfxmode`/GRUB version.
+  - entry 3 `videoinfo`: re-dump the GOP mode list (photograph).
+  - entry 4 (default) gfxterm + chain: fb-console banner + log → the
+    hang is in core, read the last line; black with videotest working
+    → (b) or (d); desktop → done.
+  - entry 5 gfxterm + `cutmem 1G`: banner appears where entry 4 was
+    black → (c) confirmed (MBI was above 4 GiB); keep cutmem or patch
+    bender's allocation.
+  - entry 6 text console: control (no FB tag; kernel fb console stays
+    disabled by design).
+- Diagnostic tools in the repo: `run/fixtures/fbprobe2.s` (GOP-draw
+  probe), the kernel early-FB console (ledger row 12),
+  `run/fixtures/grub-diag.cfg` v9 (consumed by the `test` bake
+  profile's `grub_mode = diagnostic`), and the full GRUB's
+  `videotest`/`videoinfo`/`lsefimmap`.
+- Angles not yet tried: having Genode locate the GOP framebuffer
+  without GRUB's FB tag (a Genode/bootloader-side change); a different
+  GRUB build/version; upstream (Genode/seL4) engagement on the
+  base-sel4 UEFI + GOP path.
 
 ## 0. What this boot proves (and does not)
 
