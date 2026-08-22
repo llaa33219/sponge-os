@@ -24,7 +24,7 @@
 #         ├─ pc_usb_host (xHCI; provides Usb service)
 #         │   policy | label_prefix: usb_hid   | + device | class: 0x3
 #         │   policy | label_prefix: usb_block | + device | class: 0x8
-#         ├─ usb_block (Block, writeable: no)  ← Tier-0 storage driver
+#         ├─ usb_block (Block, writeable: yes) ← Tier-0 storage driver
 #         ├─ part_block → Block/P3 (partition pinned BY NUMBER)
 #         ├─ vfs (Vfs_block + <rump fs="ext2fs"/>) → File_system
 #         ├─ rom_sys: cached_fs_rom(chroot /system)        → ROM
@@ -752,9 +752,14 @@ config
 #
 #   2. usb_block is ADDED as a Tier-0 child providing Block. It
 #      receives the Usb session from the Tier-0 `usb` pc_usb_host
-#      and exposes the USB stick's block device. writeable: no —
-#      the boot media is read-only (P3 is GENODE ext2, mounted
-#      read-only by vfs's <policy writeable: no>).
+#      and exposes the USB stick's block device. writeable: yes —
+#      P3 is GENODE ext2 mounted writeable by design (installs
+#      persist across reboots on real media); the driver implements
+#      BOT Write_10/Write_16 (main.cc). QEMU-side safety comes from
+#      -snapshot (writes land in a temporary overlay), NOT from a
+#      read-only attach — a read-only chain breaks the rump ext2fs
+#      mount with EACCES ("Mounting 'ext2fs' failed (13)") and kills
+#      the whole /system serving chain.
 #
 #   3. part_block's Block source becomes `usb_block` (not `ahci`).
 #      The partition number is still 3 (P2 absent keeps the number
@@ -896,7 +901,7 @@ config
 
 + start usb_block | caps: 200 | ram: 16M
   + provides | + service Block
-  + config | report: yes | writeable: no
+  + config | report: yes | writeable: yes
   + route
     + service ROM | label_last: ld.lib.so | + parent
     + service Usb   | + child usb
@@ -1300,20 +1305,45 @@ exec dd if=$genode_img of=$gpt_img bs=512 seek=$p3_sector conv=notrunc 2>/dev/nu
 file delete -force $esp_stage $esp_img $genode_img
 
 #
-# === QEMU wiring (xHCI variant — real machine's controller) ===
+# === QEMU wiring (EHCI verification attach — see rationale) ===
 #
 # Identical to the AHCI UEFI variant (q35, Skylake-Client, OVMF pflash,
 # -m 4G, -snapshot, fw_cfg opt-out) with the USB attach swapped to
 # match the xHCI / USB-stick boot path:
 #
-#   -device qemu-xhci,id=xhci           (real machine has xHCI;
-#                                        same controller class as the
-#                                        AHCI variant's nec-usb-xhci
-#                                        but qemu-xhci is the modern
-#                                        QEMU 11 model — the one that
-#                                        matches a 2020-era PCH)
-#   -device usb-tablet,bus=xhci.0       (HID input — same as AHCI
-#                                        variant, on the same xHCI bus
+#   -device usb-ehci,id=ehci            (QEMU-side host controller for
+#                                        the verification boot. Real hw
+#                                        has xHCI only; the Genode-side
+#                                        stack — pc_usb_host (xhci_hcd +
+#                                        ehci_hcd both linked) → usb_block
+#                                        — is HCD-model-agnostic. xHCI on
+#                                        OVMF is UNUSABLE here: qemu-xhci
+#                                        AND nec-usb-xhci both get a
+#                                        64-bit BAR that OVMF places at
+#                                        0x800000000 (32 GiB, the q35
+#                                        pci-hole64 default), outside the
+#                                        seL4 kernel's device-untyped
+#                                        coverage (the UEFI map ends near
+#                                        top-of-RAM) → platform IO_MEM
+#                                        fails ("I/O memory
+#                                        [0x800000000,...) not available")
+#                                        and init -> usb aborts;
+#                                        -global q35-pcihost.
+#                                        pci-hole64-size=0 does NOT move
+#                                        it (all verified). EHCI's 32-bit
+#                                        BAR always lands in the sub-4
+#                                        GiB hole, inside coverage.
+#                                        Real-hw note: Insyde places BARs
+#                                        low by standard practice; if a
+#                                        high BAR ever occurs there, the
+#                                        kernel fb console (ledger row
+#                                        12) shows the same IO_MEM error
+#                                        on the panel, and the row-13
+#                                        candidate (extend device-untyped
+#                                        coverage above the map top) is
+#                                        the principled fix.)
+#   -device usb-tablet,bus=ehci.0       (HID input — same as AHCI
+#                                        variant, on the same USB bus
 #                                        as the storage; the class: 0x3
 #                                        policy in pc_usb_host matches
 #                                        it independently of port)
@@ -1321,24 +1351,32 @@ file delete -force $esp_stage $esp_img $genode_img
 #                                        .img, exposed as a USB mass-
 #                                        storage device; class: 0x8
 #                                        policy matches it)
-#   -drive id=stick,format=raw,file=[run_dir].img,if=none,readonly=on
-#                                      (the stick drive definition,
+#   -drive id=stick,format=raw,file=[run_dir].img,if=none
+#                                       (the stick drive definition,
 #                                        detached from any default bus
 #                                        so usb-storage can attach to
-#                                        it explicitly)
+#                                        it explicitly. NOT readonly:
+#                                        the P3 vfs mounts ext2fs
+#                                        writeable=yes by media design
+#                                        (installs persist on P3) and a
+#                                        readonly attach makes the rump
+#                                        mount fail EACCES — "Mounting
+#                                        'ext2fs' failed (13)" — killing
+#                                        the whole /system serving chain.
+#                                        -snapshot keeps all writes in a
+#                                        temporary overlay; the image
+#                                        file is never modified.)
 #
-# Note: -device qemu-xhci with -device usb-storage on a stick drive
-# is the upstream pattern (the Phase 12 BIOS variant uses EHCI for
-# the cdrom-equivalent attach; under UEFI we use xHCI because the
-# real machine is xHCI-only). No -cdrom line; the .img is the boot
-# media, period.
+# Note: -device usb-ehci with -device usb-storage on a stick drive
+# (see the BAR-coverage rationale above). No -cdrom line; the .img is
+# the boot media, period.
 #
 append qemu_args " -machine q35 -cpu Skylake-Client "
 append qemu_args " -nographic -m 4G -snapshot "
-append qemu_args " -device qemu-xhci,id=xhci "
-append qemu_args " -device usb-tablet,bus=xhci.0 "
-append qemu_args " -device usb-storage,drive=stick,bus=xhci.0 "
-append qemu_args " -drive id=stick,format=raw,file=[run_dir].img,if=none,readonly=on "
+append qemu_args " -device usb-ehci,id=ehci "
+append qemu_args " -device usb-tablet,bus=ehci.0 "
+append qemu_args " -device usb-storage,drive=stick,bus=ehci.0 "
+append qemu_args " -drive id=stick,format=raw,file=[run_dir].img,if=none "
 append qemu_args " -drive if=pflash,format=raw,readonly=on,file=$ovmf_code "
 append qemu_args " -drive if=pflash,format=raw,file=$ovmf_vars "
 # W^X workaround (edk2 PR #10667 fw_cfg opt-in knob). Silent no-op
@@ -1346,14 +1384,19 @@ append qemu_args " -drive if=pflash,format=raw,file=$ovmf_vars "
 append qemu_args " -fw_cfg name=opt/org.tianocore/UninstallMemAttrProtocol,string=yes "
 
 #
-# === QEMU boot gate (D15.16, W4 acceptance) ===
+# === QEMU boot gate (post kernel-fix: usb storage-chain proof) ===
 #
-# Host-side structural verification (sgdisk -p / mdir / e2ls) is the
-# REAL acceptance gate; the QEMU boot is bounded and expected to hit
-# the W1 OVMF core-init hang. Structural gate 3 (e2ls on P3) checks
-# additionally that usb_block is present in /system/bin (the build-
-# list assertion; the binary is also in image.elf as a boot module,
-# but the on-disk marker verifies the staging loop reached it).
+# Host-side structural verification (sgdisk -p / mdir / e2ls) runs
+# first. The QEMU boot then PROVES the one thing unique to the -usb
+# variant — the usb_block storage chain (xHCI → usb_block → part_block
+# → vfs/rump → cached_fs_rom → nested system init from /system on P3).
+# The D15.16-era "expected W1 OVMF hang" design is superseded: the seL4
+# kernel init_freemem fix (docs/11 ledger row 11) makes the UEFI chain
+# boot on OVMF, so a boot that stalls here is a real failure, not an
+# expected outcome. Structural gate 3 (e2ls on P3) checks additionally
+# that usb_block is present in /system/bin (the build-list assertion;
+# the binary is also in image.elf as a boot module, but the on-disk
+# marker verifies the staging loop reached it).
 #
 set structural_gates_passed 0
 set structural_gates_total 0
@@ -1456,13 +1499,20 @@ if {$structural_gates_passed != $structural_gates_total} {
 }
 
 #
-# QEMU gate: attempt the boot. Per D15.16 the W1 OVMF core-init
-# hang is the EXPECTED outcome under QEMU; the gate is therefore
-# to (a) time out at 180 s, (b) detect the W1 hang signature in
-# the captured serial log, (c) print the honest message and exit 0.
+# QEMU gate body. grub_mode=diagnostic (the `test` bake profile)
+# installs a timeout=-1 GRUB menu for interactive real-hw bring-up;
+# the QEMU boot would sit at that menu forever, so the storage-chain
+# gate is skipped for diagnostic media (the structural gates above
+# still ran).
 #
-# Identical to the AHCI UEFI variant's gate logic.
-#
+if {[bake::boot_option grub_mode production] eq "diagnostic"} {
+    puts ""
+    puts "\[sponge-desktop-disk-uefi-usb\] grub_mode=diagnostic — skipping the QEMU"
+    puts "  storage-chain gate (the diagnostic GRUB menu waits forever by design;"
+    puts "  the media is for interactive real-hardware bring-up)."
+    exit 0
+}
+
 if {![run_power_cycle]} {
     puts "\[sponge-desktop-disk-uefi-usb\] run_power_cycle failed"
     exit 1
@@ -1474,23 +1524,25 @@ if {![run_load]} {
 
 set uefi_log [run_dir]/uefi-boot.log
 puts ""
-puts "\[sponge-desktop-disk-uefi-usb\] starting bounded QEMU boot (≤180 s)"
+puts "\[sponge-desktop-disk-uefi-usb\] starting QEMU boot — usb storage-chain gate (≤300 s)"
 puts "  serial log: $uefi_log"
-puts "  expected: OVMF → GRUB2 → bender → seL4 → core warnings → hang"
-puts "            (per W1 OVMF core-init hang, docs/evidence/phase15-uefi-boot-smoke.log)"
+puts "  marker: 'sponge_configd: ready' from \[init -> system -> ...\]"
+puts "          (the nested system init and its children are served from"
+puts "           /system on P3 via usb_block — impossible without the full"
+puts "           xHCI → usb_block → part_block → vfs → cached_fs_rom chain)"
 
-set uefi_log [run_dir]/uefi-boot.log
 log_file -a $uefi_log
-set timeout 180
+set timeout 300
+set storage_chain_proven 0
 expect {
-    -i $qemu_spawn_id -re ".*Genode v.*" {
-        puts "\[sponge-desktop-disk-uefi-usb\] UNEXPECTED — QEMU reached the Genode v... banner"
+    -i $qemu_spawn_id -re "sponge_configd: ready" {
+        set storage_chain_proven 1
     }
     eof {
-        puts "\[sponge-desktop-disk-uefi-usb\] QEMU exited (eof)"
+        puts "\[sponge-desktop-disk-uefi-usb\] QEMU exited (eof) before the marker"
     }
     timeout {
-        puts "\[sponge-desktop-disk-uefi-usb\] QEMU boot attempt timed out (expected per W1)"
+        puts "\[sponge-desktop-disk-uefi-usb\] QEMU boot timed out (300 s) without the marker"
     }
 }
 log_file
@@ -1500,41 +1552,17 @@ set output [read $fh]
 close $fh
 puts "\[sponge-desktop-disk-uefi-usb\] serial log captured: $uefi_log ([string length $output] bytes)"
 
-# Classify the W1 hang signature
-set hang_sig_1 "device memory in range"
-set hang_sig_2 "unable to register range as RAM"
-set banner "Genode v"
-set has_warning_1 [regexp $hang_sig_1 $output]
-set has_warning_2 [regexp $hang_sig_2 $output]
-set has_banner [regexp $banner $output]
-
 puts ""
-if {$has_banner} {
-    puts "\[sponge-desktop-disk-uefi-usb\] UNEXPECTED — QEMU reached the Genode v... banner"
-    puts "  (QEMU UEFI boot PASSED; the 15-3 real-hardware diagnostic is now"
-    puts "   the binding test for this media)"
-    puts "  exit 0 (host structural gates passed + QEMU reached the unexpected banner)"
+if {$storage_chain_proven} {
+    puts "  ================================================================"
+    puts "  PASS — UEFI USB-stick media boots on OVMF and the usb_block"
+    puts "  storage chain serves /system from the stick (configd ready)."
+    puts "  ================================================================"
     exit 0
-} elseif {$has_warning_1 && $has_warning_2} {
-    puts "\[sponge-desktop-disk-uefi-usb\] W1 OVMF core-init hang signature CONFIRMED"
-    puts "  (both core warnings present, banner absent — matches the W1"
-    puts "   evidence log; see docs/evidence/phase15-uefi-boot-smoke.log)"
-} else {
-    puts "\[sponge-desktop-disk-uefi-usb\] QEMU boot did NOT reach Genode core (banner absent)"
-    puts "  (with the stock bender — no NOP patch — OVMF stops at the"
-    puts "   bender/GRUB2 stage. The W1 evidence required a bender"
-    puts "   NOP to get past this stage; per the W4 plan, the bender"
-    puts "   stays STOCK and the 15-3 protocol documents the rebuild"
-    puts "   fallback for real-hardware. The structural-gate acceptance"
-    puts "   is unchanged.)"
 }
-
-puts ""
 puts "  ================================================================"
-puts "  UEFI USB-stick product media structure verified; QEMU boot blocked"
-puts "  by the known UEFI/QEMU W^X + bender NOP gap (see W1 evidence log:"
-puts "  docs/evidence/phase15-uefi-boot-smoke.log; D15.16 pivot: the"
-puts "  QEMU UEFI cell stays a documented gap; real-hardware"
-puts "  verification is 15-3 on the 17ZD90N-VX7BK)."
+puts "  FAIL — the usb_block storage chain did NOT reach configd within"
+puts "  300 s on OVMF. Inspect the serial log (xHCI BAR I/O-memory errors,"
+puts "  usb_block start, part_block P3 probe, vfs mount)."
 puts "  ================================================================"
-exit 0
+exit 1

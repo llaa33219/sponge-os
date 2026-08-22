@@ -89,6 +89,29 @@ Open blocker (being worked):
   without GRUB's FB tag (a Genode/bootloader-side change); a different
   GRUB build/version; upstream (Genode/seL4) engagement on the
   base-sel4 UEFI + GOP path.
+- **usb storage chain QEMU-verified (2026-08-22):**
+  `run/sponge-desktop-disk-uefi-usb` now boots the media on OVMF to
+  `sponge_configd: ready` under a fail-loud gate (previously the
+  D15.16-era gate killed every boot at the `Genode v` banner, so the
+  chain had never run). Two latent defect classes were found and
+  fixed: (i) **xHCI unusable on OVMF** — qemu-xhci and nec-usb-xhci
+  both receive a 64-bit BAR that OVMF places at 0x800000000 (32 GiB,
+  the q35 pci-hole64 default), outside the seL4 kernel's device-
+  untyped coverage, so the platform IO_MEM session fails and
+  `init -> usb` aborts; `pci-hole64-size=0` does not move it. The
+  verification attach uses usb-ehci (32-bit BAR, sub-4 GiB; the
+  Genode stack — pc_usb_host with xhci_hcd+ehci_hcd → usb_block — is
+  HCD-agnostic). **Real-hw relevance:** if Insyde ever places the Ice
+  Lake PCH xHCI BAR high (above-4G decoding), the same
+  `I/O memory ... not available` error will appear on the fb console;
+  the principled fix (extend the kernel's device-untyped coverage
+  above the memory-map top) is a docs/11 ledger row-13 candidate.
+  (ii) **read-only incoherence** — the stick was attached
+  `readonly=on` and usb_block was `writeable: no` while
+  part_block/vfs asked `writeable: yes` (media design: installs
+  persist on P3), so the rump ext2fs mount died with EACCES
+  ("Mounting 'ext2fs' failed (13)"); now writable end-to-end
+  (`-snapshot` keeps QEMU writes in a temporary overlay).
 
 ## 0. What this boot proves (and does not)
 
