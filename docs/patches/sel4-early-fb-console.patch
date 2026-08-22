@@ -1,0 +1,716 @@
+diff --git a/src/kernel/sel4/include/arch/x86/arch/kernel/fb_console.h b/src/kernel/sel4/include/arch/x86/arch/kernel/fb_console.h
+index e69de29bb..848925488 100644
+--- a/src/kernel/sel4/include/arch/x86/arch/kernel/fb_console.h
++++ b/src/kernel/sel4/include/arch/x86/arch/kernel/fb_console.h
+@@ -0,0 +1,51 @@
++/*
++ * Copyright 2026, Sponge OS contributors
++ *
++ * SPDX-License-Identifier: GPL-2.0-only
++ *
++ * Sponge OS Phase 15 W3 — early framebuffer text console
++ * (companion header to src/arch/x86/kernel/fb_console.c).
++ *
++ * Declares the three entry points used by:
++ *   - src/arch/x86/kernel/boot_sys.c (fb_console_init,
++ *     fb_console_enter_kernel_window) at the kernel's two
++ *     paging-mode transitions.
++ *   - src/plat/pc99/machine/io.c kernel_putDebugChar()
++ *     (fb_console_putchar) to mirror every character the
++ *     kernel emits onto the GOP framebuffer.
++ *
++ * No-op on every API when the console is disabled (no
++ * multiboot2 FB tag, non-RGB32 mode, or phys outside the
++ * kernel's direct map). The console NEVER crashes a boot.
++ */
++
++#pragma once
++
++/*
++ * Called from try_boot_sys_mbi2() after the MULTIBOOT2_TAG_FB
++ * tag is parsed. At that point paging is on with the boot_pml4
++ * (identity-map of the first 4 GiB), so the FB is reached via
++ * its physical address. Captures the FB geometry, clears the
++ * screen to background, and emits a short "sel4 fb console:
++ * ready" banner so the operator can confirm the patch is alive
++ * before any kernel_putDebugChar fires.
++ */
++void fb_console_init(void);
++
++/*
++ * Called from try_boot_sys_node() right after
++ * setCurrentVSpaceRoot(). Switches the cached framebuffer VA
++ * from the boot_pml4 identity map to the kernel's permanent
++ * PML4 (paddr + PPTR_BASE_OFFSET). No-op when the console is
++ * disabled.
++ */
++void fb_console_enter_kernel_window(void);
++
++/*
++ * Render one ASCII character on the GOP framebuffer. Called
++ * from kernel_putDebugChar() AFTER the existing UART write so
++ * the FB mirrors the kernel's existing log channel. Handles
++ * \n, \r, \b, and printable ASCII. No-op when the console is
++ * disabled.
++ */
++void fb_console_putchar(char c);
+diff --git a/src/kernel/sel4/src/arch/x86/config.cmake b/src/kernel/sel4/src/arch/x86/config.cmake
+index 2c170bd09..00634396a 100644
+--- a/src/kernel/sel4/src/arch/x86/config.cmake
++++ b/src/kernel/sel4/src/arch/x86/config.cmake
+@@ -382,6 +382,7 @@ add_sources(
+         kernel/boot.c
+         kernel/cmdline.c
+         kernel/ept.c
++        kernel/fb_console.c
+         kernel/thread.c
+         model/statedata.c
+         machine/capdl.c
+diff --git a/src/kernel/sel4/src/arch/x86/kernel/boot_sys.c b/src/kernel/sel4/src/arch/x86/kernel/boot_sys.c
+index 7f1a4db1f..c5b6978e5 100644
+--- a/src/kernel/sel4/src/arch/x86/kernel/boot_sys.c
++++ b/src/kernel/sel4/src/arch/x86/kernel/boot_sys.c
+@@ -13,6 +13,7 @@
+ #include <arch/kernel/cmdline.h>
+ #include <arch/kernel/boot.h>
+ #include <arch/kernel/boot_sys.h>
++#include <arch/kernel/fb_console.h>
+ #include <arch/kernel/smp_sys.h>
+ #include <arch/kernel/vspace.h>
+ #include <arch/kernel/elf.h>
+@@ -156,6 +157,16 @@ static BOOT_CODE bool_t try_boot_sys_node(cpu_id_t cpu_id)
+      * be set *right now* instead of delayed */
+     asm volatile("" ::: "memory");
+ 
++    /*
++     * Sponge OS Phase 15 W3 — early FB text console. The kernel
++     * PML4 is now active; the boot_pml4 identity map is gone.
++     * Switch the console's cached framebuffer VA from physical
++     * addressing to paddr_to_pptr() so subsequent
++     * kernel_putDebugChar writes reach the FB through the
++     * kernel-window mapping. No-op when the console is disabled.
++     */
++    fb_console_enter_kernel_window();
++
+ #ifdef CONFIG_KERNEL_SKIM_WINDOW
+     if (!map_skim_window((vptr_t)ki_skim_start, (vptr_t)ki_skim_end)) {
+         return false;
+@@ -685,6 +696,18 @@ static BOOT_CODE bool_t try_boot_sys_mbi2(
+             printf("Got framebuffer info in multiboot2. Current video mode is at physical address=%llx pitch=%u resolution=%ux%u@%u type=%u\n",
+                    fb->addr, fb->pitch, fb->width, fb->height, fb->bpp, fb->type);
+             boot_state.fb_info = *fb;
++            /*
++             * Sponge OS Phase 15 W3 — early FB text console.
++             * Capture the FB geometry NOW so the console can mirror
++             * subsequent kernel_putDebugChar calls (including every
++             * Genode core SysDebugPutChar trap) onto the GOP
++             * framebuffer on real hardware with no serial port.
++             * Paging is on with the boot_pml4 (identity map of the
++             * first 4 GiB); fb_console_init() handles the addressing.
++             * No-op when fb_info.addr == 0 (no tag from GRUB) so a
++             * normal BIOS boot is unaffected.
++             */
++            fb_console_init();
+         }
+ 
+         tag = (multiboot2_tag_t const *)((word_t)tag + ROUND_UP(tag->size, 3));
+diff --git a/src/kernel/sel4/src/arch/x86/kernel/fb_console.c b/src/kernel/sel4/src/arch/x86/kernel/fb_console.c
+index e69de29bb..f4c7686ff 100644
+--- a/src/kernel/sel4/src/arch/x86/kernel/fb_console.c
++++ b/src/kernel/sel4/src/arch/x86/kernel/fb_console.c
+@@ -0,0 +1,564 @@
++/*
++ * Copyright 2026, Sponge OS contributors
++ *
++ * SPDX-License-Identifier: GPL-2.0-only
++ *
++ * Sponge OS Phase 15 W3 — early framebuffer text console.
++ *
++ * The vendored seL4 kernel's boot log AND the Genode core log
++ * (which flows through the SysDebugPutChar syscall →
++ * kernel_putchar → kernel_putDebugChar on x86 pc99) must appear
++ * on the GOP framebuffer on real hardware with no serial port
++ * (LG gram 17ZD90N Ice Lake — UEFI-only, no COM1). The kernel
++ * is a debug build, so printf is wired and writes to UART COM1
++ * — invisible. Bender's 0xB8000 VGA-text writes are also
++ * invisible under UEFI GOP. Only the GOP framebuffer is visible
++ * (the firmware's logo proves the panel works).
++ *
++ * This file provides a minimal 8x8 ASCII text console that
++ * mirrors every character written through kernel_putDebugChar
++ * onto the GOP framebuffer. The console is DISABLED when no
++ * multiboot2 framebuffer tag was supplied (boot_state.fb_info
++ * .addr == 0) or the mode is not 32 bpp RGB (bpp != 32 or
++ * type != 1) or the physical address is outside the kernel's
++ * direct-mapped physical memory window (PADDR_TOP = 512 GiB).
++ * In every other case it stays out of the way — the normal
++ * UART path is unchanged. The console NEVER crashes a boot.
++ *
++ * Two-phase initialization matches the kernel's two paging
++ * modes on x86_64:
++ *
++ *   1. fb_console_init() is called from try_boot_sys_mbi2()
++ *      right after the MULTIBOOT2_TAG_FB tag is parsed. At
++ *      this point paging is on (set up by head.S) but the
++ *      active page tables are the temporary boot_pml4, which
++ *      identity-maps the first 4 GiB via 2 MiB pages. The FB
++ *      is therefore accessed via its PHYSICAL address.
++ *
++ *   2. fb_console_enter_kernel_window() is called from
++ *      try_boot_sys_node() right after setCurrentVSpaceRoot().
++ *      From this point onward, the kernel's permanent PML4 is
++ *      active and the FB must be accessed via
++ *      paddr_to_pptr(phys). We update the cached base pointer.
++ *
++ * The kernel_putDebugChar hook (in src/plat/pc99/machine/io.c)
++ * calls fb_console_putchar() AFTER the UART write. The hook
++ * only fires when CONFIG_PRINTING is enabled, which the Sponge
++ * OS kernel build does (kernel-sel4-pc.mk sets both
++ * CONFIG_PRINTING=y and CONFIG_DEBUG_BUILD=y).
++ *
++ * The 8x8 font is hand-crafted for ASCII 32..126 (95 glyphs).
++ * 95 * 8 bytes = 760 bytes — small enough that the kernel's
++ * .rodata grows by well under 1 KiB. Glyphs cover the printable
++ * range used by the kernel boot log and Genode core's log;
++ * control chars (< 0x20) and DEL (0x7F) are rendered as
++ * placeholder blocks. The font is intentionally compact —
++ * readability over coverage of obscure code points.
++ *
++ * This file is intentionally NOT marked BOOT_CODE: it must
++ * remain live for the entire lifetime of the kernel because
++ * userland's SysDebugPutChar traps into kernel_putchar AFTER
++ * boot completes. Once paging is on, the file relies only on
++ * standard kernel headers (machine.h, arch/kernel/boot_sys.h,
++ * stdint.h, string.h). The freestanding kernel does NOT
++ * declare memmove / uintptr_t, so this file defines both
++ * locally (fbc_memmove + a uintptr_t typedef) to keep its
++ * kernel-build surface self-contained.
++ */
++
++#include <config.h>
++#include <stdint.h>
++#include <string.h>
++
++#include <machine.h>
++#include <arch/kernel/boot_sys.h>
++
++/* ------------------------------------------------------------------ */
++/* Local typedefs / helpers (kernel is freestanding; uintptr_t is     */
++/* not declared anywhere in the vendored sel4 headers)                */
++/* ------------------------------------------------------------------ */
++
++typedef uint64_t fbc_uintptr;
++
++/* The kernel ships memcpy / memzero / memset but not memmove.
++ * memmove is required for fb_console scrolling (FB rows may
++ * overlap when src/dst ranges are close). This local
++ * implementation is byte-by-byte forward-safe, which is what
++ * an FB scroll needs (src < dst, no backward copy hazard). */
++static void *fbc_memmove(void *dst, const void *src, fbc_uintptr n)
++{
++    uint8_t       *d = (uint8_t *)dst;
++    const uint8_t *s = (const uint8_t *)src;
++    fbc_uintptr   i;
++
++    if (d == s || n == 0) {
++        return dst;
++    }
++    if (d < s) {
++        for (i = 0; i < n; i++) {
++            d[i] = s[i];
++        }
++    } else {
++        for (i = n; i > 0; i--) {
++            d[i - 1] = s[i - 1];
++        }
++    }
++    return dst;
++}
++
++/* ------------------------------------------------------------------ */
++/* Configuration                                                       */
++/* ------------------------------------------------------------------ */
++
++#define FBC_CHAR_W       8u   /* glyph width  in pixels              */
++#define FBC_CHAR_H       8u   /* glyph height in pixels              */
++#define FBC_COLS_MAX   256u   /* hard upper bound on cols (sanity)   */
++#define FBC_ROWS_MAX   128u   /* hard upper bound on rows (sanity)   */
++#define FBC_FG_DEFAULT  0x00FFFFFFu  /* XRGB white                  */
++#define FBC_BG_DEFAULT  0x00000000u  /* XRGB black                  */
++
++/* ------------------------------------------------------------------ */
++/* State                                                               */
++/* ------------------------------------------------------------------ */
++
++/*
++ * The console state. All fields are 32/64-bit aligned to keep the
++ * data path tight. base_vaddr is the current virtual pointer the
++ * putchar path uses — it changes when the kernel switches its
++ * PML4 (see fb_console_enter_kernel_window).
++ */
++static struct {
++    uint64_t phys;             /* physical address of the framebuffer   */
++    uint32_t *base_vaddr;      /* current VA: identity-mapped or kernel */
++    uint32_t  pitch;           /* bytes per scanline                    */
++    uint32_t  width;           /* pixels per scanline                   */
++    uint32_t  height;          /* scanlines                             */
++    uint32_t  bpp;             /* bits per pixel                        */
++    uint32_t  cols;            /* text columns that fit on screen       */
++    uint32_t  rows;            /* text rows    that fit on screen       */
++    uint32_t  col;             /* current cursor column                 */
++    uint32_t  row;             /* current cursor row                    */
++    uint32_t  fg;              /* foreground pixel value                */
++    uint32_t  bg;              /* background pixel value                */
++    uint8_t   enabled;         /* 1 = render, 0 = no-op                 */
++    uint8_t   in_kernel_window;/* 1 = use paddr_to_pptr, 0 = identity   */
++    uint8_t   reserved0[2];
++} fbc;
++
++/* ------------------------------------------------------------------ */
++/* 8x8 font (ASCII 32..126, MSB = leftmost pixel of each row)         */
++/* ------------------------------------------------------------------ */
++
++static const uint8_t fbc_font[95][FBC_CHAR_H] = {
++    /* ' ' (32) */ {0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00},
++    /* '!' (33) */ {0x18,0x18,0x18,0x18,0x18,0x00,0x18,0x00},
++    /* '"' (34) */ {0x6C,0x6C,0x6C,0x00,0x00,0x00,0x00,0x00},
++    /* '#' (35) */ {0x6C,0x6C,0xFE,0x6C,0xFE,0x6C,0x6C,0x00},
++    /* '$' (36) */ {0x18,0x7E,0xC0,0x7C,0x06,0xFC,0x18,0x00},
++    /* '%' (37) */ {0xC6,0xCC,0x18,0x30,0x60,0xC6,0x86,0x00},
++    /* '&' (38) */ {0x38,0x6C,0x68,0x76,0xDC,0xCC,0x76,0x00},
++    /* ''' (39) */ {0x18,0x18,0x30,0x00,0x00,0x00,0x00,0x00},
++    /* '(' (40) */ {0x0C,0x18,0x30,0x30,0x30,0x18,0x0C,0x00},
++    /* ')' (41) */ {0x30,0x18,0x0C,0x0C,0x0C,0x18,0x30,0x00},
++    /* '*' (42) */ {0x00,0x66,0x3C,0xFF,0x3C,0x66,0x00,0x00},
++    /* '+' (43) */ {0x00,0x18,0x18,0x7E,0x18,0x18,0x00,0x00},
++    /* ',' (44) */ {0x00,0x00,0x00,0x00,0x00,0x30,0x30,0x60},
++    /* '-' (45) */ {0x00,0x00,0x00,0x7E,0x00,0x00,0x00,0x00},
++    /* '.' (46) */ {0x00,0x00,0x00,0x00,0x00,0x30,0x30,0x00},
++    /* '/' (47) */ {0x06,0x0C,0x18,0x30,0x60,0xC0,0x80,0x00},
++    /* '0' (48) */ {0x7C,0xC6,0xC6,0xD6,0xD6,0xC6,0xC6,0x7C},
++    /* '1' (49) */ {0x18,0x38,0x18,0x18,0x18,0x18,0x18,0x3C},
++    /* '2' (50) */ {0x7C,0xC6,0x06,0x0C,0x18,0x30,0x60,0xFE},
++    /* '3' (51) */ {0x7C,0xC6,0x06,0x3C,0x06,0x06,0xC6,0x7C},
++    /* '4' (52) */ {0x0C,0x1C,0x3C,0x6C,0xCC,0xFE,0x0C,0x0C},
++    /* '5' (53) */ {0xFE,0xC0,0xC0,0xFC,0x06,0x06,0xC6,0x7C},
++    /* '6' (54) */ {0x3C,0x60,0xC0,0xFC,0xC6,0xC6,0xC6,0x7C},
++    /* '7' (55) */ {0xFE,0xC6,0x06,0x0C,0x18,0x30,0x30,0x30},
++    /* '8' (56) */ {0x7C,0xC6,0xC6,0x7C,0xC6,0xC6,0xC6,0x7C},
++    /* '9' (57) */ {0x7C,0xC6,0xC6,0xC6,0x7E,0x06,0x0C,0x78},
++    /* ':' (58) */ {0x00,0x30,0x30,0x00,0x00,0x30,0x30,0x00},
++    /* ';' (59) */ {0x00,0x30,0x30,0x00,0x00,0x30,0x30,0x60},
++    /* '<' (60) */ {0x06,0x0C,0x18,0x30,0x18,0x0C,0x06,0x00},
++    /* '=' (61) */ {0x00,0x00,0x7E,0x00,0x00,0x7E,0x00,0x00},
++    /* '>' (62) */ {0x60,0x30,0x18,0x0C,0x18,0x30,0x60,0x00},
++    /* '?' (63) */ {0x7C,0xC6,0x0C,0x18,0x18,0x00,0x18,0x00},
++    /* '@' (64) */ {0x7C,0xC6,0xC6,0xDE,0xDE,0xDC,0xC0,0x7C},
++    /* 'A' (65) */ {0x38,0x6C,0xC6,0xC6,0xFE,0xC6,0xC6,0xC6},
++    /* 'B' (66) */ {0xFC,0xC6,0xC6,0xFC,0xC6,0xC6,0xC6,0xFC},
++    /* 'C' (67) */ {0x7C,0xC6,0xC0,0xC0,0xC0,0xC0,0xC6,0x7C},
++    /* 'D' (68) */ {0xF8,0xCC,0xC6,0xC6,0xC6,0xC6,0xCC,0xF8},
++    /* 'E' (69) */ {0xFE,0xC0,0xC0,0xFC,0xC0,0xC0,0xC0,0xFE},
++    /* 'F' (70) */ {0xFE,0xC0,0xC0,0xFC,0xC0,0xC0,0xC0,0xC0},
++    /* 'G' (71) */ {0x7C,0xC6,0xC0,0xC0,0xCE,0xC6,0xC6,0x7C},
++    /* 'H' (72) */ {0xC6,0xC6,0xC6,0xFE,0xC6,0xC6,0xC6,0xC6},
++    /* 'I' (73) */ {0x3C,0x18,0x18,0x18,0x18,0x18,0x18,0x3C},
++    /* 'J' (74) */ {0x1E,0x0C,0x0C,0x0C,0x0C,0xCC,0xCC,0x78},
++    /* 'K' (75) */ {0xC6,0xCC,0xD8,0xF0,0xF0,0xD8,0xCC,0xC6},
++    /* 'L' (76) */ {0xC0,0xC0,0xC0,0xC0,0xC0,0xC0,0xC0,0xFE},
++    /* 'M' (77) */ {0xC6,0xEE,0xFE,0xFE,0xD6,0xC6,0xC6,0xC6},
++    /* 'N' (78) */ {0xC6,0xE6,0xF6,0xFE,0xDE,0xCE,0xC6,0xC6},
++    /* 'O' (79) */ {0x7C,0xC6,0xC6,0xC6,0xC6,0xC6,0xC6,0x7C},
++    /* 'P' (80) */ {0xFC,0xC6,0xC6,0xC6,0xFC,0xC0,0xC0,0xC0},
++    /* 'Q' (81) */ {0x7C,0xC6,0xC6,0xC6,0xC6,0xD6,0xDE,0x7C},
++    /* 'R' (82) */ {0xFC,0xC6,0xC6,0xC6,0xFC,0xD8,0xCC,0xC6},
++    /* 'S' (83) */ {0x7C,0xC6,0xC0,0x7C,0x06,0x06,0xC6,0x7C},
++    /* 'T' (84) */ {0xFF,0x18,0x18,0x18,0x18,0x18,0x18,0x18},
++    /* 'U' (85) */ {0xC6,0xC6,0xC6,0xC6,0xC6,0xC6,0xC6,0x7C},
++    /* 'V' (86) */ {0xC6,0xC6,0xC6,0xC6,0xC6,0xC6,0x6C,0x38},
++    /* 'W' (87) */ {0xC6,0xC6,0xC6,0xC6,0xD6,0xFE,0xEE,0xC6},
++    /* 'X' (88) */ {0xC6,0xC6,0x6C,0x38,0x38,0x6C,0xC6,0xC6},
++    /* 'Y' (89) */ {0xC3,0xC3,0x66,0x3C,0x18,0x18,0x18,0x18},
++    /* 'Z' (90) */ {0xFE,0x06,0x0C,0x18,0x30,0x60,0xC0,0xFE},
++    /* '[' (91) */ {0x3C,0x30,0x30,0x30,0x30,0x30,0x30,0x3C},
++    /* '\' (92) */ {0x80,0xC0,0x60,0x30,0x18,0x0C,0x06,0x00},
++    /* ']' (93) */ {0x3C,0x0C,0x0C,0x0C,0x0C,0x0C,0x0C,0x3C},
++    /* '^' (94) */ {0x10,0x38,0x6C,0xC6,0x00,0x00,0x00,0x00},
++    /* '_' (95) */ {0x00,0x00,0x00,0x00,0x00,0x00,0x00,0xFE},
++    /* '`' (96) */ {0x30,0x30,0x18,0x00,0x00,0x00,0x00,0x00},
++    /* 'a' (97) */ {0x00,0x00,0x7C,0x06,0x7E,0xC6,0xC6,0x7E},
++    /* 'b' (98) */ {0xC0,0xC0,0xFC,0xC6,0xC6,0xC6,0xC6,0xFC},
++    /* 'c' (99) */ {0x00,0x00,0x7C,0xC6,0xC0,0xC0,0xC6,0x7C},
++    /* 'd' (100)*/ {0x06,0x06,0x7E,0xC6,0xC6,0xC6,0xC6,0x7E},
++    /* 'e' (101)*/ {0x00,0x00,0x7C,0xC6,0xFE,0xC0,0xC0,0x7C},
++    /* 'f' (102)*/ {0x3C,0x66,0x60,0xF8,0x60,0x60,0x60,0x60},
++    /* 'g' (103)*/ {0x00,0x00,0x7E,0xC6,0xC6,0x7E,0x06,0x7C},
++    /* 'h' (104)*/ {0xC0,0xC0,0xFC,0xC6,0xC6,0xC6,0xC6,0xC6},
++    /* 'i' (105)*/ {0x18,0x00,0x38,0x18,0x18,0x18,0x18,0x3C},
++    /* 'j' (106)*/ {0x06,0x00,0x0E,0x06,0x06,0x06,0xC6,0x7C},
++    /* 'k' (107)*/ {0xC0,0xC0,0xC6,0xCC,0xF8,0xCC,0xC6,0xC6},
++    /* 'l' (108)*/ {0x38,0x18,0x18,0x18,0x18,0x18,0x18,0x3C},
++    /* 'm' (109)*/ {0x00,0x00,0xCC,0xFE,0xFE,0xD6,0xC6,0xC6},
++    /* 'n' (110)*/ {0x00,0x00,0xFC,0xC6,0xC6,0xC6,0xC6,0xC6},
++    /* 'o' (111)*/ {0x00,0x00,0x7C,0xC6,0xC6,0xC6,0xC6,0x7C},
++    /* 'p' (112)*/ {0x00,0x00,0xFC,0xC6,0xC6,0xC6,0xFC,0xC0},
++    /* 'q' (113)*/ {0x00,0x00,0x7E,0xC6,0xC6,0xC6,0x7E,0x06},
++    /* 'r' (114)*/ {0x00,0x00,0xFC,0xC6,0xC0,0xC0,0xC0,0xC0},
++    /* 's' (115)*/ {0x00,0x00,0x7E,0xC0,0x7C,0x06,0xC6,0x7C},
++    /* 't' (116)*/ {0x30,0x30,0xFC,0x30,0x30,0x30,0x36,0x1C},
++    /* 'u' (117)*/ {0x00,0x00,0xC6,0xC6,0xC6,0xC6,0xC6,0x7E},
++    /* 'v' (118)*/ {0x00,0x00,0xC6,0xC6,0xC6,0xC6,0x6C,0x38},
++    /* 'w' (119)*/ {0x00,0x00,0xC6,0xC6,0xD6,0xFE,0xEE,0xC6},
++    /* 'x' (120)*/ {0x00,0x00,0xC6,0x6C,0x38,0x6C,0xC6,0xC6},
++    /* 'y' (121)*/ {0x00,0x00,0xC6,0xC6,0xC6,0x7E,0x06,0x7C},
++    /* 'z' (122)*/ {0x00,0x00,0xFE,0x0C,0x38,0x60,0xC0,0xFE},
++    /* '{' (123)*/ {0x1C,0x30,0x30,0xE0,0x30,0x30,0x30,0x1C},
++    /* '|' (124)*/ {0x18,0x18,0x18,0x00,0x00,0x18,0x18,0x18},
++    /* '}' (125)*/ {0x70,0x18,0x18,0x0E,0x18,0x18,0x18,0x70},
++    /* '~' (126)*/ {0x76,0xDC,0x00,0x00,0x00,0x00,0x00,0x00},
++};
++
++/* ------------------------------------------------------------------ */
++/* Helpers                                                             */
++/* ------------------------------------------------------------------ */
++
++/*
++ * Recompute the cached base_vaddr from the current
++ * in_kernel_window state. Call after a paging-mode change.
++ */
++static void fbc_recompute_base(void)
++{
++    if (fbc.in_kernel_window) {
++        fbc.base_vaddr = (uint32_t *)paddr_to_pptr((paddr_t)fbc.phys);
++    } else {
++        fbc.base_vaddr = (uint32_t *)(fbc_uintptr)fbc.phys;
++    }
++}
++
++/*
++ * Clear one scanline of the framebuffer to the background
++ * color. y is in PIXEL units. Safe to call before paging is
++ * fully on as long as fbc.base_vaddr is valid.
++ */
++static void fbc_clear_pixel_row(uint32_t y, uint32_t pixel_rows)
++{
++    uint32_t i;
++    uint32_t words_per_line;
++
++    if (y >= fbc.height) {
++        return;
++    }
++    if (y + pixel_rows > fbc.height) {
++        pixel_rows = fbc.height - y;
++    }
++
++    words_per_line = fbc.pitch >> 2;
++    for (i = 0; i < pixel_rows; i++) {
++        uint32_t *line = fbc.base_vaddr
++            + (fbc_uintptr)y * (fbc_uintptr)words_per_line
++            + (fbc_uintptr)i * (fbc_uintptr)words_per_line;
++        memset(line, 0, (unsigned long)fbc.width * sizeof(uint32_t));
++    }
++}
++
++/*
++ * Render one glyph at the current cursor position. The glyph
++ * is taken from the embedded font (or rendered as a filled
++ * block for unsupported code points). After rendering the
++ * cursor advances one column; the caller handles wrapping,
++ * newlines, and scrolling.
++ */
++static void fbc_render_glyph(uint8_t ch)
++{
++    uint32_t       px, py;
++    uint32_t      *base;
++    const uint8_t *glyph;
++    uint32_t       row_idx, bit_idx;
++    uint32_t       words_per_line;
++
++    /* Out-of-range code points render as a filled 8x8 block,
++     * which preserves cursor alignment. Same for non-printable
++     * control characters (the caller handles \n / \r / \b; any
++     * other < 0x20 or DEL gets the placeholder block). */
++    if (ch >= 32u && ch <= 126u) {
++        glyph = fbc_font[ch - 32u];
++    } else {
++        glyph = NULL;
++    }
++
++    px = fbc.col * FBC_CHAR_W;
++    py = fbc.row * FBC_CHAR_H;
++    words_per_line = fbc.pitch >> 2;
++    base = fbc.base_vaddr
++         + (fbc_uintptr)py * (fbc_uintptr)words_per_line
++         + (fbc_uintptr)px;
++
++    for (row_idx = 0; row_idx < FBC_CHAR_H; row_idx++) {
++        uint32_t *line = base
++            + (fbc_uintptr)row_idx * (fbc_uintptr)words_per_line;
++        uint8_t  bits = glyph ? glyph[row_idx] : 0xFFu;
++        for (bit_idx = 0; bit_idx < FBC_CHAR_W; bit_idx++) {
++            /* MSB = leftmost pixel */
++            uint32_t mask = (uint32_t)1u << (7u - bit_idx);
++            line[bit_idx] = (bits & mask) ? fbc.fg : fbc.bg;
++        }
++    }
++}
++
++/*
++ * Scroll the framebuffer up by one text row (8 pixels). The
++ * topmost text row is discarded; the bottommost text row is
++ * cleared to background. Used when the cursor would fall off
++ * the bottom of the screen.
++ */
++static void fbc_scroll_up(void)
++{
++    fbc_uintptr row_bytes;
++    uint8_t    *dst;
++    uint8_t    *src;
++    fbc_uintptr bytes_to_move;
++
++    row_bytes = (fbc_uintptr)fbc.pitch;
++    dst = (uint8_t *)fbc.base_vaddr;
++    src = (uint8_t *)fbc.base_vaddr + (fbc_uintptr)FBC_CHAR_H * row_bytes;
++
++    if (fbc.row == 0) {
++        /* Already at top — just clear the current row. */
++        fbc_clear_pixel_row(0, FBC_CHAR_H);
++        return;
++    }
++
++    bytes_to_move = (fbc_uintptr)(fbc.height - FBC_CHAR_H) * row_bytes;
++    fbc_memmove(dst, src, bytes_to_move);
++    fbc_clear_pixel_row(fbc.height - FBC_CHAR_H, FBC_CHAR_H);
++}
++
++/*
++ * Advance the cursor by one column. Wrap to the next row at
++ * the right edge; scroll when the bottom is reached.
++ */
++static void fbc_advance_col(void)
++{
++    fbc.col++;
++    if (fbc.col >= fbc.cols) {
++        fbc.col = 0;
++        fbc.row++;
++        if (fbc.row >= fbc.rows) {
++            fbc.row = fbc.rows - 1;
++            fbc_scroll_up();
++        }
++    }
++}
++
++/* ------------------------------------------------------------------ */
++/* Public API (called from boot_sys.c and pc99 machine/io.c)          */
++/* ------------------------------------------------------------------ */
++
++/*
++ * Called from try_boot_sys_mbi2() right after the
++ * MULTIBOOT2_TAG_FB tag is parsed. At this point paging is
++ * on (head.S set CR0.PG before calling boot_sys) but the
++ * active PML4 is the temporary boot_pml4, which identity-
++ * maps the first 4 GiB via 2 MiB pages. The FB is therefore
++ * accessed via its physical address.
++ *
++ * No-op (and leaves fbc.enabled = 0) when:
++ *   - fb_info.addr == 0                       (no tag)
++ *   - bpp != 32 or type != 1                  (not RGB32)
++ *   - phys >= PADDR_TOP  (not in direct map; 512 GiB)
++ *   - width or pitch is implausibly small
++ */
++void fb_console_init(void)
++{
++    uint64_t phys;
++    uint32_t bpp;
++    uint8_t  type;
++    uint32_t width, height, pitch;
++    uint32_t cols, rows;
++
++    /* Zero the state so a later fb_console_enter_kernel_window
++     * is a true no-op when init disabled us. */
++    memset(&fbc, 0, sizeof(fbc));
++    fbc.fg = FBC_FG_DEFAULT;
++    fbc.bg = FBC_BG_DEFAULT;
++
++    phys  = boot_state.fb_info.addr;
++    pitch = boot_state.fb_info.pitch;
++    width = boot_state.fb_info.width;
++    height = boot_state.fb_info.height;
++    bpp   = boot_state.fb_info.bpp;
++    type  = boot_state.fb_info.type;
++
++    if (phys == 0) {
++        return;  /* no multiboot2 FB tag */
++    }
++    if (bpp != 32 || type != 1) {
++        return;  /* not RGB32 */
++    }
++    if (phys >= (uint64_t)PADDR_TOP) {
++        return;  /* outside the kernel's direct map */
++    }
++    if (width < FBC_CHAR_W || height < FBC_CHAR_H) {
++        return;  /* sub-glyph screen — impossible to render */
++    }
++    if (pitch < width * (bpp >> 3)) {
++        return;  /* pitch doesn't fit one scanline */
++    }
++
++    cols = width  / FBC_CHAR_W;
++    rows = height / FBC_CHAR_H;
++    if (cols > FBC_COLS_MAX) { cols = FBC_COLS_MAX; }
++    if (rows > FBC_ROWS_MAX) { rows = FBC_ROWS_MAX; }
++
++    fbc.phys            = phys;
++    fbc.pitch           = pitch;
++    fbc.width           = width;
++    fbc.height          = height;
++    fbc.bpp             = bpp;
++    fbc.cols            = cols;
++    fbc.rows            = rows;
++    fbc.col             = 0;
++    fbc.row             = 0;
++    fbc.in_kernel_window = 0;
++    fbc.enabled         = 1;
++
++    /* Identity-map addressing: phys == VA. */
++    fbc_recompute_base();
++
++    /* Clear the screen to background so the first character
++     * starts at a known-good pixel state. */
++    {
++        uint32_t y;
++        for (y = 0; y < height; y++) {
++            fbc_clear_pixel_row(y, 1);
++        }
++    }
++
++    /* Emit a short banner so the operator can tell on real
++     * hardware that the FB console came up (proves the
++     * patch is alive before any kernel_putDebugChar fires). */
++    {
++        static const char banner[] = "sel4 fb console: ready\n";
++        const char *p = banner;
++        while (*p) {
++            fb_console_putchar(*p++);
++        }
++    }
++}
++
++/*
++ * Called from try_boot_sys_node() right after
++ * setCurrentVSpaceRoot(). Switches the cached base_vaddr
++ * from identity-mapped to the kernel-window mapping (the
++ * permanent kernel PML4 maps paddr + PPTR_BASE_OFFSET).
++ *
++ * No-op if fb_console_init() disabled the console.
++ */
++void fb_console_enter_kernel_window(void)
++{
++    if (!fbc.enabled) {
++        return;
++    }
++    fbc.in_kernel_window = 1;
++    fbc_recompute_base();
++}
++
++/*
++ * Render one ASCII character. Called from
++ * kernel_putDebugChar() AFTER the UART write so the FB
++ * console mirrors the kernel's existing log channel. Honors
++ * \n (newline), \r (carriage return, no-op because we wrap
++ * on column overflow), \b (backspace: clear current cell).
++ *
++ * No-op if the console is disabled. NEVER crashes a boot.
++ */
++void fb_console_putchar(char c)
++{
++    uint8_t ch;
++
++    if (!fbc.enabled) {
++        return;
++    }
++
++    ch = (uint8_t)c;
++
++    switch (ch) {
++    case '\n':
++        /* Newline: advance to next row, clear the new cell row
++         * to end-of-line background so leftover pixels from a
++         * longer previous line don't bleed into the new line. */
++        fbc.col = 0;
++        fbc.row++;
++        if (fbc.row >= fbc.rows) {
++            fbc.row = fbc.rows - 1;
++            fbc_scroll_up();
++        } else {
++            fbc_clear_pixel_row(fbc.row * FBC_CHAR_H, FBC_CHAR_H);
++        }
++        return;
++
++    case '\r':
++        /* Carriage return: column reset only. */
++        fbc.col = 0;
++        return;
++
++    case '\b':
++        /* Backspace: clear the current cell, then move cursor
++         * back. The uart_console_putchar already emitted a CR
++         * before LF, so the kernel printf path produces pairs
++         * ("\r\n") — we treat \r as a no-op for cursor
++         * purposes and let \n handle row advance. */
++        if (fbc.col > 0) {
++            fbc.col--;
++        }
++        {
++            uint32_t words_per_line = fbc.pitch >> 2;
++            uint32_t px = fbc.col * FBC_CHAR_W;
++            uint32_t py = fbc.row * FBC_CHAR_H;
++            uint32_t *base = fbc.base_vaddr
++                + (fbc_uintptr)py * (fbc_uintptr)words_per_line
++                + (fbc_uintptr)px;
++            uint32_t row_idx;
++            for (row_idx = 0; row_idx < FBC_CHAR_H; row_idx++) {
++                uint32_t *line = base
++                    + (fbc_uintptr)row_idx * (fbc_uintptr)words_per_line;
++                memset(line, 0, FBC_CHAR_W * sizeof(uint32_t));
++            }
++        }
++        return;
++
++    default:
++        fbc_render_glyph(ch);
++        fbc_advance_col();
++        return;
++    }
++}
+diff --git a/src/kernel/sel4/src/plat/pc99/machine/io.c b/src/kernel/sel4/src/plat/pc99/machine/io.c
+index 83a53bac5..5be7577f8 100644
+--- a/src/kernel/sel4/src/plat/pc99/machine/io.c
++++ b/src/kernel/sel4/src/plat/pc99/machine/io.c
+@@ -6,6 +6,7 @@
+ 
+ #include <config.h>
+ #include <arch/kernel/boot_sys.h>
++#include <arch/kernel/fb_console.h>
+ #include <arch/model/statedata.h>
+ #include <machine/io.h>
+ #include <plat/machine/io.h>
+@@ -45,6 +46,18 @@ void kernel_putDebugChar(unsigned char c)
+ {
+     /* this will take care of CR/LF handling and call uart_drv_putchar() */
+     uart_console_putchar(c);
++    /*
++     * Sponge OS Phase 15 W3 — mirror the same character onto
++     * the GOP framebuffer (if available). The hook captures
++     * BOTH the kernel's printf path (which uses putchar() →
++     * kernel_putDebugChar) AND the Genode core log (which
++     * reaches this function via the SysDebugPutChar syscall
++     * → kernel_putchar → kernel_putDebugChar). fb_console_putchar
++     * is a no-op when the FB console is disabled (no
++     * multiboot2 FB tag, non-RGB32, or phys outside the direct
++     * map) so a normal BIOS boot's UART-only log is unaffected.
++     */
++    fb_console_putchar((char)c);
+ }
+ 
+ #endif /* CONFIG_PRINTING */

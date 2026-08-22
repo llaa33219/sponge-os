@@ -1,0 +1,53 @@
+# Framebuffer at t=2s (earliest content)
+row   0: sel4 fb console: ready                                                          
+row   1: Detected 1 boot module(s):                                                      
+row   2: Kernel loaded to: start=0x200000 end=0xe3e000 size=0xc3e000 entry=0x200298      
+row   3: ACPI: RSDT paddr=0x7fb7d074                                                     
+row   4: ACPI: RSDT vaddr=0x7fb7d074                                                     
+row   5: ACPI: FADT paddr=0x7fb79000                                                     
+row   6: ACPI: FADT vaddr=0x7fb79000                                                     
+row   7: ACPI: FADT flags=0x84a5                                                         
+row   8: ACPI: MADT paddr=0x7fb78000                                                     
+row   9: ACPI: MADT vaddr=0x7fb78000                                                     
+row  10: ACPI: MADT apic_addr=0xfee00000                                                 
+row  11: ACPI: MADT flags=0x1                                                            
+row  12: ACPI: MADT_APIC apic_id=0x0                                                     
+row  13: ACPI: MADT_IOAPIC ioapic_id=0 ioapic_addr=0xfec00000 gsib=0                     
+row  14: ACPI: MADT_ISO bus=0 source=0 gsi=2 flags=0x0                                   
+row  15: ACPI: MADT_ISO bus=0 source=5 gsi=5 flags=0xd                                   
+row  16: ACPI: MADT_ISO bus=0 source=9 gsi=9 flags=0xd                                   
+row  17: ACPI: MADT_ISO bus=0 source=10 gsi=10 flags=0xd                                 
+row  18: ACPI: MADT_ISO bus=0 source=11 gsi=11 flags=0xd                                 
+row  19: ACPI: 1 CPU(s) detected                                                         
+row  20: ELF-loading userland images from boot modules:                                  
+row  21: size=0x689c000 v_entry=0x2000018 v_start=0x2000000 v_end=0x889c000 p_start=0x663
+row  22: Moving loaded userland images to final location: from=0x663e000 to=0xe3e000 size
+row  23: Starting node ?0 with APIC ID 0                                                 
+row  24: Mapping kernel window is done                                                   
+row  26: available phys memory regions: 6                                                
+row  27:   ?100000..800000?                                                              
+row  28:   ?808000..80b000?                                                              
+row  29:   ?80c000..810000?                                                              
+row  30:   ?900000..7f00e000?                                                            
+row  31:   ?7f0cf000..7f8ed000?                                                          
+row  32:   ?7fbff000..7fef4000?                                                          
+row  33: reserved virt address space regions: 1                                          
+row  34:   ?ffffff8000200000..ffffff80076da000?                                          
+row  35: Booting all finished, dropped to user space                                     
+row  36: ??34mWarning: device memory in range ?0000000800000000,0000001000000000) is unav
+row  37: ??34mWarning: device memory in range ?0000001000000000,0000002000000000) is unav
+row  38: ??34mWarning: device memory in range ?0000002000000000,0000004000000000) is unav
+row  39: ??34mWarning: device memory in range ?0000004000000000,0000008000000000) is unav
+row  40: ??34mWarning: device memory in range ?0000008000000000,0000408000000000) is unav
+row  41: ??34mWarning: device memory in range ?0000408000000000,0000608000000000) is unav
+row  42: ??34mWarning: device memory in range ?0000608000000000,0000708000000000) is unav
+row  43: ??34mWarning: device memory in range ?0000708000000000,0000788000000000) is unav
+row  44: ??34mWarning: device memory in range ?0000788000000000,00007c8000000000) is unav
+row  45: ??34mWarning: device memory in range ?00007c8000000000,00007e8000000000) is unav
+row  46: ??34mWarning: device memory in range ?00007e8000000000,00007f8000000000) is unav
+row  47: ??34mWarning: device memory in range ?00007f8000000000,0000800000000000) is unav
+row  48: :phys_mem_16k:     Allocator 0x217a858 dump:                                    
+row  49:  Block: ?0000000000100000,0000000000a00000) size=9M avail=9M max_avail=9M       
+row  50:  Block: ?00000000076dc000,0000000008000000) size=9360K avail=9360K max_avail=799
+row  51:  Block: ?000000000c000000,0000000010e1c000) size=79984K avail=79984K max_avail=7
+row  52:  =? mem_size=100925440 (96 MB) / mem_avail=100925440 (96 MB)                    
