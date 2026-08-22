@@ -1,0 +1,234 @@
+--- a/src/kernel/sel4/include/kernel/boot.h
++++ b/src/kernel/sel4/include/kernel/boot.h
+@@ -25,6 +25,18 @@ typedef struct ndks_boot {
+     region_t   freemem[MAX_NUM_FREEMEM_REG];
+     seL4_BootInfo      *bi_frame;
+     seL4_SlotPos slot_pos_cur;
++    /*
++     * Sponge OS Phase 15 W4 — row 13 patch. Highest paddr covered
++     * by the multiboot2 memory map's usable-RAM regions (i.e.
++     * max(available[i].end)). Captured in init_freemem() so
++     * create_untypeds() can bound the device-untyped coverage
++     * above the map (the GOP framebuffer on UEFI/Insyde systems
++     * with >= 8 GiB RAM lives above the map, as do 64-bit PCI
++     * BARs). Never reclassifies map-described RAM; the value is
++     * only used to pick the start of an additional MMIO range.
++     * See docs/patches/sel4-device-untyped-coverage.patch +
++     * docs/11-environment.md row 13.
++     */
++    paddr_t highest_map_addr;
+ } ndks_boot_t;
+ 
+ extern ndks_boot_t ndks_boot;
+--- a/src/kernel/sel4/src/kernel/boot.c
++++ b/src/kernel/sel4/src/kernel/boot.c
+ #include <hardware.h>
+ #include <util.h>
+ 
++/*
++ * Sponge OS Phase 15 W4 (row 13 patch). Bounded device-untyped
++ * ceiling for the MMIO gap above the highest memory-map address.
++ * 2^40 = 1 TiB covers every practical GOP framebuffer (the Insyde
++ * H2O GOP on the LG gram 17ZD90N-VX7BK sits at ~0x800000000,
++ * 32 GiB) and every practical 64-bit PCI BAR (the q35 pci-hole64
++ * holds BARs up to ~1 TiB in current systems). Higher addresses
++ * are unreachable on real hardware today; the upstream trailing
++ * region [start, CONFIG_PADDR_USER_DEVICE_TOP) couldn't reach
++ * there either because the bootinfo cap (CONFIG_MAX_NUM_BOOTINFO_
++ * UNTYPED_CAPS) filled up long before. See
++ * docs/patches/sel4-device-untyped-coverage.patch +
++ * docs/11-environment.md row 13.
++ */
++#define SPONGE_DEVICE_UNTYPED_TOP  ((paddr_t)1ULL << 40)
++
+ /* (node-local) state accessed only during bootstrapping */
+ BOOT_BSS ndks_boot_t ndks_boot;
+ 
+@@ -786,15 +802,143 @@
+     }
+ 
+     if (start < CONFIG_PADDR_USER_DEVICE_TOP) {
+-        region_t reg = paddr_to_pptr_reg((p_region_t) {
+-            start, CONFIG_PADDR_USER_DEVICE_TOP
+-        });
++        /*
++         * Sponge OS Phase 15 W4 (row 13 patch). The upstream
++         * trailing region [start, CONFIG_PADDR_USER_DEVICE_TOP)
++         * is replaced by a LOW + HIGH split keyed on the
++         * highest memory-map address captured by init_freemem()
++         * (ndks_boot.highest_map_addr).
++         *
++         * Why split: the trailing region starts at `start`
++         * (the kernel+modules end, typically aligned to 32 MiB
++         * on x86_64) and runs to CONFIG_PADDR_USER_DEVICE_TOP
++         * (2^47 on x86_64 = 128 TiB). The alignment of `start`
++         * caps each untyped at 2^ctzl(start) = 32 MiB, so
++         * create_untypeds_for_region() produces ~5.2 million
++         * untypeds for the full 128 TiB. The bootinfo cap
++         * (CONFIG_MAX_NUM_BOOTINFO_UNTYPED_CAPS, 160 in the
++         * Sponge kernel build — also constrained by
++         * seL4_BootInfoFrameBits == seL4_PageBits == 12, i.e.
++         * 4 KiB bootinfo frame) fills up after ~5 GiB of
++         * coverage — long before reaching a GOP framebuffer at
++         * ~32 GiB on the LG gram 17ZD90N-VX7BK or a 64-bit PCI
++         * BAR in the q35 pci-hole64. Bumping the cap is not an
++         * option (seL4_BootInfoFrameBits is a hard constant equal
++         * to seL4_PageBits; increasing the untypeds past ~246
++         * would overflow the 4 KiB bootinfo frame).
++         *
++         * The split replaces the unbounded trailing region with:
++         *
++         *   LOW  [ROUND_UP(start, 31), ROUND_UP(high_map_end))
++         *      The 2-GiB-aligned start keeps per_untyped_size at
++         *      2 GiB (alignment bit 31) instead of 32 MiB. This
++         *      produces only 1-4 device untypeds for the entire
++         *      [2 GiB, high_map_end) MMIO gap (where the LAPIC /
++         *      IO-APIC / HPET block lives at ~4 GiB and is
++         *      reachable from the first or second untyped). The
++         *      pre-2-GiB gap [start, 2 GiB) is RAM, not MMIO, and
++         *      is already covered by the RAM untypeds created
++         *      from the multiboot2 mmap's usable regions.
++         *
++         *   HIGH [ROUND_UP(high_map_end), SPONGE_DEVICE_UNTYPED_TOP)
++         *      Starts at the highest map end (already 2-MiB
++         *      aligned), so per_untyped_size = round_up(high_map_end).
++         *      For an 8-GiB system the alignment is 33 (8 GiB)
++         *      so the range [8 GiB, 64 GiB) cuts into 7 untypeds
++         *      (each 8 GiB). For a 4-GiB system the alignment is
++         *      32 (4 GiB) so [4 GiB, 64 GiB) cuts into 15
++         *      untypeds. The HIGH range covers every practical
++         *      GOP framebuffer (LG gram 17ZD90N-VX7BK: ~32 GiB,
++         *      well within 1 TiB) and 64-bit PCI BAR (q35
++         *      pci-hole64).
++         *
++         * Total untypeds on a typical 8-GiB system with cap=160:
++         *   LOW  : 3 untypeds ([2 GiB, 4 GiB), [4 GiB, 6 GiB),
++         *                [6 GiB, 8 GiB))
++         *   HIGH : 7 untypeds ([8 GiB, 16 GiB) ... [56 GiB, 64 GiB))
++         *   + 1  : RAM untypeds from the multiboot2 mmap.
++         *   sum   = 11. ✓ well under cap=160.
++         *
++         * The HIGH range never reclassifies map-described RAM
++         * — high_map_end is the ROUND_UP of the highest
++         * available[i].end, so every padder below it that is a
++         * usable RAM region remains classified as RAM (not
++         * device). The split is purely additive ABOVE the
++         * memory map; the LOW range replaces the equivalent
++         * upstream trailing-region untypeds that would have
++         * covered the same addresses anyway (just at a
++         * different — and uselessly small — granularity).
++         *
++         * The `start >= high_map_end` branch is the degenerate
++         * case (kernel+modules end already above the map) —
++         * fall back to the upstream single trailing region so
++         * we don't lose any MMIO coverage. 32-MiB-aligned
++         * untypeds in this branch may overflow the cap, but the
++         * high map end already implies the GOP FB cannot be
++         * above the map on this boot.
++         */
++        paddr_t high_map_end = ROUND_UP(ndks_boot.highest_map_addr, 21);
+ 
+-        if (!create_untypeds_for_region(root_cnode_cap, true, reg, first_untyped_slot)) {
+-            printf("ERROR: creation of untypeds for top device region"
+-                   " [%"SEL4_PRIx_word"..%"SEL4_PRIx_word"] failed\n",
+-                   reg.start, reg.end);
+-            return false;
++        if (start < high_map_end) {
++            /* Normal case: kernel+modules end below the map.
++             * LOW range [ROUND_UP(start, 31), high_map_end)
++             * gives the LAPIC/IO-APIC/HPET area (~4 GiB)
++             * 2-GiB-aligned chunks. HIGH range [high_map_end,
++             * SPONGE_DEVICE_UNTYPED_TOP) for the GOP FB +
++             * 64-bit PCI BARs. */
++            paddr_t low_start = ROUND_UP(start, 31);
++            paddr_t low_end = high_map_end;
++            if (low_end > CONFIG_PADDR_USER_DEVICE_TOP) {
++                low_end = CONFIG_PADDR_USER_DEVICE_TOP;
++            }
++            if (low_start < low_end) {
++                region_t low_reg = paddr_to_pptr_reg((p_region_t) {
++                    low_start, low_end
++                });
++                if (!create_untypeds_for_region(root_cnode_cap, true, low_reg,
++                                                first_untyped_slot)) {
++                    printf("ERROR: creation of untypeds for low-MMIO region"
++                           " [%"SEL4_PRIx_word"..%"SEL4_PRIx_word"] failed\n",
++                           low_reg.start, low_reg.end);
++                    return false;
++                }
++            }
++            if (high_map_end < SPONGE_DEVICE_UNTYPED_TOP
++                && high_map_end < CONFIG_PADDR_USER_DEVICE_TOP) {
++                paddr_t high_end = SPONGE_DEVICE_UNTYPED_TOP;
++                if (high_end > CONFIG_PADDR_USER_DEVICE_TOP) {
++                    high_end = CONFIG_PADDR_USER_DEVICE_TOP;
++                }
++                region_t high_reg = paddr_to_pptr_reg((p_region_t) {
++                    high_map_end, high_end
++                });
++                if (!create_untypeds_for_region(root_cnode_cap, true, high_reg,
++                                                first_untyped_slot)) {
++                    printf("ERROR: creation of untypeds for high-MMIO region"
++                           " [%"SEL4_PRIx_word"..%"SEL4_PRIx_word"] failed\n",
++                           high_reg.start, high_reg.end);
++                    return false;
++                }
++            }
++        } else {
++            /* start >= high_map_end — kernel+modules end is
++             * above the highest map address (rare; large
++             * kernel image). Fall back to the upstream
++             * single trailing region [start,
++             * CONFIG_PADDR_USER_DEVICE_TOP). The untypeds are
++             * sized at the alignment of `start`, which may
++             * overflow the bootinfo cap, but the GOP FB cannot
++             * be above the map on this boot. */
++            region_t reg = paddr_to_pptr_reg((p_region_t) {
++                start, CONFIG_PADDR_USER_DEVICE_TOP
++            });
++            if (!create_untypeds_for_region(root_cnode_cap, true, reg,
++                                            first_untyped_slot)) {
++                printf("ERROR: creation of untypeds for top device region"
++                       " [%"SEL4_PRIx_word"..%"SEL4_PRIx_word"] failed\n",
++                       reg.start, reg.end);
++                return false;
++            }
+         }
+     }
+ 
+@@ -939,6 +1083,35 @@
+         ndks_boot.freemem[i] = REG_EMPTY;
+     }
+ 
++    /*
++     * Sponge OS Phase 15 W4 (row 13 patch). Record the highest
++     * paddr described by the multiboot2 memory map's usable-RAM
++     * regions. create_untypeds() uses this to bound the device-
++     * untyped coverage above the map — the GOP framebuffer on
++     * UEFI/Insyde systems with >= 8 GiB RAM (the LG gram
++     * 17ZD90N-VX7BK, virtio-vga on q35, etc.) sits above the
++     * map, as do 64-bit PCI BARs, and the kernel's default
++     * trailing device-untyped region never reaches those
++     * addresses in practice because the alignment of the
++     * trailing region's start (the kernel+modules end) creates
++     * a flood of small untypeds that exhaust
++     * CONFIG_MAX_NUM_BOOTINFO_UNTYPED_CAPS before the high
++     * range is enumerated. The value is the MAX of every
++     * available[i].end so no usable RAM is reclassified (the
++     * coverage is purely additive above the map). Recorded
++     * here in init_freemem() (which is the single point that
++     * sees the memory map) rather than in create_untypeds()
++     * — the latter has no access to n_available/available[].
++     * See docs/patches/sel4-device-untyped-coverage.patch +
++     * docs/11-environment.md row 13.
++     */
++    ndks_boot.highest_map_addr = 0;
++    for (word_t i = 0; i < n_available; i++) {
++        if (available[i].end > ndks_boot.highest_map_addr) {
++            ndks_boot.highest_map_addr = available[i].end;
++        }
++    }
++
+     /* convert the available regions to pptrs */
+     for (word_t i = 0; i < n_available; i++) {
+         avail_reg[i] = paddr_to_pptr_reg(available[i]);
