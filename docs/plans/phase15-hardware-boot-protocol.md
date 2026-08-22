@@ -53,7 +53,11 @@ Open blocker (being worked):
 - **Current diagnostic: `var/dist/sponge-diag-v9-uefi.img`** — the
   fb-console production image with the ESP grub.cfg swapped for
   `run/fixtures/grub-diag.cfg` v9 (a visible text-mode menu; zero new
-  code). It bisects the four layers above:
+  code). OVMF rehearsal (2026-08-22): the menu renders with all six
+  entries, v9-4 boots the chain, and the fb-console kernel log renders
+  on the framebuffer (pixel-verified screendump); `videotest` is
+  embedded in `grubx64-full.efi` (strings-verified) but its menu
+  entries were not boot-rehearsed. It bisects the four layers above:
   - entries 1/2 `videotest 2560x1600x32` / `1024x768x32`: pattern
     visible → GRUB can drive the GOP (rules out (a)); GRUB error text
     or black → (a) confirmed, iterate `gfxmode`/GRUB version.
