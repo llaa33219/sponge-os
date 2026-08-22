@@ -1339,9 +1339,11 @@ file delete -force $esp_stage $esp_img $genode_img
 #                                        kernel fb console (ledger row
 #                                        12) shows the same IO_MEM error
 #                                        on the panel, and the row-13
-#                                        candidate (extend device-untyped
-#                                        coverage above the map top) is
-#                                        the principled fix.)
+#                                        + row-14 fixes (extend
+#                                        device-untyped coverage above
+#                                        the map top + add a high-phys
+#                                        frame-cap CNode in Genode core)
+#                                        are the principled fixes.)
 #   -device usb-tablet,bus=ehci.0       (HID input — same as AHCI
 #                                        variant, on the same USB bus
 #                                        as the storage; the class: 0x3
