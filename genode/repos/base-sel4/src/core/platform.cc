@@ -25,6 +25,8 @@
 #include <cnode.h>
 #include <untyped_memory.h>
 #include <thread_sel4.h>
+#include <platform_generic.h>
+#include <arch_kernel_object.h>
 
 /* base-internal includes */
 #include <base/internal/globals.h>
@@ -111,34 +113,65 @@ void Core::Platform::_init_allocators()
 
 	/* turn remaining untyped memory ranges into untyped pages */
 	_initial_untyped_pool.turn_into_untyped_object(Core_cspace::TOP_CNODE_UNTYPED_4K,
-		[&] (addr_t const phys, addr_t const size, bool const device_memory) {
+		[&] (Initial_untyped_pool::Range const &untyped, addr_t const phys, addr_t const size, bool const device_memory) {
 			/* register to physical or iomem memory allocator */
 
 			addr_t const phys_addr = trunc_page(phys);
 			size_t const phys_size = round_page(phys - phys_addr + size);
 
-			Hex_range const range { phys_addr, phys_size };
+			Hex_range const phys_range { phys_addr, phys_size };
 
 			if (_unused_phys_alloc.remove_range(phys_addr, phys_size).failed()) {
-				warning("failed to mark physical range as used: ", range);
+				warning("failed to mark physical range as used: ", phys_range);
 				return false;
 			}
 
 			if (device_memory) {
+				/*
+				 * Sponge (row 14): device memory above HIGH_PHYS_BASE
+				 * (8 GiB) cannot be eagerly converted to 4 KiB page-frame
+				 * caps in the flat phys CNode (the (phys_addr >> 12)
+				 * index overruns 2^21). Register it in _io_mem_alloc so
+				 * IO_MEM sessions for the range succeed, but return
+				 * false to skip the retyp. The page-frame caps will be
+				 * created lazily — on demand — in the dedicated high-
+				 * phys CNode (constructed on first use via
+				 * construct_high_phys_cnode). See docs/11 row 14.
+				 *
+				 * CRITICAL: add the WHOLE untyped in the first batch
+				 * only. The inner loop in turn_into_untyped_object
+				 * iterates the range in 64 KiB batches; adding each batch
+				 * individually to _io_mem_alloc would explode the AVL
+				 * tree with millions of entries (a single 32 GiB untyped
+				 * becomes ~500k 64 KiB nodes) and the boot hangs on the
+				 * cumulative O(n log n) work. We detect the first batch
+				 * via `untyped.free_offset == 0` and add the full untyped
+				 * range there. Subsequent batches are no-ops.
+				 */
+				if (phys_addr >= Core_cspace::HIGH_PHYS_BASE) {
+					if (untyped.free_offset == 0
+					    && _io_mem_alloc.add_range(untyped.phys, untyped.size).failed()) {
+						warning("failed to register I/O range: ", phys_range);
+						return false;
+					}
+					return false; /* skip retyp, range registered (or already was) */
+				}
+
 				if (_io_mem_alloc.add_range(phys_addr, phys_size).failed()) {
-					warning("failed to register I/O range: ", range);
+					warning("failed to register I/O range: ", phys_range);
 					return false;
 				}
+
 			} else {
 				if (_core_mem_alloc.phys_alloc().add_range(phys_addr, phys_size).failed()) {
-					warning("failed to register RAM range: ", range);
+					warning("failed to register RAM range: ", phys_range);
 					return false;
 				}
 			}
 
 			return true; /* range used by this functor */
 		},
-		[&] (addr_t const phys, addr_t const size, bool const device_memory) {
+		[&] (Initial_untyped_pool::Range const &, addr_t const phys, addr_t const size, bool const device_memory) {
 			/* revert region allocation if kernel denied to use it */
 
 			addr_t const phys_addr = trunc_page(phys);
@@ -147,6 +180,15 @@ void Core::Platform::_init_allocators()
 			Hex_range const range { phys_addr, phys_size };
 
 			if (device_memory) {
+				/*
+				 * Sponge (row 14): high-phys device memory was
+				 * registered (see functor above) but never retyped
+				 * (the (phys_addr >> 12) index would have overrun the
+				 * flat phys CNode). There is nothing to revoke here.
+				 */
+				if (phys_addr >= Core_cspace::HIGH_PHYS_BASE)
+					return;
+
 				if (_io_mem_alloc.remove_range(phys_addr, phys_size).failed()) {
 					warning("failed to remove I/O range: ", range);
 					return;
@@ -764,6 +806,106 @@ unsigned Core::Platform::alloc_core_rcv_sel()
 void Core::Platform::reset_sel(unsigned sel)
 {
 	_core_cnode.remove(Cap_sel(sel));
+}
+
+
+/*
+ * Sponge (row 14): construct the high-phys CNode lazily, on first
+ * demand. Idempotent — returns true immediately on the second and
+ * later calls.
+ *
+ * Allocation strategy:
+ *   - the cap slot for the new CNode kobj is reserved at boot via
+ *     Core_cspace::high_phys_cnode_sel() (right after io_port_sel()
+ *     in the initial thread CNode's empty-slot range), so no selector
+ *     allocation is needed at runtime;
+ *   - allocate 256 MiB of contiguous backing from the 16 KiB untyped
+ *     pool (Cnode_kobj::SIZE_LOG2 = 5 on 64-bit, so
+ *     backing_log2 = 5 + NUM_HIGH_PHYS_SEL_LOG2 = 28);
+ *   - the CNode constructor in cnode.h handles the kernel-side
+ *     retypage of the CNode kobj into the initial thread CNode at
+ *     high_phys_cnode_sel();
+ *   - copy the new CNode cap into the top CNode at slot
+ *     TOP_CNODE_HIGH_PHYS_IDX (0x7e0) so the kernel resolves
+ *     high_phys_cnode_sel() to the new CNode;
+ *   - publish the constructed CNode pointer to Vm_space's static
+ *     member so Vm_space::_map_frame can find the source CNode for
+ *     high-phys pages (read with a normal memory load, not via
+ *     platform_specific() — the platform_specific() alternative was
+ *     observed to hang the boot).
+ *
+ * Returns false if the 16K pool has no contiguous 256 MiB region;
+ * the caller logs and returns an error to the IO_MEM session.
+ */
+bool Core::Platform::construct_high_phys_cnode()
+{
+	if (_high_phys_cnode.constructed())
+		return true;
+
+	addr_t const backing_log2 = (addr_t)Cnode_kobj::SIZE_LOG2
+	                            + (addr_t)Core_cspace::NUM_HIGH_PHYS_SEL_LOG2;
+
+	auto phys_result = Untyped_memory::alloc_pages(phys_alloc_16k(),
+	                                              1UL << (backing_log2 - PAGE_SIZE_LOG2));
+	if (phys_result.failed()) {
+		warning("high-phys CNode backing: 16K pool exhausted (",
+		        1UL << backing_log2, " bytes)");
+		return false;
+	}
+
+	phys_result.with_result([&](auto &result) {
+		result.deallocate = false;
+	}, [&](auto) { /* handled by failed() above */ });
+
+	/*
+	 * The CNode ctor (lazy Range_allocator variant) handles both the
+	 * backing allocation and the kernel-side CNode creation in one
+	 * step. On success `_phys` is filled with the backing address;
+	 * on failure it stays in the failed state and `_high_phys_cnode.
+	 * constructed()` returns false.
+	 *
+	 * parent_sel is seL4_CapInitThreadCNode because the cap goes into
+	 * the initial thread CNode at the reserved high_phys_cnode_sel()
+	 * slot — we copy it into the top CNode at TOP_CNODE_HIGH_PHYS_IDX
+	 * afterwards.
+	 */
+	_high_phys_cnode.construct(Cap_sel(seL4_CapInitThreadCNode),
+	                           Cnode_index(Core_cspace::high_phys_cnode_sel()),
+	                           (uint8_t)Core_cspace::NUM_HIGH_PHYS_SEL_LOG2,
+	                           phys_alloc_16k());
+
+	if (!_high_phys_cnode.constructed()) {
+		warning("high-phys CNode: creation failed (backing log2=", backing_log2, ")");
+		return false;
+	}
+
+	/*
+	 * Insert the CNode cap into the top CNode at TOP_CNODE_HIGH_PHYS_IDX
+	 * so the kernel resolves high_phys_cnode_sel() to the new CNode.
+	 * The CNode cap currently lives in the initial thread CNode at
+	 * high_phys_cnode_sel(); we copy it from there into the top CNode.
+	 */
+	Cnode_base const initial_cspace(Cap_sel(seL4_CapInitThreadCNode),
+	                                CONFIG_WORD_SIZE);
+	_top_cnode.copy(initial_cspace,
+	                Cnode_index(Core_cspace::high_phys_cnode_sel()),
+	                Cnode_index(Core_cspace::TOP_CNODE_HIGH_PHYS_IDX));
+
+	/*
+	 * Sponge (row 14): publish the constructed CNode pointer to
+	 * Vm_space's static member. Vm_space::_map_frame uses this static
+	 * pointer (read with a normal memory load, not via
+	 * platform_specific()) to find the source CNode for high-phys
+	 * pages. Setting it via Platform is OK here because we're at the
+	 * top of the Platform call stack — no concurrent VM mapping is in
+	 * progress. See vm_space.h for the rationale (the platform_specific()
+	 * alternative was observed to hang the boot).
+	 */
+	Vm_space::_high_phys_cnode_ptr = &*_high_phys_cnode;
+
+	log(":high_phys_cnode: created (log2=", backing_log2, ", ",
+	    _high_phys_cnode.constructed() ? "ok" : "FAIL", ")");
+	return true;
 }
 
 

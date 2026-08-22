@@ -102,6 +102,44 @@ class Core::Vm_space
 		Cnode &_top_level_cnode;
 		Cnode &_phys_cnode;
 
+		/*
+		 * Sponge (row 14): helpers that pick the right source CNode +
+		 * slot for a given phys_addr. Defined inline in this header
+		 * (with `inline` linkage so multiple definitions are OK) so
+		 * the call in _map_frame is inlined — a non-inlined
+		 * static-member call inside a tight kernel syscall path was
+		 * observed to hang the boot in earlier iteration of this code.
+		 *
+		 * The helpers reach the high-phys CNode (which lives on
+		 * Platform) by going through a `Cnode*` pointer stored in
+		 * a static member (`_high_phys_cnode_ptr`). The pointer is
+		 * set by Platform::construct_high_phys_cnode() after the CNode
+		 * is constructed. We do NOT call platform_specific() here —
+		 * that static-local Platform indirection was observed to
+		 * deadlock the boot in earlier iteration of this code path.
+		 *
+		 * The low-phys CNode is passed in as a parameter (rather
+		 * than read from `_phys_cnode`) because the helpers are
+		 * `static` and so cannot access non-static members.
+		 */
+	public:
+		static Cnode *_high_phys_cnode_ptr;
+
+		static inline Cnode_base &frame_source_cnode(Cnode &phys_cnode, addr_t phys_addr)
+		{
+			if (phys_addr >= Core_cspace::HIGH_PHYS_BASE && _high_phys_cnode_ptr)
+				return *_high_phys_cnode_ptr;
+			return phys_cnode;
+		}
+
+		static inline Cnode_index frame_source_index(addr_t phys_addr)
+		{
+			if (phys_addr >= Core_cspace::HIGH_PHYS_BASE)
+				return Cnode_index((uint32_t)((phys_addr - Core_cspace::HIGH_PHYS_BASE)
+				                            >> PAGE_SIZE_LOG2));
+			return Cnode_index((uint32_t)(phys_addr >> PAGE_SIZE_LOG2));
+		}
+
 		class Construct_cnode
 		{
 			private:
@@ -332,14 +370,14 @@ class Core::Vm_space
 			 * This is needed because each page-frame selector can be
 			 * inserted into only a single page table.
 			 */
-			if (!_leaf_cnode(pte_idx, [&](auto &leaf_cnode) {
-				leaf_cnode.copy(_phys_cnode,
-				                Cnode_index((uint32_t)(from_phys >> PAGE_SIZE_LOG2)),
-				                Cnode_index(_leaf_cnode_entry(pte_idx)));
-			})) {
-				_sel_alloc.free(pte_idx);
-				return Result(Alloc_error::DENIED);
-			}
+if (!_leaf_cnode(pte_idx, [&](auto &leaf_cnode) {
+			leaf_cnode.copy(frame_source_cnode(_phys_cnode, from_phys),
+			                frame_source_index(from_phys),
+			                Cnode_index(_leaf_cnode_entry(pte_idx)));
+		})) {
+			_sel_alloc.free(pte_idx);
+			return Result(Alloc_error::DENIED);
+		}
 
 			/* remember relationship between pte_sel and the virtual address */
 			auto res = _pt_registry.insert_page_frame(to_dest, Cap_sel(pte_idx));

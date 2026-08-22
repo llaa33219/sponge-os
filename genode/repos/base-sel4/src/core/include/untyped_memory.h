@@ -21,6 +21,7 @@
 /* core includes */
 #include <util.h>
 #include <cap_sel_alloc.h>
+#include <core_cspace.h>
 
 /* seL4 includes */
 #include <sel4/sel4.h>
@@ -80,8 +81,39 @@ struct Core::Untyped_memory
 	}
 
 
+	/*
+	 * Sponge (row 14): high-phys variant of the core-local selector.
+	 *
+	 * The low phys CNode (top_idx = 0x7ff, NUM_PHYS_SEL_LOG2 = 21) covers
+	 * 8 GiB at 4 KiB granularity. For phys_addr >= HIGH_PHYS_BASE the
+	 * slot index (phys_addr >> 12) overruns 2^21, so a wider selector
+	 * format is used: top_idx is shifted by NUM_HIGH_PHYS_SEL_LOG2
+	 * (= 23), and the slot is the (phys_addr - HIGH_PHYS_BASE) >> 12
+	 * remap. See core_cspace.h NUM_HIGH_PHYS_SEL_LOG2 + HIGH_PHYS_BASE
+	 * + docs/11-environment.md row 14.
+	 */
+	static inline Cap_sel _high_phys_sel(addr_t phys_addr,
+	                                     addr_t size_log2 = PAGE_SIZE_LOG2)
+	{
+		unsigned const upper_bits = Core_cspace::TOP_CNODE_HIGH_PHYS_IDX
+		                            << Core_cspace::NUM_HIGH_PHYS_SEL_LOG2;
+		unsigned const mask       = (1ul << Core_cspace::NUM_HIGH_PHYS_SEL_LOG2) - 1;
+		unsigned const lower_bits = unsigned((phys_addr - Core_cspace::HIGH_PHYS_BASE)
+		                                    >> size_log2) & mask;
+
+		return Cap_sel(upper_bits | lower_bits);
+	}
+
+
 	/**
 	 * Return core-local selector for untyped page at given physical address
+	 *
+	 * Sponge (row 14): only valid for phys_addr < HIGH_PHYS_BASE — the
+	 * 4 KiB-untyped CNode only covers the lower 8 GiB. High-phys
+	 * device untypeds are looked up by bootinfo scan in
+	 * _high_phys_untyped_sel() and passed directly to seL4_Untyped_Retype
+	 * as the 'service' argument; the slot-indexed CNode encoding has
+	 * no meaning for them.
 	 */
 	static inline Cap_sel untyped_sel(addr_t phys_addr)
 	{
@@ -121,14 +153,52 @@ struct Core::Untyped_memory
 
 	/**
 	 * Return core-local selector for 4K page frame at given physical address
+	 *
+	 * Sponge (row 14): for phys_addr >= HIGH_PHYS_BASE (8 GiB), the
+	 * frame cap lives in the dedicated high-phys CNode
+	 * (TOP_CNODE_HIGH_PHYS_IDX). The slot is (phys_addr - HIGH_PHYS_BASE)
+	 * >> 12, NOT phys_addr >> 12 (which would overrun the low phys
+	 * CNode's 2^21 cap).
 	 */
 	static inline Cap_sel frame_sel(addr_t phys_addr)
 	{
+		if (phys_addr >= Core_cspace::HIGH_PHYS_BASE)
+			return _high_phys_sel(phys_addr);
+
 		return _core_local_sel(Core_cspace::TOP_CNODE_PHYS_IDX, phys_addr);
 	}
 
 
 	static seL4_Word smallest_page_type();
+
+
+	/*
+	 * Sponge (row 14): for phys_addr above HIGH_PHYS_BASE (8 GiB), the
+	 * page-frame cap is retype'd into the dedicated high-phys CNode at
+	 * top slot TOP_CNODE_HIGH_PHYS_IDX (0x7e0), at the slot computed by
+	 * (phys_addr - HIGH_PHYS_BASE) >> 12. The CNode must exist BEFORE
+	 * this function runs for a high-phys range — callers
+	 * (io_mem_session_support.cc::_acquire) trigger the lazy creation
+	 * via platform_specific().construct_high_phys_cnode() at the top of
+	 * their path, so by the time the retype fires the CNode is in the
+	 * top CNode. See docs/11-environment.md row 14.
+	 */
+	static inline bool _high_phys_untyped_sel(addr_t phys_addr)
+	{
+		seL4_BootInfo const &bi = sel4_boot_info();
+		unsigned const count = (unsigned)(bi.untyped.end - bi.untyped.start);
+
+		for (unsigned i = 0; i < count; i++) {
+			auto const &desc = bi.untypedList[i];
+			if (!desc.isDevice)
+				continue;
+			addr_t const base = desc.paddr;
+			addr_t const size = 1UL << desc.sizeBits;
+			if (phys_addr >= base && phys_addr < base + size)
+				return (seL4_Untyped)(bi.untyped.start + i);
+		}
+		return 0;
+	}
 
 
 	/**
@@ -201,7 +271,7 @@ struct Core::Untyped_memory
 				error(__FUNCTION__, ": seL4_CNode_Revoke returned ", ret);
 
 			/**
-			 * Without the delete, one gets:
+			 * Without the delete, one:
 			 *  Untyped Retype: Slot #xxxx in destination window non-empty
 			 */
 			ret = seL4_CNode_Delete(service, index, space_size);
@@ -209,6 +279,6 @@ struct Core::Untyped_memory
 				error(__FUNCTION__, ": seL4_CNode_Delete returned ", ret);
 		}
 	}
-};
+	};
 
 #endif /* _CORE__INCLUDE__UNTYPED_MEMORY_H_ */

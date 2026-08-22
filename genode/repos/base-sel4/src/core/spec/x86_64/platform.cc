@@ -124,6 +124,19 @@ void Platform::_init_core_page_table_registry()
 		MAX_CNODE_PD_COUNT = 64,
 		SECOND_LEVEL_CNODES_PER_PD = 1UL << CSPACE_SIZE_LOG2_1ST,
 		MAX_VM_LEAF_COUNT = 2048,
+		/*
+		 * Sponge (row 14): NO eager reservation for the high-phys
+		 * CNode backing (2^23 slots x 32 B CTE = 256 MiB). The CNode
+		 * is constructed lazily on the first high-phys IO_MEM request
+		 * (Platform::construct_high_phys_cnode), which allocates the
+		 * backing from the 16 KiB pool at that time — early in boot,
+		 * when contiguous RAM is plentiful. An eager 256 MiB carve
+		 * here regressed the AHCI desktop scenario on 4 GiB VMs
+		 * (alpha-probe: sponge_pkgd did not answer install hello) —
+		 * the same reservation-regression class this block's comment
+		 * above already documents. Lazy failure mode is clean: the
+		 * IO_MEM session fails with "not available", no crash.
+		 */
 	};
 
 	addr_t const max_pd_mem =
@@ -132,7 +145,7 @@ void Platform::_init_core_page_table_registry()
 		MAX_VM_LEAF_COUNT         * (1UL << Vcpu_kobj::SIZE_LOG2);
 
 	_initial_untyped_pool.turn_into_untyped_object(Core_cspace::TOP_CNODE_UNTYPED_16K,
-		[&] (addr_t const phys, addr_t const size, bool const device_memory) {
+		[&] (Initial_untyped_pool::Range const &, addr_t const phys, addr_t const size, bool const device_memory) -> bool {
 
 			if (device_memory)
 				return false;
@@ -151,7 +164,7 @@ void Platform::_init_core_page_table_registry()
 
 			return true;
 		},
-		[&] (addr_t const phys, addr_t const size, bool const device_memory) {
+		[&] (Initial_untyped_pool::Range const &, addr_t const phys, addr_t const size, bool const device_memory) {
 			if (device_memory)
 				return;
 

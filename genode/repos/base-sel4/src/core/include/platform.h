@@ -150,6 +150,15 @@ class Core::Platform : public Platform_generic
 		                    Cnode_index(Core_cspace::phys_cnode_sel()),
 		                    Core_cspace::NUM_PHYS_SEL_LOG2, _initial_untyped_pool };
 
+		/*
+		 * Sponge (row 14): a second CNode for page-frame caps whose
+		 * physical addresses live above the low phys CNode's 8 GiB
+		 * ceiling. Constructed lazily on first IO_MEM request that
+		 * needs it (NUM_HIGH_PHYS_SEL_LOG2 = 23 → 256 MiB backing).
+		 * See core_cspace.h and docs/11-environment.md row 14.
+		 */
+		Constructible<Cnode> _high_phys_cnode { };
+
 		/* allocate 2nd-level CNode for storing cap selectors for untyped 4k objects */
 		Cnode _untyped_cnode { Cap_sel(seL4_CapInitThreadCNode),
 		                       Cnode_index(Core_cspace::untyped_cnode_4k()),
@@ -281,6 +290,31 @@ class Core::Platform : public Platform_generic
 		Cnode &phys_cnode() { return _phys_cnode; }
 		Cnode &top_cnode()  { return _top_cnode; }
 		Cnode &core_cnode() { return _core_cnode; }
+
+		/*
+		 * Sponge (row 14): accessor for the lazily constructed high-
+		 * phys CNode. Returns nullptr when not yet constructed — callers
+		 * must check before dereferencing. The CNode is allocated on the
+		 * first IO_MEM request whose phys_addr falls into the
+		 * [HIGH_PHYS_BASE, +32 GiB) window.
+		 */
+		Cnode *high_phys_cnode() {
+			return _high_phys_cnode.constructed() ? &_high_phys_cnode.operator*() : nullptr; }
+		bool   high_phys_cnode_constructed() const {
+			return _high_phys_cnode.constructed(); }
+
+		/*
+		 * Lazy construction of the high-phys CNode. Allocates 256 MiB
+		 * of backing from the 16 KiB untyped pool (NUM_HIGH_PHYS_SEL_LOG2
+		 * = 23 → 2^28-byte backing, split into 16 KiB chunks) and
+		 * inserts the CNode cap at top slot TOP_CNODE_HIGH_PHYS_IDX
+		 * (0x7e0). Returns false if the 16 KiB pool has no contiguous
+		 * 256 MiB region; the caller logs and returns an error to the
+		 * IO_MEM session (the IO_MEM will fail with "not available"
+		 * rather than crash core). See core_cspace.h + docs/11
+		 * row 14.
+		 */
+		bool   construct_high_phys_cnode();
 
 		Vm_space &core_vm_space() { return _core_vm_space; }
 
