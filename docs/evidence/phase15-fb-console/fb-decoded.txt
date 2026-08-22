@@ -1,0 +1,130 @@
+# Framebuffer content decoded from /tmp/opencode/fb-test-3.ppm
+# Image: 2560x1600
+# Captured at t=3s during base-sel4 boot on QEMU/OVMF
+# (kernel fb_console.c hook on kernel_putDebugChar)
+
+row   0: ACPI: RSDT vaddr=0x7fb7d074                                                     
+row   1: ACPI: FADT paddr=0x7fb79000                                                     
+row   2: ACPI: FADT vaddr=0x7fb79000                                                     
+row   3: ACPI: FADT flags=0x84a5                                                         
+row   4: ACPI: MADT paddr=0x7fb78000                                                     
+row   5: ACPI: MADT vaddr=0x7fb78000                                                     
+row   6: ACPI: MADT apic_addr=0xfee00000                                                 
+row   7: ACPI: MADT flags=0x1                                                            
+row   8: ACPI: MADT_APIC apic_id=0x0                                                     
+row   9: ACPI: MADT_IOAPIC ioapic_id=0 ioapic_addr=0xfec00000 gsib=0                     
+row  10: ACPI: MADT_ISO bus=0 source=0 gsi=2 flags=0x0                                   
+row  11: ACPI: MADT_ISO bus=0 source=5 gsi=5 flags=0xd                                   
+row  12: ACPI: MADT_ISO bus=0 source=9 gsi=9 flags=0xd                                   
+row  13: ACPI: MADT_ISO bus=0 source=10 gsi=10 flags=0xd                                 
+row  14: ACPI: MADT_ISO bus=0 source=11 gsi=11 flags=0xd                                 
+row  15: ACPI: 1 CPU(s) detected                                                         
+row  16: ELF-loading userland images from boot modules:                                  
+row  17: size=0x689c000 v_entry=0x2000018 v_start=0x2000000 v_end=0x889c000 p_start=0x663
+row  18: Moving loaded userland images to final location: from=0x663e000 to=0xe3e000 size
+row  19: Starting node #0 with APIC ID 0                                                 
+row  20: Mapping kernel window is done                                                   
+row  22: available phys memory regions: 6                                                
+row  23:   [100000..800000]                                                              
+row  24:   [808000..80b000]                                                              
+row  25:   [80c000..810000]                                                              
+row  26:   [900000..7f00e000]                                                            
+row  27:   [7f0cf000..7f8ed000]                                                          
+row  28:   [7fbff000..7fef4000]                                                          
+row  29: reserved virt address space regions: 1                                          
+row  30:   [ffffff8000200000..ffffff80076da000]                                          
+row  31: Booting all finished, dropped to user space                                     
+row  32: ?[34mWarning: device memory in range [0000000800000000,0000001000000000) is unav
+row  33: ?[34mWarning: device memory in range [0000001000000000,0000002000000000) is unav
+row  34: ?[34mWarning: device memory in range [0000002000000000,0000004000000000) is unav
+row  35: ?[34mWarning: device memory in range [0000004000000000,0000008000000000) is unav
+row  36: ?[34mWarning: device memory in range [0000008000000000,0000408000000000) is unav
+row  37: ?[34mWarning: device memory in range [0000408000000000,0000608000000000) is unav
+row  38: ?[34mWarning: device memory in range [0000608000000000,0000708000000000) is unav
+row  39: ?[34mWarning: device memory in range [0000708000000000,0000788000000000) is unav
+row  40: ?[34mWarning: device memory in range [0000788000000000,00007c8000000000) is unav
+row  41: ?[34mWarning: device memory in range [00007c8000000000,00007e8000000000) is unav
+row  42: ?[34mWarning: device memory in range [00007e8000000000,00007f8000000000) is unav
+row  43: ?[34mWarning: device memory in range [00007f8000000000,0000800000000000) is unav
+row  44: :phys_mem_16k:     Allocator 0x217a858 dump:                                    
+row  45:  Block: [0000000000100000,0000000000a00000) size=9M avail=9M max_avail=9M       
+row  46:  Block: [00000000076dc000,0000000008000000) size=9360K avail=9360K max_avail=799
+row  47:  Block: [000000000c000000,0000000010e1c000) size=79984K avail=79984K max_avail=7
+row  48:  => mem_size=100925440 (96 MB) / mem_avail=100925440 (96 MB)                    
+row  50: ?[34mWarning: device memory in range [0000000200000000,0000000400000000) is unav
+row  51: ?[34mWarning: device memory in range [0000000400000000,0000000800000000) is unav
+row  52: ?[34mWarning: device memory in range [0000000800000000,0000001000000000) is unav
+row  53: ?[34mWarning: device memory in range [0000001000000000,0000002000000000) is unav
+row  54: ?[34mWarning: device memory in range [0000002000000000,0000004000000000) is unav
+row  55: ?[34mWarning: device memory in range [0000004000000000,0000008000000000) is unav
+row  56: ?[34mWarning: device memory in range [0000008000000000,0000408000000000) is unav
+row  57: ?[34mWarning: device memory in range [0000408000000000,0000608000000000) is unav
+row  58: ?[34mWarning: device memory in range [0000608000000000,0000708000000000) is unav
+row  59: ?[34mWarning: device memory in range [0000708000000000,0000788000000000) is unav
+row  60: ?[34mWarning: device memory in range [0000788000000000,00007c8000000000) is unav
+row  61: ?[34mWarning: device memory in range [00007c8000000000,00007e8000000000) is unav
+row  62: ?[34mWarning: device memory in range [00007e8000000000,00007f8000000000) is unav
+row  63: ?[34mWarning: device memory in range [00007f8000000000,0000800000000000) is unav
+row  64: virtual address layout of core:                                                 
+row  65:  overall    [0000000000002000,0000001000000000)                                 
+row  66:  core image [0000000002000000,000000000889c000)                                 
+row  67:  ipc buffer [000000000889c000,000000000889d000)                                 
+row  68:  boot_info  [000000000889d000,000000000889e542)                                 
+row  69:  stack area [0000000040000000,0000000050000000)                                 
+row  70: ?[34mWarning: need physical memory, but Platform object not constructed yet?[0m 
+row  71: ?[34mWarning: need physical memory, but Platform object not constructed yet?[0m 
+row  72: ?[34mWarning: need physical memory, but Platform object not constructed yet?[0m 
+row  73: Physical memory per PD at most: 512M                                            
+row  74: ?[34mWarning: need physical memory, but Platform object not constructed yet?[0m 
+row  75: boot module 'config' (5839 bytes)                                               
+row  76: boot module 'egl.lib.so' (174944 bytes)                                         
+row  77: boot module 'expat.lib.so' (202952 bytes)                                       
+row  78: boot module 'glapi.lib.so' (578776 bytes)                                       
+row  79: boot module 'init.hsd' (4125 bytes)                                             
+row  80: boot module 'init.xsd' (8118 bytes)                                             
+row  81: boot module 'ld.lib.so' (1112464 bytes)                                         
+row  82: boot module 'libQt6Concurrent.lib.so' (28864 bytes)                             
+row  83: boot module 'libQt6Core.lib.so' (8167128 bytes)                                 
+row  84: boot module 'libQt6Gui.lib.so' (11824264 bytes)                                 
+row  85: boot module 'libQt6Network.lib.so' (2028640 bytes)                              
+row  86: boot module 'libQt6OpenGL.lib.so' (772904 bytes)                                
+row  87: boot module 'libQt6OpenGLWidgets.lib.so' (66848 bytes)                          
+row  88: boot module 'libQt6PrintSupport.lib.so' (497608 bytes)                          
+row  89: boot module 'libQt6Sql.lib.so' (412752 bytes)                                   
+row  90: boot module 'libQt6Test.lib.so' (535192 bytes)                                  
+row  91: boot module 'libQt6Widgets.lib.so' (9479856 bytes)                              
+row  92: boot module 'libQt6Xml.lib.so' (194712 bytes)                                   
+row  93: boot module 'libc.lib.so' (2022728 bytes)                                       
+row  94: boot module 'libdrm.lib.so' (223560 bytes)                                      
+row  95: boot module 'libm.lib.so' (291512 bytes)                                        
+row  96: boot module 'libpng.lib.so' (257960 bytes)                                      
+row  97: boot module 'libqgenode.lib.so' (355024 bytes)                                  
+row  98: boot module 'libqjpeg.lib.so' (668936 bytes)                                    
+row  99: boot module 'libqsqlite.lib.so' (1937728 bytes)                                 
+row 100: boot module 'mesa.lib.so' (28227960 bytes)                                      
+row 101: boot module 'mesa_gpu-softpipe.lib.so' (207456 bytes)                           
+row 102: boot module 'pc_platform' (724960 bytes)                                        
+row 103: boot module 'qt6_component.lib.so' (34224 bytes)                                
+row 104: boot module 'qt6_libqjpeg.tar' (675840 bytes)                                   
+row 105: boot module 'qt6_libqsqlite.tar' (1945600 bytes)                                
+row 106: boot module 'stdcxx.lib.so' (2735712 bytes)                                     
+row 107: boot module 'vfs.lib.so' (804736 bytes)                                         
+row 108: boot module 'vfs_gpu.lib.so' (102072 bytes)                                     
+row 109: boot module 'vfs_pipe.lib.so' (83792 bytes)                                     
+row 110: boot module 'zlib.lib.so' (108384 bytes)                                        
+row 111: boot module 'init' (516744 bytes)                                               
+row 112: boot module 'timer' (144744 bytes)                                              
+row 113: boot module 'report_rom' (150784 bytes)                                         
+row 114: boot module 'nitpicker' (530512 bytes)                                          
+row 115: boot module 'platform' (598984 bytes)                                           
+row 116: boot module 'acpi' (190328 bytes)                                               
+row 117: boot module 'pci_decode' (171336 bytes)                                         
+row 118: boot module 'boot_fb' (119800 bytes)                                            
+row 119: boot module 'pkg_gui_demo' (24152 bytes)                                        
+row 120: boot module 'qt6_libqgenode.tar' (358400 bytes)                                 
+row 121: boot module 'qt6_dejavusans.tar' (768000 bytes)                                 
+row 122: boot module 'fb.config' (53 bytes)                                              
+row 123: ?[34mWarning: need physical memory, but Platform object not constructed yet?[0m 
+row 124: ?[34mWarning: need physical memory, but Platform object not constructed yet?[0m 
+row 125: Genode v0.1.1-alpha-131-gec89e1057d <local changes>                             
+row 126: 1547 MiB RAM and 523288 caps assigned to init                                   
