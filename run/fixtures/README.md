@@ -45,6 +45,18 @@ multiboot2 handoff works on a given firmware, independent of
 bender/seL4. Build: `as --32 mb2probe.s -o mb2probe.o && ld -m
 elf_i386 -T mb2probe.ld -o mb2probe.elf mb2probe.o`.
 
+## fbprobe2.s / fbprobe3.s (Phase 15)
+
+GOP framebuffer multiboot2 probes. fbprobe2 draws green if the
+multiboot2 framebuffer tag (type 8) is present and usable, hangs black
+otherwise. fbprobe3 sharpens the negative: GREEN = FB tag present and
+usable (addr < 4 GiB, bpp 32); RESET loop = MBI readable but no FB
+tag; BLACK hang = MBI unreadable (placed > 4 GiB) or unusable tag
+geometry. Loaded directly by GRUB (no bender/seL4), isolating GRUB's
+tag emission and MBI placement on real firmware. Same build line with
+`fbprobe3.s`; consumed by `grub-diag-v10.cfg` (stage the .elf at the
+ESP root).
+
 ## files-demo/, net-probe/
 
 Scenario fixture trees (file-manager demo content, network fixture).
