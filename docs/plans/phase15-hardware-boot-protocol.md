@@ -46,11 +46,35 @@ Open blocker (being worked):
   loads GRUB data at 0x100360000), or (d) the GOP LFB is not the
   scanned-out buffer.
 
+- **Round v9 results (user-reported on the 17ZD90N):** videotest works
+  at 2560x1600x32 AND 1024x768x32 — GRUB drives the Insyde GOP and the
+  LFB is genuinely scanned out, so hypotheses (a) "GRUB can't drive the
+  GOP" and (d) "LFB not scanned out" are DEAD. videoinfo displays the
+  mode list. The gfxterm chain is black WITH and WITHOUT `cutmem 1G`;
+  the text-console chain shows GRUB's "no console" warning (expected —
+  no FB tag in console mode). Remaining candidates: (b) GRUB emits no
+  usable multiboot2 FB tag on Insyde even in gfxterm mode, or (c) the
+  MBI/modules are placed above 4 GiB (Insyde loads GRUB data at
+  0x100360000 per v7) so the 32-bit receivers (bender, fbprobe2) die
+  before reading anything. cutmem not curing the chain either weakens
+  (c) or shows cutmem does not constrain the multiboot2 MBI placement.
+
 ## Resume notes (display work in progress)
 
 - The chain up to the display is proven; the only open piece is getting
   a valid framebuffer to `boot_fb` on the real panel.
-- **Current diagnostic: `var/dist/sponge-diag-v9-uefi.img`** — the
+- **Current diagnostic: `var/dist/sponge-diag-v10-uefi.img`** — fixed
+  storage-chain base + `run/fixtures/grub-diag-v10.cfg` + fbprobe3
+  (`run/fixtures/fbprobe3.s`), a 32-bit multiboot2 payload loaded
+  DIRECTLY by GRUB (no bender/seL4) that isolates GRUB's tag emission
+  and MBI placement. fbprobe3 signals: GREEN = FB tag present and
+  usable (addr < 4 GiB, bpp 32); RESET loop = MBI readable but no FB
+  tag; BLACK hang = MBI unreadable (placed > 4 GiB, EBX truncated) or
+  FB addr >= 4 GiB or bpp != 32. OVMF rehearsal 2026-08-22: v10-1
+  fills 2560x1600 100% green. Menu: 1=plain, 2=+cutmem 1G,
+  3=+gfxpayload=1024x768x32, 4=chain control, 5=chain gfxpayload=keep,
+  6=videoinfo; the interpretation matrix is in the cfg header comment.
+- (superseded) `var/dist/sponge-diag-v9-uefi.img` — v9 bisect menu;
   fb-console production image with the ESP grub.cfg swapped for
   `run/fixtures/grub-diag.cfg` v9 (a visible text-mode menu; zero new
   code). OVMF rehearsal (2026-08-22): the menu renders with all six
