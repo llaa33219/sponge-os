@@ -726,20 +726,31 @@ tasks — not a demo, but a desktop one can actually sit down and use.
 > 12 gap incl. the single 17ZD90N real-hardware gap row); a 9-scenario
 > serial regression sweep is all-PASS.
 >
-> **15-3 (in progress, real-hardware):** the UEFI boot chain is proven
-> end-to-end on QEMU/OVMF — the desktop reaches `alpha-probe: PASS`.
-> Three real bugs were fixed along the way (vendored g2fg GRUB2
-> multiboot2 broken on the Insyde firmware → full GRUB;
-> bender `check_mem` too strict for UEFI maps → source rebuild;
-> **seL4 kernel `init_freemem` produced overlapping untyped caps under
-> fragmented UEFI maps → fixed**). On the physical 17ZD90N the chain
-> reaches GRUB, but GRUB cannot produce a working payload framebuffer
-> on the real iGPU GOP (`no console will be available to OS`; the
-> fbprobe2 GOP-draw probe freezes there, the panel itself is fine per
-> `videoinfo`) — a GRUB video-driver-on-real-GOP gap, to be resumed.
-> Full bring-up log: `docs/evidence/phase15-index.md` §13–§14.
-> Criteria 1/2/4 remain OPEN until the real-hardware display path works.
-> See `docs/plans/phase15-hardware-boot-protocol.md`.
+> **15-3 (desktop booted on hardware, 2026-08-23):** the full desktop
+> boots from USB on the physical 17ZD90N — the on-panel boot log ends
+> with `child "alpha_probe" exited with exit value 0`, the same
+> compositor-verified state as QEMU (themed-panel pixel check,
+> launcher feed, configd broadcast through the real compositor; the
+> GPT partitions printed over the real xHCI + USB stick before that,
+> proving the storage data path). The earlier "GRUB cannot produce a
+> working payload framebuffer" reading was wrong — GRUB emits the FB
+> tag fine; the truth was a four-defect stack below the application,
+> each layer found from the kernel early-FB console's on-panel boot
+> log (ledger row 12): (1) seL4-kernel device-untyped coverage did
+> not reach the high MMIO aperture (row 13); (2) Genode core's flat
+> phys CNode capped at 8 GiB and its v1 replacement was unallocatable
+> on the fragmented Insyde map (row 14 v2: sequential-slot CNode,
+> measured GOP FB at 256 GiB, xHCI BAR at ~384.5 GiB); (3) seL4
+> retype is watermark-only — mid-chunk BARs got wrong frames until
+> the fast-forward fix; (4) storage-serving PDs exhausted their
+> mapping-registry caps on slow real-USB I/O (row 6 addendum: 65536
+> slots/PD + caps quota). Full bring-up log:
+> `docs/evidence/phase15-index.md` §13–§14 +
+> `docs/plans/phase15-hardware-boot-protocol.md`. Criteria 1/2/4: the
+> boot/display/storage evidence has landed; the final interactive
+> input confirmation (USB-mouse pointer/click on the desktop) is the
+> last pending sub-item before Phase 15 closes and 0.2.0-alpha
+> releases.
 
 #### Goal
 
