@@ -28,6 +28,77 @@
 
 namespace Core { struct Untyped_memory; }
 
+namespace Core {
+
+/*
+ * Sponge (row 14 v2): seL4's Untyped_Retype creates objects at the
+ * untyped's free-offset watermark, never at a requested offset — so a
+ * frame for phys X inside a multi-GiB untyped only exists after the
+ * watermark has advanced to X. The watermark cannot be rewound; we
+ * track it per untyped and fast-forward by retyping throwaway frames
+ * (the memory stays consumed, which is exactly the skip we want for
+ * MMIO space) into a scratch slot that is deleted again immediately.
+ */
+struct High_phys_watermark { seL4_Word service; Genode::addr_t next; };
+inline High_phys_watermark high_phys_watermarks[8] = { };
+inline unsigned            high_phys_watermark_count = 0;
+
+enum { HIGH_PHYS_SCRATCH_SLOT = (1UL << Core_cspace::NUM_HIGH_PHYS_SEL_LOG2) - 1 };
+
+inline Genode::addr_t &high_phys_watermark(seL4_Untyped service, Genode::addr_t base)
+{
+	for (unsigned i = 0; i < high_phys_watermark_count; i++)
+		if (high_phys_watermarks[i].service == service)
+			return high_phys_watermarks[i].next;
+	unsigned const i = high_phys_watermark_count++;
+	high_phys_watermarks[i].service = service;
+	high_phys_watermarks[i].next    = base;
+	return high_phys_watermarks[i].next;
+}
+
+inline bool high_phys_skip_to(seL4_Untyped service, Genode::addr_t base,
+                              Genode::addr_t size_bits, Genode::addr_t &next,
+                              Genode::addr_t target)
+{
+	Genode::addr_t const untyped_end = base + (1UL << size_bits);
+
+	while (next < target) {
+		Genode::addr_t const remaining = target - next;
+
+		/* largest power-of-2 object aligned to 'next', fitting
+		 * 'remaining' and the untyped's free space */
+		unsigned bits = 30; /* seL4_X86_HugePageObject */
+		while (bits > 12 /* PAGE_SIZE_LOG2 */) {
+			Genode::addr_t const sz = 1UL << bits;
+			if ((next & (sz - 1)) == 0 && sz <= remaining && next + sz <= untyped_end)
+				break;
+			bits--;
+		}
+		Genode::addr_t const sz = 1UL << bits;
+		if ((next & (sz - 1)) != 0 || sz > remaining || next + sz > untyped_end)
+			return false;
+
+		seL4_Word type = seL4_X86_4K;
+		if (bits == 30)      type = seL4_X64_HugePageObject;
+		else if (bits == 21) type = seL4_X86_LargePageObject;
+		long const ret = seL4_Untyped_Retype(service, type, bits,
+		                                     Core_cspace::top_cnode_sel(),
+		                                     Core_cspace::TOP_CNODE_HIGH_PHYS_IDX,
+		                                     Core_cspace::NUM_TOP_SEL_LOG2,
+		                                     HIGH_PHYS_SCRATCH_SLOT, 1);
+		if (ret != seL4_NoError)
+			return false;
+
+		/* the throwaway's memory stays consumed in the untyped */
+		seL4_CNode_Delete(Core_cspace::high_phys_cnode_sel(),
+		                  HIGH_PHYS_SCRATCH_SLOT,
+		                  Core_cspace::NUM_HIGH_PHYS_SEL_LOG2);
+		next += sz;
+	}
+	return true;
+}
+
+}
 
 struct Core::Untyped_memory
 {
@@ -169,17 +240,13 @@ struct Core::Untyped_memory
 
 
 	/*
-	 * Sponge (row 14): for phys_addr above HIGH_PHYS_BASE (8 GiB), the
-	 * page-frame cap is retype'd into the dedicated high-phys CNode at
-	 * top slot TOP_CNODE_HIGH_PHYS_IDX (0x7e0), at the slot computed by
-	 * (phys_addr - HIGH_PHYS_BASE) >> 12. The CNode must exist BEFORE
-	 * this function runs for a high-phys range — callers
-	 * (io_mem_session_support.cc::_acquire) trigger the lazy creation
-	 * via platform_specific().construct_high_phys_cnode() at the top of
-	 * their path, so by the time the retype fires the CNode is in the
-	 * top CNode. See docs/11-environment.md row 14.
+	 * Sponge (row 14 v2): locate the device untyped covering phys_addr
+	 * by bootinfo scan; outputs its base and size_bits. The returned
+	 * selector resolves at runtime via the core-CNode wiring.
 	 */
-	static inline seL4_Untyped _high_phys_untyped_sel(addr_t phys_addr)
+	static inline seL4_Untyped _high_phys_untyped_find(addr_t   phys_addr,
+	                                                   addr_t & base,
+	                                                   addr_t & size_bits)
 	{
 		seL4_BootInfo const &bi = sel4_boot_info();
 		unsigned const count = (unsigned)(bi.untyped.end - bi.untyped.start);
@@ -188,13 +255,18 @@ struct Core::Untyped_memory
 			auto const &desc = bi.untypedList[i];
 			if (!desc.isDevice)
 				continue;
-			addr_t const base = desc.paddr;
-			addr_t const size = 1UL << desc.sizeBits;
-			if (phys_addr >= base && phys_addr < base + size)
+			addr_t const b = desc.paddr;
+			addr_t const s = 1UL << desc.sizeBits;
+			if (phys_addr >= b && phys_addr < b + s) {
+				base      = b;
+				size_bits = desc.sizeBits;
 				return (seL4_Untyped)(bi.untyped.start + i);
+			}
 		}
 		return 0;
 	}
+
+
 
 
 	/**
@@ -212,23 +284,63 @@ struct Core::Untyped_memory
 			seL4_Word    node_offset;
 
 			/*
-			 * Sponge (row 14 v2): a high-phys frame is retyped from
-			 * the bootinfo-scanned device untyped into a sequentially
-			 * allocated slot of the high-phys CNode; the slot->phys
-			 * association is recorded for the map-time lookup.
+			 * Sponge (row 14 v2): a high-phys frame must be created at
+			 * the untyped's watermark, so fast-forward the watermark to
+			 * the target page first (see _high_phys_skip_to), then
+			 * retype the frame into a sequentially allocated slot of
+			 * the high-phys CNode and record slot->phys for the
+			 * map-time lookup. Handled entirely here (continue).
 			 */
 			if (phys_addr >= Core_cspace::HIGH_PHYS_BASE) {
-				unsigned slot = 0;
-				service = _high_phys_untyped_sel(phys_addr);
-				if (!service || !Core::high_phys_slot_alloc(phys_addr, slot)) {
-					error(__FUNCTION__, ": no high-phys untyped or free slot for ",
+				addr_t    base      = 0;
+				addr_t    size_bits = 0;
+				service = _high_phys_untyped_find(phys_addr, base, size_bits);
+				if (!service) {
+					error(__FUNCTION__, ": no high-phys untyped for ",
 					      Hex_range<addr_t>(phys_addr, PAGE_SIZE));
 					convert_to_untyped_frames(phys_addr_base, PAGE_SIZE * i);
 					return false;
 				}
-				node_index  = Core_cspace::TOP_CNODE_HIGH_PHYS_IDX;
-				node_offset = slot;
-			} else {
+				addr_t &next = Core::high_phys_watermark(service, base);
+				if (phys_addr < next) {
+					/* a second IO_MEM target below the watermark in
+					 * the same untyped — not needed by the boot chain */
+					error(__FUNCTION__, ": high-phys address below watermark: ",
+					      Hex_range<addr_t>(phys_addr, PAGE_SIZE));
+					convert_to_untyped_frames(phys_addr_base, PAGE_SIZE * i);
+					return false;
+				}
+				if (!Core::high_phys_skip_to(service, base, size_bits, next, phys_addr)) {
+					error(__FUNCTION__, ": high-phys skip failed for ",
+					      Hex_range<addr_t>(phys_addr, PAGE_SIZE));
+					convert_to_untyped_frames(phys_addr_base, PAGE_SIZE * i);
+					return false;
+				}
+				unsigned slot = 0;
+				if (!Core::high_phys_slot_alloc(phys_addr, slot)) {
+					error(__FUNCTION__, ": high-phys slot table full for ",
+					      Hex_range<addr_t>(phys_addr, PAGE_SIZE));
+					convert_to_untyped_frames(phys_addr_base, PAGE_SIZE * i);
+					return false;
+				}
+				long const hret = seL4_Untyped_Retype(service,
+				                                      smallest_page_type(), 0,
+				                                      Core_cspace::top_cnode_sel(),
+				                                      Core_cspace::TOP_CNODE_HIGH_PHYS_IDX,
+				                                      Core_cspace::NUM_TOP_SEL_LOG2,
+				                                      slot, 1);
+				if (hret != seL4_NoError) {
+					error(__FUNCTION__, ": high-phys retype returned ", hret,
+					      " for ", Hex_range<addr_t>(phys_addr, PAGE_SIZE));
+					Core::high_phys_slot_free(slot);
+					convert_to_untyped_frames(phys_addr_base, PAGE_SIZE * i);
+					return false;
+				}
+				next += PAGE_SIZE;
+				continue;
+			}
+
+			{
 				service     = untyped_sel(phys_addr).value();
 				node_index  = Core_cspace::TOP_CNODE_PHYS_IDX;
 				node_offset = phys_addr >> PAGE_SIZE_LOG2;
