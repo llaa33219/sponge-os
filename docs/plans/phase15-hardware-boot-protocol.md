@@ -80,6 +80,22 @@ Open blocker (being worked):
   while the kernel console (row-12 deferral path) can, which all but
   confirms the high-FB hypothesis (GOP framebuffer >= 4 GiB on this
   Insyde firmware). videoinfo works (entry 6).
+- **Round v12/v13 results (user-reported on the 17ZD90N):** the v12
+  boot-log screen identified the exact failure: boot_fb's IO_MEM for
+  the GOP framebuffer at **0x4000000000 (256 GiB)** and pc_usb_host's
+  IO_MEM for the PCH xHCI BAR at **0x601d140000 (~384.5 GiB)** both
+  failed — the row-14 v1 high-phys CNode (flat 32 GiB window, 256 MiB
+  backing) could neither cover addresses 128 GiB apart nor allocate
+  its backing on the fragmented Insyde map ("16k pool exhausted").
+  v1 had also never been truly verified (its acceptance ran on the
+  low-BAR EHCI path by mistake). **Row 14 was redesigned (v2)**: a
+  small high-phys CNode (2^14 slots, 512 KiB backing) with sequential
+  slot allocation + a phys→slot table — no address-window assumption.
+  Additional latent defects fixed along the way: early (not lazy)
+  construction, top-CNode slot 0x7e0 reservation, and the core-CNode
+  wiring for the runtime selector. QEMU-verified with the xHCI BAR at
+  32 GiB (xhci_hcd binds, USB 3.0 enumerates, configd ready) plus all
+  regressions. Commit `69db536604`.
 - **Round v11 (ready for the user):** kernel fixes landed —
   fb_console defers all drawing until the direct map covers the FB
   (safe to 512 GiB; ledger row 12 regenerated) and device-untyped
