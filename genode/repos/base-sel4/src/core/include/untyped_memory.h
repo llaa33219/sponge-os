@@ -65,23 +65,30 @@ inline bool high_phys_skip_to(seL4_Untyped service, Genode::addr_t base,
 	while (next < target) {
 		Genode::addr_t const remaining = target - next;
 
-		/* largest power-of-2 object aligned to 'next', fitting
-		 * 'remaining' and the untyped's free space */
-		unsigned bits = 30; /* seL4_X86_HugePageObject */
-		while (bits > 12 /* PAGE_SIZE_LOG2 */) {
-			Genode::addr_t const sz = 1UL << bits;
-			if ((next & (sz - 1)) == 0 && sz <= remaining && next + sz <= untyped_end)
-				break;
-			bits--;
+		/*
+		 * Advance with the largest VALID frame type that is aligned
+		 * to 'next', fits 'remaining', and stays inside the untyped.
+		 * Only 2 MiB (seL4_X86_LargePageObject) and 4 KiB (seL4_X86_4K)
+		 * frames exist on this kernel — CONFIG_HUGE_PAGE is off, so
+		 * seL4_X64_HugePageObject is the invalid sentinel 0xfffffffe
+		 * and must not be requested (the 17ZD90N answered "Invalid
+		 * object type").
+		 */
+		Genode::addr_t const large = 1UL << 21;
+		Genode::addr_t      sz;
+		seL4_Word           type;
+		if ((next & (large - 1)) == 0 && large <= remaining
+		    && next + large <= untyped_end) {
+			sz   = large;
+			type = seL4_X86_LargePageObject;
+		} else {
+			sz   = 1UL << 12 /* 4 KiB frame */;
+			type = seL4_X86_4K;
 		}
-		Genode::addr_t const sz = 1UL << bits;
-		if ((next & (sz - 1)) != 0 || sz > remaining || next + sz > untyped_end)
+		if (sz > remaining || next + sz > untyped_end)
 			return false;
 
-		seL4_Word type = seL4_X86_4K;
-		if (bits == 30)      type = seL4_X64_HugePageObject;
-		else if (bits == 21) type = seL4_X86_LargePageObject;
-		long const ret = seL4_Untyped_Retype(service, type, bits,
+		long const ret = seL4_Untyped_Retype(service, type, 0,
 		                                     Core_cspace::top_cnode_sel(),
 		                                     Core_cspace::TOP_CNODE_HIGH_PHYS_IDX,
 		                                     Core_cspace::NUM_TOP_SEL_LOG2,
