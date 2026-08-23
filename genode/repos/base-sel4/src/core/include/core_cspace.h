@@ -34,44 +34,39 @@ class Core::Core_cspace
 			 * Sponge Phase 15 W4 (row 14 patch — complements row 13
 			 * in the seL4 kernel). The flat phys CNode above caps
 			 * frame caps at 2^21 slots = 8 GiB of physical address
-			 * space at 4 KiB granularity. Above 8 GiB (the GOP
-			 * framebuffer on UEFI/Insyde systems with >= 8 GiB of
-			 * RAM, the xHCI BAR at 32 GiB on q35/OVMF, 64-bit PCI
-			 * BARs in q35 pci-hole64), the row-13 kernel creates
-			 * device untypeds but Genode core's flat indexing
-			 * (node_offset = phys_addr >> 12) overruns the 2^21
-			 * cap of the low CNode — see initial_untyped_pool.h
-			 * line ~220, the "limited untyped cnode range" warning.
+			 * space at 4 KiB granularity; anything at or above
+			 * HIGH_PHYS_BASE needs a second CNode.
 			 *
-			 * NUM_HIGH_PHYS_SEL_LOG2 = 23 widens the addressing
-			 * window to 2^23 = 32 GiB at 4 KiB granularity, sized
-			 * to cover [8 GiB, 8 GiB + 2^23 * 4 KiB) = [8 GiB,
-			 * 40 GiB). This window includes the qemu-xhci BAR at
-			 * 32 GiB (the failure case), the Insyde H2O GOP on the
-			 * LG gram 17ZD90N at ~32 GiB, and all practical 64-bit
-			 * PCI BARs on q35/OVMF (the q35 pci-hole64 default
-			 * tops out near 64 GiB). The window is created lazily
-			 * on first IO_MEM request that needs it; the 256 MiB
-			 * of CNode backing is only consumed when high-phys
-			 * device memory actually exists. See docs/11-environment.md
-			 * row 14.
+			 * v2 (17ZD90N measured values): the high-phys frame
+			 * caps live in a SMALL dedicated CNode whose slots are
+			 * allocated SEQUENTIALLY, with a slot->phys table
+			 * (high_phys_frame_phys[]) for the phys->slot lookup at
+			 * map time. The v1 design flat-indexed slots by
+			 * (phys - HIGH_PHYS_BASE) >> 12 into a 2^23-slot CNode;
+			 * it failed on the 17ZD90N twice over: (a) the 256 MiB
+			 * contiguous CNode backing cannot be allocated from the
+			 * 16 KiB pool on the Insyde-fragmented memory map
+			 * ("high-phys CNode backing: 16k pool exhausted"), and
+			 * (b) the real targets — GOP framebuffer at
+			 * 0x4000000000 (256 GiB) and the PCH xHCI BAR at
+			 * 0x601d140000 (~384.5 GiB) — sit 128 GiB apart, so no
+			 * affordable flat window covers both. Sequential
+			 * allocation makes the backing 512 KiB and removes any
+			 * address-window assumption. 2^14 slots = 64 MiB of
+			 * concurrently mapped high-phys memory (the 17ZD90N
+			 * needs ~4000 slots for the FB + 16 for the BAR).
 			 */
-			NUM_HIGH_PHYS_SEL_LOG2 = 23UL,
+			NUM_HIGH_PHYS_SEL_LOG2 = 14UL,
 
 			NUM_CORE_PAD_SEL_LOG2 = 32UL - NUM_TOP_SEL_LOG2 - NUM_CORE_SEL_LOG2,
 		};
 
 		/*
-		 * Sponge (row 14): the high-phys CNode uses a different
-		 * cap-selector bit layout than the low phys CNode (the
-		 * low CNode uses 11-bit top + 21-bit slot via
-		 * NUM_PHYS_SEL_LOG2; the high CNode uses 9-bit top +
-		 * 23-bit slot via NUM_HIGH_PHYS_SEL_LOG2 — 32 bits total).
-		 * The constant below anchors the phys_addr remap: a frame
-		 * at phys_addr lives at slot (phys_addr - HIGH_PHYS_BASE)
-		 * >> 12 in the high-phys CNode, where HIGH_PHYS_BASE is
-		 * the lower bound of the high-phys address window
-		 * (currently 8 GiB).
+		 * Sponge (row 14): threshold above which a physical address
+		 * cannot live in the flat low phys CNode (2^21 slots at
+		 * 4 KiB granularity = 8 GiB). High-phys frame caps are kept
+		 * in the dedicated high-phys CNode; their slots come from
+		 * the sequential allocator below, not from address math.
 		 */
 		static addr_t constexpr HIGH_PHYS_BASE = 1ULL << 33; /* 8 GiB */
 
@@ -119,8 +114,62 @@ class Core::Core_cspace
 			 */
 			TOP_CNODE_HIGH_PHYS_IDX  = 0x7e0  /* physical page frames >= 8 GiB */
 		};
-
 		enum { CORE_VM_ID = 1 };
 };
+
+namespace Core {
+
+/*
+ * Sponge (row 14 v2): slot<->phys bookkeeping for the high-phys CNode.
+ * Slots are allocated sequentially (never by address math — the real
+ * high-MMIO targets can sit hundreds of GiB apart). Zero entries are
+ * free; freed slots are reused. Shared by untyped_memory.h (frame
+ * creation/destruction) and vm_space.h (map-time lookup); defined as
+ * inline variables here because both headers already include this one.
+ */
+inline Genode::addr_t high_phys_frame_phys[1UL << Core_cspace::NUM_HIGH_PHYS_SEL_LOG2] = { };
+inline unsigned      high_phys_frame_count = 0;
+
+/*
+ * Allocate a slot for 'phys_addr' and record it. Reuses freed (zero)
+ * slots first. Returns false when the table is full — the caller
+ * fails the IO_MEM session cleanly.
+ */
+inline bool high_phys_slot_alloc(Genode::addr_t phys_addr, unsigned &slot)
+{
+	for (unsigned i = 0; i < high_phys_frame_count; i++) {
+		if (high_phys_frame_phys[i] == 0) {
+			slot = i;
+			high_phys_frame_phys[slot] = phys_addr;
+			return true;
+		}
+	}
+	if (high_phys_frame_count >= (1UL << Core_cspace::NUM_HIGH_PHYS_SEL_LOG2))
+		return false;
+	slot = high_phys_frame_count++;
+	high_phys_frame_phys[slot] = phys_addr;
+	return true;
+}
+
+/* Find the slot holding 'phys_addr'. Returns false if never allocated. */
+inline bool high_phys_slot_find(Genode::addr_t phys_addr, unsigned &slot)
+{
+	for (unsigned i = 0; i < high_phys_frame_count; i++) {
+		if (high_phys_frame_phys[i] == phys_addr) {
+			slot = i;
+			return true;
+		}
+	}
+	return false;
+}
+
+/* Release a slot (frame revoked + deleted by the caller). */
+inline void high_phys_slot_free(unsigned slot)
+{
+	high_phys_frame_phys[slot] = 0;
+}
+
+}
+
 
 #endif /* _CORE__INCLUDE__CORE_CSPACE_H_ */

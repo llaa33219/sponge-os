@@ -82,26 +82,17 @@ struct Core::Untyped_memory
 
 
 	/*
-	 * Sponge (row 14): high-phys variant of the core-local selector.
-	 *
-	 * The low phys CNode (top_idx = 0x7ff, NUM_PHYS_SEL_LOG2 = 21) covers
-	 * 8 GiB at 4 KiB granularity. For phys_addr >= HIGH_PHYS_BASE the
-	 * slot index (phys_addr >> 12) overruns 2^21, so a wider selector
-	 * format is used: top_idx is shifted by NUM_HIGH_PHYS_SEL_LOG2
-	 * (= 23), and the slot is the (phys_addr - HIGH_PHYS_BASE) >> 12
-	 * remap. See core_cspace.h NUM_HIGH_PHYS_SEL_LOG2 + HIGH_PHYS_BASE
-	 * + docs/11-environment.md row 14.
+	 * Sponge (row 14 v2): selector for a high-phys frame cap at a
+	 * SEQUENTIALLY ALLOCATED slot of the high-phys CNode (top index
+	 * TOP_CNODE_HIGH_PHYS_IDX). Slots are managed by the
+	 * Core::high_phys_slot_* helpers (core_cspace.h) — no address
+	 * math, so frames at any phys_addr work (the 17ZD90N's GOP
+	 * framebuffer sits at 256 GiB, its xHCI BAR at ~384.5 GiB).
 	 */
-	static inline Cap_sel _high_phys_sel(addr_t phys_addr,
-	                                     addr_t size_log2 = PAGE_SIZE_LOG2)
+	static inline Cap_sel _high_phys_sel(unsigned slot)
 	{
-		unsigned const upper_bits = Core_cspace::TOP_CNODE_HIGH_PHYS_IDX
-		                            << Core_cspace::NUM_HIGH_PHYS_SEL_LOG2;
-		unsigned const mask       = (1ul << Core_cspace::NUM_HIGH_PHYS_SEL_LOG2) - 1;
-		unsigned const lower_bits = unsigned((phys_addr - Core_cspace::HIGH_PHYS_BASE)
-		                                    >> size_log2) & mask;
-
-		return Cap_sel(upper_bits | lower_bits);
+		return Cap_sel((Core_cspace::TOP_CNODE_HIGH_PHYS_IDX
+		                << Core_cspace::NUM_HIGH_PHYS_SEL_LOG2) | slot);
 	}
 
 
@@ -154,16 +145,21 @@ struct Core::Untyped_memory
 	/**
 	 * Return core-local selector for 4K page frame at given physical address
 	 *
-	 * Sponge (row 14): for phys_addr >= HIGH_PHYS_BASE (8 GiB), the
-	 * frame cap lives in the dedicated high-phys CNode
-	 * (TOP_CNODE_HIGH_PHYS_IDX). The slot is (phys_addr - HIGH_PHYS_BASE)
-	 * >> 12, NOT phys_addr >> 12 (which would overrun the low phys
-	 * CNode's 2^21 cap).
+	 * Sponge (row 14 v2): for phys_addr >= HIGH_PHYS_BASE (8 GiB), the
+	 * frame cap is looked up in the slot table (the slot was recorded
+	 * when the frame was created). A miss yields a deliberately
+	 * out-of-range slot so the cap operation fails loudly instead of
+	 * silently addressing a wrong frame.
 	 */
 	static inline Cap_sel frame_sel(addr_t phys_addr)
 	{
-		if (phys_addr >= Core_cspace::HIGH_PHYS_BASE)
-			return _high_phys_sel(phys_addr);
+		if (phys_addr >= Core_cspace::HIGH_PHYS_BASE) {
+			unsigned slot = 0;
+			if (Core::high_phys_slot_find(phys_addr, slot))
+				return _high_phys_sel(slot);
+			/* slot-encoded dataspace reference or unconverted phys —
+			 * fall through to the low flat formula (v1 behavior) */
+		}
 
 		return _core_local_sel(Core_cspace::TOP_CNODE_PHYS_IDX, phys_addr);
 	}
@@ -183,7 +179,7 @@ struct Core::Untyped_memory
 	 * their path, so by the time the retype fires the CNode is in the
 	 * top CNode. See docs/11-environment.md row 14.
 	 */
-	static inline bool _high_phys_untyped_sel(addr_t phys_addr)
+	static inline seL4_Untyped _high_phys_untyped_sel(addr_t phys_addr)
 	{
 		seL4_BootInfo const &bi = sel4_boot_info();
 		unsigned const count = (unsigned)(bi.untyped.end - bi.untyped.start);
@@ -211,13 +207,37 @@ struct Core::Untyped_memory
 
 		for (size_t i = 0; i < num_pages; i++, phys_addr += PAGE_SIZE) {
 
-			seL4_Untyped const service     = untyped_sel(phys_addr).value();
+			seL4_Untyped service;
+			seL4_Word    node_index;
+			seL4_Word    node_offset;
+
+			/*
+			 * Sponge (row 14 v2): a high-phys frame is retyped from
+			 * the bootinfo-scanned device untyped into a sequentially
+			 * allocated slot of the high-phys CNode; the slot->phys
+			 * association is recorded for the map-time lookup.
+			 */
+			if (phys_addr >= Core_cspace::HIGH_PHYS_BASE) {
+				unsigned slot = 0;
+				service = _high_phys_untyped_sel(phys_addr);
+				if (!service || !Core::high_phys_slot_alloc(phys_addr, slot)) {
+					error(__FUNCTION__, ": no high-phys untyped or free slot for ",
+					      Hex_range<addr_t>(phys_addr, PAGE_SIZE));
+					convert_to_untyped_frames(phys_addr_base, PAGE_SIZE * i);
+					return false;
+				}
+				node_index  = Core_cspace::TOP_CNODE_HIGH_PHYS_IDX;
+				node_offset = slot;
+			} else {
+				service     = untyped_sel(phys_addr).value();
+				node_index  = Core_cspace::TOP_CNODE_PHYS_IDX;
+				node_offset = phys_addr >> PAGE_SIZE_LOG2;
+			}
+
 			seL4_Word    const type        = smallest_page_type();
 			seL4_Word    const size_bits   = 0;
 			seL4_CNode   const root        = Core_cspace::top_cnode_sel();
-			seL4_Word    const node_index  = Core_cspace::TOP_CNODE_PHYS_IDX;
 			seL4_Word    const node_depth  = Core_cspace::NUM_TOP_SEL_LOG2;
-			seL4_Word    const node_offset = phys_addr >> PAGE_SIZE_LOG2;
 			seL4_Word    const num_objects = 1;
 
 			long const ret = seL4_Untyped_Retype(service,
@@ -231,6 +251,13 @@ struct Core::Untyped_memory
 
 			if (ret == seL4_NoError)
 				continue;
+
+			/* Sponge (row 14 v2): drop the slot recorded for this page */
+			if (phys_addr >= Core_cspace::HIGH_PHYS_BASE) {
+				unsigned slot = 0;
+				if (Core::high_phys_slot_find(phys_addr, slot))
+					Core::high_phys_slot_free(slot);
+			}
 
 			error(__FUNCTION__, ": seL4_Untyped_RetypeAtOffset "
 			      "returned ", ret, " - physical_range=",
@@ -253,12 +280,30 @@ struct Core::Untyped_memory
 	static inline void convert_to_untyped_frames(addr_t const phys_addr,
 	                                             addr_t const phys_size)
 	{
-		seL4_Untyped const service = Core_cspace::phys_cnode_sel();
-		int const space_size = Core_cspace::NUM_PHYS_SEL_LOG2;
-
 		for (addr_t phys = phys_addr; phys < phys_addr + phys_size; phys += PAGE_SIZE) {
 
-			unsigned const index = (unsigned)(phys >> PAGE_SIZE_LOG2);
+			seL4_Untyped service;
+			seL4_Uint8   space_size;
+			unsigned     index;
+
+			/*
+			 * Sponge (row 14 v2): high-phys frames live in the
+			 * high-phys CNode at their recorded slot; the slot is
+			 * freed afterwards so it can be reused.
+			 */
+			bool const high = phys >= Core_cspace::HIGH_PHYS_BASE;
+			if (high) {
+				unsigned slot = 0;
+				if (!Core::high_phys_slot_find(phys, slot))
+					continue;  /* never converted — nothing to release */
+				service    = Core_cspace::high_phys_cnode_sel();
+				space_size = (seL4_Uint8)Core_cspace::NUM_HIGH_PHYS_SEL_LOG2;
+				index      = slot;
+			} else {
+				service    = Core_cspace::phys_cnode_sel();
+				space_size = (seL4_Uint8)Core_cspace::NUM_PHYS_SEL_LOG2;
+				index      = (unsigned)(phys >> PAGE_SIZE_LOG2);
+			}
 
 			/**
 			 * Without the revoke, one gets sporadically
@@ -277,6 +322,9 @@ struct Core::Untyped_memory
 			ret = seL4_CNode_Delete(service, index, space_size);
 			if (ret != seL4_NoError)
 				error(__FUNCTION__, ": seL4_CNode_Delete returned ", ret);
+
+			if (high)
+				Core::high_phys_slot_free(index);
 		}
 	}
 	};

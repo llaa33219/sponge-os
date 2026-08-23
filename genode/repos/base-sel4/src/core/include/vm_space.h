@@ -127,16 +127,33 @@ class Core::Vm_space
 
 		static inline Cnode_base &frame_source_cnode(Cnode &phys_cnode, addr_t phys_addr)
 		{
-			if (phys_addr >= Core_cspace::HIGH_PHYS_BASE && _high_phys_cnode_ptr)
-				return *_high_phys_cnode_ptr;
+			/*
+			 * Sponge (row 14 v2): only phys addresses recorded in the
+			 * high-phys slot table live in the high-phys CNode. Any
+			 * other address — including slot-encoded dataspace
+			 * references from _unused_phys_alloc, which CAN exceed
+			 * HIGH_PHYS_BASE now that row 13 extends untyped
+			 * coverage — belongs to the low phys CNode.
+			 */
+			if (phys_addr >= Core_cspace::HIGH_PHYS_BASE && _high_phys_cnode_ptr) {
+				unsigned slot = 0;
+				if (Core::high_phys_slot_find(phys_addr, slot))
+					return *_high_phys_cnode_ptr;
+			}
 			return phys_cnode;
 		}
 
 		static inline Cnode_index frame_source_index(addr_t phys_addr)
 		{
-			if (phys_addr >= Core_cspace::HIGH_PHYS_BASE)
+			if (phys_addr >= Core_cspace::HIGH_PHYS_BASE) {
+				unsigned slot = 0;
+				if (Core::high_phys_slot_find(phys_addr, slot))
+					return Cnode_index((uint32_t)slot);
+				/* not a created high-phys frame: slot-encoded dataspace
+				 * reference or low frame — keep the v1 formula */
 				return Cnode_index((uint32_t)((phys_addr - Core_cspace::HIGH_PHYS_BASE)
 				                            >> PAGE_SIZE_LOG2));
+			}
 			return Cnode_index((uint32_t)(phys_addr >> PAGE_SIZE_LOG2));
 		}
 

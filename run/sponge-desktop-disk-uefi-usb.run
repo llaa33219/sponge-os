@@ -1311,7 +1311,7 @@ file delete -force $esp_stage $esp_img $genode_img
 # -m 4G, -snapshot, fw_cfg opt-out) with the USB attach swapped to
 # match the xHCI / USB-stick boot path:
 #
-#   -device usb-ehci,id=ehci            (QEMU-side host controller for
+#   -device nec-usb-xhci,id=xhci            (QEMU-side host controller for
 #                                        the verification boot. Real hw
 #                                        has xHCI only; the Genode-side
 #                                        stack — pc_usb_host (xhci_hcd +
@@ -1344,7 +1344,7 @@ file delete -force $esp_stage $esp_img $genode_img
 #                                        the map top + add a high-phys
 #                                        frame-cap CNode in Genode core)
 #                                        are the principled fixes.)
-#   -device usb-tablet,bus=ehci.0       (HID input — same as AHCI
+#   -device usb-tablet,bus=xhci.0       (HID input — same as AHCI
 #                                        variant, on the same USB bus
 #                                        as the storage; the class: 0x3
 #                                        policy in pc_usb_host matches
@@ -1375,9 +1375,9 @@ file delete -force $esp_stage $esp_img $genode_img
 #
 append qemu_args " -machine q35 -cpu Skylake-Client "
 append qemu_args " -nographic -m 4G -snapshot "
-append qemu_args " -device usb-ehci,id=ehci "
-append qemu_args " -device usb-tablet,bus=ehci.0 "
-append qemu_args " -device usb-storage,drive=stick,bus=ehci.0 "
+append qemu_args " -device nec-usb-xhci,id=xhci "
+append qemu_args " -device usb-tablet,bus=xhci.0 "
+append qemu_args " -device usb-storage,drive=stick,bus=xhci.0 "
 append qemu_args " -drive id=stick,format=raw,file=[run_dir].img,if=none "
 append qemu_args " -drive if=pflash,format=raw,readonly=on,file=$ovmf_code "
 append qemu_args " -drive if=pflash,format=raw,file=$ovmf_vars "

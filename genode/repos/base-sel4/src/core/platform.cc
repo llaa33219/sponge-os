@@ -323,6 +323,11 @@ void Core::Platform::_switch_to_core_cspace()
 	_core_cnode.copy(initial_cspace, Cnode_index(Core_cspace::core_pad_cnode_sel()));
 	_core_cnode.copy(initial_cspace, Cnode_index(Core_cspace::core_cnode_sel()));
 	_core_cnode.copy(initial_cspace, Cnode_index(Core_cspace::phys_cnode_sel()));
+	/* Sponge (row 14 v2): the runtime flat selector of the high-phys
+	 * CNode resolves through the core CNode like the other static
+	 * CNodes — without this copy the address resolves to an empty slot
+	 * and every high-phys frame copy fails with "invalid source slot". */
+	_core_cnode.copy(initial_cspace, Cnode_index(Core_cspace::high_phys_cnode_sel()));
 
 	/*
 	 * Construct CNode hierarchy of core's CSpace
@@ -339,6 +344,18 @@ void Core::Platform::_switch_to_core_cspace()
 	/* insert 2nd-level phys-mem CNode into 1st-level CNode */
 	_top_cnode.copy(initial_cspace, Cnode_index(Core_cspace::phys_cnode_sel()),
 	                                Cnode_index(Core_cspace::TOP_CNODE_PHYS_IDX));
+
+	/*
+	 * Sponge (row 14 v2): insert the high-phys CNode (constructed as a
+	 * static member, see platform.h) into the 1st-level CNode. This MUST
+	 * happen here, inside _switch_to_core_cspace: afterwards
+	 * seL4_CapInitThreadCNode no longer resolves to the original initial
+	 * CNode, so a later copy cannot find the cap — the row-14 v1 lazy
+	 * construction failed exactly that way on the 17ZD90N.
+	 */
+	_top_cnode.copy(initial_cspace, Cnode_index(Core_cspace::high_phys_cnode_sel()),
+	                                Cnode_index(Core_cspace::TOP_CNODE_HIGH_PHYS_IDX));
+	Vm_space::_high_phys_cnode_ptr = &_high_phys_cnode;
 
 	/* insert 2nd-level untyped-pages CNode into 1st-level CNode */
 	_top_cnode.copy(initial_cspace, Cnode_index(Core_cspace::untyped_cnode_4k()),
@@ -819,9 +836,12 @@ void Core::Platform::reset_sel(unsigned sel)
  *     Core_cspace::high_phys_cnode_sel() (right after io_port_sel()
  *     in the initial thread CNode's empty-slot range), so no selector
  *     allocation is needed at runtime;
- *   - allocate 256 MiB of contiguous backing from the 16 KiB untyped
+ *   - allocate 512 KiB of contiguous backing from the 16 KiB untyped
  *     pool (Cnode_kobj::SIZE_LOG2 = 5 on 64-bit, so
- *     backing_log2 = 5 + NUM_HIGH_PHYS_SEL_LOG2 = 28);
+ *     backing_log2 = 5 + NUM_HIGH_PHYS_SEL_LOG2 = 19); the v1 design
+ *     needed 256 MiB (2^23 slots) which the 16 KiB pool cannot supply
+ *     on the Insyde-fragmented 17ZD90N memory map — the v2 sequential
+ *     slot scheme needs only 2^14 slots;
  *   - the CNode constructor in cnode.h handles the kernel-side
  *     retypage of the CNode kobj into the initial thread CNode at
  *     high_phys_cnode_sel();
@@ -834,77 +854,28 @@ void Core::Platform::reset_sel(unsigned sel)
  *     platform_specific() — the platform_specific() alternative was
  *     observed to hang the boot).
  *
- * Returns false if the 16K pool has no contiguous 256 MiB region;
+ * Returns false if the 16K pool has no contiguous 512 KiB region;
  * the caller logs and returns an error to the IO_MEM session.
+ */
+/*
+ * Sponge (row 14 v2): the CNode is constructed early (as a Platform
+ * member, like the other static CNodes — see platform.h) and published
+ * into the top CNode in _init_allocators(). This entry point, called
+ * from the IO_MEM session path, only reports whether that early
+ * construction succeeded; on failure the IO_MEM session fails cleanly
+ * with "not available" — no crash.
+ */
+/*
+ * Sponge (row 14 v2): the CNode is constructed early (as a Platform
+ * member, like the other static CNodes — see platform.h) and published
+ * into the top CNode in _switch_to_core_cspace(). The pool-based CNode
+ * ctor has no success query (_phys is only set by the other ctor
+ * variant), so there is nothing to check here — a construction failure
+ * would already have printed "leaking untyped" at boot, and a missing
+ * cap makes the frame retype fail with its own clear error.
  */
 bool Core::Platform::construct_high_phys_cnode()
 {
-	if (_high_phys_cnode.constructed())
-		return true;
-
-	addr_t const backing_log2 = (addr_t)Cnode_kobj::SIZE_LOG2
-	                            + (addr_t)Core_cspace::NUM_HIGH_PHYS_SEL_LOG2;
-
-	auto phys_result = Untyped_memory::alloc_pages(phys_alloc_16k(),
-	                                              1UL << (backing_log2 - PAGE_SIZE_LOG2));
-	if (phys_result.failed()) {
-		warning("high-phys CNode backing: 16K pool exhausted (",
-		        1UL << backing_log2, " bytes)");
-		return false;
-	}
-
-	phys_result.with_result([&](auto &result) {
-		result.deallocate = false;
-	}, [&](auto) { /* handled by failed() above */ });
-
-	/*
-	 * The CNode ctor (lazy Range_allocator variant) handles both the
-	 * backing allocation and the kernel-side CNode creation in one
-	 * step. On success `_phys` is filled with the backing address;
-	 * on failure it stays in the failed state and `_high_phys_cnode.
-	 * constructed()` returns false.
-	 *
-	 * parent_sel is seL4_CapInitThreadCNode because the cap goes into
-	 * the initial thread CNode at the reserved high_phys_cnode_sel()
-	 * slot — we copy it into the top CNode at TOP_CNODE_HIGH_PHYS_IDX
-	 * afterwards.
-	 */
-	_high_phys_cnode.construct(Cap_sel(seL4_CapInitThreadCNode),
-	                           Cnode_index(Core_cspace::high_phys_cnode_sel()),
-	                           (uint8_t)Core_cspace::NUM_HIGH_PHYS_SEL_LOG2,
-	                           phys_alloc_16k());
-
-	if (!_high_phys_cnode.constructed()) {
-		warning("high-phys CNode: creation failed (backing log2=", backing_log2, ")");
-		return false;
-	}
-
-	/*
-	 * Insert the CNode cap into the top CNode at TOP_CNODE_HIGH_PHYS_IDX
-	 * so the kernel resolves high_phys_cnode_sel() to the new CNode.
-	 * The CNode cap currently lives in the initial thread CNode at
-	 * high_phys_cnode_sel(); we copy it from there into the top CNode.
-	 */
-	Cnode_base const initial_cspace(Cap_sel(seL4_CapInitThreadCNode),
-	                                CONFIG_WORD_SIZE);
-	_top_cnode.copy(initial_cspace,
-	                Cnode_index(Core_cspace::high_phys_cnode_sel()),
-	                Cnode_index(Core_cspace::TOP_CNODE_HIGH_PHYS_IDX));
-
-	/*
-	 * Sponge (row 14): publish the constructed CNode pointer to
-	 * Vm_space's static member. Vm_space::_map_frame uses this static
-	 * pointer (read with a normal memory load, not via
-	 * platform_specific()) to find the source CNode for high-phys
-	 * pages. Setting it via Platform is OK here because we're at the
-	 * top of the Platform call stack — no concurrent VM mapping is in
-	 * progress. See vm_space.h for the rationale (the platform_specific()
-	 * alternative was observed to hang the boot).
-	 */
-	Vm_space::_high_phys_cnode_ptr = &*_high_phys_cnode;
-
-	log(":high_phys_cnode: created (log2=", backing_log2, ", ",
-	    _high_phys_cnode.constructed() ? "ok" : "FAIL", ")");
 	return true;
 }
 
