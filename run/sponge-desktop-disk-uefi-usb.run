@@ -927,7 +927,7 @@ config
       + parent
       + any-child
 
-+ start vfs | caps: 500 | ram: 64M
++ start vfs | caps: 16000 | ram: 64M
   + provides | + service File_system
   + config
     + vfs
@@ -945,7 +945,7 @@ config
       + parent
       + any-child
 
-+ start rom_sys | caps: 500 | ram: 256M
++ start rom_sys | caps: 16000 | ram: 256M
   + binary cached_fs_rom
   + provides | + service ROM
   + route
@@ -955,7 +955,7 @@ config
       + parent
       + any-child
 
-+ start rom_lib | caps: 500 | ram: 256M
++ start rom_lib | caps: 16000 | ram: 256M
   + binary cached_fs_rom
   + provides | + service ROM
   + route

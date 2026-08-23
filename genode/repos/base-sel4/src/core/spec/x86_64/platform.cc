@@ -122,7 +122,17 @@ void Platform::_init_core_page_table_registry()
 	enum {
 		MAX_VCPU_COUNT    = 16,
 		MAX_CNODE_PD_COUNT = 64,
-		SECOND_LEVEL_CNODES_PER_PD = 1UL << CSPACE_SIZE_LOG2_1ST,
+		/*
+		 * Sponge: the 16 KiB pool reservation stays at the proven
+		 * per-PD magnitude even though CSPACE_SIZE_LOG2_1ST is now 7
+		 * (128 possible 2nd-level CNodes per PD). Realistic boots
+		 * construct only a handful of CNodes per PD (the heavy
+		 * storage PDs reach ~70); doubling the eager carve to
+		 * 128 MiB regressed the 4 GiB desktop before (the row-14
+		 * 256 MiB lesson), so the reservation is decoupled from the
+		 * geometry and pinned at 64/PD.
+		 */
+		SECOND_LEVEL_CNODES_PER_PD = 64,
 		MAX_VM_LEAF_COUNT = 2048,
 		/*
 		 * Sponge (row 14): NO eager reservation for the high-phys
