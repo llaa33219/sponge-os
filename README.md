@@ -81,13 +81,20 @@ stability wall-clock cycle) is partial because the 30-min scenario
 is a sustained workload that the close-out session skips by
 design; see
 [`docs/evidence/phase14-index.md`](docs/evidence/phase14-index.md).
-**Phase 15 (real-hardware boot) is in flight:** 15-1 (bake
-profiles `minimal`/`desktop` via `run/bake.inc` + `tool/bake` +
-first-boot configd seeding + `vct bake`; UEFI product media via
+**Phase 15 (real-hardware boot): the desktop boots on hardware.**
+15-1 (bake profiles `minimal`/`desktop` via `run/bake.inc` + `tool/bake`
++ first-boot configd seeding + `vct bake`; UEFI product media via
 `tool/dist --firmware uefi`) and 15-2 (usb-mouse envelope,
 hardware-matrix update with the D15.11 real-hardware admission
-policy, 9-scenario regression sweep all-PASS) are done; 15-3 (the
-user's physical USB boot on the LG gram 17ZD90N) is pending — see
+policy, 9-scenario regression sweep all-PASS) are done; 15-3 reached
+its milestone on 2026-08-23 — the full desktop boots from USB on the
+LG gram 17ZD90N (`alpha_probe` exited 0 on the panel: compositor
+pixel checks passed on real hardware), after a four-defect bring-up
+chain (kernel untyped coverage, core high-phys CNode, retype
+watermark, per-PD cap capacity) each layer found from the kernel
+early-FB console's on-panel boot log. Final interactive input
+confirmation (USB mouse) pending; trackpad/Wi-Fi remain pre-registered
+gaps — see
 [`docs/plans/phase15-real-hardware-boot.md`](docs/plans/phase15-real-hardware-boot.md)
 and [`docs/plans/phase15-hardware-boot-protocol.md`](docs/plans/phase15-hardware-boot-protocol.md).
 The verified release boots in QEMU on seL4. See
