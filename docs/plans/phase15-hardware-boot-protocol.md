@@ -239,7 +239,7 @@ Does **not** prove (pre-registered gaps — expected, not failures):
 |---|---|
 | USB stick | ≥ 4 GiB (desktop profile image ≈ 1.9 GiB). USB-A preferred — the machine has 3× USB-A (PCH-direct) + 1× USB-C/TB3. **Remove any OTHER USB storage devices before booting** — the storage policy matches any mass-storage device by class (class 0x8), so a second stick could be picked instead. |
 | USB mouse | **Mandatory** (trackpad unsupported). Any USB HID mouse. |
-| Media | `var/dist/sponge-os-0.1.0-alpha-x86_64-sel4.img` built with `./tool/dist --bake-profile desktop --firmware uefi --storage usb` (W-USB, 2026-08-18). sha256 `0aa4151413fbcf7b7b5bda2948687a6b68ef5931730595060fac94f147a28f64` — verify after writing: `sha256sum` the first 2049966080 bytes of the stick (`sudo head -c 2049966080 /dev/sdX \| sha256sum`). |
+| Media | `var/dist/sponge-os-0.1.0-alpha-x86_64-sel4.img` built with `./tool/dist --bake-profile desktop --firmware uefi --storage usb` (cap-fix build, 2026-08-23). sha256 `bc84b01772ce24fb9f68a4ad9c7c5fc97f0d112aebd239eb730f35ab2390045c` — verify after writing: `sha256sum` the first 2049966080 bytes of the stick (`sudo head -c 2049966080 /dev/sdX \| sha256sum`). (The diag menu media `sponge-diag-v13-uefi.img` is the same base with the v11 diagnostic GRUB config; use it when a boot must be observed stage-by-stage.) |
 | Machine | LG gram 17ZD90N-VX7BK, charged or on AC. |
 
 ## 2. Firmware preparation (one-time, ~2 minutes)
