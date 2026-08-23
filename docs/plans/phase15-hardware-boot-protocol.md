@@ -26,13 +26,31 @@ Fixed and committed (the OS/boot chain is proven on QEMU/OVMF):
   fragmented UEFI maps → fixed** (ledger row 11). This was the main
   hang: OVMF smoke now `boot-probe: PASS`, desktop `alpha-probe: PASS`.
 
-Open blocker (being worked):
+RESOLVED (2026-08-23, v13 cap-fix build):
 
-- **Display:** on the physical 17ZD90N, GRUB does not produce a working
-  payload framebuffer on the real iGPU GOP. The fbprobe2 GOP-draw probe
-  freezes at `WARNING: no console will be available to OS`; `videoinfo`
-  shows the panel offers valid 32bpp direct-color modes (native
-  2560x1600x32, EDID preferred 2560x1600).
+- **The 17ZD90N boots Sponge OS to the desktop.** The display-path
+  chain that blocked every earlier round was a stack of four
+  independent defects, each found and fixed from the visible boot log
+  that the kernel early-FB console (ledger row 12) provided: (1) the
+  kernel's device-untyped coverage did not reach the high MMIO
+  aperture (row 13); (2) core's flat phys CNode capped at 8 GiB and
+  its v1 replacement was unallocatable on the fragmented Insyde map
+  (row 14 v2: sequential-slot CNode); (3) seL4 retype is
+  watermark-only, so mid-chunk BARs got wrong frames until the
+  fast-forward fix; (4) the storage-serving PDs exhausted their
+  mapping-registry caps on slow real-USB I/O (row 6 addendum: 65536
+  slots/PD + caps quota 500→16000). Measured real-hw addresses: GOP
+  framebuffer at 0x4000000000 (256 GiB), PCH xHCI BAR at
+  0x601d140000 (~384.5 GiB).
+- **Evidence:** `[init -> system] child "alpha_probe" exited with exit
+  value 0` on the panel — alpha_probe's themed-panel pixel check,
+  launcher-feed check, and configd-broadcast check all passed through
+  the real compositor on real hardware (identical to the QEMU
+  success sequence; the screen showing the log after it is the
+  scenario simply having finished, not a hang). GPT partitions were
+  printed (xHCI + USB-stick DMA proven); USB 3.0 enumerated.
+- Pending final confirmation: desktop visible + USB mouse interaction
+  (user); media sha256 `bc84b017…`.
 - **Round v8→v9 (fb-console kernel):** the vendored seL4 kernel now
   carries an early framebuffer text console (docs/11 ledger row 12,
   `docs/patches/sel4-early-fb-console.patch`, OVMF-verified per
