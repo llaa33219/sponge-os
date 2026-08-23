@@ -69,6 +69,17 @@ Open blocker (being worked):
   low 4 GiB, and predicts boot_fb's IO_MEM failure like the xhci BAR
   at 32 GiB), or the MBI itself above 4 GiB. cutmem not changing the
   outcome argues against MBI placement.
+- **Round v11 results (user-reported on the 17ZD90N): BREAKTHROUGH.**
+  The chain entries (4/5) show the kernel boot log ON THE PANEL,
+  starting with `sel4 fb console: ready` — real-hardware boot
+  visibility achieved for the first time. The boot stops at a Genode
+  component abort (`Warning: abort called - thread: ...`); the exact
+  component is unreadable at the fb console's 8x8 font size on the
+  2560x1600 panel (photo / larger font pending). fbprobe4 entries
+  (1/2/3) stayed black — the 32-bit probe cannot draw to the high FB,
+  while the kernel console (row-12 deferral path) can, which all but
+  confirms the high-FB hypothesis (GOP framebuffer >= 4 GiB on this
+  Insyde firmware). videoinfo works (entry 6).
 - **Round v11 (ready for the user):** kernel fixes landed —
   fb_console defers all drawing until the direct map covers the FB
   (safe to 512 GiB; ledger row 12 regenerated) and device-untyped
