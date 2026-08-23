@@ -95,7 +95,16 @@ Open blocker (being worked):
   construction, top-CNode slot 0x7e0 reservation, and the core-CNode
   wiring for the runtime selector. QEMU-verified with the xHCI BAR at
   32 GiB (xhci_hcd binds, USB 3.0 enumerates, configd ready) plus all
-  regressions. Commit `69db536604`.
+  regressions. Commit `69db536604`. The v12 test then surfaced a
+  subtler root cause: seL4's `Untyped_Retype` creates objects at the
+  untyped's free-offset WATERMARK, never at a requested offset — so a
+  BAR in the middle of a multi-GiB device untyped yields a frame for
+  the chunk's base, and the driver reads garbage registers (fault in
+  `quirk_usb_early_handoff`). QEMU had masked this because its 32 GiB
+  BAR sits exactly on a chunk base. Fixed by fast-forwarding the
+  watermark (retype+delete throwaway large frames to skip); verified
+  on QEMU by forcing a mid-chunk BAR (two xHCI controllers). Commit
+  `966c76852f`. Media: `var/dist/sponge-diag-v13-uefi.img`.
 - **Round v11 (ready for the user):** kernel fixes landed —
   fb_console defers all drawing until the direct map covers the FB
   (safe to 512 GiB; ledger row 12 regenerated) and device-untyped
