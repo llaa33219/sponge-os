@@ -1101,6 +1101,22 @@ foreach f { fb.config event_filter.config } {
 	exec cp -f "$recipe_dir/$f" "bin/$f"
 }
 
+# Diagnostic media only: switch boot_fb's config to the heartbeat
+# variant — one log line every 5 s (tick count + last blit px count)
+# surfaces on the panel via the kernel fb console and answers, from a
+# single real-hw observation, whether the blit loop is alive and
+# whether nitpicker delivers damage (tick frozen => fb/timer dead;
+# ticks alive + last_px 0 => damage starved; ticks alive + px > 0 =>
+# blits reaching the FB and the composition is what it is).
+# Production media keeps the stock recipe config (heartbeat off).
+if {[bake::boot_option grub_mode production] eq "diagnostic"} {
+	set fh [open "bin/fb.config" w]
+	puts $fh {config | period_ms: 20 | heartbeat: yes
+-}
+	close $fh
+	puts "sponge-desktop-disk-uefi-usb: diagnostic media - boot_fb heartbeat ON"
+}
+
 #
 # Keyboard layouts consumed by event_filter.
 #

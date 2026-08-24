@@ -76,10 +76,42 @@ RESOLVED (2026-08-23, v13 cap-fix build):
   diagnostic/test profile omits it (escape hatch). QEMU-verified:
   the -usb gate boots with the disable notice in the serial log and
   the storage gate still PASSes; sponge-minimal and sponge-fbprobe-uefi
-  regressions green. Rebuilt media (2026-08-24): sha256 `86309a33…` —
-  test with THIS image; prior shas: `a154b4b5…` (decorator 64M),
-  `f130d273…` (HID+arena, desktop-first-visible), `bc84b017…`
-  (v13 milestone).
+  regressions green. Prior media shas: `86309a33…` (fbcon switch),
+  `a154b4b5…` (decorator 64M), `f130d273…` (HID+arena),
+  `bc84b017…` (v13 milestone).
+- **Caps-sizing fix (user report 4):** real-hw still showed only
+  background + cursor; manual OVMF pixel-diff of the exact media at
+  2560x1600 proved the blit pipeline correct but exposed 21 hidden
+  `mapping cache full ... out of CAP` flushes — every GUI-side caps
+  quota was far below one fullscreen buffer's page-registry cost
+  (4096 caps per 16 MiB surface). Raised: nitpicker 20000 (was
+  default 200!), decorator 6000, sponge-de 8000, alpha_probe 6000,
+  system 20000 (all three UEFI scenarios). QEMU after: flush count
+  0, panel + cursor verified on the FB. Media `58ace677…`.
+- **Round 5 (user report 5, in flight):** real hw (test media
+  5ef6a904): mouse enumerated, alpha-probe PASS on panel, but screen
+  still background + cursor, cursor frozen. alpha-probe passing proves
+  the panel IS in nitpicker's composition, and the visible
+  background+cursor proves tick-0's full blit reached the scanned-out
+  FB — so the failure is isolated to post-tick-0 blit liveness or
+  damage delivery on real hw only. Built the decisive diagnostic:
+  boot_fb `heartbeat` config knob (test media only, `fb.config`
+  `heartbeat: yes` staged when grub_mode=diagnostic) logs
+  `heartbeat: tick=N px5s=M` every 5 s — on the panel via the fb
+  console. Reading: tick frozen ⇒ fb/timer dead (number = when);
+  ticks advance + px5s 0 while moving the mouse ⇒ damage not
+  delivered (nitpicker/event side); ticks + px5s > 0 ⇒ blits reach
+  the FB and the composition is what it is (write-path/scanout
+  question). Includes a real fix found on the way: boot_fb never
+  read its config ROM at construction (sigh handlers don't fire for
+  the initial ROM), so period_ms/heartbeat never applied at boot —
+  ctor now calls `_handle_config()` once. QEMU-verified on the test
+  media: heartbeat every 5 s, `px5s=1404800` exactly in the window
+  of QMP mouse moves, 0 when idle; production gate PASS (heartbeat
+  off). Media: test `e471b62d…`
+  (`var/dist/sponge-test2-heartbeat-uefi-usb.img`), production
+  `fdef6af2…` (functionally identical to 58ace677 for production —
+  heartbeat off, same period).
 - **Post-v13 (desktop-invisible root causes, fixed 2026-08-24):** two
   stacked defects kept the composited desktop off the panel even with
   alpha_probe passing on hardware. (1) Run-script HID parsing: init's

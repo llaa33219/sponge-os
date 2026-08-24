@@ -106,6 +106,19 @@ struct Framebuffer::Main
 
 	Timer::Connection _timer { _env };
 
+	/*
+	 * Diagnostic heartbeat (config "heartbeat" attribute, default off):
+	 * one log line every 250 ticks (5 s at the 20 ms default period)
+	 * reporting the tick count and the pixel count of the last blit.
+	 * On serial-less real hardware the line surfaces on the panel via
+	 * the kernel fb console, which answers "is the blit loop alive
+	 * and does nitpicker deliver damage" from one observation.
+	 * Production media leaves it off (no log traffic).
+	 */
+	bool     _heartbeat { false };
+	unsigned _ticks    { 0 };
+	size_t   _px_since_beat { 0 };
+
 	Signal_handler<Main> _timer_handler  { _env.ep(), *this, &Main::_handle_timer };
 	Signal_handler<Main> _config_handler { _env.ep(), *this, &Main::_handle_config };
 
@@ -116,7 +129,15 @@ struct Framebuffer::Main
 	{
 		Surface<Pixel> surface(_fb_ds.local_addr<Pixel>(), _info.phys_area());
 
-		_screen->apply_to_surface(surface);
+		Rect const affected = _screen->apply_to_surface(surface);
+
+		++_ticks;
+		_px_since_beat += affected.area.count();
+
+		if (_heartbeat && (_ticks % 250) == 0) {
+			log("heartbeat: tick=", _ticks, " px5s=", _px_since_beat);
+			_px_since_beat = 0;
+		}
 	}
 
 	void report_connectors(Generator &g, unsigned width, unsigned height)
@@ -147,6 +168,13 @@ struct Framebuffer::Main
 	Main(Env &env) : _env(env)
 	{
 		log("using boot framebuffer: ", _info);
+
+		/*
+		 * Read the initial config ROM here: '_handle_config' runs only
+		 * on config CHANGES, so without this the heartbeat flag (and
+		 * any initial period_ms) would never take effect at boot.
+		 */
+		_handle_config();
 
 		_config.sigh(_config_handler);
 		_timer .sigh(_timer_handler);
@@ -179,6 +207,7 @@ void Framebuffer::Main::_handle_config()
 
 	auto const &config    = _config.node();
 	auto const  period_ms = config.attribute_value("period_ms", 20UL);
+	_heartbeat            = config.attribute_value("heartbeat", false);
 	bool        changed   = false;
 
 	_timer.trigger_periodic(period_ms * 1000);
