@@ -64,10 +64,22 @@ RESOLVED (2026-08-23, v13 cap-fix build):
   the registry slab growth fails OUT_OF_RAM, core flushes the whole
   mapping set, pages fault back in, and the cycle spams. Same
   bug family as the fb/nitpicker quota fix. Fixed: decorator
-  `ram: 32M -> 64M` in all three UEFI desktop scenarios. Rebuilt
-  media (2026-08-24): sha256 `a154b4b5…` — test with THIS image;
-  prior shas: `f130d273…` (HID+arena, desktop-first-visible),
-  `bc84b017…` (v13 milestone).
+  `ram: 32M -> 64M` in all three UEFI desktop scenarios.
+- **Log-over-DE fix (user report 3, 2026-08-24):** after the quota
+  fix the desktop rendered but the kernel fb console's log mirror
+  kept scrolling text over the DE — boot_fb's Capture blit repaints
+  only nitpicker's dirty regions, so console text painted outside
+  them persisted on the panel. The row-12 kernel patch gained a
+  `fbcon=off` cmdline kill switch (W6 amendment: full disable, serial
+  log unaffected, serial notice records the event); the production
+  media passes the token on GRUB's `module2 /boot/sel4` line, the
+  diagnostic/test profile omits it (escape hatch). QEMU-verified:
+  the -usb gate boots with the disable notice in the serial log and
+  the storage gate still PASSes; sponge-minimal and sponge-fbprobe-uefi
+  regressions green. Rebuilt media (2026-08-24): sha256 `86309a33…` —
+  test with THIS image; prior shas: `a154b4b5…` (decorator 64M),
+  `f130d273…` (HID+arena, desktop-first-visible), `bc84b017…`
+  (v13 milestone).
 - **Post-v13 (desktop-invisible root causes, fixed 2026-08-24):** two
   stacked defects kept the composited desktop off the panel even with
   alpha_probe passing on hardware. (1) Run-script HID parsing: init's

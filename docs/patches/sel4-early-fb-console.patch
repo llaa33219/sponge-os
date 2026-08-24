@@ -1,8 +1,9 @@
 diff --git a/src/kernel/sel4/include/arch/x86/arch/kernel/fb_console.h b/src/kernel/sel4/include/arch/x86/arch/kernel/fb_console.h
-index e69de29bb..58488c20d6af 100644
---- a/src/kernel/sel4/include/arch/x86/arch/kernel/fb_console.h
+new file mode 100644
+index 000000000..192d6d71c
+--- /dev/null
 +++ b/src/kernel/sel4/include/arch/x86/arch/kernel/fb_console.h
-@@ -0,0 +1,95 @@
+@@ -0,0 +1,117 @@
 +/*
 + * Copyright 2026, Sponge OS contributors
 + *
@@ -73,6 +74,28 @@ index e69de29bb..58488c20d6af 100644
 +void fb_console_init(void);
 +
 +/*
++ * Scan the kernel command line (as passed to seL4 via the
++ * multiboot2 module string, e.g.
++ *   module2 /boot/sel4 sel4 disable_iommu ... fbcon=off)
++ * for the exact token "fbcon=off". Called from the
++ * MULTIBOOT2_TAG_CMDLINE branch of try_boot_sys_mbi2().
++ *
++ * When the token is present the console is fully disabled:
++ * no screen clear, no banner, no character painting. The
++ * serial (UART) log channel is unaffected — the io.c hook
++ * mirrors to the FB AFTER the UART write and simply no-ops.
++ * A one-line serial notice records the disable event so boot
++ * logs explain the quiet framebuffer.
++ *
++ * This is the product-media kill switch for the Phase-15
++ * "boot log scrolls over the DE" issue: production GRUB
++ * configs pass fbcon=off; the diagnostic/test profile
++ * omits it, keeping the on-panel log for bring-up (control
++ * escape hatch per the Sponge philosophy).
++ */
++void fb_console_check_disable(const char *cmdline);
++
++/*
 + * Called from try_boot_sys_node() right after
 + * setCurrentVSpaceRoot(). Switches the cached framebuffer VA
 + * from the boot_pml4 identity map to the kernel's permanent
@@ -98,7 +121,6 @@ index e69de29bb..58488c20d6af 100644
 + * map when phys >= 4 GiB" invariant structurally true.
 + */
 +void fb_console_putchar(char c);
-
 diff --git a/src/kernel/sel4/src/arch/x86/config.cmake b/src/kernel/sel4/src/arch/x86/config.cmake
 index 2c170bd09..00634396a 100644
 --- a/src/kernel/sel4/src/arch/x86/config.cmake
@@ -111,9 +133,8 @@ index 2c170bd09..00634396a 100644
          kernel/thread.c
          model/statedata.c
          machine/capdl.c
-
 diff --git a/src/kernel/sel4/src/arch/x86/kernel/boot_sys.c b/src/kernel/sel4/src/arch/x86/kernel/boot_sys.c
-index 7f1a4db1f..c5b6978e5 100644
+index 7f1a4db1f..6a08cde3e 100644
 --- a/src/kernel/sel4/src/arch/x86/kernel/boot_sys.c
 +++ b/src/kernel/sel4/src/arch/x86/kernel/boot_sys.c
 @@ -13,6 +13,7 @@
@@ -141,7 +162,19 @@ index 7f1a4db1f..c5b6978e5 100644
  #ifdef CONFIG_KERNEL_SKIM_WINDOW
      if (!map_skim_window((vptr_t)ki_skim_start, (vptr_t)ki_skim_end)) {
          return false;
-@@ -685,6 +696,18 @@ static BOOT_CODE bool_t try_boot_sys_mbi2(
+@@ -628,6 +639,11 @@ static BOOT_CODE bool_t try_boot_sys_mbi2(
+         if (tag->type == MULTIBOOT2_TAG_CMDLINE) {
+             char const *const cmdline = (char const * const)(behind_tag);
+             cmdline_parse(cmdline, &cmdline_opt);
++            /* Sponge OS Phase 15 — product media passes fbcon=off to
++             * silence the FB log mirror (serial unaffected); the
++             * diagnostic/test profile omits the token so the
++             * on-panel boot log stays available for bring-up. */
++            fb_console_check_disable(cmdline);
+         } else if (tag->type == MULTIBOOT2_TAG_ACPI_1) {
+             if (ACPI_V1_SIZE == tag->size - sizeof(*tag)) {
+                 memcpy(&boot_state.acpi_rsdp, (void *)behind_tag, tag->size - sizeof(*tag));
+@@ -685,6 +701,18 @@ static BOOT_CODE bool_t try_boot_sys_mbi2(
              printf("Got framebuffer info in multiboot2. Current video mode is at physical address=%llx pitch=%u resolution=%ux%u@%u type=%u\n",
                     fb->addr, fb->pitch, fb->width, fb->height, fb->bpp, fb->type);
              boot_state.fb_info = *fb;
@@ -160,12 +193,12 @@ index 7f1a4db1f..c5b6978e5 100644
          }
  
          tag = (multiboot2_tag_t const *)((word_t)tag + ROUND_UP(tag->size, 3));
-
 diff --git a/src/kernel/sel4/src/arch/x86/kernel/fb_console.c b/src/kernel/sel4/src/arch/x86/kernel/fb_console.c
-index e69de29bb..c310e72dc7e0 100644
---- a/src/kernel/sel4/src/arch/x86/kernel/fb_console.c
+new file mode 100644
+index 000000000..5dfd023c8
+--- /dev/null
 +++ b/src/kernel/sel4/src/arch/x86/kernel/fb_console.c
-@@ -0,0 +1,772 @@
+@@ -0,0 +1,834 @@
 +/*
 + * Copyright 2026, Sponge OS contributors
 + *
@@ -289,6 +322,7 @@ index e69de29bb..c310e72dc7e0 100644
 +#include <string.h>
 +
 +#include <machine.h>
++#include <machine/io.h>
 +#include <arch/kernel/boot_sys.h>
 +
 +/* ------------------------------------------------------------------ */
@@ -722,6 +756,62 @@ index e69de29bb..c310e72dc7e0 100644
 +/* ------------------------------------------------------------------ */
 +
 +/*
++ * Persistent kill switch set by the kernel command line
++ * ("fbcon=off"). Kept OUTSIDE the fbc struct because
++ * fb_console_init() memsets fbc — this flag must survive that
++ * reset and any tag ordering between the CMDLINE and FB tags.
++ */
++static uint8_t fbc_disabled_by_cmdline;
++
++/*
++ * Scan the kernel command line for the "fbcon=off" token.
++ * Called from try_boot_sys_mbi2()'s MULTIBOOT2_TAG_CMDLINE
++ * branch. When the token is present the console is fully
++ * disabled — no clear, no banner, no character painting —
++ * while the serial (UART) log channel stays untouched (the
++ * io.c hook mirrors AFTER the UART write). A serial notice is
++ * emitted so boot logs record why the FB stayed quiet.
++ *
++ * Tokenization is deliberately simple: whitespace-separated
++ * tokens, exact match only. Unknown tokens are ignored, so
++ * "fbcon=off" never matches "xfbcon=off" or "fbcon=offx".
++ */
++void fb_console_check_disable(const char *cmdline)
++{
++    static const char fbc_opt[] = "fbcon=off";
++    const char *c = cmdline;
++
++    if (c == 0) {
++        return;
++    }
++
++    while (*c != 0) {
++        const char *o;
++
++        /* skip leading whitespace */
++        for (; *c == ' ' || *c == '\t'; c++) {
++        }
++        if (*c == 0) {
++            break;
++        }
++
++        /* compare the token against the option */
++        for (o = fbc_opt; *o != 0 && *c != 0 && *o == *c; o++, c++) {
++        }
++        if (*o == 0 && (*c == 0 || *c == ' ' || *c == '\t')) {
++            fbc_disabled_by_cmdline = 1;
++            fbc.enabled = 0;
++            printf("sel4 fb console: disabled by cmdline (fbcon=off), serial log unaffected\n");
++            return;
++        }
++
++        /* skip the rest of this (non-matching) token */
++        for (; *c != 0 && *c != ' ' && *c != '\t'; c++) {
++        }
++    }
++}
++
++/*
 + * Called from try_boot_sys_mbi2() right after the
 + * MULTIBOOT2_TAG_FB tag is parsed. At this point paging is
 + * on (head.S set CR0.PG before calling boot_sys) but the
@@ -737,6 +827,7 @@ index e69de29bb..c310e72dc7e0 100644
 + * where paddr_to_pptr() is valid.
 + *
 + * No-op (and leaves fbc.enabled = 0) when:
++ *   - fbcon=off was on the kernel command line
 + *   - fb_info.addr == 0                       (no tag)
 + *   - bpp != 32 or type != 1                  (not RGB32)
 + *   - phys >= PADDR_TOP  (not in direct map; 512 GiB)
@@ -749,6 +840,10 @@ index e69de29bb..c310e72dc7e0 100644
 +    uint8_t  type;
 +    uint32_t width, height, pitch;
 +    uint32_t cols, rows;
++
++    if (fbc_disabled_by_cmdline) {
++        return;  /* fbcon=off on the kernel command line */
++    }
 +
 +    /* Zero the state so a later fb_console_enter_kernel_window
 +     * is a true no-op when init disabled us. */
