@@ -625,7 +625,7 @@ config
       + parent
       + any-child
 
-+ start decorator | caps: 350 | ram: 64M
++ start decorator | caps: 6000 | ram: 64M
   + binary | name: bin/decorator
   + config
     + controls
@@ -686,7 +686,7 @@ config
       + parent
       + any-child
 
-+ start sponge-de | caps: 1000 | ram: 128M
++ start sponge-de | caps: 8000 | ram: 128M
   + binary | name: bin/sponge-de
   + config
     + theme | source: themed
@@ -715,7 +715,7 @@ config
       + parent
       + any-child
 
-+ start alpha_probe | caps: 200 | ram: 16M
++ start alpha_probe | caps: 6000 | ram: 16M
   + binary | name: bin/alpha_probe
   + config | skip_lz: yes
   + route
@@ -972,7 +972,7 @@ config
 # attribute swallows them and silently falls back to the default quota.
 # This exact bug kept fb and nitpicker at 4M while the config said
 # 20M and 64M for the whole Phase-15 bring-up.
-+ start nitpicker | ram: 256M
++ start nitpicker | caps: 20000 | ram: 256M
   + provides
     + service Gui
     + service Capture
@@ -1070,7 +1070,7 @@ config
     + service LOG                 | + parent
     + service Timer               | + child timer
 
-+ start system | caps: 8000 | ram: 1500M
++ start system | caps: 20000 | ram: 1500M
   + binary | name: bin/init
   + route
     + service ROM | label: config | + child rom_sys | label: init/system.config
