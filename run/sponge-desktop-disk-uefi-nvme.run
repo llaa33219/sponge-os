@@ -457,7 +457,7 @@ config
       + parent
       + any-child
 
-+ start decorator | caps: 350 | ram: 32M
++ start decorator | caps: 350 | ram: 64M
   + binary | name: bin/decorator
   + config
     + controls

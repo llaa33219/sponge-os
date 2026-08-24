@@ -49,11 +49,25 @@ RESOLVED (2026-08-23, v13 cap-fix build):
   success sequence; the screen showing the log after it is the
   scenario simply having finished, not a hang). GPT partitions were
   printed (xHCI + USB-stick DMA proven); USB 3.0 enumerated.
-- Pending final confirmation: desktop visible + USB mouse interaction
-  (user); test with the REBUILT media (2026-08-24, includes the HID
-  quota fix + the row-15 arena fix): sha256 `f130d273…`
-  (`var/dist/sponge-os-0.1.0-alpha-x86_64-sel4.img`). The v13
-  milestone media sha was `bc84b017…`.
+- Pending final confirmation: USB mouse interaction (user).
+- **DESKTOP VISIBLE ON THE PANEL (user report 2026-08-24, second
+  boot of the `f130d273…` media):** the HID quota fix + the row-15
+  arena fix hold on real hardware — the themed desktop renders on
+  the 17ZD90N. One follow-up defect observed: repeated
+  `flush page table entries - mapping cache full - PD: -> system ->
+  decorator out of RAM` warnings. Root cause: the per-PD
+  Page_table_registry (one Frame record per mapped page) is charged
+  against the child's pd-session RAM quota
+  (`Pd_session_component::_sliced_heap` ← `_accounted_md_ram_alloc` ←
+  `_ram_quota_guard()`); at 2560x1600 the decorator's GUI buffer
+  alone is 15.6 MiB, so `ram: 32M` sat at the edge — on exhaustion
+  the registry slab growth fails OUT_OF_RAM, core flushes the whole
+  mapping set, pages fault back in, and the cycle spams. Same
+  bug family as the fb/nitpicker quota fix. Fixed: decorator
+  `ram: 32M -> 64M` in all three UEFI desktop scenarios. Rebuilt
+  media (2026-08-24): sha256 `a154b4b5…` — test with THIS image;
+  prior shas: `f130d273…` (HID+arena, desktop-first-visible),
+  `bc84b017…` (v13 milestone).
 - **Post-v13 (desktop-invisible root causes, fixed 2026-08-24):** two
   stacked defects kept the composited desktop off the panel even with
   alpha_probe passing on hardware. (1) Run-script HID parsing: init's
