@@ -1224,7 +1224,7 @@ terminal_output gfxterm
 menuentry 'Genode on seL4 (UEFI)' {
   insmod multiboot2
 multiboot2 /boot/bender serial intel_hwp_performance phys_max=256M serial_fallback
-  module2 /boot/sel4 sel4 disable_iommu console_port=0x3f8 debug_port=0x3f8
+  module2 /boot/sel4 sel4 disable_iommu console_port=0x3f8 debug_port=0x3f8 fbcon=off
   module2 /boot/image.elf image.elf
 }
 }
