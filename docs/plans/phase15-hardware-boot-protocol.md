@@ -50,7 +50,10 @@ RESOLVED (2026-08-23, v13 cap-fix build):
   scenario simply having finished, not a hang). GPT partitions were
   printed (xHCI + USB-stick DMA proven); USB 3.0 enumerated.
 - Pending final confirmation: desktop visible + USB mouse interaction
-  (user); media sha256 `bc84b017…`.
+  (user); test with the REBUILT media (2026-08-24, includes the HID
+  quota fix + the row-15 arena fix): sha256 `f130d273…`
+  (`var/dist/sponge-os-0.1.0-alpha-x86_64-sel4.img`). The v13
+  milestone media sha was `bc84b017…`.
 - **Post-v13 (desktop-invisible root causes, fixed 2026-08-24):** two
   stacked defects kept the composited desktop off the panel even with
   alpha_probe passing on hardware. (1) Run-script HID parsing: init's
