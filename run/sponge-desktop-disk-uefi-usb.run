@@ -1114,7 +1114,32 @@ if {[bake::boot_option grub_mode production] eq "diagnostic"} {
 	puts $fh {config | period_ms: 20 | heartbeat: yes
 -}
 	close $fh
-	puts "sponge-desktop-disk-uefi-usb: diagnostic media - boot_fb heartbeat ON"
+
+	# event_filter: count events passing towards nitpicker ("ef:
+	# events=N" every 500th event; no line at all = nothing reaches
+	# the filter, i.e. usb_hid-side delivery is dead).
+	set fh [open "bin/event_filter.config" r]
+	set efc [read $fh]
+	close $fh
+	set efc [string map {"config\n" "config | heartbeat: yes\n"} $efc]
+	set fh [open "bin/event_filter.config" w]
+	puts -nonewline $fh $efc
+	close $fh
+
+	# nitpicker: "np-heartbeat: ev=N dmg=M ptr=x,y" every 5 s —
+	# ev frozen = events not reaching nitpicker (filter side),
+	# dmg frozen = damage path dead inside nitpicker,
+	# ptr static = pointer never moves (no motion events).
+	set rc_path [file join [run_dir] genode config]
+	set fh [open $rc_path r]
+	set rc [read $fh]
+	close $fh
+	set rc [string map {"  + config\n    + capture" "  + config | heartbeat: yes\n    + capture"} $rc]
+	set fh [open $rc_path w]
+	puts -nonewline $fh $rc
+	close $fh
+
+	puts "sponge-desktop-disk-uefi-usb: diagnostic media - fb/event_filter/nitpicker heartbeats ON"
 }
 
 #

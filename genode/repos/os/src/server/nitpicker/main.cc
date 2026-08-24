@@ -694,6 +694,8 @@ struct Nitpicker::Main : Focus_updater, Hover_updater,
 	 */
 	void mark_as_damaged(Rect rect) override
 	{
+		_dmg_count++;
+
 		if (_fb_screen.constructed())
 			_fb_screen->mark_as_dirty(rect);
 
@@ -755,8 +757,37 @@ struct Nitpicker::Main : Focus_updater, Hover_updater,
 	/**
 	 * Capture_session::Handler interface
 	 */
+	/*
+	 * Sponge diagnostic heartbeat (config attribute "heartbeat", default
+	 * off, diagnostic media only): one log line every 250 capture-at
+	 * requests (= 5 s at fb's 20 ms poll cadence — riding the proven
+	 * RPC path instead of a timer signal) reporting the number of
+	 * input events received, damage-marking calls, and the pointer
+	 * position. On serial-less real hardware the line surfaces on the
+	 * panel via the kernel fb console and splits the "background +
+	 * frozen cursor" failure into: events not arriving (ev frozen,
+	 * usb_hid/event_filter side), events arriving but no damage
+	 * (dmg frozen, nitpicker internal), or both alive.
+	 */
+	bool          _np_heartbeat { false };
+	unsigned long _ev_count     { 0 };
+	unsigned long _dmg_count    { 0 };
+	unsigned      _beat_ticks   { 0 };
+
 	void capture_requested(Capture_session::Label const &) override
 	{
+		if (_np_heartbeat && (++_beat_ticks % 250) == 0) {
+			auto const pointer = _user_state.pointer();
+
+			pointer.with_result(
+				[&] (Point pos) {
+					log("np-heartbeat: ev=", _ev_count, " dmg=", _dmg_count,
+					    " ptr=", pos.x, ",", pos.y); },
+				[&] (Nowhere) {
+					log("np-heartbeat: ev=", _ev_count, " dmg=", _dmg_count,
+					    " ptr=nowhere"); });
+		}
+
 		/* deliver video-sync events */
 		for (Gui_session *s = _session_list.first(); s; s = s->next())
 			s->submit_sync();
@@ -942,6 +973,8 @@ void Nitpicker::Main::handle_input_events(User_state::Input_batch batch)
 {
 	Ticks const now = _now();
 
+	_ev_count += batch.count;
+
 	User_state::Handle_input_result const result =
 		_user_state.handle_input_events(batch);
 
@@ -1101,6 +1134,9 @@ void Nitpicker::Main::_handle_config()
 
 	/* update global keys policy */
 	_global_keys.apply_config(config, _session_list);
+
+	/* Sponge diagnostic heartbeat (see capture_requested for rationale) */
+	_np_heartbeat = config.attribute_value("heartbeat", false);
 
 	/* update background color */
 	config.with_sub_node("background",
