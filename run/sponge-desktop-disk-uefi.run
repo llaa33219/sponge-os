@@ -1000,7 +1000,11 @@ config
       + parent
       + any-child
 
-+ start fb | caps: 6000 | ram: 20M  # Phase 15: boot_fb maps the whole GOP framebuffer; 150 caps exhausted the PD mapping cache (out of CAP)
+# Phase 15: boot_fb maps the whole GOP framebuffer and allocates a
+# full-size Capture buffer. No trailing comment on the start line because
+# the HID format silently falls back to the default quota for the last
+# attribute otherwise.
++ start fb | caps: 6000 | ram: 64M
   #
   # UEFI display driver (D15.13 / D15.16 / R15.2). The vendored
   # binary at genode/repos/os/src/driver/framebuffer/boot/ (LIBS

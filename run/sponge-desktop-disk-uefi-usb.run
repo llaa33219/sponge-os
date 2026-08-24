@@ -965,7 +965,14 @@ config
       + parent
       + any-child
 
-+ start nitpicker | ram: 16M
+# Phase 15: boot_fb's capture buffer alone is 2560x1600x4 = 16MiB so
+# nitpicker must be able to accept the session-quota transfer, or the
+# desktop never blits to the GOP framebuffer. NOTE: HID-format start
+# lines must NOT carry trailing comments. The last pipe-separated
+# attribute swallows them and silently falls back to the default quota.
+# This exact bug kept fb and nitpicker at 4M while the config said
+# 20M and 64M for the whole Phase-15 bring-up.
++ start nitpicker | ram: 256M
   + provides
     + service Gui
     + service Capture
@@ -1007,7 +1014,11 @@ config
       + parent
       + any-child
 
-+ start fb | caps: 6000 | ram: 20M  # Phase 15: boot_fb maps the whole GOP framebuffer; 150 caps exhausted the PD mapping cache (out of CAP)
+# Phase 15: boot_fb maps the whole GOP framebuffer (the IO_MEM dataspace)
+# and allocates a full-size Capture buffer (16 MiB at 2560x1600x32). caps
+# 6000 for the page-table-registry entries. No trailing comment on the
+# start line — see the nitpicker comment above for why.
++ start fb | caps: 6000 | ram: 64M
   + binary boot_fb
   + route
     + service ROM | label: config        | + parent | label: fb.config
