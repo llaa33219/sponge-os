@@ -51,6 +51,33 @@ RESOLVED (2026-08-23, v13 cap-fix build):
   printed (xHCI + USB-stick DMA proven); USB 3.0 enumerated.
 - Pending final confirmation: desktop visible + USB mouse interaction
   (user); media sha256 `bc84b017…`.
+- **Post-v13 (desktop-invisible root causes, fixed 2026-08-24):** two
+  stacked defects kept the composited desktop off the panel even with
+  alpha_probe passing on hardware. (1) Run-script HID parsing: init's
+  HID parser does not strip trailing `#` comments on
+  `+ start X | k: v  # comment` lines, so the last `|`-separated
+  attribute (the ram quota) silently failed and fell back to the
+  `<default>` 4M — fb (needs 64M: session + the 16 MiB Capture
+  buffer at 2560x1600) and nitpicker starved, fb's blocking
+  `Capture::Connection::buffer` upgrade never completed, boot_fb
+  never blitted. This affected BOTH QEMU-OVMF and real hardware for
+  the whole bring-up; fixed by moving comments to standalone lines
+  (`run/sponge-desktop-disk-uefi{,-usb,-nvme}.run`, fb 64M,
+  nitpicker 256M). (2) With the blit timer re-enabled, core
+  deadlocked: `Error: deadlock ahead` in
+  `Synced_range_allocator<Allocator_avl_tpl<Empty,4096>>::alloc_aligned`
+  — the 16-KiB pool's AVL slab growth re-enters the same guarded pool
+  via its md_alloc (`Core_mem_allocator` → `_map_local` → page-table /
+  vm-leaf-CNode backing → `phys_alloc_16k`) while the pool's mutex is
+  already held by the outer call (same-thread re-acquire; owner
+  pinned by .bss symbol math on the debug core, mutex = pool object
+  +0x410). Fixed by serving the pool's AVL metadata from a static
+  core-local bump arena (docs/11 ledger row 15). Upstream has no fix
+  (verified against Codeberg staging `492a510242..8629d0e91d`, 223
+  commits, none touching the allocator files). Verified: the -usb
+  scenario full storage gate PASSes with blit enabled (deadlock
+  count 0, `configd: ready`); regressions sponge-minimal,
+  sponge-fbprobe-uefi, sponge-desktop-disk (alpha-probe PASS) green.
 - **Round v8→v9 (fb-console kernel):** the vendored seL4 kernel now
   carries an early framebuffer text console (docs/11 ledger row 12,
   `docs/patches/sel4-early-fb-console.patch`, OVMF-verified per
