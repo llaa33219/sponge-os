@@ -1135,11 +1135,17 @@ if {[bake::boot_option grub_mode production] eq "diagnostic"} {
 	set rc [read $fh]
 	close $fh
 	set rc [string map {"  + config\n    + capture" "  + config | heartbeat: yes\n    + capture"} $rc]
+
+	# usb_hid: "evdev-batch first/…" — counts HID report batches at the
+	# Linux input core (the earliest observable point of the chain).
+	# frozen = USB interrupts/URBs dead (xHCI runtime delivery);
+	# climbing with frozen np ev = event RPC path is the break.
+	set rc [string map {"+ start usb_hid | caps: 180 | ram: 10M\n  + route" "+ start usb_hid | caps: 180 | ram: 10M\n  + config | evdev_diag: yes\n  + route"} $rc]
 	set fh [open $rc_path w]
 	puts -nonewline $fh $rc
 	close $fh
 
-	puts "sponge-desktop-disk-uefi-usb: diagnostic media - fb/event_filter/nitpicker heartbeats ON"
+	puts "sponge-desktop-disk-uefi-usb: diagnostic media - fb/event_filter/nitpicker/usb_hid heartbeats ON"
 }
 
 #

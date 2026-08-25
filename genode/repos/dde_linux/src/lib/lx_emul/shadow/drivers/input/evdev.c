@@ -689,10 +689,33 @@ static void evdev_event_generator(struct genode_event_generator_ctx *ctx,
 }
 
 
+/*
+ * Sponge diagnostic (usb_hid config attribute "evdev_diag", default off,
+ * set via lx_emul_evdev_diag from the usb_hid component): count input
+ * report batches reaching the Linux input core and log the first plus
+ * every 50th. This is the earliest observable point of the HID event
+ * chain — on real hardware "evdev-batch count frozen" means the USB
+ * interrupt/URB delivery died (xHCI runtime interrupts), while a
+ * climbing count with frozen downstream counters means the event RPC
+ * path (usb_hid -> event_filter -> nitpicker) is the break.
+ */
+unsigned lx_emul_evdev_diag = 0;
+
 static unsigned evdev_events(struct input_handle *handle,
                              struct input_value *values, unsigned int count)
 {
 	struct evdev *evdev = handle->private;
+
+	static unsigned diag_count = 0;
+
+	if (lx_emul_evdev_diag) {
+		diag_count++;
+		if (diag_count == 1)
+			printk("evdev-batch first: device=%s count=%u\n",
+			       dev_name(&handle->dev->dev), count);
+		else if ((diag_count % 50) == 0)
+			printk("evdev-batch count=%u\n", diag_count);
+	}
 
 	struct genode_event_generator_ctx ctx = {
 		.evdev = evdev, .values = values, .count = count };

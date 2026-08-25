@@ -32,6 +32,9 @@
 
 using namespace Genode;
 
+/* Sponge diagnostic gate for evdev.c batch counting (defined in evdev.c) */
+extern "C" unsigned lx_emul_evdev_diag;
+
 struct Main
 {
 	Env &env;
@@ -83,6 +86,9 @@ struct Main
 	{
 		config_rom.update();
 		Genode::Node const &config = config_rom.node();
+
+		lx_emul_evdev_diag = config.attribute_value("evdev_diag", false);
+
 		capslock.update(config, config_handler);
 		numlock .update(config, config_handler);
 		scrlock .update(config, config_handler);
