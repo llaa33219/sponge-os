@@ -710,10 +710,10 @@ static unsigned evdev_events(struct input_handle *handle,
 
 	if (lx_emul_evdev_diag) {
 		diag_count++;
-		if (diag_count == 1)
-			printk("evdev-batch first: device=%s count=%u\n",
-			       dev_name(&handle->dev->dev), count);
-		else if ((diag_count % 50) == 0)
+		if (diag_count <= 3)
+			printk("evdev-batch #%u: device=%s count=%u\n",
+			       diag_count, dev_name(&handle->dev->dev), count);
+		else if ((diag_count % 25) == 0)
 			printk("evdev-batch count=%u\n", diag_count);
 	}
 

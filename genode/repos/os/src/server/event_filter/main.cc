@@ -487,7 +487,7 @@ struct Event_filter::Main : Source::Factory, Source::Trigger
 	 * panel via the kernel fb console.
 	 */
 	bool          _ef_heartbeat { false };
-	bool          _first_logged { false };
+	unsigned      _first_logged { 0 };
 	unsigned long _ev_count     { 0 };
 	unsigned long _ev_milestone { 0 };
 
@@ -523,9 +523,10 @@ struct Event_filter::Main : Source::Factory, Source::Trigger
 			}
 			Counting_batch counting { batch };
 			_output->generate(counting);
-			if (counting._first_valid && !_first_logged) {
-				log("ef: first event: ", counting._first);
-				_first_logged = true;
+			if (counting._first_valid && _first_logged < 3) {
+				log("ef: event #", (unsigned)(_first_logged + 1), ": ",
+				    counting._first);
+				_first_logged++;
 			}
 			_ev_count += counting._n;
 			if (_ev_count / 100 > _ev_milestone / 100) {

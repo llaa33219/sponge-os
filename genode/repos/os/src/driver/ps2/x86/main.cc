@@ -72,6 +72,9 @@ struct Ps2::Main
 
 		Node const &config = _config.node();
 
+		/* Sponge diagnostic gate for Irq_handler packet counting */
+		ps2_diag = config.attribute_value("ps2_diag", false);
+
 		bool const system_was_constructed = _system.constructed();
 
 		_system.conditional(config.attribute_value("system", false), _env, "system");
