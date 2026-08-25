@@ -13,6 +13,7 @@
 
 #include <base/component.h>
 #include <base/env.h>
+#include <base/attached_rom_dataspace.h>
 
 #include <lx_emul/init.h>
 #include <lx_emul/shared_dma_buffer.h>
@@ -28,6 +29,19 @@ using namespace Genode;
 
 
 static bool _bios_handoff;
+
+/*
+ * Sponge diagnostic (usb-driver config attribute "host_diag", default
+ * off, read once at construction): count completions/IRQ wakeups of
+ * the xHCI host driver — the lowest observable point of the USB input
+ * chain ABOVE Genode core's interrupt delivery. On real hardware:
+ * 'host-sig frozen while usb-sig frozen' means the xHCI interrupt
+ * itself stopped arriving at the driver (core/kernel interrupt path,
+ * e.g. MSI delivery); 'host-sig climbs while usb-sig frozen' pins the
+ * stall to the driver->client (usb_hid) completion forwarding.
+ */
+static bool _host_diag = false;
+static unsigned _host_sig_count = 0;
 
 
 extern "C" int inhibit_pci_fixup(char const *name)
@@ -52,6 +66,14 @@ struct Main
 
 	void handle_signal()
 	{
+		if (_host_diag) {
+			_host_sig_count++;
+			if (_host_sig_count <= 5)
+				log("host-sig #", _host_sig_count);
+			else if ((_host_sig_count % 25) == 0)
+				log("host-sig count=", _host_sig_count);
+		}
+
 		lx_user_handle_io();
 		Lx_kit::env().scheduler.execute();
 
@@ -64,6 +86,8 @@ struct Main
 			Lx_kit::Initial_config config { env };
 
 			_bios_handoff = config.rom.node().attribute_value("bios_handoff", true);
+
+			_host_diag = config.rom.node().attribute_value("host_diag", false);
 		}
 
 		Lx_kit::initialize(env, signal_handler);

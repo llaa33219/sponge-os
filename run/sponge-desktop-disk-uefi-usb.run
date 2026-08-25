@@ -1145,6 +1145,12 @@ if {[bake::boot_option grub_mode production] eq "diagnostic"} {
 	# ps2: "ps2-irq #N dev=mouse" — counts the laptop's PS/2 (touchpad/EC)
 	# interrupts, separating the PS/2 input path from the USB mouse path.
 	set rc [string map {"+ start ps2 | caps: 100 | ram: 1280K\n" "+ start ps2 | caps: 100 | ram: 1280K\n  + config | ps2_diag: yes\n"} $rc]
+
+	# usb host driver: "host-sig #N" — lowest observable point of the USB
+	# chain above core's interrupt delivery. Frozen host-sig + usb-sig =
+	# xHCI interrupts not arriving at the driver (core/kernel MSI path);
+	# climbing host-sig + frozen usb-sig = driver->client forwarding.
+	set rc [string map {"  + config\n    + report | devices: yes" "  + config | host_diag: yes\n    + report | devices: yes"} $rc]
 	set fh [open $rc_path w]
 	puts -nonewline $fh $rc
 	close $fh
