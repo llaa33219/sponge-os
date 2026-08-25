@@ -84,10 +84,20 @@ struct Main
 		 * layer (URB completion -> HID report path), whereas a frozen
 		 * count pins dead USB interrupt delivery (xHCI runtime).
 		 */
-		if (_diag_enabled && ++_sig_count == 1)
-			log("usb-sig first");
-		if (_diag_enabled && _sig_count && (_sig_count % 200) == 0)
-			log("usb-sig count=", _sig_count);
+		if (_diag_enabled) {
+			++_sig_count;
+			/*
+			 * Granularity: first 5 individually, then every 25th —
+			 * a healthy mouse (60-125 Hz) crosses 25 signals within
+			 * a second of movement, so lines appear WHILE moving and
+			 * the settled panel keeps them. (An earlier every-200th
+			 * cut never printed even in QEMU's 150-move reference.)
+			 */
+			if (_sig_count <= 5)
+				log("usb-sig #", _sig_count);
+			else if ((_sig_count % 25) == 0)
+				log("usb-sig count=", _sig_count);
+		}
 
 		lx_user_handle_io();
 		Lx_kit::env().scheduler.execute();
