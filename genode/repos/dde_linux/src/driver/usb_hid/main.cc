@@ -52,6 +52,10 @@ struct Main
 	Signal_handler<Main> config_handler  { env.ep(), *this,
 	                                       &Main::handle_config  };
 
+	bool     _diag_enabled  { false };
+	bool     _diag_announced { false };
+	unsigned _sig_count     { 0 };
+
 	Main(Env &env)
 	:
 		env(env)
@@ -72,6 +76,19 @@ struct Main
 
 	void handle_signal()
 	{
+		/*
+		 * Sponge diagnostic (config "evdev_diag"): count wakeups of the
+		 * component — the usb driver signals this handler on transfer
+		 * completions, so on real hardware the count climbing while
+		 * evdev-batch stays frozen pins the stall INSIDE the DDE/lx
+		 * layer (URB completion -> HID report path), whereas a frozen
+		 * count pins dead USB interrupt delivery (xHCI runtime).
+		 */
+		if (_diag_enabled && ++_sig_count == 1)
+			log("usb-sig first");
+		if (_diag_enabled && _sig_count && (_sig_count % 200) == 0)
+			log("usb-sig count=", _sig_count);
+
 		lx_user_handle_io();
 		Lx_kit::env().scheduler.execute();
 	}
@@ -87,7 +104,12 @@ struct Main
 		config_rom.update();
 		Genode::Node const &config = config_rom.node();
 
-		lx_emul_evdev_diag = config.attribute_value("evdev_diag", false);
+		_diag_enabled = config.attribute_value("evdev_diag", false);
+		lx_emul_evdev_diag = _diag_enabled;
+		if (_diag_enabled && !_diag_announced) {
+			_diag_announced = true;
+			log("usb_hid diag on");
+		}
 
 		capslock.update(config, config_handler);
 		numlock .update(config, config_handler);
