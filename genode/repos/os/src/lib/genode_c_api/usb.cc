@@ -30,6 +30,13 @@
 using namespace Genode;
 using namespace Usb;
 
+/*
+ * Sponge diagnostic gate (set from the usb_host driver's config
+ * handler; default off, so usb_net/usb_serial — which also link
+ * this file — keep the counters disabled).
+ */
+bool usb_host_diag = false;
+
 
 using String_item = String<64>;
 
@@ -250,6 +257,9 @@ class Packet_handler
 		genode_shared_dataspace         &_ds;
 		Packet_stream_tx::Rpc_object<Tx> _tx;
 
+		/* Sponge diagnostic (host_diag): completions queued to client */
+		unsigned _ack_count { 0 };
+
 		Constructible<Packet_descriptor> _packets[MAX_PACKETS] { };
 
 		Capability<SESSION> _cap;
@@ -327,6 +337,22 @@ class Packet_handler
 			p.payload_return_size = actual_size;
 			if (!_tx.sink()->try_ack_packet(p))
 				error("USB client's ack queue run full, looses packet ack!");
+
+			/*
+			 * Sponge diagnostic (host_diag, see usb_host/pc/main.cc):
+			 * count completions queued toward the client. On real
+			 * hardware 'srv-ack climbing while usb-sig frozen' pins
+			 * the break to the packet-stream wakeup suppression
+			 * (ack queued into a non-empty ack queue never arms
+			 * _tx_wakeup_needed -> no signal -> client sleeps).
+			 */
+			if (usb_host_diag) {
+				_ack_count++;
+				if (_ack_count <= 5)
+					log("srv-ack #", _ack_count);
+				else if ((_ack_count % 25) == 0)
+					log("srv-ack count=", _ack_count);
+			}
 		}
 
 		virtual void

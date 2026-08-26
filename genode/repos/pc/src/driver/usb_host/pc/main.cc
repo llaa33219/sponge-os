@@ -41,6 +41,9 @@ static bool _bios_handoff;
  * stall to the driver->client (usb_hid) completion forwarding.
  */
 static bool _host_diag = false;
+
+/* Sponge diagnostic gate consumed by genode_c_api/usb.cc (defined there) */
+extern bool usb_host_diag;
 static unsigned _host_sig_count = 0;
 
 
@@ -88,6 +91,7 @@ struct Main
 			_bios_handoff = config.rom.node().attribute_value("bios_handoff", true);
 
 			_host_diag = config.rom.node().attribute_value("host_diag", false);
+			usb_host_diag = _host_diag;
 		}
 
 		Lx_kit::initialize(env, signal_handler);
