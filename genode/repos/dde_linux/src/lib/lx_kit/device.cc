@@ -42,8 +42,30 @@ bool Device::Io_port::match(uint16_t addr)
  ** Device::Irq **
  *****************/
 
+/*
+ * Sponge diagnostic (set by a component's config handler, e.g. the
+ * usb host driver's 'host_diag'): count REAL device-interrupt signal
+ * deliveries — this handler fires once per actual IRQ/MSI signal,
+ * unlike component-level signal handlers that also wake on timers
+ * and RPCs. The definitive rung for "interrupts stopped arriving":
+ * 'dev-irq frozen while URBs time out' means the interrupt path
+ * (core/kernel MSI delivery) died; 'dev-irq climbing with timeouts'
+ * means the controller raises interrupts but no transfer completes.
+ */
+bool lx_kit_dev_irq_diag = false;
+
+static unsigned lx_kit_dev_irq_count = 0;
+
 void Device::Irq::_handle()
 {
+	if (lx_kit_dev_irq_diag) {
+		lx_kit_dev_irq_count++;
+		if (lx_kit_dev_irq_count <= 30)
+			Genode::log("dev-irq #", lx_kit_dev_irq_count);
+		else if ((lx_kit_dev_irq_count % 25) == 0)
+			Genode::log("dev-irq count=", lx_kit_dev_irq_count);
+	}
+
 	switch (state) {
 	case IDLE:           state = PENDING;        break;
 	case PENDING:        state = PENDING;        break;

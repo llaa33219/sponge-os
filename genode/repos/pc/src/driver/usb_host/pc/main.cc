@@ -42,8 +42,9 @@ static bool _bios_handoff;
  */
 static bool _host_diag = false;
 
-/* Sponge diagnostic gate consumed by genode_c_api/usb.cc (defined there) */
+/* Sponge diagnostic gates consumed by genode_c_api/usb.cc and lx_kit/device.cc */
 extern bool usb_host_diag;
+extern bool lx_kit_dev_irq_diag;
 static unsigned _host_sig_count = 0;
 
 
@@ -92,6 +93,7 @@ struct Main
 
 			_host_diag = config.rom.node().attribute_value("host_diag", false);
 			usb_host_diag = _host_diag;
+			lx_kit_dev_irq_diag = _host_diag;
 		}
 
 		Lx_kit::initialize(env, signal_handler);
