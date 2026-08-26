@@ -88,30 +88,37 @@ RESOLVED (2026-08-23, v13 cap-fix build):
   default 200!), decorator 6000, sponge-de 8000, alpha_probe 6000,
   system 20000 (all three UEFI scenarios). QEMU after: flush count
   0, panel + cursor verified on the FB. Media `58ace677…`.
-- **Round 5 (user report 5, in flight):** real hw (test media
+- **Round 5 (user report 5):** real hw (test media
   5ef6a904): mouse enumerated, alpha-probe PASS on panel, but screen
-  still background + cursor, cursor frozen. alpha-probe passing proves
-  the panel IS in nitpicker's composition, and the visible
-  background+cursor proves tick-0's full blit reached the scanned-out
-  FB — so the failure is isolated to post-tick-0 blit liveness or
-  damage delivery on real hw only. Built the decisive diagnostic:
-  boot_fb `heartbeat` config knob (test media only, `fb.config`
-  `heartbeat: yes` staged when grub_mode=diagnostic) logs
-  `heartbeat: tick=N px5s=M` every 5 s — on the panel via the fb
-  console. Reading: tick frozen ⇒ fb/timer dead (number = when);
-  ticks advance + px5s 0 while moving the mouse ⇒ damage not
-  delivered (nitpicker/event side); ticks + px5s > 0 ⇒ blits reach
-  the FB and the composition is what it is (write-path/scanout
-  question). Includes a real fix found on the way: boot_fb never
-  read its config ROM at construction (sigh handlers don't fire for
-  the initial ROM), so period_ms/heartbeat never applied at boot —
-  ctor now calls `_handle_config()` once. QEMU-verified on the test
-  media: heartbeat every 5 s, `px5s=1404800` exactly in the window
-  of QMP mouse moves, 0 when idle; production gate PASS (heartbeat
-  off). Media: test `e471b62d…`
-  (`var/dist/sponge-test2-heartbeat-uefi-usb.img`), production
-  `fdef6af2…` (functionally identical to 58ace677 for production —
-  heartbeat off, same period).
+  still background + cursor, cursor frozen. The boot_fb `heartbeat`
+  knob (test media only) was added to read blit liveness off the
+  panel: `heartbeat: tick=N px5s=M` every 5 s. Includes a real fix
+  found on the way: boot_fb never read its config ROM at
+  construction (sigh handlers don't fire for the initial ROM) —
+  ctor now calls `_handle_config()` once. Media history: test
+  `e471b62d…`, production `fdef6af2…`.
+- **Round 6 RESOLVED (2026-08-26) — the mouse stall was upstream bug
+  genodelabs/genode#5338:** five diagnostic rounds (test3..test10)
+  built a counter ladder through the input chain (fb px5s / np ev+dmg
+  / ef events / evdev-batch / usb-sig / host-sig / srv-ack) and the
+  real-hw observations climbed it: fb alive with px5s frozen at
+  4096576 (full initial blit + 24x24 cursor-appear) and np ev=1;
+  mouse+touchpad inert (touchpad = I2C-HID, the pre-registered gap,
+  expected); host-sig climbing with usb-sig frozen at #1..#5 and
+  replug only bumping host-sig — the usb driver kept receiving xHCI
+  completions while usb_hid slept forever. The same signature
+  reproduced transiently in QEMU (~35 s window, spontaneous recovery
+  via an unrelated signal) — a lost-wakeup, not a dead producer.
+  Root cause: `Packet_stream` wakeup suppression (signal only on the
+  empty→nonempty transition flag) can skip the wakeup when producer
+  and consumer observe different queue states — upstream issue #5338,
+  open since 2024-09 and unfixed through 26.08 (verified; nothing to
+  backport). Fixed in-tree as docs/11 ledger row 16: `tx_wakeup()`
+  also signals when the tx queue is non-empty (self-healing; worst
+  case a coalesced redundant signal). QEMU 3-phase soak (post-probe
+  burst + 20 s/45 s idle bursts) shows uninterrupted flow; storage +
+  minimal regressions green. Pending: real-hw confirmation on the
+  row-16 media (test11).
 - **Post-v13 (desktop-invisible root causes, fixed 2026-08-24):** two
   stacked defects kept the composited desktop off the panel even with
   alpha_probe passing on hardware. (1) Run-script HID parsing: init's
