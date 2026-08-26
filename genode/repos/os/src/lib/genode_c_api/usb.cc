@@ -259,6 +259,7 @@ class Packet_handler
 
 		/* Sponge diagnostic (host_diag): completions queued to client */
 		unsigned _ack_count { 0 };
+		unsigned _req_count { 0 };
 
 		Constructible<Packet_descriptor> _packets[MAX_PACKETS] { };
 
@@ -348,7 +349,7 @@ class Packet_handler
 			 */
 			if (usb_host_diag) {
 				_ack_count++;
-				if (_ack_count <= 5)
+				if (_ack_count <= 30)
 					log("srv-ack #", _ack_count);
 				else if ((_ack_count % 25) == 0)
 					log("srv-ack count=", _ack_count);
@@ -401,8 +402,17 @@ class Packet_handler
 		virtual void wakeup() { _tx.sink()->wakeup(); }
 
 		virtual bool request(genode_usb_req_callback_t const callback,
-                             void                           *opaque_data)
+                             void *opaque_data)
 		{
+			/*
+			 * Sponge diagnostic (host_diag): count client packets fetched
+			 * for the driver ("srv-req"). Climbing during mouse movement
+			 * means the client's URB resubmissions ARE being picked up
+			 * (arming happens); frozen means the submit notification was
+			 * never delivered and no transfer gets armed at all.
+			 */
+			unsigned req_n = 0;
+
 			bool ret = false;
 			_for_each_packet([&] (Constructible<Packet_descriptor> &cp) {
 				char *addr = _tx.sink()->packet_content(*cp);
@@ -412,7 +422,17 @@ class Packet_handler
 				genode_buffer buf { addr, addr ? cp->size() : 0 };
 				_handle_request(cp, buf, callback, opaque_data);
 				ret = true;
+				req_n++;
 			});
+
+			if (usb_host_diag && req_n) {
+				_req_count += req_n;
+				if (_req_count <= 30)
+					log("srv-req #", _req_count);
+				else if ((_req_count % 25) == 0)
+					log("srv-req count=", _req_count);
+			}
+
 			return ret;
 		}
 

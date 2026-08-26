@@ -71,7 +71,7 @@ struct Main
 	{
 		if (_host_diag) {
 			_host_sig_count++;
-			if (_host_sig_count <= 5)
+			if (_host_sig_count <= 30)
 				log("host-sig #", _host_sig_count);
 			else if ((_host_sig_count % 25) == 0)
 				log("host-sig count=", _host_sig_count);

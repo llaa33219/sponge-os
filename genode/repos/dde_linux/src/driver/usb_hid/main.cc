@@ -93,7 +93,7 @@ struct Main
 			 * the settled panel keeps them. (An earlier every-200th
 			 * cut never printed even in QEMU's 150-move reference.)
 			 */
-			if (_sig_count <= 5)
+			if (_sig_count <= 30)
 				log("usb-sig #", _sig_count);
 			else if ((_sig_count % 25) == 0)
 				log("usb-sig count=", _sig_count);
