@@ -1,8 +1,0 @@
-base
-genode_c_api
-jitterentropy
-os
-report_session
-terminal_session
-usb_session
-virt_linux

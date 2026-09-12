@@ -1,3 +1,0 @@
-# enable use of compiler cache
-#CCACHE := yes
-

@@ -1,3 +1,0 @@
-proc ipstack { } { return lxip }
-
-source ${genode_dir}/repos/dde_linux/run/sockopt_libc.inc

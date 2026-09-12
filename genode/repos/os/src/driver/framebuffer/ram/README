@@ -1,2 +1,0 @@
-Framebuffer driver for Qemu's 'ramfb' device. In order to enablethe RAM
-framebuffer add the '-device ramfb' option to Qemu's command line.

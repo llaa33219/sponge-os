@@ -1,6 +1,0 @@
-#ifndef _INCLUDE__UTIL__FUTEX_H_
-#define _INCLUDE__UTIL__FUTEX_H_
-
-#define UTIL_FUTEX_SUPPORTED 0
-
-#endif /* _INCLUDE__UTIL__FUTEX_H_ */

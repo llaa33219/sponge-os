@@ -1,8 +1,0 @@
-
-##
-## Run-tool configuration
-##
-
-# create depot archives and update recipe versions automatically
-#RUN_OPT += --depot-auto-update
-

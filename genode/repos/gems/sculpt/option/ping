@@ -1,5 +1,0 @@
-option
-+ child ping | pkg: ping
-  + connect
-    + nic | + child pc_nic
--

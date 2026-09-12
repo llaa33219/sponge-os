@@ -1,8 +1,0 @@
-base
-base-linux
-net
-nic_driver
-nic_session
-os
-report_session
-uplink_session

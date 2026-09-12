@@ -1,9 +1,0 @@
-base
-libc
-mesa
-os
-qt5_base
-qt5_component
-stdcxx
-timer_session
-vfs

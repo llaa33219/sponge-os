@@ -1,7 +1,0 @@
-base
-gmp
-libc
-posix
-stdcxx
-zlib
-format

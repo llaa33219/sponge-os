@@ -1,3 +1,0 @@
-# enable parallel build
-#MAKE += -j4
-

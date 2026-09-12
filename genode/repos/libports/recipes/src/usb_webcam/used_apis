@@ -1,8 +1,0 @@
-base
-os
-framebuffer_session
-gui_session
-input_session
-libc
-libuvc
-libyuv

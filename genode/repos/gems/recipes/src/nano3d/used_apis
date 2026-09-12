@@ -1,9 +1,0 @@
-base
-os
-blit
-framebuffer_session
-input_session
-gui_session
-timer_session
-nano3d
-polygon_gfx

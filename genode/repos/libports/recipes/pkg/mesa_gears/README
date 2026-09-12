@@ -1,4 +1,0 @@
-This is a port of the infamous "glxgears" demo to straight EGL
-Port by Dane Rushton 10 July 2005
-
-This package contains the port to Genode.
