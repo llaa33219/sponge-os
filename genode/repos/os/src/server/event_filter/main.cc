@@ -450,9 +450,6 @@ struct Event_filter::Main : Source::Factory, Source::Trigger
 	{
 		Node const &config = _config.node();
 
-		/* Sponge diagnostic heartbeat (see trigger_generate for rationale) */
-		_ef_heartbeat = config.attribute_value("heartbeat", false);
-
 		_event_root.apply_config(config);
 
 		try {
@@ -479,61 +476,13 @@ struct Event_filter::Main : Source::Factory, Source::Trigger
 	 * Process pending events, which may originate from an event client or
 	 * artificially emitted by a filter (character-repeat events).
 	 */
-	/*
-	 * Sponge diagnostic (config "heartbeat", default off): count events
-	 * that pass the filter towards nitpicker and log every 100th.
-	 * Distinguishes "mouse events never reach the filter" (usb_hid
-	 * side) from "pass but die downstream" — printed on the real-hw
-	 * panel via the kernel fb console.
-	 */
-	bool          _ef_heartbeat { false };
-	unsigned      _first_logged { 0 };
-	unsigned long _ev_count     { 0 };
-	unsigned long _ev_milestone { 0 };
-
-	struct Counting_batch : Event::Session_client::Batch
-	{
-		Event::Session_client::Batch &_impl;
-		unsigned                     _n { 0 };
-		Input::Event                 _first { };
-		bool                         _first_valid { false };
-
-		Counting_batch(Event::Session_client::Batch &impl) : _impl(impl) { }
-
-		void submit(Input::Event const &event) override
-		{
-			if (!_first_valid) {
-				_first = event;
-				_first_valid = true;
-			}
-			_impl.submit(event);
-			++_n;
-		}
-	};
-
 	void trigger_generate() override
 	{
 		if (!_output.constructed())
 			return;
 
 		_event_connection.with_batch([&] (Event::Session_client::Batch &batch) {
-			if (!_ef_heartbeat) {
-				_output->generate(batch);
-				return;
-			}
-			Counting_batch counting { batch };
-			_output->generate(counting);
-			if (counting._first_valid && _first_logged < 3) {
-				log("ef: event #", (unsigned)(_first_logged + 1), ": ",
-				    counting._first);
-				_first_logged++;
-			}
-			_ev_count += counting._n;
-			if (_ev_count / 100 > _ev_milestone / 100) {
-				log("ef: events=", _ev_count);
-				_ev_milestone = _ev_count;
-			}
-		});
+			_output->generate(batch); });
 
 		if (_config_update_pending && _event_root.all_sessions_idle())
 			Signal_transmitter(_config_handler).submit();

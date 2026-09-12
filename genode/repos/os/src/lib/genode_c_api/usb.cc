@@ -30,13 +30,6 @@
 using namespace Genode;
 using namespace Usb;
 
-/*
- * Sponge diagnostic gate (set from the usb_host driver's config
- * handler; default off, so usb_net/usb_serial — which also link
- * this file — keep the counters disabled).
- */
-bool usb_host_diag = false;
-
 
 using String_item = String<64>;
 
@@ -257,10 +250,6 @@ class Packet_handler
 		genode_shared_dataspace         &_ds;
 		Packet_stream_tx::Rpc_object<Tx> _tx;
 
-		/* Sponge diagnostic (host_diag): completions queued to client */
-		unsigned _ack_count { 0 };
-		unsigned _req_count { 0 };
-
 		Constructible<Packet_descriptor> _packets[MAX_PACKETS] { };
 
 		Capability<SESSION> _cap;
@@ -338,22 +327,6 @@ class Packet_handler
 			p.payload_return_size = actual_size;
 			if (!_tx.sink()->try_ack_packet(p))
 				error("USB client's ack queue run full, looses packet ack!");
-
-			/*
-			 * Sponge diagnostic (host_diag, see usb_host/pc/main.cc):
-			 * count completions queued toward the client. On real
-			 * hardware 'srv-ack climbing while usb-sig frozen' pins
-			 * the break to the packet-stream wakeup suppression
-			 * (ack queued into a non-empty ack queue never arms
-			 * _tx_wakeup_needed -> no signal -> client sleeps).
-			 */
-			if (usb_host_diag) {
-				_ack_count++;
-				if (_ack_count <= 30)
-					log("srv-ack #", _ack_count);
-				else if ((_ack_count % 25) == 0)
-					log("srv-ack count=", _ack_count);
-			}
 		}
 
 		virtual void
@@ -404,15 +377,6 @@ class Packet_handler
 		virtual bool request(genode_usb_req_callback_t const callback,
                              void *opaque_data)
 		{
-			/*
-			 * Sponge diagnostic (host_diag): count client packets fetched
-			 * for the driver ("srv-req"). Climbing during mouse movement
-			 * means the client's URB resubmissions ARE being picked up
-			 * (arming happens); frozen means the submit notification was
-			 * never delivered and no transfer gets armed at all.
-			 */
-			unsigned req_n = 0;
-
 			bool ret = false;
 			_for_each_packet([&] (Constructible<Packet_descriptor> &cp) {
 				char *addr = _tx.sink()->packet_content(*cp);
@@ -422,17 +386,7 @@ class Packet_handler
 				genode_buffer buf { addr, addr ? cp->size() : 0 };
 				_handle_request(cp, buf, callback, opaque_data);
 				ret = true;
-				req_n++;
 			});
-
-			if (usb_host_diag && req_n) {
-				_req_count += req_n;
-				if (_req_count <= 30)
-					log("srv-req #", _req_count);
-				else if ((_req_count % 25) == 0)
-					log("srv-req count=", _req_count);
-			}
-
 			return ret;
 		}
 

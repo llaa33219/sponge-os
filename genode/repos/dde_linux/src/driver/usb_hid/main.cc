@@ -32,9 +32,6 @@
 
 using namespace Genode;
 
-/* Sponge diagnostic gate for evdev.c batch counting (defined in evdev.c) */
-extern "C" unsigned lx_emul_evdev_diag;
-
 struct Main
 {
 	Env &env;
@@ -51,10 +48,6 @@ struct Main
 	                                       &Main::handle_usb_rom };
 	Signal_handler<Main> config_handler  { env.ep(), *this,
 	                                       &Main::handle_config  };
-
-	bool     _diag_enabled  { false };
-	bool     _diag_announced { false };
-	unsigned _sig_count     { 0 };
 
 	Main(Env &env)
 	:
@@ -76,29 +69,6 @@ struct Main
 
 	void handle_signal()
 	{
-		/*
-		 * Sponge diagnostic (config "evdev_diag"): count wakeups of the
-		 * component — the usb driver signals this handler on transfer
-		 * completions, so on real hardware the count climbing while
-		 * evdev-batch stays frozen pins the stall INSIDE the DDE/lx
-		 * layer (URB completion -> HID report path), whereas a frozen
-		 * count pins dead USB interrupt delivery (xHCI runtime).
-		 */
-		if (_diag_enabled) {
-			++_sig_count;
-			/*
-			 * Granularity: first 5 individually, then every 25th —
-			 * a healthy mouse (60-125 Hz) crosses 25 signals within
-			 * a second of movement, so lines appear WHILE moving and
-			 * the settled panel keeps them. (An earlier every-200th
-			 * cut never printed even in QEMU's 150-move reference.)
-			 */
-			if (_sig_count <= 30)
-				log("usb-sig #", _sig_count);
-			else if ((_sig_count % 25) == 0)
-				log("usb-sig count=", _sig_count);
-		}
-
 		lx_user_handle_io();
 		Lx_kit::env().scheduler.execute();
 	}
@@ -113,13 +83,6 @@ struct Main
 	{
 		config_rom.update();
 		Genode::Node const &config = config_rom.node();
-
-		_diag_enabled = config.attribute_value("evdev_diag", false);
-		lx_emul_evdev_diag = _diag_enabled;
-		if (_diag_enabled && !_diag_announced) {
-			_diag_announced = true;
-			log("usb_hid diag on");
-		}
 
 		capslock.update(config, config_handler);
 		numlock .update(config, config_handler);
