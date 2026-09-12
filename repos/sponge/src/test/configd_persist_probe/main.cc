@@ -54,7 +54,7 @@
 #include <timer_session/connection.h>
 #include <util/string.h>
 #include <util/xml_node.h>
-#include <vfs/simple_env.h>
+#include <vfs/root.h>
 
 namespace {
 
@@ -64,7 +64,7 @@ struct Probe
 
 	Timer::Connection                          _timer    { _env };
 	Genode::Heap                                _heap     { _env.ram(), _env.rm() };
-	Genode::Constructible<Genode::Vfs::Simple_env> _vfs_env { };
+	Genode::Constructible<Genode::Vfs::Root> _vfs_env { };
 
 	Genode::Expanding_reporter     _request   { _env, "request", "config_request" };
 	Genode::Attached_rom_dataspace _result    { _env, "config_result" };
@@ -171,7 +171,7 @@ struct Probe
 		if (!_vfs_env.constructed())
 			return false;
 
-		Genode::Vfs::File_system &vfs = _vfs_env->root_dir();
+		Genode::Vfs::File_system &vfs = _vfs_env->fs();
 
 		Genode::Vfs::Directory_service::Stat stat { };
 		if (vfs.stat("/store.xml", stat) !=
@@ -193,15 +193,21 @@ struct Probe
 		Genode::size_t total { 0 };
 		bool ok { true };
 		while (total < stat.size) {
-			handle->seek(total);
-			handle->fs().queue_read(handle, stat.size - total);
-			Genode::size_t n { 0 };
-			Genode::Vfs::File_io_service::Read_result r;
-			while ((r = handle->fs().complete_read(handle,
-			            Genode::Byte_range_ptr(buf + total, buf_size - total),
-			            n)) == Genode::Vfs::File_io_service::READ_QUEUED)
+			Genode::Vfs::Vfs_handle::Read_result r
+				{ Genode::Vfs::Vfs_handle::Read_error::DENIED };
+			for (;;) {
+				r = handle->read(Genode::Vfs::At { .pos = total },
+				                 Genode::Byte_range_ptr(buf + total,
+				                                        stat.size - total));
+				if (r != Genode::Vfs::Vfs_handle::Read_error::RETRY)
+					break;
 				_vfs_env->io().commit_and_wait();
-			if (r != Genode::Vfs::File_io_service::READ_OK || n == 0) {
+			}
+			Genode::size_t const n = r.convert<Genode::size_t>(
+				[](Genode::size_t bytes) { return bytes; },
+				[](Genode::Vfs::Vfs_handle::Read_error) {
+					return Genode::size_t(0); });
+			if (n == 0) {
 				ok = false; break;
 			}
 			total += n;
@@ -264,7 +270,7 @@ struct Probe
 		 *
 		 * The probe's <vfs> is supplied by its own <config><vfs/></config>
 		 * node — same opt-in gate as the daemon. We use Node API so
-		 * the Simple_env constructor (which takes Node const&) is
+		 * the Vfs::Root constructor (which takes Node const&) is
 		 * satisfied directly without an Xml->Node private-conversion.
 		 */
 		try {

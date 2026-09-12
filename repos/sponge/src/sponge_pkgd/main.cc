@@ -71,7 +71,7 @@
 #include <util/string.h>
 #include <util/xml_generator.h>
 #include <util/xml_node.h>
-#include <vfs/simple_env.h>
+#include <vfs/root.h>
 
 namespace Sponge::Pkgd {
 
@@ -331,7 +331,7 @@ class Sponge::Pkgd::Main
 
 		Genode::Attached_rom_dataspace         _config_rom { _env, "config" };
 		Genode::Heap                           _heap       { _env.ram(), _env.rm() };
-		Genode::Constructible<Genode::Vfs::Simple_env> _vfs_env { };
+		Genode::Constructible<Genode::Vfs::Root> _vfs_env { };
 
 		/*
 		 * Disk-served binary path prefix (Phase 8 P2, docs/14 §4.4/§4.6).
@@ -1581,7 +1581,7 @@ Genode::size_t const Sponge::Pkgd::Main::STORE_BUF    = 4096;
 
 /*
  * Build the Vfs environment only when the component <config> carries a
- * <vfs> node. Constructing Vfs::Simple_env mounts the <fs/> plugin,
+ * <vfs> node. Constructing Vfs::Root mounts the <fs/> plugin,
  * which opens a File_system session routed by the scenario (e.g. to an
  * lx_fs server backed by a host directory). With no <vfs> node the
  * store stays disabled and the daemon behaves exactly as the in-memory
@@ -1645,7 +1645,7 @@ void Sponge::Pkgd::Main::_load_store()
 {
 	if (!_store_enabled()) return;
 
-	Genode::Vfs::File_system &vfs = _vfs_env->root_dir();
+	Genode::Vfs::File_system &vfs = _vfs_env->fs();
 
 	Genode::Vfs::Directory_service::Stat stat { };
 	if (vfs.stat(STORE_PATH, stat) != Genode::Vfs::Directory_service::STAT_OK) {
@@ -1670,15 +1670,21 @@ void Sponge::Pkgd::Main::_load_store()
 	Genode::size_t total { 0 };
 	bool ok { true };
 	while (total < stat.size) {
-		handle->seek(total);
-		handle->fs().queue_read(handle, stat.size - total);
-		Genode::size_t n { 0 };
-		Genode::Vfs::File_io_service::Read_result r;
-		while ((r = handle->fs().complete_read(handle,
-		            Genode::Byte_range_ptr(buf + total, sizeof(buf) - total),
-		            n)) == Genode::Vfs::File_io_service::READ_QUEUED)
+		Genode::Vfs::Vfs_handle::Read_result r
+			{ Genode::Vfs::Vfs_handle::Read_error::DENIED };
+		for (;;) {
+			r = handle->read(Genode::Vfs::At { .pos = total },
+			                 Genode::Byte_range_ptr(buf + total,
+			                                        stat.size - total));
+			if (r != Genode::Vfs::Vfs_handle::Read_error::RETRY)
+				break;
 			_vfs_env->io().commit_and_wait();
-		if (r != Genode::Vfs::File_io_service::READ_OK || n == 0) {
+		}
+		Genode::size_t const n = r.convert<Genode::size_t>(
+			[](Genode::size_t bytes) { return bytes; },
+			[](Genode::Vfs::Vfs_handle::Read_error) {
+				return Genode::size_t(0); });
+		if (n == 0) {
 			ok = false; break;
 		}
 		total += n;
@@ -1765,7 +1771,7 @@ void Sponge::Pkgd::Main::_save_store()
 	append("</sponge-installed>");
 	Genode::size_t const len = pos;
 
-	Genode::Vfs::File_system &vfs = _vfs_env->root_dir();
+	Genode::Vfs::File_system &vfs = _vfs_env->fs();
 
 	Genode::Vfs::Vfs_handle *handle { nullptr };
 	if (vfs.open(STORE_PATH,
@@ -1777,29 +1783,30 @@ void Sponge::Pkgd::Main::_save_store()
 	}
 	Genode::Vfs::Vfs_handle::Guard guard(handle);
 
-	handle->fs().ftruncate(handle, len);
+	handle->ftruncate(len);
 
 	Genode::size_t off { 0 };
 	bool ok { true };
 	while (off < len) {
-		handle->seek(off);
-		Genode::size_t n { 0 };
-		Genode::Vfs::File_io_service::Write_result const w =
-			handle->fs().write(handle,
-			    Genode::Const_byte_range_ptr(buf + off, len - off), n);
-		if (w == Genode::Vfs::File_io_service::WRITE_OK) {
-			if (n == 0) { ok = false; break; }
-			off += n;
-		} else if (w == Genode::Vfs::File_io_service::WRITE_ERR_WOULD_BLOCK) {
+		Genode::Vfs::Vfs_handle::Write_result w
+			{ Genode::Vfs::Vfs_handle::Write_error::DENIED };
+		for (;;) {
+			w = handle->write(Genode::Vfs::At { .pos = off },
+			                  Genode::Const_byte_range_ptr(buf + off,
+			                                               len - off));
+			if (w != Genode::Vfs::Vfs_handle::Write_error::RETRY)
+				break;
 			_vfs_env->io().commit_and_wait();
-		} else {
-			ok = false; break;
 		}
+		Genode::size_t const n = w.convert<Genode::size_t>(
+			[](Genode::size_t bytes) { return bytes; },
+			[](Genode::Vfs::Vfs_handle::Write_error) {
+				return Genode::size_t(0); });
+		if (n == 0) { ok = false; break; }
+		off += n;
 	}
 
-	handle->fs().queue_sync(handle);
-	while (handle->fs().complete_sync(handle) ==
-	       Genode::Vfs::File_io_service::SYNC_QUEUED)
+	while (handle->sync() == Genode::Vfs::Sync_result::RETRY)
 		_vfs_env->io().commit_and_wait();
 
 	if (!ok)
