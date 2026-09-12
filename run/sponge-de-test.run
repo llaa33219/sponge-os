@@ -115,10 +115,10 @@ config
 + start sponge_de_probe | caps: 100 | ram: 16M
   + route
     + service Capture | + child nitpicker
-    + service Event   | + child nitpicker
-    + service Timer   | + child timer
-    + service ROM     | label: sponge_de_input | + child report_rom
-    + service ROM     | label: result          | + child report_rom
+    + service Event | + child nitpicker
+    + service Timer | + child timer
+    + service ROM | label: sponge_de_input | + child report_rom
+    + service ROM | label: result          | + child report_rom
     + any-service
       + parent
       + any-child

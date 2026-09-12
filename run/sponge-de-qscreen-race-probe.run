@@ -120,7 +120,7 @@ config
     + service Event
   + route
     + service Report | + child report_rom
-    + service Timer  | + child timer
+    + service Timer | + child timer
     + any-service
       + parent
       + any-child
@@ -147,9 +147,9 @@ config
   + binary init
   + route
     + service ROM | label: config | + parent | label: drivers.config
-    + service Timer               | + child timer
-    + service Capture             | + child nitpicker
-    + service Event               | + child nitpicker
+    + service Timer | + child timer
+    + service Capture | + child nitpicker
+    + service Event | + child nitpicker
     + any-service                 | + parent
   + config
     + parent-provides
@@ -170,11 +170,11 @@ config
     + start acpi | caps: 250 | ram: 4M
       + route
         + service IO_MEM | + parent
-        + service LOG    | + parent
-        + service PD     | + parent
-        + service RM     | + parent
-        + service CPU    | + parent
-        + service ROM    | + parent
+        + service LOG | + parent
+        + service PD | + parent
+        + service RM | + parent
+        + service CPU | + parent
+        + service ROM | + parent
         + service Report | + child report_rom
 
     + start report_rom | caps: 100 | ram: 2M
@@ -187,20 +187,20 @@ config
       | + policy | label: usb_hid -> report    | report: usb -> devices
       + route
         + service LOG | + parent
-        + service PD  | + parent
+        + service PD | + parent
         + service CPU | + parent
         + service ROM | + parent
 
     + start pci_decode | caps: 100 | ram: 2M
       + route
-        + service Report              | + child report_rom
+        + service Report | + child report_rom
         + service ROM | label: system | + child report_rom
-        + service IO_MEM              | + parent
-        + service LOG                 | + parent
-        + service PD                  | + parent
-        + service RM                  | + parent
-        + service CPU                 | + parent
-        + service ROM                 | + parent
+        + service IO_MEM | + parent
+        + service LOG | + parent
+        + service PD | + parent
+        + service RM | + parent
+        + service CPU | + parent
+        + service ROM | + parent
 
     + start platform | caps: 200 | ram: 3M | managing_system: yes
       + provides
@@ -208,15 +208,15 @@ config
       | + service Platform
       + route
       | + service ROM | label: devices | + child report_rom
-      | + service Report               | + child report_rom
-      | + service IRQ                  | + parent
-      | + service IO_MEM               | + parent
-      | + service IO_PORT              | + parent
-      | + service ROM                  | + parent
-      | + service PD                   | + parent
-      | + service CPU                  | + parent
-      | + service LOG                  | + parent
-      | + service Timer                | + parent
+      | + service Report | + child report_rom
+      | + service IRQ | + parent
+      | + service IO_MEM | + parent
+      | + service IO_PORT | + parent
+      | + service ROM | + parent
+      | + service PD | + parent
+      | + service CPU | + parent
+      | + service LOG | + parent
+      | + service Timer | + parent
       + config
         + report | devices: yes
         + policy | label_prefix: ps2             | + device ps2
@@ -227,29 +227,29 @@ config
       + binary vesa_fb
       + route
         + service ROM | label: config | + parent | label: fb.config
-        + service Report              | + child report_rom
-        + service Dma                 | + child platform
-        + service Platform            | + child platform
-        + service IO_PORT             | + parent
-        + service IO_MEM              | + parent
-        + service ROM                 | + parent
-        + service PD                  | + parent
-        + service CPU                 | + parent
-        + service LOG                 | + parent
-        + service Timer               | + parent
-        + service Capture             | + parent
+        + service Report | + child report_rom
+        + service Dma | + child platform
+        + service Platform | + child platform
+        + service IO_PORT | + parent
+        + service IO_MEM | + parent
+        + service ROM | + parent
+        + service PD | + parent
+        + service CPU | + parent
+        + service LOG | + parent
+        + service Timer | + parent
+        + service Capture | + parent
 
     + start ps2 | caps: 100 | ram: 1280K
       + config
       + route
-        + service Dma      | + child platform
+        + service Dma | + child platform
         + service Platform | + child platform
-        + service Event    | + child event_filter | label: ps2
-        + service ROM      | + parent
-        + service PD       | + parent
-        + service CPU      | + parent
-        + service LOG      | + parent
-        + service Timer    | + parent
+        + service Event | + child event_filter | label: ps2
+        + service ROM | + parent
+        + service PD | + parent
+        + service CPU | + parent
+        + service LOG | + parent
+        + service Timer | + parent
 
     + start usb | caps: 200 | ram: 16M
       + binary pc_usb_host
@@ -258,38 +258,38 @@ config
       | + report | devices: yes
       | + policy | label_prefix: usb_hid | + device | class: 0x3
       + route
-        + service Dma                     | + child platform
-        + service Platform                | + child platform
+        + service Dma | + child platform
+        + service Platform | + child platform
         + service Report | label: devices | + child report_rom
-        + service ROM                     | + parent
-        + service PD                      | + parent
-        + service RM                      | + parent
-        + service CPU                     | + parent
-        + service LOG                     | + parent
-        + service Timer                   | + parent
+        + service ROM | + parent
+        + service PD | + parent
+        + service RM | + parent
+        + service CPU | + parent
+        + service LOG | + parent
+        + service Timer | + parent
 
     + start usb_hid | caps: 180 | ram: 10M
       + route
         + service ROM | label: report | + child report_rom
-        + service ROM                 | + parent
-        + service PD                  | + parent
-        + service RM                  | + parent
-        + service CPU                 | + parent
-        + service LOG                 | + parent
-        + service Timer               | + parent
-        + service Event               | + child event_filter | label: usb
-        + service Usb                 | + child usb
+        + service ROM | + parent
+        + service PD | + parent
+        + service RM | + parent
+        + service CPU | + parent
+        + service LOG | + parent
+        + service Timer | + parent
+        + service Event | + child event_filter | label: usb
+        + service Usb | + child usb
 
     + start event_filter | caps: 90 | ram: 1280K
       + provides | + service Event
       + route
         + service ROM | label: config | + parent | label: event_filter.config
-        + service Event               | + parent
-        + service ROM                 | + parent
-        + service PD                  | + parent
-        + service CPU                 | + parent
-        + service LOG                 | + parent
-        + service Timer               | + parent
+        + service Event | + parent
+        + service ROM | + parent
+        + service PD | + parent
+        + service CPU | + parent
+        + service LOG | + parent
+        + service Timer | + parent
 
 + start sponge-de | caps: 1000 | ram: 128M
   + config
@@ -304,7 +304,7 @@ config
   + route
     + service Gui | label_last: Sponge Panel   | + child nitpicker
     + service Gui | label_last: Sponge Launcher | + child nitpicker
-    + service Gui                              | + child nitpicker
+    + service Gui | + child nitpicker
     + service Report | label: shape  | + child report_rom
     + service ROM | label: default.theme        | + parent
     + service ROM | label: mesa_gpu.lib.so | + parent | label: mesa_gpu-softpipe.lib.so
@@ -315,7 +315,7 @@ config
 + start qscreen_race_probe | caps: 100 | ram: 16M
   + route
     + service Capture | + child nitpicker
-    + service Timer   | + child timer
+    + service Timer | + child timer
     + any-service
       + parent
       + any-child

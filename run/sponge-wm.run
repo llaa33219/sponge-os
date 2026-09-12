@@ -108,7 +108,7 @@ config
     + service Event
   + route
     + service Report | + child report_rom
-    + service Timer  | + child timer
+    + service Timer | + child timer
     + any-service
       + parent
       + any-child
@@ -134,11 +134,11 @@ config
     + policy | label_prefix: layouter  | role: layouter
     + default-policy
   + route
-    + service ROM    | label: focus          | + child report_rom
-    + service ROM    | label: resize_request | + child report_rom
+    + service ROM | label: focus          | + child report_rom
+    + service ROM | label: resize_request | + child report_rom
     + service Report | label_last: shape     | + child report_rom
-    + service Report                         | + child report_rom
-    + service Gui                            | + child nitpicker
+    + service Report | + child report_rom
+    + service Gui | + child nitpicker
     + any-service
       + parent
       + any-child
@@ -154,13 +154,13 @@ config
     + press   | key: BTN_LEFT  | action: drag
       + release | key: BTN_LEFT | action: drop
   + route
-    + service ROM    | label: window_list       | + child report_rom
-    + service ROM    | label: focus_request     | + child report_rom
-    + service ROM    | label: hover             | + child report_rom
-    + service ROM    | label: decorator_margins | + child report_rom
-    + service ROM    | label: rules             | + child report_rom
+    + service ROM | label: window_list       | + child report_rom
+    + service ROM | label: focus_request     | + child report_rom
+    + service ROM | label: hover             | + child report_rom
+    + service ROM | label: decorator_margins | + child report_rom
+    + service ROM | label: rules             | + child report_rom
     + service Report | label: rules             | + child report_rom | label: layout_rules
-    + service Report                            | + child report_rom
+    + service Report | + child report_rom
     + any-service
       + child wm
       + parent
@@ -173,9 +173,9 @@ config
       + title
     + default-policy
   + route
-    + service ROM    | label: window_layout | + child report_rom
-    + service ROM    | label: pointer       | + child report_rom
-    + service Report                        | + child report_rom
+    + service ROM | label: window_layout | + child report_rom
+    + service ROM | label: pointer       | + child report_rom
+    + service Report | + child report_rom
     + any-service
       + child wm
       + parent
@@ -194,7 +194,7 @@ config
     + libc | stdout: /dev/log | stderr: /dev/log | pipe: /pipe | rtc: /dev/rtc
   + route
     + service Gui | label_last: Sponge Panel | + child nitpicker
-    + service Gui                            | + child wm
+    + service Gui | + child wm
     + service Report | + child report_rom
     + service ROM | label: default.theme | + parent
     + service ROM | label: mesa_gpu.lib.so | + parent | label: mesa_gpu-softpipe.lib.so
@@ -205,10 +205,10 @@ config
 + start wm_probe | caps: 100 | ram: 16M
   + route
     + service Capture | + child nitpicker
-    + service Event   | + child nitpicker
-    + service Timer   | + child timer
-    + service ROM     | label: window_layout | + child report_rom
-    + service ROM     | label: hover         | + child report_rom
+    + service Event | + child nitpicker
+    + service Timer | + child timer
+    + service ROM | label: window_layout | + child report_rom
+    + service ROM | label: hover         | + child report_rom
     + any-service
       + parent
       + any-child

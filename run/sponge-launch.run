@@ -163,7 +163,7 @@ config
   + route
     + service Gui | label_last: Sponge Panel   | + child nitpicker
     + service Gui | label_last: Sponge Launcher | + child nitpicker
-    + service Gui                              | + child nitpicker
+    + service Gui | + child nitpicker
     + service Report | label: shape | + child report_rom
     + service Report | label: input | + child report_rom
     + service Report | label: applied_theme | + child report_rom
@@ -180,7 +180,7 @@ config
 + start launch_probe | caps: 200 | ram: 16M
   + route
     + service Capture | + child nitpicker
-    + service Timer   | + child timer
+    + service Timer | + child timer
     + service ROM | label_last: result | + child report_rom
     + service ROM | label_last: launcher_result | + child report_rom
     + service ROM | label_last: installed | + child report_rom

@@ -194,9 +194,9 @@ config
 + start drivers | caps: 1200 | ram: 32M | managing_system: yes
   + binary init
   + route
-    + service Uplink              | + child nic_uplink
-    + service Timer               | + child timer
-    + service Report              | + child report_rom
+    + service Uplink | + child nic_uplink
+    + service Timer | + child timer
+    + service Report | + child report_rom
     + any-service                 | + parent
   + config
     + parent-provides
@@ -216,11 +216,11 @@ config
     + start acpi | caps: 300 | ram: 4M
       + route
         + service IO_MEM | + parent
-        + service LOG    | + parent
-        + service PD     | + parent
-        + service RM     | + parent
-        + service CPU    | + parent
-        + service ROM    | + parent
+        + service LOG | + parent
+        + service PD | + parent
+        + service RM | + parent
+        + service CPU | + parent
+        + service ROM | + parent
         + service Report | + child report_rom
 
     + start report_rom | caps: 100 | ram: 2M
@@ -232,20 +232,20 @@ config
         + policy | label: platform -> devices  | report: pci_decode -> devices
       + route
         + service LOG | + parent
-        + service PD  | + parent
+        + service PD | + parent
         + service CPU | + parent
         + service ROM | + parent
 
     + start pci_decode | caps: 100 | ram: 2M
       + route
-        + service Report              | + child report_rom
+        + service Report | + child report_rom
         + service ROM | label: system | + child report_rom
-        + service IO_MEM              | + parent
-        + service LOG                 | + parent
-        + service PD                  | + parent
-        + service RM                  | + parent
-        + service CPU                 | + parent
-        + service ROM                 | + parent
+        + service IO_MEM | + parent
+        + service LOG | + parent
+        + service PD | + parent
+        + service RM | + parent
+        + service CPU | + parent
+        + service ROM | + parent
 
     + start platform | caps: 200 | ram: 3M | managing_system: yes
       + provides
@@ -254,29 +254,29 @@ config
         + service Acpi
       + route
         + service ROM | label: devices | + child report_rom
-        + service IRQ                  | + parent
-        + service IO_MEM               | + parent
-        + service IO_PORT              | + parent
-        + service ROM                  | + parent
-        + service PD                   | + parent
-        + service CPU                  | + parent
-        + service LOG                  | + parent
-        + service Timer                | + parent
+        + service IRQ | + parent
+        + service IO_MEM | + parent
+        + service IO_PORT | + parent
+        + service ROM | + parent
+        + service PD | + parent
+        + service CPU | + parent
+        + service LOG | + parent
+        + service Timer | + parent
       + config
         + policy | label_prefix: nic | info: yes | + pci | class: ETHERNET
 
     + start nic | caps: 250 | ram: 10M
       + binary ipxe_nic
       + route
-        + service Dma      | + child platform
+        + service Dma | + child platform
         + service Platform | + child platform
-        + service ROM      | + parent
-        + service PD       | + parent
-        + service RM       | + parent
-        + service CPU      | + parent
-        + service LOG      | + parent
-        + service Timer    | + parent
-        + service Uplink   | + parent
+        + service ROM | + parent
+        + service PD | + parent
+        + service RM | + parent
+        + service CPU | + parent
+        + service LOG | + parent
+        + service Timer | + parent
+        + service Uplink | + parent
 
 #
 # nic_uplink: the no-nic_router Uplink<->Nic bridge. Provides Uplink
@@ -307,7 +307,7 @@ config
 + start system_rtc | caps: 100 | ram: 2M
   + provides | + service Rtc
   + route
-    + service Rtc   | + child pc_rtc
+    + service Rtc | + child pc_rtc
     + service Timer | + child timer
     + any-service | + parent
 

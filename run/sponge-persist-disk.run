@@ -231,23 +231,23 @@ config
     + service ROM | label_last: ld.lib.so | + parent
     + service Report | + child report_rom
     + service IO_MEM | + parent
-    + service LOG    | + parent
-    + service PD     | + parent
-    + service RM     | + parent
-    + service CPU    | + parent
-    + service ROM    | + parent
+    + service LOG | + parent
+    + service PD | + parent
+    + service RM | + parent
+    + service CPU | + parent
+    + service ROM | + parent
 
 + start pci_decode | caps: 350 | ram: 2M
   + route
     + service ROM | label_last: ld.lib.so | + parent
-    + service Report              | + child report_rom
+    + service Report | + child report_rom
     + service ROM | label: system | + child report_rom
-    + service IO_MEM              | + parent
-    + service LOG                 | + parent
-    + service PD                  | + parent
-    + service RM                  | + parent
-    + service CPU                 | + parent
-    + service ROM                 | + parent
+    + service IO_MEM | + parent
+    + service LOG | + parent
+    + service PD | + parent
+    + service RM | + parent
+    + service CPU | + parent
+    + service ROM | + parent
 
 + start platform | caps: 200 | ram: 3M | managing_system: yes
   + provides
@@ -256,15 +256,15 @@ config
   + route
     + service ROM | label_last: ld.lib.so | + parent
     + service ROM | label: devices | + child report_rom
-    + service Report               | + child report_rom
-    + service Timer                | + child timer
-    + service IRQ                  | + parent
-    + service IO_MEM               | + parent
-    + service IO_PORT              | + parent
-    + service ROM                  | + parent
-    + service PD                   | + parent
-    + service CPU                  | + parent
-    + service LOG                  | + parent
+    + service Report | + child report_rom
+    + service Timer | + child timer
+    + service IRQ | + parent
+    + service IO_MEM | + parent
+    + service IO_PORT | + parent
+    + service ROM | + parent
+    + service PD | + parent
+    + service CPU | + parent
+    + service LOG | + parent
   + config
     + report | devices: yes
     + policy | label_prefix: ahci | + pci | class: AHCI
@@ -282,13 +282,13 @@ config
   + route
     + service ROM | label_last: ld.lib.so | + parent
     + service Platform | + child platform
-    + service Dma      | + child platform
-    + service Timer    | + child timer
-    + service Report   | + child report_rom
-    + service ROM      | + parent
-    + service PD       | + parent
-    + service CPU      | + parent
-    + service LOG      | + parent
+    + service Dma | + child platform
+    + service Timer | + child timer
+    + service Report | + child report_rom
+    + service ROM | + parent
+    + service PD | + parent
+    + service CPU | + parent
+    + service LOG | + parent
 
 #
 # part_block: pin partition 4 BY NUMBER (docs/14 §4.4 — never auto-probe).
@@ -350,8 +350,8 @@ config
   + route
     + service ROM | label_last: ld.lib.so   | + parent
     + service ROM | label_last: request     | + child report_rom
-    + service File_system                    | + child vfs_data
-    + service Report                         | + child report_rom
+    + service File_system | + child vfs_data
+    + service Report | + child report_rom
     + any-service
       + parent
       + any-child
@@ -380,10 +380,10 @@ config
 + start pkg_seq_probe | caps: 200 | ram: 8M
   + route
     + service ROM | label_last: ld.lib.so   | + parent
-    + service Timer                         | + child timer
+    + service Timer | + child timer
     + service ROM | label_last: result      | + child report_rom
     + service ROM | label: config           | + parent | label: pkg_probe_config
-    + service Report                        | + child report_rom
+    + service Report | + child report_rom
     + any-service
       + parent
       + any-child

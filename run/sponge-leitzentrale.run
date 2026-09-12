@@ -186,7 +186,7 @@ config
     + service Event
   + route
     + service Report | + child report_rom
-    + service Timer  | + child timer
+    + service Timer | + child timer
     + any-service
       + parent
       + any-child
@@ -223,8 +223,8 @@ config
   + binary init
   + route
     + service ROM | label: config | + parent | label: lz_runtime.config
-    + service Timer               | + child timer
-    + service Gui                | + child nitpicker
+    + service Timer | + child timer
+    + service Gui | + child nitpicker
     + service ROM | label_suffix: leitzentrale_enabled | + child lz_bridge
     + service ROM | label_suffix: lz_config | + child report_rom
     + service ROM | label_suffix: lz_model | + child report_rom
@@ -253,7 +253,7 @@ config
 + start lz_viz_probe | caps: 100 | ram: 16M
   + route
     + service Capture | + child nitpicker
-    + service Timer   | + child timer
+    + service Timer | + child timer
     + any-service
       + parent
       + any-child

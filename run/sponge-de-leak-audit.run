@@ -153,7 +153,7 @@ config
     + service Event
   + route
     + service Report | + child report_rom
-    + service Timer  | + child timer
+    + service Timer | + child timer
     + any-service
       + parent
       + any-child
@@ -185,16 +185,16 @@ config
     + default | caps: 200 | ram: 8M
   + route
     + service ROM | label_last: state | + child report_rom
-    + service Report              | + child report_rom
-    + service Timer               | + child timer
+    + service Report | + child report_rom
+    + service Timer | + child timer
     + any-service
       + parent
       + any-child
 
 + start sponge_configd | caps: 200 | ram: 16M
   + route
-    + service ROM  | label_last: config_request | + child report_rom
-    + service Report                          | + child report_rom
+    + service ROM | label_last: config_request | + child report_rom
+    + service Report | + child report_rom
     + any-service
       + parent
       + any-child
@@ -207,15 +207,15 @@ config
     + service ROM | label_last: dark.theme    | + parent
     + service ROM | label_last: compact.theme | + parent
     + service ROM | label_suffix: .theme      | + child report_rom
-    + service Report                        | + child report_rom
+    + service Report | + child report_rom
     + any-service
       + parent
       + any-child
 
 + start sponge_pkgd | caps: 200 | ram: 16M
   + route
-    + service ROM  | label_last: request | + child report_rom
-    + service Report                    | + child report_rom
+    + service ROM | label_last: request | + child report_rom
+    + service Report | + child report_rom
     + any-service
       + parent
       + any-child
@@ -242,16 +242,16 @@ config
       + tar qt6_libqgenode.tar
     + libc | stdout: /dev/log | stderr: /dev/log | pipe: /pipe | rtc: /dev/rtc
   + route
-    + service Gui    | + child nitpicker
+    + service Gui | + child nitpicker
     + service Report | label: shape           | + child report_rom
     + service Report | label: input           | + child report_rom
     + service Report | label: applied_theme   | + child report_rom
-    + service ROM   | label: theme           | + child report_rom
-    + service ROM   | label: configd         | + child report_rom
-    + service ROM   | label: installed       | + child report_rom
-    + service ROM   | label: launcher_request | + child report_rom
-    + service ROM   | label: launcher_result  | + child report_rom
-    + service ROM   | label: mesa_gpu.lib.so | + parent | label: mesa_gpu-softpipe.lib.so
+    + service ROM | label: theme           | + child report_rom
+    + service ROM | label: configd         | + child report_rom
+    + service ROM | label: installed       | + child report_rom
+    + service ROM | label: launcher_request | + child report_rom
+    + service ROM | label: launcher_result  | + child report_rom
+    + service ROM | label: mesa_gpu.lib.so | + parent | label: mesa_gpu-softpipe.lib.so
     + any-service
       + parent
       + any-child
@@ -259,10 +259,10 @@ config
 + start leak_audit_probe | caps: 200 | ram: 8M
   + route
     + service Capture | + child nitpicker
-    + service Timer   | + child timer
-    + service ROM    | label_last: state          | + child report_rom
-    + service ROM    | label_last: config_result  | + child report_rom
-    + service Report                            | + child report_rom
+    + service Timer | + child timer
+    + service ROM | label_last: state          | + child report_rom
+    + service ROM | label_last: config_result  | + child report_rom
+    + service Report | + child report_rom
     + any-service
       + parent
       + any-child

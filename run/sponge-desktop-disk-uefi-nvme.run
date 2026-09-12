@@ -424,8 +424,8 @@ config
     + service ROM | label: focus          | + child report_rom
     + service ROM | label: resize_request | + child report_rom
     + service Report | label_last: shape  | + child report_rom
-    + service Report                       | + child report_rom
-    + service Gui                          | + parent
+    + service Report | + child report_rom
+    + service Gui | + parent
     + any-service
       + parent
       + any-child
@@ -451,7 +451,7 @@ config
     + service ROM | label: decorator_margins | + child report_rom
     + service ROM | label: rules             | + child report_rom
     + service Report | label: rules           | + child report_rom | label: layout_rules
-    + service Report                            | + child report_rom
+    + service Report | + child report_rom
     + any-service
       + child wm
       + parent
@@ -468,7 +468,7 @@ config
     + service ROM | label_last: ld.lib.so | + parent
     + service ROM | label: window_layout | + child report_rom
     + service ROM | label: pointer       | + child report_rom
-    + service Report                      | + child report_rom
+    + service Report | + child report_rom
     + any-service
       + child wm
       + parent
@@ -535,7 +535,7 @@ config
     + service ROM | label_last: ld.lib.so | + parent
     + service Gui | label_last: Sponge Panel   | + parent
     + service Gui | label_last: Sponge Launcher | + parent
-    + service Gui                              | + child wm
+    + service Gui | + child wm
     + service Report | label: shape | + child report_rom
     + service Report | label: input | + child report_rom
     + service Report | label: applied_theme | + child report_rom
@@ -553,7 +553,7 @@ config
   + route
     + service ROM | label_last: ld.lib.so | + parent
     + service Capture | + parent
-    + service Timer   | + parent
+    + service Timer | + parent
     + service ROM | label_last: result | + child report_rom
     + service ROM | label_last: config_result | + child report_rom
     + service ROM | label_last: configd_config | + child report_rom
@@ -616,23 +616,23 @@ config
     + service ROM | label_last: ld.lib.so | + parent
     + service Report | + child report_rom
     + service IO_MEM | + parent
-    + service LOG    | + parent
-    + service PD     | + parent
-    + service RM     | + parent
-    + service CPU    | + parent
-    + service ROM    | + parent
+    + service LOG | + parent
+    + service PD | + parent
+    + service RM | + parent
+    + service CPU | + parent
+    + service ROM | + parent
 
 + start pci_decode | caps: 350 | ram: 2M
   + route
     + service ROM | label_last: ld.lib.so | + parent
-    + service Report              | + child report_rom
+    + service Report | + child report_rom
     + service ROM | label: system | + child report_rom
-    + service IO_MEM              | + parent
-    + service LOG                 | + parent
-    + service PD                  | + parent
-    + service RM                  | + parent
-    + service CPU                 | + parent
-    + service ROM                 | + parent
+    + service IO_MEM | + parent
+    + service LOG | + parent
+    + service PD | + parent
+    + service RM | + parent
+    + service CPU | + parent
+    + service ROM | + parent
 
 + start platform | caps: 200 | ram: 3M | managing_system: yes
   + provides
@@ -641,15 +641,15 @@ config
   + route
     + service ROM | label_last: ld.lib.so | + parent
     + service ROM | label: devices | + child report_rom
-    + service Report               | + child report_rom
-    + service Timer                | + child timer
-    + service IRQ                  | + parent
-    + service IO_MEM               | + parent
-    + service IO_PORT              | + parent
-    + service ROM                  | + parent
-    + service PD                   | + parent
-    + service CPU                  | + parent
-    + service LOG                  | + parent
+    + service Report | + child report_rom
+    + service Timer | + child timer
+    + service IRQ | + parent
+    + service IO_MEM | + parent
+    + service IO_PORT | + parent
+    + service ROM | + parent
+    + service PD | + parent
+    + service CPU | + parent
+    + service LOG | + parent
   + config
     + report | devices: yes
     + policy | label_prefix: nvme | + pci | class: NVME
@@ -664,13 +664,13 @@ config
   + route
     + service ROM | label_last: ld.lib.so | + parent
     + service Platform | + child platform
-    + service Dma      | + child platform
-    + service Timer    | + child timer
-    + service Report   | + child report_rom
-    + service ROM      | + parent
-    + service PD       | + parent
-    + service CPU      | + parent
-    + service LOG      | + parent
+    + service Dma | + child platform
+    + service Timer | + child timer
+    + service Report | + child report_rom
+    + service ROM | + parent
+    + service PD | + parent
+    + service CPU | + parent
+    + service LOG | + parent
 
 + start part_block | caps: 200 | ram: 8M
   + provides | + service Block
@@ -730,7 +730,7 @@ config
   + route
     + service ROM | label_last: ld.lib.so | + parent
     + service Report | + child report_rom
-    + service Timer  | + child timer
+    + service Timer | + child timer
     + any-service
       + parent
       + any-child
@@ -757,7 +757,7 @@ config
     + service Report
   + config | shapes: no
   + route
-    + service Gui              | + child nitpicker
+    + service Gui | + child nitpicker
     + service ROM | label: hover | + child report_rom
     + service ROM | label: xray  | + child report_rom
     + any-service
@@ -772,27 +772,27 @@ config
   + route
     + service ROM | label: config        | + parent | label: fb.config
     + service ROM | label: platform_info | + parent
-    + service Report                      | + child report_rom
-    + service IO_MEM                      | + parent
-    + service ROM                         | + parent
-    + service PD                          | + parent
-    + service CPU                         | + parent
-    + service LOG                         | + parent
-    + service Timer                       | + child timer
-    + service Capture                     | + child nitpicker
+    + service Report | + child report_rom
+    + service IO_MEM | + parent
+    + service ROM | + parent
+    + service PD | + parent
+    + service CPU | + parent
+    + service LOG | + parent
+    + service Timer | + child timer
+    + service Capture | + child nitpicker
 
 + start ps2 | caps: 100 | ram: 1280K
   + config
   + route
     + service ROM | label_last: ld.lib.so | + parent
-    + service Dma      | + child platform
+    + service Dma | + child platform
     + service Platform | + child platform
-    + service Event    | + child event_filter | label: ps2
-    + service ROM      | + parent
-    + service PD       | + parent
-    + service CPU      | + parent
-    + service LOG      | + parent
-    + service Timer    | + child timer
+    + service Event | + child event_filter | label: ps2
+    + service ROM | + parent
+    + service PD | + parent
+    + service CPU | + parent
+    + service LOG | + parent
+    + service Timer | + child timer
 
 + start usb | caps: 200 | ram: 16M
   + binary pc_usb_host
@@ -802,40 +802,40 @@ config
     + policy | label_prefix: usb_hid | + device | class: 0x3
   + route
     + service ROM | label_last: ld.lib.so | + parent
-    + service Dma                     | + child platform
-    + service Platform                | + child platform
+    + service Dma | + child platform
+    + service Platform | + child platform
     + service Report | label: devices | + child report_rom
-    + service ROM                     | + parent
-    + service PD                      | + parent
-    + service RM                      | + parent
-    + service CPU                     | + parent
-    + service LOG                     | + parent
-    + service Timer                   | + child timer
+    + service ROM | + parent
+    + service PD | + parent
+    + service RM | + parent
+    + service CPU | + parent
+    + service LOG | + parent
+    + service Timer | + child timer
 
 + start usb_hid | caps: 180 | ram: 10M
   + route
     + service ROM | label_last: ld.lib.so | + parent
     + service ROM | label: report | + child report_rom
-    + service ROM                 | + parent
-    + service PD                  | + parent
-    + service RM                  | + parent
-    + service CPU                 | + parent
-    + service LOG                 | + parent
-    + service Timer               | + child timer
-    + service Event               | + child event_filter | label: usb
-    + service Usb                 | + child usb
+    + service ROM | + parent
+    + service PD | + parent
+    + service RM | + parent
+    + service CPU | + parent
+    + service LOG | + parent
+    + service Timer | + child timer
+    + service Event | + child event_filter | label: usb
+    + service Usb | + child usb
 
 + start event_filter | caps: 90 | ram: 1280K
   + provides | + service Event
   + route
     + service ROM | label_last: ld.lib.so | + parent
     + service ROM | label: config | + parent | label: event_filter.config
-    + service Event               | + child nitpicker
-    + service ROM                 | + parent
-    + service PD                  | + parent
-    + service CPU                 | + parent
-    + service LOG                 | + parent
-    + service Timer               | + child timer
+    + service Event | + child nitpicker
+    + service ROM | + parent
+    + service PD | + parent
+    + service CPU | + parent
+    + service LOG | + parent
+    + service Timer | + child timer
 
 + start system | caps: 20000 | ram: 1500M
   + binary | name: bin/init
@@ -846,11 +846,11 @@ config
     + service ROM | label_last: focus | + child report_rom
     + service ROM | label_last: hover | + child report_rom
     + service ROM | + child rom_sys
-    + service Gui     | + child nitpicker
+    + service Gui | + child nitpicker
     + service Capture | + child nitpicker
-    + service Event   | + child nitpicker
-    + service Timer   | + child timer
-    + service Report  | + child report_rom
+    + service Event | + child nitpicker
+    + service Timer | + child timer
+    + service Report | + child report_rom
     + any-service
       + parent
       + any-child

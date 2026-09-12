@@ -122,7 +122,7 @@ config
     + service Event
   + route
     + service Report | + child report_rom
-    + service Timer  | + child timer
+    + service Timer | + child timer
     + any-service
       + parent
       + any-child
@@ -151,9 +151,9 @@ config
   + binary init
   + route
     + service ROM | label: config | + parent | label: drivers.config
-    + service Timer               | + child timer
-    + service Capture             | + child nitpicker
-    + service Event               | + child nitpicker
+    + service Timer | + child timer
+    + service Capture | + child nitpicker
+    + service Event | + child nitpicker
     + any-service                 | + parent
   + config
     + parent-provides
@@ -236,10 +236,10 @@ config
 + start notify_probe | caps: 100 | ram: 16M
   + route
     + service Capture | + child nitpicker
-    + service Timer   | + child timer
+    + service Timer | + child timer
     + service Report | label: notif_request | + child report_rom
-    + service ROM   | label: notifications | + child report_rom
-    + service ROM   | label: result        | + child report_rom
+    + service ROM | label: notifications | + child report_rom
+    + service ROM | label: result        | + child report_rom
     + any-service
       + parent
       + any-child
