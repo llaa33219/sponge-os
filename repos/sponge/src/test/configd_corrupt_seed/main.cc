@@ -22,7 +22,7 @@
 #include <base/heap.h>
 #include <base/log.h>
 #include <util/string.h>
-#include <vfs/simple_env.h>
+#include <vfs/root.h>
 
 namespace {
 
@@ -31,7 +31,7 @@ struct Seed
 	Genode::Env &_env;
 
 	Genode::Heap                                _heap     { _env.ram(), _env.rm() };
-	Genode::Constructible<Genode::Vfs::Simple_env> _vfs_env { };
+	Genode::Constructible<Genode::Vfs::Root> _vfs_env { };
 
 	Genode::Attached_rom_dataspace _config_rom { _env, "config" };
 
@@ -65,7 +65,7 @@ struct Seed
 		char const torn[] =
 			"<sponge-config version=\"";  /* intentional truncation */
 
-		Genode::Vfs::File_system &vfs = _vfs_env->root_dir();
+		Genode::Vfs::File_system &vfs = _vfs_env->fs();
 
 		Genode::Vfs::Vfs_handle *handle { nullptr };
 		Genode::Vfs::Directory_service::Open_result open_result =
@@ -84,28 +84,29 @@ struct Seed
 
 		Genode::size_t const len = sizeof(torn) - 1;
 
-		handle->fs().ftruncate(handle, len);
+		handle->ftruncate(len);
 
 		Genode::size_t off { 0 };
 		while (off < len) {
-			handle->seek(off);
-			Genode::size_t n { 0 };
-			Genode::Vfs::File_io_service::Write_result const w =
-				handle->fs().write(handle,
-				    Genode::Const_byte_range_ptr(torn + off, len - off), n);
-			if (w == Genode::Vfs::File_io_service::WRITE_OK) {
-				if (n == 0) return false;
-				off += n;
-			} else if (w == Genode::Vfs::File_io_service::WRITE_ERR_WOULD_BLOCK) {
+			Genode::Vfs::Vfs_handle::Write_result w
+				{ Genode::Vfs::Vfs_handle::Write_error::DENIED };
+			for (;;) {
+				w = handle->write(Genode::Vfs::At { .pos = off },
+				                  Genode::Const_byte_range_ptr(torn + off,
+				                                               len - off));
+				if (w != Genode::Vfs::Vfs_handle::Write_error::RETRY)
+					break;
 				_vfs_env->io().commit_and_wait();
-			} else {
-				return false;
 			}
+			Genode::size_t const n = w.convert<Genode::size_t>(
+				[](Genode::size_t bytes) { return bytes; },
+				[](Genode::Vfs::Vfs_handle::Write_error) {
+					return Genode::size_t(0); });
+			if (n == 0) return false;
+			off += n;
 		}
 
-		handle->fs().queue_sync(handle);
-		while (handle->fs().complete_sync(handle) ==
-		       Genode::Vfs::File_io_service::SYNC_QUEUED)
+		while (handle->sync() == Genode::Vfs::Sync_result::RETRY)
 			_vfs_env->io().commit_and_wait();
 
 		return true;

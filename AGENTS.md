@@ -242,8 +242,8 @@ user must know Genode terminology, and put those numbers in the PR body.
 ### 5.2 Genode Is Vendored, Pinned, and Never Re-implemented
 
 This repository **vendors** the Genode source tree at `genode/` via
-`git subtree`, pinned to an upstream release (currently **26.05**,
-upstream commit `492a510242`). Rationale: reproducibility and stability
+`git subtree`, pinned to an upstream release (currently **26.08**,
+upstream commit `d18ee9e917`). Rationale: reproducibility and stability
 must not depend on an external, mutable checkout.
 
 Rules:

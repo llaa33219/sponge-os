@@ -105,7 +105,7 @@ The repository currently contains:
 
 - ✅ Project philosophy and architectural principles defined
 - ✅ Genode-based directory structure and build system skeleton
-- ✅ vct boots as a real Genode component on base-linux (Genode 26.05)
+- ✅ vct boots as a real Genode component on base-linux (Genode 26.08)
   and on base-sel4 in QEMU
 - ✅ vct day-to-day commands: `status`, `component list`, `config`,
   `install`/`remove`/`list`, `theme`, `launch`, `update`, `search`,
@@ -126,8 +126,8 @@ The repository currently contains:
   [`docs/13-installation.md`](docs/13-installation.md#6-known-limitations)
 - ⚠️ Alpha installs enable pre-staged packages and do not persist across
   reboots on seL4 media; networking is QEMU slirp only
-- ✅ Genode 26.05 vendored at `genode/` (pinned to upstream commit
-  `492a510242`); one `git clone sponge-os` brings the whole build
+- ✅ Genode 26.08 vendored at `genode/` (pinned to upstream commit
+  `d18ee9e917`); one `git clone sponge-os` brings the whole build
 - ✅ Sponge DE (Qt6 6.8.3) renders a themed panel + window on nitpicker
   with verified input, integrated with Genode's upstream
   `wm` + `window_layouter` + `decorator` stack (window dragging verified)
@@ -221,7 +221,7 @@ The repository currently contains:
 Verified vct boot output (base-sel4 on QEMU):
 
 ```
-Genode 26.05
+Genode 26.08
 699 MiB RAM and 523288 caps assigned to init
 [init -> vct] vct (0.1.0-alpha / Archaeocyte) starting
 [init -> vct] vct — Very Convenient Tool
