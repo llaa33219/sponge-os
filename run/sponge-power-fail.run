@@ -87,7 +87,7 @@ config
       + arg shutdown
       + arg --json
   + route
-    + service Timer  | + child timer
+    + service Timer | + child timer
     + service Report | label: system | + child report_rom
     + any-service
       + parent

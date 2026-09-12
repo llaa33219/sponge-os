@@ -34,7 +34,7 @@ struct Lz_edit_probe
 		"vfs\n"
 		"+ dir model | + fs\n"
 		"-";
-	Genode::Vfs::Simple_env _vfs_env { _env, _heap,
+	Genode::Vfs::Root _vfs_env { _env, _heap,
 		Genode::Node(Genode::Span(_vfs_xml, Genode::strlen(_vfs_xml))) };
 	Genode::Directory _root { _vfs_env };
 

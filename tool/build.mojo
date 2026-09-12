@@ -241,6 +241,23 @@ def ensure_build_conf(build_conf: String) raises -> Bool:
         content = content.replace("BOARD ?= pc", "BOARD ?= linux")
         changed = True
 
+    # 1.2 QEMU defaults for the regression suite (idempotent, fires only
+    #     on pristine template markers): enable KVM — the timing envelope
+    #     the sweep scenarios were calibrated for; under TCG the slower
+    #     clock skews USB enumeration and the wm layouter hover race —
+    #     and drop the template's active `-display sdl` (every scenario
+    #     appends `-nographic` itself; mixing both display flags makes
+    #     the effective backend depend on argument order). Manual
+    #     equivalent: edit etc/build.conf by hand (docs/08 §3).
+    if Int(py=content.count("#QEMU_OPT += -accel kvm")) > 0:
+        content = content.replace("#QEMU_OPT += -accel kvm",
+                                  "QEMU_OPT += -accel kvm")
+        changed = True
+    if Int(py=content.count("\nQEMU_OPT += -display sdl")) > 0:
+        content = content.replace("\nQEMU_OPT += -display sdl",
+                                  "\n#QEMU_OPT += -display sdl")
+        changed = True
+
     if changed:
         var out = builtins.open(build_conf, "w")
         out.write(content)

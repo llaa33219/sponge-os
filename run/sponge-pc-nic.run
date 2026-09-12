@@ -199,8 +199,8 @@ config | prio_levels: 2
 
 + start pci_decode | caps: 350 | ram: 2M
   + route
-    + service ROM    | label: system | + child drivers_reports
-    + service Report                 | + child drivers_reports
+    + service ROM | label: system | + child drivers_reports
+    + service Report | + child drivers_reports
     + any-service
       + parent
       + any-child
@@ -213,8 +213,8 @@ config | prio_levels: 2
   | + report | devices: yes
   | + policy | label_prefix: pc_nic | info: yes | + pci | class: ETHERNET
   + route
-    + service ROM    | label: devices | + child drivers_reports
-    + service Report                  | + child drivers_reports
+    + service ROM | label: devices | + child drivers_reports
+    + service Report | + child drivers_reports
     + any-service
       + parent
       + any-child

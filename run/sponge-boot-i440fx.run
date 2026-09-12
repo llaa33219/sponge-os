@@ -147,22 +147,22 @@ config
   + route
     + service Report | + child report_rom
     + service IO_MEM | + parent
-    + service LOG    | + parent
-    + service PD     | + parent
-    + service RM     | + parent
-    + service CPU    | + parent
-    + service ROM    | + parent
+    + service LOG | + parent
+    + service PD | + parent
+    + service RM | + parent
+    + service CPU | + parent
+    + service ROM | + parent
 
 + start pci_decode | caps: 350 | ram: 2M
   + route
-    + service Report              | + child report_rom
+    + service Report | + child report_rom
     + service ROM | label: system | + child report_rom
-    + service IO_MEM              | + parent
-    + service LOG                 | + parent
-    + service PD                  | + parent
-    + service RM                  | + parent
-    + service CPU                 | + parent
-    + service ROM                 | + parent
+    + service IO_MEM | + parent
+    + service LOG | + parent
+    + service PD | + parent
+    + service RM | + parent
+    + service CPU | + parent
+    + service ROM | + parent
 
 + start platform | caps: 200 | ram: 3M | managing_system: yes
   + provides
@@ -170,15 +170,15 @@ config
     + service Dma
   + route
     + service ROM | label: devices | + child report_rom
-    + service Report               | + child report_rom
-    + service Timer                | + child timer
-    + service IRQ                  | + parent
-    + service IO_MEM               | + parent
-    + service IO_PORT              | + parent
-    + service ROM                  | + parent
-    + service PD                   | + parent
-    + service CPU                  | + parent
-    + service LOG                  | + parent
+    + service Report | + child report_rom
+    + service Timer | + child timer
+    + service IRQ | + parent
+    + service IO_MEM | + parent
+    + service IO_PORT | + parent
+    + service ROM | + parent
+    + service PD | + parent
+    + service CPU | + parent
+    + service LOG | + parent
   + config
     + report | devices: yes
 

@@ -109,7 +109,7 @@ config
       + fs
   + route
     + service File_system | + child ram_vfs
-    + service Timer       | + child timer
+    + service Timer | + child timer
     + service ROM | label_last: config_result | + child report_rom
     + service ROM | label_last: broadcast     | + child report_rom
     + service Report | + child report_rom

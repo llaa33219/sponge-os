@@ -481,7 +481,7 @@ config
     + service Event
   + route
     + service Report | + child report_rom
-    + service Timer  | + child timer
+    + service Timer | + child timer
     + any-service
       + parent
       + any-child
@@ -497,8 +497,8 @@ config
   + binary init
   + route
     + service ROM | label: config | + parent | label: drivers.config
-    + service Timer               | + child timer
-    + service Capture             | + child nitpicker
+    + service Timer | + child timer
+    + service Capture | + child nitpicker
     + any-service                 | + parent
   + config
     + parent-provides
@@ -519,11 +519,11 @@ config
     + start acpi | caps: 250 | ram: 4M
       + route
         + service IO_MEM | + parent
-        + service LOG    | + parent
-        + service PD     | + parent
-        + service RM     | + parent
-        + service CPU    | + parent
-        + service ROM    | + parent
+        + service LOG | + parent
+        + service PD | + parent
+        + service RM | + parent
+        + service CPU | + parent
+        + service ROM | + parent
         + service Report | + child report_rom
 
     + start report_rom | caps: 100 | ram: 2M
@@ -535,20 +535,20 @@ config
       | + policy | label: platform -> devices  | report: pci_decode -> devices
       + route
         + service LOG | + parent
-        + service PD  | + parent
+        + service PD | + parent
         + service CPU | + parent
         + service ROM | + parent
 
     + start pci_decode | caps: 100 | ram: 2M
       + route
-        + service Report              | + child report_rom
+        + service Report | + child report_rom
         + service ROM | label: system | + child report_rom
-        + service IO_MEM              | + parent
-        + service LOG                 | + parent
-        + service PD                  | + parent
-        + service RM                  | + parent
-        + service CPU                 | + parent
-        + service ROM                 | + parent
+        + service IO_MEM | + parent
+        + service LOG | + parent
+        + service PD | + parent
+        + service RM | + parent
+        + service CPU | + parent
+        + service ROM | + parent
 
     + start platform | caps: 200 | ram: 3M | managing_system: yes
       + provides
@@ -556,15 +556,15 @@ config
       | + service Platform
       + route
       | + service ROM | label: devices | + child report_rom
-      | + service Report               | + child report_rom
-      | + service IRQ                  | + parent
-      | + service IO_MEM               | + parent
-      | + service IO_PORT              | + parent
-      | + service ROM                  | + parent
-      | + service PD                   | + parent
-      | + service CPU                  | + parent
-      | + service LOG                  | + parent
-      | + service Timer                | + parent
+      | + service Report | + child report_rom
+      | + service IRQ | + parent
+      | + service IO_MEM | + parent
+      | + service IO_PORT | + parent
+      | + service ROM | + parent
+      | + service PD | + parent
+      | + service CPU | + parent
+      | + service LOG | + parent
+      | + service Timer | + parent
       + config
         + report | devices: yes
         #
@@ -581,14 +581,14 @@ config
       + route
         + service ROM | label: config        | + parent | label: fb.config
         + service ROM | label: platform_info | + parent
-        + service Report                      | + child report_rom
-        + service IO_MEM                      | + parent
-        + service ROM                         | + parent
-        + service PD                          | + parent
-        + service CPU                         | + parent
-        + service LOG                         | + parent
-        + service Timer                       | + parent
-        + service Capture                     | + parent
+        + service Report | + child report_rom
+        + service IO_MEM | + parent
+        + service ROM | + parent
+        + service PD | + parent
+        + service CPU | + parent
+        + service LOG | + parent
+        + service Timer | + parent
+        + service Capture | + parent
 
 # pkg_gui_demo — direct child of init (no nested pkg_runtime;
 # this is the MINIMAL probe). The inline <config> matches the
@@ -608,7 +608,7 @@ config
       + tar qt6_libqgenode.tar
     + libc | stdout: /dev/log | stderr: /dev/log | pipe: /pipe | rtc: /dev/rtc
   + route
-    + service Gui                              | + child nitpicker
+    + service Gui | + child nitpicker
     + service ROM | label_last: ld.lib.so | + parent
     + service ROM | label_last: ld-linux.lib.so | + parent
     + service ROM | label: mesa_gpu.lib.so | + parent | label: mesa_gpu-softpipe.lib.so

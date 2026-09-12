@@ -163,7 +163,7 @@ config
     + service Event
   + route
     + service Report | + child report_rom
-    + service Timer  | + child timer
+    + service Timer | + child timer
     + any-service
       + parent
       + any-child
@@ -183,9 +183,9 @@ config
   + binary init
   + route
     + service ROM | label: config | + parent | label: drivers.config
-    + service Timer               | + child timer
-    + service Capture             | + child nitpicker
-    + service Event               | + child nitpicker
+    + service Timer | + child timer
+    + service Capture | + child nitpicker
+    + service Event | + child nitpicker
     + any-service                 | + parent
   + config
     + parent-provides
@@ -287,7 +287,7 @@ config
     + service ROM | label: default.theme | + parent
     + service ROM | label: mesa_gpu.lib.so | + parent | label: mesa_gpu-softpipe.lib.so
     + service Report | label_last: clipboard | + child clipboard
-    + service ROM    | label_last: clipboard | + child clipboard
+    + service ROM | label_last: clipboard | + child clipboard
     + any-service
       + parent
       + any-child
@@ -306,7 +306,7 @@ config
     + default-policy | domain: default
     + flow | from: default | to: default
   + route
-    + service ROM    | label: focus | + child report_rom
+    + service ROM | label: focus | + child report_rom
     + any-service
       + parent
       + any-child
@@ -314,17 +314,17 @@ config
 + start clipboard_probe | caps: 100 | ram: 16M
   + route
     + service Capture | + child nitpicker
-    + service Timer   | + child timer
+    + service Timer | + child timer
     + service Report | label_last: request       | + child report_rom
     + service Report | label_last: config_request | + child report_rom
     + service Report | label_last: focus         | + child report_rom
     + service Report | label_last: clipboard     | + child clipboard
-    + service ROM    | label_last: clipboard     | + child clipboard
-    + service ROM    | label: qt_config         | + parent
-    + service ROM    | label_last: result        | + child report_rom
-    + service ROM    | label_last: installed     | + child report_rom
-    + service ROM    | label_last: focus         | + child report_rom
-    + service ROM    | label_last: clicked       | + child report_rom
+    + service ROM | label_last: clipboard     | + child clipboard
+    + service ROM | label: qt_config         | + parent
+    + service ROM | label_last: result        | + child report_rom
+    + service ROM | label_last: installed     | + child report_rom
+    + service ROM | label_last: focus         | + child report_rom
+    + service ROM | label_last: clicked       | + child report_rom
     + any-service
       + parent
 - }
