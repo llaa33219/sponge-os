@@ -1,0 +1,37 @@
+build { core init lib/ld test/region_map_mmap timer test/signal }
+
+create_boot_directory
+
+install_config {
+config | verbose: yes
++ parent-provides
+  + service ROM
+  + service PD
+  + service RM
+  + service CPU
+  + service LOG
+
++ default-route
+  + any-service
+    + parent
+    + any-child
+
++ default | caps: 100 | ram: 1M
+
++ start test-region_map_mmap | ram: 2M
+
++ start timer | + provides | + service Timer
+
++ start test-signal | caps: 400 | . for stressing concurrency
+-
+}
+
+build_boot_image [build_artifacts]
+
+run_genode_until {--- Signalling test finished ---.*\n} 30
+
+grep_output {\[init -\> test-region_map_mmap\] Done.}
+
+compare_output_to {
+[init -> test-region_map_mmap] Done.
+}

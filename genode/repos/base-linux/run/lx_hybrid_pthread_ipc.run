@@ -1,0 +1,21 @@
+build { core init lib/ld test/lx_hybrid_pthread_ipc }
+
+create_boot_directory
+
+install_config {
+config
++ parent-provides
+  + service ROM
+  + service CPU
+  + service PD
+  + service LOG
+
++ default-route | + any-service | + parent
+
++ start test-lx_hybrid_pthread_ipc | caps: 100 | ram: 1M | ld: no
+-
+}
+
+build_boot_image [build_artifacts]
+
+run_genode_until "--- finished pthread IPC test ---.*\n" 10

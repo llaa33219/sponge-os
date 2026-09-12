@@ -1,0 +1,202 @@
+assert {![have_board linux]}
+
+if {[have_cmd_switch --autopilot]} {
+	assert {[have_include power_on/qemu] && [have_board pc]} \
+		"Autopilot mode is not supported on this platform."
+}
+
+# file following line disables low-level serial output
+#proc boot_output { } { return { } }
+
+if {[have_spec nova]} {
+	proc kernel_output { } { return "logmem" }
+
+	proc kernel_log { } { return {
++ start kernel_log | ram: 10M
+  + binary log_core
+  + config | period_ms: 2000
+  + route
+    + service LOG   | label: log | + child terminal_log | label: nova
+    + service ROM   | label: log | + parent             | label: kernel_log
+    + service Timer              | + child timer
+    + any-service                | + parent}
+	}
+} else {
+	proc kernel_log { } { return { } }
+}
+
+create_boot_directory
+import_from_depot [depot_user]/src/[base_src] \
+                  [depot_user]/pkg/test_usb_host-[board] \
+                  [depot_user]/src/dynamic_rom \
+                  [depot_user]/src/file_terminal \
+                  [depot_user]/src/init \
+                  [depot_user]/src/libc \
+                  [depot_user]/src/log_core \
+                  [depot_user]/src/posix \
+                  [depot_user]/src/report_rom \
+                  [depot_user]/src/stdin2out \
+                  [depot_user]/src/terminal_crosslink \
+                  [depot_user]/src/terminal_log \
+                  [depot_user]/src/vfs \
+                  [depot_user]/src/vfs_import \
+                  [depot_user]/src/usb_serial
+
+build { driver/usb_serial }
+
+install_config {
+config
+
++ parent-provides
+  + service CPU
+  + service IO_MEM
+  + service IO_PORT
+  + service IRQ
+  + service LOG
+  + service PD
+  + service RM
+  + service ROM
+
++ default-route
+  + any-service
+    + parent
+    + any-child
+
++ default | caps: 100 | ram: 1M
+
++ start timer
+  + provides | + service Timer
+
++ start ram_fs | ram: 16M
+  .1) record log to RAM FS + terminal crosslink
+  + binary vfs
+  + provides | + service File_system
+  + config
+  | + vfs
+  |   + ram
+  |   + import
+  |     + inline log | : EMPTY
+  | + default-policy | root: / | writeable: yes
+
++ start file_terminal | ram: 2M
+  + provides | + service Terminal
+  + config
+  | + default-policy | filename: log
+  | + vfs
+  |   + fs
+  |   + dir dev | + log
+  | + libc | stdout: /dev/log
+  + route
+    + service File_system | + child ram_fs
+    + any-service         | + parent
+
++ start terminal_log
+  + provides | + service LOG
+  + config
+  + route
+    + service Terminal | + child file_terminal
+    + service Timer    | + child timer
+    + any-service      | + parent
+
++ start log_core | ram: 10M
+  + config | period_ms: 2000
+  + route
+    + service LOG   | label: log | + child terminal_log | label: core
+    + service ROM   | label: log | + parent             | label: core_log
+    + service Timer              | + child timer
+    + any-service                | + parent
+} [kernel_log] {
+
++ start report_rom | caps: 120 | ram: 2M
+  + provides
+    + service Report
+    + service ROM
+  + config | verbose: no
+    + default-policy | report: usb -> usb -> devices
+  + route
+    + any-service | + parent
+
++ start terminal_crosslink
+  . 2) USB serial terminal at crosslink
+  + provides | + service Terminal
+  + config | buffer: 32K
+
++ start usb | caps: 1500 | ram: 32M | managing_system: yes
+  + binary init
+  + provides | + service Usb
+  + route
+    + service ROM    | label: config | + parent | label: drivers.config
+    + service Report                 | + child report_rom
+    + service Timer                  | + child timer
+    + any-service                    | + parent
+
++ start usb_serial | caps: 180 | ram: 11M
+  + config
+  + route
+    + service ROM      | label: report | + child report_rom
+    + service Terminal                 | + child terminal_crosslink
+    + service Usb                      | + child usb
+    + service Timer                    | + child timer
+    + any-service                      | + parent
+
++ start dump_log_config
+  . 3) dump recorded log to crosslink (after a while)
+  + binary dynamic_rom
+  + provides | + service ROM
+  + config
+    + rom config
+      + inline
+      + sleep | milliseconds: 4000
+      + inline
+      | + config
+      |   + parent-provides
+      |     + service CPU
+      |     + service File_system
+      |     + service LOG
+      |     + service PD
+      |     + service RM
+      |     + service ROM
+      |     + service Terminal
+      |     + service Timer
+      |   + default-route
+      |     + any-service
+      |       + parent
+      |   + default | caps: 100 | ram: 2M
+      |   + start stdin2out
+      |     + config
+      |       + vfs
+      |         + fs
+      |         + terminal
+      |       + libc | stdin: /log | stdout: /terminal
+      + sleep | milliseconds: 3600000
+
++ start dump_log | caps: 1500 | ram: 8M
+  + binary init
+  + route
+    + service ROM         | label: config | + child dump_log_config
+    + service File_system                 | + child ram_fs
+    + service Terminal                    | + child terminal_crosslink
+    + service Timer                       | + child timer
+    + any-service                         | + parent
+-}
+
+#
+# Define USB host controller config
+#
+set fd [open [run_dir]/genode/usb_host.config w]
+puts $fd {
+config | bios_handoff: no
+  + policy | label_prefix: usb_serial
+    | + device | vendor_id: 0x067b | product_id: 0x2303 | . Prolific PL2303
+    | + device | vendor_id: 0x0557 | product_id: 0x2008 | . Prolific PL2303
+    | + device | vendor_id: 0x0403 | product_id: 0x6001 | . FTDI FT232
+-}
+close $fd
+
+build_boot_image [build_artifacts]
+
+append qemu_args " -nographic "
+append qemu_args " -device nec-usb-xhci,id=xhci"
+append qemu_args " -device usb-serial,chardev=serial0,bus=xhci.0"
+
+run_genode_until forever

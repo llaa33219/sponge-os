@@ -1,0 +1,44 @@
+runtime | ram: 6M | caps: 400 | binary: init
+
++ provides
+  + rtc
+
++ requires
+  + timer
+  + irq
+  + io_port
+
++ content
+  + rom | label: ld.lib.so
+  + rom | label: init
+  + rom | label: pc_rtc
+  + rom | label: system_rtc
+
++ config
+  + parent-provides
+    + service ROM
+    + service IRQ
+    + service IO_MEM
+    + service IO_PORT
+    + service PD
+    + service RM
+    + service CPU
+    + service LOG
+    + service Timer
+
+  + default | caps: 150 | ram: 2M
+
+  + service Rtc | + default-policy | + child system_rtc
+
+  + start pc_rtc
+    + provides | + service Rtc
+    + config
+    + route | + any-service | + parent
+
+  + start system_rtc
+    + provides | + service Rtc
+    + config
+    + route
+      + service Rtc | + child pc_rtc
+      + any-service | + parent
+-

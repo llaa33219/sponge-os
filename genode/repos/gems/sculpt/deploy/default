@@ -1,0 +1,5 @@
+deploy
++ option board   | required: yes
++ option sculpt  | required: yes
++ option managed | required: yes
+-

@@ -1,0 +1,56 @@
+runtime | ram: 7M | caps: 700 | binary: init
+
++ provides
+  + pd
+  + cpu
+
++ requires
+  + trace
+  + timer
+  + file_system | label: recall | writeable: yes
+
++ config
+  + service PD  | + default-policy | + child cpu_balancer
+  + service CPU | + default-policy | + child cpu_balancer
+  + default-route | + any-service | + parent
+  + parent-provides
+  | + service PD
+  | + service CPU
+  | + service LOG
+  | + service ROM
+  | + service TRACE
+  | + service File_system
+  | + service Gui
+  | + service Timer
+  |
+  + start fs_report | caps: 100 | ram: 1M
+  | + provides | + service Report
+  | + config | + vfs | + fs
+  | + route
+  |   + service File_system | + parent | identity: recall
+  |   + any-service         | + parent
+  |
+  + start fs_rom | caps: 100 | ram: 1M
+  | + provides | + service ROM
+  | + config
+  | + route
+  |   + service File_system | + parent | identity: recall
+  |   + any-service         | + parent
+  |
+  + start cpu_balancer | caps: 200 | ram: 2M
+    + provides
+      + service PD
+      + service CPU
+    x config | interval_us: 1000000 | report: yes | trace: yes
+    + route
+      + service ROM    | label: config     | + child fs_rom | label: config
+      + service Report | label: components | + child fs_report | label: components
+      + any-service                        | + parent
+
++ content
+  + rom | label: ld.lib.so
+  + rom | label: cpu_balancer
+  + rom | label: init
+  + rom | label: fs_report
+  + rom | label: fs_rom
+-

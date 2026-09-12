@@ -1,0 +1,124 @@
+build { core init lib/ld test/bomb timer }
+
+set timeout     60
+set rounds      10
+set generations 3
+set children    7
+set sleep       600
+set demand      [expr 1*1024*1024]
+
+set cpus        4
+set init_ram    256
+
+if { [have_cmd_switch --autopilot] } {
+
+	assert {![have_include power_on/qemu]} \
+		"Autopilot mode is not supported on this platform."
+
+	assert {[have_spec x86]}
+
+	assert {[have_spec hw] || [have_spec nova] || [have_spec sel4] || [have_spec foc]}
+
+	# set specifically for our nightly test hardware */
+	if {[have_spec x86_64]} {
+		set init_ram 512
+		set cpus     8
+	}
+}
+
+create_boot_directory
+
+proc per_cpu_start_node { i } {
+
+	global init_ram rounds generations children sleep demand
+
+	set result ""
+	append result {
+		+ start init_} $i { | caps: 1100 | ram: } ${init_ram}M {
+		  + affinity | xpos: } $i { | width: 1
+		  + binary init
+		  + config | verbose: yes | prio_levels: 2
+		    + parent-provides
+		      + service ROM
+		      + service PD
+		      + service RM
+		      + service CPU
+		      + service LOG
+		      + service Timer
+		    + default-route
+		      + any-service
+		        + parent
+		        + any-child
+		    + default | caps: 1000
+		    + resource RAM | preserve: 2M
+		    + resource CAP | preserve: 100
+		    + start bomb-master | priority: -1 | caps: 100000 | ram: 2G
+		      + binary bomb
+		      + config
+		               rounds:      } $rounds {
+		               generations: } $generations {
+		               children:    } $children {
+		               sleep:       } $sleep {
+		               demand:      } $demand {
+		}
+
+	# strip tabs used for indentation
+	return [string map {"\t" ""} $result]
+}
+
+proc cpu_start_nodes { cpus } {
+
+	set result ""
+	for { set i 0} { $i < $cpus } { incr i } {
+		append result [per_cpu_start_node $i] }
+
+	return $result
+}
+
+
+install_config {
+config | verbose: yes
++ affinity-space | width: } $cpus { | height: 1
+
++ parent-provides
+  + service ROM
+  + service PD
+  + service RM
+  + service CPU
+  + service LOG
+  + service IO_PORT
+  + service IO_MEM
+  + service IRQ
+
++ default-route
+  + any-service
+    + parent
+    + any-child
+
++ default | caps: 100
+
++ resource RAM | preserve: 2M
++ resource CAP | preserve: 100
+
++ start timer | ram: 1M
+  + provides | + service Timer
+
+} [cpu_start_nodes $cpus] {
+-
+}
+
+build_boot_image [build_artifacts]
+
+append qemu_args " -m [expr 128 + $init_ram*$cpus]M -nographic -smp $cpus"
+
+if { [have_cmd_switch --autopilot] } {
+
+	run_genode_until {bomb started} 20
+
+	for { set i 0} { $i < ${cpus} } { incr i} {
+		run_genode_until {\[init -\> init_[0-9] -\> bomb-master] Done\. Going to sleep} $timeout [output_spawn_id]
+	}
+
+} else {
+	run_genode_until forever
+}

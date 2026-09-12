@@ -1,0 +1,89 @@
+create_boot_directory
+
+import_from_depot [depot_user]/src/[base_src] \
+                  [depot_user]/pkg/[drivers_interactive_pkg] \
+                  [depot_user]/pkg/terminal \
+                  [depot_user]/src/nitpicker \
+                  [depot_user]/src/demo \
+                  [depot_user]/src/init
+
+install_config {
+config
++ parent-provides
+  + service ROM
+  + service IRQ
+  + service IO_MEM
+  + service IO_PORT
+  + service PD
+  + service RM
+  + service CPU
+  + service LOG
+
++ default-route
+  + service Gui      | + child nitpicker
+  + service Timer    | + child timer
+  + service Terminal | + child terminal
+  + service Platform | + child platform
+  + any-service      | + parent
+
++ default | caps: 100 | ram: 1M
++ start timer
+  + provides | + service Timer
+
++ start drivers | caps: 1500 | ram: 64M | managing_system: yes
+  + binary init
+  + route
+    + service ROM | label: config | + parent | label: drivers.config
+    + service Timer               | + child timer
+    + service Capture             | + child nitpicker
+    + service Event               | + child nitpicker
+    + any-service                 | + parent
+
++ start nitpicker | ram: 2M
+  + provides
+    + service Gui
+    + service Capture
+    + service Event
+  + config
+    + capture
+    + event
+    + domain pointer  | layer: 1 | content: client | label: no | origin: pointer
+    + domain default  | layer: 2 | content: client | label: no | focus: click | hover: always
+    + domain terminal | layer: 3 | content: client | label: no | width: 300 | height: 300
+    + policy | label_prefix: pointer  | domain: pointer
+    + policy | label_prefix: terminal | domain: terminal
+    + default-policy                  | domain: default
+  + route
+    + any-service
+      + parent
+      + any-child
+
++ start pointer | ram: 2M
++ start terminal | caps: 110 | ram: 6M
+  + provides | + service Terminal
+  + route
+    + service ROM | label: config | + parent | label: terminal.config
+    + service Gui                 | + child nitpicker
+    + any-service
+      + parent
+      + any-child
+
++ start terminal_log
+  + provides | + service LOG
+
++ start launchpad | caps: 2000 | ram: 32M
+  + config
+    + launcher testnit | ram_quota: 1M | caps: 100
+  + route
+    + service LOG | + child terminal_log
+    + any-service
+      + any-child
+      + parent
+-
+}
+
+build { server/terminal_log test/nitpicker }
+
+build_boot_image [build_artifacts]
+
+run_genode_until forever

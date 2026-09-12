@@ -1,0 +1,37 @@
+runtime | ram: 32M | caps: 1000 | binary: init
+
++ requires | + timer
+
++ fail    | after_seconds: 10
++ succeed | : [test-terminal_crosslink] Test succeeded
+
++ content
+  + rom | label: ld.lib.so
+  + rom | label: terminal_crosslink
+  + rom | label: test-terminal_crosslink
+
++ config
+  + parent-provides
+    + service ROM
+    + service IRQ
+    + service IO_MEM
+    + service IO_PORT
+    + service PD
+    + service RM
+    + service CPU
+    + service LOG
+    + service Timer
+
+  + default-route
+    + any-service
+      + parent
+      + any-child
+
+  + default | caps: 200
+
+  + start terminal_crosslink | ram: 2M
+    + provides | + service Terminal
+    + config | buffer: 4K
+
+  + start test-terminal_crosslink | ram: 1M
+-

@@ -1,0 +1,11 @@
+runtime | ram: 4M | caps: 100 | binary: test-stack_smash
+
++ fail    | after_seconds: 20
++ succeed | : *Error: stack protector check failed
+
++ content
+  + rom | label: ld.lib.so
+  + rom | label: test-stack_smash
+
++ config
+-

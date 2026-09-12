@@ -1,0 +1,17 @@
+# Network echo test (lwIP, UDP)
+#
+# Example test command
+#
+# for i in {1..10}; do
+#   dd if=/dev/urandom bs=736 count=1 | xxd -plain | tr -d '\n'
+#   sleep 0.1
+# done | nc -u 10.0.2.55 7
+#
+
+proc ipstack         { } { return lwip }
+proc protocol        { } { return udp }
+proc use_dynamic_rom { } { return false }
+
+source ${genode_dir}/repos/libports/run/netty.inc
+
+# vi: set ft=tcl :

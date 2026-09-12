@@ -1,0 +1,96 @@
+create_boot_directory
+
+import_from_depot [depot_user]/src/[base_src] \
+                  [depot_user]/pkg/[drivers_interactive_pkg] \
+                  [depot_user]/raw/genode_bg \
+                  [depot_user]/pkg/backdrop \
+                  [depot_user]/src/init \
+                  [depot_user]/src/dynamic_rom \
+                  [depot_user]/src/nitpicker
+
+install_config {
+config
++ parent-provides
+  + service ROM
+  + service IRQ
+  + service IO_MEM
+  + service IO_PORT
+  + service PD
+  + service RM
+  + service CPU
+  + service LOG
+
++ default-route
+  + any-service
+    + parent
+    + any-child
+
++ default | caps: 100 | ram: 1M
+
++ start drivers | caps: 1500 | ram: 64M | managing_system: yes
+  + binary init
+  + route
+    + service ROM | label: config | + parent | label: drivers.config
+    + service Timer               | + child timer
+    + service Capture             | + child nitpicker
+    + service Event               | + child nitpicker
+    + any-service                 | + parent
+
++ start timer
+  + provides | + service Timer
+
++ start nitpicker
+  + provides
+    + service Gui
+    + service Capture
+    + service Event
+  + config
+    + capture
+    + event
+    + domain default | layer: 2 | content: client | label: no
+    + domain nano3d  | layer: 1 | content: client | label: no | origin: pointer
+    + policy | label_prefix: nano3d | domain: nano3d
+    + default-policy                | domain: default
+
++ start backdrop | caps: 130 | ram: 20M
+  + config
+  | + libc
+  | + vfs
+  |   + rom genode_logo.png
+  |   + rom grid.png
+  | + fill | color: #122334
+  | + image | png: grid.png        | tiled: yes           | alpha: 200
+  | + image | png: genode_logo.png | anchor: bottom_right | alpha: 150
+  + route
+    + service Gui | + child nitpicker | label: backdrop
+    + any-service
+      + parent
+      + any-child
+
++ start dynamic_rom | ram: 4M
+  + provides | + service ROM
+  + config | verbose: yes
+    + rom nano3d.config
+      + inline | description: initial state  | + config | painter: textures
+      + sleep  | milliseconds: 1000
+      + inline | description: RGBA shading   | + config | painter: shaded
+      + sleep  | milliseconds: 1000
+      + inline | description: switch to cube | + config | painter: shaded   | shape: cube
+      + sleep  | milliseconds: 1000
+      + inline | description: texturing      | + config | painter: textured | shape: cube
+      + sleep  | milliseconds: 1000
+
++ start nano3d | ram: 8M
+  + route
+    + service ROM | label: config | + child dynamic_rom | label: nano3d.config
+    + any-service
+      + parent
+      + any-child
+-
+}
+
+build { app/nano3d }
+
+build_boot_image [build_artifacts]
+
+run_genode_until forever

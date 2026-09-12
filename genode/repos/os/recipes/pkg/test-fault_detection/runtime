@@ -1,0 +1,12 @@
+runtime | ram: 10M | caps: 500 | binary: test-fault_detection
+
++ fail    | after_seconds: 60
++ succeed | : --- finished fault_detection test ---
+
++ config
+
++ content
+  + rom | label: ld.lib.so
+  + rom | label: test-segfault
+  + rom | label: test-fault_detection
+-

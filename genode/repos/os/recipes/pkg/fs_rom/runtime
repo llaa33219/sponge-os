@@ -1,0 +1,12 @@
+runtime | ram: 1M | caps: 100 | binary: fs_rom
+
++ requires | + file_system
+
++ provides | + rom
+
++ config
+
++ content
+  + rom | label: ld.lib.so
+  + rom | label: fs_rom
+-

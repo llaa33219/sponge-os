@@ -1,0 +1,92 @@
+/*
+ * \brief  Handle ACPI AC adapter devices
+ * \author Alexander Boettcher
+ *
+ */
+
+/*
+ * Copyright (C) 2016-2026 Genode Labs GmbH
+ *
+ * This file is part of the Genode OS framework, which is distributed
+ * under the terms of the GNU Affero General Public License version 3.
+ */
+
+class Ac : Acpica::Callback<Ac> {
+
+	private:
+
+		Acpica::Reportstate * _report;
+		UINT64 _ac_state = 0;
+		UINT64 _ac_count = 0;
+
+		ACPI_HANDLE const _ac;
+
+	public:
+
+		Ac(Acpica::Reportstate * report, ACPI_HANDLE const ac)
+		: _report(report), _ac(ac)
+		{
+			if (_report)
+				_report->add_notify(this);
+		}
+
+		void trigger_update() { handle(_ac, 0); }
+
+		void handle(ACPI_HANDLE ac, UINT32 value)
+		{
+			Acpica::Buffer<ACPI_OBJECT> onoff;
+			ACPI_STATUS res = AcpiEvaluateObjectTyped(ac, ACPI_STRING("_PSR"),
+			                                          nullptr, &onoff,
+			                                          ACPI_TYPE_INTEGER);
+			if (ACPI_FAILURE(res)) {
+				Genode::log("failed   - res=", Genode::Hex(res), " _PSR");
+				return;
+			}
+
+			auto const new_state = onoff.object.Integer.Value;
+
+			if (_ac_state != new_state)
+				Genode::log(new_state == 0 ? "offline " :
+				            new_state == 1 ? "online  " : "unknown ",
+				            " - ac (", value, ")");
+
+			_ac_state = new_state;
+			_ac_count++;
+
+			if (_report)
+				_report->ac_event();
+		}
+
+		static ACPI_STATUS detect(ACPI_HANDLE ac, UINT32, void * m, void **)
+		{
+			Acpica::Main * main = reinterpret_cast<Acpica::Main *>(m);
+			Ac * obj = new (main->heap) Ac(main->report, ac);
+
+			ACPI_STATUS res = AcpiInstallNotifyHandler (ac, ACPI_DEVICE_NOTIFY,
+			                                            handler, obj);
+			if (ACPI_FAILURE(res)) {
+				Genode::error("failed   - '", __func__, "' res=", Genode::Hex(res));
+				delete obj;
+				return AE_OK;
+			}
+
+			Genode::log("detected - ac");
+
+			handler(ac, 0, obj);
+
+			return AE_OK;
+		}
+
+		void generate(Genode::Generator &g)
+		{
+			g.attribute("value", _ac_state);
+			g.attribute("count", _ac_count);
+
+			if (_ac_state == 0)
+				g.append_quoted("offline");
+			else if (_ac_state == 1)
+				g.append_quoted("online");
+			else
+				g.append_quoted("unknown");
+		}
+};

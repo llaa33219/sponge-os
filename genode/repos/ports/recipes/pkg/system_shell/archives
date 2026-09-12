@@ -1,0 +1,15 @@
+_/raw/system_shell
+_/src/bash-minimal
+_/src/vim-minimal
+_/src/coreutils-minimal
+_/src/tclsh
+_/raw/vim_syntax
+_/raw/hid
+_/src/libc
+_/src/posix
+_/src/ncurses
+_/src/terminal
+_/src/init
+_/src/vfs
+_/src/vfs_pipe
+_/src/cached_fs_rom

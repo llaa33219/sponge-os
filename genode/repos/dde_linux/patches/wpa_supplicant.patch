@@ -1,0 +1,278 @@
+The nl80211 driver patch contains the following changes:
+
+- Convert inline error values from Linux to libc (FreeBSD) as otherwise
+  wpa_supplicant might come to the wrong conclusions.
+
+- Show RFKILL operations at INFO level (so that the always appear in the
+  log) and generate a interface dis-/enable event that will be handled
+  by the management layer.
+
+- Remove netlink messages that rely on newer libnl versions, e.g. signed
+  value where introduced in 3.2.27.
+
+- Hardcode the I/O control socket rather than calling socket because it
+  is not used anyway (see wpa_driver_nl80211/ioctl.cc).
+--- a/src/drivers/driver_nl80211.c
++++ a/src/drivers/driver_nl80211.c
+@@ -487,6 +487,8 @@
+ }
+ 
+ 
++extern int convert_errno_from_linux(int linux_errno);
++
+ int send_and_recv(struct nl80211_global *global,
+ 		  struct nl_sock *nl_handle, struct nl_msg *msg,
+ 		  int (*valid_handler)(struct nl_msg *, void *),
+@@ -579,7 +581,7 @@
+ 	/* Always clear the message as it can potentially contain keys */
+ 	nl80211_nlmsg_clear(msg);
+ 	nlmsg_free(msg);
+-	return err.err;
++	return convert_errno_from_linux(err.err);
+ }
+ 
+ 
+@@ -2088,13 +2090,13 @@
+ {
+ 	struct wpa_driver_nl80211_data *drv = ctx;
+ 
+-	wpa_printf(MSG_DEBUG, "nl80211: RFKILL blocked");
++	wpa_printf(MSG_INFO, "nl80211: RFKILL blocked");
+ 
+ 	/*
+ 	 * rtnetlink ifdown handler will report interfaces other than the P2P
+ 	 * Device interface as disabled.
+ 	 */
+-	if (drv->nlmode == NL80211_IFTYPE_P2P_DEVICE)
++	// if (drv->nlmode == NL80211_IFTYPE_P2P_DEVICE)
+ 		wpa_supplicant_event(drv->ctx, EVENT_INTERFACE_DISABLED, NULL);
+ }
+ 
+@@ -2102,7 +2104,7 @@
+ static void wpa_driver_nl80211_rfkill_unblocked(void *ctx)
+ {
+ 	struct wpa_driver_nl80211_data *drv = ctx;
+-	wpa_printf(MSG_DEBUG, "nl80211: RFKILL unblocked");
++	wpa_printf(MSG_INFO, "nl80211: RFKILL unblocked");
+ 	if (i802_set_iface_flags(drv->first_bss, 1)) {
+ 		wpa_printf(MSG_DEBUG, "nl80211: Could not set interface UP "
+ 			   "after rfkill unblock");
+@@ -2116,7 +2118,7 @@
+ 	 * rtnetlink ifup handler will report interfaces other than the P2P
+ 	 * Device interface as enabled.
+ 	 */
+-	if (drv->nlmode == NL80211_IFTYPE_P2P_DEVICE)
++	// if (drv->nlmode == NL80211_IFTYPE_P2P_DEVICE)
+ 		wpa_supplicant_event(drv->ctx, EVENT_INTERFACE_ENABLED, NULL);
+ }
+ 
+@@ -7826,7 +7828,7 @@
+ 		[NL80211_STA_INFO_BEACON_SIGNAL_AVG] = { .type = NLA_U8},
+ 		[NL80211_STA_INFO_RX_DURATION] = { .type = NLA_U64 },
+ 		[NL80211_STA_INFO_ACK_SIGNAL] = { .type = NLA_U8 },
+-		[NL80211_STA_INFO_ACK_SIGNAL_AVG] = { .type = NLA_S8 },
++		[NL80211_STA_INFO_ACK_SIGNAL_AVG] = { .type = NLA_U8 },
+ 		[NL80211_STA_INFO_RX_MPDUS] = { .type = NLA_U32 },
+ 		[NL80211_STA_INFO_FCS_ERROR_COUNT] = { .type = NLA_U32 },
+ 		[NL80211_STA_INFO_TX_DURATION] = { .type = NLA_U64 },
+@@ -7930,9 +7932,9 @@
+ 			nla_get_u8(stats[NL80211_STA_INFO_ACK_SIGNAL]);
+ 		data->flags |= STA_DRV_DATA_LAST_ACK_RSSI;
+ 	}
+-	if (stats[NL80211_STA_INFO_ACK_SIGNAL_AVG])
+-		data->avg_ack_signal =
+-			nla_get_s8(stats[NL80211_STA_INFO_ACK_SIGNAL_AVG]);
++	// if (stats[NL80211_STA_INFO_ACK_SIGNAL_AVG])
++	// 	data->avg_ack_signal =
++	// 		nla_get_s8(stats[NL80211_STA_INFO_ACK_SIGNAL_AVG]);
+ 	if (stats[NL80211_STA_INFO_RX_MPDUS])
+ 		data->rx_mpdus = nla_get_u32(stats[NL80211_STA_INFO_RX_MPDUS]);
+ 	if (stats[NL80211_STA_INFO_FCS_ERROR_COUNT])
+@@ -9939,7 +9941,7 @@
+ 	if (wpa_driver_nl80211_init_nl_global(global) < 0)
+ 		goto err;
+ 
+-	global->ioctl_sock = socket(PF_INET, SOCK_DGRAM, 0);
++	global->ioctl_sock = 12345; /* arbitrarily chosen number b/c it won't be used anyway */
+ 	if (global->ioctl_sock < 0) {
+ 		wpa_printf(MSG_ERROR, "nl80211: socket(PF_INET,SOCK_DGRAM) failed: %s",
+ 			   strerror(errno));
+diff --git a/src/drivers/netlink.c b/src/drivers/netlink.c
+index 0e960f4..38fb26c 100644
+--- a/src/drivers/netlink.c
++++ b/src/drivers/netlink.c
+@@ -13,6 +13,8 @@
+ #include "priv_netlink.h"
+ #include "netlink.h"
+ 
++#define PF_NETLINK 16
++#define AF_NETLINK PF_NETLINK
+ 
+ struct netlink_data {
+ 	struct netlink_config *cfg;
+diff --git a/src/utils/common.c b/src/utils/common.c
+index 2c12751..e9047d5 100644
+--- a/src/utils/common.c
++++ b/src/utils/common.c
+@@ -483,39 +483,15 @@
+ 		if (txt + 4 >= end)
+ 			break;
+ 
+-		switch (data[i]) {
+-		case '\"':
+-			*txt++ = '\\';
+-			*txt++ = '\"';
+-			break;
+-		case '\\':
+-			*txt++ = '\\';
+-			*txt++ = '\\';
+-			break;
+-		case '\033':
+-			*txt++ = '\\';
+-			*txt++ = 'e';
+-			break;
+-		case '\n':
+-			*txt++ = '\\';
+-			*txt++ = 'n';
+-			break;
+-		case '\r':
+-			*txt++ = '\\';
+-			*txt++ = 'r';
+-			break;
+-		case '\t':
+-			*txt++ = '\\';
+-			*txt++ = 't';
+-			break;
+-		default:
+-			if (data[i] >= 32 && data[i] <= 126) {
+-				*txt++ = data[i];
+-			} else {
+-				txt += os_snprintf(txt, end - txt, "\\x%02x",
+-						   data[i]);
+-			}
+-			break;
++		bool const allow_data = data[i] != '"'
++		                     && data[i] != '&'
++		                     && data[i] != '|'
++		                     && data[i] != '\\';
++
++		if (data[i] >= 32 && data[i] <= 126 && (allow_data)) {
++			*txt++ = data[i];
++		} else {
++			txt += os_snprintf(txt, end - txt, "\\x%02x", data[i]);
+ 		}
+ 	}
+ 
+diff --git a/wpa_supplicant/ctrl_iface.c b/wpa_supplicant/ctrl_iface.c
+index bcd67fc..025ec8d 100644
+--- a/wpa_supplicant/ctrl_iface.c
++++ b/wpa_supplicant/ctrl_iface.c
+@@ -3687,7 +3687,8 @@
+ 	}
+ 
+ 	if ((os_strcmp(name, "psk") == 0 &&
+-	     value[0] == '"' && ssid->ssid_len) ||
++	    (value[0] == '"' || (value[0] == 'P' && value[1] == '"'))
++	   && ssid->ssid_len) ||
+ 	    (os_strcmp(name, "ssid") == 0 && ssid->passphrase))
+ 		wpa_config_update_psk(ssid);
+ 	else if (os_strcmp(name, "priority") == 0)
+@@ -12514,7 +12515,7 @@
+ 					 char *buf, size_t *resp_len)
+ {
+ 	char *reply;
+-	const int reply_size = 4096;
++	const int reply_size = 4096*8;
+ 	int reply_len;
+ 
+ 	if (os_strncmp(buf, WPA_CTRL_RSP, os_strlen(WPA_CTRL_RSP)) == 0 ||
+--- a/wpa_supplicant/config.c
++++ b/wpa_supplicant/config.c
+@@ -573,13 +573,40 @@
+ 	}
+ #endif /* CONFIG_EXT_PASSWORD */
+ 
+-	if (*value == '"') {
++	/*
++	 * In case we encounter a Pstring, parse that and
++	 * hand over a new string to the original parsing
++	 * code. The original code is changed to better
++	 * handle freeing of the new string but functionally
++	 * left intact.
++	 */
++	char *pstring_ptr = NULL;
++	if (value[0] == 'P' && value[1] == '"') {
++		size_t pstring_len = 0;
++		pstring_ptr = wpa_config_parse_string(value, &pstring_len);
++		if (pstring_ptr == NULL) {
++			wpa_printf(MSG_ERROR, "Could not properly parse PSK Pstring");
++			return 1;
++		}
++	}
++
++	int result = 0;
++
++	if (*value == '"' || pstring_ptr) {
+ #ifndef CONFIG_NO_PBKDF2
+ 		const char *pos;
+ 		size_t len;
+ 
++		/* consume " first but does not matter for Pstring */
+ 		value++;
+-		pos = os_strrchr(value, '"');
++
++		/* intentionally not indented to keep diff down */
++		do {
++
++		if (pstring_ptr)
++			value = pstring_ptr;
++
++		pos = pstring_ptr ? NULL : os_strrchr(value, '"');
+ 		if (pos)
+ 			len = pos - value;
+ 		else
+@@ -588,7 +615,8 @@
+ 			wpa_printf(MSG_ERROR, "Line %d: Invalid passphrase "
+ 				   "length %lu (expected: 8..63) '%s'.",
+ 				   line, (unsigned long) len, value);
+-			return -1;
++			result = -1;
++			break;
+ 		}
+ 		wpa_hexdump_ascii_key(MSG_MSGDUMP, "PSK (ASCII passphrase)",
+ 				      (u8 *) value, len);
+@@ -596,19 +624,29 @@
+ 			wpa_printf(MSG_ERROR,
+ 				   "Line %d: Invalid passphrase character",
+ 				   line);
+-			return -1;
++			result = -1;
++			break;
+ 		}
+ 		if (ssid->passphrase && os_strlen(ssid->passphrase) == len &&
+ 		    os_memcmp(ssid->passphrase, value, len) == 0) {
+ 			/* No change to the previously configured value */
+-			return 1;
++			result = 1;
++			break;
+ 		}
+ 		ssid->psk_set = 0;
+ 		str_clear_free(ssid->passphrase);
+ 		ssid->passphrase = dup_binstr(value, len);
+-		if (ssid->passphrase == NULL)
+-			return -1;
+-		return 0;
++		if (ssid->passphrase == NULL) {
++			result = -1;
++			break;
++		}
++
++		} while (0);
++
++		if (pstring_ptr)
++			os_free(pstring_ptr);
++
++		return result;
+ #else /* CONFIG_NO_PBKDF2 */
+ 		wpa_printf(MSG_ERROR, "Line %d: ASCII passphrase not "
+ 			   "supported.", line);

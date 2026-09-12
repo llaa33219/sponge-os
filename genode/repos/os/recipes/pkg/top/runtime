@@ -1,0 +1,11 @@
+runtime | ram: 100M | caps: 1000 | binary: top
+
++ requires
+  + trace
+  + timer
+
++ content
+  + rom | label: top
+
++ config | period_ms: 5000 | sort_time: ec
+-

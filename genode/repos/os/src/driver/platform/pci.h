@@ -1,0 +1,47 @@
+/*
+ * \brief  Platform driver - PCI helper utilities
+ * \author Stefan Kalkowski
+ * \date   2022-05-02
+ */
+
+/*
+ * Copyright (C) 2022 Genode Labs GmbH
+ *
+ * This file is part of the Genode OS framework, which is distributed
+ * under the terms of the GNU Affero General Public License version 3.
+ */
+
+#ifndef _SRC__DRIVER__PLATFORM__PCI_H_
+#define _SRC__DRIVER__PLATFORM__PCI_H_
+
+/* Genode includes */
+#include <base/env.h>
+#include <irq_session/irq_session.h>
+#include <os/session_policy.h>
+
+/* local includes */
+#include <device.h>
+
+namespace Driver {
+	class Device_component;
+	class Device_pd;
+
+	void pci_enable(Genode::Env &, Device const &);
+	void pci_disable(Genode::Env &, Device const &);
+	void pci_apply_quirks(Genode::Env &, Device const &);
+
+	[[nodiscard]] bool pci_msi_enable(Genode::Env &, Device_component &, addr_t,
+	                                  Genode::Irq_session::Info const,
+	                                  bool, unsigned);
+	void pci_msi_disable(Genode::Env &, addr_t);
+
+	bool pci_device_matches(Genode::Node const &policy,
+	                        Device const &);
+	void pci_device_specific_info(Device const &,
+	                              Env          &,
+	                              Device_model &,
+	                              Generator    &);
+	void pci_resume_bridges(Env &, Device_model &);
+}
+
+#endif /* _SRC__DRIVER__PLATFORM__PCI_H_ */

@@ -1,0 +1,21 @@
+build { core init lib/ld test/cache }
+
+create_boot_directory
+
+install_config {
+config
++ parent-provides
+  + service LOG
+  + service CPU
+  + service PD
+  + service ROM
+  + service IO_MEM
++ default-route | + any-service | + parent
++ default | caps: 100
++ start test-cache | ram: 64M
+-
+}
+
+build_boot_image [build_artifacts]
+
+run_genode_until "done.*\n" 300

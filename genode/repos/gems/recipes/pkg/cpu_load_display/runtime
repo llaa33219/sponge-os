@@ -1,0 +1,57 @@
+runtime | ram: 32M | caps: 1100 | binary: init
+
++ requires
+  + gui
+  + trace
+  + timer
+
++ config
+  + parent-provides
+    + service ROM
+    + service PD
+    + service RM
+    + service CPU
+    + service LOG
+    + service TRACE
+    + service Gui
+    + service Timer
+
+  + default-route
+    + any-service
+      + parent
+      + any-child
+
+  + default | caps: 100
+
+  + start report_rom | ram: 4M
+    + provides
+      + service Report
+      + service ROM
+    + config
+      + policy | label:  cpu_load_display -> trace_subjects
+               | report: trace_subject_reporter -> trace_subjects
+
+  + start trace_subject_reporter | ram: 6M
+    + config | period_ms: 500
+      + report | activity: yes | affinity: yes
+    + route
+      + service Report | + child report_rom
+      + any-service
+        + parent
+        + any-child
+
+  + start cpu_load_display | ram: 6M
+    + config
+    + route
+      + service ROM | label: trace_subjects | + child report_rom
+      + any-service
+        + parent
+        + any-child
+
++ content
+  + rom | label: init
+  + rom | label: ld.lib.so
+  + rom | label: report_rom
+  + rom | label: cpu_load_display
+  + rom | label: trace_subject_reporter
+-

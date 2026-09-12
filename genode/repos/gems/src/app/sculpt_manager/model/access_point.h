@@ -1,0 +1,68 @@
+/*
+ * \brief  Representation of a wireless access point
+ * \author Norman Feske
+ * \date   2018-05-07
+ */
+
+/*
+ * Copyright (C) 2018 Genode Labs GmbH
+ *
+ * This file is part of the Genode OS framework, which is distributed
+ * under the terms of the GNU Affero General Public License version 3.
+ */
+
+#ifndef _MODEL__ACCESS_POINT_H_
+#define _MODEL__ACCESS_POINT_H_
+
+#include "types.h"
+
+#include <net/wifi.h>
+
+namespace Sculpt {
+
+	struct Access_point;
+	struct Access_point_update_policy;
+
+	using Access_points = List_model<Access_point>;
+};
+
+
+struct Sculpt::Access_point : List_model<Access_point>::Element
+{
+	using Bssid = String<32>;
+	using Ssid  = String<128+1>;
+
+	enum Protection { UNKNOWN, UNPROTECTED, WPA_PSK, WPA3_PSK };
+
+	Bssid      const bssid;
+	Ssid       const ssid;
+	Protection const protection;
+
+	Net::Wifi::Decoded_pstring const decoded_ssid;
+
+	unsigned quality = 0;
+
+	Access_point(Bssid const &bssid, Ssid const &ssid, Protection protection)
+	:
+		bssid(bssid), ssid(ssid), protection(protection),
+		decoded_ssid(Net::Wifi::from(Net::Wifi::Encoded_pstring(ssid)))
+	{ }
+
+	bool unprotected()   const { return protection == UNPROTECTED; }
+	bool wpa_protected() const
+	{
+		return protection == WPA_PSK || protection == WPA3_PSK;
+	}
+
+	bool matches(Node const &node) const
+	{
+		return node.attribute_value("ssid", Access_point::Ssid()) == ssid;
+	}
+
+	static bool type_matches(Node const &node)
+	{
+		return node.has_type("accesspoint");
+	}
+};
+
+#endif /* _MODEL__ACCESS_POINT_H_ */

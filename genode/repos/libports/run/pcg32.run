@@ -1,0 +1,39 @@
+build { core init lib/ld lib/libc lib/libm lib/vfs lib/posix test/pcg32 }
+
+create_boot_directory
+
+install_config {
+config
++ parent-provides
+  + service ROM
+  + service PD
+  + service RM
+  + service CPU
+  + service LOG
+
++ default-route | + any-service | + parent
+
++ start test-pcg32 | ram: 4M | caps: 200
+  + config
+    + vfs | + dir dev | + log
+    + libc | stdout: /dev/log
+-
+}
+
+build_boot_image [build_artifacts]
+
+append qemu_args " -nographic  "
+
+run_genode_until "child .* exited with exit value 0.*\n" 10
+
+set fd [open "bin/test-pcg32.out"]
+set expected [read $fd]
+close $fd
+
+grep_output {init -> test-pcg32}
+
+unify_output {\[init -> test-pcg32\] } {}
+
+compare_output_to $expected
+
+puts "\nGlobal PCG32 output verified."

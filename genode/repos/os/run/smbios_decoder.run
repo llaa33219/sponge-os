@@ -1,0 +1,65 @@
+assert {[have_board pc]}
+assert {[have_spec nova] || [have_spec hw]}
+
+build { core init timer lib/ld driver/acpi server/report_rom app/smbios_decoder }
+
+create_boot_directory
+
+install_config {
+config
++ parent-provides
+  + service CPU
+  + service IO_MEM
+  + service IO_PORT
+  + service IRQ
+  + service LOG
+  + service PD
+  + service RM
+  + service ROM
+
++ default-route
+  + service Report | + child report_rom
+  + any-service
+    + parent
+    + any-child
+
++ default | caps: 200 | ram: 1M
+
++ start timer
+  + provides | + service Timer
+  + route | + any-service | + parent
+
++ start acpi_report_rom
+  + binary report_rom
+  + provides
+    + service Report
+    + service ROM
+  + config
+    + policy | label: smbios_decoder -> smbios_table
+               report: acpi -> smbios_table
+
++ start acpi | caps: 350 | ram: 4M
+  + route
+    + service Report | + child acpi_report_rom
+    + any-service    | + parent
+
++ start report_rom
+  + provides
+    + service Report
+    + service ROM
+  + config | verbose: yes
+
++ start smbios_decoder | ram: 10M
+  + config | verbose: yes
+  + route
+    + service Report                    | + child report_rom
+    + service ROM | label: smbios_table | + child acpi_report_rom
+    + any-service                       | + parent
+-
+}
+
+build_boot_image [build_artifacts]
+
+append qemu_args " -nographic"
+
+run_genode_until {init -> report_rom\] +\+ structure [|] type: 0 .*?description: BIOS Information.*\n.*report_rom\]   -} 20

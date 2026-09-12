@@ -1,0 +1,57 @@
+#
+# \brief  Test for using the libc_vfs plugin with the Linux file system
+# \author Norman Feske
+# \author Christian Helmuth
+# \date   2013-11-07
+#
+
+assert {[have_spec linux]}
+
+build { core init lib/ld lib/libc lib/vfs server/lx_fs test/libc_vfs }
+
+create_boot_directory
+
+install_config {
+config
++ parent-provides
+  + service ROM
+  + service PD
+  + service RM
+  + service CPU
+  + service LOG
+
++ default-route
+  + any-service
+    + parent
+    + any-child
+
++ start lx_fs | caps: 200 | ram: 4M | ld: no
+  + provides | + service File_system
+  + config
+    + policy | label_prefix: test-libc_vfs | root: /libc_vfs | writeable: yes
+
++ start test-libc_vfs | caps: 100 | ram: 4M
+  + config
+    + vfs
+      + fs
+      + dir dev | + log
+    + libc | stdout: /dev/log
+-
+}
+
+#
+# Create test-directory structure and ensure it is empty
+#
+
+exec rm -rf bin/libc_vfs
+exec mkdir -p bin/libc_vfs
+
+build_boot_image [list {*}[build_artifacts] libc_vfs]
+
+run_genode_until {child "test-libc_vfs" exited with exit value 0.*\n} 20
+
+puts "\nTest succeeded\n"
+
+exec rm -r bin/libc_vfs
+
+# vi: set ft=tcl :

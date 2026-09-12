@@ -1,0 +1,74 @@
+build {
+	core lib/ld init timer
+	lib/vfs lib/vfs_audit server/vfs
+	lib/libc lib/libm lib/posix test/libc_many_writes
+}
+
+create_boot_directory
+
+install_config {
+config
++ parent-provides
+  + service CPU
+  + service IRQ
+  + service IO_MEM
+  + service IO_PORT
+  + service LOG
+  + service PD
+  + service RM
+  + service ROM
+
++ default-route
+  + any-service
+    + parent
+    + any-child
+
++ default | caps: 128 | ram: 1M
+
++ start timer
+  + provides | + service Timer
+
++ start ramfs | ram: 4M
+  + binary vfs
+  + provides | + service File_system
+  + config
+    + vfs
+      + dir ram   | + ram
+      + dir audit | + audit | path: ram
+    + default-policy | root: /audit | writeable: yes
+
++ start fs | ram: 4M
+  + binary vfs
+  + provides | + service File_system
+  + config
+  | + vfs
+  |   + dir fs    | + fs
+  |   + dir audit | + audit | path: fs
+  | + default-policy | root: /audit | writeable: yes
+  + route
+    + service File_system | + child ramfs
+    + any-service
+      + parent
+      + any-child
+
++ start test-libc_many_writes | caps: 1000 | ram: 4M
+  + config
+  | + vfs
+  |   + dir rw  | + fs
+  |   + dir dev | + log
+  | + libc | stdout: /dev/log | stderr: /dev/log
+  | + arg test
+  + route
+    + service File_system | + child fs
+    + any-service
+      + parent
+      + any-child
+-
+}
+
+build_boot_image [build_artifacts]
+
+append qemu_args " -nographic  "
+
+run_genode_until "child .* exited with exit value 0.*\n" 20
+

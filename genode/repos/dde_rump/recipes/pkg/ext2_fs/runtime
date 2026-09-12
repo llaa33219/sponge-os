@@ -1,0 +1,18 @@
+runtime | ram: 64M | caps: 400 | binary: vfs
+
++ requires | + block
+
++ provides | + file_system
+
++ config
+  + vfs | + rump | fs: ext2fs | ram: 48M | writeable: yes
+  + default-policy | root: / | writeable: yes
+
++ content
+  + rom | label: ld.lib.so
+  + rom | label: vfs.lib.so
+  + rom | label: vfs_rump.lib.so
+  + rom | label: rump.lib.so
+  + rom | label: rump_fs.lib.so
+  + rom | label: vfs
+-

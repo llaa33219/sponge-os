@@ -1,0 +1,6 @@
+test-audio_out sends one or more raw audio streams to the 'Audio_out'
+service. The raw data must comply the Audio_out standard format.
+
+! + config
+!   + filename | : audio1.raw
+!   + filename | : audio2.raw

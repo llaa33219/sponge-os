@@ -1,0 +1,12 @@
+runtime | ram: 2M | caps: 100 | binary: rom_filter
+
++ requires | + rom
+
++ provides | + rom
+
++ config
+
++ content
+  + rom | label: ld.lib.so
+  + rom | label: rom_filter
+-

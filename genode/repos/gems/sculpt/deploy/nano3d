@@ -1,0 +1,37 @@
+deploy | info: software-rendering example
+
++ option board   | required: yes
++ option sculpt  | required: yes
++ option managed | required: yes
+
++ child backdrop | pkg: sticks_blue_backdrop | priority: bg
+  + config
+  | + libc
+  | + vfs
+  |   + rom genode_logo.png
+  |   + rom grid.png
+  | + fill | color: #122334
+  | + image | png: grid.png        | alpha: 200 | tiled: yes
+  | + image | png: genode_logo.png | alpha: 150 | anchor: bottom_right
+  |                                | xpos:  -20 | ypos: -20
+  + connect
+    + gui | + child gui | label: backdrop
+
++ child dynamic_rom | ram: 4M | pkg: dynamic_rom
+  + config | verbose: yes
+    + rom nano3d.config
+      + inline | description: initial state  | + config | painter: textures
+      + sleep  | milliseconds: 1000
+      + inline | description: RGBA shading   | + config | painter: shaded
+      + sleep  | milliseconds: 1000
+      + inline | description: switch to cube | + config | painter: shaded   | shape: cube
+      + sleep  | milliseconds: 1000
+      + inline | description: texturing      | + config | painter: textured | shape: cube
+      + sleep  | milliseconds: 1000
+
++ child nano3d | pkg: nano3d | config: no
+  + affinity | xpos: 1 | width: 1
+  + connect
+    + gui        | + child gui         | label: follow_touch
+    + rom config | + child dynamic_rom | label: nano3d.config
+-

@@ -1,0 +1,7 @@
+system | managed: yes | state:
+.
+. supported states when acpica is present: poweroff, reset
+.
+. Note: power down your persistent Genode applications & VMs beforehand
+.
+-

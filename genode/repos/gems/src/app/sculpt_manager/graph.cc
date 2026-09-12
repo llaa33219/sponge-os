@@ -1,0 +1,347 @@
+/*
+ * \brief  Graph view of runtime state
+ * \author Norman Feske
+ * \date   2018-07-05
+ */
+
+/*
+ * Copyright (C) 2018 Genode Labs GmbH
+ *
+ * This file is part of the Genode OS framework, which is distributed
+ * under the terms of the GNU Affero General Public License version 3.
+ */
+
+#include <graph.h>
+#include <feature.h>
+#include <view/dialog.h>
+
+using namespace Sculpt;
+
+
+namespace Dialog { struct Parent_node; }
+
+struct Dialog::Parent_node : Sub_scope
+{
+	static void view_sub_scope(auto &s, auto const &text)
+	{
+		s.node("frame", [&] { s.sub_node("label", [&] { s.g.node("text", [&] {
+			s.g.append_quoted(Sculpt::Start_name(" ", text, " ")); }); }); });
+	}
+
+	static void with_narrowed_at(auto const &, auto const &) { }
+};
+
+
+void Sculpt::Graph::_view_node(Scope<Depgraph> &s, Id const &id,
+                               Node_attr const &attr, auto const &selected_fn) const
+{
+	s.sub_scope<Frame>(id, [&] (Scope<Depgraph, Frame> &s) {
+
+		if (attr.alert)
+			s.attribute("style", "alert");
+		else if (!attr.important)
+			s.attribute("style", "unimportant");
+
+		if (attr.primary_dep.valid()) {
+			s.attribute("dep", attr.primary_dep.value);
+			if (!attr.important)
+				s.attribute("dep_visible", false);
+		}
+
+		s.sub_scope<Vbox>([&] (Scope<Depgraph, Frame, Vbox> &s) {
+
+			bool const dimmed = (!attr.important || attr.alert)
+			                  && !attr.selected;
+
+			s.sub_scope<Hbox>(id, [&] (Scope<Depgraph, Frame, Vbox, Hbox> &s) {
+
+				s.widget(_title, attr.selected, [&] (Scope<Button> &s) {
+					if (dimmed) s.attribute("style", "unimportant");
+					s.sub_scope<Label>(attr.pretty_name);
+				});
+
+				if (attr.selected && attr.removeable)
+					s.widget(_remove, [&] (Scope<Button> &s) {
+						s.attribute("stretch", "no");
+						s.attribute("pad", "no");
+						s.sub_scope<Float>([&] (Scope<Button, Float> &s) {
+							s.sub_scope<Button>([&] (Scope<Button, Float, Button> &s) {
+								s.attribute("style", "x");
+								s.attribute("pad", "no");
+								s.sub_node("label", [&] { });
+						}); }); });
+			});
+
+			if (attr.selected)
+				selected_fn(s);
+		});
+	});
+}
+
+
+void Graph::_view_selected_node_content(Scope<Depgraph, Frame, Vbox> &s,
+                                        Runtime_config::Component const &component,
+                                        Action const &action, Attr const &attr) const
+{
+	if (!attr.alert) {
+		s.as_new_scope([&] (Scope<> &s) { action.view_child_dialog(s); });
+
+	} else {
+		s.sub_scope<Frame>([&] (Scope<Depgraph, Frame, Vbox, Frame> &s) {
+			s.attribute("style", "alert");
+			s.sub_scope<Vbox>([&] (Scope<Depgraph, Frame, Vbox, Frame, Vbox> &s) {
+
+				if (component._stalled.constructed()) {
+					s.sub_scope<Vgap>();
+					component._stalled->with_optional_sub_node("deploy", [&] (Node const &deploy) {
+
+						deploy.with_optional_sub_node("pkg_corrupt", [&] (Node const &) {
+							auto const pkg = deploy.attribute_value("pkg", Depot::Archive::Path());
+							s.sub_scope<Label>(String<80>(" corrupt ", pkg, " ")); });
+
+						deploy.with_optional_sub_node("pkg_missing", [&] (Node const &) {
+							auto const pkg = deploy.attribute_value("pkg", Depot::Archive::Path());
+							s.sub_scope<Label>(String<80>(" missing ", pkg, " ")); });
+
+						deploy.with_optional_sub_node("deps", [&] (Node const &dep) {
+							dep.for_each_sub_node([&] (Node const &node) {
+								Start_name const server = node.attribute_value("name", Start_name());
+								node.for_each_sub_node([&] (Node const &resource) {
+									auto detail = resource.attribute_value("name", String<32>());
+									if (detail.length() > 1)
+										detail = { " (", detail, ")" };
+									s.sub_scope<Label>(String<80>(" requires ", server,
+									                              " for ", resource.type(),
+									                              detail, " "));
+								});
+							});
+						});
+					});
+					s.sub_scope<Vgap>();
+				}
+				if (attr.ram.requested || attr.caps.requested) {
+					String<128> msg { };
+					if (attr.ram.requested) {
+						msg = { msg, " RAM quota (", Num_bytes{attr.ram.requested}, ")" };
+						if (attr.caps.requested)
+							msg = { msg, "," };
+					}
+					if (attr.caps.requested)
+						msg = { msg, " cap quota (", attr.caps.requested, ")" };
+					msg = { msg, " requested " };
+
+					s.sub_scope<Vgap>();
+					s.sub_scope<Label>(msg);
+					s.sub_scope<Vgap>();
+				}
+				s.sub_scope<Hbox>([&] (Scope<Depgraph, Frame, Vbox, Frame, Vbox, Hbox> &s) {
+					if (attr.ram.requested || attr.caps.requested)
+						s.widget(_grant);
+				});
+			});
+		});
+	}
+
+	/*
+	 * Footer
+	 */
+
+	if (component.pkg.length() > 1) {
+		s.sub_scope<Frame>([&] (Scope<Depgraph, Frame, Vbox, Frame> &s) {
+			s.attribute("style", "invisible");
+			s.sub_scope<Vbox>([&] (Scope<Depgraph, Frame, Vbox, Frame, Vbox> &s) {
+				s.sub_scope<Annotation>(String<80> { "  ", component.pkg, "  " });
+				if (component.option.length() > 1)
+					s.sub_scope<Annotation>(String<50> { "option ", Pretty { component.option } });
+			});
+		});
+	}
+
+	String<100> const
+		ram (Capacity{attr.ram.assigned - attr.ram.avail}, " / ",
+		     Capacity{attr.ram.assigned}),
+		caps(attr.caps.assigned - attr.caps.avail, " / ",
+		     attr.caps.assigned, " caps");
+
+	s.sub_scope<Frame>([&] (Scope<Depgraph, Frame, Vbox, Frame> &s) {
+		s.attribute("style", "invisible");
+		s.sub_scope<Hbox>([&] (Scope<Depgraph, Frame, Vbox, Frame, Hbox> &s) {
+			s.sub_scope<Button>([&] (Scope<Depgraph, Frame, Vbox, Frame, Hbox, Button> &s) {
+				s.attribute("style", "invisible");
+				s.attribute("stretch", "no");
+				s.widget(_restart, [&] (Scope<Button> &s) {
+					s.attribute("style", "restart");
+					s.sub_node("label", [&] { });
+				});
+			});
+			s.sub_scope<Vbox>([&] (Scope<Depgraph, Frame, Vbox, Frame, Hbox, Vbox> &s) {
+				s.sub_scope<Min_ex>(25);
+				s.sub_scope<Label>(ram);
+				s.sub_scope<Label>(caps);
+			});
+			/* placeholder for future edit button */
+			s.sub_scope<Button>([&] (Scope<Depgraph, Frame, Vbox, Frame, Hbox, Button> &s) {
+				s.attribute("style", "invisible");
+				s.attribute("stretch", "no");
+				s.sub_scope<Label>("  ");
+			});
+		});
+	});
+}
+
+
+void Graph::view(Scope<Depgraph> &s, Action const &action) const
+{
+	if (Feature::PRESENT_PLUS_MENU && _selected_target.valid())
+		s.widget(_plus, _popup_state == Popup::VISIBLE);
+
+	/* parent roles */
+	s.sub_scope<Parent_node>(Id { "hardware" }, "Hardware");
+
+	using Component = Runtime_config::Component;
+
+	bool const any_selected = _runtime_config.selected().valid();
+
+	_runtime_config.for_each_component([&] (Component const &component) {
+
+		Start_name const name = component.name;
+		Start_name pretty_name { Pretty(name) };
+
+		if (name == "mmc-mmcblk0.part")
+			pretty_name = "0.part";
+
+		if (name == "mmc-mmcblk0.1.fs")
+			pretty_name = "1.fs";
+
+		if (Runtime_config::hidden_from_graph(name))
+			return;
+
+		bool const unimportant = any_selected && !component.tcb;
+
+		/* basic categories, like GUI */
+		Dialog::Id primary_dep = Id { component.primary_dependency };
+
+		if (primary_dep.value == "default_fs_rw")
+			primary_dep = Dialog::Id { _selected_target.fs() };
+
+		/* primary dependency is another component */
+		_runtime_config.with_graph_id(primary_dep,
+			[&] (Dialog::Id const &id) { primary_dep = id; });
+
+		Runtime_state::Info const info = _runtime_state.info(name);
+
+		bool const alert = component._stalled.constructed()
+		                || info.ram.requested || info.caps.requested;
+
+		_view_node(s, component.graph_id,
+			{
+				.selected    = component.selected,
+				.important   = !unimportant,
+				.alert       = alert,
+				.primary_dep = primary_dep,
+				.pretty_name = pretty_name,
+				.removeable  = component.option.length() <= 1
+			},
+			[&] (Scope<Depgraph, Frame, Vbox> &s) {
+				_view_selected_node_content(s, component, action, {
+					.ram    = info.ram,
+					.caps   = info.caps,
+					.alert  = alert,
+					.pkg    = component.pkg,
+					.option = component.option
+				});
+			}
+		);
+	});
+
+	_runtime_config.for_each_component([&] (Component const &component) {
+
+		bool const show_details = component.tcb;
+
+		if (show_details) {
+			component.for_each_secondary_dep([&] (Start_name dep_name) {
+
+				if (Runtime_config::hidden_from_graph(dep_name))
+					return;
+
+				if (dep_name == "default_fs_rw")
+					dep_name = _selected_target.fs();
+
+				Dialog::Id dep_id { dep_name };
+
+				_runtime_config.with_graph_id(dep_name, [&] (Dialog::Id const &id) {
+					dep_id = id; });
+
+				s.node("dep", [&] {
+					s.attribute("node", component.graph_id.value);
+					s.attribute("on",   dep_id.value);
+				});
+			});
+		}
+	});
+}
+
+
+struct Ignored { };
+
+using Narrowed_to_child_dialog = At::Narrowed<Depgraph, Frame, Vbox, Ignored>;
+
+
+void Graph::click(Clicked_at const &at, Action &action)
+{
+	_plus.propagate(at, [&] {
+
+		auto popup_anchor = [] (Node const &dialog)
+		{
+			Rect result { };
+			dialog.with_optional_sub_node("depgraph", [&] (Node const &depgraph) {
+				depgraph.with_optional_sub_node("button", [&] (Node const &button) {
+					result = Rect(Point::from_node(dialog) + Point::from_node(depgraph) +
+					              Point::from_node(button),
+					              Area::from_node(button)); });
+			});
+			return result;
+		};
+
+		action.open_popup_dialog(popup_anchor(at._location));
+	});
+
+	Id const id = at.matching_id<Depgraph, Frame, Vbox, Hbox>();
+
+	_title.propagate(at, [&] {
+		_runtime_config.with_start_name(id, [&] (Start_name const &name) {
+			_runtime_config.toggle_selection(name, _selected_target); }); });
+
+	_remove.propagate(at);
+
+	Narrowed_to_child_dialog::with_at(at, [&] (Clicked_at const &narrowed) {
+		action.click_child_dialog(narrowed); });
+
+	_grant.propagate(at, [&] {
+		action.grant_resource_request(_runtime_config.selected()); });
+
+	_restart.propagate(at);
+}
+
+
+void Graph::clack(Clacked_at const &at, Action &action, Ram_fs_widget::Action &)
+{
+	Narrowed_to_child_dialog::with_at(at, [&] (Clacked_at const &narrowed) {
+		action.clack_child_dialog(narrowed); });
+
+	_remove.propagate(at, [&] {
+		action.remove_deployed_component(_runtime_config.selected());
+
+		/*
+		 * Unselect the removed component to bring graph into
+		 * default state.
+		 */
+		_runtime_config.toggle_selection(_runtime_config.selected(),
+		                                 _selected_target);
+	});
+
+	_restart.propagate(at, [&] {
+		action.restart_deployed_component(_runtime_config.selected());
+	});
+}
+

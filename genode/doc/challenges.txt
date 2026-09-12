@@ -1,0 +1,270 @@
+
+                 =======================================
+                 Future Challenges of the Genode project
+                 =======================================
+
+
+Abstract
+########
+
+This document compiles various ideas to pursue in the context of Genode. It is
+meant as source of inspiration for individuals who are interested in getting
+involved with the project and for students who want to base their student
+research projects on Genode.
+
+
+Applications and library infrastructure
+#######################################
+
+:Port of the Ladybird web browser:
+
+  [https://ladybird.org/ - Ladybird] is a new web browser developed
+  independently from the large browser-engine vendors. It is designed to
+  be light-weight and portable. Among the supported platforms is Qt,
+  which is available for Genode. This makes the porting of Ladybird a
+  tempting application of the Goa SDK.
+
+:Goa SDK running on Sculpt OS:
+
+  Genode's [https://codeberg.org/genodelabs/goa - Goa SDK] is currently used
+  in Linux-based development environments, facilitating cross-compilation
+  to Genode. The goal of this project is the ability to use Goa directly on
+  Sculpt OS without the need for a Linux VM. This entails a number of
+  challenges, ranging from running the Goa tool itself by porting the expect
+  interpreter, over running the Genode tool chain, adjusting the
+  network-facing Goa commands to Genode's environment, to crafting custom
+  support for executing 'goa run' as a sandboxed Genode subsystem.
+
+:Graphical on-target IPC tracing tool using Qt:
+
+  Analysing the interaction of components of a multi-server operating system
+  such as Genode is important to discover bottlenecks of the system and for
+  debugging highly complex usage scenarios involving many processes. Currently,
+  Genode handles this problem with two approaches. First, Genode's
+  recursive structure enables the integration of a subsystem in a basic
+  OS setup featuring only those drivers and components used for the particular
+  subsystem. After the successful integration of such a subsystem, it can
+  be embedded into a far more complex application scenario without any changes.
+  With this approach, the subject to analyse can be kept at a reasonable level
+  at integration time. For debugging purposes, the current approach is using
+  the debugging facilities of the respective base platforms (e.g., using
+  GDB on Linux, the Fiasco kernel debugger, the OKL4 kernel debugger).
+
+  However, in many cases, bottlenecks do not occur when integrating individual
+  sub systems but after integrating multiple of such subsystems into a large
+  application scenario. For such scenarios, existing debugging methodologies do
+  not scale. A tool is desired that is able to capture the relationships
+  between processes of a potentially large process hierarchy, to display
+  communication and control flows between those processes, and to visualize the
+  interaction of threads with the kernel's scheduler.
+
+  Since Qt is available natively on Genode, the creation of both offline and
+  on-target analysis tools has become feasible. The first step of this project
+  is creating an interactive on-target tool, that displays the interaction
+  of communicating threads as captured on the running system. The tool should
+  work on a selected kernel that provides a facility for tracing IPC messages.
+
+  The underlying light-weight tracing infrastructure is
+  [https://genode.org/documentation/release-notes/19.08#Tracinghttps://genode.org/documentation/release-notes/19.08#Tracing - already in place].
+  The Qt-based tracing tools would complement this infrastructure with
+  an interactive front end.
+
+:Ports of popular software:
+
+  The [https://codeberg.org/genodelabs/goa - Goa SDK] streamlines the process
+  of developing, porting, packaging, and publishing software for Genode,
+  and Sculpt OS in particular.
+  Thanks to the C runtime, the flexible per-component VFS, the standard
+  C++ library, and a variety of supported 3rd-party libraries, porting
+  software to Genode is relatively straight forward.
+  A wish list of software that we'd like to have available on Genode is
+  available at
+  [https://usr.sysret.de/jws/genode/porting_wishlist.html].
+
+:Native Open-Street-Maps (OSM) client:
+
+  When using Sculpt OS, we regularly need to spawn a fully fledged web browser
+  for using OSM or Google maps. The goal of this project would be a native
+  component that makes maps functionality directly available on Genode,
+  alleviating the urge to reach for a SaaS product. The work would include a
+  review of existing OSM clients regarding their feature sets and the
+  feasibility of porting them to Genode. Depending on the outcome of this
+  review, an existing application could be ported or a new component could be
+  developed, e.g., leveraging Genode's Qt support.
+
+
+Application frameworks and runtime environments
+###############################################
+
+:GTK:
+
+  Genode supports Qt as a native toolkit. But many popular applications
+  are built upon [https://www.gtk.org/ - GTK]. A port of GTK to Genode would
+  allow for the use of these applications on Sculpt OS without the need
+  of a Linux VM. A tangible goal for this line of work could be the port
+  of [https://mtpaint.sourceforge.net/ - mtPaint] to Sculpt OS.
+
+:OpenJDK:
+
+  [https://openjdk.java.net/ - OpenJDK] is the reference implementation of the
+  Java programming language and hosts an enormous ecosystem of application
+  software.
+
+  Since
+  [https://genode.org/documentation/release-notes/19.02#Showcase_of_a_Java-based_network_appliance - version 19.02], 
+  Genode features a port of OpenJDK that allows the use of Java for networking
+  applications.
+
+  The next step would be the creation of Genode-specific native classes that
+  bridge the gap between the Java world and Genode, in particular the glue
+  code to run graphical applications as clients of Genode's GUI server. Since
+  OpenJDK has been ported to numerous platforms (such as Haiku), there exists
+  a comforting number of implementations that can be taken as reference.
+
+:Android's ART VM natively on Genode:
+
+  ART is a Java virtual machine that is used for executing applications on
+  Android. By running ART directly on Genode, the Linux kernel could be
+  removed from the trusted computing base of Android, facilitating the use of
+  this mobile OS in high-assurance settings.
+
+:Runtime for the D programming language:
+
+  The D systems programming language was designed to overcome many gripes that
+  exists with C++. In particular, it introduces a sane syntax for meta
+  programming, supports unit tests, and contract-based programming. These
+  features make D a compelling language to explore when implementing OS
+  components. Even though D is a compiled language, it comes with a runtime
+  providing support for exception handling and garbage collection. The goal of
+  the project is to explore the use of D for Genode programs, porting the
+  runtime to Genode, adapting the Genode build system to accommodate D
+  programs, and interfacing D programs with other Genode components written in
+  C++.
+
+:Xlib compatibility:
+
+  Developments like Wayland notwithstanding, most application software on
+  GNU/Linux systems is built on top of the Xlib programming interface.
+  However, only a few parts of this wide interface are actually used today.
+  I.e., modern applications generally deal with pixel buffers instead of
+  relying on graphical drawing primitives of the X protocol. Hence, it seems
+  feasible to reimplement the most important parts of the Xlib interface to
+  target Genode's native GUI interfaces (nitpicker) directly. This would
+  allow us to port popular application software to Sculpt OS without
+  changing the application code.
+
+:Bump-in-the-wire components for visualizing session interfaces:
+
+  Genode's session interfaces bear the potential for monitoring and
+  visualizing their use by plugging a graphical application
+  in-between any two components. For example, by intercepting block
+  requests issued by a block-session client to a block-device driver,
+  such a bump-in-the-wire component could visualize
+  the access patterns of a block device. Similar ideas could be pursued for
+  other session interfaces, like record/play (sound visualization) or NIC
+  session (live visualization of network communication).
+
+  The visualization of system behavior would offer valuable insights,
+  e.g., new opportunities for optimization. But more importantly, they
+  would be fun to play with.
+
+
+Platforms
+#########
+
+:Support for additional ARM SoCs:
+
+  Genode's ARM support has been focused on NXP's i.MX family, Allwinner A64
+  (used by the PinePhone), and to a lesser degree the Raspberry Pi. To make
+  Genode compatible with a larger variety of devices, the support for further
+  chip families calls for exploration. For example,
+  [https://en.wikipedia.org/wiki/Rockchip - Rockchip] SoCs are getting
+  popular in products by open-source hardware vendors such as
+  [https://pine64.com/ - Pine64] and [https://mntre.com/ - MNT].
+  The first steps have been [https://github.com/mickenx/genode-rockchip - already taken]
+  by [https://genodians.org/mickenx/index - Michael Grunditz]!
+  Another example is the Mediatek SoC family, which is popular in
+  affordable consumer smartphones.
+  Another example is the Mediatek SoC family, which is popular in
+  affordable consumer smartphones.
+
+  The process of bringing an OS like Genode to a new SoC is full of technical
+  challenges and labor-intensive, yet extremely gratifying.
+  As a guide through this process, the
+  [https://genode.org/documentation/genode-platforms-23-05.pdf - Genode Platforms]
+  book breaks the challenge down to a sequence of manageable steps, where
+  each step can be celebrated as a success.
+
+
+Virtualization
+##############
+
+:Genode as virtualization layer for Qubes OS:
+
+  [https://www.qubes-os.org/ - Qubes OS] is a desktop operating system
+  that follows the principle of security through compartmentalization.
+  In spirit, it is closely related to Genode. In contrast Genode's
+  clean-slate approach of building a fine-grained multi-component system,
+  Qubes employs Xen-based virtual machines as sandboxing mechanism. In
+  [https://blog.invisiblethings.org/2015/10/01/qubes-30.html - version 3.0],
+  Qubes introduced a Hypervisor Abstraction Layer, which decouples Qubes
+  from the underlying virtualization platform. This exploration project
+  pursues the goal of replacing Xen by Genode as virtualization layer
+  for Qubes.
+
+:Qemu:
+
+  As we use Qemu as primary testing platform for most of the kernels, a port
+  of Qemu to Genode is needed in order to move our regular work flows to
+  Genode as development platform. The basic prerequisites namely libSDL and a
+  C runtime are already available such that this porting work seems to be
+  feasible. In our context, the ia32, amd64, and ARM platforms are of most
+  interest. Note that the project does not have the immediate goal of
+  using hardware-based virtualization. However, if there is interest,
+  the project bears the opportunity to explore the provisioning of the
+  KVM interface based on Genode's VFS plugin concept.
+
+
+System management and tools
+###########################
+
+:Virtual network-boot infrastructure as Sculpt component:
+
+  Network-based development work flows for PCs require a variety of tools and
+  network-configuration peculiarities. Think of a development network with a
+  custom configured DHCP server, a TFTP or HTTP server on the development
+  machine, the provisioning of a PXE boot loader, tooling for obtaining serial
+  output over AMT, or tooling for remote power control via AMT.
+
+  The goal of this project would be the hosting of all those functions in a
+  Sculpt OS component "devnet" that is exclusively in charge of a dedicated
+  LAN port of the developer's Sculpt machine. By connecting a test machine to
+  this LAN port, the test machine becomes immediately available as development
+  target without any manual installation or configuration steps needed. The
+  devnet component would interface with the rest of the Sculpt system as a
+  client of a file-system session (containing the boot payloads) and a
+  terminal session (for the virtual serial connection).
+
+:Statistical profiler using Sculpt's GDB monitor:
+
+  Starting with version 24.04, Sculpt OS provides the ability to supervise
+  selected components
+  [https://genodians.org/chelmuth/2024-05-17-on-target-debugging - using the GDB protocol].
+  The underlying mechanism and infrastructure could be leveraged for
+  implementing a statistical profiler that monitors components live.
+  Using the on-target information obtained via Sculpt's "download debug info"
+  option, the tool could display a sorted list of the most executed
+  functions, facilitating interactive on-target analysis and experimentation.
+
+:Remote management of Sculpt OS via Puppet:
+
+  [https://en.wikipedia.org/wiki/Puppet_(company)#Puppet - Puppet] is a
+  software-configuration management tool for administering a large amount
+  of machines from one central place. Genode's
+  [https://genode.org/download/sculpt - Sculpt OS] lends itself to such
+  an approach of remote configuration management by the means of the
+  "config" file system (for configuring components and deployments) and
+  the "report" file system (for obtaining the runtime state of components).
+  The project would explore the application of the Puppet approach and tools
+  to Sculpt OS.
+

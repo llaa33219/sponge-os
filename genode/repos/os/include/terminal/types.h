@@ -1,0 +1,162 @@
+/*
+ * \brief  Types used by terminal interfaces
+ * \author Norman Feske
+ * \date   2011-07-05
+ */
+
+/*
+ * Copyright (C) 2011-2017 Genode Labs GmbH
+ *
+ * This file is part of the Genode OS framework, which is distributed
+ * under the terms of the GNU Affero General Public License version 3.
+ */
+
+#ifndef _TERMINAL__TYPES_H_
+#define _TERMINAL__TYPES_H_
+
+/* Genode includes */
+#include <util/utf8.h>
+#include <util/interface.h>
+
+namespace Terminal {
+	using namespace Genode;
+	struct Character;
+	struct Boundary;
+	struct Offset;
+	struct Position;
+	struct Region;
+	struct Character_array;
+	template <unsigned, unsigned> class Static_character_array;
+}
+
+
+struct Terminal::Character
+{
+	using value_t = uint16_t;
+
+	value_t value = 0;
+
+	Character() { }
+
+	Character(Codepoint cp)
+	: value((value_t)(cp.value < (1<<16) ? cp.value : 0)) { }
+
+	bool valid() const { return value != 0; }
+};
+
+
+struct Terminal::Boundary { unsigned width, height; };
+
+
+struct Terminal::Region { unsigned start,  end; };
+
+
+struct Terminal::Offset
+{
+	int const x, y;
+
+	Offset(int x, int y) : x(x), y(y) { }
+};
+
+
+struct Terminal::Position
+{
+	unsigned x, y;
+
+	Position operator + (Offset const &offset) {
+		return Position(x + offset.x, y + offset.y); }
+
+	bool operator == (Position const &pos) const {
+		return (pos.x == x) && (pos.y == y); }
+
+	bool operator != (Position const &pos) const {
+		return (pos.x != x) || (pos.y != y); }
+
+	bool operator >= (Position const &other) const
+	{
+		if (y > other.y)
+			return true;
+
+		if (y == other.y && x >= other.x)
+			return true;
+
+		return false;
+	}
+
+	bool in_range(Position start, Position end) const
+	{
+		return (end >= start) ? *this >= start &&   end >= *this
+		                      : *this >= end   && start >= *this;
+	}
+
+	/**
+	 * Return true if position lies within the specified boundaries
+	 */
+	bool lies_within(Boundary const &boundary) const
+	{
+		return x < boundary.width && y < boundary.height;
+	}
+
+	/**
+	 * Make sure that position lies within specified boundaries
+	 */
+	void constrain(Boundary const &boundary)
+	{
+		using namespace Genode;
+		x = max(0u, min(boundary.width  > 0u ? boundary.width  - 1u : 0u, x));
+		y = max(0u, min(boundary.height > 0u ? boundary.height - 1u : 0u, y));
+	}
+
+	void print(Output &out) const { Genode::print(out, y, ",", x); }
+};
+
+
+struct Terminal::Character_array : Interface
+{
+	/**
+	 * Assign character to specified position
+	 */
+	virtual void set(Position const &pos, Character c) = 0;
+
+	/**
+	 * Request character at specified position
+	 */
+	virtual Character get(Position const &pos) const = 0;
+
+	/**
+	 * Return array boundary
+	 */
+	virtual Boundary boundary() const = 0;
+};
+
+
+template <unsigned WIDTH, unsigned HEIGHT>
+class Terminal::Static_character_array : public Character_array
+{
+	private:
+
+		Character      _array[HEIGHT][WIDTH];
+		Boundary const _boundary;
+
+	public:
+
+		Static_character_array() : _boundary(WIDTH, HEIGHT) { }
+
+		void set(Position const &pos, Character c)
+		{
+			if (pos.lies_within(_boundary))
+				_array[pos.y][pos.x] = c;
+		}
+
+		Character get(Position const &pos) const
+		{
+			if (pos.lies_within(_boundary))
+				return _array[pos.y][pos.x];
+			else
+				return Character();
+		}
+
+		Boundary boundary() const { return _boundary; }
+};
+
+#endif /* _TERMINAL__TYPES_H_ */

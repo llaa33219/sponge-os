@@ -1,0 +1,11 @@
+_/src/platform
+_/src/acpi
+_/src/ps2
+_/src/pc_usb_host
+_/src/usb_hid
+_/src/vesa_fb
+_/src/report_rom
+_/src/rom_filter
+_/src/event_filter
+_/src/pci_decode
+_/raw/drivers_interactive-pc

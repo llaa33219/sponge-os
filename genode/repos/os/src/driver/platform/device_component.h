@@ -1,0 +1,212 @@
+/*
+ * \brief  Platform driver - device component
+ * \author Stefan Kalkowski
+ * \date   2020-04-20
+ */
+
+/*
+ * Copyright (C) 2020 Genode Labs GmbH
+ *
+ * This file is part of the Genode OS framework, which is distributed
+ * under the terms of the GNU Affero General Public License version 3.
+ */
+
+#ifndef _SRC__DRIVER__PLATFORM__DEVICE_COMPONENT_H_
+#define _SRC__DRIVER__PLATFORM__DEVICE_COMPONENT_H_
+
+#include <base/registry.h>
+#include <base/rpc_server.h>
+#include <io_port_session/connection.h>
+#include <io_mem_session/connection.h>
+#include <irq_session/connection.h>
+#include <platform_session/device.h>
+#include <platform_session/platform_session.h>
+#include <util/bit_allocator.h>
+#include <util/reconstructible.h>
+
+#include <device.h>
+#include <dma_address.h>
+
+namespace Driver {
+	class Device_component;
+	class Session_component;
+}
+
+
+class Driver::Device_component : public Rpc_object<Platform::Device_interface,
+                                                   Device_component>
+{
+	public:
+
+		struct Irq : Registry<Irq>::Element
+		{
+			unsigned                                idx;
+			unsigned                                number;
+			unsigned                                remapped_nbr;
+			Irq_session::Type                       type;
+			Irq_session::Polarity                   polarity;
+			Irq_session::Trigger                    mode;
+			bool                                    shared;
+			Constructible<Irq_connection>           irq {};
+			Constructible<Shared_interrupt_session> sirq {};
+
+			Irq(Registry<Irq>        &registry,
+			    unsigned              idx,
+			    unsigned              number,
+			    Irq_session::Type     type,
+			    Irq_session::Polarity polarity,
+			    Irq_session::Trigger  mode,
+			    bool                  shared)
+			:
+				Registry<Irq>::Element(registry, *this),
+				idx(idx), number(number), remapped_nbr(number), type(type),
+				polarity(polarity), mode(mode), shared(shared) {}
+
+			Irq_session_capability map(Device_component &);
+			void unmap(Device_component &);
+			bool enabled() const { return irq.constructed() || sirq.constructed(); }
+		};
+
+		struct Io_mem : Registry<Io_mem>::Element
+		{
+			using Pci_bar = Device::Pci_bar;
+
+			Pci_bar                          bar;
+			unsigned                         idx;
+			Range                            range;
+			bool                             write_combined;
+			Constructible<Io_mem_connection> io_mem {};
+
+			Io_mem(Registry<Io_mem>  &registry,
+			       Pci_bar            bar,
+			       unsigned           idx,
+			       Range              range,
+			       bool               wc)
+			:
+				Registry<Io_mem>::Element(registry, *this),
+				bar(bar), idx(idx), range(range), write_combined(wc) {}
+		};
+
+		struct Io_port_range : Registry<Io_port_range>::Element
+		{
+			using Range = Device::Io_port_range::Range;
+
+			unsigned                          idx;
+			Range                             range;
+			Constructible<Io_port_connection> io_port_range {};
+
+			Io_port_range(Registry<Io_port_range> &registry,
+			              unsigned                 idx,
+			              Range                    range)
+			:
+				Registry<Io_port_range>::Element(registry, *this),
+				idx(idx), range(range) {}
+		};
+
+		struct Reserved_mem : Registry<Reserved_mem>::Element
+		{
+			Dma_reservation                  dma_reservation;
+			Constructible<Io_mem_connection> io_mem {};
+
+			Reserved_mem(Registry<Reserved_mem> &registry, Range range,
+			             Dma_address_list &list)
+			:
+				Registry<Reserved_mem>::Element(registry, *this),
+				dma_reservation(list, {range.start, range.start+range.size-1})
+			{}
+		};
+
+		struct Io_mmu { Device::Name name; };
+
+		struct Pci_config
+		{
+			addr_t   addr;
+			Pci::Bdf bdf;
+
+			Pci_config(addr_t addr, Pci::Bdf bdf) : addr(addr), bdf(bdf) {}
+		};
+
+		struct Msi : Registry<Msi>::Element
+		{
+			Device_component &dc;
+			Msi_handle        handle;
+			Irq_connection    irq;
+
+			Msi(Env &env, Device_component &, Msi_handle handle,
+			    Pci_config pci, bool msix);
+			~Msi();
+
+			[[nodiscard]] bool map(Device_component &, Pci_config, bool);
+		};
+
+		Device_component(Registry<Device_component> &registry,
+		                 Env                        &env,
+		                 Session_component          &session,
+		                 Dma_address_list           &dma_list,
+		                 Device_model               &model,
+		                 Driver::Device             &device);
+		~Device_component();
+
+		Driver::Device::Name device() const;
+		Session_component  &session();
+		unsigned io_mem_index(Device::Pci_bar bar);
+
+
+		/************************************
+		 ** Platform::Device RPC functions **
+		 ************************************/
+
+		Irq_session_capability     irq(unsigned);
+		Io_mem_session_capability  io_mem(unsigned, Range &);
+		Io_port_session_capability io_port_range(unsigned);
+		Alloc_msi_result alloc_msi(Signal_context_capability, bool);
+		void free_msi(Msi_handle);
+
+	private:
+
+		friend class Irq;
+
+		Env                                &_env;
+		Session_component                  &_session;
+		Device_model                       &_devices;
+		Driver::Device::Name const          _device_name;
+		size_t                              _cap_quota { 0 };
+		size_t                              _ram_quota { 0 };
+		Registry<Device_component>::Element _reg_elem;
+		Registry<Irq>                       _irq_registry {};
+		Registry<Msi>                       _msi_registry {};
+		Registry<Io_mem>                    _io_mem_registry {};
+		Registry<Io_port_range>             _io_port_range_registry {};
+		Registry<Reserved_mem>              _reserved_mem_registry {};
+		Constructible<Io_mmu>               _io_mmu {};
+		Constructible<Pci_config>           _pci_config {};
+
+		enum { MSI_X_MAX_VECTORS = 1U << 11UL };
+		using Msi_vector_allocator = Bit_allocator<MSI_X_MAX_VECTORS>;
+
+		Msi_vector_allocator _msi_vector_allocator {};
+
+		using Msi_allocator = Memory::Constrained_obj_allocator<Msi>;
+
+		Msi_allocator _msi_alloc;
+
+		void _release_resources();
+
+		template <typename SESSION>
+		void _with_reserved_quota_for_session(Driver::Session_component &session,
+		                                      auto const &fn);
+
+		void _with_pci_config(auto const &fn) {
+			if (_pci_config.constructed()) { fn(*_pci_config); } }
+
+		void _with_io_mmu(auto const &fn) {
+			if (_io_mmu.constructed()) { fn(*_io_mmu); } }
+
+		/*
+		 * Noncopyable
+		 */
+		Device_component(Device_component const &);
+		Device_component &operator = (Device_component const &);
+};
+
+#endif /* _SRC__DRIVER__PLATFORM__DEVICE_COMPONENT_H_ */

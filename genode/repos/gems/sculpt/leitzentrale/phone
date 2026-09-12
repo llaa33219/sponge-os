@@ -1,0 +1,119 @@
+config
++ parent-provides
+  + service ROM
+  + service PD
+  + service RM
+  + service CPU
+  + service LOG
+  + service Report
+  + service Gui
+  + service Timer
+  + service File_system
+
++ default-route | + any-service | + parent
++ default | caps: 100
+
++ service Gui    | + default-policy | + child wm
++ service ROM    | + default-policy | + child report_rom
++ service Report | + default-policy | + child report_rom
+
++ start report_rom | caps: 200 | ram: 4M
+  + provides
+    + service Report
+    + service ROM
+  + config | verbose: no
+    + policy | label: decorator -> window_layout   | report: manager -> window_layout
+    + policy | label: wm -> resize_request         | report: manager -> resize_request
+    + policy | label: wm -> focus                  | report: manager -> wm_focus
+    + policy | label: decorator -> pointer         | report: wm -> pointer
+    + policy | label: manager -> window_list       | report: wm -> window_list
+    + policy | label: manager -> decorator_margins | report: decorator -> decorator_margins
+    + policy | label: runtime_view -> main         | report: manager -> main_dialog
+    + policy | label: manager -> menu_hover        | report: runtime_view -> hover
+
++ start wm | caps: 300 | ram: 4M
+  + provides
+    + service Gui
+    + service Report
+    + service ROM
+  + config
+    + policy | label_prefix: decorator | role: decorator
+    + default-policy
+  + route
+    + service ROM | label: resize_request | + child report_rom
+    + service ROM | label: focus          | + child report_rom
+    + service Report                      | + child report_rom
+    + service Gui                         | + child manager
+    + any-service
+      + parent
+      + any-child
+
++ start decorator | caps: 350 | ram: 12M
+  + binary themed_decorator
+  + config
+  | + libc
+  | + vfs
+  |   + dir theme
+  |   | + inline metadata
+  |   |   + theme
+  |   |     + aura  | top: 5 | bottom: 5 | left: 5 | right: 5
+  |   |     + decor | top: 6 | bottom: 6 | left: 6 | right: 6
+  |   | + rom default.png
+  |   + dir dev
+  |     + log
+  | + policy | label: log                  | decoration: yes | motion: 20
+  | + policy | label: runtime_view -> main | decoration: no  | motion: 0
+  | + policy | label: touch_keyboard       | decoration: no  | motion: 20
+  | + policy | label_prefix: logo          | decoration: no
+  | + default-policy
+  + route
+    + service ROM    | label: default.png       | + parent | label: drop_shadow.png
+    + service ROM    | label: window_layout     | + child report_rom
+    + service ROM    | label: pointer           | + child report_rom
+    + service Report | label: decorator_margins | + child report_rom
+    + service Report | label: hover             | + child report_rom
+    + service Gui                               | + child wm
+    + any-service                               | + parent
+
++ start model_fs_report | ram: 2M
+  + binary fs_report
+  + provides | + service Report
+  + config | + vfs | + fs
+  + route
+    + service File_system | + parent | identity: model
+    + any-service         | + parent
+
++ start manager | caps: 400 | ram: 8M
+  + binary phone_manager
+  + provides | + service Gui
+  + route
+    + service Report | label: runtime_config          | + child model_fs_report | label: init
+    + service Report | label: depot_version_config    | + child model_fs_report | label: depot -> version
+    + service Report | label: child/wifi_config       | + child model_fs_report | label: child -> wifi
+    + service Report | label: modem_config            | + child model_fs_report | label: modem
+    + service Report | label: audio_config            | + child model_fs_report | label: audio
+    + service Report | label: child/network_config    | + child model_fs_report | label: child -> network
+    + service Report | label: child/dir_query_config  | + child model_fs_report | label: child -> dir_query
+    + service Report | label: child/usb_config        | + child model_fs_report | label: child -> usb
+    + service Report | label: system_config           | + child model_fs_report | label: system
+    + service Report | label: install_config          | + child model_fs_report | label: install
+    + service Report | label: child/depot_query       | + child model_fs_report | label: child -> depot_query
+    + service Report | label: child/blueprint_query   | + child model_fs_report | label: child -> blueprint_query
+    + service Report | label: option/managed          | + child model_fs_report | label: option -> managed
+    + service Report                               | + child report_rom
+    + service ROM | label: config                  | + parent | label: model -> manager
+    + service ROM | label_prefix: report ->        | + parent
+    + service ROM | label: model -> depot_version  | + parent | label: model -> depot/version
+    + service ROM | label: model -> deploy         | + parent | label: model -> deploy
+    + service ROM | label: nitpicker_focus         | + parent | label: focus
+    + service ROM | label: nitpicker_hover         | + parent | label: hover
+    + service ROM | label: leitzentrale            | + parent | label: leitzentrale_enabled
+    + service ROM | label: menu_hover              | + child report_rom
+    + service ROM | label: window_list             | + child report_rom
+    + service ROM | label: decorator_margins       | + child report_rom
+    + service ROM | label: clicked                 | + child report_rom
+    + service File_system | label_prefix: model    | + parent | identity: model
+    + service File_system | label_prefix: report   | + parent | identity: report
+    + service Gui                                  | + parent | label: manager -> fader ->
+    + any-service                                  | + parent
+-

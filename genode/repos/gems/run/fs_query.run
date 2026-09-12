@@ -1,0 +1,241 @@
+create_boot_directory
+
+if {[have_cmd_switch --autopilot]} {
+	assert {![have_board virt_qemu_riscv]} \
+		"Autopilot mode is not supported on this platform."
+}
+
+import_from_depot \
+	[depot_user]/src/[base_src] \
+	[depot_user]/src/coreutils \
+	[depot_user]/src/bash \
+	[depot_user]/src/init \
+	[depot_user]/src/libc \
+	[depot_user]/src/fs_rom \
+	[depot_user]/src/posix \
+	[depot_user]/src/report_rom \
+	[depot_user]/src/vfs \
+	[depot_user]/src/vfs_import
+
+install_config {
+config
++ parent-provides
+  + service ROM
+  + service LOG
+  + service RM
+  + service CPU
+  + service PD
+  + service IRQ
+  + service IO_MEM
+  + service IO_PORT
+
++ default-route
+  + any-service
+    + parent
+    + any-child
+
++ default | caps: 200 | ram: 2M
+
++ start timer
+  + provides | + service Timer
+
++ start report_rom
+  + provides
+    + service Report
+    + service ROM
+  + config | verbose: yes
+
++ start report_rom_empty_vfs
+  + binary report_rom
+  + provides
+    + service Report
+    + service ROM
+  + config | verbose: yes
+
++ start vfs | ram: 10M
+  + provides | + service File_system
+  + config
+    + vfs
+    | + tar bash.tar
+    | + tar coreutils.tar
+    | + ram
+    | + import
+    |   + dir items
+    |   | + inline 1 | : first
+    |   | + inline 2 | : second
+    |   | + inline 3 | + third
+    |   + inline 4 | : fourth
+    + default-policy | root: / | writeable: yes
+
++ start vfs_rom | ram: 10M
+  + binary fs_rom
+  + provides | + service ROM
+  + config
+  + route
+    + service File_system | + child vfs
+    + any-service         | + parent
+
++ start fs_query_empty_vfs | caps: 120 | ram: 2M
+  + binary fs_query
+  + config
+    + vfs
+    + query | path: /non_existent_1
+    + query | path: /non_existent_1/non_existent_2
+    + query | path: /
+  + route
+    + service Report | + child report_rom_empty_vfs
+    + any-service
+      + parent
+      + any-child
+
++ start fs_query | caps: 120 | ram: 2M
+  + config
+  | + vfs
+  |   + dir empty
+  |   + dir fs | + fs | writeable: yes
+  | + query | path: /fs/items/non_existent_1
+  | + query | path: /fs/items               | content: yes
+  | + query | path: /fs/non_existent_2      | content: yes
+  | + query | path: /empty                  | content: yes
+  + route
+    + service Report | + child report_rom
+    + any-service
+      + parent
+      + any-child
+
++ start test | caps: 700 | ram: 20M
+  + binary sequence
+  + config
+  | + start /bin/sleep | caps: 500
+  |   + config
+  |     + libc | stdin: /dev/null | stdout: /dev/log | stderr: /dev/log
+  |     + vfs
+  |     | + dir dev
+  |     |   + log
+  |     |   + null
+  |     + arg /bin/sleep | : 0.5
+  | + start /bin/rm | caps: 500
+  |   + config
+  |     + libc | stdin: /dev/null | stdout: /dev/log | stderr: /dev/log
+  |     + vfs
+  |     | + dir fs | + fs | writeable: yes
+  |     | + dir dev
+  |     |   + log
+  |     |   + null
+  |     + arg /bin/rm | : /fs/items/2
+  | + start /bin/sleep | caps: 500
+  |   + config
+  |     + libc | stdin: /dev/null | stdout: /dev/log | stderr: /dev/log
+  |     + vfs
+  |     | + dir dev
+  |     |   + log
+  |     |   + null
+  |     + arg /bin/sleep | : 0.5
+  | + start /bin/cp | caps: 500
+  |   + config
+  |     + libc | stdin: /dev/null | stdout: /dev/log | stderr: /dev/log | rtc: /dev/null
+  |     + vfs
+  |     | + dir fs | + fs | writeable: yes
+  |     | + dir dev
+  |     |   + log
+  |     |   + null
+  |     + arg /bin/cp
+  |     + arg /fs/4
+  |     + arg /fs/items/
+  | + start /bin/sleep | caps: 500
+  |   + config
+  |     + libc | stdin: /dev/null | stdout: /dev/log | stderr: /dev/log
+  |     + vfs
+  |     | + dir dev
+  |     |   + log
+  |     |   + null
+  |     + arg /bin/sleep | : 0.5
+  | + start /bin/bash | caps: 500
+  |   + config
+  |     + libc | stdin: /dev/null | stdout: /dev/log | stderr: /dev/log | rtc: /dev/null
+  |     + vfs
+  |     | + dir fs | + fs | writeable: yes
+  |     | + dir dev
+  |     |   + log
+  |     |   + null
+  |     + arg /bin/bash
+  |     + arg -c | : echo updated > /fs/items/3
+  | + start /bin/bash | caps: 500
+  |   + config
+  |     + libc | stdin: /dev/null | stdout: /dev/log | stderr: /dev/log | rtc: /dev/null
+  |     + vfs
+  |     | + dir fs | + fs | writeable: yes
+  |     | + dir dev
+  |     |   + log
+  |     |   + null
+  |     + arg /bin/bash
+  |     + arg -c | : echo updated > /fs/items/3
+  | + start /bin/sleep | caps: 500
+  |   + config
+  |     + libc | stdin: /dev/null | stdout: /dev/log | stderr: /dev/log
+  |     + vfs
+  |     | + dir dev
+  |     |   + log
+  |     |   + null
+  |     + arg /bin/sleep | : 0.5
+  + route
+    + service File_system                 | + child vfs
+    + service ROM | label_suffix: .lib.so | + parent
+    + service ROM | label_prefix: /bin    | + child vfs_rom
+    + any-service
+      + parent
+      + any-child
+-
+}
+
+build { app/sequence app/fs_query }
+
+build_boot_image [build_artifacts]
+
+append qemu_args " -nographic "
+
+run_genode_until {.*child "test" exited with exit value 0.*\n} 50
+
+set original_output $output
+
+grep_output {\[init -> report_rom\].*}
+
+set num_listings [regexp -all {report 'fs_query -> listing'} $output dummy]
+
+# we expect at least four intermediate reports
+if {$num_listings < 4} {
+	puts "Error: Test failed with too few reports generated"
+	exit 1
+}
+
+#
+# We cannot reliably compare the full output because some file operations
+# may trigger one or two reports depending on the timing of signal delivery.
+# However, we can at least check the last report for validity.
+#
+regsub {.*report 'fs_query -> listing'} $output {} output
+
+compare_output_to {
+[init -> report_rom]   listing
+[init -> report_rom]   + dir | path: /fs/items
+[init -> report_rom]     + file 1 | writeable: yes
+[init -> report_rom]       : first
+[init -> report_rom]     + file 3 | writeable: yes
+[init -> report_rom]       : updated
+[init -> report_rom]       :
+[init -> report_rom]     + file 4 | writeable: yes
+[init -> report_rom]       : fourth
+[init -> report_rom]   + dir | path: /empty
+[init -> report_rom]   -
+}
+
+set output $original_output
+
+grep_output {\[init -> report_rom_empty_vfs\].*}
+
+compare_output_to {
+[init -> report_rom_empty_vfs] report 'fs_query_empty_vfs -> listing'
+[init -> report_rom_empty_vfs]   listing
+[init -> report_rom_empty_vfs]   + dir | path: /
+[init -> report_rom_empty_vfs]   -
+}

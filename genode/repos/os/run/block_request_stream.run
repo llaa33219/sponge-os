@@ -1,0 +1,54 @@
+build { core init timer lib/ld test/block_request_stream app/block_tester }
+
+create_boot_directory
+
+install_config {
+config
++ parent-provides
+  + service ROM
+  + service IRQ
+  + service IO_MEM
+  + service IO_PORT
+  + service PD
+  + service RM
+  + service CPU
+  + service LOG
+
++ default-route
+   + any-service
+     + parent 
+     + any-child
++ default       | caps: 100 | ram: 1M
+
++ start timer | + provides | + service Timer
+
++ start test-block_request_stream
+  + provides | + service Block
+  + config   | block_size: 4096 | num_blocks: 8388608
+  + route    | + any-service | + parent
+
++ start block_tester | ram: 32M
+  + config | verbose: yes | report: no | log: yes | stop_on_error: no
+  | + tests
+  |   + sequential | copy: no | length: 16M | size:   4K
+  |   + sequential | copy: no | length: 16M | size:   8K
+  |   + sequential | copy: no | length:  3G | size:  16K | batch: 32
+  |   + sequential | copy: no | length: 15G | size:  64K | batch: 32
+  |   + sequential | copy: no | length: 30G | size: 128K | batch: 32
+  |   + sequential | copy: no | length: 16M | size:   4K | write: yes
+  |   + sequential | copy: no | length: 16M | size:  64K | write: yes
+  |   + sequential | copy: no | length: 16M | size: 512K | io_buffer: 64K
+  |     . test client-side request splitting
+  + route
+    + service Block | + child test-block_request_stream
+    + any-service
+      + parent 
+      + any-child
+-
+}
+
+build_boot_image [build_artifacts]
+
+append qemu_args " -nographic "
+
+run_genode_until {.*child "block_tester" exited with exit value 0.*\n} 360

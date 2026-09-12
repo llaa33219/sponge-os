@@ -1,0 +1,11 @@
+runtime | ram: 10M | caps: 100 | binary: test-token
+
++ fail    | after_seconds: 20
++ succeed | : --- finished token test ---
+
++ content
+  + rom | label: ld.lib.so
+  + rom | label: test-token
+
++ config
+-

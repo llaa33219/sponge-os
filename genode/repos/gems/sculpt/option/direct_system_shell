@@ -1,0 +1,14 @@
+option
++ child direct_system_shell | pkg: system_shell
+  + connect
+    + gui                  | + child gui | label: focus
+    + fs     font          | + child font
+    + fs     target        | + child default_fs_rw
+    + fs     model         | + child model
+    + fs     report        | + child report
+    + report clipboard     | + child clipboard
+    + rom    clipboard     | + child clipboard
+    + rom    vimrc         | + child model | label: vimrc
+    + rom    cached_fs_rom | + parent
+    + rm                   | + parent
+-

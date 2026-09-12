@@ -1,0 +1,237 @@
+create_boot_directory
+
+import_from_depot [depot_user]/src/[base_src] \
+                  [depot_user]/pkg/[drivers_interactive_pkg] \
+                  [depot_user]/pkg/font \
+                  [depot_user]/src/init \
+                  [depot_user]/src/dynamic_rom \
+                  [depot_user]/src/report_rom \
+                  [depot_user]/src/nitpicker \
+                  [depot_user]/src/libc \
+                  [depot_user]/src/libpng \
+                  [depot_user]/src/zlib
+
+install_config {
+config
++ parent-provides
+  + service PD
+  + service CPU
+  + service ROM
+  + service RM
+  + service LOG
+  + service IRQ
+  + service IO_MEM
+  + service IO_PORT
+
++ default | caps: 100 | ram: 1M
+
++ default-route
+  + any-service
+    + parent
+    + any-child
+
++ start timer
+  + provides | + service Timer
+
++ start drivers | caps: 1500 | ram: 64M | managing_system: yes
+  + binary init
+  + route
+    + service ROM | label: config | + parent | label: drivers.config
+    + service Timer               | + child timer
+    + service Capture             | + child nitpicker
+    + service Event               | + child nitpicker
+    + any-service                 | + parent
+
++ start nitpicker | ram: 4M
+  + provides
+    + service Gui
+    + service Capture
+    + service Event
+  + config
+    + capture
+    + event
+    + background | color: #123456
+    + domain pointer | layer: 1 | content: client | label: no | origin: pointer
+    + domain default | layer: 3 | content: client | label: no | hover: always
+    + policy | label_prefix: pointer | domain: pointer
+    + default-policy                 | domain: default
+
++ start pointer
+  + route
+    + service Gui | + child nitpicker
+    + any-service
+      + parent
+      + any-child
+
++ start font_config_rom | ram: 4M
+  + binary dynamic_rom
+  + provides | + service ROM
+  + config | verbose: yes
+    + rom config
+      + inline | description: small
+      | + config
+      |   + vfs
+      |   | + rom Vera.ttf
+      |   | + rom VeraMono.ttf
+      |   | + dir font
+      |   |   + dir title      | + ttf regular | path: /Vera.ttf     | size_px: 18 | cache: 256K
+      |   |   + dir text       | + ttf regular | path: /Vera.ttf     | size_px: 14 | cache: 256K
+      |   |   + dir annotation | + ttf regular | path: /Vera.ttf     | size_px: 11 | cache: 256K
+      |   |   + dir monospace  | + ttf regular | path: /VeraMono.ttf | size_px: 14 | cache: 256K
+      |   + default-policy | root: /font
+      + sleep | milliseconds: 1000
+      + inline | description: big
+      | + config
+      |   + vfs
+      |   | + rom Vera.ttf
+      |   | + rom VeraMono.ttf
+      |   | + dir font
+      |   |   + dir title      | + ttf regular | path: /Vera.ttf     | size_px: 28 | cache: 256K
+      |   |   + dir text       | + ttf regular | path: /Vera.ttf     | size_px: 24 | cache: 256K
+      |   |   + dir annotation | + ttf regular | path: /Vera.ttf     | size_px: 21 | cache: 256K
+      |   |   + dir monospace  | + ttf regular | path: /VeraMono.ttf | size_px: 24 | cache: 256K
+      |   + default-policy | root: /font
+      + sleep | milliseconds: 1000
+
++ start dynamic_rom | ram: 4M
+  + provides | + service ROM
+  + config | verbose: yes
+    + rom dialog
+      + inline | description: dependency graph
+      | + dialog
+      |   + depgraph
+      |     + frame storage | + label | + text | : Storage
+      |     + frame gui     | + label | + text | : GUI
+      |     + frame usbdev  | + label | + text | : USB Devices
+      |     + button s.ahci1 | dep: storage | + label | + text | : ahci1
+      |     + button s.usb1  | dep: storage | + label | + text | : usb1
+      |     + button s.usb2  | dep: storage | + label | + text | : usb2
+      |     + button s.usb3  | dep: storage | + label | + text | : usb3
+      |     + frame  s.usb2.part           | dep: s.usb2          | + label | + text | : Partition
+      |     + button s.usb2.1              | dep: s.usb2.part     | + label | + text | : 1
+      |     + frame  s.usb2.1.ext2fs       | dep: s.usb2.1        | + label | + text | : Ext2 FS
+      |     + button s.usb2.2              | dep: s.usb2.part     | + label | + text | : 2
+      |     + frame  s.usb2.1.ext2fs.subfs | dep: s.usb2.1.ext2fs | + label | + text | : Sub FS
+      |     + button g.pointer | dep: gui | + label | + text | : pointer
+      |     + button g.overlay | dep: gui | + label | + text | : overlay
+      |     + button g.primary | dep: gui | + label | + text | : primary
+      |     + button g.background     | dep: gui          | + label | + text | : background
+      |     + button g.pointer.new    | dep: g.pointer    | + label | + text | : +
+      |     + button g.overlay.new    | dep: g.overlay    | + label | + text | : +
+      |     + button g.background.new | dep: g.background | + label | + text | : +
+      |     + button u.1-2 | dep: usbdev                | + label | + text | : 1-2
+      |     + button u.1-3 | dep: usbdev                | + label | + text | : 1-3
+      |     + frame vbox   | dep: s.usb2.1.ext2fs.subfs | + label | + text | : VBox5
+      |     + dep | node: vbox | on: g.primary
+      |     + dep | node: vbox | on: s.ahci1
+      |     + dep | node: vbox | on: u.1-3
+      |     + frame fs_view | dep: s.usb2.1.ext2fs.subfs | + label | + text | : FS View
+      |     + dep | node: fs_view | from: g.primary
+      + sleep | milliseconds: 3000
+      + inline | description: dependency graph
+      | + dialog
+      |   + depgraph
+      |     + frame storage | + label | + text | : Storage
+      |     + frame gui     | + label | + text | : GUI
+      |     + frame usbdev  | + label | + text | : USB
+      |     + button s.ahci1      | dep: storage     | + label | + text | : ahci1
+      |     + button s.usb1       | dep: storage     | + label | + text | : usb1
+      |     + button s.usb2       | dep: storage     | + label | + text | : usb2
+      |     + button s.usb3       | dep: storage     | + label | + text | : usb3
+      |     + frame s.usb2.part   | dep: s.usb2      | + label | + text | : Partition
+      |     + button s.usb2.2     | dep: s.usb2.part | + label | + text | : 2
+      |     + button g.pointer    | dep: gui         | + label | + text | : pointer
+      |     + button g.overlay    | dep: gui         | + label | + text | : overlay
+      |     + button g.primary    | dep: gui         | + label | + text | : primary
+      |     + button g.background | dep: gui         | + label | + text | : background
+      |     + button u.1-2        | dep: usbdev      | + label | + text | : 1-2
+      |     + button u.1-3        | dep: usbdev      | + label | + text | : 1-3
+      + sleep | milliseconds: 3000
+      + inline | description: example menu
+      | + dialog
+      |   + frame
+      |     + hbox
+      |       + vbox x
+      |       | + button virtualbox | + label | + text | : VirtualBox
+      |       | + button toolchain | hovered: yes
+      |       |   + label | font: monospace/regular
+      |       |     + text | : Tool chain
+      |       | + button log | hovered: yes | selected: yes
+      |       |   + label | font: title/regular
+      |       |     + text | : Log window
+      |       | + button config | selected: yes
+      |       |   + label | font: annotation/regular
+      |       |     + text | : Configuration Configuration Configuration
+      |       | + hbox
+      |       |   + button x1 | + label | + text | : x1
+      |       |   + button x2 | + label | + text | : x2
+      |       |   + button x3 | + label | + text | : x3
+      |       | + frame
+      |       |   + label | font: annotation/regular
+      |       |     + text | : A single line
+      |       + float | north: yes
+      |         + vbox
+      |           + button virtualbox
+      |             + label | + text | : VirtualBox
+      |           + button toolchain | hovered: yes
+      |             + label | font: monospace/regular | + text | : Tool chain
+      + sleep | milliseconds: 3000
+      + inline | description: example menu
+      | + dialog
+      |   + frame
+      |     + vbox
+      |       + button virtualbox | hovered: yes
+      |         + label | + text | : VirtualBox
+      |       + button config | selected: yes | hovered: yes
+      |         + label | + text | : Configuration
+      + sleep | milliseconds: 3000
+
++ start report_rom
+  + provides
+    + service Report
+    + service ROM
+  + config | verbose: yes
+
++ start font | caps: 300 | ram: 8M
+  + binary vfs
+  + provides | + service File_system
+  + route
+    + service ROM | label: config | + child font_config_rom
+    + any-service                 | + parent
+
++ start menu_view | caps: 200 | ram: 8M
+  + config
+  | + report | hover: yes
+  | + libc | stderr: /dev/log
+  | + vfs
+  |   + tar menu_view_style.tar
+  |   + dir dev  | + log
+  |   + dir font | + fs | label: font -> /
+  | + dialog dialog | xpos: 200 | ypos: 150
+  | + dialog fixed_dialog | xpos: 400 | ypos: 50 | width: 400
+  + route
+    + service ROM    | label: dialog         | + child dynamic_rom
+    + service Report | label: hover          | + child report_rom
+    + service File_system | label: font -> / | + child font
+    + any-service
+      + parent
+      + any-child
+-
+}
+
+build { app/menu_view }
+
+set fd [open [run_dir]/genode/fixed_dialog w]
+puts $fd {
+dialog
++ frame
+  + vbox
+    + button perf                    | hovered: yes | + label | + text | : Performance
+    + button battery | selected: yes | hovered: yes | + label | + text | : Battery
+-
+}
+close $fd
+
+build_boot_image [build_artifacts]
+
+run_genode_until forever

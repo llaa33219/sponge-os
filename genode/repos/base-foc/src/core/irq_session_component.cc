@@ -1,0 +1,244 @@
+/*
+ * \brief  Fiasco.OC-specific core implementation of IRQ sessions
+ * \author Christian Helmuth
+ * \author Stefan Kalkowski
+ * \author Sebastian Sumpf
+ * \date   2007-09-13
+ */
+
+/*
+ * Copyright (C) 2007-2017 Genode Labs GmbH
+ *
+ * This file is part of the Genode OS framework, which is distributed
+ * under the terms of the GNU Affero General Public License version 3.
+ */
+
+/* Genode includes */
+#include <util/arg_string.h>
+#include <util/bit_array.h>
+
+/* core includes */
+#include <irq_root.h>
+#include <irq_args.h>
+#include <irq_session_component.h>
+#include <platform.h>
+#include <util.h>
+
+/* Fiasco.OC includes */
+#include <foc/syscall.h>
+
+namespace Core { class Interrupt_handler; }
+
+using namespace Core;
+
+
+/**
+ * Dispatches interrupts from kernel
+ */
+class Core::Interrupt_handler : public Thread
+{
+	private:
+
+		Interrupt_handler(Runtime &runtime)
+		:
+			Thread(runtime, "irq_handler", Stack_size { 16*1024 }, { })
+		{ start(); }
+
+	public:
+
+		void entry() override;
+
+		static Foc::l4_cap_idx_t handler_cap(Runtime &runtime)
+		{
+			static Interrupt_handler handler { runtime };
+			return handler.cap().data()->kcap();
+		}
+
+};
+
+
+bool Irq_object::associate(unsigned irq, bool msi,
+                           Irq_session::Trigger trigger,
+                           Irq_session::Polarity polarity)
+{
+	using namespace Foc;
+
+	_msi      = false;
+	_irq      = irq;
+	_trigger  = trigger;
+	_polarity = polarity;
+
+	if (msi)
+		irq |= L4_ICU_FLAG_MSI;
+	else
+		/* set interrupt mode */
+		Platform::setup_irq_mode(irq, _trigger, _polarity);
+
+	if (l4_error(l4_factory_create_irq(L4_BASE_FACTORY_CAP, _capability()))) {
+		error("l4_factory_create_irq failed!");
+		return false;
+	}
+	if (l4_error(l4_icu_bind(L4_BASE_ICU_CAP, irq, _capability()))) {
+		error("Binding IRQ ", _irq, " to the ICU failed");
+		return false;
+	}
+
+	if (l4_error(l4_rcv_ep_bind_thread(_capability(), Interrupt_handler::handler_cap(_runtime),
+	                                   reinterpret_cast<l4_umword_t>(this)))) {
+		error("cannot attach to IRQ ", _irq);
+		return false;
+	}
+
+	if (msi) {
+		/**
+		 * src_id represents bit 64-84 of the Interrupt Remap Table Entry Format
+		 * for Remapped Interrupts, reference section 9.10 of the
+		 * Intel ® Virtualization Technology for Directed I/O
+		 * Architecture Specification
+		 */
+		unsigned src_id = 0x0;
+		Foc::l4_icu_msi_info_t info = l4_icu_msi_info_t();
+		if (l4_error(l4_icu_msi_info(L4_BASE_ICU_CAP, irq,
+		                             src_id, &info))) {
+			error("cannot get MSI info");
+			return false;
+		}
+		_msi_addr = info.msi_addr;
+		_msi_data = info.msi_data;
+		_msi      = true;
+	}
+
+	return true;
+}
+
+
+void Irq_object::ack_irq()
+{
+	using namespace Foc;
+
+	l4_umword_t err;
+	l4_msgtag_t tag = l4_irq_unmask(_capability());
+	if ((err = l4_ipc_error(tag, l4_utcb())))
+		error("IRQ unmask: ", err);
+}
+
+
+Irq_object::Irq_object(Runtime &runtime)
+:
+	_runtime(runtime),
+	_cap(cap_map().insert((Cap_index::id_t)platform_specific().cap_id_alloc().alloc()))
+{ }
+
+
+Irq_object::~Irq_object()
+{
+	if (_irq == ~0U)
+		return;
+
+	using namespace Foc;
+
+	unsigned long irq = _irq;
+
+	if (_msi_addr)
+		irq |= L4_ICU_FLAG_MSI;
+
+	if (l4_error(l4_irq_detach(_capability())))
+		error("cannot detach IRQ");
+
+	if (l4_error(l4_icu_unbind(L4_BASE_ICU_CAP, (unsigned)irq, _capability())))
+		error("cannot unbind IRQ");
+
+	cap_map().remove(_cap);
+}
+
+
+/***************************
+ ** IRQ session component **
+ ***************************/
+
+static Range_allocator::Result allocate_gsi(Range_allocator &irq_alloc,
+                                            Irq_args const &args)
+{
+	if (args.msi())
+		return platform_specific().with_msi_alloc([&](auto &msis) {
+			return msis.alloc_aligned(1 /* size */, Align { .log2 = 0 }); });
+	else
+		return irq_alloc.alloc_addr(1, args.irq_number());
+}
+
+
+Irq_session_component::Irq_session_component(Runtime         &runtime,
+                                             Range_allocator &irq_alloc,
+                                             const char      *args)
+:
+	_irq_number(allocate_gsi(irq_alloc, Irq_args(args))), _irq_object(runtime)
+{
+	Irq_args const irq_args(args);
+
+	_irq_number.with_result([&] (auto const &a) {
+		if (!_irq_object.associate(unsigned(addr_t(a.ptr)), irq_args.msi(),
+		                           irq_args.trigger(), irq_args.polarity()))
+			error("interrupt association failed");
+	}, [&] (Alloc_error) {
+		error("unavailable interrupt ", irq_args.irq_number(), " requested");
+	});
+}
+
+
+Irq_session_component::~Irq_session_component() { }
+
+
+void Irq_session_component::ack_irq()
+{
+	_irq_object.ack_irq();
+}
+
+
+void Irq_session_component::sigh(Signal_context_capability cap)
+{
+	_irq_object.sigh(cap);
+
+	/* initial l4_irq_unmask (done by ack_irq) is required for MSI on kernel */
+	if (cap.valid() && _irq_object.msi())
+		ack_irq();
+}
+
+
+Irq_session::Info Irq_session_component::info()
+{
+	if (!_irq_object.msi_address())
+		return { .type = Info::Type::INVALID, .address = 0, .value = 0 };
+
+	return {
+		.type    = Irq_session::Info::Type::MSI,
+		.address = (addr_t)_irq_object.msi_address(),
+		.value   = _irq_object.msi_value()
+	};
+}
+
+
+/**************************************
+ ** Interrupt handler implementation **
+ **************************************/
+
+/* Build with frame pointer to make GDB backtraces work. See issue #1061. */
+__attribute__((optimize("-fno-omit-frame-pointer")))
+__attribute__((noinline))
+void Interrupt_handler::entry()
+{
+	using namespace Foc;
+
+	l4_umword_t err;
+	l4_msgtag_t tag;
+	l4_umword_t label;
+
+	while (true) {
+		tag = l4_ipc_wait(l4_utcb(), &label, L4_IPC_NEVER);
+		if ((err = l4_ipc_error(tag, l4_utcb())))
+			error("IRQ receive: ", err);
+		else {
+			Irq_object * irq_object = reinterpret_cast<Irq_object *>(label);
+			irq_object->notify();
+		}
+	}
+}

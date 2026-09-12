@@ -1,0 +1,375 @@
+#
+# Execute a single test defined in a pkg recipe
+#
+# This run script executes a single test case as a static system scenario.
+# It is meant as a handy tool for quickly reproducing, instrumenting, and
+# debugging test cases without the need to create/use any depot archives.
+#
+# The run script combines the information found in the test's runtime
+# definition with the following parameters and heuristics:
+#
+# - The test must be specified via the 'PKG' environment variable.
+#   The specified value is used to find the matching pkg recipe within the
+#   source tree. Therecipe must feature a 'runtime' definition as normally
+#   used by the depot autopilot.
+#
+# - The run script scans the source tree for 'target.mk' files and the target
+#   names defined via the 'TARGET = <name>' definition within those files.
+#   The information is used to determine the correspondence between the
+#   target's binary name and its build path (the location of the 'target.mk'
+#   within the src/ directory). Note that ambiguities are not handled, e.g.,
+#   multiple 'target.mk' files with the same TARGET name will likely cause
+#   problems.
+#
+# - Based on the <content> information found in the test's runtime file,
+#   the build targets and boot modules required by the test are determined
+#   automatically.
+#
+# - The test's configuration is expected to have the form of a 'config'
+#   node in the test's runtime file.
+#
+# - The success/failure criterion is taken from the runtime's 'events'
+#   definition but only a subset of the depot-autopilot's features is
+#   supported, namely a timeout (indicating a failure) and an expected log
+#   (indicating success). If this information are not present, the test
+#   is executed forever.
+#
+# For an example, issue the following command from your build directory:
+#
+#   make run/test KERNEL=linux PKG=test-fs_report
+#
+
+assert {![have_cmd_switch --autopilot]}
+
+##
+# Obtain name of the test pkg from the 'PKG' environment variable
+#
+proc pkg_name { } {
+
+	global ::env
+
+	if {![info exists ::env(PKG)]} {
+		puts stderr "Error: environment variable 'PKG' not defined"
+		exit 1
+	}
+	return $::env(PKG)
+}
+
+if {[catch {
+	set pkg_recipe [glob "[genode_dir]/repos/*/recipes/pkg/[pkg_name]"]
+}]} {
+	puts stderr "Error: unable to find 'recipes/pkg/[pkg_name]' in repos"
+	exit 1
+}
+
+
+##
+# Collect content of the raw archives as used by the test
+#
+# This function returns a list of file paths that must be added as ROM modules
+# to the boot image.
+#
+# Note that it does not evaluate the 'content.mk' file of the raw recipes but
+# relies on the convention that the content of raw archives is hosted at the
+# raw archive's recipe location.
+#
+# The function does not traverse nested pkg archives because no test uses this
+# feature of pkg archives.
+#
+proc _files_from_raw_archives { archives_file } {
+
+	if {![file exists $archives_file]} {
+		puts stderr "Warning: $archives_file does not exist"
+		return { }
+	}
+
+	set fh [open $archives_file "r"]
+	set archives [split [read $fh] "\n"]
+	close $fh
+
+	set result { }
+
+	foreach archive $archives {
+
+		if {![regexp [_depot_archive_path_pattern] $archive dummy user type name]} {
+			continue }
+
+		if {$type != "raw"} {
+			continue }
+
+		if {[catch {
+			set raw_recipe [glob "[genode_dir]/repos/*/recipes/raw/$name"]
+			set files [glob "$raw_recipe/*"]
+			foreach file $files {
+				if {[string match "*/content.mk" $file]} { continue }
+				if {[string match "*/hash"       $file]} { continue }
+				lappend result $file
+			}
+		}]} {
+			puts stderr "Warning: cannot obtain content of raw archive $name"
+		}
+	}
+	return $result
+}
+
+set files_from_raw_archives [_files_from_raw_archives $pkg_recipe/archives]
+
+
+##
+# Return true if ROM module is provided by a raw archive
+#
+proc rom_module_from_raw_archive { rom } {
+
+	global files_from_raw_archives
+
+	foreach file $files_from_raw_archives {
+		if {[string match "*/$rom" $file]} {
+			return 1; } }
+
+	return 0;
+}
+
+
+#
+# Extract information from the test's runtime file
+#
+
+set runtime_file $pkg_recipe/runtime
+
+if {![file exists $runtime_file]} {
+	puts stderr "Error: $pkg_recipe lacks 'runtime' definition"
+	exit 1
+}
+
+proc try_query_timeout_from_runtime { } {
+
+	global runtime_file
+
+	set cmd [genode_dir]/tool/hid
+	if {[looks_like_xml $runtime_file]} { lappend cmd --import-xml }
+
+	set value [exec {*}$cmd get "runtime | + fail | : after_seconds" $runtime_file]
+	if {$value == ""} {
+		puts stderr "Error: missing fail timeout at $runtime_file"
+		exit 1
+	}
+	return $value
+}
+
+proc try_query_config { }  {
+
+	global runtime_file
+
+	set cmd [genode_dir]/tool/hid
+	if {[looks_like_xml $runtime_file]} { lappend cmd --import-xml --output-xml }
+
+	set config [exec {*}$cmd subnodes "runtime | + config" $runtime_file]
+	if {$config == ""} {
+		puts stderr "Error: config node not present in runtime sub node at $runtime_file"
+		puts stderr "       The use of an separate config ROM is not supported."
+		exit 1
+	}
+
+	return $config
+}
+
+proc try_query_attr_from_runtime { attr } {
+
+	global runtime_file
+
+	set cmd [genode_dir]/tool/hid
+	if {[looks_like_xml $runtime_file]} { lappend cmd --import-xml }
+
+	set value [exec {*}$cmd get "runtime | : $attr" $runtime_file]
+	if {$value == ""} {
+		puts stderr "Error: missing '$attr' attribute in <runtime> at $runtime_file"
+		exit 1
+	}
+	return $value
+}
+
+set ram    [try_query_attr_from_runtime ram]
+set caps   [try_query_attr_from_runtime caps]
+set binary [try_query_attr_from_runtime binary]
+set config [try_query_config]
+
+
+#
+# Gather the source locations of all targets found in the source tree to
+# define the build targets and boot modules required by the test.
+#
+set target_mks [exec sh -c "cd [genode_dir]/repos; \
+                              grep \"TARGET.*=\" `find -name target.mk`"]
+
+foreach target_mk [split $target_mks "\n"] {
+	regsub {^.*?/src/} $target_mk {} target_mk
+
+	if {[regexp {(.+?)/target.mk.*\s([^\s]+)\s*$} $target_mk dummy target_path target_name]} {
+		set src_sub_dir($target_name) $target_path
+	}
+}
+
+proc content_rom_modules { } {
+
+	global runtime_file
+
+	set cmd [genode_dir]/tool/hid
+	if {[looks_like_xml $runtime_file]} { lappend cmd --import-xml }
+
+	return [split [exec {*}$cmd get "runtime | + content | + rom | : label" $runtime_file] "\n"]
+}
+
+foreach rom [content_rom_modules] {
+
+	# handle vfs plugin shared-object targets
+	if {[regexp "^(.+).lib.so$" $rom dummy plugin]} {
+		lappend build_targets lib/$plugin
+		continue
+	}
+
+	if {[info exists src_sub_dir($rom)]} {
+		lappend build_targets $src_sub_dir($rom)
+	}
+}
+
+
+#
+# Build
+#
+
+lappend build_targets core init timer lib/ld
+
+# strip duplications
+set sorted_build_targets [lsort -unique $build_targets]
+
+build $sorted_build_targets
+
+
+#
+# Configure and assemble boot image
+#
+
+create_boot_directory
+
+foreach file $files_from_raw_archives {
+	copy_file $file [run_dir]/genode/ }
+
+install_config {
+config | prio_levels: 2
++ parent-provides
+  + service ROM
+  + service IRQ
+  + service IO_MEM
+  + service IO_PORT
+  + service PD
+  + service RM
+  + service CPU
+  + service LOG
+  + service TRACE
+
++ start timer | caps: 100 | ram: 1M
+  + provides | + service Timer
+  + route
+    + service PD      | + parent
+    + service CPU     | + parent
+    + service LOG     | + parent
+    + service ROM     | + parent
+    + service IO_MEM  | + parent
+    + service IRQ     | + parent
+    + service IO_PORT | + parent
+
++ start test | priority: -1 | caps: } $caps { | ram: } $ram {
+  + binary } $binary {
+  + route
+    + service ROM | label: config | + parent | label: test.config
+    + service ROM                 | + parent
+    + service PD                  | + parent
+    + service RM                  | + parent
+    + service CPU                 | + parent
+    + service LOG                 | + parent
+    + service TRACE               | + parent
+    + service Timer               | + child timer
+-
+}
+
+# install config of test subsystem
+set fd [open [run_dir]/genode/test.config w]
+puts $fd $config
+close $fd
+
+build_boot_image [build_artifacts]
+
+
+##
+# Return regexp pattern to match the log output for detecting the success
+#
+proc query_expected_log_pattern { } {
+
+	global runtime_file
+
+	set cmd [genode_dir]/tool/hid
+	if {[looks_like_xml $runtime_file]} { lappend cmd --import-xml }
+
+	set log [exec {*}$cmd subnodes "runtime | + succeed" $runtime_file]
+	regsub -all {\n: }     $log "\n" log
+	regsub -all {\n:}      $log "\n" log
+	regsub {^succeed.*?\n} $log ""   log
+	regsub {\s*-\s*$}      $log ""   log
+	set log [string trim $log]
+
+	# filter pattern line by line
+	set lines [split $log "\n"]
+
+	set pattern_lines { }
+	foreach line $lines {
+
+		# replace test-local log prefix by global prefix
+		if {[regexp {^\[} $line unused]} {
+			regsub {^\[} $line {[init -> test -> } line
+		} else {
+			regsub {^} $line {[init -> test*} line
+		}
+
+		# quote regexp characters
+		foreach char [list {[} {]} {(} {)} {.}] {
+			regsub -all "\\$char" $line "\\$char" line }
+
+		# prevent pipe characters from interpretation as regexp OR
+		regsub -all {[|]} $line {[|]} line
+
+		# replace wildcards by non-greedy regexp wildcards
+		regsub -all {\*} $line {.*?} line
+
+		lappend pattern_lines "$line.*?"
+	}
+
+	# supplement additional condition if a specific exit value is expected
+	set ec [exec {*}$cmd get "runtime | + succeed | : exit" $runtime_file]
+
+	if {$ec != ""} {
+		lappend pattern_lines "\\\[init\\\] child \"test\" exited with exit value $ec.*"
+	}
+
+	set joined [join $pattern_lines "\n"]
+
+	return ".*?$joined.*?"
+}
+
+set expected_pattern [query_expected_log_pattern]
+
+set failure_timeout [expr [try_query_timeout_from_runtime] + 10]
+
+if {$expected_pattern == ""} {
+	puts stderr "Warning: unable to obtain expected log pattern from $runtime_file"
+	run_genode_until {^this-should=never-match$} $failure_timeout
+}
+
+if {$failure_timeout == 0} {
+	puts stderr "Warning: could not determine failure timeout, discharge timeout"
+	set failure_timeout 1000
+}
+
+append qemu_args " -nographic "
+
+run_genode_until $expected_pattern $failure_timeout
+

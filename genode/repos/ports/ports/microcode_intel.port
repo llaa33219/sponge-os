@@ -1,0 +1,12 @@
+#
+# https://github.com/intel/Intel-Linux-Processor-Microcode-Data-Files/releases
+#
+LICENSE   := Intel
+VERSION   := 20220207
+DOWNLOADS := intel.archive
+
+URL(intel)  := https://github.com/intel/Intel-Linux-Processor-Microcode-Data-Files/archive/refs/tags/microcode-$(VERSION).tar.gz
+SHA(intel)  := 532527bd17f3ea6664452b536699818a3bf896e4ace689a43a73624711b7c921
+DIR(intel)  := src/app/intel
+
+TAR_OPT(intel) := --strip-components=1

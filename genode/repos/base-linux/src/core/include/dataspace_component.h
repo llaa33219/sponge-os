@@ -1,0 +1,160 @@
+/*
+ * \brief  Core-internal dataspace representation on Linux
+ * \author Norman Feske
+ * \date   2006-05-19
+ *
+ * On Linux userland, we do not deal with physical memory. Instead,
+ * we create a file for each dataspace that is to be mmapped.
+ * Therefore, the allocator is not really used for allocating
+ * memory but only as a container for quota.
+ */
+
+/*
+ * Copyright (C) 2006-2017 Genode Labs GmbH
+ *
+ * This file is part of the Genode OS framework, which is distributed
+ * under the terms of the GNU Affero General Public License version 3.
+ */
+
+#ifndef _CORE__INCLUDE__DATASPACE_COMPONENT_H_
+#define _CORE__INCLUDE__DATASPACE_COMPONENT_H_
+
+/* Genode includes */
+#include <linux_dataspace/linux_dataspace.h>
+#include <util/misc_math.h>
+#include <base/rpc_server.h>
+
+/* base-internal includes */
+#include <base/internal/capability_space_tpl.h>
+
+/* core includes */
+#include <types.h>
+
+namespace Core {
+
+	class Dataspace_owner;
+	class Dataspace_component;
+}
+
+
+/**
+ * Deriving classes can own a dataspace to implement conditional behavior
+ */
+class Core::Dataspace_owner : Interface { };
+
+
+class Core::Dataspace_component : public Rpc_object<Linux_dataspace>
+{
+	private:
+
+		Filename          _fname { }; /* filename for mmap            */
+		size_t const      _size;      /* size of dataspace in bytes   */
+		addr_t const      _addr;      /* meaningless on linux         */
+		Native_capability _cap;       /* capability / file descriptor */
+		bool   const      _writeable; /* false if read-only           */
+
+		bool _sealed = false;  /* downgraded to read-only access if true */
+
+		/*
+		 * Holds the dataspace owner if a distinction between owner and
+		 * others is necessary on the dataspace, otherwise it is 0
+		 */
+		Dataspace_owner const * const _owner;
+
+		static Filename _file_name(const char *args);
+		size_t _file_size();
+
+		/*
+		 * Noncopyable
+		 */
+		Dataspace_component(Dataspace_component const &);
+		Dataspace_component &operator = (Dataspace_component const &);
+
+		static Native_capability _fd_to_cap(int const fd)
+		{
+			return Capability_space::import(Rpc_destination(Lx_sd{fd}), Rpc_obj_key());
+		}
+
+	public:
+
+		/**
+		 * Constructor
+		 */
+		Dataspace_component(size_t size, addr_t addr, Cache, bool writeable,
+		                    Dataspace_owner * owner)
+		:
+			_size(size), _addr(addr), _cap(), _writeable(writeable), _owner(owner)
+		{ }
+
+		/**
+		 * Default constructor creates invalid dataspace
+		 */
+		Dataspace_component()
+		:
+			_size(0), _addr(0), _cap(), _writeable(false), _owner(nullptr)
+		{ }
+
+		/**
+		 * This constructor is only provided for compatibility
+		 * reasons and should not be used.
+		 */
+		Dataspace_component(size_t size, addr_t, addr_t phys_addr,
+		                    Cache, bool writeable, Dataspace_owner *_owner);
+
+		/**
+		 * This constructor is especially used for ROM dataspaces
+		 *
+		 * \param args  session parameters containing 'filename' key/value
+		 */
+		Dataspace_component(const char *args);
+
+		/**
+		 * Assign file descriptor to dataspace
+		 *
+		 * The file descriptor assigned to the dataspace will be enable
+		 * processes outside of core to mmap the dataspace.
+		 */
+		void fd(int fd) { _cap = _fd_to_cap(fd); }
+
+		/**
+		 * Check if dataspace is owned by a specified object
+		 */
+		bool owner(Dataspace_owner const &o) const { return _owner == &o; }
+
+		/**
+		 * Detach dataspace from all rm sessions.
+		 */
+		void detach_from_rm_sessions() { }
+
+		addr_t phys_addr() const { return _addr; }
+
+		void seal() { _sealed = true; }
+
+
+		/*************************
+		 ** Dataspace interface **
+		 *************************/
+
+		size_t size() override { return _size; }
+
+		bool writeable() override
+		{
+			/*
+			 * On Linux, 'writeable()' is evaluated only at attach time, not
+			 * for each page fault. Hence, the sealed state does not need to be
+			 * obtainable independently from '_writeable'.
+			 */
+			return _writeable && !_sealed;
+		}
+
+
+		/****************************************
+		 ** Linux-specific dataspace interface **
+		 ****************************************/
+
+		Filename fname() override { return _fname; }
+
+		Untyped_capability fd() override { return _cap; }
+};
+
+#endif /* _CORE__INCLUDE__DATASPACE_COMPONENT_H_ */

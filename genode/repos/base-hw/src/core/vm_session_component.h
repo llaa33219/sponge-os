@@ -1,0 +1,386 @@
+/*
+ * \brief  Core-specific instance of the VM session interface
+ * \author Stefan Kalkowski
+ * \date   2012-10-08
+ */
+
+/*
+ * Copyright (C) 2012-2025 Genode Labs GmbH
+ *
+ * This file is part of the Genode OS framework, which is distributed
+ * under the terms of the GNU Affero General Public License version 3.
+ */
+
+#ifndef _CORE__VM_SESSION_COMPONENT_H_
+#define _CORE__VM_SESSION_COMPONENT_H_
+
+/* base includes */
+#include <base/registry.h>
+#include <base/session_object.h>
+#include <vm_session/vm_session.h>
+
+/* base-hw includes */
+#include <hw_native_vcpu/hw_native_vcpu.h>
+
+/* core includes */
+#include <cpu_thread_component.h>
+#include <guest_memory.h>
+#include <kernel/vcpu.h>
+#include <object.h>
+#include <page_table_allocator.h>
+#include <phys_allocated.h>
+#include <trace/source_registry.h>
+#include <vmid_allocator.h>
+
+
+namespace Core { template <typename> class Vm_session_component; }
+
+
+template <typename TABLE>
+class Core::Vm_session_component
+:
+	public  Session_object<Vm_session>,
+	private Region_map_detach,
+	public  Revoke
+{
+	private:
+
+		struct Vcpu : public Rpc_object<Vm_session::Native_vcpu, Vcpu>,
+		              public Revoke,
+		              public Trace::Source::Info_accessor
+		{
+			constexpr size_t ds_size() {
+				return align_addr(sizeof(Vcpu_state), AT_PAGE); }
+
+			Kernel::Vcpu::Identity &id;
+			Rpc_entrypoint         &ep;
+			Local_rm               &rm;
+
+			Ram_allocator::Result ds;
+
+			Local_rm::Attachment::Attempt ds_attached {
+				ds.convert<Local_rm::Attachment::Attempt>(
+					[&] (Ram::Allocation &a) {
+						Region_map::Attr attr { };
+						attr.writeable = true;
+						return rm.attach(a.cap, attr);
+					}, [] (auto) {
+						return Region_map::Attach_error::INVALID_DATASPACE; })
+			};
+
+			Trace::Source_registry      &trace_sources;
+			Trace::Control_area::Result  trace_control_slot;
+			Constructible<Trace::Source> trace_source { };
+
+			Affinity::Location location;
+			Session_label      label;
+			Board::Vcpu_state  hw_state;
+
+			Signal_context_capability   sigh_cap { };
+			Kernel_object<Kernel::Vcpu> kobj     { };
+
+			using Constructed = Attempt<Ok, Alloc_error>;
+
+			Constructed const constructed()
+			{
+				if (ds.failed())
+					return ds.convert<Constructed>([] (auto&)  { return Ok(); },
+					                               [] (auto e) { return e; });
+				if (ds_attached.failed())
+					return ds_attached.convert<Constructed>(
+						[] (auto&) { return Ok(); },
+						[] (auto) { return Alloc_error::DENIED; });
+
+				if (trace_control_slot.failed())
+					return Alloc_error::DENIED;
+
+				return hw_state.constructed.convert<Constructed>(
+					[] (auto&) { return Ok(); },
+					[] (auto e) {
+						return (decltype(e)::OUT_OF_RAM == e)
+							? Alloc_error::OUT_OF_RAM : Alloc_error::DENIED;
+				});
+			}
+
+			Vcpu(Kernel::Vcpu::Identity         &id,
+			     Rpc_entrypoint                 &ep,
+			     Accounted_ram_allocator        &ram,
+			     Local_rm                       &local_rm,
+			     Accounted_mapped_ram_allocator &core_ram,
+			     Trace::Control_area            &trace_control_area,
+			     Trace::Source_registry         &trace_sources,
+			     Affinity::Location              location,
+			     Session_label                   label)
+			:
+				id(id), ep(ep), rm(local_rm),
+				ds(ram.try_alloc(ds_size(), Cache::UNCACHED)),
+				trace_sources(trace_sources),
+				trace_control_slot(trace_control_area.alloc()),
+				location(location),
+				label(label),
+				hw_state(core_ram, local_rm,
+				         ds_attached.convert<Genode::Vcpu_state*>(
+					[] (auto &a) { return (Vcpu_state*)a.ptr; },
+					[] (auto)    { return nullptr; }))
+			{
+				trace_control_area.with_control(trace_control_slot,
+					[&] (Trace::Control &control) {
+						trace_source.construct(*this, control);
+						Trace::Source &source = *trace_source;
+						trace_sources.insert(&source);
+					});
+
+				ep.manage(this);
+			}
+
+			~Vcpu()
+			{
+				ep.dissolve(this);
+
+				if (trace_source.constructed()) {
+					Trace::Source &source = *trace_source;
+					trace_sources.remove(&source);
+				}
+
+			}
+
+			void revoke_signal_context(Signal_context_capability cap) override
+			{
+				if (cap != sigh_cap)
+					return;
+
+				sigh_cap = Signal_context_capability();
+				if (kobj.constructed()) kobj.destruct();
+			}
+
+
+			/*******************************
+			 ** Native_vcpu RPC interface **
+			 *******************************/
+
+			Capability<Dataspace> state() const
+			{
+				return ds.convert<Capability<Dataspace>>(
+					[&] (Ram::Allocation const &ds) { return ds.cap; },
+					[&] (Ram::Error) { return Capability<Dataspace>(); });
+			}
+
+			Native_capability native_vcpu() { return kobj.cap(); }
+
+			void exception_handler(Signal_context_capability handler)
+			{
+				if (!handler.valid() || kobj.constructed())
+					return;
+
+				sigh_cap = handler;
+
+				unsigned const cpu = location.xpos();
+
+				kobj.create(cpu, (void *)&hw_state,
+				            Capability_space::capid(handler), id);
+			}
+
+
+			/********************************************
+			 ** Trace::Source::Info_accessor interface **
+			 ********************************************/
+
+			Trace::Source::Info trace_source_info() const override
+			{
+				using Scheduler = Kernel::Scheduler;
+				using Group_id  = Scheduler::Group_id;
+				unsigned warp   = Scheduler::warp[Group_id::BACKGROUND];
+				unsigned weight = Scheduler::weight[Group_id::BACKGROUND];
+				return { label, String<5>("vCPU"),
+				         Trace::Execution_time(kobj->execution_time(), 0,
+				                               warp, weight), location };
+			}
+		};
+
+		Rpc_entrypoint &_ep;
+		Local_rm       &_local_rm;
+		Vmid_allocator &_id_alloc;
+
+		Accounted_ram_allocator _ram;
+		Accounted_mapped_ram_allocator _mapped_ram;
+		Heap _heap { _ram, _local_rm };
+
+		using Vcpu_allocator =
+			Memory::Constrained_obj_allocator<Registered<Vcpu>>;
+		Vcpu_allocator _vcpu_alloc { _heap };
+
+		Phys_allocated<TABLE> _table { _mapped_ram };
+		Page_table_allocator  _table_alloc { _mapped_ram, _heap };
+
+		Guest_memory _memory { _ep, *this, _ram, _local_rm };
+
+		Registry<Registered<Vcpu>> _vcpus { };
+
+		Registry<Revoke>::Element _elem;
+
+		Kernel::Vcpu::Identity _id { _id_alloc.alloc(),
+		                             (void *)_table.phys_addr() };
+
+		Trace::Control_area     _trace_control_area;
+		Trace::Source_registry &_trace_sources;
+
+		Attach_result _attach(addr_t vm_addr, addr_t phys_addr,
+                              size_t size, bool exec, bool write,
+                              Cache cache)
+		{
+			using namespace Hw;
+
+			Page_flags pflags { write ? RW : RO,
+			                    exec ? EXEC : NO_EXEC,
+			                    USER, NO_GLOBAL, RAM, cache };
+
+			Attach_result result = Region_map::Range(vm_addr, size);
+
+			_table.obj([&] (auto &table) {
+				table.insert(vm_addr, phys_addr, size,
+				              pflags, _table_alloc).with_error(
+					[&] (Page_table_error e) {
+						if (e == Page_table_error::INVALID_RANGE) {
+							result = Attach_error::INVALID_DATASPACE;
+						} else {
+							result = Attach_error::OUT_OF_RAM;
+							error("Translation table needs to much RAM");
+						}
+					});
+				});
+			return result;
+		}
+
+		void _detach(addr_t vm_addr, size_t size)
+		{
+			_table.obj([&] (auto &table) {
+				table.remove(vm_addr, size, _table_alloc); });
+		}
+
+
+		/*********************************
+		 ** Region_map_detach interface **
+		 *********************************/
+
+		void detach_at(addr_t const addr) override
+		{
+			_memory.detach_at(addr, [&](addr_t vm_addr, size_t size) {
+				_detach(vm_addr, size); });
+		}
+
+		void reserve_and_flush(addr_t const addr) override
+		{
+			_memory.reserve_and_flush(addr, [&](addr_t vm_addr, size_t size) {
+				_detach(vm_addr, size); });
+		}
+
+		void unmap_region (addr_t, size_t) override { /* unused */ }
+
+	public:
+
+		using Constructed = Attempt<Ok, Alloc_error>;
+
+		Constructed const constructed()
+		{
+			if (_table.constructed.failed()) {
+				using Error = Accounted_mapped_ram_allocator::Error;
+				return (_table.constructed == Error::OUT_OF_RAM)
+					? Alloc_error::OUT_OF_RAM : Alloc_error::DENIED;
+			}
+
+			if (_id.id.failed())
+				return Alloc_error::DENIED;
+
+			if (_trace_control_area.constructed.failed())
+				return _trace_control_area.constructed;
+
+			return Ok();
+		};
+
+		/*
+		 * Noncopyable
+		 */
+		Vm_session_component(Vm_session_component const &) = delete;
+		Vm_session_component &operator = (Vm_session_component const &) = delete;
+
+		Vm_session_component(Registry<Revoke>       &registry,
+		                     Vmid_allocator         &id_alloc,
+		                     Rpc_entrypoint         &ep,
+		                     Resources               resources,
+		                     Label const            &label,
+		                     Ram_allocator          &ram,
+		                     Mapped_ram_allocator   &mapped_ram,
+		                     Local_rm               &rm,
+		                     Trace::Source_registry &trace_sources)
+		:
+			Session_object(ep, resources, label),
+			_ep(ep),
+			_local_rm(rm),
+			_id_alloc(id_alloc),
+			_ram(ram, _ram_quota_guard(), _cap_quota_guard()),
+			_mapped_ram(mapped_ram, _ram_quota_guard()),
+			_elem(registry, *this),
+			_trace_control_area(_ram, rm),
+			_trace_sources(trace_sources) { }
+
+		~Vm_session_component()
+		{
+			_vcpus.for_each([&] (Registered<Vcpu> &vcpu) {
+				destroy(_heap, &vcpu); });
+		}
+
+		void revoke_signal_context(Signal_context_capability cap) override
+		{
+			_vcpus.for_each([&] (Vcpu &vcpu) {
+				vcpu.revoke_signal_context(cap); });
+		}
+
+
+		/**************************
+		 ** Vm session interface **
+		 **************************/
+
+		Attach_result attach(Dataspace_capability cap, addr_t guest_phys,
+		                     Attach_attr attribute) override
+		{
+			return _memory.attach(cap, guest_phys, attribute,
+				[&] (addr_t vm_addr, addr_t phys_addr,
+				     size_t size, bool exec, bool write,
+				     Cache cacheable) {
+					return _attach(vm_addr, phys_addr, size, exec,
+					               write, cacheable); });
+		}
+
+		Attach_result attach_pic(addr_t) override;
+
+		void detach(addr_t guest_phys, size_t size) override
+		{
+			_memory.detach(guest_phys, size, [&](addr_t vm_addr, size_t size) {
+				_detach(vm_addr, size); });
+		}
+
+		Create_vcpu_result create_vcpu(Thread_capability tcap) override
+		{
+			Affinity::Location vcpu_location;
+			_ep.apply(tcap, [&] (Cpu_thread_component *ptr) {
+				if (!ptr) return;
+				vcpu_location = ptr->platform_thread().affinity();
+			});
+
+			return _vcpu_alloc.create(_vcpus, _id, _ep, _ram,
+			                          _local_rm, _mapped_ram,
+			                          _trace_control_area, _trace_sources,
+			                          vcpu_location,
+			                          label()).template convert<Create_vcpu_result>(
+				[&] (auto &a) {
+					return a.obj.constructed().template convert<Create_vcpu_result>(
+					[&] (auto) {
+						a.deallocate = false;
+						return a.obj.cap(); },
+					[&] (Alloc_error e) { return e; });
+				},
+				[&] (Alloc_error e) { return e; });
+		}
+};
+
+#endif /* _CORE__VM_SESSION_COMPONENT_H_ */

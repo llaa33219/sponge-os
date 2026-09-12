@@ -1,0 +1,15 @@
+if {[have_cmd_switch --autopilot]} {
+	assert {![have_board virt_qemu_riscv]} \
+		"Autopilot mode is not supported on this platform."
+}
+
+set mkfs_cmd  [installed_command mke2fs]
+set mkfs_opts "-F"
+
+set test_build_components "lib/vfs_rump"
+
+set test_vfs_config "rump | fs: ext2fs | ram: 10M | writeable: yes"
+
+set use_vfs_server 1
+
+source ${genode_dir}/repos/libports/run/libc_vfs_filesystem_test.inc

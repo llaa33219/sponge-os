@@ -1,0 +1,16 @@
+arm_single_step.patch
+
+Enable software single-stepping on ARM.
+
+diff --git a/gdb/arm-tdep.c b/gdb/arm-tdep.c
+--- a/gdb/arm-tdep.c
++++ b/gdb/arm-tdep.c
+@@ -10658,6 +10658,8 @@ arm_gdbarch_init (struct gdbarch_info info, struct gdbarch_list *arches)
+     = gdbarch_alloc (&info, gdbarch_tdep_up (new arm_gdbarch_tdep));
+   arm_gdbarch_tdep *tdep = gdbarch_tdep<arm_gdbarch_tdep> (gdbarch);
+ 
++  set_gdbarch_software_single_step(gdbarch, arm_software_single_step);
++
+   set_solib_svr4_fetch_link_map_offsets(gdbarch, svr4_ilp32_fetch_link_map_offsets);
+ 
+   /* Record additional information about the architecture we are defining.

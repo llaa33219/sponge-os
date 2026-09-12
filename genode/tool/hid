@@ -1,0 +1,1903 @@
+#!/usr/bin/tclsh
+
+#
+# \brief  Tool for processing human-inclined data (HID) syntax
+# \author Norman Feske
+# \date   2023-05-01
+#
+
+set total_parse_errors 0
+
+
+proc error { msg } {
+	puts stderr "\nError: $msg\n"
+	exit 1
+}
+
+
+#
+# Workaround for a limitation of Tcl's 'string trim' when called with " ⋅ "
+#
+# See https://core.tcl-lang.org/tcl/tktview/b3fbd9a6e028dfa5c0138a461fdb5b4ae09ffebc
+#
+proc string_trim { s } { return [string trim $s " \t\n"] }
+
+
+#
+# HID nodes and attributes are represented as lists
+#
+# hid_padding  - space following the node type
+# hid_prespace - space in front of a node
+# hid_anno     - annotation following immediately the node type
+# hid_anchor   - x or +
+# hid_doc      - comment lines belonging to the node
+# attr_anno    - annotation following an attriute
+# attr_align   - space between tag and value
+#
+
+proc hid_type       { hid  } { return [lindex $hid  0] }
+proc hid_padding    { hid  } { return [lindex $hid  1] }
+proc hid_line       { hid  } { return [lindex $hid  2] }
+proc hid_prespace   { hid  } { return [lindex $hid  3] }
+proc hid_anchor     { hid  } { return [lindex $hid  4] }
+proc hid_doc        { hid  } { return [lindex $hid  5] }
+proc hid_attributes { hid  } { return [lindex $hid  6] }
+proc hid_children   { hid  } { return [lindex $hid  7] }
+proc hid_quoted     { hid  } { return [lindex $hid  8] }
+proc hid_anno       { hid  } { return [lindex $hid  9] }
+proc attr_line      { attr } { return [lindex $attr 0] }
+proc attr_prespace  { attr } { return [lindex $attr 1] }
+proc attr_tag       { attr } { return [lindex $attr 2] }
+proc attr_align     { attr } { return [lindex $attr 3] }
+proc attr_value     { attr } { return [lindex $attr 4] }
+proc attr_anno      { attr } { return [lindex $attr 5] }
+
+proc same_trimmed     { s1 s2 } { return [expr {[string_trim $s1] == [string_trim $s2]}] }
+proc same_attr_values { a1 a2 } { return [same_trimmed [attr_value $a1] [attr_value $a2]] }
+
+proc hid_leaf { hid } {
+
+	return [expr {[llength [hid_children $hid]] == 0}]
+}
+
+proc hid_attr_value { hid tag { default_value "" } } {
+
+	foreach attr [hid_attributes $hid] {
+		if {[attr_tag $attr] == $tag} {
+			return [string_trim [attr_value $attr]] } }
+
+	return $default_value
+}
+
+proc hid_has_attr { hid tag } {
+
+	foreach attr [hid_attributes $hid] {
+		if {[attr_tag $attr] == $tag} {
+			return true } }
+	return false
+}
+
+
+proc node_stack_element_as_hid { ctx_var i } {
+
+	upvar $ctx_var ctx
+
+	return [list $ctx($i,type)       $ctx($i,padding)  $ctx($i,line)   \
+	             $ctx($i,prespace)   $ctx($i,anchor)   $ctx($i,doc)    \
+	             $ctx($i,attributes) $ctx($i,children) $ctx($i,quoted) \
+	             $ctx($i,annotation)]
+}
+
+
+proc stack_pos_for_xpos { ctx_var xpos } {
+
+	upvar $ctx_var ctx
+
+	set depth $ctx(depth)
+	set pos 0
+	for {set i 0} {$i < $depth} {incr i} {
+		if {[info exists ctx($i,type)]} {
+			if {$xpos > $ctx($i,xpos)} {
+				set pos $i } } }
+
+	return $pos;
+}
+
+
+proc pop_nodes { ctx_var xpos } {
+
+	upvar $ctx_var ctx
+
+	# find appropriate stack position for new node
+	set new_pos [expr [stack_pos_for_xpos ctx $xpos] + 1]
+	set depth $ctx(depth)
+
+	for {set i [expr $depth - 1]} { $i >= $new_pos } { incr i -1 } {
+		lappend ctx([expr $i - 1],children) \
+		        [node_stack_element_as_hid ctx $i]
+		incr ctx(depth) -1
+	}
+}
+
+
+proc add_node { ctx_var n xpos type anchor padding } {
+
+	upvar $ctx_var ctx
+
+	pop_nodes ctx $xpos
+
+	# push new node
+	set pos $ctx(depth)
+	set ctx($pos,type)       $type
+	set ctx($pos,padding)    $padding
+	set ctx($pos,line)       $n
+	set ctx($pos,prespace)   $ctx(prespace)
+	set ctx($pos,xpos)       $xpos
+	set ctx($pos,anchor)     $anchor
+	set ctx($pos,doc)        {}
+	set ctx($pos,attributes) {}
+	set ctx($pos,children)   {}
+	set ctx($pos,quoted)     {}
+	set ctx($pos,annotation) {}
+	set ctx(prespace)        ""
+	incr ctx(depth)
+}
+
+
+proc add_attribute { ctx_var xpos attr } {
+
+	upvar $ctx_var ctx
+
+	set pos [stack_pos_for_xpos ctx $xpos]
+	lappend ctx($pos,attributes) $attr
+}
+
+
+proc assign_quoted { ctx_var xpos content } {
+
+	upvar $ctx_var ctx
+
+	set pos [stack_pos_for_xpos ctx $xpos]
+	set ctx($pos,quoted) $content
+}
+
+
+proc assign_annotation { ctx_var xpos anno } {
+
+	upvar $ctx_var ctx
+
+	set pos [stack_pos_for_xpos ctx $xpos]
+	set attrs $ctx($pos,attributes)
+
+	if {[llength $attrs] == 0} {
+		set ctx($pos,annotation) $anno
+	} else {
+		set attrs [_hid_attach_annotation_to_last_attr $attrs $anno]
+		set ctx($pos,attributes) $attrs
+	}
+}
+
+
+proc add_doc_line { ctx_var n xpos text } {
+
+	upvar $ctx_var ctx
+
+	set pos [expr $ctx(depth) - 1]
+	if {$xpos == [expr $pos*2]} {
+		lappend ctx($pos,doc) [list $n $ctx(prespace) $text]
+	} else {
+		puts stderr "Dropping commented-out line $n: $text"
+	}
+
+	set ctx(prespace) ""
+}
+
+
+##
+## Grammar for parsing an individual line
+##
+
+proc indent_pattern  { } { return {[| ]( |$)}        }
+proc id_pattern      { } { return {[a-z][a-z0-9_-]*} }
+proc space_pattern   { } { return { +}               }
+proc tag_pattern     { } { return " *[id_pattern]:"  }
+proc value_pattern   { } { return {[^|]+}            }
+proc anchor_pattern  { } { return {[+x] }            }
+proc comment_pattern { } { return {[.]( |$)}         }
+proc anno_pattern    { } { return {[.]( |$)}         }
+proc quoted_pattern  { } { return {[:]( |$)}         }
+proc delim_pattern   { } { return { [|] }            }
+proc eof_pattern     { } { return {-\s*$}            }
+proc empty_pattern   { } { return {\s*$}             }
+proc segment_pattern { } { return {.+?( [|] |$)}     }
+
+
+proc parse { pattern chars_var xpos_var match_var match_body } {
+
+	upvar $chars_var chars
+	upvar $xpos_var  xpos
+	upvar $match_var match
+
+	while {[regexp "^($pattern)" $chars match]} {
+		regsub "^($pattern)" $chars "" chars
+		set match_width [string length $match]
+		uplevel 1 $match_body
+		incr xpos $match_width
+	}
+}
+
+
+proc parse_value { chars_var xpos_var align_var value_var body } {
+
+	upvar $chars_var chars
+	upvar $xpos_var  xpos
+	upvar $align_var align
+	upvar $value_var value
+
+	parse [value_pattern] chars xpos aligned_value {
+		set align ""
+		parse [space_pattern] aligned_value xpos align { }
+		parse [value_pattern] aligned_value xpos value {
+			uplevel 1 $body } }
+}
+
+
+proc parse_attr { prespace_var chars_var xpos_var tag_name_var align_var value_var body } {
+
+	upvar $prespace_var prespace
+	upvar $chars_var    chars
+	upvar $xpos_var     xpos
+	upvar $tag_name_var tag_name
+	upvar $align_var    align
+	upvar $value_var    value
+
+	parse [tag_pattern] chars xpos tag {
+		parse [space_pattern] tag xpos space { append prespace $space }
+		parse [id_pattern]    tag xpos tag_name {
+			set value ""
+			set align ""
+			parse_value chars xpos align value { }
+			uplevel 1 $body } }
+}
+
+
+proc parse_node { n chars_var xpos_var ctx_var anchor } {
+
+	upvar $chars_var chars
+	upvar $xpos_var  xpos
+	upvar $ctx_var   ctx
+
+	set node_xpos $xpos
+	parse [id_pattern] chars xpos type {
+
+		# capture padding at the right of the node type
+		regexp {^ *} $chars padding
+		regsub {^ *} $chars "" chars
+		incr xpos [string length $padding]
+
+		add_node ctx $n $node_xpos $type $anchor $padding
+
+		parse [tag_pattern] chars xpos tag {
+			global total_parse_errors
+			puts stderr "Error: missing '|' separator before '$tag' attribute at line $n"
+			incr total_parse_errors
+		}
+
+		# optional name
+		parse_value chars xpos align name {
+			add_attribute ctx $xpos [list $n $ctx(prespace) name $align $name ""]
+			set ctx(prespace) ""
+		}
+	}
+}
+
+
+##
+## Parse line sequence and capture data in node stack
+##
+
+proc parse_line { n chars ctx_var } {
+
+	upvar $ctx_var ctx
+
+	set orig_chars $chars
+	set xpos 0
+
+	set eof false
+	parse [eof_pattern] chars xpos ignored {
+		set eof true }
+
+	if {$eof} {
+		pop_nodes ctx 0
+		return false }
+
+	parse [empty_pattern] chars xpos space {
+		append ctx(prespace) $space
+		return true }
+
+	parse [indent_pattern] chars xpos space { append ctx(prespace) $space }
+
+	# capture doc comment or drop commented-out line
+	parse [comment_pattern] chars ignored_xpos comment {
+		add_doc_line ctx $n $xpos $chars
+		set chars "" }
+
+	parse [segment_pattern] chars xpos segment {
+
+		# annotation '.' or quote ':' captures the remainder of the line
+		parse [anno_pattern] segment xpos match {
+			assign_annotation ctx $xpos " | . $segment$chars"
+			set chars ""
+			set segment ""
+			set ctx(prespace) ""
+		}
+
+		parse [quoted_pattern] segment xpos ignored {
+			add_node ctx $n $xpos ":" "" ""
+			assign_quoted ctx [expr $xpos + 2] "$segment$chars"
+			set chars ""
+			set segment ""
+			set ctx(prespace) ""
+		}
+
+		# strip '|' delimiter from the end of segment
+		set next_prespace ""
+		if {[regexp { [|] $} $segment next_prespace]} {
+			regsub  { [|] $} $segment "" segment }
+
+		# add alignment via space and '|' to the prespace of current segment
+		if {[regexp {^ *([|] +)+ *} $segment alignment]} {
+			regsub  {^ *([|] +)+ *} $segment "" segment
+			append ctx(prespace) $alignment
+		}
+
+		if {[regexp {[|]} $segment]} {
+			global total_parse_errors
+			puts stderr "Error: stray '|' at line $n"
+			incr total_parse_errors
+		}
+
+		set attr_xpos $xpos
+		parse_attr ctx(prespace) segment attr_xpos tag align value {
+			add_attribute ctx $attr_xpos [list $n $ctx(prespace) $tag $align $value ""]
+			set ctx(prespace) ""
+		}
+
+		set anchor_xpos $xpos
+		parse [anchor_pattern] segment anchor_xpos anchor {
+			parse_node $n segment anchor_xpos ctx $anchor }
+
+		# top-level node
+		set node_xpos $xpos
+		parse_node $n segment node_xpos ctx ""
+
+		append ctx(prespace) $next_prespace
+	}
+
+	# diagnostic feedback
+	if {[string length $chars] > 0} {
+		set at ""
+		if {$n} { set at " at line $n" }
+		if {[regexp {\s+$} $chars bad]} {
+			set bad_line "[string_trim $orig_chars]$bad"
+			puts stderr "Error: trailing space$at: '$bad_line'"
+		} elseif {[regexp {^[| +x]*\t} $chars]} {
+			regsub {\t} $orig_chars "<TAB>" bad_line
+			set bad_line "[string_trim $bad_line]"
+			puts stderr "Error: tab misused to indent$at: '$bad_line'"
+		} else {
+			puts stderr "Unable to parse$at: '$chars'"
+		}
+		global total_parse_errors
+		incr total_parse_errors
+	}
+	return true
+}
+
+
+proc import_hid { data { multiple_lines true } } {
+
+	global total_parse_errors
+	set orig_total_parse_errors $total_parse_errors
+
+	# set up node stack in context 'ctx'
+	set ctx(depth)         0
+	set ctx(0,type)        ""
+	set ctx(0,padding)     ""
+	set ctx(0,line)        0
+	set ctx(0,prespace)    ""
+	set ctx(0,anchor)      ""
+	set ctx(0,doc)         {}
+	set ctx(0,attributes)  {}
+	set ctx(0,xpos)        0
+	set ctx(0,children)    {}
+	set ctx(0,quoted)      {}
+	set ctx(0,annotation)  {}
+	set ctx(prespace)      ""
+
+	set lines [split $data "\n"]
+	set eof 0
+	set n [expr $multiple_lines ? 1 : 0]
+	foreach line $lines {
+		if {![parse_line $n $line ctx]} {
+			set eof true
+			break; }
+		append ctx(prespace) "\n"
+		incr n
+	}
+
+	pop_nodes ctx 0
+
+	set parse_errors [expr $total_parse_errors - $orig_total_parse_errors]
+	if {$parse_errors > 0} {
+		set suffix ""
+		if {$parse_errors > 1} { set suffix "s" }
+		error "$parse_errors line$suffix could not be parsed completely"
+		exit 1
+	}
+
+	if {$multiple_lines && !$eof} {
+		error "missing end-of-data mark '-'" }
+
+	return [node_stack_element_as_hid ctx 0]
+}
+
+
+##
+## Query
+##
+
+proc hid_query_nodes { query_hid data_hid } {
+
+	if {[hid_type $query_hid] != [hid_type $data_hid]} {
+		return {} }
+
+	# check for conflicting attributes
+	foreach query_attr [hid_attributes $query_hid] {
+		set attr_exists_in_data 0
+		foreach data_attr [hid_attributes $data_hid] {
+			if {[attr_tag $data_attr] == [attr_tag $query_attr]} {
+				set attr_exists_in_data 1
+				if {![same_attr_values $data_attr $query_attr]} {
+					return {} } } }
+
+		if {!$attr_exists_in_data} {
+			return {} }
+	}
+
+	# stop searching when reaching the leaf of the query
+	if {[hid_leaf $query_hid]} {
+		return [list $data_hid] }
+
+	# traverse into next level
+	set result_list {}
+	foreach sub_query_hid [hid_children $query_hid] {
+		foreach sub_data_hid [hid_children $data_hid] {
+			foreach hid [hid_query_nodes $sub_query_hid $sub_data_hid] {
+				lappend result_list $hid } } }
+
+	return $result_list
+}
+
+
+##
+## Filter function used for remove/set/enable/disable commands
+##
+
+proc hid_filter { ctx_var query_hid data_hid filtered_hid_var match_body } {
+
+	upvar $filtered_hid_var filtered_hid
+	upvar $ctx_var ctx
+
+	if {[hid_type $query_hid] != [hid_type $data_hid]} {
+		return $data_hid }
+
+	# check for conflicting attributes
+	foreach query_attr [hid_attributes $query_hid] {
+		set attr_exists_in_data 0
+		foreach data_attr [hid_attributes $data_hid] {
+			if {[attr_tag $data_attr] == [attr_tag $query_attr]} {
+				set attr_exists_in_data 1
+				if {![same_attr_values $data_attr $query_attr]} {
+					return $data_hid } } } }
+
+	# apply filter when matching the leaf of the query
+	if {[hid_leaf $query_hid]} {
+		set filtered_hid $data_hid
+		uplevel 1 $match_body
+		return $filtered_hid
+	}
+
+	# traverse into next level
+	set filtered_children {}
+	foreach sub_query_hid [hid_children $query_hid] {
+		foreach sub_data_hid [hid_children $data_hid] {
+
+			set filter_result [hid_filter ctx $sub_query_hid $sub_data_hid \
+			                              $filtered_hid_var $match_body]
+
+			if {[llength $filter_result] > 0} {
+				lappend filtered_children $filter_result }
+		}
+	}
+	return [list [hid_type       $data_hid] [hid_padding  $data_hid] \
+	             [hid_line       $data_hid] [hid_prespace $data_hid] \
+	             [hid_anchor     $data_hid] [hid_doc      $data_hid] \
+	             [hid_attributes $data_hid] $filtered_children       \
+	             [hid_quoted     $data_hid] [hid_anno     $data_hid] ]
+}
+
+
+##
+## Output in HID syntax
+##
+
+proc hid_foreach_non_name_attr { tag_var value_var anno_var hid body } {
+
+	upvar $tag_var   tag
+	upvar $value_var value
+	upvar $anno_var  anno
+
+	foreach attr [hid_attributes $hid] {
+		if {[attr_tag $attr] != "name"} {
+			set tag   [attr_tag   $attr]
+			set value [attr_value $attr]
+			set anno  [attr_anno  $attr]
+			uplevel 1 $body } }
+}
+
+
+proc hid_name_attr { hid } {
+	foreach attr [hid_attributes $hid] {
+		if {[attr_tag $attr] == "name"} {
+			return $attr }
+	}
+}
+
+
+proc hid_attrs_fit_on_one_line { hid xpos } {
+
+	set width 0
+	set count 0
+
+	hid_foreach_non_name_attr tag value anno $hid {
+		if {$anno != ""} { return false }
+		incr width [string length " | $tag: $value"]
+		incr count
+	}
+
+	# a single attribute always appears as one line, however long it may be
+	if {$count == 1} { return true }
+
+	# join attributes on the node's line unless exceeding a limit of 80
+	if {[expr $xpos + $width] < 80 } { return true }
+
+	return false;
+}
+
+
+##
+# Select formatting style of a hid node
+#
+# For nodes where each child has many attributes but no sub nodes,
+# consistently format all childen using the same one-attr-per-line style.
+#
+proc _hid_one_attr_per_line { hid xpos } {
+
+	# don't force one attr per line when the structure is nested
+	foreach child [hid_children $hid] {
+		if {[llength [hid_children $child]] != 0} {
+			return false } }
+
+	# the attributes of any sub node exceed the maximum line length
+	set result false
+	foreach child [hid_children $hid] {
+		if {![hid_attrs_fit_on_one_line $child $xpos]} {
+			set result true } }
+
+	return $result
+}
+
+
+proc hid_num_quoted_lines { hid } {
+	set count 0
+	foreach child $hid {
+		if {[hid_type $child] == ":"} { incr count } else { return 0 } }
+	return $count
+}
+
+
+proc _hid_as_tree_recursively { indent hid { last 0 } { one_attr_per_line 0 } } {
+
+	set result ""
+	set type [string_trim [hid_type $hid]]
+
+	set node_branch_char "|"
+	if {$last} {
+		set node_branch_char " " }
+
+	if {[llength [hid_attributes $hid]] == 0} {
+		set anno [hid_anno $hid]
+		set node_line "$indent$type$anno\n"
+		append result $node_line
+		regsub {[+x] $} $indent "$node_branch_char " indent
+		regsub {^[|]} $indent " " indent
+	} else {
+
+		# max tag length used for tabular output of attribute values
+		set max_tag_len 0
+		hid_foreach_non_name_attr tag value anno $hid {
+			set max_tag_len [expr max($max_tag_len, [string length $tag])] }
+		set tag_column_size [expr $max_tag_len + 1]
+
+		set node_line "$indent$type"
+		set name_attr [hid_name_attr $hid]
+		if {[attr_tag $name_attr] == "name"} {
+			set anno [string_trim [attr_anno $name_attr]]
+			if {$anno != ""} { set anno " $anno" }
+			append node_line " [attr_value $name_attr]$anno"
+		}
+
+		# node branch to next sibling for subsequent lines following the node
+		regsub {[+x] $} $indent "$node_branch_char " indent
+		regsub {^[|]} $indent " " indent
+		regsub -all {.} "$type" " " node_column
+
+		# branch besides the attributes to the first child node
+		if {![hid_leaf $hid] && $indent != ""} {
+			regsub {^ } $node_column "|" node_column }
+
+		# unless one attr per line is dictated, join attributes if space suffices
+		if {!$one_attr_per_line} {
+			if {![hid_attrs_fit_on_one_line $hid [string length $node_line]]} {
+				set one_attr_per_line true } }
+
+		if {!$one_attr_per_line} {
+			hid_foreach_non_name_attr tag value anno $hid {
+				if {$value != ""} { set value " $value" }
+				if {$anno  != ""} { set anno " | $anno" }
+				append node_line " | $tag:$value$anno" } }
+
+		append result "$node_line\n"
+
+		# attributes formatted as subsequent lines
+		if {$one_attr_per_line} {
+			hid_foreach_non_name_attr tag value anno $hid {
+				set padded_tag [format "%-${tag_column_size}s" "$tag:"]
+				if {$value != ""} { set value " $value" }
+				append result "$indent$node_column $padded_tag$value$anno\n"
+			}
+		}
+	}
+
+	foreach doc_line [hid_doc $hid] {
+		set text [lindex $doc_line 2]
+		append result "$indent."
+		if {$text != ""} { append result " $text" }
+		append result "\n"
+	}
+
+	set num_children [llength [hid_children $hid]]
+	set children_one_attr_per_line [_hid_one_attr_per_line $hid [string length $node_line]]
+	foreach child_hid [hid_children $hid] {
+		incr num_children -1
+		set last [expr {$num_children < 1}]
+
+		# quoted content
+		if {[hid_type $child_hid] == ":"} {
+			if {[string length [hid_quoted $child_hid]] == 0} {
+				append result "$indent:\n"
+			} else {
+				append result "$indent: [hid_quoted $child_hid]\n"
+			}
+		} else {
+			set sub_node_indent "$indent[string_trim [hid_anchor $child_hid]] "
+			append result [_hid_as_tree_recursively $sub_node_indent $child_hid $last \
+			                                        $children_one_attr_per_line]
+		}
+	}
+	return $result
+}
+
+
+proc print_hid_as_tree { out_fd hid } {
+	puts $out_fd "[_hid_as_tree_recursively {} $hid]-"
+}
+
+
+proc print_hid_as_is_recursively { out_fd hid } {
+
+	puts -nonewline $out_fd "[hid_prespace $hid][hid_anchor $hid][hid_type $hid][hid_padding $hid][hid_anno $hid]"
+
+	set first_attr 1
+	foreach attr [hid_attributes $hid] {
+		puts -nonewline $out_fd "[attr_prespace $attr]"
+		if {!$first_attr || [attr_tag $attr] != "name"} {
+			puts -nonewline $out_fd "[attr_tag $attr]:" }
+		puts -nonewline $out_fd "[attr_align $attr][attr_value $attr][attr_anno $attr]"
+		set first_attr 0
+	}
+
+	foreach doc_line [hid_doc $hid] {
+		puts -nonewline $out_fd "[lindex $doc_line 1]. [lindex $doc_line 2]" }
+
+	foreach child_hid [hid_children $hid] {
+
+		# quoted content
+		if {[hid_type $child_hid] == ":"} {
+			puts -nonewline $out_fd "[hid_prespace $child_hid]:"
+			if {[string length [hid_quoted $child_hid]] > 0} {
+				puts -nonewline $out_fd " [hid_quoted $child_hid]" }
+		} else {
+			print_hid_as_is_recursively $out_fd $child_hid
+		}
+	}
+}
+
+
+proc print_hid_as_is { out_fd hid } {
+	print_hid_as_is_recursively $out_fd $hid
+	puts $out_fd "\n-"
+}
+
+
+##
+## HID validation
+##
+
+set checking_path ""
+set total_failed_checks 0
+
+
+proc hsd_schema { } {
+	return [string map {"\t" ""} {
+		schema schema
+		+ type id   | : [a-z][a-z0-9_-]*
+		+ type bool | : yes|no
+		+ category attr
+		  + node attr
+		    + attr name    | type: id
+		    + attr type    | type: id
+		    + attr default | type: any | default:
+		+ category node
+		  + node node
+		    + attr name     | type: id   | default:
+		    + attr category | type: id   | default:
+		    + attr multiple | type: bool | default: yes
+		    + attr optional | type: bool | default: yes
+		    + node | category: attr
+		    + node | category: node
+		    + node anything
+		    + node quote
+		+ attr name | type: id
+		+ node type
+		  + attr name | type: id
+		  + anything
+		+ node category
+		  + attr name | type: id
+		  + node | category: node
+		+ node | category: attr
+		+ node | category: node
+		-
+	}]
+}
+
+
+proc check_failed { msg } {
+
+	global total_failed_checks
+	global checking_path
+
+	if {$total_failed_checks == 0} { puts stderr "$checking_path:" }
+
+	incr total_failed_checks
+
+	set prefix  "Warning:"
+	regsub -all {.} $prefix " " cleared_prefix
+	foreach line [split $msg "\n"] {
+		puts stderr "$prefix [string_trim $line]"
+		set prefix $cleared_prefix
+	}
+}
+
+
+proc check_for_duplicated_attributes { hid } {
+
+	array unset counts
+	array unset lines
+
+	foreach attr [hid_attributes $hid] {
+		incr counts([attr_tag $attr])
+		set  lines([attr_tag $attr]) [attr_line $attr]
+	}
+
+	foreach { tag count } [array get counts] {
+		if {$count != 1} {
+			check_failed "duplicated attribute '$tag' at line $lines($tag)" } }
+
+	foreach child [hid_children $hid] {
+		check_for_duplicated_attributes $child }
+}
+
+
+proc hsd_sanity_check_category { hsd_meta_var category visited_var } {
+
+	upvar $hsd_meta_var hsd_meta
+	upvar $visited_var  visited
+
+	if {[lsearch $visited $category] != -1} {
+		error "circular definition of category '$category'" }
+	lappend visited $category
+
+	if {![info exists hsd_meta(category,$category)]} {
+		error "undefined node category '$category'" }
+}
+
+
+proc hsd_node_by_category { hsd_meta_var category type { visited {} } } {
+
+	upvar $hsd_meta_var hsd_meta
+
+	hsd_sanity_check_category hsd_meta $category visited
+
+	# traverse category definitions in the search for a node that matches 'type'
+	set results {}
+	foreach option $hsd_meta(category,$category) {
+
+		set name [hid_attr_value $option name]
+		if {$name == $type} {
+			return $option }
+
+		if {$name == ""} {
+			set next_category [hid_attr_value $option category]
+			if {$next_category == ""} {
+				error "category node at schema line [hid_line $option]\
+				       lacks name or category" }
+
+			set result [hsd_node_by_category hsd_meta $next_category $type $visited]
+
+			if {$result != ""} { lappend results $result }
+		}
+	}
+
+	if {[llength $results] == 0} { return "" }
+	if {[llength $results] == 1} { return [lindex $results 0] }
+
+	set lines ""
+	foreach r $results { lappend lines [hid_line $r] }
+	set lines [join $lines ", "]
+	error "ambiguous category definitions for '$type' at schema lines $lines"
+}
+
+
+proc hsd_category_node_options { hsd_meta_var category { visited {} } } {
+
+	upvar $hsd_meta_var hsd_meta
+
+	hsd_sanity_check_category hsd_meta $category visited
+
+	set options {}
+	foreach option $hsd_meta(category,$category) {
+		set name [hid_attr_value $option name]
+		if {$name == ""} {
+			set category [hid_attr_value $option category]
+			if {$category != ""} {
+				lappend options {*}[hsd_category_node_options hsd_meta $category $visited]
+			}
+		} else {
+			lappend options $name
+		}
+	}
+	return $options
+}
+
+
+proc hsd_attr_table { hsd_meta_var hsd_var } {
+
+	upvar $hsd_var      hsd
+	upvar $hsd_meta_var hsd_meta
+
+	set max_tag_len 0
+	set max_type_len 0
+	foreach i $hsd(attr_indices) {
+		if {$i != "name"} {
+			set type $hsd(attr,type,$i)
+			set max_tag_len  [expr max($max_tag_len,  [string length $i])]
+			set max_type_len [expr max($max_type_len, [string length $type])]
+		}
+	}
+	set tag_column_size  [expr $max_tag_len  + 2]
+	set type_column_size [expr $max_type_len + 2]
+	set detail {}
+	foreach i $hsd(attr_indices) {
+		if {$i != "name"} {
+			set type $hsd(attr,type,$i)
+			set pattern "[string_trim $hsd_meta(type,$type)]"
+			set padded_tag  [format "%-${tag_column_size}s"  "'$i'"]
+			set padded_type [format "%-${type_column_size}s" "'$type'"]
+			lappend detail "$padded_tag of type $padded_type ($pattern)"
+		}
+	}
+	return $detail
+}
+
+
+proc check_against_hsd_rec { hid hsd_var hsd_meta_var } {
+
+	upvar $hsd_var      hsd
+	upvar $hsd_meta_var hsd_meta
+
+	# detect unexpected attibutes or malformed attribute values
+	foreach attr [hid_attributes $hid] {
+
+		set line               [attr_line  $attr]
+		set tag                [attr_tag   $attr]
+		set value [string_trim [attr_value $attr]]
+
+		if {[info exists hsd(attr,type,$tag)]} {
+
+			set type $hsd(attr,type,$tag)
+			if {[info exists hsd_meta(type,$type)]} {
+				set pattern [string_trim $hsd_meta(type,$type)]
+				if {![regexp "^$pattern\$" $value]} {
+					check_failed "malformed '$tag' attribute value '$value' at line $line,\n\
+					              requires '$type' value ($pattern)" }
+			}
+		} elseif {![info exists hsd(anything)]} {
+			if {$tag == "name"} {
+				check_failed "node '[hid_type $hid]' at line $line cannot have a name"
+			} else {
+				set detail [join [hsd_attr_table hsd_meta hsd] "\n"]
+				if {[llength $detail] != 0} { append detail ", expected:\n" }
+				check_failed "node '[hid_type $hid]' has invalid attribute '$tag' at line $line$detail"
+			}
+		}
+	}
+
+	# detect missing attributes
+	foreach tag $hsd(attr_indices) {
+		if {![info exists hsd(attr,default,$tag)]} {
+			set type $hsd(attr,type,$tag)
+			if {![info exists hsd_meta(type,$type)]} {
+				check_failed "unknown type '$type' of '$tag' attribute at line [hid_line $hid]"
+			} else {
+				set pattern [string_trim $hsd_meta(type,$type)]
+				set detail "attribute '$tag' of type '$hsd(attr,type,$tag)' ($pattern)"
+				if {$tag == "name"} { set detail "a name" }
+				if {![hid_has_attr $hid $tag]} {
+					check_failed "node '[hid_type $hid]' at line [hid_line $hid]\
+					              lacks $detail" } } }
+			}
+
+	#
+	# Find corresponding hsd-node index for a given hid node.
+	# Categories are represented by numbers, named nodes by their names.
+	#
+	proc hsd_node_index { hsd_var hsd_meta_var hid } {
+
+		upvar $hsd_var      hsd
+		upvar $hsd_meta_var hsd_meta
+
+		set type [hid_type $hid]
+
+		foreach name $hsd(node_indices) {
+			if {[info exists hsd(node,category,$name)]} {
+				# look if category matches the node type
+				set category $hsd(node,category,$name)
+				foreach option [hsd_category_node_options hsd_meta $category] {
+					if {$option == $type} {
+						return $name } }
+			}
+			if {$type == $name} {
+				return $name }
+		}
+		# type of hid node unknown by the schema
+		return ""
+	}
+
+	set expected_specific_sub_node_types {}
+	set expected_category_sub_node_types {}
+	foreach name $hsd(node_indices) {
+		if {[info exists hsd(node,category,$name)]} {
+			set category $hsd(node,category,$name)
+			foreach option [hsd_category_node_options hsd_meta $category] {
+				lappend expected_category_sub_node_types "'$option'"
+			}
+		} else {
+			lappend expected_specific_sub_node_types "'$name'"
+		}
+	}
+
+	array set count {}
+	foreach child [hid_children $hid] {
+		set name [hsd_node_index hsd hsd_meta $child]
+		incr count($name)
+	}
+
+	# detect ambiguous, unexpected, or missing nodes
+	if {![info exists hsd(anything)]} {
+		foreach child [hid_children $hid] {
+			set name [hsd_node_index hsd hsd_meta $child]
+			if {[info exists hsd(node,multiple,$name)]} {
+				if {$hsd(node,multiple,$name) == "no" && $count($name) > 1} {
+					check_failed "ambiguous node '$name' at line [hid_line $child]" }
+			} else {
+				if {[hid_type $child] == ":"} {
+					if {![info exists hsd(quote)]} {
+						check_failed "unexpected quote at line [hid_line $child]: [hid_quoted $child]" }
+				} else {
+					set detail [join [list {*}$expected_specific_sub_node_types \
+					                       {*}$expected_category_sub_node_types] "\n"]
+					check_failed "invalid node '[hid_type $child]' at line [hid_line $child],\
+					              expected:\n$detail"
+				}
+			}
+		}
+	}
+
+	# detect missing nodes
+	foreach type $hsd(node_indices) {
+		if {$hsd(node,optional,$type) == "no" && ![info exists count($type)]} {
+			global total_failed_checks
+			incr total_failed_checks
+
+			if {[info exists hsd(node,hid,$type)]} {
+				puts -nonewline stderr "Warning: node '[hid_type $hid]' at line\
+				                        [hid_line $hid] lacks sub node '$type'"
+				print_hid_as_is stderr "$hsd(node,hid,$type)"
+			} elseif {[info exists hsd(node,category,$type)]} {
+				set category $hsd(node,category,$type)
+				set detail [join $expected_category_sub_node_types "\n"]
+				check_failed "node '[hid_type $hid]' at line [hid_line $hid]\
+				              lacks sub node of category '$category',\
+				              expected:\n$detail"
+			}
+		}
+	}
+
+	# traverse into sub nodes
+	foreach child [hid_children $hid] {
+		set type [hid_type $child]
+		set child_hsd_hid ""
+		foreach node_name $hsd(node_indices) {
+
+			# node defined directly
+			if {$node_name == $type && [info exists hsd(node,hid,$type)]} {
+				set child_hsd_hid $hsd(node,hid,$node_name) }
+
+			# only category is given, find the matching hsd hid node
+			if {$child_hsd_hid == ""} {
+				if {[info exists hsd(node,category,$node_name)]} {
+					set category $hsd(node,category,$node_name)
+					set child_hsd_hid [hsd_node_by_category hsd_meta $category $type]
+				}
+			}
+		}
+		if {$child_hsd_hid != ""} {
+			array unset child_hsd
+			collect_hsd_attrs_and_nodes $child_hsd_hid child_hsd
+			check_against_hsd_rec $child child_hsd hsd_meta
+		}
+	}
+}
+
+
+proc collect_hsd_attrs_and_nodes { hsd_hid hsd_var } {
+
+	upvar $hsd_var hsd
+
+	set hsd(node_indices) {}
+	set hsd(attr_indices) {}
+
+	#
+	# Fill the 'hsd' array with information about expected nodes and attributes
+	# specified by 'hsd_hid'.
+	#
+	# Fully specified nodes use their type name as index.
+	# Nodes that refer to a category use a unique counter value ('i') as index.
+	#
+	# All node indices are kept at 'hsd(node_indices)'.
+	#
+	# See the proc 'hsd_node_index' for the reverse lookup.
+	#
+
+	set i 0
+
+	foreach child [hid_children $hsd_hid] {
+
+		set type [hid_type $child]
+		set name [hid_attr_value $child name]
+
+		if {$type == "node"} {
+			# distinguish category nodes from fully specified named nodes
+			if {$name == ""} {
+				# use index to identify node referring to a category
+				set name "$i"
+				if {[hid_has_attr $child category]} {
+					set hsd(node,category,$name) [hid_attr_value $child category]
+				} else {
+					error "node in schema at line [hid_line $child] lacks name or category"
+				}
+			} else {
+				set hsd(node,hid,$name) $child
+			}
+			set hsd(node,multiple,$name) [hid_attr_value $child multiple "yes"]
+			set hsd(node,optional,$name) [hid_attr_value $child optional "yes"]
+			lappend hsd(node_indices) $name
+		}
+
+		if {$type == "attr"} {
+			set hsd(attr,type,$name) [hid_attr_value $child type]
+			if {[hid_has_attr $child default]} {
+				set hsd(attr,default,$name) [hid_attr_value $child default] }
+			lappend hsd(attr_indices) $name
+		}
+
+		if {$type == "anything"} { set hsd(anything) 1 }
+		if {$type == "quote"}    { set hsd(quote)    1 }
+
+		incr i
+	}
+}
+
+
+proc check_against_hsd_file { hid hsd_file } {
+
+	global checking_path
+	global total_failed_checks
+	global path
+
+	set old_total_failed_checks $total_failed_checks
+
+	# validate .hsd schema file
+	set checking_path $hsd_file
+	set hsd_hid [import_hid [file_content $hsd_file]]
+	check_against_hsd_hid $hsd_hid [import_hid [hsd_schema]]
+
+	if {$total_failed_checks > $old_total_failed_checks} {
+		error "malformed schema file $hsd_file" }
+
+	# validate .hid file against schema defined in .hsd file
+	set checking_path $path
+	check_against_hsd_hid $hid $hsd_hid
+}
+
+
+proc check_against_hsd_hid { hid hsd_hid } {
+
+	if {[hid_attr_value $hsd_hid name] != [hid_type $hid]} {
+		error "top-level node '[hid_type $hid]' should be '[hid_attr_value $hsd_hid name]'" }
+
+	array set hsd_meta {}
+
+	foreach child [hid_children $hsd_hid] {
+
+		set type [hid_type $child]
+		set name [hid_attr_value $child name]
+
+		if {$type == "type"} {
+			set pattern ""
+			foreach quoted [hid_children $child] {
+				if {[hid_type $quoted] == ":"} {
+					set pattern [hid_quoted $quoted] } }
+			set hsd_meta(type,$name) $pattern
+		}
+
+		if {$type == "category"} {
+			set hsd_meta(category,$name) [hid_children $child] }
+	}
+
+	collect_hsd_attrs_and_nodes $hsd_hid hsd
+
+	check_against_hsd_rec $hid hsd hsd_meta
+}
+
+
+proc check_against_schema_name { hid schema_name } {
+
+	global hsd_dir
+
+	if {$hsd_dir == ""} { error "missing '--hsd-dir' argument" }
+
+	set hsd_file [file join $hsd_dir [string_trim $schema_name].hsd]
+
+	if {![file exists $hsd_file]} { error "schema '$schema_name' missing" }
+
+	check_against_hsd_file $hid $hsd_file
+}
+
+
+proc check_against_schema_file_path_or_name { hid schema_arg } {
+
+	global total_failed_checks
+
+	if {[file extension $schema_arg] == ".hsd"} {
+
+		set hsd_file $schema_arg
+
+		if {![file exists $hsd_file]} {
+			error "file $hsd_file does not exist" }
+
+		check_against_hsd_file $hid $hsd_file
+
+		if {$total_failed_checks > 0} {
+			error "validation against $hsd_file failed" }
+
+	} else {
+
+		check_against_schema_name $hid $schema_arg
+
+		if {$total_failed_checks > 0} {
+			error "validation against schema '$schema_arg' failed" }
+	}
+}
+
+
+##
+## XML support
+##
+
+proc _parse_xml { type pattern replace xml_var id_var info_var } {
+
+	upvar $xml_var  xml
+	upvar $id_var   id
+	upvar $info_var info
+
+	while {[regexp $pattern $xml dummy match]} {
+		set info($id,type) $type
+		set info($id,text) $match
+		regsub $pattern $xml [eval "string_trim $replace"] xml
+		incr id
+	}
+}
+
+
+proc _xml_subst { } { return { { {\&} {\&amp;}  }
+                               { {>}  {\&gt;}   }
+                               { {<}  {\&lt;}   }
+                               { "\"" {\&quot;} }
+                               { {'}  {\&apos;} } } }
+
+
+proc _xml_decoded { text } {
+
+	foreach subst [_xml_subst] {
+		regsub -all [lindex $subst 1] $text [lindex $subst 0] text }
+
+	return $text
+}
+
+
+proc _xml_encoded { text } {
+
+	foreach subst [_xml_subst] {
+		regsub -all [lindex $subst 0] $text [lindex $subst 1] text }
+
+	return $text
+}
+
+
+proc xml_leaf_pattern      { } { return {(<\w[^>]*/>)} }
+proc xml_compound_pattern  { } { return {(<\w[^>]*>[<>0-9]*</[^>]*>)} }
+
+
+##
+# Assign annotation to last attribute of 'attributes' list
+#
+proc _hid_attach_annotation_to_last_attr { attributes anno } {
+
+	# replace attr_anno (index 5) of last attribute
+	set last_attr [lindex $attributes end]
+	set last_attr [lreplace $last_attr 5 5 $anno]
+
+	# replace last attribute of last node with modified attribute
+	set attributes [lreplace $attributes end end $last_attr]
+	return $attributes
+}
+
+
+proc _hid_attach_annotation_to_last_node { hid anno } {
+
+	set last_node [lindex $hid end]
+	if {$last_node == ""} { return $hid }
+
+	set last_attributes [hid_attributes $last_node]
+
+	if {$last_attributes != ""} {
+
+		set last_attributes [_hid_attach_annotation_to_last_attr $last_attributes $anno]
+
+		# replace hid_attr (index 6) of last node with modified attributes
+		set last_node [lreplace $last_node 6 6 $last_attributes]
+
+	} else {
+		# assign annotation to last node
+
+		# replace hid_anno (index 9) of last node
+		set last_node [lreplace $last_node 9 9 $anno]
+	}
+
+	# replace last node with modified node
+	return [lreplace $hid end end $last_node]
+}
+
+
+proc _hid_from_xml_rec { text info_var } {
+
+	upvar $info_var info
+
+	set result { }
+	set hid_doc {}
+
+	while {1} {
+
+		set pattern {^<(\d+)>}
+		if {![regexp $pattern $text match id]} {
+			break }
+
+		regsub $pattern $text "" text
+
+		set child_type $info($id,type)
+		set child_text $info($id,text)
+
+		set hid_type     ""
+		set hid_attrs    {}
+		set hid_children {}
+		set hid_quoted   {}
+		set hid_anchor   "+ "
+
+		if {$child_type == "quoted"} {
+
+			set trimmed [string_trim $child_text]
+			if {[string length $trimmed] > 0} {
+				foreach line [split $child_text "\n"] {
+					set decoded [string_trim [_xml_decoded $line]]
+					lappend result [list ":" 1 "" "" "" "" "" "" $decoded ""] } }
+		}
+
+		if {$child_type == "comment"} {
+
+			regexp {([\n\s]*?)<\!--(.*?)-->\n?} $child_text dummy prespace comment
+
+			# distiguish commented-out leaf or compound from textual comment
+			if {[regexp [xml_compound_pattern] $comment dummy disabled_compound]} {
+				set child_type "compound"
+				set hid_anchor "x "
+				set child_text $disabled_compound
+			} elseif {[regexp [xml_leaf_pattern] $comment dummy disabled_leaf]} {
+				set child_type "leaf"
+				set hid_anchor "x "
+				set child_text $disabled_leaf
+			} else {
+				if {[regexp {\n} $prespace dummy] || [llength $result] == 0} {
+					# node description appearing above the node
+					regsub {\n} $prespace "" prespace
+					foreach line [split "$prespace$comment" "\n"] {
+						lappend hid_doc [list "" "" [string_trim $line]] }
+				} else {
+					# annotation, appearing at the right side of the node
+					regsub {\s*\n\s*} $comment " " comment
+					set comment [string_trim $comment]
+					set result [_hid_attach_annotation_to_last_node $result " | . $comment"]
+				}
+			}
+		}
+
+		if {$child_type == "compound"} {
+
+			set start_pattern {^<(\w[^\s>]*)((\s+([0-9\s]*))?)>}
+			if {![regexp $start_pattern $child_text match hid_type xml_attrs]} {
+				regsub {><.*$} $child_text ">" err_text
+				error "unable to interpret XML start tag: $err_text" }
+
+			regsub $start_pattern $child_text "" child_text
+
+			set end_pattern {</(\w[^\s]*)\s*>}
+			if {![regexp $end_pattern $child_text match end_tag]} {
+				error "XML node <$hid_type> lacks end tag" }
+
+			if {$hid_type != $end_tag} {
+				error "XML start tag <$hid_type> mismatches end tag <$end_tag>" }
+
+			regsub $end_pattern $child_text "" child_text
+
+			set hid_children [_hid_from_xml_rec $child_text info]
+		}
+
+		if {$child_type == "leaf"} {
+
+			set leaf_pattern {<([^\s>]+)((\s+([0-9\s]*))?)/>}
+			if {![regexp $leaf_pattern $child_text match hid_type xml_attrs]} {
+				regsub {><.*$} $child_text ">" err_text
+				error "unable to interpret XML tag: $err_text" }
+
+			regsub $leaf_pattern $child_text "" child_text
+		}
+
+		if {$child_type == "compound" || $child_type == "leaf"} {
+
+			foreach attr $xml_attrs {
+				if {![info exists info($attr,type)] || $info($attr,type) != "attr"} {
+					error "unable to parse XML attribute $attr" }
+
+				set attr_pattern {([\w0-9\-_]+) *= *"([^"]*)"}
+				if {[regexp $attr_pattern $info($attr,text) match tag value]} {
+					lappend hid_attrs [list 0 "" $tag "" $value ""] }
+			}
+
+			lappend result [list $hid_type "" 1 "" $hid_anchor $hid_doc $hid_attrs $hid_children "" ""]
+			set hid_doc {}
+		}
+	}
+
+	if {[string length $text]} {
+		regsub -all {<[^>]*>} $text "" text
+		error "unable to parse input as XML: $text" }
+
+	return $result
+}
+
+
+proc import_hid_from_xml { xml } {
+
+	set id 0
+
+	_parse_xml attr     {([\w0-9\-_]+ *= *"[^"]*")} {$id}     xml id info
+	_parse_xml comment  {([\n\s]*?<\!--.*?-->\n?)}  {<$id>}   xml id info
+	_parse_xml leaf     [xml_leaf_pattern]          {<$id>}   xml id info
+	_parse_xml quoted   {>([^<]+)<}                 {><$id><} xml id info
+	_parse_xml compound [xml_compound_pattern]      {<$id>}   xml id info
+
+	return [lindex [_hid_from_xml_rec [string_trim $xml] info] 0]
+}
+
+
+proc print_hid_as_xml { out_fd hid { indent 0 } } {
+
+	if {[string_trim [hid_anchor $hid]] == "x"} {
+		return }
+
+	set indent_tabs ""
+	for { set i 0 } { $i < $indent } { incr i } {
+		append indent_tabs "\t" }
+
+	set type     [hid_type     $hid]
+	set children [hid_children $hid]
+	set doc      [hid_doc      $hid]
+
+	# node documentation
+	if {[llength $doc] > 1} {
+		set texts {}
+		foreach line $doc {
+			lappend texts "  [lindex $line 2]" }
+		puts $out_fd "$indent_tabs<!--  [join $texts "\n$indent_tabs"]-->"
+	} elseif {[llength $doc] == 1} {
+		puts $out_fd "$indent_tabs<!-- [lindex [lindex $doc 0] 2] -->"
+	}
+
+	# quoted content
+	if {$type == ":"} {
+		puts $out_fd "$indent_tabs[hid_quoted $hid]"
+		return
+	}
+
+	set xml_tag "<$type"
+	foreach attr [hid_attributes $hid] {
+		lappend xml_tag "[attr_tag $attr]=\"[string_trim [attr_value $attr]]\"" }
+	puts -nonewline $out_fd "$indent_tabs[join $xml_tag { }]"
+
+	if {[hid_leaf $hid]} {
+		puts $out_fd "/>"
+	} else {
+		# distinguish quoted content from sub-structured content
+		if {[hid_num_quoted_lines $children] > 0} {
+			if {[hid_num_quoted_lines $children] == 1} {
+				puts $out_fd ">[_xml_encoded [hid_quoted [lindex $children 0]]]</$type>"
+			} else {
+				puts $out_fd ">"
+				foreach child $children {
+					puts $out_fd "$indent_tabs\t[_xml_encoded [hid_quoted $child]]" }
+				puts $out_fd "$indent_tabs</$type>"
+			}
+		} else {
+			puts $out_fd ">"
+			incr indent
+			foreach child $children {
+				print_hid_as_xml $out_fd $child $indent }
+			incr indent -1
+			puts $out_fd "$indent_tabs</$type>"
+		}
+	}
+}
+
+
+##
+## User interface
+##
+
+proc file_content { path } {
+
+	if {$path == "-"} {
+		return [read stdin] }
+
+	set fh [open $path "RDONLY"]
+	set content [read $fh]
+	close $fh
+	return $content
+}
+
+set short_usage_msg {
+  usage: hid [-i] [--import-xml] <command> [<options>] <input-file>}
+
+append help_hint_msg $short_usage_msg "\n" {
+  Use '--help' to get more information. }
+
+append help_msg $short_usage_msg {
+
+  With the option '-i' specfied, the <input-file> is modified in place.
+
+  By specifying '-' as <input-file>, the tool reads from stdin.
+
+  available commands:
+
+    hid [-i] format <input-file>
+
+      Print formatted HID data. Alternatively to the HID syntax used
+      by default, the output format can be defined via:
+
+      --output-tcl  Print HID structure as Tcl list with each HID node
+                    represented as a list of the following structure:
+
+                    { type padding line prespace anchor doc attributes
+                      children quoted annotation }
+
+                    The 'children' element is a list of HID nodes.
+                    The 'attributes' element is a list of attributes
+                    each represented as a list as follow:
+
+                    { line prespace tag align value annotation }
+
+      --output-xml  Print HID structure as XML
+
+    hid subnodes <node-path> <input-file>
+
+      Query nodes from HID structure. The <node-path> describes the
+      targeted sub trees within the hierarchy as a sequence of HID
+      nodes separated by '| +'.
+
+      Each HID node can be followed by optional attribute filters
+      in the form of '| <tag>: <value>', which are interpreted as
+      conditions for the match. If multiple attributes are specified,
+      each condition must apply.
+
+      Example:
+
+      $ hid subnodes 'config | + start terminal | + route' <input-file>
+
+      Prints the 'route' sub node of the 'start' node named 'terminal'.
+
+    hid get <attr-path> <input-file>
+
+      Query attribute value(s) from HID structure. The <attr-path>
+      consists of a <node-path> followed by '| : <tag>' denoting the
+      tag to retrieve.
+
+      Example:
+
+      $ hid get 'config | + start | : name' <input-file>
+
+      Prints the name of each 'start' node found in 'config'.
+
+    hid [-i] set <attr-def> <input-file>
+
+      Set the attribute value(s) specified by <attr-def>, which is
+      a <node-path> followed by the delimiter '| :' followed by
+      one or more attribute definitions. Each definition has the
+      form '<tag>: <value>' and is separated from the next one by '|'.
+
+      Example:
+
+      $ hid set 'config | + start vfs | : caps: 100 | ram: 16M' <input-file>
+
+      Sets the attributes 'caps' and 'ram' of the 'start' node named
+      'vfs' to the values 100 and 16M respectively.
+
+    hid [-i] remove <node-path>
+
+      Remove the node(s) specified by the <node-path>.
+
+      Example:
+
+      $ hid remove 'config | + start | + route' <input-file>
+
+      Removes all 'route' sub nodes from each 'start' node hosted
+      at the 'config'.
+
+    hid [-i] disable <node-path>
+
+      Mark nodes specified by <node-path> as disabled, which turns the
+      node anchor from '+' to 'x'.
+
+      Example:
+
+      $ hid disable 'config | + start terminal' <input-file>
+
+      Turns the node anchor of the terminal's 'start' node to an 'x'.
+
+    hid [-i] enable <node-path>
+
+      Revert the enabled state of nodes addressed by the <node-path>.
+
+    hid check [--hsd-dir <hsd-dir>] [--schema <hsd-file>] <input-file>
+
+      Validate the consistency of <input-file>
+
+      With no schema specified, the command looks out for syntax
+      violations and ambiguous attributes. By specifying a schema,
+      those basic checks are supplemented with the validation against
+      the structural and grammatical rules described in the <hsd-file>.
+}
+
+
+##
+## Main program: process arguments and execute commands
+##
+
+##
+# Consume flag from global 'argv'
+#
+proc consume_flag_arg { flag body } {
+
+	global argv
+
+	set remaining_argv {}
+	foreach arg $argv {
+		if {$arg == $flag} {
+			uplevel 1 $body
+		} else {
+			lappend remaining_argv $arg }
+	}
+	set argv $remaining_argv
+}
+
+##
+# Consume tag-value argument
+#
+proc consume_tag_value_arg { flag value_var body } {
+
+	global argv
+
+	set tag_index [lsearch $argv $flag]
+	if {$tag_index == -1} { return }
+
+	set value_index [expr $tag_index + 1]
+
+	if {$value_index >= [llength $argv]} {
+		error "missing value for $flag argument" }
+
+	upvar $value_var value
+	set value [lindex $argv $value_index]
+	uplevel 1 $body
+
+	set argv [lreplace $argv $tag_index $value_index]
+}
+
+# define input and output format
+set import_hid_fn import_hid
+set print_hid_fn  print_hid_as_is
+set in_place 0
+
+consume_flag_arg --import-xml {
+	set import_hid_fn import_hid_from_xml
+	set print_hid_fn  print_hid_as_tree
+}
+
+consume_flag_arg --output-xml {
+	set print_hid_fn print_hid_as_xml }
+
+consume_flag_arg --output-tcl {
+	set print_hid_fn puts }
+
+consume_flag_arg -i {
+	set in_place 1 }
+
+consume_flag_arg --help {
+	puts "$help_msg"
+	exit
+}
+
+set schema_path ""
+set hsd_dir     ""
+
+consume_tag_value_arg --schema schema_path { }
+consume_tag_value_arg --hsd-dir hsd_dir    { }
+
+
+if {[llength $argv] < 1} {
+	error "missing sub-command argument\n$help_hint_msg" }
+
+set command [lindex $argv 0]
+set path    [lindex $argv end]
+
+set command_info(min_args,format)   2
+set command_info(min_args,subnodes) 3
+set command_info(min_args,get)      3
+set command_info(min_args,remove)   3
+set command_info(min_args,set)      3
+set command_info(min_args,enable)   3
+set command_info(min_args,disable)  3
+set command_info(min_args,check)    2
+
+if {![info exists command_info(min_args,$command)]} {
+	error "unknown command '$command'\n$help_hint_msg" }
+
+if {[llength $argv] < $command_info(min_args,$command)} {
+	error "missing $command argument\n$help_hint_msg" }
+
+set input_hid [$import_hid_fn [file_content $path]]
+
+set out_fd stdout
+if {$in_place} {
+	set out_fd [open $path w]
+}
+
+
+#
+# Commands
+#
+
+proc with_command { expected body } {
+
+	global command
+
+	if {$command == $expected} {
+		uplevel 1 $body }
+}
+
+
+proc with_node_query { node_query_hid_var body } {
+
+	upvar $node_query_hid_var node_query_hid
+
+	global argv
+	set node_query_hid [import_hid [lindex $argv 1] false]
+	uplevel 1 $body
+}
+
+
+##
+# Split query definition info node path and args
+#
+# The query uses HID syntax with both parts separated by ' | : '.
+# Technically, the args are represented as quoted content of the
+# leaf node of the query.
+#
+proc with_node_query_and_args { node_query_hid_var args_var body } {
+
+	upvar $node_query_hid_var node_query_hid
+	upvar $args_var           args
+
+	global argv
+	set query [lindex $argv 1]
+
+
+	set split_pattern "^(.*)[delim_pattern][quoted_pattern](.*)"
+	if {[regexp $split_pattern $query dummy node_query dummy args]} {
+		set node_query_hid [import_hid $node_query false]
+		uplevel 1 $body
+	}
+}
+
+
+with_command format {
+
+	if {$print_hid_fn == "print_hid_as_is"} { set print_hid_fn print_hid_as_tree }
+
+	$print_hid_fn $out_fd $input_hid
+}
+
+
+with_command subnodes {
+
+	if {$print_hid_fn == "print_hid_as_is"} { set print_hid_fn print_hid_as_tree }
+
+	with_node_query query_hid {
+		foreach hid [hid_query_nodes $query_hid $input_hid] {
+			$print_hid_fn stdout $hid } }
+}
+
+
+with_command remove {
+
+	with_node_query query_hid {
+		set filter_fn { set empty {} }
+		$print_hid_fn $out_fd [hid_filter unused $query_hid $input_hid empty $filter_fn]
+	}
+}
+
+
+with_command enable {
+
+	with_node_query query_hid {
+		$print_hid_fn $out_fd [hid_filter unused $query_hid $input_hid enable_hid {
+			if {[hid_anchor $enable_hid] != ""} {
+				set enable_hid [lreplace $enable_hid 4 4 "+ "] } }] }
+}
+
+
+with_command disable {
+
+	with_node_query query_hid {
+		$print_hid_fn $out_fd [hid_filter unused $query_hid $input_hid disable_hid {
+			if {[hid_anchor $disable_hid] != ""} {
+				set disable_hid [lreplace $disable_hid 4 4 "x "] } }] }
+}
+
+
+with_command get {
+
+	with_node_query_and_args query_hid queried_tag {
+		foreach hid [hid_query_nodes $query_hid $input_hid ] {
+			foreach attr [hid_attributes $hid] {
+				if {[attr_tag $attr] == $queried_tag} {
+					puts stdout [string_trim [attr_value $attr]] } } } }
+}
+
+
+with_command set {
+
+	with_node_query_and_args query_hid new_attrs {
+
+		# satisfy invariant that each attribute is preceeded by space (prespace)
+		set new_attrs " $new_attrs"
+
+		set ctx(new_attrs) [hid_attributes [import_hid $new_attrs false]]
+
+		$print_hid_fn $out_fd [hid_filter ctx $query_hid $input_hid filtered_hid {
+
+			set orig_attrs [hid_attributes $filtered_hid]
+			set new_attrs  $ctx(new_attrs)
+			set result_attrs {}
+
+			# apply changes to existing attributes
+			foreach attr $orig_attrs {
+				foreach new_attr $new_attrs {
+					if {[attr_tag $attr] == [attr_tag $new_attr]} {
+						set value [string_trim [attr_value $new_attr]]
+						set align [attr_align $attr]
+						if {$value == ""} { set align "" } else { set align " " }
+						set attr [lreplace $attr 3 3 $align]
+						set attr [lreplace $attr 4 4 $value]
+					}
+				}
+				lappend result_attrs $attr
+			}
+
+			# supplement newly added attributes
+			foreach new_attr $new_attrs {
+				set present 0
+				foreach attr $result_attrs {
+					if {[attr_tag $attr] == [attr_tag $new_attr]} {
+						set present 1 } }
+				if {!$present} {
+					set prespace " | "
+					if {[llength $result_attrs] > 0} { set prespace " | " }
+					lappend result_attrs [list "?" $prespace [attr_tag   $new_attr] \
+					                                     " " [attr_value $new_attr] ""] }
+			}
+			set filtered_hid [lreplace $filtered_hid 6 6 $result_attrs]
+		}]
+	}
+}
+
+
+with_command check {
+
+	check_for_duplicated_attributes $input_hid
+
+	if {$schema_path != ""} {
+		check_against_schema_file_path_or_name $input_hid $schema_path }
+
+	if {$total_failed_checks > 0} {
+		error "validation failed" }
+}

@@ -1,0 +1,25 @@
+This is the generic Genode base system, which consists of two parts:
+
+:_Core_: is the root of the Genode component tree. It provides abstractions for
+  the lowest-level hardware resources such as RAM, ROM, CPU, and device access.
+  All generic parts of core can be found here. For kernel-specific parts,
+  refer to the appropriate 'base-<kernel>' directory.
+
+:_Base libraries and interfaces: that are used by each Genode component
+  to interact with other components. This is the glue that holds everything
+  together.
+
+Depending on the used kernel, core may export information about the hardware
+platform as a ROM called 'platform_info'. For example, if the ACPI RSDT and
+XSDT physical pointer are reported by the used kernel and/or bootloader, core
+provides this information in the ROM as follows.
+
+! platform_info
+! + acpi | revision: 2 | rsdt: 0x1fe93074 | xsdt: 0x1fe930e8
+! + boot
+!   + framebuffer | phys: 0x7300000 | width: 1024 | height: 768 | bpp: 32
+! -
+
+If the graphics device is initialised and can be directly used by a
+framebuffer driver, core provides the physical pointer to the framebuffer, the
+resolution, and color depth in bits.

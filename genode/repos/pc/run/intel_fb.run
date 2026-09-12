@@ -1,0 +1,361 @@
+assert {[have_spec x86_64]}
+
+if {[have_cmd_switch --autopilot]} {
+	assert {![have_include power_on/qemu] &&
+	        ![have_board linux]} \
+		"Autopilot mode is not supported on this platform."
+}
+
+#
+# Build
+#
+
+create_boot_directory
+
+set use_usb 1
+set use_gpu 1
+set use_top 0
+set use_fb_controller 0
+if {$use_fb_controller} {
+	set apply_on_hotplug "no"
+} else {
+	set apply_on_hotplug "yes"
+}
+
+import_from_depot [depot_user]/src/fs_rom \
+                  [depot_user]/src/vfs \
+                  [depot_user]/src/vfs_import \
+                  [depot_user]/src/report_rom
+
+set build_components {
+	core lib/ld init timer
+	driver/acpi
+	driver/platform
+	app/pci_decode
+	driver/framebuffer/intel/pc
+	test/framebuffer
+}
+
+append_if $use_usb build_components { driver/usb_host }
+append_if $use_gpu build_components { driver/gpu/intel }
+append_if $use_top build_components { app/top }
+
+build $build_components
+
+#
+# Generate config
+#
+
+append config {
+config | verbose: yes | prio_levels: 4
++ parent-provides
+  + service ROM
+  + service IRQ
+  + service IO_MEM
+  + service IO_PORT
+  + service PD
+  + service RM
+  + service CPU
+  + service LOG
+  + service TRACE
+
++ default-route
+  + any-service
+    + parent
+    + any-child
++ default | caps: 100 | ram: 1M
+
++ start timer
+  + provides
+    + service Timer
+
++ start report_rom | caps: 100 | ram: 2M | priority: -1
+  + provides
+  | + service ROM
+  | + service Report
+  + config
+  | + policy | label: pci_decode -> system       | report: acpi -> acpi
+  | + policy | label: intel_fb -> intel_opregion | report: acpi -> intel_opregion
+  | + policy | label: platform -> devices        | report: pci_decode -> devices
+  + route
+    + service LOG | + parent
+    + service PD  | + parent
+    + service CPU | + parent
+    + service ROM | + parent
+
++ start acpi | caps: 250 | ram: 6M | priority: -1
+  + route
+    + service IO_MEM | + parent
+    + service LOG    | + parent
+    + service PD     | + parent
+    + service RM     | + parent
+    + service CPU    | + parent
+    + service ROM    | + parent
+    + service Report | + child report_rom
+
++ start pci_decode | caps: 350 | ram: 2M | priority: -1
+  + route
+    + service Report              | + child report_rom
+    + service ROM | label: system | + child report_rom
+    + service IO_MEM              | + parent
+    + service LOG                 | + parent
+    + service PD                  | + parent
+    + service RM                  | + parent
+    + service CPU                 | + parent
+    + service ROM                 | + parent
+
++ start platform | caps: 100 | ram: 2M | managing_system: yes | priority: -1
+  + provides
+  | + service Dma
+  | + service Platform
+  + route
+  | + service ROM | label: devices | + child report_rom
+  | + service IRQ                  | + parent
+  | + service IO_MEM               | + parent
+  | + service IO_PORT              | + parent
+  | + service ROM                  | + parent
+  | + service PD                   | + parent
+  | + service CPU                  | + parent
+  | + service LOG                  | + parent
+  | + service Timer                | + child timer
+  + config
+    + policy | label_prefix: intel_fb | info: yes
+    | + pci | class: VGA
+    | + pci | class: ISABRIDGE
+    + policy | label_prefix: intel_gpu | info: yes
+    | + pci | class: VGA
+    | + pci | class: ISABRIDGE
+    + policy | label_prefix: usb | info: yes
+      + pci | class: USB
+}
+
+append_if $use_top config {
+
++ start top | ram: 2M | priority: -1
+  + config | period_ms: 40000
+  + route
+    + service TRACE
+    | + parent | label:
+    + any-service
+      + parent
+      + any-child
+}
+
+append config {
++ start init_dynamic | caps: 10000 | ram: 1000M | priority: -2
+  + binary init
+  + route
+  | + service Report                | + child report_rom
+  | + service Dma      | label: usb | + child platform | label: usb
+  | + service Dma                   | + child platform | label: intel_fb
+  | + service Platform | label: usb | + child platform | label: usb
+  | + service Platform              | + child platform | label: intel_fb
+  | + service ROM | label: intel_fb -> intel_opregion
+  |   + child report_rom | label: intel_fb -> intel_opregion
+  | + any-service
+  |   + parent
+  |   + any-child
+  + config | prio_levels: 2
+    + parent-provides
+    | + service ROM
+    | + service IO_MEM
+    | + service IO_PORT
+    | + service PD
+    | + service RM
+    | + service CPU
+    | + service LOG
+    | + service TRACE
+    | + service Dma
+    | + service Platform
+    | + service Timer
+    + default-route
+    | + any-service
+    |   + parent
+    |   + any-child
+    + default | caps: 100
+    + report | init_ram: yes | child_ram: yes | delay_ms: 10000
+    |
+    + start report_rom | ram: 2M | priority: -1
+    | + provides
+    | | + service Report
+    | | + service ROM
+    | + config | verbose: yes
+    |   + policy | label:  intel_fb_controller -> connectors
+    |            | report: intel_fb -> connectors
+    |
+    + start report_rom_usb | ram: 2M | priority: -1
+    | + binary report_rom
+    | + provides
+    | | + service Report
+    | | + service ROM
+    | + config | verbose: no
+    |
+    + start config_fs | ram: 8M | priority: -1
+      + binary vfs
+      + provides
+      | + service File_system
+      + config
+        + vfs
+        | + ram
+        | + import
+        |   + inline fb.config
+        |     + config
+        |       | ld_verbose:       yes
+        |       | apply_on_hotplug: } $apply_on_hotplug {
+        |       + report | connectors: yes
+        |       + merge mirror
+        |         .
+        |         . all connectors in merge node gets mirrored
+        |         .
+        |         x connector DP-1
+        |         x connector HDMI-A-1
+        |
+        + policy | label_prefix: config_rom | root: /
+        + policy | label_prefix: intel_fb_controller | root: / | writeable: yes
+
+    + start config_rom | ram: 4M | priority: -1
+      + binary fs_rom
+      + provides
+      | + service ROM
+      + route
+        + service File_system
+        | + child config_fs
+        + any-service
+          + parent
+          + any-child
+}
+
+append_if $use_gpu config {
+    + start intel_gpu | caps: 2000 | ram: 90M
+      + provides
+      | + service Gpu
+      | + service Dma
+      | + service Platform
+      + config | max_framebuffer_memory: 64M
+      | + device | vendor: 0x8086 | device: 0x1606 | generation:   8 | platform: broadwell   | description: HD Graphics (BDW GT1 ULT)
+      | + device | vendor: 0x8086 | device: 0x1616 | generation:   8 | platform: broadwell   | description: HD Graphics 5500 (BDW GT2 ULT)
+      | + device | vendor: 0x8086 | device: 0x1622 | generation:   8 | platform: broadwell   | description: Iris Pro Graphics 6200 (BDW GT3e)
+      | + device | vendor: 0x8086 | device: 0x1916 | generation:   9 | platform: skylake     | description: HD Graphics 520 (Skylake, Gen9)
+      | + device | vendor: 0x8086 | device: 0x191b | generation:   9 | platform: skylake     | description: HD Graphics 530 (Skylake, Gen9)
+      | + device | vendor: 0x8086 | device: 0x5916 | generation:   9 | platform: kabylake    | description: HD Graphics 620 (Kaby Lake, Gen9p5)
+      | + device | vendor: 0x8086 | device: 0x5917 | generation:   9 | platform: kabylake    | description: UHD Graphics 620 (Kaby Lake, Gen9p5)
+      | + device | vendor: 0x8086 | device: 0x591b | generation:   9 | platform: kabylake    | description: HD Graphics 630 (Kaby Lake, Gen9p5)
+      | + device | vendor: 0x8086 | device: 0x3ea0 | generation:   9 | platform: whiskeylake | description: UHD Graphics 620 (Whiskey Lake, Gen9p5)
+      | + device | vendor: 0x8086 | device: 0x9a49 | generation:  12 | platform: tigerlake   | description: Iris Xe Graphics (Tiger Lake, Xe)
+      + route
+        + service Dma      | + parent
+        + service Platform | + parent
+        + any-service
+          + parent
+          + any-child
+}
+
+append config {
+    + start intel_fb | caps: 1000 | ram: 128M
+      + binary pc_intel_fb
+      + route }
+append_if $use_gpu config {
+        + service Dma                       | + child intel_gpu
+        + service Platform                  | + child intel_gpu }
+append config {
+        + service ROM     | label: config   | + child config_rom | label: fb.config
+        + service Report                    | + child report_rom
+        + service Capture | label: eDP-1    | + child test-framebuffer-eDP-1
+        + service Capture | label: HDMI-A-1 | + child test-framebuffer-HDMI-A-1
+        + service Capture | label: HDMI-A-2 | + child test-framebuffer-HDMI-A-2
+        + service Capture | label: HDMI-A-3 | + child test-framebuffer-HDMI-A-3
+        + service Capture | label: DP-1     | + child test-framebuffer-DP-1
+        + service Capture | label: DP-2     | + child test-framebuffer-DP-2
+        + service Capture | label: DP-3     | + child test-framebuffer-DP-3
+        + service Capture | label: DP-4     | + child test-framebuffer-DP-4
+        + service Capture | label: VGA-1    | + child test-framebuffer-VGA-1
+        + service Capture | label: mirror   | + child test-framebuffer-mirror
+        + any-service
+          + parent
+          + any-child
+}
+
+append_if $use_usb config {
+    + start usb | priority: 0 | caps: 200 | ram: 12M
+      + binary pc_usb_host
+      + provides | + service Usb
+      + config | bios_handoff: no
+      | + report | devices: yes
+      + route
+        + service Dma      | + parent | label: usb
+        + service Platform | + parent | label: usb
+        + service Report   | + child report_rom_usb
+        + any-service
+          + parent
+          + any-child
+}
+
+append_if $use_fb_controller config {
+    + start intel_fb_controller | ram: 1M | priority: -1
+      + config
+      | + vfs
+      |   + fs
+      + route
+        + service File_system             | + child config_fs
+        + service ROM | label: connectors | + child report_rom
+        + any-service
+          + parent
+          + any-child
+}
+
+append config {
+    + start test-framebuffer-eDP-1    | ram: 10M | priority: -1
+    | + binary test-framebuffer
+    | + provides | + service Capture
+    | + config
+    + start test-framebuffer-HDMI-A-1 | ram: 10M | priority: -1
+    | + binary test-framebuffer
+    | + provides | + service Capture
+    | + config
+    + start test-framebuffer-HDMI-A-2 | ram: 10M | priority: -1
+    | + binary test-framebuffer
+    | + provides | + service Capture
+    | + config
+    + start test-framebuffer-HDMI-A-3 | ram: 10M | priority: -1
+    | + binary test-framebuffer
+    | + provides | + service Capture
+    | + config
+    + start test-framebuffer-DP-1     | ram: 10M | priority: -1
+    | + binary test-framebuffer
+    | + provides | + service Capture
+    | + config
+    + start test-framebuffer-DP-2     | ram: 10M | priority: -1
+    | + binary test-framebuffer
+    | + provides | + service Capture
+    | + config
+    + start test-framebuffer-DP-3     | ram: 10M | priority: -1
+    | + binary test-framebuffer
+    | + provides | + service Capture
+    | + config
+    + start test-framebuffer-DP-4     | ram: 10M | priority: -1
+    | + binary test-framebuffer
+    | + provides | + service Capture
+    | + config
+    + start test-framebuffer-VGA-1    | ram: 10M | priority: -1
+    | + binary test-framebuffer
+    | + provides | + service Capture
+    | + config
+    + start test-framebuffer-mirror   | ram: 10M | priority: -1
+      + binary test-framebuffer
+      + provides | + service Capture
+      + config
+-
+}
+
+install_config $config
+
+build_boot_image [build_artifacts]
+
+if {[have_cmd_switch --autopilot]} {
+	run_genode_until {\[init -\> init_dynamic -\> report_rom\]     + connector HDMI-A-3 | connected: yes} 30
+	run_genode_until {\[init -\> init_dynamic -\> report_rom\]   -} 20 [output_spawn_id]
+	run_genode_until {green} 30 [output_spawn_id]
+	run_genode_until {blue} 30 [output_spawn_id]
+} else {
+	run_genode_until forever
+}

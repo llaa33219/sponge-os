@@ -1,0 +1,82 @@
+assert {[have_spec arm_v7] || ![have_spec arm]}
+
+if {[have_cmd_switch --autopilot]} {
+	assert {![have_board virt_qemu_riscv]} \
+		"Autopilot mode is not supported on this platform."
+}
+
+build {
+	core init timer lib/ld lib/libc lib/vfs
+	server/vfs_block
+	server/vfs
+	lib/vfs_rump
+	lib/vfs_import
+	test/libc_vfs
+}
+
+#
+# Check used commands
+#
+set mke2fs [installed_command mke2fs]
+set dd     [installed_command dd]
+
+#
+# Build EXT2-file-system image
+#
+catch { exec $dd if=/dev/zero of=bin/ext2.raw bs=1M count=16 }
+catch { exec $mke2fs -F bin/ext2.raw }
+
+create_boot_directory
+
+install_config {
+config | verbose: yes
++ parent-provides
+  + service ROM
+  + service IRQ
+  + service IO_MEM
+  + service IO_PORT
+  + service PD
+  + service RM
+  + service CPU
+  + service LOG
+
++ default-route
+  + any-service
+    + parent
+    + any-child
+
++ default | caps: 200 | ram: 2M
+
++ start timer
+  + provides | + service Timer
+
++ start vfs_block | caps: 300 | ram: 20M
+  + provides | + service Block
+  + config
+    + default-policy | root: / | file: ext2.raw | block_size: 512 | writeable: yes
+    + vfs
+      + ram
+      + import | + rom ext2.raw
+
++ start vfs | caps: 400 | ram: 25M
+  + provides | + service File_system
+  + config
+    + vfs | + rump | fs: ext2fs | ram: 10M
+    + policy | label_prefix: test-libc_vfs | root: / | writeable: yes
+
++ start test-libc_vfs | ram: 4M
+  + config
+    + libc | stdout: /dev/log
+    + vfs
+      + dir dev | | + log
+      + fs
+-
+}
+
+build_boot_image [list {*}[build_artifacts] ext2.raw]
+
+append qemu_args "  -nographic"
+
+run_genode_until {.*child "test-libc_vfs" exited with exit value 0.*} 80
+
+exec rm -f bin/ext2.raw

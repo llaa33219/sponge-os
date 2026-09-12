@@ -1,0 +1,10 @@
++++ src/app/netperf/src/netlib.h
+@@ -368,7 +368,7 @@
+ /* Let's define a macro to hide all of this. */
+ 
+ #ifndef WIN32
+-#define SOCKET_EINTR(return_value) (errno == EINTR)
++#define SOCKET_EINTR(return_value) (errno == EINTR || errno == EPIPE)
+ #define SOCKET_EADDRINUSE(return_value) (errno == EADDRINUSE)
+ #define SOCKET_EADDRNOTAVAIL(return_value) (errno == EADDRNOTAVAIL)
+ 

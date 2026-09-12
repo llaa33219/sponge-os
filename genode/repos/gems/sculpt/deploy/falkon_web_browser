@@ -1,0 +1,44 @@
+deploy | info: disposable web browser
+
++ option board   | required: yes
++ option sculpt  | required: yes
++ option managed | required: yes
+
++ option recall_fs
++ option window_manager
++ option black_hole
++ option mixer
++ option system_clock
+
++ child mesa_gpu-cpu | pkg: mesa_gpu-cpu
+  + connect | + rm | + parent
+
++ child falkon_backdrop | pkg: sticks_blue_backdrop | priority: bg
+  + connect | + gui | + child gui | label: backdrop
+  + config
+    + libc
+    + vfs
+      + rom genode_logo.png
+      + rom grid.png
+    + fill | color: #0e1624
+    + image | png: grid.png        | alpha: 100 | tiled: yes
+    + image | png: genode_logo.png | alpha:  50 | anchor: bottom_right
+                                     xpos:  -20 | ypos:  -20
+
++ child falkon_qt6-jemalloc | pkg: cproc/pkg/falkon_qt6-jemalloc/2026-04-22
+  + connect
+    + rm                  | + parent
+    + nic                 | + child network
+    + rtc                 | + child system_clock
+    + play                | + child mixer
+    + record              | + child mixer
+    + capture             | + child black_hole
+    + fs config           | + child ram_fs
+    + fs downloads        | + child ram_fs
+    + gui                 | + child wm
+    + report shape        | + child wm
+    + report clipboard    | + child wm
+    + rom clipboard       | + child wm
+    + rom mesa_gpu.lib.so | + child mesa_gpu-cpu
+    + gpu                 | + child black_hole
+-

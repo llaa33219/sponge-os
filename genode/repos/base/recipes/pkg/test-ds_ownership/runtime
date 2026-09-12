@@ -1,0 +1,18 @@
+runtime | ram: 10M | caps: 100 | binary: test-ds_ownership
+
++ fail    | after_seconds: 20
++ succeed | : test succeeded
++ fail    | : *test failed*
+
++ content
+  + rom | label: ld.lib.so
+  + rom | label: test-ds_ownership
+
++ config | verbose: yes
+  + parent-provides
+    + service ROM
+    + service PD
+    + service RM
+    + service CPU
+    + service LOG
+-

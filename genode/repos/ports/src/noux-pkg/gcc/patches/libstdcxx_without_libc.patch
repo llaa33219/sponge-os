@@ -1,0 +1,37 @@
+stdcxx_without_libc.patch
+
+From: Christian Prochaska <christian.prochaska@genode-labs.com>
+
+
+---
+ libstdc++-v3/configure.ac |    4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/libstdc++-v3/configure.ac b/libstdc++-v3/configure.ac
+index e479b0d7f..048930162 100644
+--- a/libstdc++-v3/configure.ac
++++ b/libstdc++-v3/configure.ac
+@@ -99,11 +99,13 @@ AC_SYS_LARGEFILE
+ GLIBCXX_CONFIGURE
+ 
+ # Libtool setup.
++if test "$is_hosted" = yes; then
+ if test "x${with_newlib}" != "xyes" &&
+     test "x${with_avrlibc}" != "xyes" &&
+     test "x$with_headers" != "xno"; then
+   AC_LIBTOOL_DLOPEN
+ fi
++fi
+ AM_PROG_LIBTOOL
+ ACX_LT_HOST_FLAGS
+ AC_SUBST(enable_shared)
+@@ -225,7 +227,9 @@ AC_CHECK_HEADERS(fenv.h complex.h)
+ GLIBCXX_CHECK_C99_TR1
+ 
+ # For the EOF, SEEK_CUR, and SEEK_END integer constants.
++if test "$is_hosted" = yes; then
+ GLIBCXX_COMPUTE_STDIO_INTEGER_CONSTANTS
++fi
+ 
+ # For gettimeofday support.
+ GLIBCXX_CHECK_GETTIMEOFDAY

@@ -1,0 +1,7 @@
+platform: pc
+manager:  use_ram_fs
+ram_fs:   depot
+import:   pkg/sculpt_drivers-pc pkg/test-capture pkg/test-vfs_capture
+deploy:   webcam
+usb:      webcam
+option:   test-capture-internal test-vfs_capture-internal test-capture-external test-vfs_capture-external

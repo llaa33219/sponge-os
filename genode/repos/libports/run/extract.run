@@ -1,0 +1,47 @@
+if {[have_cmd_switch --autopilot]} {
+	assert {![have_board virt_qemu_riscv]} \
+	       "Autopilot mode is not supported on this platform."
+}
+
+create_boot_directory
+
+import_from_depot [depot_user]/src/[base_src] \
+                  [depot_user]/src/init
+
+install_config {
+config
++ parent-provides
+  + service CPU
+  + service LOG
+  + service PD
+  + service ROM
+
++ default-route | + any-service | + parent
+
++ start extract | caps: 200 | ram: 12M
+  + config | verbose: yes
+    + libc | stdout: /dev/log | stderr: /dev/log | rtc: /dev/null | update_mtime: no
+    + vfs
+    | + dir archived
+    |   + rom test.tar.xz
+    |   + rom LICENSE.xz
+    | + dir extracted
+    |   + ram
+    | + dir dev
+    |   + log
+    |   + null
+    + extract         | archive: /archived/test.tar.xz | to: /extracted
+    + extract LICENSE | archive: /archived/LICENSE.xz  | to: /extracted
+-
+}
+
+exec tar cJf [run_dir]/genode/test.tar.xz -C [genode_dir] tool/depot
+exec xz < [genode_dir]/LICENSE > [run_dir]/genode/LICENSE.xz
+
+build { app/extract lib/libc lib/vfs lib/libarchive lib/liblzma lib/zlib }
+
+build_boot_image [build_artifacts]
+
+append qemu_args " -nographic "
+
+run_genode_until {child "extract" exited with exit value 0} 30

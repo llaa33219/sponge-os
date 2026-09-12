@@ -1,0 +1,95 @@
+create_boot_directory
+
+import_from_depot [depot_user]/src/[base_src] \
+                  [depot_user]/pkg/[drivers_interactive_pkg] \
+                  [depot_user]/src/init \
+                  [depot_user]/src/report_rom \
+                  [depot_user]/src/dynamic_rom \
+                  [depot_user]/src/nitpicker \
+                  [depot_user]/src/decorator \
+                  [depot_user]/src/libc \
+                  [depot_user]/src/libpng \
+                  [depot_user]/src/vfs \
+                  [depot_user]/src/zlib
+
+install_config {
+config
++ parent-provides
+  + service ROM
+  + service IRQ
+  + service IO_MEM
+  + service IO_PORT
+  + service PD
+  + service RM
+  + service CPU
+  + service LOG
+
++ default-route
+  + any-service
+    + parent
+    + any-child
+
++ default | caps: 100 | ram: 1M
+
++ start timer
+  + provides | + service Timer
+
++ start drivers | caps: 1500 | ram: 64M | managing_system: yes
+  + binary init
+  + route
+    + service ROM | label: config | + parent | label: drivers.config
+    + service Timer               | + child timer
+    + service Capture             | + child nitpicker
+    + service Event               | + child nitpicker
+    + any-service                 | + parent
+
++ start nitpicker | caps: 200
+  + provides
+    + service Gui
+    + service Capture
+    + service Event
+  + config
+    + capture
+    + event
+    + domain default | layer: 2 | content: client | label: no
+    + default-policy | domain: default
+    + report | pointer: yes
+  + route
+    + service Report | + child report_rom
+    + any-service
+      + parent
+      + any-child
+
++ start report_rom | ram: 2M
+  + provides
+    + service ROM
+    + service Report
+  + config
+    + policy | label: decorator -> pointer       | report: nitpicker -> pointer
+    + policy | label: decorator -> window_layout | report: test-decorator_stress -> window_layout
+
++ start test-decorator_stress | ram: 2M
+  + config | + libc
+  + route
+    + service Report | + child report_rom
+    + any-service
+      + parent
+      + any-child
+
++ start decorator | caps: 200 | ram: 8M
+  + config | + default-policy
+  + route
+    + service ROM | label: pointer       | + child report_rom
+    + service ROM | label: window_layout | + child report_rom
+    + service Report                     | + child report_rom
+    + any-service
+      + parent
+      + any-child
+-
+}
+
+build { lib/libc app/decorator test/decorator_stress }
+
+build_boot_image [build_artifacts]
+
+run_genode_until forever

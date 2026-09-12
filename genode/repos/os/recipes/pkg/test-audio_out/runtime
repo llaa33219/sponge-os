@@ -1,0 +1,11 @@
+runtime | ram: 16M | caps: 150 | binary: test-audio_out
+
++ requires
+  + audio_out
+  + rom | label: sample.raw
+
++ config | + filename | : sample.raw
+
++ content
+  + rom | label: test-audio_out
+-

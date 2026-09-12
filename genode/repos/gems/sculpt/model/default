@@ -1,0 +1,28 @@
+config
+
++ parent-provides
+  + service ROM
+  + service PD
+  + service CPU
+  + service LOG
+  + service File_system
+
++ service File_system | + default-policy | + child chroot
++ service ROM         | + default-policy | + child fs_rom
+
++ start chroot | caps: 100 | ram: 3M
+  + provides | + service File_system
+  + route
+    + service File_system | + parent | identity: model
+    + any-service         | + parent
+  + config
+    + policy | label_prefix: rw -> | path: / | writeable: yes
+    + policy | label_prefix: ro -> | path: / | writeable: no
+
++ start fs_rom | caps: 100 | ram: 10M
+  + provides | + service ROM
+  + config
+  + route
+    + service File_system | + child chroot | identity: ro
+    + any-service         | + parent
+-

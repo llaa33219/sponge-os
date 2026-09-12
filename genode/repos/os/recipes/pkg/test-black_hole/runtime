@@ -1,0 +1,72 @@
+runtime | ram: 32M | caps: 1000 | binary: init
+
++ requires | + timer
+
++ fail    | after_seconds: 20 | : *invisible message
++ succeed | : [test-black_hole] Finished
+
++ content
+  + rom | label: ld.lib.so
+  + rom | label: test-black_hole
+  + rom | label: black_hole
+
++ config
+  + parent-provides
+    + service ROM
+    + service IRQ
+    + service IO_MEM
+    + service IO_PORT
+    + service PD
+    + service RM
+    + service CPU
+    + service LOG
+    + service Timer
+
+  + start black_hole | caps: 100 | ram: 1280K
+    + provides
+    | + service Usb
+    | + service Gpu
+    | + service ROM
+    | + service Uplink
+    | + service Nic
+    | + service Event
+    | + service Capture
+    | + service Audio_in
+    | + service Audio_out
+    | + service LOG
+    + config
+    | + usb
+    | + gpu
+    | + rom
+    | + uplink
+    | + nic
+    | + event
+    | + capture
+    | + audio_in
+    | + audio_out
+    | + log
+    + route
+      + service Timer | + parent
+      + service ROM   | + parent
+      + service PD    | + parent
+      + service LOG   | + parent
+      + service CPU   | + parent
+
+  + start test-black_hole | caps: 200 | ram: 10M
+    + route
+      + service Usb                    | + child black_hole
+      + service Gpu                    | + child black_hole
+      + service ROM | label: any_label | + child black_hole
+      + service Uplink                 | + child black_hole
+      + service Nic                    | + child black_hole
+      + service Event                  | + child black_hole
+      + service Capture                | + child black_hole
+      + service Audio_in               | + child black_hole
+      + service Audio_out              | + child black_hole
+      + service LOG | label: any_label | + child black_hole
+      + service ROM                    | + parent
+      + service PD                     | + parent
+      + service LOG                    | + parent
+      + service CPU                    | + parent
+      + service Timer                  | + parent
+-

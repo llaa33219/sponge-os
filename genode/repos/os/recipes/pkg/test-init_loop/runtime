@@ -1,0 +1,51 @@
+runtime | ram: 64M | caps: 3000 | binary: init
+
++ requires | + timer
+
++ fail    | after_seconds: 120
++ succeed | : child "test-init_loop" exited with exit value 0
++ fail    | : test-init_loop] Error:
+
++ content
+  + rom | label: ld.lib.so
+  + rom | label: test-init_loop
+  + rom | label: dummy
+  + rom | label: report_rom
+
++ config
+  + parent-provides
+    + service ROM
+    + service CPU
+    + service PD
+    + service LOG
+    + service IRQ
+    + service IO_MEM
+    + service IO_PORT
+    + service Timer
+
+  + default | caps: 100
+
+  + start report_rom | ram: 2M
+    + provides
+      + service ROM
+      + service Report
+    + config | verbose: no
+      + policy | label:  init -> config          | report: test-init_loop -> init.config
+      + policy | label:  test-init_loop -> state | report: init -> state
+    + route | + any-service | + parent
+
+  + start test-init_loop | ram: 4M
+    + provides | + service LOG
+    + config
+    + route
+      + service Report             | + child report_rom
+      + service ROM | label: state | + child report_rom
+      + any-service                | + parent
+
+  + start init | caps: 2000 | ram: 8M
+    + binary init
+    + route
+      + service ROM | label: config | + child report_rom
+      + service Report              | + child report_rom
+      + any-service                 | + parent
+-

@@ -1,0 +1,561 @@
+/*
+ * \brief  Dummy definitions of Linux Kernel functions
+ * \author Automatically generated file - do no edit
+ * \date   2026-01-26
+ */
+
+#include <lx_emul.h>
+
+
+#include <linux/sched.h>
+
+void ___migrate_enable(void)
+{
+	lx_emul_trace_and_stop(__func__);
+}
+
+
+#include <linux/ratelimit_types.h>
+
+int ___ratelimit(struct ratelimit_state * rs,const char * func)
+{
+	lx_emul_trace_and_stop(__func__);
+}
+
+
+#include <linux/cpumask.h>
+
+struct cpumask __cpu_active_mask;
+
+
+#include <linux/printk.h>
+
+void __printk_deferred_enter(void)
+{
+	lx_emul_trace_and_stop(__func__);
+}
+
+
+#include <linux/printk.h>
+
+void __printk_deferred_exit(void)
+{
+	lx_emul_trace_and_stop(__func__);
+}
+
+
+#include <net/gso.h>
+
+struct sk_buff * __skb_gso_segment(struct sk_buff * skb,netdev_features_t features,bool tx_path)
+{
+	lx_emul_trace_and_stop(__func__);
+}
+
+
+extern noinline const char * _parse_integer_fixup_radix(const char * s,unsigned int * base);
+noinline const char * _parse_integer_fixup_radix(const char * s,unsigned int * base)
+{
+	lx_emul_trace_and_stop(__func__);
+}
+
+
+extern noinline unsigned int _parse_integer_limit(const char * s,unsigned int base,unsigned long long * p,size_t max_chars);
+noinline unsigned int _parse_integer_limit(const char * s,unsigned int base,unsigned long long * p,size_t max_chars)
+{
+	lx_emul_trace_and_stop(__func__);
+}
+
+
+#include <linux/printk.h>
+
+int _printk_deferred(const char * fmt,...)
+{
+	lx_emul_trace_and_stop(__func__);
+}
+
+
+#include <linux/mm.h>
+
+atomic_long_t _totalram_pages;
+
+
+extern void ack_bad_irq(unsigned int irq);
+void ack_bad_irq(unsigned int irq)
+{
+	lx_emul_trace_and_stop(__func__);
+}
+
+
+extern unsigned long arch_scale_cpu_capacity(int cpu);
+unsigned long arch_scale_cpu_capacity(int cpu)
+{
+	lx_emul_trace_and_stop(__func__);
+}
+
+
+#include <linux/bitmap-str.h>
+
+int bitmap_parselist(const char * buf,unsigned long * maskp,int nmaskbits)
+{
+	lx_emul_trace_and_stop(__func__);
+}
+
+
+#include <linux/arch_topology.h>
+
+const struct cpumask * cpu_clustergroup_mask(int cpu)
+{
+	lx_emul_trace_and_stop(__func__);
+}
+
+
+#include <linux/cpumask.h>
+
+unsigned int cpumask_any_and_distribute(const struct cpumask * src1p,const struct cpumask * src2p)
+{
+	lx_emul_trace_and_stop(__func__);
+}
+
+
+#include <linux/sched/topology.h>
+
+bool cpus_share_cache(int this_cpu,int that_cpu)
+{
+	lx_emul_trace_and_stop(__func__);
+}
+
+
+#include <linux/context_tracking_irq.h>
+
+noinstr void ct_irq_enter(void)
+{
+	lx_emul_trace_and_stop(__func__);
+}
+
+
+#include <linux/context_tracking_irq.h>
+
+noinstr void ct_irq_exit(void)
+{
+	lx_emul_trace_and_stop(__func__);
+}
+
+
+#include <linux/netdevice.h>
+
+struct net_device * dev_get_by_index(struct net * net,int ifindex)
+{
+	lx_emul_trace_and_stop(__func__);
+}
+
+
+#include <linux/mmdebug.h>
+
+void dump_page(const struct page * page,const char * reason)
+{
+	lx_emul_trace_and_stop(__func__);
+}
+
+
+#include <linux/printk.h>
+
+asmlinkage __visible void dump_stack(void)
+{
+	lx_emul_trace_and_stop(__func__);
+}
+
+
+#include <linux/rcuwait.h>
+
+void finish_rcuwait(struct rcuwait * w)
+{
+	lx_emul_trace_and_stop(__func__);
+}
+
+
+#include <linux/netdevice.h>
+
+void free_netdev(struct net_device * dev)
+{
+	lx_emul_trace_and_stop(__func__);
+}
+
+
+#include <linux/property.h>
+
+unsigned int fwnode_count_parents(const struct fwnode_handle * fwnode)
+{
+	lx_emul_trace_and_stop(__func__);
+}
+
+
+#include <linux/property.h>
+
+const char * fwnode_get_name(const struct fwnode_handle * fwnode)
+{
+	lx_emul_trace_and_stop(__func__);
+}
+
+
+#include <linux/property.h>
+
+const char * fwnode_get_name_prefix(const struct fwnode_handle * fwnode)
+{
+	lx_emul_trace_and_stop(__func__);
+}
+
+
+#include <linux/property.h>
+
+struct fwnode_handle * fwnode_get_nth_parent(struct fwnode_handle * fwnode,unsigned int depth)
+{
+	lx_emul_trace_and_stop(__func__);
+}
+
+
+#include <net/genetlink.h>
+
+void * genlmsg_put(struct sk_buff * skb,u32 portid,u32 seq,const struct genl_family * family,int flags,u8 cmd)
+{
+	lx_emul_trace_and_stop(__func__);
+}
+
+
+#include <linux/gfp.h>
+
+bool gfp_pfmemalloc_allowed(gfp_t gfp_mask)
+{
+	lx_emul_trace_and_stop(__func__);
+}
+
+
+#include <linux/uuid.h>
+
+const u8 guid_index[16] = {};
+
+
+#include <net/netfilter/nf_conntrack.h>
+
+struct net init_net;
+
+
+#include <linux/sched.h>
+
+void __sched io_schedule(void)
+{
+	lx_emul_trace_and_stop(__func__);
+}
+
+
+#include <linux/sched.h>
+
+void io_schedule_finish(int token)
+{
+	lx_emul_trace_and_stop(__func__);
+}
+
+
+#include <linux/sched.h>
+
+int io_schedule_prepare(void)
+{
+	lx_emul_trace_and_stop(__func__);
+}
+
+
+#include <linux/sched.h>
+
+long __sched io_schedule_timeout(long timeout)
+{
+	lx_emul_trace_and_stop(__func__);
+}
+
+
+#include <net/ip_tunnels.h>
+
+const struct header_ops ip_tunnel_header_ops;
+
+
+#include <linux/interrupt.h>
+
+int irq_can_set_affinity(unsigned int irq)
+{
+	lx_emul_trace_and_stop(__func__);
+}
+
+
+#include <linux/interrupt.h>
+
+int irq_set_affinity(unsigned int irq,const struct cpumask * cpumask)
+{
+	lx_emul_trace_and_stop(__func__);
+}
+
+
+#include <linux/irq_work.h>
+
+bool irq_work_queue(struct irq_work * work)
+{
+	lx_emul_trace_and_stop(__func__);
+}
+
+
+#include <linux/irq_work.h>
+
+bool irq_work_queue_on(struct irq_work * work,int cpu)
+{
+	lx_emul_trace_and_stop(__func__);
+}
+
+
+#include <linux/irq_work.h>
+
+void irq_work_sync(struct irq_work * work)
+{
+	lx_emul_trace_and_stop(__func__);
+}
+
+
+#include <linux/irq_work.h>
+
+void irq_work_tick(void)
+{
+	lx_emul_trace_and_stop(__func__);
+}
+
+
+#include <linux/kstrtox.h>
+
+noinline int kstrtoint(const char * s,unsigned int base,int * res)
+{
+	lx_emul_trace_and_stop(__func__);
+}
+
+
+#include <linux/kstrtox.h>
+
+noinline int kstrtoll(const char * s,unsigned int base,long long * res)
+{
+	lx_emul_trace_and_stop(__func__);
+}
+
+
+#include <linux/delay.h>
+
+unsigned long loops_per_jiffy;
+
+
+#include <net/hotdata.h>
+
+struct net_hotdata net_hotdata;
+
+
+#include <linux/netdevice.h>
+
+void netif_carrier_off(struct net_device * dev)
+{
+	lx_emul_trace_and_stop(__func__);
+}
+
+
+#include <linux/page_frag_cache.h>
+
+void page_frag_free(void * addr)
+{
+	lx_emul_trace_and_stop(__func__);
+}
+
+
+#include <linux/panic.h>
+
+void panic(const char * fmt,...)
+{
+	lx_emul_trace_and_stop(__func__);
+}
+
+
+#include <linux/percpu_counter.h>
+
+void percpu_counter_add_batch(struct percpu_counter * fbc,s64 amount,s32 batch)
+{
+	lx_emul_trace_and_stop(__func__);
+}
+
+
+extern void raw_spin_rq_lock_nested(struct rq * rq,int subclass);
+void raw_spin_rq_lock_nested(struct rq * rq,int subclass)
+{
+	lx_emul_trace_and_stop(__func__);
+}
+
+
+extern void raw_spin_rq_unlock(struct rq * rq);
+void raw_spin_rq_unlock(struct rq * rq)
+{
+	lx_emul_trace_and_stop(__func__);
+}
+
+
+#include <linux/rcuref.h>
+
+bool rcuref_get_slowpath(rcuref_t * ref)
+{
+	lx_emul_trace_and_stop(__func__);
+}
+
+
+#include <linux/rcuref.h>
+
+bool rcuref_put_slowpath(rcuref_t * ref,unsigned int cnt)
+{
+	lx_emul_trace_and_stop(__func__);
+}
+
+
+#include <net/rtnetlink.h>
+
+void rtnl_link_unregister(struct rtnl_link_ops * ops)
+{
+	lx_emul_trace_and_stop(__func__);
+}
+
+
+extern void set_rq_offline(struct rq * rq);
+void set_rq_offline(struct rq * rq)
+{
+	lx_emul_trace_and_stop(__func__);
+}
+
+
+extern void set_rq_online(struct rq * rq);
+void set_rq_online(struct rq * rq)
+{
+	lx_emul_trace_and_stop(__func__);
+}
+
+
+#include <linux/smp.h>
+
+unsigned int setup_max_cpus;
+
+
+#include <net/sock.h>
+
+void sk_clear_memalloc(struct sock * sk)
+{
+	lx_emul_trace_and_stop(__func__);
+}
+
+
+#include <linux/netdevice.h>
+
+int skb_checksum_help(struct sk_buff * skb)
+{
+	lx_emul_trace_and_stop(__func__);
+}
+
+
+#include <net/sock.h>
+
+void skb_set_owner_w(struct sk_buff * skb,struct sock * sk)
+{
+	lx_emul_trace_and_stop(__func__);
+}
+
+
+#include <linux/smp.h>
+
+void smp_call_function_many(const struct cpumask * mask,smp_call_func_t func,void * info,bool wait)
+{
+	lx_emul_trace_and_stop(__func__);
+}
+
+
+#include <linux/smp.h>
+
+int smp_call_function_single(int cpu,smp_call_func_t func,void * info,int wait)
+{
+	lx_emul_trace_and_stop(__func__);
+}
+
+
+#include <linux/smp.h>
+
+int smp_call_function_single_async(int cpu,call_single_data_t * csd)
+{
+	lx_emul_trace_and_stop(__func__);
+}
+
+
+#include <net/sock.h>
+
+void sock_edemux(struct sk_buff * skb)
+{
+	lx_emul_trace_and_stop(__func__);
+}
+
+
+#include <linux/jump_label.h>
+
+bool static_key_initialized;
+
+
+#include <linux/rcupdate.h>
+
+void synchronize_rcu(void)
+{
+	lx_emul_trace_and_stop(__func__);
+}
+
+
+#include <linux/timerqueue.h>
+
+bool timerqueue_add(struct timerqueue_head * head,struct timerqueue_node * node)
+{
+	lx_emul_trace_and_stop(__func__);
+}
+
+
+#include <linux/timerqueue.h>
+
+bool timerqueue_del(struct timerqueue_head * head,struct timerqueue_node * node)
+{
+	lx_emul_trace_and_stop(__func__);
+}
+
+
+#include <linux/timerqueue.h>
+
+struct timerqueue_node * timerqueue_iterate_next(struct timerqueue_node * node)
+{
+	lx_emul_trace_and_stop(__func__);
+}
+
+
+#include <net/udp_tunnel.h>
+
+void udp_tunnel_sock_release(struct socket * sock)
+{
+	lx_emul_trace_and_stop(__func__);
+}
+
+
+#include <net/net_namespace.h>
+
+void unregister_pernet_device(struct pernet_operations * ops)
+{
+	lx_emul_trace_and_stop(__func__);
+}
+
+
+extern void update_group_capacity(struct sched_domain * sd,int cpu);
+void update_group_capacity(struct sched_domain * sd,int cpu)
+{
+	lx_emul_trace_and_stop(__func__);
+}
+
+
+#include <linux/uuid.h>
+
+const u8 uuid_index[16] = {};
+

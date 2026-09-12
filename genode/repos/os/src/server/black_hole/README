@@ -1,0 +1,45 @@
+The 'black_hole' component provides dummy implementations of common
+session interfaces.
+
+At this time, the following sessions are provided if enabled
+in the configuration of the component.
+
+* Audio_in
+* Audio_out
+* Capture
+* Event
+* Nic
+* Uplink
+* ROM
+* Gpu
+* Usb
+* Play
+* Record
+* Log
+* Terminal
+
+HID-configuration snippet:
+
++ config
+  + audio_in
+  + audio_out
+  + capture
+  + event
+  + nic
+  + uplink
+  + rom
+  + gpu
+  + usb
+  + play
+  + record
+  + log
+  + terminal
+-
+
+Black hole optionally requests the following sessions as client.
+
+* Uplink client
+
++ config
+  + uplink_client
+-

@@ -1,0 +1,149 @@
+assert {[have_include power_on/qemu]}
+assert {![have_board rpi3]}
+
+if {[have_cmd_switch --autopilot]} {
+	assert {![have_board virt_qemu_riscv]} \
+		"Autopilot mode is not supported on this platform."
+}
+
+create_boot_directory
+
+import_from_depot [depot_user]/src/[base_src] \
+                  [depot_user]/src/nic_router \
+                  [depot_user]/src/init \
+                  [depot_user]/src/libc \
+                  [depot_user]/src/nic_bridge \
+                  [depot_user]/src/vfs_lwip \
+                  [depot_user]/src/vfs_lxip \
+                  [depot_user]/src/vfs
+
+build { test/lwip }
+
+install_config {
+config
++ parent-provides
+  + service ROM
+  + service IRQ
+  + service IO_MEM
+  + service IO_PORT
+  + service PD
+  + service RM
+  + service CPU
+  + service LOG
+
++ default-route
+  + any-service
+    + parent
+    + any-child
+
++ default | caps: 200 | ram: 2M
+
++ start timer
+  + provides | + service Timer
+
++ start nic_router | ram: 10M
+  + provides
+    + service Nic
+    + service Uplink
+  + config | verbose_domain_state: yes
+    + policy | label_prefix: nic_bridge | domain: downlink
+    + domain downlink | interface: 10.0.2.1/24
+      + dhcp-server | ip_first: 10.0.2.100 | ip_last: 10.0.2.200
+
++ start nic_bridge | caps: 300 | ram: 24M
+  + provides | + service Nic
+  + config | verbose: yes | mac: 02:02:02:02:42:00
+    + policy | label_prefix: client_1
+    + policy | label_prefix: server_1 | ip_addr: 10.0.2.55
+    + policy | label_prefix: server_2 | ip_addr: 10.0.2.56 | mac: 02:02:02:02:23:00
+    + policy | label_prefix: client_2                      | mac: 02:02:02:02:79:00
+  + route
+    + service Nic | + child nic_router
+    + any-service
+      + parent
+      + any-child
+
++ start server_1 | ram: 32M
+  + binary test-lwip_httpsrv
+  + route
+  | + service Nic | + child nic_bridge
+  | + any-service
+  |   + parent
+  |   + any-child
+  + config | port: 80
+    + libc | stdout: /dev/log | stderr: /dev/log | socket: /socket
+    + vfs
+      + dir dev    | + log
+      + dir socket | + lwip | label: lwip | ip_addr: 10.0.2.55
+                                          | netmask: 255.255.255.0
+                                          | gateway: 10.0.2.1
++ start server_2 | ram: 32M
+  + binary test-lwip_httpsrv
+  + route
+  | + service Nic | + child nic_bridge
+  | + any-service
+  |   + parent
+  |   + any-child
+  + config | port: 80
+    + libc | stdout: /dev/log | stderr: /dev/log | socket: /socket
+    + vfs
+      + dir dev    | + log
+      + dir socket | + lxip | label: lxip | ip_addr: 10.0.2.56
+                                          | netmask: 255.255.255.0
+                                          | gateway: 10.0.2.1
++ start client_1 | ram: 32M
+  + binary test-http_clnt
+  + route
+  | + service Nic | + child nic_bridge
+  | + any-service
+  |   + parent
+  |   + any-child
+  + config | server_ip: 10.0.2.55 | server_port: 80
+    + libc | stdout: /dev/log | stderr: /dev/log | socket: /socket
+    + vfs
+      + dir dev    | + log
+      + dir socket | + lwip | dhcp: yes
+
++ start client_2 | ram: 32M
+  + binary test-http_clnt
+  + route
+  | + service Nic | + child nic_bridge
+  | + any-service
+  |   + parent
+  |   + any-child
+  + config | server_ip: 10.0.2.56 | server_port: 80
+    + libc | stdout: /dev/log | stderr: /dev/log | socket: /socket
+    + vfs
+      + dir dev    | + log
+      + dir socket | + lxip | dhcp: yes
+
++ start client_3 | ram: 32M
+  + binary test-http_clnt
+  + route
+  | + service Nic | + child nic_bridge
+  | + any-service
+  |   + parent
+  |   + any-child
+  + config | server_ip: 10.0.2.56 | server_port: 80
+    + libc | stdout: /dev/log | stderr: /dev/log | socket: /socket
+    + vfs
+      + dir dev    | + log
+      + dir socket | + lwip | dhcp: yes
+-
+}
+
+build_boot_image [build_artifacts]
+
+append qemu_args "  -nographic "
+append_qemu_nic_args
+
+append done_string {.*?\[init -> client_3] .\[31mError: stop because parent denied Nic-session: .*?\n}
+append done_string {.*?\[client_1 -> ] rcv ETH 02:02:02:02:42:0.}
+append done_string {.*?\[client_2 -> ] rcv ETH 02:02:02:02:79:00}
+append done_string {.*?\[server_1 -> lwip] rcv ETH 02:02:02:02:42:0.}
+append done_string {.*?\[server_2 -> lxip] rcv ETH 02:02:02:02:23:00}
+append done_string {.*?"client_." exited with exit value 0}
+append done_string {.*?"client_." exited with exit value 0}
+append done_string {.*?\n}
+
+run_genode_until $done_string 40

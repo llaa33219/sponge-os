@@ -1,0 +1,200 @@
+/*
+ * \brief  Core main program
+ * \author Norman Feske
+ * \date   2006-07-12
+ */
+
+/*
+ * Copyright (C) 2006-2023 Genode Labs GmbH
+ *
+ * This file is part of the Genode OS framework, which is distributed
+ * under the terms of the GNU Affero General Public License version 3.
+ */
+
+/* Genode includes */
+#include <base/sleep.h>
+
+/* base-internal includes */
+#include <base/internal/globals.h>
+
+/* core includes */
+#include <platform.h>
+#include <core_local_rm.h>
+#include <core_service.h>
+#include <signal_transmitter.h>
+#include <system_control.h>
+#include <rom_root.h>
+#include <rm_root.h>
+#include <cpu_root.h>
+#include <pd_root.h>
+#include <log_root.h>
+#include <io_mem_root.h>
+#include <irq_root.h>
+#include <trace/root.h>
+#include <platform_services.h>
+#include <core_child.h>
+#include <core_ram_allocator.h>
+#include <pager.h>
+
+Core::Platform &Core::platform_specific()
+{
+	static Platform _platform;
+	return _platform;
+}
+
+
+Core::Platform_generic &Core::platform() { return platform_specific(); }
+
+
+Core::Trace::Source_registry &Core::Trace::sources()
+{
+	static Source_registry inst;
+	return inst;
+}
+
+
+namespace Genode { extern char const *version_string; }
+
+
+/*
+ * Resolve symbols expected by trace points
+ */
+namespace Genode { bool inhibit_tracing = true; }
+bool Genode::Trace::Logger::_evaluate_control() { return false; }
+Genode::Trace::Logger * Genode::Thread::_logger() { return nullptr; }
+Genode::Trace::Logger::Logger() { }
+
+
+bool Genode::Generator::_generate_xml() { return true; }
+
+
+struct Genode::Runtime { };
+
+
+/*
+ * Executed on the initial stack
+ */
+Genode::Runtime &Genode::init_runtime()
+{
+	init_stack_area();
+
+	static Runtime runtime { };
+	return runtime;
+}
+
+
+/*
+ * Executed on a stack located within the stack area
+ */
+void Genode::bootstrap_component(Runtime &runtime)
+{
+	using namespace Core;
+
+	using Mapped_ram = Mapped_ram_allocator;
+
+	Range_allocator &ram_ranges      = Core::platform().ram_alloc();
+	Rom_fs          &rom_modules     = Core::platform().rom_fs();
+	Range_allocator &io_mem_ranges   = Core::platform().io_mem_alloc();
+	Range_allocator &io_port_ranges  = Core::platform().io_port_alloc();
+	Range_allocator &irq_ranges      = Core::platform().irq_alloc();
+	Allocator       &core_alloc      = platform_specific().core_mem_alloc();
+	Mapped_ram      &mapped_ram      = platform_specific().mapped_ram;
+
+	Ram_quota const avail_ram  { ram_ranges.avail() };
+	Cap_quota const avail_caps { Core::platform().max_caps() };
+
+	static Rpc_entrypoint ep { runtime, "entrypoint", Thread::Stack_size { 20*1024 }, { } };
+
+	static Core::Core_account core_account { ep, avail_ram, avail_caps };
+
+	static Ram_dataspace_factory core_ds_factory {
+		ep, ram_ranges, Ram_dataspace_factory::any_phys_range(), core_alloc };
+
+	static Core_ram_allocator core_ram { core_ds_factory };
+
+	static Core_local_rm local_rm { ep };
+
+	static Rpc_entrypoint &signal_ep = core_signal_ep(runtime, ep);
+
+	init_exception_handling(core_ram, local_rm);
+	init_core_signal_transmitter(signal_ep);
+	init_page_fault_handling(ep);
+
+	/* disable tracing within core because it is not fully implemented */
+	inhibit_tracing = true;
+
+	log("Genode ", Genode::version_string);
+
+	static Core::Trace::Policy_registry trace_policies;
+
+	static Registry<Service> services;
+
+	/*
+	 * Allocate session meta data on distinct dataspaces to enable independent
+	 * destruction (to enable quota trading) of session component objects.
+	 */
+	static Sliced_heap sliced_heap { core_ram, local_rm };
+
+	/*
+	 * Factory for creating RPC capabilities within core
+	 */
+	static Rpc_cap_factory rpc_cap_factory { sliced_heap };
+
+	static Pager_entrypoint pager_ep(runtime, rpc_cap_factory);
+
+	using Trace_root              = Core::Trace::Root;
+	using Trace_session_component = Core::Trace::Session_component;
+
+	static Core::System_control &system_control = init_system_control(runtime, sliced_heap, ep);
+
+	static Rom_root    rom_root    (ep, ep, rom_modules, sliced_heap);
+	static Rm_root     rm_root     (ep, sliced_heap, core_ram, local_rm);
+	static Cpu_root    cpu_root    (core_ram, local_rm, ep, ep, pager_ep,
+	                                sliced_heap, Core::Trace::sources());
+	static Pd_root     pd_root     (ep, signal_ep, ram_ranges, local_rm, sliced_heap,
+	                                platform_specific().core_mem_alloc(), mapped_ram,
+	                                system_control);
+	static Log_root    log_root    (ep, sliced_heap);
+	static Io_mem_root io_mem_root (ep, ep, io_mem_ranges, ram_ranges, sliced_heap);
+	static Irq_root    irq_root    (runtime, irq_ranges, sliced_heap);
+	static Trace_root  trace_root  (core_ram, local_rm, ep, sliced_heap,
+	                                Core::Trace::sources(), trace_policies);
+
+	static Core_service<Rom_session_component>    rom_service    (services, rom_root);
+	static Core_service<Rm_session_component>     rm_service     (services, rm_root);
+	static Core_service<Cpu_session_component>    cpu_service    (services, cpu_root);
+	static Core_service<Pd_session_component>     pd_service     (services, pd_root);
+	static Core_service<Log_session_component>    log_service    (services, log_root);
+	static Core_service<Io_mem_session_component> io_mem_service (services, io_mem_root);
+	static Core_service<Irq_session_component>    irq_service    (services, irq_root);
+	static Core_service<Trace_session_component>  trace_service  (services, trace_root);
+
+	/* make platform-specific services known to service pool */
+	platform_add_local_services(runtime, ep, sliced_heap, services,
+	                            Core::Trace::sources(), core_ram, mapped_ram,
+	                            local_rm, io_port_ranges);
+
+	if (!core_account.ram_account.try_withdraw({ 224*1024 })) {
+		error("core preservation exceeds available RAM");
+		return;
+	}
+
+	if (!core_account.cap_account.try_withdraw({ 1000 })) {
+		error("core preservation exceeds available caps");
+		return;
+	}
+
+	Ram_quota const init_ram_quota = core_account.ram_account.avail();
+	Cap_quota const init_cap_quota = core_account.cap_account.avail();
+
+	log(init_ram_quota.value / (1024*1024), " MiB RAM and ",
+	    init_cap_quota, " caps assigned to init");
+
+	static Reconstructible<Core::Core_child>
+		init(services, ep, local_rm, core_ram, core_account,
+		     init_cap_quota, init_ram_quota);
+
+	Core::platform().wait_for_exit();
+
+	init.destruct();
+}

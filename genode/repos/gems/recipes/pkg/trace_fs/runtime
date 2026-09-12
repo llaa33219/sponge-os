@@ -1,0 +1,17 @@
+runtime | ram: 48M | caps: 150 | binary: vfs
+
++ provides | + file_system
+
++ requires | + trace
+
++ content
+  + rom | label: vfs
+  + rom | label: ld.lib.so
+  + rom | label: vfs_trace.lib.so
+  + rom | label: vfs.lib.so
+  + rom | label: null
+
++ config
+  + vfs | + trace | ram: 32M
+  + default-policy | root: / | writeable: yes
+-

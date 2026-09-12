@@ -1,0 +1,13 @@
+This port of libusb supports a single USB device, which is requested from the
+USB host driver via a USB session labeled 'usb_device'. The assignment of an
+actual USB device to the application must be defined as a 'policy' in the USB
+host driver's configuration as described in the USB driver's README file.
+
+The Genode USB connection object resides in a VFS plugin named 'vfs_libusb',
+which is necessary to handle the 'ack_avail' signal in the libc kernel context.
+So an application using libusb needs to have the libusb VFS plugin
+(vfs_libusb.lib.so) present in its VFS:
+
+! + vfs
+!   + dir dev
+!     + libusb

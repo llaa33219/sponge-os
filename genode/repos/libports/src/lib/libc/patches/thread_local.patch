@@ -1,0 +1,43 @@
+--- src/lib/libc/sys/sys/cdefs.h.orig	2019-04-16 10:50:14.382883576 +0200
++++ src/lib/libc/sys/sys/cdefs.h	2019-04-16 10:50:34.008444965 +0200
+@@ -298,20 +298,6 @@
+ #endif
+ #endif
+ 
+-#if !__has_extension(c_thread_local)
+-/*
+- * XXX: Some compilers (Clang 3.3, GCC 4.7) falsely announce C++11 mode
+- * without actually supporting the thread_local keyword. Don't check for
+- * the presence of C++11 when defining _Thread_local.
+- */
+-#if /* (defined(__cplusplus) && __cplusplus >= 201103L) || */ \
+-    __has_extension(cxx_thread_local)
+-#define	_Thread_local		thread_local
+-#else
+-#define	_Thread_local		__thread
+-#endif
+-#endif
+-
+ #endif /* __STDC_VERSION__ || __STDC_VERSION__ < 201112L */
+ 
+ /*
+--- src/lib/libc/lib/libc/stdlib/cxa_thread_atexit_impl.c.orig	2022-08-16 17:53:26.334343226 +0200
++++ src/lib/libc/lib/libc/stdlib/cxa_thread_atexit_impl.c	2022-08-17 13:37:34.445860493 +0200
+@@ -105,12 +105,17 @@
+ {
+ 	struct dl_phdr_info phdr_info;
+ 
++/* XXX this unload detection mechanism does not work on Genode */
++#if 0
+ 	if (_rtld_addr_phdr(dtor->dso, &phdr_info) &&
+ 	    __elf_phdr_match_addr(&phdr_info, dtor->func))
++#endif
+ 		dtor->func(dtor->obj);
++#if 0
+ 	else
+ 		fprintf(stderr, "__cxa_thread_call_dtors: dtr %p from "
+ 		    "unloaded dso, skipping\n", (void *)(dtor->func));
++#endif
+ }
+ 
+ static void

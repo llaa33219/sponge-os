@@ -1,0 +1,11 @@
+
+#
+# Board-support for Xilinx Zynq-7000 SoC
+#
+#REPOSITORIES += $(GENODE_DIR)/repos/zynq
+
+#
+# Board-support for i.MX 5/6/7 SoC
+#
+#REPOSITORIES += $(GENODE_DIR)/repos/imx
+

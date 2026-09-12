@@ -1,0 +1,182 @@
+proc jent_avail { } {
+
+	if {[have_board pbxa9]} { return 0 }
+	if {[have_board zynq_qemu]} { return 0 }
+	return 1
+}
+
+proc jent_avail_attr { } {
+
+	if {[jent_avail]} { return "yes" }
+	return "no"
+}
+
+build { app/file_vault }
+
+create_boot_directory
+
+lappend archives \
+	[depot_user]/src/[base_src] \
+	[depot_user]/src/init \
+	[depot_user]/src/libc \
+	[depot_user]/src/zlib \
+	[depot_user]/src/fs_query \
+	[depot_user]/src/tresor \
+	[depot_user]/src/vfs_block \
+	[depot_user]/src/vfs \
+	[depot_user]/src/openssl \
+	[depot_user]/src/fs_tool \
+	[depot_user]/src/fs_utils \
+	[depot_user]/src/posix \
+	[depot_user]/src/vfs_rump \
+	[depot_user]/src/sandbox \
+	[depot_user]/src/report_rom \
+	[depot_user]/src/dynamic_rom
+
+lappend_if [jent_avail]       archives [depot_user]/src/vfs_jitterentropy
+lappend_if [have_board linux] archives [depot_user]/src/lx_fs
+
+import_from_depot {*}$archives
+
+
+proc data_fs_start_nodes_lx_fs { } { return {
+
++ start data_fs | caps: 200 | ram: 4M | ld: no
+  + binary lx_fs
+  + provides | + service File_system
+  + config
+    + policy | label_prefix: file_vault -> data | root: /file_vault_dir/data
+                                                | writeable: yes
+
++ start trust_anchor_fs | caps: 200 | ram: 4M | ld: no
+  + binary lx_fs
+  + provides | + service File_system
+  + config
+    + policy | label_prefix: file_vault -> trust_anchor | root: /file_vault_dir/trust_anchor
+                                                        | writeable: yes
+} }
+
+proc data_fs_start_nodes_vfs { } { return {
+
++ start data_fs | caps: 2000 | ram: 200M
+  + binary vfs
+  + provides | + service File_system
+  + config
+    + vfs | + dir data | + ram
+    + policy | label_prefix: file_vault -> data | root: /data | writeable: yes
+
++ start trust_anchor_fs | caps: 100 | ram: 5M
+  + binary vfs
+  + provides | + service File_system
+  + config
+    + vfs | + dir trust_anchor | + ram
+    + policy | label_prefix: file_vault -> trust_anchor | root: /trust_anchor
+                                                        | writeable: yes
+} }
+
+proc data_fs_start_nodes { } {
+	if {[have_board linux]} {
+		return [data_fs_start_nodes_lx_fs]
+	} else {
+		return [data_fs_start_nodes_vfs]
+	}
+}
+
+install_config {
+config
++ parent-provides
+  + service ROM
+  + service LOG
+  + service RM
+  + service CPU
+  + service PD
+  + service IRQ
+  + service IO_MEM
+  + service IO_PORT
+
++ default-route
+  + any-service
+    + parent
+    + any-child
+
++ start timer | caps: 200 | ram: 1M
+  + provides | + service Timer
+
++ start dynamic_rom | caps: 100 | ram: 4M
+  + provides | + service ROM
+  + config | verbose: yes
+    + rom file_vault_ui_config
+      + inline | + ui_config
+      + sleep  | milliseconds: 6000
+      + inline | + ui_config | passphrase:          abcdefgh
+               |             | client_fs_size:      1M
+               |             | journaling_buf_size: 1M
+      + sleep  | milliseconds: 10000
+      + inline | + ui_config
+      + sleep  | milliseconds: 6000
+      + inline | + ui_config | passphrase: 00000001
+      + sleep  | milliseconds: 6000
+      + inline | + ui_config
+      + sleep  | milliseconds: 6000
+      + inline | + ui_config | passphrase: abcdefgh
+      + sleep  | milliseconds: 600000
+
++ start report_rom | caps: 70 | ram: 1M
+  + provides
+    + service ROM
+    + service Report
+  + config | verbose: yes
+
+} [data_fs_start_nodes] {
+
++ start file_vault | caps: 1000 | ram: 80M
+  + config | jitterentropy_available: } [jent_avail_attr] {
+    + vfs | + dir tresor | + fs | label: tresor -> /
+  + route
+    + service ROM | label: ui_config
+      + child dynamic_rom | label: file_vault_ui_config
+    + service Report | label: ui_report
+      + child report_rom
+    + service File_system | label_prefix: tresor_trust_anchor_vfs -> storage_dir
+      + child trust_anchor_fs | identity: file_vault -> trust_anchor
+    + service File_system | label_prefix: tresor_init ->
+      + child data_fs | identity: file_vault -> data
+    + service File_system | label_prefix: tresor ->
+      + child data_fs | identity: file_vault -> data
+    + service File_system | label_prefix: fs_query ->
+      + child data_fs | identity: file_vault -> data
+    + service File_system | label_prefix: image_fs_query ->
+      + child data_fs | identity: file_vault -> data
+    + service File_system | label_prefix: tresor_vfs -> tresor_fs
+      + child data_fs | identity: file_vault -> data
+    + service File_system | label_prefix: truncate_file -> tresor
+      + child data_fs | identity: file_vault -> data
+    + service Timer | + child timer
+    + service PD    | + parent
+    + service ROM   | + parent
+    + service CPU   | + parent
+    + service LOG   | + parent
+    + service RM    | + parent
+-
+}
+
+if {[have_board linux]} {
+	exec rm -rf bin/file_vault_dir
+	exec mkdir -p bin/file_vault_dir/data
+	exec mkdir -p bin/file_vault_dir/trust_anchor
+}
+
+append boot_modules [build_artifacts]
+
+lappend_if [have_board linux] boot_modules file_vault_dir
+
+build_boot_image $boot_modules
+
+append exp_output {.* ui_report [|] state: uninitialized.*\n}
+append exp_output {.* ui_report [|] state: initializing.*\n}
+append exp_output {.* ui_report [|] state: unlocked.*\n}
+append exp_output {.* ui_report [|] state: locked.*\n}
+append exp_output {.* ui_report [|] state: unlocked.*\n}
+
+append qemu_args " -display none "
+run_genode_until $exp_output 70

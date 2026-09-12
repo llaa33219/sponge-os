@@ -1,0 +1,51 @@
+runtime | ram: 90M | caps: 1000 | binary: init
+
++ requires | + timer
+
++ fail    | after_seconds: 30
++ succeed | : child "sequence" exited with exit value 0
++ fail    | : *Error:
+
++ content
+  + rom | label: ld.lib.so
+  + rom | label: top
+  + rom | label: test-trace
+  + rom | label: sequence
+  + rom | label: null
+
++ config
+  + parent-provides
+    + service ROM
+    + service IRQ
+    + service IO_MEM
+    + service IO_PORT
+    + service PD
+    + service RM
+    + service CPU
+    + service LOG
+    + service TRACE
+    + service Timer
+
+  + default-route
+    + service TRACE | + parent | label:
+    + any-service
+      + parent
+      + any-child
+
+  + default | caps: 200
+
+  + start sequence | ram: 15M
+    + config
+      + start test-trace
+      | + config | + trace_policy | label:  sequence -> test-trace
+      |                             thread: test-thread
+      |                             module: null
+      + start test-trace
+      | + config | + trace_policy | label: top | thread: ep | module: null
+      |
+      + start test-trace
+        + config | + trace_policy | label: top | thread: ep | module: null
+
+  + start top | ram: 2M
+    + config | period_ms: 500
+-

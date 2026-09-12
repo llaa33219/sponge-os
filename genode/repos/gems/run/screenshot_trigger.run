@@ -1,0 +1,87 @@
+create_boot_directory
+
+import_from_depot [depot_user]/src/[base_src] \
+                  [depot_user]/pkg/[drivers_interactive_pkg] \
+                  [depot_user]/src/report_rom \
+                  [depot_user]/src/nitpicker \
+                  [depot_user]/src/init
+
+install_config {
+config | prio_levels: 2
++ parent-provides
+  + service ROM
+  + service IRQ
+  + service IO_MEM
+  + service IO_PORT
+  + service PD
+  + service RM
+  + service CPU
+  + service LOG
+
++ default-route
+  + any-service
+    + parent
+    + any-child
+
++ default | caps: 100 | ram: 1M
+
++ start timer
+  + provides | + service Timer
+
++ start drivers | caps: 1500 | ram: 64M | managing_system: yes
+  + binary init
+  + route
+    + service ROM | label: config | + parent | label: drivers.config
+    + service Timer               | + child timer
+    + service Capture             | + child nitpicker
+    + service Event               | + child nitpicker
+    + any-service                 | + parent
+
++ start report_rom
+  + provides
+    + service Report
+    + service ROM
+  + config | verbose: yes
+
++ start nitpicker | ram: 4M
+  + provides
+    + service Gui
+    + service Capture
+    + service Event
+  + config | focus: rom
+    + capture
+    + event
+    + report | keystate: yes
+    + domain pointer | layer: 1 | content: client | label: no | origin: pointer
+    + domain default | layer: 2 | content: client | label: no | hover:  always
+    + policy | label_prefix: pointer | domain: pointer
+    + default-policy                 | domain: default
+
++ start pointer
+  + route
+    + service Gui | + child nitpicker
+    + any-service
+      + parent
+      + any-child
+
++ start screenshot_trigger | ram: 8M
+  + binary screenshot_trigger
+  + config | size: 200
+  + route
+    + service Gui   | + child nitpicker
+    + service Event | + child nitpicker
+    + any-service
+      + parent
+      + any-child
+-
+}
+
+set fd [open [run_dir]/genode/focus w]
+puts $fd "focus | label: screenshot_trigger ->\n-"
+close $fd
+
+build { app/screenshot_trigger }
+
+build_boot_image [build_artifacts]
+
+run_genode_until forever

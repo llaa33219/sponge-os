@@ -1,0 +1,38 @@
+build { core init timer lib/ld lib/libc lib/vfs test/libc_with_libc }
+
+create_boot_directory
+
+install_config {
+config
++ parent-provides
+  + service ROM
+  + service IRQ
+  + service IO_MEM
+  + service IO_PORT
+  + service PD
+  + service RM
+  + service CPU
+  + service LOG
+
++ default-route
+  + any-service
+    + parent
+    + any-child
+
++ default | caps: 100 | ram: 1M
+
++ start timer
+  + provides | + service Timer
+
++ start test-libc_with_libc | ram: 4M
+  + config
+    + vfs | + dir dev | + log
+    + libc | stdout: /dev/log
+-
+}
+
+build_boot_image [build_artifacts]
+
+append qemu_args " -nographic  "
+
+run_genode_until ".*finished with_libc tests.*\n" 10

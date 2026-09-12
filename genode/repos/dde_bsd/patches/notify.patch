@@ -1,0 +1,23 @@
+Instead of implementing softintr handling add our notification
+functions directly.
+
+--- a/dev/audio.c
++++ b/dev/audio.c
+@@ -572,6 +572,8 @@ audio_pintr(void *addr)
+ 		 */
+ 		softintr_schedule(sc->play.softintr);
+ 	}
++
++	notify_play();
+ }
+ 
+ /*
+@@ -655,6 +657,8 @@ audio_rintr(void *addr)
+ 		 */
+ 		softintr_schedule(sc->rec.softintr);
+ 	}
++
++	notify_record();
+ }
+ 
+ int

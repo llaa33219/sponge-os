@@ -1,0 +1,134 @@
+LICENSE   := OpenSSL
+VERSION   := 1.1.1w
+DOWNLOADS := openssl.archive
+
+URL(openssl) := https://www.openssl.org/source/openssl-$(VERSION).tar.gz
+SHA(openssl) := cf3098950cb4d853ad95c0841f1f9c6d3dc102dccfcacd521d93925208b76ac8
+DIR(openssl) := src/lib/openssl
+
+DIRS := include
+DIR_CONTENT(include) = src/lib/openssl/include/openssl
+
+PATCHES   := src/lib/openssl/crypto.patch
+PATCH_OPT := -p1
+
+$(call check_tool,perl)
+
+ASM_X86_32 := \
+	src/lib/openssl/crypto/aes/asm/aesni-x86.s \
+	src/lib/openssl/crypto/aes/asm/vpaes-x86.s \
+	src/lib/openssl/crypto/bf/asm/bf-586.s \
+	src/lib/openssl/crypto/bn/asm/bn-586.s \
+	src/lib/openssl/crypto/bn/asm/co-586.s \
+	src/lib/openssl/crypto/bn/asm/x86-gf2m.s \
+	src/lib/openssl/crypto/bn/asm/x86-mont.s \
+	src/lib/openssl/crypto/camellia/asm/cmll-x86.s \
+	src/lib/openssl/crypto/chacha/asm/chacha-x86.s \
+	src/lib/openssl/crypto/des/asm/des-586.s \
+	src/lib/openssl/crypto/ec/asm/ecp_nistz256-x86.s \
+	src/lib/openssl/crypto/md5/asm/md5-586.s \
+	src/lib/openssl/crypto/modes/asm/ghash-x86.s \
+	src/lib/openssl/crypto/poly1305/asm/poly1305-x86.s \
+	src/lib/openssl/crypto/rc4/asm/rc4-586.s \
+	src/lib/openssl/crypto/ripemd/asm/rmd-586.s \
+	src/lib/openssl/crypto/sha/asm/sha1-586.s \
+	src/lib/openssl/crypto/sha/asm/sha256-586.s \
+	src/lib/openssl/crypto/sha/asm/sha512-586.s \
+	src/lib/openssl/crypto/whrlpool/asm/wp-mmx.s \
+	src/lib/openssl/crypto/x86cpuid.s
+ASM_X86_64 := \
+	src/lib/openssl/crypto/aes/asm/aesni-mb-x86_64.s \
+	src/lib/openssl/crypto/aes/asm/aesni-sha1-x86_64.s \
+	src/lib/openssl/crypto/aes/asm/aesni-sha256-x86_64.s \
+	src/lib/openssl/crypto/aes/asm/aesni-x86_64.s \
+	src/lib/openssl/crypto/aes/asm/vpaes-x86_64.s \
+	src/lib/openssl/crypto/bn/asm//rsaz-avx2.s \
+	src/lib/openssl/crypto/bn/asm//rsaz-x86_64.s \
+	src/lib/openssl/crypto/bn/asm//x86_64-gf2m.s \
+	src/lib/openssl/crypto/bn/asm//x86_64-mont.s \
+	src/lib/openssl/crypto/bn/asm//x86_64-mont5.s \
+	src/lib/openssl/crypto/camellia/asm/cmll-x86_64.s \
+	src/lib/openssl/crypto/chacha/asm/chacha-x86_64.s \
+	src/lib/openssl/crypto/ec/asm/ecp_nistz256-x86_64.s \
+	src/lib/openssl/crypto/ec/asm/x25519-x86_64.s \
+	src/lib/openssl/crypto/md5/asm/md5-x86_64.s \
+	src/lib/openssl/crypto/modes/asm/aesni-gcm-x86_64.s \
+	src/lib/openssl/crypto/modes/asm/ghash-x86_64.s \
+	src/lib/openssl/crypto/poly1305/asm/poly1305-x86_64.s \
+	src/lib/openssl/crypto/rc4/asm/rc4-md5-x86_64.s \
+	src/lib/openssl/crypto/rc4/asm/rc4-x86_64.s \
+	src/lib/openssl/crypto/sha/asm/keccak1600-x86_64.s \
+	src/lib/openssl/crypto/sha/asm/sha1-mb-x86_64.s \
+	src/lib/openssl/crypto/sha/asm/sha1-x86_64.s \
+	src/lib/openssl/crypto/sha/asm/sha256-mb-x86_64.s \
+	src/lib/openssl/crypto/sha/asm/sha256-x86_64.s \
+	src/lib/openssl/crypto/sha/asm/sha512-x86_64.s \
+	src/lib/openssl/crypto/whrlpool/asm/wp-x86_64.s \
+	src/lib/openssl/crypto/x86_64cpuid.s
+ASM_ARM_32 := \
+	src/lib/openssl/crypto/aes/asm/aes-armv4.S \
+	src/lib/openssl/crypto/aes/asm/aesv8-arm32.S \
+	src/lib/openssl/crypto/bn/asm/armv4-gf2m.S \
+	src/lib/openssl/crypto/bn/asm/armv4-mont.S \
+	src/lib/openssl/crypto/chacha/asm/chacha-armv4.S \
+	src/lib/openssl/crypto/ec/asm/ecp_nistz256-armv4.S \
+	src/lib/openssl/crypto/modes/asm/ghash-armv4.S \
+	src/lib/openssl/crypto/modes/asm/ghashv8-arm32.S \
+	src/lib/openssl/crypto/poly1305/asm/poly1305-armv4.S \
+	src/lib/openssl/crypto/sha/asm/keccak1600-armv4.S \
+	src/lib/openssl/crypto/sha/asm/sha1-armv4-large.S \
+	src/lib/openssl/crypto/sha/asm/sha256-armv4.S \
+	src/lib/openssl/crypto/sha/asm/sha512-armv4.S \
+	src/lib/openssl/crypto/armv4cpuid.S
+ASM_ARM_64 := $(addprefix src/lib/openssl/crypto/, \
+	aes/asm/aesv8-arm64.S \
+	aes/asm/vpaes-armv8.S \
+	bn/asm/armv8-mont.S \
+	chacha/asm/chacha-armv8.S \
+	ec/asm/ecp_nistz256-armv8.S \
+	modes/asm/ghashv8-arm64.S \
+	poly1305/asm/poly1305-armv8.S \
+	sha/asm/keccak1600-armv8.S \
+	sha/asm/sha1-armv8.S \
+	sha/asm/sha256-armv8.S \
+	sha/asm/sha512-armv8.S \
+	arm64cpuid.S)
+
+$(ASM_X86_32): PERLASM_SCHEME=elf -m32 -fPIC -DOPENSSL_IA32_SSE2 -DSHA1_ASM -DSHA256_ASM -DSHA512_ASM
+$(ASM_X86_64): PERLASM_SCHEME=elf
+$(ASM_ARM_32): PERLASM_SCHEME=linux32
+$(ASM_ARM_64): PERLASM_SCHEME=linux64
+
+%.s: %.pl
+	@$(MSG_GENERATE)$@
+	$(VERBOSE)perl $< $(PERLASM_SCHEME) $@
+
+%.S: %.pl
+	@$(MSG_GENERATE)$@
+	$(VERBOSE)perl $< $(PERLASM_SCHEME) $@
+
+src/lib/openssl/crypto/sha/asm/sha256-x86_64.s: src/lib/openssl/crypto/sha/asm/sha512-x86_64.pl
+	@$(MSG_GENERATE)$@
+	$(VERBOSE)perl $< $(PERLASM_SCHEME) $@
+
+src/lib/openssl/crypto/sha/asm/sha256-armv8.S: src/lib/openssl/crypto/sha/asm/sha512-armv8.pl
+	@$(MSG_GENERATE)$@
+	$(VERBOSE)perl $< $(PERLASM_SCHEME) $@
+
+src/lib/openssl/crypto/aes/asm/aesv8-arm32.S: src/lib/openssl/crypto/aes/asm/aesv8-armx.pl
+	@$(MSG_GENERATE)$@
+	$(VERBOSE)perl $< $(PERLASM_SCHEME) $@
+
+src/lib/openssl/crypto/aes/asm/aesv8-arm64.S: src/lib/openssl/crypto/aes/asm/aesv8-armx.pl
+	@$(MSG_GENERATE)$@
+	$(VERBOSE)perl $< $(PERLASM_SCHEME) $@
+
+src/lib/openssl/crypto/modes/asm/ghashv8-arm32.S: src/lib/openssl/crypto/modes/asm/ghashv8-armx.pl
+	@$(MSG_GENERATE)$@
+	$(VERBOSE)perl $< $(PERLASM_SCHEME) $@
+
+src/lib/openssl/crypto/modes/asm/ghashv8-arm64.S: src/lib/openssl/crypto/modes/asm/ghashv8-armx.pl
+	@$(MSG_GENERATE)$@
+	$(VERBOSE)perl $< $(PERLASM_SCHEME) $@
+
+_dirs: $(ASM_X86_32) $(ASM_X86_64) $(ASM_ARM_32) $(ASM_ARM_64)

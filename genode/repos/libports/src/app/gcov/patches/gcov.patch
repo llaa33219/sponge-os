@@ -1,0 +1,296 @@
+gcov.patch
+
+From: Christian Prochaska <christian.prochaska@genode-labs.com>
+
+
+---
+ gcc/gcov.cc |  145 +++++++++++++++++++++++++++++++++++++++++++++++++++++++----
+ 1 file changed, 136 insertions(+), 9 deletions(-)
+
+diff --git a/gcc/gcov.cc b/gcc/gcov.cc
+index 0d4ef14..8bbf786 100644
+--- a/gcc/gcov.cc
++++ b/gcc/gcov.cc
+@@ -51,6 +51,8 @@ along with Gcov; see the file COPYING3.  If not see
+ #include <zlib.h>
+ #include <getopt.h>
+ 
++#include <dirent.h>
++
+ #include "md5.h"
+ 
+ using namespace std;
+@@ -573,6 +575,11 @@ static const char *bbg_cwd;
+ 
+ static char *da_file_name;
+ 
++/* Name and file pointer of the input file for the annotation source list (gcan).  */
++
++#define GCOV_ANNOTATE_SUFFIX ".gcan"
++static char *an_file_name;
++
+ /* Data file is missing.  */
+ 
+ static int no_data_file;
+@@ -653,6 +660,16 @@ static int flag_function_summary = 0;
+ 
+ static int flag_debug = 0;
+ 
++/*
++ * Genode autopilot mode
++ *
++ * - scans for gcov data files
++ * - strips the Genode depot path from source paths
++ * - writes results to stdout
++ */
++
++static int flag_genode_autopilot = 0;
++
+ /* Object directory file prefix.  This is the directory/file where the
+    graph and data files are looked for, if nonzero.  */
+ 
+@@ -903,6 +920,43 @@ get_cycles_count (line_info &linfo)
+   return count;
+ }
+ 
++void process_files(const char *dir_path)
++{
++	char new_path[strlen(dir_path) + sizeof('/') + NAME_MAX];
++
++	DIR *dir = opendir(dir_path);
++
++	if (!dir)
++		return;
++
++	struct dirent *dirent;
++
++	while((dirent = readdir(dir)) != NULL) {
++
++		snprintf(new_path, sizeof(new_path), "%s/%s", dir_path, dirent->d_name);
++
++		struct stat stat_buf;
++
++		if (stat(new_path, &stat_buf) != 0)
++			continue;
++
++		if (S_ISDIR(stat_buf.st_mode)) {
++			process_files(new_path);
++			continue;
++		}
++		
++		if (!S_ISREG(stat_buf.st_mode))
++			continue;
++		
++		if (!strstr(dirent->d_name, ".gcda"))
++			continue;
++
++		process_file(new_path);
++	}
++
++  	closedir(dir);
++}
++
+ int
+ main (int argc, char **argv)
+ {
+@@ -928,13 +982,25 @@ main (int argc, char **argv)
+   expandargv (&argc, &argv);
+ 
+   argno = process_args (argc, argv);
+-  if (optind == argc)
++  if ((optind == argc) && !flag_genode_autopilot)
+     print_usage (true);
+ 
+   if (argc - argno > 1)
+     multiple_files = 1;
+ 
+   first_arg = argno;
++  
++  if (flag_genode_autopilot) {
++
++  	/* search .gcda files and process each one */
++  	process_files("/");
++
++	process_all_functions();
++	generate_results(NULL);
++	release_structures();
++
++	return 0;
++  }
+ 
+   for (; argno != argc; argno++)
+     {
+@@ -996,6 +1062,7 @@ print_usage (int error_p)
+   fnotice (file, "  -v, --version                   Print version number, then exit\n");
+   fnotice (file, "  -w, --verbose                   Print verbose informations\n");
+   fnotice (file, "  -x, --hash-filenames            Hash long pathnames\n");
++  fnotice (file, "  -e, --genode-autopilot          Genode autopilot mode\n");
+   fnotice (file, "\nObsolete options:\n");
+   fnotice (file, "  -i, --json-format               Replaced with -j, --json-format\n");
+   fnotice (file, "  -j, --human-readable            Replaced with -H, --human-readable\n");
+@@ -1046,6 +1113,7 @@ static const struct option options[] =
+   { "use-colors",	    no_argument,       NULL, 'k' },
+   { "use-hotness-colors",   no_argument,       NULL, 'q' },
+   { "debug",		    no_argument,       NULL, 'D' },
++  { "genode-autopilot",     no_argument,       NULL, 'e' },
+   { 0, 0, 0, 0 }
+ };
+ 
+@@ -1056,7 +1124,7 @@ process_args (int argc, char **argv)
+ {
+   int opt;
+ 
+-  const char *opts = "abcdDfghHijklmno:pqrs:tuvwx";
++  const char *opts = "abcdeDfghHijklmno:pqrs:tuvwx";
+   while ((opt = getopt_long (argc, argv, opts, options, NULL)) != -1)
+     {
+       switch (opt)
+@@ -1070,6 +1138,9 @@ process_args (int argc, char **argv)
+ 	case 'c':
+ 	  flag_counts = 1;
+ 	  break;
++	case 'e':
++	  flag_genode_autopilot = 1;
++	  break;
+ 	case 'f':
+ 	  flag_function_summary = 1;
+ 	  break;
+@@ -1558,13 +1629,45 @@ process_all_functions (void)
+ static void
+ output_gcov_file (const char *file_name, source_info *src)
+ {
++  if (flag_genode_autopilot) {
++
++	/* output only if the file name appears in the .gcan file */
++
++    FILE *annotate_file = fopen(an_file_name, "r");
++
++    if (!annotate_file)
++      return;
++
++    char *source_file = NULL;
++    size_t len = 0;
++    bool annotate = false;
++
++    while (getline(&source_file, &len, annotate_file) != -1) {
++
++      /* remove '\n' */
++      source_file[strlen(source_file) - 1] = 0;
++
++      if (strstr(src->coverage.name, source_file) != NULL) {
++        annotate = true;
++        break;
++      }
++    }
++
++    fclose(annotate_file);
++
++    if (!annotate)
++      return;
++  }
++
+   string gcov_file_name_str
+     = make_gcov_file_name (file_name, src->coverage.name);
+   const char *gcov_file_name = gcov_file_name_str.c_str ();
+ 
+   if (src->coverage.lines)
+     {
+-      FILE *gcov_file = fopen (gcov_file_name, "w");
++      FILE *gcov_file = flag_genode_autopilot ?
++                        stdout :
++                        fopen (gcov_file_name, "w");
+       if (gcov_file)
+ 	{
+ 	  fnotice (stdout, "Creating '%s'\n", gcov_file_name);
+@@ -1575,7 +1678,8 @@ output_gcov_file (const char *file_name, source_info *src)
+ 		       gcov_file_name);
+ 	      return_code = 6;
+ 	    }
+-	  fclose (gcov_file);
++	  if (!flag_genode_autopilot)
++	    fclose (gcov_file);
+ 	}
+       else
+ 	{
+@@ -1611,6 +1715,7 @@ generate_results (const char *file_name)
+ 	}
+     }
+ 
++if (file_name) {
+   name_map needle;
+   needle.name = file_name;
+   vector<name_map>::iterator it
+@@ -1619,8 +1724,9 @@ generate_results (const char *file_name)
+     file_name = sources[it->src].coverage.name;
+   else
+     file_name = canonicalize_name (file_name);
+-
+-  gcov_intermediate_filename = get_gcov_intermediate_filename (file_name);
++}
++  if (file_name)
++    gcov_intermediate_filename = get_gcov_intermediate_filename (file_name);
+ 
+   json::object *root = new json::object ();
+   root->set_string ("format_version", GCOV_JSON_FORMAT_VERSION);
+@@ -1628,7 +1734,8 @@ generate_results (const char *file_name)
+ 
+   if (bbg_cwd != NULL)
+     root->set_string ("current_working_directory", bbg_cwd);
+-  root->set_string ("data_file", file_name);
++  if (file_name)
++    root->set_string ("data_file", file_name);
+ 
+   json::array *json_files = new json::array ();
+   root->set ("files", json_files);
+@@ -1659,7 +1766,10 @@ generate_results (const char *file_name)
+ 	file_summary (&src->coverage);
+       total_lines += src->coverage.lines;
+       total_executed += src->coverage.lines_executed;
+-      if (flag_gcov_file)
++
++      if (flag_gcov_file &&
++          !(flag_genode_autopilot &&
++            (src->coverage.lines_executed == src->coverage.lines)))
+ 	{
+ 	  if (flag_json_format)
+ 	    {
+@@ -1752,7 +1862,8 @@ create_file_names (const char *file_name)
+   /* Free previous file names.  */
+   free (bbg_file_name);
+   free (da_file_name);
+-  da_file_name = bbg_file_name = NULL;
++  free (an_file_name);
++  da_file_name = bbg_file_name = an_file_name = NULL;
+   bbg_file_time = 0;
+   bbg_stamp = 0;
+ 
+@@ -1798,6 +1909,10 @@ create_file_names (const char *file_name)
+   strcpy (da_file_name, name);
+   strcpy (da_file_name + length, GCOV_DATA_SUFFIX);
+ 
++  an_file_name = XNEWVEC (char, length + strlen (GCOV_ANNOTATE_SUFFIX) + 1);
++  strcpy (an_file_name, name);
++  strcpy (an_file_name + length, GCOV_ANNOTATE_SUFFIX);
++
+   free (name);
+   return;
+ }
+@@ -1854,6 +1969,18 @@ find_source (const char *file_name)
+ #endif
+ 	  && IS_DIR_SEPARATOR (src->coverage.name[source_length]))
+ 	src->coverage.name += source_length + 1;
++
++      if (flag_genode_autopilot) {
++
++        /* strip path of the Genode depot */
++
++        char *depot_relative_path = strstr(src->name, "/depot/");
++        if (depot_relative_path) {
++          src->name = depot_relative_path + strlen("/depot");
++          src->coverage.name = src->name;
++        }
++      }
++
+       if (!stat (src->name, &status))
+ 	src->file_time = status.st_mtime;
+     }

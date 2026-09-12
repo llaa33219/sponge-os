@@ -1,0 +1,287 @@
+/*
+ * \brief  Utility for querying the directory structure of file systems
+ * \author Norman Feske
+ * \date   2025-04-17
+ */
+
+/*
+ * Copyright (C) 2025 Genode Labs GmbH
+ *
+ * This file is part of the Genode OS framework, which is distributed
+ * under the terms of the GNU Affero General Public License version 3.
+ */
+
+#ifndef _MODEL__DIR_QUERY_H_
+#define _MODEL__DIR_QUERY_H_
+
+#include <types.h>
+#include <managed_config.h>
+#include <model/child_state.h>
+
+namespace Sculpt { struct Dir_query; }
+
+struct Sculpt::Dir_query : Noncopyable
+{
+	using Identity = Start_name;  /* 'component name' -> 'fs session label' */
+	using Fs_name  = String<128>;
+
+	struct Action : Interface
+	{
+		virtual void queried_dir_response() = 0;
+	};
+
+	Action &_action;
+
+	struct Query
+	{
+		Identity identity;  /* label of designated file-system client */
+		Fs_name  fs;        /* queried fs, or "" for all file systems */
+		Path     path;      /* fs-local directory */
+
+		Path vfs_path() const { return (fs == "") ? Path { "/" }
+		                                          : Path { "/", fs, "/", path }; }
+
+		bool operator != (Query const &other) const
+		{
+			return other.fs != fs || other.path != path || other.identity != identity;
+		}
+	};
+
+	Query _query { };
+
+	/*
+	 * Name of directory where the file system is mounted
+	 */
+	static Fs_name fs_dir_name(Service const &service)
+	{
+		Fs_name result { service.server };
+		if (service.name.length() > 1) result = Fs_name { result, ".", service.name };
+		return result;
+	}
+
+	/*
+	 * Dictionary of known file systems
+	 */
+	struct Fs;
+	using Fs_dict = Dictionary<Fs, Fs_name>;
+	struct Fs : Fs_dict::Element
+	{
+		Start_name    const server;
+		Service::Name const resource;
+
+		Fs(Fs_dict &dict, Service const &service)
+		:
+			Fs_dict::Element(dict, fs_dir_name(service)),
+			server(service.server), resource(service.name)
+		{ }
+	};
+	Fs_dict _fs_dict { };
+
+	struct State : Noncopyable
+	{
+		Action &_action;
+
+		Child_state _fs_query;
+
+		Rom_handler<State> _listing_handler;
+
+		void _handle_listing(Node const &) { _action.queried_dir_response(); }
+
+		State(Env &env, Action &action, Registry<Child_state> &children)
+		:
+			_action(action),
+			_fs_query(children, {
+				.name      = "dir_query",
+				.binary    = "fs_query",
+				.priority  = Priority::STORAGE,
+				.location  = { },
+				.initial   = { .ram =  4*1024*1024, .caps = 1000 },
+				.max       = { .ram = 16*1024*1024, .caps = 2000 } }),
+			_listing_handler(env, { "report -> dir_query/listing" },
+			                 *this, &State::_handle_listing)
+		{ }
+	};
+
+	Constructible<State> _state { };
+
+	Managed_config<Dir_query> _fs_query_config;
+
+	void _gen_fs_query_config()
+	{
+		_fs_query_config.generate([&] (Generator &g) {
+			g.tabular_node("vfs", [&] {
+				_fs_dict.for_each([&] (Fs const &fs) {
+					if (_query.fs == "" || _query.fs == fs.name)
+						gen_named_node(g, "dir", fs.name, [&] {
+							g.node("fs", [&] {
+								Session_label const label { fs.name, " -> /" };
+								g.attribute("label", label); }); }); }); });
+
+			g.node("query", [&] {
+				g.attribute("path", _query.vfs_path());
+				g.attribute("count", "yes"); });
+		});
+	}
+
+	void _handle_fs_query_config(Node const &)
+	{
+		_gen_fs_query_config();
+	}
+
+	Dir_query(Env &env, Allocator &alloc, Action &action)
+	:
+		_action(action),
+		_fs_query_config(env, alloc, "config", "child/dir_query",
+		                 *this, &Dir_query::_handle_fs_query_config)
+	{
+		_fs_query_config.trigger_update();
+	}
+
+	struct [[nodiscard]] Update_result { bool runtime_reconfig_needed; };
+
+	/**
+	 * Respond to appearing/disappearing file systems
+	 */
+	Update_result update(Allocator &alloc, Runtime_config const &runtime_config)
+	{
+		bool any_file_system_vanished = false;
+		_fs_dict.for_each([&] (Fs const &fs) {
+			bool exists = false;
+			runtime_config.for_each_service([&] (Service const &service) {
+				exists |= (service.type == Service::Type::FS)
+				       && (fs_dir_name(service) == fs.name); });
+			if (!exists) {
+				any_file_system_vanished = true;
+			}
+		});
+
+		if (any_file_system_vanished)
+			while (_fs_dict.with_any_element([&] (Fs &fs) {
+				destroy(alloc, &fs); }));
+
+		bool file_systems_changed = any_file_system_vanished;
+		runtime_config.for_each_service([&] (Service const &service) {
+			if (service.type == Service::Type::FS)
+				if (!_fs_dict.exists(fs_dir_name(service))) {
+					new (alloc) Fs(_fs_dict, service);
+					file_systems_changed = true; } });
+
+		if (file_systems_changed) {
+			_gen_fs_query_config();
+			if (_state.constructed())
+				_state->_fs_query.trigger_restart();
+		}
+
+		return { .runtime_reconfig_needed = file_systems_changed };
+	}
+
+	Update_result update_query(Env &env, Action &action,
+	                           Registry<Child_state> &children, Query const &query)
+	{
+		Query const orig_query = _query;
+		_query = query;
+
+		_gen_fs_query_config();
+
+		if (!_state.constructed())
+			_state.construct(env, action, children);
+
+		bool const vfs_needs_reconstruct = (orig_query.fs       != _query.fs)
+		                                || (orig_query.identity != _query.identity);
+		if (vfs_needs_reconstruct)
+			_state->_fs_query.trigger_restart();
+
+		return { .runtime_reconfig_needed = vfs_needs_reconstruct };
+	}
+
+	Update_result drop_query()
+	{
+		Update_result result { .runtime_reconfig_needed = _state.constructed() };
+		_state.destruct();
+		_query = { };
+		return result;
+	}
+
+	struct Entry
+	{
+		using Name = String<128>;
+
+		unsigned index;
+		Name     name;
+		unsigned num_dirs;
+	};
+
+	void for_each_dir_entry(Query const &query, auto const &fn) const
+	{
+		if (query != _query || !_state.constructed())
+			return;
+
+		_state->_listing_handler.with_node([&] (Node const &listing) {
+			unsigned index = 0;
+			listing.for_each_sub_node("dir", [&] (Node const &dir_response) {
+				if (dir_response.attribute_value("path", Path()) != query.vfs_path())
+					return;
+
+				dir_response.for_each_sub_node("dir", [&] (Node const &dir) {
+					fn(Entry { .index = index++,
+					           .name = dir.attribute_value("name", Entry::Name()),
+					           .num_dirs = dir.attribute_value("num_dirs", 0u) });
+				});
+			});
+		});
+	}
+
+	bool dir_entry_has_sub_dirs(Query const &query, String<128> const &sub_dir) const
+	{
+		bool result = false;
+		for_each_dir_entry(query, [&] (Entry const &entry) {
+			if (entry.name == sub_dir && entry.num_dirs)
+				result = true; });
+		return result;
+	}
+
+	void gen_child_nodes(Generator &g) const
+	{
+		if (!_state.constructed())
+			return;
+
+		auto gen_fs_connect = [&] (Generator &g, Fs const &fs)
+		{
+			gen_named_node(g, "fs", fs.name, [&] {
+				g.node("child", [&] {
+					g.attribute("name", fs.server);
+
+					/*
+					 * If a specific server-side resource selected, use the
+					 * resource as identity. Otherwise, use the identity of
+					 * the designated file-system client to make sure that the
+					 * policy of the client is applied while querying (e.g.,
+					 * recall_fs showing the client's content).
+					 */
+					if (fs.resource.length() > 1)
+						g.attribute("identity", fs.resource);
+					else
+						g.attribute("identity", _query.identity);
+
+					g.attribute("resource", "/");
+				});
+			});
+		};
+
+		g.node("child", [&] {
+			_state->_fs_query.gen_child_node_content(g);
+
+			g.tabular_node("connect", [&] {
+				connect_config_rom(g, "config", "child/dir_query");
+				connect_parent_rom(g, "vfs.lib.so");
+				connect_report(g);
+
+				_fs_dict.for_each([&] (Fs const &fs) {
+					if (_query.fs == "" || _query.fs == fs.name)
+						gen_fs_connect(g, fs); });
+			});
+		});
+	}
+};
+
+#endif /* _MODEL__DIR_QUERY_H_ */

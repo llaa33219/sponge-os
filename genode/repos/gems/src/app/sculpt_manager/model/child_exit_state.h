@@ -1,0 +1,52 @@
+/*
+ * \brief  Utility for querying the child-exit state from init's state report
+ * \author Norman Feske
+ * \date   2018-04-30
+ */
+
+/*
+ * Copyright (C) 2018 Genode Labs GmbH
+ *
+ * This file is part of the Genode OS framework, which is distributed
+ * under the terms of the GNU Affero General Public License version 3.
+ */
+
+#ifndef _MODEL__CHILD_EXIT_STATE_H_
+#define _MODEL__CHILD_EXIT_STATE_H_
+
+/* local includes */
+#include "types.h"
+
+namespace Sculpt { struct Child_exit_state; }
+
+struct Sculpt::Child_exit_state
+{
+	bool exists     = false;
+	bool exited     = false;
+	bool responsive = true;
+	int  code       = 0;
+
+	using Name = String<64>;
+	using Version = String<16>;
+
+	Version version { };
+
+	Child_exit_state(Node const &init_state, Name const &name)
+	{
+		init_state.for_each_sub_node("child", [&] (Node const &child) {
+			if (child.attribute_value("name", Name()) == name) {
+				exists = true;
+				version = child.attribute_value("version", Version());
+
+				if (child.has_attribute("exited")) {
+					exited = true;
+					code = (int)child.attribute_value("exited", 0L);
+				}
+
+				responsive = (child.attribute_value("skipped_heartbeats", 0U) <= 4);
+			}
+		});
+	}
+};
+
+#endif /* _MODEL__CHILD_EXIT_STATE_H_ */

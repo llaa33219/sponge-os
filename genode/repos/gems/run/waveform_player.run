@@ -1,0 +1,168 @@
+create_boot_directory
+
+import_from_depot [depot_user]/src/[base_src] \
+                  [depot_user]/pkg/[drivers_interactive_pkg] \
+                  [depot_user]/pkg/font \
+                  [depot_user]/src/init \
+                  [depot_user]/src/report_rom \
+                  [depot_user]/src/dynamic_rom \
+                  [depot_user]/src/nitpicker \
+                  [depot_user]/src/libc \
+                  [depot_user]/src/libpng \
+                  [depot_user]/src/zlib
+
+build { server/record_play_mixer server/record_rom app/waveform_player app/rom_osci }
+
+proc play_period_ms { } {
+	if {[have_spec linux]} { return 80 }
+	return 5
+}
+
+proc record_period_ms { } {
+	if {[have_spec linux]} { return 40 }
+	return 5
+}
+
+proc jitter_ms { } {
+	if {[have_spec linux]} { return 20 }
+	return 2
+}
+
+install_config {
+config | prio_levels: 4
++ parent-provides
+  + service ROM
+  + service CPU
+  + service PD
+  + service RM
+  + service LOG
+  + service IRQ
+  + service IO_MEM
+  + service IO_PORT
+  + service TRACE
+
++ default-route
+  + any-service
+    + parent
+    + any-child
+
++ default | caps: 100 | ram: 1M
+
++ start timer
+  + provides | + service Timer
+
++ start report_rom | ram: 2M | priority: -1
+  + provides
+    + service ROM
+    + service Report
+  + config
+
++ start drivers | caps: 1500 | ram: 64M | managing_system: yes | priority: -1
+  + binary init
+  + route
+    + service ROM | label: config | + parent | label: drivers.config
+    + service Timer               | + child timer
+    + service Capture             | + child nitpicker
+    + service Event               | + child nitpicker
+    + any-service                 | + parent
+
++ start nitpicker | ram: 4M | priority: -2
+  + provides
+    + service Gui
+    + service Capture
+    + service Event
+  + config
+    + capture
+    + event
+    + domain pointer | layer: 1 | content: client | label: no | origin: pointer
+    + domain default | layer: 3 | content: client | label: no | hover: always
+    + policy | label_prefix: pointer | domain: pointer
+    + default-policy                 | domain: default
+
++ start pointer | priority: -1
+
++ start font | caps: 300 | ram: 8M | priority: -1
+  + binary vfs
+  + provides | + service File_system
+  + route
+    + service ROM | label: config | + parent | label: font.config
+    + any-service                 | + parent
+
++ start mixer | ram: 2M
+  + binary record_play_mixer
+  + provides
+    + service Record
+    + service Play
+  + config | jitter_ms: } [jitter_ms] { | record_period_ms: } [record_period_ms] {
+    + mix left   | + play | label_suffix: left
+    + mix right  | + play | label_suffix: right
+    + mix lefty  | + signal left  | volume: 0.7
+                 | + signal right | volume: 0.3
+    + mix righty | + signal left  | volume: 0.3
+                 | + signal right | volume: 0.7
+    + policy | label_suffix: left   | record: left
+    + policy | label_suffix: lefty  | record: lefty
+    + policy | label_suffix: righty | record: righty
+    + policy | label_suffix: right  | record: right
+
++ start waveform_config | ram: 2M | priority: -2
+  + binary dynamic_rom
+  + provides | + service ROM
+  + config | verbose: yes
+    + rom config
+      + inline
+      | + config | period_ms: } [play_period_ms] {
+      |   + play | label: left  | wave: sine   | hz:  1000 | sample_rate_hz: 44100
+      |   + play | label: right | wave: square | hz:  1000 | sample_rate_hz: 33333
+      + sleep | milliseconds: 2000
+      + inline
+      | + config | period_ms: } [play_period_ms] {
+      |   + play | label: left  | wave: sine   | hz: 10000 | sample_rate_hz: 44100
+      |   + play | label: right | wave: square | hz: 10000 | sample_rate_hz: 33333
+      + sleep | milliseconds: 2000
+      + inline
+      | + config | period_ms: } [play_period_ms] {
+      |   + play | label: left  | wave: sine   | hz:     0 | sample_rate_hz: 44100
+      |   + play | label: right | wave: square | hz:     0 | sample_rate_hz: 33333
+      + sleep | milliseconds: 2000
+
++ start waveform_player | priority: 0
+  + route
+    + service ROM | label: config | + child waveform_config
+    + any-service
+      + parent
+      + any-child
+
++ start record_rom | ram: 8M | priority: 0
+  + provides | + service ROM
+  + config | period_ms: } [record_period_ms] { | sample_rate_hz: 44100
+    + record | label: left
+    + record | label: lefty
+    + record | label: righty
+    + record | label: right
+
++ start rom_osci | ram: 8M | priority: -1
+  + config | width: 640 | height: 480 | xpos: 200 | ypos: 100
+  |
+  |   fps:        20
+  |   v_scale:    0.15
+  |   phase_lock: yes
+  |
+  | + channel | label: left   | color: #ff6633 | v_pos: 0.2
+  | + channel | label: lefty  | color: #cc7777 | v_pos: 0.4
+  | + channel | label: righty | color: #9988bb | v_pos: 0.6
+  | + channel | label: right  | color: #6699ff | v_pos: 0.8
+  + route
+    + service ROM | label: recording | + child record_rom
+    + any-service
+      + parent
+      + any-child
+-
+}
+
+build_boot_image [build_artifacts]
+
+append qemu_args " -nographic "
+
+run_genode_until forever
+

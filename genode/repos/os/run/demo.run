@@ -1,0 +1,215 @@
+assert {[have_recipe pkg/[drivers_interactive_pkg]]} \
+	"Recipe for 'pkg/[drivers_interactive_pkg]' not available."
+
+if {[have_cmd_switch --autopilot]} {
+	assert {![have_board linux] && ![have_include power_on/qemu]} \
+		"Autopilot mode is not supported on this platform."
+}
+
+create_boot_directory
+import_from_depot [depot_user]/src/[base_src] \
+                  [depot_user]/pkg/[drivers_interactive_pkg] \
+                  [depot_user]/src/rom_filter \
+                  [depot_user]/src/report_rom \
+                  [depot_user]/src/global_keys_handler \
+                  [depot_user]/src/nitpicker \
+                  [depot_user]/src/nit_focus \
+                  [depot_user]/src/demo \
+                  [depot_user]/src/init \
+                  [depot_user]/src/libc \
+                  [depot_user]/src/libpng \
+                  [depot_user]/src/vfs \
+                  [depot_user]/src/zlib
+
+build { app/status_bar test/nitpicker }
+
+install_config {
+config
++ parent-provides
+  + service ROM
+  + service IRQ
+  + service IO_MEM
+  + service IO_PORT
+  + service PD
+  + service RM
+  + service CPU
+  + service LOG
+
++ default-route
+  + any-service
+    + parent
+    + any-child
+
++ default | caps: 100 | ram: 1196K
+
++ start timer
+  + provides | + service Timer
+
++ start drivers | caps: 1500 | ram: 64M | managing_system: yes
+  + binary init
+  + route
+    + service ROM | label: config | + parent | label: drivers.config
+    + service Timer               | + child timer
+    + service Capture             | + child nitpicker
+    + service Event               | + child nitpicker
+    + any-service                 | + parent
+
++ start report_rom | ram: 2M
+  + provides
+    + service Report
+    + service ROM
+  + config | verbose: no
+    + policy | label: status_bar -> focus          | report: nitpicker -> focus
+    + policy | label: nitpicker_config -> xray     | report: global_keys_handler -> xray
+    + policy | label: global_keys_handler -> hover | report: nitpicker -> hover
+    + policy | label: nit_focus -> clicked         | report: nitpicker -> clicked
+    + policy | label: nitpicker -> focus           | report: nit_focus -> focus
+
++ start nitpicker_config
+  + binary rom_filter
+  + provides | + service ROM
+  + config
+  | + input xray_enabled | rom: xray | node: xray | + attribute enabled
+  | + output | node: config
+  |   + attribute focus | value: rom
+  |   + inline
+  |   | + report | focus: yes | xray: yes | hover: yes | keystate: yes | clicked: yes
+  |   | + capture
+  |   | + event
+  |   | + domain pointer | layer: 1 | content: client | label: no | origin: pointer
+  |   | + domain panel   | layer: 2 | content: client | label: no | hover:  always
+  |   + if
+  |   | + has_value | input: xray_enabled | value: no
+  |   | + then
+  |   |   + inline
+  |   |     + domain launchpad | layer: 3 | content: client | label: no
+  |   |                        | hover: always | focus: click | ypos: 18
+  |   |                        | height: -18
+  |   |
+  |   |     + domain default   | layer: 3 | content: client | label: no
+  |   |                        | hover: always | focus: click | ypos: 18
+  |   |                        | height: -18
+  |   | + else
+  |   |   + inline
+  |   |     + domain launchpad | layer: 3 | content: tinted | label: yes
+  |   |                        | hover: focused | focus: click | ypos: 18
+  |   |                        | height: -18 | color: #dd0000
+  |   |
+  |   |     + domain default   | layer: 3 | content: tinted | label: yes
+  |   |                        | hover: focused | focus: click | ypos: 18
+  |   |                        | height: -18 | color: #55dd34
+  |   + inline
+  |     + policy | label_prefix: pointer            | domain: pointer
+  |     + policy | label_prefix: status_bar         | domain: panel
+  |     + policy | label_prefix: scout -> launchpad | domain: launchpad
+  |     + default-policy                            | domain: default
+  |
+  |     + global-key KEY_SCROLLLOCK | label: global_keys_handler -> input
+  |     + global-key KEY_F1         | label: global_keys_handler -> input
+  |     + global-key KEY_F2         | label: global_keys_handler -> input
+  + route
+    + service ROM | label: xray | + child report_rom
+    + any-service               | + parent
+
++ start global_keys_handler
+  + config
+  | + bool xray | initial: no
+  |
+  | + press KEY_SCROLLLOCK | bool: xray | change: toggle
+  | + press KEY_F1         | bool: xray | change: on
+  | + release KEY_F1       | bool: xray | change: off
+  | + press KEY_F2         | bool: xray | change: toggle
+  |
+  | + report xray | delay_ms: 125
+  |   + hovered | domain: panel
+  |   + bool xray
+  + route
+    + service Report             | + child report_rom
+    + service ROM | label: hover | + child report_rom
+    + any-service
+      + parent
+      + any-child
+
++ start nitpicker | caps: 120 | ram: 1216K
+  + provides
+    + service Gui
+    + service Capture
+    + service Event
+  + route
+    + service ROM | label: config | + child nitpicker_config
+    + service ROM | label: focus  | + child report_rom
+    + service Report              | + child report_rom
+    + any-service
+      + parent
+      + any-child
+
++ start pointer
+  + config
+
++ start nit_focus
+  + config | + default-policy | focus: yes
+  + route
+    + service ROM | label: clicked | + child report_rom
+    + service Report               | + child report_rom
+    + any-service                  | + parent
+
++ start status_bar
+  + route
+    + service ROM | label: focus | + child report_rom
+    + any-service
+      + parent
+      + any-child
+
++ start scout | caps: 10000 | ram: 80M
+  + config
+    + libc | stdout: /dev/log | stderr: /dev/log
+    + vfs | + dir dev | + log
+-
+}
+
+#
+# Create launchpad configuration
+#
+set launchpad_config_fd [open "bin/launchpad.config" w]
+puts $launchpad_config_fd {
+config
++ launcher testnit   | ram_quota: 768K  | caps: 50
++ launcher scout     | ram_quota: 41M   | caps: 200
++ launcher launchpad | ram_quota: 6M    | caps: 1000 | + configfile launchpad.config
++ launcher nitlog    | ram_quota: 1500K | caps: 100
++ launcher liquid_fb | ram_quota: 9M    | caps: 100  | + config | resize_handle: on
++ launcher nitpicker | ram_quota: 1M    | caps: 100
+  + config | request_input: yes | request_framebuffer: yes
+    + domain default | layer: 3 | conten: client | label: no | focus: click
+    + default-policy | domain: default
+-
+}
+close $launchpad_config_fd
+
+build_boot_image [list {*}[build_artifacts] launchpad.config]
+
+if {[have_cmd_switch --autopilot]} {
+	# On machines in the CI with attached USB testing devices wait for the
+	# output of those, in order to see all critical output actually.
+	if {[have_board imx53_qsb] || [have_board imx53_qsb_tz]} {
+		run_genode_until {\[init -> scout\] png is.*\n} 40
+	} else {
+		run_genode_until {\[init -> drivers -> usb_hid\] Disconnected device:.* } 30
+		run_genode_until {\[init -> drivers -> usb_hid\] Disconnected device:.* } 10 [output_spawn_id]
+	}
+
+	grep_output {(requests resources: )|(Error)|(abort called)}
+
+	# remove Error messages which are not fatal, mostly
+	unify_output {(?n)^.*platform] Error:.*ACPI table information is wrong.*$} ""
+	unify_output {(?n)^.*platform] Error:  adjust size from.*$} ""
+	unify_output {(?n)^.*ps2] Error: no data available.*$} ""
+	unify_output {(?n)^.*ps2] Error: failed to read from port.*$} ""
+	unify_output {(?n)^.*] Error: RAM preservation exceeds available memory.*$} ""
+	unify_output {(?n)^.*] Error: cache_invalidate_data not implemented for this kernel.*$} ""
+
+	compare_output_to {}
+
+} else {
+	run_genode_until forever
+}

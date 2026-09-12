@@ -1,0 +1,43 @@
+runtime | ram: 90M | caps: 1000 | binary: init
+
++ requires | + timer
+
++ fail    | after_seconds: 20
++ succeed | : child "vfs_stress" exited with exit value 0
+
++ content
+  + rom | label: ld.lib.so
+  + rom | label: vfs.lib.so
+  + rom | label: vfs
+  + rom | label: vfs_stress
+
++ config
+  + affinity-space | width: 3 | height: 2
+  + parent-provides
+    + service CPU
+    + service IO_PORT
+    + service IRQ
+    + service LOG
+    + service PD
+    + service RM
+    + service ROM
+    + service Timer
+
+  + default-route
+    + any-service
+      + parent
+      + any-child
+
+  + default | caps: 100
+
+  + start vfs_stress | ram: 8M
+    + config | depth: 16
+      + vfs | + fs
+
+  + start ram_fs | caps: 120 | ram: 80M
+    + binary vfs
+    + provides | + service File_system
+    + config
+      + vfs | + ram
+      + default-policy | root: / | writeable: yes
+-

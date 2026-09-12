@@ -1,0 +1,167 @@
+assert {![have_include power_on/qemu]}
+
+build {
+	core init timer lib/ld
+	driver/audio
+	driver/platform
+	driver/acpi
+	server/mixer
+	server/dynamic_rom
+	server/report_rom
+	app/pci_decode
+	test/audio_out
+}
+
+create_boot_directory
+
+install_config {
+config
++ parent-provides
+  + service ROM
+  + service IRQ
+  + service IO_MEM
+  + service IO_PORT
+  + service PD
+  + service RM
+  + service CPU
+  + service LOG
+
++ default-route
+  + service Audio_out | + child mixer
+  + any-service
+    + parent
+    + any-child
+
++ default | caps: 100 | ram: 1M
+
++ start timer
+  + provides | + service Timer
+
++ start report_rom | ram: 2M
+  + provides
+    + service Report
+    + service ROM
+  + config
+    + policy | label: pci_decode -> system          | report: acpi -> acpi
+    + policy | label: platform -> devices           | report: pci_decode -> devices
+    + policy | label_prefix: to_whom_it_may_concern | report: mixer -> channel_list
+
++ start acpi | caps: 350 | ram: 4M
+  + route
+    + service Report | + child report_rom
+    + any-service    | + parent
+
++ start pci_decode | caps: 350 | ram: 2M
+  + route
+    + service Report              | + child report_rom
+    + service ROM | label: system | + child report_rom
+    + any-service                 | + parent
+
++ start platform | caps: 100 | managing_system: yes
+  + provides
+    + service Dma
+    + service Platform
+  + route
+    + service ROM | label: devices | + child report_rom
+    + service Timer                | + child timer
+    + service IRQ                  | + parent
+    + service IO_MEM               | + parent
+    + service ROM                  | + parent
+    + service PD                   | + parent
+    + service CPU                  | + parent
+    + service LOG                  | + parent
+    + service Timer                | + parent
+  + config
+    + policy | label: audio ->
+      + pci | class: AUDIO
+      + pci | class: HDAUDIO
+
++ start audio | caps: 150 | ram: 10M
+  + binary pci_audio
+  + provides
+    + service Audio_in
+    + service Audio_out
+  + config
+    + mixer | field: outputs.master | value: 148,148
+
++ start dynamic_rom | ram: 4M
+  + provides | + service ROM
+  + config | verbose: yes
+    + rom mixer.config
+      + inline | description: client1 plays (volume 70%)
+      | + mixer.config
+      |   + default | out_volume: 75 | volume: 42 | muted: no
+      |   + channel_list
+      |     + channel right | type: input  | label: client1 | number: 1 | active: 1 | volume:  70 | muted: no
+      |     + channel left  | type: input  | label: client1 | number: 0 | active: 1 | volume:  70 | muted: no
+      |     + channel right | type: input  | label: client2 | number: 1 | active: 1 | volume:   0 | muted: no
+      |     + channel left  | type: input  | label: client2 | number: 0 | active: 1 | volume:   0 | muted: no
+      |     + channel left  | type: output | label: master  | number: 0 | active: 1 | volume: 100 | muted: no
+      |     + channel right | type: output | label: master  | number: 1 | active: 1 | volume: 100 | muted: no
+      + sleep | milliseconds: 10000
+      + inline | description: client2 plays (volume 70%)
+      | + mixer.config
+      |   + default | out_volume: 75 | volume: 42 | muted: no
+      |   + channel_list
+      |     + channel right | type: input  | label: client1 | number: 1 | active: 1 | volume:   0 | muted: no
+      |     + channel left  | type: input  | label: client1 | number: 0 | active: 1 | volume:   0 | muted: no
+      |     + channel right | type: input  | label: client2 | number: 1 | active: 1 | volume:  70 | muted: no
+      |     + channel left  | type: input  | label: client2 | number: 0 | active: 1 | volume:  70 | muted: no
+      |     + channel left  | type: output | label: master  | number: 0 | active: 1 | volume: 100 | muted: no
+      |     + channel right | type: output | label: master  | number: 1 | active: 1 | volume: 100 | muted: no
+      + sleep | milliseconds: 10000
+      + inline | description: both play (volume 50%)
+      | + mixer.config
+      |   + default | out_volume: 75 | volume: 42 | muted: no
+      |   + channel_list
+      |     + channel right | type: input  | label: client1 | number: 1 | active: 1 | volume:  50 | muted: no
+      |     + channel left  | type: input  | label: client1 | number: 0 | active: 1 | volume:  50 | muted: no
+      |     + channel right | type: input  | label: client2 | number: 1 | active: 1 | volume:  50 | muted: no
+      |     + channel left  | type: input  | label: client2 | number: 0 | active: 1 | volume:  50 | muted: no
+      |     + channel left  | type: output | label: master  | number: 0 | active: 1 | volume: 100 | muted: no
+      |     + channel right | type: output | label: master  | number: 1 | active: 1 | volume: 100 | muted: no
+      + sleep | milliseconds: 10000
+
++ start mixer | ram: 2M
+  + provides | + service Audio_out
+  + route
+    + service Audio_out           | + child audio
+    + service Report              | + child report_rom
+    + service ROM | label: config | + child dynamic_rom | label: mixer.config
+    + any-service
+      + parent
+      + any-child
+
++ start client1 | ram: 4M
+  + binary test-audio_out
+  + config | + filename | : client1.f32
+  + route
+    + service Audio_out | + child mixer
+    + any-service
+      + parent
+      + any-child
+
++ start client2 | ram: 4M
+  + binary test-audio_out
+  + config | + filename | : client2.f32
+  + route
+    + service Audio_out | + child mixer
+    + any-service
+      + parent
+      + any-child
+-
+}
+
+if {[expr ![file exists bin/client1.f32] || ![file exists bin/client2.f32]]} {
+	puts ""
+	puts "The sample files are missing. Please take a look at repos/dde_bsd/README"
+	puts "and create 'client1.f32' and 'client2.f32'. Afterwards put them into './bin'."
+	puts ""
+	exit 1
+}
+
+build_boot_image [list {*}[build_artifacts] client1.f32 client2.f32]
+
+append qemu_args " -nographic"
+
+run_genode_until forever

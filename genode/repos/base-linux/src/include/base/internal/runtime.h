@@ -1,0 +1,75 @@
+/*
+ * \brief  Linux-specific environment
+ * \author Norman Feske
+ * \author Christian Helmuth
+ * \date   2006-07-28
+ */
+
+/*
+ * Copyright (C) 2006-2017 Genode Labs GmbH
+ *
+ * This file is part of the Genode OS framework, which is distributed
+ * under the terms of the GNU Affero General Public License version 3.
+ */
+
+#ifndef _INCLUDE__BASE__INTERNAL__RUNTIME_H_
+#define _INCLUDE__BASE__INTERNAL__RUNTIME_H_
+
+/* Genode includes */
+#include <base/heap.h>
+
+/* base-internal includes */
+#include <base/internal/globals.h>
+#include <base/internal/expanding_cpu_session_client.h>
+#include <base/internal/expanding_region_map_client.h>
+#include <base/internal/expanding_pd_session_client.h>
+#include <base/internal/expanding_parent_client.h>
+#include <base/internal/region_map_mmap.h>
+#include <base/internal/local_rm_session.h>
+#include <base/internal/local_pd_session.h>
+#include <base/internal/local_parent.h>
+
+namespace Genode { struct Runtime; }
+
+
+struct Genode::Runtime
+{
+	Region_map_mmap mmap_rm { false };
+
+	static Capability<Parent> _obtain_parent_cap();
+
+	Local_parent parent { _obtain_parent_cap(), mmap_rm, heap };
+
+	Capability<Pd_session> pd_cap =
+		parent.session_cap(Parent::Env::pd()).convert<Capability<Pd_session>>(
+			[&] (Capability<Session> cap)   { return static_cap_cast<Pd_session>(cap); },
+			[&] (Parent::Session_cap_error) { return Capability<Pd_session>(); });
+
+	Capability<Cpu_session> cpu_cap =
+		parent.session_cap(Parent::Env::cpu()).convert<Capability<Cpu_session>>(
+			[&] (Capability<Session> cap)   { return static_cap_cast<Cpu_session>(cap); },
+			[&] (Parent::Session_cap_error) { return Capability<Cpu_session>(); });
+
+	Local_pd_session pd { parent, pd_cap };
+
+	Pd_local_rm      local_rm { mmap_rm };
+	Pd_ram_allocator ram      { pd };
+
+	Expanding_cpu_session_client cpu { parent, cpu_cap, Parent::Env::cpu() };
+
+	Heap heap { ram, local_rm };
+
+	Pd_local_rm::Result const trace_control =
+		local_rm.attach(cpu.trace_control(), Region_map::Attr { .size       = { }, .offset    = { },
+		                                       .use_at     = { }, .at        = { },
+		                                       .executable = { }, .writeable = true });
+
+	Runtime() { _attach_stack_area(); }
+
+	/**
+	 * Attach stack area to local address space (for non-hybrid components)
+	 */
+	void _attach_stack_area();
+};
+
+#endif /* _INCLUDE__BASE__INTERNAL__RUNTIME_H_ */

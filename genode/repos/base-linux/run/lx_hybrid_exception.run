@@ -1,0 +1,23 @@
+build { core init lib/ld test/lx_hybrid_exception }
+
+create_boot_directory
+
+install_config {
+config
++ parent-provides
+  + service ROM
+  + service CPU
+  + service PD
+  + service LOG
+
++ default-route | + any-service | + parent
+
++ start test-lx_hybrid_exception | ld: no | caps: 100 | ram: 1M
+-
+}
+
+build_boot_image [build_artifacts]
+
+run_genode_until {child "test-lx_hybrid_exception" exited with exit value 0.*\n} 10
+
+# vi: set ft=tcl :

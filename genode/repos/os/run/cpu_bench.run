@@ -1,0 +1,62 @@
+if {[have_cmd_switch --autopilot]} {
+	assert {![have_include power_on/qemu]} \
+		"Autopilot mode is not supported on this platform."
+}
+
+assert {![have_board linux]}
+
+build { core init timer lib/ld test/cpu_bench }
+
+create_boot_directory
+
+install_config {
+config
++ parent-provides
+  + service LOG
+  + service CPU
+  + service ROM
+  + service PD
++ default-route | + any-service | + parent
++ default | caps: 100
++ start cpu_bench | ram: 10M
+-
+}
+
+build_boot_image [build_artifacts]
+
+append qemu_args " -nographic  "
+
+#
+# Those value relate to hardware used in CI testsuite used at Genode Labs,
+# as well as the initialization of their bootloaders, we use this to measure
+# regressions in the platform initialization code
+#
+proc bogomips_max_time { } {
+	if {[have_board rpi]}             { return 14300 }
+	if {[have_board imx53_qsb]}       { return  7520 }
+	if {[have_board imx53_qsb_tz]}    { return  7520 }
+	if {[have_board imx6q_sabrelite]} { return  6320 }
+	if {[have_board imx7d_sabre]}     { return  9470 }
+	if {[have_board imx8q_evk]}       { return  7510 }
+	if {[have_board zynq_usrp_e31x]}  { return  7510 }
+	if {[have_board pc]} {
+		if {[have_spec x86_64]} { return   600 }
+		if {[have_spec x86_32]} { return  3150 }
+	}
+	return 0
+}
+
+# run the test
+run_genode_until {\[init -\> cpu_bench\] Execute 10G BogoMIPS.*\n} 120
+set serial_id       [output_spawn_id]
+set t1  [clock milliseconds]
+run_genode_until "Finished execution.*\n" 30 $serial_id
+set t2  [clock milliseconds]
+set result [expr {$t2 - $t1}]
+set bogomips [expr {10000000000 / $result}]
+set maximum [bogomips_max_time]
+puts "10G bogus instructions in $result msecs ($bogomips BogoMIPS)"
+if {$result > $maximum} {
+	puts "Test failed: bogomips loop lasted longer than $maximum msecs"
+	exit 1
+}

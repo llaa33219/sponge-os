@@ -1,0 +1,72 @@
+runtime | ram: 32M | caps: 1000 | binary: init
+
++ requires | + timer
+
++ fail    | after_seconds: 20
++ succeed | : *-- state WAIT_FOR_SUCCESS --
+
++ content
+  + rom | label: ld.lib.so
+  + rom | label: test-clipboard
+  + rom | label: clipboard
+  + rom | label: report_rom
+
++ config
+  + parent-provides
+    + service ROM
+    + service CPU
+    + service PD
+    + service LOG
+    + service IRQ
+    + service IO_MEM
+    + service IO_PORT
+    + service Timer
+
+  + default-route
+    + any-service
+      + parent
+      + any-child
+
+  + default | caps: 100
+
+  + start report_rom | ram: 1M
+    + provides
+      + service Report
+      + service ROM
+    + config | verbose: yes
+      + policy | label:  clipboard -> focus | report: test-clipboard -> focus
+
+  + start clipboard | ram: 4M
+    + provides
+    | + service ROM
+    | + service Report
+    + config | verbose: yes
+    | + flow | from: hobby | to: work
+    | + flow | from: hobby | to: admin
+    | + flow | from: work  | to: admin
+    | + policy | label_prefix: test-clipboard -> win7  | domain: work
+    | + policy | label_prefix: test-clipboard -> linux | domain: hobby
+    | + policy | label_prefix: test-clipboard -> noux  | domain: admin
+    + route
+      + service ROM | label: focus | + child report_rom
+      + any-service                | + parent
+
+  + start test-clipboard | ram: 4M
+    + route
+      + service Report | label: focus
+      | .
+      | . for the simulation of nitpicker's focus reports
+      | .
+      | + child report_rom
+      |
+      + service ROM | label: linux -> clipboard
+      | .
+      | . for the simulation of clipboard clients
+      | .
+      | + child clipboard
+      |
+      + service ROM | label: win7 -> clipboard | + child clipboard
+      + service ROM | label: noux -> clipboard | + child clipboard
+      + service Report                         | + child clipboard
+      + any-service                            | + parent
+-

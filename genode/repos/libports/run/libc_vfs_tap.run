@@ -1,0 +1,102 @@
+create_boot_directory
+
+import_from_depot [depot_user]/src/[base_src] \
+                  [depot_user]/src/vfs_tap
+
+build {
+	core init timer lib/libc lib/libm lib/vfs lib/posix
+	server/nic_router test/libc_vfs_tap
+}
+
+install_config {
+config | verbose: yes
++ parent-provides
+  + service ROM
+  + service IRQ
+  + service IO_MEM
+  + service IO_PORT
+  + service PD
+  + service RM
+  + service CPU
+  + service LOG
+
++ default-route
+  + any-service
+    + parent
+    + any-child
+
++ default | caps: 120 | ram: 1M
+
++ start timer
+  + provides | + service Timer
+
++ start nic_router | ram: 10M
+  + provides
+    + service Nic
+    + service Uplink
+  + config | verbose: yes | verbose_packets: yes | verbose_domain_state: yes
+    + policy | label_prefix: tap_uplink_client -> | domain: tap_uplink
+    + policy | label_prefix: tap_nic_client ->    | domain: tap_nic
+    + domain tap_nic
+    + domain tap_uplink
+
++ start tap_uplink_client | ram: 8M
+  + binary test-libc_vfs_tap
+  + config
+    + libc | stdin: /dev/log | stdout: /dev/log | stderr: /dev/log
+    + vfs
+      + dir dev
+        + log
+        + tap tap0 | mac: 02:02:00:00:00:20 | mode: uplink
+
++ start tap_nic_client | ram: 8M
+  + binary test-libc_vfs_tap
+  + config
+    + libc | stdin: /dev/log | stdout: /dev/log | stderr: /dev/log
+    + vfs
+      + dir dev
+        + log
+        + tap tap0
+-
+}
+
+build_boot_image [build_artifacts]
+
+append qemu_args "-nographic "
+
+run_genode_until "child \"tap_uplink_client\" exited with exit value 0" 40
+
+set original_output $output
+
+grep_output {\[init -> tap_uplink_client\].*}
+compare_output_to {
+[init -> tap_uplink_client] MAC address 02:02:00:00:00:20
+[init -> tap_uplink_client] Successfully opened device tap0
+[init -> tap_uplink_client] MAC address 02:02:00:00:00:21
+[init -> tap_uplink_client] Warning: TAPGIFINFO failed
+}
+
+set output $original_output
+grep_output {\[init -> tap_nic_client\].*}
+compare_output_to {
+[init -> tap_nic_client] Successfully opened device tap0
+[init -> tap_nic_client] Warning: TAPGIFINFO failed
+}
+
+# check that nic_router received packages from both clients
+set output $original_output
+grep_output {\[init -> nic_router\] \[tap.*}
+
+set num_uplink_received [regexp -all {.*tap_uplink\] rcv} $output dummy]
+if {$num_uplink_received < 1} {
+	puts "Error: No packet received from tap_uplink_client\n"
+	exit 1
+}
+
+set num_nic_received [regexp -all {.*tap_nic\] rcv} $output dummy]
+if {$num_nic_received < 1} {
+	puts "Error: No packet received from tap_nic_client\n"
+	exit 1
+}
+
+# vi: set ft=tcl :

@@ -1,0 +1,7 @@
+base
+genode_c_api
+net
+os
+so
+timer_session
+vfs

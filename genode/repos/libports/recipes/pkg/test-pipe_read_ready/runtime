@@ -1,0 +1,60 @@
+runtime | ram: 32M | caps: 1000 | binary: init
+
++ requires | + timer
+
++ fail    | after_seconds: 30
++ succeed | : [select] 3
+
++ content
+  + rom | label: ld.lib.so
+  + rom | label: libc.lib.so
+  + rom | label: libm.lib.so
+  + rom | label: posix.lib.so
+  + rom | label: vfs
+  + rom | label: vfs.lib.so
+  + rom | label: vfs_pipe.lib.so
+  + rom | label: test-pipe_read_ready_counter
+  + rom | label: test-pipe_read_ready_select
+
++ config
+  + parent-provides
+    + service ROM
+    + service PD
+    + service RM
+    + service CPU
+    + service LOG
+    + service Timer
+
+  + default-route
+    + any-service
+      + parent
+      + any-child
+
+  + default | caps: 200
+
+  + start vfs | ram: 12M
+    + provides | + service File_system
+    + config
+      + vfs | + pipe | + fifo fifo
+      + default-policy | root: / | writeable: yes
+
+  + start select | ram: 3M
+    + binary test-pipe_read_ready_select
+    + config
+      + vfs
+      | + dir dev | + log
+      | + dir rw  | + fs
+      + libc | stdin: /rw/fifo | stdout: /dev/log | stderr: /dev/log
+
+  + start counter | ram: 3M
+    + binary test-pipe_read_ready_counter
+    + config
+      + vfs
+      | + dir dev
+      | | + null
+      | | + fs
+      | | + log
+      | + dir rw
+      |   + fs
+      + libc | stdin: /dev/null | stdout: /rw/fifo | stderr: /dev/log
+-

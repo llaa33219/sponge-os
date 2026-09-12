@@ -1,0 +1,293 @@
+/*
+ * \brief  Tool for querying information from a file system
+ * \author Norman Feske
+ * \date   2018-08-17
+ */
+
+/*
+ * Copyright (C) 2018 Genode Labs GmbH
+ *
+ * This file is part of the Genode OS framework, which is distributed
+ * under the terms of the GNU Affero General Public License version 3.
+ */
+
+/* Genode includes */
+#include <base/registry.h>
+#include <base/component.h>
+#include <base/heap.h>
+#include <base/attached_rom_dataspace.h>
+#include <util/avl_tree.h>
+#include <os/reporter.h>
+#include <os/vfs.h>
+
+/* local includes */
+#include <sorted_for_each.h>
+#include <for_each_subdir_name.h>
+
+namespace Fs_query {
+	using namespace Genode;
+	struct Watched_file;
+	struct Watched_directory;
+	struct Main;
+	using Node_rwx = Vfs::Node_rwx;
+}
+
+
+struct Fs_query::Watched_file
+{
+	File_content::Path const _name;
+
+	/**
+	 * Support for 'sorted_for_each'
+	 */
+	using Name = File_content::Path;
+
+	Name const &name() const { return _name; }
+
+	Node_rwx const _rwx;
+
+	struct Action : Interface, Noncopyable
+	{
+		virtual void io_watched_file_or_dir_changed() = 0;
+
+	} &_action;
+
+	Constructible<Io::Watch_handler<Watched_file>> _watch_handler { };
+
+	void _io_handle_watch() { _action.io_watched_file_or_dir_changed(); }
+
+	Watched_file(Directory const &dir, File_content::Path name, Node_rwx rwx,
+	             Action &action)
+	:
+		_name(name), _rwx(rwx), _action(action)
+	{
+		if (_rwx.readable) {
+			_watch_handler.construct(dir, name, *this, &Watched_file::_io_handle_watch);
+			(void)_watch_handler->watch();
+		}
+	}
+
+	virtual ~Watched_file() { }
+
+	void _gen_content(Generator &g, Allocator &alloc, Directory const &dir) const
+	{
+		File_content content(alloc, dir, _name, File_content::Limit{64*1024});
+
+		bool content_is_sub_node = false;
+
+		content.node([&] (Node const &node) {
+			if (!node.has_type("empty")) {
+				g.attribute("xml", "yes");
+				if (!g.append_node(node, Generator::Max_depth { 20 }))
+					warning("content of '", _name, "' is too deeply nested");
+				content_is_sub_node = true;
+			}
+		});
+
+		if (!content_is_sub_node) {
+			content.bytes([&] (char const *base, size_t len) {
+				g.append_quoted(base, len); });
+		}
+	}
+
+	void gen_query_response(Generator &g, Node const &query,
+	                        Allocator &alloc, Directory const &dir) const
+	{
+		try {
+			g.node("file", [&] () {
+				g.attribute("name", _name);
+
+				if (query.attribute_value("size", false))
+					g.attribute("size", dir.file_size(_name));
+
+				if (_rwx.writeable)
+					g.attribute("writeable", "yes");
+
+				if (_rwx.readable)
+					if (query.attribute_value("content", false))
+						_gen_content(g, alloc, dir);
+			});
+		}
+		/*
+		 * File may have disappeared since last traversal. This condition
+		 * is detected on the attempt to obtain the file content.
+		 */
+		catch (Directory::Nonexistent_file) {
+			warning("could not obtain content of nonexistent file ", _name); }
+		catch (File::Open_failed) {
+			warning("cannot open file ", _name, " for reading"); }
+		catch (File::Truncated_during_read) {
+			warning("file ", _name, " truncated during read"); }
+	}
+};
+
+
+struct Fs_query::Watched_directory
+{
+	Allocator &_alloc;
+
+	Directory::Path const _rel_path;
+
+	Directory const _dir;
+
+	using Action = Watched_file::Action;
+
+	Action &_action;
+
+	Io::Watch_handler<Watched_directory> _watch_handler;
+
+	void _io_handle_watch() { _action.io_watched_file_or_dir_changed(); }
+
+	Registry<Registered<Watched_file> > _files { };
+
+	Watched_directory(Allocator &alloc, Directory &other, Directory::Path const &rel_path,
+	                  Action &action)
+	:
+		_alloc(alloc), _rel_path(rel_path), _dir(other, rel_path), _action(action),
+		_watch_handler(other, rel_path, *this, &Watched_directory::_io_handle_watch)
+	{
+		_dir.for_each_entry([&] (Directory::Entry const &entry) {
+
+			using Dirent_type = Vfs::Directory_service::Dirent_type;
+			bool const file = (entry.type() == Dirent_type::CONTINUOUS_FILE)
+			               || (entry.type() == Dirent_type::TRANSACTIONAL_FILE);
+			if (file) {
+				try {
+					new (_alloc) Registered<Watched_file>(_files, _dir, entry.name(),
+					                                      entry.rwx(), _action);
+				} catch (...) { }
+			}
+		});
+	}
+
+	virtual ~Watched_directory()
+	{
+		_files.for_each([&] (Registered<Watched_file> &file) {
+			destroy(_alloc, &file); });
+	}
+
+	bool has_name(Directory::Path const &name) const { return _rel_path == name; }
+
+	struct Count
+	{
+		unsigned dirs, files, symlinks;
+
+		void gen_attr(Generator &g) const
+		{
+			if (dirs)     g.attribute("num_dirs",     dirs);
+			if (files)    g.attribute("num_files",    files);
+			if (symlinks) g.attribute("num_symlinks", symlinks);
+		}
+
+		static Count from_dir(Directory const &dir)
+		{
+			using Type = Vfs::Directory_service::Dirent_type;
+			Count count { };
+			dir.for_each_entry([&] (Directory::Entry const &entry) {
+				switch (entry.type()) {
+				case Type::TRANSACTIONAL_FILE:
+				case Type::CONTINUOUS_FILE:    count.files++;    break;
+				case Type::DIRECTORY:          count.dirs++;     break;
+				case Type::SYMLINK:            count.symlinks++; break;
+				case Type::END:                break;
+				}
+			});
+			return count;
+		}
+	};
+
+	void gen_query_response(Generator &g, Node const &query) const
+	{
+		if (!_dir.exists())
+			return;
+
+		bool const count_enabled = query.attribute_value("count", false);
+
+		g.node("dir", [&] () {
+			g.attribute("path", _rel_path);
+
+			for_each_subdir_name(_alloc, _dir, [&] (Directory::Entry::Name const &name) {
+				g.node("dir", [&] () {
+					g.attribute("name", name);
+					if (count_enabled)
+						Count::from_dir(Directory(_dir, name)).gen_attr(g); }); });
+
+			sorted_for_each(_alloc, _files, [&] (Watched_file const &file) {
+				file.gen_query_response(g, query, _alloc, _dir); });
+		});
+	}
+};
+
+
+struct Fs_query::Main : Watched_file::Action
+{
+	Env &_env;
+
+	Heap _heap { _env.ram(), _env.rm() };
+
+	Attached_rom_dataspace _config { _env, "config" };
+
+	/**
+	 * Watched_file::Action interface
+	 */
+	void io_watched_file_or_dir_changed() override
+	{
+		Signal_transmitter(_config_handler).submit();
+	}
+
+	Root_directory _root_dir { _env, _heap };
+
+	Signal_handler<Main> _config_handler {
+		_env.ep(), *this, &Main::_handle_config };
+
+	Expanding_reporter _reporter { _env, "listing", "listing" };
+
+	Registry<Registered<Watched_directory> > _dirs { };
+
+	void _gen_listing(Generator &g, Node const &config) const
+	{
+		config.for_each_sub_node("query", [&] (Node const &query) {
+			Directory::Path const path = query.attribute_value("path", Directory::Path());
+			_dirs.for_each([&] (Watched_directory const &dir) {
+				if (dir.has_name(path))
+					dir.gen_query_response(g, query);
+			});
+		});
+	}
+
+	void _handle_config()
+	{
+		_config.update();
+
+		Node const config = _config.node();
+
+		config.with_sub_node("vfs",
+			[&] (Node const &config) { _root_dir.apply_config(config); },
+			[&]                      { error("VFS not configured"); });
+
+		_dirs.for_each([&] (Registered<Watched_directory> &dir) {
+			destroy(_heap, &dir); });
+
+		config.for_each_sub_node("query", [&] (Node const &query) {
+			Directory::Path const path = query.attribute_value("path", Directory::Path());
+			new (_heap)
+				Registered<Watched_directory>(_dirs, _heap, _root_dir, path, *this);
+		});
+
+		_reporter.generate([&] (Generator &g) {
+			_gen_listing(g, config); });
+	}
+
+	Main(Env &env) : _env(env)
+	{
+		_config.sigh(_config_handler);
+		_handle_config();
+	}
+};
+
+
+void Component::construct(Genode::Env &env)
+{
+	static Fs_query::Main main(env);
+}
+

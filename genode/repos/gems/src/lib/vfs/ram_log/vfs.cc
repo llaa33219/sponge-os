@@ -1,0 +1,165 @@
+/*
+ * \brief  RAM-capped log file
+ * \author Norman Feske
+ * \date   2025-10-22
+ */
+
+/*
+ * Copyright (C) 2025 Genode Labs GmbH
+ *
+ * This file is part of the Genode OS framework, which is distributed
+ * under the terms of the GNU Affero General Public License version 3.
+ */
+
+/* Genode includes */
+#include <os/vfs.h>
+#include <vfs/single_file_system.h>
+
+namespace Vfs_ram_log {
+
+	using namespace Genode;
+	using namespace Genode::Vfs;
+
+	struct File_system;
+}
+
+
+struct Vfs_ram_log::File_system : Single_file_system
+{
+	Allocator &_alloc;
+
+	struct Buffer
+	{
+		Allocator &_alloc;
+		size_t const _limit;
+
+		Byte_range_ptr _bytes { (char *)_alloc.alloc(_limit), _limit };
+
+		uint64_t _write_pos = 0;
+
+		Buffer(Allocator &alloc, size_t limit) : _alloc(alloc), _limit(max(limit, 1ul)) { }
+
+		~Buffer() { _alloc.free(_bytes.start, _bytes.num_bytes); }
+
+		void append(char c)
+		{
+			_bytes.start[_write_pos % _limit] = c;
+			_write_pos++;
+		}
+
+		Attempt<char, Buffer_error> byte_at(uint64_t pos) const
+		{
+			if (pos >= _write_pos)
+				return Buffer_error::EXCEEDED;
+
+			uint64_t const distance_from_end = _write_pos - pos;
+
+			if (distance_from_end > _limit)
+				return 0; /* return zeros for evicted content */
+
+			return _bytes.start[pos % _limit];
+		}
+
+	} _buffer;
+
+	struct Handle : Single_vfs_handle
+	{
+		File_system &_ram_log;
+
+		Handle(Directory_service &ds, Allocator &alloc, File_system &ram_log)
+		:
+			Single_vfs_handle { ds, alloc, 0 }, _ram_log(ram_log)
+		{ }
+
+		Read_result read(At const at, Byte_range_ptr const &dst) override
+		{
+			size_t out_count = 0;
+			for (size_t i = 0; i < dst.num_bytes; i++) {
+
+				auto const byte = _ram_log._buffer.byte_at(at.pos);
+				if (byte.failed())
+					break;
+
+				byte.with_result([&] (char c) {
+					dst.start[i] = c;
+					out_count++;
+				}, [&] (auto) { });
+			}
+			return out_count;
+		}
+
+		Write_result write(At const at, Const_byte_range_ptr const &src) override
+		{
+			if (at.pos != _ram_log._buffer._write_pos) {
+				warning("vfs_ram_log is append-only, reset write position to ", at.pos);
+				_ram_log._buffer._write_pos = at.pos;
+			}
+
+			for (size_t i = 0; i < src.num_bytes; i++)
+				_ram_log._buffer.append(src.start[i]);
+
+			return src.num_bytes;
+		}
+
+		bool read_ready()  const override { return true; }
+		bool write_ready() const override { return true; }
+	};
+
+	File_system(Vfs::Env &vfs_env, Parent_fs &parent_fs, Node const &config)
+	:
+		Single_file_system(parent_fs, Node_type::CONTINUOUS_FILE,
+		                   name(), Node_rwx::rw(), config),
+		_alloc(vfs_env.alloc()),
+		_buffer(_alloc, config.attribute_value("limit", Num_bytes { 16*1024 }))
+	{ }
+
+	static char const *name()   { return "ram_log"; }
+	char const *type() override { return "ram_log"; }
+
+	void destruct() override { destroy(_alloc, this); }
+
+	Open_result open(char const *path, unsigned, Vfs_handle **out_handle,
+	                 Allocator &alloc) override
+	{
+		if (!_single_file(path))
+			return OPEN_ERR_UNACCESSIBLE;
+
+		try {
+			*out_handle = new (alloc) Handle(*this, alloc, *this);
+			return OPEN_OK;
+		}
+		catch (Genode::Out_of_ram)        { return OPEN_ERR_OUT_OF_RAM; }
+		catch (Genode::Out_of_caps)       { return OPEN_ERR_OUT_OF_CAPS; }
+		/* handled non-existing path */
+		catch (Genode::File::Open_failed) { return OPEN_ERR_UNACCESSIBLE; }
+	}
+
+	Stat_result stat(char const *path, Stat &out) override
+	{
+		Stat_result result = Single_file_system::stat(path, out);
+		out.size = _buffer._write_pos;
+		return result;
+	}
+};
+
+
+extern "C" Genode::Vfs::File_system::Factory *vfs_file_system_factory(void)
+{
+	using namespace Genode;
+
+	struct Factory : Vfs::File_system::Factory
+	{
+		using Fs = Vfs_ram_log::File_system;
+
+		Instance::Attempt create(Vfs::Env &env, Vfs::Parent_fs &parent_fs,
+		                         Node const &node) override
+		{
+			return { *this, { *new (env.alloc()) Fs(env, parent_fs, node) } };
+		}
+
+		void _free(Instance &instance) override { instance.fs.destruct(); };
+	};
+
+	static Factory factory;
+	return &factory;
+}

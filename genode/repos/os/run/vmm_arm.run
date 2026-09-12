@@ -1,0 +1,218 @@
+#
+# \brief  Virtual-machine monitor demo
+# \author Stefan Kalkowski
+# \date   2015-06-25
+#
+
+assert {[have_spec hw]}
+
+assert {[have_board imx7d_sabre]        ||
+        [have_board imx8q_evk]          ||
+        [have_board virt_qemu_arm_v7a]  ||
+        [have_board virt_qemu_arm_v8a]}
+
+create_boot_directory
+import_from_depot [depot_user]/src/[base_src] \
+                  [depot_user]/src/init \
+                  [depot_user]/src/libc \
+                  [depot_user]/src/log_terminal \
+                  [depot_user]/src/nic_router \
+                  [depot_user]/src/terminal_crosslink \
+                  [depot_user]/src/vfs \
+                  [depot_user]/src/vfs_block \
+                  [depot_user]/src/vmm
+
+build { test/terminal_expect_send }
+
+proc vmm_arch_config_attr { } {
+
+	if {[have_spec arm]} {
+		return "cpu_count: 1 | cpu_type: arm,cortex-a15 | gic_version: 2" }
+
+	if {[have_spec arm_64]} {
+		return "cpu_count: 4 | cpu_type: arm,cortex-a53 | gic_version: 3" }
+
+	return unavailable
+}
+
+install_config {
+config | verbose: yes | prio_levels: 2
++ parent-provides
+  + service ROM
+  + service IRQ
+  + service IO_MEM
+  + service PD
+  + service RM
+  + service CPU
+  + service LOG
+  + service VM
+
++ default-route
+  + any-service
+    + parent
+    + any-child
+
++ default | caps: 100 | ram: 1M
+
++ start timer
+  + provides | + service Timer
+
++ start nic | ram: 8M
+  + binary nic_router
+  + provides
+    + service Nic
+    + service Uplink
+  + config
+    + default-policy | domain: default
+    + domain default | interface: 10.0.1.1/24
+      + dhcp-server | ip_first: 10.0.1.2 | ip_last: 10.0.1.2
+
++ start vfs_block | ram: 2M
+  + provides | + service Block
+  + route | + any-service | + parent
+  + config
+    + vfs | + rom block.img
+    + default-policy | file: /block.img | block_size: 512
+
++ start log_terminal | ram: 2M
+  + provides | + service Terminal
+
++ start terminal_crosslink
+  + provides | + service Terminal
+
++ start vmm | caps: 200 | ram: 256M | priority: -1
+  + route
+  | + service Terminal | label: earlycon | + child log_terminal
+  | + service Terminal                   | + child terminal_crosslink
+  | + service Nic                        | + child nic
+  | + any-service
+  |   + parent
+  |   + any-child
+  + config | } [vmm_arch_config_attr] {
+    | kernel_rom: linux
+    | initrd_rom: initrd
+    | ram_size:   128M
+    | bootargs:   rdinit=/bin/sh ip=dhcp console=hvc0
+    .
+    . for early printk add bootarg: earlycon=pl011,0x9000000
+    .
+    + virtio_device hvc0 | type: console
+    + virtio_device eth0 | type: net
+    + virtio_device blk0 | type: block
+
++ start vm
+  + binary test-terminal_expect_send
+  + config
+  | expect:  / #
+  | send:    mount /dev/vda /root; cp -r /etc /root; ls /root/etc; umount /root
+  | verbose: yes
+  + route
+    + service Terminal | + child terminal_crosslink
+    + any-service
+      + parent
+      + any-child
+-
+}
+
+
+if { [have_spec arm] } {
+
+	if {![file exists bin/linux]} {
+		puts "Download linux kernel ..."
+			exec >& /dev/null wget -c -O bin/linux http://genode.org/files/release-22.11/linux-virtio-arm32
+	}
+
+	if {![file exists bin/initrd]} {
+		puts "Download initramfs ..."
+			exec >& /dev/null wget -c -O bin/initrd http://genode.org/files/release-20.05/initrd-arm32
+	}
+
+#
+# To build the linux kernel from scratch, do the following steps:
+#
+# wget https://cdn.kernel.org/pub/linux/kernel/v5.x/linux-5.14.21.tar.xz
+# tar -xJf linux-5.14.21.tar.xz
+# cd linux-5.14.21
+# wget -O .config https://raw.githubusercontent.com/skalk/linux/66fb717e92b47512d8f686860a2c5e7329d01691/arch/arm/configs/virtio_only_defconfig
+# make ARCH=arm CROSS_COMPILE=/usr/local/genode/tool/current/bin/genode-arm-
+#
+# copy arch/arm/boot/Image to your build directory in 'bin/linux'
+#
+#
+# To construct the initrd do the following:
+# * get and install gcc from bootlin:
+#      (https://toolchains.bootlin.com/downloads/releases/toolchains/armv7-eabihf/tarballs/)
+# * build busybox
+#      wget https://busybox.net/downloads/busybox-1.31.1.tar.bz2
+#      tar xjf busybox-1.31.1.tar.bz2
+#      mkdir build-busybox-aarch32
+#      cd busybox-1.31.1
+#      make O=../build-busybox-aarch32 defconfig
+#      make O=../build-busybox-aarch32 menuconfig
+#
+#      [*] Setting ->  Build static binary (no shared libs)
+#
+#      cd ../build-busybox-aarch32
+#      make CROSS_COMPILE=/opt/armv7-eabihf--uclibc--stable-2020.02-1/bin/arm-buildroot-linux-uclibcgnueabihf- install -j6
+# * create ramdisk
+#      cd _install
+#      find . | cpio -H newc -o | gzip > ../initrd
+#
+}
+
+if { [have_spec arm_64] } {
+
+	if {![file exists bin/linux]} {
+		puts "Download linux kernel ..."
+			exec >& /dev/null wget -c -O bin/linux http://genode.org/files/release-22.11/linux-virtio-arm64
+	}
+
+	if {![file exists bin/initrd]} {
+		puts "Download initramfs ..."
+			exec >& /dev/null wget -c -O bin/initrd http://genode.org/files/release-20.02/initrd-arm64
+	}
+
+#
+# To build the linux kernel from scratch, do the following steps:
+#
+# wget https://cdn.kernel.org/pub/linux/kernel/v5.x/linux-5.14.21.tar.xz
+# tar -xJf linux-5.14.21.tar.xz
+# cd linux-5.14.21
+# wget -O .config https://raw.githubusercontent.com/skalk/linux/66fb717e92b47512d8f686860a2c5e7329d01691/arch/arm64/configs/virtio_only_defconfig
+# make ARCH=arm64 CROSS_COMPILE=/usr/local/genode/tool/current/bin/genode-aarch64-
+#
+# copy arch/arm64/boot/Image to your build directory in 'bin/linux'
+#
+#
+# To construct the initrd do the following:
+# * get and install gcc from linaro
+#      (https://releases.linaro.org/components/toolchain/binaries/latest-7/)
+# * build busybox
+#      wget https://busybox.net/downloads/busybox-1.29.3.tar.bz2
+#      tar xjf busybox-1.29.3.tar.bz2
+#      mkdir build-busybox-aarch64
+#      cd busybox-1.29.3
+#      make O=../build-busybox-aarch64 defconfig
+#      make O=../build-busybox-aarch64 menuconfig
+#
+#      [*] Setting ->  Build static binary (no shared libs)
+#
+#      cd ../build-busybox-aarch64
+#      make CROSS_COMPILE=/usr/local/gcc-linaro/bin/aarch64-linux-gnu- install -j6
+# * create ramdisk
+#      cd _install
+#      find . | cpio -H newc -o | gzip > ../initrd
+}
+
+catch { exec [installed_command dd] if=/dev/zero of=bin/block.img bs=1M count=0 seek=64 }
+exec [installed_command mkfs.vfat] bin/block.img
+
+build_boot_image [list {*}[build_artifacts] linux initrd block.img]
+
+#
+# Execute test case
+#
+append qemu_args " -nographic "
+
+run_genode_until "\[init -> vm\] .*resolv.conf.*" 220
+exec rm bin/linux bin/initrd bin/block.img

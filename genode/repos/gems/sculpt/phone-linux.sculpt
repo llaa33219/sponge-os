@@ -1,0 +1,14 @@
+leitzentrale: phone
+manager:      phone
+gui:          phone
+font:         phone
+event_filter: phone_linux
+runtime_view: phone
+build:        app/phone_manager server/nitpicker app/menu_view server/wm
+build:        server/event_filter
+build:        app/dummy_modem
+build:        server/lx_fs
+import:       pkg/drivers_interactive-linux pkg/touch_keyboard
+deploy:       example
+ram_fs:       depot
+option:       sticks_blue_backdrop direct_nano3d direct_system_shell dummy_modem

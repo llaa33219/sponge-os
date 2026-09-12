@@ -1,0 +1,7 @@
+base-linux
+base
+os
+event_session
+timer_session
+capture_session
+blit

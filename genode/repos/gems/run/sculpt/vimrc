@@ -1,0 +1,22 @@
+set noloadplugins
+set hls
+set nocompatible
+set laststatus=2
+set noswapfile
+set viminfo=
+set backspace=indent,eol,start
+set nowrap
+set ruler
+set ts=2
+set wildmode=list:longest
+set completeopt=menu,longest
+set nowritebackup
+
+autocmd BufNewFile,BufRead /model/*    :setlocal filetype=hid expandtab ts=2
+autocmd BufNewFile,BufRead /report/*   :setlocal filetype=hid expandtab ts=2
+autocmd BufNewFile,BufRead /report/log :setlocal filetype=genode_log
+syn on
+
+hi Statement  ctermfg=white
+hi Constant   ctermfg=yellow
+hi Identifier ctermfg=green

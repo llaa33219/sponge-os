@@ -1,0 +1,9 @@
+LICENSE   := BSD
+VERSION   := 20251212
+DOWNLOADS := acpica.archive
+
+URL(acpica) := https://github.com/acpica/acpica/archive/refs/tags/$(VERSION).tar.gz
+SHA(acpica) := 6f77bd550655183c63f0a307fb0f29ef6140b1f522d61783a16b2af8d9149a0d
+DIR(acpica) := src/lib/acpica
+
+PATCHES := src/lib/acpica/acpica.patch

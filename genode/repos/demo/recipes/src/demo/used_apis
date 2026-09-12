@@ -1,0 +1,10 @@
+base
+os
+blit
+nitpicker_gfx
+timer_session
+input_session
+framebuffer_session
+gui_session
+libc
+libpng

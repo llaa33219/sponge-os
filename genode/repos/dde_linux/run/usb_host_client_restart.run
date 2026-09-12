@@ -1,0 +1,138 @@
+#
+# USB test for client disconnect / reconnect.
+#
+
+assert [expr [have_spec x86] || [have_spec arm_v8a]]
+
+if {[have_spec linux]} {
+	puts "Run script does not support Linux."
+	exit 0
+}
+
+create_boot_directory
+import_from_depot [depot_user]/src/[base_src] \
+                  [depot_user]/pkg/test_usb_host-[board] \
+                  [depot_user]/src/dynamic_rom \
+                  [depot_user]/src/init \
+                  [depot_user]/src/report_rom \
+                  [depot_user]/src/usb_hid \
+
+build { server/event_dump }
+
+install_config {
+config | verbose: no
+
++ parent-provides
+  + service CPU
+  + service IO_MEM
+  + service IO_PORT
+  + service IRQ
+  + service LOG
+  + service PD
+  + service RM
+  + service ROM
+
++ default | caps: 100 | ram: 1M
+
++ default-route
+  + any-service | + parent
+
++ start timer
+  + provides | + service Timer
+
++ start report_rom
+  + provides
+    + service Report
+    + service ROM
+  + config | verbose: no
+    + default-policy | report: usb -> usb -> devices
+
++ start usb | caps: 1200 | ram: 32M | managing_system: yes
+  + binary init
+  + provides | + service Usb
+  + route
+    + service ROM    | label: config | + parent | label: drivers.config
+    + service Timer                  | + child timer
+    + service Report                 | + child report_rom
+    + any-service                    | + parent
+
++ start usb_hid | caps: 580 | ram: 21M
+  + binary init
+  + route
+    + service ROM   | label: config | + child dynamic_rom | label: hid_init
+    + service ROM   | label: report | + child report_rom
+    + service Event                 | + child event_dump
+    + service Timer                 | + child timer
+    + service Usb                   | + child usb
+    + any-service                   | + parent
+
++ start dynamic_rom | ram: 4M
+  + provides | + service ROM
+  + config | verbose: no
+  | + rom hid_init
+  |   + inline
+  |   | + config | verbose: no
+  |   |   + parent-provides
+  |   |     + service ROM
+  |   |     + service IRQ
+  |   |     + service IO_MEM
+  |   |     + service IO_PORT
+  |   |     + service PD
+  |   |     + service RM
+  |   |     + service CPU
+  |   |     + service LOG
+  |   |   + default | caps: 100
+  |   + sleep | milliseconds: 8000
+  |   + inline
+  |   | + config | verbose: no
+  |   |   + parent-provides
+  |   |     + service CPU
+  |   |     + service Event
+  |   |     + service LOG
+  |   |     + service PD
+  |   |     + service RM
+  |   |     + service ROM
+  |   |     + service Report
+  |   |     + service Timer
+  |   |     + service Usb
+  |   |   + default | caps: 100
+  |   |   + start usb_hid | caps: 180 | ram: 11M
+  |   |     + config
+  |   |     + route
+  |   |       + any-service
+  |   |         + parent
+  |   + sleep | milliseconds: 8000
+  + route
+    + service Timer | + child timer
+    + any-service   | + parent
+
++ start event_dump
+  + provides | + service Event
+  + config
+-}
+
+#
+# Define USB host controller config
+#
+set fd [open [run_dir]/genode/usb_host.config w]
+puts $fd {
+config | bios_handoff: no
+  + report | devices: yes
+  + policy | label_prefix: usb_hid | + device | class: 0x3
+-}
+close $fd
+
+# create simple system state ROM
+if { [have_spec arm_v8a] } {
+	set fd [open [run_dir]/genode/system w]
+	puts $fd { <system state=""/> }
+	close $fd
+}
+
+build_boot_image [build_artifacts]
+
+append qemu_args " -device nec-usb-xhci,id=xhci "
+append qemu_args " -device usb-kbd,bus=xhci.0 "
+append qemu_args " -device usb-mouse,bus=xhci.0 "
+
+run_genode_until forever

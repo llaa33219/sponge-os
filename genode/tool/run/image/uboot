@@ -1,0 +1,90 @@
+##
+# Build U-boot bootloader specific uImage/image.itb
+#
+# \param --image-uboot-no-gzip   do not gzip the uImage
+# \param --image-uboot-fit       build image.itb FIT image
+#
+
+
+##
+# Check if the uImage should be gzipped
+#
+proc image_uboot_use_no_gzip { } { return [have_cmd_switch --image-uboot-no-gzip] }
+
+proc image_uboot_use_fit { } { return [have_cmd_switch --image-uboot-fit] }
+
+
+##
+# Make gzip compression more aggressive
+#
+# Using this option reduces the image size by circa 10%. But it comes at the
+# cost of significantly slowing down the gzip step for large images (e.g., 6
+# seconds instead of 2 seconds for a image of 13 MiB). The option is suitable
+# when building a release. But for quick build-test cycles, it is best keep
+# it disabled.
+#
+proc image_uboot_gzip_opt { } {
+	if {[have_cmd_switch --image-uboot-gzip-best]} {
+		return "--best"
+	} else {
+		return "--fast"
+	}
+}
+
+
+##
+# Build U-boot bootloader specific uImage
+#
+proc run_image { } {
+	set dtc [installed_command dtc]
+
+	set elf_img [file join [run_dir] boot [kernel_specific_binary image.elf]]
+
+	# parse ELF entrypoint and load address
+	set entrypoint [exec [cross_dev_prefix]readelf -h $elf_img | \
+			grep "Entry point address: " | \
+			sed -e "s/.*Entry point address: *//"]
+	set load_addr [exec [cross_dev_prefix]readelf -l $elf_img | \
+		       grep -m 1 "LOAD"]
+	set load_addr [lindex [regexp -inline -all -- {\S+} $load_addr] 3]
+
+	set bin_img [file join [run_dir] boot image.bin]
+	exec [cross_dev_prefix]objcopy -O binary $elf_img $bin_img
+
+	set use_gzip [expr ![image_uboot_use_no_gzip]]
+	set compress_type none
+	set bin_ext ""
+
+	# compress ELF
+	if $use_gzip {
+		exec gzip [image_uboot_gzip_opt] --force $bin_img
+		set bin_ext .gz
+		set compress_type gzip
+	}
+
+	set arch "arm"
+	if {[have_spec arm_64]} { set arch "arm64" }
+
+	if {[image_uboot_use_fit]} {
+		# create image.itb
+		set uboot_img [file join [run_dir] boot image.itb]
+
+		# create dummy dtb for version of u-boot requiring it in the fit image
+		set fd [open [run_dir]/dummy.dts w]
+		puts $fd "/dts-v1/;\n / {};"
+		close $fd
+		exec $dtc [run_dir]/dummy.dts -o [run_dir]/dummy.dtb
+
+		exec mkimage -f auto -A $arch -T kernel -C $compress_type -a $load_addr \
+		             -e $entrypoint -b [run_dir]/dummy.dtb  -d $bin_img$bin_ext $uboot_img
+
+		# cleanup dummy files
+		file delete -force [run_dir]/dummy.dts [run_dir]/dummy.dtb
+	} else {
+		# create uImage
+		set uboot_img [file join [run_dir] boot uImage]
+		exec mkimage -A $arch -O linux -T kernel -C $compress_type -a $load_addr \
+		             -e $entrypoint -d $bin_img$bin_ext $uboot_img
+	}
+	exec rm -rf $bin_img$bin_ext $elf_img
+}

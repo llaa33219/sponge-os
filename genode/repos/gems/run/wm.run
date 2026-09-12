@@ -1,0 +1,148 @@
+create_boot_directory
+
+#
+# To use the themed decorator instead of the default one, replace
+# 'pkg/motif_wm' with 'pkg/themed_wm'.
+#
+
+import_from_depot [depot_user]/src/[base_src] \
+                  [depot_user]/pkg/[drivers_interactive_pkg] \
+                  [depot_user]/pkg/motif_wm \
+                  [depot_user]/raw/genode_bg \
+                  [depot_user]/pkg/backdrop \
+                  [depot_user]/src/demo \
+                  [depot_user]/src/init \
+                  [depot_user]/src/nitpicker \
+                  [depot_user]/src/gui_fb \
+                  [depot_user]/src/vfs
+
+install_config {
+config | prio_levels: 2
++ parent-provides
+  + service ROM
+  + service IRQ
+  + service IO_MEM
+  + service IO_PORT
+  + service PD
+  + service RM
+  + service CPU
+  + service LOG
+
++ default-route
+  + any-service
+    + parent
+    + any-child
+
++ default | caps: 100 | ram: 1M
+
++ start timer
+  + provides | + service Timer
+
++ start drivers | caps: 1500 | ram: 64M | managing_system: yes
+  + binary init
+  + route
+    + service ROM | label: config | + parent | label: drivers.config
+    + service Timer               | + child timer
+    + service Capture             | + child nitpicker
+    + service Event               | + child nitpicker
+    + any-service                 | + parent
+
++ start nitpicker | ram: 4M
+  + provides
+    + service Gui
+    + service Capture
+    + service Event
+  + config | focus: rom
+    + capture
+    + event
+    + domain pointer | layer: 1 | content: client | label: no | origin: pointer
+    + domain default | layer: 2 | content: client | label: no | hover: always
+    + policy | label_prefix: pointer | domain: pointer
+    + default-policy                 | domain: default
+    + global-key KEY_SCREEN | label: wm -> wm -> decorator
+
++ start pointer
+  + route
+    + service Gui | + child nitpicker
+    + any-service
+      + parent
+      + any-child
+
++ start wm | caps: 1000 | ram: 32M
+  + binary init
+  + provides
+    + service Gui
+    + service Report
+    + service ROM
+  + route
+    + service ROM | label: config | + parent | label: wm.config
+    + service Gui                 | + child nitpicker
+    + any-service
+      + parent
+      + any-child
+
++ start launchpad | priority: -1 | caps: 1000 | ram: 20M
+  + config
+  | + launcher gui_fb | ram_quota: 7M | caps: 100
+  |   + config | initial_width: 500 | initial_height: 400
+  | + launcher nitpicker | ram_quota: 1M | caps: 100
+  |   + config | request_framebuffer: yes | request_input: yes
+  |     + domain default | layer: 2 | content: client | label: no
+  |                      | hover: always | focus: click
+  |     + default-policy | domain: default
+  | + launcher testnit | ram_quota: 1M | caps: 100
+  + route
+    + any-service
+      + child wm
+      + parent
+      + any-child
+
++ start backdrop | priority: -1 | caps: 120 | ram: 24M
+  + config
+  | + libc
+  | + vfs
+  |   + rom genode_logo.png
+  |   + rom grid.png
+  | + fill | color: #224433
+  | + image | png: grid.png | tiled: yes | alpha: 200
+  | + image | png: genode_logo.png | anchor: bottom_right | alpha:  150
+  |                                | xpos: -20 | ypos: -20
+  + route
+    + any-service
+      + child nitpicker | label: backdrop
+      + parent
+      + any-child
+
++ start wm_backdrop | priority: -1 | caps: 120 | ram: 32M
+  + binary backdrop
+  + config
+  | + libc
+  | + vfs | | + rom genode_logo.png
+  | + fill | color: #664455
+  | + image | png: genode_logo.png | scale: zoom | alpha: 150
+  | + image | png: genode_logo.png | scale: fit  | alpha: 150 | tiled: yes
+  | + image | png: genode_logo.png
+  + route
+    + any-service
+      + child wm
+      + parent
+      + any-child
+-
+}
+
+#
+# Pin the nitpicker focus to the window manager by providing a static focus ROM
+#
+set fd [open [run_dir]/genode/focus w]
+puts $fd "focus | label: wm -> focus\n-"
+close $fd
+
+copy_file [genode_dir]/repos/gems/recipes/raw/motif_wm/wm.config             [run_dir]/genode/
+copy_file [genode_dir]/repos/gems/recipes/raw/motif_wm/layouter.config       [run_dir]/genode/
+copy_file [genode_dir]/repos/gems/recipes/raw/motif_wm/decorator_init.config [run_dir]/genode/
+
+build { app/window_layouter app/decorator server/nitpicker server/wm test/nitpicker }
+
+build_boot_image [build_artifacts]
+
+run_genode_until forever

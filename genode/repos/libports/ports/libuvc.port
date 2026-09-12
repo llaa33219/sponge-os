@@ -1,0 +1,24 @@
+LICENSE   := BSD-3-Clause
+DOWNLOADS := libuvc.git
+VERSION   := git
+
+URL(libuvc) := https://github.com/libuvc/libuvc.git
+REV(libuvc) := 047920bcdfb1dac42424c90de5cc77dfc9fba04d
+DIR(libuvc) := src/lib/libuvc
+
+DIRS := include/libuvc
+DIR_CONTENT(include/libuvc) := src/lib/libuvc/include/libuvc/libuvc.h
+
+PATCHES := $(addprefix src/lib/libuvc/,uvc150.patch relax_check.patch)
+PATCH_OPT := -p1 -d src/lib/libuvc
+
+default: include/libuvc/libuvc_config.h
+
+include/libuvc/libuvc_config.h: _dirs
+	@$(MSG_GENERATE)$@
+	$(VERBOSE)cp src/lib/libuvc/include/libuvc/libuvc_config.h.in $@
+	$(VERBOSE)sed -e 's/@libuvc_VERSION_MAJOR@/0/' \
+	              -e 's/@libuvc_VERSION_MINOR@/0/' \
+	              -e 's/@libuvc_VERSION_PATCH@/6/' \
+	              -e 's/@libuvc_VERSION@/0.0.6/' \
+	              -e 's/cmakedefine/define/' -i $@

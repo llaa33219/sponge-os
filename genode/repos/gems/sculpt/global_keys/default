@@ -1,0 +1,13 @@
+config
++ bool leitzentrale | initial: yes
++ bool capslock     | initial: no
++ bool numlock      | initial: no
+
++ press KEY_DASHBOARD | bool: leitzentrale | change: toggle
++ press KEY_CAPSLOCK  | bool: capslock     | change: toggle
++ press KEY_NUMLOCK   | bool: numlock      | change: toggle
+
++ report leitzentrale | + bool leitzentrale
++ report capslock     | + bool capslock
++ report numlock      | + bool numlock
+-

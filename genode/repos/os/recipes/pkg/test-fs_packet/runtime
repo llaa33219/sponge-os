@@ -1,0 +1,52 @@
+runtime | ram: 32M | caps: 1000 | binary: init
+
++ requires | + timer
+
++ fail    | after_seconds: 30
++ succeed | : child "short-test" exited with exit value 0
+
++ content
+  + rom | label: ld.lib.so
+  + rom | label: test-fs_packet
+  + rom | label: sequence
+  + rom | label: vfs
+  + rom | label: vfs.lib.so
+
++ config
+  + parent-provides
+    + service IRQ
+    + service IO_MEM
+    + service IO_PORT
+    + service CPU
+    + service LOG
+    + service PD
+    + service ROM
+    + service Timer
+
+  + default-route
+    + any-service
+      + parent
+      + any-child
+
+  + default | caps: 100
+
+  + start vfs | ram: 4M
+    + provides | + service File_system
+    + config
+      + vfs | + zero test
+      + default-policy | root: / | writeable: yes
+
+  + start long-test | ram: 2M
+    + binary test-fs_packet
+    + config | count: 1024
+
+  + start short-test | caps: 200 | ram: 4M
+    + binary sequence
+    + config
+      + start a
+        + binary test-fs_packet
+        + config | count: 64
+      + start b
+        + binary test-fs_packet
+        + config | count: 64
+-

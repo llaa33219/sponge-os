@@ -1,0 +1,170 @@
+assert {[have_spec x86]}
+
+set is_qemu         [have_include power_on/qemu]
+set is_old          [expr [have_spec fiasco] || [have_spec okl4] || [have_spec pistachio]]
+set is_32bit_x86_hw [expr !$is_qemu && [have_spec 32bit]]
+
+#
+# Only run tests on supported platforms
+#
+assert {![have_spec linux]}
+assert {!$is_32bit_x86_hw}
+assert {!($is_qemu && $is_old)}
+
+#
+# Qemu and on certain platforms only use the small set of tests
+#
+set small_test [expr $is_qemu || [have_spec foc] || [have_spec sel4]]
+
+#
+# Check used commands
+#
+set dd [installed_command dd]
+
+#
+# Import archives
+#
+create_boot_directory
+import_from_depot [depot_user]/src/[base_src] \
+                  [depot_user]/src/acpi \
+                  [depot_user]/src/block_tester \
+                  [depot_user]/src/init \
+                  [depot_user]/src/nvme \
+                  [depot_user]/src/pci_decode \
+                  [depot_user]/src/platform \
+                  [depot_user]/src/report_rom
+
+#
+# Build
+#
+
+build { driver/nvme }
+
+#
+# Create raw image
+#
+catch { exec $dd if=/dev/zero of=bin/nvme.raw bs=1M count=0 seek=32768 }
+
+#
+# Generate config
+#
+append config {
+config | verbose: no
++ parent-provides
+  + service ROM
+  + service IRQ
+  + service IO_MEM
+  + service IO_PORT
+  + service PD
+  + service RM
+  + service CPU
+  + service LOG
+
++ default-route 
+  + any-service
+    + parent
+    + any-child
+
++ default | caps: 200 | ram: 2M
+
++ start timer
+  + provides | + service Timer
+
++ start report_rom | ram: 2M
+  + provides
+    + service Report
+    + service ROM
+  + config
+    + policy | label: pci_decode -> system | report: acpi -> acpi
+    + policy | label: platform -> devices  | report: pci_decode -> devices
+
++ start acpi | caps: 350 | ram: 4M
+  + route
+    + service Report | + child report_rom
+    + service IO_MEM | + parent
+    + service LOG    | + parent
+    + service PD     | + parent
+    + service RM     | + parent
+    + service CPU    | + parent
+    + service ROM    | + parent
+
++ start pci_decode | caps: 350 | ram: 2M
+  + route
+    + service ROM    | label: system | + child report_rom
+    + service Report                 | + child report_rom
+    + service IO_MEM                 | + parent
+    + service LOG                    | + parent
+    + service PD                     | + parent
+    + service RM                     | + parent
+    + service CPU                    | + parent
+    + service ROM                    | + parent
+
++ start platform | caps: 100 | ram: 2M | managing_system: yes
+  + provides
+    + service Platform
+    + service Dma
+  + route
+    + service ROM     | label: devices | + child report_rom
+    + service Report                   | + child report_rom
+    + service Timer                    | + child timer
+    + service IRQ                      | + parent
+    + service IO_MEM                   | + parent
+    + service IO_PORT                  | + parent
+    + service ROM                      | + parent
+    + service PD                       | + parent
+    + service CPU                      | + parent
+    + service LOG                      | + parent
+  + config
+    + report | devices: yes
+    + policy | label: nvme -> | + pci | class: NVME
+
++ start nvme | caps: 140 | ram: 24M
+  + provides | + service Block
+  + config | max_hmb_size: 16M | verbose_regs: yes | verbose_identify: yes
+    + policy | label_prefix: block_tester | writeable: no
+  + route
+    + service Platform | + child platform
+    + service Dma      | + child platform
+    + service Timer    | + child timer
+    + service CPU      | + parent
+    + service ROM      | + parent
+    + service PD       | + parent
+    + service LOG      | + parent
+
++ start block_tester | caps: 200 | ram: 64M
+  + config | verbose: no | report: no | log: yes | stop_on_error: no
+    + tests}
+
+append_if $small_test config {
+      + sequential | length: 256M | size: 64K
+      + random     | length: 256M | size: 64K | seed: 0xdeadbeef}
+
+append_if [expr !$small_test] config {
+      + sequential | length: 1G | size: 4K   | batch: 128
+      + sequential | length: 1G | size: 8K   | batch: 128
+      + sequential | length: 1G | size: 64K
+      + sequential | length: 3G | size: 1M   | batch: 128
+      + random     | length: 1G | size: 16K  | seed: 0xdeadbeef
+      + random     | length: 3G | size: 512K | seed: 0xc0ffee
+      + ping_pong  | length: 1G | size: 16K}
+
+append config {
+  + route
+    + service Block | + child nvme
+    + any-service
+      + parent
+      + any-child
+-}
+
+install_config $config
+
+build_boot_image [build_artifacts]
+
+append qemu_args " -nographic "
+append qemu_args " -device pcie-root-port,id=root_port1 "
+append qemu_args " -drive id=nvme0,file=bin/nvme.raw,format=raw,if=none "
+append qemu_args " -device nvme,drive=nvme0,serial=fnord,id=nvme0n1,bus=root_port1 "
+
+run_genode_until {.*child "block_tester" exited with exit value 0.*\n} 300
+
+exec rm -f bin/nvme.raw

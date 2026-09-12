@@ -1,0 +1,64 @@
+runtime | ram: 12M | caps: 550 | binary: init
++ requires
+  + gui
+  + rom | label: window_list
+  + rom | label: focus_request
+  + rom | label: hover
+  + rom | label: decorator_margins
+  + report
+  + file_system | label: recall
+  + timer
+
++ config
+  + parent-provides
+  | + service CPU
+  | + service LOG
+  | + service PD
+  | + service ROM
+  | + service Report
+  | + service Timer
+  | + service Gui
+  | + service File_system
+  + default-route
+  | + any-service
+  |   + parent
+  |   + any-child
+  + default | caps: 150 | ram:  2M
+  |
+  + start fs_report
+  | + provides | + service Report
+  | + config | + vfs | + fs
+  | + route
+  |   + service File_system | + parent | identity: recall
+  |   + any-service         | + parent
+  |
+  + start fs_rom
+  | + provides | + service ROM
+  | + config
+  | + route
+  |   + service File_system | + parent | identity: recall
+  |   + any-service         | + parent
+  |
+  + start window_layouter | caps: 120 | ram: 6M
+    + route
+      + service ROM    | label: config            | + parent | label: window_layouter.config
+      + service ROM    | label: rules             | + child fs_rom | label: 25.10
+      + service ROM    | label: window_list       | + parent | label: window_list
+      + service ROM    | label: focus_request     | + parent | label: focus_request
+      + service ROM    | label: hover             | + parent | label: hover
+      + service ROM    | label: decorator_margins | + parent | label: decorator_margins
+      + service Report | label: rules             | + child fs_report | label: 25.10
+      + service Report | label: window_layout     | + parent | label: window_layout
+      + service Report | label: resize_request    | + parent | label: resize_request
+      + service Report | label: focus             | + parent | label: focus
+      + any-service                               | + parent
+
++ content
+  + rom | label: ld.lib.so
+  + rom | label: vfs.lib.so
+  + rom | label: init
+  + rom | label: fs_report
+  + rom | label: fs_rom
+  + rom | label: window_layouter
+  + rom | label: window_layouter.config
+-

@@ -1,0 +1,29 @@
+LICENSE   := GPLv3
+VERSION   := 16.3
+DOWNLOADS := gdb.archive
+
+URL(gdb)  := http://ftp.fu-berlin.de/gnu/gdb/gdb-$(VERSION).tar.xz
+SHA(gdb)  := bcfcd095528a987917acf9fff3f1672181694926cc18d609c99d0042c00224c5
+SIG(gdb)  := ${URL(gdb)}.sig
+KEY(gdb)  := GNU
+DIR(gdb)  := src/noux-pkg/gdb
+
+PATCHES   := $(addprefix ${DIR(gdb)}/patches/, \
+                         $(shell cat $(REP_DIR)/${DIR(gdb)}/patches/series))
+PATCH_OPT := -p1 -d ${DIR(gdb)}
+
+default: symlinks
+
+#
+# These .c files need to be compiled with g++
+#
+symlinks: $(DOWNLOADS)
+	$(VERBOSE)ln -s amd64.c             ${DIR(gdb)}/gdb/arch/amd64.cc
+	$(VERBOSE)ln -s i386.c              ${DIR(gdb)}/gdb/arch/i386.cc
+	$(VERBOSE)ln -s fork-inferior.c     ${DIR(gdb)}/gdb/nat/fork-inferior.cc
+	$(VERBOSE)ln -s linux-ptrace.c      ${DIR(gdb)}/gdb/nat/linux-ptrace.cc
+	$(VERBOSE)ln -s x86-dregs.c         ${DIR(gdb)}/gdb/nat/x86-dregs.cc
+	$(VERBOSE)ln -s x86-linux.c         ${DIR(gdb)}/gdb/nat/x86-linux.cc
+	$(VERBOSE)ln -s x86-linux-dregs.c   ${DIR(gdb)}/gdb/nat/x86-linux-dregs.cc
+	$(VERBOSE)ln -s waitstatus.c        ${DIR(gdb)}/gdb/target/waitstatus.cc
+	$(VERBOSE)ln -s alloc.c             ${DIR(gdb)}/gdb/alloc.cc
