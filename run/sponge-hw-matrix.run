@@ -1,0 +1,481 @@
+#
+# \brief  Sponge OS hardware-matrix scenario (Phase 16 pre-hw gate)
+# \author Sponge OS contributors
+# \date   2026
+#
+# Parameterized boot + input-interaction verification across QEMU
+# emulated-hardware variation. Every axis is an environment knob
+# consumed by this script (all optional; defaults = the proven
+# baseline):
+#
+#   SPONGE_HW_VARIANT  summary name printed in the PASS marker
+#   SPONGE_HW_CPU      -cpu model      (default Skylake-Client)
+#   SPONGE_HW_SMP      -smp count      (default 1)
+#   SPNGE_HW_MEM       -m size         (default 2G)   [sic: SPONGE]
+#   SPONGE_HW_MACHINE  -machine type   (default q35)
+#   SPONGE_HW_VGA      -vga type       (default std)
+#   SPONGE_HW_USB      xhci|ehci       (default xhci)
+#   SPONGE_HW_INPUT    tablet|mouse|kbd|ps2 (default tablet)
+#
+# Topology is the PROVEN sponge-usb-hid-mouse envelope (timer +
+# report_rom + nitpicker + drivers sub-init with acpi / pci_decode /
+# platform / vesa_fb / ps2 / pc_usb_host / usb_hid / event_filter +
+# the two usb_hid probes) — no new components, only new QEMU args.
+#
+# Phases (each bounded, fail-loud):
+#   0. boot/display gate: vesa_fb resolution marker
+#   1. input gate per SPONGE_HW_INPUT:
+#      tablet — QMP device_add usb-tablet, usb_hid "Connected device
+#                ... POINTER", absolute move+click dispatch, unplug,
+#                "Disconnected device"
+#      mouse  — the proven audit chain: device_add usb-mouse ->
+#                "MOUSE detected" -> REL motion + BTN dispatch ->
+#                device_del -> "MOUSE removed"
+#      kbd    — device_add usb-kbd -> "KEYBOARD detected" -> send-key
+#                dispatch -> device_del -> "KEYBOARD removed"
+#      ps2    — no USB device; PS/2 QMP motion+click, then a
+#                stability window (no child exit)
+#   2. final marker: "sponge-hw-matrix: PASS (variant=<name>)"
+#
+# The driver-level audit chain is the load-bearing marker (see
+# sponge-usb-hid-mouse for the rationale; the Qt/DE stack is out of
+# scope here by design). Driven by tool/hwtest (matrix driver);
+# manual escape hatch: see docs/08 §"hardware matrix".
+#
+# base-sel4 only (real PC hardware input chain).
+#
+
+assert {[have_spec sel4]} \
+	"sponge-hw-matrix requires KERNEL=sel4 (BOARD=pc). This scenario \
+	 drives real PC hardware (vesa_fb/ps2/usb_hid) which base-linux \
+	 cannot provide."
+
+#
+# Environment knobs
+#
+proc hw_env { name default } {
+	if {[info exists ::env($name)] && $::env($name) ne ""} {
+		return $::env($name)
+	}
+	return $default
+}
+
+set hw_variant [hw_env SPONGE_HW_VARIANT "baseline"]
+set hw_cpu     [hw_env SPONGE_HW_CPU     "Skylake-Client"]
+set hw_smp     [hw_env SPONGE_HW_SMP     "1"]
+set hw_mem     [hw_env SPONGE_HW_MEM     "2G"]
+set hw_machine [hw_env SPONGE_HW_MACHINE "q35"]
+set hw_vga     [hw_env SPONGE_HW_VGA     "std"]
+set hw_usb     [hw_env SPONGE_HW_USB     "xhci"]
+set hw_input   [hw_env SPONGE_HW_INPUT   "tablet"]
+
+if {$hw_usb eq "xhci"} {
+	set usb_ctrl "nec-usb-xhci,id=xhci"
+} elseif {$hw_usb eq "ehci"} {
+	set usb_ctrl "usb-ehci,id=ehci"
+} else {
+	error "SPONGE_HW_USB must be xhci or ehci (got '$hw_usb')"
+}
+
+puts "sponge-hw-matrix: variant=$hw_variant cpu=$hw_cpu smp=$hw_smp \
+mem=$hw_mem machine=$hw_machine vga=$hw_vga usb=$hw_usb input=$hw_input"
+
+source [file join [file dirname [file normalize [info script]]] qmp.inc]
+
+build { core lib/ld init timer server/report_rom server/nitpicker \
+         driver/acpi app/pci_decode driver/platform \
+         driver/framebuffer/vesa driver/ps2 \
+         driver/usb_host/pc driver/usb_hid server/event_filter \
+         test/usb_hid_probe test/usb_hid_mouse_probe }
+
+create_boot_directory
+
+install_config {
+config
++ parent-provides
+  + service ROM
+  + service PD
+  + service RM
+  + service CPU
+  + service LOG
+  + service IRQ
+  + service IO_MEM
+  + service IO_PORT
+
++ default | caps: 200 | ram: 4M
++ default-route
+  + any-service
+    + parent
+    + any-child
+
++ start timer
+  + provides | + service Timer
+
++ start report_rom | ram: 8M
+  + provides
+  | + service Report
+  | + service ROM
+  + config | verbose: no
+
++ start nitpicker | ram: 16M
+  + provides
+  | + service Gui
+  | + service Capture
+  | + service Event
+  + route
+    + service Report | + child report_rom
+    + service Timer  | + child timer
+    + any-service
+      + parent
+      + any-child
+  + config
+    + capture
+    + event
+    + report | focus: yes | hover: yes
+    + domain probe | layer: 2 | content: client | label: no
+                   | hover: always | focus: click
+                   | xpos: 0 | ypos: 0 | width: 1024 | height: 768
+    + default-policy | domain: probe
+    + background | color: #1e1e2e
+
++ start drivers | caps: 1700 | ram: 96M | managing_system: yes
+  + binary init
+  + route
+    + service ROM | label: config | + parent | label: drivers.config
+    + service Timer | + child timer
+    + service Capture | + child nitpicker
+    + service Event | + child nitpicker
+    + any-service                 | + parent
+  + config
+    + parent-provides
+      + service IRQ
+      + service IO_MEM
+      + service IO_PORT
+      + service ROM
+      + service PD
+      + service RM
+      + service CPU
+      + service LOG
+      + service Timer
+      + service Capture
+      + service Event
+
+    + default | caps: 60
+
+    + start acpi | caps: 250 | ram: 4M
+      + route
+        + service IO_MEM | + parent
+        + service LOG | + parent
+        + service PD | + parent
+        + service RM | + parent
+        + service CPU | + parent
+        + service ROM | + parent
+        + service Report | + child report_rom
+
+    + start report_rom | caps: 100 | ram: 2M
+      + provides
+      | + service ROM
+      | + service Report
+      + config
+      | + policy | label: pci_decode -> system | report: acpi -> acpi
+      | + policy | label: platform -> devices  | report: pci_decode -> devices
+      | + policy | label: usb_hid -> report    | report: usb -> devices
+      | + policy | label: usb_hid_probe -> report | report: usb -> devices
+      | + policy | label: usb_hid_mouse_probe -> report | report: usb -> devices
+      | + policy | label: usb_hid_mouse_probe -> pointer | report: nitpicker -> pointer
+      + route
+        + service LOG | + parent
+        + service PD | + parent
+        + service CPU | + parent
+        + service ROM | + parent
+        + service Report | + parent
+
+    + start pci_decode | caps: 100 | ram: 2M
+      + route
+        + service Report | + child report_rom
+        + service ROM | label: system | + child report_rom
+        + service IO_MEM | + parent
+        + service LOG | + parent
+        + service PD | + parent
+        + service RM | + parent
+        + service CPU | + parent
+        + service ROM | + parent
+
+    + start platform | caps: 200 | ram: 3M | managing_system: yes
+      + provides
+      | + service Dma
+      | + service Platform
+      + route
+      | + service ROM | label: devices | + child report_rom
+      | + service Report | + child report_rom
+      | + service IRQ | + parent
+      | + service IO_MEM | + parent
+      | + service IO_PORT | + parent
+      | + service ROM | + parent
+      | + service PD | + parent
+      | + service CPU | + parent
+      | + service LOG | + parent
+      | + service Timer | + parent
+      + config
+        + report | devices: yes
+        + policy | label_prefix: ps2             | + device ps2
+        + policy | label_prefix: fb  | info: yes | + pci | class: VGA
+        + policy | label_prefix: usb | info: yes | + pci | class: USB
+
+    + start fb | caps: 150 | ram: 20M
+      + binary vesa_fb
+      + route
+        + service ROM | label: config | + parent | label: fb.config
+        + service Report | + child report_rom
+        + service Dma | + child platform
+        + service Platform | + child platform
+        + service IO_PORT | + parent
+        + service IO_MEM | + parent
+        + service ROM | + parent
+        + service PD | + parent
+        + service CPU | + parent
+        + service LOG | + parent
+        + service Timer | + parent
+        + service Capture | + parent
+
+    + start ps2 | caps: 100 | ram: 1280K
+      + config
+      + route
+        + service Dma | + child platform
+        + service Platform | + child platform
+        + service Event | + child event_filter | label: ps2
+        + service ROM | + parent
+        + service PD | + parent
+        + service CPU | + parent
+        + service LOG | + parent
+        + service Timer | + parent
+
+    + start usb | caps: 200 | ram: 16M
+      + binary pc_usb_host
+      + provides | + service Usb
+      + config
+      | + report | devices: yes
+      | + policy | label_prefix: usb_hid | + device | class: 0x3
+      + route
+        + service Dma | + child platform
+        + service Platform | + child platform
+        + service Report | label: devices | + child report_rom
+        + service ROM | + parent
+        + service PD | + parent
+        + service RM | + parent
+        + service CPU | + parent
+        + service LOG | + parent
+        + service Timer | + parent
+
+    + start usb_hid | caps: 180 | ram: 10M
+      + route
+        + service ROM | label: report | + child report_rom
+        + service ROM | + parent
+        + service PD | + parent
+        + service RM | + parent
+        + service CPU | + parent
+        + service LOG | + parent
+        + service Timer | + parent
+        + service Event | + child event_filter | label: usb
+        + service Usb | + child usb
+
+    + start usb_hid_probe | caps: 100 | ram: 4M
+      + route
+        + service ROM | label: report | + child report_rom
+        + service ROM | label_last: ld.lib.so | + parent
+        + any-service
+          + parent
+          + any-child
+
+    + start usb_hid_mouse_probe | caps: 100 | ram: 4M
+      + route
+        + service ROM | label: report | + child report_rom
+        + service ROM | label: pointer | + child report_rom
+        + service ROM | label_last: ld.lib.so | + parent
+        + any-service
+          + parent
+          + any-child
+
+    + start event_filter | caps: 90 | ram: 1280K
+      + provides | + service Event
+      + route
+        + service ROM | label: config | + parent | label: event_filter.config
+        + service Event | + parent
+        + service ROM | + parent
+        + service PD | + parent
+        + service CPU | + parent
+        + service LOG | + parent
+        + service Timer | + parent
+
+- }
+
+#
+# Driver sub-init config modules — staged from the vendored recipe,
+# with the two probe policies injected (the proven usb-hid-mouse /
+# kbd-scenario staging, unchanged).
+#
+set recipe_dir "${genode_dir}/repos/os/recipes/raw/drivers_interactive-pc"
+exec cp -f "$recipe_dir/drivers.config" "bin/drivers.config"
+exec cp -f "$recipe_dir/fb.config"      "bin/fb.config"
+
+set drv_cfg "bin/drivers.config"
+set drv_fh [open $drv_cfg "r"]
+set drv_content [read $drv_fh]
+close $drv_fh
+set drv_fh [open $drv_cfg "w"]
+puts $drv_fh [string map [list \
+	"label: usb_hid -> report    | report: usb -> devices" \
+	"label: usb_hid -> report    | report: usb -> devices\n  | + policy | label: usb_hid_probe -> report | report: usb -> devices\n  | + policy | label: usb_hid_mouse_probe -> report | report: usb -> devices"] \
+	$drv_content]
+close $drv_fh
+
+set ef_fh [open "bin/event_filter.config" w]
+puts $ef_fh {config
++ output
+  + chargen
+    + merge
+    | + transform
+    | | + scale | x: 0.0312517 | y: 0.0234382
+    | | + input usb
+    | + button-scroll
+    | |   + input ps2
+    | |   + vertical   | button: BTN_MIDDLE | speed_percent: -10
+    | |   + horizontal | button: BTN_MIDDLE | speed_percent: -10
+  + mod1
+  | + key KEY_LEFTSHIFT
+  | + key KEY_RIGHTSHIFT
+  + mod3
+  | + key KEY_RIGHTALT | . AltGr
+  + repeat | delay_ms: 230 | rate_ms: 90
+  + include | rom: en_us.chargen
+  + include | rom: special.chargen
++ policy | label: ps2 | input: ps2
++ policy | label: usb | input: usb
+-}
+close $ef_fh
+
+set chargen_dir "${genode_dir}/repos/os/src/server/event_filter"
+foreach f { en_us.chargen special.chargen } {
+	if {![file exists "$chargen_dir/$f"]} { error "$chargen_dir/$f missing" }
+	exec cp -f "$chargen_dir/$f" "bin/$f"
+}
+
+set boot_modules [build_artifacts]
+foreach m { drivers.config fb.config event_filter.config \
+             en_us.chargen special.chargen } {
+	lappend boot_modules $m
+}
+
+build_boot_image $boot_modules
+
+#
+# QEMU: fully parameterized except the input channel, which is
+# driven by QMP below (no static USB HID devices — every input
+# variant starts HID-empty; the PS/2 controller is QEMU-default).
+#
+append qemu_args " -machine $hw_machine"
+append qemu_args " -cpu $hw_cpu"
+append qemu_args " -smp $hw_smp"
+append qemu_args " -m $hw_mem"
+append qemu_args " -vga $hw_vga"
+append qemu_args " -device $usb_ctrl"
+append qemu_args " -nographic"
+
+set qmp_port [qmp_pick_port]
+append qemu_args " -qmp tcp:127.0.0.1:${qmp_port},server=on,wait=off "
+
+#
+# ===== Phase 0: boot + display gate =====
+#
+run_genode_until {.*\[init -> drivers -> fb\] using \d+x\d+.*} 120
+
+#
+# ===== Phase 1: input interaction gate =====
+#
+set qmp_chan [qmp_connect $qmp_port]
+
+if {$hw_input eq "mouse"} {
+
+	puts "\nqmp: hotplug usb-mouse (id=hwmx) via QMP device_add"
+	qmp_hotplug_device $qmp_chan "usb-mouse" "hwmx"
+	run_genode_until {.*usb_hid: MOUSE detected.*} 30 $qemu_spawn_id
+	match_max -i $qemu_spawn_id 200000
+
+	qmp_move_rel $qmp_chan "x" 40
+	after 100
+	qmp_move_rel $qmp_chan "y" -30
+	after 100
+	qmp_ps2_button $qmp_chan true
+	after 100
+	qmp_ps2_button $qmp_chan false
+	after 100
+
+	qmp_unplug_device $qmp_chan "hwmx"
+	run_genode_until {.*usb_hid: MOUSE removed.*} 30 $qemu_spawn_id
+
+} elseif {$hw_input eq "tablet"} {
+
+	puts "\nqmp: hotplug usb-tablet (id=hwtab) via QMP device_add"
+	qmp_hotplug_device $qmp_chan "usb-tablet" "hwtab"
+	run_genode_until {.*usb_hid\] Connected device:.*POINTER.*} 30 $qemu_spawn_id
+	match_max -i $qemu_spawn_id 200000
+
+	# absolute move + click dispatch through the tablet axis
+	qmp_pointer_move $qmp_chan 300 200
+	after 100
+	qmp_button $qmp_chan "left" true
+	after 100
+	qmp_button $qmp_chan "left" false
+	after 100
+
+	qmp_unplug_device $qmp_chan "hwtab"
+	run_genode_until {.*usb_hid\] Disconnected device: input0.*} 30 $qemu_spawn_id
+
+} elseif {$hw_input eq "kbd"} {
+
+	puts "\nqmp: hotplug usb-kbd (id=hwkbd) via QMP device_add"
+	qmp_hotplug_device $qmp_chan "usb-kbd" "hwkbd"
+	run_genode_until {.*usb_hid: KEYBOARD detected.*} 30 $qemu_spawn_id
+	match_max -i $qemu_spawn_id 200000
+
+	qmp_send_key $qmp_chan "a"
+	after 200
+
+	qmp_unplug_device $qmp_chan "hwkbd"
+	run_genode_until {.*usb_hid: KEYBOARD removed.*} 30 $qemu_spawn_id
+
+} elseif {$hw_input eq "ps2"} {
+
+	# PS/2 mouse events via the QEMU-default i8042 auxiliary port
+	qmp_ps2_click $qmp_chan 400 300
+	after 200
+	qmp_move_rel $qmp_chan "x" 20
+	after 200
+	qmp_ps2_button $qmp_chan true
+	after 100
+	qmp_ps2_button $qmp_chan false
+
+	# stability window: no child exit during/after the events
+	global qemu_spawn_id
+	set timeout 5
+	expect {
+		-i $qemu_spawn_id -re {child "(usb_hid|ps2|event_filter|nitpicker)" exited} {
+			puts "sponge-hw-matrix: FAIL (variant=$hw_variant) — child exited during PS/2 events"
+			exit 1
+		}
+		timeout {
+			puts "qmp: ps2 stability window closed (no child exit)"
+		}
+	}
+
+} else {
+	error "SPONGE_HW_INPUT must be tablet|mouse|kbd|ps2 (got '$hw_input')"
+}
+
+qmp_disconnect $qmp_chan
+
+#
+# ===== Phase 2: final marker =====
+#
+puts "sponge-hw-matrix: PASS (variant=$hw_variant cpu=$hw_cpu smp=$hw_smp mem=$hw_mem machine=$hw_machine vga=$hw_vga usb=$hw_usb input=$hw_input)"
+puts "Run script execution successful."

@@ -1301,3 +1301,44 @@ archive.
   reason.
 
 
+
+## 16. Hardware Matrix (headless pre-real-hw gate)
+
+Before touching real hardware, the full boot + input-interaction
+chain is verified across QEMU emulated-hardware variation:
+
+```bash
+./tool/hwtest                  # full default matrix (15 variants)
+./tool/hwtest --list           # list variant names
+./tool/hwtest --only cpu-max,input-kbd   # iterate on a subset
+```
+
+Every variant boots `run/sponge-hw-matrix.run` — the proven
+interactive driver stack (vesa_fb / ps2 / pc_usb_host / usb_hid /
+event_filter + the two usb_hid probes) — with one hardware axis
+varied, then drives QMP input interaction (hotplug audit chain for
+USB, PS/2 motion+click with a stability window for the i8042 path)
+and gates on a fail-loud `sponge-hw-matrix: PASS (variant=...)`
+marker. The matrix covers CPU models (SandyBridge..max), SMP
+(1/2/4/8), memory (2G/4G), machine (q35/pc), USB controller
+(xhci/ehci), input devices (usb-tablet/usb-mouse/usb-kbd/ps2), and
+a combined shakedown.
+
+Manual equivalent (control escape hatch): every variant is a plain
+
+```bash
+SPONGE_HW_VARIANT=cpu-max SPONGE_HW_CPU=max ... \
+    make -C genode/build/x86_64 run/sponge-hw-matrix KERNEL=sel4 BOARD=pc
+```
+
+invocation with the documented knobs (`SPONGE_HW_CPU/SMP/MEM/
+MACHINE/VGA/USB/INPUT/VARIANT`).
+
+Known expected-unsupported results (documented, not regressions):
+
+- **XSAVE-less CPU models** (qemu64, Nehalem): seL4 16.0.0 halts
+  with `XSAVE not supported`. SandyBridge is the oldest viable
+  axis point; older models are out of the supported envelope.
+- **-vga cirrus**: vesa_fb fails to find a VBE mode on the
+  emulated Cirrus card in this QEMU build. `-vga std` is the only
+  supported display axis in this driver stack.
