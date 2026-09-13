@@ -654,13 +654,20 @@ regression suite whose receipts are the scenario's PASS markers and
 the tool's summary table (see `docs/08` §16 for the manual
 equivalent).
 
-Full-matrix receipt (2026-09-13, seL4 16.0.0, KVM): **15/15
+Full-matrix receipt (2026-09-13, seL4 16.0.0, KVM): **20/20
 variants PASS** — baseline, cpu-max, cpu-haswell,
-cpu-cascadelake-server, cpu-sandybridge, smp2, smp4, smp8, mem4g,
-machine-pc, usb-ehci, input-mouse, input-kbd, input-ps2, and the
-cpu=max/smp=4/mem=4G/input=mouse shakedown.
+cpu-cascadelake-server, cpu-sandybridge, cpu-la57 (5-level
+paging), smp2, smp4, smp8, topo-2s2c2t (2s×2c×2t topology),
+mem4g, machine-pc, usb-ehci, usb-uhci (1st-gen controller),
+input-mouse, input-kbd, input-ps2, input-multi (dual-HID
+residency), iommu-on (VT-d interrupt remapping,
+kernel-irqchip=split), and the cpu=max/smp=4/mem=4G/input=mouse
+shakedown.
 
 Expected-unsupported findings (matrix axis boundaries, documented in
 `docs/08` §16): XSAVE-less CPU models (qemu64, Nehalem) halt at
 seL4 16.0.0's `XSAVE not supported` check; `-vga cirrus` has no
-VBE mode for vesa_fb in this QEMU build.
+VBE mode for vesa_fb in this QEMU build; TCG boots are ~50% flaky
+from a guest-side Timer-session race (kept out of the default
+matrix, manual invocation documented); `-no-hpet` starves the
+HPET-only timer driver (no PIT fallback).

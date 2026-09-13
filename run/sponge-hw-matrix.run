@@ -14,8 +14,13 @@
 #   SPNGE_HW_MEM       -m size         (default 2G)   [sic: SPONGE]
 #   SPONGE_HW_MACHINE  -machine type   (default q35)
 #   SPONGE_HW_VGA      -vga type       (default std)
-#   SPONGE_HW_USB      xhci|ehci       (default xhci)
-#   SPONGE_HW_INPUT    tablet|mouse|kbd|ps2 (default tablet)
+#   SPONGE_HW_USB      xhci|ehci|uhci  (default xhci)
+#   SPONGE_HW_INPUT    tablet|mouse|kbd|ps2|multi (default tablet)
+#   SPONGE_HW_IOMMU    off|on — VT-d interrupt remapping
+#                      (on appends "-device intel-iommu,intremap=on")
+#   SPONGE_HW_EXTRA    raw extra QEMU args, appended verbatim
+#                      (the arbitrary-axis escape hatch)
+#   SPONGE_HW_TSCALE   gate-timeout scale factor (default 1; 3 under TCG)
 #
 # Topology is the PROVEN sponge-usb-hid-mouse envelope (timer +
 # report_rom + nitpicker + drivers sub-init with acpi / pci_decode /
@@ -68,17 +73,27 @@ set hw_machine [hw_env SPONGE_HW_MACHINE "q35"]
 set hw_vga     [hw_env SPONGE_HW_VGA     "std"]
 set hw_usb     [hw_env SPONGE_HW_USB     "xhci"]
 set hw_input   [hw_env SPONGE_HW_INPUT   "tablet"]
+set hw_iommu   [hw_env SPONGE_HW_IOMMU   "off"]
+set hw_extra   [hw_env SPONGE_HW_EXTRA   ""]
+set hw_tscale  [hw_env SPONGE_HW_TSCALE  "1"]
 
 if {$hw_usb eq "xhci"} {
 	set usb_ctrl "nec-usb-xhci,id=xhci"
 } elseif {$hw_usb eq "ehci"} {
 	set usb_ctrl "usb-ehci,id=ehci"
+} elseif {$hw_usb eq "uhci"} {
+	if {$hw_machine eq "pc"} {
+		set usb_ctrl "usb-uhci,id=uhci"
+	} else {
+		set usb_ctrl "ich9-usb-uhci1,id=uhci"
+	}
 } else {
-	error "SPONGE_HW_USB must be xhci or ehci (got '$hw_usb')"
+	error "SPONGE_HW_USB must be xhci, ehci or uhci (got '$hw_usb')"
 }
 
 puts "sponge-hw-matrix: variant=$hw_variant cpu=$hw_cpu smp=$hw_smp \
-mem=$hw_mem machine=$hw_machine vga=$hw_vga usb=$hw_usb input=$hw_input"
+mem=$hw_mem machine=$hw_machine vga=$hw_vga usb=$hw_usb input=$hw_input \
+iommu=$hw_iommu extra='$hw_extra' tscale=$hw_tscale"
 
 source [file join [file dirname [file normalize [info script]]] qmp.inc]
 
@@ -373,13 +388,28 @@ build_boot_image $boot_modules
 # driven by QMP below (no static USB HID devices — every input
 # variant starts HID-empty; the PS/2 controller is QEMU-default).
 #
-append qemu_args " -machine $hw_machine"
+if {$hw_iommu eq "on"} {
+	# VT-d intremap requires the split irqchip under KVM — QEMU
+	# refuses to start otherwise ("Interrupt Remapping cannot work
+	# with kernel-irqchip=on, please use 'split|off'").
+	append qemu_args " -machine $hw_machine,kernel-irqchip=split"
+} else {
+	append qemu_args " -machine $hw_machine"
+}
 append qemu_args " -cpu $hw_cpu"
 append qemu_args " -smp $hw_smp"
 append qemu_args " -m $hw_mem"
 append qemu_args " -vga $hw_vga"
+if {$hw_iommu eq "on"} {
+	# VT-d with interrupt remapping — the real-hw IOMMU path
+	append qemu_args " -device intel-iommu,intremap=on"
+}
 append qemu_args " -device $usb_ctrl"
 append qemu_args " -nographic"
+if {$hw_extra ne ""} {
+	# raw escape hatch — arbitrary extra QEMU args, verbatim
+	append qemu_args " $hw_extra"
+}
 
 set qmp_port [qmp_pick_port]
 append qemu_args " -qmp tcp:127.0.0.1:${qmp_port},server=on,wait=off "
@@ -387,7 +417,11 @@ append qemu_args " -qmp tcp:127.0.0.1:${qmp_port},server=on,wait=off "
 #
 # ===== Phase 0: boot + display gate =====
 #
-run_genode_until {.*\[init -> drivers -> fb\] using \d+x\d+.*} 120
+# Scaled gate timeouts: TCG boots (SPONGE_HW_TSCALE=3) need wider
+# windows than the KVM defaults.
+set hw_to0 [expr {int(120 * $hw_tscale)}]
+set hw_to1 [expr {int(30 * $hw_tscale)}]
+run_genode_until {.*\[init -> drivers -> fb\] using \d+x\d+.*} $hw_to0
 
 #
 # ===== Phase 1: input interaction gate =====
@@ -398,7 +432,7 @@ if {$hw_input eq "mouse"} {
 
 	puts "\nqmp: hotplug usb-mouse (id=hwmx) via QMP device_add"
 	qmp_hotplug_device $qmp_chan "usb-mouse" "hwmx"
-	run_genode_until {.*usb_hid: MOUSE detected.*} 30 $qemu_spawn_id
+	run_genode_until {.*usb_hid: MOUSE detected.*} $hw_to1 $qemu_spawn_id
 	match_max -i $qemu_spawn_id 200000
 
 	qmp_move_rel $qmp_chan "x" 40
@@ -411,13 +445,13 @@ if {$hw_input eq "mouse"} {
 	after 100
 
 	qmp_unplug_device $qmp_chan "hwmx"
-	run_genode_until {.*usb_hid: MOUSE removed.*} 30 $qemu_spawn_id
+	run_genode_until {.*usb_hid: MOUSE removed.*} $hw_to1 $qemu_spawn_id
 
 } elseif {$hw_input eq "tablet"} {
 
 	puts "\nqmp: hotplug usb-tablet (id=hwtab) via QMP device_add"
 	qmp_hotplug_device $qmp_chan "usb-tablet" "hwtab"
-	run_genode_until {.*usb_hid\] Connected device:.*POINTER.*} 30 $qemu_spawn_id
+	run_genode_until {.*usb_hid\] Connected device:.*POINTER.*} $hw_to1 $qemu_spawn_id
 	match_max -i $qemu_spawn_id 200000
 
 	# absolute move + click dispatch through the tablet axis
@@ -429,20 +463,20 @@ if {$hw_input eq "mouse"} {
 	after 100
 
 	qmp_unplug_device $qmp_chan "hwtab"
-	run_genode_until {.*usb_hid\] Disconnected device: input0.*} 30 $qemu_spawn_id
+	run_genode_until {.*usb_hid\] Disconnected device: input0.*} $hw_to1 $qemu_spawn_id
 
 } elseif {$hw_input eq "kbd"} {
 
 	puts "\nqmp: hotplug usb-kbd (id=hwkbd) via QMP device_add"
 	qmp_hotplug_device $qmp_chan "usb-kbd" "hwkbd"
-	run_genode_until {.*usb_hid: KEYBOARD detected.*} 30 $qemu_spawn_id
+	run_genode_until {.*usb_hid: KEYBOARD detected.*} $hw_to1 $qemu_spawn_id
 	match_max -i $qemu_spawn_id 200000
 
 	qmp_send_key $qmp_chan "a"
 	after 200
 
 	qmp_unplug_device $qmp_chan "hwkbd"
-	run_genode_until {.*usb_hid: KEYBOARD removed.*} 30 $qemu_spawn_id
+	run_genode_until {.*usb_hid: KEYBOARD removed.*} $hw_to1 $qemu_spawn_id
 
 } elseif {$hw_input eq "ps2"} {
 
@@ -468,8 +502,38 @@ if {$hw_input eq "mouse"} {
 		}
 	}
 
+} elseif {$hw_input eq "multi"} {
+
+	# Two HID devices resident on ONE controller: the tablet plugs
+	# first and stays resident while the keyboard joins it — the
+	# multi-tenancy axis (both audit chains through one usb_hid).
+	puts "\nqmp: hotplug usb-tablet (id=hwtab) via QMP device_add"
+	qmp_hotplug_device $qmp_chan "usb-tablet" "hwtab"
+	run_genode_until {.*usb_hid\] Connected device:.*POINTER.*} $hw_to1 $qemu_spawn_id
+	match_max -i $qemu_spawn_id 200000
+
+	qmp_pointer_move $qmp_chan 300 200
+	after 100
+	qmp_button $qmp_chan "left" true
+	after 100
+	qmp_button $qmp_chan "left" false
+	after 100
+
+	puts "\nqmp: hotplug usb-kbd (id=hwkbd) alongside the resident tablet"
+	qmp_hotplug_device $qmp_chan "usb-kbd" "hwkbd"
+	run_genode_until {.*usb_hid: KEYBOARD detected.*} $hw_to1 $qemu_spawn_id
+
+	qmp_send_key $qmp_chan "a"
+	after 200
+
+	qmp_unplug_device $qmp_chan "hwkbd"
+	run_genode_until {.*usb_hid: KEYBOARD removed.*} $hw_to1 $qemu_spawn_id
+
+	qmp_unplug_device $qmp_chan "hwtab"
+	run_genode_until {.*usb_hid\] Disconnected device: input0.*} $hw_to1 $qemu_spawn_id
+
 } else {
-	error "SPONGE_HW_INPUT must be tablet|mouse|kbd|ps2 (got '$hw_input')"
+	error "SPONGE_HW_INPUT must be tablet|mouse|kbd|ps2|multi (got '$hw_input')"
 }
 
 qmp_disconnect $qmp_chan
@@ -477,5 +541,5 @@ qmp_disconnect $qmp_chan
 #
 # ===== Phase 2: final marker =====
 #
-puts "sponge-hw-matrix: PASS (variant=$hw_variant cpu=$hw_cpu smp=$hw_smp mem=$hw_mem machine=$hw_machine vga=$hw_vga usb=$hw_usb input=$hw_input)"
+puts "sponge-hw-matrix: PASS (variant=$hw_variant cpu=$hw_cpu smp=$hw_smp mem=$hw_mem machine=$hw_machine vga=$hw_vga usb=$hw_usb input=$hw_input iommu=$hw_iommu extra='$hw_extra')"
 puts "Run script execution successful."

@@ -37,6 +37,7 @@ the idiomatic Mojo pattern for missing functionality.
 | `./tool/hw_compat`    | `tool/hw_compat.mojo`    | Read-only hardware-compatibility validator (`assert`, `help`) — validates `docs/15-hardware-compatibility.md` (Phase 12) | ✅ works |
 | `./tool/mkdata`       | `tool/mkdata.mojo`       | Grow SPONGE-DATA (P4) onto an image/disk `.img` (docs/14 §4.3; idempotent) | ✅ works |
 | `./tool/pkg_import`   | `tool/pkg_import.mojo`   | Host-side Genode depot → Sponge pkg/ repackager (Phase 7 todo 11) | ✅ works |
+| `./tool/hwtest`       | `tool/hwtest.mojo`        | Headless QEMU hardware-matrix driver (`--list`/`--only`/`--dry-run`; PASS/FAIL table, per-run logs in `var/hwtest/`) | ✅ works |
 | (direct)              | `tool/gen_vct_config.mojo`| Generate a vct config-ROM XML from argv                     | ✅ works |
 | (direct)              | `tool/version_bump.mojo` | Bump version in `include/sponge/version.h`                   | ✅ works |
 
@@ -266,6 +267,28 @@ exactly 4 verified, 1 smoke-only, and 11 gap cells. The tool is
 **read-only** — there is no `generate`, `update`, `write`, or
 auto-population path. See `docs/evidence/task-5-phase12-hw-compat.md`
 for the per-failure-class validator receipts.
+
+### hwtest (Phase 16 hardware-matrix driver)
+```bash
+./tool/hwtest                  # full default matrix (20 variants, ~10 min under KVM)
+./tool/hwtest --list           # list variant names
+./tool/hwtest --only iommu-on,usb-uhci   # iterate on a subset
+./tool/hwtest --dry-run        # print the would-be commands, run nothing
+```
+
+Drives `run/sponge-hw-matrix.run` across the QEMU
+emulated-hardware matrix (CPU model, SMP count + topology,
+memory, machine type, USB controller generation, input device,
+VT-d interrupt remapping, dual-HID residency) and prints a
+PASS/FAIL summary table; exit code 1 if any variant fails. Every
+run's full output is persisted to `var/hwtest/<variant>.log`.
+Variants may declare a `must_match` spawn-line sanity guard (a
+PASS under the wrong accelerator/config is not a PASS). The
+manual equivalent of every variant is the documented env-knob
+make invocation in `docs/08-development.md` §16 (AGENTS §3.5
+control escape hatch). Known boundaries (the TCG boot race,
+`-no-hpet`, XSAVE-less CPU models, `-vga cirrus`) are documented
+there too.
 
 ### gen-vct-config
 Generates the `<config><args>...</args></config>` blob that vct expects

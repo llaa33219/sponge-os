@@ -785,6 +785,19 @@ A scenario defines:
   `pkg/terminal/metadata.xml` now uses the content form
   (`<env name="PATH">/bin</env>`); see docs/16 §5 pitfall 1.
 
+- `sponge-hw-matrix.run` — Phase 16 pre-real-hardware gate: the
+  proven interactive driver stack with ONE QEMU emulated-hardware
+  axis varied per run via env knobs (`SPONGE_HW_VARIANT/CPU/SMP/
+  MEM/MACHINE/VGA/USB/INPUT/IOMMU`, plus the raw `SPONGE_HW_EXTRA`
+  and `SPONGE_HW_TSCALE` escape hatches), QMP-driven input
+  interaction per mode (tablet/mouse/kbd/ps2/multi — hotplug audit
+  chains, PS/2 stability window), and a fail-loud
+  `sponge-hw-matrix: PASS (variant=...)` marker. Driven by
+  `./tool/hwtest` (20-variant default matrix, PASS/FAIL table);
+  manual escape hatch documented in `docs/08-development.md` §16.
+  Known boundaries: XSAVE-less CPUs, `-vga cirrus`, the TCG boot
+  race, `-no-hpet`. base-sel4 only.
+
 ## Planned additions
 
 - Spin a usable Sponge OS install workflow through Leitzentrale (the
