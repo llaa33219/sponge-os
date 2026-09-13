@@ -1,5 +1,12 @@
 # Row 11 core-side migration attempt — BIOS-proven, UEFI-blocked (2026-09-12)
 
+> **RESOLVED 2026-09-13 — see the addendum at the bottom.** The
+> migration SUCCEEDED with a third approach: the kernel exports the
+> reserved extent (a ~30-line fact-only patch), core does all the
+> artifact detection. All three gates pass with the subtraction-loop
+> kernel patch removed. The text below is the development history of
+> the two failed approaches.
+
 Attempt to replace the seL4 kernel patch (ledger row 11,
 `sel4-uefi-untyped-overlap.patch`) with a core-side detection that
 skips "artifact" RAM untypeds — the leak fragments of the kernel's
@@ -73,3 +80,61 @@ re-applied to contrib, kernel+core rebuilt, and
    bootinfo extension request (Genode issue) carrying ui_reg.
 4. Only after UEFI passes both with the kernel patch removed: drop
    row 11 (patch file + ledger row), add the core-side row.
+
+---
+
+## Resolution addendum (2026-09-13): reserved-extent export — SUCCESS
+
+The key insight from the instrumented OVMF dump: under multiboot2 the
+X86_MBMMAP bootinfo chunk is LEFT EMPTY by the kernel (only the
+multiboot1 parser fills it — boot_sys.c line 582 is inside the mb1
+branch). The detection classes (1)+(2) worked, but the artifacts that
+overlap ONLY the kernel image (not the rootserver image, not another
+RAM untyped) — e.g. `[0x200000,0x400000)` and `[0x400000,0x800000)` on
+the OVMF desktop boot — were undetectable from the untyped list alone.
+The v2 run's crash moved into the 16K-pool retype (row11-mark markers
+localized it): the 16 KiB pool was registering artifact ranges as
+CNode backing over the live kernel image.
+
+### The fix (two halves)
+
+1. **Kernel (fact export only)**: `init_sys_state()` appends ONE
+   synthetic mmap entry (type 2) covering
+   `[KERNEL_ELF_PADDR_BASE, ui_info.p_reg.end)` into the otherwise
+   empty MBMMAP chunk. This is the exact region `arch_init_freemem`
+   builds as `reserved[0]` (kernel image + boot-module blob + copied
+   rootserver image). ~30 lines, zero behavior change — the kernel
+   only states a fact it already computed. Patch:
+   `docs/patches/sel4-reserved-extent-export.patch`.
+2. **Core (all policy)**: `Initial_untyped_pool::_detect_artifacts_once()`
+   flags RAM untypeds overlapping (1) another RAM untyped, (2) core's
+   own image (physical base queried via
+   `seL4_X86_Page_GetAddress(bi.userImageFrames.start)` — independent
+   of loader placement), or (3) any non-usable mmap entry (the
+   exported reserved extent + real firmware regions). Flagged ranges
+   are skipped in `turn_into_untyped_object()` (both the 16K-pool and
+   4K-phys paths — detection must run at pool level because the 16K
+   pool path executes BEFORE `_init_allocators`) and in `alloc()`.
+   Artifacts are leaked on purpose (a few MiB of fragments).
+
+### Verification (26.08, KERNEL=sel4 BOARD=pc, subtraction patch REMOVED)
+
+- `run/sponge-desktop-disk-uefi-usb` PASS — 3/3 structural gates +
+  OVMF UEFI boot + usb_block storage chain; 9 artifacts per boot:
+  `[0x200000,0x4000000)` — every RAM untyped overlapping the exported
+  `[0x200000, 0x383d000)` extent.
+- `run/sponge-minimal` PASS (3 artifacts, same class).
+- `run/sponge-configd-persist` PASS.
+
+### Development notes for the record
+
+- The instrumentation journey (instrumented dump of the full
+  untypedList + mmap chunk + GetAddress query) is what revealed the
+  empty-chunk fact; without the dump the mb2-empty-chunk behavior
+  would have stayed invisible (the platform_info ROM generation works
+  because the FRAMEBUFFER/TSC chunks ARE written under mb2 — only the
+  mmap fill is mb1-gated).
+- GCC 14 `-Warray-bounds` tracks pointer provenance through integer
+  casts AND inlined memcpy; the `asm volatile ("" : "+r" (img))`
+  barrier is the reliable laundering idiom (kept in the v2 history,
+  no longer needed in the final GetAddress-based version).
