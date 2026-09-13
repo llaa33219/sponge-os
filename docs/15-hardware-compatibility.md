@@ -643,3 +643,24 @@ in `docs/evidence/task-5-phase12-hw-compat.md` under `var/`.
   `docs/evidence/phase12-pc-nic.log`, `docs/evidence/phase12-usb-boot.log`,
   `docs/evidence/phase12-usb-kbd.log`.
 - Validator evidence: `docs/evidence/task-5-phase12-hw-compat.md`.
+## 7. QEMU hardware-matrix gate (Phase 16 pre-real-hw, 2026-09-13)
+
+The headless QEMU hardware-matrix gate
+(`tool/hwtest` driving `run/sponge-hw-matrix.run`) verifies the
+boot + input-interaction chain across emulated-hardware variation
+before any real-hardware attempt. It is NOT part of the
+`tool/hw_compat assert` cell contract above; it is a separate
+regression suite whose receipts are the scenario's PASS markers and
+the tool's summary table (see `docs/08` §16 for the manual
+equivalent).
+
+Full-matrix receipt (2026-09-13, seL4 16.0.0, KVM): **15/15
+variants PASS** — baseline, cpu-max, cpu-haswell,
+cpu-cascadelake-server, cpu-sandybridge, smp2, smp4, smp8, mem4g,
+machine-pc, usb-ehci, input-mouse, input-kbd, input-ps2, and the
+cpu=max/smp=4/mem=4G/input=mouse shakedown.
+
+Expected-unsupported findings (matrix axis boundaries, documented in
+`docs/08` §16): XSAVE-less CPU models (qemu64, Nehalem) halt at
+seL4 16.0.0's `XSAVE not supported` check; `-vga cirrus` has no
+VBE mode for vesa_fb in this QEMU build.

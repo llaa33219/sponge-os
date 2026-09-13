@@ -1,0 +1,14 @@
+#!/bin/bash
+# Thin bash launcher for tool/hwtest.mojo (Mojo SDK detection).
+set -euo pipefail
+HERE="$(cd "$(dirname "$0")" && pwd)"
+
+if command -v mojo >/dev/null 2>&1; then
+    exec mojo "$HERE/hwtest.mojo" "$@"
+elif [ -x "$HERE/../.venv/bin/mojo" ]; then
+    exec "$HERE/../.venv/bin/mojo" "$HERE/hwtest.mojo" "$@"
+else
+    echo "tool/hwtest: mojo SDK not found (PATH or .venv/bin/mojo)." >&2
+    echo "  install: uv sync  (see tool/README.md)" >&2
+    exit 127
+fi
