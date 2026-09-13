@@ -1,4 +1,4 @@
-diff --git a/src/kernel/sel4/include/arch/x86/arch/kernel/fb_console.h b/src/kernel/sel4/include/arch/x86/arch/kernel/fb_console.h
+diff --git a/include/arch/x86/arch/kernel/fb_console.h b/include/arch/x86/arch/kernel/fb_console.h
 new file mode 100644
 index 000000000..192d6d71c
 --- /dev/null
@@ -121,20 +121,20 @@ index 000000000..192d6d71c
 + * map when phys >= 4 GiB" invariant structurally true.
 + */
 +void fb_console_putchar(char c);
-diff --git a/src/kernel/sel4/src/arch/x86/config.cmake b/src/kernel/sel4/src/arch/x86/config.cmake
-index 2c170bd09..00634396a 100644
+diff --git a/src/arch/x86/config.cmake b/src/arch/x86/config.cmake
+index 09d66f9e9..7ba3872ae 100644
 --- a/src/kernel/sel4/src/arch/x86/config.cmake
 +++ b/src/kernel/sel4/src/arch/x86/config.cmake
-@@ -382,6 +382,7 @@ add_sources(
-         kernel/boot.c
-         kernel/cmdline.c
-         kernel/ept.c
+@@ -346,6 +346,7 @@ add_sources(
+          kernel/boot.c
+          kernel/cmdline.c
+          kernel/ept.c
 +        kernel/fb_console.c
-         kernel/thread.c
-         model/statedata.c
-         machine/capdl.c
-diff --git a/src/kernel/sel4/src/arch/x86/kernel/boot_sys.c b/src/kernel/sel4/src/arch/x86/kernel/boot_sys.c
-index 7f1a4db1f..6a08cde3e 100644
+          kernel/thread.c
+          model/statedata.c
+          machine/capdl.c
+diff --git a/src/arch/x86/kernel/boot_sys.c b/src/arch/x86/kernel/boot_sys.c
+index 35b5c894a..8288cd54f 100644
 --- a/src/kernel/sel4/src/arch/x86/kernel/boot_sys.c
 +++ b/src/kernel/sel4/src/arch/x86/kernel/boot_sys.c
 @@ -13,6 +13,7 @@
@@ -174,7 +174,7 @@ index 7f1a4db1f..6a08cde3e 100644
          } else if (tag->type == MULTIBOOT2_TAG_ACPI_1) {
              if (ACPI_V1_SIZE == tag->size - sizeof(*tag)) {
                  memcpy(&boot_state.acpi_rsdp, (void *)behind_tag, tag->size - sizeof(*tag));
-@@ -685,6 +701,18 @@ static BOOT_CODE bool_t try_boot_sys_mbi2(
+@@ -686,6 +702,18 @@ static BOOT_CODE bool_t try_boot_sys_mbi2(
              printf("Got framebuffer info in multiboot2. Current video mode is at physical address=%llx pitch=%u resolution=%ux%u@%u type=%u\n",
                     fb->addr, fb->pitch, fb->width, fb->height, fb->bpp, fb->type);
              boot_state.fb_info = *fb;
@@ -193,7 +193,7 @@ index 7f1a4db1f..6a08cde3e 100644
          }
  
          tag = (multiboot2_tag_t const *)((word_t)tag + ROUND_UP(tag->size, 3));
-diff --git a/src/kernel/sel4/src/arch/x86/kernel/fb_console.c b/src/kernel/sel4/src/arch/x86/kernel/fb_console.c
+diff --git a/src/arch/x86/kernel/fb_console.c b/src/arch/x86/kernel/fb_console.c
 new file mode 100644
 index 000000000..5dfd023c8
 --- /dev/null
@@ -1033,7 +1033,7 @@ index 000000000..5dfd023c8
 +        return;
 +    }
 +}
-diff --git a/src/kernel/sel4/src/plat/pc99/machine/io.c b/src/kernel/sel4/src/plat/pc99/machine/io.c
+diff --git a/src/plat/pc99/machine/io.c b/src/plat/pc99/machine/io.c
 index 83a53bac5..5be7577f8 100644
 --- a/src/kernel/sel4/src/plat/pc99/machine/io.c
 +++ b/src/kernel/sel4/src/plat/pc99/machine/io.c

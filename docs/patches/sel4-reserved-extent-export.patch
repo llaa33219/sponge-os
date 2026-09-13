@@ -1,5 +1,5 @@
-diff --git a/src/kernel/sel4/src/arch/x86/kernel/boot.c b/src/kernel/sel4/src/arch/x86/kernel/boot.c
-index e4233af2c..fdb696d0b 100644
+diff --git a/src/arch/x86/kernel/boot.c b/src/arch/x86/kernel/boot.c
+index 93b320964..ee56e306c 100644
 --- a/src/kernel/sel4/src/arch/x86/kernel/boot.c
 +++ b/src/kernel/sel4/src/arch/x86/kernel/boot.c
 @@ -155,6 +155,32 @@ BOOT_CODE bool_t init_sys_state(
@@ -35,14 +35,3 @@ index e4233af2c..fdb696d0b 100644
      /* create the root cnode */
      root_cnode_cap = create_root_cnode();
  
-@@ -418,9 +444,7 @@ BOOT_CODE bool_t init_cpu(
- 
- #ifdef CONFIG_VTX
-     /* initialise Intel VT-x extensions */
--    if (!vtx_init()) {
--        return false;
--    }
-+    vtx_init();
- #endif
- 
-     return true;
