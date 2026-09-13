@@ -1213,7 +1213,29 @@ exec cp -f $grub2_dir/boot/font.pf2           $esp_stage/boot/font.pf2
 # (Identical to the AHCI UEFI variant — the W1 W^X workaround tokens
 # are baked in here too.)
 #
-set grub_body {
+# === Kernel fb-console knob (row 12 kill switch) ===
+#
+# The production media passes fbcon=off on GRUB's module2 /boot/sel4
+# line (row 12 W6: with the DE live, the console's log mirror scrolls
+# text over the desktop). Diagnostic builds flip it on — the kernel
+# fb console then mirrors every kernel/core/init log line onto the
+# panel, the ONLY diagnostic surface on the serial-less 17ZD90N (the
+# August 15-3 bring-up rounds were read exactly this way).
+#
+# Env override:
+#   SPONGE_FBCON=off → production media (default)
+#   SPONGE_FBCON=on  → diagnostic media (on-panel boot log)
+#
+set fbcon_token "off"
+if {[info exists ::env(SPONGE_FBCON)] && $::env(SPONGE_FBCON) eq "on"} {
+	set fbcon_token "on"
+	puts "sponge-desktop-disk-uefi-usb: kernel fb console ENABLED (SPONGE_FBCON=on) — diagnostic media"
+} else {
+	puts "sponge-desktop-disk-uefi-usb: kernel fb console disabled (default; SPONGE_FBCON=on for diagnostic media)"
+}
+
+#
+set grub_body [string map [list "@FBCON@" $fbcon_token] {
 set timeout=0
 set gfxpayload=2560x1600x32,1024x768x32,auto  # Phase 15: native 17ZD90N panel mode first (32bpp, boot_fb needs it), 1024x768x32 for OVMF, auto last
 insmod gfxterm
@@ -1224,10 +1246,10 @@ terminal_output gfxterm
 menuentry 'Genode on seL4 (UEFI)' {
   insmod multiboot2
 multiboot2 /boot/bender serial intel_hwp_performance phys_max=256M serial_fallback
-  module2 /boot/sel4 sel4 disable_iommu console_port=0x3f8 debug_port=0x3f8 fbcon=off
+  module2 /boot/sel4 sel4 disable_iommu console_port=0x3f8 debug_port=0x3f8 fbcon=@FBCON@
   module2 /boot/image.elf image.elf
 }
-}
+}]
 
 set grub_fh [open $esp_stage/EFI/BOOT/grub.cfg "WRONLY CREAT TRUNC"]
 puts -nonewline $grub_fh $grub_body
