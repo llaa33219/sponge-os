@@ -38,6 +38,7 @@ the idiomatic Mojo pattern for missing functionality.
 | `./tool/mkdata`       | `tool/mkdata.mojo`       | Grow SPONGE-DATA (P4) onto an image/disk `.img` (docs/14 §4.3; idempotent) | ✅ works |
 | `./tool/pkg_import`   | `tool/pkg_import.mojo`   | Host-side Genode depot → Sponge pkg/ repackager (Phase 7 todo 11) | ✅ works |
 | `./tool/hwtest`       | `tool/hwtest.mojo`        | Headless QEMU hardware-matrix driver (`--list`/`--only`/`--dry-run`; PASS/FAIL table, per-run logs in `var/hwtest/`) | ✅ works |
+| `./tool/hwrepro`      | `tool/hwrepro.mojo`       | Real-hw stall reproduction harness (QEMU/OVMF classifier: REPRODUCED / CLEAN / OTHER) | ✅ works |
 | (direct)              | `tool/gen_vct_config.mojo`| Generate a vct config-ROM XML from argv                     | ✅ works |
 | (direct)              | `tool/version_bump.mojo` | Bump version in `include/sponge/version.h`                   | ✅ works |
 
@@ -289,6 +290,40 @@ make invocation in `docs/08-development.md` §16 (AGENTS §3.5
 control escape hatch). Known boundaries (the TCG boot race,
 `-no-hpet`, XSAVE-less CPU models, `-vga cirrus`) are documented
 there too.
+
+### hwrepro (real-hw stall reproduction harness)
+```bash
+./tool/hwrepro                 # boot the default product media under the repro config
+./tool/hwrepro <img>           # boot a specific media image
+./tool/hwrepro --dry-run       # print the exact QEMU command, run nothing
+```
+
+Boots a product `.img` under the QEMU/OVMF configuration that
+deterministically reproduces the LG gram 17ZD90N real-hardware
+stall (VT-d `intremap` + `kernel-irqchip=split` + `-cpu host` +
+`smp 8` + maxmem/pc-dimm fragmented memory + a throttled
+read-only usb-storage stick): OVMF places the emulated VT-d
+unit's MMIO at `0x380000000000` — a range absent from core's
+io_mem allocator — and the boot dies with the exact on-panel
+signature: Tier-0 survives (background + pointer cursor — both
+Tier-0), the usb driver aborts, so no storage chain, no system
+init, no desktop panel, no mouse.
+
+Discriminative (2026-09-14): the current stack (26.08 + seL4
+16.0.0) reproduces 3/3; the August stack (26.05 + seL4 13.0.0,
+`sponge-test-uefi-usb-20260824.img`) boots past the same point
+with no MMIO refusal under the identical config — the 26.08
+platform driver now maps the DMAR register range that 26.05 left
+alone, and an unallocatable range kills usb instead of being
+tolerated.
+
+Verdict (exit 0 both ways — a classifier, not a gate):
+`REPRODUCED` (stall signature), `CLEAN` (`alpha-probe: PASS`),
+`OTHER`. The full serial log is always saved to
+`var/hwrepro/<img>.log`. A fix for the real-hardware stall should
+flip `./tool/hwrepro` to `CLEAN` before any real-hardware
+reflash — the panel has no serial; iterate here, not on the
+laptop.
 
 ### gen-vct-config
 Generates the `<config><args>...</args></config>` blob that vct expects
