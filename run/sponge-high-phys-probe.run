@@ -1,0 +1,74 @@
+#
+# \brief  Row-13/14 high-phys IO_MEM machinery gate (QEMU-verifiable)
+# \author Sponge OS contributors
+# \date   2026
+#
+# Minimal topology (core + init + report_rom + probe). The probe
+# (repos/sponge/src/test/high_phys_probe) requests:
+#
+#   stage1 IO_MEM @16 GiB — inside the row-13 HIGH device-untyped
+#     coverage but outside RAM and every e820 region in QEMU; the
+#     same class as the 17ZD90N's xHCI BAR at 0x601d140000. A healthy
+#     core answers with a mapped dataspace.
+#   stage2 IO_MEM @2 TiB — beyond the 1 TiB coverage ceiling (still
+#     inside the 512 GiB kernel window); a healthy core answers with
+#     a clean refusal, not a crash.
+#
+# The scenario gates on "high-phys-probe: PASS". A FAIL (or a
+# timeout, if the probe blocks) is loud; core's own error lines
+# (io_mem_session_support / untyped_memory high-phys branch) name
+# the failing stage.
+#
+# base-sel4 only — the probe exercises base-sel4 core's io_mem
+# machinery, which does not exist on other kernels.
+#
+
+assert {[have_spec sel4]} \
+	"sponge-high-phys-probe requires KERNEL=sel4 (BOARD=pc): it \
+	 exercises base-sel4 core's io_mem machinery (rows 13/14)."
+
+build { core lib/ld init server/report_rom test/high_phys_probe }
+
+create_boot_directory
+
+install_config {
+config
++ parent-provides
+  + service ROM
+  + service PD
+  + service RM
+  + service CPU
+  + service LOG
+  + service IO_MEM
+  + service IO_PORT
+
++ default | caps: 100 | ram: 2M
++ default-route
+  + any-service
+    + parent
+
++ start report_rom | ram: 4M
+  + provides
+  | + service Report
+  | + service ROM
+
++ start high_phys_probe | caps: 60
+- }
+
+set boot_modules [build_artifacts]
+build_boot_image $boot_modules
+
+# The scenario runs at -m 4G: the SeaBIOS/default-GRUB chain at
+# RAM > 4 GiB hits a pre-existing frame-conversion collision
+# (init's RAM export at the first above-4 GiB page dies with
+# "seL4_Untyped_Retype Slot #N in destination window" → "could not
+# export RAM dataspace"), independent of the row-13 LOW/HIGH
+# bounds; the UEFI product chain does not hit it. Tracked as a
+# known issue in docs/11-environment.md. The probe's targets
+# (16 GiB in-coverage, 2 TiB beyond-coverage) are unaffected by
+# the RAM size.
+append qemu_args " -machine q35 -cpu host -smp 2 -m 4G -nographic"
+
+run_genode_until {.*high-phys-probe: PASS.*} 120
+
+puts "Run script execution successful."
