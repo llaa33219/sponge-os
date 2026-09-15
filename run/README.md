@@ -472,6 +472,19 @@ A scenario defines:
   (base-linux native or base-sel4 QEMU); the acceptance run uses
   `KERNEL=sel4 BOARD=pc`. Gates on `files-probe: PASS`.
 
+- `sponge-high-phys-probe.run` — QEMU-verifiable gate for the
+  row-13/14 high-phys IO_MEM machinery (docs/11 §10.6). The probe
+  (`repos/sponge/src/test/high_phys_probe`) requests IO_MEM @16 GiB
+  (inside the row-13 HIGH device-untyped coverage but outside RAM
+  and every e820 region in QEMU — the same class as the 17ZD90N's
+  xHCI BAR at 0x601d140000) and expects a mapped dataspace, then
+  IO_MEM @2 TiB (beyond the 1 TiB coverage ceiling, inside the
+  kernel window) and expects a clean refusal. Gates on
+  `high-phys-probe: PASS`. Runs at `-m 4G` because the
+  SeaBIOS/default-GRUB chain at RAM > 4 GiB hits a pre-existing
+  frame-conversion collision (docs/11 §10.6) unrelated to this
+  machinery. base-sel4 only.
+
 - `sponge-falkon.run` — Phase 7 todo 16: the Falkon web browser package
   (`pkg/falkon`), the depot-repackaged `cproc/pkg/falkon_qt6-jemalloc/
   2026-04-22` (todo 11). Falkon is a full Qt6 WebEngine browser (~500MB

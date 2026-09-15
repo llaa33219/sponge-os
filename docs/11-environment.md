@@ -797,6 +797,42 @@ invocations under the newer host QEMU). A Phase 12 / Phase 15
 upgrade to a newer QEMU should re-run the four Phase 10 scenarios as
 the first gate.
 
+### 10.6 Gotcha — SeaBIOS chain dead at RAM > 4 GiB; QEMU 64-bit BARs at 54 TiB
+
+Two environment facts found while building the real-hardware stall
+reproduction (2026-09-14), both independent of the row-13/14
+high-phys machinery (which `run/sponge-high-phys-probe.run` proves
+healthy):
+
+1. **SeaBIOS/default-GRUB chain dies at RAM > 4 GiB.** With `-m 8G`
+   the boot reaches "Genode ..." + "5840 MiB RAM assigned to init"
+   and then init's first RAM export collides:
+   `seL4_Untyped_Retype Slot #1048832 in destination window` →
+   `convert_to_page_frames ... returned 8` → `could not export RAM
+   dataspace` → `[init] stop because parent denied ROM-session` →
+   dead boot. `-m 4G` is unaffected (no above-4 GiB RAM). The UEFI
+   product chain (`run/sponge-desktop-disk-uefi-usb.run`, the gram's
+   boot path) does NOT hit it at the same RAM size. Reproduced with
+   the pristine (committed) kernel; a row-13 LOW-region cap was
+   tried and reverted because the collision is identical with and
+   without it (the LOW region was not the collision source).
+   Tracked here as a known issue; the probe scenario runs at -m 4G
+   for this reason.
+2. **QEMU 11 places every 64-bit PCI BAR at 0x380000000000 (54 TiB)**
+   regardless of machine type (q35/pc), `-cpu` phys-bits overrides,
+   RAM size, maxmem/hotplug, or pci-bridge windows (all probed).
+   54 TiB is beyond the kernel's physical window (PADDR_TOP 512
+   GiB) and beyond row-13's 1 TiB device-untyped ceiling, so core
+   refuses the mapping ("I/O memory ... not available") and the usb
+   driver aborts — the exact on-panel signature of the real-hw
+   stall (Tier-0 background + cursor only). `./tool/hwrepro`
+   reproduces this deterministically; it is a BOUNDARY case (no
+   real machine places a BAR that high), not a fix gate. The
+   in-window high-MMIO path (the gram's xHCI BAR at 0x601d140000,
+   384 GiB) is what `run/sponge-high-phys-probe.run` gates: stage 1
+   attaches IO_MEM @16 GiB (inside row-13 HIGH coverage), stage 2
+   confirms a clean refusal @2 TiB (beyond coverage).
+
 ---
 
 ## 12. Disk image P4 (SPONGE-DATA) creation
