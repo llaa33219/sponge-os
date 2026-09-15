@@ -832,6 +832,21 @@ healthy):
    384 GiB) is what `run/sponge-high-phys-probe.run` gates: stage 1
    attaches IO_MEM @16 GiB (inside row-13 HIGH coverage), stage 2
    confirms a clean refusal @2 TiB (beyond coverage).
+3. **Firmware DMAR tables killed the acpi child (fixed, ledger row
+   16).** Injecting a spec-shaped DMAR (DRHD+RMRR, fixture
+   `run/fixtures/dmar-rmrr.aml`) via `-acpitable` reproduces the
+   gram's on-panel signature on BOTH stack generations: the acpi
+   driver's DMAR walkers (16-bit type/length registers vs the VT-d
+   spec's 8-bit fields, fixed-size Mmio windows, device-scope walks
+   inside deferred serialization lambdas) throw
+   `Mmio::Range_violation`; the uncaught exception kills the acpi
+   child, its report never publishes, and pci_decode/platform/usb
+   stall silently — usb storage+input dead while Tier-0 (background
+   + cursor) stays alive. Real Intel boards always ship a DMAR;
+   QEMU's synthetic tables omit it, which is why QEMU was always
+   clean. Fixed by correcting the entry walk to the spec layout,
+   bounding it, and skipping DMAR report generation (report-only
+   information); regression gate `./tool/hwrepro --case acpi-dmar`.
 
 ---
 

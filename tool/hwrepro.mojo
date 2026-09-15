@@ -99,9 +99,10 @@ def main() raises:
             img = a
         i += 1
 
-    if case_name != String("boundary") and case_name != String("inwindow"):
+    if case_name != String("boundary") and case_name != String("inwindow") \
+            and case_name != String("acpi-dmar"):
         print("hwrepro: unknown --case '" + case_name
-              + "' (expected boundary|inwindow)")
+              + "' (expected boundary|inwindow|acpi-dmar)")
         exit(1)
         return
 
@@ -176,6 +177,11 @@ def main() raises:
             + "file=var/ovmf/OVMF_CODE.fd")
     cmd += " -drive if=pflash,format=raw,file=" + varscopy
     cmd += " -fw_cfg name=opt/org.tianocore/UninstallMemAttrProtocol,string=yes"
+    if case_name == String("acpi-dmar"):
+        # inject a firmware-like DMAR (DRHD+RMRR): real Intel boards
+        # always ship one; QEMU's synthetic tables omit it. The acpi
+        # child must survive it (row-16 skip) and the usb chain boot.
+        cmd += " -acpitable file=run/fixtures/dmar-rmrr.aml"
     cmd += " -nographic -snapshot -serial mon:stdio"
     cmd += " -qmp tcp:127.0.0.1:44460,server=on,wait=off"
     cmd += " -drive format=raw,file=" + img
@@ -206,14 +212,18 @@ def main() raises:
     var halt_timeout = log.find("halt failed, -110") >= 0 \
         or log.find("Will sleep forever") >= 0
 
-    if case_name == String("inwindow"):
-        # the in-window control must boot the usb chain fully
+    if case_name == String("inwindow") or case_name == String("acpi-dmar"):
+        # the in-window / dmar controls must boot the usb chain fully
+        var dmar_seen = log.find("Found DMAR (skipped") >= 0
         if log.find("Connected device") >= 0 \
-                and log.find("sponge_configd: ready") >= 0:
-            print("CLEAN — in-window high BARs: usb chain + system init"
-                  + " alive (machinery healthy)")
+                and log.find("sponge_configd: ready") >= 0 \
+                and (case_name != String("acpi-dmar") or dmar_seen):
+            print("CLEAN — usb chain + system init alive"
+                  + (" with injected DMAR skipped (row 16)"
+                     if case_name == String("acpi-dmar") else
+                     " (in-window high BARs)"))
             return
-        print("FAIL — in-window case stalled unexpectedly:")
+        print("FAIL — " + case_name + " case stalled:")
         var lines3 = log.split("\n")
         var shown3 = 0
         var idx3 = len(lines3) - 1
