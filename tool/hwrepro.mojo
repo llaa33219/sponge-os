@@ -52,18 +52,25 @@
 # has no serial; every real-hw iteration is a reflash + eyeball).
 #
 # Usage:
-#   ./tool/hwrepro                 # boot the default product media
-#   ./tool/hwrepro <path/to.img>   # boot a specific media image
+#   ./tool/hwrepro                 # boundary case (default)
+#   ./tool/hwrepro --case inwindow # in-window high-BAR control
+#   ./tool/hwrepro <img> [--case C] [--dry-run]
 #
-# Verdict (exit 0 both ways — this is a classifier, not a gate):
-#   REPRODUCED  either stall signature found (A: MMIO refusal,
-#               B: xHCI halt timeout — see above)
-#   CLEAN       boot reached alpha-probe: PASS
-#   OTHER       neither signature — inspect the log tail
-# The full serial log is always saved to var/hwrepro/<img>.log.
+# Cases:
+#   boundary  -cpu host (52 phys-bits): OVMF places the xHCI BAR at
+#             54 TiB, beyond the kernel window — reproduces the
+#             on-panel stall signature deterministically. A
+#             BOUNDARY case (no real board places a BAR that high).
+#   inwindow  -cpu Cascadelake-Server (46 phys-bits): the BAR lands
+#             inside [RAM top, 512 GiB) like a real board's high
+#             BARs — the stack must boot the usb chain clean; a
+#             stall here is a regression gate failure.
 #
-# Manual equivalent (AGENTS §3.5 escape hatch): the exact QEMU
-# command is printed by --dry-run.
+# Verdicts: REPRODUCED (boundary: stall signature found),
+# CLEAN (inwindow: usb chain + system init alive), FAIL/OTHER
+# otherwise. Full serial log: var/hwrepro/<img-stem>-<case>.log.
+# The manual equivalent (exact QEMU command) is printed by
+# --dry-run (AGENTS §3.5).
 
 from std.sys import argv, exit
 from std.python import Python
@@ -74,17 +81,29 @@ def main() raises:
 
     var img = String("var/dist/sponge-os-0.1.0-alpha-x86_64-sel4.img")
     var dry = False
+    var case_name = String("boundary")
     var i = 1  # args[0] is the script path (mojo argv() includes it)
     while i < len(args):
         var a = String(args[i])
         if a == "--dry-run":
             dry = True
+        elif a == "--case":
+            i += 1
+            if i < len(args):
+                case_name = String(args[i])
         elif a == "--help" or a == "-h":
-            print("usage: tool/hwrepro [img] [--dry-run]")
+            print("usage: tool/hwrepro [img] [--case boundary|inwindow]"
+                  + " [--dry-run]")
             return
         elif not a.startswith("-"):
             img = a
         i += 1
+
+    if case_name != String("boundary") and case_name != String("inwindow"):
+        print("hwrepro: unknown --case '" + case_name
+              + "' (expected boundary|inwindow)")
+        exit(1)
+        return
 
     var pathlib = Python.import_module("pathlib")
 
@@ -108,7 +127,7 @@ def main() raises:
     var sh_py = Python.import_module("shutil")
     sh_py.copyfile("var/ovmf/OVMF_VARS.fd", varscopy)
 
-    var logpath = "var/hwrepro/" + stem + ".log"
+    var logpath = "var/hwrepro/" + stem + "-" + case_name + ".log"
 
     # GRUB-menu media (the August diag images) wait for Enter —
     # select the default entry via QMP at t+100 s. Production media
@@ -139,7 +158,15 @@ def main() raises:
     var cmd = "timeout 500 qemu-system-x86_64"
     cmd += " -accel kvm"
     cmd += " -machine q35"
-    cmd += " -cpu host -smp 8"
+    # boundary: -cpu host (52 phys-bits) → OVMF's 64-bit PCI window
+    # at 54 TiB (beyond the kernel window) → the stall signature.
+    # inwindow: Cascadelake-Server (46 phys-bits) → the window lands
+    # inside [RAM top, 512 GiB) like a real board's high BARs → the
+    # stack must boot clean; a stall here would be a regression.
+    if case_name == String("inwindow"):
+        cmd += " -cpu Cascadelake-Server -smp 8"
+    else:
+        cmd += " -cpu host -smp 8"
     cmd += " -m size=4G,slots=4,maxmem=16G"
     cmd += " -device nec-usb-xhci,id=xhci"
     cmd += " -device usb-mouse,bus=xhci.0"
@@ -169,7 +196,7 @@ def main() raises:
     var log = String(fh.read())
     fh.close()
 
-    print("\n==== hwrepro verdict ====")
+    print("\n==== hwrepro verdict (case: " + case_name + ") ====")
 
     # signature A (current stack): core refuses the high MMIO range
     var mmio_refused = log.find("I/O memory") >= 0 \
@@ -178,6 +205,25 @@ def main() raises:
     # signature B (old stack): xHCI MMIO reads zeroes, probe times out
     var halt_timeout = log.find("halt failed, -110") >= 0 \
         or log.find("Will sleep forever") >= 0
+
+    if case_name == String("inwindow"):
+        # the in-window control must boot the usb chain fully
+        if log.find("Connected device") >= 0 \
+                and log.find("sponge_configd: ready") >= 0:
+            print("CLEAN — in-window high BARs: usb chain + system init"
+                  + " alive (machinery healthy)")
+            return
+        print("FAIL — in-window case stalled unexpectedly:")
+        var lines3 = log.split("\n")
+        var shown3 = 0
+        var idx3 = len(lines3) - 1
+        while idx3 >= 0 and shown3 < 8:
+            var ln3 = String(lines3[idx3]).rstrip()
+            if ln3 != String(""):
+                print("  | " + ln3)
+                shown3 += 1
+            idx3 -= 1
+        return
 
     if mmio_refused or halt_timeout:
         var tag = String("REPRODUCED — real-hw stall signature")
