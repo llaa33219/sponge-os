@@ -295,6 +295,9 @@ there too.
 ```bash
 ./tool/hwrepro                  # boundary case (default): expect REPRODUCED
 ./tool/hwrepro --case inwindow  # in-window high-BAR control: expect CLEAN
+./tool/hwrepro --case acpi-dmar # injected firmware DMAR (DRHD+RMRR):
+                                #   expect CLEAN (row-16 skip keeps the
+                                #   acpi child alive; usb chain boots)
 ./tool/hwrepro <img> [--case C] # run a specific media image
 ./tool/hwrepro --dry-run        # print the exact QEMU command, run nothing
 ```
@@ -320,6 +323,13 @@ A two-case battery over the LG gram 17ZD90N real-hardware stall
   the usb chain clean here; a stall is a regression-gate failure.
   Currently CLEAN (machinery healthy — see also
   `run/sponge-high-phys-probe.run`).
+* **acpi-dmar**: injects `run/fixtures/dmar-rmrr.aml` (a spec-shaped
+  DMAR with DRHD+RMRR, as every real Intel board ships; QEMU's
+  synthetic tables omit it). Before ledger row 16 this killed the
+  acpi child (uncaught `Mmio::Range_violation` in the DMAR walkers)
+  and stalled the usb chain on both stack generations — the gram's
+  on-panel signature. The gate requires the boot to survive the
+  table (row-16 skip) and reach the usb chain.
 
 Bisection notes (2026-09-14): VT-d/intremap/irqchip-split,
 pc-dimms, storage throttling, MSI-off, 16 GiB RAM, and the

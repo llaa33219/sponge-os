@@ -671,3 +671,13 @@ VBE mode for vesa_fb in this QEMU build; TCG boots are ~50% flaky
 from a guest-side Timer-session race (kept out of the default
 matrix, manual invocation documented); `-no-hpet` starves the
 HPET-only timer driver (no PIT fallback).
+
+Fixed during the reproduction work (2026-09-14, ledger row 16):
+firmware DMAR tables (DRHD+RMRR — present on every real Intel
+board, absent from QEMU's synthetic tables) killed the acpi child
+via an uncaught `Mmio::Range_violation` in the DMAR walkers,
+stalling pci_decode/platform/usb — the exact on-panel signature
+reported from the 17ZD90N on both stack generations. The acpi
+driver now skips DMAR parsing (report-only information); the
+regression gate is `./tool/hwrepro --case acpi-dmar` (injects
+`run/fixtures/dmar-rmrr.aml` and requires the usb chain to boot).
