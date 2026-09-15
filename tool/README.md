@@ -293,51 +293,53 @@ there too.
 
 ### hwrepro (real-hw stall reproduction harness)
 ```bash
-./tool/hwrepro                 # boot the default product media under the repro config
-./tool/hwrepro <img>           # boot a specific media image
-./tool/hwrepro --dry-run       # print the exact QEMU command, run nothing
+./tool/hwrepro                  # boundary case (default): expect REPRODUCED
+./tool/hwrepro --case inwindow  # in-window high-BAR control: expect CLEAN
+./tool/hwrepro <img> [--case C] # run a specific media image
+./tool/hwrepro --dry-run        # print the exact QEMU command, run nothing
 ```
 
-Boots a product `.img` under the MINIMAL QEMU/OVMF configuration
-that deterministically reproduces the LG gram 17ZD90N
-real-hardware stall on BOTH stack generations:
+A two-case battery over the LG gram 17ZD90N real-hardware stall
+(background + pointer cursor only; no panel, no mouse):
 
-```bash
--cpu host -m size=4G,slots=4,maxmem=16G   # the whole trigger
-```
+* **boundary** (`-cpu host`, Ice Lake host, 52 phys-bits): OVMF
+  places the xHCI controller's 16 KiB MMIO BAR at `0x380000000000`
+  (54 TiB, the 64-bit PCI window) — beyond the kernel's 512 GiB
+  physical window and row-13's 1 TiB device-untyped ceiling. Core
+  refuses the mapping; the platform failure cascades into the usb
+  driver aborting; Tier-0 survives (background + cursor — both
+  Tier-0), usb dies (no storage chain, no panel, no mouse) — the
+  exact on-panel signature, deterministic on BOTH stack
+  generations (current: `I/O memory ... not available` +
+  `unable to access MMIO mapping` + usb abort; old 26.05/13.0.0
+  media: `Host halt failed, -110` + `Will sleep forever...`).
+  A BOUNDARY case: no real board places a BAR that high.
+* **inwindow** (`-cpu Cascadelake-Server`, 46 phys-bits): OVMF
+  places the BAR inside [RAM top, 512 GiB) — the same class as the
+  gram's xHCI BAR at `0x601d140000` (384 GiB). The stack must boot
+  the usb chain clean here; a stall is a regression-gate failure.
+  Currently CLEAN (machinery healthy — see also
+  `run/sponge-high-phys-probe.run`).
 
-`-cpu host` (Ice Lake host, 52 phys-bits) plus the hotplug-window
-declaration makes OVMF place the xHCI controller's 16 KiB MMIO BAR
-at `0x380000000000` (54 TiB, the 64-bit PCI window) — high device
-MMIO the stack cannot map. The gram's firmware does the same
-class of thing (its xHCI BAR sits at `0x601d140000`, 384 GiB).
-Tier-0 survives (background + pointer cursor — both Tier-0), usb
-dies, so no storage chain, no system init, no panel, no mouse.
+Bisection notes (2026-09-14): VT-d/intremap/irqchip-split,
+pc-dimms, storage throttling, MSI-off, 16 GiB RAM, and the
+qemu-xhci device model are all NOT triggers (each probed alive
+under the in-window CPU); the earlier DMAR attribution was a
+coincidence — the 54 TiB range IS the xHCI BAR. QEMU cannot place
+a 64-bit BAR anywhere else (machine type, phys-bits overrides,
+RAM size, maxmem, pci-bridge windows all probed), so the gram's
+exact mechanism (firmware-left VT-d DMA translation, a real-HID
+descriptor quirk, or the board's ACPI tables) is NOT reproducible
+in QEMU; the gram-side fbcon diagnostic log
+(`sponge-os-diag-fbcon16-uefi-usb.img`) remains the decisive
+datum, and its MADT/DMAR (acpidump) can be replayed via
+`-acpitable` if captured.
 
-Two stall signatures, one root cause (2026-09-14 bisection —
-VT-d/intremap/irqchip-split, pc-dimms, and storage throttling
-are all NOT required; the earlier DMAR attribution was a
-coincidence, the 54 TiB range IS the xHCI BAR):
-
-* current stack (26.08 + seL4 16.0.0), 4/4 — core's io_mem
-  allocator refuses the unknown range (`I/O memory ... not
-  available` + `unable to access MMIO mapping`) and the platform
-  failure cascades into the usb driver aborting
-* old stack (26.05 + seL4 13.0.0, `sponge-test-uefi-usb-
-  20260824.img`), 3/3 — the mapping silently reads zeroes, the
-  xHCI probe times out (`Host halt failed, -110`) and the DDE
-  driver deadlocks (`Will sleep forever...`)
-
-Cascadelake-Server (46 phys-bits) boots CLEAN under the
-identical config — the trigger is host-CPU phys-bits + maxmem.
-
-Verdict (exit 0 both ways — a classifier, not a gate):
-`REPRODUCED` (stall signature), `CLEAN` (`alpha-probe: PASS`),
-`OTHER`. The full serial log is always saved to
-`var/hwrepro/<img>.log`. A fix for the real-hardware stall should
-flip `./tool/hwrepro` to `CLEAN` before any real-hardware
-reflash — the panel has no serial; iterate here, not on the
-laptop.
+Verdicts: `REPRODUCED` (boundary: stall signature), `CLEAN`
+(inwindow: usb chain + system init alive), `FAIL`/`OTHER`
+otherwise. Full serial log: `var/hwrepro/<img-stem>-<case>.log`.
+The manual equivalent (exact QEMU command) is printed by
+`--dry-run` (AGENTS §3.5).
 
 ### gen-vct-config
 Generates the `<config><args>...</args></config>` blob that vct expects
