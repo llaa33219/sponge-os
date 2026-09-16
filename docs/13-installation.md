@@ -1,6 +1,10 @@
 # 13 - Installation and Alpha Quick Start
 
-This guide covers Sponge OS Alpha 0.1.0, codename Archaeocyte. The Alpha media target is seL4 running in QEMU. It is a development release, not a general hardware installer.
+This guide covers Sponge OS 0.2.0, codename Archaeocyte. The media
+targets seL4 in QEMU and, as of 0.2.0, real UEFI hardware (the
+reference machine is the LG gram 17ZD90N-VX7BK; see
+[`docs/15-hardware-compatibility.md`](15-hardware-compatibility.md)
+for the supported envelope and the real-hardware bring-up record).
 
 > **Phase 8 media model.** As of Phase 8, the Alpha media splits into two
 > distinct products (see
@@ -64,14 +68,18 @@ Verify the sidecars with:
 The resulting files are:
 
 ```text
-var/dist/sponge-os-0.1.0-alpha-x86_64-sel4.img   (4 partitions: BIOSBOOT/ESP/GENODE/SPONGE-DATA)
-var/dist/sponge-os-0.1.0-alpha-x86_64-sel4.iso   (live/eval El Torito)
+var/dist/sponge-os-0.2.0-x86_64-sel4-desktop.img        (BIOS, desktop profile)
+var/dist/sponge-os-0.2.0-x86_64-sel4-desktop.iso        (live/eval El Torito, desktop)
+var/dist/sponge-os-0.2.0-x86_64-sel4-minimal.img        (BIOS, minimal profile)
+var/dist/sponge-os-0.2.0-x86_64-sel4-minimal.iso        (live/eval El Torito, minimal)
+var/dist/sponge-os-0.2.0-x86_64-sel4-uefi-usb-desktop.img (UEFI USB-stick, desktop; real-hw target)
+var/dist/sponge-os-0.2.0-x86_64-sel4-uefi-usb-minimal.img (UEFI USB-stick, minimal)
 ```
 
 Confirm the four partitions are present (the `misleading_success_output` defense — never trust the build exit code alone):
 
 ```bash
-sgdisk -p var/dist/sponge-os-0.1.0-alpha-x86_64-sel4.img
+sgdisk -p var/dist/sponge-os-0.2.0-x86_64-sel4-desktop.img
 # Expect: four partitions, with P4 named SPONGE-DATA.
 ```
 
@@ -95,18 +103,18 @@ make -C genode/build/x86_64 run/sponge-desktop-disk \
 ./tool/mkdata genode/build/x86_64/var/run/sponge-desktop-disk.img
 mkdir -p var/dist
 cp genode/build/x86_64/var/run/sponge-desktop-disk.img \
-   var/dist/sponge-os-0.1.0-alpha-x86_64-sel4.img
-(cd var/dist && sha256sum sponge-os-0.1.0-alpha-x86_64-sel4.img \
-    > sponge-os-0.1.0-alpha-x86_64-sel4.img.sha256)
+   var/dist/sponge-os-0.2.0-x86_64-sel4-desktop.img
+(cd var/dist && sha256sum sponge-os-0.2.0-x86_64-sel4-desktop.img \
+    > sponge-os-0.2.0-x86_64-sel4-desktop.img.sha256)
 
 # Live/eval .iso. Build the alpha boot-modules composition:
 rm -rf genode/build/x86_64/var/run/sponge-alpha*
 make -C genode/build/x86_64 run/sponge-alpha \
     KERNEL=sel4 BOARD=pc RUN_OPT='--include image/iso'
 cp genode/build/x86_64/var/run/sponge-alpha.iso \
-   var/dist/sponge-os-0.1.0-alpha-x86_64-sel4.iso
-(cd var/dist && sha256sum sponge-os-0.1.0-alpha-x86_64-sel4.iso \
-    > sponge-os-0.1.0-alpha-x86_64-sel4.iso.sha256)
+   var/dist/sponge-os-0.2.0-x86_64-sel4-desktop.iso
+(cd var/dist && sha256sum sponge-os-0.2.0-x86_64-sel4-desktop.iso \
+    > sponge-os-0.2.0-x86_64-sel4-desktop.iso.sha256)
 (cd var/dist && sha256sum -c *.sha256)
 ```
 
@@ -121,7 +129,7 @@ qemu-system-x86_64 \
     -machine q35 \
     -cpu Skylake-Client \
     -m 2G \
-    -drive format=raw,file=var/dist/sponge-os-0.1.0-alpha-x86_64-sel4.img \
+    -drive format=raw,file=var/dist/sponge-os-0.2.0-x86_64-sel4-desktop.img \
     -serial stdio \
     -display none \
     -netdev user,id=net0 \
@@ -136,7 +144,7 @@ qemu-system-x86_64 \
     -cpu Skylake-Client \
     -m 2G \
     -boot d \
-    -cdrom var/dist/sponge-os-0.1.0-alpha-x86_64-sel4.iso \
+    -cdrom var/dist/sponge-os-0.2.0-x86_64-sel4-desktop.iso \
     -serial stdio \
     -display none \
     -netdev user,id=net0 \
@@ -156,7 +164,7 @@ Replace `/dev/sdX` with the whole USB device, never a partition such as `/dev/sd
 ```bash
 lsblk -o NAME,SIZE,MODEL,TRAN,MOUNTPOINTS
 sudo umount /dev/sdX1  # repeat for every mounted partition on the USB device
-sudo dd if=var/dist/sponge-os-0.1.0-alpha-x86_64-sel4.img \
+sudo dd if=var/dist/sponge-os-0.2.0-x86_64-sel4-desktop.img \
     of=/dev/sdX bs=4M status=progress conv=fsync
 sync
 ```

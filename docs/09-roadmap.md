@@ -413,7 +413,7 @@ scenario-gated.
 **Version milestones**: completing Phase 15 (real-hardware boot)
 releases **0.2.0-alpha**; completing Phase 17 (GUI installer)
 releases **0.3.0-alpha**. Phases 10–14 and 16 accumulate on top of
-0.1.0-alpha without their own version bumps.
+0.2.0 without their own version bumps.
 
 ### Phase 10: Sponge DE — Fully Interactive Desktop
 
@@ -746,11 +746,23 @@ tasks — not a demo, but a desktop one can actually sit down and use.
 > mapping-registry caps on slow real-USB I/O (row 6 addendum: 65536
 > slots/PD + caps quota). Full bring-up log:
 > `docs/evidence/phase15-index.md` §13–§14 +
-> `docs/plans/phase15-hardware-boot-protocol.md`. Criteria 1/2/4: the
-> boot/display/storage evidence has landed; the final interactive
-> input confirmation (USB-mouse pointer/click on the desktop) is the
-> last pending sub-item before Phase 15 closes and 0.2.0-alpha
-> releases.
+> `docs/plans/phase15-hardware-boot-protocol.md`.
+>
+> **Phase 15 CLOSED / 0.2.0 released (2026-09-16):** the final
+> interactive-input confirmation landed — on the physical 17ZD90N the
+> panel appears and pointer/click, in-window element interaction, and
+> mouse movement all work smoothly at the panel's native 2560x1600
+> (correct EDID/mode detection). The blocking defect was the acpi
+> driver's DMAR misparse (ledger row 16): real Intel firmware ships a
+> DMAR (DRHD+RMRR) that QEMU's synthetic tables omit; the misparse
+> threw `Mmio::Range_violation`, killing the acpi child and stalling
+> pci_decode/platform/usb (storage+input dead, Tier-0 alive) on both
+> stack generations. Fixed by a spec-corrected, bounded entry walk
+> plus skipping DMAR report generation; regression gate
+> `./tool/hwrepro --case acpi-dmar`. The pre-real-hw QEMU harness
+> also shipped: `run/sponge-hw-matrix.run` + `tool/hwtest` (20-variant
+> emulated-hardware matrix) and `tool/hwrepro` (boundary / in-window /
+> acpi-dmar cases), docs/08 §16 + docs/11 §10.6 + docs/15 §7.
 
 #### Goal
 
@@ -760,13 +772,13 @@ QEMU-only limitation is retired. **Completing this phase releases
 
 #### Completion Criteria
 
-- [ ] Boot verified on physical hardware from USB or SSD media
+- [x] Boot verified on physical hardware from USB or SSD media
   (target machine recorded in the compatibility document).
-- [ ] Input, display, and storage functional on that machine; the
+- [x] Input, display, and storage functional on that machine; the
   desktop reaches the same verified state as the QEMU scenarios.
-- [ ] `docs/13-installation.md` updated: real-hardware install path
+- [x] `docs/13-installation.md` updated: real-hardware install path
   documented, QEMU-only limitation removed or rescoped.
-- [ ] Known hardware-specific issues recorded with reproduction
+- [x] Known hardware-specific issues recorded with reproduction
   notes.
 
 ### Phase 16: Sponge IME — Multi-Language / CJK Input
@@ -814,7 +826,7 @@ releases 0.3.0-alpha.**
 
 ## 11. Current Focus
 
-Phases 0–12 are complete. Phase 7 Alpha caveats are recorded in
+Phases 0–15 are complete (0.2.0 released). Phase 7 Alpha caveats are recorded in
 [`docs/13-installation.md`](13-installation.md); Phases 8 (boot
 and storage architecture, `docs/14`) and 9 (seL4 capability-space
 scaling) resolved the two largest Alpha caveats — the boot-module
@@ -857,9 +869,20 @@ Alpha terminal) plus the mid-settle prompt-detection race behind a
 terminal-qmp host-protocol timeout. The third criterion's importer
 breadth remains partially deferred (D13.5).
 
-Next up: **Phase 14 — Sponge DE as a daily-usable desktop**, followed
-by the rest of the post-Alpha sequence defined in §10 (real hardware,
-IME, GUI installer).
+**Phase 14** closed the daily-usable-desktop track and **Phase 15
+closed real-hardware boot, releasing 0.2.0** (2026-09-16): the
+desktop is fully interactive on the physical LG gram 17ZD90N-VX7BK
+(panel, pointer/click, in-window interaction, mouse movement, native
+2560x1600). The pre-real-hw QEMU harness shipped alongside: the
+20-variant `run/sponge-hw-matrix.run` + `tool/hwtest` matrix and the
+`tool/hwrepro` reproduction battery (boundary / in-window /
+acpi-dmar), which root-caused and fixed the acpi DMAR misparse
+(ledger row 16) that had stalled the usb chain on real Intel
+firmware. See docs/08 §16, docs/11 §10.6, docs/15 §7.
+
+Next up: **Phase 16 — Sponge IME (multi-language/CJK input)** and
+**Phase 17 — GUI installer**, the remaining post-Alpha sequence
+defined in §10.
 
 Deferred follow-ups (not blockers):
 
