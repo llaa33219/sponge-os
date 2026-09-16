@@ -52,16 +52,19 @@ Phase 12: Hardware support expansion  ✅ done (QEMU-verified matrix)
 Phase 13: Package ecosystem growth  ✅ done (criterion 3 partial: importer breadth deferred, D13.5)
    |
    v
-Phase 14: Sponge DE as a daily-usable desktop
+Phase 14: Sponge DE as a daily-usable desktop  ✅ done
    |
    v
-Phase 15: Real-hardware boot
+Phase 15: Real-hardware boot  ✅ done (0.2.0 released; full interaction on 17ZD90N)
    |
    v
-Phase 16: Sponge IME (multi-language / CJK input)
+Phase 16: Practical daily-usable desktop defaults & configuration
    |
    v
-Phase 17: GUI installer for SSD/HDD installation
+Phase 17: Sponge IME (multi-language / CJK input)
+   |
+   v
+Phase 18: GUI installer for SSD/HDD installation  -> releases 0.3.0
 ```
 
 ---
@@ -400,7 +403,7 @@ at which one can honestly say "I have used Sponge OS".
 
 ---
 
-## 10. Post-Alpha Phases (10–17)
+## 10. Post-Alpha Phases (10–18)
 
 Phases 8 and 9 (boot/storage architecture per `docs/14`, seL4
 capability-space scaling) are delivered and closed the two largest
@@ -411,9 +414,9 @@ dates are not firm; they express relative order, and every phase is
 scenario-gated.
 
 **Version milestones**: completing Phase 15 (real-hardware boot)
-releases **0.2.0-alpha**; completing Phase 17 (GUI installer)
-releases **0.3.0-alpha**. Phases 10–14 and 16 accumulate on top of
-0.2.0 without their own version bumps.
+released **0.2.0** (2026-09-16); completing Phase 18 (GUI
+installer) releases **0.3.0**. Phases 10–14, 16 and 17 accumulate
+on top of 0.2.0 without their own version bumps.
 
 ### Phase 10: Sponge DE — Fully Interactive Desktop
 
@@ -781,7 +784,62 @@ QEMU-only limitation is retired. **Completing this phase releases
 - [x] Known hardware-specific issues recorded with reproduction
   notes.
 
-### Phase 16: Sponge IME — Multi-Language / CJK Input
+### Phase 16: Practical Daily-Usable Desktop Defaults & Configuration
+
+> Inserted 2026-09-16 by user direction, ahead of the IME phase:
+> Phases 10/11 proved the desktop is interactive and customizable,
+> but the release media must ship a *practically usable default*
+> desktop with a real configuration surface. This phase hardens
+> defaults and adds the everyday configuration/management features
+> that make the DE a daily driver rather than a demo.
+
+#### Goal
+
+The shipped img/iso boots straight into a usable, configurable
+desktop: sensible defaults are active out of the box, and every
+common desktop configuration action is available through the DE
+itself (settings app, panel and background context menus, keyboard
+shortcuts) without hand-editing config files.
+
+#### Scope / Completion Criteria
+
+- [ ] **Default activation in release media**: the desktop
+  (panel + compositor + defaults) is enabled by default in the
+  img/iso; first boot lands on a usable desktop with no manual
+  setup.
+- [ ] **Settings application (Sponge DE Settings)**: a first-party
+  settings app exposes the desktop's configurable surface (panel,
+  theme, background, keyboard shortcuts, defaults) and persists via
+  `sponge_configd`.
+- [ ] **Panel context menu**: right-click on the panel opens a menu
+  that changes panel settings (height, widgets, position) live.
+- [ ] **Add new panel**: the user can add an additional panel
+  (multi-panel), each independently configurable.
+- [ ] **Window move via title bar** (emphasized): clicking and
+  dragging a window's top bar moves the window — the primary,
+  discoverable window-move interaction.
+- [ ] **Default bundled packages in img/iso**: a curated default
+  package set is baked into the release media.
+- [ ] **Bundled packages launchable from the default panel**: the
+  bundled packages appear under the default DE panel's *Utilities*
+  menu and launch correctly.
+- [ ] **New windows open correctly**: launched applications open
+  their own windows reliably (focus, stacking, decoration).
+- [ ] **Mouse window resize**: dragging window edges/corners
+  resizes the window.
+- [ ] **Background context menu**: right-click on the background
+  opens a desktop menu (settings, launch, arrange).
+- [ ] **Background image change**: the desktop background image is
+  changeable (persisted via configd).
+- [ ] **Panel & keyboard interaction**: keyboard shortcuts drive
+  the desktop (e.g. Super opens the Utilities menu), plus further
+  shortcut coverage.
+
+Each criterion is scenario-verified (QMP-driven run scenario
+asserting the observable state), consistent with the Phase 10/11
+verification style.
+
+### Phase 17: Sponge IME — Multi-Language / CJK Input
 
 #### Goal
 
@@ -801,7 +859,9 @@ first-class, given the project's audience).
 - [ ] Scenario-verified: composed characters reach a focused text
   field in the text editor and terminal.
 
-### Phase 17: GUI Installer for SSD/HDD Installation
+### Phase 18: GUI Installer for SSD/HDD Installation
+
+> Completing this phase releases **0.3.0**.
 
 #### Goal
 
@@ -880,9 +940,11 @@ acpi-dmar), which root-caused and fixed the acpi DMAR misparse
 (ledger row 16) that had stalled the usb chain on real Intel
 firmware. See docs/08 §16, docs/11 §10.6, docs/15 §7.
 
-Next up: **Phase 16 — Sponge IME (multi-language/CJK input)** and
-**Phase 17 — GUI installer**, the remaining post-Alpha sequence
-defined in §10.
+Next up: **Phase 16 — practical daily-usable desktop defaults &
+configuration** (inserted 2026-09-16 ahead of the IME), then
+**Phase 17 — Sponge IME (multi-language/CJK input)** and
+**Phase 18 — GUI installer** (releases 0.3.0), the remaining
+post-Alpha sequence defined in §10.
 
 Deferred follow-ups (not blockers):
 

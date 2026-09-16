@@ -320,7 +320,7 @@ interaction, mouse movement, native 2560x1600).** The QEMU envelope
 remains a gap: the host-OVMF core-init hang is now root-caused to
 the acpi DMAR misparse (ledger row 16, fixed; QEMU re-test of the
 UEFI envelope pending) | scenario `run/sponge-desktop-disk-uefi-usb.run`; evidence `docs/evidence/phase15-w4-uefi-product-media.log` + `docs/evidence/phase15-index.md` §10; QEMU-verified = NO; 15-3 = pending; budget n/a |
-| Input | usb-mouse HID (relative motion) | verified | the QPA → `usb-tablet` absolute-input path is a Phase 11/12 baseline; the new usb-mouse HID path uses pc_usb_host class 0x3 + usb_hid (Linux hid-core hid-generic) + event_filter REL forwarding. The audit chain (QMP `device_add usb-mouse` → `usb_hid: MOUSE detected` → REL motion + BTN_LEFT via `qmp_move_rel` + `qmp_ps2_button` → QMP `device_del` → `usb_hid: MOUSE removed`) passes end-to-end. The Phase 14 row #2 nitpicker pointer-ROM gap ("nitpicker pointer ROM only updates on absolute_motion") and row #12 cursor-invisible-under-PS/2-only-input are cross-referenced as honest gap-row evidence from the scenario's secondary observation; the usb-mouse cell is precisely their Phase 15 envelope. The QPA → usb-mouse relative-motion patch candidate from `docs/15-hardware-compatibility.md` §4.1 row 4 (Phase 12+ gap) remains open as a Phase 16+ item | scenario `run/sponge-usb-hid-mouse.run`; evidence `docs/evidence/phase15-usb-hid-mouse.log`; QEMU 11.0.3; boot_time 175 s; budget 600 s; target qemu |
+| Input | usb-mouse HID (relative motion) | verified | the QPA → `usb-tablet` absolute-input path is a Phase 11/12 baseline; the new usb-mouse HID path uses pc_usb_host class 0x3 + usb_hid (Linux hid-core hid-generic) + event_filter REL forwarding. The audit chain (QMP `device_add usb-mouse` → `usb_hid: MOUSE detected` → REL motion + BTN_LEFT via `qmp_move_rel` + `qmp_ps2_button` → QMP `device_del` → `usb_hid: MOUSE removed`) passes end-to-end. The Phase 14 row #2 nitpicker pointer-ROM gap ("nitpicker pointer ROM only updates on absolute_motion") and row #12 cursor-invisible-under-PS/2-only-input are cross-referenced as honest gap-row evidence from the scenario's secondary observation; the usb-mouse cell is precisely their Phase 15 envelope. The QPA → usb-mouse relative-motion patch candidate from `docs/15-hardware-compatibility.md` §4.1 row 4 (Phase 12+ gap) remains open as a Phase 17+ item | scenario `run/sponge-usb-hid-mouse.run`; evidence `docs/evidence/phase15-usb-hid-mouse.log`; QEMU 11.0.3; boot_time 175 s; budget 600 s; target qemu |
 
 **UEFI cells honesty note:** all three UEFI surface cells are
 **host-side structurally verified** (the Sponge-side recipe
@@ -654,7 +654,7 @@ in `docs/evidence/task-5-phase12-hw-compat.md` under `var/`.
   `docs/evidence/phase12-pc-nic.log`, `docs/evidence/phase12-usb-boot.log`,
   `docs/evidence/phase12-usb-kbd.log`.
 - Validator evidence: `docs/evidence/task-5-phase12-hw-compat.md`.
-## 7. QEMU hardware-matrix gate (Phase 16 pre-real-hw, 2026-09-13)
+## 7. QEMU hardware-matrix gate (Phase 15 pre-real-hw hardening, 2026-09-13)
 
 The headless QEMU hardware-matrix gate
 (`tool/hwtest` driving `run/sponge-hw-matrix.run`) verifies the
