@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: LicenseRef-SpongeOS-Proprietary
+/* SPDX-License-Identifier: Apache-2.0
  *
  * Implementation of Files_window. See files_window.h for the design.
  *

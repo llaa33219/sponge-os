@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: LicenseRef-SpongeOS-Proprietary
+/* SPDX-License-Identifier: Apache-2.0
  *
  * wm_probe — headless window-manager verification probe.
  *

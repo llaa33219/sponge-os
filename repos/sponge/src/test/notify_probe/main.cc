@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: LicenseRef-SpongeOS-Proprietary
+/* SPDX-License-Identifier: Apache-2.0
  *
  * notify_probe — sponge_notifier acceptance probe (Phase 14 W4).
  *

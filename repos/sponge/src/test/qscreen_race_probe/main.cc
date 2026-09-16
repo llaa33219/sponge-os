@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: LicenseRef-SpongeOS-Proprietary
+/* SPDX-License-Identifier: Apache-2.0
  *
  * qscreen_race_probe — focused single-frame cold-boot probe for the
  * Phase 14 W3 / D14.8(b) QGenodeScreen 1x1-stale race investigation.

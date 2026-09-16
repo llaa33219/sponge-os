@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: LicenseRef-SpongeOS-Proprietary
+/* SPDX-License-Identifier: Apache-2.0
  *
  * launcher_probe — Sponge DE launcher integration verifier (Phase 5c).
  *

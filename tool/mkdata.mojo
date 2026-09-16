@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: LicenseRef-SpongeOS-Proprietary
+# SPDX-License-Identifier: Apache-2.0
 #
 # Sponge OS SPONGE-DATA (P4) partition creator.
 #

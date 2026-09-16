@@ -1,5 +1,5 @@
 /*
- * SPDX-License-Identifier: LicenseRef-SpongeOS-Proprietary
+ * SPDX-License-Identifier: Apache-2.0
  *
  * partition_check — Phase 12 W2 NVMe Tier-0 P3 partition-number probe
  * (docs/plans/phase12-hardware.md §"W2: Storage variants and product-

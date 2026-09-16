@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: LicenseRef-SpongeOS-Proprietary
+/* SPDX-License-Identifier: Apache-2.0
  *
  * pkg_meta_probe — Phase 7 todo 18 search/update assertion matrix.
  *

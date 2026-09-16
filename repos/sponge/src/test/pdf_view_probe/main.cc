@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: LicenseRef-SpongeOS-Proprietary
+/* SPDX-License-Identifier: Apache-2.0
  *
  * pdf_view_probe — headless verification probe for pkg/pdf_view
  * (Phase 13 W4, plan D13.3).

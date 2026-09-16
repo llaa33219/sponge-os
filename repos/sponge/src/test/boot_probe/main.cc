@@ -1,5 +1,5 @@
 /*
- * SPDX-License-Identifier: LicenseRef-SpongeOS-Proprietary
+ * SPDX-License-Identifier: Apache-2.0
  *
  * boot_probe — Phase 8 P1 storage-chain smoke probe (docs/14 §3, §4.4).
  *

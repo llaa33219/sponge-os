@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: LicenseRef-SpongeOS-Proprietary
+/* SPDX-License-Identifier: Apache-2.0
  *
  * Implementation of Sponge::Backend::ReportRomClient and Result_match.
  * See <sponge/backend_client.h> for the design.

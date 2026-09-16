@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: LicenseRef-SpongeOS-Proprietary
+# SPDX-License-Identifier: Apache-2.0
 #
 # Bump the Sponge OS version in repos/sponge/include/sponge/version.h.
 #

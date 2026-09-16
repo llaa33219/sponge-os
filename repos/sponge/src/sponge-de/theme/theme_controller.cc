@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: LicenseRef-SpongeOS-Proprietary
+/* SPDX-License-Identifier: Apache-2.0
  *
  * Implementation of ThemeController. See theme_controller.h for the
  * thread model (the sigh handler marshals; applyTheme re-styles).

@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: LicenseRef-SpongeOS-Proprietary
+/* SPDX-License-Identifier: Apache-2.0
  *
  * sponge_configd — configuration backend daemon (Phase 5a, Phase 14 W6).
  *

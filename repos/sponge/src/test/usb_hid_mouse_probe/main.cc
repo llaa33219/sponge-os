@@ -1,5 +1,5 @@
 /*
- * SPDX-License-Identifier: LicenseRef-SpongeOS-Proprietary
+ * SPDX-License-Identifier: Apache-2.0
  *
  * usb_hid_mouse_probe — Phase 15 W5 USB-mouse HID envelope probe
  * (docs/plans/phase15-real-hardware-boot.md §W5; companion to

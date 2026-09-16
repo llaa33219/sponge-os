@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: LicenseRef-SpongeOS-Proprietary
+/* SPDX-License-Identifier: Apache-2.0
  *
  * Implementation of TasklistController. See tasklist_controller.h for
  * the wire contract and the threading model.

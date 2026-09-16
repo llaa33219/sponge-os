@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: LicenseRef-SpongeOS-Proprietary
+/* SPDX-License-Identifier: Apache-2.0
  *
  * sponge_decorator_bridge — themed_decorator live-policy color bridge
  *                            (Phase 11 W4).

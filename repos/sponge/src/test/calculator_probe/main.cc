@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: LicenseRef-SpongeOS-Proprietary
+/* SPDX-License-Identifier: Apache-2.0
  *
  * calculator_probe — headless verification probe for pkg/calculator
  * (Phase 13 W3, docs/plans/phase13-package-ecosystem.md D13.3).

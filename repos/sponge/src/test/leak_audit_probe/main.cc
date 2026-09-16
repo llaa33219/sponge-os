@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: LicenseRef-SpongeOS-Proprietary
+/* SPDX-License-Identifier: Apache-2.0
  *
  * leak_audit_probe — Phase 14 W11 #47-50 QTimer leak audit.
  *
