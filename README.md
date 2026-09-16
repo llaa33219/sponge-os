@@ -70,7 +70,10 @@ See [`docs/04-components.md`](docs/04-components.md) for the detailed design.
 
 ## Current Status
 
-🟢 **Alpha 0.1.0, Archaeocyte** — Phase 7 is done with caveats,
+🟢 **0.2.0, Archaeocyte** — the desktop boots and is fully
+interactive on real hardware (LG gram 17ZD90N-VX7BK: panel, window
+and in-window interaction, and mouse movement all working, at the
+panel's native 2560x1600). Phase 7 is done with caveats,
 Phase 10 (fully interactive desktop) is done, Phase 11 (DE
 customization: configd-driven panel, four shipped themes, themed
 window chrome) is done, and Phase 14 (Sponge DE as a
@@ -111,8 +114,8 @@ The repository currently contains:
   `install`/`remove`/`list`, `theme`, `launch`, `update`, `search`,
   `shutdown`/`reboot`, and `leitzentrale` — with `--json`, `--lang ko`,
   and `--manual` escape hatches
-- ✅ Alpha 0.1.0 seL4 disk image and ISO boot in QEMU to the themed desktop
-  (`run/sponge-alpha.run` and the media scenarios)
+- ✅ 0.2.0 seL4 disk image and ISO boot in QEMU and on real hardware
+  (`run/sponge-alpha.run` and the media scenarios; LG gram 17ZD90N)
 - ✅ Alpha packages verified in QEMU: terminal with bash/vim and a UNIX
   CLI toolset (coreutils, grep, sed, tar, less, findutils, diffutils,
   which — Phase 13), Qt6 text editor, and Sponge file manager
@@ -223,9 +226,9 @@ Verified vct boot output (base-sel4 on QEMU):
 ```
 Genode 26.08
 699 MiB RAM and 523288 caps assigned to init
-[init -> vct] vct (0.1.0-alpha / Archaeocyte) starting
+[init -> vct] vct (0.2.0 / Archaeocyte) starting
 [init -> vct] vct — Very Convenient Tool
-[init -> vct] version: 0.1.0-alpha (Archaeocyte)
+[init -> vct] version: 0.2.0 (Archaeocyte)
 Run script execution successful.
 ```
 
