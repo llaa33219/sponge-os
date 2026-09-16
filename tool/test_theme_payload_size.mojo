@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: LicenseRef-SpongeOS-Proprietary
+# SPDX-License-Identifier: Apache-2.0
 #
 # Sponge OS theme payload-size host gate (Phase 11 W5, risk-register #1).
 #

@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: LicenseRef-SpongeOS-Proprietary
+# SPDX-License-Identifier: Apache-2.0
 #
 # Sponge OS bake-profile inspector + post-build P3 injector (Phase 15 W2b).
 #

@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: LicenseRef-SpongeOS-Proprietary
+/* SPDX-License-Identifier: Apache-2.0
  *
  * Implementation of ConfigController. See config_controller.h for the
  * thread model (the sigh handler marshals; applyConfig emits signals).

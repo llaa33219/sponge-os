@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: LicenseRef-SpongeOS-Proprietary
+/* SPDX-License-Identifier: Apache-2.0
  *
  * Concrete vct subcommands. Phase 0 ships three placeholders that all
  * do the minimum useful thing: emit their banner via Genode::log, and

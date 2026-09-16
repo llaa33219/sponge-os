@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: LicenseRef-SpongeOS-Proprietary
+# SPDX-License-Identifier: Apache-2.0
 #
 # clipboard_qtsettext — Phase 14 W5 follow-on Qt-side write probe.
 #

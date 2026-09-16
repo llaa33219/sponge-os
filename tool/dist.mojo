@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: LicenseRef-SpongeOS-Proprietary
+# SPDX-License-Identifier: Apache-2.0
 #
 # Sponge OS distribution media builder.
 #
@@ -76,7 +76,7 @@ from std.collections import Dict
 
 # Alpha release identity (kept in sync with include/sponge/version.h
 # and docs/09-roadmap.md). The release artifact names embed this.
-comptime RELEASE_VERSION = "0.1.0-alpha"
+comptime RELEASE_VERSION = "0.2.0"
 comptime RELEASE_ARCH = "x86_64"
 comptime RELEASE_KERNEL = "sel4"
 comptime RELEASE_NAME_PREFIX = "sponge-os-" + RELEASE_VERSION + "-"
@@ -394,7 +394,7 @@ def cmd_help() raises:
     print("        (--storage usb is UEFI-only; BIOS branch is ahci/nvme.)")
     print("        Installs persist across reboots on P3.")
     print("  .iso  live/eval mode — alpha boot-modules composition")
-    print("        (run/" + ISO_SCENARIO + ") on a RAM filesystem.")
+    print("        (run/sponge-alpha for desktop, run/sponge-minimal for minimal) on a RAM filesystem.")
     print("        Boots the same desktop; nothing persists. BIOS only")
     print("        (El Torito is BIOS-only; --firmware uefi SKIPS the .iso).")
     print()
@@ -616,6 +616,12 @@ def run_media_build(mode: String, scenario: String, root: String,
     rm_glob(run_root, scenario)
     print()
 
+    # The ISO (El Torito) path needs a boot_dir module (bender/bootloader);
+    # scenarios that compose their own boot (sponge-alpha) already include
+    # it, and the run tool's have_include guard makes a duplicate harmless.
+    var run_opt = String("--include " + mode)
+    if mode == "image/iso":
+        run_opt = run_opt + " --include boot_dir/sel4"
     var make_args: List[String] = [
         "make",
         "-C",
@@ -623,7 +629,7 @@ def run_media_build(mode: String, scenario: String, root: String,
         "run/" + scenario,
         "KERNEL=sel4",
         "BOARD=pc",
-        "RUN_OPT=--include " + mode,
+        "RUN_OPT=" + run_opt,
     ]
 
     print("[sponge-dist] starting " + mode + " media build (scenario: "
@@ -1183,7 +1189,10 @@ def main() raises:
         print("  live/eval .iso: SKIPPED (UEFI media is .img-only;")
         print("                    El Torito is BIOS-only — no equivalent)")
     else:
-        print("  live/eval .iso: " + ISO_SCENARIO + " (image/iso; storage-independent)")
+        var iso_name = String(ISO_SCENARIO)
+        if bake_profile == String("minimal"):
+            iso_name = String("sponge-minimal")
+        print("  live/eval .iso: " + iso_name + " (image/iso; storage-independent)")
     print("  release name: " + RELEASE_NAME_PREFIX + ".{img,iso}")
     print("  repo root:    " + root)
     print()
@@ -1216,8 +1225,10 @@ def main() raises:
             print("  (.iso SKIPPED: --firmware uefi is .img-only;")
             print("   El Torito is BIOS-only — no UEFI equivalent)")
         else:
-            print("  make -C " + build_dir_pp + " run/" + ISO_SCENARIO
-                  + " KERNEL=sel4 BOARD=pc RUN_OPT=--include image/iso")
+            var iso_esc = String(ISO_SCENARIO)
+            if bake_profile == String("minimal"):
+                iso_esc = String("sponge-minimal")
+            print("  make -C " + build_dir_pp + " run/" + iso_esc + " KERNEL=sel4 BOARD=pc RUN_OPT=--include image/iso")
             print("    env: SPONGE_BAKE_PROFILE=" + bake_profile)
             print()
             print("  (no mkdata after ISO build; the ISO path is media-only)")
@@ -1301,7 +1312,14 @@ def main() raises:
         print("[sponge-dist] --firmware uefi: skipping .iso build (El Torito")
         print("  is BIOS-only; UEFI media is .img-only by design, see D15.16).")
     else:
-        var iso_rc = run_media_build("image/iso", ISO_SCENARIO, root, bake_profile)
+        # Phase 16: the live/eval ISO composition follows the bake
+        # profile — the desktop alpha composition for desktop, the
+        # minimal boot composition for minimal (sponge-alpha's
+        # alpha-probe expects the desktop and times out on minimal).
+        var iso_scenario = String(ISO_SCENARIO)
+        if bake_profile == String("minimal"):
+            iso_scenario = String("sponge-minimal")
+        var iso_rc = run_media_build("image/iso", iso_scenario, root, bake_profile)
         if iso_rc != 0:
             print()
             print("[sponge-dist] error: image/iso build failed (exit code "
@@ -1309,7 +1327,7 @@ def main() raises:
             exit(iso_rc)
 
         # (d.2) Stage the ISO artifact + sha256.
-        if not stage_artifact("image/iso", ISO_SCENARIO, root):
+        if not stage_artifact("image/iso", iso_scenario, root):
             exit(1)
 
     # (e) Summary table.

@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: LicenseRef-SpongeOS-Proprietary */
+/* SPDX-License-Identifier: Apache-2.0 */
 
 #include <base/attached_rom_dataspace.h>
 #include <base/component.h>

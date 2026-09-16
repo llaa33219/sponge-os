@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: LicenseRef-SpongeOS-Proprietary
+/* SPDX-License-Identifier: Apache-2.0
  *
  * alpha_probe — Phase 7 todo 4 composite Alpha-desktop verifier.
  *

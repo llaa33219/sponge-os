@@ -1,5 +1,5 @@
 /*
- * SPDX-License-Identifier: LicenseRef-SpongeOS-Proprietary
+ * SPDX-License-Identifier: Apache-2.0
  *
  * high_phys_probe — QEMU-verifiable gate for the row-13/14
  * high-phys IO_MEM machinery (docs/11-environment.md rows 13/14).

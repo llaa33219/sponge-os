@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: LicenseRef-SpongeOS-Proprietary
+/* SPDX-License-Identifier: Apache-2.0
  *
  * pkg_gui_demo — minimal Qt6 colored-window package payload (Phase 7
  * todo 8).

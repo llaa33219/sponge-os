@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: LicenseRef-SpongeOS-Proprietary
+/* SPDX-License-Identifier: Apache-2.0
  *
  * configd_persist_probe — sponge_configd persistence acceptance probe
  * (Phase 14 W6).

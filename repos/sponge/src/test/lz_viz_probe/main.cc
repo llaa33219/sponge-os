@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: LicenseRef-SpongeOS-Proprietary
+/* SPDX-License-Identifier: Apache-2.0
  *
  * lz_viz_probe — Leitzentrale on-screen verification (Phase 6b, criterion 3).
  *

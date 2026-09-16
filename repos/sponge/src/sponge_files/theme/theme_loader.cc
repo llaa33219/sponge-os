@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: LicenseRef-SpongeOS-Proprietary
+/* SPDX-License-Identifier: Apache-2.0
  *
  * Theme parser implementation for sponge_files. Mirrors the Sponge DE
  * parser but only the keys sponge_files actually consumes (window

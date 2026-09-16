@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: LicenseRef-SpongeOS-Proprietary
+/* SPDX-License-Identifier: Apache-2.0
  *
  * lz_watch — Leitzentrale model-fs change detector + snapshot/revert (6c).
  *

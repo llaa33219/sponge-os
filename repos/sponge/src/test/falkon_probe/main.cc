@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: LicenseRef-SpongeOS-Proprietary
+/* SPDX-License-Identifier: Apache-2.0
  *
  * falkon_probe — headless verification probe for pkg/falkon
  * (Phase 7 todo 16).

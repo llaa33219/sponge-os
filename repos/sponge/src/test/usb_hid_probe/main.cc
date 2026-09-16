@@ -1,5 +1,5 @@
 /*
- * SPDX-License-Identifier: LicenseRef-SpongeOS-Proprietary
+ * SPDX-License-Identifier: Apache-2.0
  *
  * usb_hid_probe — USB HID hotplug probe (Phase 12 W4 + Phase 15 W5;
  * docs/plans/phase12-hardware.md §"W4: USB boot and USB keyboard

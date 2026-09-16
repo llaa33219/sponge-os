@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: LicenseRef-SpongeOS-Proprietary
+/* SPDX-License-Identifier: Apache-2.0
  *
  * sponge_notifier — Sponge OS notification backend daemon (Phase 14 W4).
  *

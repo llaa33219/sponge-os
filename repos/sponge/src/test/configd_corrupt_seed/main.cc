@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: LicenseRef-SpongeOS-Proprietary
+/* SPDX-License-Identifier: Apache-2.0
  *
  * configd_corrupt_seed — pre-stages a torn store.xml before
  * sponge_configd starts (Phase 14 W6 corrupt-store variant).

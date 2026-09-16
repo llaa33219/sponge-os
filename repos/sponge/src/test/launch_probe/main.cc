@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: LicenseRef-SpongeOS-Proprietary
+/* SPDX-License-Identifier: Apache-2.0
  *
  * launch_probe — Phase 7 todo 10 click-to-launch + vct launch verifier.
  *
