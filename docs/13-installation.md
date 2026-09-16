@@ -68,18 +68,26 @@ Verify the sidecars with:
 The resulting files are:
 
 ```text
-var/dist/sponge-os-0.2.0-x86_64-sel4-desktop.img        (BIOS, desktop profile)
-var/dist/sponge-os-0.2.0-x86_64-sel4-desktop.iso        (live/eval El Torito, desktop)
-var/dist/sponge-os-0.2.0-x86_64-sel4-minimal.img        (BIOS, minimal profile)
-var/dist/sponge-os-0.2.0-x86_64-sel4-minimal.iso        (live/eval El Torito, minimal)
-var/dist/sponge-os-0.2.0-x86_64-sel4-uefi-usb-desktop.img (UEFI USB-stick, desktop; real-hw target)
-var/dist/sponge-os-0.2.0-x86_64-sel4-uefi-usb-minimal.img (UEFI USB-stick, minimal)
+var/dist/sponge-os-0.2.0-x86_64-sel4.img                  (UEFI USB-stick, desktop — canonical; real-hw target)
+var/dist/sponge-os-0.2.0-x86_64-sel4-minimal.img          (UEFI USB-stick, minimal)
+var/dist/sponge-os-0.2.0-x86_64-sel4-legacy.img           (LEGACY BIOS, desktop)
+var/dist/sponge-os-0.2.0-x86_64-sel4-legacy.iso           (LEGACY BIOS live/eval El Torito, desktop)
+var/dist/sponge-os-0.2.0-x86_64-sel4-legacy-minimal.img   (LEGACY BIOS, minimal)
+var/dist/sponge-os-0.2.0-x86_64-sel4-legacy-minimal.iso   (LEGACY BIOS live/eval El Torito, minimal)
 ```
+
+UEFI is the default firmware (every current board, including the
+17ZD90N reference machine, is UEFI-only); BIOS/SeaBIOS is the
+legacy exception and carries the `-legacy` suffix. Build with
+`./tool/dist` (UEFI USB desktop, canonical), `./tool/dist
+--bake-profile minimal` (UEFI USB minimal), and `./tool/dist
+--firmware bios --storage ahci [--bake-profile minimal]` for the
+legacy BIOS artifacts.
 
 Confirm the four partitions are present (the `misleading_success_output` defense — never trust the build exit code alone):
 
 ```bash
-sgdisk -p var/dist/sponge-os-0.2.0-x86_64-sel4-desktop.img
+sgdisk -p var/dist/sponge-os-0.2.0-x86_64-sel4.img
 # Expect: four partitions, with P4 named SPONGE-DATA.
 ```
 
@@ -103,18 +111,18 @@ make -C genode/build/x86_64 run/sponge-desktop-disk \
 ./tool/mkdata genode/build/x86_64/var/run/sponge-desktop-disk.img
 mkdir -p var/dist
 cp genode/build/x86_64/var/run/sponge-desktop-disk.img \
-   var/dist/sponge-os-0.2.0-x86_64-sel4-desktop.img
-(cd var/dist && sha256sum sponge-os-0.2.0-x86_64-sel4-desktop.img \
-    > sponge-os-0.2.0-x86_64-sel4-desktop.img.sha256)
+   var/dist/sponge-os-0.2.0-x86_64-sel4.img
+(cd var/dist && sha256sum sponge-os-0.2.0-x86_64-sel4.img \
+    > sponge-os-0.2.0-x86_64-sel4.img.sha256)
 
 # Live/eval .iso. Build the alpha boot-modules composition:
 rm -rf genode/build/x86_64/var/run/sponge-alpha*
 make -C genode/build/x86_64 run/sponge-alpha \
     KERNEL=sel4 BOARD=pc RUN_OPT='--include image/iso'
 cp genode/build/x86_64/var/run/sponge-alpha.iso \
-   var/dist/sponge-os-0.2.0-x86_64-sel4-desktop.iso
-(cd var/dist && sha256sum sponge-os-0.2.0-x86_64-sel4-desktop.iso \
-    > sponge-os-0.2.0-x86_64-sel4-desktop.iso.sha256)
+   var/dist/sponge-os-0.2.0-x86_64-sel4-legacy.iso
+(cd var/dist && sha256sum sponge-os-0.2.0-x86_64-sel4-legacy.iso \
+    > sponge-os-0.2.0-x86_64-sel4-legacy.iso.sha256)
 (cd var/dist && sha256sum -c *.sha256)
 ```
 
@@ -129,7 +137,7 @@ qemu-system-x86_64 \
     -machine q35 \
     -cpu Skylake-Client \
     -m 2G \
-    -drive format=raw,file=var/dist/sponge-os-0.2.0-x86_64-sel4-desktop.img \
+    -drive format=raw,file=var/dist/sponge-os-0.2.0-x86_64-sel4.img \
     -serial stdio \
     -display none \
     -netdev user,id=net0 \
@@ -144,7 +152,7 @@ qemu-system-x86_64 \
     -cpu Skylake-Client \
     -m 2G \
     -boot d \
-    -cdrom var/dist/sponge-os-0.2.0-x86_64-sel4-desktop.iso \
+    -cdrom var/dist/sponge-os-0.2.0-x86_64-sel4-legacy.iso \
     -serial stdio \
     -display none \
     -netdev user,id=net0 \
@@ -164,7 +172,7 @@ Replace `/dev/sdX` with the whole USB device, never a partition such as `/dev/sd
 ```bash
 lsblk -o NAME,SIZE,MODEL,TRAN,MOUNTPOINTS
 sudo umount /dev/sdX1  # repeat for every mounted partition on the USB device
-sudo dd if=var/dist/sponge-os-0.2.0-x86_64-sel4-desktop.img \
+sudo dd if=var/dist/sponge-os-0.2.0-x86_64-sel4.img \
     of=/dev/sdX bs=4M status=progress conv=fsync
 sync
 ```

@@ -942,8 +942,8 @@ This section produces the two installable Alpha media artifacts in
 ([`docs/14`](14-boot-storage-architecture.md) §8):
 
 ```
-sponge-os-0.2.0-x86_64-sel4-desktop.img   (4-partition disk image: the product)
-sponge-os-0.2.0-x86_64-sel4-desktop.iso   (El Torito ISO: live/eval mode)
+sponge-os-0.2.0-x86_64-sel4.img   (UEFI USB-stick product image: ESP/GENODE/SPONGE-DATA)
+sponge-os-0.2.0-x86_64-sel4-legacy.iso   (legacy BIOS El Torito ISO: live/eval mode)
 ```
 
 The `.img` is the **real product**: a Tier-0 `image.elf` (≤ 80 MiB)
@@ -1050,9 +1050,9 @@ sgdisk -p genode/build/x86_64/var/run/sponge-desktop-disk.img
 # 5. Copy + sha256 the disk artifact.
 mkdir -p var/dist
 cp genode/build/x86_64/var/run/sponge-desktop-disk.img \
-   var/dist/sponge-os-0.2.0-x86_64-sel4-desktop.img
-(cd var/dist && sha256sum sponge-os-0.2.0-x86_64-sel4-desktop.img \
-    > sponge-os-0.2.0-x86_64-sel4-desktop.img.sha256)
+   var/dist/sponge-os-0.2.0-x86_64-sel4.img
+(cd var/dist && sha256sum sponge-os-0.2.0-x86_64-sel4.img \
+    > sponge-os-0.2.0-x86_64-sel4.img.sha256)
 
 # 6. Clean the previous mode's staged boot directory so the ISO build
 #    does not inherit stale boot modules from the disk build
@@ -1068,15 +1068,15 @@ make -C genode/build/x86_64 run/sponge-alpha \
 
 # 8. Copy + sha256 the ISO artifact.
 cp genode/build/x86_64/var/run/sponge-alpha.iso \
-   var/dist/sponge-os-0.2.0-x86_64-sel4-desktop.iso
-(cd var/dist && sha256sum sponge-os-0.2.0-x86_64-sel4-desktop.iso \
-    > sponge-os-0.2.0-x86_64-sel4-desktop.iso.sha256)
+   var/dist/sponge-os-0.2.0-x86_64-sel4-legacy.iso
+(cd var/dist && sha256sum sponge-os-0.2.0-x86_64-sel4-legacy.iso \
+    > sponge-os-0.2.0-x86_64-sel4-legacy.iso.sha256)
 
 # 9. Verify both sidecars.
 (cd var/dist && sha256sum -c *.sha256)
 
 # 10. (Optional) Print a summary of what was produced.
-ls -lh var/dist/sponge-os-0.2.0-x86_64-sel4-desktop.{img,iso}
+ls -lh var/dist/sponge-os-0.2.0-x86_64-sel4.img / sponge-os-0.2.0-x86_64-sel4-legacy.iso
 ```
 
 The release name embeds the version (`0.2.0`, kept in sync

@@ -128,7 +128,11 @@ comptime ISO_SCENARIO = "sponge-alpha"
 # Default storage mode (the default keeps current behavior and artifact
 # naming — plan §W2 step 1: "default ahci keeps current behavior and
 # artifact naming").
-comptime DEFAULT_STORAGE_MODE = "ahci"
+# Phase 16 (0.2.0): with UEFI now the default firmware, the default
+# storage is the USB-stick chain (the real-hardware boot path on the
+# 17ZD90N). BIOS builds must name their storage explicitly
+# (--storage ahci|nvme) because --storage usb is UEFI-only.
+comptime DEFAULT_STORAGE_MODE = "usb"
 
 # Allowed values for --storage. Anything else is rejected BEFORE any
 # build starts (plan §W2 step 1: "reject any other value before a build
@@ -159,19 +163,17 @@ comptime DEFAULT_DATA_MIB = 1024
 comptime DEFAULT_BAKE_PROFILE = "desktop"
 comptime ALLOWED_BAKE_PROFILES = ["minimal", "desktop", "test", "none"]
 
-# Phase 15 W4 (D15.13, D15.16): firmware selector. `bios` is the
-# default and the only fully verified path on the 17ZD90N-VX7BK
-# target (15-3 real-hardware UEFI diagnostic is decoupled from
-# this flag — see D15.16). `uefi` is the W4 scope: it now runs the
-# Sponge-side UEFI recipe (D15.13) and produces a .img that passes
-# the host-side structural gates (sgdisk -p, mdir, e2ls). Per
-# D15.16 the QEMU boot of the UEFI .img is EXPECTED to hit the
-# W1 OVMF core-init hang; the scenario's acceptance is structural
-# verification + honest gap recording, NOT a QEMU boot PASS. The
-# ISO half does not apply to UEFI (El Torito is BIOS-only) — for
+# Phase 16 (0.2.0): firmware default FLIPPED. UEFI is the modern
+# default (every current board, incl. the 17ZD90N reference machine,
+# is UEFI-only); BIOS/SeaBIOS is the LEGACY exception and is named
+# with a `-legacy` suffix. `--firmware uefi` runs the Sponge-side
+# UEFI recipe (D15.13) and produces the canonical .img; its QEMU
+# boot historically hit the W1 OVMF core-init hang, now root-caused
+# to the acpi DMAR misparse (ledger row 16, fixed). The ISO half
+# does not apply to UEFI (El Torito is BIOS-only) — for
 # `--firmware uefi` dist produces ONLY the .img and the summary
 # says so explicitly.
-comptime DEFAULT_FIRMWARE = "bios"
+comptime DEFAULT_FIRMWARE = "uefi"
 comptime ALLOWED_FIRMWARE = ["bios", "uefi"]
 
 # Each host tool the media build path can invoke, mapped to its
@@ -454,8 +456,10 @@ def cmd_help() raises:
     print("                                            --firmware uefi implicit requirement)")
     print("  mojo tool/dist.mojo --bake-profile {minimal,desktop,test,none}")
     print("                                            Bake-profile selector (default desktop)")
-    print("  mojo tool/dist.mojo --firmware bios       BIOS/GRUB2 boot chain (default)")
-    print("  mojo tool/dist.mojo --firmware uefi       UEFI/OVMF boot chain (Phase 15 W4;")
+    print("  mojo tool/dist.mojo --firmware bios       LEGACY BIOS/GRUB2 boot chain")
+    print("                                            (artifacts get a -legacy suffix;")
+    print("                                            pair with --storage ahci|nvme)")
+    print("  mojo tool/dist.mojo --firmware uefi       UEFI boot chain (DEFAULT;")
     print("                                            .img-only by design — no .iso)")
     print("  mojo tool/dist.mojo --no-data             Skip the SPONGE-DATA P4 step")
     print("                                            (control door; .img has 3 partitions)")
@@ -755,7 +759,25 @@ def contains_substring(haystack: String, needle: String) raises -> Bool:
         builtins.str(haystack).find(needle) >= 0))
 
 
-def stage_artifact(mode: String, scenario: String, root: String) raises -> Bool:
+def artifact_suffix(firmware: String, storage_mode: String,
+                    bake_profile: String) -> String:
+    """Compose the release-artifact name suffix. UEFI + USB-stick +
+    desktop is the canonical product (no suffix); BIOS is the legacy
+    exception (`-legacy`); non-USB UEFI storage is named explicitly
+    (`-uefi-ahci` / `-uefi-nvme`); the minimal bake profile appends
+    `-minimal`."""
+    var s = String("")
+    if firmware == "bios":
+        s = s + "-legacy"
+    elif storage_mode != "usb":
+        s = s + "-uefi-" + storage_mode
+    if bake_profile == "minimal":
+        s = s + "-minimal"
+    return s
+
+
+def stage_artifact(mode: String, scenario: String, root: String,
+                   suffix: String) raises -> Bool:
     """After a successful media build, locate the produced artifact
     under genode/build/x86_64/var/run/<scenario>.<ext>, copy it to
     var/dist/<release-name>.<ext>, and write the .sha256 sidecar.
@@ -775,7 +797,7 @@ def stage_artifact(mode: String, scenario: String, root: String) raises -> Bool:
     var src = (root + "/genode/build/x86_64/var/run/"
         + scenario + "." + ext)
     var dist_dir = root + "/var/dist"
-    var dst = dist_dir + "/" + RELEASE_NAME_PREFIX + "." + ext
+    var dst = dist_dir + "/" + RELEASE_NAME_PREFIX + suffix + "." + ext
 
     if not os_path.isfile(src):
         print("[sponge-dist] error: expected artifact not found at " + src)
@@ -1167,7 +1189,7 @@ def main() raises:
         print("  storage mode: " + storage_mode + "  (--storage override)")
     else:
         print("  storage mode: " + storage_mode
-              + "  (default; explicit --storage ahci preserves this)")
+              + "  (default; the real-hardware USB-stick boot chain)")
     if bake_profile != DEFAULT_BAKE_PROFILE:
         print("  bake profile: " + bake_profile + "  (--bake-profile override)")
     else:
@@ -1193,7 +1215,9 @@ def main() raises:
         if bake_profile == String("minimal"):
             iso_name = String("sponge-minimal")
         print("  live/eval .iso: " + iso_name + " (image/iso; storage-independent)")
-    print("  release name: " + RELEASE_NAME_PREFIX + ".{img,iso}")
+    print("  release name: " + RELEASE_NAME_PREFIX
+          + "<suffix>.{img,iso}  (suffix: '' = UEFI+USB+desktop canonical,"
+          + " -legacy = BIOS, -uefi-<storage>, -minimal)")
     print("  repo root:    " + root)
     print()
 
@@ -1297,7 +1321,8 @@ def main() raises:
 
     # (d.1) Stage the disk artifact + sha256 (in-place modified by
     # mkdata if --no-data was not passed).
-    if not stage_artifact("image/disk", disk_scenario, root):
+    if not stage_artifact("image/disk", disk_scenario, root,
+                          artifact_suffix(firmware, storage_mode, bake_profile)):
         exit(1)
 
     print()
@@ -1327,7 +1352,8 @@ def main() raises:
             exit(iso_rc)
 
         # (d.2) Stage the ISO artifact + sha256.
-        if not stage_artifact("image/iso", iso_scenario, root):
+        if not stage_artifact("image/iso", iso_scenario, root,
+                              artifact_suffix(firmware, storage_mode, bake_profile)):
             exit(1)
 
     # (e) Summary table.
