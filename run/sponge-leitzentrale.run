@@ -38,7 +38,7 @@
 
 build { core lib/ld init timer \
         server/report_rom server/nitpicker server/rom_filter \
-        server/wm app/themed_decorator app/backdrop \
+        server/wm app/themed_decorator \
         server/gui_fb server/gui_fader \
         server/fs_report server/fs_rom server/vfs \
         app/sculpt_manager app/menu_view \
@@ -95,11 +95,12 @@ if {$vera_dir eq ""} {
 exec cp -L "$vera_dir/Vera.ttf"     "[run_dir]/genode/Vera.ttf"
 exec cp -L "$vera_dir/VeraMono.ttf" "[run_dir]/genode/VeraMono.ttf"
 
-# Images referenced by the subsystem (decorator drop shadow, backdrop logo).
+# Images referenced by the subsystem (decorator drop shadow). The
+# desktop background image is now owned by the in-DE BackgroundWidget
+# (Phase 16 W6); the upstream app/backdrop + genode_logo.png are no
+# longer staged (replaced by the new pkg/background/ default.png).
 exec cp -L "$sculpt_dir/../run/sculpt/drop_shadow.png" \
            "[run_dir]/genode/drop_shadow.png"
-exec cp -L "$sculpt_dir/../src/app/backdrop/genode_logo.png" \
-           "[run_dir]/genode/genode_logo.png"
 
 # Static runtime_config ROM: empty runtime (nothing deployed yet).
 set rc [open "[run_dir]/genode/runtime_config" w]

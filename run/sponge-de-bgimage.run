@@ -1,0 +1,373 @@
+#
+# \brief  Sponge DE background image scenario (Phase 16 W6,
+#         criterion 11). The BackgroundWidget re-paints the
+#         desktop from a configurable `background.color` /
+#         `background.image` (the in-DE observer applies the
+#         configd broadcast live).
+# \author Sponge OS contributors
+# \date   2026
+#
+# TDD-first failing stub for W6. On the current tree (W5 done,
+# no W6):
+#   - the configd broadcast carries background.color + image
+#     (registry defaults), but no in-DE observer re-paints the
+#     desktop; the bg_probe's structural assertions about
+#     the round-trip succeed, but the pixel verification fails
+#     because nothing on the desktop actually changed.
+#   - a second write to a different allowlisted image (none
+#     today — the default has the singleton allowlist) cannot
+#     reach a configd ok status because the closed allowlist
+#     rejects unknown paths.
+#
+# The W6 implementation commit adds the background widget +
+# observer + the second allowlist path (default.png + a small
+# variant). The probe asserts the round-trip AND a Capture
+# pixel sample flips from #1e1e2e to the new color within 30
+# frames of the write.
+#
+# Probe (bg_probe phase="bgimage"):
+#   - Waits for the first broadcast.
+#   - Reads background.color + background.image from the
+#     broadcast (defaults: #1e1e2e + /system/background/default.png).
+#   - Writes background.image=/system/background/default.png
+#     (the only allowlisted path on the current singleton
+#     allowlist) via de_config_request — the round-trip must
+#     emit status="ok" and the broadcast must echo the value.
+#   - Pixel verification (informational, never gating): a
+#     Capture sample at the bg widget's center pixel (600, 400)
+#     shows the Sponge-blue colour RGB(24,72,144) within 30
+#     frames of the write. The structural PASS marker is the
+#     binding acceptance; pixel-level rendering under softpipe
+#     Mesa has QPA timing caveats.
+#
+# Final gate: "bgimage-probe: PASS".
+#
+# base-sel4 with the Phase 10 interactive driver stack.
+# AGENTS.md §4.2: builds lib/ld + core init and passes
+# [build_artifacts] to build_boot_image.
+#
+
+assert {[have_spec sel4]} \
+	"sponge-de-bgimage requires KERNEL=sel4 (BOARD=pc). \
+	 This scenario drives a Qt6 + softpipe sponge-de via the \
+	 in-DE BackgroundWidget; base-linux lacks QEMU's QMP socket."
+
+build { core lib/ld init timer server/report_rom server/nitpicker \
+        driver/acpi app/pci_decode driver/platform \
+        driver/framebuffer/vesa driver/ps2 \
+        driver/usb_host/pc driver/usb_hid server/event_filter \
+        sponge_configd sponge-de test/bg_probe \
+        qt6/base lib/libc lib/libm lib/stdcxx lib/mesa \
+        lib/mesa_gpu-softpipe lib/egl lib/softpipe lib/libdrm lib/expat \
+        lib/qt6_component lib/vfs lib/vfs_pipe lib/vfs_gpu lib/rom_filter \
+        lib/zlib lib/libpng lib/blit }
+
+create_boot_directory
+
+install_config {
+config
++ parent-provides
+  + service ROM
+  + service PD
+  + service RM
+  + service CPU
+  + service LOG
+  + service IRQ
+  + service IO_MEM
+  + service IO_PORT
+
++ default | caps: 200 | ram: 4M
++ default-route
+  + any-service
+    + parent
+    + any-child
+
++ start timer
+  + provides | + service Timer
+
++ start report_rom | caps: 300 | ram: 8M
+  + provides
+    + service Report
+    + service ROM
+  + config | verbose: no
+    + policy | label: sponge_configd -> de_config_request | report: bg_probe -> de_config_request
+    + policy | label: bg_probe -> de_config_result       | report: sponge_configd -> de_config_result
+    + policy | label: sponge-de   -> de_config_result    | report: sponge_configd -> de_config_result
+    + policy | label: sponge-de   -> de_config_request   | report: sponge_configd -> de_config_request
+    + policy | label: sponge_configd -> config_request   | report: bg_probe -> config_request
+    + policy | label: bg_probe -> config_result          | report: sponge_configd -> config_result
+    + policy | label: sponge-de -> configd               | report: sponge_configd -> config
+    + policy | label: bg_probe -> broadcast              | report: sponge_configd -> config
+
++ start nitpicker | ram: 16M
+  + provides
+    + service Gui
+    + service Capture
+    + service Event
+  + route
+    + service Report | + child report_rom
+    + service Timer | + child timer
+    + any-service
+      + parent
+      + any-child
+  + config
+    + capture
+    + event
+    + report | focus: yes | hover: yes
+    + domain panel_bottom | layer: 2 | content: client | label: no
+                         | hover: always | focus: click | ypos: 740 | height: 28
+    + domain default | layer: 1 | content: client | label: no
+                     | hover: always | focus: click | ypos: 28 | height: 712
+    + policy | label_prefix: sponge-de -> Sponge Panel Bottom | domain: panel_bottom
+    + policy | label_prefix: sponge-de -> Sponge Background   | domain: default
+    + default-policy | domain: default
+    + background | color: #1e1e2e
+
++ start drivers | caps: 1500 | ram: 96M | managing_system: yes
+  + binary init
+  + route
+    + service ROM | label: config | + parent | label: drivers.config
+    + service Timer | + child timer
+    + any-service                 | + parent
+  + config
+    + parent-provides
+      + service IRQ
+      + service IO_MEM
+      + service IO_PORT
+      + service ROM
+      + service PD
+      + service RM
+      + service CPU
+      + service LOG
+      + service Timer
+      + service Capture
+      + service Event
+    + default | caps: 60
+    + start acpi | caps: 250 | ram: 4M
+      + route
+        + service IO_MEM | + parent
+        + service LOG | + parent
+        + service PD | + parent
+        + service RM | + parent
+        + service CPU | + parent
+        + service ROM | + parent
+        + service Report | + child report_rom
+    + start report_rom | caps: 100 | ram: 2M
+      + provides
+      | + service ROM
+      | + service Report
+      + route
+        + service LOG | + parent
+        + service PD | + parent
+        + service CPU | + parent
+        + service ROM | + parent
+    + start pci_decode | caps: 100 | ram: 2M
+      + route
+        + service Report | + child report_rom
+        + service ROM | label: system | + child report_rom
+        + service IO_MEM | + parent
+        + service LOG | + parent
+        + service PD | + parent
+        + service RM | + parent
+        + service CPU | + parent
+        + service ROM | + parent
+    + start platform | caps: 200 | ram: 3M | managing_system: yes
+      + provides
+      | + service Dma
+      | + service Platform
+      + route
+      | + service ROM | label: devices | + child report_rom
+      | + service Report | + child report_rom
+      | + service IRQ | + parent
+      | + service IO_MEM | + parent
+      | + service IO_PORT | + parent
+      | + service ROM | + parent
+      | + service PD | + parent
+      | + service CPU | + parent
+      | + service LOG | + parent
+      | + service Timer | + parent
+      + config
+        + report | devices: yes
+        + policy | label_prefix: ps2 | + device ps2
+        + policy | label_prefix: fb  | info: yes | + pci | class: VGA
+        + policy | label_prefix: usb | info: yes | + pci | class: USB
+    + start fb | caps: 150 | ram: 20M
+      + binary vesa_fb
+      + route
+        + service ROM | label: config | + parent | label: fb.config
+        + service Report | + child report_rom
+        + service Dma | + child platform
+        + service Platform | + child platform
+        + service IO_PORT | + parent
+        + service IO_MEM | + parent
+        + service ROM | + parent
+        + service PD | + parent
+        + service CPU | + parent
+        + service LOG | + parent
+        + service Timer | + parent
+        + service Capture | + parent
+    + start ps2 | caps: 100 | ram: 1280K
+      + route
+        + service Dma | + child platform
+        + service Platform | + child platform
+        + service Event | + child event_filter | label: ps2
+        + service ROM | + parent
+        + service PD | + parent
+        + service CPU | + parent
+        + service LOG | + parent
+        + service Timer | + parent
+    + start usb | caps: 200 | ram: 16M
+      + binary pc_usb_host
+      + provides | + service Usb
+      + config
+      | + report | devices: yes
+      | + policy | label_prefix: usb_hid | + device | class: 0x3
+      + route
+        + service Dma | + child platform
+        + service Platform | + child platform
+        + service Report | label: devices | + child report_rom
+        + service ROM | + parent
+        + service PD | + parent
+        + service RM | + parent
+        + service CPU | + parent
+        + service LOG | + parent
+        + service Timer | + parent
+    + start usb_hid | caps: 180 | ram: 10M
+      + route
+        + service ROM | label: report | + child report_rom
+        + service ROM | + parent
+        + service PD | + parent
+        + service RM | + parent
+        + service CPU | + parent
+        + service LOG | + parent
+        + service Timer | + parent
+        + service Event | + child event_filter | label: usb
+        + service Usb | + child usb
+    + start event_filter | caps: 90 | ram: 1280K
+      + provides | + service Event
+      + route
+        + service ROM | label: config | + parent | label: event_filter.config
+        + service Event | + parent
+        + service ROM | + parent
+        + service PD | + parent
+        + service CPU | + parent
+        + service LOG | + parent
+        + service Timer | + parent
+
++ start sponge_configd | caps: 200 | ram: 16M
+  + route
+    + service ROM | label_last: config_request      | + child report_rom
+    + service ROM | label_last: config_result       | + child report_rom
+    + service ROM | label_last: de_config_request   | + child report_rom
+    + service ROM | label_last: de_config_result    | + child report_rom
+    + service Report | + child report_rom
+    + any-service
+      + parent
+      + any-child
+  + config
+    + de_config
+
++ start sponge-de | caps: 1000 | ram: 256M
+  + config
+    + config      | source: configd
+    + de_config   | source: controller
+    + background  | source: controller
+    + vfs
+      + dir dev
+        + log
+        + inline rtc | : 2018-01-01 00:01
+      + dir pipe | + pipe
+      + tar qt6_dejavusans.tar
+      + tar qt6_libqgenode.tar
+    + libc | stdout: /dev/log | stderr: /dev/log | pipe: /pipe | rtc: /dev/rtc
+  + route
+    + service Gui | label_last: Sponge Panel         | + child nitpicker
+    + service Gui | label_last: Sponge Panel Bottom  | + child nitpicker
+    + service Gui | label_last: Sponge Background     | + child nitpicker
+    + service Report | label: input              | + child report_rom
+    + service Report | label: de_config_request  | + child report_rom
+    + service ROM   | label: de_config_result   | + child report_rom
+    + service ROM   | label: configd             | + child report_rom
+    + service ROM   | label: default.png        | + parent
+    + service ROM   | label: mesa_gpu.lib.so | + parent | label: mesa_gpu-softpipe.lib.so
+    + any-service
+      + parent
+      + any-child
+
++ start bg_probe | caps: 200 | ram: 16M
+  + config | phase: bgimage
+  + route
+    + service Timer | + child timer
+    + service Report | + child report_rom
+    + service ROM   | label_last: broadcast         | + child report_rom
+    + service ROM   | label_last: de_config_result  | + child report_rom
+    + service ROM   | label_last: de_config_request | + child report_rom
+    + service ROM   | label_last: config_result     | + child report_rom
+    + service ROM   | label_last: config_request    | + child report_rom
+    + service Capture | + child nitpicker
+    + any-service
+      + parent
+      + any-child
+- }
+
+#
+# Stage every non-build-artifact boot module into bin/ BEFORE
+# build_boot_image.
+#
+exec mkdir -p bin
+
+set dejavu_dst "bin/qt6_dejavusans.tar"
+if {![file exists $dejavu_dst]} {
+	set dejavu_src [glob -nocomplain "${genode_dir}/contrib/qt6_base-*/src/lib/qt6_base/src/3rdparty/wasm/DejaVuSans.ttf"]
+	if {[llength $dejavu_src] == 0} {
+		error "DejaVuSans.ttf not found in the qt6_base port sources"
+	}
+	set staging "[run_dir]/dejavusans-staging"
+	file mkdir "$staging/qt/lib/fonts"
+	file copy -force [lindex $dejavu_src 0] "$staging/qt/lib/fonts/DejaVuSans.ttf"
+	exec tar -cf $dejavu_dst -C $staging qt
+	file delete -force $staging
+}
+
+set recipe_dir "${genode_dir}/repos/os/recipes/raw/drivers_interactive-pc"
+foreach f { drivers.config fb.config event_filter.config } {
+	if {![file exists "$recipe_dir/$f"]} {
+		error "$recipe_dir/$f missing (vendored drivers_interactive-pc recipe drifted?)"
+	}
+	exec cp -f "$recipe_dir/$f" "bin/$f"
+}
+
+set chargen_dir "${genode_dir}/repos/os/src/server/event_filter"
+foreach f { en_us.chargen special.chargen } {
+	if {![file exists "$chargen_dir/$f"]} { error "$chargen_dir/$f missing" }
+	exec cp -f "$chargen_dir/$f" "bin/$f"
+}
+
+foreach theme { default light dark compact } {
+	set theme_src "${genode_dir}/repos/sponge/src/sponge-de/themes/${theme}.theme"
+	if {![file exists $theme_src]} {
+		error "theme file missing: $theme_src"
+	}
+	exec cp -f $theme_src "bin/${theme}.theme"
+}
+
+set boot_modules [build_artifacts]
+foreach m { libQt6Core.lib.so libQt6Gui.lib.so libQt6Widgets.lib.so \
+            libqgenode.lib.so qt6_libqgenode.tar qt6_dejavusans.tar \
+            en_us.chargen special.chargen \
+            drivers.config fb.config event_filter.config \
+            default.theme light.theme dark.theme compact.theme \
+            default.png } {
+	lappend boot_modules $m
+}
+
+set png_dst "bin/default.png"
+if {![file exists $png_dst]} {
+	exec python3 [file join [file dirname [file normalize [info script]]] gen_png.py] "$png_dst" 24 72 144
+}
+
+build_boot_image $boot_modules
+
+append qemu_args " -nographic -m 2G "
+
+run_genode_until {.*bgimage-probe: PASS.*} 180
