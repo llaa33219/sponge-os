@@ -1,0 +1,25 @@
+<!--
+  background — the W6 default desktop background image (D16.4).
+
+  Phase 16 W6 ships a single allowlisted default image
+  (/system/background/default.png). Adding more images requires
+  packaging them (Phase 13 conventions) and updating the
+  configd background.image allowlist (sponge_configd/main.cc:422-425).
+  Runtime user-supplied image upload is Phase 17+ scope.
+
+  The metadata below declares the boot module without the
+  standard launcher surface (no <autostart/>, no <binary>, no
+  <quota>). It is staged at boot time by run/sponge-alpha.run
+  (and the other product scenarios) into the boot image as
+  `bin/default.png` and served by sponge-de's Gui default
+  domain as a ROM-staged image.
+-->
+<package>
+  <name>background</name>
+  <version>1.0</version>
+  <description>Sponge DE default desktop background image (allowlisted, single ship-time path).</description>
+
+  <rom name="default.png"/>
+
+  <dependencies/>
+</package>

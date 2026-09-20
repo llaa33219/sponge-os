@@ -1,0 +1,472 @@
+#
+# \brief  Sponge DE background context-menu scenario (Phase 16 W6,
+#         criteria 10). The in-DE BackgroundWidget owns the desktop
+#         surface; a host-driven right-click at (800, 600) — the
+#         uncovered background region on 1024x768 with the default
+#         panel.position=bottom and the demo Main window at
+#         (0..640 x 0..480) — opens a QMenu (Settings / Launch /
+#         Show desktop) anchored to the event-local position.
+# \author Sponge OS contributors
+# \date   2026
+#
+# TDD-first failing stub for W6. On the current tree (W5 done, no W6):
+#   - no in-DE BackgroundWidget exists; nothing owns the desktop
+#     surface; nitpicker paints solid #1e1e2e.
+#   - right-clicks on the uncovered region are silently dropped
+#     (no widget receives contextMenuEvent at (600, 400)).
+#   - the configd broadcast carries background.color=#1e1e2e +
+#     background.image=/system/background/default.png, but no
+#     sponge-de observer re-paints the desktop on changes.
+#
+# The W6 implementation commit:
+#   1. Adds repos/sponge/src/sponge-de/background/{background_widget,
+#      background_controller}.{h,cc} (D16.4) — a fullscreen frameless
+#      QWidget with WA_ShowWithoutActivating,
+#      painted from background.color (solid) or background.image
+#      (QImage) via paintEvent. contextMenuEvent builds the 3-entry
+#      QMenu (Settings / Launch / Show desktop) anchored to the
+#      event-local position (the Genode QPA returns (0,0) from
+#      QCursor::pos() — Phase 10+ lesson).
+#   2. Extends ConfigController with background_color_changed +
+#      background_image_changed signals following the W5
+#      panel_position_changed pattern (same 250 ms poll + ROM sigh
+#      funnel into applyConfig, de-duped per key).
+#   3. Adds repos/sponge/src/sponge-de/background/show_desktop.{h,cc}
+#      (U16.3) — the minimize-all/restore-all state machine reusing
+#      the Phase 14 W7 tasklist layouter-rule ROM overwrite from
+#      tasklist_controller.cc:500-516 (the off-screen (-32000,-32000)
+#      parking).
+#   4. Adds a third Gui session route "Sponge Background" to the
+#      <domain name="default"> at layer=1 — BELOW the wm window
+#      domains (default layer=3) and BELOW the panel (layer=1).
+#      The layer=1 default domain is the same one the panel sits in;
+#      the background widget just lives below the panel in the
+#      nitpicker scene graph.
+#   5. Stages pkg/background/default.png as a boot module from
+#      pkg/background/ metadata.
+#
+# Probe (bg_probe phase="bgmenu"):
+#   - Waits for the configd broadcast to carry background.color +
+#     background.image (the registry defaults — proves the in-DE
+#     observer is subscribed to the broadcast).
+#   - Emits `QMP-TARGET rightclick 1000 500` at the screen
+#     corner — outside both the panel (y=740..768) and the Main
+#     window (0..640 x 0..480). The host's qmp_right_click
+#     (run/qmp.inc, W4 helper) dispatches a real BTN_RIGHT press.
+#   - Asserts the bgmenu-probe sees the menu-open structural signal
+#     from the in-DE widget (the widget publishes a Report on
+#     contextMenuEvent with bgmenu.open=yes).
+#
+# Final gate: "bgmenu-probe: PASS".
+#
+# base-sel4 with the Phase 10 interactive driver stack (QMP
+# choreography). AGENTS.md §4.2: builds lib/ld + core init and
+# passes [build_artifacts] to build_boot_image.
+#
+
+assert {[have_spec sel4]} \
+	"sponge-de-bgmenu requires KERNEL=sel4 (BOARD=pc). \
+	 This scenario drives a Qt6 + softpipe sponge-de via the \
+	 in-DE BackgroundWidget AND the W4 qmp_right_click helper; \
+	 base-linux lacks QEMU's QMP socket."
+
+build { core lib/ld init timer server/report_rom server/nitpicker \
+        driver/acpi app/pci_decode driver/platform \
+        driver/framebuffer/vesa driver/ps2 \
+        driver/usb_host/pc driver/usb_hid server/event_filter \
+        sponge_configd sponge-de test/bg_probe \
+        qt6/base lib/libc lib/libm lib/stdcxx lib/mesa \
+        lib/mesa_gpu-softpipe lib/egl lib/softpipe lib/libdrm lib/expat \
+        lib/qt6_component lib/vfs lib/vfs_pipe lib/vfs_gpu lib/rom_filter \
+        lib/zlib lib/libpng lib/blit }
+
+create_boot_directory
+
+install_config {
+config
++ parent-provides
+  + service ROM
+  + service PD
+  + service RM
+  + service CPU
+  + service LOG
+  + service IRQ
+  + service IO_MEM
+  + service IO_PORT
+
++ default | caps: 200 | ram: 4M
++ default-route
+  + any-service
+    + parent
+    + any-child
+
++ start timer
+  + provides | + service Timer
+
++ start report_rom | caps: 300 | ram: 8M
+  + provides
+    + service Report
+    + service ROM
+  + config | verbose: no
+    #
+    # D16.1 channels: the DE-side SettingsController's
+    # de_config_request / de_config_result, mirrored for the
+    # bg_probe. The probe acts as a vct-equivalent config_request
+    # writer here so configd's constructor succeeds (it opens
+    # config_request at construct time unconditionally).
+    #
+    + policy | label: sponge_configd -> de_config_request | report: bg_probe -> de_config_request
+    + policy | label: bg_probe -> de_config_result       | report: sponge_configd -> de_config_result
+    + policy | label: sponge-de   -> de_config_result    | report: sponge_configd -> de_config_result
+    + policy | label: sponge-de   -> de_config_request   | report: sponge_configd -> de_config_request
+    + policy | label: sponge_configd -> config_request   | report: bg_probe -> config_request
+    + policy | label: bg_probe -> config_result          | report: sponge_configd -> config_result
+    #
+    # Configd broadcast readers.
+    #
+    + policy | label: sponge-de -> configd             | report: sponge_configd -> config
+    + policy | label: bg_probe -> broadcast            | report: sponge_configd -> config
+    #
+    # Phase 16 W6: bgmenu.open reporter — the BackgroundWidget
+    # publishes a Report on contextMenuEvent with bgmenu.open=yes,
+    # cleared back to no after the QMenu exec() returns. The probe
+    # polls the bgmenu_open ROM for the open=yes transition.
+    #
+    + policy | label: bg_probe -> bgmenu_open | report: sponge-de -> bgmenu_open
+
++ start nitpicker | ram: 16M
+  + provides
+    + service Gui
+    + service Capture
+    + service Event
+  + route
+    + service Report | + child report_rom
+    + service Timer | + child timer
+    + any-service
+      + parent
+      + any-child
+  + config
+    + capture
+    + event
+    + report | focus: yes | hover: yes
+    #
+    # Panel at BOTTOM (default panel.position=bottom); height 28;
+    # y=740..768. The uncovered background region (600, 400) is
+    # safely outside any other window — only the bg widget owns
+    # that pixel.
+    #
+    + domain panel_bottom | layer: 2 | content: client | label: no
+                         | hover: always | focus: click | ypos: 740 | height: 28
+    + domain background | layer: 1 | content: client | label: no
+                        | hover: always | focus: always | ypos: 28 | height: 712
+    + domain default | layer: 3 | content: client | label: no
+                     | hover: always | focus: click | ypos: 28 | height: 712
+    + policy | label_prefix: sponge-de -> Sponge Panel Bottom | domain: panel_bottom
+    + policy | label_prefix: sponge-de -> Sponge Background   | domain: background
+    + policy | label_prefix: sponge-de -> Sponge DE Demo       | domain: default
+    + default-policy | domain: default
+    + background | color: #1e1e2e
+
++ start drivers | caps: 1500 | ram: 96M | managing_system: yes
+  + binary init
+  + route
+    + service ROM | label: config | + parent | label: drivers.config
+    + service Timer | + child timer
+    + any-service                 | + parent
+  + config
+    + parent-provides
+      + service IRQ
+      + service IO_MEM
+      + service IO_PORT
+      + service ROM
+      + service PD
+      + service RM
+      + service CPU
+      + service LOG
+      + service Timer
+      + service Capture
+      + service Event
+    + default | caps: 60
+    + start acpi | caps: 250 | ram: 4M
+      + route
+        + service IO_MEM | + parent
+        + service LOG | + parent
+        + service PD | + parent
+        + service RM | + parent
+        + service CPU | + parent
+        + service ROM | + parent
+        + service Report | + child report_rom
+    + start report_rom | caps: 100 | ram: 2M
+      + provides
+      | + service ROM
+      | + service Report
+      + route
+        + service LOG | + parent
+        + service PD | + parent
+        + service CPU | + parent
+        + service ROM | + parent
+    + start pci_decode | caps: 100 | ram: 2M
+      + route
+        + service Report | + child report_rom
+        + service ROM | label: system | + child report_rom
+        + service IO_MEM | + parent
+        + service LOG | + parent
+        + service PD | + parent
+        + service RM | + parent
+        + service CPU | + parent
+        + service ROM | + parent
+    + start platform | caps: 200 | ram: 3M | managing_system: yes
+      + provides
+      | + service Dma
+      | + service Platform
+      + route
+      | + service ROM | label: devices | + child report_rom
+      | + service Report | + child report_rom
+      | + service IRQ | + parent
+      | + service IO_MEM | + parent
+      | + service IO_PORT | + parent
+      | + service ROM | + parent
+      | + service PD | + parent
+      | + service CPU | + parent
+      | + service LOG | + parent
+      | + service Timer | + parent
+      + config
+        + report | devices: yes
+        + policy | label_prefix: ps2 | + device ps2
+        + policy | label_prefix: fb  | info: yes | + pci | class: VGA
+        + policy | label_prefix: usb | info: yes | + pci | class: USB
+    + start fb | caps: 150 | ram: 20M
+      + binary vesa_fb
+      + route
+        + service ROM | label: config | + parent | label: fb.config
+        + service Report | + child report_rom
+        + service Dma | + child platform
+        + service Platform | + child platform
+        + service IO_PORT | + parent
+        + service IO_MEM | + parent
+        + service ROM | + parent
+        + service PD | + parent
+        + service CPU | + parent
+        + service LOG | + parent
+        + service Timer | + parent
+        + service Capture | + parent
+    + start ps2 | caps: 100 | ram: 1280K
+      + route
+        + service Dma | + child platform
+        + service Platform | + child platform
+        + service Event | + child event_filter | label: ps2
+        + service ROM | + parent
+        + service PD | + parent
+        + service CPU | + parent
+        + service LOG | + parent
+        + service Timer | + parent
+    + start usb | caps: 200 | ram: 16M
+      + binary pc_usb_host
+      + provides | + service Usb
+      + config
+      | + report | devices: yes
+      | + policy | label_prefix: usb_hid | + device | class: 0x3
+      + route
+        + service Dma | + child platform
+        + service Platform | + child platform
+        + service Report | label: devices | + child report_rom
+        + service ROM | + parent
+        + service PD | + parent
+        + service RM | + parent
+        + service CPU | + parent
+        + service LOG | + parent
+        + service Timer | + parent
+    + start usb_hid | caps: 180 | ram: 10M
+      + route
+        + service ROM | label: report | + child report_rom
+        + service ROM | + parent
+        + service PD | + parent
+        + service RM | + parent
+        + service CPU | + parent
+        + service LOG | + parent
+        + service Timer | + parent
+        + service Event | + child event_filter | label: usb
+        + service Usb | + child usb
+    + start event_filter | caps: 90 | ram: 1280K
+      + provides | + service Event
+      + route
+        + service ROM | label: config | + parent | label: event_filter.config
+        + service Event | + parent
+        + service ROM | + parent
+        + service PD | + parent
+        + service CPU | + parent
+        + service LOG | + parent
+        + service Timer | + parent
+
++ start sponge_configd | caps: 200 | ram: 16M
+  + route
+    + service ROM | label_last: config_request      | + child report_rom
+    + service ROM | label_last: config_result       | + child report_rom
+    + service ROM | label_last: de_config_request   | + child report_rom
+    + service ROM | label_last: de_config_result    | + child report_rom
+    + service Report | + child report_rom
+    + any-service
+      + parent
+      + any-child
+  + config
+    + de_config
+
+#
+# sponge-de: three Gui sessions — Sponge Panel (the panel),
+# Sponge Panel Bottom (no role in singleton mode), and the new
+# Sponge Background (Phase 16 W6). The BackgroundWidget owns the
+# fullscreen background surface and is the receiver of right-clicks
+# in the uncovered background region. ConfigController reads the
+# configd broadcast; the W4 <config source="configd"/> gate is the
+# activation contract (same as W4 settings regression).
+#
+# The activation gate for the background widget itself is
+# <background source="controller"/> — mirrors the W4 de_config +
+# W5 panel_bottom pattern. Absent the gate, the widget is not
+# constructed (lazy), the no-wm topologies boot unchanged.
+#
++ start sponge-de | caps: 1000 | ram: 256M
+  + config
+    + config      | source: configd
+    + de_config   | source: controller
+    + background  | source: controller
+    + vfs
+      + dir dev
+        + log
+        + inline rtc | : 2018-01-01 00:01
+      + dir pipe | + pipe
+      + tar qt6_dejavusans.tar
+      + tar qt6_libqgenode.tar
+    + libc | stdout: /dev/log | stderr: /dev/log | pipe: /pipe | rtc: /dev/rtc
+  + route
+    + service Gui | label_last: Sponge Panel         | + child nitpicker
+    + service Gui | label_last: Sponge Panel Bottom  | + child nitpicker
+    + service Gui | label_last: Sponge Background     | + child nitpicker
+    + service Report | label: input              | + child report_rom
+    + service Report | label: de_config_request  | + child report_rom
+    + service Report | label: bgmenu_open        | + child report_rom
+    + service ROM   | label: de_config_result   | + child report_rom
+    + service ROM   | label: configd             | + child report_rom
+    + service ROM   | label: mesa_gpu.lib.so | + parent | label: mesa_gpu-softpipe.lib.so
+    + any-service
+      + parent
+      + any-child
+
++ start bg_probe | caps: 200 | ram: 16M
+  + config | phase: bgmenu
+  + route
+    + service Timer | + child timer
+    + service Report | + child report_rom
+    + service ROM   | label_last: broadcast         | + child report_rom
+    + service ROM   | label_last: de_config_result  | + child report_rom
+    + service ROM   | label_last: de_config_request | + child report_rom
+    + service ROM   | label_last: config_result     | + child report_rom
+    + service ROM   | label_last: config_request    | + child report_rom
+    + service ROM   | label_last: bgmenu_open       | + child report_rom
+    + service Capture | + child nitpicker
+    + any-service
+      + parent
+      + any-child
+- }
+
+#
+# Stage every non-build-artifact boot module into bin/ BEFORE
+# build_boot_image. On base-sel4 the boot image is a single packed
+# image.elf, so modules added after build_boot_image never reach
+# the guest.
+#
+exec mkdir -p bin
+
+set dejavu_dst "bin/qt6_dejavusans.tar"
+if {![file exists $dejavu_dst]} {
+	set dejavu_src [glob -nocomplain "${genode_dir}/contrib/qt6_base-*/src/lib/qt6_base/src/3rdparty/wasm/DejaVuSans.ttf"]
+	if {[llength $dejavu_src] == 0} {
+		error "DejaVuSans.ttf not found in the qt6_base port sources"
+	}
+	set staging "[run_dir]/dejavusans-staging"
+	file mkdir "$staging/qt/lib/fonts"
+	file copy -force [lindex $dejavu_src 0] "$staging/qt/lib/fonts/DejaVuSans.ttf"
+	exec tar -cf $dejavu_dst -C $staging qt
+	file delete -force $staging
+}
+
+set recipe_dir "${genode_dir}/repos/os/recipes/raw/drivers_interactive-pc"
+foreach f { drivers.config fb.config event_filter.config } {
+	if {![file exists "$recipe_dir/$f"]} {
+		error "$recipe_dir/$f missing (vendored drivers_interactive-pc recipe drifted?)"
+	}
+	exec cp -f "$recipe_dir/$f" "bin/$f"
+}
+
+set chargen_dir "${genode_dir}/repos/os/src/server/event_filter"
+foreach f { en_us.chargen special.chargen } {
+	if {![file exists "$chargen_dir/$f"]} { error "$chargen_dir/$f missing" }
+	exec cp -f "$chargen_dir/$f" "bin/$f"
+}
+
+foreach theme { default light dark compact } {
+	set theme_src "${genode_dir}/repos/sponge/src/sponge-de/themes/${theme}.theme"
+	if {![file exists $theme_src]} {
+		error "theme file missing: $theme_src"
+	}
+	exec cp -f $theme_src "bin/${theme}.theme"
+}
+
+set boot_modules [build_artifacts]
+foreach m { libQt6Core.lib.so libQt6Gui.lib.so libQt6Widgets.lib.so \
+            libqgenode.lib.so qt6_libqgenode.tar qt6_dejavusans.tar \
+            en_us.chargen special.chargen \
+            drivers.config fb.config event_filter.config \
+            default.theme light.theme dark.theme compact.theme \
+            default.png } {
+	lappend boot_modules $m
+}
+
+#
+# Generate a small Sponge-blue PNG (RGB 24,72,144 — the
+# #184890 the alpha_probe uses for "panel band visible") as
+# the staged /system/background/default.png boot module.
+# The image is a 32x32 solid-colour PNG; the BackgroundWidget
+# tiles it (Qt's QPainter::drawImage with the source rect
+# pattern) when background.image is set. For this stub the
+# actual content does not matter — the bgmenu scenario only
+# verifies the menu opens. The bgimage scenario verifies the
+# file is read + the pixel change.
+#
+set png_dst "bin/default.png"
+if {![file exists $png_dst]} {
+	#
+	# Hand-encode a 32x32 solid-colour PNG (24-bit RGB, no
+	# alpha). The PNG signature + IHDR + IDAT + IEND bytes
+	# below are deterministic for RGB(24,72,144) at 32x32.
+	# We avoid depending on ImageMagick or PIL — the stub
+	# must work in the bare build env.
+	#
+	# The byte layout is documented in the W6 commit. The
+	# W6 implementation may swap this for an in-repo
+	# pkg/background/default.png if the bytes need to be
+	# portable across host architectures; the current
+	# hand-encoded form is the simplest valid PNG that the
+	# Genode Cached_fs_rom will serve as a ROM.
+	#
+	puts "generating 32x32 RGB(24,72,144) PNG -> $png_dst"
+	exec python3 [file join [file dirname [file normalize [info script]]] gen_png.py] "$png_dst" 24 72 144
+}
+
+build_boot_image $boot_modules
+
+#
+# QMP plumbing.
+#
+source [file join [file dirname [file normalize [info script]]] qmp.inc]
+
+set qmp_port [qmp_pick_port]
+append qemu_args " -qmp tcp:127.0.0.1:${qmp_port},server=on,wait=off -nographic -m 2G "
+
+run_genode_until {.*sponge-de: panel shown.*} 300
+set qmp_chan [qmp_connect $qmp_port]
+global qemu_spawn_id
+match_max -i $qemu_spawn_id 200000
+qmp_exec_target $qmp_chan 120
+run_genode_until {.*bgmenu-probe: PASS.*} 120 $qemu_spawn_id
+qmp_disconnect $qmp_chan

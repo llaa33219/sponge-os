@@ -232,7 +232,7 @@ build { core lib/ld init timer server/report_rom server/nitpicker \
          driver/usb_host/pc driver/usb_hid server/event_filter \
          server/wm app/window_layouter app/decorator app/pointer \
          sponge_configd sponge_themed sponge_pkgd pkg_hello sponge-de \
-         server/rom_filter app/themed_decorator app/backdrop \
+         server/rom_filter app/themed_decorator \
          server/gui_fb server/gui_fader \
          server/fs_report server/fs_rom server/vfs \
          app/sculpt_manager app/menu_view \
@@ -295,12 +295,13 @@ exec cp -fL "$vera_dir/Vera.ttf"     "bin/Vera.ttf"
 exec cp -fL "$vera_dir/VeraMono.ttf" "bin/VeraMono.ttf"
 
 #
-# Images referenced by the lz subsystem (decorator drop shadow, backdrop).
+# Images referenced by the lz subsystem (decorator drop shadow). The
+# desktop background image is now owned by the in-DE BackgroundWidget
+# (Phase 16 W6); the upstream app/backdrop + genode_logo.png are no
+# longer staged (replaced by the new pkg/background/ default.png).
 #
 exec cp -fL "$sculpt_dir/../run/sculpt/drop_shadow.png" \
            "bin/drop_shadow.png"
-exec cp -fL "$sculpt_dir/../src/app/backdrop/genode_logo.png" \
-           "bin/genode_logo.png"
 
 #
 # Static runtime_config ROM (empty runtime — nothing deployed yet).
@@ -831,6 +832,15 @@ if {![file exists $dejavu_dst]} {
 }
 
 #
+# Phase 16 W6: stage pkg/background/default.png as a boot module
+# (the in-DE BackgroundWidget reads it via a ROM-staged path).
+#
+set bg_dst "bin/default.png"
+if {![file exists $bg_dst]} {
+	exec python3 [file join [file dirname [file normalize [info script]]] gen_png.py] "$bg_dst" 24 72 144
+}
+
+#
 # Full boot module list. The Qt6 shared libs + tars are cmake-built and
 # not in [build_artifacts], so listed explicitly (base-sel4 needs them
 # inside image.elf).
@@ -843,7 +853,7 @@ foreach m { libQt6Core.lib.so libQt6Gui.lib.so libQt6Widgets.lib.so \
             default.theme light.theme \
             pkg_hello.xml pkg_index.xml \
             model.tar Vera.ttf VeraMono.ttf \
-            drop_shadow.png genode_logo.png \
+            drop_shadow.png default.png \
             runtime_config VERSION build_info \
             lz_runtime.config leitzentrale.config lz_bridge.config } {
 	lappend boot_modules $m
