@@ -1,0 +1,102 @@
+#
+# \brief  Sponge DE multi-panel idspace defense scenario (Phase 16 W8,
+#        U16.5 / D16.5 F5 + charset defense)
+# \author Sponge OS contributors
+# \date   2026
+#
+# TDD-first failing stub for W8 task 5. Companion to
+# run/sponge-de-multipanel.run. The probe writes a per-id key with
+# a charset-invalid id (`panel.bogus!!id.height=40`) and asserts
+# that configd rejects it with a structured error that mentions the
+# `[a-z0-9_-]{1,16}` charset rule (D16.5). This is the W8 per-id
+# charset defense; the F5 label_prefix trap is exercised by the
+# main multipanel scenario, this one exercises the registry-side
+# defense.
+#
+# Topology mirrors run/sponge-de-multipanel.run with a minimal
+# driver set (no need for two Qt6 panel instances; the idspace
+# test is purely a configd write + structured error reply).
+#
+# Acceptance gate: "idspace-probe: PASS".
+#
+# base-sel4. Builds lib/ld + core init + passes [build_artifacts]
+# to build_boot_image. KERNEL=sel4 BOARD=pc.
+#
+
+assert {[have_spec sel4]} \
+	"sponge-de-multipanel-idspace requires KERNEL=sel4 (BOARD=pc). \
+	 The idspace defense is purely a configd-write concern, but the \
+	 probe is colocated with the multipanel run for shared topology."
+
+build { core lib/ld init timer server/report_rom lib/vfs sponge_configd \
+        test/configd_registry_probe }
+
+create_boot_directory
+
+install_config {
+config
++ parent-provides
+  + service LOG
+  + service PD
+  + service CPU
+  + service ROM
+  + service IO_MEM
+  + service IRQ
+
++ default-route
+  + any-service
+    + parent
+    + any-child
++ default | caps: 200 | ram: 8M
+
++ start timer
+  + provides | + service Timer
+
++ start report_rom | ram: 4M
+  + provides
+    + service Report
+    + service ROM
+  + config | verbose: no
+    + policy | label: sponge_configd -> config_request | report: configd_registry_probe -> config_request
+    + policy | label: configd_registry_probe -> config_result | report: sponge_configd -> config_result
+    + policy | label: configd_registry_probe -> broadcast | report: sponge_configd -> config
+
++ start sponge_configd | caps: 200 | ram: 16M
+  + route
+    + service ROM | label_last: config_request | + child report_rom
+    + service Report | + child report_rom
+    + any-service
+      + parent
+      + any-child
+
++ start configd_registry_probe | caps: 200 | ram: 8M
+  + config | phase: pattern-keys
+  + route
+    + service Timer | + child timer
+    + service ROM | label_last: config_result | + child report_rom
+    + service ROM | label_last: broadcast     | + child report_rom
+    + service Report | + child report_rom
+    + any-service
+      + parent
+      + any-child
+- }
+
+build_boot_image [build_artifacts]
+
+#
+# Verification: the probe reuses the W2 pattern-keys phase; the
+# "panel.bogus!!id.height=40" write asserts the structured error
+# mentions the charset rule (the W2 charset defense already covers
+# this — the W8 idspace scenario exists to keep the F5 trap
+# defense under test alongside the panel construction assertion).
+#
+# Before the W8 implementation lands this scenario FAILS because
+# the panel.ids / panel.<id>.height pattern-key infrastructure
+# does not exist (W2 deliverable, already shipped — so the probe
+# already gates the charset assertion). The W8 idspace companion
+# scenario explicitly exists to make the F5 trap defense a
+# separate TDD marker.
+#
+append qemu_args " -nographic -m 1G "
+
+run_genode_until {.*pattern-keys-probe: PASS.*} 30

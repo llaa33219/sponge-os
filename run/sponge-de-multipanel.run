@@ -1,0 +1,614 @@
+#
+# \brief  Sponge DE multi-panel acceptance scenario (Phase 16 W8,
+#        U16.5 / D16.5)
+# \author Sponge OS contributors
+# \date   2026
+#
+# TDD-first failing stub for W8. On the current tree (W1-W7 landed,
+# no W8): the PanelWidget is a singleton (no PanelCollection exists),
+# the de_config_request channel exists but no `panel.<id>.height`
+# pattern-key parse runs in sponge-de (ConfigController only knows
+# the four flat panel.* keys), no `panel.<id>.*` per-panel apply
+# slot, no per-panel click_count reporters. The probe's sentry (it
+# waits for `panel_alpha` / `panel_beta` reporters to carry
+# click_count=0 and never sees them) is the FAIL gate before the
+# W8 implementation lands.
+#
+# The W8 implementation:
+#   1. Adds PanelCollection (singleton; subscribes to panel.ids
+#      configd key; creates/destroys PanelWidget instances per id;
+#      each instance owns a unique `panel_<id>` click_count
+#      Expanding_reporter with a distinct Gui label suffix "Sponge
+#      Panel <id>" — the F5 nitpicker label_prefix trap defense).
+#   2. Adds ConfigController fan-out for `panel.<id>.{height,
+#      position,visible_widgets}` keys; the controller parses any
+#      panel.<id>.<suffix> entry on the broadcast and dispatches to
+#      the matching PanelWidget instance.
+#   3. Adds per-panel context menu (per-panel Height / Visible
+#      widgets / Position / Settings + a global "Add panel" /
+#      "Remove panel" pair) gated on a new
+#      `<panels source="collection"/>` activation gate (absent the
+#      gate, the collection stays in singleton mode and the panel
+#      <id> writes are no-ops).
+#   4. Wires the four per-panel reporters into report_rom so the
+#      probe observes per-panel click counts.
+#
+# Probe (multipanel_probe) drive:
+#   - writes `panel.ids=alpha,beta` via de_config_request (the
+#     pattern-key bootstrap step).
+#   - writes per-id keys via de_config_request:
+#       panel.alpha.position=top, panel.alpha.height=40
+#       panel.beta.position=bottom, panel.beta.height=28
+#   - QMP clicks at (100, 14) → asserts panel_alpha.click_count=1
+#     AND panel_beta.click_count=0 (the F5 label_prefix trap
+#     signature: if both panels collapsed onto one domain, the
+#     click would land on whichever widget was drawn at y=14, and
+#     the assertion would fail).
+#   - QMP clicks at (800, 740) → asserts panel_beta.click_count=1
+#     AND panel_alpha.click_count stays at 1 (same F5 cross-panel
+#     check).
+#
+# Final gate: "multipanel-probe: PASS".
+#
+# base-sel4 + QMP. RAM budget per U16.5: ~128 MiB per PanelWidget
+# Qt6 instance; two panels + wm + layouter + decorator + configd +
+# themed + pkgd fit at -m 4G.
+#
+# AGENTS.md §4.2: builds lib/ld + core init and passes [build_artifacts]
+# to build_boot_image. KERNEL=sel4 BOARD=pc (set by the runner).
+#
+
+assert {[have_spec sel4]} \
+	"sponge-de-multipanel requires KERNEL=sel4 (BOARD=pc). \
+	 This scenario drives two Qt6 + softpipe panel instances via the \
+	 F5-distinct label-suffix topology; base-linux lacks QEMU's QMP socket."
+
+build { core lib/ld init timer server/report_rom server/nitpicker \
+         driver/acpi app/pci_decode driver/platform \
+         driver/framebuffer/vesa driver/ps2 \
+         driver/usb_host/pc driver/usb_hid server/event_filter \
+         sponge_configd sponge-de test/multipanel_probe \
+         qt6/base lib/libc lib/libm lib/stdcxx lib/mesa \
+         lib/mesa_gpu-softpipe lib/egl lib/softpipe lib/libdrm lib/expat \
+         lib/qt6_component lib/vfs lib/vfs_pipe lib/vfs_gpu lib/rom_filter \
+         lib/zlib lib/libpng lib/blit }
+
+create_boot_directory
+
+install_config {
+config
++ parent-provides
+  + service ROM
+  + service PD
+  + service RM
+  + service CPU
+  + service LOG
+  + service IRQ
+  + service IO_MEM
+  + service IO_PORT
+
++ default | caps: 200 | ram: 4M
++ default-route
+  + any-service
+    + parent
+    + any-child
+
++ start timer
+  + provides | + service Timer
+
++ start report_rom | caps: 300 | ram: 8M
+  + provides
+    + service Report
+    + service ROM
+  + config | verbose: no
+    #
+    # D16.1 channel for SettingsController (DE-side writer). The
+    # multipanel_probe acts as the DE-side writer (it simulates
+    # what the panel context menu + Settings dialog would produce
+    # when a user clicks them).
+    #
+    + policy | label: sponge_configd -> de_config_request | report: multipanel_probe -> de_config_request
+    + policy | label: multipanel_probe -> de_config_result   | report: sponge_configd -> de_config_result
+    + policy | label: sponge-de      -> de_config_result   | report: sponge_configd -> de_config_result
+    + policy | label: sponge-de      -> de_config_request  | report: sponge_configd -> de_config_request
+    #
+    # vct-equivalent config_request writer: sponge_configd opens
+    # `config_request` at construct time unconditionally
+    # (sponge_configd/main.cc:184). The multipanel_probe also owns
+    # this label so the daemon's construct succeeds.
+    #
+    + policy | label: sponge_configd -> config_request | report: multipanel_probe -> config_request
+    + policy | label: multipanel_probe -> config_result  | report: sponge_configd -> config_result
+    #
+    # Configd broadcast readers.
+    #
+    + policy | label: sponge-de -> configd            | report: sponge_configd -> config
+    + policy | label: multipanel_probe -> broadcast   | report: sponge_configd -> config
+    #
+    # W8 per-panel click_count reporters (F5 defense: distinct labels
+    # per panel instance — the F5 trap is two same-label sessions
+    # landing on one domain, so the per-panel reporter labels MUST
+    # also be distinct).
+    #
+    + policy | label: sponge-de -> panel_alpha | report: sponge-de -> panel_alpha
+    + policy | label: sponge-de -> panel_beta  | report: sponge-de -> panel_beta
+    + policy | label: sponge-de -> panel_default | report: sponge-de -> panel_default
+    + policy | label: multipanel_probe -> panel_alpha | report: sponge-de -> panel_alpha
+    + policy | label: multipanel_probe -> panel_beta  | report: sponge-de -> panel_beta
+    + policy | label: multipanel_probe -> panel_default | report: sponge-de -> panel_default
+
++ start nitpicker | ram: 16M
+  + provides
+    + service Gui
+    + service Capture
+    + service Event
+  + route
+    + service Report | + child report_rom
+    + service Timer | + child timer
+    + any-service
+      + parent
+      + any-child
+  + config
+    + capture
+    + event
+    #
+    # W8 MULTI-PANEL DOMAIN TOPOLOGY (U16.5 / D16.5). Two non-
+    # overlapping domains at the top + bottom screen edges. Each
+    # panel instance lands on its OWN domain (F5 label_prefix
+    # trap defense) so a click at (100, 14) reaches panel_alpha's
+    # widget only, and a click at (800, 740) reaches panel_beta's
+    # widget only.
+    #
+    # Screen is 1024x768 (the Phase 10/11 baseline). panel_alpha
+    # is at y=0..40 (height=40 from the panel.alpha.height=40
+    # write); panel_beta is at y=740..768 (height=28 from the
+    # default).
+    #
+    + domain panel_alpha | layer: 2 | content: client | label: no
+                      | hover: always | focus: click | ypos: 0 | height: 40
+    + domain panel_beta | layer: 2 | content: client | label: no
+                      | hover: always | focus: click | ypos: 740 | height: 28
+    + domain demo | layer: 3 | content: client | label: no
+                  | hover: always | focus: click
+                  | xpos: 192 | ypos: 100 | width: 640 | height: 540
+    + domain default | layer: 4 | content: client | label: no
+                     | hover: always | focus: click | ypos: 40 | height: 700
+#
+    # Sponge-de's TWO panel Gui sessions route to their domains. The
+    # MORE SPECIFIC prefix ("Sponge Panel alpha") comes FIRST so it
+    # wins over the generic ("Sponge Panel") prefix — Genode's
+    # session_policy picks the longest matching prefix
+    # (session_policy.h:127-134, prefix_match > other.prefix_match).
+    # Without this ordering, both labels would match the generic
+    # prefix and BOTH widgets would land on one domain (F5 trap).
+    #
+    # LABEL CASING (case-sensitive memcmp in session_policy.h:140):
+    # PanelWidget's window title is "Sponge Panel <id>" where <id>
+    # is the verbatim value from the panel.ids configd broadcast
+    # (panel_collection.cc:289-291). The probe writes `panel.ids=
+    # alpha,beta` (lowercase), so the actual Gui session labels are
+    # "sponge-de -> Sponge Panel alpha" / "Sponge Panel beta". The
+    # QPA sanitizes the title (qgenodeplatformwindow.cpp:607) but
+    # does NOT normalize case. The nitpicker policy prefix MUST match
+    # the verbatim window title case — the earlier
+    # "Sponge Panel Alpha" / "Sponge Panel Beta" (capital A/B) caused
+    # BOTH Gui sessions to fall through to the generic "Sponge Panel"
+    # policy (CONFLICT on memcmp mismatch), routing them to the
+    # `default` domain (y=40..740) where neither click target
+    # (y=14 / y=740) could reach them — the F5 trap signature.
+    #
+    + policy | label_prefix: sponge-de -> Sponge Panel alpha | domain: panel_alpha
+    + policy | label_prefix: sponge-de -> Sponge Panel beta  | domain: panel_beta
+    + policy | label_prefix: sponge-de -> Sponge Panel       | domain: default
+    + policy | label_prefix: sponge-de -> Sponge DE Demo      | domain: demo
+    + default-policy | domain: default
+    + background | color: #1e1e2e
+
++ start drivers | caps: 1500 | ram: 96M | managing_system: yes
+  + binary init
+  + route
+    + service ROM | label: config | + parent | label: drivers.config
+    + service Timer | + child timer
+    + service Capture | + child nitpicker
+    + service Event | + child nitpicker
+    + service Report | + child report_rom
+    + any-service                 | + parent
+  + config
+    + parent-provides
+      + service IRQ
+      + service IO_MEM
+      + service IO_PORT
+      + service ROM
+      + service PD
+      + service RM
+      + service CPU
+      + service LOG
+      + service Timer
+      + service Capture
+      + service Event
+    + default | caps: 60
+    + start acpi | caps: 250 | ram: 4M
+      + route
+        + service IO_MEM | + parent
+        + service LOG | + parent
+        + service PD | + parent
+        + service RM | + parent
+        + service CPU | + parent
+        + service ROM | + parent
+        + service Report | + child report_rom
+    + start report_rom | caps: 100 | ram: 2M
+      + provides
+      | + service ROM
+      | + service Report
+      + config
+      | + policy | label: pci_decode -> system | report: acpi -> acpi
+      | + policy | label: platform -> devices  | report: pci_decode -> devices
+      | + policy | label: usb_hid -> report    | report: usb -> devices
+      + route
+        + service LOG | + parent
+        + service PD | + parent
+        + service CPU | + parent
+        + service ROM | + parent
+    + start pci_decode | caps: 100 | ram: 2M
+      + route
+        + service Report | + child report_rom
+        + service ROM | label: system | + child report_rom
+        + service IO_MEM | + parent
+        + service LOG | + parent
+        + service PD | + parent
+        + service RM | + parent
+        + service CPU | + parent
+        + service ROM | + parent
+    + start platform | caps: 200 | ram: 3M | managing_system: yes
+      + provides
+      | + service Dma
+      | + service Platform
+      + route
+      | + service ROM | label: devices | + child report_rom
+      | + service Report | + child report_rom
+      | + service IRQ | + parent
+      | + service IO_MEM | + parent
+      | + service IO_PORT | + parent
+      | + service ROM | + parent
+      | + service PD | + parent
+      | + service CPU | + parent
+      | + service LOG | + parent
+      | + service Timer | + parent
+      + config
+        + report | devices: yes
+        + policy | label_prefix: ps2 | + device ps2
+        + policy | label_prefix: fb  | info: yes | + pci | class: VGA
+        + policy | label_prefix: usb | info: yes | + pci | class: USB
+    + start fb | caps: 150 | ram: 20M
+      + binary vesa_fb
+      + route
+        + service ROM | label: config | + parent | label: fb.config
+        + service Report | + child report_rom
+        + service Dma | + child platform
+        + service Platform | + child platform
+        + service IO_PORT | + parent
+        + service IO_MEM | + parent
+        + service ROM | + parent
+        + service PD | + parent
+        + service CPU | + parent
+        + service LOG | + parent
+        + service Timer | + parent
+        + service Capture | + parent
+    + start ps2 | caps: 100 | ram: 1280K
+      + route
+        + service Dma | + child platform
+        + service Platform | + child platform
+        + service Event | + child event_filter | label: ps2
+        + service ROM | + parent
+        + service PD | + parent
+        + service CPU | + parent
+        + service LOG | + parent
+        + service Timer | + parent
+    + start usb | caps: 200 | ram: 16M
+      + binary pc_usb_host
+      + provides | + service Usb
+      + config
+      | + report | devices: yes
+      | + policy | label_prefix: usb_hid | + device | class: 0x3
+      + route
+        + service Dma | + child platform
+        + service Platform | + child platform
+        + service Report | label: devices | + child report_rom
+        + service ROM | + parent
+        + service PD | + parent
+        + service RM | + parent
+        + service CPU | + parent
+        + service LOG | + parent
+        + service Timer | + parent
+    + start usb_hid | caps: 180 | ram: 10M
+      + route
+        + service ROM | label: report | + child report_rom
+        + service ROM | + parent
+        + service PD | + parent
+        + service RM | + parent
+        + service CPU | + parent
+        + service LOG | + parent
+        + service Timer | + parent
+        + service Event | + child event_filter | label: usb
+        + service Usb | + child usb
+    + start event_filter | caps: 90 | ram: 1280K
+      + provides | + service Event
+      + route
+        + service ROM | label: config | + parent | label: event_filter.config
+        + service Event | + parent
+        + service ROM | + parent
+        + service PD | + parent
+        + service CPU | + parent
+        + service LOG | + parent
+        + service Timer | + parent
+
++ start sponge_configd | caps: 200 | ram: 16M
+  + route
+    + service ROM | label_last: config_request      | + child report_rom
+    + service ROM | label_last: config_result       | + child report_rom
+    + service ROM | label_last: de_config_request   | + child report_rom
+    + service ROM | label_last: de_config_result    | + child report_rom
+    + service Report | + child report_rom
+    + any-service
+      + parent
+      + any-child
+  + config
+    + de_config
+
+#
+# sponge-de: TWO Gui session routes for "Sponge Panel Alpha" + "Sponge
+# Panel Beta". ConfigController reads the configd broadcast (panel.ids,
+# panel.<id>.{height,position,visible_widgets}). The PanelCollection
+# (W8) instantiates two PanelWidget instances from panel.ids.
+# SettingsController writes through de_config_request.
+#
++ start sponge-de | caps: 1000 | ram: 384M
+  + config
+    + config | source: configd
+    + de_config | source: controller
+    #
+    # W8: opt the PanelCollection in. Absent this gate, the
+    # collection stays in singleton mode (regression scenarios
+    # are unaffected).
+    #
+    + panels | source: collection
+    + vfs
+      + dir dev
+        + log
+        + inline rtc | : 2018-01-01 00:01
+      + dir pipe | + pipe
+      + tar qt6_dejavusans.tar
+      + tar qt6_libqgenode.tar
+    + libc | stdout: /dev/log | stderr: /dev/log | pipe: /pipe | rtc: /dev/rtc
+  + route
+    + service Gui | label_last: Sponge Panel        | + child nitpicker
+    + service Gui | label_last: Sponge Panel alpha  | + child nitpicker
+    + service Gui | label_last: Sponge Panel beta   | + child nitpicker
+    + service Gui | + child nitpicker
+    + service Report | label: input              | + child report_rom
+    + service Report | label: panel_alpha        | + child report_rom
+    + service Report | label: panel_beta         | + child report_rom
+    + service Report | label: panel_default      | + child report_rom
+    + service Report | label: de_config_request  | + child report_rom
+    + service ROM | label: de_config_result      | + child report_rom
+    + service ROM | label: configd              | + child report_rom
+    + service ROM | label: mesa_gpu.lib.so | + parent | label: mesa_gpu-softpipe.lib.so
+    + any-service
+      + parent
+      + any-child
+
++ start multipanel_probe | caps: 200 | ram: 16M
+  + config
+  + route
+    + service Timer | + child timer
+    + service Report | + child report_rom
+    + service ROM | label_last: broadcast          | + child report_rom
+    + service ROM | label_last: de_config_result   | + child report_rom
+    + service ROM | label_last: de_config_request  | + child report_rom
+    + service ROM | label_last: config_result      | + child report_rom
+    + service ROM | label_last: config_request     | + child report_rom
+    + service ROM | label_last: panel_alpha        | + child report_rom
+    + service ROM | label_last: panel_beta         | + child report_rom
+    + service Capture | + child nitpicker
+    + any-service
+      + parent
+      + any-child
+- }
+
+#
+# Stage every non-build-artifact boot module into bin/ BEFORE
+# build_boot_image. On base-sel4 the boot image is a single packed
+# image.elf, so modules added after build_boot_image never reach
+# the guest.
+#
+exec mkdir -p bin
+
+set dejavu_dst "bin/qt6_dejavusans.tar"
+if {![file exists $dejavu_dst]} {
+	set dejavu_src [glob -nocomplain "${genode_dir}/contrib/qt6_base-*/src/lib/qt6_base/src/3rdparty/wasm/DejaVuSans.ttf"]
+	if {[llength $dejavu_src] == 0} {
+		error "DejaVuSans.ttf not found in the qt6_base port sources"
+	}
+	set staging "[run_dir]/dejavusans-staging"
+	file mkdir "$staging/qt/lib/fonts"
+	file copy -force [lindex $dejavu_src 0] "$staging/qt/lib/fonts/DejaVuSans.ttf"
+	exec tar -cf $dejavu_dst -C $staging qt
+	file delete -force $staging
+}
+
+set recipe_dir "${genode_dir}/repos/os/recipes/raw/drivers_interactive-pc"
+foreach f { drivers.config fb.config } {
+	if {![file exists "$recipe_dir/$f"]} {
+		error "$recipe_dir/$f missing (vendored drivers_interactive-pc recipe drifted?)"
+	}
+	exec cp -f "$recipe_dir/$f" "bin/$f"
+}
+
+#
+# event_filter.config — WRITTEN (not copied) with the same deviation
+# from the recipe as run/sponge-de-sel4-interactive.run: the
+# `<accelerate max:50 sensitivity_percent:1000 curve:127>` wrapper
+# around the ps2 input is REMOVED.
+#
+# Why: the W8 click coordinates are very tight. panel_alpha is
+# y=0..40 (40 px) and panel_beta is y=740..768 (28 px). The PS/2
+# relative recipe (qmp_ps2_click in run/qmp.inc) uses
+# `coarse rel-50 ~= 100px` then `fine rel-1` to ±1px. With the
+# accelerate wrapper the rel-1 → ~10px amplification blows the
+# fine-walk by 3x; the click at (100, 14) overshoots to ~(100, 42)
+# (y=42 is just below panel_alpha's bottom edge, so the click lands
+# on the default domain instead of panel_alpha — neither panel
+# widget sees the press) and the click at (800, 740) overshoots to
+# ~(792, 813) (off-screen). With the wrapper removed the recipe
+# lands on the literal pixel, the click reaches the right panel,
+# and only the right panel's click_count increments (the F5 cross-
+# panel assertion).
+#
+# The chargen path (en_us.chargen / special.chargen + mods +
+# repeat) is kept identical to the recipe. The W7 lesson (the
+# `<accelerate>` wrapper combined with `<shortcut>` `<report>`
+# sources was documented as a 2026-09-19 bisect finding — the W8
+# scenario does NOT use the shortcut framework, so the recipe's
+# `<accelerate>` removal is safe here).
+#
+set ef_fh [open "bin/event_filter.config" w]
+puts $ef_fh {config
++ output
+  + chargen
+    + merge
+    | + transform
+    | | + scale | x: 0.0312517 | y: 0.0234382
+    | | + input usb
+    | + button-scroll
+    | |   + input ps2
+    | |   + vertical   | button: BTN_MIDDLE | speed_percent: -10
+    | |   + horizontal | button: BTN_MIDDLE | speed_percent: -10
+  + mod1
+  | + key KEY_LEFTSHIFT
+  | + key KEY_RIGHTSHIFT
+  + mod2
+  | + key KEY_LEFTCTRL
+  | + key KEY_RIGHTCTRL
+  + mod3
+  | + key KEY_RIGHTALT | . AltGr
+  + repeat | delay_ms: 230 | rate_ms: 90
+  + include | rom: en_us.chargen
+  + include | rom: special.chargen
++ policy | label: ps2 | input: ps2
++ policy | label: usb | input: usb
+-}
+close $ef_fh
+
+set chargen_dir "${genode_dir}/repos/os/src/server/event_filter"
+foreach f { en_us.chargen special.chargen } {
+	if {![file exists "$chargen_dir/$f"]} { error "$chargen_dir/$f missing" }
+	exec cp -f "$chargen_dir/$f" "bin/$f"
+}
+
+foreach theme { default light dark compact } {
+	set theme_src "${genode_dir}/repos/sponge/src/sponge-de/themes/${theme}.theme"
+	if {![file exists $theme_src]} {
+		error "theme file missing: $theme_src"
+	}
+	exec cp -f $theme_src "bin/${theme}.theme"
+}
+
+set boot_modules [build_artifacts]
+foreach m { libQt6Core.lib.so libQt6Gui.lib.so libQt6Widgets.lib.so \
+            libqgenode.lib.so qt6_libqgenode.tar qt6_dejavusans.tar \
+            en_us.chargen special.chargen \
+            drivers.config fb.config event_filter.config \
+            default.theme light.theme dark.theme compact.theme } {
+	lappend boot_modules $m
+}
+
+build_boot_image $boot_modules
+
+#
+# QMP plumbing: source the shared qmp.inc helper. The W4
+# qmp_ps2_click / qmp_click / qmp_right_click helpers handle the
+# BTN_LEFT / BTN_RIGHT dispatch that drives the per-panel click
+# assertion (W8 task 4, Momus-reviewed).
+#
+source [file join [file dirname [file normalize [info script]]] qmp.inc]
+
+set qmp_port [qmp_pick_port]
+#
+# RAM budget per U16.5: each PanelWidget costs ~128 MiB Qt6; two
+# panels + wm + layouter + decorator + configd + themed + pkgd fit
+# at -m 4G. (The single-domain alpha runs at -m 2G; the W8 multi-
+# panel scenario needs the headroom.)
+#
+append qemu_args " -qmp tcp:127.0.0.1:${qmp_port},server=on,wait=off -nographic -m 4G -device nec-usb-xhci,id=xhci -device usb-tablet "
+
+#
+# W8 click-coordinate reachability.
+#
+# The default qmp_exec_target dispatches `QMP-TARGET click <gx> <gy>`
+# markers via qmp_ps2_click (clamp-to-(0,0) + coarse rel-50 +
+# fine rel-1). That recipe is calibrated for an event_filter with
+# the standard <accelerate> wrapper (rel-50 → ~100 px, rel-1 → ~10 px).
+#
+# The W8 scenario's event_filter.config DROPS the accelerate wrapper
+# (the wrapper's 1000% sensitivity would amplify the per-step error
+# and push the click past the 40 px panel_alpha band / the 28 px
+# panel_beta band, defeating the F5 cross-panel assertion).
+#
+# With the accelerate wrapper REMOVED, the PS/2 recipe maps
+# rel-50 → 50 px (1:1) and rel-1 → 1 px (1:1). That changes the
+# reachable target box to roughly:
+#
+#   x = (X/100)*50 + (X%100)*1   →   up to ~525 px x (with cx=10)
+#   y = (Y/100)*50 + (Y%100)*1   →   up to ~399 px y (with cy=7, fy=49)
+#
+# The W8 click at (100, 14) is reachable (50, 14 lands within
+# panel_alpha y=0..40). The W8 click at (800, 740) is NOT reachable
+# with the PS/2 recipe - it lands at (400, 390) which is in the
+# demo domain (192..832, 100..640), not in panel_beta (740..768).
+#
+# Solution: use the usb-tablet absolute recipe (qmp_tablet_click)
+# for the multipanel clicks. The probe still emits `QMP-TARGET click`
+# markers; we route them through qmp_tablet_click instead of
+# qmp_ps2_click. The probe's marker contract is unchanged.
+#
+proc qmp_exec_target_multipanel { chan timeout_s } {
+	global qemu_spawn_id
+	set timeout [expr {$timeout_s}]
+	set spawn_id $qemu_spawn_id
+	puts "\nqmp: qmp_exec_target_multipanel waiting for marker (timeout=${timeout_s}s)"
+	match_max -i $qemu_spawn_id 200000
+	expect {
+		-i $qemu_spawn_id
+		-re {QMP-TARGET click (-?\d+) (-?\d+)\r*\n} {
+			set gx $expect_out(1,string)
+			set gy $expect_out(2,string)
+			puts "\nqmp: multipanel click at ($gx,$gy) via usb-tablet abs (PS/2 recipe is off-range for the W8 panel_beta band y=740..768)"
+			qmp_tablet_click $chan $gx $gy
+		}
+		timeout {
+			puts stderr "\nqmp: FAIL - no QMP-TARGET marker within ${timeout_s}s (probe did not emit one - boot/render race or probe died?)"
+			exit 1
+		}
+	}
+}
+
+run_genode_until {.*sponge-de: panel shown.*} 300
+set qmp_chan [qmp_connect $qmp_port]
+global qemu_spawn_id
+match_max -i $qemu_spawn_id 200000
+#
+# Three-step QMP choreography. The probe emits QMP-TARGET click
+# markers one at a time, gated on the previous click_count
+# assertion (the F5 trap defense). Each qmp_exec_target_multipanel
+# waits for one marker, dispatches it via usb-tablet abs, then the
+# probe continues with the next marker (after a bounded poll for
+# click_count=N).
+#
+#   qmp_exec_target_multipanel #1: dispatches click 100 14 (panel-alpha top)
+#   qmp_exec_target_multipanel #2: dispatches click 800 740 (panel-beta bottom)
+#   run_genode_until:    waits for "multipanel-probe: PASS"
+#
+qmp_exec_target_multipanel $qmp_chan 60
+qmp_exec_target_multipanel $qmp_chan 60
+run_genode_until {.*multipanel-probe: PASS.*} 300 $qemu_spawn_id
+qmp_disconnect $qmp_chan
