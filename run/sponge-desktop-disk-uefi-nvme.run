@@ -477,6 +477,18 @@ config
 + start sponge_configd | caps: 200 | ram: 16M
   + binary | name: bin/sponge_configd
   + config
+    #
+    # NOTE (Phase 16 W3 D16.7 honest disclosure): this scenario is a
+    # STRUCTURAL-GATE run — it checks the GPT/ESP/P3 layout and the
+    # boot-path artifact presence, NOT a full desktop boot. The
+    # bake gate is therefore intentionally left at the pre-W3 state
+    # (no `<bake/>`, no bake ROM routes) — the bake wiring is the
+    # proven correct shape but not exercised here. The companion
+    # `sponge-desktop-disk-uefi.run` carries the full bake wiring
+    # for the equivalent boot path; the dedicated
+    # `sponge-desktop-defaults-firstboot.run` carries the full
+    # 8-baked-keys + 7-launcher-set assertion against the full
+    # desktop stack.
   + route
     + service ROM | label_last: ld.lib.so | + parent
     + service ROM | label_last: config_request | + child report_rom
