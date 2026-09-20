@@ -478,6 +478,25 @@ config
       + parent
       + any-child
 
+#
+# Phase 16 W3 D16.7 honest disclosure: the bake ROM routes that were
+# added in the W3 wiring are INTENTIONALLY OMITTED here. This scenario
+# is the Phase 8 P2 storage variant — the build list stages only
+# `pkg_hello` + `sponge-de`, not the full desktop profile (no
+# terminal/textedit/files/calculator/pdf_view binaries). The Phase 16
+# W3 extended alpha_probe (plan W3 #3) requires the 7-package
+# launcher feed AND bake.applied=yes + 8 baked keys; wiring the bake
+# gate without expanding the build list would force alpha_probe to
+# fail at the install-terminal step. Expanding the build list to the
+# full desktop stack is Phase 17 scope (the P2 storage-variant
+# scenario remains a smoke test of the desktop boot + storage chain,
+# not a first-boot acceptance scenario). The dedicated first-boot
+# scenario `run/sponge-desktop-defaults-firstboot.run` carries the
+# full 8-baked-keys + 7-launcher-set assertion against the full
+# desktop stack; this scenario continues to assert hello + configd
+# broadcast only (its pre-W3 contract).
+#
+
 + start sponge_themed | caps: 200 | ram: 8M
   + binary | name: bin/sponge_themed
   + route

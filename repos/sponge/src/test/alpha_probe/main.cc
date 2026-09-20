@@ -44,6 +44,7 @@
 #include <util/string.h>
 #include <util/xml_generator.h>
 #include <util/xml_node.h>
+#include <util/construct_at.h>
 
 namespace {
 
@@ -90,6 +91,57 @@ unsigned const LZ_ENABLE_WAIT_ITERS= 120;  /* ~12s for configd set ack  */
 unsigned const LZ_VIEWER_POLL_ITERS= 900;  /* ~90s for fader + first frame */
 
 
+/*
+ * Phase 16 W3 (D16.4 + plan W3 #3) — closed tables of launcher pairs
+ * and baked defaults the probe asserts on first boot. The canonical
+ * iteration order matches the breadcrumb in the plan's named sentry
+ * placeholder (the first non-hello pair is `terminal`, which the
+ * FAIL marker calls out when the timeout fires there). The category
+ * values are the exact `category=` strings in each pkg/<name>/
+ * metadata.xml (docs/12 §4.6); the probe asserts on the wire form.
+ */
+struct Launcher_pair { char const *name; char const *category; };
+
+static Launcher_pair const LAUNCHER_PAIRS[] = {
+	{ "hello",      "Utilities" },
+	{ "terminal",   "System"    },
+	{ "textedit",   "Editors"   },
+	{ "files",      "Utilities" },
+	{ "calculator", "Utilities" },
+	{ "pdf_view",   "Utilities" },
+	{ "falkon",     "Internet"  },
+};
+static unsigned const LAUNCHER_PAIR_COUNT =
+	sizeof(LAUNCHER_PAIRS) / sizeof(LAUNCHER_PAIRS[0]);
+static unsigned const LAUNCHER_PAIR_WAIT_ITERS = 300; /* ~30s per pair */
+
+struct Baked_key { char const *name; char const *value; };
+
+static Baked_key const REQUIRED_BAKED_KEYS[] = {
+	{ "bake.profile",            "desktop"        },
+	{ "bake.version",            "1"              },
+	{ "bake.applied",            "yes"            },
+	{ "theme.active",            "default"        },
+	{ "panel.height",            "28"             },
+	{ "panel.visible_widgets",   "clock,launcher" },
+	{ "clock.format",            "HH:mm"          },
+	{ "launcher.sort_by",        "alpha"          },
+};
+static unsigned const REQUIRED_BAKED_KEY_COUNT =
+	sizeof(REQUIRED_BAKED_KEYS) / sizeof(REQUIRED_BAKED_KEYS[0]);
+
+/*
+ * True if the candidate node is the empty sentinel ("<empty/>") or
+ * not the expected "<config>" root. The Xml_node API's copy ctor is
+ * public but the assignment is private; we return by value and let
+ * the caller branch on the type tag instead.
+ */
+static bool _is_broadcast_root_empty(Genode::Xml_node const &n)
+{
+	return n.has_type("empty") || !n.has_type("config");
+}
+
+
 struct Alpha_probe
 {
 	Genode::Env &_env;
@@ -116,6 +168,19 @@ struct Alpha_probe
 	 */
 	Genode::Attached_rom_dataspace               _cfg_broadcast { _env, "config" };
 	Genode::Constructible<Genode::Attached_rom_dataspace> _cfgd_config { };
+
+	/*
+	 * Phase 16 W3: Xml_node is not copy-constructible (see
+	 * genode/repos/base/include/util/xml_node.h), so each ROM
+	 * read yields a fresh value that must NOT be copied or
+	 * returned by value. We construct the snapshot on-demand
+	 * from the underlying dataspace content (`local_addr` +
+	 * `size()`) and hand the caller a pointer to a member-held
+	 * storage. The pointer stays valid until the next call to
+	 * _fetch_broadcast_root() — the probe is single-threaded.
+	 */
+	Genode::Xml_node _cfgd_root   { "<empty/>" };
+	Genode::Xml_node _cfgsys_root { "<empty/>" };
 
 	/* sponge-de's launcher report. */
 	Genode::Attached_rom_dataspace _launcher { _env, "sponge_de_launcher" };
@@ -235,9 +300,108 @@ struct Alpha_probe
 
 
 	/*
-	 * Criterion (b): launcher report contains hello/Utilities.
+	 * Criterion (c) — Phase 16 W3. The 8 baked keys the desktop
+	 * profile seeds on first boot (D15.9 + D16.4). On any missing
+	 * key the probe fails with the named sentry marker
+	 * `defaults-firstboot-stub: FAIL (missing baked key ...)`
+	 * the run scenario's stub gate matches against.
+	 *
+	 * Xml_node's copy ctor and assignment are private (see
+	 * genode/repos/base/include/util/xml_node.h:209-222), so each
+	 * ROM read yields a fresh value that must NOT be copied. We
+	 * stash the latest snapshot in two member fields (one per
+	 * ROM source) and hand the caller a pointer to whichever is
+	 * current. The pointers stay valid until the next call into
+	 * this function (no concurrent threads — the probe is single-
+	 * threaded by design).
 	 */
-	bool _launcher_has_hello()
+	bool _fetch_broadcast_root(Genode::Xml_node const *&out)
+	{
+		if (_cfgd_config.constructed()) {
+			_cfgd_config->update();
+			if (_cfgd_config->valid()) {
+				/*
+				 * Construct a fresh Xml_node from the underlying
+				 * dataspace content. The copy ctor and operator=
+				 * are private (see util/xml_node.h), so we MUST
+				 * build the node in place from local_addr+size
+				 * rather than reusing _cfgd_root.
+				 */
+				_cfgd_root.~Xml_node();
+				Genode::construct_at<Genode::Xml_node>(&_cfgd_root,
+					_cfgd_config->local_addr<char const>(),
+					_cfgd_config->size());
+				if (!_is_broadcast_root_empty(_cfgd_root)) {
+					out = &_cfgd_root;
+					return true;
+				}
+			}
+		}
+		_cfg_broadcast.update();
+		if (!_cfg_broadcast.valid()) return false;
+		_cfgsys_root.~Xml_node();
+		Genode::construct_at<Genode::Xml_node>(&_cfgsys_root,
+			_cfg_broadcast.local_addr<char const>(),
+			_cfg_broadcast.size());
+		if (_is_broadcast_root_empty(_cfgsys_root)) return false;
+		out = &_cfgsys_root;
+		return true;
+	}
+
+	bool _broadcast_has_baked_keys()
+	{
+		for (unsigned attempt = 0; attempt < CONFIGD_POLL_ITERS && _ok; ++attempt) {
+			Genode::Xml_node const *root = nullptr;
+			if (!_fetch_broadcast_root(root)) { _timer.msleep(100); continue; }
+
+			for (unsigned i = 0; i < REQUIRED_BAKED_KEY_COUNT; ++i) {
+				char const *need_name  = REQUIRED_BAKED_KEYS[i].name;
+				char const *need_value = REQUIRED_BAKED_KEYS[i].value;
+				bool found { false };
+				root->for_each_sub_node("key", [&](Genode::Xml_node const &key) {
+					if (found) return;
+					if (key.attribute_value("name", Genode::String<64>()) !=
+					    Genode::String<64>(need_name)) return;
+					if (key.attribute_value("value", Genode::String<128>()) ==
+					    Genode::String<128>(need_value))
+						found = true;
+				});
+				if (!found) {
+					/*
+					 * Named sentry marker for the first missing
+					 * baked key (plan W3: the gate is the FAIL
+					 * line, not the PASS line). Emitted BEFORE
+					 * _fail() so the run tool captures it as the
+					 * gate's match pattern.
+					 */
+					Genode::error("alpha-probe: defaults-firstboot-stub: FAIL "
+					              "(missing baked key ", need_name, "=",
+					              need_value, ")");
+					_fail(Genode::String<256>("missing baked key ",
+					                          need_name, "=", need_value).string());
+					return false;
+				}
+			}
+			Genode::log("alpha-probe: (c) configd broadcast carries all ",
+			            REQUIRED_BAKED_KEY_COUNT, " baked keys");
+			return true;
+		}
+		return false;
+	}
+
+
+	/*
+	 * Criterion (b): launcher report contains hello/Utilities.
+	 *
+	 * Phase 16 W3 extends the assertion to all 7 desktop packages the
+	 * baked `desktop` profile pre-stages (D16.4 + plan W3 #3). The
+	 * iteration order is canonical and stable; the per-pair timeout is
+	 * bounded by LAUNCHER_PAIR_WAIT_ITERS (~30s) so the worst case is
+	 * 7 * 30 = 210s. The probe fails on the first missing pair and
+	 * emits the named sentry marker (defaults-firstboot-stub: FAIL ...)
+	 * the run scenario's stub gate matches against.
+	 */
+	bool _launcher_has_pair(char const *name, char const *category)
 	{
 		_launcher.update();
 		if (!_launcher.valid()) return false;
@@ -249,9 +413,9 @@ struct Alpha_probe
 			root.for_each_sub_node("app", [&](Genode::Xml_node const &a) {
 				if (!found &&
 				    a.attribute_value("name", Genode::String<64>())
-				       == Genode::String<64>("hello") &&
+				       == Genode::String<64>(name) &&
 				    a.attribute_value("category", Genode::String<64>())
-				       == Genode::String<64>("Utilities"))
+				       == Genode::String<64>(category))
 					found = true;
 			});
 			return found;
@@ -260,65 +424,60 @@ struct Alpha_probe
 		}
 	}
 
-	bool _wait_launcher_has_hello()
+	bool _wait_launcher_has_pair(char const *name, char const *category)
 	{
-		for (unsigned i = 0; i < LAUNCHER_POLL_ITERS && _ok; ++i) {
-			if (_launcher_has_hello()) {
-				Genode::log("alpha-probe: (b) launcher report contains "
-				            "hello/Utilities");
+		for (unsigned i = 0; i < LAUNCHER_PAIR_WAIT_ITERS && _ok; ++i) {
+			if (_launcher_has_pair(name, category)) {
+				Genode::log("alpha-probe: (b) launcher report contains ",
+				            name, "/", category);
 				return true;
 			}
-			_timer.msleep(200);
+			_timer.msleep(100);
 		}
 		return false;
 	}
 
+	/*
+	 * Backwards-compatible name used by older scenarios (single-pair
+	 * hello check). Kept so the (b) log line is still recognizable.
+	 */
+	bool _wait_launcher_has_hello()
+	{
+		return _wait_launcher_has_pair("hello", "Utilities");
+	}
 
 	/*
-	 * Criterion (c): configd broadcast ROM is live.
+	 * Phase 16 W3 (D16.4 / plan W3 #3): iterate the full launcher set
+	 * with a bounded per-pair timeout. Returns true when every expected
+	 * pair is present; on first miss emits the named sentry marker the
+	 * run script's stub gate matches and returns false.
+	 *
+	 * The first non-hello pair in the canonical iteration order is
+	 * `terminal`, matching the plan's named sentry placeholder.
 	 */
-	bool _configd_broadcast_live()
+	bool _wait_launcher_has_all_pairs()
 	{
-		for (unsigned i = 0; i < CONFIGD_POLL_ITERS && _ok; ++i) {
-			if (_cfgd_config.constructed()) {
-				_cfgd_config->update();
-				if (_cfgd_config->valid()) {
-					try {
-						Genode::Xml_node const root = _cfgd_config->xml();
-						if (root.has_type("config")) {
-							unsigned key_count { 0 };
-							root.for_each_sub_node("key", [&](Genode::Xml_node const &) {
-								++key_count;
-							});
-							if (key_count > 0) {
-								Genode::log("alpha-probe: (c) configd broadcast live (",
-								            key_count, " keys via configd_config)");
-								return true;
-							}
-						}
-					} catch (Genode::Xml_node::Invalid_syntax) { }
-				}
-			}
-			_cfg_broadcast.update();
-			if (!_cfg_broadcast.valid()) { _timer.msleep(100); continue; }
-			try {
-				Genode::Xml_node const root = _cfg_broadcast.xml();
-				if (!root.has_type("config")) { _timer.msleep(100); continue; }
+		for (unsigned i = 0; i < LAUNCHER_PAIR_COUNT; ++i) {
+			char const *name     = LAUNCHER_PAIRS[i].name;
+			char const *category = LAUNCHER_PAIRS[i].category;
+			if (_wait_launcher_has_pair(name, category)) continue;
 
-				unsigned key_count { 0 };
-				root.for_each_sub_node("key", [&](Genode::Xml_node const &) {
-					++key_count;
-				});
-
-				if (key_count > 0) {
-					Genode::log("alpha-probe: (c) configd broadcast live (",
-					            key_count, " keys)");
-					return true;
-				}
-			} catch (Genode::Xml_node::Invalid_syntax) { }
-			_timer.msleep(100);
+			/*
+			 * The plan's named sentry marker names the FIRST missing
+			 * pair (canonical order: terminal). Emit the diagnostic
+			 * BEFORE _fail() so the run script's stub gate matches
+			 * the FAIL line first.
+			 */
+			Genode::error("alpha-probe: defaults-firstboot-stub: FAIL "
+			              "(no bake-applied, alpha_probe extended set "
+			              "timed out at ", name, ")");
+			_fail(Genode::String<256>("launcher set timed out at ",
+			                          name).string());
+			return false;
 		}
-		return false;
+		Genode::log("alpha-probe: (b) launcher report contains all ",
+		            LAUNCHER_PAIR_COUNT, " desktop packages");
+		return true;
 	}
 
 
@@ -397,24 +556,26 @@ struct Alpha_probe
 		 * full Alpha also enable leitzentrale via configd (for
 		 * criterion d) — skipped when _skip_lz is set.
 		 */
-		Genode::log("alpha-probe: [1] install hello via sponge_pkgd");
-		if (!_pkg_install_and_wait("hello")) {
-			_fail("sponge_pkgd did not answer install hello");
-			return;
-		}
-		{
+		Genode::log("alpha-probe: [1] install the 7 desktop packages via sponge_pkgd");
+		for (unsigned i = 0; i < LAUNCHER_PAIR_COUNT; ++i) {
+			char const *pkg = LAUNCHER_PAIRS[i].name;
+			if (!_pkg_install_and_wait(pkg)) {
+				_fail(Genode::String<256>("sponge_pkgd did not answer install ",
+				                          pkg).string());
+				return;
+			}
 			Genode::String<32> status { };
 			try {
 				status = _pkg_result.xml().attribute_value("status",
 				                                           Genode::String<32>());
 			} catch (Genode::Xml_node::Invalid_syntax) { }
 			if (status != Genode::String<32>("ok")) {
-				_fail(Genode::String<256>("install hello returned: ",
-				      status).string());
+				_fail(Genode::String<256>("install ", pkg, " returned: ",
+				                          status).string());
 				return;
 			}
+			Genode::log("alpha-probe: [1] install ", pkg, " ok");
 		}
-		Genode::log("alpha-probe: [1] install hello ok");
 
 		if (!_skip_lz) {
 			Genode::log("alpha-probe: [2] set leitzentrale.enabled=true");
@@ -427,13 +588,16 @@ struct Alpha_probe
 
 		/*
 		 * Step 2: assert criteria, each in bounded iterations.
-		 * Order: (c) configd broadcast (fastest), then (a) panel
-		 * pixel, then (b) launcher report. Criterion (d) lz_viewer
-		 * pixel is last and only checked when _skip_lz is false.
+		 * Order: (c) configd broadcast (now asserts the 8 baked
+		 * keys — D16.4 / plan W3 #3), then (a) panel pixel, then
+		 * (b) launcher report (now asserts the full 7-pair set).
+		 * Criterion (d) lz_viewer pixel is last and only checked
+		 * when _skip_lz is false.
 		 */
-		Genode::log("alpha-probe: [3] assert (c) configd broadcast live");
-		if (!_configd_broadcast_live()) {
-			_fail("configd broadcast ROM never became live");
+		Genode::log("alpha-probe: [3] assert (c) configd broadcast carries "
+		            "the baked key set");
+		if (!_broadcast_has_baked_keys()) {
+			_fail("configd broadcast did not carry the full baked key set");
 			return;
 		}
 
@@ -443,9 +607,9 @@ struct Alpha_probe
 			return;
 		}
 
-		Genode::log("alpha-probe: [5] assert (b) launcher has hello");
-		if (!_wait_launcher_has_hello()) {
-			_fail("launcher report never contained hello/Utilities");
+		Genode::log("alpha-probe: [5] assert (b) launcher has all 7 desktop packages");
+		if (!_wait_launcher_has_all_pairs()) {
+			_fail("launcher report missing one or more desktop packages");
 			return;
 		}
 

@@ -357,6 +357,20 @@ source [file join [file dirname [file normalize [info script]]] \
 bake::stage $sys_dir img
 
 #
+# Phase 16 W3 — flat-copy the bake defaults from /system/bake/ to
+# /system/ so the cached_fs_rom chroot (rom_sys, root=/system) can
+# resolve `bake_manifest` -> /system/bake_manifest.json (the path
+# rom_sys uses is `label.last_element()`, which strips the bake/
+# prefix). The bake/ subdirectory stays on disk (Phase 15 W2 contract)
+# for tool/dist inspection; this scenario reads from the flat shadow.
+#
+foreach f { bake_manifest.json config.defaults theme.defaults } {
+	if {[file exists "$sys_dir/bake/$f"]} {
+		exec cp -fL "$sys_dir/bake/$f" "$sys_dir/$f"
+	}
+}
+
+#
 # NOTE: the source-built binaries (init, sponge-de, sponge_configd,
 # sponge_themed, sponge_pkgd, hello, etc.) are copied in the
 # `desktop binaries -> /system/bin/` block above. The R15.3 verifier
@@ -519,9 +533,24 @@ config
 + start sponge_configd | caps: 200 | ram: 16M
   + binary | name: bin/sponge_configd
   + config
+    + bake
   + route
     + service ROM | label_last: ld.lib.so | + parent
     + service ROM | label_last: config_request | + child report_rom
+    #
+    # Phase 16 W3 — bake ROM routes. The bake defaults tree is staged
+    # at /system/bake/{bake_manifest.json, config.defaults} by
+    # bake::stage above (img mode, full bake) AND flat-copied into
+    # /system/ so the cached_fs_rom chroot (rom_sys, root=/system)
+    # can resolve the labels — rom_sys uses `label.last_element()`
+    # which strips the bake/ prefix. The flat copy lands the files
+    # at /system/{bake_manifest.json, config.defaults, theme.defaults}.
+    # Without these routes the broadcast never carries bake.applied=yes
+    # and the alpha-probe extended set times out at the first missing
+    # baked key (D15.9 / D16.4).
+    #
+    + service ROM | label: bake_manifest        | + parent | label: bake_manifest.json
+    + service ROM | label: bake_config_defaults | + parent | label: config.defaults
     + service Report | + child report_rom
     + any-service
       + parent
