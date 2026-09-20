@@ -31,12 +31,16 @@
  *     service ROM | label: configd | + child report_rom
  *
  * ACTIVE KEYS (the four panel/launcher/clock keys registered by
- * sponge_configd in Phase 11 W1):
+ * sponge_configd in Phase 11 W1 + the panel.position key added by
+ * Phase 16 W5 + the background keys added by Phase 16 W6):
  *
  *   panel.height            uint    [16..128]   default "28"
- *   panel.visible_widgets   enum-list {clock,launcher}  default "clock,launcher"
+ *   panel.visible_widgets   enum-list {clock,launcher,tasklist} default "clock,launcher"
+ *   panel.position          enum    {top,bottom,left,right} default "bottom"
  *   clock.format            string  (Qt QDateTime format) default "HH:mm"
  *   launcher.sort_by        enum    {manual,alpha}     default "alpha"
+ *   background.color        hex     #RRGGBB       default "#1e1e2e"
+ *   background.image        allowlist of staged paths default "/system/background/default.png"
  *
  * THREAD MODEL (the critical invariant — failure-point 2 enforcement):
  *
@@ -122,6 +126,21 @@ class NotifyPoster;
 bool config_asks_for_configd(Genode::Env &env);
 
 
+/*
+ * Parse a "panel.<id>.suffix" key into the (id, suffix) pair. The
+ * id charset is `[a-z0-9_-]{1,16}`; the suffix must be one of the
+ * Phase 16 W2 pattern-key suffixes (height, position, visible_widgets).
+ *
+ * Returns true and writes id/suffix when the key matches a pattern
+ * template; returns false otherwise (no key match means the caller
+ * is looking at a flat key or an unknown per-id suffix).
+ *
+ * Phase 16 W8 (U16.5 / D16.5) — the per-id fan-out path.
+ */
+bool parse_panel_id_key(char const *key, Genode::String<32> &id_out,
+                        Genode::String<32> &suffix_out);
+
+
 class ConfigController : public QObject
 {
 	Q_OBJECT
@@ -184,15 +203,19 @@ class ConfigController : public QObject
 		LauncherMenuView *_launcher { nullptr };
 		NotifyPoster    *_notify   { nullptr };
 
-		/*
-		 * Last-applied values (one per key). Used by applyConfig to
-		 * suppress no-op re-applications — identical bytes do not
-		 * re-emit the signal.
-		 */
-		QString _last_panel_height;
-		QString _last_panel_visible_widgets;
-		QString _last_clock_format;
-		QString _last_launcher_sort_by;
+	/*
+	 * Last-applied values (one per key). Used by applyConfig to
+	 * suppress no-op re-applications — identical bytes do not
+	 * re-emit the signal.
+	 */
+	QString _last_panel_height;
+	QString _last_panel_visible_widgets;
+	QString _last_panel_position;
+	QString _last_clock_format;
+	QString _last_launcher_sort_by;
+	QString _last_background_color;
+	QString _last_background_image;
+	QString _last_panel_ids;
 
 		bool _read_payload(QString &payload);
 		void _on_rom();    /* entrypoint thread: read ROM, marshal */
@@ -203,15 +226,27 @@ class ConfigController : public QObject
 		 * the corresponding `_last_*` field; on a true return, the
 		 * `_last_*` fields are updated AND the matching
 		 * panel_height_changed / panel_visible_widgets_changed /
-		 * clock_format_changed / launcher_sort_by_changed signal is
-		 * emitted exactly once. The matching `applyConfig()` slot
-		 * (panel/launcher) reads the value from the signal arg, so
-		 * we do NOT call any QWidget method directly here.
+		 * panel_position_changed / clock_format_changed /
+		 * launcher_sort_by_changed signal is emitted exactly once.
+		 * The matching `applyConfig()` slot (panel/launcher) reads
+		 * the value from the signal arg, so we do NOT call any
+		 * QWidget method directly here.
+		 *
+		 * Phase 16 W8 (U16.5 / D16.5) — the per-id entries are
+		 * passed as a raw pointer + count (the Per_id_entry struct
+		 * is private to the implementation). The forward declaration
+		 * in the header avoids leaking the struct into client code.
 		 */
 		void _emit_changed(QString const &panel_height,
 		                   QString const &panel_visible_widgets,
+		                   QString const &panel_position,
 		                   QString const &clock_format,
-		                   QString const &launcher_sort_by);
+		                   QString const &launcher_sort_by,
+		                   QString const &background_color,
+		                   QString const &background_image,
+		                   QString const &panel_ids,
+		                   void const *per_id_entries,
+		                   unsigned per_id_count);
 
 	signals:
 
@@ -224,6 +259,19 @@ class ConfigController : public QObject
 		 * clock label whose token is absent. */
 		void panel_visible_widgets_changed(QString list);
 
+		/* panel.position (enum {top,bottom,left,right}, default
+		 * "bottom"). Phase 16 W5 (U16.2 / D16.2): PanelWidget's
+		 * applyPosition slot drives the dual nitpicker panel-domain
+		 * topology (panel_top + panel_bottom) via show()/hide()
+		 * on the two pre-built QWidget instances. Left/right are
+		 * accepted by the validator (Phase 16 + the closed enum
+		 * already covers all four) but the panel-menu Position
+		 * item disables them with a "Phase 17+" tooltip (honest
+		 * disclosure per AGENTS.md §1.1). The panel widget treats
+		 * "top" as show_top_only and any other value as
+		 * show_bottom_only. */
+		void panel_position_changed(QString position);
+
 		/* clock.format (string, default "HH:mm"). The panel's
 		 * applyClockFormat slot runs the format with try/catch
 		 * around QDateTime::toString, falling back to "HH:mm" with a
@@ -233,6 +281,43 @@ class ConfigController : public QObject
 		/* launcher.sort_by (enum {manual,alpha}, default "alpha").
 		 * The launcher's applySortBy slot re-runs repopulate(). */
 		void launcher_sort_by_changed(QString sort);
+
+		/* background.color (hex #RRGGBB, default "#1e1e2e"). W6. */
+		void background_color_changed(QString color);
+
+		/* background.image (allowlist, default
+		 * "/system/background/default.png"). W6. */
+		void background_image_changed(QString path);
+
+		/*
+		 * Phase 16 W8 (U16.5 / D16.5) — per-id panel config fan-out.
+		 * Each <key name="panel.<id>.<suffix>" value="..."/> entry in
+		 * the broadcast emits one of these three signals (the id is
+		 * the dynamic discriminator; the suffix selects which signal).
+		 * The PanelCollection routes these to the matching PanelWidget
+		 * instance.
+		 *
+		 * The default id "default" is special-cased in applyConfig:
+		 * its writes ALSO emit the flat panel_height_changed /
+		 * panel_visible_widgets_changed / panel_position_changed
+		 * signals so the W7 regression path (no PanelCollection)
+		 * keeps working unchanged.
+		 */
+		void panel_height_changed_for(QString id, unsigned h);
+		void panel_position_changed_for(QString id, QString position);
+		void panel_visible_widgets_changed_for(QString id, QString list);
+
+		/*
+		 * Phase 16 W8 (U16.5 / D16.5) — the panel.ids comma-list
+		 * broadcast. The PanelCollection subscribes to this signal
+		 * and creates / destroys PanelWidget instances to match the
+		 * new id set (the "default" id is always present). Emitted
+		 * alongside the per-id signals; the order of emission is
+		 * panel_ids first, per-id second (so a freshly-instantiated
+		 * widget always receives its per-id apply in the same
+		 * broadcast cycle).
+		 */
+		void panel_ids_changed(QString comma_list);
 };
 
 }  /* namespace Sponge::Sponge_DE */
