@@ -73,6 +73,7 @@
 
   <binary>calculatorform</binary>
   <quota ram="64M" caps="1000"/>
+  <resizeable>yes</resizeable>
 
   <config>
     <libc stdout="/dev/log" stderr="/dev/log" pipe="/pipe" rtc="/dev/rtc"/>

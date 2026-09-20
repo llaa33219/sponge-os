@@ -1,0 +1,572 @@
+#
+# \brief  Sponge OS release-media mouse-resize scenario (Phase 16 W9 / criterion 9)
+# \author Sponge OS contributors
+# \date   2026
+#
+# Acceptance boot for Phase 16 W9 criterion-9 (docs/09-roadmap.md §10
+# + docs/plans/phase16-daily-desktop-defaults.md §"W9, Mouse window
+# resize (criterion 9)"): "dragging window edges/corners resizes the
+# window".
+#
+# Topology: base-sel4 + the EXISTING release-media window management
+# stack (motif decorator -- releases as-is on the .img/.iso media, no
+# themed_decorator for the criterion-9 headline gate). Released
+# packages (textedit, files, calculator, terminal) are opt-in via the
+# new <resizeable="yes"/> metadata attribute; pkg_gui_demo is the
+# canonical resizeable package.
+#
+# W9 open question (resolved 2026-09-19): the Qt6 QPA already
+# resizes QWidget content on Gui session resize via
+# QGenodePlatformWindow::_info_changed() in the vendored qt6_base
+# port (genode/contrib/qt6_base-.../src/plugins/platforms/genode/
+# qgenodeplatformwindow.cpp:443-474). No Sponge-side QPA extension
+# or app-side ResizeSubscriber shim is needed. The
+# <resizeable="yes"/> metadata attribute is a forward-compatible
+# opt-out marker for Phase 17+ non-Qt apps.
+#
+# The 8 hit zones are 4 edges (N/S/E/W) + 4 corners (NW/NE/SW/SE),
+# dispatched one at a time via QMP-TARGET zone-N markers; the probe
+# observes the layouter's window_layout + resize_request ROMs plus
+# Capture pixel samples after every zone.
+
+assert {[have_spec sel4]} \
+	"sponge-de-release-resize requires KERNEL=sel4 (BOARD=pc) in build.conf."
+
+build { core lib/ld init timer server/report_rom server/nitpicker \
+         driver/acpi app/pci_decode driver/platform \
+         driver/framebuffer/vesa driver/ps2 \
+         driver/usb_host/pc driver/usb_hid server/event_filter \
+         server/wm app/window_layouter app/decorator \
+         sponge_pkgd test/pkg_gui_demo test/release_resize_probe \
+         sponge-de \
+         qt6/base lib/libc lib/libm lib/stdcxx lib/mesa \
+         lib/mesa_gpu-softpipe lib/egl lib/softpipe lib/libdrm lib/expat \
+         lib/qt6_component lib/vfs lib/vfs_pipe lib/vfs_gpu lib/rom_filter \
+         lib/zlib lib/libpng lib/blit }
+
+create_boot_directory
+
+install_config {
+config
++ parent-provides
+  + service ROM
+  + service PD
+  + service RM
+  + service CPU
+  + service LOG
+  + service IRQ
+  + service IO_MEM
+  + service IO_PORT
+
++ default | caps: 200 | ram: 4M
++ default-route
+  + any-service
+    + parent
+    + any-child
+
++ start timer
+  + provides | + service Timer
+
++ start report_rom | caps: 300 | ram: 8M
+  + provides
+    + service Report
+    + service ROM
+  + config | verbose: no
+    + policy | label: layouter -> window_list       | report: wm -> window_list
+    + policy | label: sponge-de -> window_list      | report: wm -> window_list
+    + policy | label: decorator -> pointer         | report: wm -> pointer
+    + policy | label: decorator -> window_layout   | report: layouter -> window_layout
+    + policy | label: wm -> focus                  | report: layouter -> focus
+    + policy | label: wm -> resize_request         | report: layouter -> resize_request
+    + policy | label: layouter -> hover            | report: decorator -> hover
+    + policy | label: layouter -> decorator_margins | report: decorator -> decorator_margins
+    + policy | label: layouter -> rules            | report: layout_rules
+    + policy | label: layouter -> focus_request    | report: wm -> focus_request
+    + policy | label: release_resize_probe -> window_layout    | report: layouter -> window_layout
+    + policy | label: release_resize_probe -> decorator_margins | report: decorator -> decorator_margins
+    + policy | label: release_resize_probe -> resize_request   | report: layouter -> resize_request
+    + policy | label: sponge_pkgd -> request       | report: release_resize_probe -> request
+    + policy | label: release_resize_probe -> result | report: sponge_pkgd -> result
+    + policy | label: pkg_runtime -> config        | report: sponge_pkgd -> runtime
+
++ start nitpicker | ram: 16M
+  + provides
+    + service Gui
+    + service Capture
+    + service Event
+  + route
+    + service Report | + child report_rom
+    + service Timer | + child timer
+    + any-service
+      + parent
+      + any-child
+  + config
+    + capture
+    + event
+    + report | focus: yes | hover: yes | xray: yes
+    + domain panel | layer: 1 | content: client | label: no
+                   | hover: always | ypos: 0 | height: 28
+    + domain default | layer: 2 | content: client | label: no
+                     | hover: always | focus: click
+    + policy | label_prefix: sponge-de -> Sponge Panel | domain: panel
+    + default-policy | domain: default
+    + background | color: #1e1e2e
+
++ start drivers | caps: 1500 | ram: 96M | managing_system: yes
+  + binary init
+  + route
+    + service ROM | label: config | + parent | label: drivers.config
+    + service Timer | + child timer
+    + service Capture | + child nitpicker
+    + service Event | + child nitpicker
+    + any-service                 | + parent
+  + config
+    + parent-provides
+      + service IRQ
+      + service IO_MEM
+      + service IO_PORT
+      + service ROM
+      + service PD
+      + service RM
+      + service CPU
+      + service LOG
+      + service Timer
+      + service Capture
+      + service Event
+
+    + default | caps: 60
+
+    + start acpi | caps: 250 | ram: 4M
+      + route
+        + service IO_MEM | + parent
+        + service LOG | + parent
+        + service PD | + parent
+        + service RM | + parent
+        + service CPU | + parent
+        + service ROM | + parent
+        + service Report | + child report_rom
+
+    + start report_rom | caps: 100 | ram: 2M
+      + provides
+      | + service ROM
+      | + service Report
+      + config
+      | + policy | label: pci_decode -> system | report: acpi -> acpi
+      | + policy | label: platform -> devices  | report: pci_decode -> devices
+      | + policy | label: usb_hid -> report    | report: usb -> devices
+      + route
+        + service LOG | + parent
+        + service PD | + parent
+        + service CPU | + parent
+        + service ROM | + parent
+
+    + start pci_decode | caps: 100 | ram: 2M
+      + route
+        + service Report | + child report_rom
+        + service ROM | label: system | + child report_rom
+        + service IO_MEM | + parent
+        + service LOG | + parent
+        + service PD | + parent
+        + service RM | + parent
+        + service CPU | + parent
+        + service ROM | + parent
+
+    + start platform | caps: 200 | ram: 3M | managing_system: yes
+      + provides
+      | + service Dma
+      | + service Platform
+      + route
+      | + service ROM | label: devices | + child report_rom
+      | + service Report | + child report_rom
+      | + service IRQ | + parent
+      | + service IO_MEM | + parent
+      | + service IO_PORT | + parent
+      | + service ROM | + parent
+      | + service PD | + parent
+      | + service CPU | + parent
+      | + service LOG | + parent
+      | + service Timer | + parent
+      + config
+        + report | devices: yes
+        + policy | label_prefix: ps2             | + device ps2
+        + policy | label_prefix: fb  | info: yes | + pci | class: VGA
+        + policy | label_prefix: usb | info: yes | + pci | class: USB
+
+    + start fb | caps: 150 | ram: 20M
+      + binary vesa_fb
+      + route
+        + service ROM | label: config | + parent | label: fb.config
+        + service Report | + child report_rom
+        + service Dma | + child platform
+        + service Platform | + child platform
+        + service IO_PORT | + parent
+        + service IO_MEM | + parent
+        + service ROM | + parent
+        + service PD | + parent
+        + service CPU | + parent
+        + service LOG | + parent
+        + service Timer | + parent
+        + service Capture | + parent
+
+    + start ps2 | caps: 100 | ram: 1280K
+      + config
+      + route
+        + service Dma | + child platform
+        + service Platform | + child platform
+        + service Event | + child event_filter | label: ps2
+        + service ROM | + parent
+        + service PD | + parent
+        + service CPU | + parent
+        + service LOG | + parent
+        + service Timer | + parent
+
+    + start usb | caps: 200 | ram: 16M
+      + binary pc_usb_host
+      + provides | + service Usb
+      + config
+      | + report | devices: yes
+      | + policy | label_prefix: usb_hid | + device | class: 0x3
+      + route
+        + service Dma | + child platform
+        + service Platform | + child platform
+        + service Report | label: devices | + child report_rom
+        + service ROM | + parent
+        + service PD | + parent
+        + service RM | + parent
+        + service CPU | + parent
+        + service LOG | + parent
+        + service Timer | + parent
+
+    + start usb_hid | caps: 180 | ram: 10M
+      + route
+        + service ROM | label: report | + child report_rom
+        + service ROM | + parent
+        + service PD | + parent
+        + service RM | + parent
+        + service CPU | + parent
+        + service LOG | + parent
+        + service Timer | + parent
+        + service Event | + child event_filter | label: usb
+        + service Usb | + child usb
+
+    + start event_filter | caps: 90 | ram: 1280K
+      + provides | + service Event
+      + route
+        + service ROM | label: config | + parent | label: event_filter.config
+        + service Event | + parent
+        + service ROM | + parent
+        + service PD | + parent
+        + service CPU | + parent
+        + service LOG | + parent
+        + service Timer | + parent
+
++ start wm | caps: 250 | ram: 8M
+  + provides
+    + service Gui
+    + service Report
+    + service ROM
+  + config
+    + policy | label_prefix: decorator | role: decorator
+    + policy | label_prefix: layouter  | role: layouter
+    + default-policy
+  + route
+    + service ROM | label: focus          | + child report_rom
+    + service ROM | label: resize_request | + child report_rom
+    + service Report | label_last: shape     | + child report_rom
+    + service Report | + child report_rom
+    + service Gui | + child nitpicker
+    + any-service
+      + parent
+      + any-child
+
++ start layouter | caps: 150 | ram: 4M
+  + binary window_layouter
+  + config | rules: rom
+    + report | rules: yes
+    + rules
+      + screen screen
+      + assign | label: sponge-de -> Sponge DE Demo | target: screen
+               | xpos: 300 | ypos: 40 | width: 640 | height: 240 | maximized: no
+      + assign | label_prefix: pkg_runtime | target: screen
+               | xpos: 50 | ypos: 320 | width: 320 | height: 240 | maximized: no
+    + press   | key: BTN_LEFT  | action: drag
+      + release | key: BTN_LEFT | action: drop
+  + route
+    + service ROM | label: window_list       | + child report_rom
+    + service ROM | label: focus_request     | + child report_rom
+    + service ROM | label: hover             | + child report_rom
+    + service ROM | label: decorator_margins | + child report_rom
+    + service ROM | label: rules             | + child report_rom
+    + service Report | label: rules             | + child report_rom | label: layout_rules
+    + service Report | + child report_rom
+    + any-service
+      + child wm
+      + parent
+      + any-child
+
++ start decorator | caps: 350 | ram: 32M
+  + config
+    + controls
+      + maximizer
+      + title
+    + default-policy
+  + route
+    + service ROM | label: window_layout | + child report_rom
+    + service ROM | label: pointer       | + child report_rom
+    + service Report | + child report_rom
+    + any-service
+      + child wm
+      + parent
+      + any-child
+
++ start sponge_pkgd | caps: 200 | ram: 16M
+  + route
+    + service ROM | label_last: request | + child report_rom
+    + service Report | + child report_rom
+    + any-service
+      + parent
+      + any-child
+
++ start pkg_runtime | caps: 1500 | ram: 256M
+  + binary init
+  + route
+    + service ROM | label: config | + child report_rom
+    + service ROM | label_last: mesa_gpu.lib.so | + parent | label: mesa_gpu-softpipe.lib.so
+    + service Gui | + child wm
+    + service Report | + child report_rom
+    + any-service
+      + parent
+      + any-child
+
++ start sponge-de | caps: 1000 | ram: 128M
+  + config
+    + tasklist | source: wm
+    + vfs
+      + dir dev
+        + log
+        + inline rtc | : 2018-01-01 00:01
+      + dir pipe | + pipe
+      + tar qt6_dejavusans.tar
+      + tar qt6_libqgenode.tar
+    + libc | stdout: /dev/log | stderr: /dev/log | pipe: /pipe | rtc: /dev/rtc
+  + route
+    + service Gui | label_last: Sponge Panel | + child nitpicker
+    + service Gui | + child wm
+    + service Report | + child report_rom
+    + service ROM | label: default.theme | + parent
+    + service ROM | label: mesa_gpu.lib.so | + parent | label: mesa_gpu-softpipe.lib.so
+    + any-service
+      + parent
+      + any-child
+
++ start release_resize_probe | caps: 150 | ram: 16M
+  + route
+    + service Capture | + child nitpicker
+    + service Timer | + child timer
+    + service ROM | label: window_layout | + child report_rom
+    + service ROM | label: resize_request | + child report_rom
+    + service ROM | label: decorator_margins | + child report_rom
+    + service ROM | label_last: result   | + child report_rom
+    + service Report | + child report_rom
+    + any-service
+      + parent
+      + any-child
+- }
+
+#
+# Stage every non-build-artifact boot module into bin/ BEFORE
+# build_boot_image (base-sel4 packs a single image.elf at that point).
+#
+exec mkdir -p bin
+
+set dejavu_dst "bin/qt6_dejavusans.tar"
+if {![file exists $dejavu_dst]} {
+	set dejavu_src [glob -nocomplain "${genode_dir}/contrib/qt6_base-*/src/lib/qt6_base/src/3rdparty/wasm/DejaVuSans.ttf"]
+	if {[llength $dejavu_src] == 0} {
+		error "DejaVuSans.ttf not found in the qt6_base port sources"
+	}
+	set staging "[run_dir]/dejavusans-staging"
+	file mkdir "$staging/qt/lib/fonts"
+	file copy -force [lindex $dejavu_src 0] "$staging/qt/lib/fonts/DejaVuSans.ttf"
+	exec tar -cf $dejavu_dst -C $staging qt
+	file delete -force $staging
+}
+
+set recipe_dir "${genode_dir}/repos/os/recipes/raw/drivers_interactive-pc"
+foreach f { drivers.config fb.config event_filter.config } {
+	if {![file exists "$recipe_dir/$f"]} {
+		error "$recipe_dir/$f missing"
+	}
+	exec cp -f "$recipe_dir/$f" "bin/$f"
+}
+set ef_fh [open "bin/event_filter.config" r]
+set ef_content [read $ef_fh]
+close $ef_fh
+set ef_content [string map [list \
+    "    | + input usb" \
+    "    | + transform\n    | | + scale | x: 0.03125 | y: 0.02344\n    | | + input usb" \
+] $ef_content]
+set ef_fh [open "bin/event_filter.config" w]
+puts -nonewline $ef_fh $ef_content
+close $ef_fh
+
+set chargen_dir "${genode_dir}/repos/os/src/server/event_filter"
+foreach f { en_us.chargen special.chargen } {
+	if {![file exists "$chargen_dir/$f"]} { error "$chargen_dir/$f missing" }
+	exec cp -f "$chargen_dir/$f" "bin/$f"
+}
+
+exec cp -f "${genode_dir}/repos/sponge/src/sponge-de/themes/default.theme" \
+           "bin/default.theme"
+
+set staged_pkgs { pkg_gui_demo }
+foreach pkg $staged_pkgs {
+	set src "${genode_dir}/../pkg/$pkg/metadata.xml"
+	if {![file exists $src]} {
+		error "package metadata not found: $src"
+	}
+	exec cp -L $src "bin/pkg_$pkg.xml"
+}
+
+set index_fh [open "bin/pkg_index.xml" w]
+puts $index_fh "<packages>"
+foreach pkg $staged_pkgs { puts $index_fh "  <pkg name=\"$pkg\"/>" }
+puts $index_fh "</packages>"
+close $index_fh
+
+set boot_modules [build_artifacts]
+foreach m { libQt6Core.lib.so libQt6Gui.lib.so libQt6Widgets.lib.so \
+            libqgenode.lib.so qt6_libqgenode.tar qt6_dejavusans.tar \
+            en_us.chargen special.chargen \
+            drivers.config fb.config event_filter.config \
+            default.theme \
+            pkg_pkg_gui_demo.xml pkg_index.xml } {
+	lappend boot_modules $m
+}
+
+build_boot_image $boot_modules
+
+set qmp_source_path [file join [file dirname [file normalize [info script]]] qmp.inc]
+catch { source $qmp_source_path }
+
+if {[info procs qmp_disconnect] eq ""} {
+	proc qmp_disconnect { chan } { catch { close $chan } }
+}
+
+proc qmp_ps2_rel { chan axis value } {
+	qmp_cmd $chan [format {{"execute":"input-send-event","arguments":{"events":[{"type":"rel","data":{"axis":"%s","value":%d}}]}}} $axis $value]
+}
+
+proc qmp_ps2_button { chan down } {
+	set val [expr {$down ? "true" : "false"}]
+	qmp_cmd $chan [format {{"execute":"input-send-event","arguments":{"events":[{"type":"btn","data":{"down":%s,"button":"left"}}]}}} $val]
+}
+
+#
+# qmp_drag -- single press + jiggle + drag + release. The W3-proven
+# PS/2 rel recipe (clamp + coarse + fine + jiggle + press + drag +
+# release with pacing on the fine loops).
+#
+proc qmp_drag { chan x1 y1 x2 y2 steps } {
+	for {set i 0} {$i < 10} {incr i} { qmp_ps2_rel $chan x -100; after 30 }
+	for {set i 0} {$i < 10} {incr i} { qmp_ps2_rel $chan y -100; after 30 }
+	after 200
+
+	set cx [expr {$x1 / 100}]
+	set cy [expr {$y1 / 100}]
+	set fx [expr {$x1 % 100}]
+	set fy [expr {$y1 % 100}]
+	for {set i 0} {$i < $cx} {incr i} { qmp_ps2_rel $chan x 50; after 20 }
+	for {set i 0} {$i < $cy} {incr i} { qmp_ps2_rel $chan y 50; after 20 }
+	for {set i 0} {$i < $fx} {incr i} { qmp_ps2_rel $chan x 1 }
+	for {set i 0} {$i < $fy} {incr i} { qmp_ps2_rel $chan y 1 }
+	after 400
+
+	qmp_ps2_rel $chan x 1
+	after 200
+	qmp_ps2_rel $chan x -1
+	after 200
+
+	qmp_ps2_button $chan true
+	after 200
+
+	set dx [expr {$x2 - $x1}]
+	set dy [expr {$y2 - $y1}]
+	set sx [expr {$dx > 0 ? 1 : -1}]
+	set sy [expr {$dy > 0 ? 1 : -1}]
+	set cx2 [expr {abs($dx) / 100}]
+	set cy2 [expr {abs($dy) / 100}]
+	set fx2 [expr {abs($dx) % 100}]
+	set fy2 [expr {abs($dy) % 100}]
+	after 100
+	for {set i 0} {$i < $cy2} {incr i} { qmp_ps2_rel $chan y [expr {$sy * 50}]; after 30 }
+	for {set i 0} {$i < $cx2} {incr i} { qmp_ps2_rel $chan x [expr {$sx * 50}]; after 30 }
+	for {set i 0} {$i < $fy2} {incr i} { qmp_ps2_rel $chan y $sy }
+	for {set i 0} {$i < $fx2} {incr i} { qmp_ps2_rel $chan x $sx }
+	after 200
+
+	qmp_ps2_button $chan false
+}
+
+proc qmp_exec_target { chan timeout_s } {
+	global qemu_spawn_id
+	if {![info exists qemu_spawn_id]} {
+		puts stderr "\nqmp: qemu_spawn_id not set"
+		exit 1
+	}
+	set spawn_id $qemu_spawn_id
+	match_max -i $qemu_spawn_id 200000
+	set timeout [expr {$timeout_s}]
+	expect {
+		-i $qemu_spawn_id
+		-re {QMP-TARGET zone-([1-8]) (-?[0-9]+) (-?[0-9]+) (-?[0-9]+) (-?[0-9]+)\r*\n} {
+			set z $expect_out(1,string)
+			set x1 $expect_out(2,string)
+			set y1 $expect_out(3,string)
+			set x2 $expect_out(4,string)
+			set y2 $expect_out(5,string)
+			puts "\nqmp: dispatching zone-$z drag ($x1,$y1) -> ($x2,$y2) via usb-tablet abs + HMP mouse_button"
+			qmp_tablet_drag $chan $x1 $y1 $x2 $y2 8
+			return "dispatched"
+		}
+		-re {QMP-TARGET post-resize-title-drag (-?[0-9]+) (-?[0-9]+) (-?[0-9]+) (-?[0-9]+)\r*\n} {
+			set x1 $expect_out(1,string)
+			set y1 $expect_out(2,string)
+			set x2 $expect_out(3,string)
+			set y2 $expect_out(4,string)
+			puts "\nqmp: dispatching post-resize title drag ($x1,$y1) -> ($x2,$y2) via usb-tablet abs + HMP mouse_button"
+			qmp_tablet_drag $chan $x1 $y1 $x2 $y2 8
+			return "dispatched"
+		}
+		-re {QMP-TARGET done\r*\n} {
+			return "done"
+		}
+		timeout {
+			puts stderr "\nqmp: FAIL - no QMP-TARGET marker within ${timeout_s}s"
+			exit 1
+		}
+	}
+}
+
+append qemu_args " -nographic -m 2G "
+append qemu_args " -device nec-usb-xhci,id=xhci -device usb-tablet "
+
+set qmp_port [qmp_pick_port]
+append qemu_args " -qmp tcp:127.0.0.1:${qmp_port},server=on,wait=off "
+
+run_genode_until {.*release-resize-probe: \[observe 0b\].*} 600
+
+set qmp_chan [qmp_connect $qmp_port]
+
+#
+# Dispatch loop: consumes zone/post-drag markers as they arrive
+# (bounded probe retries re-emit zone markers; the `done` marker
+# ends the loop). Bounded by the outer run_genode_until PASS gate.
+#
+while { true } {
+	if { [qmp_exec_target $qmp_chan 120] eq "done" } { break }
+}
+
+global qemu_spawn_id
+run_genode_until {.*release-resize-probe: PASS.*} 600 $qemu_spawn_id
+qmp_disconnect $qmp_chan
