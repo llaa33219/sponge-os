@@ -1,0 +1,110 @@
+#
+# \brief  Sponge configd pattern-key registry acceptance scenario
+#        (Phase 16 W2, U16.5 / D16.5)
+# \author Sponge OS contributors
+# \date   2026
+#
+# Phase 16 W2 deliverable scenario: prove the pattern-key registry
+# (U16.5 / D16.5) end-to-end. The probe writes:
+#
+#   panel.ids            = "alpha,beta"
+#   panel.alpha.height   = "40"          (pattern instantiation)
+#   panel.bogus!!id.height = "40"        (charset rejection)
+#
+# and asserts that:
+#   (a) panel.ids=alpha,beta round-trips through the broadcast;
+#   (b) panel.alpha.height=40 round-trips (proving the pattern registry
+#       instantiated the slot on first write and the cloned panel.height
+#       validator accepted the uint-range value);
+#   (c) panel.bogus!!id.height=40 is rejected with a structured error
+#       that mentions the charset rule [a-z0-9_-]{1,16} (proving the
+#       charset check runs BEFORE the value validator).
+#
+# Topology mirrors run/sponge-configd-persist.run: report_rom routes
+# config_request / config_result / broadcast between the daemon and
+# the probe (configd_registry_probe). No <vfs> gate (pattern-key
+# behavior is purely in-memory; persistence is exercised by the
+# existing persist scenario, not duplicated here).
+#
+# report_rom policies:
+#   sponge_configd's ROM "config_request" <- configd_registry_probe's report
+#   configd_registry_probe's ROM "config_result" <- sponge_configd's report
+#   configd_registry_probe's ROM "broadcast"     <- sponge_configd's broadcast
+#
+# AGENTS.md §4.2: builds lib/ld + core init and passes [build_artifacts]
+# to build_boot_image. Acceptance on base-linux (the fast path the plan
+# allows for the new W2 scenarios).
+#
+
+build { core lib/ld init timer server/report_rom lib/vfs sponge_configd \
+        test/configd_registry_probe }
+
+create_boot_directory
+
+install_config {
+config
++ parent-provides
+  + service LOG
+  + service PD
+  + service CPU
+  + service ROM
+  + service IO_MEM
+  + service IRQ
+
++ default-route
+  + any-service
+    + parent
+    + any-child
++ default | caps: 200 | ram: 8M
+
++ start timer
+  + provides | + service Timer
+
++ start report_rom | ram: 4M
+  + provides
+    + service Report
+    + service ROM
+  + config | verbose: no
+    + policy | label: sponge_configd -> config_request | report: configd_registry_probe -> config_request
+    + policy | label: configd_registry_probe -> config_result | report: sponge_configd -> config_result
+    + policy | label: configd_registry_probe -> broadcast | report: sponge_configd -> config
+
++ start sponge_configd | caps: 200 | ram: 16M
+  + route
+    + service ROM | label_last: config_request | + child report_rom
+    + service Report | + child report_rom
+    + any-service
+      + parent
+      + any-child
+
++ start configd_registry_probe | caps: 200 | ram: 8M
+  + config | phase: pattern-keys
+  + route
+    + service Timer | + child timer
+    + service ROM | label_last: config_result | + child report_rom
+    + service ROM | label_last: broadcast     | + child report_rom
+    + service Report | + child report_rom
+    + any-service
+      + parent
+      + any-child
+- }
+
+build_boot_image [build_artifacts]
+
+#
+# Harmless on base-linux (core runs natively); required for base-sel4 /
+# QEMU to avoid opening a graphical QEMU window.
+#
+append qemu_args " -nographic -m 1G "
+
+#
+# Verification: the probe writes three values (panel.ids, the per-id
+# pattern key, and a charset-rejecting key), reads back the broadcast,
+# and logs "pattern-keys-probe: PASS" only if every step succeeds. A
+# rejection or a missing broadcast entry logs "pattern-keys-probe: FAIL
+# <reason>" and this match times out — the correct FAIL path. Before
+# the W2 implementation lands this scenario FAILS (no panel.ids, no
+# pattern registry, panel.alpha.height is an unknown key); the FAIL
+# is the expected TDD-first sentry.
+#
+run_genode_until {.*pattern-keys-probe: PASS.*} 30
