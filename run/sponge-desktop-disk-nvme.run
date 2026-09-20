@@ -1041,7 +1041,16 @@ set mkfs   [installed_command mkfs.ext2]
 set e2cp   [installed_command e2cp]
 set e2mkdir [installed_command e2mkdir]
 
-exec dd if=/dev/zero of=bin/nvme_partition.ext2 bs=1M count=128 2>/dev/null
+#
+# Size the NVMe ext2 from the ACTUAL staged content (du -smL of
+# [run_dir]/system) + 16 MiB + 25% slack — the earlier hardcoded
+# 128 MiB broke the desktop profile mid-e2cp (falkon's payload
+# alone exceeds it; same failure class as the UEFI-NVMe variant
+# fixed in the same change).
+#
+set sys_size_mb [expr [regsub {\s.*} [exec du -smL [run_dir]/system] {}]]
+set nvme_mb   [expr $sys_size_mb + 16 + ($sys_size_mb / 4)]
+exec dd if=/dev/zero of=bin/nvme_partition.ext2 bs=1M count=$nvme_mb 2>/dev/null
 exec $mkfs -F -q -L GENODE bin/nvme_partition.ext2 2>/dev/null
 #
 # Mirror [run_dir]/system/ into bin/nvme_partition.ext2's /system via
