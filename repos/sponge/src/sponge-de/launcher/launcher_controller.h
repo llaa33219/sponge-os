@@ -88,7 +88,18 @@ class LauncherController : public QObject
 
 		/* Wire the view. The controller calls repopulate() on it
 		 * whenever the parsed list changes. */
-		void attach_view(LauncherMenuView *view) { _view = view; }
+		void attach_view(LauncherMenuView *view) {
+			_view = view;
+			/*
+			 * Eagerly publish the initial `open="no"` state: a
+			 * report_rom relayed ROM whose backing report is
+			 * created only after a client's ROM session opened
+			 * never delivers content to that client (W7 live-
+			* capture evidence), so the report must exist before
+			 * any probe opens the ROM.
+			 */
+			_publish_state(false);
+		}
 
 		/* Wire a NotifyPoster for package-install event notifications. */
 		void attach_notify_poster(NotifyPoster *poster) { _notify = poster; }
@@ -107,6 +118,24 @@ class LauncherController : public QObject
 		 */
 		void request_launch(QString const &name);
 
+	public slots:
+
+		/*
+		 * Phase 16 W7 (U16.4 / D16.5): keyboard-shortcut action slot
+		 * bound to the `launcher` event_filter shortcut. Shows the
+		 * popup if hidden, hides it if visible. Must be a slot —
+		 * ShortcutController invokes it via
+		 * QMetaObject::invokeMethod(..., Qt::QueuedConnection) from
+		 * the Genode entrypoint thread.
+		 */
+		void toggle_launcher();
+
+		/* Hide the popup (if visible) and publish the state —
+		 * the Dismisser's close path (must publish like the
+		 * toggle path so `launcher_state` observers stay in
+		 * sync). */
+		void close_popup();
+
 	signals:
 
 		/* Emitted on the GUI thread whenever the parsed app list
@@ -121,6 +150,20 @@ class LauncherController : public QObject
 	private:
 
 		Genode::Env &_env;
+
+		/*
+		 * Popup-visibility report for the W7 live-shortcut
+		 * proof: `<launcher_state open="yes|no"/>`, published on
+		 * every toggle. Deterministic alternative to pixel
+		 * polling (the popup's on-screen position varies with
+		 * the panel position, so a fixed Capture rect is
+		 * unreliable). Lazy-constructed: scenarios without the
+		 * `launcher_state` report_rom policy are not
+		 * fatal-denied.
+		 */
+		Genode::Constructible<Genode::Expanding_reporter> _state_reporter { };
+
+		void _publish_state(bool open);
 
 		/*
 		 * pkgd's installed-set broadcast ROM (relayed by report_rom).

@@ -317,6 +317,74 @@ void LauncherController::request_launch(QString const &name)
 }
 
 
+/*
+ * Phase 16 W7 (U16.4 / D16.5) — keyboard-shortcut action slot
+ * for the `launcher` event_filter shortcut (default binding
+ * `Super`). Toggles the popup visibility on the GUI thread.
+ *
+ * The slot body mirrors the panel's launcher-toggle click
+ * handler (panel_widget.cc:267-281): if visible, hide; otherwise
+ * repopulate (a pkgd update may have landed between opens) and
+ * show + raise + activate.
+ *
+ * If the view is not attached (the no-launcher topologies —
+ * sponge-de-test.run, etc.), emit a Genode::warning and no-op
+ * (the same defensive pattern the panel uses).
+ *
+ * The `attach_view` injection is the W7 wiring — main.cc calls
+ * `launcher_ctrl.attach_view(&launcher_view)` after construction
+ * exactly as it does today (the path is unchanged for the
+ * panel-button click; W7 just adds a second caller).
+ */
+void LauncherController::_publish_state(bool open)
+{
+	if (!_state_reporter.constructed()) {
+		try {
+			_state_reporter.construct(_env, "launcher_state", "launcher_state");
+		}
+		catch (Genode::Service_denied) {
+			Genode::warning("sponge-de: launcher_state report unavailable "
+			                "(run scenario does not route it)");
+			return;
+		}
+	}
+	_state_reporter->generate([&] (Genode::Generator &g) {
+		g.attribute("open", open ? "yes" : "no");
+	});
+}
+
+
+void LauncherController::close_popup()
+{
+	if (_view && _view->isVisible()) {
+		_view->hide();
+		_publish_state(false);
+	}
+}
+
+
+void LauncherController::toggle_launcher()
+{
+	if (!_view) {
+		Genode::warning("sponge-de: launcher toggle: LauncherMenuView not attached");
+		return;
+	}
+
+	if (_view->isVisible()) {
+		_view->hide();
+		_publish_state(false);
+		Genode::log("sponge-de: launcher shortcut: hiding popup");
+	} else {
+		_view->repopulate();
+		_view->show();
+		_view->raise();
+		_view->activateWindow();
+		_publish_state(true);
+		Genode::log("sponge-de: launcher shortcut: showing popup");
+	}
+}
+
+
 void LauncherController::_poll_launch_result()
 {
 	if (_pending_launch_name.isEmpty())
