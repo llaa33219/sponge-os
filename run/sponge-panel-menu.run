@@ -1,0 +1,437 @@
+#
+# \brief  Sponge DE panel context menu + dual-domain live panel.position
+#        scenario (Phase 16 W5, U16.2 / D16.2)
+# \author Sponge OS contributors
+# \date   2026
+#
+# TDD-first failing stub for W5. On the current tree (W4 done, no W5):
+#   - the panel has no contextMenuEvent override, so a host right-click
+#     fires Qt's default QWidget::contextMenuEvent which does NOTHING
+#     visible on the Genode QPA — the probe's rightclick marker is
+#     accepted, but no menu opens.
+#   - the panel.position configd key is broadcast (validator accepts it,
+#     default "bottom") but no in-sponge-de handler subscribes to it;
+#     the PanelWidget has no applyPosition slot. The dual-domain topology
+#     in this scenario's nitpicker config declares panel_top + panel_bottom
+#     but no sponge-de Gui session is routed to "Sponge Panel Bottom" yet,
+#     so the new Gui session would fatal-deny at sponge-de construct time
+#     on the W4 tree.
+#
+# The W5 implementation commit:
+#   1. Adds PanelWidget::contextMenuEvent with Height (spinbox), Visible
+#      widgets (clock/launcher/tasklist checkboxes), Position (top/bottom
+#      enabled; left/right disabled with "Phase 17+" tooltip), Settings
+#      entry to SettingsController::open_settings_dialog().
+#   2. Adds panel_top_widget.{h,cc} + panel_bottom_widget.{h,cc} thin
+#      wrappers over PanelWidget with distinct window titles ("Sponge
+#      Panel" / "Sponge Panel Bottom") and distinct role tags.
+#   3. Adds ConfigController::panel_position_changed signal + applies
+#      panel.position in applyConfig.
+#   4. Routes sponge-de's TWO Gui sessions (Sponge Panel + Sponge Panel
+#      Bottom) to panel_top + panel_bottom nitpicker domains; the
+#      panel_widget's applyPosition shows the matching widget and hides
+#      the other.
+#
+# Probe (panel_menu_probe):
+#   - Waits for configd broadcast.
+#   - Emits `QMP-TARGET rightclick 512 754` (panel-center on the bottom
+#     panel at default panel.position=bottom on a 1024x768 screen).
+#     The host's qmp_right_click (run/qmp.inc, W4 helper) dispatches a
+#     real BTN_RIGHT press at that pixel — proves contextMenuEvent does
+#     not crash.
+#   - Writes `panel.position=top` via the dedicated de_config_request
+#     channel — the same write a menu's Position → Top slot emits.
+#   - Writes `panel.height=40` via de_config_request — the same write a
+#     menu's Height → 40 slot emits.
+#   - Pixel check: top y=14 non-background AND bottom y=754 background.
+#
+# Final gate: "panel-menu-probe: PASS".
+#
+# base-sel4 with the Phase 10 interactive driver stack (QMP choreography).
+# AGENTS.md §4.2: builds lib/ld + core init and passes [build_artifacts]
+# to build_boot_image. KERNEL=sel4 BOARD=pc (set by the runner).
+#
+
+assert {[have_spec sel4]} \
+	"sponge-panel-menu requires KERNEL=sel4 (BOARD=pc). \
+	 This scenario drives a Qt6 + softpipe sponge-de via the dual-domain \
+	 panel topology AND the W4 qmp_right_click helper; base-linux lacks \
+	 QEMU's QMP socket."
+
+build { core lib/ld init timer server/report_rom server/nitpicker \
+         driver/acpi app/pci_decode driver/platform \
+         driver/framebuffer/vesa driver/ps2 \
+         driver/usb_host/pc driver/usb_hid server/event_filter \
+         sponge_configd sponge-de test/panel_menu_probe \
+         qt6/base lib/libc lib/libm lib/stdcxx lib/mesa \
+         lib/mesa_gpu-softpipe lib/egl lib/softpipe lib/libdrm lib/expat \
+         lib/qt6_component lib/vfs lib/vfs_pipe lib/vfs_gpu lib/rom_filter \
+         lib/zlib lib/libpng lib/blit }
+
+create_boot_directory
+
+install_config {
+config
++ parent-provides
+  + service ROM
+  + service PD
+  + service RM
+  + service CPU
+  + service LOG
+  + service IRQ
+  + service IO_MEM
+  + service IO_PORT
+
++ default | caps: 200 | ram: 4M
++ default-route
+  + any-service
+    + parent
+    + any-child
+
++ start timer
+  + provides | + service Timer
+
++ start report_rom | caps: 300 | ram: 8M
+  + provides
+    + service Report
+    + service ROM
+  + config | verbose: no
+    #
+    # D16.1 channel for SettingsController (DE-side writer).
+    # In this scenario the panel_menu_probe acts as the DE-side
+    # writer (simulating what a QMenu Position/Height slot would
+    # produce when a user clicks it). The real Phase 16 product
+    # scenarios swap the probe for sponge-de (SettingsController).
+    #
+    + policy | label: sponge_configd -> de_config_request | report: panel_menu_probe -> de_config_request
+    + policy | label: panel_menu_probe -> de_config_result   | report: sponge_configd -> de_config_result
+    + policy | label: sponge-de      -> de_config_result   | report: sponge_configd -> de_config_result
+    + policy | label: sponge-de      -> de_config_request  | report: sponge_configd -> de_config_request
+    #
+    # vct-equivalent config_request writer: sponge_configd opens
+    # `config_request` at construct time unconditionally
+    # (sponge_configd/main.cc:184). The SettingsController writes
+    # through the DE-side `de_config_request` channel (D16.1),
+    # but a stub vct-equivalent must own the vct-side
+    # `config_request` slot so sponge_configd's constructor
+    # succeeds. The panel_menu_probe is that publisher here.
+    #
+    + policy | label: sponge_configd -> config_request | report: panel_menu_probe -> config_request
+    + policy | label: panel_menu_probe -> config_result  | report: sponge_configd -> config_result
+    #
+    # Configd broadcast readers.
+    #
+    + policy | label: sponge-de -> configd            | report: sponge_configd -> config
+    + policy | label: panel_menu_probe -> broadcast   | report: sponge_configd -> config
+
++ start nitpicker | ram: 16M
+  + provides
+    + service Gui
+    + service Capture
+    + service Event
+  + route
+    + service Report | + child report_rom
+    + service Timer | + child timer
+    + any-service
+      + parent
+      + any-child
+  + config
+    + capture
+    + event
+    #
+    # DUAL-DOMAIN PANEL TOPOLOGY (U16.2 / D16.2). Two non-overlapping
+    # domains at the top + bottom screen edges. The default
+    # panel.position=bottom means the panel_bottom_widget shows and the
+    # panel_top_widget hides; the live position flip in W5 swaps them.
+    #
+    # Screen is 1024x768 (the Phase 10/11 baseline; the panel-config
+    # scenario uses the same resolution).
+    #
+    + domain panel_top | layer: 2 | content: client | label: no
+                      | hover: always | focus: click | ypos: 0 | height: 28
+    + domain panel_bottom | layer: 2 | content: client | label: no
+                         | hover: always | focus: click | ypos: 740 | height: 28
+    + domain demo | layer: 3 | content: client | label: no
+                  | hover: always | focus: click
+                  | xpos: 192 | ypos: 172 | width: 640 | height: 480
+    + domain default | layer: 4 | content: client | label: no
+                     | hover: always | focus: click | ypos: 28 | height: 712
+    #
+    # Sponge-de's TWO Gui sessions route to their domains. The
+    # MORE SPECIFIC prefix ("Sponge Panel Bottom") comes FIRST so
+    # it wins over the generic ("Sponge Panel") prefix — Genode's
+    # session_policy picks the longest matching prefix
+    # (session_policy.h:127-134, prefix_match > other.prefix_match).
+    # Without this ordering, both labels would match the generic
+    # prefix and BOTH widgets would land on panel_top.
+    #
+    + policy | label_prefix: sponge-de -> Sponge Panel Bottom | domain: panel_bottom
+    + policy | label_prefix: sponge-de -> Sponge Panel         | domain: panel_top
+    + policy | label_prefix: sponge-de -> Sponge DE Demo       | domain: demo
+    + default-policy | domain: default
+    + background | color: #1e1e2e
+
++ start drivers | caps: 1500 | ram: 96M | managing_system: yes
+  + binary init
+  + route
+    + service ROM | label: config | + parent | label: drivers.config
+    + service Timer | + child timer
+    + any-service                 | + parent
+  + config
+    + parent-provides
+      + service IRQ
+      + service IO_MEM
+      + service IO_PORT
+      + service ROM
+      + service PD
+      + service RM
+      + service CPU
+      + service LOG
+      + service Timer
+      + service Capture
+      + service Event
+    + default | caps: 60
+    + start acpi | caps: 250 | ram: 4M
+      + route
+        + service IO_MEM | + parent
+        + service LOG | + parent
+        + service PD | + parent
+        + service RM | + parent
+        + service CPU | + parent
+        + service ROM | + parent
+        + service Report | + child report_rom
+    + start report_rom | caps: 100 | ram: 2M
+      + provides
+      | + service ROM
+      | + service Report
+      + route
+        + service LOG | + parent
+        + service PD | + parent
+        + service CPU | + parent
+        + service ROM | + parent
+    + start pci_decode | caps: 100 | ram: 2M
+      + route
+        + service Report | + child report_rom
+        + service ROM | label: system | + child report_rom
+        + service IO_MEM | + parent
+        + service LOG | + parent
+        + service PD | + parent
+        + service RM | + parent
+        + service CPU | + parent
+        + service ROM | + parent
+    + start platform | caps: 200 | ram: 3M | managing_system: yes
+      + provides
+      | + service Dma
+      | + service Platform
+      + route
+      | + service ROM | label: devices | + child report_rom
+      | + service Report | + child report_rom
+      | + service IRQ | + parent
+      | + service IO_MEM | + parent
+      | + service IO_PORT | + parent
+      | + service ROM | + parent
+      | + service PD | + parent
+      | + service CPU | + parent
+      | + service LOG | + parent
+      | + service Timer | + parent
+      + config
+        + report | devices: yes
+        + policy | label_prefix: ps2 | + device ps2
+        + policy | label_prefix: fb  | info: yes | + pci | class: VGA
+        + policy | label_prefix: usb | info: yes | + pci | class: USB
+    + start fb | caps: 150 | ram: 20M
+      + binary vesa_fb
+      + route
+        + service ROM | label: config | + parent | label: fb.config
+        + service Report | + child report_rom
+        + service Dma | + child platform
+        + service Platform | + child platform
+        + service IO_PORT | + parent
+        + service IO_MEM | + parent
+        + service ROM | + parent
+        + service PD | + parent
+        + service CPU | + parent
+        + service LOG | + parent
+        + service Timer | + parent
+        + service Capture | + parent
+    + start ps2 | caps: 100 | ram: 1280K
+      + route
+        + service Dma | + child platform
+        + service Platform | + child platform
+        + service Event | + child event_filter | label: ps2
+        + service ROM | + parent
+        + service PD | + parent
+        + service CPU | + parent
+        + service LOG | + parent
+        + service Timer | + parent
+    + start usb | caps: 200 | ram: 16M
+      + binary pc_usb_host
+      + provides | + service Usb
+      + config
+      | + report | devices: yes
+      | + policy | label_prefix: usb_hid | + device | class: 0x3
+      + route
+        + service Dma | + child platform
+        + service Platform | + child platform
+        + service Report | label: devices | + child report_rom
+        + service ROM | + parent
+        + service PD | + parent
+        + service RM | + parent
+        + service CPU | + parent
+        + service LOG | + parent
+        + service Timer | + parent
+    + start usb_hid | caps: 180 | ram: 10M
+      + route
+        + service ROM | label: report | + child report_rom
+        + service ROM | + parent
+        + service PD | + parent
+        + service RM | + parent
+        + service CPU | + parent
+        + service LOG | + parent
+        + service Timer | + parent
+        + service Event | + child event_filter | label: usb
+        + service Usb | + child usb
+    + start event_filter | caps: 90 | ram: 1280K
+      + provides | + service Event
+      + route
+        + service ROM | label: config | + parent | label: event_filter.config
+        + service Event | + parent
+        + service ROM | + parent
+        + service PD | + parent
+        + service CPU | + parent
+        + service LOG | + parent
+        + service Timer | + parent
+
++ start sponge_configd | caps: 200 | ram: 16M
+  + route
+    + service ROM | label_last: config_request      | + child report_rom
+    + service ROM | label_last: config_result       | + child report_rom
+    + service ROM | label_last: de_config_request   | + child report_rom
+    + service ROM | label_last: de_config_result    | + child report_rom
+    + service Report | + child report_rom
+    + any-service
+      + parent
+      + any-child
+  + config
+    + de_config
+
+#
+# sponge-de: dual Gui session (label_last "Sponge Panel" + "Sponge Panel
+# Bottom") routes to the dual panel domains. ConfigController reads the
+# configd broadcast (panel.position, panel.height, panel.visible_widgets).
+# SettingsController writes through de_config_request (used by the panel
+# context menu's Height spinbox + Position radio group).
+#
++ start sponge-de | caps: 1000 | ram: 256M
+  + config
+    + config | source: configd
+    + de_config | source: controller
+    + panel_bottom | source: dual
+    + vfs
+      + dir dev
+        + log
+        + inline rtc | : 2018-01-01 00:01
+      + dir pipe | + pipe
+      + tar qt6_dejavusans.tar
+      + tar qt6_libqgenode.tar
+    + libc | stdout: /dev/log | stderr: /dev/log | pipe: /pipe | rtc: /dev/rtc
+  + route
+    + service Gui | label_last: Sponge Panel         | + child nitpicker
+    + service Gui | label_last: Sponge Panel Bottom  | + child nitpicker
+    + service Gui | + child nitpicker
+    + service Report | label: input              | + child report_rom
+    + service Report | label: de_config_request  | + child report_rom
+    + service ROM | label: de_config_result      | + child report_rom
+    + service ROM | label: configd              | + child report_rom
+    + service ROM | label: mesa_gpu.lib.so | + parent | label: mesa_gpu-softpipe.lib.so
+    + any-service
+      + parent
+      + any-child
+
++ start panel_menu_probe | caps: 200 | ram: 16M
+  + config
+  + route
+    + service Timer | + child timer
+    + service Report | + child report_rom
+    + service ROM | label_last: broadcast          | + child report_rom
+    + service ROM | label_last: de_config_result   | + child report_rom
+    + service ROM | label_last: de_config_request  | + child report_rom
+    + service ROM | label_last: config_result      | + child report_rom
+    + service ROM | label_last: config_request     | + child report_rom
+    + service Capture | + child nitpicker
+    + any-service
+      + parent
+      + any-child
+- }
+
+#
+# Stage every non-build-artifact boot module into bin/ BEFORE
+# build_boot_image. On base-sel4 the boot image is a single packed
+# image.elf, so modules added after build_boot_image never reach
+# the guest.
+#
+exec mkdir -p bin
+
+set dejavu_dst "bin/qt6_dejavusans.tar"
+if {![file exists $dejavu_dst]} {
+	set dejavu_src [glob -nocomplain "${genode_dir}/contrib/qt6_base-*/src/lib/qt6_base/src/3rdparty/wasm/DejaVuSans.ttf"]
+	if {[llength $dejavu_src] == 0} {
+		error "DejaVuSans.ttf not found in the qt6_base port sources"
+	}
+	set staging "[run_dir]/dejavusans-staging"
+	file mkdir "$staging/qt/lib/fonts"
+	file copy -force [lindex $dejavu_src 0] "$staging/qt/lib/fonts/DejaVuSans.ttf"
+	exec tar -cf $dejavu_dst -C $staging qt
+	file delete -force $staging
+}
+
+set recipe_dir "${genode_dir}/repos/os/recipes/raw/drivers_interactive-pc"
+foreach f { drivers.config fb.config event_filter.config } {
+	if {![file exists "$recipe_dir/$f"]} {
+		error "$recipe_dir/$f missing (vendored drivers_interactive-pc recipe drifted?)"
+	}
+	exec cp -f "$recipe_dir/$f" "bin/$f"
+}
+
+set chargen_dir "${genode_dir}/repos/os/src/server/event_filter"
+foreach f { en_us.chargen special.chargen } {
+	if {![file exists "$chargen_dir/$f"]} { error "$chargen_dir/$f missing" }
+	exec cp -f "$chargen_dir/$f" "bin/$f"
+}
+
+foreach theme { default light dark compact } {
+	set theme_src "${genode_dir}/repos/sponge/src/sponge-de/themes/${theme}.theme"
+	if {![file exists $theme_src]} {
+		error "theme file missing: $theme_src"
+	}
+	exec cp -f $theme_src "bin/${theme}.theme"
+}
+
+set boot_modules [build_artifacts]
+foreach m { libQt6Core.lib.so libQt6Gui.lib.so libQt6Widgets.lib.so \
+            libqgenode.lib.so qt6_libqgenode.tar qt6_dejavusans.tar \
+            en_us.chargen special.chargen \
+            drivers.config fb.config event_filter.config \
+            default.theme light.theme dark.theme compact.theme } {
+	lappend boot_modules $m
+}
+
+build_boot_image $boot_modules
+
+#
+# QMP plumbing: source the shared qmp.inc helper. The W4
+# qmp_right_click helper handles the BTN_RIGHT dispatch that
+# triggers the panel's contextMenuEvent on the Genode QPA.
+#
+source [file join [file dirname [file normalize [info script]]] qmp.inc]
+
+set qmp_port [qmp_pick_port]
+append qemu_args " -qmp tcp:127.0.0.1:${qmp_port},server=on,wait=off -nographic -m 2G "
+
+run_genode_until {.*sponge-de: panel shown.*} 300
+set qmp_chan [qmp_connect $qmp_port]
+global qemu_spawn_id
+match_max -i $qemu_spawn_id 200000
+qmp_exec_target $qmp_chan 120
+run_genode_until {.*panel-menu-probe: PASS.*} 120 $qemu_spawn_id
+qmp_disconnect $qmp_chan
