@@ -1,0 +1,91 @@
+#
+# \brief  Sponge configd validator-parity acceptance scenario
+#        (Phase 16 W2, D16.5/F15)
+# \author Sponge OS contributors
+# \date   2026
+#
+# Phase 16 W2 deliverable scenario: prove the validator-parity error
+# path (F15 — "writing a typo'd key returns a structured error
+# mentioning the suggested known key"). The probe writes:
+#
+#   panel.visble_widgets = "clock"   (typo: "visble" vs "visible")
+#
+# and asserts that the structured error reply mentions
+# `panel.visible_widgets` as the suggestion, exactly as `vct config`
+# has always done for the pre-W2 keys. This is the regression test for
+# the new keys too: every new key's validator must use the same
+# suggestion path so a typo never fails silently.
+#
+# Topology mirrors run/sponge-configd-pattern-keys.run. base-linux for
+# fast iteration. Acceptance on base-linux; the validator-parity
+# behavior is purely in-memory and orthogonal to the kernel tag.
+#
+# AGENTS.md §4.2: builds lib/ld + core init and passes [build_artifacts]
+# to build_boot_image.
+#
+
+build { core lib/ld init timer server/report_rom lib/vfs sponge_configd \
+        test/configd_registry_probe }
+
+create_boot_directory
+
+install_config {
+config
++ parent-provides
+  + service LOG
+  + service PD
+  + service CPU
+  + service ROM
+  + service IO_MEM
+  + service IRQ
+
++ default-route
+  + any-service
+    + parent
+    + any-child
++ default | caps: 200 | ram: 8M
+
++ start timer
+  + provides | + service Timer
+
++ start report_rom | ram: 4M
+  + provides
+    + service Report
+    + service ROM
+  + config | verbose: no
+    + policy | label: sponge_configd -> config_request | report: configd_registry_probe -> config_request
+    + policy | label: configd_registry_probe -> config_result | report: sponge_configd -> config_result
+    + policy | label: configd_registry_probe -> broadcast | report: sponge_configd -> config
+
++ start sponge_configd | caps: 200 | ram: 16M
+  + route
+    + service ROM | label_last: config_request | + child report_rom
+    + service Report | + child report_rom
+    + any-service
+      + parent
+      + any-child
+
++ start configd_registry_probe | caps: 200 | ram: 8M
+  + config | phase: badkey
+  + route
+    + service Timer | + child timer
+    + service ROM | label_last: config_result | + child report_rom
+    + service ROM | label_last: broadcast     | + child report_rom
+    + service Report | + child report_rom
+    + any-service
+      + parent
+      + any-child
+- }
+
+build_boot_image [build_artifacts]
+
+append qemu_args " -nographic -m 1G "
+
+#
+# Verification: the probe writes one typo'd key, asserts the error
+# reply mentions the suggestion, and logs "badkey-probe: PASS". The
+# F15 parity check is a regression for the new keys too: every new
+# key's typo'd variant must surface the suggestion in the structured
+# error, never a generic "unknown key".
+#
+run_genode_until {.*badkey-probe: PASS.*} 30

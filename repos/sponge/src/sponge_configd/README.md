@@ -52,7 +52,7 @@ at startup with the registry defaults.
 - De-duplicates identical requests by an `op|key|value` signature.
 - Emits a structured `<result>` (ok/error) per request.
 
-## Key registry (Phase 11)
+## Key registry (Phase 11 + Phase 16 W2)
 
 The store is a closed registry — an unknown key is a structured error,
 never a silent write. Registry entries and list/broadcast output are
@@ -60,6 +60,8 @@ name-sorted:
 
 | key                      | type          | allowed values / constraint                    | default         |
 |--------------------------|---------------|-----------------------------------------------|-----------------|
+| `background.color`       | hex color     | `#RRGGBB` (7 chars, hex digits)               | `#1e1e2e`       |
+| `background.image`       | allowlist     | closed set of staged image paths (default: `/system/background/default.png`) | `/system/background/default.png` |
 | `bake.applied`           | enum          | `yes`, `no` (`no` is the reset trigger)       | `no`            |
 | `bake.profile`           | string        | manifest profile; read-only to users          | `none`          |
 | `bake.version`           | uint          | manifest `profile_config_version`; read-only  | `0`             |
@@ -67,14 +69,97 @@ name-sorted:
 | `leitzentrale.enabled`   | enum          | `true`, `false`                               | `false`         |
 | `launcher.sort_by`       | enum          | `manual`, `alpha`                             | `alpha`         |
 | `panel.height`           | uint range    | base-10 integer in `[16..128]`               | `28`            |
+| `panel.ids`              | comma-list    | each token matches `[a-z0-9_-]{1,16}`        | empty           |
 | `panel.position`         | enum          | `top`, `bottom`, `left`, `right`              | `bottom`        |
-| `panel.visible_widgets`  | enum-list     | comma-separated `clock`, `launcher` tokens  | `clock,launcher`|
+| `panel.visible_widgets`  | enum-list     | comma-separated `clock`, `launcher`, `tasklist` tokens | `clock,launcher` |
+| `shortcuts.bindings`     | structured    | one binding per line: `<action>\t<key_sequence>` (see below) | shipped initial binding list |
 | `theme.active`           | string        | any non-empty value                           | `light`         |
 
-All ten stored keys run on both kernel tags and are live-reloadable from the
-configd broadcast. `panel.position` remains a boot-time placement choice:
-configd persists the value in memory, while the run script/domain owns the
-actual panel placement and a reboot is required after changing it.
+All fourteen stored keys run on both kernel tags and are
+live-reloadable from the configd broadcast. `panel.position` is
+documented as live in Phase 16 (U16.2 / D16.2) — the run script/domain
+owns the panel placement and updates it on the next broadcast poll
+without requiring a reboot.
+
+### Pattern keys (Phase 16 W2, U16.5 / D16.5 / D16.10)
+
+In addition to the flat registry, the daemon supports three pattern
+templates — `panel.<id>.height`, `panel.<id>.position`,
+`panel.<id>.visible_widgets`. The `<id>` placeholder is a wildcard
+segment that matches `[a-z0-9_-]{1,16}`; on first write of a
+matching per-id key, the pattern registry clones the corresponding
+flat key's `Key_def` (its `kind`, range, default, and enum-list
+fields are copied verbatim) into the instantiated slot pool and runs
+the cloned validator on the value. **Instantiation is synchronous at
+write time** (the broadcast and the persistent store only ever see
+the cloned per-id names; the templates themselves are never visible).
+
+The runtime instance count is open-ended up to `MAX_PATTERN_KEYS = 32`
+(the 3 templates share the slot pool with the instantiated entries,
+so the practical ceiling is `MAX_PATTERN_KEYS - _num_templates =
+29` live per-id keys). Reads of an uninstantiated template name find
+nothing in the broadcast — the key is only visible after a
+successful write. Re-writing an already-instantiated key is a no-op
+at the structure level (the existing slot is reused; only the value
+changes).
+
+Three failure modes are distinguished at write time:
+
+* **shape miss** (no template matches) — the daemon falls through to
+  the unknown-key path with the F15 Levenshtein suggestion.
+* **charset violation** (the key has the right `panel.<id>.<suffix>`
+  shape but the `<id>` segment contains a character outside
+  `[a-z0-9_-]` or exceeds 16 chars) — the daemon emits
+  `Genode::warning` and a structured error mentioning the charset
+  rule. The value is not touched.
+* **registry full** (template matched but `MAX_PATTERN_KEYS` slots
+  are taken) — the daemon emits `Genode::warning` and a structured
+  error naming the limit. The value is not touched.
+
+The `panel.ids` flat key is the comma-list of the per-id keys the
+user has declared active (e.g. `panel.ids=alpha,beta`). The
+validator is the same `[a-z0-9_-]{1,16}` charset per token (the
+wildcard charset) so the same parser handles both lists.
+
+### Structured shortcuts key (Phase 16 W2, U16.4 / D16.5 / D16.10)
+
+`shortcuts.bindings` is the **deliberate exception to the
+one-key-per-setting rule**. The closed registry covers every other
+configd key with a one-key-per-setting contract; this key instead
+carries an extensible multi-line binding list so the keyboard
+shortcut framework can grow without further registry changes. The
+format and validator contract:
+
+* One binding per line; the line separator is `\\n`.
+* Each line is `<action_token>\\t<key_sequence>` exactly. Any other
+  separator shape (zero TABs, multiple TABs, missing TAB) is
+  rejected with a structured error mentioning the offending line.
+* `<action_token>` is a member of the closed enum `{launcher,
+  focus_next, dismiss}`. Unknown action tokens are rejected with a
+  structured error naming the token.
+* `<key_sequence>` is a dash-separated list of Genode Input-event
+  keycodes. Each token is resolved via a synonym table first
+  (`Super` → `KEY_LEFTMETA`, `Meta` → `KEY_LEFTMETA`, `Esc` →
+  `KEY_ESC`, `Escape` → `KEY_ESC`, `Tab` → `KEY_TAB`, `Return` /
+  `Enter` → `KEY_ENTER`, `Backspace` → `KEY_BACKSPACE`, `Alt` →
+  `KEY_LEFTALT`, `AltR` → `KEY_RIGHTALT`, `Ctrl` → `KEY_LEFTCTRL`,
+  `Shift` → `KEY_LEFTSHIFT`, `Space` → `KEY_SPACE`) and then via
+  `Genode::Input::key_code()`. Any token resolving to `KEY_UNKNOWN`
+  is rejected with a structured error naming the token.
+* Any failed line rejects the **whole write** (no partial-success
+  path). Every rejection emits `Genode::warning` AND a structured
+  error — never a silent drop.
+
+The initial shipped bindings (Phase 16 W2):
+
+```
+launcher\tSuper\nfocus_next\tAlt-Tab\ndismiss\tEscape
+```
+
+Future bindings can be added by writing the configd key directly
+(no code change). Phase 17 work adds the key-event subscriber that
+dispatches these actions to the Sponge DE widgets; Phase 16 only
+ships the storage and validation contract.
 
 ## Baked defaults (Phase 15 W3)
 

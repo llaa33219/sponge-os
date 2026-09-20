@@ -1,0 +1,101 @@
+#
+# \brief  Sponge configd structured shortcuts-key acceptance scenario
+#        (Phase 16 W2, U16.4 / D16.5)
+# \author Sponge OS contributors
+# \date   2026
+#
+# Phase 16 W2 deliverable scenario: prove the structured shortcuts key
+# (U16.4 / D16.5) end-to-end. The probe writes:
+#
+#   shortcuts.bindings = "launcher\tSuper\nfocus_next\tAlt-Tab\ndismiss\tEscape"
+#   shortcuts.bindings = "garbage_action\tSuper"
+#
+# and asserts that:
+#   (a) the well-formed 3-line binding list round-trips through the
+#       broadcast (proving the new shortcuts_validator accepted the
+#       closed-enum action tokens AND every Genode Input-event keycode
+#       in the three sequences);
+#   (b) a binding with an unknown action token "garbage_action" is
+#       rejected with a structured error mentioning the action token
+#       (proving the per-line validator returns a structured error AND
+#       emits Genode::warning — never a silent drop, AGENTS.md §5.1).
+#
+# The shortcuts.bindings key is the deliberate exception to the
+# one-key-per-setting rule documented in repos/sponge/src/sponge_configd/
+# README.md (the U16.4 design: a single structured-value key carries
+# the whole extensible binding list).
+#
+# Topology mirrors run/sponge-configd-persist.run. base-linux for fast
+# iteration (the plan allows the new W2 scenarios to iterate on
+# base-linux).
+#
+# AGENTS.md §4.2: builds lib/ld + core init and passes [build_artifacts]
+# to build_boot_image.
+#
+
+build { core lib/ld init timer server/report_rom lib/vfs sponge_configd \
+        test/configd_registry_probe }
+
+create_boot_directory
+
+install_config {
+config
++ parent-provides
+  + service LOG
+  + service PD
+  + service CPU
+  + service ROM
+  + service IO_MEM
+  + service IRQ
+
++ default-route
+  + any-service
+    + parent
+    + any-child
++ default | caps: 200 | ram: 8M
+
++ start timer
+  + provides | + service Timer
+
++ start report_rom | ram: 4M
+  + provides
+    + service Report
+    + service ROM
+  + config | verbose: no
+    + policy | label: sponge_configd -> config_request | report: configd_registry_probe -> config_request
+    + policy | label: configd_registry_probe -> config_result | report: sponge_configd -> config_result
+    + policy | label: configd_registry_probe -> broadcast | report: sponge_configd -> config
+
++ start sponge_configd | caps: 200 | ram: 16M
+  + route
+    + service ROM | label_last: config_request | + child report_rom
+    + service Report | + child report_rom
+    + any-service
+      + parent
+      + any-child
+
++ start configd_registry_probe | caps: 200 | ram: 8M
+  + config | phase: shortcuts
+  + route
+    + service Timer | + child timer
+    + service ROM | label_last: config_result | + child report_rom
+    + service ROM | label_last: broadcast     | + child report_rom
+    + service Report | + child report_rom
+    + any-service
+      + parent
+      + any-child
+- }
+
+build_boot_image [build_artifacts]
+
+append qemu_args " -nographic -m 1G "
+
+#
+# Verification: the probe writes two values (a well-formed 3-line list
+# and an invalid one with an unknown action token), reads back the
+# broadcast, and logs "shortcuts-probe: PASS" only if every step
+# succeeds. Before the W2 implementation lands this scenario FAILS
+# (no shortcuts.bindings key, no shortcuts_validator); the FAIL is
+# the expected TDD-first sentry.
+#
+run_genode_until {.*shortcuts-probe: PASS.*} 30
