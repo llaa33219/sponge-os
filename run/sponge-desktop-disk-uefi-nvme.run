@@ -1052,7 +1052,17 @@ file delete -force $esp_stage $esp_img $boot_img
 # (one-namespace verified, Phase 12 W2).
 #
 set nvme_partition_ext2 [run_dir]/nvme_partition.ext2
-exec dd if=/dev/zero of=$nvme_partition_ext2 bs=1M count=256 2>/dev/null
+#
+# Size the NVMe ext2 from the ACTUAL staged content (du -smL of
+# [run_dir]/system) + 16 MiB + 25% slack, mirroring the AHCI
+# variant's GENODE sizing (run/sponge-desktop-disk-uefi.run). The
+# earlier hardcoded 256 MiB broke the desktop profile mid-e2cp
+# (falkon's ~509 MiB payload alone exceeds it — the W3 honest
+# disclosure; this closes it).
+#
+set sys_size_mb [expr [regsub {\s.*} [exec du -smL $sys_dir] {}]]
+set nvme_mb   [expr $sys_size_mb + 16 + ($sys_size_mb / 4)]
+exec dd if=/dev/zero of=$nvme_partition_ext2 bs=1M count=$nvme_mb 2>/dev/null
 exec $mkfs_ext2 -F -q -L GENODE $nvme_partition_ext2
 
 exec $e2mkdir $nvme_partition_ext2:/system
@@ -1075,8 +1085,13 @@ foreach entry [lsort [exec find "$sys_dir" -mindepth 1 -not -path "*/system/boot
 	}
 }
 
-exec dd if=/dev/zero of=bin/nvme_disk.img bs=1M count=384 2>/dev/null
-exec $sgdisk --clear --new=3:0:+256M --change-name=3:GENODE bin/nvme_disk.img 2>/dev/null
+# Disk size follows the du-measured partition content (nvme_mb,
+# computed above) + 32 MiB of GPT/metadata slack — a fixed size
+# breaks the desktop profile (the P3 ext2 no longer fits, and
+# sgdisk then writes a partition table whose backup header lands
+# past the image end: the 'invalid backup GPT header' failure).
+exec dd if=/dev/zero of=bin/nvme_disk.img bs=1M count=[expr $nvme_mb + 32] 2>/dev/null
+exec $sgdisk --clear --new=3:0:+${nvme_mb}M --change-name=3:GENODE bin/nvme_disk.img 2>/dev/null
 set p3_info [exec $sgdisk -i 3 bin/nvme_disk.img]
 set p3_first [lindex [regexp -inline {First sector: ([0-9]+)} $p3_info] 1]
 exec dd if=$nvme_partition_ext2 of=bin/nvme_disk.img bs=512 \
@@ -1159,7 +1174,7 @@ set pkg_xml_present 0
 set p3_info_nvme [exec $sgdisk -i 3 bin/nvme_disk.img]
 set p3_first_nvme [lindex [regexp -inline {First sector: ([0-9]+)} $p3_info_nvme] 1]
 set nvme_p3_dump [run_dir]/nvme-p3-check.ext2
-set nvme_p3_total_sectors [expr {256 * 1024 * 1024 / 512}]
+set nvme_p3_total_sectors [expr {$nvme_mb * 1024 * 1024 / 512}]
 set nvme_p3_count [expr {$nvme_p3_total_sectors - $p3_first_nvme}]
 exec dd if=bin/nvme_disk.img of=$nvme_p3_dump bs=512 skip=$p3_first_nvme count=$nvme_p3_count 2>/dev/null
 catch {exec $e2ls $nvme_p3_dump:/system/bake} bake_out
