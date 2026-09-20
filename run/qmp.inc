@@ -482,6 +482,105 @@ proc qmp_send_key { chan keyname } {
 }
 
 ##
+# Map a single QMP-TARGET key token to its QEMU qcode. The
+# supported token set covers the W7 plan's initial + override
+# bindings: Super / Esc / Alt-Tab / Ctrl-Alt-T plus the
+# canonical Genode Input-event keycodes (e.g. KEY_LEFTMETA).
+# Tokens separated by '-' are treated as a combination (the
+# modifier + main key is held simultaneously — QEMU's send-key
+# takes a list of keys, all pressed at once).
+#
+# Combination dispatch: the spec is "press all the keys at
+# once" — QEMU's `send-key` accepts a list and holds them all
+# down together. The proc therefore passes the full key list
+# in one QMP call, NOT a per-key sequence with holds.
+#
+proc qmp_key_to_qcode { tok } {
+	switch -- $tok {
+		"super"      { return "meta_l" }
+		"meta"       { return "meta_l" }
+		"lmeta"      { return "meta_l" }
+		"rmeta"      { return "meta_r" }
+		"esc"        { return "esc" }
+		"escape"     { return "esc" }
+		"tab"        { return "tab" }
+		"enter"      { return "ret" }
+		"ret"        { return "ret" }
+		"return"     { return "ret" }
+		"space"      { return "spc" }
+		"backspace"  { return "backspace" }
+		"alt"        { return "alt" }
+		"lalt"       { return "alt_l" }
+		"ralt"       { return "alt_r" }
+		"ctrl"       { return "ctrl" }
+		"lctrl"      { return "ctrl_l" }
+		"rctrl"      { return "ctrl_r" }
+		"shift"      { return "shift" }
+		"lshift"     { return "shift_l" }
+		"rshift"     { return "shift_r" }
+		"up"         { return "up" }
+		"down"       { return "down" }
+		"left"       { return "left" }
+		"right"      { return "right" }
+		"home"       { return "home" }
+		"end"        { return "end" }
+		"pgup"       { return "pgup" }
+		"pgdn"       { return "pgdn" }
+		"delete"     { return "delete" }
+		"insert"     { return "insert" }
+		"f1"         { return "f1" }
+		"f2"         { return "f2" }
+		"f3"         { return "f3" }
+		"f4"         { return "f4" }
+		"f5"         { return "f5" }
+		"f6"         { return "f6" }
+		"f7"         { return "f7" }
+		"f8"         { return "f8" }
+		"f9"         { return "f9" }
+		"f10"        { return "f10" }
+		"f11"        { return "f11" }
+		"f12"        { return "f12" }
+	}
+	# KEY_FOO form (already-canonical Genode Input-event keycodes).
+	if {[string match "KEY_*" $tok]} {
+		set stripped [string range $tok 4 end]
+		set lower [string tolower $stripped]
+		if {[info procs "qmp_key_to_qcode"] ne ""} {
+			switch -- $lower { /* fall through */ }
+		}
+		return $lower
+	}
+	# single-letter fallthrough
+	if {[string length $tok] == 1} { return $tok }
+	puts stderr "\nqmp: unmapped key token '$tok' - extend qmp_key_to_qcode"
+	exit 1
+}
+
+proc qmp_send_combination { chan keyspec } {
+	# Split on '-' to support modifier+main key combinations
+	# (e.g. "ctrl-alt-t" → ["ctrl", "alt", "t"]). Each token is
+	# resolved via qmp_key_to_qcode; the qcode list is then sent
+	# to QEMU in one send-key call.
+	#
+	# QEMU 11 requires the qcode-object form for each key
+	# (`{"type":"qcode","data":"lmeta"}`), NOT the bare
+	# string form `["lmeta"]` (the latter is rejected with
+	# `Invalid parameter type for 'keys[0]', expected: object`).
+	set qcodes [list]
+	foreach tok [split $keyspec "-"] {
+		set qc [qmp_key_to_qcode $tok]
+		lappend qcodes $qc
+	}
+	# Build the JSON array of objects: [{"type":"qcode","data":"lctrl"}, ...]
+	set json_list ""
+	foreach qc $qcodes {
+		if {$json_list ne ""} { append json_list "," }
+		append json_list "{\"type\":\"qcode\",\"data\":\"$qc\"}"
+	}
+	qmp_cmd $chan [format {{"execute":"send-key","arguments":{"keys":[%s]}}} $json_list]
+}
+
+##
 # Bounded expect on global `qemu_spawn_id` for the next QMP-TARGET marker,
 # then dispatch to the matching qmp_* proc. The marker formats are:
 #
@@ -566,6 +665,12 @@ proc qmp_exec_target { chan timeout_s } {
 			puts "\nqmp: dispatching press at guest ($gx,$gy) (no clamp + walk; cursor already positioned by _drive_to)"
 			qmp_press $chan $gx $gy
 		}
+		-re {QMP-TARGET rightclick (-?\d+) (-?\d+)\r*\n} {
+			set gx $expect_out(1,string)
+			set gy $expect_out(2,string)
+			puts "\nqmp: dispatching right-click at guest ($gx,$gy) via PS/2 relative BTN_RIGHT"
+			qmp_right_click $chan $gx $gy
+		}
 		-re {QMP-TARGET tablet (-?\d+) (-?\d+)\r*\n} {
 			set gx $expect_out(1,string)
 			set gy $expect_out(2,string)
@@ -604,6 +709,11 @@ proc qmp_exec_target { chan timeout_s } {
 			set s $expect_out(1,string)
 			puts "\nqmp: dispatching type '$s'"
 			qmp_type $chan $s
+		}
+		-re {QMP-TARGET key ([a-zA-Z0-9_\-]+)\r*\n} {
+			set k $expect_out(1,string)
+			puts "\nqmp: dispatching key '$k'"
+			qmp_send_combination $chan $k
 		}
 		-re {QMP-TARGET move (-?\d+) (-?\d+)\r*\n} {
 			set dx $expect_out(1,string)
@@ -708,6 +818,107 @@ proc qmp_tablet_click { chan tx ty } {
 	qmp_hmp $chan "mouse_button 0"
 }
 
+
+##
+# Phase 16 W9 tablet-absolute drag (press + move + release in PIXEL
+# coordinates). Same absolute-axis walk as qmp_tablet_click, but
+# extended for drags:
+#
+#   1. HMP `mouse_set <tablet-index>` - select usb-tablet as current.
+#   2. QMP input-send-event abs (scaled) - position cursor over (x1, y1).
+#   3. QMP abs jiggle ±1 px on x - advance decorator hover SEQ for the
+#      layouter's deferred-DRAG protocol (same trick as the W4 styled
+#      recipe; see run/sponge-de-themed-chrome.run's qmp_drag).
+#   4. HMP `mouse_button 1` - PRESS and HOLD.
+#   5. `$steps` interpolated abs events from (x1,y1) to (x2,y2) -
+#      the actual drag motion. Each event carries BOTH axes so the
+#      motif decorator's animated_rect and the layouter's resize
+#      pipeline see continuous motion.
+#   6. QMP abs (x2, y2) - final position.
+#   7. HMP `mouse_button 0` - RELEASE.
+#
+# Why this exists instead of the W3 PS/2 qmp_drag:
+#   The motif decorator's at-border zone is 4 px wide (decorator/window.h:115
+#   `_border_size = 4`), and the corner zone is 16 px inside the border.
+#   The PS/2 REL recipe's clamp-to-(0,0) + coarse rel-50 + fine rel-1
+#   walks land with ±10 px tolerance on this host (QEMU 11 + the
+#   custom event_filter config without <accelerate>). That tolerance
+#   misses 4-px borders by 70% per ps2-recipe-bounded expect. The
+#   tablet-abs recipe lands on the LITERAL pixel target (the W4 +
+#   W8 evidence at docs/evidence/task-4-phase10-interactive.md +
+#   docs/evidence/phase16-w8-multipanel.{md,log}: ABS_MOTION to
+#   (16896, 16895) lands within ±0-1 px of the target on this host).
+#
+# Coordinate scale: pixel (x, y) in [0, 1024) x [0, 768) →
+#   abs_x = (x*32767 + 512) / 1024
+#   abs_y = (y*32767 + 384) / 768
+# matching qmp_tablet_click's calibration (W4 proven). When the host
+# event_filter.config has the <transform><scale/></transform> rewrite
+# on usb input (W4 / W8 pattern, see run/sponge-de-themed-chrome.run
+# and run/sponge-de-multipanel.run for the literal rewrite), abs
+# events map back to the same pixel (x, y). When the transform is NOT
+# present, the abs events land at the raw pixel coords (which may be
+# off-screen for high-abs values; the host-side pointer sanitizer
+# would then clamp to the screen center). For Phase 16 W9 we always
+# pass the <transform> rewrite in event_filter.config, so this
+# invariant holds.
+#
+# The 2-px jiggle in step 3 advances the decorator hover SEQ. The
+# layouter's user_state.h:342-378 defers the DRAG command until
+# `seq_number.value >= _hovered_seq_number.value` - dropping the SEQ
+# by skipping the jiggle is the W4 lesson learned the hard way.
+#
+proc qmp_tablet_drag { chan x1 y1 x2 y2 steps } {
+	set idx [qmp_tablet_index $chan]
+	if {$idx eq ""} {
+		puts stderr "\nFAIL: query-mice shows no absolute mouse device (qmp_tablet_drag cannot run)"
+		exit 1
+	}
+	qmp_hmp $chan "mouse_set $idx"
+
+	set ax1 [expr {($x1 * 32767 + 512) / 1024}]
+	set ay1 [expr {($y1 * 32767 + 384) / 768}]
+	set ax2 [expr {($x2 * 32767 + 512) / 1024}]
+	set ay2 [expr {($y2 * 32767 + 384) / 768}]
+
+	# Step 2: navigate to press (single atomic abs event with both axes).
+	qmp_cmd $chan [format {{"execute":"input-send-event","arguments":{"events":[{"type":"abs","data":{"axis":"x","value":%d}},{"type":"abs","data":{"axis":"y","value":%d}}]}}} $ax1 $ay1]
+	after 100
+
+	# Step 3: settle the hover at the press point (a ±8 px jiggle
+	# used to sit here, but it left the cursor 8 px OFF the press
+	# point when the button went down — the press then landed on a
+	# neighbouring element and once toggled MAXIMIZE via a stale
+	# strict-hover at user_state.h:151).
+	after 150
+
+	# Step 4: press and HOLD.
+	qmp_hmp $chan "mouse_button 1"
+	after 100
+
+	# Step 5: drag delta (steps interpolated abs events). Minimum of 3
+	# steps so themed_decorator with motion="1" gets multiple frames
+	# between press and release (the W4 styled recipe proves 3 suffices;
+	# using $steps parameter defaulting to 5 to match the W4 cadence).
+	set steps [expr {$steps}]
+	if {$steps < 3} { set steps 3 }
+	set dx_step [expr {($ax2 - $ax1) / $steps}]
+	set dy_step [expr {($ay2 - $ay1) / $steps}]
+	for {set i 1} {$i <= $steps} {incr i} {
+		set xi [expr {$ax1 + ($dx_step * $i)}]
+		set yi [expr {$ay1 + ($dy_step * $i)}]
+		qmp_cmd $chan [format {{"execute":"input-send-event","arguments":{"events":[{"type":"abs","data":{"axis":"x","value":%d}},{"type":"abs","data":{"axis":"y","value":%d}}]}}} $xi $yi]
+		after 60
+	}
+
+	# Step 6: hold at the final position briefly (lets the
+	# anim_rect settle at the latest coords).
+	after 200
+
+	# Step 7: release.
+	qmp_hmp $chan "mouse_button 0"
+}
+
 ##
 # Phase 12 W3b launch-only selector (the smallest possible W3b change).
 # Routes the launch-phase entry click through the W4-proven
@@ -767,6 +978,47 @@ proc qmp_tablet_click { chan tx ty } {
 # Pattern: identical to qmp_exec_target's `click` arm - anchors on
 # `\r*\n` (QEMU -nographic serial emits CR CR LF, W4 fix).
 #
+proc qmp_right_click { chan x y } {
+	puts "\nqmp: PS/2 right-click -> ($x,$y) - clamp to (0,0) + nav + press/release"
+
+	# Step 1: clamp to (0,0). Identical pacing as qmp_ps2_click.
+	for {set i 0} {$i < 10} {incr i} { qmp_move_rel $chan x -100; after 5 }
+	for {set i 0} {$i < 10} {incr i} { qmp_move_rel $chan y -100; after 5 }
+	after 200
+
+	# Step 2: coarse (rel-50 ~= 100px).
+	set cx [expr {$x / 100}]
+	set cy [expr {$y / 100}]
+	puts "qmp:   coarse rel-50: cx=$cx cy=$cy"
+	for {set i 0} {$i < $cx} {incr i} { qmp_move_rel $chan x 50; after 20 }
+	for {set i 0} {$i < $cy} {incr i} { qmp_move_rel $chan y 50; after 20 }
+
+	# Step 3: fine (rel-1 ~= 1px).
+	set fx [expr {$x % 100}]
+	set fy [expr {$y % 100}]
+	puts "qmp:   fine rel-1: fx=$fx fy=$fy"
+	for {set i 0} {$i < $fx} {incr i} { qmp_move_rel $chan x 1; after 5 }
+	for {set i 0} {$i < $fy} {incr i} { qmp_move_rel $chan y 1; after 5 }
+	after 400
+
+	# Step 4: hover jiggle.
+	qmp_move_rel $chan x 1
+	after 200
+	qmp_move_rel $chan x -1
+	after 200
+
+	# Step 5: press and release BTN_RIGHT. QMP's InputBtnEvent
+	# accepts the symbolic name "right"; the same envelope as
+	# qmp_ps2_button but with button="right".
+	qmp_cmd $chan {{"execute":"input-send-event","arguments":{"events":[{"type":"btn","data":{"down":true,"button":"right"}}]}}}
+	puts "qmp:   right-press"
+	after 200
+	qmp_cmd $chan {{"execute":"input-send-event","arguments":{"events":[{"type":"btn","data":{"down":false,"button":"right"}}]}}}
+	puts "qmp:   right-release"
+	after 100
+}
+
+
 proc qmp_exec_target_launch_click { chan timeout_s } {
 	global qemu_spawn_id
 	if {![info exists qemu_spawn_id]} {

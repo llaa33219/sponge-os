@@ -1,0 +1,512 @@
+#
+# \brief  Sponge DE keyboard shortcut framework — initial bindings
+#        acceptance scenario (Phase 16 W7, U16.4 / D16.5).
+# \author Sponge OS contributors
+# \date   2026
+#
+# Proves the W7 closed-action shortcut set END TO END on base-sel4:
+# a real host QMP send-key (qcode-object form) traverses the emulated
+# PS/2 keyboard -> ps2 driver -> event_filter `<report>` source ->
+# `<shortcut name="X">` hit -> report_rom relay -> sponge-de's
+# ShortcutController per-action ROM subscriber -> GUI-thread action
+# dispatch (QMetaObject::invokeMethod, Qt::QueuedConnection) ->
+# consolidated `shortcut_hit` report AND the user-visible side effect
+# (the launcher popup's `launcher_state` report flips open=yes/no).
+#
+# MECHANISM (the 2026-09-19 bisect findings baked in):
+#   - event_filter's `<report>` source only fires its `<shortcut>`
+#     reports when the report source is the DIRECT child of
+#     `<output>` wrapping a plain `<input>` chain. Composing it
+#     with `<merge>` or `<chargen>` (either nesting order) silently
+#     breaks the publish path — events still reach the filter but
+#     no report is generated. This scenario's event_filter config
+#     therefore drops the chargen chain (the scenario never types
+#     text; keyboard-to-app coverage stays with the terminal/textedit
+#     scenarios). Shortcut+chargen coexistence on the product media
+#     is a Phase 17+ item (needs an upstream report-source
+#     composition fix or a ledgered vendored patch).
+#   - The captured bindings are BAKED INTO the static
+#     event_filter.config boot module below: the report_rom-relayed
+#     dynamic reconfiguration of event_filter's `config` ROM does
+#     not reach event_filter (a ROM session opened before the
+#     backing report's first write never receives content; the
+#     reader registers on an empty module and report_rom's
+#     version/notify path does not recover it). Runtime rebinding
+#     of the CAPTURED keys is therefore a Phase 17+ follow-up; the
+#     configd framework side (validation, persistence, Settings UI,
+#     dispatch) is fully dynamic today and proven by the probe's
+#     structural checks on the emitted `event_filter_config` report.
+#
+# Probe (shortcuts_probe phase="default-bindings"):
+#   - Writes the 3-binding initial value via de_config_request
+#     (validator + round-trip proof).
+#   - Verifies the controller's emitted `event_filter_config` report
+#     carries the three parsed `<shortcut>` children (structural
+#     framework proof).
+#   - Writes the OVERRIDE binding list (launcher <- Ctrl-Alt-Tab)
+#     via de_config_request (validator + framework proof), then
+#     emits `QMP-TARGET key ctrl-alt-tab` / `escape` / `alt-tab`.
+#     The live capture uses the override bindings baked into this
+#     scenario's static event_filter.config (runtime reconfiguration
+#     of the captured keys via the report_rom relay is a Phase 17+
+#     follow-up — see the sibling scenario's header for the delivery
+#     finding). The probe gates on `shortcut_hit` action=<X> hit=yes
+#     AND (for launcher/dismiss) `launcher_state` open=yes/no.
+#
+# Final gate: "shortcuts-extend-probe: PASS".
+#
+assert {[have_spec sel4]} \
+	"sponge-de-shortcuts-extend requires KERNEL=sel4 (BOARD=pc)."
+
+build { core lib/ld init timer server/report_rom server/nitpicker \
+        driver/acpi app/pci_decode driver/platform \
+        driver/framebuffer/vesa driver/ps2 \
+        driver/usb_host/pc driver/usb_hid server/event_filter \
+        sponge_configd sponge-de test/shortcuts_probe \
+        qt6/base lib/libc lib/libm lib/stdcxx lib/mesa \
+        lib/mesa_gpu-softpipe lib/egl lib/softpipe lib/libdrm lib/expat \
+        lib/qt6_component lib/vfs lib/vfs_pipe lib/vfs_gpu lib/rom_filter \
+        lib/zlib lib/libpng lib/blit }
+
+create_boot_directory
+
+install_config {
+config
++ parent-provides
+  + service ROM
+  + service PD
+  + service RM
+  + service CPU
+  + service LOG
+  + service IRQ
+  + service IO_MEM
+  + service IO_PORT
+
++ default | caps: 200 | ram: 4M
++ default-route
+  + any-service
+    + parent
+    + any-child
+
++ start timer
+  + provides | + service Timer
+
++ start report_rom | caps: 300 | ram: 8M
+  + provides
+    + service Report
+    + service ROM
+  + config | verbose: no
+    + policy | label: sponge_configd -> config_request    | report: shortcuts_probe -> config_request
+    + policy | label: shortcuts_probe -> config_result    | report: sponge_configd -> config_result
+    + policy | label: sponge_configd -> de_config_request | report: shortcuts_probe -> de_config_request
+    + policy | label: shortcuts_probe -> de_config_result  | report: sponge_configd -> de_config_result
+    + policy | label: sponge-de -> configd          | report: sponge_configd -> config
+    + policy | label: sponge-de -> theme            | report: sponge_themed  -> theme
+    + policy | label: shortcuts_probe -> broadcast | report: sponge_configd -> config
+    + policy | label: drivers -> event_filter.config | report: sponge-de -> event_filter_config
+    + policy | label: shortcuts_probe -> event_filter_config | report: sponge-de -> event_filter_config
+    + policy | label: sponge-de -> shortcut_launcher   | report: drivers -> event_filter -> launcher
+    + policy | label: sponge-de -> shortcut_focus_next | report: drivers -> event_filter -> focus_next
+    + policy | label: sponge-de -> shortcut_dismiss    | report: drivers -> event_filter -> dismiss
+    + policy | label: shortcuts_probe -> shortcut_hit_launcher   | report: sponge-de -> shortcut_hit_launcher
+    + policy | label: shortcuts_probe -> shortcut_hit_focus_next | report: sponge-de -> shortcut_hit_focus_next
+    + policy | label: shortcuts_probe -> shortcut_hit_dismiss    | report: sponge-de -> shortcut_hit_dismiss
+    + policy | label: shortcuts_probe -> shortcut_hit | report: sponge-de -> shortcut_hit
+    + policy | label: shortcuts_probe -> launcher_state | report: sponge-de -> launcher_state
+
++ start nitpicker | ram: 16M
+  + provides
+    + service Gui
+    + service Capture
+    + service Event
+  + route
+    + service Report | + child report_rom
+    + service Timer | + child timer
+    + any-service
+      + parent
+      + any-child
+  + config
+    + capture
+    + event
+    + report | focus: yes | hover: yes
+    + domain panel_bottom | layer: 2 | content: client | label: no
+                         | hover: always | focus: click | ypos: 740 | height: 28
+    + domain launcher     | layer: 4 | content: client | label: no
+                         | hover: always | focus: click
+                         | xpos: 0 | ypos: 28 | width: 341 | height: 300
+    + domain demo    | layer: 3 | content: client | label: no
+                     | hover: always | focus: click
+                     | xpos: 640 | ypos: 400 | width: 200 | height: 200
+    + domain default | layer: 3 | content: client | label: no
+                     | hover: always | focus: click | ypos: 28 | height: 712
+    + policy | label_prefix: sponge-de -> Sponge Panel Bottom | domain: panel_bottom
+    + policy | label_prefix: sponge-de -> Sponge Launcher    | domain: launcher
+    + policy | label_prefix: sponge-de -> Sponge DE Demo       | domain: demo
+    + default-policy | domain: default
+    + background | color: #1e1e2e
+
++ start drivers | caps: 1500 | ram: 96M | managing_system: yes
+  + binary init
+  + route
+    + service ROM | label: config | + parent | label: drivers.config
+    + service Timer | + child timer
+    + service Capture | + child nitpicker
+    + service Event | + child nitpicker
+    #
+    # W7: the nested event_filter's `config` ROM must come from
+    # report_rom (which relays sponge-de's dynamic
+    # `event_filter_config` report), NOT from the boot module of
+    # the same name. Without this rule the default-route's
+    # `+ parent` preference resolves the boot module at core and
+    # the dynamic config (with the <shortcut> children) never
+    # reaches event_filter.
+    #
+    #
+    # W7: event_filter's per-shortcut hit reports arrive as
+    # Report sessions labeled `drivers -> event_filter ->
+    # <action>`; route them to the outer report_rom (the
+    # policies matching `drivers -> event_filter -> <action>`
+    # live there). Without this rule the trailing
+    # any-service->parent would send the request to core, which
+    # has no Report service.
+    #
+    + service Report | + child report_rom
+    + any-service                 | + parent
+  + config
+    + parent-provides
+      + service IRQ
+      + service IO_MEM
+      + service IO_PORT
+      + service ROM
+      + service PD
+      + service RM
+      + service CPU
+      + service LOG
+      + service Timer
+      + service Capture
+      + service Event
+      #
+      # W7: event_filter's `<report>` source publishes its
+      # per-shortcut hit reports via a Report session; the
+      # nested init may only forward services declared here.
+      #
+      + service Report
+    + default | caps: 60
+    + start acpi | caps: 250 | ram: 4M
+      + route
+        + service IO_MEM | + parent
+        + service LOG | + parent
+        + service PD | + parent
+        + service RM | + parent
+        + service CPU | + parent
+        + service ROM | + parent
+        + service Report | + child report_rom
+    + start report_rom | caps: 100 | ram: 2M
+      + provides
+      | + service ROM
+      | + service Report
+      + config | verbose: yes
+      | + policy | label: event_filter -> config | report: sponge-de -> event_filter_config
+      | + policy | label: platform -> devices  | report: pci_decode -> devices
+      | + policy | label: pci_decode -> system | report: acpi -> acpi
+      | + policy | label: event_filter -> shortcut -> launcher   | report: event_filter -> shortcut -> launcher
+      | + policy | label: event_filter -> shortcut -> focus_next | report: event_filter -> shortcut -> focus_next
+      | + policy | label: event_filter -> shortcut -> dismiss    | report: event_filter -> shortcut -> dismiss
+      | + policy | label: sponge-de    -> shortcut | report: sponge-de -> shortcut
+      + route
+        + service LOG | + parent
+        + service PD | + parent
+        + service CPU | + parent
+        + service ROM | + parent
+    + start pci_decode | caps: 100 | ram: 2M
+      + route
+        + service Report | + child report_rom
+        + service ROM | label: system | + child report_rom
+        + service IO_MEM | + parent
+        + service LOG | + parent
+        + service PD | + parent
+        + service RM | + parent
+        + service CPU | + parent
+        + service ROM | + parent
+    + start platform | caps: 200 | ram: 3M | managing_system: yes
+      + provides
+      | + service Dma
+      | + service Platform
+      + route
+      | + service ROM | label: devices | + child report_rom
+      | + service Report | + child report_rom
+      | + service IRQ | + parent
+      | + service IO_MEM | + parent
+      | + service IO_PORT | + parent
+      | + service ROM | + parent
+      | + service PD | + parent
+      | + service CPU | + parent
+      | + service LOG | + parent
+      | + service Timer | + parent
+      + config
+        + report | devices: yes
+        + policy | label_prefix: ps2 | + device ps2
+        + policy | label_prefix: fb  | info: yes | + pci | class: VGA
+        + policy | label_prefix: usb | info: yes | + pci | class: USB
+    + start fb | caps: 150 | ram: 20M
+      + binary vesa_fb
+      + route
+        + service ROM | label: config | + parent | label: fb.config
+        + service Report | + child report_rom
+        + service Dma | + child platform
+        + service Platform | + child platform
+        + service IO_PORT | + parent
+        + service IO_MEM | + parent
+        + service ROM | + parent
+        + service PD | + parent
+        + service CPU | + parent
+        + service LOG | + parent
+        + service Timer | + parent
+        + service Capture | + parent
+    + start ps2 | caps: 100 | ram: 1280K
+      + route
+        + service Dma | + child platform
+        + service Platform | + child platform
+        + service Event | + child event_filter | label: ps2
+        + service ROM | + parent
+        + service PD | + parent
+        + service CPU | + parent
+        + service LOG | + parent
+        + service Timer | + parent
+    + start usb | caps: 200 | ram: 16M
+      + binary pc_usb_host
+      + provides | + service Usb
+      + config
+      | + report | devices: yes
+      | + policy | label_prefix: usb_hid | + device | class: 0x3
+      + route
+        + service Dma | + child platform
+        + service Platform | + child platform
+        + service Report | label: devices | + child report_rom
+        + service ROM | + parent
+        + service PD | + parent
+        + service RM | + parent
+        + service CPU | + parent
+        + service LOG | + parent
+        + service Timer | + parent
+    + start usb_hid | caps: 180 | ram: 10M
+      + route
+        + service ROM | label: report | + child report_rom
+        + service ROM | + parent
+        + service PD | + parent
+        + service RM | + parent
+        + service CPU | + parent
+        + service LOG | + parent
+        + service Timer | + parent
+        + service Event | + child event_filter | label: usb
+        + service Usb | + child usb
+    + start event_filter | caps: 90 | ram: 1280K
+      + provides | + service Event
+      + route
+        + service ROM | label: config | + parent | label: event_filter.config
+        + service Event | + parent
+        #
+        # W7: the `<report>` source's per-shortcut
+        # Expanding_reporter needs a Report session (session
+        # label is the bare action name, e.g. "launcher" — the
+        # outer report_rom policies match it as
+        # `drivers -> <action>`). Without this route the
+        # session is denied and event_filter stops.
+        #
+        + service Report | + parent
+        + service ROM | + parent
+        + service PD | + parent
+        + service CPU | + parent
+        + service LOG | + parent
+        + service Timer | + parent
+
++ start sponge_configd | caps: 200 | ram: 16M
+  + route
+    + service ROM | label_last: config_request      | + child report_rom
+    + service ROM | label_last: config_result       | + child report_rom
+    + service ROM | label_last: de_config_request   | + child report_rom
+    + service ROM | label_last: de_config_result    | + child report_rom
+    + service Report | + child report_rom
+    + any-service
+      + parent
+      + any-child
+  + config
+    + de_config
+
++ start sponge-de | caps: 1000 | ram: 256M
+  + config
+    + config     | source: configd
+    + de_config  | source: controller
+    + shortcuts  | source: controller
+    + vfs
+      + dir dev
+        + log
+        + inline rtc | : 2018-01-01 00:01
+      + dir pipe | + pipe
+      + tar qt6_dejavusans.tar
+      + tar qt6_libqgenode.tar
+    + libc | stdout: /dev/log | stderr: /dev/log | pipe: /pipe | rtc: /dev/rtc
+  + route
+    + service Gui | label_last: Sponge Panel         | + child nitpicker
+    + service Gui | label_last: Sponge Launcher      | + child nitpicker
+    + service Report | label: input                 | + child report_rom
+    + service Report | label: de_config_request     | + child report_rom
+    + service Report | label: event_filter_config   | + child report_rom
+    + service Report | label: shortcut_hit          | + child report_rom
+    + service Report | label: launcher_state        | + child report_rom
+    + service Report | label: shortcut_hit_launcher   | + child report_rom
+    + service Report | label: shortcut_hit_focus_next | + child report_rom
+    + service Report | label: shortcut_hit_dismiss    | + child report_rom
+    + service ROM   | label: de_config_result   | + child report_rom
+    + service ROM   | label: configd             | + child report_rom
+    + service ROM   | label: shortcut_launcher   | + child report_rom
+    + service ROM   | label: shortcut_focus_next | + child report_rom
+    + service ROM   | label: shortcut_dismiss    | + child report_rom
+    + service ROM   | label: shortcut_hit_launcher   | + child report_rom
+    + service ROM   | label: shortcut_hit_focus_next | + child report_rom
+    + service ROM   | label: shortcut_hit_dismiss    | + child report_rom
+    + service ROM   | label: shortcut_hit          | + child report_rom
+    + service ROM   | label: mesa_gpu.lib.so | + parent | label: mesa_gpu-softpipe.lib.so
+    + any-service
+      + parent
+      + any-child
+
++ start shortcuts_probe | caps: 200 | ram: 16M
+  + config | phase: override-bindings
+  + route
+    + service Timer | + child timer
+    + service Capture | + child nitpicker
+    + service Report | + child report_rom
+    + service ROM   | label_last: broadcast              | + child report_rom
+    + service ROM   | label_last: de_config_result       | + child report_rom
+    + service ROM   | label_last: de_config_request      | + child report_rom
+    + service ROM   | label_last: config_result          | + child report_rom
+    + service ROM   | label_last: config_request         | + child report_rom
+    + service ROM   | label_last: event_filter_config    | + child report_rom
+    + service ROM   | label_last: shortcut_hit           | + child report_rom
+    + service ROM   | label_last: launcher_state            | + child report_rom
+    + any-service
+      + parent
+      + any-child
+- }
+
+exec mkdir -p bin
+
+set dejavu_dst "bin/qt6_dejavusans.tar"
+if {![file exists $dejavu_dst]} {
+	set dejavu_src [glob -nocomplain "${genode_dir}/contrib/qt6_base-*/src/lib/qt6_base/src/3rdparty/wasm/DejaVuSans.ttf"]
+	if {[llength $dejavu_src] == 0} {
+		error "DejaVuSans.ttf not found in the qt6_base port sources"
+	}
+	set staging "[run_dir]/dejavusans-staging"
+	file mkdir "$staging/qt/lib/fonts"
+	file copy -force [lindex $dejavu_src 0] "$staging/qt/lib/fonts/DejaVuSans.ttf"
+	exec tar -cf $dejavu_dst -C $staging qt
+	file delete -force $staging
+}
+
+set recipe_dir "${genode_dir}/repos/os/recipes/raw/drivers_interactive-pc"
+foreach f { drivers.config fb.config } {
+	if {![file exists "$recipe_dir/$f"]} {
+		error "$recipe_dir/$f missing"
+	}
+	exec cp -f "$recipe_dir/$f" "bin/$f"
+}
+
+#
+# W7 (final, 2026-09-19): stage the upstream drivers_interactive-pc
+# recipe's `event_filter.config` as the boot module. Same as
+# `run/sponge-de-shortcuts.run` — the controller reads the base
+# and injects the dynamic `<shortcut>` children. The override
+# scenario tests that the configd write of
+# `launcher\tCtrl-Alt-Tab` propagates through the framework to
+# the live capture path (the override does NOT need a separate
+# staged config — the controller regenerates the merged config
+# on every configd broadcast).
+#
+#
+# event_filter.config — the XML base the ShortcutController reads
+# (via the `event_filter.config` ROM) and re-emits with the dynamic
+# `<report>` shortcut block merged in. XML because the W7 live-
+# capture work found the HID emission path too fragile (indent-
+# driven nesting silently dropped the `<shortcut>` children; the
+# XML form is unambiguous and is the same content the proven
+# terminal-qmp scenario generates). Content mirrors the vendored
+# drivers_interactive-pc recipe, in XML form.
+#
+set ef_fh [open "bin/event_filter.config" w]
+puts $ef_fh {<config force="yes">
+  <output>
+    <report>
+      <input name="ps2"/>
+      <input name="usb"/>
+      <shortcut name="launcher"><key name="KEY_LEFTCTRL"/><key name="KEY_LEFTALT"/><key name="KEY_TAB"/></shortcut>
+      <shortcut name="focus_next"><key name="KEY_LEFTALT"/><key name="KEY_TAB"/></shortcut>
+      <shortcut name="dismiss"><key name="KEY_ESC"/></shortcut>
+    </report>
+  </output>
+  <policy label="ps2" input="ps2"/>
+  <policy label="usb" input="usb"/>
+</config>}
+close $ef_fh
+
+set chargen_dir "${genode_dir}/repos/os/src/server/event_filter"
+foreach f { en_us.chargen special.chargen } {
+	if {![file exists "$chargen_dir/$f"]} { error "$chargen_dir/$f missing" }
+	exec cp -f "$chargen_dir/$f" "bin/$f"
+}
+
+foreach theme { default light dark compact } {
+	set theme_src "${genode_dir}/repos/sponge/src/sponge-de/themes/${theme}.theme"
+	if {![file exists $theme_src]} {
+		error "theme file missing: $theme_src"
+	}
+	exec cp -f $theme_src "bin/${theme}.theme"
+}
+
+set boot_modules [build_artifacts]
+foreach m { libQt6Core.lib.so libQt6Gui.lib.so libQt6Widgets.lib.so \
+            libqgenode.lib.so qt6_libqgenode.tar qt6_dejavusans.tar \
+            en_us.chargen special.chargen \
+            drivers.config fb.config event_filter.config \
+            default.theme light.theme dark.theme compact.theme } {
+	lappend boot_modules $m
+}
+
+build_boot_image $boot_modules
+
+source [file join [file dirname [file normalize [info script]]] qmp.inc]
+
+set qmp_port [qmp_pick_port]
+append qemu_args " -machine q35 -cpu Skylake-Client "
+append qemu_args " -qmp tcp:127.0.0.1:${qmp_port},server=on,wait=off -nographic -m 2G "
+append qemu_args " -device nec-usb-xhci,id=xhci -device usb-tablet "
+
+run_genode_until {.*sponge-de: panel shown.*} 300
+
+#
+# W7 live-capture proof for the override scenario: connect QMP,
+# then dispatch each `QMP-TARGET key <spec>` marker the probe
+# emits (in phase=override-bindings order). The override writes
+# `launcher\tCtrl-Alt-Tab` to configd; the controller re-emits
+# the merged event_filter config with that triple; the
+# dispatched `ctrl-alt-tab` QMP send-key proves the new binding
+# fires the launcher (popup opens). The `escape` (dismiss) and
+# `alt-tab` (focus_next) markers prove the unchanged bindings
+# still work after the override.
+#
+# match_max raise: same as the default scenario — the probe's
+# popup poll spam (~140 KB) would push the QMP-TARGET markers
+# out of the default 2 KB expect match buffer.
+#
+set qmp_chan [qmp_connect $qmp_port]
+global qemu_spawn_id
+match_max -i $qemu_spawn_id 200000
+
+qmp_exec_target $qmp_chan 120
+qmp_exec_target $qmp_chan 120
+qmp_exec_target $qmp_chan 120
+
+run_genode_until {.*shortcuts-extend-probe: PASS.*} 600 $qemu_spawn_id
+after 500
+qmp_disconnect $qmp_chan

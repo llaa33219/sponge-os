@@ -409,6 +409,92 @@ void TasklistController::on_toggle_maximized(QString label)
 }
 
 
+/*
+ * Phase 16 W7 (U16.4 / D16.5) — keyboard-shortcut action slot for
+ * the `focus_next` event_filter shortcut (default binding Alt-Tab).
+ *
+ * Walks `_tracked` starting AFTER `_focused_label` and picks the
+ * next non-minimized window (forward-only, wrapping). The window's
+ * `focused` state is set to true + a `focus_request` Report is
+ * published (the wm + layouter chain raises the window; the
+ * state-machine update reflects in the next applyUpdates() tick).
+ *
+ * Edge cases:
+ *   - Empty _tracked: no-op (warning logged). The user is unlikely
+ *     to press Alt-Tab with no windows; the framework's defense
+ *     against silent drops is the warning + no action.
+ *   - Single non-minimized window: re-focus it (no-op cycle but
+ *     the focus_request re-asserts). Skipping this would leave
+ *     the focus on a different window (no Alt-Tab effect).
+ *   - All minimized: no-op + warning. Pressing Alt-Tab with no
+ *     visible windows is a no-op (the user has nothing to focus).
+ */
+void TasklistController::cycle_focus()
+{
+	if (_tracked.isEmpty()) {
+		Genode::warning("tasklist_controller: cycle_focus: no tracked windows");
+		return;
+	}
+
+	/*
+	 * Find the index of the currently-focused window in _tracked.
+	 * If no focused window or the focused window is not in _tracked
+	 * (e.g. it was hidden by wm), start from index -1 so the next
+	 * cycle picks _tracked[0] (wraps once).
+	 */
+	int focused_idx { -1 };
+	if (!_focused_label.isEmpty()) {
+		for (int i = 0; i < _tracked.size(); ++i) {
+			if (_tracked[i].label == _focused_label) {
+				focused_idx = i;
+				break;
+			}
+		}
+	}
+
+	int const n = _tracked.size();
+	QString next_label { };
+
+	/*
+	 * Walk forward up to n positions. Skips minimized windows
+	 * (focusing a minimized window would un-minimize it — the
+	 * plan is explicit that the cycle is focus-only, not a
+	 * un-minimize toggle). Wraps once.
+	 */
+	for (int step = 1; step <= n; ++step) {
+		int const idx = (focused_idx + step + n) % n;
+		Window_state const &cand = _tracked[idx];
+		if (!cand.minimized && cand.geometry_known) {
+			next_label = cand.label;
+			break;
+		}
+	}
+
+	if (next_label.isEmpty()) {
+		Genode::warning("tasklist_controller: cycle_focus: no non-minimized window to focus");
+		return;
+	}
+
+	Genode::log("tasklist_controller: cycle_focus ", _focused_label.toUtf8().constData(),
+	            " -> ", next_label.toUtf8().constData());
+
+	/*
+	 * Update the focused state and publish the focus_request
+	 * Report. The wm + layouter pick up the focus_request;
+	 * applyUpdates() on the next tick refreshes the widget
+	 * visual state (Focused highlight on the new task).
+	 */
+	for (auto &st : _tracked) {
+		st.focused = (st.label == next_label);
+	}
+	_focused_label = next_label;
+	_publish_focus_request(next_label);
+	_publish_rules_for(QString());
+
+	applyUpdates();
+}
+
+
 void TasklistController::_publish_focus_request(QString const &label)
 {
 	if (!_focus_request.constructed()) return;
@@ -514,4 +600,58 @@ void TasklistController::_append_assign_for(Genode::Xml_generator &g, Window_sta
 		g.attribute("height", (long)w.h);
 		g.attribute("maximized", w.maximized ? "yes" : "no");
 	});
+}
+
+
+/*
+ * Phase 16 W6/W7 follow-up (U16.3) — show-desktop toggle driver.
+ * Flips the `minimized` flag on every tracked window and republishes
+ * the layouter-rule ROM (which causes the layouter to re-position
+ * each window at the parked (-32000, -32000) sentinel — the W7
+ * tasklist state machine's parking path at tasklist_controller.cc:
+ * 500-516). The state machine's `_tracked` cache preserves the
+ * non-minimized geometry across the parked state, so a `false`
+ * argument restores each window to its last-seen geometry.
+ *
+ * The "Show desktop" context-menu entry on BackgroundWidget calls
+ * this via ShowDesktop::toggle. The toggle is two-state (show vs
+ * restore); the menu shows the current state via the
+ * show_desktop_action's checkable flag (BackgroundWidget's
+ * contextMenuEvent).
+ *
+ * The slot updates the widget's per-window TaskInfo cache via the
+ * standard applyUpdates() tick so the panel tasklist reflects the
+ * new state immediately.
+ *
+ * GUI thread ONLY (failure-point 2 enforcement: marshalled from
+ * BackgroundWidget::show_context_menu via QMetaObject::invokeMethod
+ * with Qt::QueuedConnection when the menu slot fires).
+ */
+void TasklistController::set_all_minimized(bool minimize)
+{
+	if (_tracked.isEmpty()) {
+		Genode::log("tasklist_controller: set_all_minimized: no tracked windows; no-op");
+		return;
+	}
+
+	unsigned changed { 0 };
+	for (auto &st : _tracked) {
+		if (st.minimized != minimize) {
+			st.minimized = minimize;
+			st.focused   = false;
+			++changed;
+		}
+	}
+
+	if (changed == 0) {
+		Genode::log("tasklist_controller: set_all_minimized: already in target state");
+		return;
+	}
+
+	_publish_rules_for(QString());
+
+	Genode::log("tasklist_controller: set_all_minimized ", minimize ? "ON" : "OFF",
+	            " (", changed, " window", changed == 1 ? "" : "s", " affected)");
+
+	applyUpdates();
 }

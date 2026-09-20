@@ -51,6 +51,44 @@ class TasklistController : public QObject
 		/* Toggle maximized. */
 		void on_toggle_maximized(QString label);
 
+		/*
+		 * Phase 16 W7 (U16.4 / D16.5) — keyboard-shortcut action
+		 * slot for the `focus_next` event_filter shortcut (default
+		 * binding `Alt-Tab`). Advances the focus to the next
+		 * non-minimized window in `_tracked` after `_focused_label`
+		 * (wrapping). Publishes a `focus_request` Report; the wm +
+		 * layouter chain re-positions + raises the new window.
+		 *
+		 * Forward-only cycle (per the plan: "forward-only, wrapping").
+		 * Skips minimized windows (focusing a minimized window would
+		 * un-minimize it — out of scope for a focus-cycle, not a
+		 * minimize toggle).
+		 *
+		 * GUI thread ONLY (failure-point 2 enforcement: marshalled
+		 * from the ROM-signal handler by ShortcutController via
+		 * QMetaObject::invokeMethod(... , Qt::QueuedConnection)).
+		 */
+		void cycle_focus();
+
+		/*
+		 * Phase 16 W6/W7 follow-up (U16.3) — show-desktop toggle
+		 * minimizes or restores every visible window in `_tracked`.
+		 * When `minimize=true`, every window's `minimized` flag is
+		 * set to true and the layouter-rule ROM is overwritten
+		 * (which causes the layouter to park every window at
+		 * (-32000, -32000) — the W7 tasklist state machine's
+		 * parking at tasklist_controller.cc:500-516). When
+		 * `minimize=false`, every window is restored to its last
+		 * non-minimized geometry (the `_tracked` Window_state
+		 * cache preserves the geometry across the parked state).
+		 *
+		 * The ShowDesktop controller's `toggle()` slot flips the
+		 * local state and calls this with the matching bool.
+		 *
+		 * GUI thread ONLY (failure-point 2 enforcement).
+		 */
+		void set_all_minimized(bool minimize);
+
 		void set_static_rules(QString const &rules_xml);
 
 		~TasklistController() override;
