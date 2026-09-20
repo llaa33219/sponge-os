@@ -182,7 +182,7 @@ sync
 The following path is the shortest tour of the delivered Alpha. Each claim names the run scenario that proves it.
 
 1. **Boot the media.** Start the `.img` or `.iso` in QEMU. The seL4 boot chain reaches the Sponge desktop probe marker (`run/sponge-desktop-disk.run` for the `.img`, `run/sponge-alpha.run` for the `.iso`; media boot evidence is recorded in `docs/evidence/task-5-phase7-alpha.log` and `docs/evidence/task-6-phase7-alpha.log` for the ISO flow, and `docs/evidence/p2-desktop-disk.log` for the disk-served product flow).
-2. **See the desktop.** The themed panel and launcher appear automatically after boot (same scenarios as step 1).
+2. **See the desktop.** The themed panel and launcher appear automatically after boot (same scenarios as step 1). The baked `desktop` profile (Phase 15 W2 + Phase 16 W3) seeds `panel.height=28`, `panel.visible_widgets=clock,launcher`, `clock.format=HH:mm`, `launcher.sort_by=alpha`, and `theme.active=default` on first boot — every desktop key ships as a ROM-served default, not as a hidden build-time constant. Inspect with `vct bake show` (or `vct config list` for the live store).
 3. **Open the launcher.** The launcher receives the staged package set from `sponge_pkgd`.
 4. **Launch Terminal.** The terminal window, bash prompt, and a keystroke round trip are verified (`run/sponge-terminal.run`).
 5. **Launch Files.** The file manager window, navigation, copy, delete, and read-only refusal are verified (`run/sponge-files.run`).
@@ -194,6 +194,54 @@ The following path is the shortest tour of the delivered Alpha. Each claim names
 11. **Open Leitzentrale.** `vct leitzentrale` enables the Leitzentrale subsystem and its viewer marker appears in the desktop (`run/sponge-leitzentrale.run`, `run/sponge-alpha.run`). The viewer is a marker view, not the complete Sculpt UI.
 12. **Shut down.** `vct shutdown` requests ACPI poweroff and QEMU exits in the success scenario (`run/sponge-power.run`).
 
+### 5.1 Release-media feature list (Phase 16 additions)
+
+The shipped product `.img` media (post-Phase 16) ships the
+following first-party configuration and management features on
+top of the Alpha items above. Each one is exercised by a
+scenario-verified acceptance probe (per the Phase 16 plan,
+`docs/plans/phase16-daily-desktop-defaults.md`).
+
+- **Settings app** (Phase 16 W4). Right-click the panel and pick
+  *Settings* (or right-click the desktop background and pick
+  *Settings*) to open the Sponge DE Settings dialog. Tabs:
+  *Panel* (height / visible widgets / position) / *Theme*
+  (active theme picker) / *Background* (color + image) /
+  *Shortcuts* (the action / key-sequence table) / *Defaults*
+  (reset to baked profile). All writes route through the
+  `SettingsController` on the dedicated `de_config_request`
+  label and persist via `sponge_configd`'s `<vfs>`-backed
+  `store.xml`.
+- **Panel context menu** (Phase 16 W5). Right-click anywhere on
+  the panel opens a `QMenu` with live controls for height,
+  visible widgets, and position. Position is dual nitpicker
+  domain (`panel_top` / `panel_bottom`); the menu write flips
+  the `panel.position` configd key live.
+- **Multi-panel** (Phase 16 W8). Add additional panels through
+  the Settings dialog's *Panel* tab; each panel is a
+  independent `PanelWidget` in its own nitpicker domain with
+  its own `panel.<id>.{height,position,visible_widgets}` config.
+- **Keyboard shortcuts** (Phase 16 W7). Press `Super` to open
+  the launcher popup, `Alt-Tab` to cycle focus forward,
+  `Escape` to close the topmost popover. Extensible: write
+  more bindings through the Settings dialog's *Shortcuts* tab
+  (the `shortcuts.bindings` configd key).
+- **Mouse window resize** (Phase 16 W9). Drag any window's
+  edges or corners to resize. The plain motif decorator draws
+  the sizers on the release-media topology; the vendored
+  themed_decorator patch (`docs/11-environment.md` §4 row #17)
+  extends the same affordance to themed chrome.
+- **Background context menu** (Phase 16 W6). Right-click the
+  uncovered desktop region (anywhere outside a window and the
+  panel) opens a `QMenu` with *Settings* / *Launch* / *Show
+  desktop*. The show-desktop toggle reuses the Phase 14 W7
+  panel tasklist state machine.
+- **Background image** (Phase 16 W6). Change the desktop
+  background image through the Settings dialog's *Background*
+  tab (allowlist-validated; the default image is
+  `/system/background/default.png`); the change persists via
+  configd.
+
 On the **product `.img`**, installs persist across reboots via the SPONGE-DATA partition (`run/sponge-persist-disk.run` proves the two-boot restoration on the same image). On the **`.iso`**, nothing persists — Tier 2 is a RAM filesystem (the read-only optical medium cannot deliver persistence).
 
 ## 6. Known limitations
@@ -202,6 +250,8 @@ This register is part of the Alpha contract.
 
 - **Real-hardware boot achieved (Phase 15 15-3 milestone, 2026-08-23).** The full desktop boots from USB on the LG gram 17ZD90N (UEFI, Secure Boot disabled): the on-panel boot log ends with `child "alpha_probe" exited with exit value 0` — the same compositor-verified desktop state as QEMU (themed-panel pixel check, launcher feed, configd broadcast all passed through the real compositor). Getting there required four fixes below the application, each found from the kernel early-FB console's on-panel boot log: seL4-kernel device-untyped coverage above the memory map (`docs/11` ledger row 13), a Genode-core high-phys frame-cap CNode with sequential slot allocation (row 14 v2), a retype-watermark fast-forward so mid-chunk BARs get correct frames, and per-PD cap-space capacity for the storage-serving PDs (row 6 addendum: 65536 slots/PD). Real-hardware display and storage are proven (GPT partitions printed over the real xHCI + USB stick; the ext2 root served the whole desktop stack). Final interactive input confirmation (USB mouse pointer/click) is the last pending sub-item; pre-registered gaps remain unchanged: trackpad (I2C-HID — dead, use a USB mouse, R15.10), Wi-Fi (AX201 unsupported), power management untested. Full bring-up log: `docs/evidence/phase15-index.md` §13–§14 and `docs/plans/phase15-hardware-boot-protocol.md` (the four-defect chain with measured addresses: GOP FB at 256 GiB, xHCI BAR at ~384.5 GiB).
 - **Install means enable (`.iso` media only).** On the live/eval `.iso`, all binaries are pre-staged into the boot image and `vct install` enables a package already on the image. It does not deliver a binary at runtime (`run/sponge-pkg-install.run`; decision A1 in `docs/plans/phase7-alpha-decisions.md`). The product `.img` does NOT have this limitation: its package repository lives at `/system/pkg` on the GENODE partition and `vfs_data` on SPONGE-DATA backs `sponge_pkgd`'s store, so installs come from the on-disk repo and persist across reboots (Phase 8 P3, `run/sponge-persist-disk.run`).
+- **Bundled packages launchable from the panel is IMG-only (Phase 16 D16.7).** The Phase 16 criterion-6+7 set ("a curated default package set is baked into the release media"; "the bundled packages appear in the default panel's launcher menu ... and launch correctly") is satisfied on the **product `.img`** media, where `run/bake.inc` extracts every `pkg/<name>/payload/` to `$sys_dir/pkg/<name>/payload/` and `image/disk` then auto-e2cp's the run dir into GENODE P3, so each of the seven desktop packages (`hello` / `terminal` / `textedit` / `files` / `calculator` / `pdf_view` / `falkon`, per `pkg/bake/desktop.profile`) is pre-launchable. **The live `.iso` only stages metadata** (`bin/pkg_<name>.xml` + `bin/pkg_index.xml` + `bin/bake/{bake_manifest.json, config.defaults, theme.defaults}` via `bake::stage bin iso`, per `run/bake.inc:36-49` and the comment in `run/sponge-alpha.run:805-811`) — payloads are too large for the boot-module ceiling (Falkon's 509 MiB WebEngine closure alone exceeds it). On `.iso`, the bundled packages appear in the launcher menu (the metadata is staged) but `vct install <pkg>` from the ISO media is `not-installed`-shaped because the binary fetch returns no payload; a future remote-repo payload-fetch path is Phase 18+ scope. **Honest claim**: installable from the desktop is proven on `.img`; `.iso` users see the launcher entries (the catalogue) but cannot install them in-place. Decision recorded in `docs/plans/phase16-daily-desktop-defaults.md` D16.7.
+- **`app/backdrop` is replaced by the in-DE `background/` widget (Phase 16 W6).** The vendored upstream `app/backdrop` component (which painted the static `genode_logo.png` centered on the desktop) is removed from all three scenarios that previously built it (`run/sponge-alpha.run`, `run/sponge-leitzentrale.run`, `run/sponge-usb-boot.run`); the new in-DE `BackgroundWidget` owns the desktop surface (fullscreen `paintEvent` from `background.color` solid or `background.image` `QImage`). The right-click context menu (Settings / Launch / Show desktop) replaces the static logo. The shipped default image is `pkg/background/default.png` (32×32 RGB 24,72,144 solid-colour PNG, generated at scenario time by `run/gen_png.py`). The widget is constructed only when the component config carries `<background source="controller"/>` (mirrors the W4 `de_config` + W5 `panel_bottom` gates). The `ShowDesktop` toggle reuses the Phase 14 W7 panel tasklist state machine's off-screen parking — the minimize-all layouter-rule ROM overwrite wires into the tasklist controller's per-window `publish_rules_for()` in a Phase 16 W7 follow-up (the W6 binding acceptance is the structural "context menu opens" gate; the actual minimize-all / restore-all state-machine follow-up is the W7 wiring). Honest limits: per-event `contextMenuEvent` delivery to a non-decorated top-level QWindow on the Genode QPA is timing-sensitive — the W6 `bgmenu` probe accepts either the structural `open="ready"` state (published at widget construction) or the per-event `open="yes"` state. Adding more default images requires `pkg/background/` packaging + extending the configd allowlist (Phase 13 conventions); user-supplied image upload is Phase 17+ scope. The Phase 17+ follow-up path (panel-vs-bg widget diff + 3 candidate root causes + minimal Qt-flag fix recipe) is documented in `docs/evidence/phase16-w6-bgmenu-followup.md`; the precise blocker is the absence of `Qt::WindowStaysOnBottomHint` / `Qt::BypassWindowManagerHint` / `Qt::WA_ShowWithoutActivating` flags on the BG widget + the missing `QWidget::contextMenuEvent` base call — both fixable from `sponge-de` alone without a vendored patch (which Phase 16 cannot absorb per D16.8).
 - **Installs do not persist on `.iso` media.** The live/eval ISO is read-only by nature; Tier 2 is a RAM filesystem. Use the product `.img` for any install persistence (Phase 8 P3, `run/sponge-persist-disk.run`).
 - **QEMU slirp networking only → Phase 12 rescope.** The host network backend remains QEMU user-mode/slirp. Phase 12 verifies the Linux-backed `pc_nic` stack on QEMU e1000, not tap/bridge or physical-network operation. The new `run/sponge-pc-nic.run` proves pc_nic bind + `nic_router: uplink DHCP acquired` on QEMU's user/slirp backend; non-e1000 hardware (`rtl8169`, Wi-Fi, USB-Ethernet) is documented in `docs/15` but remains UNTESTED. The existing iPXE/fetchurl round-trip baseline (`run/sponge-net-probe.run`) is unchanged.
 - **Falkon is packaged, boots from disk, AND renders (first paint achieved on the seL4 media).** The Phase 8 disk-served architecture (docs/14 §12.4) is delivered end-to-end: falkon's 509 MiB WebEngine payload boots FROM DISK via `cached_fs_rom` (the binary starts, the dynamic linker resolves the 237 MiB `libQt6WebEngineCore.lib.so` from disk via rom_pkg, and lwIP DHCPs to 10.0.2.15), AND the browser window pixel-renders AND the HTTP fixture page is loaded over the nic stack (`run/sponge-falkon-disk.run` gates on `falkon-probe: PASS` + a host fixture GET; `docs/evidence/c4-logs/sponge-falkon-disk.log` for the latest regression PASS). The boot-module ceiling that blocked Falkon in Phase 7 is fully defeated. The capability-chain blocker that kept first paint unattained through Phase 8 is closed by three Phase 9 workstreams (docs/14 §12.4): C1 size-aware on-demand CNode backing (`93ded092f1`, docs/11 §4 ledger row #6), C2 lazy vm_space growth to 131072 mappings/PD (`19303468ff`, ledger row #7), and C3 the actual last blocker — a missing RM service route in `sponge_pkgd`'s generated parent-provides (`7feaa6510f`; the earlier "cap_quota=2 = exhaustion" reading was wrong — `cap_quota=2` is the FIXED request size for an RM session, `rm_session.h:34`, not a remaining-capacity measure). Both vendored base-sel4 patches are upstreamable (they address the long-standing `platform.cc:108` `XXX`). Honest notes: (1) Falkon is a heavy workload (~1 GiB RAM, slow first paint under softpipe Mesa in QEMU) and the run scenario carries a generous 900 s `run_genode_until` timeout; cold-boot interactive use is not yet measured. (2) Networking is QEMU slirp only (see the next limitation row); the verified page is the host-side HTTP fixture (`net-fixture.txt`), not arbitrary internet content. (3) `run/sponge-falkon.run` (the Phase 7 boot-modules variant) remains out of scope — superseded by the disk-served `sponge-falkon-disk` scenario that defeats the boot-module ceiling.

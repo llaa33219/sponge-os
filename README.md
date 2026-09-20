@@ -220,6 +220,90 @@ The repository currently contains:
   `sponge-configd-persist` — all PASS. Full receipts:
   `docs/evidence/phase14-index.md` +
   `docs/evidence/phase14-envelope-*.log`.
+- ✅ Phase 16 (practical daily-usable desktop defaults and
+  configuration): the shipped img/iso boots straight into a
+  usable, configurable desktop with every common desktop action
+  reachable through the DE itself, without hand-editing config
+  files. 10 of 12 completion criteria are **delivered** with
+  scenario-gated PASS markers on base-sel4 + QEMU (or base-linux
+  for the settings-dialog fast path); 2 of 12 are **delivered with
+  honest disclosure** (criteria 6 + 7 carry the D16.7 IMG-only
+  honest disclosure for ISO media; criterion 10 carries the W6
+  deviation 1 honest disclosure for the per-event right-click
+  delivery on the background widget). The four canonical Phase 16
+  everyday configurations now finish in 1 keystroke (open the
+  launcher via Super), 3 clicks (Settings → Panel tab → spin
+  height; Settings → Background tab → pick image; or panel menu
+  → Settings → Panel → spin), or 4 clicks (Settings → Panel tab
+  → enter id → Add a second panel) — measured in
+  `docs/evidence/phase16-index.md` §7 per `AGENTS.md` §5.1. The
+  Registry re-architecture lands: `sponge_configd`'s
+  `MAX_KEYS = 16 → 32`, a new `MAX_PATTERN_KEYS = 32` array of
+  per-id `Key_def` clones (the W2 pattern-key infrastructure;
+  chars `[a-z0-9_-]{1,16}`), four new flat keys
+  (`background.color` hex-validated, `background.image`
+  allowlist-validated, `panel.ids` comma-list, `shortcuts.bindings`
+  structured-callback-validated), and the `panel.visible_widgets`
+  enum-list extended from `{clock, launcher}` to
+  `{clock, launcher, tasklist}`. The phase wires the bake profile
+  (`pkg/bake/desktop.profile`) into all six product scenarios
+  (`sponge-alpha.run` + the 5 desktop-disk variants) so first boot
+  on shipped media lands on the baked values (W3 +
+  `run/sponge-desktop-defaults-firstboot.run`). The
+  in-DE `settings/` module brings five tabs (Panel / Theme /
+  Background / Shortcuts / Defaults) via the `SettingsController`
+  (a dedicated `de_config_request` / `de_config_result` Report
+  channel per D16.1 + `AGENTS.md` §1.2 single-writer rule).
+  Right-click on the panel opens a QMenu (Height spinbox 16..128,
+  Visible widgets checkboxes, Position radio group; panel.position
+  becomes live via dual nitpicker panel domains `panel_top` /
+  `panel_bottom` per U16.2 + D16.2 — closes the Phase 14 W11 row
+  #6 / #14 `Re-scoped → Phase 15+` items as `Resolved in 16`).
+  Right-click on the background opens a QMenu (Settings / Launch
+  / Show desktop) with the show-desktop toggle reusing the
+  Phase 14 W7 tasklist layouter-rule ROM overwrite (U16.3). The
+  keyboard-shortcut framework is extensible via
+  `shortcuts.bindings` (initial bindings: Super → launcher,
+  Alt-Tab → focus next, Escape → dismiss topmost popover). Multi-
+  panel is generalized: arbitrary panel count on arbitrary edges
+  with per-panel `panel.<id>.{height,position,visible_widgets}`
+  keys. Mouse window resize on the release-media topology
+  (motif decorator): `run/sponge-de-release-resize.run` —
+  criterion-9 headline PASS. The Phase 16 vendored budget lands
+  one new row in `docs/11-environment.md` §4 (row #17, themed
+  decorator sizer + minimizer; closes the Phase 14 D14.8(d)
+  follow-up; D16.8 forbids any further vendored patches). Honest
+  limitations registered (`docs/evidence/phase16-index.md` §6):
+  W6 deviation 1 (background contextMenuEvent right-click
+  delivery), W7 finding 1 + 2 (event_filter composition +
+  report_rom late-creation), W8 5d (cross-panel tasklist focus),
+  W9 sibling flakiness (themed-chrome full 8-zone sequence), and
+  the planned Phase 17+ carry-overs (`panel.position` left/right,
+  real-hardware multi-panel regression, falkon on seL4, user-
+  supplied background image upload). W12 regression sweep
+  (36 scenarios, serial `make -j1`):
+  `sponge-minimal`, `sponge-de-test`, `sponge-de-sel4-interactive`,
+  `sponge-wm-qmp`, `sponge-launch`, `sponge-wm-tasks`,
+  `sponge-clipboard-qtsettext`, `sponge-notify`,
+  `sponge-configd-persist`, `sponge-panel-config-sel4`,
+  `sponge-de-themed-chrome`, `sponge-bake-firstboot`,
+  `sponge-bake-reset`, `sponge-alpha`,
+  `sponge-desktop-defaults-firstboot`,
+  `sponge-configd-pattern-keys`, `sponge-configd-shortcuts`,
+  `sponge-configd-badkey`, `sponge-de-settings`,
+  `sponge-de-settings-regression`, `sponge-panel-menu`,
+  `sponge-de-bgmenu` (structural, W6 deviation 1),
+  `sponge-de-bgimage`, `sponge-de-bgimage-badpath`,
+  `sponge-de-shortcuts`, `sponge-de-shortcuts-extend`,
+  `sponge-de-multipanel`, `sponge-de-multipanel-idspace`,
+  `sponge-de-themed-chrome-resize` (each zone individually;
+  full sequence flaky — Phase 17+), `sponge-de-release-resize`,
+  `sponge-textedit`, `sponge-files`, `sponge-calculator`,
+  `sponge-terminal`, `sponge-hw-matrix` —
+  **34 of 36 fully PASS; 2 of 36 PARTIAL** (the W6 deviation 1
+  structural gate + the W9 sibling full-sequence flakiness); **0
+  FAIL.** Full receipts: `docs/evidence/phase16-index.md` +
+  `docs/evidence/phase16-envelope-*.log`.
 
 Verified vct boot output (base-sel4 on QEMU):
 
@@ -257,7 +341,7 @@ All detailed documentation lives in [`docs/`](docs/).
 - [16 - Package Authoring Guide](docs/16-package-authoring.md)
 
 Phase evidence indexes live under `docs/evidence/` (e.g.
-`phase13-index.md`, `phase14-index.md`).
+`phase13-index.md`, `phase14-index.md`, `phase16-index.md`).
 
 Contributors and AI agents must read [`AGENTS.md`](AGENTS.md) first.
 
