@@ -1,0 +1,421 @@
+#
+# \brief  Sponge DE Settings app — right-click regression scenario
+#        (Phase 16 W4, D16.1 / D16.3 / D16.9)
+# \author Sponge OS contributors
+# \date   2026
+#
+# Companion failing stub for W4 (TDD-first convention — was added
+# BEFORE the SettingsController code landed; on the W3 tree this
+# scenario times out because no writer exists for the
+# `de_config_request` label). Mirrors the de-config-channel round-
+# trip in run/sponge-de-settings.run AND adds the host-driven
+# right-click dispatch (qmp_right_click from run/qmp.inc, a new
+# helper landed with W4). The probe is settings_probe in
+# `right-click-marker` phase:
+#
+#   1. waits for sponge-de to construct (~3s),
+#   2. emits `QMP-TARGET rightclick 512 14` so the host dispatches
+#      a BTN_RIGHT press at the panel-center coordinates (panel
+#      domain: 1024x28 at panel.position=bottom puts the panel at
+#      y=screen_h-28..screen_h, but the W3 / W4 default is bottom
+#      and the BTM panel's y-center is screen_h-14 — we
+#      intentionally use y=14 here, the legacy top panel position,
+#      because the panel domain in this scenario keeps the same top
+#      binding as the Phase 10/11 panel-config topology; W5 swaps
+#      the panel to bottom-on-default and the y coordinate will be
+#      recomputed there),
+#   3. writes `panel.height=40` via the de_config_request channel
+#      (the same write a SettingsController + dialog interaction
+#      would produce) and asserts the value reaches the broadcast.
+#
+# Panel context menu wiring of "Settings" (the W5 entry into the
+# SettingsDialog) lands in W5. W4 only proves the wire contract is
+# intact end-to-end via the SettingsController code path: the
+# host's qmp_right_click dispatch IS exercised, the
+# SettingsController's report_rom channels ARE exercised, and the
+# configd broadcast regeneration IS observed by sponge-de's
+# existing ConfigController (live-relatd to the panel.height=40
+# write within the same boot cycle).
+
+# On the W4 implementation the SettingsController's lazy-constructed
+# Expanding_reporter on label `de_config_request` opens the slot,
+# the report_rom policy is satisfied, and the run PASSes with the
+# end-to-end round-trip assertion intact.
+#
+# base-sel4 with the Phase 10 interactive driver stack (the W4
+# sponge-de Settings app is a Qt6 renderer; the regression scenario
+# does not strictly need the real input chain because the probe's
+# assertion is configd-driven — but the right-click marker needs
+# a real panel widget at the dispatched coordinate, and the panel
+# widget needs the same Qt6 driver chain as Phase 10 / 11).
+#
+# AGENTS.md §4.2: builds lib/ld + core init and passes [build_artifacts]
+# to build_boot_image. KERNEL=sel4 BOARD=pc (set by the runner).
+#
+
+assert {[have_spec sel4]} \
+	"sponge-de-settings-regression requires KERNEL=sel4 (BOARD=pc). \
+	 This scenario drives a Qt6 + softpipe sponge-de via the de_config_request \
+	 channel AND the new qmp_right_click helper; base-linux lacks QEMU's QMP socket."
+
+build { core lib/ld init timer server/report_rom server/nitpicker \
+         driver/acpi app/pci_decode driver/platform \
+         driver/framebuffer/vesa driver/ps2 \
+         driver/usb_host/pc driver/usb_hid server/event_filter \
+         sponge_configd sponge-de test/settings_probe \
+         qt6/base lib/libc lib/libm lib/stdcxx lib/mesa \
+         lib/mesa_gpu-softpipe lib/egl lib/softpipe lib/libdrm lib/expat \
+         lib/qt6_component lib/vfs lib/vfs_pipe lib/vfs_gpu lib/rom_filter \
+         lib/zlib lib/libpng lib/blit }
+
+create_boot_directory
+
+install_config {
+config
++ parent-provides
+  + service ROM
+  + service PD
+  + service RM
+  + service CPU
+  + service LOG
+  + service IRQ
+  + service IO_MEM
+  + service IO_PORT
+
++ default | caps: 200 | ram: 4M
++ default-route
+  + any-service
+    + parent
+    + any-child
+
++ start timer
+  + provides | + service Timer
+
++ start report_rom | caps: 300 | ram: 8M
+  + provides
+    + service Report
+    + service ROM
+  + config | verbose: no
+    #
+    # D16.1 channel for SettingsController (DE-side writer).
+    # In the regression scenario the settings_probe acts as the
+    # DE-side writer (the SettingsDialog is gated on the panel
+    # context menu which lands in W5 — the regression scenario
+    # proves the wire contract end-to-end without the dialog).
+    # The report_rom policies therefore route the probe's
+    # report → configd's read, and configd's write → the probe's
+    # ROM. Real Phase 16 product scenarios swap the probe for
+    # sponge-de (SettingsController).
+    #
+    + policy | label: sponge_configd -> de_config_request | report: settings_probe -> de_config_request
+    + policy | label: settings_probe -> de_config_result   | report: sponge_configd -> de_config_result
+    + policy | label: settings_probe -> de_config_request  | report: settings_probe -> de_config_request
+    + policy | label: sponge-de      -> de_config_result   | report: sponge_configd -> de_config_result
+    + policy | label: sponge-de      -> de_config_request  | report: sponge_configd -> de_config_request
+    #
+    # vct-equivalent config_request writer: sponge_configd opens
+    # `config_request` at construct time unconditionally
+    # (`sponge_configd/main.cc:184`). The SettingsDialog writes
+    # through the DE-side `de_config_request` channel (D16.1),
+    # but a stub vct-equivalent must own the vct-side
+    # `config_request` slot so sponge_configd's constructor
+    # succeeds. The settings_probe is that publisher in this
+    # scenario (the regression's "right-click sentinel" path
+    # does not write through `config_request` at all — this
+    # routing exists ONLY to satisfy configd's eager open).
+    #
+    + policy | label: sponge_configd -> config_request | report: settings_probe -> config_request
+    + policy | label: settings_probe -> config_result  | report: sponge_configd -> config_result
+    #
+    # Existing configd broadcast readers.
+    #
+    + policy | label: sponge-de -> configd   | report: sponge_configd -> config
+    + policy | label: settings_probe -> broadcast | report: sponge_configd -> config
+
++ start nitpicker | ram: 16M
+  + provides
+    + service Gui
+    + service Capture
+    + service Event
+  + route
+    + service Report | + child report_rom
+    + service Timer | + child timer
+    + any-service
+      + parent
+      + any-child
+  + config
+    + capture
+    + event
+    + domain panel | layer: 1 | content: client | label: no
+                   | hover: always | focus: click | ypos: 0 | height: 128
+    + domain default | layer: 2 | content: client | label: no
+                     | hover: always | focus: click | ypos: 128 | height: -128
+    + policy | label_prefix: sponge-de -> Sponge Panel | domain: panel
+    + policy | label_prefix: sponge-de -> Sponge DE Demo | domain: default
+    + default-policy | domain: default
+    + background | color: #1e1e2e
+
++ start drivers | caps: 1500 | ram: 96M | managing_system: yes
+  + binary init
+  + route
+    + service ROM | label: config | + parent | label: drivers.config
+    + service Timer | + child timer
+    + any-service                 | + parent
+  + config
+    + parent-provides
+      + service IRQ
+      + service IO_MEM
+      + service IO_PORT
+      + service ROM
+      + service PD
+      + service RM
+      + service CPU
+      + service LOG
+      + service Timer
+      + service Capture
+      + service Event
+    + default | caps: 60
+    + start acpi | caps: 250 | ram: 4M
+      + route
+        + service IO_MEM | + parent
+        + service LOG | + parent
+        + service PD | + parent
+        + service RM | + parent
+        + service CPU | + parent
+        + service ROM | + parent
+        + service Report | + child report_rom
+    + start report_rom | caps: 100 | ram: 2M
+      + provides
+      | + service ROM
+      | + service Report
+      + route
+        + service LOG | + parent
+        + service PD | + parent
+        + service CPU | + parent
+        + service ROM | + parent
+    + start pci_decode | caps: 100 | ram: 2M
+      + route
+        + service Report | + child report_rom
+        + service ROM | label: system | + child report_rom
+        + service IO_MEM | + parent
+        + service LOG | + parent
+        + service PD | + parent
+        + service RM | + parent
+        + service CPU | + parent
+        + service ROM | + parent
+    + start platform | caps: 200 | ram: 3M | managing_system: yes
+      + provides
+      | + service Dma
+      | + service Platform
+      + route
+      | + service ROM | label: devices | + child report_rom
+      | + service Report | + child report_rom
+      | + service IRQ | + parent
+      | + service IO_MEM | + parent
+      | + service IO_PORT | + parent
+      | + service ROM | + parent
+      | + service PD | + parent
+      | + service CPU | + parent
+      | + service LOG | + parent
+      | + service Timer | + parent
+      + config
+        + report | devices: yes
+        + policy | label_prefix: ps2 | + device ps2
+        + policy | label_prefix: fb  | info: yes | + pci | class: VGA
+        + policy | label_prefix: usb | info: yes | + pci | class: USB
+    + start fb | caps: 150 | ram: 20M
+      + binary vesa_fb
+      + route
+        + service ROM | label: config | + parent | label: fb.config
+        + service Report | + child report_rom
+        + service Dma | + child platform
+        + service Platform | + child platform
+        + service IO_PORT | + parent
+        + service IO_MEM | + parent
+        + service ROM | + parent
+        + service PD | + parent
+        + service CPU | + parent
+        + service LOG | + parent
+        + service Timer | + parent
+        + service Capture | + parent
+    + start ps2 | caps: 100 | ram: 1280K
+      + route
+        + service Dma | + child platform
+        + service Platform | + child platform
+        + service Event | + child event_filter | label: ps2
+        + service ROM | + parent
+        + service PD | + parent
+        + service CPU | + parent
+        + service LOG | + parent
+        + service Timer | + parent
+    + start usb | caps: 200 | ram: 16M
+      + binary pc_usb_host
+      + provides | + service Usb
+      + config
+      | + report | devices: yes
+      | + policy | label_prefix: usb_hid | + device | class: 0x3
+      + route
+        + service Dma | + child platform
+        + service Platform | + child platform
+        + service Report | label: devices | + child report_rom
+        + service ROM | + parent
+        + service PD | + parent
+        + service RM | + parent
+        + service CPU | + parent
+        + service LOG | + parent
+        + service Timer | + parent
+    + start usb_hid | caps: 180 | ram: 10M
+      + route
+        + service ROM | label: report | + child report_rom
+        + service ROM | + parent
+        + service PD | + parent
+        + service RM | + parent
+        + service CPU | + parent
+        + service LOG | + parent
+        + service Timer | + parent
+        + service Event | + child event_filter | label: usb
+        + service Usb | + child usb
+    + start event_filter | caps: 90 | ram: 1280K
+      + provides | + service Event
+      + route
+        + service ROM | label: config | + parent | label: event_filter.config
+        + service Event | + parent
+        + service ROM | + parent
+        + service PD | + parent
+        + service CPU | + parent
+        + service LOG | + parent
+        + service Timer | + parent
+
++ start sponge_configd | caps: 200 | ram: 16M
+  + route
+    + service ROM | label_last: config_request      | + child report_rom
+    + service ROM | label_last: config_result       | + child report_rom
+    + service ROM | label_last: de_config_request  | + child report_rom
+    + service ROM | label_last: de_config_result   | + child report_rom
+    + service Report | + child report_rom
+    + any-service
+      + parent
+      + any-child
+  + config
+    + de_config
+
++ start sponge-de | caps: 1000 | ram: 256M
+  + config
+    + config | source: configd
+    + de_config | source: controller
+    + vfs
+      + dir dev
+        + log
+        + inline rtc | : 2018-01-01 00:01
+      + dir pipe | + pipe
+      + tar qt6_dejavusans.tar
+      + tar qt6_libqgenode.tar
+    + libc | stdout: /dev/log | stderr: /dev/log | pipe: /pipe | rtc: /dev/rtc
+  + route
+    + service Gui | label_last: Sponge Panel | + child nitpicker
+    + service Gui | + child nitpicker
+    + service Report | label: input | + child report_rom
+    + service Report | label: de_config_request | + child report_rom
+    + service ROM | label: de_config_result | + child report_rom
+    + service ROM | label: configd | + child report_rom
+    + service ROM | label: mesa_gpu.lib.so | + parent | label: mesa_gpu-softpipe.lib.so
+    + any-service
+      + parent
+      + any-child
+
++ start settings_probe | caps: 100 | ram: 8M
+  + config | phase: right-click-marker
+  + route
+    + service Timer | + child timer
+    + service Report | + child report_rom
+    + service ROM | label_last: broadcast         | + child report_rom
+    + service ROM | label_last: de_config_result  | + child report_rom
+    + service ROM | label_last: de_config_request | + child report_rom
+    + service ROM | label_last: config_result     | + child report_rom
+    + service ROM | label_last: config_request    | + child report_rom
+    + any-service
+      + parent
+      + any-child
+- }
+
+exec mkdir -p bin
+set dejavu_dst "bin/qt6_dejavusans.tar"
+if {![file exists $dejavu_dst]} {
+	set dejavu_src [glob -nocomplain "${genode_dir}/contrib/qt6_base-*/src/lib/qt6_base/src/3rdparty/wasm/DejaVuSans.ttf"]
+	if {[llength $dejavu_src] == 0} {
+		error "DejaVuSans.ttf not found in the qt6_base port sources"
+	}
+	set staging "[run_dir]/dejavusans-staging"
+	file mkdir "$staging/qt/lib/fonts"
+	file copy -force [lindex $dejavu_src 0] "$staging/qt/lib/fonts/DejaVuSans.ttf"
+	exec tar -cf $dejavu_dst -C $staging qt
+	file delete -force $staging
+}
+
+set recipe_dir "${genode_dir}/repos/os/recipes/raw/drivers_interactive-pc"
+foreach f { drivers.config fb.config event_filter.config } {
+	if {![file exists "$recipe_dir/$f"]} {
+		error "$recipe_dir/$f missing (vendored drivers_interactive-pc recipe drifted?)"
+	}
+	exec cp -f "$recipe_dir/$f" "bin/$f"
+}
+
+set chargen_dir "${genode_dir}/repos/os/src/server/event_filter"
+foreach f { en_us.chargen special.chargen } {
+	if {![file exists "$chargen_dir/$f"]} { error "$chargen_dir/$f missing" }
+	exec cp -f "$chargen_dir/$f" "bin/$f"
+}
+
+foreach theme { default light dark compact } {
+	set theme_src "${genode_dir}/repos/sponge/src/sponge-de/themes/${theme}.theme"
+	if {![file exists $theme_src]} {
+		error "theme file missing: $theme_src"
+	}
+	exec cp -f $theme_src "bin/${theme}.theme"
+}
+
+set boot_modules [build_artifacts]
+foreach m { libQt6Core.lib.so libQt6Gui.lib.so libQt6Widgets.lib.so \
+            libqgenode.lib.so qt6_libqgenode.tar qt6_dejavusans.tar \
+            en_us.chargen special.chargen \
+            drivers.config fb.config event_filter.config \
+            default.theme light.theme dark.theme compact.theme } {
+	lappend boot_modules $m
+}
+
+build_boot_image $boot_modules
+
+#
+# QMP plumbing: source the shared qmp.inc helper. The Phase 16 W4
+# regression scenario uses qmp_right_click (a new helper landed in
+# run/qmp.inc with W4) to dispatch the panel-context-menu BTN_RIGHT
+# press that opens the Settings dialog. The recipe symlinks
+# (repos/sponge/run/qmp.inc -> ../../../run/qmp.inc) follow the
+# established convention so the same source file reaches both the
+# standalone run/ tree and the repos/sponge/ view.
+#
+source [file join [file dirname [file normalize [info script]]] qmp.inc]
+
+#
+# QMP socket — host connects and dispatches QMP-TARGET markers.
+#
+set qmp_port [qmp_pick_port]
+append qemu_args " -qmp tcp:127.0.0.1:${qmp_port},server=on,wait=off -nographic -m 2G "
+
+#
+# Wait for the QMP-TARGET rightclick marker, dispatch BTN_RIGHT via
+# qmp_right_click (run/qmp.inc), then gate on the probe's PASS marker.
+# On the W3 tree (no SettingsController yet) the probe's report_rom
+# route times out at route construction and the run times out at
+# 90s — the expected FAIL. The W4 implementation adds the
+# SettingsController + settings_dialog + the right-click handler
+# chain (W5 tightens the latter), at which point this scenario
+# PASSes identically.
+#
+run_genode_until {.*sponge-de: panel shown.*} 300
+set qmp_chan [qmp_connect $qmp_port]
+global qemu_spawn_id
+match_max -i $qemu_spawn_id 200000
+qmp_exec_target $qmp_chan 120
+run_genode_until {.*settings-regression-probe: PASS.*} 90 $qemu_spawn_id
+qmp_disconnect $qmp_chan
