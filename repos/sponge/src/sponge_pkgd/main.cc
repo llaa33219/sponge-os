@@ -110,6 +110,9 @@ struct Sponge::Pkgd::Package
 
 	bool                has_autostart  { false };
 	bool                has_launcher   { false };
+	bool                resizeable     { true };   /* Phase 16 W9: default-yes; opt-out
+	                                                  is <resizeable>no</resizeable>. The
+	                                                  closed-form token is yes/no (D16.10). */
 	Genode::String<32>  launcher_category;
 
 	struct Session
@@ -658,6 +661,28 @@ void Sponge::Pkgd::Main::_parse_package(Genode::Xml_node const &pkg,
 		}
 		else if (child.has_type("autostart")) {
 			out.has_autostart = true;
+		}
+		else if (child.has_type("resizeable")) {
+			/*
+			 * Phase 16 W9 (D16.10). Closed-form `yes` / `no`. Default-yes
+			 * in the constructor (matches Qt6 QPA automatic info_sigh).
+			 * The value is documentary for Phase 16 (the criterion-9
+			 * release-media gate exercises the existing wm + window_layouter
+			 * + motif decorator propagation, not a new init-time gate);
+			 * Phase 17+ non-Qt apps that subscribe-to-resize explicitly
+			 * can use this attribute as the source of truth for the
+			 * future signal-plumbing hook.
+			 */
+			Genode::String<8> const v = child.decoded_content<Genode::String<8>>();
+			out.resizeable = (v == Genode::String<8>("yes"));
+			/* Anything other than yes / no is closed-form rejected. */
+			if (v != Genode::String<8>("yes") &&
+			    v != Genode::String<8>("no")) {
+				Genode::warning("pkg: <resizeable> in ", name,
+				                " must be yes or no (got '", v, "');",
+				                " defaulting to yes");
+				out.resizeable = true;
+			}
 		}
 		else if (child.has_type("launcher")) {
 			out.has_launcher      = true;

@@ -50,6 +50,7 @@
 
   <binary>init</binary>
   <quota ram="224M" caps="1100"/>
+  <resizeable>yes</resizeable>
 
   <launcher category="System"/>
 
