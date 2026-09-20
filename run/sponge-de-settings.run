@@ -1,0 +1,127 @@
+#
+# \brief  Sponge DE Settings app — write-via-de-channel acceptance
+#        scenario (Phase 16 W4, D16.1 / D16.3 / D16.9)
+# \author Sponge OS contributors
+# \date   2026
+#
+# First failing stub for W4 (TDD-first per the plan's TDD convention).
+# Mirrors the wire contract the in-sponge-de SettingsController will
+# use: a dedicated `sponge-de -> de_config_request` / `sponge-de ->
+# de_config_result` Report/ROM channel (D16.1), distinct from vct's
+# `config_request` label so report_rom's single-writer rule holds
+# (AGENTS.md §1.2).
+#
+# The probe (settings_probe, phase="write-via-de-channel") writes five
+# values covering the five Settings tabs:
+#
+#   panel.height         = 40           (Panel tab)
+#   theme.active         = light        (Theme tab)
+#   background.color     = #ff0000      (Background tab)
+#   shortcuts.bindings   = launcher\tSuper  (Shortcuts tab — structured)
+#   bake.applied         = no           (Defaults tab — reset trigger)
+#
+# Each write is asserted against the configd broadcast. The probe emits
+# `settings-probe: PASS` only after every per-tab write round-trips.
+#
+# Topology mirrors run/sponge-configd-pattern-keys.run with one extra
+# report_rom policy for the DE-side de_config_request / de_config_result
+# channel pair (so the per-tab writes do not collide with vct's path).
+#
+# === TDD-first stub ===
+#
+# This scenario is added BEFORE the SettingsController and settings_dialog
+# code lands. On the current tree (W3 done, no W4 yet):
+#   - the `sponge-de -> de_config_request` Report slot exists (report_rom
+#     auto-creates slots only when a writer opens it), so the probe's
+#     Expanding_reporter for that label will fail at construction with
+#     "invalid Report session"; the run script times out at the
+#     `settings-probe: PASS` marker — the expected FAIL.
+#   - the W4 implementation adds the SettingsController writer on the
+#     DE side, which makes the report_rom policy above valid and unblocks
+#     the probe's writes; the run PASSes the same scenario unchanged.
+#
+# (The regression sibling at sponge-de-settings-regression.run carries
+# the qmp_right_click + panel-context-menu flow; this stub is purely
+# the channel round-trip, independent of the menu choreography.)
+#
+# base-linux for fast iteration; the channel is purely in-memory and
+# orthogonal to the kernel tag.
+#
+# AGENTS.md §4.2: builds lib/ld + core init and passes [build_artifacts]
+# to build_boot_image.
+#
+
+build { core lib/ld init timer server/report_rom lib/vfs sponge_configd \
+        test/settings_probe }
+
+create_boot_directory
+
+install_config {
+config
++ parent-provides
+  + service LOG
+  + service PD
+  + service CPU
+  + service ROM
+  + service IO_MEM
+  + service IRQ
+
++ default-route
+  + any-service
+    + parent
+    + any-child
++ default | caps: 200 | ram: 8M
+
++ start timer
+  + provides | + service Timer
+
++ start report_rom | ram: 4M
+  + provides
+    + service Report
+    + service ROM
+  + config | verbose: no
+    + policy | label: sponge_configd -> config_request | report: settings_probe -> de_config_request
+    + policy | label: settings_probe -> de_config_result | report: sponge_configd -> config_result
+    + policy | label: settings_probe -> broadcast | report: sponge_configd -> config
+
++ start sponge_configd | caps: 200 | ram: 16M
+  + route
+    + service ROM | label_last: config_request | + child report_rom
+    + service Report | + child report_rom
+    + any-service
+      + parent
+      + any-child
+
++ start settings_probe | caps: 200 | ram: 8M
+  + config | phase: write-via-de-channel
+  + route
+    + service Timer | + child timer
+    + service ROM | label_last: de_config_result | + child report_rom
+    + service ROM | label_last: broadcast         | + child report_rom
+    + service Report | + child report_rom
+    + any-service
+      + parent
+      + any-child
+- }
+
+build_boot_image [build_artifacts]
+
+#
+# Harmless on base-linux (core runs natively); required for base-sel4 /
+# QEMU to avoid opening a graphical QEMU window.
+#
+append qemu_args " -nographic -m 1G "
+
+#
+# Verification: the probe writes five values, reads back the broadcast,
+# and logs "settings-probe: PASS" only if every per-tab write succeeds.
+# On the W3 tree (without W4's SettingsController) the probe's
+# Expanding_reporter for `de_config_request` fails at construction (no
+# policy routes that label — the only writer in the W3 tree is vct's
+# `config_request`, which is a DIFFERENT label slot), the probe never
+# publishes a request, and the scenario's `run_genode_until` times out
+# at 30s with the FAIL. The W4 implementation commits the
+# SettingsController that owns the sponge-de side of the
+# de_config_request label — at which point the run PASSes identically.
+#
+run_genode_until {.*settings-probe: PASS.*} 30
