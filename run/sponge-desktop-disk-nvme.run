@@ -524,10 +524,11 @@ config
       + parent
       + any-child
 
-+ start pkg_runtime | caps: 400 | ram: 32M
++ start pkg_runtime | caps: 8000 | ram: 1536M
   + binary | name: bin/init
   + route
     + service ROM | label_last: ld.lib.so | + parent
+    + service ROM | label_last: mesa_gpu.lib.so | + parent | label: mesa_gpu-softpipe.lib.so
     + service ROM | label: config | + child report_rom
     #
     # Route pkg_runtime's Gui sessions through the wm so launched GUI
@@ -535,6 +536,7 @@ config
     # run/sponge-alpha.run for full rationale. Inert when no GUI
     # package is running (hello is a non-GUI binary).
     + service Gui | + child wm
+    + service Report | label_last: shape | + child wm
     + any-service
       + parent
       + any-child
@@ -922,7 +924,7 @@ config
     + service LOG | + parent
     + service Timer | + child timer
 
-+ start system | caps: 8000 | ram: 1500M
++ start system | caps: 16000 | ram: 1920M
   + binary | name: bin/init
   + route
     + service ROM | label: config | + child rom_sys | label: init/system.config
