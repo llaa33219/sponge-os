@@ -456,6 +456,8 @@ config
     + policy | label: alpha_probe -> result       | report: sponge_pkgd -> result
     + policy | label: pkg_runtime -> config       | report: sponge_pkgd -> runtime
     + policy | label: sponge-de -> installed      | report: sponge_pkgd -> installed
+    + policy | label: sponge_pkgd -> launcher_request | report: sponge-de -> launcher_request
+    + policy | label: sponge-de -> launcher_result   | report: sponge_pkgd -> launcher_result
     + policy | label: alpha_probe -> sponge_de_launcher | report: sponge-de -> launcher
 
 + start wm | caps: 250 | ram: 8M
@@ -502,8 +504,8 @@ config
     + service ROM | label_last: ld.lib.so     | + parent
     + service ROM | label: window_list       | + child report_rom
     + service ROM | label: focus_request     | + child report_rom
-    + service ROM | label: hover             | + parent
-    + service ROM | label: focus             | + parent
+    + service ROM | label: hover             | + child report_rom
+    + service ROM | label: focus             | + child report_rom
     + service ROM | label: decorator_margins | + child report_rom
     + service ROM | label: rules             | + child report_rom
     + service Report | label: rules           | + child report_rom | label: layout_rules
@@ -571,9 +573,11 @@ config
 + start sponge_pkgd | caps: 200 | ram: 16M
   + binary | name: bin/sponge_pkgd
   + config | binary_prefix: bin/
+    + launcher_request
   + route
     + service ROM | label_last: ld.lib.so | + parent
     + service ROM | label_last: request | + child report_rom
+    + service ROM | label_last: launcher_request | + child report_rom
     + service Report | + child report_rom
     + any-service
       + parent
@@ -616,6 +620,8 @@ config
     + service Report | label: input | + child report_rom
     + service Report | label: applied_theme | + child report_rom
     + service Report | label: launcher | + child report_rom
+    + service Report | label: launcher_request | + child report_rom
+    + service ROM | label: launcher_result | + child report_rom
     + service ROM | label: installed | + child report_rom
     + service ROM | label: theme | + child report_rom
     + service ROM | label: mesa_gpu.lib.so | + parent | label: mesa_gpu-softpipe.lib.so

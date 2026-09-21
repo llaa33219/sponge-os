@@ -331,6 +331,8 @@ config
     + policy | label: alpha_probe -> result       | report: sponge_pkgd -> result
     + policy | label: pkg_runtime -> config       | report: sponge_pkgd -> runtime
     + policy | label: sponge-de -> installed      | report: sponge_pkgd -> installed
+    + policy | label: sponge_pkgd -> launcher_request | report: sponge-de -> launcher_request
+    + policy | label: sponge-de -> launcher_result   | report: sponge_pkgd -> launcher_result
     + policy | label: alpha_probe -> sponge_de_launcher | report: sponge-de -> launcher
     + policy | label_suffix: lz_model         | report: lz_runtime -> leitzentrale -> lz_watch -> lz_model
     + policy | label_suffix: lz_watch_result  | report: lz_runtime -> leitzentrale -> lz_watch -> result
@@ -672,8 +674,11 @@ config
       + any-child
 
 + start sponge_pkgd | caps: 200 | ram: 16M
+  + config
+    + launcher_request
   + route
     + service ROM | label_last: request | + child report_rom
+    + service ROM | label_last: launcher_request | + child report_rom
     + service Report | + child report_rom
     + any-service
       + parent
@@ -726,6 +731,8 @@ config
     + service Report | label: input | + child report_rom
     + service Report | label: applied_theme | + child report_rom
     + service Report | label: launcher | + child report_rom
+    + service Report | label: launcher_request | + child report_rom
+    + service ROM | label: launcher_result | + child report_rom
     + service Report | label: de_config_request | + child report_rom
     + service Report | label: bgmenu_open       | + child report_rom
     + service ROM | label: installed | + child report_rom
