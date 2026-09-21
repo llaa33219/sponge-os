@@ -63,6 +63,52 @@ bool config_asks_for_pkgd(Genode::Env &env)
 	return enabled;
 }
 
+/*
+ * Read <launcher_state source="report"/> from the component config.
+ * The launcher_state reporter opens a Report session; in scenarios
+ * without the report_rom route that session request is DENIED and
+ * init stops sponge-de (the Phase 16 product-media regression).
+ * Only scenarios that verify the state report (the shortcuts
+ * scenarios) opt in; every other topology pays zero session cost.
+ */
+bool config_asks_for_state_report(Genode::Env &env)
+{
+	Genode::Attached_rom_dataspace config(env, "config");
+	config.update();
+	if (!config.valid())
+		return false;
+
+	char const *const base = config.local_addr<char>();
+	Genode::size_t  const sz  = config.size();
+
+	bool enabled = false;
+
+	bool const is_xml = (sz > 0 && base[0] == '<');
+	if (is_xml) {
+		try {
+			Genode::Xml_node const root(base, sz);
+			root.for_each_sub_node("launcher_state",
+				[&](Genode::Xml_node const &l) {
+					if (!enabled)
+						enabled = l.attribute_value("source",
+						           Genode::String<32>()) ==
+						          Genode::String<32>("report");
+				});
+		}
+		catch (Genode::Xml_node::Invalid_syntax) { }
+	} else {
+		Genode::Hid_node const root(Genode::Const_byte_range_ptr(base, sz));
+		root.for_each_sub_node([&](Genode::Hid_node const &n) {
+			if (!enabled && n.has_type("launcher_state"))
+				enabled = n.attribute_value("source",
+				          Genode::String<32>()) ==
+				          Genode::String<32>("report");
+		});
+	}
+
+	return enabled;
+}
+
 }  /* namespace */
 
 
@@ -77,6 +123,8 @@ LauncherController::LauncherController(Genode::Env &env, QObject *parent)
 	 * (and any watcher) reads a well-formed <launcher count="0"/>
 	 * before any pkgd update arrives. */
 	_publish_report();
+
+	_state_report_enabled = config_asks_for_state_report(env);
 
 	bool const wired = config_asks_for_pkgd(env);
 	if (!wired) {
@@ -338,6 +386,9 @@ void LauncherController::request_launch(QString const &name)
  */
 void LauncherController::_publish_state(bool open)
 {
+	if (!_state_report_enabled)
+		return;
+
 	if (!_state_reporter.constructed()) {
 		try {
 			_state_reporter.construct(_env, "launcher_state", "launcher_state");
