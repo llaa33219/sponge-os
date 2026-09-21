@@ -387,6 +387,7 @@ config
     + config     | source: configd
     + de_config  | source: controller
     + shortcuts  | source: controller
+    + launcher_state | source: report
     + vfs
       + dir dev
         + log

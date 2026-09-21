@@ -163,6 +163,8 @@ class LauncherController : public QObject
 		 */
 		Genode::Constructible<Genode::Expanding_reporter> _state_reporter { };
 
+		bool _state_report_enabled { false };
+
 		void _publish_state(bool open);
 
 		/*
