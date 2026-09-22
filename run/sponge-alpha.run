@@ -676,9 +676,11 @@ config
 + start sponge_pkgd | caps: 200 | ram: 16M
   + config
     + launcher_request
+    + bake
   + route
     + service ROM | label_last: request | + child report_rom
     + service ROM | label_last: launcher_request | + child report_rom
+    + service ROM | label: bake_manifest | + parent | label: bake_manifest.json
     + service Report | + child report_rom
     + any-service
       + parent
