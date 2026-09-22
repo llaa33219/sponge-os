@@ -517,10 +517,12 @@ config
   + binary | name: bin/sponge_pkgd
   + config | binary_prefix: bin/
     + launcher_request
+    + bake
   + route
     + service ROM | label_last: ld.lib.so | + parent
     + service ROM | label_last: request | + child report_rom
     + service ROM | label_last: launcher_request | + child report_rom
+    + service ROM | label: bake_manifest | + parent | label: bake_manifest.json
     + service Report | + child report_rom
     + any-service
       + parent
