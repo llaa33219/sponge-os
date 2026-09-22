@@ -394,8 +394,8 @@ config
     + policy | label: wm -> resize_request           | report: layouter -> resize_request
     + policy | label: layouter -> hover              | report: decorator -> hover
     + policy | label: layouter -> decorator_margins  | report: decorator -> decorator_margins
-    + policy | label: layouter -> rules              | report: layout_rules
-    + policy | label: layouter -> focus_request      | report: wm -> focus_request
+    + policy | label: layouter -> rules              | report: sponge-de -> rules
+    + policy | label: layouter -> focus_request      | report: sponge-de -> focus_request
     + policy | label: sponge_configd -> config_request | report: alpha_probe -> config_request
     + policy | label: alpha_probe -> config_result     | report: sponge_configd -> config_result
     + policy | label: sponge_themed -> config          | report: sponge_configd -> config
@@ -409,6 +409,8 @@ config
     + policy | label: sponge-de -> installed      | report: sponge_pkgd -> installed
     + policy | label: sponge_pkgd -> launcher_request | report: sponge-de -> launcher_request
     + policy | label: sponge-de -> launcher_result   | report: sponge_pkgd -> launcher_result
+    + policy | label: sponge-de -> window_list   | report: wm -> window_list
+    + policy | label: sponge-de -> window_layout | report: layouter -> window_layout
     + policy | label: alpha_probe -> sponge_de_launcher | report: sponge-de -> launcher
 
 + start wm | caps: 250 | ram: 8M
@@ -541,6 +543,10 @@ config
   + config
     + theme | source: themed
     + launcher | source: pkgd
+    + tasklist | source: wm
+    + tasklist_static_rules
+      + assign | label: sponge-de -> Sponge DE Demo | target: screen | xpos: 192 | ypos: 172 | width: 640 | height: 480 | maximized: no
+      + assign | label_prefix: pkg_runtime | target: screen | xpos: 50 | ypos: 300 | width: 320 | height: 240 | maximized: no
     + vfs
       + dir dev
         + log
@@ -559,6 +565,10 @@ config
     + service Report | label: applied_theme | + child report_rom
     + service Report | label: launcher | + child report_rom
     + service Report | label: launcher_request | + child report_rom
+    + service ROM | label: window_list   | + child report_rom
+    + service ROM | label: window_layout | + child report_rom
+    + service Report | label: focus_request | + child report_rom
+    + service Report | label: rules        | + child report_rom
     + service ROM | label: launcher_result | + child report_rom
     + service ROM | label: installed | + child report_rom
     + service ROM | label: theme | + child report_rom

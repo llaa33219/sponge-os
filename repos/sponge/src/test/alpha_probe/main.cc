@@ -123,7 +123,7 @@ static Baked_key const REQUIRED_BAKED_KEYS[] = {
 	{ "bake.applied",            "yes"            },
 	{ "theme.active",            "default"        },
 	{ "panel.height",            "28"             },
-	{ "panel.visible_widgets",   "clock,launcher" },
+	{ "panel.visible_widgets",   "clock,launcher,tasklist" },
 	{ "clock.format",            "HH:mm"          },
 	{ "launcher.sort_by",        "alpha"          },
 };

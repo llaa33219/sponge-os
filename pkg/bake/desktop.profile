@@ -22,7 +22,7 @@ falkon = enabled
 
 [config]
 panel.height = 28
-panel.visible_widgets = clock,launcher
+panel.visible_widgets = clock,launcher,tasklist
 clock.format = HH:mm
 launcher.sort_by = alpha
 
