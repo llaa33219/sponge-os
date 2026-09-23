@@ -545,7 +545,7 @@ config
       + parent
       + any-child
 
-+ start sponge-de | caps: 1000 | ram: 128M
++ start sponge-de | caps: 4000 | ram: 160M
   + binary | name: bin/sponge-de
   + config
     + theme | source: themed

@@ -188,6 +188,16 @@ class LauncherController : public QObject
 		Genode::Constructible<Genode::Expanding_reporter>     _launch_request  { };
 		Genode::Constructible<Genode::Attached_rom_dataspace> _launch_result   { };
 
+		/*
+		 * Latched when opening the launch channels threw (resource
+		 * exhaustion): the sandbox keeps the half-open session for a
+		 * while, so an immediate reconstruct reuses the client id and
+		 * is denied as a conflicting session — a component-fatal
+		 * error. Once broken, launches fail loudly instead of
+		 * killing the DE.
+		 */
+		bool _launch_channels_broken { false };
+
 		/* Headless-verifiability: published app list. */
 		Genode::Reporter _launcher_report { _env, "launcher" };
 
