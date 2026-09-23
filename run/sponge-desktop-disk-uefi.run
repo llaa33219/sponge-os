@@ -640,7 +640,7 @@ config
     + policy | label: sponge-de -> window_layout | report: layouter -> window_layout
     + policy | label: alpha_probe -> sponge_de_launcher | report: sponge-de -> launcher
 
-+ start wm | caps: 250 | ram: 8M
++ start wm | caps: 2000 | ram: 16M
   + binary | name: bin/wm
   + provides
     + service Gui
@@ -661,7 +661,7 @@ config
       + parent
       + any-child
 
-+ start layouter | caps: 150 | ram: 4M
++ start layouter | caps: 1000 | ram: 8M
   + binary | name: bin/window_layouter
   + config | rules: rom
     + report | rules: yes
@@ -1132,7 +1132,7 @@ config
     + service LOG | + parent
     + service Timer | + child timer
 
-+ start system | caps: 32000 | ram: 1920M
++ start system | caps: 36000 | ram: 1920M
   + binary | name: bin/init
   + route
     + service ROM | label: config | + child rom_sys | label: init/system.config
