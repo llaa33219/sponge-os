@@ -1112,7 +1112,7 @@ config
     + service LOG | + parent
     + service Timer | + child timer
 
-+ start system | caps: 16000 | ram: 1920M
++ start system | caps: 32000 | ram: 1920M
   + binary | name: bin/init
   + route
     + service ROM | label: config | + child rom_sys | label: init/system.config

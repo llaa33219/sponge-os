@@ -321,11 +321,31 @@ void LauncherController::request_launch(QString const &name)
 	 * does not wire the labels will never call request_launch, so the
 	 * denied-session path is never triggered there).
 	 */
-	if (!_launch_request.constructed()) {
-		_launch_request.construct(_env, "request", "launcher_request");
+	if (_launch_channels_broken) {
+		Genode::warning("sponge-de: launch channels unavailable (earlier "
+		                "open failed); dropping launch request for '",
+		                name.toUtf8().constData(), "'");
+		return;
 	}
-	if (!_launch_result.constructed()) {
-		_launch_result.construct(_env, "launcher_result");
+
+	try {
+		if (!_launch_request.constructed()) {
+			_launch_request.construct(_env, "request", "launcher_request");
+		}
+		if (!_launch_result.constructed()) {
+			_launch_result.construct(_env, "launcher_result");
+		}
+	} catch (Genode::Exception &) {
+		/*
+		 * The exception must not escape into the Qt event loop, and
+		 * the half-open session above keeps living at the sandbox —
+		 * retrying the construct reuses the client id and is denied
+		 * as a conflicting session (sleep_forever, component-fatal).
+		 */
+		_launch_channels_broken = true;
+		Genode::error("sponge-de: opening the launcher channels failed "
+		              "(resource exhaustion); launcher disabled");
+		return;
 	}
 
 	if (!_launch_request.constructed() || !_launch_result.constructed()) {
