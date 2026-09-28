@@ -1046,7 +1046,7 @@ config
 # full-size Capture buffer. No trailing comment on the start line because
 # the HID format silently falls back to the default quota for the last
 # attribute otherwise.
-+ start fb | caps: 6000 | ram: 64M
++ start fb | caps: 24000 | ram: 96M
   #
   # UEFI display driver (D15.13 / D15.16 / R15.2). The vendored
   # binary at genode/repos/os/src/driver/framebuffer/boot/ (LIBS

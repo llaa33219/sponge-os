@@ -799,7 +799,7 @@ config
 # Phase 15: boot_fb maps the whole GOP framebuffer and allocates a full-size
 # Capture buffer. No trailing comment on the start line (HID-format silently
 # falls back to <default> for the last attribute otherwise).
-+ start fb | caps: 6000 | ram: 64M
++ start fb | caps: 24000 | ram: 96M
   + binary boot_fb
   + route
     + service ROM | label: config        | + parent | label: fb.config

@@ -870,7 +870,7 @@ config
       + parent
       + any-child
 
-+ start fb | caps: 150 | ram: 20M
++ start fb | caps: 1000 | ram: 32M
   + binary vesa_fb
   + route
     + service ROM | label_last: ld.lib.so | + parent
