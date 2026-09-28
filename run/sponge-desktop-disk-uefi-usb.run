@@ -1060,7 +1060,7 @@ config
 # and allocates a full-size Capture buffer (16 MiB at 2560x1600x32). caps
 # 6000 for the page-table-registry entries. No trailing comment on the
 # start line — see the nitpicker comment above for why.
-+ start fb | caps: 6000 | ram: 64M
++ start fb | caps: 24000 | ram: 96M
   + binary boot_fb
   + route
     + service ROM | label: config        | + parent | label: fb.config
