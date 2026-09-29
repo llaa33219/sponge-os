@@ -19,6 +19,8 @@ files = enabled
 calculator = enabled
 pdf_view = enabled
 falkon = enabled
+# SPONGE DEBUG: the on-desktop launch-chain monitor (bring-up tooling)
+debug = enabled
 
 [config]
 panel.height = 28

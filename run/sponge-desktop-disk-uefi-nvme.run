@@ -227,6 +227,7 @@ set build_components {
 	server/wm app/window_layouter app/decorator app/pointer
 	sponge_configd sponge_themed sponge_pkgd pkg_hello sponge-de
 	app/qt6/examples/calculatorform sponge_files app/pdf_view
+	sponge_debug
 	server/terminal
 	noux-pkg/bash-minimal noux-pkg/vim-minimal
 	noux-pkg/coreutils-minimal noux-pkg/grep noux-pkg/sed
@@ -270,7 +271,7 @@ close $empty_cfg
 foreach b { init report_rom wm window_layouter decorator \
             sponge_configd sponge_themed sponge_pkgd sponge-de \
             alpha_probe hello terminal sponge_files calculatorform \
-            pdf_view textedit boot_fb } {
+            pdf_view textedit sponge_debug boot_fb } {
 	if {[file exists "bin/$b"]} {
 		exec cp -fL "bin/$b" "$sys_dir/bin/$b"
 	}
@@ -409,6 +410,9 @@ config
     + policy | label: sponge-de -> installed      | report: sponge_pkgd -> installed
     + policy | label: sponge_pkgd -> launcher_request | report: sponge-de -> launcher_request
     + policy | label: sponge-de -> launcher_result   | report: sponge_pkgd -> launcher_result
+    + policy | label: pkg_runtime -> debug -> installed      | report: sponge_pkgd -> installed
+    + policy | label: pkg_runtime -> debug -> window_list    | report: wm -> window_list
+    + policy | label: pkg_runtime -> debug -> launcher_result | report: sponge_pkgd -> launcher_result
     + policy | label: sponge-de -> window_list   | report: wm -> window_list
     + policy | label: sponge-de -> window_layout | report: layouter -> window_layout
     + policy | label: alpha_probe -> sponge_de_launcher | report: sponge-de -> launcher
@@ -534,6 +538,9 @@ config
     + service ROM | label_last: ld.lib.so | + parent
     + service ROM | label_last: mesa_gpu.lib.so | + parent | label: mesa_gpu-softpipe.lib.so
     + service ROM | label: config | + child report_rom
+    + service ROM | label_last: installed      | + child report_rom
+    + service ROM | label_last: window_list    | + child report_rom
+    + service ROM | label_last: launcher_result | + child report_rom
     + service Gui | + child wm
     + service Report | label_last: shape | + child wm
     + any-service
