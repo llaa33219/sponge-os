@@ -49,6 +49,8 @@ pkg/
 │       └── textedit.config
 ├── calculator/             # source-built in-tree (Phase 13 W3)
 │   └── metadata.xml
+├── debug/                  # source-built in-tree: SPONGE DEBUG monitor
+│   └── metadata.xml
 ├── pdf_view/               # source-built in-tree (Phase 13 W4)
 │   ├── metadata.xml
 │   └── payload/
