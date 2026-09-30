@@ -347,6 +347,30 @@ void Libc::Component::construct(Libc::Env &env)
 		 * The panel title is the one status line guaranteed visible on
 		 * bring-up hardware where no serial console is available.
 		 */
+		/*
+		 * The runtime_state subscription needs the pkgd-topology relay
+		 * (report_rom policy 'sponge-de -> runtime_state'). Only wire it
+		 * when the launcher feed itself is pkgd-driven — the product
+		 * scenarios. Every other topology (the flat test scenarios,
+		 * wm-only stacks) lacks the relay and a denied ROM session is
+		 * component-fatal on Genode.
+		 */
+		bool diag_runtime_state = false;
+		{
+			Genode::Attached_rom_dataspace cfg { env, "config" };
+			cfg.update();
+			if (cfg.valid()) {
+				char const * const base = cfg.local_addr<char const>();
+				Genode::size_t  const sz  = cfg.size();
+				for (Genode::size_t i = 0; i + 25 < sz; ++i)
+					if (Genode::strcmp(base + i, "runtime_state: yes", 18) == 0 ||
+					    Genode::strcmp(base + i, "\"runtime_state\"", 15) == 0) {
+						diag_runtime_state = true;
+						break;
+					}
+			}
+		}
+
 		Genode::Constructible<Genode::Attached_rom_dataspace> runtime_state_rom;
 		auto diag_refresh = [&]() {
 			QString running;
@@ -363,9 +387,10 @@ void Libc::Component::construct(Libc::Env &env)
 			 * pkgd bookkeeping; C: is the sandbox's ground truth.
 			 */
 			int children = -1;
-			if (!runtime_state_rom.constructed())
+			if (diag_runtime_state && !runtime_state_rom.constructed())
 				runtime_state_rom.construct(env, "runtime_state");
-			runtime_state_rom->update();
+			if (runtime_state_rom.constructed()) {
+				runtime_state_rom->update();
 			if (runtime_state_rom->valid()) {
 				children = 0;
 				try {
@@ -374,6 +399,7 @@ void Libc::Component::construct(Libc::Env &env)
 					state.for_each_sub_node("child", [&](Genode::Xml_node const &) {
 						++children; });
 				} catch (Genode::Xml_node::Invalid_syntax) { }
+			}
 			}
 
 			if (panel_top)                 panel_top->show_running_set(running, windows, children);
