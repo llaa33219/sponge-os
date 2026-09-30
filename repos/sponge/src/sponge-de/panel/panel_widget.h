@@ -213,6 +213,14 @@ class PanelWidget : public QWidget
 		 * main.cc next to the LauncherController), shown/hidden by
 		 * the launcher button click.
 		 */
+		/*
+		 * Real-hardware observability: render pkgd's running set in the
+		 * panel title (e.g. "Sponge DE · R:hello,debug"). The launcher
+		 * popup's dot markers show the same, but only while the popup is
+		 * open — the title line is always visible.
+		 */
+		void show_running_set(QString const &names);
+
 		void set_launcher_view(LauncherMenuView *view) { _launcher_view = view; }
 
 		/*
@@ -359,6 +367,7 @@ protected:
 		/* Owned through Qt's parent-child mechanism. */
 		QPushButton *_launcher_toggle { nullptr };
 		QLabel      *_title_label     { nullptr };
+		QString      _running_set;
 		QLabel      *_clock_label     { nullptr };
 		QTimer      *_clock_timer     { nullptr };
 
