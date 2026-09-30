@@ -1200,6 +1200,17 @@ void Sponge::Pkgd::Main::_generate_runtime_config()
 
 	_runtime_reporter.generate_xml([&](Genode::Xml_generator &g) {
 		/*
+		 * Sandbox state reporting (bring-up observability): makes
+		 * pkg_runtime emit a periodic <state> report listing every
+		 * spawned child and its state. Relayed to sponge-de as the
+		 * panel-title C:<n> readout — on hardware where children
+		 * never produce windows, C: discriminates "the sandbox
+		 * never spawned them" (config delivery broken) from "they
+		 * spawned but died before opening a Gui session".
+		 */
+		g.node("report", [&] { g.attribute("delay_ms", 2000); });
+
+		/*
 		 * Extended parent-provides (docs/12 §7.2): the original
 		 * ROM/PD/CPU/LOG/Timer set could not resolve <parent/> routes
 		 * for Gui/Input/Report/File_system/NIC. Phase 7 adds exactly
