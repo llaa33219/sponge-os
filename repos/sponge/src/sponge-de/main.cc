@@ -30,6 +30,7 @@
 #include <base/log.h>
 #include <libc/component.h>
 #include <rom_session/connection.h>
+#include <util/xml_node.h>
 #include <util/string.h>
 
 #include <QApplication>
@@ -346,6 +347,7 @@ void Libc::Component::construct(Libc::Env &env)
 		 * The panel title is the one status line guaranteed visible on
 		 * bring-up hardware where no serial console is available.
 		 */
+		Genode::Constructible<Genode::Attached_rom_dataspace> runtime_state_rom;
 		auto diag_refresh = [&]() {
 			QString running;
 			for (auto const &a : launcher_ctrl.apps()) {
@@ -354,8 +356,28 @@ void Libc::Component::construct(Libc::Env &env)
 				running += a.name;
 			}
 			int const windows = tasklist_ctrl.tracked_window_count();
-			if (panel_top)                 panel_top->show_running_set(running, windows);
-			if (panel_bottom.constructed()) panel_bottom->show_running_set(running, windows);
+
+			/*
+			 * pkg_runtime's sandbox <state> report (the C: readout):
+			 * counts children the sandbox actually spawned. R: is
+			 * pkgd bookkeeping; C: is the sandbox's ground truth.
+			 */
+			int children = -1;
+			if (!runtime_state_rom.constructed())
+				runtime_state_rom.construct(env, "runtime_state");
+			runtime_state_rom->update();
+			if (runtime_state_rom->valid()) {
+				children = 0;
+				try {
+					Genode::Xml_node const state(runtime_state_rom->local_addr<char const>(),
+					                             runtime_state_rom->size());
+					state.for_each_sub_node("child", [&](Genode::Xml_node const &) {
+						++children; });
+				} catch (Genode::Xml_node::Invalid_syntax) { }
+			}
+
+			if (panel_top)                 panel_top->show_running_set(running, windows, children);
+			if (panel_bottom.constructed()) panel_bottom->show_running_set(running, windows, children);
 		};
 		QObject::connect(&launcher_ctrl, &LauncherController::appsChanged,
 		                 diag_refresh);

@@ -640,6 +640,7 @@ config
     + policy | label: pkg_runtime -> debug -> installed      | report: sponge_pkgd -> installed
     + policy | label: pkg_runtime -> debug -> window_list    | report: wm -> window_list
     + policy | label: pkg_runtime -> debug -> launcher_result | report: sponge_pkgd -> launcher_result
+    + policy | label: sponge-de -> runtime_state | report: pkg_runtime -> state
     + policy | label: sponge-de -> window_list   | report: wm -> window_list
     + policy | label: sponge-de -> window_layout | report: layouter -> window_layout
     + policy | label: alpha_probe -> sponge_de_launcher | report: sponge-de -> launcher
@@ -766,6 +767,7 @@ config
     + service ROM | label_last: launcher_result | + child report_rom
     + service Gui | + child wm
     + service Report | label_last: shape | + child wm
+    + service Report | label_last: state | + child report_rom
     + any-service
       + parent
       + any-child
@@ -802,6 +804,7 @@ config
     + service Report | label: focus_request | + child report_rom
     + service Report | label: rules        | + child report_rom
     + service ROM | label: launcher_result | + child report_rom
+    + service ROM | label_last: runtime_state | + child report_rom
     + service ROM | label: installed | + child report_rom
     + service ROM | label: theme | + child report_rom
     + service ROM | label: mesa_gpu.lib.so | + parent | label: mesa_gpu-softpipe.lib.so
