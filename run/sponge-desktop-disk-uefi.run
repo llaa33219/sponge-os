@@ -777,6 +777,7 @@ config
   + config
     + theme | source: themed
     + launcher | source: pkgd
+    + diag | runtime_state: yes
     + tasklist | source: wm
     + tasklist_static_rules
       + assign | label: sponge-de -> Sponge DE Demo | target: screen | xpos: 192 | ypos: 172 | width: 640 | height: 480 | maximized: no
@@ -972,7 +973,7 @@ config
       + parent
       + any-child
 
-+ start vfs | caps: 500 | ram: 64M
++ start vfs | caps: 16000 | ram: 128M
   + provides | + service File_system
   + config
     + vfs

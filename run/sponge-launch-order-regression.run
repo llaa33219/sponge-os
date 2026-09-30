@@ -431,6 +431,26 @@ config
     + parent
     + any-child
 
++ start pkg_runtime | caps: 8000 | ram: 1536M
+  + binary | name: bin/init
+  + route
+    + service ROM | label_last: ld.lib.so | + parent
+    + service ROM | label_last: mesa_gpu.lib.so | + parent | label: mesa_gpu-softpipe.lib.so
+    + service ROM | label: config | + child report_rom
+    + service ROM | label_last: installed      | + child report_rom
+    + service ROM | label_last: window_list    | + child report_rom
+    + service ROM | label_last: launcher_result | + child report_rom
+    #
+    # Route pkg_runtime's Gui sessions through the wm so launched GUI
+    # packages get decorated, movable frames. Phase 10 W3 fix — see
+    # run/sponge-alpha.run for full rationale. Inert when no GUI
+    # package is running (hello is a non-GUI binary).
+    + service Gui | + child wm
+    + service Report | label_last: shape | + child wm
+    + service Report | label_last: state | + child report_rom
+    + any-service
+      + parent
+      + any-child
 + start report_rom | caps: 300 | ram: 8M
   + binary | name: bin/report_rom
   + provides
@@ -592,33 +612,12 @@ config
       + parent
       + any-child
 
-+ start pkg_runtime | caps: 8000 | ram: 1536M
-  + binary | name: bin/init
-  + route
-    + service ROM | label_last: ld.lib.so | + parent
-    + service ROM | label_last: mesa_gpu.lib.so | + parent | label: mesa_gpu-softpipe.lib.so
-    + service ROM | label: config | + child report_rom
-    + service ROM | label_last: installed      | + child report_rom
-    + service ROM | label_last: window_list    | + child report_rom
-    + service ROM | label_last: launcher_result | + child report_rom
-    #
-    # Route pkg_runtime's Gui sessions through the wm so launched GUI
-    # packages get decorated, movable frames. Phase 10 W3 fix — see
-    # run/sponge-alpha.run for full rationale. Inert when no GUI
-    # package is running (hello is a non-GUI binary).
-    + service Gui | + child wm
-    + service Report | label_last: shape | + child wm
-    + service Report | label_last: state | + child report_rom
-    + any-service
-      + parent
-      + any-child
 
 + start sponge-de | caps: 4000 | ram: 160M
   + binary | name: bin/sponge-de
   + config
     + theme | source: themed
     + launcher | source: pkgd
-    + diag | runtime_state: yes
     + tasklist | source: wm
     + tasklist_static_rules
       + assign | label: sponge-de -> Sponge DE Demo | target: screen | xpos: 192 | ypos: 172 | width: 640 | height: 480 | maximized: no
@@ -654,22 +653,6 @@ config
       + parent
       + any-child
 
-+ start alpha_probe | caps: 200 | ram: 16M
-  + binary | name: bin/alpha_probe
-  + config | skip_lz: yes
-  + route
-    + service ROM | label_last: ld.lib.so | + parent
-    + service Capture | + parent
-    + service Timer | + parent
-    + service ROM | label_last: result | + child report_rom
-    + service ROM | label_last: config_result | + child report_rom
-    + service ROM | label_last: configd_config | + child report_rom
-    + service ROM | label_last: config | + child report_rom
-    + service ROM | label_last: sponge_de_launcher | + child report_rom
-    + service Report | + child report_rom
-    + any-service
-      + parent
-      + any-child
 -}
 	close $sysconfig_fh
 
@@ -1064,5 +1047,15 @@ if {$fail_mode} {
 	run_genode_until {.*init -> system.*Error.*config.*|.*system.*invalid.*|.*Error reading config.*} 120
 	puts "sponge-desktop-disk: FAILURE CHANNEL — system init rejected corrupted config (bounded, identified)"
 } else {
-	run_genode_until {.*alpha-probe: PASS.*} 900
+	#
+# ---- Launch-order regression (the real-hardware C:0/W:1 bug) ----
+# pkg_runtime deliberately precedes report_rom (the USB-stick ordering
+# on real hardware: pkg_runtime's cached binary starts it first). The
+# regression gate: the autostarted debug child must come up — proving
+# the pkgd -> report_rom -> pkg_runtime config delivery survived the
+# reordering (root cause: unanswered vfs resource requests froze the
+# disk chain; fixed by the immediate-grant sandbox patch + vfs caps).
+#
+run_genode_until {.*pkg_runtime -> debug\] sponge_debug: report.*} 600
+puts "launch-order regression: PASS"
 }
