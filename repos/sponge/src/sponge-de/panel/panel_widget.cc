@@ -299,6 +299,16 @@ void PanelWidget::_apply_geometry(Theme::Theme const &theme)
 }
 
 
+void PanelWidget::show_running_set(QString const &names)
+{
+	_running_set = names;
+	if (_title_label) {
+		QString const t = QStringLiteral("Sponge DE");
+		_title_label->setText(names.isEmpty() ? t
+		                      : t + QStringLiteral(" · R:") + names);
+	}
+}
+
 void PanelWidget::_build_layout(Theme::Theme const &theme)
 {
 	/*

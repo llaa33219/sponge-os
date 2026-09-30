@@ -338,6 +338,24 @@ void Libc::Component::construct(Libc::Env &env)
 		static Sponge::Sponge_DE::Dismisser dismisser;
 		dismisser.set_launcher_view(&launcher_view);
 		dismisser.set_launcher_controller(&launcher_ctrl);
+
+		/*
+		 * Real-hardware observability: mirror pkgd's running set into
+		 * every constructed panel's title ("Sponge DE · R:hello,debug").
+		 * The panel title is the one status line guaranteed visible on
+		 * bring-up hardware where no serial console is available.
+		 */
+		QObject::connect(&launcher_ctrl, &LauncherController::appsChanged,
+		                 [&]() {
+			QString running;
+			for (auto const &a : launcher_ctrl.apps()) {
+				if (!a.running) continue;
+				if (!running.isEmpty()) running += QStringLiteral(",");
+				running += a.name;
+			}
+			if (panel_top)            panel_top->show_running_set(running);
+			if (panel_bottom.constructed()) panel_bottom->show_running_set(running);
+		});
 		dismisser.set_settings_controller(&settings_ctrl);
 		if (panels_collection_enabled && panels_ptr)
 			dismisser.set_panel_widget(panels_ptr->panel_for_id(
