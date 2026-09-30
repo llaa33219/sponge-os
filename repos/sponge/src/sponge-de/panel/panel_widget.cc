@@ -299,13 +299,15 @@ void PanelWidget::_apply_geometry(Theme::Theme const &theme)
 }
 
 
-void PanelWidget::show_running_set(QString const &names)
+void PanelWidget::show_running_set(QString const &names, int window_count)
 {
 	_running_set = names;
 	if (_title_label) {
-		QString const t = QStringLiteral("Sponge DE");
-		_title_label->setText(names.isEmpty() ? t
-		                      : t + QStringLiteral(" · R:") + names);
+		QString t = QStringLiteral("Sponge DE");
+		if (!names.isEmpty())
+			t += QStringLiteral(" · R:") + names;
+		t += QStringLiteral(" · W:%1").arg(window_count);
+		_title_label->setText(t);
 	}
 }
 

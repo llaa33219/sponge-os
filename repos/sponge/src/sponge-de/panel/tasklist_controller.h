@@ -52,6 +52,12 @@ class TasklistController : public QObject
 		void on_toggle_maximized(QString label);
 
 		/*
+		 * Real-hardware observability: count of tracked wm windows
+		 * (the panel-title W: readout mirrors it).
+		 */
+		int tracked_window_count() const { return _tracked.size(); }
+
+		/*
 		 * Phase 16 W7 (U16.4 / D16.5) — keyboard-shortcut action
 		 * slot for the `focus_next` event_filter shortcut (default
 		 * binding `Alt-Tab`). Advances the focus to the next
