@@ -300,7 +300,8 @@ void PanelWidget::_apply_geometry(Theme::Theme const &theme)
 
 
 void PanelWidget::show_running_set(QString const &names, int window_count,
-                                    int child_count, int cfg_writes)
+                                    int child_count, int cfg_writes,
+                                    int mirror_starts, int mirror_bytes)
 {
 	_running_set = names;
 	if (_title_label) {
@@ -311,6 +312,9 @@ void PanelWidget::show_running_set(QString const &names, int window_count,
 			t += QStringLiteral(" · N:%1").arg(cfg_writes);
 		if (child_count >= 0)
 			t += QStringLiteral(" · C:%1").arg(child_count);
+		if (mirror_starts >= 0)
+			t += QStringLiteral(" · S:%1(%2b)")
+			         .arg(mirror_starts).arg(mirror_bytes);
 		t += QStringLiteral(" · W:%1").arg(window_count);
 		_title_label->setText(t);
 	}

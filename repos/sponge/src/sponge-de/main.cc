@@ -372,6 +372,9 @@ void Libc::Component::construct(Libc::Env &env)
 		}
 
 		Genode::Constructible<Genode::Attached_rom_dataspace> runtime_state_rom;
+		Genode::Constructible<Genode::Attached_rom_dataspace> runtime_mirror_rom;
+		int mirror_starts { -1 };
+		int mirror_bytes  { -1 };
 		auto diag_refresh = [&]() {
 			QString running;
 			for (auto const &a : launcher_ctrl.apps()) {
@@ -397,8 +400,21 @@ void Libc::Component::construct(Libc::Env &env)
 			 * pkgd bookkeeping; C: is the sandbox's ground truth.
 			 */
 			int children = -1;
-			if (diag_runtime_state && !runtime_state_rom.constructed())
-				runtime_state_rom.construct(env, "runtime_state");
+			if (runtime_mirror_rom.constructed()) {
+				runtime_mirror_rom->update();
+				if (runtime_mirror_rom->valid()) {
+					unsigned mstarts = 0;
+					try {
+						Genode::Xml_node const mc(
+							runtime_mirror_rom->local_addr<char const>(),
+							runtime_mirror_rom->size());
+						mc.for_each_sub_node("start",
+							[&](Genode::Xml_node const &) { ++mstarts; });
+					} catch (Genode::Xml_node::Invalid_syntax) { }
+					mirror_starts = (int)mstarts;
+					mirror_bytes  = (int)runtime_mirror_rom->size();
+				}
+			}
 			if (runtime_state_rom.constructed()) {
 				runtime_state_rom->update();
 			if (runtime_state_rom->valid()) {
@@ -412,11 +428,22 @@ void Libc::Component::construct(Libc::Env &env)
 			}
 			}
 
-			if (panel_top)                 panel_top->show_running_set(running, windows, children, cfg_writes);
-			if (panel_bottom.constructed()) panel_bottom->show_running_set(running, windows, children, cfg_writes);
+			if (panel_top)                 panel_top->show_running_set(running, windows, children, cfg_writes, mirror_starts, mirror_bytes);
+			if (panel_bottom.constructed()) panel_bottom->show_running_set(running, windows, children, cfg_writes, mirror_starts, mirror_bytes);
 		};
 		QObject::connect(&launcher_ctrl, &LauncherController::appsChanged,
 		                 diag_refresh);
+		/*
+		 * Open the diag ROM sessions BEFORE the Qt event loop starts:
+		 * the lazy construct inside diag_refresh ran on the Qt thread
+		 * and a pending async session parks the thread (the re-block
+		 * loop) — freezing the whole UI until the session completes
+		 * (observed as 'themed panel never composited').
+		 */
+		if (diag_runtime_state) {
+			runtime_state_rom.construct(env, "runtime_state");
+			runtime_mirror_rom.construct(env, "runtime_mirror");
+		}
 		{
 			auto *diag_timer = new QTimer(&launcher_ctrl);
 			QObject::connect(diag_timer, &QTimer::timeout, diag_refresh);
