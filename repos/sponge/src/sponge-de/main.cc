@@ -382,6 +382,16 @@ void Libc::Component::construct(Libc::Env &env)
 			int const windows = tasklist_ctrl.tracked_window_count();
 
 			/*
+			 * pkgd's config_writes from the installed report (the N:
+			 * readout): how many times pkgd generated+published the
+			 * pkg_runtime config. On healthy hardware N grows past 1
+			 * as the bake seeding lands children; N stuck at 1 with
+			 * C:0 means pkgd never regenerated, N>=2 with C:0 means
+			 * the second write was lost in the relay.
+			 */
+			int const cfg_writes = launcher_ctrl.config_writes();
+
+			/*
 			 * pkg_runtime's sandbox <state> report (the C: readout):
 			 * counts children the sandbox actually spawned. R: is
 			 * pkgd bookkeeping; C: is the sandbox's ground truth.
@@ -402,8 +412,8 @@ void Libc::Component::construct(Libc::Env &env)
 			}
 			}
 
-			if (panel_top)                 panel_top->show_running_set(running, windows, children);
-			if (panel_bottom.constructed()) panel_bottom->show_running_set(running, windows, children);
+			if (panel_top)                 panel_top->show_running_set(running, windows, children, cfg_writes);
+			if (panel_bottom.constructed()) panel_bottom->show_running_set(running, windows, children, cfg_writes);
 		};
 		QObject::connect(&launcher_ctrl, &LauncherController::appsChanged,
 		                 diag_refresh);

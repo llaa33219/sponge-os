@@ -301,6 +301,17 @@ class Sponge::Pkgd::Main
 		Package            _installed[MAX_PACKAGES] { };
 		unsigned           _num_installed           { 0 };
 		Genode::String<64> _roots[MAX_PACKAGES]     { };
+
+		/*
+		 * Real-hardware observability: how many times the runtime
+		 * config was generated+written. Surfaced in the installed
+		 * report (config_writes) and mirrored on the panel — on
+		 * hardware where C: stays 0, writes>=2 proves pkgd DID
+		 * regenerate with children and the second write was lost in
+		 * the report_rom -> pkg_runtime relay (vs writes==1: pkgd
+		 * never got past the first empty generation).
+		 */
+		unsigned _runtime_config_writes { 0 };
 		unsigned           _num_roots               { 0 };
 
 		/*
@@ -1181,6 +1192,7 @@ void Sponge::Pkgd::Main::_do_launch(Genode::String<128> const &pkg)
  */
 void Sponge::Pkgd::Main::_generate_runtime_config()
 {
+	++_runtime_config_writes;
 	/* Selection-sort the installed set by name into a stable index order. */
 	unsigned order[MAX_PACKAGES] { };
 	for (unsigned i = 0; i < _num_installed; ++i) order[i] = i;
@@ -1396,6 +1408,7 @@ void Sponge::Pkgd::Main::_generate_installed_report()
 
 	_installed_reporter.generate_xml([&](Genode::Xml_generator &g) {
 		g.attribute("count", _num_installed);
+		g.attribute("config_writes", _runtime_config_writes);
 
 		g.node("packages", [&] {
 			for (unsigned n = 0; n < _num_installed; ++n) {
