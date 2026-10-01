@@ -312,6 +312,7 @@ class Sponge::Pkgd::Main
 		 * never got past the first empty generation).
 		 */
 		unsigned _runtime_config_writes { 0 };
+		unsigned pad_bytes { 0 };
 		unsigned           _num_roots               { 0 };
 
 		/*
@@ -1192,7 +1193,60 @@ void Sponge::Pkgd::Main::_do_launch(Genode::String<128> const &pkg)
  */
 void Sponge::Pkgd::Main::_generate_runtime_config()
 {
+	/* test-only (repro harness): delay the first generation to model the
+	 * real-hardware gap where pkg_runtime attaches to the empty module
+	 * SECONDS before pkgd's first write. Gated by <repro_delay_ms> in
+	 * the config; inert in production. */
+	static bool delayed = false;
+	if (!delayed) {
+		delayed = true;
+		_config_rom.update();
+		Genode::uint64_t ms = 0;
+		if (_config_rom.valid()) {
+			char const * const base = _config_rom.local_addr<char const>();
+			Genode::size_t const sz = _config_rom.size();
+			for (Genode::size_t i = 0; i + 14 < sz; ++i)
+				if (Genode::strcmp(base + i, "repro_delay_ms", 14) == 0) {
+					Genode::size_t j = i + 14;
+					while (j < sz && (base[j] == ' ' || base[j] == ':'
+					                  || base[j] == '"' || base[j] == '=')) ++j;
+					while (j < sz && base[j] >= '0' && base[j] <= '9')
+						ms = ms * 10 + (Genode::uint64_t)(base[j++] - '0');
+					break;
+				}
+		}
+		if (ms) {
+			Genode::log("sponge_pkgd: repro delay ", ms, " ms before first write");
+			/* preemptible stall: repeated config-ROM update RPCs; each is
+			 * an IPC round trip on the entrypoint (schedulable), so the
+			 * rest of the system keeps running. repro-only. */
+			for (Genode::uint64_t i = 0; i < ms * 400; ++i) {
+				_config_rom.update();
+				for (Genode::uint64_t j = 0; j < 20000; ++j) { asm volatile("" ::: "memory"); }
+			}
+			Genode::log("sponge_pkgd: repro delay elapsed");
+		}
+	}
+
 	++_runtime_config_writes;
+	/* test-only (repro harness): pad the generated config past the
+	 * Expanding_reporter's initial 4096-byte buffer to force the
+	 * writer-session close+reopen on the next write. Gated by
+	 * <repro_pad> in the config; inert in production. */
+	bool repro_pad = false;
+	{
+		_config_rom.update();
+		if (_config_rom.valid()) {
+			char const * const base = _config_rom.local_addr<char const>();
+			Genode::size_t const sz = _config_rom.size();
+			for (Genode::size_t i = 0; i + 9 < sz; ++i)
+				if (Genode::strcmp(base + i, "repro_pad", 9) == 0)
+					{ repro_pad = true; break; }
+		}
+	}
+	if (repro_pad)
+		pad_bytes = 6000;
+
 	/* Selection-sort the installed set by name into a stable index order. */
 	unsigned order[MAX_PACKAGES] { };
 	for (unsigned i = 0; i < _num_installed; ++i) order[i] = i;
@@ -1220,7 +1274,16 @@ void Sponge::Pkgd::Main::_generate_runtime_config()
 		 * never spawned them" (config delivery broken) from "they
 		 * spawned but died before opening a Gui session".
 		 */
-		g.node("report", [&] { g.attribute("delay_ms", 2000); });
+		g.node("report", [&] {
+			g.attribute("delay_ms", "2000");
+			g.attribute("init_ram", "yes");
+			g.attribute("child_ram", "yes");
+		});
+		if (pad_bytes)
+			g.node("repro_padding", [&] {
+				for (unsigned i = 0; i < pad_bytes / 24; ++i)
+					g.node("p", [&] { g.attribute("i", i); });
+			});
 
 		/*
 		 * Extended parent-provides (docs/12 §7.2): the original

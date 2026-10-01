@@ -219,7 +219,7 @@ class PanelWidget : public QWidget
 		 * popup's dot markers show the same, but only while the popup is
 		 * open — the title line is always visible.
 		 */
-		void show_running_set(QString const &names, int window_count, int child_count, int cfg_writes, int mirror_starts, int mirror_bytes);
+		void show_running_set(QString const &names, int window_count, int child_count, int cfg_writes, int mirror_starts, int mirror_bytes, int pr_ram_kb);
 
 		void set_launcher_view(LauncherMenuView *view) { _launcher_view = view; }
 
