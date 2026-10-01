@@ -375,6 +375,7 @@ void Libc::Component::construct(Libc::Env &env)
 		Genode::Constructible<Genode::Attached_rom_dataspace> runtime_mirror_rom;
 		int mirror_starts { -1 };
 		int mirror_bytes  { -1 };
+		int pr_ram_kb     { -1 };
 		auto diag_refresh = [&]() {
 			QString running;
 			for (auto const &a : launcher_ctrl.apps()) {
@@ -424,12 +425,17 @@ void Libc::Component::construct(Libc::Env &env)
 					                             runtime_state_rom->size());
 					state.for_each_sub_node("child", [&](Genode::Xml_node const &) {
 						++children; });
+					/* pkg_runtime's own RAM (the M: aliveness readout):
+					 * the sandbox state report emits <ram used="..."/> */
+					state.with_optional_sub_node("ram", [&](Genode::Xml_node const &n) {
+						pr_ram_kb = (int)(n.attribute_value("used", 0u) / 1024u);
+					});
 				} catch (Genode::Xml_node::Invalid_syntax) { }
 			}
 			}
 
-			if (panel_top)                 panel_top->show_running_set(running, windows, children, cfg_writes, mirror_starts, mirror_bytes);
-			if (panel_bottom.constructed()) panel_bottom->show_running_set(running, windows, children, cfg_writes, mirror_starts, mirror_bytes);
+			if (panel_top)                 panel_top->show_running_set(running, windows, children, cfg_writes, mirror_starts, mirror_bytes, pr_ram_kb);
+			if (panel_bottom.constructed()) panel_bottom->show_running_set(running, windows, children, cfg_writes, mirror_starts, mirror_bytes, pr_ram_kb);
 		};
 		QObject::connect(&launcher_ctrl, &LauncherController::appsChanged,
 		                 diag_refresh);
