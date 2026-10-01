@@ -300,13 +300,15 @@ void PanelWidget::_apply_geometry(Theme::Theme const &theme)
 
 
 void PanelWidget::show_running_set(QString const &names, int window_count,
-                                    int child_count)
+                                    int child_count, int cfg_writes)
 {
 	_running_set = names;
 	if (_title_label) {
 		QString t = QStringLiteral("Sponge DE");
 		if (!names.isEmpty())
 			t += QStringLiteral(" · R:") + names;
+		if (cfg_writes >= 0)
+			t += QStringLiteral(" · N:%1").arg(cfg_writes);
 		if (child_count >= 0)
 			t += QStringLiteral(" · C:%1").arg(child_count);
 		t += QStringLiteral(" · W:%1").arg(window_count);

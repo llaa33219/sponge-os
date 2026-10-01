@@ -180,6 +180,12 @@ bool LauncherController::_read_and_parse()
 	if (!_installed_rom->valid())
 		return false;
 
+	/* the pkgd config_writes counter (the panel N: readout) */
+	try {
+		_config_writes = (int)_installed_rom->xml()
+			.attribute_value("config_writes", 0u);
+	} catch (Genode::Xml_node::Invalid_syntax) { }
+
 	try {
 		return _try_parse(_installed_rom->xml());
 	} catch (Genode::Xml_node::Invalid_syntax) {

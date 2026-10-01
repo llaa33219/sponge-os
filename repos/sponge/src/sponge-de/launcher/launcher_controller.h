@@ -86,6 +86,13 @@ class LauncherController : public QObject
 
 		QVector<App> const &apps() const { return _apps; }
 
+		/*
+		 * pkgd's config_writes counter from the installed report —
+		 * the panel N: readout (bring-up observability).
+		 */
+		int config_writes() const { return _config_writes; }
+		int _config_writes { -1 };
+
 		/* Wire the view. The controller calls repopulate() on it
 		 * whenever the parsed list changes. */
 		void attach_view(LauncherMenuView *view) {
