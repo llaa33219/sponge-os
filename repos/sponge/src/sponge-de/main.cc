@@ -376,6 +376,8 @@ void Libc::Component::construct(Libc::Env &env)
 		int mirror_starts { -1 };
 		int mirror_bytes  { -1 };
 		int pr_ram_kb     { -1 };
+		int state_changes { 0 };
+		int last_state_hash { 0 };
 		auto diag_refresh = [&]() {
 			QString running;
 			for (auto const &a : launcher_ctrl.apps()) {
@@ -418,6 +420,16 @@ void Libc::Component::construct(Libc::Env &env)
 			}
 			if (runtime_state_rom.constructed()) {
 				runtime_state_rom->update();
+				if (runtime_state_rom->valid() && runtime_state_rom->size() > 0) {
+					int h = 0;
+					char const *b = runtime_state_rom->local_addr<char const>();
+					int n = (int)runtime_state_rom->size();
+					for (int i = 0; i + 3 < n; i += 7) h = h * 31 + b[i];
+					if (h != last_state_hash) {
+						last_state_hash = h;
+						++state_changes;
+					}
+				}
 			if (runtime_state_rom->valid()) {
 				children = 0;
 				try {
@@ -434,8 +446,8 @@ void Libc::Component::construct(Libc::Env &env)
 			}
 			}
 
-			if (panel_top)                 panel_top->show_running_set(running, windows, children, cfg_writes, mirror_starts, mirror_bytes, pr_ram_kb);
-			if (panel_bottom.constructed()) panel_bottom->show_running_set(running, windows, children, cfg_writes, mirror_starts, mirror_bytes, pr_ram_kb);
+			if (panel_top)                 panel_top->show_running_set(running, windows, children, cfg_writes, mirror_starts, mirror_bytes, pr_ram_kb, state_changes);
+			if (panel_bottom.constructed()) panel_bottom->show_running_set(running, windows, children, cfg_writes, mirror_starts, mirror_bytes, pr_ram_kb, state_changes);
 		};
 		QObject::connect(&launcher_ctrl, &LauncherController::appsChanged,
 		                 diag_refresh);
@@ -446,10 +458,7 @@ void Libc::Component::construct(Libc::Env &env)
 		 * loop) — freezing the whole UI until the session completes
 		 * (observed as 'themed panel never composited').
 		 */
-		if (diag_runtime_state) {
-			runtime_state_rom.construct(env, "runtime_state");
-			runtime_mirror_rom.construct(env, "runtime_mirror");
-		}
+
 		{
 			auto *diag_timer = new QTimer(&launcher_ctrl);
 			QObject::connect(diag_timer, &QTimer::timeout, diag_refresh);
