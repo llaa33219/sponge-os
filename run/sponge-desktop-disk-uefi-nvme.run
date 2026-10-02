@@ -534,21 +534,6 @@ config
       + parent
       + any-child
 
-+ start pkg_runtime | caps: 8000 | ram: 1536M
-  + binary | name: bin/init
-  + route
-    + service ROM | label_last: ld.lib.so | + parent
-    + service ROM | label_last: mesa_gpu.lib.so | + parent | label: mesa_gpu-softpipe.lib.so
-    + service ROM | label: config | + child report_rom
-    + service ROM | label_last: installed      | + child report_rom
-    + service ROM | label_last: window_list    | + child report_rom
-    + service ROM | label_last: launcher_result | + child report_rom
-    + service Gui | + child wm
-    + service Report | label_last: shape | + child wm
-    + service Report | label_last: state | + child report_rom
-    + any-service
-      + parent
-      + any-child
 
 + start sponge-de | caps: 8000 | ram: 128M
   + binary | name: bin/sponge-de
@@ -605,6 +590,21 @@ config
     + service ROM | label_last: config | + child report_rom
     + service ROM | label_last: sponge_de_launcher | + child report_rom
     + service Report | + child report_rom
+    + any-service
+      + parent
+      + any-child
++ start pkg_runtime | caps: 8000 | ram: 1536M
+  + binary | name: bin/init
+  + route
+    + service ROM | label_last: ld.lib.so | + parent
+    + service ROM | label_last: mesa_gpu.lib.so | + parent | label: mesa_gpu-softpipe.lib.so
+    + service ROM | label: config | + child report_rom
+    + service ROM | label_last: installed      | + child report_rom
+    + service ROM | label_last: window_list    | + child report_rom
+    + service ROM | label_last: launcher_result | + child report_rom
+    + service Gui | + child wm
+    + service Report | label_last: shape | + child wm
+    + service Report | label_last: state | + child report_rom
     + any-service
       + parent
       + any-child
