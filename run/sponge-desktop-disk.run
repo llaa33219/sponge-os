@@ -593,26 +593,6 @@ config
       + parent
       + any-child
 
-+ start pkg_runtime | caps: 8000 | ram: 1536M
-  + binary | name: bin/init
-  + route
-    + service ROM | label_last: ld.lib.so | + parent
-    + service ROM | label_last: mesa_gpu.lib.so | + parent | label: mesa_gpu-softpipe.lib.so
-    + service ROM | label: config | + child report_rom
-    + service ROM | label_last: installed      | + child report_rom
-    + service ROM | label_last: window_list    | + child report_rom
-    + service ROM | label_last: launcher_result | + child report_rom
-    #
-    # Route pkg_runtime's Gui sessions through the wm so launched GUI
-    # packages get decorated, movable frames. Phase 10 W3 fix — see
-    # run/sponge-alpha.run for full rationale. Inert when no GUI
-    # package is running (hello is a non-GUI binary).
-    + service Gui | + child wm
-    + service Report | label_last: shape | + child wm
-    + service Report | label_last: state | + child report_rom
-    + any-service
-      + parent
-      + any-child
 
 + start sponge-de | caps: 4000 | ram: 160M
   + binary | name: bin/sponge-de
@@ -669,6 +649,26 @@ config
     + service ROM | label_last: config | + child report_rom
     + service ROM | label_last: sponge_de_launcher | + child report_rom
     + service Report | + child report_rom
+    + any-service
+      + parent
+      + any-child
++ start pkg_runtime | caps: 8000 | ram: 1536M
+  + binary | name: bin/init
+  + route
+    + service ROM | label_last: ld.lib.so | + parent
+    + service ROM | label_last: mesa_gpu.lib.so | + parent | label: mesa_gpu-softpipe.lib.so
+    + service ROM | label: config | + child report_rom
+    + service ROM | label_last: installed      | + child report_rom
+    + service ROM | label_last: window_list    | + child report_rom
+    + service ROM | label_last: launcher_result | + child report_rom
+    #
+    # Route pkg_runtime's Gui sessions through the wm so launched GUI
+    # packages get decorated, movable frames. Phase 10 W3 fix — see
+    # run/sponge-alpha.run for full rationale. Inert when no GUI
+    # package is running (hello is a non-GUI binary).
+    + service Gui | + child wm
+    + service Report | label_last: shape | + child wm
+    + service Report | label_last: state | + child report_rom
     + any-service
       + parent
       + any-child
