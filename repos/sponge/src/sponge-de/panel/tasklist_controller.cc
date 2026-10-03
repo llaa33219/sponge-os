@@ -185,14 +185,24 @@ void TasklistController::_maybe_republish_rules()
 {
 	if (!_rules_reporter.constructed()) return;
 
+	/*
+	 * Trigger on SET changes only (label added/removed, minimized
+	 * flipped), never on geometry deltas: window_layout does not
+	 * report the maximized state, so a geometry-driven republication
+	 * cannot round-trip it and would fight user manipulations
+	 * (maximize/drag/resize) — observed as windows resetting while
+	 * being operated. A set change (a new window gaining tracking)
+	 * is the moment the rules must carry current positions so the
+	 * layouter's full re-evaluation preserves existing windows.
+	 * The residual race: geometry changed within one 250 ms poll
+	 * before a set change republishes — a rare, small snap.
+	 */
 	QStringList sig;
 	sig.reserve(_tracked.size());
-	for (auto const &st : _tracked) {
-		sig.append(QStringLiteral("%1/%2/%3/%4/%5/%6")
+	for (auto const &st : _tracked)
+		sig.append(QStringLiteral("%1/%2")
 		           .arg(st.label)
-		           .arg(st.x).arg(st.y).arg(st.w).arg(st.h)
 		           .arg(st.minimized ? 1 : 0));
-	}
 
 	if (sig == _candidate_rules_sig) {
 		if (_rules_sig_stable && sig != _published_rules_sig) {

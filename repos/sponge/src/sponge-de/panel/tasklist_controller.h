@@ -153,13 +153,13 @@ class TasklistController : public QObject
 		 * Rules-republication state: the layouter repositions every
 		 * assigned window on each window_list change (dissolve +
 		 * re-assign + outer_geometry), so the rules ROM must carry
-		 * the CURRENT window positions or any newly opened window
-		 * snaps all existing windows back to their rule positions.
-		 * We republish when the tracked geometry signature changes
-		 * and has been stable for one extra poll (debounce: a drag
-		 * in progress changes the signature every poll and never
-		 * becomes stable, so mid-drag republication — and the
-		 * reposition fight it would cause — cannot happen).
+		 * CURRENT window positions when the tracked SET changes (a
+		 * new window) or existing windows snap back to their rule
+		 * positions. Republish on set changes only (label added or
+		 * removed, minimized flipped), stable for one extra poll.
+		 * Geometry deltas deliberately do NOT trigger: window_layout
+		 * cannot report the maximized state, so geometry feedback
+		 * fights user manipulations.
 		 */
 		QStringList _published_rules_sig  { };
 		QStringList _candidate_rules_sig  { };
