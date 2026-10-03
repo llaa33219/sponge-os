@@ -192,7 +192,20 @@ void Libc::Component::construct(Libc::Env &env)
 			if (tasklist_enabled) {
 				config.node().with_optional_sub_node("tasklist_static_rules",
 					[&] (Genode::Node const &rules) {
+						/*
+						 * Wrap the collected <assign> elements in a root
+						 * element: _emit_static_rules distinguishes only
+						 * "single assign document" from "wrapper with
+						 * assign children". A flat concatenation of
+						 * assigns would take the single-assign path and
+						 * silently publish only the FIRST rule — the
+						 * observed W-frozen launch stall (every static
+						 * rule beyond the first was dropped, so new app
+						 * windows matched no layouter rule, got no
+						 * geometry, and stayed invisible forever).
+						 */
 						QString fragment;
+						fragment += QStringLiteral("<tasklist_static_rules>");
 						rules.for_each_sub_node("assign",
 							[&] (Genode::Node const &a) {
 								fragment += QStringLiteral("<assign");
@@ -208,7 +221,8 @@ void Libc::Component::construct(Libc::Env &env)
 									});
 								fragment += QStringLiteral("/>");
 							});
-						if (!fragment.isEmpty())
+						fragment += QStringLiteral("</tasklist_static_rules>");
+						if (fragment.length() > QStringLiteral("<tasklist_static_rules></tasklist_static_rules>").length())
 							tasklist_ctrl.set_static_rules(fragment);
 					});
 			}
