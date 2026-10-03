@@ -922,6 +922,51 @@ asserting the observable state), consistent with the Phase 10/11
 verification style. Full per-criterion traceability in
 `docs/evidence/phase16-index.md` §2.
 
+### Phase 16 Extension (2026-10-04, user-directed): application completeness
+
+User directive after the first real-hardware session where launched
+windows appear (the launch-stall root cause fixed,
+`docs/evidence/launch-stall-root-cause.md`): the desktop is now
+usable enough that the APPLICATION layer's gaps are the blocker.
+Four additions reopen the Phase 16 completion criteria:
+
+- [ ] **Criterion 13 — the browser opens.** Falkon launches from
+  the release media and renders a window on real hardware and in
+  the product QEMU scenario. Blocker: base-sel4's fixed 8192-slot
+  per-PD capability CNode (`CSPACE_SIZE_LOG2`) that falkon's
+  WebEngine runtime exceeds (documented in
+  `docs/13-installation.md` §6 and the falkon-disk evidence).
+  The fix is the vendored `CSPACE_SIZE_LOG2_2ND` patch previously
+  frozen by D16.8; the user's directive lifts the freeze for this
+  specific patch (a new ledger row will record it).
+
+- [ ] **Criterion 14 — terminal + vct install flow.** The terminal
+  package opens a window on the release media, and inside that
+  terminal `vct install <pkg>` resolves, downloads/installs from
+  the staged repository, and the installed program runs. Blocker
+  (root-caused 2026-10-03, `docs/evidence/launch-stall-root-cause.md`
+  §Follow-up item 2): the terminal's sub-init children
+  (`terminal`, `vfs`, `vfs_rom`→`cached_fs_rom`) resolve their
+  binaries without the `bin/` prefix — pkgd's `binary_prefix`
+  rewriting covers only the top-level start — and the payload
+  (noux tars, `VeraMono.ttf`) is not staged on the product image.
+  Fix: stage the sub-init children binaries + payload, and teach
+  pkgd's runtime generator to prefix nested starts' binaries when
+  `binary_prefix` is set.
+
+- [ ] **Criterion 15 — the browser loads a web page.** With
+  criterion 13 delivered, navigating to a page over the
+  `pc_nic`/slirp stack renders content (the falkon-rescue scenario
+  proved first paint + fixture GET on a dedicated topology; the
+  release media needs the nic wiring carried over).
+
+- [ ] **Feature — same-program multi-instance.** Launching two
+  instances of one program creates two independent windows (today
+  pkgd answers `already-running` by design, Phase 7's verified
+  idempotency). Requires a pkgd launch-model extension: per-instance
+  unique child names (e.g. `terminal@2`), per-instance running-set
+  tracking, and launcher feed entries per instance.
+
 ### Phase 17: Sponge IME — Multi-Language / CJK Input
 
 #### Goal
