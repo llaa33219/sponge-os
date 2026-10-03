@@ -723,7 +723,7 @@ config
   + config
     + theme | source: themed
     + launcher | source: pkgd
-    + diag | runtime_state: yes
+    + diag | runtime_state: yes | system_state: yes | cfg_probe: yes
     + tasklist | source: wm
     + tasklist_static_rules
       + assign | label: sponge-de -> Sponge DE Demo | target: screen | xpos: 192 | ypos: 172 | width: 640 | height: 480 | maximized: no
