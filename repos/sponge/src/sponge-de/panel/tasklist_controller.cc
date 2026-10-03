@@ -178,6 +178,32 @@ void TasklistController::applyUpdates()
 	_pull_payloads();
 	_recompute_tracked();
 	_refresh_widget();
+	_maybe_republish_rules();
+}
+
+void TasklistController::_maybe_republish_rules()
+{
+	if (!_rules_reporter.constructed()) return;
+
+	QStringList sig;
+	sig.reserve(_tracked.size());
+	for (auto const &st : _tracked) {
+		sig.append(QStringLiteral("%1/%2/%3/%4/%5/%6")
+		           .arg(st.label)
+		           .arg(st.x).arg(st.y).arg(st.w).arg(st.h)
+		           .arg(st.minimized ? 1 : 0));
+	}
+
+	if (sig == _candidate_rules_sig) {
+		if (_rules_sig_stable && sig != _published_rules_sig) {
+			_published_rules_sig = sig;
+			_publish_rules_for(QString());
+		}
+		_rules_sig_stable = true;
+	} else {
+		_candidate_rules_sig = sig;
+		_rules_sig_stable   = false;
+	}
 }
 
 
@@ -268,6 +294,19 @@ void TasklistController::_recompute_tracked()
 		try {
 			Genode::Node const root = _window_layout_rom->node();
 			root.for_each_sub_node("boundary", [&](Genode::Node const &boundary) {
+
+				/*
+				 * The boundary's origin: window_layout reports
+				 * screen-absolute coordinates but the layouter's
+				 * <assign> xpos/ypos are target-relative. Feeding
+				 * absolute values back into the rules would drift
+				 * the placement by the origin on every
+				 * republication cycle (observed as a +28px/cycle
+				 * runaway with the panel).
+				 */
+				_layout_origin_x = boundary.attribute_value("xpos", 0);
+				_layout_origin_y = boundary.attribute_value("ypos", 0);
+
 				boundary.for_each_sub_node("window", [&](Genode::Node const &w) {
 					Genode::String<256> const layout_title =
 						w.attribute_value("title", Genode::String<256>());
@@ -589,7 +628,8 @@ void TasklistController::_append_assign_for(Genode::Xml_generator &g, Window_sta
 		g.attribute("label",  w.label.toUtf8().constData());
 		g.attribute("target", "screen");
 
-		int x = w.x, y = w.y;
+		int x = w.x - _layout_origin_x;
+		int y = w.y - _layout_origin_y;
 		if (w.minimized) {
 			x = -32000;
 			y = -32000;

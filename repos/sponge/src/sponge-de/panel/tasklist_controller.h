@@ -149,6 +149,25 @@ class TasklistController : public QObject
 
 		QStringList _last_emitted_signed;
 
+		/*
+		 * Rules-republication state: the layouter repositions every
+		 * assigned window on each window_list change (dissolve +
+		 * re-assign + outer_geometry), so the rules ROM must carry
+		 * the CURRENT window positions or any newly opened window
+		 * snaps all existing windows back to their rule positions.
+		 * We republish when the tracked geometry signature changes
+		 * and has been stable for one extra poll (debounce: a drag
+		 * in progress changes the signature every poll and never
+		 * becomes stable, so mid-drag republication — and the
+		 * reposition fight it would cause — cannot happen).
+		 */
+		QStringList _published_rules_sig  { };
+		QStringList _candidate_rules_sig  { };
+		bool        _rules_sig_stable     { false };
+
+		int _layout_origin_x { 0 };
+		int _layout_origin_y { 0 };
+
 		void _on_window_list_rom();
 		void _on_window_layout_rom();
 		void _poll();
@@ -157,6 +176,7 @@ class TasklistController : public QObject
 		bool _pull_payloads();
 
 		void _recompute_tracked();
+		void _maybe_republish_rules();
 
 		QList<TaskInfo> _build_task_infos() const;
 
