@@ -356,23 +356,30 @@ void Libc::Component::construct(Libc::Env &env)
 		 * component-fatal on Genode.
 		 */
 		bool diag_runtime_state = false;
+		bool diag_system_state  = false;
+		bool diag_cfg_probe     = false;
 		{
 			Genode::Attached_rom_dataspace cfg { env, "config" };
 			cfg.update();
 			if (cfg.valid()) {
 				char const * const base = cfg.local_addr<char const>();
 				Genode::size_t  const sz  = cfg.size();
-				for (Genode::size_t i = 0; i + 25 < sz; ++i)
+				for (Genode::size_t i = 0; i + 25 < sz; ++i) {
 					if (Genode::strcmp(base + i, "runtime_state: yes", 18) == 0 ||
-					    Genode::strcmp(base + i, "\"runtime_state\"", 15) == 0) {
+					    Genode::strcmp(base + i, "\"runtime_state\"", 15) == 0)
 						diag_runtime_state = true;
-						break;
-					}
+					if (Genode::strcmp(base + i, "\"system_state\"", 14) == 0)
+						diag_system_state = true;
+					if (Genode::strcmp(base + i, "\"cfg_probe_state\"", 17) == 0)
+						diag_cfg_probe = true;
+				}
 			}
 		}
 
 		Genode::Constructible<Genode::Attached_rom_dataspace> runtime_state_rom;
 		Genode::Constructible<Genode::Attached_rom_dataspace> runtime_mirror_rom;
+		Genode::Constructible<Genode::Attached_rom_dataspace> system_state_rom;
+		Genode::Constructible<Genode::Attached_rom_dataspace> cfg_probe_rom;
 		int mirror_starts { -1 };
 		int mirror_bytes  { -1 };
 		int pr_ram_kb     { -1 };
@@ -446,8 +453,81 @@ void Libc::Component::construct(Libc::Env &env)
 			}
 			}
 
-			if (panel_top)                 panel_top->show_running_set(running, windows, children, cfg_writes, mirror_starts, mirror_bytes, pr_ram_kb, state_changes);
-			if (panel_bottom.constructed()) panel_bottom->show_running_set(running, windows, children, cfg_writes, mirror_starts, mirror_bytes, pr_ram_kb, state_changes);
+			/*
+			 * Field instrumentation (2026-10-03): the system init's OWN
+			 * state report (K/P/Q) plus the cfg_probe delivery witness
+			 * (D). This distinguishes the three failure hypotheses for
+			 * the real-hardware config stall that R/N/S cannot:
+			 *
+			 *   P:0 — pkg_runtime absent from the system's children:
+			 *         it never started (quota reservation / ELF load).
+			 *   P:2 — present but state="incomplete": its construction
+			 *         is parked mid-initialization.
+			 *   P:1 with C:0 — started cleanly, config never applied:
+			 *         the ROM-session delivery path is the failure.
+			 *   Q>0 — some child has a pending (deferred) resource
+			 *         request — the silent permanent-block class.
+			 *   D   — bytes a fresh reader at pkg_runtime's boot
+			 *         position sees in the very module that feeds its
+			 *         config ('sponge_pkgd -> runtime').
+			 */
+			int sys_children     { -1 };
+			int pkg_runtime_flag { -1 };
+			int requested_count  { -1 };
+			int cfg_probe_bytes  { -1 };
+			if (system_state_rom.constructed()) {
+				system_state_rom->update();
+				if (system_state_rom->valid() && system_state_rom->size() > 0) {
+					sys_children     = 0;
+					pkg_runtime_flag = 0;
+					requested_count  = 0;
+					try {
+						Genode::Xml_node const sstate(
+							system_state_rom->local_addr<char const>(),
+							system_state_rom->size());
+						sstate.for_each_sub_node("child",
+							[&](Genode::Xml_node const &c) {
+							++sys_children;
+							if (c.attribute_value("name", Genode::String<32>())
+							    == "pkg_runtime")
+								pkg_runtime_flag = c.has_attribute("state") ? 2 : 1;
+							c.with_optional_sub_node("ram",
+								[&](Genode::Xml_node const &n) {
+								if (n.has_attribute("requested"))
+									++requested_count; });
+							c.with_optional_sub_node("caps",
+								[&](Genode::Xml_node const &n) {
+								if (n.has_attribute("requested"))
+									++requested_count; });
+						});
+					} catch (Genode::Xml_node::Invalid_syntax) { }
+				}
+			}
+			if (cfg_probe_rom.constructed()) {
+				cfg_probe_rom->update();
+				if (cfg_probe_rom->valid() && cfg_probe_rom->size() > 0) {
+					try {
+						Genode::Xml_node const probe(
+							cfg_probe_rom->local_addr<char const>(),
+							cfg_probe_rom->size());
+						cfg_probe_bytes = (int)probe.attribute_value("bytes", 0u);
+					} catch (Genode::Xml_node::Invalid_syntax) { }
+				}
+			}
+			QString extra_diag;
+			if (sys_children >= 0)
+				extra_diag += QStringLiteral(" · K:%1").arg(sys_children);
+			if (pkg_runtime_flag >= 0)
+				extra_diag += QStringLiteral(" · P:%1").arg(pkg_runtime_flag);
+			if (requested_count >= 0)
+				extra_diag += QStringLiteral(" · Q:%1").arg(requested_count);
+			if (cfg_probe_bytes >= 0)
+				extra_diag += QStringLiteral(" · D:%1b").arg(cfg_probe_bytes);
+
+			if (panel_top)
+				panel_top->show_running_set(running, windows, children, cfg_writes, mirror_starts, mirror_bytes, pr_ram_kb, state_changes, extra_diag);
+			if (panel_bottom.constructed())
+				panel_bottom->show_running_set(running, windows, children, cfg_writes, mirror_starts, mirror_bytes, pr_ram_kb, state_changes, extra_diag);
 		};
 		QObject::connect(&launcher_ctrl, &LauncherController::appsChanged,
 		                 diag_refresh);
@@ -458,6 +538,14 @@ void Libc::Component::construct(Libc::Env &env)
 		 * loop) — freezing the whole UI until the session completes
 		 * (observed as 'themed panel never composited').
 		 */
+		if (diag_runtime_state) {
+			runtime_state_rom.construct(env, "runtime_state");
+			runtime_mirror_rom.construct(env, "runtime_mirror");
+		}
+		if (diag_system_state)
+			system_state_rom.construct(env, "system_state");
+		if (diag_cfg_probe)
+			cfg_probe_rom.construct(env, "cfg_probe_state");
 
 		{
 			auto *diag_timer = new QTimer(&launcher_ctrl);
