@@ -164,6 +164,7 @@ set build_components {
 	lib/vfs lib/vfs_rump
 	server/wm app/window_layouter app/decorator app/pointer
 	sponge_configd sponge_themed sponge_pkgd pkg_hello sponge-de
+	cfg_probe
 	test/alpha_probe
 	test/partition_check
 	qt6/base lib/libc lib/libm lib/stdcxx lib/mesa \
@@ -220,7 +221,7 @@ close $empty_cfg
 # --- desktop binaries → /system/bin/ ---
 foreach b { init report_rom wm window_layouter decorator \
             sponge_configd sponge_themed sponge_pkgd sponge-de \
-            alpha_probe hello } {
+            alpha_probe hello cfg_probe } {
 	exec cp -fL "bin/$b" "$sys_dir/bin/$b"
 }
 
@@ -367,6 +368,8 @@ config
     + parent
     + any-child
 
++ report | init_ram: yes | child_ram: yes | child_caps: yes | delay_ms: 1000
+
 + start report_rom | caps: 300 | ram: 8M
   + binary | name: bin/report_rom
   + provides
@@ -392,6 +395,8 @@ config
     + policy | label: sponge_pkgd -> request     | report: alpha_probe -> request
     + policy | label: alpha_probe -> result       | report: sponge_pkgd -> result
     + policy | label: pkg_runtime -> config       | report: sponge_pkgd -> runtime
+    + policy | label: cfg_probe -> config          | report: sponge_pkgd -> runtime
+    + policy | label: sponge-de -> cfg_probe_state | report: cfg_probe -> cfg_probe
     + policy | label: sponge-de -> installed      | report: sponge_pkgd -> installed
     + policy | label: sponge_pkgd -> launcher_request | report: sponge-de -> launcher_request
     + policy | label: sponge-de -> launcher_result   | report: sponge_pkgd -> launcher_result
@@ -563,6 +568,8 @@ config
     + service Report | label: rules        | + child report_rom
     + service ROM | label: launcher_result | + child report_rom
     + service ROM | label: installed | + child report_rom
+    + service ROM | label_last: system_state   | + parent
+    + service ROM | label_last: cfg_probe_state | + child report_rom
     + service ROM | label: theme | + child report_rom
     + service ROM | label: mesa_gpu.lib.so | + parent | label: mesa_gpu-softpipe.lib.so
     + any-service
@@ -585,6 +592,16 @@ config
     + any-service
       + parent
       + any-child
++ start cfg_probe | caps: 200 | ram: 4M
+  + binary | name: bin/cfg_probe
+  + route
+    + service ROM | label: config | + child report_rom
+    + service Report | + child report_rom
+    + service Timer | + parent
+    + any-service
+      + parent
+      + any-child
+
 + start pkg_runtime | caps: 8000 | ram: 1536M
   + binary | name: bin/init
   + route
@@ -648,6 +665,7 @@ config
     + policy | label: platform -> devices  | report: pci_decode -> devices
     + policy | label: usb_hid -> report    | report: usb -> devices
     + policy | label_suffix: focus | report: nitpicker -> focus
+    + policy | label_suffix: system_state | report: system -> state
     + policy | label_suffix: hover | report: nitpicker -> hover
     + policy | label: pointer -> xray | report: pointer-xray-none
     #
@@ -945,6 +963,7 @@ config
     + service ROM | label_suffix: .lib.so | + child rom_lib
     + service ROM | label_last: focus | + child report_rom
     + service ROM | label_last: hover | + child report_rom
+    + service ROM | label_last: system_state | + child report_rom
     + service ROM | + child rom_sys
     + service Gui | + child nitpicker
     + service Capture | + child nitpicker
