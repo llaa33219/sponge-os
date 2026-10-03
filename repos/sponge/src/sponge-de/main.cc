@@ -32,6 +32,7 @@
 #include <rom_session/connection.h>
 #include <util/xml_node.h>
 #include <util/string.h>
+#include <util/hid.h>
 
 #include <QApplication>
 #include <QTimer>
@@ -368,11 +369,23 @@ void Libc::Component::construct(Libc::Env &env)
 					if (Genode::strcmp(base + i, "runtime_state: yes", 18) == 0 ||
 					    Genode::strcmp(base + i, "\"runtime_state\"", 15) == 0)
 						diag_runtime_state = true;
-					if (Genode::strcmp(base + i, "\"system_state\"", 14) == 0)
+					/*
+					 * Bare-attribute-name matching: the delivered
+					 * config buffer is re-serialized by the sandbox
+					 * (Genode 26.08 Generator), whose attribute form
+					 * is not guaranteed to be XML — match the NAME
+					 * so either serialization form gates the ROMs.
+					 */
+					if (Genode::strcmp(base + i, "system_state", 12) == 0)
 						diag_system_state = true;
-					if (Genode::strcmp(base + i, "\"cfg_probe_state\"", 17) == 0)
+					if (Genode::strcmp(base + i, "cfg_probe", 9) == 0)
 						diag_cfg_probe = true;
 				}
+				Genode::log("sponge-de diag gates: sz=", sz,
+				            " runtime_state=", diag_runtime_state,
+				            " system_state=",  diag_system_state,
+				            " cfg_probe=",     diag_cfg_probe,
+				            " head=", Genode::Cstring(base, 64));
 			}
 		}
 
@@ -439,17 +452,22 @@ void Libc::Component::construct(Libc::Env &env)
 				}
 			if (runtime_state_rom->valid()) {
 				children = 0;
-				try {
-					Genode::Xml_node const state(runtime_state_rom->local_addr<char const>(),
-					                             runtime_state_rom->size());
-					state.for_each_sub_node("child", [&](Genode::Xml_node const &) {
+				/*
+				 * The sandbox state report is HID-serialized (the
+				 * 26.08 Generator) — Xml_node would fail with
+				 * Invalid_syntax and silently report zero children
+				 * (the historical C:0 artifact).
+				 */
+				Genode::Hid_node const state(Genode::Const_byte_range_ptr(
+					runtime_state_rom->local_addr<char const>(),
+					runtime_state_rom->size()));
+				state.for_each_sub_node([&](Genode::Hid_node const &n) {
+					if (n.has_type("child"))
 						++children; });
-					/* pkg_runtime's own RAM (the M: aliveness readout):
-					 * the sandbox state report emits <ram used="..."/> */
-					state.with_optional_sub_node("ram", [&](Genode::Xml_node const &n) {
-						pr_ram_kb = (int)(n.attribute_value("used", 0u) / 1024u);
-					});
-				} catch (Genode::Xml_node::Invalid_syntax) { }
+				state.with_sub_node("ram",
+					[&] (Genode::Hid_node const &n) {
+						pr_ram_kb = (int)(n.attribute_value("used", 0u) / 1024u); },
+					[] {});
 			}
 			}
 
@@ -481,26 +499,27 @@ void Libc::Component::construct(Libc::Env &env)
 					sys_children     = 0;
 					pkg_runtime_flag = 0;
 					requested_count  = 0;
-					try {
-						Genode::Xml_node const sstate(
-							system_state_rom->local_addr<char const>(),
-							system_state_rom->size());
-						sstate.for_each_sub_node("child",
-							[&](Genode::Xml_node const &c) {
-							++sys_children;
-							if (c.attribute_value("name", Genode::String<32>())
-							    == "pkg_runtime")
-								pkg_runtime_flag = c.has_attribute("state") ? 2 : 1;
-							c.with_optional_sub_node("ram",
-								[&](Genode::Xml_node const &n) {
+					Genode::Hid_node const sstate(Genode::Const_byte_range_ptr(
+						system_state_rom->local_addr<char const>(),
+						system_state_rom->size()));
+					sstate.for_each_sub_node([&](Genode::Hid_node const &c) {
+						if (!c.has_type("child"))
+							return;
+						++sys_children;
+						if (c.attribute_value("name", Genode::String<32>())
+						    == "pkg_runtime")
+							pkg_runtime_flag = c.has_attribute("state") ? 2 : 1;
+						c.with_sub_node("ram",
+							[&] (Genode::Hid_node const &n) {
 								if (n.has_attribute("requested"))
-									++requested_count; });
-							c.with_optional_sub_node("caps",
-								[&](Genode::Xml_node const &n) {
+									++requested_count; },
+							[] {});
+						c.with_sub_node("caps",
+							[&] (Genode::Hid_node const &n) {
 								if (n.has_attribute("requested"))
-									++requested_count; });
-						});
-					} catch (Genode::Xml_node::Invalid_syntax) { }
+									++requested_count; },
+							[] {});
+					});
 				}
 			}
 			if (cfg_probe_rom.constructed()) {
