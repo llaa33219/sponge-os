@@ -60,7 +60,11 @@
     <session name="Gui"    default-route="nitpicker"/>
     <session name="Timer"  default-route="parent"/>
     <session name="Report" default-route="parent"/>
-    <session name="ROM"    default-route="parent"/>
+    <session name="ROM"     default-route="parent"/>
+    <!-- vct_tty bridge: the inner vfs routes the label="vct" Terminal
+         session (the /dev/vct device, used by /bin/vct) up to the
+         system-level vct_tty component. -->
+    <session name="Terminal" default-route="parent"/>
   </sessions>
 
   <config>
@@ -72,6 +76,7 @@
       <service name="LOG"/>
       <service name="Timer"/>
       <service name="Gui"/>
+      <service name="Terminal"/>
       <service name="Report"/>
     </parent-provides>
 
@@ -158,11 +163,15 @@
           <tar name="findutils.tar"/>
           <tar name="diffutils.tar"/>
           <tar name="which.tar"/>
+          <!-- /bin/vct: in-terminal vct front-end (vct_tty bridge) -->
+          <tar name="vct-bin.tar"/>
           <dir name="dev">
             <zero/>
             <null/>
             <log/>
             <terminal/>
+            <!-- vct_tty bridge device; see the Terminal session above -->
+            <terminal name="vct" label="vct"/>
             <inline name="rtc">2018-01-01 00:01</inline>
           </dir>
           <dir name="pipe"> <pipe/> </dir>
@@ -175,6 +184,7 @@
         <default-policy root="/" writeable="yes"/>
       </config>
       <route>
+        <service name="Terminal" label="vct"><parent/></service>
         <service name="Terminal"><child name="terminal"/></service>
         <any-service><parent/></any-service>
       </route>

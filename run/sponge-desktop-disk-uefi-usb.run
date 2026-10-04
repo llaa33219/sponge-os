@@ -447,7 +447,7 @@ foreach b { init report_rom wm window_layouter decorator \
 # covers them (bin/…). vfs and cached_fs_rom are Tier-0 boot modules
 # that must ALSO be disk-served for the sub-init.
 #
-foreach b { vfs cached_fs_rom } {
+foreach b { vfs cached_fs_rom vct_tty } {
 	if {[file exists "bin/$b"]} {
 		exec cp -fL "bin/$b" "$sys_dir/bin/$b"
 	}
@@ -460,9 +460,28 @@ foreach b { vfs cached_fs_rom } {
 # vfs_ttf rom plugin. On the product media these resolve through
 # rom_sys at the /system root (same layout as the qt6 tars).
 #
+# --- vct-bin.tar: /bin/vct in-terminal front-end (vct_tty bridge) ---
+exec mkdir -p .vct-stage/bin
+set vct_fd [open .vct-stage/bin/vct w]
+puts $vct_fd {#!/bin/bash
+# vct - in-terminal front-end; the vct_tty component answers on /dev/vct
+if [ $# -eq 0 ]; then
+	echo "usage: vct <explain|install|remove|list> [package]"
+	exit 0
+fi
+printf '%s\n' "$*" > /dev/vct
+while IFS= read -r line; do
+	printf '%s\n' "$line"
+	case "$line" in
+		"=== vct: done ===") break ;;
+	esac
+done < /dev/vct}
+close $vct_fd
+exec chmod +x .vct-stage/bin/vct
+exec tar -cf bin/vct-bin.tar -C .vct-stage bin
 foreach t { VeraMono.ttf bash-minimal.tar vim-minimal.tar \
             coreutils-minimal.tar grep.tar sed.tar tar.tar \
-            less.tar findutils.tar diffutils.tar which.tar } {
+            less.tar findutils.tar diffutils.tar which.tar vct-bin.tar } {
 	if {[file exists "bin/$t"]} {
 		exec cp -fL "bin/$t" "$sys_dir/$t"
 	}
@@ -627,6 +646,8 @@ config
     + policy | label: sponge-de -> installed      | report: sponge_pkgd -> installed
     + policy | label: sponge_pkgd -> launcher_request | report: sponge-de -> launcher_request
     + policy | label: sponge-de -> launcher_result   | report: sponge_pkgd -> launcher_result
+    + policy | label: sponge_pkgd -> tty_request | report: vct_tty -> tty_request
+    + policy | label: vct_tty -> tty_result      | report: sponge_pkgd -> tty_result
     + policy | label: pkg_runtime -> debug -> installed      | report: sponge_pkgd -> installed
     + policy | label: pkg_runtime -> debug -> window_list    | report: wm -> window_list
     + policy | label: pkg_runtime -> debug -> launcher_result | report: sponge_pkgd -> launcher_result
@@ -734,17 +755,31 @@ config
   + binary | name: bin/sponge_pkgd
   + config | binary_prefix: bin/
     + launcher_request
+    + tty_request
     + bake
   + route
     + service ROM | label_last: ld.lib.so | + parent
     + service ROM | label_last: request | + child report_rom
     + service ROM | label_last: launcher_request | + child report_rom
+    + service ROM | label_last: tty_request | + child report_rom
     + service ROM | label: bake_manifest | + parent | label: bake_manifest.json
     + service Report | + child report_rom
     + any-service
       + parent
       + any-child
 
+
++ start vct_tty | caps: 200 | ram: 8M
+  + binary | name: bin/vct_tty
+  + config
+  + route
+    + service ROM | label_last: ld.lib.so | + parent
+    + service ROM | label_last: tty_result | + child report_rom
+    + service Report | label: tty_request | + child report_rom
+    + service Timer | + parent
+    + any-service
+      + parent
+      + any-child
 
 + start sponge-de | caps: 8000 | ram: 128M
   + binary | name: bin/sponge-de
@@ -827,6 +862,7 @@ config
     + service Gui | + child wm
     + service Report | label_last: shape | + child wm
     + service Report | label_last: state | + child report_rom
+    + service Terminal | + child vct_tty
     + any-service
       + parent
       + any-child

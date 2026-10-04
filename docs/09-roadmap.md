@@ -960,6 +960,16 @@ Four additions reopen the Phase 16 completion criteria:
   proved first paint + fixture GET on a dedicated topology; the
   release media needs the nic wiring carried over).
 
+- [ ] **Feature — additional shells (zsh, fish).** No upstream
+  Genode/noux port exists for either shell (the noux ecosystem ships
+  bash + the coreutils-style toolset only), so per the user's
+  directive both are direct ports: zsh first (C, autotools, depends
+  on ncurses — the ncurses port already exists in-tree), built as a
+  noux tar alongside bash-minimal.tar; fish second (C++17, bundled
+  libs + pcre2 — a materially heavier port), same tar pattern once
+  its dependencies stage. A default-shell selection mechanism in the
+  terminal package follows both.
+
 - [ ] **Feature — same-program multi-instance.** Launching two
   instances of one program creates two independent windows (today
   pkgd answers `already-running` by design, Phase 7's verified
