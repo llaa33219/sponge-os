@@ -207,6 +207,16 @@ class Sponge::Pkgd::Main
 		Genode::Expanding_reporter     _launcher_result_reporter { _env, "result", "launcher_result" };
 
 		/*
+		 * Terminal vct channel pair: the in-terminal `vct` command
+		 * (a shell script writing to /dev/vct) reaches pkgd through
+		 * the vct_tty bridge component. report_rom is single-writer
+		 * per label, so the bridge gets its own pair. Third transport,
+		 * same backend (AGENTS.md §3.3 rule 5).
+		 */
+		Genode::Constructible<Genode::Attached_rom_dataspace> _tty_request_rom { };
+		Genode::Expanding_reporter     _tty_result_reporter { _env, "result", "tty_result" };
+
+		/*
 		 * Runtime config report: report_rom relays this to the nested
 		 * pkg_runtime init's "config" ROM. pkgd owns the ENTIRE
 		 * pkg_runtime config and regenerates it on every install/remove.
@@ -233,6 +243,9 @@ class Sponge::Pkgd::Main
 		Genode::Signal_handler<Main> _launcher_request_handler {
 			_env.ep(), *this, &Main::_handle_launcher_request };
 
+		Genode::Signal_handler<Main> _tty_request_handler {
+			_env.ep(), *this, &Main::_handle_tty_request };
+
 		/*
 		 * De-duplication of the request ROM. ROM signals can be
 		 * delivered more than once for the same content (e.g. once on
@@ -249,7 +262,7 @@ class Sponge::Pkgd::Main
 		 * during an in-flight request. Set at the top of each handler
 		 * entry point. Signals dispatch serially, so no concurrency.
 		 */
-		enum class Result_channel { primary, launcher };
+		enum class Result_channel { primary, launcher, tty };
 		Result_channel _active_channel { Result_channel::primary };
 
 		/*
@@ -366,6 +379,7 @@ class Sponge::Pkgd::Main
 		/* ---- request handling ---- */
 		void _handle_request();
 		void _handle_launcher_request();
+		void _handle_tty_request();
 
 		/*
 		 * Core request-processing body shared by both input channels.
@@ -465,8 +479,11 @@ bool Sponge::Pkgd::Main::_contains(Genode::String<64> const *set, unsigned n,
 
 Genode::Expanding_reporter &Sponge::Pkgd::Main::_result()
 {
-	return _active_channel == Result_channel::launcher
-	     ? _launcher_result_reporter : _result_reporter;
+	if (_active_channel == Result_channel::launcher)
+		return _launcher_result_reporter;
+	if (_active_channel == Result_channel::tty)
+		return _tty_result_reporter;
+	return _result_reporter;
 }
 
 
@@ -938,6 +955,27 @@ void Sponge::Pkgd::Main::_handle_launcher_request()
 	catch (Genode::Xml_node::Invalid_syntax) {
 		_report_error("explain", Genode::String<128>(),
 		              "malformed launcher_request ROM");
+	}
+}
+
+
+void Sponge::Pkgd::Main::_handle_tty_request()
+{
+	if (!_tty_request_rom.constructed())
+		return;
+
+	_active_channel = Result_channel::tty;
+
+	_tty_request_rom->update();
+	if (!_tty_request_rom->valid())
+		return;
+
+	try {
+		_handle_request_impl(_tty_request_rom->xml());
+	}
+	catch (Genode::Xml_node::Invalid_syntax) {
+		_report_error("explain", Genode::String<128>(),
+		              "malformed tty_request ROM");
 	}
 }
 
@@ -1717,7 +1755,8 @@ void Sponge::Pkgd::Main::_report_launch_ok(Genode::String<128> const &pkg,
 {
 	Genode::log("sponge_pkgd: launch result ", pkg, " -> ", outcome,
 	            " (channel=",
-	            _active_channel == Result_channel::launcher ? "launcher" : "primary",
+	            _active_channel == Result_channel::launcher ? "launcher"
+            : _active_channel == Result_channel::tty ? "tty" : "primary",
 	            ")");
 	_result().generate_xml([&](Genode::Xml_generator &g) {
 		g.attribute("status", outcome);
@@ -1827,6 +1866,13 @@ void Sponge::Pkgd::Main::_init_launcher_channel()
 				_launcher_request_rom->sigh(_launcher_request_handler);
 				_launcher_request_rom->update();
 				Genode::log("sponge_pkgd: launcher_request channel enabled");
+			});
+		_config_rom.node().with_optional_sub_node("tty_request",
+			[&](Genode::Node const &) {
+				_tty_request_rom.construct(_env, "tty_request");
+				_tty_request_rom->sigh(_tty_request_handler);
+				_tty_request_rom->update();
+				Genode::log("sponge_pkgd: tty_request channel enabled");
 			});
 	} catch (Genode::Xml_node::Invalid_syntax) {
 		Genode::warning("sponge_pkgd: malformed <config> — launcher channel disabled");
