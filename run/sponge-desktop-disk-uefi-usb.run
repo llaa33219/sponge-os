@@ -438,6 +438,36 @@ foreach b { init report_rom wm window_layouter decorator \
 	}
 }
 
+# --- terminal sub-init children → /system/bin/ ---
+#
+# The terminal package is a nested sub-init whose <start> children
+# (terminal, vfs, vfs_rom->cached_fs_rom) resolve their binaries via
+# pkg_runtime's ROM routing — on disk-served media that reaches
+# rom_sys chrooted at /system, so pkgd's binary_prefix rewriting
+# covers them (bin/…). vfs and cached_fs_rom are Tier-0 boot modules
+# that must ALSO be disk-served for the sub-init.
+#
+foreach b { vfs cached_fs_rom } {
+	if {[file exists "bin/$b"]} {
+		exec cp -fL "bin/$b" "$sys_dir/bin/$b"
+	}
+}
+
+# --- terminal payload → /system/ (flat, ROM-served) ---
+#
+# The sub-init's vfs child mounts the noux tars as ROM sessions
+# (<tar name="..."/>); the terminal server loads VeraMono.ttf via the
+# vfs_ttf rom plugin. On the product media these resolve through
+# rom_sys at the /system root (same layout as the qt6 tars).
+#
+foreach t { VeraMono.ttf bash-minimal.tar vim-minimal.tar \
+            coreutils-minimal.tar grep.tar sed.tar tar.tar \
+            less.tar findutils.tar diffutils.tar which.tar } {
+	if {[file exists "bin/$t"]} {
+		exec cp -fL "bin/$t" "$sys_dir/$t"
+	}
+}
+
 # --- shared libraries → /system/lib/ ---
 # (Same exclusions as the AHCI UEFI variant.)
 #
