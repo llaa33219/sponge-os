@@ -123,17 +123,34 @@ saturated. The discriminating tests, in order:
 ## 5. Design gap register (what "microkernel-proper" would add)
 
 The user's intuition is correct: properly deployed, a terminal
-component must never be able to freeze the desktop. The gaps:
+component must never be able to freeze the desktop. Status after the
+2026-10-04 containment deployment:
 
-- [ ] **Broker fault containment**: init/sandbox heartbeat + child
-  respawn (upstream supports `<heartbeat>` + per-child restart
-  policies). A dying ep must cost one child, not the subtree.
+- [x] **Broker fault containment — system level (deployed)**: every
+  product scenario's system init now runs `<heartbeat rate_ms="2000"/>`
+  with `<heartbeat restart_after_skipped="3"/>` on the critical
+  children (wm, layouter, decorator, sponge_configd, sponge_themed,
+  sponge_pkgd, vct_tty, sponge-de, pkg_runtime). A child whose
+  entrypoint wedges is abandoned and respawned within ~6 s. Verified:
+  the product scenario boots PASS with the deployment in place.
+- [ ] **Broker fault containment — top level (blocked by design)**:
+  the top-level init cannot run a heartbeat because core provides no
+  Timer on base-sel4 (empirically confirmed: the session is denied
+  and init stops). Restarting a wedged `system` child from above
+  requires a supervisor that owns the top-level config (the pkgd
+  pattern applied one level up) — recorded as the follow-up design.
 - [ ] **Broker hardening**: the config-less-child ep abort is an
-  upstream-adjacent fragility; at minimum wrap risky child-creation
-  paths so exceptions cost the child, not the broker.
-- [ ] **Resource headroom policy**: per-init caps/RAM grants should
-  carry documented headroom (e.g. ≥10%) so adding a child is not a
-  cliff-edge operation; the system grant is currently sized to fit.
-- [ ] **Input-chain independence test**: a scenario that kills
-  `system` (or a child in it) and asserts the pointer still moves —
-  regression-proofing the §2 boundary.
+  upstream-adjacent fragility (workaround: every child ships an
+  explicit — possibly empty — config node; vct_tty's fix). The
+  containment above now bounds its blast radius to the child.
+- [x] **Resource headroom policy**: system grants across the five
+  product scenarios carry ~10% headroom (e.g. 36000→39600 caps,
+  1920M→2112M RAM) so adding a child is not a cliff-edge operation.
+- [~] **Containment regression test**: `test/ep_wedge` (wedge +
+  witness modes) and `run/sponge-heartbeat-restart.run` are written
+  and the component builds, but the scenario is blocked by a
+  PRE-EXISTING environment regression: flat ISO boots deny the HPET
+  IO_MEM (`sponge-pkg-explain` fails identically), so no flat
+  scenario can run a timer on this host today. The disk/UEFI product
+  path is unaffected. Revisit when the flat-boot HPET issue is
+  root-caused (QEMU/seaBIOS ACPI exposure).
