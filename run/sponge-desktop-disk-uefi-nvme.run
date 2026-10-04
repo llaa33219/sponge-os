@@ -385,6 +385,11 @@ config
 
 + report | init_ram: yes | child_ram: yes | child_caps: yes | delay_ms: 1000
 
+# Fault containment (docs/17 §5): a child whose entrypoint wedges is
+# abandoned and respawned by the sandbox after 3 skipped heartbeats
+# (~6 s at rate 2000 ms). The input chain (top-level) is untouched.
++ heartbeat | rate_ms: 2000
+
 + start report_rom | caps: 300 | ram: 8M
   + binary | name: bin/report_rom
   + provides
@@ -426,6 +431,7 @@ config
 
 + start wm | caps: 2000 | ram: 16M
   + binary | name: bin/wm
+  + heartbeat | restart_after_skipped: 3
   + provides
     + service Gui
     + service Report
@@ -447,6 +453,7 @@ config
 
 + start layouter | caps: 1000 | ram: 8M
   + binary | name: bin/window_layouter
+  + heartbeat | restart_after_skipped: 3
   + config | rules: rom
     + report | rules: yes
     + rules
@@ -472,6 +479,7 @@ config
 
 + start decorator | caps: 6000 | ram: 64M
   + binary | name: bin/decorator
+  + heartbeat | restart_after_skipped: 3
   + config
     + controls
       + maximizer
@@ -489,6 +497,7 @@ config
 
 + start sponge_configd | caps: 200 | ram: 16M
   + binary | name: bin/sponge_configd
+  + heartbeat | restart_after_skipped: 3
   + config
     #
     # NOTE (Phase 16 W3 D16.7 honest disclosure): this scenario is a
@@ -512,6 +521,7 @@ config
 
 + start sponge_themed | caps: 200 | ram: 8M
   + binary | name: bin/sponge_themed
+  + heartbeat | restart_after_skipped: 3
   + route
     + service ROM | label_last: ld.lib.so | + parent
     + service ROM | label_last: config       | + child report_rom
@@ -524,6 +534,7 @@ config
 
 + start sponge_pkgd | caps: 200 | ram: 16M
   + binary | name: bin/sponge_pkgd
+  + heartbeat | restart_after_skipped: 3
   + config | binary_prefix: bin/
     + launcher_request
     + bake
@@ -540,6 +551,7 @@ config
 
 + start sponge-de | caps: 8000 | ram: 128M
   + binary | name: bin/sponge-de
+  + heartbeat | restart_after_skipped: 3
   + config
     + theme | source: themed
     + launcher | source: pkgd
@@ -609,6 +621,7 @@ config
 
 + start pkg_runtime | caps: 8000 | ram: 1536M
   + binary | name: bin/init
+  + heartbeat | restart_after_skipped: 3
   + route
     + service ROM | label_last: ld.lib.so | + parent
     + service ROM | label_last: mesa_gpu.lib.so | + parent | label: mesa_gpu-softpipe.lib.so
@@ -897,7 +910,9 @@ config
     + service LOG | + parent
     + service Timer | + child timer
 
-+ start system | caps: 36000 | ram: 1920M
+# caps/RAM carry ~10% headroom per docs/17 §5 (adding a child must not
+# be a cliff-edge operation on a grant sized exactly to fit)
++ start system | caps: 39600 | ram: 2112M
   + binary | name: bin/init
   + route
     + service ROM | label: config | + child rom_sys | label: init/system.config

@@ -1,0 +1,108 @@
+#
+# \brief  Sandbox heartbeat fault-containment scenario
+# \author Sponge OS contributors
+# \date   2026
+#
+# Proves the microkernel-narrative containment deployed across the
+# product scenarios (docs/17-runtime-component-topology.md §5): a
+# child whose entrypoint wedges is detected by the sandbox heartbeat,
+# abandoned, and respawned — while the parent and every other child
+# keep running. This is the regression test for the 2026-10-04
+# failure class (one component's wedge freezing the whole desktop
+# through the shared broker).
+#
+# Topology (mirrors the product: the heartbeat lives in the nested
+# init whose Timer session routes to the timer child — the TOP-LEVEL
+# init cannot run a heartbeat because core provides no Timer):
+#
+#   init
+#   + timer             (the sandbox heartbeat's Timer target)
+#   + sandbox (init)    (config staged as the boot module
+#                        sandbox.config — external file, exactly like
+#                        the product's /system/init/system.config)
+#      + witness        (ep_wedge in behave mode: logs once, stays
+#                        alive — the independence assertion)
+#      + ep_wedge       (logs "alive", then wedges its entrypoint
+#                        forever; <heartbeat restart_after_skipped=2>
+#                        respawns it — a second "alive" line proves
+#                        the containment end to end)
+#
+# AGENTS.md §4.2: builds lib/ld + core + init + timer + ep_wedge and
+# passes [build_artifacts] to build_boot_image; sandbox.config is
+# staged alongside so every boot_dir plugin picks it up.
+#
+
+build { core lib/ld init timer test/ep_wedge }
+
+create_boot_directory
+
+set sandbox_cfg [open "[run_dir]/genode/sandbox.config" w]
+puts $sandbox_cfg {
+config
++ parent-provides
+  + service ROM
+  + service PD
+  + service CPU
+  + service LOG
+  + service Timer
+
++ default | caps: 100 | ram: 8M
++ heartbeat | rate_ms: 500
+
++ default-route
+  + any-service
+    + parent
+    + any-child
+
++ start witness | caps: 100 | ram: 8M
+  + binary | name: ep_wedge
+  + config | behave: yes
+
++ start ep_wedge | caps: 100 | ram: 8M
+  + heartbeat | restart_after_skipped: 2
+  + config
+-
+}
+close $sandbox_cfg
+
+install_config {
+config
++ parent-provides
+  + service ROM
+  + service PD
+  + service CPU
+  + service LOG
+  + service Timer
+
++ default | caps: 100 | ram: 8M
+
++ default-route
+  + any-service
+    + parent
+    + any-child
+
++ start timer | caps: 100 | ram: 4M
+  + provides | + service Timer
+
++ start sandbox | caps: 600 | ram: 32M
+  + binary | name: init
+  + route
+    + service ROM | label: config | + parent | label: sandbox.config
+    + service Timer | + child timer
+    + any-service
+      + parent
+      + any-child
+-
+}
+
+build_boot_image [build_artifacts]
+
+append qemu_args " -machine q35 -cpu Skylake-Client -nographic -m 1G "
+
+run_genode_until {.*witness: alive and well.*} 60
+
+run_genode_until {.*ep_wedge: alive.*} 60
+
+run_genode_until {.*ep_wedge: alive.*} 60
+
+puts "\nheartbeat-restart: PASS — wedged child respawned, witness unaffected\n"
