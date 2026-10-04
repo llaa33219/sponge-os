@@ -932,13 +932,21 @@ Four additions reopen the Phase 16 completion criteria:
 
 - [ ] **Criterion 13 — the browser opens.** Falkon launches from
   the release media and renders a window on real hardware and in
-  the product QEMU scenario. Blocker: base-sel4's fixed 8192-slot
-  per-PD capability CNode (`CSPACE_SIZE_LOG2`) that falkon's
-  WebEngine runtime exceeds (documented in
-  `docs/13-installation.md` §6 and the falkon-disk evidence).
-  The fix is the vendored `CSPACE_SIZE_LOG2_2ND` patch previously
-  frozen by D16.8; the user's directive lifts the freeze for this
-  specific patch (a new ledger row will record it).
+  product QEMU scenario. Blocker status (assessed 2026-10-05): the
+  per-PD CSpace size is RESOLVED in the vendored tree (ledger row 6
+  + the Phase-15 addendum raising `CSPACE_SIZE_LOG2_1ST` to 7 =
+  65536 slots/PD) and already covers falkon's capability appetite.
+  The remaining, terminal-class integration blockers:
+  (a) falkon + the WebEngine `.lib.so` set are neither built in the
+  product build dir nor staged to `/system` (the scenario's
+  `falkon_libs` list EXCLUDES them from `/system/lib`);
+  (b) caps plumbing — falkon's quota is caps=200000/ram=1G but
+  pkg_runtime holds caps=8000 inside system's 39600: both grants
+  need orders-of-magnitude bumps (init has 523288 caps — feasible);
+  (c) P3 has ~150 MiB free vs the WebEngine lib footprint — the
+  image/partition may need growing; (d) criterion 15 (page load)
+  additionally needs the nic wiring (driver + slirp + pkg_runtime
+  Nic route) carried into the product scenario.
 
 - [ ] **Criterion 14 — terminal + vct install flow.** The terminal
   package opens a window on the release media, and inside that
