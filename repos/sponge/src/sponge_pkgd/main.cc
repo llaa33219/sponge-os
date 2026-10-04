@@ -680,6 +680,85 @@ void Sponge::Pkgd::Main::_parse_package(Genode::Xml_node const &pkg,
 			else
 				Genode::warning("pkg: <config> for ", name,
 				                " exceeded serialization buffer");
+
+			/*
+			 * Sponge (product-media fix): a nested sub-init package
+			 * (binary <binary>init</binary>) carries <start> children
+			 * whose binaries resolve via pkg_runtime's ROM routing —
+			 * on disk-served media that reaches rom_sys chrooted at
+			 * /system, so unprefixed names miss bin/. When
+			 * binary_prefix is set, rewrite the serialized config:
+			 * every <binary name="B"> (B without '/') becomes
+			 * prefix/B, and every <start name="X"> (X without '/')
+			 * lacking a <binary> gains <binary name="prefix/X"/>
+			 * right after its open tag. Path-like names (/bin/bash
+			 * — served by the sub-init's vfs_rom child) are left
+			 * untouched. Boot-module (flat) topologies have an empty
+			 * prefix and skip this entirely.
+			 */
+			Genode::size_t const cfg_len = cfg_res.convert<Genode::size_t>(
+				[&] (Genode::size_t v) { return v; },
+				[&] (Genode::Buffer_error) { return Genode::size_t(0); });
+			if (_binary_prefix != "" && cfg_len > 0) {
+				char const *needle_start = "<start name=\"";
+				char const *needle_bin   = "<binary name=\"";
+				Genode::String<4096> patched { };
+				for (Genode::size_t i = 0; i < cfg_len; ) {
+					Genode::size_t remain = cfg_len - i;
+					auto starts_with = [&](char const *n) {
+						Genode::size_t l = Genode::strlen(n);
+						return remain >= l
+						    && Genode::memcmp(cfg_buf + i, n, l) == 0; };
+					if (starts_with(needle_bin)) {
+						/* copy tag, prefix the value if path-free */
+						Genode::size_t v = i + Genode::strlen(needle_bin);
+						Genode::size_t e = v;
+						while (e < cfg_len && cfg_buf[e] != '"') e++;
+						bool const path_free =
+							(e > v) && cfg_buf[v] != '/';
+						patched = Genode::String<4096>(patched, needle_bin);
+						if (path_free)
+							patched = Genode::String<4096>(patched,
+								_binary_prefix.string());
+						while (v < e) patched = Genode::String<4096>(patched, Genode::Cstring(cfg_buf + v, 1)), v++;
+						patched = Genode::String<4096>(patched, "\"");
+						i = e + 1;
+						continue;
+					}
+					if (starts_with(needle_start)) {
+						Genode::size_t v = i + Genode::strlen(needle_start);
+						Genode::size_t e = v;
+						while (e < cfg_len && cfg_buf[e] != '"') e++;
+						bool const path_free =
+							(e > v) && cfg_buf[v] != '/';
+						Genode::size_t tag_end = e;
+						while (tag_end < cfg_len && cfg_buf[tag_end] != '>') tag_end++;
+						/* find the next '<' after the tag: an immediate
+						 * <binary child means handled above on its own */
+						Genode::size_t next = tag_end + 1;
+						while (next < cfg_len
+						       && (cfg_buf[next] == ' ' || cfg_buf[next] == '\n'
+						           || cfg_buf[next] == '\t' || cfg_buf[next] == '\r'))
+							next++;
+						bool const has_own_binary =
+							next + 7 < cfg_len
+							&& cfg_buf[next] == '<'
+							&& cfg_buf[next+1] == 'b';
+						patched = Genode::String<4096>(patched,
+							Genode::Cstring(cfg_buf + i, (tag_end + 1) - i));
+						if (path_free && !has_own_binary)
+							patched = Genode::String<4096>(patched,
+								"<binary name=\"", _binary_prefix.string(),
+								Genode::Cstring(cfg_buf + v, e - v), "\"/>");
+						i = tag_end + 1;
+						continue;
+					}
+					patched = Genode::String<4096>(patched,
+						Genode::Cstring(cfg_buf + i, 1));
+					i++;
+				}
+				out.config_xml = patched;
+			}
 		}
 		else if (child.has_type("autostart")) {
 			out.has_autostart = true;

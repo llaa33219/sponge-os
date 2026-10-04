@@ -167,6 +167,8 @@ class TasklistController : public QObject
 
 		int _layout_origin_x { 0 };
 		int _layout_origin_y { 0 };
+		int _layout_area_w   { 0 };
+		int _layout_area_h   { 0 };
 
 		void _on_window_list_rom();
 		void _on_window_layout_rom();

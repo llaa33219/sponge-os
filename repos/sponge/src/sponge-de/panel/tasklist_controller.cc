@@ -186,23 +186,29 @@ void TasklistController::_maybe_republish_rules()
 	if (!_rules_reporter.constructed()) return;
 
 	/*
-	 * Trigger on SET changes only (label added/removed, minimized
-	 * flipped), never on geometry deltas: window_layout does not
-	 * report the maximized state, so a geometry-driven republication
-	 * cannot round-trip it and would fight user manipulations
-	 * (maximize/drag/resize) — observed as windows resetting while
-	 * being operated. A set change (a new window gaining tracking)
-	 * is the moment the rules must carry current positions so the
-	 * layouter's full re-evaluation preserves existing windows.
-	 * The residual race: geometry changed within one 250 ms poll
-	 * before a set change republishes — a rare, small snap.
+	 * The layouter re-runs its full evaluation (dissolve + re-assign +
+	 * reposition every window) not only on window_list and rules changes
+	 * but also on HOVER state changes (free_arrange_hover_changed) —
+	 * i.e. on ordinary mouse movement between windows. The rules ROM
+	 * must therefore carry the CURRENT window geometry at all times, or
+	 * any dragged window snaps back at the next hover transition.
+	 * Republish when the tracked geometry signature changes, stable for
+	 * one extra poll: a manipulation in progress changes the signature
+	 * every poll (never stable), so no mid-drag republication.
+	 * Maximised round-trip: window_layout does not report the maximized
+	 * flag; the heuristic below infers it from the geometry filling the
+	 * target area so the republished assigns do not fight the
+	 * layouter's maximize state.
 	 */
 	QStringList sig;
 	sig.reserve(_tracked.size());
-	for (auto const &st : _tracked)
-		sig.append(QStringLiteral("%1/%2")
+	for (auto const &st : _tracked) {
+		sig.append(QStringLiteral("%1/%2/%3/%4/%5/%6/%7")
 		           .arg(st.label)
-		           .arg(st.minimized ? 1 : 0));
+		           .arg(st.x).arg(st.y).arg(st.w).arg(st.h)
+		           .arg(st.minimized ? 1 : 0)
+		           .arg(st.maximized ? 1 : 0));
+	}
 
 	if (sig == _candidate_rules_sig) {
 		if (_rules_sig_stable && sig != _published_rules_sig) {
@@ -316,6 +322,8 @@ void TasklistController::_recompute_tracked()
 				 */
 				_layout_origin_x = boundary.attribute_value("xpos", 0);
 				_layout_origin_y = boundary.attribute_value("ypos", 0);
+				_layout_area_w    = boundary.attribute_value("width",  0);
+				_layout_area_h    = boundary.attribute_value("height", 0);
 
 				boundary.for_each_sub_node("window", [&](Genode::Node const &w) {
 					Genode::String<256> const layout_title =
@@ -366,6 +374,18 @@ void TasklistController::_recompute_tracked()
 						st.maximized = prev.maximized;
 						break;
 					}
+
+					/*
+					 * Maximize inference: window_layout does not
+					 * report the flag, so a window whose inner
+					 * geometry fills the target area (within a
+					 * decorator-margin tolerance) is maximized.
+					 */
+					if (!st.minimized
+					    && _layout_area_w > 0 && _layout_area_h > 0
+					    && st.w >= (_layout_area_w - 64)
+					    && st.h >= (_layout_area_h - 64))
+						st.maximized = true;
 
 					new_tracked.append(st);
 				});
