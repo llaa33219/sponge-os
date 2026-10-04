@@ -373,6 +373,13 @@ void Libc::Component::construct(Libc::Env &env)
 		bool diag_runtime_state = false;
 		bool diag_system_state  = false;
 		bool diag_cfg_probe     = false;
+		/*
+		 * Demo window control: the product scenarios disable the
+		 * Phase-3 demo window (<demo enabled="no"/>); test scenarios
+		 * keep it by default. When disabled, no demo Gui session is
+		 * created at all.
+		 */
+		bool demo_enabled       = true;
 		{
 			Genode::Attached_rom_dataspace cfg { env, "config" };
 			cfg.update();
@@ -394,6 +401,21 @@ void Libc::Component::construct(Libc::Env &env)
 						diag_system_state = true;
 					if (Genode::strcmp(base + i, "cfg_probe", 9) == 0)
 						diag_cfg_probe = true;
+					/*
+					 * Demo gate: match a 'demo' node (lowercase —
+					 * distinct from the window label "…Demo") whose
+					 * 'enabled' attribute is 'no' within the same
+					 * node, in either HID or XML serialization.
+					 */
+					if (Genode::strcmp(base + i, "demo", 4) == 0) {
+						Genode::size_t const lim =
+							Genode::min(i + 32, sz);
+						for (Genode::size_t j = i; j < lim; ++j) {
+							if (Genode::strcmp(base + j, "enabled: no", 11) == 0 ||
+							    Genode::strcmp(base + j, "enabled=\"no\"", 12) == 0)
+								demo_enabled = false;
+						}
+					}
 				}
 				Genode::log("sponge-de diag gates: sz=", sz,
 				            " runtime_state=", diag_runtime_state,
@@ -547,6 +569,15 @@ void Libc::Component::construct(Libc::Env &env)
 					} catch (Genode::Xml_node::Invalid_syntax) { }
 				}
 			}
+		/*
+		 * Panel readouts are bring-up instrumentation. They render only
+		 * when the config carries a <diag runtime_state> gate; the
+		 * product scenarios ship without it, leaving the panel title
+		 * clean ("Sponge DE" + clock). The same data stays reachable
+		 * through the SPONGE DEBUG package, which subscribes to the
+		 * channels independently.
+		 */
+		if (diag_runtime_state) {
 			QString extra_diag;
 			if (sys_children >= 0)
 				extra_diag += QStringLiteral(" · K:%1").arg(sys_children);
@@ -561,7 +592,8 @@ void Libc::Component::construct(Libc::Env &env)
 				panel_top->show_running_set(running, windows, children, cfg_writes, mirror_starts, mirror_bytes, pr_ram_kb, state_changes, extra_diag);
 			if (panel_bottom.constructed())
 				panel_bottom->show_running_set(running, windows, children, cfg_writes, mirror_starts, mirror_bytes, pr_ram_kb, state_changes, extra_diag);
-		};
+		}
+	};
 		QObject::connect(&launcher_ctrl, &LauncherController::appsChanged,
 		                 diag_refresh);
 		/*
@@ -851,10 +883,15 @@ void Libc::Component::construct(Libc::Env &env)
 			Genode::log("sponge-de: background widget shown");
 		}
 
-		Main main_window(env, theme_ctrl.initial());
-		main_window.show();
-		theme_ctrl.attach_main(&main_window);
-		Genode::log("sponge-de: window shown");
+		Genode::Constructible<Main> demo_window;
+		if (demo_enabled) {
+			demo_window.construct(env, theme_ctrl.initial());
+			demo_window->show();
+			theme_ctrl.attach_main(&*demo_window);
+			Genode::log("sponge-de: demo window shown");
+		} else {
+			Genode::log("sponge-de: demo window disabled by config");
+		}
 
 		theme_ctrl.attach_launcher(&launcher_view);
 
