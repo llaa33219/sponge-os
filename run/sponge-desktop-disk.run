@@ -500,8 +500,6 @@ config
     + report | rules: yes
     + rules
       + screen screen
-      + assign | label: sponge-de -> Sponge DE Demo | target: screen
-               | xpos: 192 | ypos: 172 | width: 640 | height: 480 | maximized: no
       #
       # Launched GUI packages need a floating placement so they don't
       # maximize over the desktop. See run/sponge-alpha.run for the
@@ -604,10 +602,9 @@ config
   + config
     + theme | source: themed
     + launcher | source: pkgd
-    + diag | runtime_state: yes | system_state: yes | cfg_probe: yes
+    + demo | enabled: no
     + tasklist | source: wm
     + tasklist_static_rules
-      + assign | label: sponge-de -> Sponge DE Demo | target: screen | xpos: 192 | ypos: 172 | width: 640 | height: 480 | maximized: no
       + assign | label_prefix: pkg_runtime | target: screen | xpos: 50 | ypos: 300 | width: 320 | height: 240 | maximized: no
     + vfs
       + dir dev
