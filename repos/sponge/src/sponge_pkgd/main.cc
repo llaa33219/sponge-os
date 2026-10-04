@@ -106,7 +106,7 @@ struct Sponge::Pkgd::Package
 	 * sanitized) so Qt/libc fragments such as <libc>/<vfs>/<tar> pass
 	 * through literally (docs/12-package-format.md §7.2 rule 4).
 	 */
-	Genode::String<3072> config_xml;
+	Genode::String<16384> config_xml;
 
 	bool                has_autostart  { false };
 	bool                has_launcher   { false };
@@ -680,7 +680,11 @@ void Sponge::Pkgd::Main::_parse_package(Genode::Xml_node const &pkg,
 			 * append_node_content so arbitrary Qt/libc fragments
 			 * (<libc>, <vfs>, <tar>, ...) are preserved structurally.
 			 */
-			char cfg_buf[3072] { };
+			/* static: the parse runs on the (small-stack) ep thread;
+			 * a 16K stack local would overflow it (observed as an
+			 * illegal-WRITE pager fault on thread 'ep'). Single ep
+			 * thread parses serially — no reentrancy. */
+			static char cfg_buf[16384] { };
 			Genode::Xml_generator::Result const cfg_res =
 				Genode::Xml_generator::generate(
 					Genode::Byte_range_ptr(cfg_buf, sizeof(cfg_buf)),
@@ -693,7 +697,7 @@ void Sponge::Pkgd::Main::_parse_package(Genode::Xml_node const &pkg,
 						                            { .value = 16 });
 					});
 			if (cfg_res.ok())
-				out.config_xml = Genode::String<3072>(cfg_buf);
+				out.config_xml = Genode::String<16384>(cfg_buf);
 			else
 				Genode::warning("pkg: <config> for ", name,
 				                " exceeded serialization buffer");
@@ -719,7 +723,23 @@ void Sponge::Pkgd::Main::_parse_package(Genode::Xml_node const &pkg,
 			if (_binary_prefix != "" && cfg_len > 0) {
 				char const *needle_start = "<start name=\"";
 				char const *needle_bin   = "<binary name=\"";
-				Genode::String<4096> patched { };
+				/*
+				 * Static char-buffer rewrite: this runs on the (small-
+				 * stack) ep thread, where per-character String<16384>
+				 * temporaries overflowed the stack (observed as an
+				 * illegal-WRITE pager fault on thread 'ep'). One ep
+				 * thread parses serially — no reentrancy.
+				 */
+				static char out_buf[2*16384] { };
+				Genode::size_t o = 0;
+				auto emit = [&](char const *s, Genode::size_t len) {
+					while (len > 0 && o + 1 < sizeof(out_buf)) {
+						out_buf[o++] = *s++;
+						--len;
+					}
+				};
+				auto emit_cstr = [&](char const *s) {
+					emit(s, Genode::strlen(s)); };
 				for (Genode::size_t i = 0; i < cfg_len; ) {
 					Genode::size_t remain = cfg_len - i;
 					auto starts_with = [&](char const *n) {
@@ -727,18 +747,16 @@ void Sponge::Pkgd::Main::_parse_package(Genode::Xml_node const &pkg,
 						return remain >= l
 						    && Genode::memcmp(cfg_buf + i, n, l) == 0; };
 					if (starts_with(needle_bin)) {
-						/* copy tag, prefix the value if path-free */
 						Genode::size_t v = i + Genode::strlen(needle_bin);
 						Genode::size_t e = v;
 						while (e < cfg_len && cfg_buf[e] != '"') e++;
 						bool const path_free =
 							(e > v) && cfg_buf[v] != '/';
-						patched = Genode::String<4096>(patched, needle_bin);
+						emit_cstr(needle_bin);
 						if (path_free)
-							patched = Genode::String<4096>(patched,
-								_binary_prefix.string());
-						while (v < e) patched = Genode::String<4096>(patched, Genode::Cstring(cfg_buf + v, 1)), v++;
-						patched = Genode::String<4096>(patched, "\"");
+							emit_cstr(_binary_prefix.string());
+						emit(cfg_buf + v, e - v);
+						emit_cstr("\"");
 						i = e + 1;
 						continue;
 					}
@@ -750,8 +768,6 @@ void Sponge::Pkgd::Main::_parse_package(Genode::Xml_node const &pkg,
 							(e > v) && cfg_buf[v] != '/';
 						Genode::size_t tag_end = e;
 						while (tag_end < cfg_len && cfg_buf[tag_end] != '>') tag_end++;
-						/* find the next '<' after the tag: an immediate
-						 * <binary child means handled above on its own */
 						Genode::size_t next = tag_end + 1;
 						while (next < cfg_len
 						       && (cfg_buf[next] == ' ' || cfg_buf[next] == '\n'
@@ -761,20 +777,21 @@ void Sponge::Pkgd::Main::_parse_package(Genode::Xml_node const &pkg,
 							next + 7 < cfg_len
 							&& cfg_buf[next] == '<'
 							&& cfg_buf[next+1] == 'b';
-						patched = Genode::String<4096>(patched,
-							Genode::Cstring(cfg_buf + i, (tag_end + 1) - i));
-						if (path_free && !has_own_binary)
-							patched = Genode::String<4096>(patched,
-								"<binary name=\"", _binary_prefix.string(),
-								Genode::Cstring(cfg_buf + v, e - v), "\"/>");
+						emit(cfg_buf + i, (tag_end + 1) - i);
+						if (path_free && !has_own_binary) {
+							emit_cstr("<binary name=\"");
+							emit_cstr(_binary_prefix.string());
+							emit(cfg_buf + v, e - v);
+							emit_cstr("\"/>");
+						}
 						i = tag_end + 1;
 						continue;
 					}
-					patched = Genode::String<4096>(patched,
-						Genode::Cstring(cfg_buf + i, 1));
+					emit(cfg_buf + i, 1);
 					i++;
 				}
-				out.config_xml = patched;
+				out_buf[o] = 0;
+				out.config_xml = out_buf;
 			}
 		}
 		else if (child.has_type("autostart")) {
@@ -1081,7 +1098,13 @@ void Sponge::Pkgd::Main::_add_root(char const *name)
  */
 void Sponge::Pkgd::Main::_sync_installed_from_roots()
 {
-	Package fresh[MAX_PACKAGES] { };
+	/*
+	 * Static: 32 Packages × the 16K config_xml member is ~532K — as a
+	 * stack local on the (small-stack) ep thread this overflowed the
+	 * stack (illegal-WRITE pager fault, fixed address). Single ep
+	 * thread runs this serially — no reentrancy.
+	 */
+	static Package fresh[MAX_PACKAGES] { };
 	unsigned num_fresh { 0 };
 
 	for (unsigned r = 0; r < _num_roots; ++r) {
@@ -1439,6 +1462,39 @@ void Sponge::Pkgd::Main::_generate_runtime_config()
 			 */
 			g.node("service", [&] { g.attribute("name", "Nic"); });
 			g.node("service", [&] { g.attribute("name", "Rtc"); });
+
+			/*
+			 * Union in the installed packages' declared session
+			 * names (e.g. the terminal package's Terminal bridge
+			 * session): a service name missing here stops the
+			 * forwarding child with "parent denied <svc>-session"
+			 * — the fixed list above cannot anticipate package-
+			 * specific service types. Static: this runs on the
+			 * ep thread's small stack (same lesson as fresh[]).
+			 */
+			static Genode::String<32> emitted[64] { };
+			static unsigned      num_emitted  { 0 };
+			num_emitted = 0;
+			char const *fixed[] = { "ROM", "PD", "RM", "CPU", "LOG",
+			                    "Timer", "Gui", "Input", "Report",
+			                    "File_system", "Nic", "Rtc" };
+			for (char const *n : fixed)
+				emitted[num_emitted++] = Genode::String<32>(n);
+			for (unsigned i = 0; i < _num_installed; ++i)
+				for (unsigned s = 0; s < _installed[i].num_sessions; ++s) {
+					Genode::String<32> const &n =
+						_installed[i].sessions[s].name;
+					if (n == Genode::String<32>() || num_emitted >= 64)
+						continue;
+					bool dup { false };
+					for (unsigned k = 0; k < num_emitted; ++k)
+						if (emitted[k] == n) { dup = true; break; }
+					if (dup)
+						continue;
+					emitted[num_emitted++] = n;
+					g.node("service", [&] {
+						g.attribute("name", n.string()); });
+				}
 		});
 
 		g.node("default-route", [&] {
