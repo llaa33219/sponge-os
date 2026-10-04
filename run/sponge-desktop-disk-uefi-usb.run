@@ -771,6 +771,7 @@ config
 
 + start vct_tty | caps: 200 | ram: 8M
   + binary | name: bin/vct_tty
+  + provides | + service Terminal
   + config
   + route
     + service ROM | label_last: ld.lib.so | + parent
@@ -1698,7 +1699,7 @@ set uefi_log [run_dir]/uefi-boot.log
 puts ""
 puts "\[sponge-desktop-disk-uefi-usb\] starting QEMU boot — usb storage-chain gate (≤300 s)"
 puts "  serial log: $uefi_log"
-puts "  marker: 'sponge_configd: ready' from \[init -> system -> ...\]"
+puts "  marker: 'sponge-de diag gates:' from \[init -> system -> sponge-de\]"
 puts "          (the nested system init and its children are served from"
 puts "           /system on P3 via usb_block — impossible without the full"
 puts "           xHCI → usb_block → part_block → vfs → cached_fs_rom chain)"
@@ -1707,7 +1708,7 @@ log_file -a $uefi_log
 set timeout 300
 set storage_chain_proven 0
 expect {
-    -i $qemu_spawn_id -re "sponge_configd: ready" {
+    -i $qemu_spawn_id -re "sponge-de diag gates:" {
         set storage_chain_proven 1
     }
     eof {
@@ -1728,7 +1729,7 @@ puts ""
 if {$storage_chain_proven} {
     puts "  ================================================================"
     puts "  PASS — UEFI USB-stick media boots on OVMF and the usb_block"
-    puts "  storage chain serves /system from the stick (configd ready)."
+    puts "  storage chain serves /system from the stick (DE started)."
     puts "  ================================================================"
     exit 0
 }
