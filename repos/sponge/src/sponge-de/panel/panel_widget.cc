@@ -383,6 +383,9 @@ void PanelWidget::_build_layout(Theme::Theme const &theme)
 
 	_clock_label = new QLabel(this);
 
+	_health_label = new QLabel(this);
+	_health_label->hide();
+
 	_apply_layout(theme);
 	_apply_visibility();
 
@@ -393,6 +396,17 @@ void PanelWidget::_build_layout(Theme::Theme const &theme)
 	                          the right edge even when the tasklist
 	                          is empty. */
 	layout->addWidget(_clock_label);
+	layout->addWidget(_health_label);
+}
+
+void PanelWidget::set_health(QString const &warnings)
+{
+	if (warnings.isEmpty()) {
+		_health_label->hide();
+		return;
+	}
+	_health_label->setText(QStringLiteral("\u26A0 ") + warnings);
+	_health_label->show();
 }
 
 

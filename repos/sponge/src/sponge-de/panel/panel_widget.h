@@ -221,6 +221,15 @@ class PanelWidget : public QWidget
 		 */
 		void show_running_set(QString const &names, int window_count, int child_count, int cfg_writes, int mirror_starts, int mirror_bytes, int pr_ram_kb, int state_changes, QString const &extra_diag);
 
+		/*
+		 * Component-health surface (user directive 2026-10-05): the
+		 * panel shows component anomalies surfaced by the health
+		 * watcher — invisible while every watched component is
+		 * healthy. Input is the system init's state report
+		 * (per-child skipped_heartbeats / exit values).
+		 */
+		void set_health(QString const &warnings);
+
 		void set_launcher_view(LauncherMenuView *view) { _launcher_view = view; }
 
 		/*
@@ -369,6 +378,7 @@ protected:
 		QLabel      *_title_label     { nullptr };
 		QString      _running_set;
 		QLabel      *_clock_label     { nullptr };
+		QLabel      *_health_label    { nullptr };
 		QTimer      *_clock_timer     { nullptr };
 
 		LauncherMenuView *_launcher_view   { nullptr };

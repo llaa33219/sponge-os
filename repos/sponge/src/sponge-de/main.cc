@@ -596,6 +596,68 @@ void Libc::Component::construct(Libc::Env &env)
 	};
 		QObject::connect(&launcher_ctrl, &LauncherController::appsChanged,
 		                 diag_refresh);
+
+		/*
+		 * Health watcher: poll the system state report and surface
+		 * per-child anomalies (skipped heartbeats = wedge suspicion,
+		 * non-clean exits) on the panel. Invisible while healthy.
+		 */
+		auto health_refresh = [&]()
+		{
+			if (!system_state_rom.constructed())
+				return;
+			system_state_rom->update();
+			if (!system_state_rom->valid() || system_state_rom->size() == 0)
+				return;
+
+			QString warnings;
+			unsigned up { 0 };
+			Genode::Hid_node const sstate(Genode::Const_byte_range_ptr(
+				system_state_rom->local_addr<char const>(),
+				system_state_rom->size()));
+			sstate.for_each_sub_node([&](Genode::Hid_node const &c) {
+				if (!c.has_type("child"))
+					return;
+				Genode::String<48> const name =
+					c.attribute_value("name", Genode::String<48>());
+				bool const probe =
+					name == Genode::String<48>("alpha_probe") ||
+					name == Genode::String<48>("cfg_probe");
+				if (c.has_attribute("exited")) {
+					long const code =
+						c.attribute_value("exited", 0L);
+					if (code != 0 || !probe) {
+						if (!warnings.isEmpty())
+							warnings += QStringLiteral(" \u00B7 ");
+						warnings += QString::fromUtf8(name.string())
+						          + QStringLiteral(" exited(")
+						          + QString::number(code)
+						          + QStringLiteral(")");
+					}
+					return;
+				}
+				++up;
+				long const skipped =
+					c.attribute_value("skipped_heartbeats", 0L);
+				if (skipped > 0) {
+					if (!warnings.isEmpty())
+						warnings += QStringLiteral(" \u00B7 ");
+					warnings += QString::fromUtf8(name.string())
+					          + QStringLiteral(" unresponsive(")
+					          + QString::number(skipped)
+					          + QStringLiteral(")");
+				}
+			});
+			(void)up;
+			if (panel_top)
+				panel_top->set_health(warnings);
+			if (panel_bottom.constructed())
+				panel_bottom->set_health(warnings);
+		};
+		auto *health_timer = new QTimer(&launcher_view);
+		QObject::connect(health_timer, &QTimer::timeout, health_refresh);
+		health_timer->start(1500);
+		health_refresh();
 		/*
 		 * Open the diag ROM sessions BEFORE the Qt event loop starts:
 		 * the lazy construct inside diag_refresh ran on the Qt thread
@@ -607,8 +669,15 @@ void Libc::Component::construct(Libc::Env &env)
 			runtime_state_rom.construct(env, "runtime_state");
 			runtime_mirror_rom.construct(env, "runtime_mirror");
 		}
-		if (diag_system_state)
-			system_state_rom.construct(env, "system_state");
+		/*
+		 * Component-health watcher (user directive 2026-10-05):
+		 * the system state report is subscribed ALWAYS — it feeds
+		 * the panel's health surface (set_health), not just the
+		 * bring-up readouts. Parsed on the Qt thread via the
+		 * health QTimer below (the launcher's proven poll model —
+		 * ROM updates must not run on the ep thread).
+		 */
+		system_state_rom.construct(env, "system_state");
 		if (diag_cfg_probe)
 			cfg_probe_rom.construct(env, "cfg_probe_state");
 
