@@ -728,9 +728,15 @@ def verify_partitions(img_path: String, firmware: String) raises -> Bool:
                 part_count += 1
                 if contains_substring(String(line_py), "SPONGE-DATA"):
                     saw_sponge_data = True
+                if contains_substring(String(line_py), "SPONGE-VAR"):
+                    # 2026-10-05 three-area layout (the scenario itself
+                    # provisions P4 SPONGE-VAR + P5 SPONGE-HOME; mkdata
+                    # no-ops). Accept it in place of SPONGE-DATA.
+                    saw_sponge_data = True
     var expected_min = 4
     if firmware == "uefi":
-        # UEFI layout: P1=ESP, P2 absent, P3=GENODE, P4=SPONGE-DATA.
+        # UEFI layout: P1=ESP, P2 absent, P3=GENODE, P4=SPONGE-DATA
+        # (or the three-area P4 SPONGE-VAR + P5 SPONGE-HOME).
         # P2 is intentionally not allocated so the P3/P4 partition
         # numbers are identical to the BIOS media (P3/P4 work
         # unchanged). 3 partitions total.
