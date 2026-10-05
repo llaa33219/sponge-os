@@ -1070,7 +1070,9 @@ config
     # W4 partition-number contract, identical to the AHCI UEFI
     # variant).
     #
-    + policy | label_prefix: vfs | partition: 3 | writeable: yes
+    + policy | label_prefix: vfs_sys  | partition: 3 | writeable: no
+    + policy | label_prefix: vfs_var  | partition: 4 | writeable: yes
+    + policy | label_prefix: vfs_home | partition: 5 | writeable: yes
   + route
     + service ROM | label_last: ld.lib.so | + parent
     + service Block | + child usb_block
@@ -1078,14 +1080,58 @@ config
       + parent
       + any-child
 
-+ start vfs | caps: 16000 | ram: 128M
+# Three-area storage (user directive 2026-10-05, docs/14 §4 lineage):
+#   P3 SYSTEM-IMMUTABLE  /system  — binaries, configs, payloads. RO at
+#     BOTH the part_block policy and the rump mount: nothing the system
+#     does at runtime can write it, so a hard power-off cannot corrupt
+#     the boot chain. Changes only by re-flashing the media.
+#   P4 SYSTEM-MUTABLE    /pkgd    — package state: pkgd's persistent
+#     installed-roots store lives here (see pkgd's <vfs> node).
+#   P5 USER              /user    — home area: user files + settings.
++ start vfs_sys | caps: 16000 | ram: 128M
+  + binary | name: vfs
   + provides | + service File_system
   + config
     + vfs
-      + rump | fs: ext2fs | ram: 48M | writeable: yes
+      + rump | fs: ext2fs | ram: 48M | writeable: no
     + policy | label_prefix: rom_sys | root: /system     | writeable: no
     + policy | label_prefix: rom_lib | root: /system/lib | writeable: no
     + policy | label_prefix: rom_pkg | root: /system/pkg/falkon/payload | writeable: no
+  + route
+    + service ROM | label_last: ld.lib.so     | + parent
+    + service ROM | label_last: vfs.lib.so    | + parent
+    + service ROM | label_last: vfs_rump.lib.so | + parent
+    + service ROM | label_last: rump.lib.so   | + parent
+    + service ROM | label_last: rump_fs.lib.so | + parent
+    + service Block | + child part_block
+    + any-service
+      + parent
+      + any-child
+
++ start vfs_var | caps: 2000 | ram: 32M
+  + binary | name: vfs
+  + provides | + service File_system
+  + config
+    + vfs
+      + rump | fs: ext2fs | ram: 16M | writeable: yes
+    + policy | root: /pkgd | writeable: yes
+  + route
+    + service ROM | label_last: ld.lib.so     | + parent
+    + service ROM | label_last: vfs.lib.so    | + parent
+    + service ROM | label_last: vfs_rump.lib.so | + parent
+    + service ROM | label_last: rump.lib.so   | + parent
+    + service ROM | label_last: rump_fs.lib.so | + parent
+    + service Block | + child part_block
+    + any-service
+      + parent
+      + any-child
+
++ start vfs_home | caps: 2000 | ram: 32M
+  + binary | name: vfs
+  + provides | + service File_system
+  + config
+    + vfs
+      + rump | fs: ext2fs | ram: 16M | writeable: yes
   + route
     + service ROM | label_last: ld.lib.so     | + parent
     + service ROM | label_last: vfs.lib.so    | + parent
@@ -1101,7 +1147,7 @@ config
   + binary cached_fs_rom
   + provides | + service ROM
   + route
-    + service File_system | + child vfs
+    + service File_system | + child vfs_sys
     + service ROM | label_last: ld.lib.so | + parent
     + any-service
       + parent
@@ -1111,7 +1157,7 @@ config
   + binary cached_fs_rom
   + provides | + service ROM
   + route
-    + service File_system | + child vfs
+    + service File_system | + child vfs_sys
     + service ROM | label_last: ld.lib.so | + parent
     + any-service
       + parent
@@ -1134,7 +1180,7 @@ config
   + binary cached_fs_rom
   + provides | + service ROM
   + route
-    + service File_system | + child vfs
+    + service File_system | + child vfs_sys
     + service ROM | label_last: ld.lib.so | + parent
     + any-service
       + parent
@@ -1493,12 +1539,24 @@ foreach m { bender sel4 image.elf } {
 # 5. Assemble the GPT disk.
 # (Identical layout — P1=ESP, P2 absent, P3=GENODE.)
 #
+set var_img  [run_dir]/var.img
+exec dd if=/dev/zero of=$var_img bs=1M count=64 2>/dev/null
+exec $mkfs_ext2 -F -q -L SPONGE-VAR $var_img
+exec $e2mkdir $var_img:/pkgd
+
+set home_img [run_dir]/home.img
+exec dd if=/dev/zero of=$home_img bs=1M count=1024 2>/dev/null
+exec $mkfs_ext2 -F -q -L SPONGE-HOME $home_img
+exec $e2mkdir $home_img:/user
+
 set gpt_img [run_dir].img
-set gpt_total_mb [expr 64 + $genode_mb + 16]
+set gpt_total_mb [expr 64 + $genode_mb + 64 + 1024 + 16]
 exec dd if=/dev/zero of=$gpt_img bs=1M count=$gpt_total_mb 2>/dev/null
 exec $sgdisk --clear $gpt_img 2>/dev/null
 exec $sgdisk --new=1:2048:+64M   --typecode=1:EF00 --change-name=1:ESP    $gpt_img 2>/dev/null
 exec $sgdisk --new=3:0:+${genode_mb}M --typecode=3:8300 --change-name=3:GENODE $gpt_img 2>/dev/null
+exec $sgdisk --new=4:0:+64M   --typecode=4:8300 --change-name=4:SPONGE-VAR  $gpt_img 2>/dev/null
+exec $sgdisk --new=5:0:+1024M --typecode=5:8300 --change-name=5:SPONGE-HOME $gpt_img 2>/dev/null
 
 set p1_info [exec $sgdisk -i 1 $gpt_img]
 set p1_sector [lindex [regexp -inline {First sector: ([0-9]+)} $p1_info] 1]
@@ -1508,7 +1566,15 @@ set p3_info [exec $sgdisk -i 3 $gpt_img]
 set p3_sector [lindex [regexp -inline {First sector: ([0-9]+)} $p3_info] 1]
 exec dd if=$genode_img of=$gpt_img bs=512 seek=$p3_sector conv=notrunc 2>/dev/null
 
-file delete -force $esp_stage $esp_img $genode_img
+set p4_info [exec $sgdisk -i 4 $gpt_img]
+set p4_sector [lindex [regexp -inline {First sector: ([0-9]+)} $p4_info] 1]
+exec dd if=$var_img of=$gpt_img bs=512 seek=$p4_sector conv=notrunc 2>/dev/null
+
+set p5_info [exec $sgdisk -i 5 $gpt_img]
+set p5_sector [lindex [regexp -inline {First sector: ([0-9]+)} $p5_info] 1]
+exec dd if=$home_img of=$gpt_img bs=512 seek=$p5_sector conv=notrunc 2>/dev/null
+
+file delete -force $esp_stage $esp_img $genode_img $var_img $home_img
 
 #
 # === QEMU wiring (EHCI verification attach — see rationale) ===
