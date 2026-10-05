@@ -864,7 +864,7 @@ config
       + parent
       + any-child
 
-+ start pkg_runtime | caps: 8000 | ram: 1536M
++ start pkg_runtime | caps: 210000 | ram: 1600M
   + binary | name: bin/init
   + heartbeat | restart_after_skipped: 3
   + route
@@ -1085,6 +1085,7 @@ config
       + rump | fs: ext2fs | ram: 48M | writeable: yes
     + policy | label_prefix: rom_sys | root: /system     | writeable: no
     + policy | label_prefix: rom_lib | root: /system/lib | writeable: no
+    + policy | label_prefix: rom_pkg | root: /system/pkg/falkon/payload | writeable: no
   + route
     + service ROM | label_last: ld.lib.so     | + parent
     + service ROM | label_last: vfs.lib.so    | + parent
@@ -1123,6 +1124,22 @@ config
 # attribute swallows them and silently falls back to the default quota.
 # This exact bug kept fb and nitpicker at 4M while the config said
 # 20M and 64M for the whole Phase-15 bring-up.
+# Criterion 13 (docs/09 roadmap): serves falkon's 509 MiB payload
+# (binary + WebEngine libs + Qt tars, staged at /system/pkg/falkon/
+# payload by the bake) as ROM. Routing: pkg_runtime's falkon child
+# ROM requests reach the system generically (any-service) and are
+# steered here by the label_prefix rule below, BEFORE the generic
+# .lib.so->rom_lib rule (the WebEngine libs exist ONLY in the payload).
++ start rom_pkg | caps: 20000 | ram: 768M
+  + binary cached_fs_rom
+  + provides | + service ROM
+  + route
+    + service File_system | + child vfs
+    + service ROM | label_last: ld.lib.so | + parent
+    + any-service
+      + parent
+      + any-child
+
 + start nitpicker | caps: 20000 | ram: 256M
   + provides
     + service Gui
@@ -1223,11 +1240,13 @@ config
 
 # caps/RAM carry ~10% headroom per docs/17 §5 (adding a child must not
 # be a cliff-edge operation on a grant sized exactly to fit)
-+ start system | caps: 39600 | ram: 2112M
++ start system | caps: 248000 | ram: 2112M
   + binary | name: bin/init
   + route
     + service ROM | label: config | + child rom_sys | label: init/system.config
     + service ROM | label_last: ld.lib.so | + parent
+    + service ROM | label: pkg_runtime -> bin/falkon | + child rom_pkg | label: falkon
+    + service ROM | label_prefix: pkg_runtime -> falkon | + child rom_pkg
     + service ROM | label_suffix: .lib.so | + child rom_lib
     + service ROM | label_last: focus | + child report_rom
     + service ROM | label_last: hover | + child report_rom
