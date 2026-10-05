@@ -367,8 +367,22 @@ def create_p4(img: String, data_mib: Int) raises -> Int:
     # Inspect P4 BEFORE any mutation. If it already exists as
     # SPONGE-DATA, this is a re-run -> verified no-op. If it exists under
     # a different name, refuse (fail-loud).
+    #
+    # 2026-10-05 three-area layout (run/sponge-desktop-disk-uefi-usb.run):
+    # the scenario itself now creates P4 SPONGE-VAR (system-mutable) and
+    # P5 SPONGE-HOME (user) — the data areas this tool used to add. An
+    # image carrying that layout needs no P4 from us; accept it as a
+    # no-op exactly like the SPONGE-DATA re-run.
+    comptime VAR_LABEL  = "SPONGE-VAR"
+    comptime HOME_LABEL = "SPONGE-HOME"
+
     var p4_before = query_partition(img, 4)
     if p4_before.present:
+        if p4_before.name == VAR_LABEL:
+            print("[sponge-mkdata] P4 already exists as " + VAR_LABEL
+                  + " — three-area scenario layout, data areas already"
+                  + " provisioned (P4/P5); idempotent no-op")
+            return 0
         if p4_before.name == P4_LABEL:
             print("[sponge-mkdata] P4 already exists as " + P4_LABEL
                   + " — idempotent no-op (re-run detected)")
