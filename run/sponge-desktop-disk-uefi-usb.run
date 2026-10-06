@@ -447,7 +447,14 @@ foreach b { init report_rom wm window_layouter decorator \
 # covers them (bin/…). vfs and cached_fs_rom are Tier-0 boot modules
 # that must ALSO be disk-served for the sub-init.
 #
-foreach b { vfs cached_fs_rom vct_tty prod_launch_probe } {
+if {[info exists ::env(SPONGE_LAUNCHTEST)] && $::env(SPONGE_LAUNCHTEST) eq "on"} {
+	foreach b { prod_launch_probe } {
+		if {[file exists "bin/$b"]} {
+			exec cp -fL "bin/$b" "$sys_dir/bin/$b"
+		}
+	}
+}
+foreach b { vfs cached_fs_rom vct_tty } {
 	if {[file exists "bin/$b"]} {
 		exec cp -fL "bin/$b" "$sys_dir/bin/$b"
 	}
@@ -769,7 +776,6 @@ config
   + config | binary_prefix: bin/
     + launcher_request
     + tty_request
-    + probe_request
     + bake
   + route
     + service ROM | label_last: ld.lib.so | + parent
@@ -793,18 +799,6 @@ config
     + service ROM | label_last: ld.lib.so | + parent
     + service ROM | label_last: tty_result | + child report_rom
     + service Report | label: tty_request | + child report_rom
-    + service Timer | + parent
-    + any-service
-      + parent
-      + any-child
-
-+ start prod_launch_probe | caps: 200 | ram: 8M
-  + binary | name: bin/prod_launch_probe
-  + config
-  + route
-    + service ROM | label_last: ld.lib.so | + parent
-    + service ROM | label_last: probe_result | + child report_rom
-    + service Report | label: probe_request | + child report_rom
     + service Timer | + parent
     + any-service
       + parent
@@ -899,6 +893,38 @@ config
       + any-child
 -}
 	close $sysconfig_fh
+
+	#
+	# Launch-path TEST wiring (SPONGE_LAUNCHTEST=on only — the FBCON
+	# env-gate pattern): prod_launch_probe replays the launcher's
+	# click-to-launch backend for terminal/files/falkon. The shipped
+	# (dist) media carries none of this — it is a test, not a product
+	# feature.
+	#
+	if {[info exists ::env(SPONGE_LAUNCHTEST)] && $::env(SPONGE_LAUNCHTEST) eq "on"} {
+		puts "launch-test: SPONGE_LAUNCHTEST=on — prod_launch_probe wired into system.config"
+		set lt_fh [open $sysconfig_hid r]
+		set lt_cfg [read $lt_fh]
+		close $lt_fh
+		set lt_cfg [string map [list "    + tty_request\n" "    + tty_request\n    + probe_request\n"] $lt_cfg]
+		set lt_cfg [string map [list "+ start sponge-de | caps: 8000 | ram: 128M" {
++ start prod_launch_probe | caps: 200 | ram: 8M
+  + binary | name: bin/prod_launch_probe
+  + config
+  + route
+    + service ROM | label_last: ld.lib.so | + parent
+    + service ROM | label_last: probe_result | + child report_rom
+    + service Report | label: probe_request | + child report_rom
+    + service Timer | + parent
+    + any-service
+      + parent
+      + any-child
+
++ start sponge-de | caps: 8000 | ram: 128M}] $lt_cfg]
+		set lt_fh [open $sysconfig_hid w]
+		puts -nonewline $lt_fh $lt_cfg
+		close $lt_fh
+	}
 
 	set xml_content [exec [genode_dir]/tool/hid format --output-xml "$sysconfig_hid"]
 	set sysconfig_final [open "$sys_dir/init/system.config" w]
@@ -1850,6 +1876,11 @@ if {$storage_chain_proven} {
     puts "  ================================================================"
 
     #
+    # === Launch-path gate (SPONGE_LAUNCHTEST=on only) ===
+    if {![info exists ::env(SPONGE_LAUNCHTEST)] || $::env(SPONGE_LAUNCHTEST) ne "on"} {
+        puts "  launch-gate skipped (SPONGE_LAUNCHTEST=on to enable the launch-path test)"
+        exit 0
+    }
     # === Launch-path gate (the user's actual flow, automated) ===
     #
     # prod_launch_probe replays the launcher's click-to-launch backend
