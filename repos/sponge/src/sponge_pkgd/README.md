@@ -43,7 +43,8 @@ uses; `report_rom` is the decoupling layer.
 - `launch` (Phase 7): transitions an installed-but-stopped package to
   running by adding its `<start>` node and regenerating. Result status
   is one of `ok` / `not-installed` / `already-running` /
-  `binary-missing`. There is no stop operation in Alpha.
+  `binary-missing` / `insufficient-resources`. There is no stop
+  operation in Alpha.
 - `remove` (4b): drops the package and its now-unused dependencies,
   regenerates the config (also dropping the `<start>` node if the
   package was running).
@@ -105,6 +106,87 @@ disk-served mode, where the binaries live in `pkg_runtime`'s `rom_sys`
 domain (chroot `/system`), not in pkgd's. Same denial-safe, index-gated
 pattern `pkg_index.xml` already uses, generalized from metadata to
 binaries.
+
+### `launch` and `install` answer `insufficient-resources`
+
+`binary-missing` is the resource-blind half of the same lie. Even with
+the binary staged, a package whose declared quota does not fit
+`pkg_runtime`'s remaining budget used to be answered `ok` and then
+evaporate: Genode's sandbox clamps the child to whatever quota the
+parent has left (`genode/repos/os/src/lib/sandbox/child.cc:483-486`,
+`ram_quota = avail_ram`), so it dies before its first instruction and
+the only trace anywhere is a kernel warning.
+
+The same pre-flight shape therefore also gates on the **budget**:
+
+```xml
+<result status="insufficient-resources" op="launch" pkg="falkon"
+        need_ram="1073741824" avail_ram="61776536"
+        need_caps="2000"    avail_caps="1034"/>
+```
+
+and, like `binary-missing`, it is decided **before** the package enters
+`_running` and **before** the config is regenerated. `install` is gated
+too: an `<autostart/>` package gets its `<start>` node the moment an
+install lands, so it is a spawn exactly like a launch. That pre-flight
+walks the install plan in dependency order, decrementing the budget per
+admitted package, and runs **before any mutation** — a refused install
+leaves no root, no installed entry and no config write behind.
+
+**Where the budget comes from.** pkgd does not know what the top-level
+init granted `pkg_runtime`, so it does not keep a second copy of that
+number. It reads `pkg_runtime`'s own sandbox state report (the
+`runtime_state` ROM, fanned out by `report_rom`), whose top-level
+`<ram avail=/>` and `<caps avail=/>` nodes are the quota it has not yet
+donated to a child — exactly the pool a new `<start>` node comes out of.
+That is a fact about the running system: no grant arithmetic, and it
+already accounts for quota handed to other children.
+
+Two parsing rules the report imposes, both already learned the hard way
+elsewhere in the tree:
+
+- it is **HID, not XML** — `Xml_node` throws `Invalid_syntax` on it and
+  every read then silently yields zero (the Sponge DE recorded the same
+  trap in `sponge-de/main.cc`);
+- every round figure is **suffixed** (`"64M"`, not `67108864`), because
+  the Generator prints through `Number_of_bytes::print()`. A plain
+  numeric conversion would read `64M` as 64 *bytes* and admit an
+  out-of-budget package.
+
+The generated `<report>` node therefore carries `init_caps="yes"`
+alongside `init_ram`; without it the caps dimension is simply absent.
+
+**Margin.** Refusing at exactly `avail >= need` would admit a
+razor-thin package that the sandbox then clamps anyway — recreating the
+silent failure deterministically. `ADMISSION_MARGIN_RAM` (8 MiB) and
+`ADMISSION_MARGIN_CAPS` (64) cover init's per-child bookkeeping plus one
+period of report staleness, while staying far below the ~11 % product
+headroom budgeted in `docs/17` §6.
+
+**Opt-in, and fail-open.** The gate is armed by an `<admission/>` node,
+because the `runtime_state` ROM session must be routed by the scenario
+and a denied one is fatal. Armed or not, a *not yet published* report
+**admits** with a log line: the report first appears ~2 s into boot,
+when the budget is at its largest, so failing closed would refuse
+legitimate first launches, and failing open leaves un-wired deployments
+byte-identical to before — the manual escape hatch AGENTS.md §1.1 asks
+for.
+
+```xml
+<config | binary_prefix: bin/>
+  + admission
+```
+
+Wired in all five `run/sponge-desktop-disk-*.run` product scenarios
+(verified: `resource admission armed` and `alpha-probe: PASS` in the
+same boot). Deliberately **not** in `run/sponge-alpha.run`, whose
+`pkg_runtime` grant (400 caps / 32M) is still sized for the hello-only
+topology rather than the eight-package desktop profile it stages;
+arming it there would refuse every baked package. See
+`docs/evidence/pkg-admission-control.md` §8.
+
+Receipts: `run/sponge-pkg-admission.run` (`admission-probe: PASS`),
+`docs/evidence/pkg-admission-control.md`.
 
 ## Runtime config generation (Phase 4b / Phase 7 lifecycle)
 
@@ -198,7 +280,24 @@ The component requests `Report` and `ROM` sessions always, and an
 optional `File_system` session (via the Vfs library) only when its
 `<config>` carries a `<vfs>` node — i.e. only when the deployment has
 explicitly enabled persistence. Likewise, the `pkg_binaries` manifest
-ROM is opened only when `<config>` carries `<binaries/>`, so no
+ROM is opened only when `<config>` carries `<binaries/>`, and the
+`runtime_state` ROM only when it carries `<admission/>`, so no
 deployment pays for a capability it did not ask for. Everything it needs
 to read requests/metadata and write results, and nothing more
 (AGENTS.md §1.2). It is purely signal-driven and needs no Timer session.
+
+## Runtime resource growth (measured, not assumed)
+
+A package that outgrows its declared quota while running has a second
+chance, and `docs/evidence/dynamic-resource-topup.md` measures what that
+chance is worth on Genode 26.08 / base-sel4: a sandbox answers the
+child's `resource_request()` **immediately, but only out of its own
+remaining slack**. Beyond that the request is parked and **nothing above
+the sandbox revives it** — there is no upward forwarding, and the
+top-level init has nobody to ask. The only revive path is a new
+configuration applied to the hosting sandbox by its owner — which, for
+`pkg_runtime`, is this component.
+
+That is why the admission margin above exists rather than being zero: the
+runtime backstop can only hand out what admission has not already
+promised to someone else.

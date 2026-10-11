@@ -1,0 +1,35 @@
+Genode v0.2.0-74-gd0121b81a2 <local changes>
+574 MiB RAM and 523288 caps assigned to init
+[init -> timer] timers=3, clock 10000000fs , 64bit counter , legacy routing support vendor=0x8086
+[init -> timer] timer0 GSI options 0xff0104, supports periodic
+[init -> timer] timer1 GSI options 0xff0104, supports periodic
+[init -> timer] timer2 GSI options 0xff0104, supports periodic
+[init -> timer] time wraps after 5849 years
+[init -> timer] irqs=off legacy=off
+[init -> timer] Using timer 2 -> using GSI 2 edge triggered
+[init -> sponge_pkgd] sponge_pkgd: ready
+[init -> sponge_pkgd] sponge_pkgd: binary_prefix=''
+[init -> admission_probe] admission-probe: witness='witness' hog='fat_a' fat='fat_b'
+[init -> sponge_pkgd] sponge_pkgd: resource admission armed (pkg_runtime state report)
+[init -> admission_probe] admission-probe: pkg_runtime budget avail ram=166644316 caps=3130
+[init -> pkg_runtime -> witness] config-witness: start
+[init -> admission_probe] admission-probe: install witness -> ok
+[init -> admission_probe] admission-probe: install fat_a -> ok
+[init -> admission_probe] admission-probe: install fat_b -> ok
+[init -> sponge_pkgd] sponge_pkgd: launch result fat_a -> ok (channel=primary)
+[init -> pkg_runtime -> fat_a] config-witness: start
+[init -> admission_probe] admission-probe: launch fat_a -> ok
+[init -> admission_probe] admission-probe: after the hog, pkg_runtime has 61776536 bytes free
+[init -> sponge_pkgd] sponge_pkgd: launch fat_b -> insufficient-resources (need_ram=100663296 avail_ram=61776536 need_caps=2000 avail_caps=1034)
+[init -> admission_probe] admission-probe: launch fat_b -> insufficient-resources
+[init -> admission_probe] admission-probe: refusal numbers need_ram=100663296 avail_ram=61776536 need_caps=2000 avail_caps=1034
+[init -> admission_probe] admission-probe: witness beat 1 -> 61 (unaffected)
+[init -> admission_probe] admission-probe: remove fat_a -> ok
+[init -> admission_probe] admission-probe: after the release, pkg_runtime has 162436730 bytes free
+[init -> sponge_pkgd] sponge_pkgd: launch result fat_b -> ok (channel=primary)
+[init -> pkg_runtime -> fat_b] config-witness: start
+[init -> admission_probe] admission-probe: launch fat_b -> ok
+[init -> admission_probe] admission-probe: PASS
+
+Run script execution successful.
+make: ディレクトリ '/home/luke/sponge-os/genode/build/x86_64' から出ます

@@ -617,8 +617,11 @@ with no `<start>` node; running = `<start>` node present in `pkg_runtime`.**
   running. Launching a package that is not installed reports
   `not-installed`; launching one that is already running reports
   `already-running`; launching one whose binary is not staged in the
-  image reports `binary-missing` and leaves the package out of the
-  running set.
+  image reports `binary-missing`; launching one whose declared quota
+  does not fit `pkg_runtime`'s remaining budget reports
+  `insufficient-resources` with the four figures involved. Both refusals
+  leave the package out of the running set and never regenerate the
+  config.
 
   `binary-missing` exists because an installed package's metadata can be
   staged while its binary was not — and reporting `ok` then is a silent
@@ -633,6 +636,26 @@ with no `<start>` node; running = `<start>` node present in `pkg_runtime`.**
   `Env` policy — a probe would kill `sponge_pkgd` precisely in the case
   it is meant to diagnose. The manifest mirrors `pkg_index.xml` in
   shape; without it the check is inert (AGENTS.md §1.1 escape hatch).
+
+  `insufficient-resources` is the resource twin of `binary-missing`, and
+  it exists for the same reason: reporting `ok` for a package that
+  cannot fit is a silent failure, because Genode's sandbox clamps the
+  child's quota to whatever the parent has left
+  (`repos/os/src/lib/sandbox/child.cc:483-486`) and the child then dies
+  before its first instruction. The budget is read from `pkg_runtime`'s
+  own sandbox state report (`<ram avail=/>`, `<caps avail=/>`) rather
+  than from a configured copy of its grant, so it is always the real
+  remaining pool and needs no grant arithmetic. It is gated on an
+  `<admission/>` node in `sponge_pkgd`'s `<config>` plus a `runtime_state`
+  ROM route, and it is **fail-open**: a not-yet-published report admits
+  with a log line, because the report only appears ~2 s into boot when
+  the budget is largest, and because a deployment that has not wired the
+  relay must keep behaving exactly as before (AGENTS.md §1.1). Admission
+  applies to `install` as well, since an `<autostart/>` package gets its
+  `<start>` node the moment an install lands; that pre-flight runs over
+  the install plan before any mutation, so a refused install leaves
+  nothing half-applied. Full receipts:
+  `docs/evidence/pkg-admission-control.md`.
 
 - Every request produces exactly one `<result>`. Requests are
   de-duplicated on the `op|pkg|seq` signature so a re-delivered ROM

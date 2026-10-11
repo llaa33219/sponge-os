@@ -1,0 +1,32 @@
+Genode v0.2.0-73-g2e905f3c10
+1599 MiB RAM and 523288 caps assigned to init
+[init -> timer] timers=3, clock 10000000fs , 64bit counter , legacy routing support vendor=0x8086
+[init -> timer] timer0 GSI options 0xff0104, supports periodic
+[init -> timer] timer1 GSI options 0xff0104, supports periodic
+[init -> timer] timer2 GSI options 0xff0104, supports periodic
+[init -> timer] time wraps after 5849 years
+[init -> timer] irqs=off legacy=off
+[init -> timer] Using timer 2 -> using GSI 2 edge triggered
+[init -> config_bump] config-bump: published the initial topology (2 child/children)
+[init -> sandbox_b -> resq_b] resq-b: REQUESTED ram_quota=7340032 (budget before the request: 75570)
+[init -> sandbox_b] child "resq_b" requests resources: ram_quota=7340032
+[init -> sandbox_b] [34mWarning: resq_b: resource request deferred (insufficient slack), waiting for a config change[0m
+[init -> sandbox_a -> resq_a] resq-a: REQUESTED ram_quota=1048576 (budget before the request: 7415602)
+[init -> sandbox_a] child "resq_a" requests resources: ram_quota=1048576
+[init -> sandbox_a] child "resq_a": resource request granted immediately
+[init -> sandbox_c -> resq_c] resq-c: REQUESTED ram_quota=50331648 (budget before the request: 1124146)
+[init -> sandbox_c] child "resq_c" requests resources: ram_quota=50331648
+[init -> sandbox_c] [34mWarning: resq_c: resource request deferred (insufficient slack), waiting for a config change[0m
+[init -> sandbox_c -> hog] resq-hog: ballast — holding 19998514 usable bytes, requesting nothing
+[init -> config_bump] config-bump: published the raised quota (2 child/children)
+[init -> sandbox_c] [31mError: RAM preservation exceeds available memory[0m
+[init] child "config_bump" exited with exit value 0
+[init -> sandbox_b -> resq_b] resq-b: BUDGET-UNCHANGED at 75570 (peak 75570)
+[init -> sandbox_b -> resq_b] resq-b: PASS
+[init -> sandbox_c -> resq_c] resq-c: BUDGET-GREW 1124146 -> 43717922 (+42593776)
+[init -> sandbox_a -> resq_a] resq-a: BUDGET-UNCHANGED at 7415602 (peak 7415602)
+[init -> sandbox_c -> resq_c] resq-c: PASS
+sponge-resource-request: PASS
+
+Run script execution successful.
+make: ディレクトリ '/home/luke/sponge-os/genode/build/x86_64' から出ます

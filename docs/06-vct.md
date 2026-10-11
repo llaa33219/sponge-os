@@ -238,6 +238,13 @@ Automation-default behavior:
     non-zero. `sponge_pkgd` detects this before emitting a `<start>`
     node, because `pkg_runtime`'s `init` would otherwise drop the child
     with nothing but a kernel warning.
+  - `insufficient-resources`: the package's declared `<quota>` does not
+    fit `pkg_runtime`'s remaining budget; exit non-zero. Both surfaces
+    print the four figures (`needs N bytes RAM / N caps, N bytes RAM /
+    N caps free`), and `--json` carries them as `need_ram`,
+    `avail_ram`, `need_caps` and `avail_caps` so a caller can budget
+    against the refusal rather than just re-try it. Like
+    `binary-missing`, it is decided before the `<start>` node exists.
 - Audit line printed before acting:
   `[vct] launch: requesting start of <name>`.
 
