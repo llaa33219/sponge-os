@@ -44,6 +44,25 @@ window on nitpicker, and input reaches the widgets:
   verifies the popover + the TTL expiry; the companion
   `run/sponge-notify-without-notifier.run` demonstrates the
   absent-daemon warning path.
+- ✅ **Panel warning surface.** The panel carries one warning label with
+  two producers: `PanelWidget::set_health()` (component-health
+  watcher over the `system_state` ROM) and
+  `PanelWidget::set_user_message()` (transient, own TTL, falls back to
+  the health text). `LauncherController` emits `launch_problem(pkg,
+  reason)` for every non-success launch outcome — result timeout,
+  `not-installed`, `binary-missing`, `already-running`, unknown
+  status — and for a launcher whose request/result channels cannot be
+  opened (`pkg` empty). The message reads
+  `⚠ launch '<pkg>' failed: <reason>` for ~10 s.
+- ✅ **Optional `system_state` ROM.** Only the five desktop-disk
+  product scenarios route `system_state`, and base answers a denied
+  session with "stop because parent denied" + `sleep_forever()` (not
+  an exception), so a plain `Attached_rom_dataspace` cannot make it
+  optional. `rom/optional_rom_dataspace.{h,cc}` requests it through
+  `Env::try_session()` — the non-fatal variant upstream's
+  `event_filter` uses — so unrouted topologies log
+  `system_state ROM unavailable; health watcher disabled` and run on,
+  while the product media keeps the watcher.
 
 The interactive escape hatch is `run/sponge-de.run` (fb_sdl window on
 the host display, base-linux).
