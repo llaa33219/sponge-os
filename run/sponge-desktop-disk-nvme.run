@@ -599,7 +599,6 @@ config
     + service ROM | label_last: config_result | + child report_rom
     + service ROM | label_last: configd_config | + child report_rom
     + service ROM | label_last: config | + child report_rom
-    + service Report | label_last: state | + child report_rom
     + service ROM | label_last: sponge_de_launcher | + child report_rom
     + service Report | + child report_rom
     + any-service
@@ -637,6 +636,14 @@ config
     + service ROM | label_last: ld.lib.so | + parent
     + service ROM | label_last: mesa_gpu.lib.so | + parent | label: mesa_gpu-softpipe.lib.so
     + service ROM | label: config | + child report_rom
+    #
+    # pkg_runtime's own sandbox state report, relayed by report_rom.
+    # sponge-de reads it through the "sponge-de -> runtime_state"
+    # policy; sponge_pkgd reads the SAME report through
+    # "sponge_pkgd -> runtime_state" for its resource admission control.
+    # This scenario is the one product variant that had no state relay
+    # at all before admission control landed.
+    + service Report | label_last: state | + child report_rom
     #
     # Route pkg_runtime's Gui sessions through the wm so launched GUI
     # packages get decorated, movable frames. Phase 10 W3 fix — see
