@@ -1,0 +1,21 @@
+<!--
+  second — the config-regeneration trigger package.
+
+  Installing/removing this package is what makes sponge_pkgd regenerate
+  the pkg_runtime config while the witness from the witness package is
+  already running. The package itself is deliberately NOT autostarted,
+  so its <start> node is never emitted and no second child appears —
+  the only observable effect of installing it is the config write
+  itself (and, with the test-only <repro_pad_grow> knob on sponge_pkgd,
+  a forced Expanding_reporter buffer growth on that write).
+-->
+<package>
+  <name>second</name>
+  <version>1.0</version>
+  <description>Config-regeneration trigger package (installed, never started).</description>
+
+  <binary>config_witness</binary>
+  <quota ram="4M" caps="100"/>
+
+  <dependencies/>
+</package>
