@@ -50,10 +50,13 @@ window on nitpicker, and input reaches the widgets:
   `PanelWidget::set_user_message()` (transient, own TTL, falls back to
   the health text). `LauncherController` emits `launch_problem(pkg,
   reason)` for every non-success launch outcome — result timeout,
-  `not-installed`, `binary-missing`, `already-running`, unknown
-  status — and for a launcher whose request/result channels cannot be
-  opened (`pkg` empty). The message reads
-  `⚠ launch '<pkg>' failed: <reason>` for ~10 s.
+  `not-installed`, `binary-missing`, `insufficient-resources`,
+  `already-running`, unknown status — and for a launcher whose
+  request/result channels cannot be opened (`pkg` empty). The message
+  reads `⚠ launch '<pkg>' failed: <reason>` for ~10 s. A budget refusal
+  carries its numbers into the label (`not enough free memory or
+  capabilities (needs X RAM / Y caps, A RAM / B caps free)`) because
+  "it did not start" alone gives the user nothing to act on.
 - ✅ **Optional `system_state` ROM.** Only the five desktop-disk
   product scenarios route `system_state`, and base answers a denied
   session with "stop because parent denied" + `sleep_forever()` (not

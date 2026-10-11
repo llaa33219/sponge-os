@@ -4,6 +4,17 @@
 > artifact path + verdict per todo 1-19, plus the full task-20 regression
 > suite results. Every path is relative to the repository root.
 
+## Design verdicts (runtime topology)
+
+Settled by measurement rather than by source reading; each carries a
+reproduction scenario.
+
+| Question | Verdict | Artifact |
+|---|---|---|
+| Does a `pkgd` config regeneration that crosses the reporter-buffer boundary kill running `pkg_runtime` children? | **Falsified** — the children survive | [`config-regen-survival.md`](config-regen-survival.md) (`run/sponge-config-regen-survival.run`) |
+| Does `sponge_pkgd` refuse a launch whose quota does not fit, or silently let the sandbox clamp it? | **Refused** — `insufficient-resources` with the figures | [`pkg-admission-control.md`](pkg-admission-control.md) (`run/sponge-pkg-admission.run`) |
+| Does Genode 26.08's `init` grant or forward a child's `resource_request()` upward? | **No upward forwarding**; grant-from-slack works, revival only via a config change to the hosting sandbox | [`dynamic-resource-topup.md`](dynamic-resource-topup.md) (`run/sponge-resource-request.run`) |
+
 ## Phase 10 (post-Alpha interactive desktop)
 
 See [`docs/evidence/phase10-index.md`](phase10-index.md) for the W0–W6

@@ -303,6 +303,51 @@ A scenario defines:
   detector is not blind. Gates on `regen-probe: PASS`. Kernel-agnostic.
   Receipts: `docs/evidence/config-regen-survival.md`.
 
+- `sponge-pkg-admission.run` — does `sponge_pkgd` **refuse** a launch
+  whose declared quota does not fit `pkg_runtime`'s remaining budget,
+  rather than answering `ok` and letting Genode's sandbox clamp the
+  child (which kills it before its first instruction with nothing but a
+  kernel warning)? Minimal headless topology (no Qt, no drivers, no
+  disk), the resource twin of `sponge-pkg-lifecycle.run`'s
+  `binary-missing` case. `pkg_runtime` is granted caps 3200 / ram 160M;
+  an autostarted `witness` (4M/100) publishes a monotonic beat counter,
+  and two probe-only fat packages `pkg/fat_a` + `pkg/fat_b` (96M/2000
+  each, sharing the existing `config_witness` binary, enabled by no
+  bake profile) drain the budget in turn. `admission_probe` reads
+  `pkg_runtime`'s OWN sandbox state report — the same ROM `pkgd` reads,
+  fanned out by `report_rom` — so its cross-checks are against the
+  identical budget rather than a private estimate. It requires
+  (1) the over-budget launch to answer `insufficient-resources` with
+  coherent `need_ram`/`avail_ram`/`need_caps`/`avail_caps` that name no
+  more budget than the probe itself observed, (2) the refused package
+  to still be `running="no"` in the installed broadcast (it never
+  entered the running set, so the config was never regenerated),
+  (3) the already-running witness to keep counting (the refusal costs no
+  collateral restart), and (4) removing the hog then re-launching the
+  SAME package to SUCCEED — the positive control proving the gate is a
+  live budget check, not a latch. Gates on `admission-probe: PASS`.
+  Kernel-agnostic. Receipts:
+  `docs/evidence/pkg-admission-control.md`.
+
+- `sponge-resource-request.run` — can a component that hits its quota be
+  given more **at runtime**, or is its declared quota a ceiling for the
+  life of the process? The empirical counterpart to the decision
+  `sponge_pkgd`'s admission margin rests on. Three nested sandboxes and
+  one probe binary (`resq_probe`), each child issuing exactly one
+  explicit `env().parent().resource_request()`: a slack-rich parent
+  (512M) answers on the spot (the vendored immediate-grant path, patch
+  ledger row 21); a tight parent (8M grant, ~75 KB slack) PARKS the
+  request and it stays parked for the full 60 s window — while the
+  top-level init still holds over 400 MiB, so there is measurably no
+  upward forwarding; and a parked request in a config-owned sandbox
+  resolves ONLY after `config_bump` rewrites that sandbox's own config
+  (+42.6 MB observed). `config_bump` is the sandbox's SIBLING, not its
+  parent. Gates on `resq-c: PASS` (the last experiment; the earlier
+  verdicts are quoted verbatim in the evidence file — the two-argument
+  `run_genode_until` power-cycles, so four stacked gates would not
+  observe one experiment). Kernel-agnostic. Receipts:
+  `docs/evidence/dynamic-resource-topup.md`.
+
 - `sponge-pkg-remove.run` — Phase 4b: full install→remove lifecycle.
   The `pkg_seq_probe` component drives the channel (vct is short-lived),
   installs hello, removes it, and confirms both results; verified by a

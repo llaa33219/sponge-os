@@ -184,6 +184,42 @@ component must never be able to freeze the desktop. Status after the
   headroom over its own children sum (§6), and the enclosing QEMU
   `-m` is sized so init's pool exceeds Tier-0 + the `system` grant by
   ≥1 GiB. Adding a child is not a cliff-edge operation.
+- [x] **Admission control — an over-budget package is refused, not
+  clamped** (`sponge_pkgd`): `launch` (and `install`, for an
+  `<autostart/>` package) compares the declared `<quota ram= caps=>`
+  against `pkg_runtime`'s own reported remaining budget and answers
+  `insufficient-resources` with the four figures, BEFORE the package
+  enters the running set and BEFORE the config is regenerated. The
+  budget comes from the `pkg_runtime -> state` sandbox report, not from
+  a configured copy of the grant, so it is always the real remaining
+  pool. Armed in all five desktop-disk product scenarios. Receipts:
+  `run/sponge-pkg-admission.run`, `docs/evidence/pkg-admission-control.md`.
+- [x] **Dynamic quota top-up — measured, not assumed**
+  (`docs/evidence/dynamic-resource-topup.md`,
+  `run/sponge-resource-request.run`): Genode 26.08's `init` answers a
+  child's `resource_request()` immediately **out of its own sandbox's
+  remaining slack**, and otherwise parks it. There is **no upward
+  forwarding**: a parked request stays parked however much memory sits
+  above, because the top-level init has nobody to ask (core never
+  satisfies an init resource request — `repos/os/src/init/main.cc`
+  registers a `resource_avail` handler precisely to stop init blocking
+  on one). The only revive path is a **configuration change applied to
+  the hosting sandbox by its owner** — which for `pkg_runtime` is
+  `sponge_pkgd`. No `init` patch is needed or wanted. The consequence
+  for the gap register: a package's declared quota is a **ceiling for
+  the life of the process**, not a starting point, which is why the
+  admission margin above is not zero — the runtime backstop can only
+  hand out what admission has not already promised to someone else.
+- [~] **Admission control not armed in `run/sponge-alpha.run`** (blocked
+  by a pre-existing gap): alpha's `pkg_runtime` is still granted
+  400 caps / 32M, sized for the hello-only Phase-7 topology rather than
+  the eight-package `desktop` profile it stages (§6 "Residual gap").
+  Arming the gate there would refuse every baked package, converting
+  alpha's current silent clamp into eight visible refusals and
+  regressing its own `alpha-probe: PASS` criterion. The relay lands
+  together with that quota resize, which is deliberately separate work
+  (it would also have to grow alpha's 2G QEMU envelope and re-earn the
+  PASS evidence).
 - [~] **Containment regression test**: `test/ep_wedge` (wedge +
   witness modes) and `run/sponge-heartbeat-restart.run` are written
   and the component builds, but the scenario is blocked by a
