@@ -951,6 +951,11 @@ int LaunchCommand::_render_human(Genode::Xml_node const &result)
 		Genode::log("launch: ", pkg, " is already running");
 		return 1;
 	}
+	if (status == Genode::String<32>("binary-missing")) {
+		Genode::log("launch: ", pkg,
+		            " failed — its binary is not present in this image");
+		return 1;
+	}
 
 	Genode::String<256> const err =
 		result.attribute_value("error", Genode::String<256>());
@@ -979,6 +984,11 @@ int LaunchCommand::_render_json(Genode::Xml_node const &result)
 	if (status == Genode::String<32>("already-running")) {
 		Genode::log("{\"command\":\"launch\",\"package\":\"", pkg,
 		            "\",\"status\":\"error\",\"error\":\"already-running\"}");
+		return 1;
+	}
+	if (status == Genode::String<32>("binary-missing")) {
+		Genode::log("{\"command\":\"launch\",\"package\":\"", pkg,
+		            "\",\"status\":\"error\",\"error\":\"binary-missing\"}");
 		return 1;
 	}
 

@@ -616,7 +616,31 @@ with no `<start>` node; running = `<start>` node present in `pkg_runtime`.**
   operation adds its `<start>` node and transitions it from installed to
   running. Launching a package that is not installed reports
   `not-installed`; launching one that is already running reports
-  `already-running`.
+  `already-running`; launching one whose binary is not staged in the
+  image reports `binary-missing` and leaves the package out of the
+  running set.
+
+  `binary-missing` exists because an installed package's metadata can be
+  staged while its binary was not — and reporting `ok` then is a silent
+  failure: `pkg_runtime`'s `init` catches `Rom_connection_failed`,
+  `Out_of_ram` and `Out_of_caps` around child creation and only *warns*
+  (`repos/os/src/lib/sandbox/library.cc`), so the launch evaporates with
+  nothing on screen and nothing in the result. The pre-flight therefore
+  runs before the `<start>` node is ever generated. It is gated on an
+  optional `pkg_binaries` manifest ROM (enabled by `<binaries/>` in
+  `sponge_pkgd`'s `<config>`) rather than a probe-style ROM open, because
+  a missing boot module is a *fatal* ROM-session denial under the base
+  `Env` policy — a probe would kill `sponge_pkgd` precisely in the case
+  it is meant to diagnose. The manifest mirrors `pkg_index.xml` in
+  shape; without it the check is inert (AGENTS.md §1.1 escape hatch).
+
+- Every request produces exactly one `<result>`. Requests are
+  de-duplicated on the `op|pkg|seq` signature so a re-delivered ROM
+  signal cannot re-run `install`/`remove` side effects, but a duplicate
+  is still *answered* — the cached result is replayed on the channel the
+  duplicate arrived on. This matters because the Sponge DE launcher
+  sends no `seq`, so a double-click is a genuine duplicate; without the
+  replay the launcher would poll until its 6 s timeout with no feedback.
 - Alpha has no stop or kill operation. A running package can therefore be
   inspected and launched, but not stopped through the package manager.
 
