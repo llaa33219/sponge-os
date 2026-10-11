@@ -116,17 +116,39 @@ unrelated install. An empty-but-valid config is emitted at startup so
 pkg_runtime boots clean before any install.
 
 The report buffer is **pre-sized** (`RUNTIME_CONFIG_BUFFER`, 32 KiB)
-rather than grown on demand. `Expanding_reporter`'s growth path
-destructs and reconstructs the `Report` session, and while that window
-is open the `runtime` report carries no payload — so `report_rom` relays
-an empty `config` ROM to `pkg_runtime` and its `init` applies an empty
-config, tearing down every `<start>` node it holds. One large package
-must not be able to kill all running apps. The size is derived from the
-measured generated output: 22 797 bytes for all 11 shipped packages
-(`binary_prefix="bin/"`), 20 639 bytes for the 8-package desktop bake
-profile, against 4 096 before. The test-only `<repro_pad>` knob
-(`REPRO_PAD_BYTES`) still deliberately forces growth for the
-reproduction harness.
+rather than grown on demand, for two independent reasons: one large
+package must not be able to churn a quarter-megabyte of report buffer
+per write, and a fixed buffer removes the session close+reopen window
+altogether. The size is derived from the measured generated output:
+22 797 bytes for all 11 shipped packages (`binary_prefix="bin/"`),
+20 639 bytes for the 8-package desktop bake profile, against 4 096
+before.
+
+**The close+reopen window does NOT kill running children.** An earlier
+revision of this file claimed it did (that `report_rom` relays an empty
+`config` ROM during the window, so `pkg_runtime`'s `init` applies an
+empty config and tears down every `<start>` node). That was measured in
+QEMU and **falsified**: `report_rom` clears the module content when the
+writer goes away but never notifies the readers
+(`genode/repos/os/include/report_rom/rom_module.h:219-228` — no
+`notify_client()` in `_unregister`), so `pkg_runtime` keeps its last
+valid config and is notified exactly once, with the complete new one.
+See `docs/evidence/config-regen-survival.md` for the receipts and the
+reproduction scenario `run/sponge-config-regen-survival.run`.
+
+Test-only knobs (all config-gated, inert unless a scenario writes them,
+and **they must be written with a value** — a child config is delivered
+in HID, and a valueless HID tag is silently dropped by
+`genode/repos/base/src/lib/base/hid.cc:82-86`):
+
+| Knob | Effect |
+|---|---|
+| `<repro_pad: yes>` | pads every write by `REPRO_PAD_BYTES` (32 000) so the buffer is forced to grow |
+| `<repro_pad_grow: yes>` | pads write *N* with *N* × 32 KiB, so EVERY regeneration forces a growth — the knob the configuration-regeneration survival scenario uses |
+| `<repro_empty_from: N>` | from write *N* on, publishes an EMPTY but valid config; the positive control that proves the scenario's kill detector is not blind |
+
+Each knob logs an audit line when it fires, so a run can distinguish
+"the knob was active" from "the knob silently never matched".
 
 Phase 7 adds the installed-vs-running gate (docs/12 §9.2.1): the
 generator emits a `<start>` node only for packages in the running set

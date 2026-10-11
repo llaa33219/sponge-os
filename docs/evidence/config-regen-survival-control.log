@@ -1,0 +1,18 @@
+building targets:  core lib/ld init timer server/report_rom lib/vfs sponge_pkgd test/config_witness test/regen_probe 
+spawn make core lib/ld init timer server/report_rom lib/vfs sponge_pkgd test/config_witness test/regen_probe
+  Program sponge_pkgd/sponge_pkgd
+sponge-config-regen-survival: POSITIVE CONTROL (empty config from write 3)
+boot module 'sponge_pkgd' (255376 bytes)
+[init -> regen_probe] regen-probe: installing witness 'witness'
+[init -> sponge_pkgd] sponge_pkgd: ready
+[init -> sponge_pkgd] sponge_pkgd: binary_prefix=''
+[init -> sponge_pkgd] sponge_pkgd: repro_empty_from=3
+[init -> sponge_pkgd] sponge_pkgd: repro_empty_from=3
+[init -> sponge_pkgd] sponge_pkgd: duplicate request install|witness|1 — replaying the cached result
+[init -> pkg_runtime -> witness] config-witness: start
+[init -> regen_probe] regen-probe: witness live at n=3
+[init -> regen_probe] regen-probe: cycle 1/4 — install second (forces a pkg_runtime config regeneration)
+[init -> sponge_pkgd] sponge_pkgd: repro_empty_from=3
+[init -> sponge_pkgd] sponge_pkgd: publishing EMPTY config (write 3) — control channel
+[init -> regen_probe] Error: regen-probe: FAIL witness was killedsponge-config-regen-survival: POSITIVE CONTROL — detector fired as required
+Run script execution successful.
