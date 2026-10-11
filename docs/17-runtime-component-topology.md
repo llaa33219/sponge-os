@@ -167,6 +167,18 @@ component must never be able to freeze the desktop. Status after the
   upstream-adjacent fragility (workaround: every child ships an
   explicit — possibly empty — config node; vct_tty's fix). The
   containment above now bounds its blast radius to the child.
+- [x] **Config-regeneration kill-all — tested, falsified (no patch)**:
+  the hypothesis that a pkgd runtime-config regeneration crossing the
+  `Expanding_reporter` buffer boundary transiently invalidates
+  pkg_runtime's config ROM and makes init abandon every running child
+  was tested headlessly on base-sel4/QEMU
+  (`run/sponge-config-regen-survival.run`, forced growth on every
+  write): children survive. `report_rom`'s `Module::_unregister`
+  zeroes the module content on writer close but never notifies
+  readers, so pkg_runtime keeps the last valid config. A control run
+  (empty-but-valid config) confirms the detector fires when children
+  really die. No init guard patch was added — the problem class does
+  not exist. Evidence: `docs/evidence/config-regen-survival.md`.
 - [x] **Resource headroom policy**: every `system` and `pkg_runtime`
   grant across the five desktop-disk product scenarios carries ~10%
   headroom over its own children sum (§6), and the enclosing QEMU
