@@ -1,0 +1,239 @@
+#
+# \brief  Sponge OS dynamic quota top-up verdict scenario
+# \author Sponge OS contributors
+# \date   2026
+#
+# Question under test (empirically, on QEMU/seL4 or base-linux):
+#
+#   When a component issues a resource_request() that its own sandbox
+#   cannot satisfy, does ANYTHING ABOVE that sandbox ever grant it —
+#   i.e. can a component that hits its quota be given more at runtime,
+#   or only at the next configuration application?
+#
+# This is the empirical counterpart of a decision pkgd's admission
+# control rests on. Admission judges a launch against the budget
+# pkg_runtime reports AT THAT MOMENT; what happens to a package that
+# later outgrows its quota is a separate question, and the answer shapes
+# how admission must be positioned (a predictable UX gate that is never
+# supposed to need a runtime escape hatch, vs. one that leans on the
+# system widening quotas underneath it).
+#
+# Mechanism under test (genode/repos/os/src/lib/sandbox/child.cc,
+# Sandbox::Child::resource_request):
+#
+#   (a) the vendored immediate-grant path (patch ledger row 21) — if the
+#       SANDBOX ITSELF has the slack, the request is answered on the
+#       spot and the child is notified;
+#   (b) otherwise the request is parked in _requested_resources and the
+#       child waits. The sandbox does not ask its own parent for quota,
+#       and the top-level init has nobody to ask: core never satisfies an
+#       init resource request (genode/repos/os/src/init/main.cc
+#       registers a resource_avail handler precisely to stop init from
+#       blocking on one).
+#
+# Three sandboxes, one binary, three verdicts:
+#
+#   sandbox_a  caps 8000 / ram 512M   resq_a  has 8M, asks for 1M
+#              -> the parent has slack, so init answers ON THE SPOT
+#                 ("resource request granted immediately"). This is the
+#                 vendored immediate-grant path, ledger row 21.
+#
+#   sandbox_b  caps 2000 / ram 8M     resq_b  has 1M, asks for 7M
+#              -> the parent has ~75 KB of slack, so the request is
+#                 PARKED ("resource request deferred ... waiting for a
+#                 config change") — and stays parked for the whole
+#                 60 s window, even though the TOP-LEVEL init still
+#                 holds well over 400 MiB. Nothing above the sandbox
+#                 was ever asked.
+#
+#   sandbox_c  caps 2000 / ram 64M    resq_c  has 2M, asks for 48M,
+#              + a 20M ballast child, so it parks exactly like resq_b.
+#              config_bump then rewrites sandbox_c's OWN config at
+#              t=12 s, raising resq_c's quota from 2M to 52M.
+#              -> the parked request resolves (+42.6 MB), and only
+#                 then. A config applied TO the hosting sandbox is the
+#                 ONLY thing that resolves it.
+#
+# Together: a child can be given more at runtime, but only from its
+# parent's own slack, and once that is exhausted only a configuration
+# change by the sandbox's OWNER revives the request. Nothing forwards
+# upward, and the top level has nobody to ask (core never satisfies an
+# init resource request — genode/repos/os/src/init/main.cc registers a
+# resource_avail handler precisely to stop init from blocking on one).
+#
+# Topology (kernel-agnostic, no Qt, no drivers, no disk):
+#
+#   init
+#   + timer
+#   + report_rom
+#   + config_bump  (publishes sandbox_c's replacement config)
+#   + sandbox_a (init)  + resq_a
+#   + sandbox_b (init)  + resq_b
+#   + sandbox_c (init, config from report_rom)  + resq_c + ballast
+#
+# report_rom policies:
+#   sandbox_c -> config <- config_bump -> bump
+#
+# Gate: ONE bounded wait, on the last experiment to finish.
+#   resq-c: PASS  -> the whole sequence ran to completion, including
+#                    the config-driven revival that resq-c reports as
+#                    "BUDGET-GREW". The three earlier verdicts appear
+#                    earlier in the SAME boot and are quoted verbatim in
+#                    docs/evidence/dynamic-resource-topup.md: stacking
+#                    four gates would not work, because the two-argument
+#                    run_genode_until power-cycles before waiting.
+#
+# Build:
+#   make -C genode/build/x86_64 run/sponge-resource-request \
+#       KERNEL=sel4 BOARD=pc
+#
+
+build { core lib/ld init timer server/report_rom \
+        test/resq_probe test/config_bump }
+
+create_boot_directory
+
+install_config [subst {
+config
++ parent-provides
+  + service LOG
+  + service PD
+  + service CPU
+  + service ROM
+  + service IRQ
+  + service IO_MEM
+  + service IO_PORT
+
++ default-route
+  + any-service
+    + parent
+    + any-child
++ default | caps: 200 | ram: 8M
+
++ start timer
+  + provides | + service Timer
+
++ start report_rom | ram: 4M
+  + provides
+    + service Report
+    + service ROM
+  + config | verbose: no
+    + policy | label: sandbox_c -> config | report: config_bump -> bump
+
++ start config_bump | caps: 200 | ram: 8M
+  + config | delay_ms: 12000
+    + initial
+      + child | name: hog   | caps: 1600 | ram: 20M | probe: hog   | expect: ballast | req: 0
+      + child | name: resq_c | caps: 200  | ram: 2M  | probe: c | expect: defer | req: 48M
+    + bumped
+      + child | name: hog   | caps: 1600 | ram: 20M | probe: hog   | expect: ballast | req: 0
+      + child | name: resq_c | caps: 200  | ram: 52M | probe: c | expect: defer | req: 48M
+  + route
+    + service Report | + child report_rom
+    + service Timer | + child timer
+    + any-service
+      + parent
+      + any-child
+
++ start sandbox_a | caps: 8000 | ram: 512M
+  + binary init
+  + config
+    + parent-provides
+      + service LOG
+      + service PD
+      + service CPU
+      + service ROM
+      + service IRQ
+      + service IO_MEM
+      + service IO_PORT
+      + service Timer
+    + default-route
+      + any-service
+        + parent
+        + any-child
+    + report | delay_ms: 1000 | init_ram: yes
+    + start | name: resq_a | caps: 400
+      + binary | name: resq_probe
+      + resource | name: RAM | quantum: 8M
+      + config
+        + probe | name: a | expect: grant | req_ram: 1M
+      + route
+        + any-service
+          + parent
+          + any-child
+  + route
+    + any-service
+      + parent
+      + any-child
+
++ start sandbox_b | caps: 2000 | ram: 8M
+  + binary init
+  + config
+    + parent-provides
+      + service LOG
+      + service PD
+      + service CPU
+      + service ROM
+      + service IRQ
+      + service IO_MEM
+      + service IO_PORT
+      + service Timer
+    + default-route
+      + any-service
+        + parent
+        + any-child
+    + report | delay_ms: 1000 | init_ram: yes
+    + start | name: resq_b | caps: 200
+      + binary | name: resq_probe
+      + resource | name: RAM | quantum: 1M
+      + config
+        + probe | name: b | expect: defer | req_ram: 7M
+      + route
+        + any-service
+          + parent
+          + any-child
+  + route
+    + any-service
+      + parent
+      + any-child
+
++ start sandbox_c | caps: 2000 | ram: 64M
+  + binary init
+  + route
+    + service ROM | label: config | + child report_rom
+    + any-service
+      + parent
+      + any-child
+
+- }]
+
+build_boot_image [build_artifacts]
+
+append qemu_args " -nographic -m 2G "
+
+#
+# The verdict is read from init's OWN log, which is the authoritative
+# record of what the sandbox decided. The child's `stats()` is not: on
+# base-sel4 a PD's physical memory region is sized from its configured
+# quota at construction, so a granted request need not move `avail`.
+#
+#   gate 1  a slack-rich parent answers on the spot  -> the immediate
+#           grant path works (vendored patch, ledger row 21)
+#   gate 2  a tight parent PARKS the request         -> and nothing above
+#           it ever answers, however much memory sits three levels up
+#   gate 3  the same child in a config-owned sandbox parks identically
+#   gate 4  config_bump rewrites THAT sandbox's config, and only then does
+#           the parked request resolve
+#
+run_genode_until {.*resq-c: PASS.*} 300
+
+#
+# One gate, on the LAST experiment to finish. The two earlier verdicts
+# (immediate grant from slack; parking when the sandbox is tight) appear
+# earlier in the same boot and are quoted verbatim in
+# docs/evidence/dynamic-resource-topup.md — `run_genode_until` can only
+# match output that arrives AFTER its expect is armed, and the
+# two-argument form additionally power-cycles before waiting, so
+# stacking four gates would not observe one experiment.
+#
+puts "sponge-resource-request: PASS"
