@@ -12,6 +12,7 @@
 #include <util/hid.h>
 #include <util/string.h>
 
+#include <QDateTime>
 #include <QSet>
 #include <QTimer>
 
@@ -312,57 +313,87 @@ void LauncherController::_publish_report()
 
 /* ===================== click-to-launch (Phase 7 todo 10) ===================== */
 
+/*
+ * Open the launcher_request / launcher_result channels, retrying on
+ * later clicks instead of latching the launcher off forever.
+ *
+ * A failed open is a LOCAL failure: Rom_connection_failed /
+ * Service_denied is raised synchronously by the session request, and
+ * Genode::Constructible leaves the slot unconstructed when the
+ * constructor throws, so no half-open session survives at the sandbox
+ * and a later attempt starts from a clean state. That matters because
+ * the classic cause (transient quota exhaustion, or a pkgd route that
+ * appears later) can clear on its own — a permanent latch would leave
+ * the user unable to launch anything until reboot.
+ *
+ * Bounded by LAUNCH_CHANNEL_RETRY_MS: after a failure, further clicks
+ * inside the window are dropped with a log line, so a topology that
+ * can never open the channels does not spin on session requests.
+ */
+bool LauncherController::_open_launch_channels()
+{
+	if (_launch_request.constructed() && _launch_result.constructed())
+		return true;
+
+	qint64 const now_ms = QDateTime::currentMSecsSinceEpoch();
+
+	if (_launch_channels_failed) {
+		qint64 const remaining =
+			LAUNCH_CHANNEL_RETRY_MS - (now_ms - _launch_channel_attempt_ms);
+		if (remaining > 0) {
+			Genode::log("sponge-de: launcher channels still unavailable; "
+			            "next retry in ", remaining, " ms");
+			return false;
+		}
+	}
+
+	_launch_channel_attempt_ms = now_ms;
+
+	try {
+		if (!_launch_request.constructed())
+			_launch_request.construct(_env, "request", "launcher_request");
+		if (!_launch_result.constructed())
+			_launch_result.construct(_env, "launcher_result");
+	} catch (Genode::Exception &) {
+		_launch_channels_failed = true;
+		Genode::warning("sponge-de: opening the launcher channels failed; "
+		                "retrying on the next launch click (at most every ",
+		                (unsigned)LAUNCH_CHANNEL_RETRY_MS, " ms)");
+		emit launch_problem(QString(),
+		                    QStringLiteral("package manager unreachable"));
+		return false;
+	}
+
+	if (!_launch_request.constructed() || !_launch_result.constructed()) {
+		_launch_channels_failed = true;
+		Genode::warning("sponge-de: launcher_request/launcher_result "
+		                "channels still unopened after a construct attempt");
+		emit launch_problem(QString(),
+		                    QStringLiteral("package manager unreachable"));
+		return false;
+	}
+
+	if (_launch_channels_failed) {
+		Genode::log("sponge-de: launcher channels opened (retry succeeded)");
+		_launch_channels_failed = false;
+	}
+	return true;
+}
+
+
 void LauncherController::request_launch(QString const &name)
 {
 	/*
 	 * Lazy-construct the launch channel on first use (see constructor
 	 * comment). If the surrounding scenario does not wire the
 	 * launcher_request/launcher_result labels, the construction itself
-	 * would fail — so we catch that by checking validity after the
-	 * attempt and falling back to the not-wired warning. The
-	 * Expanding_reporter and Attached_rom_dataspace open their sessions
-	 * synchronously in their constructor; a denied session is reported
-	 * by Genode as a component-fatal error, so we only attempt the
-	 * construction when a launch is actually requested (a scenario that
-	 * does not wire the labels will never call request_launch, so the
-	 * denied-session path is never triggered there).
+	 * fails with Rom_connection_failed — the failure is caught below
+	 * and retried (rate-limited) on later clicks, so a scenario that
+	 * wires the launcher for display but not for click-to-launch
+	 * simply never launches and never dies.
 	 */
-	if (_launch_channels_broken) {
-		Genode::warning("sponge-de: launch channels unavailable (earlier "
-		                "open failed); dropping launch request for '",
-		                name.toUtf8().constData(), "'");
-		emit launch_problem(name, QStringLiteral("package manager unreachable"));
+	if (!_open_launch_channels())
 		return;
-	}
-
-	try {
-		if (!_launch_request.constructed()) {
-			_launch_request.construct(_env, "request", "launcher_request");
-		}
-		if (!_launch_result.constructed()) {
-			_launch_result.construct(_env, "launcher_result");
-		}
-	} catch (Genode::Exception &) {
-		/*
-		 * The exception must not escape into the Qt event loop, and
-		 * the half-open session above keeps living at the sandbox —
-		 * retrying the construct reuses the client id and is denied
-		 * as a conflicting session (sleep_forever, component-fatal).
-		 */
-		_launch_channels_broken = true;
-		Genode::error("sponge-de: opening the launcher channels failed "
-		              "(resource exhaustion); launcher disabled");
-		emit launch_problem(name, QStringLiteral("package manager unreachable"));
-		return;
-	}
-
-	if (!_launch_request.constructed() || !_launch_result.constructed()) {
-		Genode::warning("sponge-de: launch request for '",
-		                name.toUtf8().constData(),
-		                "' but launcher_request/launcher_result channels "
-		                "could not be opened");
-		return;
-	}
 
 	/*
 	 * Stash the package name so the non-blocking result poll can match

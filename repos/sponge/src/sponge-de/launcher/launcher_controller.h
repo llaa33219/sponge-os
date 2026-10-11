@@ -166,6 +166,10 @@ class LauncherController : public QObject
 
 	private:
 
+		/* Lazily open the launch channels; false when they could not
+		 * be opened (already reported through launch_problem). */
+		bool _open_launch_channels();
+
 		Genode::Env &_env;
 
 		/*
@@ -206,14 +210,16 @@ class LauncherController : public QObject
 		Genode::Constructible<Genode::Attached_rom_dataspace> _launch_result   { };
 
 		/*
-		 * Latched when opening the launch channels threw (resource
-		 * exhaustion): the sandbox keeps the half-open session for a
-		 * while, so an immediate reconstruct reuses the client id and
-		 * is denied as a conflicting session — a component-fatal
-		 * error. Once broken, launches fail loudly instead of
-		 * killing the DE.
+		 * Bounded retry state for the lazy channel open. A failed
+		 * open (transient resource exhaustion, a pkgd route that is
+		 * not up yet) must NOT disable the launcher for the rest of
+		 * the session — the next click tries again, but no more than
+		 * once per LAUNCH_CHANNEL_RETRY_MS so a permanently broken
+		 * topology cannot spin the session request.
 		 */
-		bool _launch_channels_broken { false };
+		bool   _launch_channels_failed { false };
+		qint64 _launch_channel_attempt_ms { 0 };
+		static constexpr qint64 LAUNCH_CHANNEL_RETRY_MS { 5000 };
 
 		/* Headless-verifiability: published app list. */
 		Genode::Reporter _launcher_report { _env, "launcher" };
