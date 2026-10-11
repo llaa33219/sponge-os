@@ -956,6 +956,20 @@ int LaunchCommand::_render_human(Genode::Xml_node const &result)
 		            " failed — its binary is not present in this image");
 		return 1;
 	}
+	if (status == Genode::String<32>("insufficient-resources")) {
+		Genode::log("launch: ", pkg,
+		            " failed — not enough memory or capabilities "
+		            "(needs ", result.attribute_value("need_ram",
+		                                               Genode::String<32>("?")),
+		            " bytes RAM and ",
+		            result.attribute_value("need_caps", Genode::String<32>("?")),
+		            " caps; ", result.attribute_value("avail_ram",
+		                                              Genode::String<32>("?")),
+		            " bytes RAM and ",
+		            result.attribute_value("avail_caps", Genode::String<32>("?")),
+		            " caps are free)");
+		return 1;
+	}
 
 	Genode::String<256> const err =
 		result.attribute_value("error", Genode::String<256>());
@@ -989,6 +1003,22 @@ int LaunchCommand::_render_json(Genode::Xml_node const &result)
 	if (status == Genode::String<32>("binary-missing")) {
 		Genode::log("{\"command\":\"launch\",\"package\":\"", pkg,
 		            "\",\"status\":\"error\",\"error\":\"binary-missing\"}");
+		return 1;
+	}
+	if (status == Genode::String<32>("insufficient-resources")) {
+		/* The four figures ride along: a refusal the caller cannot
+		 * budget against is not actionable. */
+		Genode::log("{\"command\":\"launch\",\"package\":\"", pkg,
+		            "\",\"status\":\"error\",\"error\":\"insufficient-resources\"",
+		            ",\"need_ram\":\"", result.attribute_value("need_ram",
+		                                                       Genode::String<32>()),
+		            "\",\"avail_ram\":\"", result.attribute_value("avail_ram",
+		                                                         Genode::String<32>()),
+		            "\",\"need_caps\":\"", result.attribute_value("need_caps",
+		                                                         Genode::String<32>()),
+		            "\",\"avail_caps\":\"", result.attribute_value("avail_caps",
+		                                                           Genode::String<32>()),
+		            "\"}");
 		return 1;
 	}
 

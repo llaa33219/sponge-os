@@ -67,6 +67,7 @@
 #include <base/log.h>
 #include <os/reporter.h>
 #include <report_session/connection.h>
+#include <util/hid.h>
 #include <util/reconstructible.h>
 #include <util/string.h>
 #include <util/xml_generator.h>
@@ -363,6 +364,19 @@ class Sponge::Pkgd::Main
 		unsigned            _num_last_items { 0 };
 
 		/*
+		 * Cached refusal numbers for the duplicate-request replay. A
+		 * replayed "insufficient-resources" answer is only useful if it
+		 * cites the same budget as the original, so the recipe keeps the
+		 * four figures rather than re-deriving them (re-deriving would
+		 * race the state report and could replay a DIFFERENT number for
+		 * the same request).
+		 */
+		Genode::size_t _last_need_ram   { 0 };
+		Genode::size_t _last_avail_ram  { 0 };
+		unsigned       _last_need_caps  { 0 };
+		unsigned       _last_avail_caps { 0 };
+
+		/*
 		 * Selects which result reporter the _report_* helpers write to
 		 * during an in-flight request. Set at the top of each handler
 		 * entry point. Signals dispatch serially, so no concurrency.
@@ -498,6 +512,54 @@ class Sponge::Pkgd::Main
 		bool               _binary_manifest_loaded    { false };
 
 		/*
+		 * Resource admission control (optional, config-gated by
+		 * <admission/>). pkg_runtime's init silently CLAMPS a child to
+		 * whatever quota it has left
+		 * (genode/repos/os/src/lib/sandbox/child.cc:483-486,
+		 * `ram_quota = avail_ram`), so a launch that does not fit is
+		 * answered "ok" and then evaporates with nothing but a kernel
+		 * warning. Before adding a package to the running set, compare
+		 * its declared <quota ram= caps=> against pkg_runtime's OWN
+		 * remaining budget, which is exactly what its sandbox state
+		 * report carries as the top-level <ram avail=/> and
+		 * <caps avail=/> nodes (sandbox/types.h, Resource_info::generate).
+		 *
+		 * Why the report and not a configured copy of the grant: pkgd
+		 * does not know what the top-level init granted pkg_runtime —
+		 * duplicating that number in pkgd's config would be a second
+		 * source of truth that silently rots. `avail` is a fact about
+		 * the running system, it needs no grant arithmetic, and it also
+		 * accounts for quota pkg_runtime has already donated to other
+		 * children. That is the number the admission decision is about.
+		 *
+		 * The ROM subscription is opt-in because a DENIED ROM session is
+		 * fatal under Genode's base Env policy (sleep_forever, not a
+		 * throw — the same reason <binaries/> and <launcher_request/>
+		 * are gated), so a scenario that does not relay the report must
+		 * not carry the node.
+		 */
+		Genode::Constructible<Genode::Attached_rom_dataspace> _state_rom { };
+		bool               _admission_armed { false };
+
+		/*
+		 * Admission safety margin. A refusal threshold of exactly
+		 * `avail >= need` would admit a razor-thin package that init then
+		 * has to clamp — recreating the very silent failure the gate
+		 * exists to prevent, and doing so non-deterministically. The
+		 * margin covers what a child costs on top of its declared quota:
+		 * init's own bookkeeping for it (PD session, CNode slab, child
+		 * object, the parsed <start> node) plus the report's own staleness
+		 * window — the state report is periodic with delay_ms=2000, so a
+		 * reading can be up to one period behind a just-started sibling.
+		 * 8M / 64 caps is ~8% of a typical package quota and two orders
+		 * of magnitude above the per-child overhead, while staying far
+		 * below the 11% product headroom documented in docs/17 §6 — the
+		 * gate must not eat the headroom the quota ledger budgets for.
+		 */
+		static constexpr Genode::size_t ADMISSION_MARGIN_RAM  = 8u * 1024 * 1024;
+		static constexpr unsigned       ADMISSION_MARGIN_CAPS = 64;
+
+		/*
 		 * Disk-served binary path prefix (Phase 8 P2, docs/14 §4.4/§4.6).
 		 * When non-empty (e.g. "bin/"), generated <binary> names are
 		 * prefixed so cached_fs_rom (chroot /system) resolves them at
@@ -558,6 +620,14 @@ class Sponge::Pkgd::Main
 		void _init_binary_manifest();
 		bool _binary_available(Package const &p);
 
+		/* ---- resource admission control (optional, config-gated) ---- */
+		void _init_admission();
+		bool _admission_state(Genode::size_t &avail_ram, unsigned &avail_caps);
+		bool _admits(Package const &p, Genode::size_t need_ram,
+		             Genode::size_t &avail_ram,
+		             unsigned need_caps, unsigned &avail_caps);
+		static bool _quota_bytes(Genode::String<16> const &q, Genode::size_t &out);
+
 		/* ---- launcher channel (optional, config-gated) ---- */
 		void _init_launcher_channel();
 
@@ -579,6 +649,9 @@ class Sponge::Pkgd::Main
 		void _report_list_ok();
 		void _report_error(char const *op, Genode::String<128> const &pkg,
 		                   char const *message);
+		void _report_insufficient(char const *op, Genode::String<128> const &pkg,
+		                          Genode::size_t need_ram, Genode::size_t avail_ram,
+		                          unsigned need_caps, unsigned avail_caps);
 
 		/*
 		 * Re-emit the cached result of the previous request on the
@@ -1375,6 +1448,60 @@ void Sponge::Pkgd::Main::_do_install(Genode::String<128> const &pkg)
 
 	Package const &root = _plan[_num_plan > 0 ? _num_plan - 1 : 0];
 
+	/*
+	 * Admission pre-flight for the packages this install would newly put
+	 * into the running set. An <autostart/> package gets its <start>
+	 * node the moment the install lands, so it is a spawn exactly like a
+	 * launch and must clear the same budget gate. Checked BEFORE any
+	 * state mutation so a refusal leaves nothing half-applied: no root,
+	 * no installed entry, no config regeneration.
+	 *
+	 * _plan is install-ordered (deps before dependents) and the budget is
+	 * decremented per admitted package, so a chain of autostart deps is
+	 * checked against what each leaves the next one.
+	 */
+	if (_admission_armed && _state_rom.constructed()) {
+		Genode::size_t free_ram { 0 }, avail_ram { 0 };
+		unsigned       free_caps { 0 }, avail_caps { 0 };
+		bool           budget_known { false };
+
+		for (unsigned i = 0; i < _num_plan; ++i) {
+			Package const &c = _plan[i];
+			if (!c.has_autostart || _is_running(c.name.string()))
+				continue;
+
+			Genode::size_t need_ram { 0 };
+			if (!_quota_bytes(c.ram, need_ram)) {
+				Genode::warning("sponge_pkgd: package '", c.name,
+				                "' has an unparsable <quota ram=\"", c.ram,
+				                "\"> — refusing the install");
+				_report_insufficient("install", pkg, 0, 0, 0, 0);
+				return;
+			}
+
+			if (!budget_known) {
+				if (!_admission_state(free_ram, free_caps)) {
+					Genode::log("sponge_pkgd: no pkg_runtime state report "
+					            "yet — admitting ", c.name);
+					break;
+				}
+				budget_known = true;
+			}
+
+			avail_ram  = free_ram;
+			avail_caps = free_caps;
+
+			if (!_admits(c, need_ram, avail_ram, c.caps, avail_caps)) {
+				_report_insufficient("install", c.name, need_ram,
+				                     avail_ram, c.caps, avail_caps);
+				return;
+			}
+
+			free_ram  -= need_ram;
+			free_caps -= (c.caps > free_caps ? 0u : c.caps);
+		}
+	}
+
 	/* Snapshot the installed names before the change, to report exactly
 	 * what this install added. */
 	Genode::String<64> before[MAX_PACKAGES] { };
@@ -1454,7 +1581,7 @@ void Sponge::Pkgd::Main::_do_remove(Genode::String<128> const &pkg)
  *
  * Transitions an installed-but-stopped package to running by adding its
  * name to _running and regenerating the pkg_runtime config so init
- * starts the new <start> node. Four bounded outcomes:
+ * starts the new <start> node. Five bounded outcomes:
  *   - not-installed: the package is not in the installed set
  *     (no implicit install — caller must install first);
  *   - already-running: the package already has a <start> node
@@ -1463,6 +1590,10 @@ void Sponge::Pkgd::Main::_do_remove(Genode::String<128> const &pkg)
  *     Reported BEFORE the package enters _running and BEFORE the config
  *     is regenerated, so pkg_runtime is never even asked to start a
  *     child it would silently drop;
+ *   - insufficient-resources: the package's declared quota does not fit
+ *     into pkg_runtime's remaining RAM/caps budget. Same no-op shape as
+ *     binary-missing, plus the four figures the caller needs to explain
+ *     the refusal to the user (see _report_insufficient);
  *   - ok: the package transitioned installed -> running.
  *
  * No stop operation exists in Alpha, so once running the package stays
@@ -1505,6 +1636,33 @@ void Sponge::Pkgd::Main::_do_launch(Genode::String<128> const &pkg)
 			            found->binary, " is not staged in this image)");
 			_report_launch_ok(pkg, "binary-missing");
 			return;
+		}
+
+		/*
+		 * Admission control: the same pre-flight shape, one resource
+		 * dimension over. A package that does not fit into pkg_runtime's
+		 * remaining budget would be clamped by the sandbox and die
+		 * silently, so refuse BEFORE _running and BEFORE the config is
+		 * regenerated.
+		 */
+		if (found) {
+			Genode::size_t need_ram { 0 };
+			if (!_quota_bytes(found->ram, need_ram)) {
+				Genode::warning("sponge_pkgd: package '", name,
+				                "' has an unparsable <quota ram=\"",
+				                found->ram, "\"> — refusing the launch");
+				_report_insufficient("launch", pkg, 0, 0, 0, 0);
+				return;
+			}
+
+			Genode::size_t avail_ram { 0 };
+			unsigned avail_caps { 0 };
+			if (!_admits(*found, need_ram, avail_ram,
+			             found->caps, avail_caps)) {
+				_report_insufficient("launch", pkg, need_ram, avail_ram,
+				                     found->caps, avail_caps);
+				return;
+			}
 		}
 	}
 
@@ -1674,17 +1832,24 @@ void Sponge::Pkgd::Main::_generate_runtime_config()
 
 	_runtime_reporter.generate_xml([&](Genode::Xml_generator &g) {
 		/*
-		 * Sandbox state reporting (bring-up observability): makes
-		 * pkg_runtime emit a periodic <state> report listing every
-		 * spawned child and its state. Relayed to sponge-de as the
-		 * panel-title C:<n> readout — on hardware where children
-		 * never produce windows, C: discriminates "the sandbox
+		 * Sandbox state reporting (bring-up observability + admission
+		 * control): makes pkg_runtime emit a periodic <state> report
+		 * listing every spawned child and its state. Relayed to
+		 * sponge-de as the panel-title C:<n> readout — on hardware where
+		 * children never produce windows, C: discriminates "the sandbox
 		 * never spawned them" (config delivery broken) from "they
 		 * spawned but died before opening a Gui session".
+		 *
+		 * init_ram/init_caps add pkg_runtime's OWN top-level <ram>/<caps>
+		 * nodes (quota/used/avail for the sandbox itself, not per child).
+		 * Those avail figures are what _admits compares a package's
+		 * declared quota against — without init_caps the caps dimension
+		 * of the budget would simply be absent from the report.
 		 */
 		g.node("report", [&] {
 			g.attribute("delay_ms", "2000");
 			g.attribute("init_ram", "yes");
+			g.attribute("init_caps", "yes");
 			g.attribute("child_ram", "yes");
 		});
 		if (pad_bytes)
@@ -2203,6 +2368,19 @@ void Sponge::Pkgd::Main::_cache_items(Genode::String<64> const *items, unsigned 
  */
 void Sponge::Pkgd::Main::_replay_last_result()
 {
+	if (_last_status == Genode::String<32>("insufficient-resources")) {
+		/*
+		 * Replayed before the op branches: the op is "install" or
+		 * "launch", and only _report_launch_ok would be picked by the
+		 * generic branch below — which carries no figures. The cached
+		 * budget is re-emitted verbatim so the second answer cites the
+		 * same numbers as the first.
+		 */
+		_report_insufficient(_last_op.string(), _last_pkg,
+		                     _last_need_ram, _last_avail_ram,
+		                     _last_need_caps, _last_avail_caps);
+		return;
+	}
 	if (_last_status == Genode::String<32>("error")) {
 		_report_error(_last_op.string(), _last_pkg, _last_message.string());
 		return;
@@ -2656,6 +2834,209 @@ bool Sponge::Pkgd::Main::_binary_available(Package const &p)
 }
 
 
+/* ===================== resource admission control ===================== */
+
+/*
+ * Parse a package metadata quota string ("48M", "1024M", "1G", "512K",
+ * or a plain byte count) into bytes. Package metadata is authored by
+ * hand (docs/16-package-authoring.md §2), so the suffix set is closed
+ * and small; anything else is a malformed quota and yields "no answer",
+ * which callers treat as "cannot prove it fits" -> the launch is
+ * refused rather than silently clamped.
+ */
+bool Sponge::Pkgd::Main::_quota_bytes(Genode::String<16> const &q,
+                                      Genode::size_t &out)
+{
+	char const *p = q.string();
+	Genode::size_t v { 0 };
+	unsigned digits { 0 };
+	while (*p >= '0' && *p <= '9') {
+		v = v * 10 + Genode::size_t(*p - '0');
+		++p; ++digits;
+	}
+	if (!digits) return false;
+
+	switch (*p) {
+	case 'K': case 'k': v *= 1024; break;
+	case 'M': case 'm': v *= 1024 * 1024; break;
+	case 'G': case 'g': v *= 1024 * 1024 * 1024; break;
+	case '\0':            break;
+	default:               return false;
+	}
+	out = v;
+	return true;
+}
+
+
+/*
+ * Read pkg_runtime's remaining budget from its sandbox state report.
+ *
+ * HID, not XML: the 26.08 sandbox Generator serializes reports in HID
+ * (the same lesson the Sponge DE recorded when an Xml_node read of
+ * runtime_state silently yielded zero children). The top-level <ram>
+ * and <caps> nodes are pkg_runtime's OWN PD stats — quota minus used —
+ * i.e. the pool a new <start> node still has to come out of. The
+ * per-child <ram>/<caps> nodes sit one level deeper inside <child> and
+ * are not visited here.
+ *
+ * The numbers are read as strings and parsed by hand because the
+ * Generator prints every round value through Number_of_bytes::print():
+ * a plain numeric conversion would read "64M" as 64 BYTES and admit an
+ * out-of-budget package.
+ *
+ * Returns false when no usable report is available yet; the caller then
+ * admits (see _admits).
+ */
+bool Sponge::Pkgd::Main::_admission_state(Genode::size_t &avail_ram,
+                                          unsigned &avail_caps)
+{
+	if (!_state_rom.constructed())
+		return false;
+
+	_state_rom->update();
+	if (!_state_rom->valid() || _state_rom->size() == 0)
+		return false;
+
+	bool ram_ok { false }, caps_ok { false };
+	Genode::size_t ram_bytes { 0 }, caps_value { 0 };
+
+	try {
+		Genode::Hid_node const root(Genode::Const_byte_range_ptr(
+			_state_rom->local_addr<char const>(), _state_rom->size()));
+
+		Genode::String<16> ram_avail  { }, caps_avail { };
+		root.for_each_sub_node([&] (Genode::Hid_node const &n) {
+			if (n.has_type("ram") && !ram_ok) {
+				ram_avail = n.attribute_value("avail", Genode::String<16>());
+				ram_ok = _quota_bytes(ram_avail, ram_bytes);
+			}
+			if (n.has_type("caps") && !caps_ok) {
+				caps_avail = n.attribute_value("avail", Genode::String<16>());
+				caps_ok = _quota_bytes(caps_avail, caps_value) &&
+				          caps_value > 0 && caps_value <= 0xffffffu;
+			}
+		});
+	}
+	catch (Genode::Xml_node::Invalid_syntax) {
+		/* Hid_node does not throw; defensive only. */
+		return false;
+	}
+
+	if (!ram_ok || !caps_ok)
+		return false;
+
+	avail_ram  = ram_bytes;
+	avail_caps = (unsigned)caps_value;
+	return true;
+}
+
+
+/*
+ * Admission decision for one package, against the budget `avail_ram` /
+ * `avail_caps` (which the caller may have already decremented for
+ * siblings admitted earlier in the same request).
+ *
+ * Fail-safe: when admission is not armed (no <admission/> node, or the
+ * periodic state report has not arrived yet) the package is ADMITTED.
+ * The report appears ~2 s into boot and is refreshed by init on every
+ * child transition, so the unarmed window is the empty-system boot
+ * where the budget is at its largest; gating on it would refuse
+ * legitimate first launches for no benefit. The opposite choice —
+ * fail-closed — would also silently disable the feature in every
+ * deployment that has not wired the relay, which is exactly the kind of
+ * invisible control removal AGENTS.md §1.1 rejects. Every unarmed
+ * decision is logged so a run can tell the two apart.
+ */
+bool Sponge::Pkgd::Main::_admits(Package const &p,
+                                 Genode::size_t need_ram,
+                                 Genode::size_t &avail_ram,
+                                 unsigned need_caps, unsigned &avail_caps)
+{
+	if (!_admission_armed || !_state_rom.constructed()) {
+		Genode::log("sponge_pkgd: admission not armed — admitting ", p.name);
+		return true;
+	}
+
+	Genode::size_t free_ram  { 0 };
+	unsigned       free_caps { 0 };
+	if (!_admission_state(free_ram, free_caps)) {
+		Genode::log("sponge_pkgd: no pkg_runtime state report yet — "
+		            "admitting ", p.name);
+		return true;
+	}
+
+	avail_ram  = free_ram;
+	avail_caps = free_caps;
+
+	if (free_ram < need_ram + ADMISSION_MARGIN_RAM)
+		return false;
+	if (free_caps < need_caps + ADMISSION_MARGIN_CAPS)
+		return false;
+	return true;
+}
+
+
+void Sponge::Pkgd::Main::_report_insufficient(char const *op,
+                                              Genode::String<128> const &pkg,
+                                              Genode::size_t need_ram,
+                                              Genode::size_t avail_ram,
+                                              unsigned need_caps,
+                                              unsigned avail_caps)
+{
+	_last_op      = Genode::String<32>(op);
+	_last_pkg     = pkg;
+	_last_status  = Genode::String<32>("insufficient-resources");
+	_last_message = Genode::String<256>();
+	_num_last_items = 0;
+
+	/* Keep the figures: the duplicate-replay recipe re-emits them. */
+	_last_need_ram   = need_ram;
+	_last_avail_ram  = avail_ram;
+	_last_need_caps  = need_caps;
+	_last_avail_caps = avail_caps;
+
+	Genode::log("sponge_pkgd: ", op, " ", pkg,
+	            " -> insufficient-resources (need_ram=", need_ram,
+	            " avail_ram=", avail_ram,
+	            " need_caps=", need_caps,
+	            " avail_caps=", avail_caps, ")");
+
+	_result().generate_xml([&](Genode::Xml_generator &g) {
+		g.attribute("status", "insufficient-resources");
+		g.attribute("op",     op);
+		g.attribute("pkg",    pkg);
+		g.attribute("need_ram",   need_ram);
+		g.attribute("avail_ram",  avail_ram);
+		g.attribute("need_caps",  need_caps);
+		g.attribute("avail_caps", avail_caps);
+	});
+}
+
+
+/*
+ * Arm admission control. Opt-in via an <admission/> node in this
+ * component's <config>, the same gate <binaries/> and
+ * <launcher_request/> use: the "runtime_state" ROM route must be wired
+ * by the scenario, and a denied ROM session is fatal under Genode's base
+ * Env policy (sleep_forever, not a catchable throw).
+ */
+void Sponge::Pkgd::Main::_init_admission()
+{
+	try {
+		_config_rom.node().with_optional_sub_node("admission",
+			[&] (Genode::Node const &) {
+				_state_rom.construct(_env, "runtime_state");
+				_admission_armed = true;
+				Genode::log("sponge_pkgd: resource admission armed "
+				            "(pkg_runtime state report)");
+			});
+	} catch (Genode::Xml_node::Invalid_syntax) {
+		Genode::warning("sponge_pkgd: malformed <config> — "
+		                "resource admission disabled");
+	}
+}
+
+
 Sponge::Pkgd::Main::Main(Genode::Env &env) : _env(env)
 {
 	Genode::log("sponge_pkgd: ready");
@@ -2691,7 +3072,16 @@ Sponge::Pkgd::Main::Main(Genode::Env &env) : _env(env)
 	 * Staged-binary manifest (opt-in via <binaries/>). Loaded before the
 	 * first request so _do_launch's pre-flight is armed from the start.
 	 */
-	_init_binary_manifest();
+_init_binary_manifest();
+
+	/*
+	 * Resource admission control (opt-in via <admission/>). Armed before
+	 * the first request so a launch never reaches _admits unarmed while
+	 * the report is merely late — and never arms itself in a scenario
+	 * that does not relay the state report (a denied ROM session is
+	 * fatal under the base Env policy).
+	 */
+	_init_admission();
 
 	/* Rebuild the full installed set from whatever roots we now have
 	 * (empty on a fresh start, possibly restored on a reboot). This is

@@ -571,6 +571,35 @@ void LauncherController::_poll_launch_result()
 		            "': already running");
 		emit launch_problem(_pending_launch_name,
 		                    QStringLiteral("already running"));
+	} else if (Genode::strcmp(st, "insufficient-resources") == 0) {
+		/*
+		 * The refusal carries the budget it judged against. Surfacing
+		 * the numbers is the whole point: "it did not start" alone
+		 * leaves the user with nothing to act on, while "needs 96M,
+		 * only 59M free" tells them to close something first.
+		 */
+		Genode::String<32> need_ram  { "?" }, avail_ram  { "?" };
+		Genode::String<32> need_caps { "?" }, avail_caps { "?" };
+		try {
+			Genode::Xml_node const r = _launch_result->xml();
+			need_ram   = r.attribute_value("need_ram",   Genode::String<32>("?"));
+			avail_ram  = r.attribute_value("avail_ram",  Genode::String<32>("?"));
+			need_caps  = r.attribute_value("need_caps",  Genode::String<32>("?"));
+			avail_caps = r.attribute_value("avail_caps", Genode::String<32>("?"));
+		} catch (Genode::Xml_node::Invalid_syntax) { }
+
+		Genode::warning("sponge-de: launch '", pkg,
+		                "' failed: insufficient resources (need ", need_ram,
+		                "/", need_caps, ", avail ", avail_ram, "/", avail_caps,
+		                ")");
+		emit launch_problem(_pending_launch_name,
+		                    QStringLiteral("not enough free memory or "
+		                                   "capabilities (needs %1 RAM / %2 "
+		                                   "caps, %3 RAM / %4 caps free)")
+		                        .arg(QString::fromUtf8(need_ram.string()),
+		                             QString::fromUtf8(need_caps.string()),
+		                             QString::fromUtf8(avail_ram.string()),
+		                             QString::fromUtf8(avail_caps.string())));
 	} else {
 		Genode::warning("sponge-de: launch '", pkg,
 		                "' returned status='", st, "'");

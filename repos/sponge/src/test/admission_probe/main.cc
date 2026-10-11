@@ -253,6 +253,16 @@ struct Admission_probe
 		} catch (Genode::Xml_node::Invalid_syntax) { return 0; }
 	}
 
+	bool _await_first_beat(unsigned &out)
+	{
+		for (unsigned i = 0; i < STATE_WAIT; ++i) {
+			out = _beat_n();
+			if (out > 0) return true;
+			_timer.msleep(500);
+		}
+		return false;
+	}
+
 	/* ---- request / result / broadcast primitives ---- */
 
 	bool _result_is_for(char const *op, char const *pkg)
@@ -357,20 +367,25 @@ struct Admission_probe
 		Genode::log("admission-probe: pkg_runtime budget avail ram=", b0.ram,
 		            " caps=", b0.caps);
 
-		unsigned const beat0 = _beat_n();
-		if (beat0 == 0) {
+		/* pkgd starts with no roots, so the witness must be installed. */
+		if (!_expect("install", _witness.string(), "ok")) return;
+
+		unsigned beat0 { 0 };
+		if (!_await_first_beat(beat0)) {
 			_fail("the witness never published a beat — the survival "
 			      "assertion would be blind");
 			return;
 		}
 		if (!_broadcast_running(_witness.string())) {
 			_fail(Genode::String<96>("the witness package '", _witness,
-			                         "' is not running at boot").string());
+			                         "' is not running").string());
 			return;
 		}
 
-		/* Consume most of the budget. */
+		/* Consume most of the budget. Both fat packages are installed (not
+		 * autostart, so they stay stopped) before either is launched. */
 		if (!_expect("install", _hog.string(), "ok")) return;
+		if (!_expect("install", _fat.string(), "ok")) return;
 		if (!_expect("launch", _hog.string(), "ok"))  return;
 
 		Genode::size_t avail_after_hog { 0 };
