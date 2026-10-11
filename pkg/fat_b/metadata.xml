@@ -1,0 +1,27 @@
+<!--
+  fat_b — the package the admission gate must REFUSE.
+
+  Same shape as fat_a, same shared config_witness binary, same declared
+  quota. run/sponge-pkg-admission.run launches it a second time after
+  fat_a has drained pkg_runtime's budget: with only ~58M of 160M left,
+  fat_b's 96M demand does not fit, and sponge_pkgd must answer
+  'insufficient-resources' BEFORE fat_b enters the running set and
+  BEFORE the pkg_runtime config is regenerated.
+
+  The probe then removes fat_a (freeing the budget) and launches fat_b
+  again, which must succeed — the positive control proving the gate is a
+  live budget check, not a latch and not a permanent refusal.
+
+  Never enabled by any bake profile, so it exists only in the admission
+  scenario's staged image.
+-->
+<package>
+  <name>fat_b</name>
+  <version>1.0</version>
+  <description>Admission-control probe: the over-budget package (96M / 2000 caps).</description>
+
+  <binary>config_witness</binary>
+  <quota ram="96M" caps="2000"/>
+
+  <dependencies/>
+</package>

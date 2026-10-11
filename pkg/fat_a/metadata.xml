@@ -1,0 +1,28 @@
+<!--
+  fat_a — the FIRST budget consumer of the admission-control probe.
+
+  A deliberately fat, metadata-only package: its binary is the same
+  config_witness used by pkg/witness, so this fixture adds no build cost
+  and no new component — only a DECLARED quota large enough to eat a
+  measurable slice of pkg_runtime's budget.
+
+  Not autostarted: it is installed (registering it) and then launched
+  explicitly by run/sponge-pkg-admission.run's admission_probe, which
+  drains most of pkg_runtime's RAM/caps headroom so that the NEXT launch
+  (fat_b) must be refused with 'insufficient-resources'.
+
+  The quotas below are sized against the scenario's pkg_runtime grant
+  (caps 3200 / ram 160M) and must not be changed without re-tuning the
+  scenario; no shipped package declares this shape, so they cannot
+  perturb the product topologies.
+-->
+<package>
+  <name>fat_a</name>
+  <version>1.0</version>
+  <description>Admission-control probe: first fat budget consumer (96M / 2000 caps).</description>
+
+  <binary>config_witness</binary>
+  <quota ram="96M" caps="2000"/>
+
+  <dependencies/>
+</package>

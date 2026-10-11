@@ -1,0 +1,175 @@
+#
+# \brief  Sponge OS package-admission-control scenario
+# \author Sponge OS contributors
+# \date   2026
+#
+# Question under test (empirically, on QEMU/seL4 or base-linux):
+#
+#   Does sponge_pkgd REFUSE to spawn a package whose declared quota does
+#   not fit in pkg_runtime's remaining RAM/caps budget — and is that
+#   refusal a clean no-op rather than a collateral event?
+#
+# Without the gate, the answer today is no: _do_launch() adds the
+# package to the running set, regenerates the config, and answers "ok".
+# pkg_runtime's init then clamps the child to whatever quota it has left
+# (genode/repos/os/src/lib/sandbox/child.cc:483-486, `ram_quota =
+# avail_ram`), the child dies before its first instruction, and the only
+# trace anywhere is a kernel warning. That is the same class of silent
+# failure run/sponge-pkg-lifecycle.run already covers for a missing
+# BINARY ("binary-missing") — this scenario is its resource twin.
+#
+# Mechanism under test. pkgd reads pkg_runtime's own sandbox state report
+# (the "runtime_state" ROM, HID-serialized by the 26.08 Generator) and
+# compares the package's declared <quota ram= caps=> against init's
+# reported top-level <ram avail=/> and <caps avail=/>. It refuses when
+# the demand does not fit, BEFORE the package enters the running set and
+# BEFORE the config is regenerated, answering "insufficient-resources"
+# with the numbers. The gate is opt-in via an <admission/> node in
+# pkgd's config, and inert when the report has not arrived yet.
+#
+# Topology (kernel-agnostic, no Qt, no drivers, no disk):
+#
+#   init
+#   + timer
+#   + report_rom
+#   + sponge_pkgd     (<admission/> — the pre-flight is armed)
+#   + pkg_runtime     (binary init; caps 3200 / ram 160M)
+#   + admission_probe (drives the sequence, reads the state report and
+#                      the witness beat)
+#
+# Under pkg_runtime: the "witness" package (4M / 100 caps, autostart —
+# the survival witness whose monotonic beat counter restarts at 1
+# whenever the process is recreated), and two fat probe-only packages:
+#
+#   fat_a  96M / 2000 caps   drained first; leaves roughly 58M of 160M
+#   fat_b  96M / 2000 caps   must then be REFUSED
+#
+# The budget is sized so the refusal is unambiguous but not razor-thin:
+# the fat_b launch demands 96M + an 8M admission margin against ~58M of
+# real headroom, and the caps demand exceeds the remaining caps by a wide
+# margin as well.
+#
+# report_rom policies:
+#   sponge_pkgd     -> request        <- admission_probe -> request
+#   admission_probe -> result         <- sponge_pkgd     -> result
+#   pkg_runtime     -> config         <- sponge_pkgd     -> runtime
+#   sponge_pkgd     -> runtime_state  <- pkg_runtime     -> state
+#   admission_probe -> runtime_state  <- pkg_runtime     -> state
+#   admission_probe -> beat           <- pkg_runtime     -> witness -> beat
+#
+# The probe subscribes to the SAME state report pkgd reads (report_rom
+# fans one report source out to several ROM labels) so its cross-checks
+# are against the identical budget, not a private estimate.
+#
+# Gate:
+#   admission-probe: PASS  -> the over-budget launch was refused with
+#                             coherent numbers, the refused package never
+#                             entered the running set, the already-running
+#                             witness kept counting, and freeing the
+#                             budget made the very same launch succeed.
+#   admission-probe: FAIL  -> one of those did not hold (the run then
+#                             fails loud on the bounded timeout).
+#
+# Build:
+#   make -C genode/build/x86_64 run/sponge-pkg-admission \
+#       KERNEL=sel4 BOARD=pc
+#
+
+build { core lib/ld init timer server/report_rom lib/vfs sponge_pkgd \
+        test/config_witness test/admission_probe }
+
+create_boot_directory
+
+install_config [subst {
+config
++ parent-provides
+  + service LOG
+  + service PD
+  + service CPU
+  + service ROM
+  + service IRQ
+  + service IO_MEM
+  + service IO_PORT
+
++ default-route
+  + any-service
+    + parent
+    + any-child
++ default | caps: 200 | ram: 8M
+
++ start timer
+  + provides | + service Timer
+
++ start report_rom | ram: 4M
+  + provides
+    + service Report
+    + service ROM
+  + config | verbose: no
+    + policy | label: sponge_pkgd -> request       | report: admission_probe -> request
+    + policy | label: admission_probe -> result    | report: sponge_pkgd -> result
+    + policy | label: pkg_runtime -> config        | report: sponge_pkgd -> runtime
+    + policy | label: sponge_pkgd -> runtime_state | report: pkg_runtime -> state
+    + policy | label: admission_probe -> runtime_state | report: pkg_runtime -> state
+    + policy | label: admission_probe -> beat      | report: pkg_runtime -> witness -> beat
+    + policy | label: admission_probe -> installed | report: sponge_pkgd -> installed
+
++ start sponge_pkgd | caps: 400 | ram: 32M
+  + config
+    + admission
+  + route
+    + service ROM | label_last: request | + child report_rom
+    + service ROM | label: runtime_state | + child report_rom
+    + service Report | + child report_rom
+    + any-service
+      + parent
+      + any-child
+
++ start pkg_runtime | caps: 3200 | ram: 160M
+  + binary init
+  + route
+    + service ROM | label: config | + child report_rom
+    + service Report | + child report_rom
+    + any-service
+      + parent
+      + any-child
+
++ start admission_probe | caps: 300 | ram: 8M
+  + config | witness: witness | hog: fat_a | fat: fat_b
+  + route
+    + service ROM | label: result        | + child report_rom
+    + service ROM | label: installed     | + child report_rom
+    + service ROM | label: runtime_state | + child report_rom
+    + service ROM | label: beat          | + child report_rom
+    + service Report | + child report_rom
+    + service Timer | + child timer
+    + any-service
+      + parent
+      + any-child
+- }]
+
+#
+# Stage package metadata + the derived index (same scheme as
+# run/sponge-config-regen-survival.run).
+#
+set staged_pkgs { witness fat_a fat_b }
+foreach pkg $staged_pkgs {
+	set src "${genode_dir}/../pkg/$pkg/metadata.xml"
+	if {![file exists $src]} {
+		error "package metadata not found: $src"
+	}
+	exec cp -L $src "[run_dir]/genode/pkg_$pkg.xml"
+}
+
+set index_fh [open "[run_dir]/genode/pkg_index.xml" w]
+puts $index_fh "<packages>"
+foreach pkg $staged_pkgs {
+	puts $index_fh "  <pkg name=\"$pkg\"/>"
+}
+puts $index_fh "</packages>"
+close $index_fh
+
+build_boot_image [build_artifacts]
+
+append qemu_args " -nographic -m 1G "
+
+run_genode_until {.*admission-probe: PASS.*} 240
