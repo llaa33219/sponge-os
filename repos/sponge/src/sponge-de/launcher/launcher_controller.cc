@@ -331,6 +331,7 @@ void LauncherController::request_launch(QString const &name)
 		Genode::warning("sponge-de: launch channels unavailable (earlier "
 		                "open failed); dropping launch request for '",
 		                name.toUtf8().constData(), "'");
+		emit launch_problem(name, QStringLiteral("package manager unreachable"));
 		return;
 	}
 
@@ -351,6 +352,7 @@ void LauncherController::request_launch(QString const &name)
 		_launch_channels_broken = true;
 		Genode::error("sponge-de: opening the launcher channels failed "
 		              "(resource exhaustion); launcher disabled");
+		emit launch_problem(name, QStringLiteral("package manager unreachable"));
 		return;
 	}
 
@@ -472,6 +474,8 @@ void LauncherController::_poll_launch_result()
 			Genode::warning("sponge-de: launch result for '",
 			                _pending_launch_name.toUtf8().constData(),
 			                "' timed out (launcher_result unavailable)");
+			emit launch_problem(_pending_launch_name,
+			                    QStringLiteral("no answer from the package manager"));
 			_pending_launch_name.clear();
 			return;
 		}
@@ -502,6 +506,8 @@ void LauncherController::_poll_launch_result()
 			Genode::warning("sponge-de: launch result for '",
 			                _pending_launch_name.toUtf8().constData(),
 			                "' timed out");
+			emit launch_problem(_pending_launch_name,
+			                    QStringLiteral("no answer from the package manager"));
 			_pending_launch_name.clear();
 			return;
 		}
@@ -509,19 +515,36 @@ void LauncherController::_poll_launch_result()
 		return;
 	}
 
-	/* Got a matching result: log the outcome for observability. */
+	/*
+	 * Got a matching result: log the outcome for observability AND,
+	 * for every outcome that is not a plain success, tell the user on
+	 * the panel. A click that ends in nothing must not be silent
+	 * (AGENTS.md §1.1 — automation the user cannot see is not
+	 * automation).
+	 */
 	char const *const st = status.string();
 	if (Genode::strcmp(st, "ok") == 0) {
 		Genode::log("sponge-de: launched '", pkg, "'");
 	} else if (Genode::strcmp(st, "not-installed") == 0) {
 		Genode::warning("sponge-de: launch '", pkg,
 		                "' failed: not installed");
+		emit launch_problem(_pending_launch_name,
+		                    QStringLiteral("not installed"));
+	} else if (Genode::strcmp(st, "binary-missing") == 0) {
+		Genode::warning("sponge-de: launch '", pkg,
+		                "' failed: binary missing from the package");
+		emit launch_problem(_pending_launch_name,
+		                    QStringLiteral("no runnable binary in the package"));
 	} else if (Genode::strcmp(st, "already-running") == 0) {
 		Genode::log("sponge-de: launch '", pkg,
 		            "': already running");
+		emit launch_problem(_pending_launch_name,
+		                    QStringLiteral("already running"));
 	} else {
 		Genode::warning("sponge-de: launch '", pkg,
 		                "' returned status='", st, "'");
+		emit launch_problem(_pending_launch_name,
+		                    QString::fromUtf8(st));
 	}
 
 	_pending_launch_name.clear();
