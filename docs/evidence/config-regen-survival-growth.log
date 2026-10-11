@@ -1,0 +1,26 @@
+building targets:  core lib/ld init timer server/report_rom lib/vfs sponge_pkgd test/config_witness test/regen_probe 
+spawn make core lib/ld init timer server/report_rom lib/vfs sponge_pkgd test/config_witness test/regen_probe
+  Program sponge_pkgd/sponge_pkgd
+boot module 'sponge_pkgd' (255376 bytes)
+[init -> regen_probe] regen-probe: installing witness 'witness'
+[init -> sponge_pkgd] sponge_pkgd: ready
+[init -> sponge_pkgd] sponge_pkgd: binary_prefix=''
+[init -> sponge_pkgd] sponge_pkgd: repro_pad_grow write=1 emitted_pad>=32768 buffer=32768
+[init -> sponge_pkgd] sponge_pkgd: repro_pad_grow write=2 emitted_pad>=65536 buffer=32768
+[init -> sponge_pkgd] sponge_pkgd: duplicate request install|witness|1 — replaying the cached result
+[init -> pkg_runtime -> witness] config-witness: start
+[init -> regen_probe] regen-probe: witness live at n=3
+[init -> regen_probe] regen-probe: cycle 1/4 — install second (forces a pkg_runtime config regeneration)
+[init -> sponge_pkgd] sponge_pkgd: repro_pad_grow write=3 emitted_pad>=98304 buffer=32768
+[init -> regen_probe] regen-probe: cycle 1 survived (n=24)
+[init -> regen_probe] regen-probe: cycle 2/4 — remove second (forces a pkg_runtime config regeneration)
+[init -> sponge_pkgd] sponge_pkgd: repro_pad_grow write=4 emitted_pad>=131072 buffer=32768
+[init -> regen_probe] regen-probe: cycle 2 survived (n=46)
+[init -> regen_probe] regen-probe: cycle 3/4 — install second (forces a pkg_runtime config regeneration)
+[init -> sponge_pkgd] sponge_pkgd: repro_pad_grow write=5 emitted_pad>=163840 buffer=32768
+[init -> regen_probe] regen-probe: cycle 3 survived (n=68)
+[init -> regen_probe] regen-probe: cycle 4/4 — remove second (forces a pkg_runtime config regeneration)
+[init -> sponge_pkgd] sponge_pkgd: repro_pad_grow write=6 emitted_pad>=196608 buffer=32768
+[init -> regen_probe] regen-probe: cycle 4 survived (n=89)
+[init -> regen_probe] regen-probe: PASS
+Run script execution successful.

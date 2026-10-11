@@ -284,6 +284,25 @@ A scenario defines:
   ROM by `report_rom`); pkg_runtime starts hello, verified by the
   payload's boot marker. Kernel-agnostic.
 
+- `sponge-config-regen-survival.run` — does a `sponge_pkgd`
+  config regeneration that crosses the `Expanding_reporter` buffer
+  boundary kill already-running `pkg_runtime` children? Minimal
+  headless topology (no Qt, no drivers, no disk): `regen_probe`
+  installs the autostarted `witness` package (payload
+  `config_witness`, a monotonically increasing beat counter relayed
+  through `report_rom`), then drives four install/remove operations on
+  a second package, each of which makes `pkgd` regenerate the whole
+  config with `<repro_pad_grow: yes>` (write *N* padded with *N* ×
+  32 KiB, so EVERY write provably overflows the 32 KiB reporter
+  buffer) and requires the counter to stay monotonic. **Measured
+  verdict: the children survive** — `report_rom` never notifies a
+  reader that its writer closed, so the transient no-writer window is
+  invisible to `pkg_runtime`. `SPONGE_REPRO_CONTROL=1` runs the
+  POSITIVE CONTROL (`<repro_empty_from: 3>`, an empty-but-valid
+  config), which MUST make the probe report FAIL — it proves the
+  detector is not blind. Gates on `regen-probe: PASS`. Kernel-agnostic.
+  Receipts: `docs/evidence/config-regen-survival.md`.
+
 - `sponge-pkg-remove.run` — Phase 4b: full install→remove lifecycle.
   The `pkg_seq_probe` component drives the channel (vct is short-lived),
   installs hello, removes it, and confirms both results; verified by a
