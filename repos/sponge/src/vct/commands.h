@@ -264,9 +264,12 @@ class LeitzentraleCommand : public Command
  * DE launcher menu click (AGENTS.md §3.3 rule 5). No --manual mode
  * (launch is a single-step op; no stop exists in Alpha). The result
  * status is one of "ok" / "not-installed" / "already-running" /
- * "binary-missing"; the non-ok outcomes exit non-zero with a clear
- * message. An audit line is printed before the request (control
- * philosophy, docs/06 §4.2).
+ * "binary-missing" / "insufficient-resources"; the non-ok outcomes
+ * exit non-zero with a clear message. "insufficient-resources" also
+ * carries the four budget figures (need_ram / avail_ram / need_caps /
+ * avail_caps) so a caller can tell the user what is actually left. An
+ * audit line is printed before the request (control philosophy,
+ * docs/06 §4.2).
  */
 class LaunchCommand : public Command
 {
