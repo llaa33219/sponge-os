@@ -29,6 +29,24 @@
 #   5. launch nosuchpkg        -> not-installed (no implicit install).
 #   6. remove pkg_gui_demo     -> ok; broadcast no longer shows
 #                                  pkg_gui_demo (<start> node dropped).
+#   7. launch_duplicate hello  -> the launcher's double-click: the
+#                                  byte-identical request re-sent on
+#                                  launcher_request is ANSWERED on
+#                                  launcher_result with the same
+#                                  already-running status (regression
+#                                  guard for the reply-swallowing
+#                                  de-duplication path).
+#   8. install nano            -> ok. nano's metadata is staged and in
+#                                  the index, but its BINARY is not built
+#                                  into this image.
+#   9. launch nano             -> binary-missing (pre-flight), and the
+#                                  broadcast still shows nano/running=no
+#                                  (never entered the running set).
+#                                  nano has no <autostart/>, so step 8
+#                                  never puts a <start> node in the
+#                                  config and pkg_runtime is never asked
+#                                  to start a child it would drop with a
+#                                  bare warning.
 #
 # Kernel-agnostic topology (base-linux native or base-sel4 QEMU). The
 # acceptance run uses KERNEL=linux BOARD=pc for fast iteration; the
@@ -90,6 +108,8 @@ config
     + policy | label: sponge_pkgd -> request                | report: pkg_lifecycle_probe -> request
     + policy | label: pkg_lifecycle_probe -> result         | report: sponge_pkgd -> result
     + policy | label: pkg_lifecycle_probe -> installed      | report: sponge_pkgd -> installed
+    + policy | label: sponge_pkgd -> launcher_request       | report: pkg_lifecycle_probe -> launcher_request
+    + policy | label: pkg_lifecycle_probe -> launcher_result | report: sponge_pkgd -> launcher_result
     + policy | label: pkg_runtime -> config                 | report: sponge_pkgd -> runtime
 
 + start nitpicker | ram: 8M
@@ -115,8 +135,13 @@ config
     + background | color: #1e1e2e
 
 + start sponge_pkgd | caps: 200 | ram: 16M
+  + config
+    + launcher_request
+    + binaries
   + route
     + service ROM | label_last: request | + child report_rom
+    + service ROM | label_last: launcher_request | + child report_rom
+    + service ROM | label: pkg_binaries | + parent | label: pkg_binaries.xml
     + service Report | + child report_rom
     + any-service
       + parent
@@ -134,7 +159,7 @@ config
       + any-child
 
 + start pkg_lifecycle_probe | caps: 200 | ram: 16M
-  + config
+  + config | launcher: yes
     + step | op: install           | pkg: hello
     + step | op: assert_installed  | name: hello          | running: yes
 
@@ -150,10 +175,17 @@ config
 
     + step | op: remove            | pkg: pkg_gui_demo
     + step | op: assert_absent     | name: pkg_gui_demo
+
+    + step | op: launch_duplicate  | pkg: hello            | expect_status: already-running
+
+    + step | op: install           | pkg: nano
+    + step | op: launch            | pkg: nano             | expect_status: binary-missing
+    + step | op: assert_installed  | name: nano            | running: no
   + route
     + service Timer | + child timer
     + service ROM | label_last: result | + child report_rom
     + service ROM | label_last: installed | + child report_rom
+    + service ROM | label_last: launcher_result | + child report_rom
     + service Report | + child report_rom
     + any-service
       + parent
@@ -184,6 +216,28 @@ puts $index_fh "</packages>"
 close $index_fh
 
 #
+# Staged-binary manifest (the <binaries/> pre-flight). Lists the package
+# binaries that really are in this image, so sponge_pkgd can refuse a
+# launch whose binary is absent BEFORE emitting "ok" — otherwise pkg_
+# runtime's init silently drops the child (sandbox/library.cc catches
+# Rom_connection_failed/Out_of_ram/Out_of_caps and only warns).
+#
+# Derived from $staged_binaries, NOT from $staged_pkgs: the whole point
+# is that ncurses/nano have staged METADATA but no staged BINARY, which
+# is exactly the class of broken install a user must never be told "ok"
+# about. Mirrors pkg_index.xml in shape; generated at boot-image
+# assembly from the actual pkg/ contents.
+#
+set staged_binaries { hello pkg_gui_demo }
+set bin_fh [open "bin/pkg_binaries.xml" w]
+puts $bin_fh "<binaries>"
+foreach bin $staged_binaries {
+	puts $bin_fh "  <binary name=\"$bin\"/>"
+}
+puts $bin_fh "</binaries>"
+close $bin_fh
+
+#
 # qt6_dejavusans.tar raw recipe is depot-only; mirror its content into
 # bin/ from the qt6_base port sources (same as run/sponge-pkg-gui.run).
 #
@@ -209,7 +263,7 @@ set boot_modules [build_artifacts]
 foreach m { libQt6Core.lib.so libQt6Gui.lib.so libQt6Widgets.lib.so \
             libqgenode.lib.so qt6_libqgenode.tar qt6_dejavusans.tar \
             pkg_pkg_gui_demo.xml pkg_hello.xml pkg_ncurses.xml pkg_nano.xml \
-            pkg_index.xml } {
+            pkg_index.xml pkg_binaries.xml } {
 	lappend boot_modules $m
 }
 

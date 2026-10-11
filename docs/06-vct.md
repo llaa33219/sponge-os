@@ -233,6 +233,11 @@ Automation-default behavior:
     exit non-zero.
   - `already-running`: the named package already has a `<start>`
     node; exit non-zero.
+  - `binary-missing`: the package is registered but its binary is not
+    present in this image, so it could not have started; exit
+    non-zero. `sponge_pkgd` detects this before emitting a `<start>`
+    node, because `pkg_runtime`'s `init` would otherwise drop the child
+    with nothing but a kernel warning.
 - Audit line printed before acting:
   `[vct] launch: requesting start of <name>`.
 

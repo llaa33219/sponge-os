@@ -310,10 +310,33 @@ class Sponge::Pkgd::Main
 		 * session setup, once on relay), and install/remove mutate
 		 * state — so a naive re-process would turn a real install into
 		 * a no-op re-install and make vct observe an empty result. We
-		 * skip any request whose op|pkg|seq signature matches the last
-		 * one we already handled.
+		 * skip RE-PROCESSING any request whose op|pkg|seq signature
+		 * matches the last one we already handled.
+		 *
+		 * Skipping the re-processing must NOT skip the answer: the Sponge
+		 * DE launcher sends no seq, so a double-click is a genuine
+		 * duplicate. Returning early without emitting anything left the
+		 * launcher polling a result ROM that would never change until its
+		 * 6 s timeout, with no user feedback at all. So the last result
+		 * is cached as a REPLAY RECIPE (not as bytes) and re-emitted on
+		 * a duplicate. A recipe — not a byte snapshot — is what makes the
+		 * replay byte-identical: it re-invokes the very same _report_*
+		 * helper with the same inputs.
+		 *
+		 * _last_* are written by the _report_* helpers themselves, so the
+		 * cache can never drift from what was actually emitted. A matching
+		 * signature also guarantees no other request ran in between (every
+		 * handled request rewrites _last_request_sig), so the derived state
+		 * those helpers read (_plan, _installed, _running) is unchanged.
 		 */
 		Genode::String<160> _last_request_sig { };
+
+		Genode::String<32>  _last_op      { };
+		Genode::String<128> _last_pkg     { };
+		Genode::String<32>  _last_status  { };   /* "ok" | "error" | launch outcome */
+		Genode::String<256> _last_message { };   /* error text, empty otherwise      */
+		Genode::String<64>  _last_items[MAX_PACKAGES] { };  /* added / removed */
+		unsigned            _num_last_items { 0 };
 
 		/*
 		 * Selects which result reporter the _report_* helpers write to
@@ -426,6 +449,31 @@ class Sponge::Pkgd::Main
 		Genode::Constructible<Genode::Attached_rom_dataspace> _bake_manifest_rom { };
 
 		/*
+		 * Binary-manifest ROM (optional, config-gated by <binaries/>):
+		 * the set of package binaries actually staged in this image,
+		 * used by _do_launch's pre-flight check (see _binary_available).
+		 *
+		 * Why a manifest instead of probing the binary ROM directly: a
+		 * missing boot module is a FATAL ROM-session denial under Genode's
+		 * base Env policy — base/component.cc answers a denied session
+		 * with "stop because parent denied ..." + sleep_forever(), it does
+		 * NOT throw. So a probe-style open would kill sponge_pkgd exactly
+		 * in the case it is meant to diagnose, and would additionally fail
+		 * on every launch in disk-served mode, where the binaries live in
+		 * pkg_runtime's rom_sys domain (chroot /system), not in pkgd's.
+		 *
+		 * This is the same denial-safe, index-gated pattern pkg_index.xml
+		 * already uses for package metadata, generalized from metadata to
+		 * binaries. With no <binaries/> node the check is inert and launch
+		 * behaves exactly as before — the manual escape hatch
+		 * (AGENTS.md §1.1).
+		 */
+		Genode::Constructible<Genode::Attached_rom_dataspace> _binary_manifest_rom { };
+		Genode::String<96> _staged_binaries[MAX_PACKAGES] { };
+		unsigned           _num_staged_binaries       { 0 };
+		bool               _binary_manifest_loaded    { false };
+
+		/*
 		 * Disk-served binary path prefix (Phase 8 P2, docs/14 §4.4/§4.6).
 		 * When non-empty (e.g. "bin/"), generated <binary> names are
 		 * prefixed so cached_fs_rom (chroot /system) resolves them at
@@ -482,6 +530,10 @@ class Sponge::Pkgd::Main
 		void _init_bake();
 		bool _seed_roots_from_bake();
 
+		/* ---- binary manifest (optional, config-gated) ---- */
+		void _init_binary_manifest();
+		bool _binary_available(Package const &p);
+
 		/* ---- launcher channel (optional, config-gated) ---- */
 		void _init_launcher_channel();
 
@@ -503,6 +555,15 @@ class Sponge::Pkgd::Main
 		void _report_list_ok();
 		void _report_error(char const *op, Genode::String<128> const &pkg,
 		                   char const *message);
+
+		/*
+		 * Re-emit the cached result of the previous request on the
+		 * channel the duplicate arrived on. Byte-identical by
+		 * construction: it re-invokes the same _report_* helper that
+		 * produced the original answer, with the same arguments.
+		 */
+		void _replay_last_result();
+		void _cache_items(Genode::String<64> const *items, unsigned n);
 
 		/* ---- small helpers ---- */
 		Genode::Expanding_reporter &_result();
@@ -1095,8 +1156,18 @@ void Sponge::Pkgd::Main::_handle_request_impl(Genode::Xml_node const &req)
 	                                         Genode::String<16>());
 
 	Genode::String<160> const sig(op, "|", pkg, "|", seq);
-	if (sig == _last_request_sig)
+	if (sig == _last_request_sig) {
+		/*
+		 * Duplicate: re-processing would re-run the side effects, but
+		 * answering nothing strands the caller until its timeout (the
+		 * launcher's double-click case). Replay the cached answer
+		 * instead — see _last_request_sig above.
+		 */
+		Genode::log("sponge_pkgd: duplicate request ", sig,
+		            " — replaying the cached result");
+		_replay_last_result();
 		return;
+	}
 	_last_request_sig = sig;
 
 	/* `list` takes no package; every other op requires one. */
@@ -1359,11 +1430,15 @@ void Sponge::Pkgd::Main::_do_remove(Genode::String<128> const &pkg)
  *
  * Transitions an installed-but-stopped package to running by adding its
  * name to _running and regenerating the pkg_runtime config so init
- * starts the new <start> node. Three bounded outcomes:
+ * starts the new <start> node. Four bounded outcomes:
  *   - not-installed: the package is not in the installed set
  *     (no implicit install — caller must install first);
  *   - already-running: the package already has a <start> node
  *     (idempotent launch is a no-op);
+ *   - binary-missing: the package's binary is not staged in this image.
+ *     Reported BEFORE the package enters _running and BEFORE the config
+ *     is regenerated, so pkg_runtime is never even asked to start a
+ *     child it would silently drop;
  *   - ok: the package transitioned installed -> running.
  *
  * No stop operation exists in Alpha, so once running the package stays
@@ -1382,6 +1457,31 @@ void Sponge::Pkgd::Main::_do_launch(Genode::String<128> const &pkg)
 	if (_is_running(name)) {
 		_report_launch_ok(pkg, "already-running");
 		return;
+	}
+
+	/*
+	 * Pre-flight: a package can be fully installed (metadata staged,
+	 * resolvable, in the index) while its BINARY is absent from the
+	 * image. Reporting "ok" in that case is a lie the user never sees
+	 * corrected: pkg_runtime's init catches Rom_connection_failed,
+	 * Out_of_ram and Out_of_caps around child creation and merely
+	 * WARNING (sandbox/library.cc), so the launch silently evaporates.
+	 * Gate on the staged-binary manifest BEFORE touching _running.
+	 */
+	{
+		Package const *found { nullptr };
+		for (unsigned i = 0; i < _num_installed; ++i)
+			if (Genode::strcmp(_installed[i].name.string(), name) == 0) {
+				found = &_installed[i];
+				break;
+			}
+		if (found && !_binary_available(*found)) {
+			Genode::log("sponge_pkgd: launch ", pkg,
+			            " -> binary-missing (", _binary_prefix,
+			            found->binary, " is not staged in this image)");
+			_report_launch_ok(pkg, "binary-missing");
+			return;
+		}
 	}
 
 	_add_running(name);
@@ -1761,6 +1861,11 @@ void Sponge::Pkgd::Main::_report_ok(Genode::String<128> const &pkg)
 	/* The root package is the last entry in the install-ordered plan. */
 	Package const &root = _plan[_num_plan > 0 ? _num_plan - 1 : 0];
 
+	_last_op     = Genode::String<32>("explain");
+	_last_pkg    = pkg;
+	_last_status = Genode::String<32>("ok");
+	_last_message = Genode::String<256>();
+
 	_result().generate_xml([&](Genode::Xml_generator &g) {
 		g.attribute("status", "ok");
 		g.attribute("op",     "explain");
@@ -1827,6 +1932,12 @@ void Sponge::Pkgd::Main::_report_error(char const *op,
                                        Genode::String<128> const &pkg,
                                        char const *message)
 {
+	_last_op      = Genode::String<32>(op);
+	_last_pkg     = pkg;
+	_last_status  = Genode::String<32>("error");
+	_last_message = Genode::String<256>(message);
+	_num_last_items = 0;
+
 	_result().generate_xml([&](Genode::Xml_generator &g) {
 		g.attribute("status", "error");
 		g.attribute("op",     op);
@@ -1843,6 +1954,12 @@ void Sponge::Pkgd::Main::_report_install_ok(Genode::String<128> const &pkg,
                                             Genode::String<64> const *added,
                                             unsigned num_added)
 {
+	_last_op     = Genode::String<32>("install");
+	_last_pkg    = pkg;
+	_last_status = Genode::String<32>("ok");
+	_last_message = Genode::String<256>();
+	_cache_items(added, num_added);
+
 	_result().generate_xml([&](Genode::Xml_generator &g) {
 		g.attribute("status",  "ok");
 		g.attribute("op",      "install");
@@ -1864,9 +1981,15 @@ void Sponge::Pkgd::Main::_report_install_ok(Genode::String<128> const &pkg,
 
 
 void Sponge::Pkgd::Main::_report_remove_ok(Genode::String<128> const &pkg,
-                                           Genode::String<64> const *removed,
-                                           unsigned num_removed)
+Genode::String<64> const *removed,
+                                            unsigned num_removed)
 {
+	_last_op     = Genode::String<32>("remove");
+	_last_pkg    = pkg;
+	_last_status = Genode::String<32>("ok");
+	_last_message = Genode::String<256>();
+	_cache_items(removed, num_removed);
+
 	_result().generate_xml([&](Genode::Xml_generator &g) {
 		g.attribute("status", "ok");
 		g.attribute("op",     "remove");
@@ -1892,6 +2015,12 @@ void Sponge::Pkgd::Main::_report_remove_ok(Genode::String<128> const &pkg,
 void Sponge::Pkgd::Main::_report_launch_ok(Genode::String<128> const &pkg,
                                            char const *outcome)
 {
+	_last_op     = Genode::String<32>("launch");
+	_last_pkg    = pkg;
+	_last_status = Genode::String<32>(outcome);
+	_last_message = Genode::String<256>();
+	_num_last_items = 0;
+
 	Genode::log("sponge_pkgd: launch result ", pkg, " -> ", outcome,
 	            " (channel=",
 	            _active_channel == Result_channel::launcher ? "launcher"
@@ -1908,6 +2037,11 @@ void Sponge::Pkgd::Main::_report_launch_ok(Genode::String<128> const &pkg,
 
 void Sponge::Pkgd::Main::_report_list_ok()
 {
+	_last_op     = Genode::String<32>("list");
+	_last_status = Genode::String<32>("ok");
+	_last_message = Genode::String<256>();
+	_num_last_items = 0;
+
 	/* Name-sorted, matching the config generator's ordering, so `list`
 	 * is a faithful view of exactly what pkgd will regenerate. */
 	unsigned order[MAX_PACKAGES] { };
@@ -1949,6 +2083,60 @@ void Sponge::Pkgd::Main::_report_list_ok()
 			}
 		});
 	});
+}
+
+
+void Sponge::Pkgd::Main::_cache_items(Genode::String<64> const *items, unsigned n)
+{
+	_num_last_items = 0;
+	for (unsigned i = 0; i < n && i < MAX_PACKAGES; ++i)
+		_last_items[_num_last_items++] = items[i];
+}
+
+
+/*
+ * Re-emit the previous request's answer on whichever channel the
+ * duplicate arrived on. Each branch re-invokes the SAME _report_* helper
+ * that produced the original result with the SAME arguments, so the
+ * replayed report is byte-identical to what a fresh identical request
+ * would produce (a second launch of a running package answers
+ * "already-running", not silence).
+ */
+void Sponge::Pkgd::Main::_replay_last_result()
+{
+	if (_last_status == Genode::String<32>("error")) {
+		_report_error(_last_op.string(), _last_pkg, _last_message.string());
+		return;
+	}
+	if (_last_op == Genode::String<32>("list")) {
+		_report_list_ok();
+		return;
+	}
+	if (_last_op == Genode::String<32>("explain")) {
+		_report_ok(_last_pkg);
+		return;
+	}
+	if (_last_op == Genode::String<32>("install")) {
+		Package const &root = _plan[_num_plan > 0 ? _num_plan - 1 : 0];
+		_report_install_ok(_last_pkg, root, _last_items, _num_last_items);
+		return;
+	}
+	if (_last_op == Genode::String<32>("remove")) {
+		_report_remove_ok(_last_pkg, _last_items, _num_last_items);
+		return;
+	}
+	if (_last_op == Genode::String<32>("launch")) {
+		_report_launch_ok(_last_pkg, _last_status.string());
+		return;
+	}
+
+	/*
+	 * No recorded result — the previous request died before reporting.
+	 * Answer with a bounded, honest error instead of the old silence.
+	 */
+	_report_error(_last_op.string(), _last_pkg,
+	              Genode::String<128>("no result to replay for the previous ",
+	                                   "request").string());
 }
 
 
@@ -2305,6 +2493,70 @@ bool Sponge::Pkgd::Main::_seed_roots_from_bake()
 }
 
 
+/*
+ * Load the staged-binary manifest — the same opt-in pattern as <bake/>
+ * above: the "pkg_binaries" ROM route must be wired by the scenario, and
+ * Genode's denial path sleeps forever rather than throwing, so an eager
+ * open in an unrouted scenario would hang the daemon.
+ *
+ * Format (mirrors pkg_index.xml, which is a derived staging artifact
+ * generated at boot-image assembly from the actual pkg/ contents):
+ *
+ *   <binaries>
+ *     <binary name="hello"/>
+ *     <binary name="pkg_gui_demo"/>
+ *     <binary name="bin/terminal"/>
+ *   </binaries>
+ *
+ * The names are the EFFECTIVE binary paths, i.e. exactly what
+ * _generate_runtime_config composes from binary_prefix + <binary>.
+ */
+void Sponge::Pkgd::Main::_init_binary_manifest()
+{
+	try {
+		_config_rom.node().with_optional_sub_node("binaries",
+			[&] (Genode::Node const &) {
+				_binary_manifest_rom.construct(_env, "pkg_binaries");
+				_binary_manifest_rom->update();
+				if (!_binary_manifest_rom->valid())
+					return;
+
+				Genode::Xml_node const root(_binary_manifest_rom->local_addr<char>(),
+				                            _binary_manifest_rom->size());
+				if (!root.has_type("binaries"))
+					return;
+
+				root.for_each_sub_node("binary", [&](Genode::Xml_node const &b) {
+					if (_num_staged_binaries < MAX_PACKAGES)
+						_staged_binaries[_num_staged_binaries++] =
+						    b.attribute_value("name", Genode::String<96>());
+				});
+				_binary_manifest_loaded = true;
+				Genode::log("sponge_pkgd: ", _num_staged_binaries,
+				            " staged binary/binar(ies) — launch pre-flight active");
+			});
+	} catch (Genode::Xml_node::Invalid_syntax) { }
+}
+
+
+/*
+ * True when the package's effective binary is staged in this image.
+ * Inert (always true) unless <binaries/> opted a manifest in, so no
+ * deployment changes behavior without opting in (AGENTS.md §1.1).
+ */
+bool Sponge::Pkgd::Main::_binary_available(Package const &p)
+{
+	if (!_binary_manifest_loaded)
+		return true;
+
+	Genode::String<96> const path(_binary_prefix, p.binary);
+	for (unsigned i = 0; i < _num_staged_binaries; ++i)
+		if (Genode::strcmp(_staged_binaries[i].string(), path.string()) == 0)
+			return true;
+	return false;
+}
+
+
 Sponge::Pkgd::Main::Main(Genode::Env &env) : _env(env)
 {
 	Genode::log("sponge_pkgd: ready");
@@ -2335,6 +2587,12 @@ Sponge::Pkgd::Main::Main(Genode::Env &env) : _env(env)
 	 */
 	_init_bake();
 	_seed_roots_from_bake();
+
+	/*
+	 * Staged-binary manifest (opt-in via <binaries/>). Loaded before the
+	 * first request so _do_launch's pre-flight is armed from the start.
+	 */
+	_init_binary_manifest();
 
 	/* Rebuild the full installed set from whatever roots we now have
 	 * (empty on a fresh start, possibly restored on a reboot). This is

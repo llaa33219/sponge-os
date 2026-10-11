@@ -20,6 +20,23 @@
  *       (state changes are async via report_rom) and fail loud on
  *       mismatch.
  *
+ *   (3) duplicate-request regression: <step op="launch_duplicate"
+ *       pkg="X" expect_status="already-running"/>. Sends `launch X`
+ *       over the "request" channel, then re-sends the BYTE-IDENTICAL
+ *       request (same op, pkg AND seq) over the Sponge DE launcher's
+ *       "launcher_request" channel and requires an answer on
+ *       "launcher_result". This is the launcher's double-click: the
+ *       launcher sends no seq, so a second click is a genuine
+ *       op|pkg|seq duplicate. pkgd must SKIP re-processing (install/
+ *       remove mutate state) while still REPLAYING the cached result.
+ *       Before the fix it returned early with no result at all, so the
+ *       launcher polled until its 6 s timeout with zero feedback.
+ *
+ *       "launcher_result" carries no prior content in the scenario that
+ *       enables this step (config attribute launcher="yes"), so any
+ *       answer observed there can only have come from the replay — the
+ *       assertion cannot pass on a stale ROM left over from step one.
+ *
  * Step list is declared in the probe config ROM; each step may also
  * carry `pkg=` as an alias for `name=` (kept for parity with
  * pkg_seq_probe).
@@ -49,6 +66,11 @@ struct Lifecycle_probe
 	static constexpr unsigned MAX_STEPS = 32;
 	static constexpr unsigned POLL_ITERS = 80;     /* x 100ms = 8s ceiling per assertion */
 	static constexpr unsigned OP_ITERS   = 120;    /* x 100ms = 12s ceiling per request */
+	static constexpr unsigned DUP_ITERS  = 40;     /* x 100ms = 4s ceiling for the duplicate
+	                                                  * reply — deliberately under the
+	                                                  * launcher's 6 s timeout so the
+	                                                  * swallowed-reply defect FAILs
+	                                                  * fast instead of looking like a hang. */
 
 	struct Step
 	{
@@ -66,6 +88,17 @@ struct Lifecycle_probe
 	Genode::Expanding_reporter     _request   { _env, "request", "request" };
 	Genode::Attached_rom_dataspace _result    { _env, "result" };
 	Genode::Attached_rom_dataspace _installed { _env, "installed" };
+
+	/*
+	 * Launcher channel (opt-in via the config attribute launcher="yes"):
+	 * the same transport sponge-de's LauncherController writes to. Only
+	 * opened when the scenario routes it — report_rom is single-writer
+	 * per label and Genode's session-denial path sleeps forever rather
+	 * than throwing, so an eager open would hang the probe.
+	 */
+	bool _launcher_channel { false };
+	Genode::Constructible<Genode::Expanding_reporter>     _launch_request { };
+	Genode::Constructible<Genode::Attached_rom_dataspace> _launch_result  { };
 
 	unsigned _seq { 0 };
 	bool     _ok  { true };
@@ -94,12 +127,18 @@ struct Lifecycle_probe
 		if (is_xml) {
 			Genode::Xml_node const root(base, sz);
 			if (!root.has_type("config")) return;
+			_launcher_channel =
+				root.attribute_value("launcher", Genode::String<8>("no"))
+			    == Genode::String<8>("yes");
 			root.for_each_sub_node("step", [&](Genode::Xml_node const &n) {
 				_collect(n);
 			});
 		} else {
 			Genode::Hid_node const root(Genode::Const_byte_range_ptr(base, sz));
 			if (!root.has_type("config")) return;
+			_launcher_channel =
+				root.attribute_value("launcher", Genode::String<8>("no"))
+			    == Genode::String<8>("yes");
 			root.for_each_sub_node([&](Genode::Hid_node const &n) {
 				if (n.has_type("step"))
 					_collect(n);
@@ -140,15 +179,26 @@ struct Lifecycle_probe
 
 	bool _send_and_wait(char const *op, char const *pkg)
 	{
-		++_seq;
+		return _send_and_wait_seq(op, pkg, ++_seq, OP_ITERS);
+	}
+
+	/*
+	 * Send with an EXPLICIT seq. The duplicate-replay step re-uses the
+	 * seq of the original request so the second send carries a
+	 * byte-identical op|pkg|seq signature — that identity is what makes
+	 * it a duplicate rather than a new request.
+	 */
+	bool _send_and_wait_seq(char const *op, char const *pkg, unsigned seq,
+	                        unsigned iters)
+	{
 		_request.generate_xml([&](Genode::Xml_generator &g) {
 			g.attribute("op",  op);
 			g.attribute("pkg", pkg);
-			g.attribute("seq", _seq);
+			g.attribute("seq", seq);
 		});
 
 		_timer.msleep(200);
-		for (unsigned i = 0; i < OP_ITERS; ++i) {
+		for (unsigned i = 0; i < iters; ++i) {
 			_result.update();
 			if (_result_is_for(op, pkg))
 				return true;
@@ -257,6 +307,95 @@ struct Lifecycle_probe
 		            " -> ", status);
 	}
 
+	/*
+	 * Duplicate-request regression (the launcher's double-click).
+	 *
+	 * Phase 1 answers `launch X` over the "request" channel and asserts
+	 * expect_status. Phase 2 re-sends the BYTE-IDENTICAL request (same
+	 * op, pkg and seq — the launcher emits no seq, so a second click
+	 * produces exactly this signature) over the launcher's
+	 * "launcher_request" channel and requires "launcher_result" to carry
+	 * the SAME status.
+	 *
+	 * "launcher_result" holds no prior content in this scenario, so an
+	 * answer there can only come from the replay. That is what makes the
+	 * assertion able to fail: re-reading the phase-1 "result" ROM would
+	 * pass even with the reply-swallowing defect.
+	 */
+	void _run_launch_duplicate(unsigned step_no, Step const &s)
+	{
+		char const *const op  = "launch";
+		char const *const pkg = s.id.string();
+
+		if (!_launcher_channel || !_launch_request.constructed()) {
+			_fail("launch_duplicate needs launcher=\"yes\" and the "
+			      "launcher_request route");
+			return;
+		}
+
+		unsigned const seq = ++_seq;
+
+		Genode::log("lifecycle-probe: [", step_no, "] ", op, " ", pkg,
+		            " (fresh request, seq=", seq, ")");
+		if (!_send_and_wait_seq(op, pkg, seq, OP_ITERS)) {
+			_fail(Genode::String<96>(op, " did not answer").string());
+			return;
+		}
+
+		Genode::String<32> status { };
+		try {
+			status = _result.xml().attribute_value("status", Genode::String<32>());
+		} catch (Genode::Xml_node::Invalid_syntax) { }
+
+		if (status != Genode::String<32>(s.expect_status.string())) {
+			_fail(Genode::String<160>(op, " ", pkg, " expected status=",
+			    s.expect_status, " got status=", status).string());
+			return;
+		}
+
+		Genode::log("lifecycle-probe: [", step_no, "] duplicate ",
+		            op, " ", pkg, " on launcher_request (seq=", seq,
+		            ") — must be answered, not swallowed");
+
+		_launch_request->generate_xml([&](Genode::Xml_generator &g) {
+			g.attribute("op",  op);
+			g.attribute("pkg", pkg);
+			g.attribute("seq", seq);
+		});
+
+		Genode::String<32> const want(s.expect_status);
+		_timer.msleep(200);
+		for (unsigned i = 0; i < DUP_ITERS; ++i) {
+			_launch_result->update();
+			if (_launcher_result_matches(op, pkg, want)) {
+				Genode::log("lifecycle-probe: [", step_no,
+				            "] duplicate ", op, " ", pkg,
+				            " replayed status=", want, " ok");
+				return;
+			}
+			_timer.msleep(100);
+		}
+
+		_fail(Genode::String<160>("duplicate ", op, " ", pkg,
+		    " produced no launcher_result within ", DUP_ITERS * 100,
+		    " ms — the request de-duplication swallowed the reply").string());
+	}
+
+	bool _launcher_result_matches(char const *op, char const *pkg,
+	                              Genode::String<32> const &want)
+	{
+		if (!_launch_result->valid()) return false;
+		try {
+			Genode::Xml_node const r = _launch_result->xml();
+			if (!r.has_type("result")) return false;
+			if (r.attribute_value("op",  Genode::String<32>())  != Genode::String<32>(op))  return false;
+			if (r.attribute_value("pkg", Genode::String<128>()) != Genode::String<128>(pkg)) return false;
+			return r.attribute_value("status", Genode::String<32>()) == want;
+		} catch (Genode::Xml_node::Invalid_syntax) {
+			return false;
+		}
+	}
+
 	void _run_assert_installed(unsigned step_no, Step const &s)
 	{
 		char const *const name = s.id.string();
@@ -299,6 +438,11 @@ struct Lifecycle_probe
 
 		_parse_config();
 
+		if (_launcher_channel) {
+			_launch_request.construct(_env, "request", "launcher_request");
+			_launch_result.construct(_env, "launcher_result");
+		}
+
 		/* Prime both ROMs so the very first assertion can read them. */
 		_result.update();
 		_installed.update();
@@ -311,6 +455,8 @@ struct Lifecycle_probe
 				_run_assert_installed(n, s);
 			else if (s.op == Genode::String<32>("assert_absent"))
 				_run_assert_absent(n, s);
+			else if (s.op == Genode::String<32>("launch_duplicate"))
+				_run_launch_duplicate(n, s);
 			else
 				_run_op_step(n, s);
 		}
