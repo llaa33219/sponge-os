@@ -36,6 +36,7 @@ SOURCES  += main.cc \
             panel/tasklist_widget.cc \
             panel/tasklist_controller.cc \
             launcher/launcher_controller.cc \
+            rom/optional_rom_dataspace.cc \
             launcher/launcher_menu_view.cc \
             theme/theme_loader.cc \
             theme/theme_controller.cc \
@@ -64,6 +65,7 @@ HEADERS  += sponge_de_main.h \
             panel/tasklist_controller.h \
             panel/task_info.h \
             launcher/launcher_controller.h \
+            rom/optional_rom_dataspace.h \
             launcher/launcher_menu_view.h \
             theme/theme_loader.h \
             theme/theme_qt.h \

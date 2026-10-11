@@ -55,6 +55,7 @@
 #include "panel/panel_widget.h"
 #include "panel/tasklist_controller.h"
 #include "panel/tasklist_widget.h"
+#include "rom/optional_rom_dataspace.h"
 #include "sponge_de_main.h"
 #include "theme/theme_controller.h"
 #include "theme/theme_loader.h"
@@ -427,7 +428,13 @@ void Libc::Component::construct(Libc::Env &env)
 
 		Genode::Constructible<Genode::Attached_rom_dataspace> runtime_state_rom;
 		Genode::Constructible<Genode::Attached_rom_dataspace> runtime_mirror_rom;
-		Genode::Constructible<Genode::Attached_rom_dataspace> system_state_rom;
+		/*
+		 * NOT Constructible<Attached_rom_dataspace>: only the product
+		 * scenarios route `system_state`, and a denied session stops the
+		 * component (it is not an exception). Optional_rom_dataspace
+		 * requests it non-fatally — see rom/optional_rom_dataspace.h.
+		 */
+		Sponge::Sponge_DE::Optional_rom_dataspace system_state_rom { env };
 		Genode::Constructible<Genode::Attached_rom_dataspace> cfg_probe_rom;
 		int mirror_starts { -1 };
 		int mirror_bytes  { -1 };
@@ -529,15 +536,15 @@ void Libc::Component::construct(Libc::Env &env)
 			int pkg_runtime_flag { -1 };
 			int requested_count  { -1 };
 			int cfg_probe_bytes  { -1 };
-			if (system_state_rom.constructed()) {
-				system_state_rom->update();
-				if (system_state_rom->valid() && system_state_rom->size() > 0) {
+			if (system_state_rom.valid()) {
+				system_state_rom.update();
+				if (system_state_rom.size() > 0) {
 					sys_children     = 0;
 					pkg_runtime_flag = 0;
 					requested_count  = 0;
 					Genode::Hid_node const sstate(Genode::Const_byte_range_ptr(
-						system_state_rom->local_addr<char const>(),
-						system_state_rom->size()));
+						system_state_rom.local_addr<char const>(),
+						system_state_rom.size()));
 					sstate.for_each_sub_node([&](Genode::Hid_node const &c) {
 						if (!c.has_type("child"))
 							return;
@@ -598,23 +605,45 @@ void Libc::Component::construct(Libc::Env &env)
 		                 diag_refresh);
 
 /*
+	 * Component-health watcher (user directive 2026-10-05): the
+	 * system state report feeds the panel's health surface
+	 * (set_health), not just the bring-up readouts.
+	 *
+	 * Tolerant open: only the product scenarios route `system_state`
+	 * (report_rom policy + `+ service ROM | label_last: system_state`).
+	 * Everywhere else the session request is denied — and a denied
+	 * session STOPS the component (base prints "stop because parent
+	 * denied" and sleeps forever), so the previous
+	 * Attached_rom_dataspace construct took sponge-de down in every
+	 * unrouted topology. Optional_rom_dataspace requests it
+	 * non-fatally: absent ROM → warn once and run without the watcher;
+	 * routed ROM → the watcher is active, exactly as before.
+	 *
+	 * Opened before the Qt event loop starts (same rule as the diag
+	 * ROMs below) and before the health poll is wired.
+	 */
+	bool const health_watcher_enabled = system_state_rom.open("system_state");
+	if (!health_watcher_enabled)
+		Genode::warning("system_state ROM unavailable; health watcher disabled");
+
+	/*
 	 * Health watcher: poll the system state report and surface
 	 * per-child anomalies (skipped heartbeats = wedge suspicion,
 	 * non-clean exits) on the panel. Invisible while healthy.
 	 */
 	auto health_refresh = [&]()
 	{
-			if (!system_state_rom.constructed())
+			if (!system_state_rom.valid())
 				return;
-			system_state_rom->update();
-			if (!system_state_rom->valid() || system_state_rom->size() == 0)
+			system_state_rom.update();
+			if (system_state_rom.size() == 0)
 				return;
 
 			QString warnings;
 			unsigned up { 0 };
 			Genode::Hid_node const sstate(Genode::Const_byte_range_ptr(
-				system_state_rom->local_addr<char const>(),
-				system_state_rom->size()));
+				system_state_rom.local_addr<char const>(),
+				system_state_rom.size()));
 			sstate.for_each_sub_node([&](Genode::Hid_node const &c) {
 				if (!c.has_type("child"))
 					return;
@@ -654,10 +683,12 @@ void Libc::Component::construct(Libc::Env &env)
 		if (panel_bottom.constructed())
 			panel_bottom->set_health(warnings);
 	};
-		auto *health_timer = new QTimer(&launcher_view);
-		QObject::connect(health_timer, &QTimer::timeout, health_refresh);
-		health_timer->start(1500);
-		health_refresh();
+if (health_watcher_enabled) {
+			auto *health_timer = new QTimer(&launcher_view);
+			QObject::connect(health_timer, &QTimer::timeout, health_refresh);
+			health_timer->start(1500);
+			health_refresh();
+		}
 
 		/*
 		 * Launch feedback (AGENTS.md §1.1): a launch that fails or
@@ -700,7 +731,6 @@ void Libc::Component::construct(Libc::Env &env)
 			runtime_state_rom.construct(env, "runtime_state");
 			runtime_mirror_rom.construct(env, "runtime_mirror");
 		}
-		system_state_rom.construct(env, "system_state");
 		if (diag_cfg_probe)
 			cfg_probe_rom.construct(env, "cfg_probe_state");
 
