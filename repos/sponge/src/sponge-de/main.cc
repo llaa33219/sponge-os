@@ -597,13 +597,13 @@ void Libc::Component::construct(Libc::Env &env)
 		QObject::connect(&launcher_ctrl, &LauncherController::appsChanged,
 		                 diag_refresh);
 
-		/*
-		 * Health watcher: poll the system state report and surface
-		 * per-child anomalies (skipped heartbeats = wedge suspicion,
-		 * non-clean exits) on the panel. Invisible while healthy.
-		 */
-		auto health_refresh = [&]()
-		{
+/*
+	 * Health watcher: poll the system state report and surface
+	 * per-child anomalies (skipped heartbeats = wedge suspicion,
+	 * non-clean exits) on the panel. Invisible while healthy.
+	 */
+	auto health_refresh = [&]()
+	{
 			if (!system_state_rom.constructed())
 				return;
 			system_state_rom->update();
@@ -648,16 +648,47 @@ void Libc::Component::construct(Libc::Env &env)
 					          + QStringLiteral(")");
 				}
 			});
-			(void)up;
-			if (panel_top)
-				panel_top->set_health(warnings);
-			if (panel_bottom.constructed())
-				panel_bottom->set_health(warnings);
-		};
+(void)up;
+		if (panel_top)
+			panel_top->set_health(warnings);
+		if (panel_bottom.constructed())
+			panel_bottom->set_health(warnings);
+	};
 		auto *health_timer = new QTimer(&launcher_view);
 		QObject::connect(health_timer, &QTimer::timeout, health_refresh);
 		health_timer->start(1500);
 		health_refresh();
+
+		/*
+		 * Launch feedback (AGENTS.md §1.1): a launch that fails or
+		 * times out must reach the user, not just the log. The
+		 * LauncherController emits launch_problem on the Qt thread;
+		 * every panel renders it on the transient warning label for
+		 * ~10 s and then falls back to the health display.
+		 *
+		 * An empty `pkg` means the launcher as a whole is
+		 * unreachable (the launch channels could not be opened).
+		 */
+		QObject::connect(&launcher_ctrl, &LauncherController::launch_problem,
+		                 &launcher_view,
+		                 [&](QString const &pkg, QString const &reason) {
+			QString const msg = pkg.isEmpty()
+				? QStringLiteral("launcher unavailable: ") + reason
+				: QStringLiteral("launch '%1' failed: %2").arg(pkg, reason);
+
+			if (panel_top)
+				panel_top->set_user_message(msg);
+			if (panel_bottom.constructed())
+				panel_bottom->set_user_message(msg);
+			if (panels_collection_enabled && panels_ptr) {
+				for (QString const &id : panels_ptr->panel_ids()) {
+					if (PanelWidget *w = panels_ptr->panel_for_id(id))
+						w->set_user_message(msg);
+				}
+			}
+			Genode::log("sponge-de: launch problem surfaced on the panel: ",
+			            msg.toUtf8().constData());
+		});
 		/*
 		 * Open the diag ROM sessions BEFORE the Qt event loop starts:
 		 * the lazy construct inside diag_refresh ran on the Qt thread
@@ -669,14 +700,6 @@ void Libc::Component::construct(Libc::Env &env)
 			runtime_state_rom.construct(env, "runtime_state");
 			runtime_mirror_rom.construct(env, "runtime_mirror");
 		}
-		/*
-		 * Component-health watcher (user directive 2026-10-05):
-		 * the system state report is subscribed ALWAYS — it feeds
-		 * the panel's health surface (set_health), not just the
-		 * bring-up readouts. Parsed on the Qt thread via the
-		 * health QTimer below (the launcher's proven poll model —
-		 * ROM updates must not run on the ep thread).
-		 */
 		system_state_rom.construct(env, "system_state");
 		if (diag_cfg_probe)
 			cfg_probe_rom.construct(env, "cfg_probe_state");

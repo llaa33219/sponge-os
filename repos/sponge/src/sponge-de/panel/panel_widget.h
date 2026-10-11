@@ -227,8 +227,33 @@ class PanelWidget : public QWidget
 		 * watcher — invisible while every watched component is
 		 * healthy. Input is the system init's state report
 		 * (per-child skipped_heartbeats / exit values).
+		 *
+		 * The text is CACHED: a transient user message
+		 * (set_user_message) owns the label until its TTL expires,
+		 * and the cached text is what the label falls back to.
 		 */
 		void set_health(QString const &warnings);
+
+		/*
+		 * Transient user message (the launch path's feedback
+		 * surface): show `text` on the same warning label for
+		 * `ttl_ms` milliseconds, then fall back to the health
+		 * display — which is the label itself when anomalies exist,
+		 * and a hidden label when the system is healthy.
+		 *
+		 * Rationale (AGENTS.md §1.1, automation must not hide
+		 * control): a click that fails must not be silently dropped
+		 * into the log — the user would click again and again with
+		 * no idea why nothing happens. `ttl_ms == 0` sticks the
+		 * message until the next message or until
+		 * set_user_message("") clears it.
+		 *
+		 * GUI thread ONLY (main.cc connects the launcher's
+		 * launch_problem signal to this path; the signal fires on
+		 * the Qt thread).
+		 */
+		void set_user_message(QString const &text,
+		                      unsigned ttl_ms = 10000);
 
 		void set_launcher_view(LauncherMenuView *view) { _launcher_view = view; }
 
@@ -371,6 +396,8 @@ protected:
 		void _apply_visibility();
 		void _apply_clock_format(Theme::Theme const &theme);
 		void _refresh_clock_text();
+		void _refresh_health_label();
+		void _clear_user_message();
 		void _report_click();
 
 		/* Owned through Qt's parent-child mechanism. */
@@ -380,6 +407,18 @@ protected:
 		QLabel      *_clock_label     { nullptr };
 		QLabel      *_health_label    { nullptr };
 		QTimer      *_clock_timer     { nullptr };
+		QTimer      *_message_timer   { nullptr };
+
+		/*
+		 * The warning label has one text slot and two producers:
+		 * set_health() (component-health watcher) and
+		 * set_user_message() (transient launch feedback). While a
+		 * user message is active it owns the label; the health text
+		 * is cached and repainted by _clear_user_message().
+		 */
+		QString _health_text;
+		QString _user_message;
+		bool    _message_active { false };
 
 		LauncherMenuView *_launcher_view   { nullptr };
 		TasklistWidget   *_tasklist_widget { nullptr };

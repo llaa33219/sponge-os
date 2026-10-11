@@ -149,6 +149,16 @@ class LauncherController : public QObject
 		 * changed. */
 		void appsChanged();
 
+		/*
+		 * Emitted on the GUI thread when a launch did NOT reach the
+		 * user: a pkgd failure status, a result timeout, or the
+		 * launch channels being unavailable. `pkg` is empty for the
+		 * channel case (the whole launcher is affected, not one
+		 * package). main.cc routes this to the panel's transient
+		 * warning label — a launch must never fail silently.
+		 */
+		void launch_problem(QString const &pkg, QString const &reason);
+
 	private slots:
 
 		void poll();

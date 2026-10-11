@@ -217,6 +217,11 @@ PanelWidget::~PanelWidget()
 		_clock_timer->deleteLater();
 		_clock_timer = nullptr;
 	}
+	if (_message_timer) {
+		_message_timer->stop();
+		_message_timer->deleteLater();
+		_message_timer = nullptr;
+	}
 }
 
 
@@ -386,6 +391,15 @@ void PanelWidget::_build_layout(Theme::Theme const &theme)
 	_health_label = new QLabel(this);
 	_health_label->hide();
 
+	/*
+	 * Single-shot TTL timer for set_user_message(): the timeout drops
+	 * the transient message and repaints the cached health text.
+	 */
+	_message_timer = new QTimer(this);
+	_message_timer->setSingleShot(true);
+	connect(_message_timer, &QTimer::timeout,
+	        this, &PanelWidget::_clear_user_message);
+
 	_apply_layout(theme);
 	_apply_visibility();
 
@@ -401,11 +415,61 @@ void PanelWidget::_build_layout(Theme::Theme const &theme)
 
 void PanelWidget::set_health(QString const &warnings)
 {
-	if (warnings.isEmpty()) {
+	_health_text = warnings;
+
+	/*
+	 * An active transient message owns the label until its TTL
+	 * expires; the health text is only cached here and painted by
+	 * _clear_user_message() afterwards.
+	 */
+	if (_message_active)
+		return;
+
+	_refresh_health_label();
+}
+
+
+void PanelWidget::set_user_message(QString const &text, unsigned ttl_ms)
+{
+	if (!_health_label || !_message_timer)
+		return;
+
+	if (text.isEmpty()) {
+		_clear_user_message();
+		return;
+	}
+
+	_user_message   = text;
+	_message_active = true;
+	_health_label->setText(QStringLiteral("\u26A0 ") + _user_message);
+	_health_label->show();
+
+	if (ttl_ms > 0)
+		_message_timer->start((int)ttl_ms);
+}
+
+
+void PanelWidget::_clear_user_message()
+{
+	if (_message_timer)
+		_message_timer->stop();
+
+	_message_active = false;
+	_user_message.clear();
+	_refresh_health_label();
+}
+
+
+void PanelWidget::_refresh_health_label()
+{
+	if (!_health_label)
+		return;
+
+	if (_health_text.isEmpty()) {
 		_health_label->hide();
 		return;
 	}
-	_health_label->setText(QStringLiteral("\u26A0 ") + warnings);
+	_health_label->setText(QStringLiteral("\u26A0 ") + _health_text);
 	_health_label->show();
 }
 
