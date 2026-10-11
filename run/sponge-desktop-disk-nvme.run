@@ -400,6 +400,7 @@ config
     + policy | label: sponge_pkgd -> request     | report: alpha_probe -> request
     + policy | label: alpha_probe -> result       | report: sponge_pkgd -> result
     + policy | label: pkg_runtime -> config       | report: sponge_pkgd -> runtime
+    + policy | label: sponge_pkgd -> runtime_state | report: pkg_runtime -> state
     + policy | label: cfg_probe -> config          | report: sponge_pkgd -> runtime
     + policy | label: sponge-de -> cfg_probe_state | report: cfg_probe -> cfg_probe
     + policy | label: sponge-de -> installed      | report: sponge_pkgd -> installed
@@ -531,11 +532,13 @@ config
   + heartbeat | restart_after_skipped: 3
   + config | binary_prefix: bin/
     + launcher_request
+    + admission
     + bake
   + route
     + service ROM | label_last: ld.lib.so | + parent
     + service ROM | label_last: request | + child report_rom
     + service ROM | label_last: launcher_request | + child report_rom
+    + service ROM | label: runtime_state | + child report_rom
     + service ROM | label: bake_manifest | + parent | label: bake_manifest.json
     + service Report | + child report_rom
     + any-service
@@ -596,6 +599,7 @@ config
     + service ROM | label_last: config_result | + child report_rom
     + service ROM | label_last: configd_config | + child report_rom
     + service ROM | label_last: config | + child report_rom
+    + service Report | label_last: state | + child report_rom
     + service ROM | label_last: sponge_de_launcher | + child report_rom
     + service Report | + child report_rom
     + any-service
