@@ -232,8 +232,53 @@ class Sponge::Pkgd::Main
 		 * pkg_runtime config and regenerates it on every install/remove.
 		 * init diffs the new config against the live tree, so unchanged
 		 * children are not restarted even though the report is whole.
+		 *
+		 * The report buffer MUST be pre-sized so growth never happens in
+		 * production. Expanding_reporter's growth path
+		 * (_increase_report_buffer(), os/reporter.h) destructs and
+		 * reconstructs the Report session; while that window is open the
+		 * "runtime" report carries no payload, so report_rom relays an
+		 * empty "config" ROM to pkg_runtime and pkg_runtime's own init
+		 * applies an EMPTY config — tearing down every <start> node it
+		 * holds. A single launch of one big package must not be able to
+		 * kill all running apps.
+		 *
+		 * Size derivation (measured against _generate_runtime_config's
+		 * actual output, modelled with Genode's own Xml_generator
+		 * serialization rules — tab indent, one node per line, metadata
+		 * <config> blocks appended verbatim):
+		 *   - all 11 shipped packages (desktop profile 8 + ncurses +
+		 *     nano + pkg_gui_demo), binary_prefix="bin/": 22797 bytes
+		 *   - the desktop bake profile alone (8 packages):   20639 bytes
+		 * The dominant term is the verbatim per-package <config> block
+		 * (falkon 3386, terminal 4117, pdf_view 2975 bytes); the fixed
+		 * scaffolding (start/binary/resource/route + the parent-provides
+		 * header) is ~460 bytes per package.
+		 * 32768 gives ~44% headroom over the measured 11-package
+		 * worst case, so no realistic installed set reaches it.
+		 *
+		 * The <repro_pad> knob (test-only, below) still forces growth
+		 * on purpose; see REPRO_PAD_BYTES for its sizing.
 		 */
-		Genode::Expanding_reporter _runtime_reporter { _env, "config", "runtime" };
+		static constexpr Genode::size_t RUNTIME_CONFIG_BUFFER = 32768;
+
+		/*
+		 * test-only (repro harness): the <repro_pad> pad budget. The
+		 * knob emits pad_bytes/24 <p i="N"/> nodes; each one serializes
+		 * to TWO tabs plus <p i="N"/> — about 12-14 bytes, NOT 24. The
+		 * knob was raised from 6000 to 32000 because RUNTIME_CONFIG_BUFFER
+		 * grew from the 4096 default: 6000 yields only ~3.4 KiB of real
+		 * padding, which on top of the desktop profile's ~20.6 KiB stays
+		 * under the new 32768-byte buffer and would make the repro inert.
+		 * 32000 yields ~18.9 KiB of padding (~39.6 KiB total), which
+		 * reliably exceeds the buffer and re-triggers the close+reopen
+		 * the harness is meant to reproduce.
+		 */
+		static constexpr unsigned REPRO_PAD_BYTES = 32000;
+
+		Genode::Expanding_reporter _runtime_reporter {
+			_env, "config", "runtime",
+			{ .value = RUNTIME_CONFIG_BUFFER } };
 
 		/*
 		 * Installed-set broadcast (Phase 5c). Long-lived watchers
@@ -1406,9 +1451,10 @@ void Sponge::Pkgd::Main::_generate_runtime_config()
 	}
 
 	++_runtime_config_writes;
-	/* test-only (repro harness): pad the generated config past the
-	 * Expanding_reporter's initial 4096-byte buffer to force the
-	 * writer-session close+reopen on the next write. Gated by
+	/* test-only (repro harness): pad the generated config past
+	 * RUNTIME_CONFIG_BUFFER to force the writer-session close+reopen on
+	 * the next write — reproducing the transient empty-config window
+	 * that _runtime_reporter's comment above explains. Gated by
 	 * <repro_pad> in the config; inert in production. */
 	bool repro_pad = false;
 	{
@@ -1422,7 +1468,7 @@ void Sponge::Pkgd::Main::_generate_runtime_config()
 		}
 	}
 	if (repro_pad)
-		pad_bytes = 6000;
+		pad_bytes = REPRO_PAD_BYTES;
 
 	/* Selection-sort the installed set by name into a stable index order. */
 	unsigned order[MAX_PACKAGES] { };
