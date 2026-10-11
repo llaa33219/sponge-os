@@ -192,8 +192,13 @@ component must never be able to freeze the desktop. Status after the
   enters the running set and BEFORE the config is regenerated. The
   budget comes from the `pkg_runtime -> state` sandbox report, not from
   a configured copy of the grant, so it is always the real remaining
-  pool. Armed in all five desktop-disk product scenarios. Receipts:
-  `run/sponge-pkg-admission.run`, `docs/evidence/pkg-admission-control.md`.
+  pool. Wired in all five desktop-disk product scenarios; runtime-
+  verified on `sponge-desktop-disk` (`resource admission armed` and
+  `alpha-probe: PASS` in the same boot). On
+  `sponge-desktop-disk-nvme` the gate is wired but NOT yet reachable:
+  pkgd stops earlier on a pre-existing `bake_manifest` denial (§5 row
+  below). Receipts: `run/sponge-pkg-admission.run`,
+  `docs/evidence/pkg-admission-control.md`.
 - [x] **Dynamic quota top-up — measured, not assumed**
   (`docs/evidence/dynamic-resource-topup.md`,
   `run/sponge-resource-request.run`): Genode 26.08's `init` answers a
@@ -220,6 +225,23 @@ component must never be able to freeze the desktop. Status after the
   together with that quota resize, which is deliberately separate work
   (it would also have to grow alpha's 2G QEMU envelope and re-earn the
   PASS evidence).
+- [~] **`sponge-desktop-disk-nvme` stops before admission is reached**
+  (pre-existing, found while wiring the gate in): that scenario's
+  `sponge_pkgd` config carries `<bake/>` and a `bake_manifest` ROM
+  route, but the scenario never stages `bake_manifest.json` — it never
+  calls `bake::stage`, unlike `sponge-desktop-disk.run:359`. A denied
+  ROM session is `sleep_forever()`, so pkgd stops in `_init_bake()`
+  (`main.cc:3068`), which runs *before* `_init_admission()`
+  (`main.cc:3084`). Verified present at `171b50700f`, i.e. before the
+  admission work, so it is not a regression from it; the gate itself is
+  correctly wired and does arm once that gap is closed. Removing
+  `<bake/>` was tried and reverted: it was added deliberately by
+  `c68f95d415` (2026-09-22), after the scenario's own "INTENTIONALLY
+  OMITTED" comment (`113073260e`, 2026-09-20). A second, independent
+  pre-existing gap sits behind it — the scenario stages only
+  `pkg_hello` + `sponge-de` while Phase-16 W3 extended `alpha_probe` to
+  install seven packages (`install terminal returned: error`). Receipts:
+  `docs/evidence/pkg-admission-control.md` §8.
 - [~] **Containment regression test**: `test/ep_wedge` (wedge +
   witness modes) and `run/sponge-heartbeat-restart.run` are written
   and the component builds, but the scenario is blocked by a

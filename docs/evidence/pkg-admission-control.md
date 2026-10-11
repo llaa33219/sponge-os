@@ -159,14 +159,63 @@ green.
 ## 8. Deployment status
 
 Wired (`<admission/>` + the `runtime_state` route + the report_rom
-policy) in all five `run/sponge-desktop-disk-*.run` product scenarios.
+policy + `pkg_runtime`'s `Report label_last: state` route) in all five
+`run/sponge-desktop-disk-*.run` product scenarios. All four pieces are
+now structurally checked in each file (the route must appear exactly
+once, inside `pkg_runtime`; a check added after a real defect, see
+below).
 
-**Not wired in `run/sponge-alpha.run`, deliberately.** Alpha's
-`pkg_runtime` is granted **400 caps / 32M** — sized for the hello-only
-Phase-7 topology, not for the eight-package `desktop` profile it stages
-by default (the residual gap already tracked in `docs/17` §6). Arming
-admission there would refuse all eight baked packages and turn alpha's
-current silent clamp into eight visible refusals, regressing the
-scenario's own `alpha-probe: PASS` criterion. Alpha therefore behaves
-byte-for-byte as before, and the relay lands together with the quota
-resize that `docs/17` §6 already carries as separate work.
+**Runtime-verified in one scenario only.** `sponge-desktop-disk`
+boots to `resource admission armed (pkg_runtime state report)` and
+`alpha-probe: PASS` in the same boot — the assertion that matters,
+because a denied ROM session is `sleep_forever()`, not a catchable
+throw. The other four are structurally correct but were not each run to
+a PASS marker; see the honest status below.
+
+### `sponge-desktop-disk-nvme`: wired, but blocked by a pre-existing gap
+
+This variant does **not** currently reach its PASS marker, for reasons
+that predate this work. `sponge_pkgd` dies on startup:
+
+```
+[init -> rom_sys] Error: /bake_manifest.json not found
+[init -> system -> sponge_pkgd] Error: stop because parent denied ROM-session: label="bake_manifest"
+```
+
+The scenario's `sponge_pkgd` config carries `<bake/>` and a
+`bake_manifest` ROM route, but the scenario **never stages
+`bake_manifest.json`** — it never calls `bake::stage`, unlike
+`sponge-desktop-disk.run:359`. A denied ROM session is fatal, so pkgd
+stops in `_init_bake()` (`main.cc:3068`), which runs **before**
+`_init_admission()` (`main.cc:3084`) — admission is never reached.
+
+This is not caused by the admission wiring. Verified against the
+pre-work tree: at `171b50700f` the `<bake/>` node was already present
+and `bake_manifest.json` was already only a route, never a staged file.
+
+Removing `<bake/>` was tried and **reverted**: the gate was added
+deliberately by `c68f95d415` (2026-09-22), two days *after* the
+scenario's own "INTENTIONALLY OMITTED" comment (`113073260e`,
+2026-09-20), so the comment is stale and deleting the gate is not a
+change this work should make. With the gate removed the run does reach
+`resource admission armed` — confirming the wiring is correct — but
+then fails later and independently at `install terminal returned:
+error`, because the scenario stages only `pkg_hello` + `sponge-de`
+while Phase-16 W3 extended `alpha_probe` to install seven packages.
+That second gap is also pre-existing and out of scope here.
+
+**Net:** nvme is correctly wired and will arm the gate as soon as its
+`bake_manifest` staging gap is closed, but admission is not reachable
+at runtime there today. Closing that gap is separate work.
+
+### `run/sponge-alpha.run`: not wired, deliberately
+
+Alpha's `pkg_runtime` is granted **400 caps / 32M** — sized for the
+hello-only Phase-7 topology, not for the eight-package `desktop`
+profile it stages by default (the residual gap already tracked in
+`docs/17` §6). Arming admission there would refuse all eight baked
+packages and turn alpha's current silent clamp into eight visible
+refusals, regressing the scenario's own `alpha-probe: PASS` criterion.
+Alpha therefore behaves byte-for-byte as before, and the relay lands
+together with the quota resize that `docs/17` §6 already carries as
+separate work.
