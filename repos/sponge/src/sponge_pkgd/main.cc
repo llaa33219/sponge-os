@@ -264,17 +264,41 @@ class Sponge::Pkgd::Main
 
 		/*
 		 * test-only (repro harness): the <repro_pad> pad budget. The
-		 * knob emits pad_bytes/24 <p i="N"/> nodes; each one serializes
-		 * to TWO tabs plus <p i="N"/> — about 12-14 bytes, NOT 24. The
-		 * knob was raised from 6000 to 32000 because RUNTIME_CONFIG_BUFFER
-		 * grew from the 4096 default: 6000 yields only ~3.4 KiB of real
-		 * padding, which on top of the desktop profile's ~20.6 KiB stays
-		 * under the new 32768-byte buffer and would make the repro inert.
-		 * 32000 yields ~18.9 KiB of padding (~39.6 KiB total), which
-		 * reliably exceeds the buffer and re-triggers the close+reopen
-		 * the harness is meant to reproduce.
+		 * knob emits pad_bytes/64 <p v="...."/> nodes, each of which
+		 * serializes to MORE than 64 bytes, so the emitted padding is
+		 * at least pad_bytes (see the emit site). 32000 therefore
+		 * guarantees an overflow of the 32768-byte buffer once the
+		 * fixed config scaffolding is added, which re-triggers the
+		 * close+reopen of the report session this harness exists to
+		 * reproduce.
+		 *
+		 * Both repro knobs are inert unless written WITH A VALUE
+		 * ("repro_pad: yes"); see the scan site for why.
 		 */
 		static constexpr unsigned REPRO_PAD_BYTES = 32000;
+
+		/*
+		 * test-only (repro harness): the <repro_pad_grow> increment.
+		 * <repro_pad> alone pads EVERY regeneration with a constant
+		 * amount, so only the first write crosses the buffer boundary —
+		 * the Expanding_reporter grows once and every later write then
+		 * fits. <repro_pad_grow> instead makes write N pad N times the
+		 * increment, so EVERY regeneration crosses the boundary and
+		 * forces the report-session close+reopen that the
+		 * configuration-regeneration survival scenario
+		 * (run/sponge-config-regen-survival.run) needs to observe.
+		 *
+		 * Sizing: RUNTIME_CONFIG_BUFFER is 32768. The first write pads
+		 * 32768 bytes, so it already exceeds the buffer (and grows it
+		 * to 36864); the second pads 65536 (grows to 69632), the third
+		 * 98304 (grows to 101376). Each write therefore re-enters the
+		 * growth path. The pad grows linearly with the write counter
+		 * without an upper bound, which is intentional: the knob is
+		 * inert unless a scenario sets it, and a repro run issues only
+		 * a handful of requests (a few hundred KiB of report buffer on
+		 * a 32 MiB pkgd quota).
+		 */
+		static constexpr unsigned REPRO_PAD_GROW_BYTES = 32768;
 
 		Genode::Expanding_reporter _runtime_reporter {
 			_env, "config", "runtime",
@@ -1555,20 +1579,81 @@ void Sponge::Pkgd::Main::_generate_runtime_config()
 	 * RUNTIME_CONFIG_BUFFER to force the writer-session close+reopen on
 	 * the next write — reproducing the transient empty-config window
 	 * that _runtime_reporter's comment above explains. Gated by
-	 * <repro_pad> in the config; inert in production. */
+	 * <repro_pad> in the config; inert in production.
+	 *
+	 * The two knobs are independent substring probes over the config
+	 * (the same raw-scan idiom as <repro_delay_ms> above): <repro_pad>
+	 * pads every write by a constant, while <repro_pad_grow> pads write
+	 * N by N * REPRO_PAD_GROW_BYTES so that EVERY write re-enters the
+	 * Expanding_reporter growth path instead of only the first. The
+	 * grow knob is what run/sponge-config-regen-survival.run uses to
+	 * observe whether such a growth kills already-running pkg_runtime
+	 * children.
+	 *
+	 * MANDATORY: both knobs must be written with a VALUE in the
+	 * component's config ("repro_pad_grow: yes"), not as a bare token.
+	 * A child config is delivered in HID (base/src/lib/ldso/main.cc:
+	 * 'generate_xml' defaults to false), and Genode's HID attribute
+	 * parser drops a valueless tag without complaint
+	 * (base/src/lib/base/hid.cc:82-86 requires "key: value"). A bare
+	 * "+ config | repro_pad_grow" therefore yields an EMPTY config for
+	 * this component and the knob silently never fires. */
 	bool repro_pad = false;
+	bool repro_pad_grow = false;
+	Genode::uint64_t repro_empty_from = 0;
 	{
 		_config_rom.update();
 		if (_config_rom.valid()) {
 			char const * const base = _config_rom.local_addr<char const>();
 			Genode::size_t const sz = _config_rom.size();
-			for (Genode::size_t i = 0; i + 9 < sz; ++i)
+			for (Genode::size_t i = 0; i + 16 < sz; ++i) {
 				if (Genode::strcmp(base + i, "repro_pad", 9) == 0)
-					{ repro_pad = true; break; }
+					repro_pad = true;
+				if (Genode::strcmp(base + i, "repro_pad_grow", 14) == 0)
+					repro_pad_grow = true;
+				/* <repro_empty_from: N> — positive control for the
+				 * configuration-regeneration survival scenario: from
+				 * write N on, publish an EMPTY but valid config, which
+				 * is precisely what pkg_runtime's init would see if
+				 * the transient no-writer window were visible to it.
+				 * It must tear down the running children, which proves
+				 * that the scenario's detector is not blind. repro-only.
+				 */
+				if (Genode::strcmp(base + i, "repro_empty_from", 16) == 0) {
+					Genode::size_t j = i + 16;
+					while (j < sz && (base[j] == ' ' || base[j] == ':'
+					                  || base[j] == '"' || base[j] == '=')) ++j;
+					while (j < sz && base[j] >= '0' && base[j] <= '9')
+						repro_empty_from = repro_empty_from * 10
+						                 + (Genode::uint64_t)(base[j++] - '0');
+					if (repro_empty_from)
+						Genode::log("sponge_pkgd: repro_empty_from=",
+						            repro_empty_from);
+				}
+			}
 		}
+	}
+	if (repro_empty_from && _runtime_config_writes >= repro_empty_from) {
+		Genode::log("sponge_pkgd: publishing EMPTY config (write ",
+		            _runtime_config_writes, ") — control channel");
+		_runtime_reporter.generate_xml([&](Genode::Xml_generator &) { });
+		return;
 	}
 	if (repro_pad)
 		pad_bytes = REPRO_PAD_BYTES;
+	if (repro_pad_grow) {
+		pad_bytes = _runtime_config_writes * REPRO_PAD_GROW_BYTES;
+		/* Audit line: the pad is larger than RUNTIME_CONFIG_BUFFER from
+		 * the first write on, so every write below provably overflows the
+		 * Expanding_reporter buffer and re-enters its growth path (the
+		 * close+reopen of the report session). Without this line the
+		 * reproduction scenario could not distinguish "the knob was
+		 * active and forced growth" from "the knob never matched and
+		 * nothing was ever forced". repro-only. */
+		Genode::log("sponge_pkgd: repro_pad_grow write=",
+		            _runtime_config_writes, " emitted_pad>=", pad_bytes,
+		            " buffer=", (Genode::size_t)RUNTIME_CONFIG_BUFFER);
+	}
 
 	/* Selection-sort the installed set by name into a stable index order. */
 	unsigned order[MAX_PACKAGES] { };
@@ -1604,8 +1689,22 @@ void Sponge::Pkgd::Main::_generate_runtime_config()
 		});
 		if (pad_bytes)
 			g.node("repro_padding", [&] {
-				for (unsigned i = 0; i < pad_bytes / 24; ++i)
-					g.node("p", [&] { g.attribute("i", i); });
+				/*
+				 * One node per 64 pad bytes, each carrying a
+				 * 64-character attribute value. Such a node
+				 * serializes to clearly more than 64 bytes (two
+				 * tabs, the node and attribute syntax, the 64
+				 * characters, and the line break), so the EMITTED
+				 * padding is always at least pad_bytes. That makes
+				 * "this write overflows RUNTIME_CONFIG_BUFFER" a
+				 * fact provable from the knob's audit line instead
+				 * of an estimate that depends on the serializer's
+				 * formatting.
+				 */
+				for (unsigned i = 0; i < pad_bytes / 64; ++i)
+					g.node("p", [&] {
+						g.attribute("v", "................................"
+						                "................................"); });
 			});
 
 		/*
