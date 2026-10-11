@@ -193,6 +193,18 @@ This is not caused by the admission wiring. Verified against the
 pre-work tree: at `171b50700f` the `<bake/>` node was already present
 and `bake_manifest.json` was already only a route, never a staged file.
 
+The gap is **isolated to this one variant**. All four others stage the
+manifest, so their `<bake/>` gate resolves and they share the wiring
+shape of `sponge-desktop-disk`, which was run to `alpha-probe: PASS`:
+
+| scenario | `<bake/>` in pkgd config | `bake::stage` calls | manifest staged |
+|---|---|---:|---|
+| `sponge-desktop-disk` | yes | 4 | yes |
+| `sponge-desktop-disk-nvme` | yes | **0** | **no** |
+| `sponge-desktop-disk-uefi` | yes | 2 | yes |
+| `sponge-desktop-disk-uefi-nvme` | yes | 1 | yes |
+| `sponge-desktop-disk-uefi-usb` | yes | 2 | yes |
+
 Removing `<bake/>` was tried and **reverted**: the gate was added
 deliberately by `c68f95d415` (2026-09-22), two days *after* the
 scenario's own "INTENTIONALLY OMITTED" comment (`113073260e`,
