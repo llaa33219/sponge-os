@@ -68,6 +68,23 @@
 # in sponge-leitzentrale.run); wm/decorator/drivers sized per their
 # source scenarios. Total fits in 2G QEMU RAM.
 #
+# KNOWN GAP (not a design claim — recorded, unfixed): pkg_runtime here
+# is sized caps 400 / ram 32M, which is sized for the hello-only
+# Phase-7 topology, NOT for the `desktop` bake profile this scenario
+# now stages by default. The desktop profile's enabled set needs
+# 205612 caps / 2536M, so no heavy package (falkon 200000 caps,
+# pdf_view 1G, terminal 224M) can launch inside pkg_runtime here. The
+# five desktop-disk product scenarios were fixed to
+# caps 230000 / ram 2816M (2026-10-xx); alpha was deliberately left
+# alone because its 2G QEMU envelope would have to grow in lockstep
+# and the change would invalidate this scenario's PASS evidence.
+# Closing it is a separate, verified change.
+#
+# KNOWN GAP: NO heartbeat fault containment in this scenario — the
+# desktop children are TOP-LEVEL here, and core provides no Timer for
+# a top-level init on base-sel4. Full rationale at the top-level init
+# configuration below and in docs/17 §5.
+#
 # base-sel4 only: vesa_fb/ps2/usb_hid need real PC hardware access
 # that base-linux cannot provide. qt6 stale-cmake note (Metis A12,
 # docs/11 §10.3): if the build dir was previously used for a base-linux
@@ -276,6 +293,38 @@ bake::stage bin iso
 
 #
 # Top-level init configuration (merged from the five source scenarios).
+#
+# === NO HEARTBEAT HERE — WHY (docs/17 §5 containment gap) ===
+#
+# The five desktop-disk product scenarios run a broker-liveness
+# containment layer: `<heartbeat rate_ms="2000"/>` on the nested
+# `system` init plus `restart_after_skipped="3"` on its critical
+# children (wm, layouter, decorator, sponge_configd, sponge_themed,
+# sponge_pkgd, sponge-de, pkg_runtime). THIS scenario deliberately has
+# none, and the reason is structural, not an oversight:
+#
+#   1. Every desktop child here — wm, layouter, decorator,
+#      sponge_configd, sponge_themed, sponge_pkgd, sponge-de,
+#      pkg_runtime, alpha_probe — is a DIRECT child of the TOP-LEVEL
+#      init (see the unindented `+ start` nodes below). The only nested
+#      init in this topology is `drivers`, which hosts the hardware set
+#      (acpi / pci_decode / platform / fb / ps2 / usb / usb_hid /
+#      event_filter) — none of the desktop children.
+#   2. A heartbeat is served BY the sandbox that hosts the children,
+#      not by the children. It can therefore only be deployed on an
+#      init that is NOT the top-level one.
+#   3. The top-level init CANNOT run a heartbeat on base-sel4: core
+#      provides no Timer service there (docs/17 §5 — the session
+#      request is denied and init stops). Verified empirically; see
+#      the same row's "[ ] Broker fault containment — top level".
+#
+# Consequence: a wedged desktop child in THIS scenario takes the whole
+# desktop with it, and nothing respawns it. Closing the gap requires
+# restructuring alpha into the nested-`system` shape the disk
+# scenarios already use — a topology change, not a config change, and
+# explicitly out of scope for this change (the desktop composition is
+# what alpha_probe verifies; moving it would invalidate the scenario's
+# PASS evidence). Tracked as the top-level row of docs/17 §5.
 #
 install_config {
 config

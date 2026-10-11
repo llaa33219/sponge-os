@@ -169,7 +169,7 @@ set build_components {
 	driver/framebuffer/vesa driver/ps2
 	driver/usb_host/pc driver/usb_hid server/event_filter
 	server/part_block server/vfs server/cached_fs_rom
-	lib/vfs lib/vfs_rump
+	lib/vfs lib/vfs_rump lib/rump lib/rump_fs
 	server/wm app/window_layouter app/decorator app/pointer
 	sponge_configd sponge_themed sponge_pkgd pkg_hello sponge-de
 	app/qt6/examples/calculatorform sponge_files app/pdf_view
@@ -678,7 +678,22 @@ config
       + parent
       + any-child
 
-+ start pkg_runtime | caps: 8000 | ram: 1536M
+#
+# Quota arithmetic (2026-10-xx, pkg_runtime sizing fix): pkg_runtime
+# hosts the WHOLE enabled package set simultaneously, so its grant must
+# cover the SUM of every package's declared quota, not one package.
+# The `desktop` bake profile enables 8 packages:
+#   hello 256/8M · terminal 1100/224M · textedit 1000/64M ·
+#   files 1000/64M · calculator 1000/64M · pdf_view 256/1G ·
+#   falkon 200000/1G · debug 1000/64M
+#   => 205612 caps / 2536M   (206512 caps incl. the nano+ncurses pair)
+# The previous 8000 caps made falkon (200000 caps) structurally
+# un-launchable — 25x short. New grant: 230000 caps / 2816M
+# => +11.9% caps / +11.0% RAM headroom over the enabled set.
+# Media-independent: all five desktop-disk scenarios carry this same
+# value (docs/14 §4.4 "init config is data, not image").
+#
++ start pkg_runtime | caps: 230000 | ram: 2816M
   + binary | name: bin/init
   + heartbeat | restart_after_skipped: 3
   + route
@@ -985,8 +1000,14 @@ config
     + service Timer | + child timer
 
 # caps/RAM carry ~10% headroom per docs/17 §5 (adding a child must not
-# be a cliff-edge operation on a grant sized exactly to fit)
-+ start system | caps: 22000 | ram: 2112M
+# be a cliff-edge operation on a grant sized exactly to fit).
+# Children sum of THIS sandbox: 238650 caps / 3100M
+#   report_rom 300/8M + wm 2000/16M + layouter 1000/8M + decorator
+#   350/32M + sponge_configd 200/16M + sponge_themed 200/8M +
+#   sponge_pkgd 200/16M + sponge-de 4000/160M + alpha_probe 200/16M +
+#   cfg_probe 200/4M + pkg_runtime 230000/2816M
+# Grant 263000 caps / 3420M => +10.2% caps / +10.3% RAM.
++ start system | caps: 263000 | ram: 3420M
   + binary | name: bin/init
   + route
     + service ROM | label: config | + child rom_sys | label: init/system.config
@@ -1070,7 +1091,15 @@ if {[file exists $ld_check]} {
 }
 
 #
-# QEMU: -m 4G for cached_fs_rom cache + Qt6/Mesa + rump + seL4 SKIM.
+# QEMU: -m 6G for cached_fs_rom cache + Qt6/Mesa + rump + seL4 SKIM
+# AND the enlarged pkg_runtime grant. Arithmetic: Tier-0 children
+# 874M + system grant 3420M = 4294M of quotas drawn from init's pool.
+# Measured after this change: "-m 6G => 5686 MiB RAM and 523288 caps
+# assigned to init", i.e. core reserves ~458M of guest RAM for
+# kernel/rootserver, leaving ~1392M of slack above every declared
+# grant. At the old -m 4G the pool was 3667 MiB — ~627M SHORT of the
+# 4294M the scenario now asks for, so the grant could never have been
+# honoured at 4G.
 # nec-usb-xhci + usb-tablet for absolute pointer.
 #
 # Phase 12 W1 (docs/plans/phase12-hardware.md W1): pin the platform
@@ -1080,7 +1109,7 @@ if {[file exists $ld_check]} {
 # arguments and the 900 s alpha-probe gate are preserved.
 #
 append qemu_args " -machine q35 -cpu Skylake-Client "
-append qemu_args " -nographic -m 4G "
+append qemu_args " -nographic -m 6G "
 append qemu_args " -device nec-usb-xhci,id=xhci -device usb-tablet "
 
 #
