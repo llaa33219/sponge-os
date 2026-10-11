@@ -1,0 +1,192 @@
+#
+# \brief  Sponge OS configuration-regeneration survival scenario
+# \author Sponge OS contributors
+# \date   2026
+#
+# Question under test (empirically, on QEMU/seL4 or base-linux):
+#
+#   Does a sponge_pkgd regeneration of the pkg_runtime config that
+#   crosses the Expanding_reporter report-buffer boundary KILL the
+#   pkg_runtime children that are already running?
+#
+# Mechanism under test. pkgd writes the whole pkg_runtime <config>
+# through an Expanding_reporter. When the payload exceeds the buffer,
+# Expanding_reporter::_increase_report_buffer() destructs and
+# reconstructs the Report session. Between the two, report_rom's module
+# for that label has no writer: IF pkg_runtime's "config" ROM session
+# were invalidated during that window, init::_handle_config() would
+# apply an empty node and List_model::update_from_node() would abandon
+# every <start> node — killing every running child. Whether that
+# actually happens is an empirical question about report_rom's
+# notification behaviour, so it is settled here by observation.
+#
+# Topology (kernel-agnostic, no Qt, no drivers, no disk):
+#
+#   init
+#   + timer
+#   + report_rom
+#   + sponge_pkgd     (test-only knob: repro_pad_grow / repro_empty_from)
+#   + pkg_runtime     (binary init; its "config" ROM comes from pkgd's
+#                      "runtime" report)
+#   + regen_probe     (drives the sequence, watches the witness beat)
+#
+# Under pkg_runtime: the "witness" package, whose payload config_witness
+# publishes a monotonically increasing counter on its Report session.
+# The counter restarts at 1 whenever the process is recreated, so a
+# counter that jumps back to 1 is the unambiguous signature of
+# "pkg_runtime abandoned and recreated the child".
+#
+# report_rom policies:
+#   sponge_pkgd -> request   <- regen_probe -> request
+#   regen_probe -> result    <- sponge_pkgd -> result
+#   pkg_runtime -> config    <- sponge_pkgd -> runtime
+#   regen_probe -> beat      <- pkg_runtime -> witness -> beat
+#
+# Knob selection:
+#
+#   default                 repro_pad_grow: yes
+#                           pkgd pads write N with N*32 KiB, so EVERY
+#                           regeneration provably overflows the 32 KiB
+#                           reporter buffer and re-enters the growth
+#                           path (the report-session close+reopen). This
+#                           is the knob under test.
+#
+#   SPONGE_REPRO_CONTROL=1  repro_empty_from: 3
+#                           POSITIVE CONTROL: from the third write on
+#                           pkgd publishes an EMPTY but valid config —
+#                           precisely what pkg_runtime would see if the
+#                           transient no-writer window WERE visible to
+#                           it. The witness must then be torn down and
+#                           recreated, so the probe MUST report FAIL.
+#                           The control exists to prove the detector is
+#                           not blind: a survival PASS only means
+#                           something next to a control FAIL.
+#
+# Both knobs are inert unless a scenario writes them into pkgd's config
+# (repos/sponge/src/sponge_pkgd/README.md + the scan site in main.cc).
+#
+# Gate:
+#   regen-probe: PASS  -> already-running children survived every forced
+#                         growth event (and kept counting).
+#   regen-probe: FAIL  -> the witness counter reset: the regeneration
+#                         killed a running child. The run then fails
+#                         loud on the bounded timeout below.
+#
+# Build:
+#   make -C genode/build/x86_64 run/sponge-config-regen-survival \
+#       KERNEL=sel4 BOARD=pc
+#
+
+build { core lib/ld init timer server/report_rom lib/vfs sponge_pkgd \
+        test/config_witness test/regen_probe }
+
+create_boot_directory
+
+set control_mode [expr {[info exists ::env(SPONGE_REPRO_CONTROL)]
+                       && $::env(SPONGE_REPRO_CONTROL) == "1"}]
+if {$control_mode} {
+	puts "sponge-config-regen-survival: POSITIVE CONTROL (empty config from write 3)"
+	set pkgd_knob "repro_empty_from: 3"
+} else {
+	set pkgd_knob "repro_pad_grow: yes"
+}
+
+install_config [subst {
+config
++ parent-provides
+  + service LOG
+  + service PD
+  + service CPU
+  + service ROM
+  + service IRQ
+  + service IO_MEM
+  + service IO_PORT
+
++ default-route
+  + any-service
+    + parent
+    + any-child
++ default | caps: 200 | ram: 8M
+
++ start timer
+  + provides | + service Timer
+
++ start report_rom | ram: 4M
+  + provides
+    + service Report
+    + service ROM
+  + config | verbose: no
+    + policy | label: sponge_pkgd -> request | report: regen_probe -> request
+    + policy | label: regen_probe -> result  | report: sponge_pkgd -> result
+    + policy | label: pkg_runtime -> config  | report: sponge_pkgd -> runtime
+    + policy | label: regen_probe -> beat    | report: pkg_runtime -> witness -> beat
+
++ start sponge_pkgd | caps: 400 | ram: 32M
+  + config | $pkgd_knob
+  + route
+    + service ROM | label_last: request | + child report_rom
+    + service Report | + child report_rom
+    + any-service
+      + parent
+      + any-child
+
++ start pkg_runtime | caps: 400 | ram: 32M
+  + binary init
+  + route
+    + service ROM | label: config | + child report_rom
+    + any-service
+      + parent
+      + any-child
+
++ start regen_probe | caps: 200 | ram: 8M
+  + config | witness: witness | second: second | cycles: 4
+  + route
+    + service ROM | label: result | + child report_rom
+    + service ROM | label: beat   | + child report_rom
+    + service Report | + child report_rom
+    + service Timer | + child timer
+    + any-service
+      + parent
+      + any-child
+- }]
+
+#
+# Stage package metadata + the derived index (same scheme as
+# run/sponge-pkg-install.run).
+#
+set staged_pkgs { witness second }
+foreach pkg $staged_pkgs {
+	set src "${genode_dir}/../pkg/$pkg/metadata.xml"
+	if {![file exists $src]} {
+		error "package metadata not found: $src"
+	}
+	exec cp -L $src "[run_dir]/genode/pkg_$pkg.xml"
+}
+
+set index_fh [open "[run_dir]/genode/pkg_index.xml" w]
+puts $index_fh "<packages>"
+foreach pkg $staged_pkgs {
+	puts $index_fh "  <pkg name=\"$pkg\"/>"
+}
+puts $index_fh "</packages>"
+close $index_fh
+
+build_boot_image [build_artifacts]
+
+append qemu_args " -nographic -m 1G "
+
+#
+# Verification: the probe's monotonicity verdict. In control mode the
+# expected outcome is the opposite, so the gate matches the FAIL marker:
+# the control run then reports a clean, identified result instead of
+# dying on a timeout.
+#
+if {$control_mode} {
+	# The full reason must be part of the match: a bare "FAIL" match fires
+	# on the partially transmitted line and would terminate QEMU before
+	# the diagnostic text arrives.
+	run_genode_until {.*regen-probe: FAIL witness was killed.*} 180
+	puts "sponge-config-regen-survival: POSITIVE CONTROL — detector fired as required"
+} else {
+	run_genode_until {.*regen-probe: PASS.*} 180
+}

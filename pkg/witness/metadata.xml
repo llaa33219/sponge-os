@@ -1,0 +1,28 @@
+<!--
+  witness — the configuration-regeneration survival witness package.
+
+  Its payload (repos/sponge/src/test/config_witness, binary name
+  config_witness) publishes a monotonically increasing counter on its
+  Report session. The counter restarts at 1 whenever the process is
+  recreated, so run/sponge-config-regen-survival.run can tell a surviving
+  child from a killed-and-recreated one.
+
+  <autostart/> so that a single install request both registers the
+  package AND emits its <start> node — the witness must already be
+  running before the config regeneration under test happens.
+
+  It requests Report (the "beat" broadcast) and Timer (its beat cadence)
+  from the parent-provided services that sponge_pkgd's generated
+  parent-provides list already carries.
+-->
+<package>
+  <name>witness</name>
+  <version>1.0</version>
+  <description>Config-regeneration survival witness (monotonic beat counter).</description>
+
+  <binary>config_witness</binary>
+  <quota ram="4M" caps="100"/>
+
+  <autostart/>
+  <dependencies/>
+</package>
