@@ -75,7 +75,7 @@
 # === QEMU wiring ===
 #
 #   -machine q35 -cpu Skylake-Client
-#   -nographic -m 4G -snapshot
+#   -nographic -m 8G -snapshot
 #   -device nec-usb-xhci,id=xhci -device usb-tablet
 #   -drive if=pflash,format=raw,readonly=on,file=$ovmf_code
 #   -drive if=pflash,format=raw,file=$ovmf_vars
@@ -223,7 +223,7 @@ set build_components {
 	driver/ps2
 	driver/usb_host/pc driver/usb_hid server/event_filter
 	server/part_block server/vfs server/cached_fs_rom
-	lib/vfs lib/vfs_rump
+	lib/vfs lib/vfs_rump lib/rump lib/rump_fs
 	server/wm app/window_layouter app/decorator app/pointer
 	sponge_configd sponge_themed sponge_pkgd pkg_hello sponge-de
 	app/qt6/examples/calculatorform sponge_files app/pdf_view
@@ -619,7 +619,22 @@ config
       + parent
       + any-child
 
-+ start pkg_runtime | caps: 8000 | ram: 1536M
+#
+# Quota arithmetic (2026-10-xx, pkg_runtime sizing fix): pkg_runtime
+# hosts the WHOLE enabled package set simultaneously, so its grant must
+# cover the SUM of every package's declared quota, not one package.
+# The `desktop` bake profile enables 8 packages:
+#   hello 256/8M · terminal 1100/224M · textedit 1000/64M ·
+#   files 1000/64M · calculator 1000/64M · pdf_view 256/1G ·
+#   falkon 200000/1G · debug 1000/64M
+#   => 205612 caps / 2536M   (206512 caps incl. the nano+ncurses pair)
+# The previous 8000 caps made falkon (200000 caps) structurally
+# un-launchable — 25x short. New grant: 230000 caps / 2816M
+# => +11.9% caps / +11.0% RAM headroom over the enabled set.
+# Media-independent: all five desktop-disk scenarios carry this same
+# value (docs/14 §4.4 "init config is data, not image").
+#
++ start pkg_runtime | caps: 230000 | ram: 2816M
   + binary | name: bin/init
   + heartbeat | restart_after_skipped: 3
   + route
@@ -911,8 +926,14 @@ config
     + service Timer | + child timer
 
 # caps/RAM carry ~10% headroom per docs/17 §5 (adding a child must not
-# be a cliff-edge operation on a grant sized exactly to fit)
-+ start system | caps: 39600 | ram: 2112M
+# be a cliff-edge operation on a grant sized exactly to fit).
+# Children sum of THIS sandbox: 254100 caps / 3100M
+#   report_rom 300/8M + wm 2000/16M + layouter 1000/8M + decorator
+#   6000/64M + sponge_configd 200/16M + sponge_themed 200/8M +
+#   sponge_pkgd 200/16M + sponge-de 8000/128M + alpha_probe 6000/16M +
+#   cfg_probe 200/4M + pkg_runtime 230000/2816M
+# Grant 280000 caps / 3420M => +10.2% caps / +10.3% RAM.
++ start system | caps: 280000 | ram: 3420M
   + binary | name: bin/init
   + route
     + service ROM | label: config | + child rom_sys | label: init/system.config
@@ -1165,8 +1186,19 @@ exec rm -f $nvme_partition_ext2
 #
 # === QEMU wiring (UEFI pflash + .img auto-attach + NVMe root-port) ===
 #
+# -m 4G -> 8G: the pkg_runtime sizing fix raised the `system` grant
+# to 3420M. Tier-0 children here total 1114M (boot_fb capture buffer
+# + 256M nitpicker + nvme 64M), so 4534M of quotas are drawn from
+# init's pool. The OVMF/UEFI path reserves far more guest RAM than the
+# direct-kernel one — measured on the sibling uefi-usb scenario:
+# "-m 8G => 5826 MiB RAM assigned to init", i.e. ~2.4 GiB gone to
+# OVMF + the seL4 kernel window (versus ~458 MiB on the non-UEFI
+# desktop-disk path). All three UEFI variants are therefore sized at
+# 8G. 4G was 4096M — ~440M SHORT of the grant total even before
+# OVMF's reservation.
+#
 append qemu_args " -machine q35 -cpu Skylake-Client "
-append qemu_args " -nographic -m 4G -snapshot "
+append qemu_args " -nographic -m 8G -snapshot "
 append qemu_args " -device nec-usb-xhci,id=xhci -device usb-tablet "
 append qemu_args " -drive if=pflash,format=raw,readonly=on,file=$ovmf_code "
 append qemu_args " -drive if=pflash,format=raw,file=$ovmf_vars "

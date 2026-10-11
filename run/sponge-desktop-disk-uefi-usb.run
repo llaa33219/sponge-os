@@ -370,7 +370,7 @@ set build_components {
 	driver/usb_host/pc driver/usb_hid server/event_filter
 	server/part_block server/vfs server/cached_fs_rom
 	driver/usb_block
-	lib/vfs lib/vfs_rump
+	lib/vfs lib/vfs_rump lib/rump lib/rump_fs
 	server/wm app/window_layouter app/decorator app/pointer
 	sponge_configd sponge_themed sponge_pkgd pkg_hello sponge-de
 	app/qt6/examples/calculatorform sponge_files app/pdf_view
@@ -874,7 +874,23 @@ config
       + parent
       + any-child
 
-+ start pkg_runtime | caps: 210000 | ram: 2048M
+#
+# Quota arithmetic (2026-10-xx, pkg_runtime sizing fix): pkg_runtime
+# hosts the WHOLE enabled package set simultaneously, so its grant must
+# cover the SUM of every package's declared quota, not one package.
+# The `desktop` bake profile enables 8 packages:
+#   hello 256/8M · terminal 1100/224M · textedit 1000/64M ·
+#   files 1000/64M · calculator 1000/64M · pdf_view 256/1G ·
+#   falkon 200000/1G · debug 1000/64M
+#   => 205612 caps / 2536M   (206512 caps incl. the nano+ncurses pair)
+# The previous 210000 caps / 2048M was itself short: falkon 200000 +
+# pdf_view 256 + terminal 1100 already exceed 210000 caps, and 2048M
+# is ~488M under the 2536M total. New grant 230000 caps / 2816M
+# => +11.9% caps / +11.0% RAM headroom over the enabled set.
+# Media-independent: all five desktop-disk scenarios carry this same
+# value (docs/14 §4.4 "init config is data, not image").
+#
++ start pkg_runtime | caps: 230000 | ram: 2816M
   + binary | name: bin/init
   + heartbeat | restart_after_skipped: 3
   + route
@@ -1327,8 +1343,16 @@ config
     + service Timer | + child timer
 
 # caps/RAM carry ~10% headroom per docs/17 §5 (adding a child must not
-# be a cliff-edge operation on a grant sized exactly to fit)
-+ start system | caps: 248000 | ram: 2600M
+# be a cliff-edge operation on a grant sized exactly to fit).
+# Children sum of THIS sandbox: 254300 caps / 3108M
+#   report_rom 300/8M + wm 2000/16M + layouter 1000/8M + decorator
+#   6000/64M + sponge_configd 200/16M + sponge_themed 200/8M +
+#   sponge_pkgd 200/16M + vct_tty 200/8M + sponge-de 8000/128M +
+#   alpha_probe 6000/16M + cfg_probe 200/4M + pkg_runtime 230000/2816M
+#   (prod_launch_probe +200/8M is injected only under
+#    SPONGE_LAUNCHTEST=on, still inside this grant.)
+# Grant 280000 caps / 3420M => +10.1% caps / +10.0% RAM.
++ start system | caps: 280000 | ram: 3420M
   + binary | name: bin/init
   + route
     + service ROM | label: config | + child rom_sys | label: init/system.config
@@ -1622,7 +1646,7 @@ file delete -force $esp_stage $esp_img $genode_img $var_img $home_img
 # === QEMU wiring (EHCI verification attach — see rationale) ===
 #
 # Identical to the AHCI UEFI variant (q35, Skylake-Client, OVMF pflash,
-# -m 4G, -snapshot, fw_cfg opt-out) with the USB attach swapped to
+# -m 8G, -snapshot, fw_cfg opt-out) with the USB attach swapped to
 # match the xHCI / USB-stick boot path:
 #
 #   -device nec-usb-xhci,id=xhci            (QEMU-side host controller for
@@ -1688,7 +1712,19 @@ file delete -force $esp_stage $esp_img $genode_img $var_img $home_img
 # the boot media, period.
 #
 append qemu_args " -machine q35 -cpu Skylake-Client "
-append qemu_args " -nographic -m 6G -snapshot "
+#
+# -m 6G -> 8G: this scenario has the HEAVIEST Tier-0 of the five
+# product scenarios — the three-area layout adds vfs_var (32M),
+# vfs_home (32M) and rom_pkg (768M for falkon's 509 MiB payload) on
+# top of the two 256M rom_* servers, and the rom_* servers themselves
+# carry 16000 caps each. Tier-0 children total 1902M, plus the
+# pkg_runtime sizing fix's 3420M `system` grant = 5322M of quotas
+# drawn from init's pool. At 6G that would leave only ~413M above
+# every declared grant — technically a fit, but exactly the cliff
+# edge the §5 headroom policy exists to avoid. 8G (8192M) leaves
+# init ~7763M and ~2441M of slack.
+#
+append qemu_args " -nographic -m 8G -snapshot "
 append qemu_args " -device nec-usb-xhci,id=xhci "
 append qemu_args " -device usb-tablet,bus=xhci.0 "
 append qemu_args " -device usb-storage,drive=stick,bus=xhci.0 "
