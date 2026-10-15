@@ -177,25 +177,150 @@ The probe takes a baseline after a 20 s settle and then samples for
 
 ## 6. What would actually fix the freeze
 
-Not done here, and deliberately so — each needs its own measurement:
+Ranked by what the measurement supports. Item 1 has since been built —
+see §8 for the patch, the before/after numbers and the honest
+verification gap.
 
-1. **Back-pressure on repaints.** The QPA plugin never uses the
-   `Framebuffer::Session::sync_sigh`/`sync_source` pair that the API
-   already provides (`framebuffer_session.h:218-231`, implemented
-   server-side in nitpicker) so the client never waits for the
-   compositor. Registering them would make the client stall on the
-   server instead of queueing frames. That is a **vendored change** and
-   `docs/11-environment.md` §4 row 17 closes the vendored budget for
-   Phase 16 — it needs an explicit Phase-17+ ledger row and certainty
-   first. Not attempted.
+1. **Back-pressure on repaints** — the mechanism itself. The QPA plugin
+   never used the `Framebuffer::Session::sync_sigh`/`sync_source` pair
+   that the API already provides
+   (`genode/repos/os/include/framebuffer_session/framebuffer_session.h:218-231`,
+   implemented server-side in nitpicker), so the client never waits for
+   the compositor and the damage backlog is unbounded. Now vendored as
+   **ledger row #23** (`docs/patches/qt6-qpa-frame-sync.patch`), see §8.
 2. **Cap the scroll rate in the app.** `QAbstractSlider` already
    coalesces; a `QTimer`-paced scroll on the app side would cap the
    backlog at the cost of choppier scrolling. Cheap and safe, but it
-   hides the ceiling rather than raising it.
+   hides the ceiling rather than raising it — and it is *not* needed for
+   the plugin's back-pressure to work, so it should stay a deliberate
+   last resort.
 3. **A quota raise alone is not a fix** and was not applied here. Per
    §2 it moves the freeze point; it does not remove the asymptote.
+4. **Reduce per-frame cost** is the only thing that actually raises the
+   achieved rate: it is CPU-bound (§1). A native-resolution desktop
+   with a faster rasterizer or a smaller damaged region per frame is the
+   real lever; nothing in the frame-submit path can conjure cycles.
+
+---
 
 ## 7. Reproducing
+
+```bash
+./tool/build run sponge-debug-scrollstorm                     # SPONGE_ARM=scroll
+SPONGE_ARM=baseline ./tool/build run sponge-debug-scrollstorm
+SPONGE_ARM=grow     ./tool/build run sponge-debug-scrollstorm
+```
+
+(`tool/build` does not forward environment variables to the Genode
+`make`; the equivalent explicit invocation, which does, is
+`SPONGE_ARM=<arm> make -C genode/build/x86_64 run/sponge-debug-scrollstorm`.)
+
+The scenario is base-sel4 only (`vesa_fb`/`ps2`/`usb_hid` need real PC
+hardware access) and takes ~2 min per arm on QEMU.
+
+## 8. The fix, and what it could and could not be shown to do
+
+The mechanism above is now patched: **ledger row #23**,
+`docs/patches/qt6-qpa-frame-sync.patch`, applied automatically by
+`genode/repos/libports/src/qt6/base/target.mk`. A Genode GUI client owns
+one framebuffer, `refresh()` only marks a rectangle dirty, and the QPA
+plugin never registered the framebuffer's sync signal — so it never
+learned how far behind the compositor it was. The patch registers the
+sync, counts it, and waits (bounded, 50 x 5 ms) before submitting a new
+frame **only when a frame is genuinely still in flight**, i.e. when the
+client submits again without a sync having arrived since its last
+submit. A client that keeps up pays not even a poll.
+
+### 8.1 Before / after, same harness, same storm
+
+Two samples per arm, interleaved in one session (receipts
+`sponge-debug-scrollstorm-{before,after}-{scroll,grow}.log`):
+
+| arm | build | ticks / 30 s | achieved repaint rate | max tick gap | per-child ΔRAM |
+|---|---|---|---|---|---|
+| `scroll` | BEFORE (unpatched) | 328, 347 | **10 Hz, 11 Hz** | 152, 157 ms | 0 |
+| `scroll` | AFTER (patched) | 283, 297 | **9 Hz, 9 Hz** | 131, 124 ms | 0 |
+| `grow` | BEFORE (unpatched) | 333, 326 | **11 Hz, 10 Hz** | 139, 132 ms | 139 264 B (`sponge_debug`) |
+| `grow` | AFTER (patched) | 287, 290 | **9 Hz, 9 Hz** | 132, 138 ms | 139 264 B (`sponge_debug`) |
+
+The RAM verdict is byte-identical before and after — expected, and worth
+stating: the patch changes *when* a frame is submitted, never how much
+memory is held. The bounded wait never fires on the log-growth path
+either, which is the correct answer for a client-limited workload.
+
+### 8.2 The verification gap — stated plainly
+
+**The benefit of this patch is NOT demonstrated by this harness.** On
+QEMU/TCG at 1024x768 with softpipe, the client is the bottleneck: it
+produces ~10 repaints/s while nitpicker's compositor can drain ~25/s
+(its 40 ms frame cap, `genode/repos/os/src/server/nitpicker/main.cc:561-564`).
+A backlog therefore **never forms here**, and the bounded wait never
+engages. What is measured on this host is a **cost of 1 repaint/s
+(~10%)**, attributable to the ~25 extra entrypoint sync-signal wakeups
+per second that registering `sync_sigh` adds — not to the wait.
+
+Two earlier revisions of the patch were measured and **rejected** on
+exactly this harness, which is what pinned the final design down:
+
+| revision | activation condition | measured |
+|---|---|---|
+| v1 | wait on every frame after two syncs observed | 10 Hz → **8 Hz** |
+| v2 | ">1 refresh inside one compositor interval" | 10 Hz → **8 Hz** |
+| v3 (shipped) | "submitted again before the previous was consumed" | 10-11 Hz → **9 Hz** |
+
+v2 fails because a client at ~10 Hz against a ~25 Hz compositor puts two
+refreshes in one interval often enough to trip it roughly every other
+frame. v3 is exact and needs no threshold.
+
+**Positive proof therefore requires real hardware** where the client can
+outrun the compositor — the LG gram 17ZD90N at 2560x1600, which is where
+the field report came from. That is a follow-up, not a claim: the
+mechanism is *certain by construction* (bounded, self-disabling, no
+threshold to tune) and *verified non-regressive*, but its effect is
+**unmeasured**. Anyone re-evaluating this row should treat "9 Hz vs
+10-11 Hz on QEMU" as the cost side of the ledger and get the benefit
+number from real hardware before deciding to keep it.
+
+### 8.3 Non-regression (measured, patched plugin)
+
+| scenario | gate | verdict |
+|---|---|---|
+| `sponge-de-test` | `sponge-de-probe: PASS` | PASS |
+| `sponge-launch` | `launch-probe: PASS` | PASS |
+| `sponge-de-sel4-interactive` | `sponge-de-probe: PASS` (+ `using 1024x768`, USB tablet bound) | PASS |
+| `sponge-desktop-disk` | `alpha-probe: PASS` | PASS |
+
+These four cover every Qt6 rendering path the product uses: a bare
+nitpicker + Capture topology with no framebuffer client (the
+self-disabling path is what keeps this one cheap), a package-launched
+GUI app through `pkg_runtime`, the full driver set with a real
+`vesa_fb` capture client, and the whole product desktop from disk.
+
+### 8.4 Manual equivalent (AGENTS.md §3.5)
+
+```bash
+# apply by hand (the recipe does this automatically)
+cd genode/contrib/qt6_base-<hash>/src/lib/qt6_base
+patch -p1 < ../../../../../../docs/patches/qt6-qpa-frame-sync.patch
+rm genode/build/x86_64/qt6/base/qpa_frame_sync_patched.tag   # else the stamp skips it
+make -C genode/build/x86_64 qt6/base
+```
+
+Reverting the patch by hand to reproduce the BEFORE column:
+
+```bash
+cd genode/contrib/qt6_base-<hash>/src/lib/qt6_base
+patch -p1 -R < ../../../../../../docs/patches/qt6-qpa-frame-sync.patch
+touch genode/build/x86_64/qt6/base/qpa_frame_sync_patched.tag  # keep the recipe from re-applying
+rm genode/build/x86_64/qt6/base/cmake_prepared.tag
+make -C genode/build/x86_64 qt6/base
+```
+
+`nm genode/build/x86_64/qt6/base/install/qt/plugins/platforms/libqgenode.lib.so | grep wait_for_frame`
+is the one-line check for which plugin is actually installed — this task
+caught itself shipping a "BEFORE" run that was in fact an AFTER run
+because the recipe had silently re-applied the patch.
+
 
 ```bash
 ./tool/build run sponge-debug-scrollstorm                     # SPONGE_ARM=scroll

@@ -1,0 +1,832 @@
+[init -> timer] timers=3, clock 10000000fs , 64bit counter , legacy routing support vendor=0x8086
+[init -> timer] timer0 GSI options 0xff0104, supports periodic
+[init -> timer] timer1 GSI options 0xff0104, supports periodic
+[init -> timer] timer2 GSI options 0xff0104, supports periodic
+[init -> timer] time wraps after 5849 years
+[init -> timer] irqs=off legacy=off
+[init -> timer] Using timer 2 -> using GSI 2 edge triggered
+[init -> system -> repostorm_probe] repostorm-probe: starting
+[init -> system -> repostorm_probe] repostorm-probe: config settle_ms=20000 report_ms=1000 duration_ms=60000 threshold_kb=2048
+[init -> system -> report_rom] report 'nitpicker -> focus'
+[init -> system -> report_rom]   focus
+[init -> system -> report_rom]   -
+[init -> system -> report_rom] report 'nitpicker -> hover'
+[init -> system -> report_rom]   hover | active: yes
+[init -> system -> report_rom]   -
+[init -> system -> report_rom] report 'nitpicker -> focus'
+[init -> system -> report_rom]   focus
+[init -> system -> report_rom]   -
+[init -> system -> sponge_debug] [34mWarning: Libc RNG not configured[0m
+[init -> system -> sponge_debug] [34mWarning: ignoring unsupported RTLD_GLOBAL in dlopen()[0m
+[init -> system -> sponge_debug] libEGL warning: MESA-LOADER: failed to retrieve device information
+[init -> system -> sponge_debug] 
+[init -> system -> sponge_debug] libEGL warning: failed to get driver name for fd 0
+[init -> system -> sponge_debug] 
+[init -> system -> drivers -> acpi] Found MADT
+[init -> system -> drivers -> acpi] MADT IRQ 0 -> GSI 2 flags: 0
+[init -> system -> drivers -> acpi] MADT IRQ 5 -> GSI 5 flags: 13
+[init -> system -> drivers -> acpi] MADT IRQ 9 -> GSI 9 flags: 13
+[init -> system -> drivers -> acpi] MADT IRQ 10 -> GSI 10 flags: 13
+[init -> system -> drivers -> acpi] MADT IRQ 11 -> GSI 11 flags: 13
+[init -> system -> drivers -> acpi] Found HPET hw_id=0x1  vendor_id=0x8086 space_id=0x0 addr=0xfed00000 hpet_id=0x0
+[init -> system -> drivers -> acpi] Found MCFG
+[init -> system -> drivers -> acpi] MCFG BASE 0xb0000000 seg 0x0 bus 0x0-0xff
+[init -> system -> drivers -> acpi] RSDT OEM 'BOCHS ', table id 'BXPC    ', revision 1, creator 'BXPC' (1)
+[init -> system -> sponge_debug] [34mWarning: attempt to re-acquire file descriptor for /qt/lib/fonts/DejaVuSans.ttf (lseek)[0m
+[init -> system -> drivers -> acpi] [34mWarning: SMBIOSv3 entry point invalid[0m
+[init -> system -> drivers -> acpi] SMBIOSv2 table (entry point: 0x1b6520 structures: 0xf6540)
+[init -> system -> sponge_debug] [34mWarning: attempt to re-acquire file descriptor for /qt/lib/fonts/DejaVuSans.ttf (lseek)[0m
+[init -> system -> sponge_debug] sponge_debug: report 'installed' updated (0 bytes)
+[init -> system -> drivers -> fb] fb mapped to 0x6000
+[init -> system -> sponge_debug] sponge_debug: report 'window_list' updated (0 bytes)
+[init -> system -> drivers -> fb] Found: VESA BIOS version 3.0
+[init -> system -> drivers -> fb] OEM: SeaBIOS VBE(C) 2011
+[init -> system -> sponge_debug] sponge_debug: report 'launcher_result' updated (0 bytes)
+[init -> system -> drivers -> ps2] Using keyboard with scan code set 1 (xlate)
+[init -> system -> drivers -> fb] Found: physical frame buffer at 0xfd000000 size: 16777216
+[init -> system -> drivers -> fb] fb mapped to 0x17000000
+[init -> system -> drivers -> fb] using 1024x768 (1024x768)
+[init -> system -> report_rom] report 'nitpicker -> hover'
+[init -> system -> report_rom]   hover | label: sponge_debug -> SPONGE DEBUG | color: #ffffff | domain: default | xpos: 511 | ypos: 383
+[init -> system -> report_rom]   -
+[init -> system -> drivers -> ps2] detected ExPS/2 mouse - activating scroll-wheel and 5-button support
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM armed hz=30 lines=2000 grow=0 budget_ms=30000 ticks=900 start_in_ms=24000
+[init -> system -> sponge_debug] sponge_debug: STORM starts in 24000 ms
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> repostorm_probe] repostorm-probe: baseline 5 children
+[init -> system -> repostorm_probe] repostorm-probe: BASE repostorm_probe ram_used=786432
+[init -> system -> repostorm_probe] repostorm-probe: BASE sponge_debug ram_used=19017728
+[init -> system -> repostorm_probe] repostorm-probe: BASE drivers ram_used=1269760
+[init -> system -> repostorm_probe] repostorm-probe: BASE nitpicker ram_used=7536640
+[init -> system -> repostorm_probe] repostorm-probe: BASE report_rom ram_used=888832
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=3 elapsed_ms=192 rate_hz=15 max_gap_ms=126
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=4 elapsed_ms=308 rate_hz=12 max_gap_ms=126
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=6 elapsed_ms=555 rate_hz=10 max_gap_ms=135
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=7 elapsed_ms=661 rate_hz=10 max_gap_ms=135
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=8 elapsed_ms=757 rate_hz=10 max_gap_ms=135
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=11 elapsed_ms=998 rate_hz=11 max_gap_ms=135
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=12 elapsed_ms=1093 rate_hz=10 max_gap_ms=135
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=14 elapsed_ms=1267 rate_hz=11 max_gap_ms=135
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=16 elapsed_ms=1405 rate_hz=11 max_gap_ms=135
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=17 elapsed_ms=1510 rate_hz=11 max_gap_ms=135
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=19 elapsed_ms=1656 rate_hz=11 max_gap_ms=135
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=22 elapsed_ms=1901 rate_hz=11 max_gap_ms=135
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=23 elapsed_ms=1995 rate_hz=11 max_gap_ms=135
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=25 elapsed_ms=2153 rate_hz=11 max_gap_ms=135
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=27 elapsed_ms=2299 rate_hz=11 max_gap_ms=135
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=28 elapsed_ms=2405 rate_hz=11 max_gap_ms=135
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=30 elapsed_ms=2589 rate_hz=11 max_gap_ms=135
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=32 elapsed_ms=2747 rate_hz=11 max_gap_ms=135
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=33 elapsed_ms=2852 rate_hz=11 max_gap_ms=135
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=35 elapsed_ms=3007 rate_hz=11 max_gap_ms=135
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=38 elapsed_ms=3259 rate_hz=11 max_gap_ms=135
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=39 elapsed_ms=3369 rate_hz=11 max_gap_ms=135
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=40 elapsed_ms=3495 rate_hz=11 max_gap_ms=135
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=42 elapsed_ms=3652 rate_hz=11 max_gap_ms=135
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=44 elapsed_ms=3797 rate_hz=11 max_gap_ms=135
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=46 elapsed_ms=3966 rate_hz=11 max_gap_ms=135
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=47 elapsed_ms=4058 rate_hz=11 max_gap_ms=135
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=49 elapsed_ms=4223 rate_hz=11 max_gap_ms=135
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=51 elapsed_ms=4383 rate_hz=11 max_gap_ms=135
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=53 elapsed_ms=4541 rate_hz=11 max_gap_ms=135
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=55 elapsed_ms=4704 rate_hz=11 max_gap_ms=135
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=57 elapsed_ms=4849 rate_hz=11 max_gap_ms=135
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=59 elapsed_ms=5010 rate_hz=11 max_gap_ms=135
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=60 elapsed_ms=5105 rate_hz=11 max_gap_ms=135
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=62 elapsed_ms=5250 rate_hz=11 max_gap_ms=135
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=64 elapsed_ms=5463 rate_hz=11 max_gap_ms=135
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=65 elapsed_ms=5573 rate_hz=11 max_gap_ms=135
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=67 elapsed_ms=5786 rate_hz=11 max_gap_ms=157
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=68 elapsed_ms=5886 rate_hz=11 max_gap_ms=157
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=70 elapsed_ms=6076 rate_hz=11 max_gap_ms=157
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=71 elapsed_ms=6150 rate_hz=11 max_gap_ms=157
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=74 elapsed_ms=6386 rate_hz=11 max_gap_ms=157
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=75 elapsed_ms=6466 rate_hz=11 max_gap_ms=157
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=77 elapsed_ms=6630 rate_hz=11 max_gap_ms=157
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=79 elapsed_ms=6825 rate_hz=11 max_gap_ms=157
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=80 elapsed_ms=6925 rate_hz=11 max_gap_ms=157
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=82 elapsed_ms=7128 rate_hz=11 max_gap_ms=157
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=83 elapsed_ms=7223 rate_hz=11 max_gap_ms=157
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=85 elapsed_ms=7392 rate_hz=11 max_gap_ms=157
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=87 elapsed_ms=7534 rate_hz=11 max_gap_ms=157
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=90 elapsed_ms=7702 rate_hz=11 max_gap_ms=157
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=92 elapsed_ms=7871 rate_hz=11 max_gap_ms=157
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=93 elapsed_ms=7965 rate_hz=11 max_gap_ms=157
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=96 elapsed_ms=8130 rate_hz=11 max_gap_ms=157
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=99 elapsed_ms=8262 rate_hz=11 max_gap_ms=157
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=101 elapsed_ms=8417 rate_hz=11 max_gap_ms=157
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=103 elapsed_ms=8615 rate_hz=11 max_gap_ms=157
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=105 elapsed_ms=8752 rate_hz=11 max_gap_ms=157
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=107 elapsed_ms=8925 rate_hz=11 max_gap_ms=157
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=108 elapsed_ms=9010 rate_hz=11 max_gap_ms=157
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=111 elapsed_ms=9220 rate_hz=12 max_gap_ms=157
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=112 elapsed_ms=9316 rate_hz=12 max_gap_ms=157
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=114 elapsed_ms=9519 rate_hz=11 max_gap_ms=157
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=115 elapsed_ms=9616 rate_hz=11 max_gap_ms=157
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=117 elapsed_ms=9750 rate_hz=12 max_gap_ms=157
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=119 elapsed_ms=9921 rate_hz=11 max_gap_ms=157
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=121 elapsed_ms=10054 rate_hz=12 max_gap_ms=157
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=123 elapsed_ms=10201 rate_hz=12 max_gap_ms=157
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=125 elapsed_ms=10353 rate_hz=12 max_gap_ms=157
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=127 elapsed_ms=10501 rate_hz=12 max_gap_ms=157
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=129 elapsed_ms=10659 rate_hz=12 max_gap_ms=157
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=131 elapsed_ms=10801 rate_hz=12 max_gap_ms=157
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=133 elapsed_ms=10980 rate_hz=12 max_gap_ms=157
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=135 elapsed_ms=11138 rate_hz=12 max_gap_ms=157
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=137 elapsed_ms=11301 rate_hz=12 max_gap_ms=157
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=139 elapsed_ms=11461 rate_hz=12 max_gap_ms=157
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=141 elapsed_ms=11618 rate_hz=12 max_gap_ms=157
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=142 elapsed_ms=11713 rate_hz=12 max_gap_ms=157
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=145 elapsed_ms=11939 rate_hz=12 max_gap_ms=157
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=146 elapsed_ms=12007 rate_hz=12 max_gap_ms=157
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=148 elapsed_ms=12160 rate_hz=12 max_gap_ms=157
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=150 elapsed_ms=12322 rate_hz=12 max_gap_ms=157
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=153 elapsed_ms=12524 rate_hz=12 max_gap_ms=157
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=154 elapsed_ms=12607 rate_hz=12 max_gap_ms=157
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=156 elapsed_ms=12759 rate_hz=12 max_gap_ms=157
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=158 elapsed_ms=12917 rate_hz=12 max_gap_ms=157
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=160 elapsed_ms=13120 rate_hz=12 max_gap_ms=157
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=161 elapsed_ms=13221 rate_hz=12 max_gap_ms=157
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=163 elapsed_ms=13425 rate_hz=12 max_gap_ms=157
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=164 elapsed_ms=13516 rate_hz=12 max_gap_ms=157
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=166 elapsed_ms=13690 rate_hz=12 max_gap_ms=157
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=168 elapsed_ms=13833 rate_hz=12 max_gap_ms=157
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=170 elapsed_ms=13997 rate_hz=12 max_gap_ms=157
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=172 elapsed_ms=14129 rate_hz=12 max_gap_ms=157
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=174 elapsed_ms=14323 rate_hz=12 max_gap_ms=157
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=175 elapsed_ms=14419 rate_hz=12 max_gap_ms=157
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=177 elapsed_ms=14592 rate_hz=12 max_gap_ms=157
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=179 elapsed_ms=14733 rate_hz=12 max_gap_ms=157
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=181 elapsed_ms=14920 rate_hz=12 max_gap_ms=157
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=182 elapsed_ms=15025 rate_hz=12 max_gap_ms=157
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=184 elapsed_ms=15220 rate_hz=12 max_gap_ms=157
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=185 elapsed_ms=15320 rate_hz=12 max_gap_ms=157
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=187 elapsed_ms=15520 rate_hz=12 max_gap_ms=157
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=188 elapsed_ms=15622 rate_hz=12 max_gap_ms=157
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=190 elapsed_ms=15821 rate_hz=12 max_gap_ms=157
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=191 elapsed_ms=15916 rate_hz=12 max_gap_ms=157
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=193 elapsed_ms=16136 rate_hz=11 max_gap_ms=157
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=194 elapsed_ms=16200 rate_hz=11 max_gap_ms=157
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=196 elapsed_ms=16388 rate_hz=11 max_gap_ms=157
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=198 elapsed_ms=16561 rate_hz=11 max_gap_ms=157
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=200 elapsed_ms=16720 rate_hz=11 max_gap_ms=157
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=201 elapsed_ms=16803 rate_hz=11 max_gap_ms=157
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=203 elapsed_ms=16969 rate_hz=11 max_gap_ms=157
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=205 elapsed_ms=17166 rate_hz=11 max_gap_ms=157
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=207 elapsed_ms=17279 rate_hz=11 max_gap_ms=157
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=209 elapsed_ms=17446 rate_hz=11 max_gap_ms=157
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=211 elapsed_ms=17625 rate_hz=11 max_gap_ms=157
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=212 elapsed_ms=17717 rate_hz=11 max_gap_ms=157
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=215 elapsed_ms=17925 rate_hz=11 max_gap_ms=157
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=216 elapsed_ms=18002 rate_hz=11 max_gap_ms=157
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=218 elapsed_ms=18161 rate_hz=12 max_gap_ms=157
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=220 elapsed_ms=18325 rate_hz=12 max_gap_ms=157
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=223 elapsed_ms=18531 rate_hz=12 max_gap_ms=157
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=224 elapsed_ms=18621 rate_hz=12 max_gap_ms=157
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=226 elapsed_ms=18788 rate_hz=12 max_gap_ms=157
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=228 elapsed_ms=18927 rate_hz=12 max_gap_ms=157
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=230 elapsed_ms=19052 rate_hz=12 max_gap_ms=157
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=232 elapsed_ms=19219 rate_hz=12 max_gap_ms=157
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=234 elapsed_ms=19420 rate_hz=12 max_gap_ms=157
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=235 elapsed_ms=19521 rate_hz=12 max_gap_ms=157
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=237 elapsed_ms=19719 rate_hz=12 max_gap_ms=157
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=238 elapsed_ms=19819 rate_hz=12 max_gap_ms=157
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=240 elapsed_ms=19987 rate_hz=12 max_gap_ms=157
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=242 elapsed_ms=20136 rate_hz=12 max_gap_ms=157
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=244 elapsed_ms=20305 rate_hz=12 max_gap_ms=157
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=246 elapsed_ms=20456 rate_hz=12 max_gap_ms=157
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=248 elapsed_ms=20626 rate_hz=12 max_gap_ms=157
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=249 elapsed_ms=20711 rate_hz=12 max_gap_ms=157
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=252 elapsed_ms=20897 rate_hz=12 max_gap_ms=157
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=254 elapsed_ms=21074 rate_hz=12 max_gap_ms=157
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=255 elapsed_ms=21151 rate_hz=12 max_gap_ms=157
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=257 elapsed_ms=21393 rate_hz=12 max_gap_ms=157
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=258 elapsed_ms=21453 rate_hz=12 max_gap_ms=157
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=260 elapsed_ms=21692 rate_hz=11 max_gap_ms=157
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=261 elapsed_ms=21755 rate_hz=11 max_gap_ms=157
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=263 elapsed_ms=21991 rate_hz=11 max_gap_ms=157
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=264 elapsed_ms=22059 rate_hz=11 max_gap_ms=157
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=266 elapsed_ms=22296 rate_hz=11 max_gap_ms=157
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=267 elapsed_ms=22361 rate_hz=11 max_gap_ms=157
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=269 elapsed_ms=22597 rate_hz=11 max_gap_ms=157
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=270 elapsed_ms=22653 rate_hz=11 max_gap_ms=157
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=272 elapsed_ms=22894 rate_hz=11 max_gap_ms=157
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=273 elapsed_ms=22959 rate_hz=11 max_gap_ms=157
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=275 elapsed_ms=23197 rate_hz=11 max_gap_ms=157
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=276 elapsed_ms=23250 rate_hz=11 max_gap_ms=157
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=278 elapsed_ms=23498 rate_hz=11 max_gap_ms=157
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=279 elapsed_ms=23559 rate_hz=11 max_gap_ms=157
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=281 elapsed_ms=23782 rate_hz=11 max_gap_ms=157
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=283 elapsed_ms=23962 rate_hz=11 max_gap_ms=157
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=284 elapsed_ms=24074 rate_hz=11 max_gap_ms=157
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=285 elapsed_ms=24187 rate_hz=11 max_gap_ms=157
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=286 elapsed_ms=24300 rate_hz=11 max_gap_ms=157
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=288 elapsed_ms=24457 rate_hz=11 max_gap_ms=157
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=290 elapsed_ms=24622 rate_hz=11 max_gap_ms=157
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=292 elapsed_ms=24818 rate_hz=11 max_gap_ms=157
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=293 elapsed_ms=24925 rate_hz=11 max_gap_ms=157
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=295 elapsed_ms=25127 rate_hz=11 max_gap_ms=157
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=296 elapsed_ms=25226 rate_hz=11 max_gap_ms=157
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=298 elapsed_ms=25422 rate_hz=11 max_gap_ms=157
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=299 elapsed_ms=25527 rate_hz=11 max_gap_ms=157
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=301 elapsed_ms=25683 rate_hz=11 max_gap_ms=157
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=303 elapsed_ms=25827 rate_hz=11 max_gap_ms=157
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=305 elapsed_ms=26028 rate_hz=11 max_gap_ms=157
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=306 elapsed_ms=26137 rate_hz=11 max_gap_ms=157
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=308 elapsed_ms=26303 rate_hz=11 max_gap_ms=157
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=309 elapsed_ms=26415 rate_hz=11 max_gap_ms=157
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=311 elapsed_ms=26637 rate_hz=11 max_gap_ms=157
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=312 elapsed_ms=26704 rate_hz=11 max_gap_ms=157
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=314 elapsed_ms=26922 rate_hz=11 max_gap_ms=157
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=315 elapsed_ms=27034 rate_hz=11 max_gap_ms=157
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=317 elapsed_ms=27200 rate_hz=11 max_gap_ms=157
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=318 elapsed_ms=27334 rate_hz=11 max_gap_ms=157
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=319 elapsed_ms=27450 rate_hz=11 max_gap_ms=157
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=321 elapsed_ms=27624 rate_hz=11 max_gap_ms=157
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=323 elapsed_ms=27838 rate_hz=11 max_gap_ms=157
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=325 elapsed_ms=28020 rate_hz=11 max_gap_ms=157
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=326 elapsed_ms=28134 rate_hz=11 max_gap_ms=157
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=327 elapsed_ms=28247 rate_hz=11 max_gap_ms=157
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=328 elapsed_ms=28355 rate_hz=11 max_gap_ms=157
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=330 elapsed_ms=28506 rate_hz=11 max_gap_ms=157
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=332 elapsed_ms=28682 rate_hz=11 max_gap_ms=157
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=334 elapsed_ms=28854 rate_hz=11 max_gap_ms=157
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=335 elapsed_ms=28966 rate_hz=11 max_gap_ms=157
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=337 elapsed_ms=29165 rate_hz=11 max_gap_ms=157
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=338 elapsed_ms=29254 rate_hz=11 max_gap_ms=157
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=341 elapsed_ms=29478 rate_hz=11 max_gap_ms=157
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=343 elapsed_ms=29656 rate_hz=11 max_gap_ms=157
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=344 elapsed_ms=29765 rate_hz=11 max_gap_ms=157
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=345 elapsed_ms=29866 rate_hz=11 max_gap_ms=157
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> sponge_debug] sponge_debug: STORM checkpoint ticks=347 elapsed_ms=30065 rate_hz=11 max_gap_ms=157
+[init -> system -> sponge_debug] sponge_debug: STORM done ticks=347 elapsed_ms=30065 achieved_hz=11 max_gap_ms=157
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> repostorm_probe] repostorm-probe: TABLE repostorm_probe baseline=786432 last=786432 avail=7386930 delta=0 caps_used=27
+[init -> system -> repostorm_probe] repostorm-probe: TABLE sponge_debug baseline=19017728 last=19017728 avail=44270302 delta=0 caps_used=354
+[init -> system -> repostorm_probe] repostorm-probe: TABLE drivers baseline=1269760 last=1269760 avail=36898910 delta=0 caps_used=84
+[init -> system -> repostorm_probe] repostorm-probe: TABLE nitpicker baseline=7536640 last=7536640 avail=15541302 delta=0 caps_used=114
+[init -> system -> repostorm_probe] repostorm-probe: TABLE report_rom baseline=888832 last=888832 avail=7343968 delta=0 caps_used=51
+[init -> system -> repostorm_probe] repostorm-probe: DETAIL delta_max=0 worst=none threshold=2097152 samples=60 children=5
+[init -> system -> repostorm_probe] repostorm-probe: VERDICT PAS
+Run script execution successful.

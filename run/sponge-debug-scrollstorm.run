@@ -84,6 +84,20 @@
 #             "so text loads fast" half of the report — a growing
 #             document under load.
 #
+# STORM TELEMETRY (what the before/after comparison is built on)
+#
+#   sponge_debug logs, every 5 s of storm and once at the end:
+#
+#     STORM checkpoint ticks=<n> elapsed_ms=<t> rate_hz=<r> max_gap_ms=<g>
+#     STORM done      ticks=<n> elapsed_ms=<t> achieved_hz=<r> max_gap_ms=<g>
+#
+#   'rate_hz' is the cumulative average (it degrades if the per-frame
+#   cost grows). 'max_gap_ms' is the largest interval between two
+#   delivered QTimer ticks — a saturated Qt event loop delivers them
+#   late and bunched up, so that is the headless liveness signal for
+#   the repaint backlog this scenario exists to measure.
+#   Docs: docs/evidence/sponge-debug-scrollstorm.md sections 1 and 8.
+#
 #   "grow" is EXPECTED to exceed any sane budget and therefore to report
 #   a large delta_max; the run script raises threshold_kb for that arm so
 #   the scenario still completes and the measured numbers stay in the
