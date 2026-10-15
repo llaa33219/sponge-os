@@ -42,7 +42,7 @@ seL4 kernel
       ├─ report_rom     top-level Report/ROM relay (window_list, focus,
       │                 hover, … — the whole wm-stack nervous system)
       │
-      └─ system        (nested init #1 — caps 280000, RAM 3420M)
+      └─ system        (nested init #1 — caps 280000, RAM = the remainder)
          ├─ report_rom   #2 — internal channels (request/result,
          │               launcher_request/result, installed, rules, …)
          ├─ wm           window manager: virtualizes Gui for apps
@@ -55,15 +55,16 @@ seL4 kernel
          ├─ sponge-de        the desktop (panel, launcher, tasklist,
          │                   background, settings, shortcuts)
          ├─ alpha_probe / cfg_probe   boot-time verifiers
-         └─ pkg_runtime  (nested init #2 — caps 230000, RAM 2816M)
+         └─ pkg_runtime  (nested init #2 — caps 230000, RAM = the remainder)
             └─ hello, calculator, pdf_view, falkon, terminal, …
 ```
 
-The `system` and `pkg_runtime` figures above are the **uefi-usb**
-values, which are the largest of the five desktop-disk variants
-(they carry `vct_tty`). The two plain/ahci and nvme disk variants
-that omit `vct_tty` grant `system` caps 263000 / RAM 3420M. Per-scenario
-numbers are listed in §6.
+Both RAM grants read "the remainder", not a fixed number — see §6.1.
+Caps stay fixed and hand-derived. The `caps` figures above are the
+**uefi-usb** values, which are the largest of the five desktop-disk
+variants (they carry `vct_tty`). The two plain/ahci and nvme disk
+variants that omit `vct_tty` grant `system` 263000 caps. Per-scenario
+numbers are in §6.
 
 ## 2. The three data chains
 
@@ -102,11 +103,12 @@ What failed is **liveness of a shared broker**:
    The trigger was mine; the fragility (an ep abort on a child-config
    edge case, with no fault containment) is broker-level.
 2. **Resource pools are shared**: children of one init draw caps/RAM
-   from a single grant (`system`: 280000 caps / 3420M on the product
-   media). Adding a child can starve siblings — quota arithmetic, not
-   fault isolation. The same arithmetic bit `pkg_runtime`: as a
-   nested init it draws its own 230000 caps / 2816M grant, which must
-   cover the SUM of every simultaneously-enabled package (§6).
+   from a single grant (`system`: 280000 caps / the RAM remainder on
+   the product media). Adding a child can starve siblings — quota
+   arithmetic, not fault isolation. The same arithmetic bit
+   `pkg_runtime`: as a nested init it draws its own 230000 caps plus
+   the RAM remainder, which must cover the SUM of every
+   simultaneously-enabled package (§6).
 3. **report_rom is a shared nervous system**: one process relays every
    Report/ROM channel in its scope; a policy or evaluation problem
    there has system-wide blast radius.
@@ -180,10 +182,27 @@ component must never be able to freeze the desktop. Status after the
   really die. No init guard patch was added — the problem class does
   not exist. Evidence: `docs/evidence/config-regen-survival.md`.
 - [x] **Resource headroom policy**: every `system` and `pkg_runtime`
-  grant across the five desktop-disk product scenarios carries ~10%
-  headroom over its own children sum (§6), and the enclosing QEMU
-  `-m` is sized so init's pool exceeds Tier-0 + the `system` grant by
-  ≥1 GiB. Adding a child is not a cliff-edge operation.
+  caps grant across the five desktop-disk product scenarios carries
+  ~10% headroom over its own children sum (§6). The RAM side is no
+  longer a hand-derived figure at all: both grants are **remainder
+  clamps** (see §6.1), so the headroom is whatever the machine has
+  left after the fixed services — 4521 MiB for `pkg_runtime` at
+  `-m 6G`, 2473 MiB at `-m 4G`, same unchanged file. Headroom is
+  therefore no longer constant, and on a small box it can be thin:
+  the refusal path for a package that no longer fits is
+  `sponge_pkgd`'s admission gate, not a silent clamp.
+- [x] **Remainder-clamp RAM grants — deployed, measured**
+  (§6.1, `docs/evidence/remainder-clamp-ram.md`): `system` and
+  `pkg_runtime` declare `ram: 512G`, a deliberately huge quantum that
+  Genode's init clamps to the parent's remaining availability at
+  creation time (`genode/repos/os/src/lib/sandbox/child.cc:481-486`).
+  The run scripts are consequently physical-RAM-size agnostic — one
+  file boots `-m 4G`, `-m 6G` and a 16 GiB laptop. Two conditions
+  make it sound, and both are asserted in every run file:
+  the clamped child must be the **last** `+ start` node in its config
+  (else a later child eats out of its pool), and **caps must stay
+  explicit** — caps exhaustion on seL4 *hangs* rather than failing,
+  and a zero-sum cap remainder would starve any future sibling.
 - [x] **Admission control — an over-budget package is refused, not
   clamped** (`sponge_pkgd`): `launch` (and `install`, for an
   `<autostart/>` package) compares the declared `<quota ram= caps=>`
@@ -272,46 +291,110 @@ profile (`pkg/bake/desktop.profile`) enables eight packages:
 
 (206512 caps counting the `nano` 600 + `ncurses` 300 pair reachable
 from the editor packages.) Hence the uniform
-`pkg_runtime | caps: 230000 | ram: 2816M` on all five desktop-disk
-scenarios: **+11.9% caps / +11.0% RAM** over the enabled sum.
+`pkg_runtime | caps: 230000 | ram: 512G` on all five desktop-disk
+scenarios: **+11.9% caps** over the enabled sum, and **RAM by the
+remainder-clamp** described in §6.1 — a grant that tracks the machine
+instead of a constant that has to be re-derived per `-m` value and per
+package-profile change.
 
 Before this change the four ahci/nvme desktop-disk variants granted
 `pkg_runtime` 8000 caps / 1536M — falkon (200000 caps) was **25x
 short** and could never launch, and the RAM sum overshot the grant by
 ~1 GiB. The uefi-usb variant's 210000 caps / 2048M was closer but
 still ~488M under on RAM and under on caps once pdf_view and terminal
-are counted.
+are counted. RAM then went 2816M → the clamp; caps never moved off an
+explicit number.
 
-| scenario | `system` children | `system` grant | headroom | QEMU `-m` |
-|---|---|---|---:|---:|
-| sponge-desktop-disk | 238650 / 3100M | 263000 / 3420M | +10.2% / +10.3% | 6G |
-| sponge-desktop-disk-nvme | 238650 / 3100M | 263000 / 3420M | +10.2% / +10.3% | 6G |
-| sponge-desktop-disk-uefi | 254100 / 3100M | 280000 / 3420M | +10.2% / +10.3% | 8G |
-| sponge-desktop-disk-uefi-nvme | 254100 / 3100M | 280000 / 3420M | +10.2% / +10.3% | 8G |
-| sponge-desktop-disk-uefi-usb | 254300 / 3108M | 280000 / 3420M | +10.1% / +10.0% | 8G |
+### 6.1 The remainder clamp (RAM only)
 
-The `-m` column is derived, not decorative, and the two boot paths
-reserve very different amounts of guest RAM:
+`system` and `pkg_runtime` declare `ram: 512G`. That is **not** a claim
+that the system needs 512 GiB — it is the mechanism. Genode's init
+silently clamps a child's RAM quantum to the parent's remaining
+availability at the moment the child is created:
+
+```c++
+/* genode/repos/os/src/lib/sandbox/child.cc:481-486 */
+Ram_quota const avail_ram = Genode::Child::effective_quota(quota_limit.ram);
+
+if (ram_quota.value > avail_ram.value) {
+    warning(name(), ": configured RAM exceeds available RAM, proceed with ", avail_ram);
+    ram_quota = avail_ram;
+}
+```
+
+`quota_limit` is the sandbox PD's live `stats.ram.avail()` minus the
+sandbox's `Preservation` reserve (`library.cc:96-108, 123`) — what is
+genuinely still free at that instant. The caps path
+(`child.cc:490-495`) is the identical clamp. Upstream behaviour, used
+as-is; **no vendored patch**.
+
+Two conditions make it sound:
+
+1. **The clamped child must be the LAST `+ start` node in its config.**
+   The remainder is only "everything left" if nothing is created
+   afterwards. `pkg_runtime`-last came from `248afa12d6` (real-hardware
+   config-delivery timing); `system`-last is already true. A per-file
+   scan confirms both in all five scenarios — no reordering was
+   needed.
+2. **Caps stay explicit.** Caps exhaustion on seL4 *hangs* (a child
+   that cannot get a capability waits forever — §11.1 of
+   docs/09-roadmap.md), which is the worst failure mode a resource can
+   have; and a cap grant that absorbed the whole remainder would starve
+   any future sibling added to the config. RAM has no such failure
+   mode, which is exactly why only RAM uses the clamp.
+
+Measured on `run/sponge-desktop-disk`, same unchanged file, two boots:
+
+| | `-m 6G` | `-m 4G` |
+|---|---:|---:|
+| init pool | 5686 MiB | 3638 MiB |
+| `system` grant | 4807.1 MiB | 2759.1 MiB |
+| `pkg_runtime` grant | **4521.2 MiB** | **2473.2 MiB** |
+| verdict | `alpha-probe: PASS` | `alpha-probe: PASS` |
+
+The arithmetic closes: `system − pkg_runtime` = 285.9 MiB at *both*
+pool sizes = the 284 MiB of fixed system children plus ~1.9 MiB of the
+nested init's own allocation. Tier-0 for this scenario totals 874 MiB,
+and 5686 − 874 ≈ 4807, the observed `system` grant. Full receipts:
+`docs/evidence/remainder-clamp-ram.md`.
+
+| scenario | `system` children (caps / fixed RAM) | `system` caps grant | `pkg_runtime` caps | QEMU `-m` (ceiling) |
+|---|---|---:|---:|---:|
+| sponge-desktop-disk | 8650 / 284M | 263000 | 230000 | 6G |
+| sponge-desktop-disk-nvme | 8650 / 284M | 263000 | 230000 | 6G |
+| sponge-desktop-disk-uefi | 24100 / 284M | 280000 | 230000 | 8G |
+| sponge-desktop-disk-uefi-nvme | 24100 / 284M | 280000 | 230000 | 8G |
+| sponge-desktop-disk-uefi-usb | 24300 / 292M | 280000 | 230000 | 8G |
+
+(The `system` children columns exclude `pkg_runtime` itself, whose
+caps remain 230000 in every scenario; the uefi variants' larger sums
+come from the 6000-cap `decorator`, 8000-cap `sponge-de` and 6000-cap
+`alpha_probe`, plus uefi-usb's `vct_tty` at 200 caps / 8M.)
+
+The `-m` column is now a **ceiling only** — it bounds the boot and
+nothing has to agree with it, because the two RAM grants follow the
+pool. The values are unchanged on purpose: the existing receipts were
+earned at them, and changing them would invalidate that evidence for
+no functional gain. The two boot paths still reserve very different
+amounts of guest RAM, which is why the ceilings differ:
 
 - **Direct-kernel (BIOS) path** — core reserves ~458 MiB for kernel +
-  rootserver. Measured on `sponge-desktop-disk` after this change:
-  `-m 6G` ⇒ "5686 MiB RAM and 523288 caps assigned to init" against
-  4294 MiB of grants ⇒ ~1392 MiB of slack. At `-m 4G` the pool was
-  3667 MiB — already ~600 MiB *below* the grant total.
+  rootserver. Measured: `-m 6G` ⇒ "5686 MiB RAM and 523288 caps
+  assigned to init"; `-m 4G` ⇒ 3638 MiB.
 - **OVMF/UEFI path** — ~2.4 GiB, not ~458 MiB. Measured on
-  `sponge-desktop-disk-uefi-usb`: `-m 8G` ⇒ 5826 MiB assigned to init
-  against 5318 MiB of grants ⇒ ~508 MiB of slack. Extrapolating the
-  BIOS overhead would have put a `-m 6G` UEFI pool near 3.8 GiB,
-  ~800 MiB *below* the grant total. Hence all three UEFI variants
-  carry 8G.
-
-uefi-usb needs the larger Tier-0 as well: the three-area layout adds
-`vfs_var` (32M), `vfs_home` (32M) and `rom_pkg` (768M for falkon's
-payload) on top of the two 256M `rom_*` servers, bringing Tier-0 to
-1898M.
+  `sponge-desktop-disk-uefi-usb`: `-m 8G` ⇒ 5826 MiB assigned to init.
+  The UEFI ceiling stays at 8G: uefi-usb alone carries ~1902 MiB of
+  Tier-0 (the three-area layout adds `vfs_var` 32M, `vfs_home` 32M and
+  `rom_pkg` 768M for falkon's 509 MiB payload on top of the two 256M
+  `rom_*` servers), so after the OVMF reservation a 6G guest would leave
+  the fixed system services with almost nothing.
 
 **Residual gap**: `run/sponge-alpha.run` still grants `pkg_runtime`
 400 caps / 32M — sized for the hello-only Phase-7 topology, not for
 the `desktop` profile it stages by default. Its 2G QEMU envelope
 would have to grow in lockstep and its PASS evidence would have to be
-re-earned, so the change is deliberately separate.
+re-earned, so the change is deliberately separate. The clamp is also
+**not** applied there: alpha is a flat topology whose `pkg_runtime` is
+a direct child of the *top-level* init, where "last created" would
+mean nothing useful (the drivers sub-init and the desktop children are
+siblings created in arbitrary order).

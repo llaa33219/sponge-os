@@ -888,12 +888,60 @@ config
 #   => 205612 caps / 2536M   (206512 caps incl. the nano+ncurses pair)
 # The previous 210000 caps / 2048M was itself short: falkon 200000 +
 # pdf_view 256 + terminal 1100 already exceed 210000 caps, and 2048M
-# is ~488M under the 2536M total. New grant 230000 caps / 2816M
-# => +11.9% caps / +11.0% RAM headroom over the enabled set.
+# is ~488M under the 2536M total. Caps grant: 230000, i.e. +11.9% over
+# the enabled sum above.
 # Media-independent: all five desktop-disk scenarios carry this same
-# value (docs/14 §4.4 "init config is data, not image").
+# caps value (docs/14 §4.4 "init config is data, not image").
 #
-+ start pkg_runtime | caps: 230000 | ram: 2816M
+# ============ RAM: THE DELIBERATELY-HUGE 512G QUANTUM =====================
+# `ram: 512G` below is INTENTIONAL. It is NOT a claim that this system
+# needs 512 GiB. It is the MECHANISM by which pkg_runtime receives ALL
+# RAM still unallocated at the moment it is created:
+#
+#   Genode's init SILENTLY CLAMPS a child's RAM quantum to whatever its
+#   parent still has available at creation time. See
+#   genode/repos/os/src/lib/sandbox/child.cc:481-486: `avail_ram =
+#   effective_quota(quota_limit.ram)` is the parent budget minus
+#   everything the parent already granted and consumed; when the
+#   declared quantum exceeds it, init logs "configured RAM exceeds
+#   available RAM, proceed with <avail>" and transfers `avail` instead.
+#   (The caps path is the identical clamp at child.cc:490-495.) Here
+#   the clamp IS the desired semantics: "take everything left".
+#
+# REQUIREMENT — pkg_runtime MUST be the LAST `+ start` node in THIS
+# system config. The grant is only "everything left" if nothing is
+# created afterwards; a child appended below takes its RAM out of
+# pkg_runtime's pool rather than out of a declared budget, silently.
+# The ordering was introduced by 248afa12d6 ("start pkg_runtime LAST",
+# for the real-hardware config-delivery timing); this is the SAME
+# invariant seen from the quota side. Do not append a start node under
+# this one without moving pkg_runtime back to the end of the file.
+# (The SPONGE_LAUNCHTEST block further down rewrites the sponge-de node
+# IN PLACE — its replacement nodes stay above this one, so the ordering
+# invariant survives that substitution.)
+#
+# WHAT IT BUYS: physical-RAM-size agnosticism. One unchanged file boots
+# QEMU -m 4G, -m 8G, and a 16 GiB laptop; the grant follows the machine
+# instead of a hand-derived constant. The fixed 2816M it replaces had
+# to be re-derived for every -m value and every package-profile change
+# (git history: 8000/1536M -> 210000/2048M -> 230000/2816M), and any
+# under-estimate was silently clamped to a grant too small for the
+# enabled set — invisible in the config, visible only as packages that
+# refuse to launch.
+#
+# WHY caps: 230000 STAYS EXPLICIT — the caps clamp is deliberately NOT
+# used as a mechanism here:
+#   1. caps exhaustion on seL4 HANGS. A child that cannot obtain a
+#      capability waits forever instead of failing (docs/09-roadmap.md
+#      §11.1) — a silent hang is the worst failure mode a resource can
+#      have.
+#   2. A cap grant that absorbs the whole remainder would starve any
+#      FUTURE sibling added to this config: the remainder is zero-sum,
+#      so the next addition becomes exactly the cliff edge docs/17 §5
+#      forbids. RAM carries no such failure mode, which is why only
+#      RAM uses the clamp.
+#
++ start pkg_runtime | caps: 230000 | ram: 512G
   + binary | name: bin/init
   + heartbeat | restart_after_skipped: 3
   + route
@@ -1345,17 +1393,32 @@ config
     + service LOG | + parent
     + service Timer | + child timer
 
-# caps/RAM carry ~10% headroom per docs/17 §5 (adding a child must not
-# be a cliff-edge operation on a grant sized exactly to fit).
-# Children sum of THIS sandbox: 254300 caps / 3108M
-#   report_rom 300/8M + wm 2000/16M + layouter 1000/8M + decorator
-#   6000/64M + sponge_configd 200/16M + sponge_themed 200/8M +
-#   sponge_pkgd 200/16M + vct_tty 200/8M + sponge-de 8000/128M +
-#   alpha_probe 6000/16M + cfg_probe 200/4M + pkg_runtime 230000/2816M
-#   (prod_launch_probe +200/8M is injected only under
+# caps carry ~10% headroom per docs/17 §5 (adding a child must not be
+# a cliff-edge operation on a grant sized exactly to fit).
+# Children caps-sum of THIS sandbox: 254300 caps
+#   report_rom 300 + wm 2000 + layouter 1000 + decorator 6000 +
+#   sponge_configd 200 + sponge_themed 200 + sponge_pkgd 200 +
+#   vct_tty 200 + sponge-de 8000 + alpha_probe 6000 + cfg_probe 200 +
+#   pkg_runtime 230000
+#   (prod_launch_probe +200 caps is injected only under
 #    SPONGE_LAUNCHTEST=on, still inside this grant.)
-# Grant 280000 caps / 3420M => +10.1% caps / +10.0% RAM.
-+ start system | caps: 280000 | ram: 3420M
+# Grant 280000 caps => +10.1% caps headroom.
+#
+# RAM: `512G` IS THE SAME DELIBERATELY-HUGE QUANTUM as pkg_runtime's,
+# one level up — same clamp mechanism, genode/repos/os/src/lib/sandbox/
+# child.cc:481-486. `system` is the LAST `+ start` node in THIS
+# top-level config, so it absorbs every MiB the Tier-0 children did not
+# claim; inside it, pkg_runtime (also last) absorbs whatever the fixed
+# system services did not. That is what makes the whole stack
+# physical-RAM-size agnostic. The declared 3420M it replaces (+10.0%
+# over the 3108M fixed-child sum) was a hand-derived constant that only
+# happened to fit -m 8G and had to be recomputed whenever -m or a
+# package profile changed.
+# Caps for `system` stay explicit at 280000 for the reason pkg_runtime's
+# do — the caps clamp hangs on seL4; see the caps rationale at the
+# pkg_runtime node below.
+#
++ start system | caps: 280000 | ram: 512G
   + binary | name: bin/init
   + route
     + service ROM | label: config | + child rom_sys | label: init/system.config
@@ -1716,16 +1779,26 @@ file delete -force $esp_stage $esp_img $genode_img $var_img $home_img
 #
 append qemu_args " -machine q35 -cpu Skylake-Client "
 #
-# -m 6G -> 8G: this scenario has the HEAVIEST Tier-0 of the five
+# -m 8G: -m now only sets the CEILING on guest RAM. It no longer has to
+# match any declared grant, because `system` and `pkg_runtime` are
+# remainder clamps (child.cc:481-486) and track whatever init actually
+# has. 8G is kept unchanged deliberately: every receipt in
+# docs/evidence/ was earned at 8G, and changing the value would
+# invalidate that evidence for no functional gain. A SMALLER -m also
+# works — pkg_runtime just receives a proportionally smaller remainder,
+# and `sponge_pkgd`'s admission control refuses a package that no longer
+# fits instead of letting init clamp it into a hang. Keep the ceiling at
+# 8G regardless: this scenario has the HEAVIEST Tier-0 of the five
 # product scenarios — the three-area layout adds vfs_var (32M),
 # vfs_home (32M) and rom_pkg (768M for falkon's 509 MiB payload) on
-# top of the two 256M rom_* servers, and the rom_* servers themselves
-# carry 16000 caps each. Tier-0 children total 1902M, plus the
-# pkg_runtime sizing fix's 3420M `system` grant = 5322M of quotas
-# drawn from init's pool. At 6G that would leave only ~413M above
-# every declared grant — technically a fit, but exactly the cliff
-# edge the §5 headroom policy exists to avoid. 8G (8192M) leaves
-# init ~7763M and ~2441M of slack.
+# top of the two 256M rom_* servers, bringing Tier-0 to ~1902M, so the
+# fixed system services alone need most of a 6G guest after the
+# ~2.4 GiB the OVMF/UEFI path reserves.
+# Historical arithmetic, kept for provenance: the fixed grants drew that
+# 1902M of Tier-0 plus the 3420M `system` grant = 5322M from init's pool,
+# which at 6G would have left only ~413M above every declared grant —
+# exactly the cliff edge the §5 headroom policy exists to avoid. Measured
+# post-change, see docs/evidence/remainder-clamp-ram.md.
 #
 append qemu_args " -nographic -m 8G -snapshot "
 append qemu_args " -device nec-usb-xhci,id=xhci "

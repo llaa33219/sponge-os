@@ -1,0 +1,30 @@
+spawn qemu-system-x86_64 -accel kvm -machine q35 -cpu Skylake-Client -nographic -m 6G -device nec-usb-xhci,id=xhci -device usb-tablet -serial mon:stdio -drive format=raw,file=var/run/sponge-desktop-disk.img -machine q35 -net nic,model=e1000,netdev=net0 -netdev user,id=net0
+5686 MiB RAM and 523288 caps assigned to init
+[init] [34mWarning: system: configured RAM exceeds available RAM, proceed with 5040606368[0m
+[init -> system] [34mWarning: pkg_runtime: configured RAM exceeds available RAM, proceed with 4740801500[0m
+[init -> system -> alpha_probe] alpha-probe: starting
+[init -> system -> alpha_probe] alpha-probe: skip_lz=yes (criterion d deferred to P5)
+[init -> system -> alpha_probe] alpha-probe: [1] install the 7 desktop packages via sponge_pkgd
+[init -> system -> sponge_pkgd] sponge_pkgd: resource admission armed (pkg_runtime state report)
+[init -> system -> alpha_probe] alpha-probe: [1] install hello ok
+[init -> system -> alpha_probe] alpha-probe: [1] install terminal ok
+[init -> system -> alpha_probe] alpha-probe: [1] install textedit ok
+[init -> system -> alpha_probe] alpha-probe: [1] install files ok
+[init -> system -> alpha_probe] alpha-probe: [1] install calculator ok
+[init -> system -> alpha_probe] alpha-probe: [1] install pdf_view ok
+[init -> system -> alpha_probe] alpha-probe: [1] install falkon ok
+[init -> system -> alpha_probe] alpha-probe: [3] assert (c) configd broadcast carries the baked key set
+[init -> system -> alpha_probe] alpha-probe: (c) configd broadcast carries all 8 baked keys
+[init -> system -> alpha_probe] alpha-probe: [4] assert (a) themed panel rendered
+[init -> system -> alpha_probe] alpha-probe: (a) panel band rendered at (512,4) = 0xff1e1e2e
+[init -> system -> alpha_probe] alpha-probe: [5] assert (b) launcher has all 7 desktop packages
+[init -> system -> alpha_probe] alpha-probe: (b) launcher report contains hello/Utilities
+[init -> system -> alpha_probe] alpha-probe: (b) launcher report contains terminal/System
+[init -> system -> alpha_probe] alpha-probe: (b) launcher report contains textedit/Editors
+[init -> system -> alpha_probe] alpha-probe: (b) launcher report contains files/Utilities
+[init -> system -> alpha_probe] alpha-probe: (b) launcher report contains calculator/Utilities
+[init -> system -> alpha_probe] alpha-probe: (b) launcher report contains pdf_view/Utilities
+[init -> system -> alpha_probe] alpha-probe: (b) launcher report contains falkon/Internet
+[init -> system -> alpha_probe] alpha-probe: (b) launcher report contains all 7 desktop packages
+[init -> system -> alpha_probe] alpha-probe: PASS
+Run script execution successful.
