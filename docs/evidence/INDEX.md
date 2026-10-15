@@ -14,6 +14,7 @@ reproduction scenario.
 | Does a `pkgd` config regeneration that crosses the reporter-buffer boundary kill running `pkg_runtime` children? | **Falsified** — the children survive | [`config-regen-survival.md`](config-regen-survival.md) (`run/sponge-config-regen-survival.run`) |
 | Does `sponge_pkgd` refuse a launch whose quota does not fit, or silently let the sandbox clamp it? | **Refused** — `insufficient-resources` with the figures | [`pkg-admission-control.md`](pkg-admission-control.md) (`run/sponge-pkg-admission.run`) |
 | Does Genode 26.08's `init` grant or forward a child's `resource_request()` upward? | **No upward forwarding**; grant-from-slack works, revival only via a config change to the hosting sandbox | [`dynamic-resource-topup.md`](dynamic-resource-topup.md) (`run/sponge-resource-request.run`) |
+| Does the SPONGE DEBUG "freeze when the scrollbar is dragged fast" field report come from a resource leak? | **No leak.** 335 repaints over 30 s move **0 bytes** in every component; the log-growth variant costs 139 264 B (the text itself). The stack sustains **11 Hz against a requested 30 Hz** — shared-substrate CPU saturation (`docs/17` §4), not per-component exhaustion | [`sponge-debug-scrollstorm.md`](sponge-debug-scrollstorm.md) (`run/sponge-debug-scrollstorm.run`) |
 
 ## Phase 10 (post-Alpha interactive desktop)
 

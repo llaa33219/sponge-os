@@ -1,0 +1,557 @@
+#
+# \brief  SPONGE DEBUG scroll-storm resource measurement (headless, QEMU/seL4)
+# \author Sponge OS contributors
+# \date   2026
+#
+# QUESTION UNDER TEST
+#
+#   Field report (2026-10): in the SPONGE DEBUG window, rapidly dragging
+#   the scrollbar until "text loads fast" FREEZES the whole system. The
+#   freeze point moved when the package quota was raised, which points at
+#   a resource leak; the user's own reading is "mere rendering shouldn't
+#   kill it". Two competing explanations:
+#
+#     H-leak       one component's RAM/caps usage grows without bound
+#                  under sustained repaints;
+#     H-saturation no component grows; the shared render substrate
+#                  saturates the CPU (docs/17-runtime-component-topology
+#                  .md section 4 — the same pattern as the mouse
+#                  follow-up recorded there).
+#
+#   This scenario decides between them by MEASUREMENT, not by argument:
+#   repostorm_probe samples EVERY child's ram/caps out of the sandbox
+#   state report (child_ram/child_caps armed below) once per second and
+#   names the largest per-child growth. NOTE: the sandbox regenerates the
+#   state report only when a child's PD stats change, so what the probe
+#   observes is report REVISIONS, not wall-clock ticks — the baseline and
+#   final TABLE lines are the load-bearing numbers. See
+#   docs/evidence/sponge-debug-scrollstorm.md section 4. Growth in exactly one child =
+#   leak, and the verdict line names it. Growth nowhere = the freeze is
+#   CPU saturation of the shared substrate.
+#
+# TOPOLOGY (the real render chain, no package manager)
+#
+#   init (Tier 0)
+#   + timer         (the ONLY Timer source: core provides no Timer)
+#   + report_rom    (serves `system`'s own `state` Report session — see
+#                    the note below on why the state report cannot live
+#                    on the Tier-0 config)
+#   + system        (nested init; the state report is armed HERE)
+#     + report_rom  (the three report_rom relays SPONGE DEBUG subscribes
+#                    to + the state relay)
+#     + nitpicker   (Gui/Capture/Event; the compositor)
+#     + drivers     (sub-init; acpi -> pci_decode -> platform ->
+#                    vesa_fb (the real display) + ps2 + usb_hid +
+#                    event_filter). The vendored
+#                    recipes/raw/drivers_interactive-pc set, so nitpicker
+#                    HAS a real framebuffer client and the compositing
+#                    work is real — a scenario without one would
+#                    under-measure nitpicker by construction.
+#     (no wm / layouter / decorator — see the SCOPE DECISION note below)
+#     + sponge_debug(the component under test; storm knobs in <config>)
+#     + repostorm_probe (the instrument; Timer + the state ROM)
+#
+#   The product runs SPONGE DEBUG under pkg_runtime with its Gui routed
+#   through wm. Both indirection layers are dropped here deliberately:
+#   the field freeze is a RENDER-path symptom, and pkg_runtime/pkgd and
+#   the WM triple contribute no rendering of the window under test.
+#   Keeping them out makes the run cheap enough to iterate and removes
+#   several large, unrelated, slowly-growing terms from the RAM table.
+#   The WM triple's own resource behaviour is covered by
+#   run/sponge-wm-tasks.run and run/sponge-de-sel4-interactive.run.
+#
+# THE STORM
+#
+#   sponge_debug's own config-gated knobs (repos/sponge/src/sponge_debug/
+#   main.cc) drive a QTimer that jumps the text viewport between the top
+#   and the bottom of the document at storm_hz — the same
+#   relayout+repaint work a scrollbar fling produces. This is preferred
+#   over host-side QMP mouse injection because the documented QEMU
+#   pointer recipe cannot land on a 15-pixel-wide scrollbar reliably
+#   (run/qmp.inc header: under -nographic the usb-tablet's absolute axis
+#   is unscaled so every absolute event clamps to the screen center; the
+#   relative recipe is +-1px but accumulates). Driving the repaint path
+#   directly is deterministic, headless, and kernel-independent.
+#
+# ARMS (select with SPONGE_ARM, default "scroll")
+#
+#   baseline  no storm at all (storm_ms=0). Establishes which components
+#             grow on their own over the measurement window — Qt/Mesa
+#             caches settling, etc.
+#   scroll    the user's gesture: storm_ms=30000 storm_hz=30
+#             storm_grow=0. Sustained scroll, constant document size.
+#   grow      storm_grow=1: one appended log line per tick on top. The
+#             "so text loads fast" half of the report — a growing
+#             document under load.
+#
+#   "grow" is EXPECTED to exceed any sane budget and therefore to report
+#   a large delta_max; the run script raises threshold_kb for that arm so
+#   the scenario still completes and the measured numbers stay in the
+#   log. Read the TABLE/VERDICT lines, not just the exit code.
+#
+# GATE
+#
+#   repostorm-probe: VERDICT <PASS|FAIL> — the measurement itself. On
+#   timeout the run tool errors out (no verdict at all = the system froze
+#   or wedged, which is the field symptom).
+#
+
+assert {[have_spec sel4]} \
+	"sponge-debug-scrollstorm requires KERNEL=sel4 (BOARD=pc): the scenario \
+	 needs vesa_fb/ps2/usb_hid, i.e. real PC hardware access."
+
+set arm "scroll"
+if {[info exists ::env(SPONGE_ARM)]} { set arm $::env(SPONGE_ARM) }
+
+# Per-arm storm knobs (see the ARMS table above).
+set storm_ms 30000
+# The instrument settles 20 s and then measures 45 s. The storm must
+# start AFTER the baseline, or most of its budget lands inside the
+# settle period and is never sampled.
+set storm_start_ms 24000
+set storm_hz 30
+set storm_lines 2000
+set storm_grow 0
+# threshold_kb: the per-child growth budget the probe asserts on. The
+# "grow" arm is expected to exceed any sane budget, so its budget is set
+# high enough for the scenario to complete and the numbers to survive in
+# the log (the header above says that arm's verdict is informative, not
+# normative).
+set threshold_kb 2048
+switch -- $arm {
+	baseline { set storm_ms 0 }
+	scroll   { set storm_ms 30000 ; set storm_grow 0 }
+	grow     { set storm_ms 30000 ; set storm_grow 1 ; set threshold_kb 262144 }
+	default  { error "SPONGE_ARM must be one of: baseline | scroll | grow (got '$arm')" }
+}
+
+build { core lib/ld init timer server/report_rom server/nitpicker \
+         driver/acpi app/pci_decode driver/platform \
+         driver/framebuffer/vesa driver/ps2 \
+         driver/usb_host/pc driver/usb_hid \
+         server/event_filter \
+         server/wm app/window_layouter app/decorator \
+         sponge_debug test/repostorm_probe \
+         qt6/base lib/libc lib/libm lib/stdcxx lib/mesa \
+         lib/mesa_gpu-softpipe lib/egl lib/softpipe lib/libdrm lib/expat \
+         lib/qt6_component lib/vfs lib/vfs_pipe lib/vfs_gpu lib/rom_filter \
+         lib/zlib lib/libpng lib/blit }
+
+create_boot_directory
+
+install_config [subst {
+config
++ parent-provides
+  + service ROM
+  + service PD
+  + service RM
+  + service CPU
+  + service LOG
+  + service IRQ
+  + service IO_MEM
+  + service IO_PORT
+
++ default | caps: 200 | ram: 4M
++ default-route
+  + any-service
+    + parent
+    + any-child
+
+#
+# TIER-0 report_rom. A sandbox can only produce a state report if a
+# Report session can be OPENED for it, and it opens that session against
+# its own parent (genode/repos/os/src/init/main.cc:62 builds a Reporter
+# over a Report session labelled "state"). The Tier-0 init's parent is
+# core, and core provides no Report service, so a report node on the Tier-0
+# config is fatal ("parent denied Report-session"). The state report
+# therefore lives on the nested `system` init and THIS report_rom is what
+# lets `system` open its own `state` session. Exactly the split every
+# other state-reporting scenario in this repo uses
+# (run/sponge-vct-status.run:41, run/sponge-de-leak-audit.run:128).
+#
+#
+# Tier-0 timer. core provides no Timer service, so the one Timer source
+# in the system must be a Tier-0 child. Every sandbox below reaches it
+# through the wildcard parent-service route (see the TIMER ROUTING note
+# inside the `system` config).
+#
++ start timer
+  + provides | + service Timer
+
++ start report_rom | caps: 100 | ram: 4M
+  + provides
+    + service Report
+    + service ROM
+  + config | verbose: no
+    + policy | label_suffix: state | report: system -> state
+
++ start system | caps: 30000 | ram: 512M
+  + binary init
+  + config
+    + parent-provides
+      + service ROM
+      + service PD
+      + service RM
+      + service CPU
+      + service LOG
+      + service Timer
+      + service Report
+      + service IRQ
+      + service IO_MEM
+      + service IO_PORT
+      + service Capture
+      + service Event
+    + default-route
+      + any-service
+        + parent
+        + any-child
+    + default | caps: 200 | ram: 4M
+
+    # TIMER ROUTING -- deliberately no explicit Timer route rule below.
+    # An explicit "service Timer" rule is a SPECIFIC rule in init's
+    # Route_model (genode/repos/os/src/lib/sandbox/route_model.h:138)
+    # and a specific rule whose target cannot be resolved is fatal:
+    # Route_model::resolve rethrows Service_denied instead of falling
+    # through to the wildcard rule (route_model.h:260-269). The only
+    # Timer source is the Tier-0 "timer" child, which is NOT a child of
+    # "system", so an explicit Timer route aimed at a child named timer
+    # denies every request. The wildcard any-service/parent rule in
+    # each sandbox resolves Timer from that sandbox's parent services
+    # -- the Tier-0 timer for "system", and "system"'s parent-provides
+    # Timer for everything below it -- and falls through harmlessly when
+    # no target can serve. Measured while building this scenario: every
+    # explicit Timer route variant produced "stop because parent denied
+    # Timer-session".
+    #
+    #
+    # The measurement instrument's data source. repostorm_probe reads
+    # this as its "state" ROM (route below); report_rom inside `system`
+    # fans it out so the probe sees the IDENTICAL report, not an estimate
+    # (same idiom as run/sponge-pkg-admission.run:60-62).
+    #
+    + report | init_ram: yes | child_ram: yes | child_caps: yes | delay_ms: 1000
+
+    + start report_rom | caps: 300 | ram: 8M
+      + provides
+        + service Report
+        + service ROM
+      + config | verbose: yes
+        # The instrument.
+        + policy | label_suffix: state | report: system -> state
+        # SPONGE DEBUG's three subscriptions. This scenario has no package
+        # manager, so 'installed' and 'launcher_result' are served from the
+        # same real report wm produces: the app opens all three sessions at
+        # construction or it stops on the first denied one, and the point of
+        # the exercise is the app's RAM behaviour, not the payloads.
+        + policy | label: sponge_debug -> installed       | report: wm -> window_list
+        + policy | label: sponge_debug -> window_list     | report: wm -> window_list
+        + policy | label: sponge_debug -> launcher_result | report: wm -> window_list
+
+    + start nitpicker | ram: 16M
+      + provides
+        + service Gui
+        + service Capture
+        + service Event
+      + route
+        + service Report | + child report_rom
+        + any-service
+          + parent
+          + any-child
+      + config
+        + capture
+        + event
+        + report | focus: yes | hover: yes | xray: yes
+        + domain default | layer: 2 | content: client | label: no
+                         | hover: always | focus: click
+        + default-policy | domain: default
+        + background | color: #1e1e2e
+
+    #
+    # The driver set, hosted by its own `drivers` sub-init exactly as
+    # run/sponge-de-sel4-interactive.run does. Two facts forced this
+    # shape, both measured in this scenario's own iteration:
+    #
+    #   1. init starts children CONCURRENTLY. Flattening the drivers
+    #      into `system` puts event_filter and fb on the same start
+    #      wave as nitpicker, and both lose the race for nitpicker's
+    #      Event/Capture service ("parent denied Event-session" /
+    #      "parent denied Capture-session"). One extra init generation
+    #      is what the product topology already relies on.
+    #   2. a sandbox only opens a Timer session when something in its
+    #      config needs one. `drivers` parent-provides Timer for its
+    #      children, so it needs one of its own -- the report node
+    #      below is what makes it open one (and, as a side effect,
+    #      gives the driver subtree its own per-child RAM table).
+    #
+    # The vendored recipes/raw/drivers_interactive-pc set is unchanged.
+    #
+    + start drivers | caps: 1500 | ram: 96M | managing_system: yes
+      + binary init
+      + route
+        + service ROM | label: config | + parent | label: drivers.config
+        + service Capture | + child nitpicker
+        + service Event | + child nitpicker
+        + any-service
+          + parent
+      + config
+        + report | init_ram: yes | child_ram: yes | child_caps: yes | delay_ms: 1000
+        + parent-provides
+          + service IRQ
+          + service IO_MEM
+          + service IO_PORT
+          + service ROM
+          + service PD
+          + service RM
+          + service CPU
+          + service LOG
+          + service Timer
+          + service Capture
+          + service Event
+
+        + default | caps: 60
+
+        + start report_rom | caps: 100 | ram: 2M
+          + provides
+            + service ROM
+            + service Report
+          + config
+            + policy | label: pci_decode -> system | report: acpi -> acpi
+            + policy | label: platform -> devices  | report: pci_decode -> devices
+            + policy | label: usb_hid -> report    | report: usb -> devices
+          + route
+            + service LOG | + parent
+            + service PD | + parent
+            + service CPU | + parent
+            + service ROM | + parent
+            + service Timer | + parent
+
+        + start acpi | caps: 250 | ram: 4M
+          + route
+            + service IO_MEM | + parent
+            + service LOG | + parent
+            + service PD | + parent
+            + service RM | + parent
+            + service CPU | + parent
+            + service ROM | + parent
+            + service Report | + child report_rom
+
+        + start pci_decode | caps: 100 | ram: 2M
+          + route
+            + service Report | + child report_rom
+            + service ROM | label: system | + child report_rom
+            + service IO_MEM | + parent
+            + service LOG | + parent
+            + service PD | + parent
+            + service RM | + parent
+            + service CPU | + parent
+            + service ROM | + parent
+
+        + start platform | caps: 200 | ram: 3M | managing_system: yes
+          + provides
+            + service Dma
+            + service Platform
+          + route
+            + service ROM | label: devices | + child report_rom
+            + service Report | + child report_rom
+            + service IRQ | + parent
+            + service IO_MEM | + parent
+            + service IO_PORT | + parent
+            + service ROM | + parent
+            + service PD | + parent
+            + service RM | + parent
+            + service CPU | + parent
+            + service LOG | + parent
+            + service Timer | + parent
+          + config
+            + report | devices: yes
+            + policy | label_prefix: ps2             | + device ps2
+            + policy | label_prefix: fb  | info: yes | + pci | class: VGA
+            + policy | label_prefix: usb | info: yes | + pci | class: USB
+
+        + start fb | caps: 150 | ram: 20M
+          + binary vesa_fb
+          + route
+            + service ROM | label: config | + parent | label: fb.config
+            + service Report | + child report_rom
+            + service Dma | + child platform
+            + service Platform | + child platform
+            + service IO_PORT | + parent
+            + service IO_MEM | + parent
+            + service ROM | + parent
+            + service PD | + parent
+            + service CPU | + parent
+            + service LOG | + parent
+            + service Timer | + parent
+            + service Capture | + parent
+
+        + start ps2 | caps: 100 | ram: 1280K
+          + config
+          + route
+            + service Dma | + child platform
+            + service Platform | + child platform
+            + service Event | + child event_filter | label: ps2
+            + service ROM | + parent
+            + service PD | + parent
+            + service CPU | + parent
+            + service LOG | + parent
+            + service Timer | + parent
+
+        + start usb | caps: 200 | ram: 16M
+          + binary pc_usb_host
+          + provides | + service Usb
+          + config
+            + report | devices: yes
+            + policy | label_prefix: usb_hid | + device | class: 0x3
+          + route
+            + service Dma | + child platform
+            + service Platform | + child platform
+            + service Report | label: devices | + child report_rom
+            + service ROM | + parent
+            + service PD | + parent
+            + service RM | + parent
+            + service CPU | + parent
+            + service LOG | + parent
+            + service Timer | + parent
+
+        + start usb_hid | caps: 180 | ram: 10M
+          + route
+            + service ROM | label: report | + child report_rom
+            + service ROM | + parent
+            + service PD | + parent
+            + service RM | + parent
+            + service CPU | + parent
+            + service LOG | + parent
+            + service Timer | + parent
+            + service Event | + child event_filter | label: usb
+            + service Usb | + child usb
+
+        + start event_filter | caps: 90 | ram: 1280K
+          + provides | + service Event
+          + route
+            + service ROM | label: config | + parent | label: event_filter.config
+            + service Event | + parent
+            + service ROM | + parent
+            + service PD | + parent
+            + service CPU | + parent
+            + service LOG | + parent
+            + service Timer | + parent
+
+    #
+    # SCOPE DECISION: no wm / layouter / decorator in this scenario.
+    # SPONGE DEBUG's window still renders through exactly the same
+    # measured path — Qt6 QPA genode -> nitpicker -> vesa_fb -> GOP —
+    # and every component on THAT path is in the per-child RAM table.
+    # The WM triple is a second shared-broker axis with its own
+    # scenarios (run/sponge-wm-tasks.run, run/sponge-de-sel4-interactive.run);
+    # carrying a private copy of it here would add three more
+    # slowly-growing terms to the attribution table and make the storm
+    # measurement harder to read, for no extra coverage of the field
+    # symptom. Registered as a limitation in the evidence document.
+    #
+    # Gui therefore goes straight to nitpicker, the same route
+    # run/sponge-de-sel4-interactive.run:755 gives pkg_runtime packages.
+    #
+    # caps: 1000 — base-sel4's capability accounting is roughly 3x
+    # base-linux's; 300 caps wedges inside Mesa's EGL screen creation with
+    # a silent hang (docs/09-roadmap.md section 11.1). ram: 64M is the
+    # package's production figure (pkg/debug/metadata.xml).
+    + start sponge_debug | caps: 1000 | ram: 64M
+      + config | storm_ms: $storm_ms | storm_start_ms: $storm_start_ms | storm_hz: $storm_hz | storm_lines: $storm_lines | storm_grow: $storm_grow
+        + vfs
+          + dir dev
+            + log
+            + inline rtc | : 2018-01-01 00:01
+          + dir pipe | + pipe
+          + tar qt6_dejavusans.tar
+          + tar qt6_libqgenode.tar
+        + libc | stdout: /dev/log | stderr: /dev/log | pipe: /pipe | rtc: /dev/rtc
+      + route
+        + service Gui | + child nitpicker
+        + service ROM | label_last: installed       | + child report_rom
+        + service ROM | label_last: window_list     | + child report_rom
+        + service ROM | label_last: launcher_result | + child report_rom
+        + service ROM | label: mesa_gpu.lib.so | + parent | label: mesa_gpu-softpipe.lib.so
+        + any-service
+          + parent
+          + any-child
+
+    + start repostorm_probe | caps: 200 | ram: 8M
+      + config | settle_ms: 20000 | report_ms: 1000 | duration_ms: 60000 | threshold_kb: $threshold_kb
+  + route
+    + service ROM | label_last: ld.lib.so | + parent
+    # The instrument reads this sandbox's OWN state report. The ROM
+    # request is routed here by `system` (a child's own <route> node
+    # only serves that child's children, and the probe has none);
+    # report_rom then requests the Report session "system -> state",
+    # which init answers from its local services without any routing.
+    + service ROM | label_last: state | + child report_rom
+    + service Report | + child report_rom
+    + service Capture | + child nitpicker
+    + service Event | + child nitpicker
+    + any-service
+      + parent
+      + any-child
+- }]
+
+#
+# On base-sel4 the boot image is one packed image.elf: every non-build-
+# artifact module must exist in bin/ BEFORE build_boot_image or it never
+# reaches the guest (docs/11-environment.md section 10.4).
+#
+exec mkdir -p bin
+
+set dejavu_dst "bin/qt6_dejavusans.tar"
+if {![file exists $dejavu_dst]} {
+	set dejavu_src [glob -nocomplain "${genode_dir}/contrib/qt6_base-*/src/lib/qt6_base/src/3rdparty/wasm/DejaVuSans.ttf"]
+	if {[llength $dejavu_src] == 0} {
+		error "DejaVuSans.ttf not found in the qt6_base port sources"
+	}
+	set staging "[run_dir]/dejavusans-staging"
+	file mkdir "$staging/qt/lib/fonts"
+	file copy -force [lindex $dejavu_src 0] "$staging/qt/lib/fonts/DejaVuSans.ttf"
+	exec tar -cf $dejavu_dst -C $staging qt
+	file delete -force $staging
+}
+
+set recipe_dir "${genode_dir}/repos/os/recipes/raw/drivers_interactive-pc"
+foreach f { drivers.config fb.config event_filter.config } {
+	if {![file exists "$recipe_dir/$f"]} {
+		error "$recipe_dir/$f missing (vendored drivers_interactive-pc recipe drifted?)"
+	}
+	exec cp -f "$recipe_dir/$f" "bin/$f"
+}
+
+#
+# event_filter.config is the recipe's own config, unmodified. The
+# absolute-pointer scale and the PS/2 acceleration deviations that
+# run/sponge-de-sel4-interactive.run writes exist only so a HOST-side QMP
+# mouse can be aimed at a specific pixel. This scenario injects no host
+# input — the storm is driven inside sponge_debug — so the stock config is
+# correct here and nothing is hand-written.
+#
+
+set chargen_dir "${genode_dir}/repos/os/src/server/event_filter"
+foreach f { en_us.chargen special.chargen } {
+	if {![file exists "$chargen_dir/$f"]} {
+		error "$chargen_dir/$f missing (event_filter sources drifted?)"
+	}
+	exec cp -f "$chargen_dir/$f" "bin/$f"
+}
+
+set boot_modules [build_artifacts]
+foreach m { libQt6Core.lib.so libQt6Gui.lib.so libQt6Widgets.lib.so \
+            libqgenode.lib.so \
+            qt6_libqgenode.tar qt6_dejavusans.tar \
+            drivers.config fb.config event_filter.config \
+            en_us.chargen special.chargen } {
+	lappend boot_modules $m
+}
+build_boot_image $boot_modules
+
+append qemu_args " -nographic -m 2G "
+
+#
+# The gate is the measurement itself. A missing verdict (timeout) means
+# the system wedged — which is the field symptom, reported as a failure.
+#
+run_genode_until {.*repostorm-probe: VERDICT.*} 240
