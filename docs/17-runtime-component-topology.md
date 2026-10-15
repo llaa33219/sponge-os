@@ -131,6 +131,46 @@ saturated. The discriminating tests, in order:
 3. **Replug/reboot the mouse on real hw**: the known USB-enumeration
    flake family (documented in Phase 15).
 
+## 4a. The SPONGE DEBUG scroll-storm report (2026-10-15) — measured: saturation, not a leak
+
+§4 above predicted that a mouse that "does nothing" points at a
+**saturated shared substrate** rather than at component isolation. A
+later field report — the SPONGE DEBUG window freezing when the scrollbar
+is dragged fast, with the freeze point moving when the package quota was
+raised — is the same shape, and it has now been **measured**:
+
+| arm | repaints | `sponge_debug` ΔRAM | nitpicker / drivers / report_rom ΔRAM |
+|---|---|---|---|
+| `baseline` (no storm) | — | 0 | 0 |
+| `scroll` (30 s @ 30 Hz flings) | 335 | **0** | 0 |
+| `grow` (+ one log line per tick) | 335 | 139 264 B (the text itself) | 0 |
+
+Scenario `run/sponge-debug-scrollstorm.run` (base-sel4, QEMU,
+`-nographic`); instrument `repos/sponge/src/test/repostorm_probe`, which
+reads the sandbox state report's per-child `ram`/`caps` and names the
+largest grower; full write-up and receipts in
+[`docs/evidence/sponge-debug-scrollstorm.md`](evidence/sponge-debug-scrollstorm.md).
+
+Two facts settle it:
+
+1. **Nothing grows.** A GUI session in Genode holds *one* long-lived
+   framebuffer dataspace that the client maps once and writes into
+   forever — there is no buffer rotation for a repaint to leak — and the
+   Qt6 QPA plugin allocates nothing per frame. The 139 KB in the `grow`
+   arm is `QTextDocument`'s per-block cost — the text itself, bounded by
+   the number of lines rather than by wall time.
+2. **The rate does.** The storm asked for 30 repaints/s and the
+   CPU-rasterized stack delivered **11 Hz** (335 ticks in 30 064 ms).
+   Input therefore arrives ~3x faster than frames can be produced; a
+   hand-driven drag on real hardware builds the same backlog until the
+   event loop stops draining.
+
+So the "quota raise helped" observation is explained without a leak: more
+RAM/caps headroom means a cheaper *per-frame* cost (softpipe and Qt's
+backing store are sized out of that quota), so the achievable rate rises
+and the freeze arrives later. The asymptote is CPU cycles. **Raising a
+quota is not a fix for this class of report and none was applied.**
+
 ## 5. Design gap register (what "microkernel-proper" would add)
 
 The user's intuition is correct: properly deployed, a terminal
@@ -138,6 +178,19 @@ component must never be able to freeze the desktop. Status after the
 2026-10-04 containment deployment and the 2026-10 quota-sizing fix
 (§6):
 
+- [ ] **Repaint back-pressure — not deployed (measured gap,
+  §4a)**: a component that repaints faster than the compositor can
+  drain builds an unbounded backlog. `Framebuffer::Session` already
+  offers `sync_sigh`/`sync_source`
+  (`genode/repos/os/include/framebuffer_session/framebuffer_session.h:218-231`)
+  and nitpicker already implements the server side
+  (`genode/repos/os/src/server/nitpicker/main.cc:519-541`), but the
+  Qt6 QPA plugin never registers them, so the client never waits.
+  Registering them is a **vendored-tree change** and
+  `docs/11-environment.md` §4 closes the vendored budget for Phase 16
+  (row 17); it needs an explicit Phase-17+ ledger row and certainty
+  first. Measured consequence of the missing back-pressure: the stack
+  sustains 11 repaints/s against a requested 30 (§4a).
 - [x] **Broker fault containment — system level (deployed)**: the
   five desktop-disk product scenarios' system init runs
   `<heartbeat rate_ms="2000"/>` with

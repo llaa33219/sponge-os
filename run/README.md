@@ -875,6 +875,22 @@ A scenario defines:
   Known boundaries: XSAVE-less CPUs, `-vga cirrus`, the TCG boot
   race, `-no-hpet`. base-sel4 only.
 
+- `sponge-debug-scrollstorm.run` — **resource attribution for the
+  SPONGE DEBUG "freeze when the scrollbar is dragged fast" field
+  report**. Boots SPONGE DEBUG on the real render path (Qt6 QPA genode →
+  nitpicker → `vesa_fb` → GOP) inside a nested `system` init whose
+  state report is armed with `child_ram`/`child_caps`, drives a
+  config-gated repaint storm inside the app, and has `repostorm_probe`
+  (`repos/sponge/src/test/repostorm_probe/`) sample every child's
+  RAM/caps and name the largest grower. Three arms via `SPONGE_ARM`:
+  `baseline` (no storm), `scroll` (30 s @ 30 Hz viewport flings),
+  `grow` (the same plus one appended log line per tick). Gate:
+  `repostorm-probe: VERDICT <PASS|FAIL>`.
+  **Result: no leak** — 337 repaints move 0 bytes in every component;
+  the stack sustains 11 Hz against a requested 30 Hz. Evidence
+  `docs/evidence/sponge-debug-scrollstorm.md`. base-sel4 only
+  (`vesa_fb`/`ps2`/`usb_hid`).
+
 ## Planned additions
 
 - Spin a usable Sponge OS install workflow through Leitzentrale (the
