@@ -28,6 +28,13 @@
  *
  *   storm_ms / storm_start_ms / storm_hz / storm_lines / storm_grow
  *
+ *   The storm also emits telemetry the measurement is built on:
+ *   "STORM checkpoint <ticks> elapsed_ms= rate_hz= max_gap_ms=" every 5 s and
+ *   "STORM done <ticks> elapsed_ms= achieved_hz= max_gap_ms=" at the end.
+ *   'max_gap_ms' is the largest interval between two delivered ticks -
+ *   the headless liveness signal for a saturated event loop (see
+ *   docs/evidence/sponge-debug-scrollstorm.md section 8).
+ *
  *   The "rapidly dragging the scrollbar" field report (2026-10) is
  *   reproduced headlessly by run/sponge-debug-scrollstorm.run, which
  *   sets these attributes on the package config. They drive the same
@@ -149,6 +156,10 @@ struct Main
 	bool          storm_grow     { false };
 	unsigned      storm_ticks    { 0 };
 	unsigned      storm_ticks_max { 0 };
+	qint64        storm_last_ms  { 0 };
+	qint64        storm_max_gap_ms { 0 };
+	qint64        storm_next_checkpoint { 0 };
+	unsigned      storm_checkpoint_every { 0 };
 	QTimer        storm_timer;
 	QTimer        storm_start_timer;
 	QElapsedTimer storm_clock;
@@ -190,6 +201,8 @@ struct Main
 		storm_ticks_max = (storm_ms * storm_hz) / 1000;
 		if (storm_ticks_max == 0)
 			storm_ticks_max = 1;
+		/* one telemetry checkpoint per 5 s of storm */
+		storm_checkpoint_every = storm_hz * 5;
 
 		/*
 		 * A long document is a precondition for a scroll storm to
@@ -248,14 +261,54 @@ struct Main
 		 * carries ticks AND elapsed, so the achieved repaint rate is
 		 * recoverable: that rate IS the result.
 		 */
-		++storm_ticks;
 		qint64 const elapsed = storm_clock.elapsed();
+
+		/*
+		 * Liveness + backlog telemetry.
+		 *
+		 * 'gap' is the largest interval between two delivered ticks.
+		 * A Qt event loop that is oversubscribed delivers QTimer
+		 * callbacks late and bunched up, so a large gap is the
+		 * headless signature of the repaint backlog: the longer the
+		 * loop is saturated, the longer a queued repaint waits before
+		 * it is even started.
+		 *
+		 * 'rate' at a checkpoint is the average over the storm so far.
+		 * Without frame pacing the per-frame compositing cost grows
+		 * with the backlog, so the rate DEGRADES across the storm;
+		 * with pacing the backlog stays at one frame and the rate
+		 * stays flat. That is the comparison the evidence document
+		 * reports.
+		 */
+		if (storm_last_ms != 0) {
+			qint64 const gap = elapsed - storm_last_ms;
+			if (gap > storm_max_gap_ms)
+				storm_max_gap_ms = gap;
+		}
+		storm_last_ms = elapsed;
+
+		++storm_ticks;
+
+		if (elapsed >= storm_next_checkpoint) {
+			log("sponge_debug: STORM checkpoint ticks=", storm_ticks,
+			    " elapsed_ms=", elapsed,
+			    " rate_hz=", elapsed > 0 ? (storm_ticks * 1000) / elapsed : 0,
+			    " max_gap_ms=", storm_max_gap_ms);
+			/* skip whole missed intervals: the Qt event loop can be
+			 * late enough to overshoot more than one interval, and
+			 * catching up one interval per tick would emit a
+			 * checkpoint on every single tick. */
+			while (elapsed >= storm_next_checkpoint)
+				storm_next_checkpoint += storm_checkpoint_every;
+		}
+
 		if (elapsed >= storm_ms || storm_ticks >= storm_ticks_max) {
 			storm_timer.stop();
 			log("sponge_debug: STORM done ticks=", storm_ticks,
 			    " elapsed_ms=", elapsed,
 			    " achieved_hz=", elapsed > 0
-			        ? (storm_ticks * 1000) / elapsed : 0);
+			        ? (storm_ticks * 1000) / elapsed : 0,
+			    " max_gap_ms=", storm_max_gap_ms);
 		}
 	}
 
@@ -323,12 +376,18 @@ struct Main
 				QObject::connect(&storm_start_timer, &QTimer::timeout,
 				                 [this]() {
 						storm_clock.start();
+						storm_last_ms        = 0;
+						storm_max_gap_ms     = 0;
+						storm_next_checkpoint = storm_checkpoint_every;
 						storm_timer.start();
 					});
 				storm_start_timer.start(storm_start_ms);
 				log("sponge_debug: STORM starts in ", storm_start_ms, " ms");
 			} else {
 				storm_clock.start();
+				storm_last_ms          = 0;
+				storm_max_gap_ms       = 0;
+				storm_next_checkpoint = storm_checkpoint_every;
 				storm_timer.start();
 			}
 		}

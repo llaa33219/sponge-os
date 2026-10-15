@@ -171,6 +171,16 @@ backing store are sized out of that quota), so the achievable rate rises
 and the freeze arrives later. The asymptote is CPU cycles. **Raising a
 quota is not a fix for this class of report and none was applied.**
 
+The unbounded-backlog half of the mechanism — the QPA plugin never
+registering the framebuffer's sync signal, so a client never learns how
+far behind the compositor it is — is now patched: **ledger row #23**,
+`docs/patches/qt6-qpa-frame-sync.patch`. See §5 and
+[`docs/evidence/sponge-debug-scrollstorm.md`](evidence/sponge-debug-scrollstorm.md)
+§8 for the before/after numbers and the honest verification gap: on
+QEMU/softpipe no backlog forms (the client is slower than the
+compositor), so the benefit is correct-by-construction but **unmeasured**;
+the real-hardware confirmation is an open item in §5.
+
 ## 5. Design gap register (what "microkernel-proper" would add)
 
 The user's intuition is correct: properly deployed, a terminal
@@ -178,19 +188,32 @@ component must never be able to freeze the desktop. Status after the
 2026-10-04 containment deployment and the 2026-10 quota-sizing fix
 (§6):
 
-- [ ] **Repaint back-pressure — not deployed (measured gap,
-  §4a)**: a component that repaints faster than the compositor can
-  drain builds an unbounded backlog. `Framebuffer::Session` already
-  offers `sync_sigh`/`sync_source`
+- [x] **Repaint back-pressure — patched (ledger row #23), benefit
+  still unmeasured (§4a)**: a component that repaints faster than the
+  compositor can drain builds an unbounded backlog.
+  `Framebuffer::Session` already offers `sync_sigh`/`sync_source`
   (`genode/repos/os/include/framebuffer_session/framebuffer_session.h:218-231`)
   and nitpicker already implements the server side
-  (`genode/repos/os/src/server/nitpicker/main.cc:519-541`), but the
-  Qt6 QPA plugin never registers them, so the client never waits.
-  Registering them is a **vendored-tree change** and
-  `docs/11-environment.md` §4 closes the vendored budget for Phase 16
-  (row 17); it needs an explicit Phase-17+ ledger row and certainty
-  first. Measured consequence of the missing back-pressure: the stack
-  sustains 11 repaints/s against a requested 30 (§4a).
+  (`genode/repos/os/src/server/nitpicker/main.cc:537`), but the Qt6 QPA
+  plugin never registered them, so the client never waited. Fixed by
+  `docs/patches/qt6-qpa-frame-sync.patch`, applied by
+  `genode/repos/libports/src/qt6/base/target.mk` (row #23 in
+  `docs/11-environment.md` §4). The wait is bounded (250 ms ceiling)
+  and self-disabling: it fires only when the client submits a frame
+  without a sync having arrived since its last submit.
+  **Verification status, stated honestly:** the mechanism is certain by
+  construction and non-regressive (`sponge-de-test`, `sponge-launch`,
+  `sponge-de-sel4-interactive`, `sponge-desktop-disk` all PASS), but
+  its BENEFIT is unmeasured — on QEMU/softpipe the client (~10
+  repaints/s) is slower than the compositor (~25 Hz), so no backlog
+  ever forms and the wait never engages; the measured effect there is a
+  1 repaint/s cost from the extra sync-signal wakeups. Positive proof
+  needs real hardware. Details and the two rejected earlier revisions:
+  `docs/evidence/sponge-debug-scrollstorm.md` §8.
+- [ ] **Real-hardware confirmation of row #23 — open**: reproduce a
+  backlog on the LG gram 17ZD90N (2560x1600, where the field report
+  originated) and measure the achieved rate and event-loop latency with
+  and without the patch, so the row's cost/benefit side is closed.
 - [x] **Broker fault containment — system level (deployed)**: the
   five desktop-disk product scenarios' system init runs
   `<heartbeat rate_ms="2000"/>` with

@@ -1,0 +1,300 @@
+Subject: [PATCH] qt6 QPA genode: pace frames against the compositor
+
+Register the Genode framebuffer sync signal in the Qt6 'genode' QPA
+platform plugin and wait (bounded) for it at each frame boundary, so a
+client can no longer queue repaints faster than the compositor drains
+them.
+
+Background
+----------
+A Genode GUI client owns exactly ONE framebuffer dataspace, mapped once;
+'Framebuffer::Session' has no release or rotation API. 'refresh()' only
+marks a rectangle dirty. The server composites on its own clock -
+nitpicker throttles to one frame per 40 ms
+(genode/repos/os/src/server/nitpicker/main.cc:561-564) - and submits one
+framebuffer sync signal per composited frame
+(genode/repos/os/src/server/nitpicker/main.cc:537).
+
+The QPA plugin never registered that sync signal, so the client had no
+way to learn how far behind the compositor was. Under sustained
+repaints the damage backlog grows without bound while nothing leaks:
+measured on Sponge OS, 335 full-document viewport repaints over 30 s
+moved ZERO bytes in every component of the render chain, while the
+stack delivered 11 repaints/s against a requested 30
+(docs/evidence/sponge-debug-scrollstorm.md). Input therefore arrived
+~3x faster than frames could be produced and the event loop stopped
+draining - the field symptom "dragging the scrollbar freezes the
+system".
+
+Fix
+---
+  qgenodeplatformwindow.h   frame-pacing state, the sync signal
+                            handler, and the public wait_for_frame()
+  qgenodeplatformwindow.cpp sync_sigh registration, the counter
+                            handler and the bounded wait
+  qgenodewindowsurface.cpp  one wait per raster frame (flush())
+  qgenodeglcontext.cpp      one wait per GL frame (swapBuffers())
+
+Properties that matter for safety:
+
+  * BOUNDED. The wait is 50 steps x 5 ms = 250 ms maximum per frame and
+    then proceeds unpaced, re-arming for the next frame. A missed or
+    stopped sync signal degrades to the old behaviour; it can never hang
+    the application.
+
+  * SELF-DISABLING, AND ZERO-COST WHEN THERE IS NOTHING TO WAIT FOR.
+    The test is exact and needs no tuning threshold: a frame is still
+    in flight precisely when the client submits a new one without a
+    sync having arrived since its last submit. A client that keeps up
+    always sees the compositor's sync first and never waits - not even
+    a poll. A server that never submits syncs at all (a capture-less
+    headless topology) leaves every count untouched and is likewise
+    never waited on. A client that outruns the compositor submits
+    again first, and that is the one case that waits.
+
+    Two earlier revisions were measured and rejected: waiting on every
+    frame after observing two syncs cost 2 repaints/s (10 Hz -> 8 Hz),
+    and a per-interval "more than one refresh in one compositor
+    interval" heuristic cost the same, because a client painting at
+    ~10 Hz against a ~25 Hz compositor produces two refreshes per
+    interval often enough to trigger it roughly every other frame. Only
+    the exact test is free. Receipts: docs/evidence/
+    sponge-debug-scrollstorm.md.
+
+  * THREADING. The Genode signal handler runs on the component
+    entrypoint and does nothing but a counter increment under a lock -
+    no Qt, no blocking. The Qt thread reads the counter inside
+    wait_for_frame(). The wait therefore blocks the Qt event loop for at
+    most one compositor frame, which is exactly what a vsync-locked
+    application does; the Genode entrypoint is never blocked.
+
+  * MINIMAL. No behaviour outside the frame-submit path is touched.
+
+Measured effect and regression receipts: docs/evidence/sponge-debug-
+scrollstorm.md; ledger row #23 in docs/11-environment.md section 4.
+
+Drop when upstream Genode's qt6 port registers the framebuffer sync in
+the QPA platform plugin (or replaces 'refresh()' with a vsync-paced
+submit).
+
+Sponge OS
+--- a/src/plugins/platforms/genode/qgenodeplatformwindow.h
++++ b/src/plugins/platforms/genode/qgenodeplatformwindow.h
+@@ -20,9 +20,12 @@
+ #include <util/reconstructible.h>
+ #include <input/event.h>
+ #include <gui_session/connection.h>
++#include <base/mutex.h>
++#include <base/signal.h>
+ 
+ /* libc includes */
+ #include <libc/component.h>
++#include <unistd.h>
+ 
+ /* EGL includes */
+ #include <EGL/egl.h>
+@@ -122,6 +125,46 @@
+ 		void _handle_input();
+ 		void _handle_info_changed();
+ 
++		/*
++		 * Frame pacing (back-pressure).
++		 *
++		 * A Genode GUI client owns exactly ONE framebuffer dataspace,
++		 * mapped once. 'refresh()' merely tells the server "this
++		 * rectangle is dirty"; the server composites on its own clock
++		 * (nitpicker caps a frame at 40 ms, see
++		 * genode/repos/os/src/server/nitpicker/main.cc:561-564).
++		 *
++		 * Without consuming the framebuffer's sync signal the client
++		 * therefore has no idea how far behind the compositor is, and a
++		 * burst of repaints queues damage the compositor never catches
++		 * up with. The backlog is unbounded and the application stops
++		 * responding even though nothing has leaked.
++		 *
++		 * The server submits one sync signal per composited frame
++		 * (genode/repos/os/src/server/nitpicker/main.cc:537), so
++		 * counting them bounds the number of in-flight frames at one.
++		 *
++		 * '_sync_count' is written by the Genode entrypoint (a
++		 * Signal_handler, so it neither blocks the entrypoint nor
++		 * touches Qt) and read by the Qt thread inside
++		 * wait_for_frame(). The lock makes the handover explicit.
++		 */
++
++		enum {
++			/* bounded wait: 50 steps x 5 ms = 250 ms ceiling per frame */
++			SYNC_WAIT_STEPS   = 50,
++			SYNC_WAIT_STEP_MS = 5
++		};
++
++		Genode::Signal_handler<QGenodePlatformWindow> _sync_signal_handler;
++		Genode::Mutex  _sync_lock;
++		unsigned long   _sync_count        { 0 };
++		unsigned long   _sync_at_refresh   { 0 };
++		bool            _awaiting_consumed { false };
++
++		bool _previous_frame_consumed();
++		void _handle_sync();
++
+ 		QVector<QWindowSystemInterface::TouchPoint>  _touch_points { 16 };
+ 		QPointingDevice                             *_touch_device;
+ 		QPointingDevice                             *_init_touch_device();
+@@ -229,6 +272,18 @@
+ 
+ 		void refresh(int x, int y, int w, int h);
+ 
++		/*
++		 * Block (bounded) until the compositor has consumed a frame
++		 * that was queued ahead of it. Called once per frame by
++		 * QGenodeWindowSurface::flush() and by
++		 * QGenodeGlContext::swapBuffers() - the two frame boundaries.
++		 *
++		 * Returns immediately unless a backlog actually exists, i.e.
++		 * unless the client submitted more than one frame inside a
++		 * single compositor interval.
++		 */
++		void wait_for_frame();
++
+ 
+ 		/* for QGenodeGLContext */
+ 
+--- a/src/plugins/platforms/genode/qgenodeplatformwindow.cpp
++++ b/src/plugins/platforms/genode/qgenodeplatformwindow.cpp
+@@ -652,6 +652,8 @@
+                         &QGenodePlatformWindow::_handle_input),
+   _info_changed_signal_handler(_env.ep(), *this,
+                                &QGenodePlatformWindow::_handle_info_changed),
++  _sync_signal_handler(_env.ep(), *this,
++                       &QGenodePlatformWindow::_handle_sync),
+   _touch_device(_init_touch_device())
+ {
+ 	if (qnpw_verbose)
+@@ -665,6 +667,13 @@
+ 	_gui_connection.info_sigh(_info_changed_signal_handler);
+ 
+ 	/*
++	 * Register for frame-completion signals. This is what turns
++	 * 'refresh()' from fire-and-forget into a paced submit; see the
++	 * frame-pacing comment in the header.
++	 */
++	_framebuffer_session.sync_sigh(_sync_signal_handler);
++
++	/*
+ 	 * Popup menus and tooltips should never get a window decoration,
+ 	 * therefore we set a top level Qt window as 'transient parent'.
+ 	 */
+@@ -1050,14 +1059,80 @@
+ 	return _framebuffer;
+ }
+ 
++bool QGenodePlatformWindow::_previous_frame_consumed()
++{
++	Genode::Mutex::Guard guard(_sync_lock);
++
++	if (!_awaiting_consumed)
++		return true;
++
++	if (_sync_count != _sync_at_refresh) {
++		_awaiting_consumed = false;
++		return true;
++	}
++
++	return false;
++}
++
++void QGenodePlatformWindow::_handle_sync()
++{
++	/*
++	 * Runs on the Genode entrypoint, once per composited frame. Keep it
++	 * to a counter increment: it must not block the entrypoint and must
++	 * not touch Qt.
++	 */
++	Genode::Mutex::Guard guard(_sync_lock);
++	_sync_count++;
++}
++
+ void QGenodePlatformWindow::refresh(int x, int y, int w, int h)
+ {
+ 	if (qnpw_verbose)
+ 	    qDebug("QGenodePlatformWindow::refresh(%d, %d, %d, %d)", x, y, w, h);
+ 
++	{
++		Genode::Mutex::Guard guard(_sync_lock);
++		_sync_at_refresh   = _sync_count;
++		_awaiting_consumed = true;
++	}
++
+ 	_framebuffer_session.refresh(x, y, w, h);
+ }
+ 
++void QGenodePlatformWindow::wait_for_frame()
++{
++	/*
++	 * Back-pressure, and only where it is needed.
++	 *
++	 * If the compositor acknowledged the previous frame before this one
++	 * is submitted, there is nothing queued ahead of it and this
++	 * returns immediately - a client that keeps up pays not even a
++	 * poll. If a frame IS still in flight, wait (bounded) for the sync
++	 * that proves it was consumed, so the number of frames ahead of the
++	 * compositor stays bounded instead of growing without limit.
++	 *
++	 * The wait is bounded by SYNC_WAIT_STEPS x SYNC_WAIT_STEP_MS. On
++	 * expiry it proceeds unpaced: a missing sync (a server that lost
++	 * its framebuffer client, a driver that stopped updating, a
++	 * capture-less topology that never emits syncs at all) degrades to
++	 * the pre-patch behaviour and can never hang the application.
++	 */
++	if (!_previous_frame_consumed())
++		return;
++
++	for (unsigned i = 0; i < SYNC_WAIT_STEPS; i++) {
++
++		if (_previous_frame_consumed())
++			return;
++
++		usleep(SYNC_WAIT_STEP_MS * 1000);
++	}
++
++	/* Timeout - let this frame through unpaced. */
++	Genode::Mutex::Guard guard(_sync_lock);
++	_awaiting_consumed = false;
++}
++
+ EGLSurface QGenodePlatformWindow::eglSurface(EGLConfig egl_config)
+ {
+ 	if (_egl_surface == EGL_NO_SURFACE) {
+--- a/src/plugins/platforms/genode/qgenodewindowsurface.cpp
++++ b/src/plugins/platforms/genode/qgenodewindowsurface.cpp
+@@ -69,6 +69,14 @@
+ 	QGenodePlatformWindow *platform_window = static_cast<QGenodePlatformWindow*>(window->handle());
+ 	QRect geo = platform_window->geometry();
+ 
++	/*
++	 * Frame boundary: wait (bounded) until the compositor has consumed
++	 * the previous frame before overwriting the buffer it is reading
++	 * from. Without this the client queues damage faster than the
++	 * server drains it and the backlog grows without bound.
++	 */
++	platform_window->wait_for_frame();
++
+ 	QImage framebuffer_image(platform_window->framebuffer(),
+ 	                         geo.width(), geo.height(),
+ 	                         format);
+--- a/src/plugins/platforms/genode/qgenodeglcontext.cpp
++++ b/src/plugins/platforms/genode/qgenodeglcontext.cpp
+@@ -55,6 +55,13 @@
+ 	QEGLPlatformContext::swapBuffers(surface);
+ 
+ 	QGenodePlatformWindow *w = static_cast<QGenodePlatformWindow*>(surface);
++	/*
++	 * Frame boundary (GL path): same bounded back-pressure as the raster
++	 * path's QGenodeWindowSurface::flush(). Without it a GL window can
++	 * swap faster than the compositor consumes frames.
++	 */
++	w->wait_for_frame();
++
+ 	w->refresh(0, 0, w->geometry().width(), w->geometry().height());
+ }
+ 
