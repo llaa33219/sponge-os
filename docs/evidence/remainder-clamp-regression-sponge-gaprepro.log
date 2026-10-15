@@ -1,0 +1,12 @@
+Failed to initialize Crashpad.  Crash reporting will not be available.  Cause: while locating crashpad handler: unable to locate crashpad handler executable
+Failed to initialize Crashpad.  Crash reporting will not be available.  Cause: while locating crashpad handler: unable to locate crashpad handler executable
+ Block: [0000000000100000,0000000000200000) size=1M avail=1M max_avail=1M
+ Block: [0000000003874000,0000000004000000) size=7728K avail=7728K max_avail=106192K
+ Block: [0000000008000000,000000000e7b4000) size=106192K avail=106192K max_avail=106192K
+ => mem_size=117702656 (112 MB) / mem_avail=117702656 (112 MB)
+[init -> system -> sponge_configd] sponge_configd: baked defaults available
+[init -> system -> sponge-de] sponge-de: de_config source=none (no SettingsController wiring; settings dialog unavailable in this topology)
+[init -> system -> sponge-de] sponge-de: shortcuts source=none (no ShortcutController wiring; framework unavailable in this topology)
+[init -> system -> sponge-de] [34mWarning: system_state ROM unavailable; health watcher disabled[0m
+[init -> system -> pkg_runtime -> debug] sponge_debug: report 'installed' launch-order regression: PASS
+Run script execution successful.

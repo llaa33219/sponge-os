@@ -1,0 +1,29 @@
+Failed to initialize Crashpad.  Crash reporting will not be available.  Cause: while locating crashpad handler: unable to locate crashpad handler executable
+Failed to initialize Crashpad.  Crash reporting will not be available.  Cause: while locating crashpad handler: unable to locate crashpad handler executable
+including /home/luke/sponge-os/repos/sponge/run/sponge-pkg-admission.run
+building targets:  core lib/ld init timer server/report_rom lib/vfs sponge_pkgd test/config_witness test/admission_probe 
+spawn make core lib/ld init timer server/report_rom lib/vfs sponge_pkgd test/config_witness test/admission_probe
+  [01;33mProgram[0m test/admission_probe/admission_probe
+spawn qemu-system-x86_64 -accel kvm -nographic -m 1G -serial mon:stdio -cdrom var/run/sponge-pkg-admission.iso -machine q35 -cpu Skylake-Client -net nic,model=e1000,netdev=net0 -netdev user,id=net0
+ Block: [0000000000100000,0000000000200000) size=1M avail=1M max_avail=1M
+ Block: [0000000003098000,0000000004000000) size=15776K avail=15776K max_avail=98144K
+ Block: [0000000008000000,000000000dfd8000) size=98144K avail=98144K max_avail=98144K
+ => mem_size=117702656 (112 MB) / mem_avail=117702656 (112 MB)
+boot module 'admission_probe' (124816 bytes)
+[init -> admission_probe] admission-probe: witness='witness' hog='fat_a' fat='fat_b'
+[init -> sponge_pkgd] sponge_pkgd: resource admission armed (pkg_runtime state report)
+[init -> admission_probe] admission-probe: pkg_runtime budget avail ram=166644316 caps=3130
+[init -> admission_probe] admission-probe: install witness -> ok
+[init -> admission_probe] admission-probe: install fat_a -> ok
+[init -> admission_probe] admission-probe: install fat_b -> ok
+[init -> admission_probe] admission-probe: launch fat_a -> ok
+[init -> admission_probe] admission-probe: after the hog, pkg_runtime has 61776536 bytes free
+[init -> sponge_pkgd] sponge_pkgd: launch fat_b -> insufficient-resources (need_ram=100663296 avail_ram=61776536 need_caps=2000 avail_caps=1034)
+[init -> admission_probe] admission-probe: launch fat_b -> insufficient-resources
+[init -> admission_probe] admission-probe: refusal numbers need_ram=100663296 avail_ram=61776536 need_caps=2000 avail_caps=1034
+[init -> admission_probe] admission-probe: witness beat 1 -> 59 (unaffected)
+[init -> admission_probe] admission-probe: remove fat_a -> ok
+[init -> admission_probe] admission-probe: after the release, pkg_runtime has 162436730 bytes free
+[init -> admission_probe] admission-probe: launch fat_b -> ok
+[init -> admission_probe] admission-probe: PASS
+Run script execution successful.

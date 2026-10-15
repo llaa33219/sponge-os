@@ -1,0 +1,14 @@
+Failed to initialize Crashpad.  Crash reporting will not be available.  Cause: while locating crashpad handler: unable to locate crashpad handler executable
+Failed to initialize Crashpad.  Crash reporting will not be available.  Cause: while locating crashpad handler: unable to locate crashpad handler executable
+ Block: [0000000000100000,0000000000200000) size=1M avail=1M max_avail=1M
+ Block: [00000000079ac000,0000000008000000) size=6480K avail=6480K max_avail=107440K
+ Block: [000000000c000000,00000000128ec000) size=107440K avail=107440K max_avail=107440K
+ => mem_size=117702656 (112 MB) / mem_avail=117702656 (112 MB)
+[init -> sponge_pkgd] sponge_pkgd: admission not armed — admitting pkg_gui_demo
+ Block: [0000000000100000,0000000000200000) size=1M avail=1M max_avail=1M
+ Block: [00000000079ac000,0000000008000000) size=6480K avail=6480K max_avail=107440K
+ Block: [000000000c000000,00000000128ec000) size=107440K avail=107440K max_avail=107440K
+ => mem_size=117702656 (112 MB) / mem_avail=117702656 (112 MB)
+[init -> sponge_pkgd] sponge_pkgd: admission not armed — admitting pkg_gui_demo
+[init -> pkg_lifecycle_probe] lifecycle-probe: PASS
+Run script execution successful.
