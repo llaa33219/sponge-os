@@ -198,41 +198,44 @@ component must never be able to freeze the desktop. Status after the
 2026-10-04 containment deployment and the 2026-10 quota-sizing fix
 (§6):
 
-- [~] **Repaint back-pressure — patched (ledger row #23), but the
-  mechanism is INERT and the intended behaviour was measured to be a
-  24x throughput regression (§4a)**: a component that repaints faster
+- [x] **Repaint back-pressure — FIXED by frame coalescing (ledger
+  row #23), measured 2026-10-16**: a component that repaints faster
   than the compositor can drain builds an unbounded backlog.
   `Framebuffer::Session` already offers `sync_sigh`/`sync_source`
   (`genode/repos/os/include/framebuffer_session/framebuffer_session.h:218-231`)
   and nitpicker already implements the server side
   (`genode/repos/os/src/server/nitpicker/main.cc:537`), but the Qt6 QPA
-  plugin never registered them, so the client never waited. Fixed by
+  plugin never registered them, so the client never learned how far
+  behind the compositor it was. Fixed by
   `docs/patches/qt6-qpa-frame-sync.patch`, applied by
   `genode/repos/libports/src/qt6/base/target.mk` (row #23 in
-  `docs/11-environment.md` §4). The wait is bounded (250 ms ceiling)
-  and self-disabling: it fires only when the client submits a frame
-  without a sync having arrived since its last submit.
-  **Correction, measured 2026-10-16
-  (`docs/evidence/sponge-debug-firstpaint.md` §4):** the patch's
-  fast-path guard in `wait_for_frame()` is **inverted**
-  (`if (!_previous_frame_consumed()) return;`), and
-  `_previous_frame_consumed()` is true exactly when there is nothing to
-  wait for. The wait therefore never sleeps. So the benefit is not
-  merely unmeasured — it is **absent**, and the ~1 repaint/s "cost"
-  recorded in the row is entirely the extra entrypoint wakeups from
-  registering `sync_sigh`. Correcting the one-line guard was built and
-  measured: the repaint storm drops from **310 ticks / 10 Hz** to
-  **13 ticks / 0.4 Hz** (max tick gap 140 ms -> 2657 ms), a 24x
-  collapse, because `wait_for_frame()` is called per
-  `QGenodeWindowSurface::flush()` — several times per painted frame —
-  while the design budgets one wait per frame. **The correction was
-  reverted; the shipped patch is unchanged and inert.** Do not treat
-  that guard as a cleanup: flipping it produces a window that never
-  finishes rendering. Making the mechanism real needs a design change
-  (one wait per frame, not per flush) plus real-hardware measurement.
-  Non-regression of the shipped (inert) patch re-verified 2026-10-16:
-  `sponge-desktop-disk`, `sponge-de-sel4-interactive`,
-  `sponge-pkg-lifecycle`, `sponge-desktop-disk-uefi-usb` all PASS.
+  `docs/11-environment.md` §4).
+
+  **The mechanism is coalescing, not waiting.** At most one frame is in
+  flight; while a frame is unconsumed a submit does not blit and does
+  **not** wait — it merges its damage into the pending region and
+  returns — and the acknowledged frame performs one coalesced submit.
+  There is no sleep, poll loop or `usleep` on the Qt thread anywhere in
+  the patch. This matters: an earlier revision waited (bounded,
+  50 x 5 ms) at the frame boundary, and making that wait real collapsed
+  the repaint storm from 310 ticks / 10 Hz (max gap 140 ms) to 13 ticks
+  / 0.4 Hz (max gap **2657 ms**) — a 24x regression, because `flush()` is
+  called several times per painted frame and because blocking the Qt
+  thread starves the input processing that must keep running
+  (`docs/evidence/sponge-debug-firstpaint.md` §4). That revision was
+  reverted and is not to be reintroduced.
+
+  Measured on `run/sponge-debug-scrollstorm.run`, A/B per arm
+  (`docs/evidence/sponge-debug-scrollstorm.md` §8.2): on the forced
+  back-pressure arm, 800 submit attempts in 30 s collapse to **82 actual
+  frame submissions** (81 coalesced), max tick gap **172 ms** (vs 2657 ms
+  for the rejected wait), per-child ΔRAM **0**, and storm throughput
+  rises from 347 to 582 ticks (11 → 19 Hz). The `baseline` arm logs
+  exactly **one** coalesced frame in a whole run — the control proving
+  the self-gating telemetry distinguishes "worked" from "never needed",
+  and that first paint is never deferred. Non-regression: `sponge-de-test`,
+  `sponge-launch`, `sponge-de-sel4-interactive`, `sponge-desktop-disk`
+  all PASS.
 - [ ] **Respawn budget and clamp leak — open (found 2026-10-16, NOT
   the field regression)**: `<heartbeat restart_after_skipped="3"/>` has
   no attempt budget and no backoff, so a child that cannot start is
@@ -249,10 +252,13 @@ component must never be able to freeze the desktop. Status after the
   is **not** a leak, because `Genode::Constructible` inherits
   `Reconstructible::construct()`, which destructs first. Evidence:
   `docs/evidence/sponge-debug-firstpaint.md` §5.
-- [ ] **Real-hardware confirmation of row #23 — open**: reproduce a
-  backlog on the LG gram 17ZD90N (2560x1600, where the field report
-  originated) and measure the achieved rate and event-loop latency with
-  and without the patch, so the row's cost/benefit side is closed.
+- [ ] **Real-hardware confirmation of row #23 — open (the only open
+  half)**: the coalescing mechanism is built and measured on QEMU
+  (§ above), but the magnitude at 2560x1600 on the LG gram 17ZD90N —
+  where the field report originated — is not. Measure the achieved
+  repaint rate and the event-loop latency of a fast scrollbar drag with
+  and without the patch on that machine, so the row's cost/benefit side
+  is closed on the hardware the symptom came from.
 - [x] **Broker fault containment — system level (deployed)**: the
   five desktop-disk product scenarios' system init runs
   `<heartbeat rate_ms="2000"/>` with
