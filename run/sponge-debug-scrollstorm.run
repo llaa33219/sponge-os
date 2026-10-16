@@ -83,6 +83,21 @@
 #   grow      storm_grow=1: one appended log line per tick on top. The
 #             "so text loads fast" half of the report — a growing
 #             document under load.
+#   burst     FORCED BACK-PRESSURE arm: storm_burst_hz=100 adds a second,
+#             tiny-damage flush timer (an 8x8 update on the status
+#             label) alongside the full-document flings. This arm exists
+#             because frame coalescing (ledger row #23) can only engage
+#             when the CLIENT outruns the compositor, and on this host it
+#             never does on its own: a full-document relayout+repaint
+#             costs ~100 ms (~10 Hz) while nitpicker drains a frame every
+#             40 ms (~25 Hz). A tiny damage update is cheap enough to be
+#             submitted at 100 Hz, so the client provably exceeds the
+#             compositor and the coalescing path is genuinely exercised
+#             and measured instead of merely compiled. Telemetry lines:
+#             "BURST checkpoint ..." / "BURST done ...", plus the QPA
+#             plugin's own self-gating "frame coalesced deferred=N ..."
+#             lines, which are absent when coalescing never engaged.
+#             Every pre-existing arm is unchanged.
 #
 # STORM TELEMETRY (what the before/after comparison is built on)
 #
@@ -90,6 +105,17 @@
 #
 #     STORM checkpoint ticks=<n> elapsed_ms=<t> rate_hz=<r> max_gap_ms=<g>
 #     STORM done      ticks=<n> elapsed_ms=<t> achieved_hz=<r> max_gap_ms=<g>
+#
+#   The burst arm adds the same shape from its own timer:
+#
+#     BURST checkpoint ticks=<n> elapsed_ms=<t> rate_hz=<r> max_gap_ms=<g>
+#     BURST done      ticks=<n> elapsed_ms=<t> achieved_hz=<r> max_gap_ms=<g>
+#
+#   and the QPA plugin's frame-coalescing telemetry (self-gating: it
+#   logs the first coalesced frame and every 32nd after it, and logs
+#   NOTHING when coalescing never engaged):
+#
+#     QGenodePlatformWindow: frame coalesced deferred=N submitted=M ...
 #
 #   'rate_hz' is the cumulative average (it degrades if the per-frame
 #   cost grows). 'max_gap_ms' is the largest interval between two
@@ -126,6 +152,9 @@ set storm_start_ms 24000
 set storm_hz 30
 set storm_lines 2000
 set storm_grow 0
+# storm_burst_hz adds a tiny-damage flush timer on top of the storm (see
+# the BURST arm below). 0 = off, which is every pre-existing arm.
+set storm_burst_hz 0
 # threshold_kb: the per-child growth budget the probe asserts on. The
 # "grow" arm is expected to exceed any sane budget, so its budget is set
 # high enough for the scenario to complete and the numbers to survive in
@@ -136,7 +165,8 @@ switch -- $arm {
 	baseline { set storm_ms 0 }
 	scroll   { set storm_ms 30000 ; set storm_grow 0 }
 	grow     { set storm_ms 30000 ; set storm_grow 1 ; set threshold_kb 262144 }
-	default  { error "SPONGE_ARM must be one of: baseline | scroll | grow (got '$arm')" }
+	burst    { set storm_ms 30000 ; set storm_grow 0 ; set storm_burst_hz 100 }
+	default  { error "SPONGE_ARM must be one of: baseline | scroll | grow | burst (got '$arm')" }
 }
 
 build { core lib/ld init timer server/report_rom server/nitpicker \
@@ -470,7 +500,7 @@ config
     # a silent hang (docs/09-roadmap.md section 11.1). ram: 64M is the
     # package's production figure (pkg/debug/metadata.xml).
     + start sponge_debug | caps: 1000 | ram: 64M
-      + config | storm_ms: $storm_ms | storm_start_ms: $storm_start_ms | storm_hz: $storm_hz | storm_lines: $storm_lines | storm_grow: $storm_grow
+      + config | storm_ms: $storm_ms | storm_start_ms: $storm_start_ms | storm_hz: $storm_hz | storm_lines: $storm_lines | storm_grow: $storm_grow | storm_burst_hz: $storm_burst_hz
         + vfs
           + dir dev
             + log

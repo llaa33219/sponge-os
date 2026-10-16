@@ -27,6 +27,7 @@
  * REPRO KNOBS (config-gated, off unless the scenario sets them)
  *
  *   storm_ms / storm_start_ms / storm_hz / storm_lines / storm_grow
+ *   storm_burst_hz
  *
  *   The storm also emits telemetry the measurement is built on:
  *   "STORM checkpoint <ticks> elapsed_ms= rate_hz= max_gap_ms=" every 5 s and
@@ -34,6 +35,12 @@
  *   'max_gap_ms' is the largest interval between two delivered ticks -
  *   the headless liveness signal for a saturated event loop (see
  *   docs/evidence/sponge-debug-scrollstorm.md section 8).
+ *
+ *   storm_burst_hz adds a second, tiny-damage timer ("BURST ..." lines
+ *   with the same telemetry shape). It exists to FORCE the client to
+ *   outrun the compositor, which is the only condition under which
+ *   frame coalescing can engage - on this host a full-document repaint
+ *   (~10 Hz) is always slower than nitpicker's frame rate (~25 Hz).
  *
  *   The "rapidly dragging the scrollbar" field report (2026-10) is
  *   reproduced headlessly by run/sponge-debug-scrollstorm.run, which
@@ -236,6 +243,7 @@ struct Main
 	unsigned      storm_hz       { 30 };
 	unsigned      storm_lines    { 2000 };
 	bool          storm_grow     { false };
+	unsigned      storm_burst_hz { 0 };
 	unsigned      storm_ticks    { 0 };
 	unsigned      storm_ticks_max { 0 };
 	qint64        storm_last_ms  { 0 };
@@ -245,6 +253,29 @@ struct Main
 	QTimer        storm_timer;
 	QTimer        storm_start_timer;
 	QElapsedTimer storm_clock;
+
+	/*
+	 * Forced-back-pressure arm (storm_burst_hz, 0 = off).
+	 *
+	 * Frame coalescing only engages when the CLIENT outruns the
+	 * compositor. On this host the client cannot: a full-document
+	 * relayout+repaint costs ~100 ms (~10 Hz) while nitpicker drains a
+	 * frame every 40 ms (~25 Hz), so no backlog ever forms and the
+	 * coalescing path would compile and stay untested.
+	 *
+	 * A full-document repaint cannot be made faster; a tiny one can.
+	 * This timer drives an 8x8 damage update on the status label, which
+	 * is the cheapest possible flush and lets the client submit frames
+	 * far above the compositor's rate. The storm's own full-document
+	 * flings keep running, so the burst arm is the field gesture PLUS a
+	 * submit rate the compositor provably cannot match.
+	 */
+	unsigned      burst_ticks    { 0 };
+	qint64        burst_last_ms  { 0 };
+	qint64        burst_max_gap_ms { 0 };
+	qint64        burst_next_checkpoint { 0 };
+	QTimer        burst_timer;
+	QElapsedTimer burst_clock;
 
 	Genode::Reconstructible<Watch> installed;
 	Genode::Reconstructible<Watch> window_list;
@@ -271,7 +302,8 @@ struct Main
 		storm_lines    = cfg.attribute_value("storm_lines",    storm_lines);
 		unsigned grow { 0 };
 		grow = cfg.attribute_value("storm_grow", grow);
-		storm_grow = (grow != 0);
+storm_grow     = (grow != 0);
+		storm_burst_hz = cfg.attribute_value("storm_burst_hz", storm_burst_hz);
 
 		if (storm_ms == 0) {
 			log("sponge_debug: no storm requested (storm_ms=0) — "
@@ -303,8 +335,48 @@ struct Main
 
 		log("sponge_debug: STORM armed hz=", storm_hz,
 		    " lines=", storm_lines, " grow=", storm_grow,
+		    " burst_hz=", storm_burst_hz,
 		    " budget_ms=", storm_ms, " ticks=", storm_ticks_max,
 		    " start_in_ms=", storm_start_ms);
+	}
+
+	/*
+	 * The forced-back-pressure arm. 'max_gap_ms' is reported exactly as
+	 * for the storm timer: it is the liveness signal, and it is the
+	 * number that must stay bounded while coalescing is engaged.
+	 */
+	void _burst_tick()
+	{
+		status.update(0, 0, 8, 8);
+
+		qint64 const elapsed = burst_clock.elapsed();
+
+		if (burst_last_ms != 0) {
+			qint64 const gap = elapsed - burst_last_ms;
+			if (gap > burst_max_gap_ms)
+				burst_max_gap_ms = gap;
+		}
+		burst_last_ms = elapsed;
+		++burst_ticks;
+
+		if (elapsed >= burst_next_checkpoint) {
+			log("sponge_debug: BURST checkpoint ticks=", burst_ticks,
+			    " elapsed_ms=", elapsed,
+			    " rate_hz=", elapsed > 0 ? (burst_ticks * 1000) / elapsed : 0,
+			    " max_gap_ms=", burst_max_gap_ms);
+			while (elapsed >= burst_next_checkpoint)
+				burst_next_checkpoint += storm_checkpoint_every
+					? storm_checkpoint_every : 150;
+		}
+
+		if (elapsed >= storm_ms) {
+			burst_timer.stop();
+			log("sponge_debug: BURST done ticks=", burst_ticks,
+			    " elapsed_ms=", elapsed,
+			    " achieved_hz=", elapsed > 0
+			        ? (burst_ticks * 1000) / elapsed : 0,
+			    " max_gap_ms=", burst_max_gap_ms);
+		}
 	}
 
 	void _storm_tick()
@@ -458,6 +530,12 @@ struct Main
 			QObject::connect(&storm_timer, &QTimer::timeout,
 			                 [this]() { _storm_tick(); });
 
+			if (storm_burst_hz > 0) {
+				burst_timer.setInterval(1000 / storm_burst_hz);
+				QObject::connect(&burst_timer, &QTimer::timeout,
+				                 [this]() { _burst_tick(); });
+			}
+
 			/*
 			 * storm_start_ms exists so a measurement scenario can put
 			 * the storm strictly INSIDE its sampling window: the
@@ -474,6 +552,14 @@ struct Main
 						storm_max_gap_ms     = 0;
 						storm_next_checkpoint = storm_checkpoint_every;
 						storm_timer.start();
+
+						if (storm_burst_hz > 0) {
+							burst_clock.start();
+							burst_last_ms        = 0;
+							burst_max_gap_ms     = 0;
+							burst_next_checkpoint = 5000;
+							burst_timer.start();
+						}
 					});
 				storm_start_timer.start(storm_start_ms);
 				log("sponge_debug: STORM starts in ", storm_start_ms, " ms");
@@ -483,6 +569,14 @@ struct Main
 				storm_max_gap_ms       = 0;
 				storm_next_checkpoint = storm_checkpoint_every;
 				storm_timer.start();
+
+				if (storm_burst_hz > 0) {
+					burst_clock.start();
+					burst_last_ms        = 0;
+					burst_max_gap_ms     = 0;
+					burst_next_checkpoint = 5000;
+					burst_timer.start();
+				}
 			}
 		}
 	}
