@@ -48,6 +48,7 @@
 #include <base/attached_rom_dataspace.h>
 #include <base/component.h>
 #include <base/log.h>
+#include <stdio.h>
 #include <base/node.h>
 #include <libc/component.h>
 #include <util/reconstructible.h>
@@ -113,6 +114,87 @@ struct Watch
 	{
 		rom.sigh(sigh);
 		_handle();
+	}
+};
+
+/*
+ * First-paint probe.
+ *
+ * Field report (2026-10, LG gram 17ZD90N, 2560x1600 GOP): this window
+ * "appears but never finishes rendering, then dies", with NO error text
+ * on the console. A Qt client can fail that way silently — a blocked
+ * allocation or a watchdog restart prints nothing from the client — so
+ * the component reports its OWN progress on the serial log:
+ *
+ *   sponge_debug: construct ms=<n>
+ *   sponge_debug: paint-begin ms=<n>
+ *   sponge_debug: FIRSTPAINT ms=<n>
+ *
+ * One log() call and one short line each, deliberately: the serial log
+ * interleaves with the sandbox state report, and a line long enough to
+ * be split across two writes comes out truncated mid-number, which
+ * would silently corrupt exactly the measurement these lines exist for.
+ *
+ * 'begin' is the first QEvent::Paint delivered to the window (raster
+ * start); 'done' is queued so it runs after that paint has RETURNED,
+ * i.e. the frame has been handed to the QPA plugin. A client that dies
+ * between the two lines, or never reaches them, is localized to the
+ * paint path without any pixel inspection.
+ *
+ * The clock starts in the constructor, so every number is milliseconds
+ * since the component's own entrypoint, which is the number the
+ * heartbeat budget (docs/17-runtime-component-topology.md section 5) is
+ * measured against.
+ *
+ * Cost: one QObject with an event filter on one widget, two log lines,
+ * zero allocation per frame beyond the (already allocated) filter. It is
+ * unconditional because a silent client is exactly what this tool exists
+ * to rule out.
+ */
+struct FirstPaintProbe : QObject
+{
+	QElapsedTimer &clock;
+	unsigned      paints        { 0 };
+	bool          announced     { false };
+	bool          completed     { false };
+
+	FirstPaintProbe(QObject *parent, QElapsedTimer &c)
+	: QObject(parent), clock(c) {}
+
+	bool eventFilter(QObject *o, QEvent *e) override
+	{
+		if (e->type() == QEvent::Paint) {
+
+			paints++;
+
+			if (!announced) {
+				announced = true;
+				char const line[128];
+				snprintf(line, sizeof(line),
+				         "sponge_debug: paint-begin ms=%llu",
+				         (unsigned long long)clock.elapsed());
+				log(line);
+			}
+
+			/*
+			 * Queued: a singleShot(0) event runs on the next turn of
+			 * the Qt event loop, i.e. after the current paint has
+			 * returned, which is what "the frame was submitted" means
+			 * for this client.
+			 */
+			if (!completed) {
+				completed = true;
+				QTimer::singleShot(0, this, [this]() {
+					char const line[128];
+					snprintf(line, sizeof(line),
+					         "sponge_debug: FIRSTPAINT ms=%llu",
+					         (unsigned long long)clock.elapsed());
+					log(line);
+				});
+			}
+		}
+
+		return QObject::eventFilter(o, e);
 	}
 };
 
@@ -319,6 +401,9 @@ struct Main
 		Genode::log("sponge_debug: MARK ", mark_count);
 	}
 
+	QElapsedTimer       clock;
+	FirstPaintProbe     paint_probe { &window, clock };
+
 	Main(Env &env) : env(env),
 		installed(env, "installed", view),
 		window_list(env, "window_list", view),
@@ -352,7 +437,16 @@ struct Main
 			view.append(QStringLiteral("cleared"));
 		});
 
+		clock.start();
+		window.installEventFilter(&paint_probe);
+
 		window.show();
+
+		char const line[128];
+		snprintf(line, sizeof(line),
+		         "sponge_debug: construct ms=%llu",
+		         (unsigned long long)clock.elapsed());
+		log(line);
 
 		/*
 		 * Storm timer — started LAST, on the Qt thread, only when the

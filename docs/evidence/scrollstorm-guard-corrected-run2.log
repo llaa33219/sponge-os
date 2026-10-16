@@ -1,0 +1,12 @@
+# source log: /tmp/opencode/reg-scrollstorm2.log
+# command:    SPONGE_ARM=scroll (QPA patch, guard corrected)
+
+error: can't find command `loadfont'.
+Genode v0.2.0-83-gdd452acf23 <local changes>
+[init -> system -> sponge_debug] sponge_debug: construct ms=40
+[init -> system -> sponge_debug] sponge_debug: paint-begin ms=845
+[init -> system -> sponge_debug] sponge_debug: FIRSTPAINT ms=889
+[init -> system -> sponge_debug] sponge_debug: STORM done ticks=13 elapsed_ms=31301 achieved_hz=0 max_gap_ms=2654
+[init -> system -> repostorm_probe] repostorm-probe: DETAIL delta_max=0 worst=none threshold=2097152 samples=60 children=5
+[init -> system -> repostorm_probe] repostorm-probe: VERDICT PASS
+Run script execution successful.
