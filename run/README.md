@@ -882,12 +882,22 @@ A scenario defines:
   state report is armed with `child_ram`/`child_caps`, drives a
   config-gated repaint storm inside the app, and has `repostorm_probe`
   (`repos/sponge/src/test/repostorm_probe/`) sample every child's
-  RAM/caps and name the largest grower. Three arms via `SPONGE_ARM`:
+  RAM/caps and name the largest grower. Four arms via `SPONGE_ARM`:
   `baseline` (no storm), `scroll` (30 s @ 30 Hz viewport flings),
-  `grow` (the same plus one appended log line per tick). Gate:
-  `repostorm-probe: VERDICT <PASS|FAIL>`.
-  **Result: no leak** — 337 repaints move 0 bytes in every component;
-  the stack sustains 11 Hz against a requested 30 Hz. Evidence
+  `grow` (the same plus one appended log line per tick), and `burst`
+  (the FORCED back-pressure arm: `storm_burst_hz=100` adds an 8x8
+  damage update at 100 Hz on top of the unmodified storm, so the
+  client provably outruns the ~25 Hz compositor and the QPA plugin's
+  frame-coalescing path — ledger row #23 — actually engages instead of
+  merely compiling). Gate: `repostorm-probe: VERDICT <PASS|FAIL>`.
+  **Result: no leak** — 337 repaints move 0 bytes in every component.
+  With coalescing the mechanism is measured engaging: on `burst`,
+  800 submit attempts in 30 s collapse to 82 actual frame submissions
+  (81 coalesced), storm throughput rises 11 → 19 Hz, max tick gap stays
+  at 139-172 ms (the rejected blocking wait measured 2657 ms), and
+  per-child ΔRAM is unchanged. The `baseline` arm logs exactly one
+  coalesced frame per run — the control that shows the self-gating
+  telemetry distinguishes "worked" from "never needed". Evidence
   `docs/evidence/sponge-debug-scrollstorm.md`. base-sel4 only
   (`vesa_fb`/`ps2`/`usb_hid`).
 

@@ -10,6 +10,12 @@ point moved when the package quota was raised, which reads like a leak.
 The user's own reading was "mere rendering shouldn't kill it". Both were
 worth taking seriously; the measurement below says what actually happens.
 
+**Status 2026-10-16 (addendum).** §1-§5 are unchanged — the attribution
+to saturation, not leakage, still stands and was re-measured. What has
+changed is that the fix is now real and measured: the mechanism below is
+**frame coalescing** (never a blocking wait) and it is engaged, counted
+and A/B'd on this harness in **§8**.
+
 **Reproduction:** `run/sponge-debug-scrollstorm.run`, three arms, base-sel4
 on QEMU, headless (`-nographic`), gates on
 `repostorm-probe: VERDICT <PASS|FAIL>`.
@@ -177,17 +183,20 @@ The probe takes a baseline after a 20 s settle and then samples for
 
 ## 6. What would actually fix the freeze
 
-Ranked by what the measurement supports. Item 1 has since been built —
-see §8 for the patch, the before/after numbers and the honest
-verification gap.
+Ranked by what the measurement supports. Item 1 has since been built and
+**measured** — see §8 for the patch, the before/after numbers and the
+one gap that remains.
 
-1. **Back-pressure on repaints** — the mechanism itself. The QPA plugin
-   never used the `Framebuffer::Session::sync_sigh`/`sync_source` pair
-   that the API already provides
+1. **Frame coalescing against the compositor** — the mechanism itself.
+   The QPA plugin never used the `Framebuffer::Session::sync_sigh`/`sync_source`
+   pair that the API already provides
    (`genode/repos/os/include/framebuffer_session/framebuffer_session.h:218-231`,
-   implemented server-side in nitpicker), so the client never waits for
-   the compositor and the damage backlog is unbounded. Now vendored as
-   **ledger row #23** (`docs/patches/qt6-qpa-frame-sync.patch`), see §8.
+   implemented server-side in nitpicker), so the client never learns how
+   far behind the compositor it is and the damage backlog is unbounded.
+   Now vendored as **ledger row #23**
+   (`docs/patches/qt6-qpa-frame-sync.patch`), implemented as the
+   Wayland frame-callback pattern — **never as a blocking wait** — and
+   measured in §8.2.
 2. **Cap the scroll rate in the app.** `QAbstractSlider` already
    coalesces; a `QTimer`-paced scroll on the app side would cap the
    backlog at the cost of choppier scrolling. Cheap and safe, but it
@@ -217,92 +226,122 @@ SPONGE_ARM=grow     ./tool/build run sponge-debug-scrollstorm
 
 The scenario is base-sel4 only (`vesa_fb`/`ps2`/`usb_hid` need real PC
 hardware access) and takes ~2 min per arm on QEMU.
+## 8. The fix: frame coalescing, and what it was measured to do
 
-## 8. The fix, and what it could and could not be shown to do
+**Ledger row #23**, `docs/patches/qt6-qpa-frame-sync.patch`, applied
+automatically by `genode/repos/libports/src/qt6/base/target.mk`. A Genode
+GUI client owns one framebuffer, `refresh()` only marks a rectangle
+dirty, and the QPA plugin never registered the framebuffer's sync signal
+— so it never learned how far behind the compositor it was.
 
-The mechanism above is now patched: **ledger row #23**,
-`docs/patches/qt6-qpa-frame-sync.patch`, applied automatically by
-`genode/repos/libports/src/qt6/base/target.mk`. A Genode GUI client owns
-one framebuffer, `refresh()` only marks a rectangle dirty, and the QPA
-plugin never registered the framebuffer's sync signal — so it never
-learned how far behind the compositor it was. The patch registers the
-sync, counts it, and waits (bounded, 50 x 5 ms) before submitting a new
-frame **only when a frame is genuinely still in flight**, i.e. when the
-client submits again without a sync having arrived since its last
-submit. A client that keeps up pays not even a poll.
+The mechanism is the **Wayland frame-callback pattern**: at most one
+frame in flight, ever. While a frame is unconsumed, a submit does **not**
+blit and does **not** wait — it merges its damage into the pending region
+and returns, so the Qt event loop keeps draining input throughout a
+storm. The frame the compositor acknowledges triggers exactly one
+coalesced submit of everything that piled up.
 
-### 8.1 Before / after, same harness, same storm
+### 8.1 The rejected alternative, and why it is not coming back
 
-Two samples per arm, interleaved in one session (receipts
-`sponge-debug-scrollstorm-{before,after}-{scroll,grow}.log`):
+The first revision of this patch was a **bounded blocking wait** (50 x
+5 ms) at the frame boundary. Its fast-path guard was inverted, so it
+never actually waited; correcting that one line made the wait real, and
+the measurement collapsed 24x:
 
-| arm | build | ticks / 30 s | achieved repaint rate | max tick gap | per-child ΔRAM |
-|---|---|---|---|---|---|
-| `scroll` | BEFORE (unpatched) | 328, 347 | **10 Hz, 11 Hz** | 152, 157 ms | 0 |
-| `scroll` | AFTER (patched) | 283, 297 | **9 Hz, 9 Hz** | 131, 124 ms | 0 |
-| `grow` | BEFORE (unpatched) | 333, 326 | **11 Hz, 10 Hz** | 139, 132 ms | 139 264 B (`sponge_debug`) |
-| `grow` | AFTER (patched) | 287, 290 | **9 Hz, 9 Hz** | 132, 138 ms | 139 264 B (`sponge_debug`) |
+| plugin | ticks / 30 s | achieved rate | max tick gap |
+|---|---:|---:|---:|
+| guard inverted (the old shipped patch) | 310 | 10 Hz | 140 ms |
+| guard corrected (the wait made real) | 13 | 0.4 Hz | **2657 ms** |
 
-The RAM verdict is byte-identical before and after — expected, and worth
-stating: the patch changes *when* a frame is submitted, never how much
-memory is held. The bounded wait never fires on the log-growth path
-either, which is the correct answer for a client-limited workload.
+The reason is structural and it is the reason **blocking is the wrong
+shape here**: `QGenodeWindowSurface::flush()` is called *several times
+per painted frame*, while the design budgeted one wait per frame — and
+blocking the Qt thread starves the very input processing that has to
+keep running during a storm. Receipts and full reasoning:
+`docs/evidence/sponge-debug-firstpaint.md` §4. The blocking revision was
+reverted; there is no sleep, poll loop or `usleep` anywhere in the
+current patch.
 
-### 8.2 The verification gap — stated plainly
+### 8.2 Before / after, same harness, same arms
 
-**The benefit of this patch is NOT demonstrated by this harness, and
-(measured 2026-10-16) it is not being delivered at all.** On
-QEMU/TCG at 1024x768 with softpipe, the client is the bottleneck: it
-produces ~10 repaints/s while nitpicker's compositor can drain ~25/s
-(its 40 ms frame cap, `genode/repos/os/src/server/nitpicker/main.cc:561-564`).
-A backlog therefore **never forms here**, and the bounded wait never
-engages. What is measured on this host is a **cost of 1 repaint/s
-(~10%)**, attributable to the ~25 extra entrypoint sync-signal wakeups
-per second that registering `sync_sigh` adds — not to the wait.
+One harness, four arms, A/B by the documented manual recipe (§8.5),
+`SPONGE_ARM=<arm> make -C genode/build/x86_64 run/sponge-debug-scrollstorm`.
+Receipts: `sponge-debug-scrollstorm-coalesce-{before,after}-{baseline,scroll,grow,burst}.log`.
 
-**Correction (2026-10-16).** The reason the wait never engages is a
-defect, not a workload property: `wait_for_frame()`'s fast-path guard
-is inverted (`if (!_previous_frame_consumed()) return;`), and
-`_previous_frame_consumed()` is true exactly when there is nothing to
-wait for, so the function returns immediately in the one case the wait
-exists for. The mechanism is inert; the "AFTER" column above measures
-only the registration overhead. Correcting the one line was built and
-measured on this very harness and collapses the storm to 13 ticks /
-0.4 Hz (max gap 2657 ms) against 310 ticks / 10 Hz (max gap 140 ms)
-shipped — a 24x regression, because the wait is called per
-`QGenodeWindowSurface::flush()` rather than once per frame. **The
-correction was reverted and this patch is unchanged.** Full receipts and
-the reasoning: `docs/evidence/sponge-debug-firstpaint.md` §4.
+| arm | build | storm ticks / 30 s | achieved rate | max tick gap | per-child ΔRAM | coalesced frames |
+|---|---|---:|---:|---:|---:|---:|
+| `baseline` | BEFORE | — | — | — | 0 | n/a (unpatched) |
+| `baseline` | AFTER | — | — | — | **0** | **1** (see below) |
+| `scroll` | BEFORE | 342 | 11 Hz | 125 ms | 0 | n/a (unpatched) |
+| `scroll` | AFTER | **587** | **19 Hz** | 139 ms | 0 | **576 deferrals → 77 submits (76 coalesced)** |
+| `grow` | BEFORE | 326 | 10 Hz | 131 ms | 139 264 B (`sponge_debug`) | n/a (unpatched) |
+| `grow` | AFTER | **581** | **19 Hz** | 163 ms | **139 264 B** (`sponge_debug`) | **576 deferrals → 76 submits (75 coalesced)** |
+| `burst` | BEFORE | 347 | 11 Hz | 164 ms | 0 | n/a (unpatched) |
+| `burst` | AFTER | **582** | **19 Hz** | 172 ms | **0** | **800 deferrals → 82 submits (81 coalesced)** |
 
-Two earlier revisions of the patch were measured and **rejected** on
-exactly this harness, which is what pinned the final design down:
+Reading the table:
 
-| revision | activation condition | measured |
-|---|---|---|
-| v1 | wait on every frame after two syncs observed | 10 Hz → **8 Hz** |
-| v2 | ">1 refresh inside one compositor interval" | 10 Hz → **8 Hz** |
-| v3 (shipped) | "submitted again before the previous was consumed" | 10-11 Hz → **9 Hz** |
+1. **Coalescing genuinely engages, and it engages hard.** On `burst`,
+   800 submit attempts inside a 30 s window collapse to **82 actual
+   frame submissions** — a 10:1 reduction in compositor load, with 81 of
+   them coalesced multi-frame submits. On the *unmodified* `scroll` arm
+   it engages too (576 → 77), because a full-document repaint costs
+   about as much as one compositor interval, so the client is already
+   sometimes slower than 25 Hz. This is the mechanism doing its job, not
+   a threshold being tripped by accident.
+2. **The event loop stays responsive THROUGH the storm.** Max tick gap
+   139-172 ms across the AFTER arms, against **2657 ms** for the
+   rejected blocking variant and 125-164 ms for BEFORE. The 24x collapse
+   is unambiguously absent: nothing in the patch can block the Qt
+   thread, because nothing in it waits.
+3. **Throughput nearly doubles.** At identical wall clock and identical
+   requested rate (30 Hz), the AFTER loop delivers 581-587 storm ticks
+   where BEFORE delivered 326-347 — a **1.7-1.8x** improvement. The
+   mechanism is visible in the code: coalescing skips ~88 % of the
+   full-viewport `drawImage` blits into the mapped framebuffer, which is
+   exactly the CPU work the §1 saturation result identified as the
+   ceiling.
+4. **Per-child RAM is byte-identical.** `delta_max=0` on `baseline`,
+   `scroll` and `burst`; `139 264 B worst=sponge_debug` on `grow`, the
+   same figure as BEFORE and as the original §1 measurement — i.e. the
+   appended text, not the render path. Expected and worth stating: the
+   patch changes *how many* frames are submitted, never how much memory
+   is held.
+5. **The `baseline` arm is the "never needed" control, and it is a real
+   control.** With no storm at all the plugin logs **exactly one**
+   coalesced frame in the whole run (`deferred=1 submitted=1
+   coalesced=0`) — the first paint racing the first acknowledgement —
+   and never defers again. An application that never needs coalescing
+   therefore emits this telemetry essentially zero times, so *absence of
+   the lines is itself the answer*. That is what distinguishes "working"
+   from "never needed", and it is why the lines are self-gating rather
+   than always-on.
 
-v2 fails because a client at ~10 Hz against a ~25 Hz compositor puts two
-refreshes in one interval often enough to trip it roughly every other
-frame. v3 is exact and needs no threshold.
+### 8.3 How the coalescing path was FORCED to engage
 
-**Positive proof therefore requires real hardware** where the client can
-outrun the compositor — the LG gram 17ZD90N at 2560x1600, which is where
-the field report came from. That is a follow-up, not a claim: the
-mechanism is *certain by construction* (bounded, self-disabling, no
-threshold to tune) and *verified non-regressive*, but its effect is
-**unmeasured**. Anyone re-evaluating this row should treat "9 Hz vs
-10-11 Hz on QEMU" as the cost side of the ledger and get the benefit
-number from real hardware before deciding to keep it.
+On QEMU/TCG with softpipe the client is normally the bottleneck: a
+full-document relayout+repaint costs ~100 ms (~10 Hz) while nitpicker
+drains a frame every 40 ms (~25 Hz), so a backlog would not form and the
+mechanism would compile without ever running. Rather than accept a
+"compiled but untested" claim, the `burst` arm forces the condition:
 
-### 8.3 Non-regression (measured, patched plugin)
+`SPONGE_ARM=burst` sets `storm_burst_hz=100`, which adds a second timer
+issuing an **8x8** damage update on the status label
+(`repos/sponge/src/sponge_debug/main.cc`, `_burst_tick()`). A tiny
+damage update is cheap enough for the client to submit at a rate the
+compositor provably cannot match, while the full-document flings keep
+running underneath. The arm therefore measures the field gesture **plus**
+a guaranteed backlog. It is an *addition*: `baseline`, `scroll` and
+`grow` are byte-for-byte the pre-existing arms (`storm_burst_hz=0`), and
+their numbers in §8.2 are their own A/B pair.
+
+### 8.4 Non-regression (measured, coalescing plugin)
 
 | scenario | gate | verdict |
 |---|---|---|
 | `sponge-de-test` | `sponge-de-probe: PASS` | PASS |
 | `sponge-launch` | `launch-probe: PASS` | PASS |
-| `sponge-de-sel4-interactive` | `sponge-de-probe: PASS` (+ `using 1024x768`, USB tablet bound) | PASS |
+| `sponge-de-sel4-interactive` | `sponge-de-probe: PASS` (+ `using 1024x768`, USB tablet bound, phases input/panel/launch PASS) | PASS |
 | `sponge-desktop-disk` | `alpha-probe: PASS` | PASS |
 
 These four cover every Qt6 rendering path the product uses: a bare
@@ -311,7 +350,20 @@ self-disabling path is what keeps this one cheap), a package-launched
 GUI app through `pkg_runtime`, the full driver set with a real
 `vesa_fb` capture client, and the whole product desktop from disk.
 
-### 8.4 Manual equivalent (AGENTS.md §3.5)
+### 8.5 What is still open
+
+* **The real-hardware number.** Every figure above is QEMU/TCG at
+  1024x768 with softpipe. The shape (bounded backlog, no wedge,
+  loop responsive, RAM flat) is the transferable claim; the magnitude
+  on the LG gram at 2560x1600 is not measured. That is the remaining
+  half of row #23, and the field report this document opened with is
+  still open until the user's own test says otherwise.
+* **The `sponge_debug` first-paint result is unchanged**, which is the
+  one thing the coalescing design had to preserve: the first frame of
+  every window is never deferred, because coalescing can only engage
+  when a frame is already in flight.
+
+### 8.6 Manual equivalent (AGENTS.md §3.5)
 
 ```bash
 # apply by hand (the recipe does this automatically)
@@ -331,16 +383,27 @@ rm genode/build/x86_64/qt6/base/cmake_prepared.tag
 make -C genode/build/x86_64 qt6/base
 ```
 
-`nm genode/build/x86_64/qt6/base/install/qt/plugins/platforms/libqgenode.lib.so | grep wait_for_frame`
-is the one-line check for which plugin is actually installed — this task
-caught itself shipping a "BEFORE" run that was in fact an AFTER run
-because the recipe had silently re-applied the patch.
+The one-line check for which plugin is actually installed is
+`nm genode/build/x86_64/qt6/base/install/qt/plugins/platforms/libqgenode.lib.so | grep begin_frame`
+— present when coalescing is in, absent when it is not. This task caught
+itself shipping a "BEFORE" run that was in fact an AFTER run because the
+recipe had silently re-applied the patch, so the check is load-bearing.
+
+**Caveat learned the hard way while building this:** if a
+`patch -R` fails a hunk part-way, it can leave the *already-touched*
+files truncated to zero bytes while still exiting non-zero. Always
+`rm -f src/plugins/platforms/genode/*.orig` and re-fetch the port
+(`cd genode && ./tool/ports/prepare_port qt6_base`) before regenerating
+the patch file, and always verify the regeneration round-trips
+(`patch -R` reproduces the pristine tree, `patch` reproduces the edited
+tree, byte for byte). The committed patch is verified that way.
 
 
 ```bash
 ./tool/build run sponge-debug-scrollstorm                     # SPONGE_ARM=scroll
 SPONGE_ARM=baseline ./tool/build run sponge-debug-scrollstorm
 SPONGE_ARM=grow     ./tool/build run sponge-debug-scrollstorm
+SPONGE_ARM=burst    ./tool/build run sponge-debug-scrollstorm
 ```
 
 (`tool/build` does not forward environment variables to the Genode

@@ -108,7 +108,7 @@ paint, and it is not killing anything else here.
 ## 3. H1 — the QPA frame-pacing patch, A/B
 
 A/B per the documented manual recipe (`docs/evidence/sponge-debug-
-scrollstorm.md` §8.4), same topology, same resolution. Receipts:
+scrollstorm.md` §8.6), same topology, same resolution. Receipts:
 `firstpaint-2560x1600-patch-shipped.log`,
 `firstpaint-2560x1600-patch-reverted.log`.
 
@@ -123,11 +123,11 @@ independently of the measurement: **`wait_for_frame()` as shipped never
 waits** (§4). So it cannot stall or corrupt a first frame, and H1 is
 falsified **as shipped**.
 
-## 4. Why the patch is inert, and what "fixing" it would cost
+## 4. The patch was inert, and what replacing it cost
 
-`docs/patches/qt6-qpa-frame-sync.patch` (ledger row #23) adds a bounded
-back-pressure wait at each frame boundary. Its fast-path guard is
-inverted:
+`docs/patches/qt6-qpa-frame-sync.patch` (ledger row #23) originally
+added a bounded back-pressure **wait** at each frame boundary. Its
+fast-path guard was inverted:
 
 ```cpp
 void QGenodePlatformWindow::wait_for_frame()
@@ -141,14 +141,11 @@ void QGenodePlatformWindow::wait_for_frame()
 `_previous_frame_consumed()` is true exactly when there is **nothing to
 wait for**. With the negation the function returns immediately in the
 one case the wait exists for, and only reaches the (non-sleeping)
-polling loop in the other. The wait never sleeps.
+polling loop in the other. The wait never slept.
 
-That is consistent with everything already on record for row #23: the
-documented cost is ~1 repaint/s attributed to the extra entrypoint
-wakeups from registering `sync_sigh`, and the wait itself has never been
-observed to fire. **The mechanism row #23 claims to deliver is not
-being delivered.** The benefit side of that row is not merely
-unmeasured — it is absent.
+That is consistent with everything on record for row #23: the wait itself
+had never been observed to fire. **The mechanism row #23 claimed to
+deliver was not being delivered.**
 
 Correcting the one-line guard and rebuilding the plugin
 (`patch -p1`, remove `genode/build/x86_64/qt6/base/qpa_frame_sync_
@@ -167,24 +164,53 @@ same arm. Receipts: `scrollstorm-guard-inverted-shipped.log`,
 `wait_for_frame()` is called from `QGenodeWindowSurface::flush()`, which
 Qt's raster path invokes once per backing-store flush — several times
 per painted frame — and each call can sleep up to the 250 ms ceiling.
-The design assumes one wait per frame; the call site is per flush.
+The design assumes one wait per frame; the call site is per flush. And
+blocking the Qt thread starves the very input processing that has to keep
+running during a storm.
 
-**The correction was reverted and the shipped patch is unchanged.**
-Two conclusions, both load-bearing:
+Two conclusions were load-bearing for the diagnosis, and both still hold
+for the code that replaced it:
 
-* the shipped patch is inert and is **not** the cause of the field
-  regression — it cannot be, it does nothing;
-* **"fixing the inverted guard" would produce exactly the field
-  symptom** the user is now reporting — a window that appears and never
-  finishes rendering, while every other component keeps running. Anyone
-  re-evaluating row #23 must not treat that one-character change as a
-  cleanup.
+* the then-shipped patch was inert and was **not** the cause of the
+  field regression — it could not be, it did nothing;
+* **"fixing the inverted guard" would have produced exactly the field
+  symptom** the user was reporting. That one-character change was never a
+  cleanup, and it is why H1 was falsified *as shipped* rather than
+  dismissed.
 
-Making the mechanism real requires a design change (one wait per frame,
-not per flush — e.g. latch it in `refresh()` and drop the sleeps
-entirely, or move the pacing into the GL/raster submit path with a
-per-frame latch), measured on real hardware. That is Phase 17+ work and
-is recorded as such in `docs/17-runtime-component-topology.md` §5.
+### 4.1 What replaced it (2026-10-16): coalescing, not waiting
+
+The blocking revision was reverted and row #23 was **re-implemented as
+frame coalescing** — the Wayland frame-callback pattern. There is no
+`sleep`, no poll loop and no `usleep` anywhere in the current patch:
+while a frame is unconsumed, a submit does not blit and does not wait,
+it merges its damage into the pending region and returns, and the
+acknowledged frame triggers exactly one coalesced submit. The liveness
+signal is an event, not a wait.
+
+Measured on this very harness, `SPONGE_ARM` A/B
+(`docs/evidence/sponge-debug-scrollstorm.md` §8.2 for the full table):
+
+| arm | build | storm ticks / 30 s | max tick gap | coalesced frames |
+|---|---|---:|---:|---|
+| `scroll` | BEFORE (no patch) | 342 | 125 ms | n/a |
+| `scroll` | AFTER (coalescing) | **587** | 139 ms | 576 deferrals → 77 submits |
+| `burst` | BEFORE (no patch) | 347 | 164 ms | n/a |
+| `burst` | AFTER (coalescing) | **582** | 172 ms | 800 deferrals → 82 submits |
+
+The 24x collapse is gone (max gap 139-172 ms against 2657 ms) and the
+mechanism that row #23 promised now measurably fires. The `baseline` arm
+logs exactly **one** coalesced frame in a whole run — the control that
+shows the telemetry distinguishes "worked" from "never needed", and that
+the first paint is never deferred.
+
+**The H1 verdict is unchanged in its conclusion and now has a stronger
+basis:** the QPA patch is not the field regression. First paint is
+never deferred by construction (coalescing can only engage when a frame
+is already in flight), and the whole run keeps up with a 2 s heartbeat
+(`sponge-de-test`, `sponge-launch`, `sponge-de-sel4-interactive`,
+`sponge-desktop-disk` all PASS with the coalescing plugin — §8.4 of the
+scrollstorm document).
 
 ## 5. The `uefi-usb` storage stall and the crash-respawn cascade
 
@@ -269,9 +295,12 @@ Established:
 * at the field resolution the client reaches the frame boundary in
   ~1.3 s against a 6 s containment budget, never misses a heartbeat and
   is never respawned, with or without containment;
-* the QPA patch is inert as shipped and is excluded as the field cause;
-  correcting its guard is measured to be a 24x throughput regression and
-  was reverted;
+* the QPA patch is excluded as the field cause. As originally shipped it
+  was inert; making its wait real is measured to be a 24x throughput
+  regression and was reverted. It has since been **replaced by frame
+  coalescing** (§4.1), which contains no wait at all, keeps first paint
+  un-deferred by construction, and is measured engaging on the storm
+  harness with no liveness regression;
 * the remainder clamp leaves the client with tens of MiB of headroom —
   nothing on the render path is clamped or denied;
 * the QEMU `uefi-usb` storage stall is a flake; the crash-respawn
@@ -311,7 +340,7 @@ SPONGE_FB_W=1920 SPONGE_FB_H=1080 make -C genode/build/x86_64 run/sponge-debug-f
 #             make -C genode/build/x86_64 qt6/base
 # verify with:
 #   nm genode/build/x86_64/qt6/base/install/qt/plugins/platforms/libqgenode.lib.so \
-#       | grep wait_for_frame
+#       | grep begin_frame
 
 # the repaint-storm harness the guard correction was measured on
 SPONGE_ARM=scroll make -C genode/build/x86_64 run/sponge-debug-scrollstorm
