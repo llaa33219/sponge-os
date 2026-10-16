@@ -1,0 +1,580 @@
+#
+# \brief  SPONGE DEBUG time-to-first-paint vs the heartbeat budget (QEMU/seL4)
+# \author Sponge OS contributors
+# \date   2026
+#
+# QUESTION UNDER TEST
+#
+#   Field report (2026-10, LG gram 17ZD90N, boot_fb/GOP 2560x1600): with
+#   the current img the SPONGE DEBUG window "appears but never finishes
+#   rendering, then dies", with NO error text on the console. Before that
+#   img the same window rendered fine.
+#
+#   Two mechanisms can produce that signature without a single byte of
+#   client-side error output:
+#
+#     H-heartbeat  the product configs arm
+#                  `<heartbeat rate_ms="2000"/>` +
+#                  `<heartbeat restart_after_skipped="3"/>` on the
+#                  sandbox that hosts the packages (docs/17
+#                  -runtime-component-topology.md section 5). A child
+#                  whose entrypoint cannot service the heartbeat signal
+#                  for three intervals is abandoned and RESPAWNED at
+#                  ~6 s. A slow-but-healthy first paint looks exactly
+#                  like a wedged child: the window is up (w m already
+#                  composited the surface), the paint has not finished,
+#                  the respawn throws it away. Qt and init both stay
+#                  silent about it.
+#     H-plugin     the Qt6 QPA frame-pacing patch (docs/patches/
+#                  qt6-qpa-frame-sync.patch, ledger row #23) registers
+#                  the framebuffer sync signal and adds a bounded wait
+#                  at every frame boundary. If it mis-fires at high
+#                  resolution it would stall the first frame.
+#
+#   This scenario measures the client's own clock
+#   (repos/sponge/src/sponge_debug/main.cc, FirstPaintProbe) against the
+#   heartbeat budget in the topology that produces the field symptom:
+#   a full-resolution software framebuffer and the package hosted under
+#   a pkg_runtime with the production heartbeat.
+#
+#   The framebuffer is `vesa_fb` at SPONGE_FB_W x SPONGE_FB_H (default
+#   2560x1600, the LG gram's panel resolution and what OVMF's GOP hands
+#   the same scenario on real hardware) rather than boot_fb. Only the
+#   producer of the pixels differs; the whole client path under test —
+#   sponge_debug -> QPA plugin -> nitpicker (Capture) -> fb -> GOP — is
+#   identical, and no OVMF/disk/USB-storage chain is needed to reach it.
+#   The `fb` node logs `using <W>x<H>`, which is the gate that proves
+#   the resolution actually took effect.
+#
+# KNOBS
+#
+#   SPONGE_FB_W / SPONGE_FB_H   framebuffer size (default 2560x1600)
+#   SPONGE_HEARTBEAT=on|off      production heartbeat (default on)
+#   SPONGE_TIMEOUT              gate timeout in seconds (default 300)
+#
+#   SPONGE_HEARTBEAT=off is the TOGGLE ARM: the heartbeat is the
+#   containment feature (docs/17 section 5) and must not be disabled
+#   product-wide; it is removed HERE, in a test scenario only, to prove
+#   whether it is what kills the client. Compare the two arms'
+#   `FIRSTPAIT` lines and the presence/absence of init's
+#   `configured RAM exceeds available RAM` repeat (pkg_runtime's
+#   remainder clamp logs once per (re)creation, so a respawn loop is
+#   visible in the log by construction — see
+#   docs/evidence/remainder-clamp-ram.md).
+#
+# GATE
+#
+#   `sponge_debug: FIRSTPAIT done` — the client reached the frame
+#   boundary. A timeout means the client never finished its first paint,
+#   which is the field symptom; the log then carries the `begin`/`done`
+#   pair's absence or presence and every init restart line needed to
+#   localize it.
+#
+
+assert {[have_spec sel4]} \
+	"sponge-debug-firstpaint requires KERNEL=sel4 (BOARD=pc): the scenario \
+	 needs vesa_fb/ps2/usb_hid, i.e. real PC hardware access."
+
+set fb_w 2560
+if {[info exists ::env(SPONGE_FB_W)]} { set fb_w $::env(SPONGE_FB_W) }
+set fb_h 1600
+if {[info exists ::env(SPONGE_FB_H)]} { set fb_h $::env(SPONGE_FB_H) }
+
+set heartbeat "on"
+if {[info exists ::env(SPONGE_HEARTBEAT)]} { set heartbeat $::env(SPONGE_HEARTBEAT) }
+if {$heartbeat ni {on off}} {
+	error "SPONGE_HEARTBEAT must be 'on' or 'off' (got '$heartbeat')"
+}
+
+set timeout 300
+if {[info exists ::env(SPONGE_TIMEOUT)]} { set timeout $::env(SPONGE_TIMEOUT) }
+
+# The two heartbeat nodes, present only in the production-shaped arm.
+# `rate_ms` belongs to the sandbox that OWNS the children (it needs the
+# Timer to generate them); `restart_after_skipped` belongs to the child
+# policy of the node whose children are policed — the `debug` package here,
+# exactly as in run/sponge-desktop-disk*.run.
+if {$heartbeat eq "on"} {
+	set sandbox_heartbeat "+ heartbeat | rate_ms: 2000"
+	set debug_hb         "+ heartbeat | restart_after_skipped: 3"
+} else {
+	set sandbox_heartbeat "# SPONGE_HEARTBEAT=off — containment removed for this arm"
+	set debug_hb         "# SPONGE_HEARTBEAT=off — containment removed for this arm"
+}
+
+build { core lib/ld init timer server/report_rom server/nitpicker \
+         driver/acpi app/pci_decode driver/platform \
+         driver/framebuffer/vesa driver/ps2 \
+         driver/usb_host/pc driver/usb_hid \
+         server/event_filter \
+         sponge_debug \
+         qt6/base lib/libc lib/libm lib/stdcxx lib/mesa \
+         lib/mesa_gpu-softpipe lib/egl lib/softpipe lib/libdrm lib/expat \
+         lib/qt6_component lib/vfs lib/vfs_pipe lib/vfs_gpu lib/rom_filter \
+         lib/zlib lib/libpng lib/blit }
+
+create_boot_directory
+
+install_config [subst {
+config
++ parent-provides
+  + service ROM
+  + service PD
+  + service RM
+  + service CPU
+  + service LOG
+  + service IRQ
+  + service IO_MEM
+  + service IO_PORT
+
++ default | caps: 200 | ram: 4M
++ default-route
+  + any-service
+    + parent
+    + any-child
+
+# core provides no Timer service (measured; docs/17 section 5), so the
+# single Timer source is a Tier-0 child. `system` opens its own Timer
+# session because the heartbeat node below needs one, and passes it down
+# through parent-provides.
++ start timer
+  + provides | + service Timer
+
++ start report_rom | caps: 100 | ram: 4M
+  + provides
+    + service Report
+    + service ROM
+  + config | verbose: yes
+    # `system` can only open its own `state` Report session against a
+    # parent that offers Report, and core offers none (genode/repos/os/
+    # src/init/main.cc:62 builds the Reporter over a session labelled
+    # "state"), so the relay that makes the state report observable has
+    # to live at Tier-0. verbose: yes makes report_rom PRINT every
+    # revision, which is where the per-child `skipped_heartbeats`
+    # counter becomes visible without patching init
+    # (genode/repos/os/src/lib/sandbox/child.cc:389-390).
+    + policy | label_suffix: state | report: system -> state
+
++ start system | caps: 60000 | ram: 512M
+  + binary init
+  + config
+    $sandbox_heartbeat
+    + parent-provides
+      + service ROM
+      + service PD
+      + service RM
+      + service CPU
+      + service LOG
+      + service Timer
+      + service Report
+      + service IRQ
+      + service IO_MEM
+      + service IO_PORT
+      + service Capture
+      + service Event
+    + default-route
+      + any-service
+        + parent
+        + any-child
+    + default | caps: 200 | ram: 4M
+
+    # Arms the per-child state report, whose `skipped_heartbeats`
+    # attribute is the direct measurement of the containment budget:
+    # a child whose entrypoint missed a heartbeat shows a rising count
+    # here for the seconds BEFORE it is respawned.
+    + report | init_ram: yes | child_ram: yes | child_caps: yes | delay_ms: 1000
+
+    # The three report_rom relays SPONGE DEBUG subscribes to at
+    # construction. There is no package manager here, so all three are
+    # served from the one real report nitpicker/wm would produce; the app
+    # opens all three sessions or it stops on the first denied one, so
+    # the payloads are irrelevant to the render-path measurement.
+    + start report_rom | caps: 300 | ram: 8M
+      + provides
+        + service Report
+        + service ROM
+      + config | verbose: yes
+        + policy | label: debug -> installed       | report: nitpicker -> focus
+        + policy | label: debug -> window_list     | report: nitpicker -> focus
+        + policy | label: debug -> launcher_result | report: nitpicker -> focus
+
+    # nitpicker needs a large caps quota at 2560x1600: mapping the
+    # client's framebuffer and its own capture buffer costs one cap per
+    # page-table level touched, and the mapping-cache-full stop below is
+    # what a 200-cap nitpicker prints at this resolution. Same reason the
+    # production boot_fb node carries caps: 6000.
+    + start nitpicker | caps: 6000 | ram: 16M
+      + provides
+        + service Gui
+        + service Capture
+        + service Event
+      + route
+        + service Report | + child report_rom
+        + any-service
+          + parent
+          + any-child
+      + config
+        + capture
+        + event
+        + report | focus: yes | hover: yes | xray: yes
+        + domain default | layer: 2 | content: client | label: no
+                         | hover: always | focus: click
+        + default-policy | domain: default
+        + background | color: #1e1e2e
+
+    # The vendored drivers_interactive-pc set, hosted by its own sub-init.
+    # One extra init generation is load-bearing: init starts children
+    # concurrently, so a flattened driver set races nitpicker for the
+    # Capture/Event sessions ("parent denied Capture-session").
+    + start drivers | caps: 8000 | ram: 96M | managing_system: yes
+      + binary init
+      + route
+        + service ROM | label: config | + parent | label: drivers.config
+        + service Capture | + child nitpicker
+        + service Event | + child nitpicker
+        + any-service
+          + parent
+      + config
+        + report | init_ram: yes | child_ram: yes | delay_ms: 1000
+        + parent-provides
+          + service IRQ
+          + service IO_MEM
+          + service IO_PORT
+          + service ROM
+          + service PD
+          + service RM
+          + service CPU
+          + service LOG
+          + service Timer
+          + service Capture
+          + service Event
+
+        + default | caps: 60
+
+        + start report_rom | caps: 100 | ram: 2M
+          + provides
+            + service ROM
+            + service Report
+          + config
+            + policy | label: pci_decode -> system | report: acpi -> acpi
+            + policy | label: platform -> devices  | report: pci_decode -> devices
+            + policy | label: usb_hid -> report    | report: usb -> devices
+          + route
+            + service LOG | + parent
+            + service PD | + parent
+            + service CPU | + parent
+            + service ROM | + parent
+            + service Timer | + parent
+
+        + start acpi | caps: 250 | ram: 4M
+          + route
+            + service IO_MEM | + parent
+            + service LOG | + parent
+            + service PD | + parent
+            + service RM | + parent
+            + service CPU | + parent
+            + service ROM | + parent
+            + service Report | + child report_rom
+
+        + start pci_decode | caps: 100 | ram: 2M
+          + route
+            + service Report | + child report_rom
+            + service ROM | label: system | + child report_rom
+            + service IO_MEM | + parent
+            + service LOG | + parent
+            + service PD | + parent
+            + service CPU | + parent
+            + service ROM | + parent
+
+        + start platform | caps: 200 | ram: 3M | managing_system: yes
+          + provides
+            + service Dma
+            + service Platform
+          + route
+            + service ROM | label: devices | + child report_rom
+            + service Report | + child report_rom
+            + service IRQ | + parent
+            + service IO_MEM | + parent
+            + service IO_PORT | + parent
+            + service ROM | + parent
+            + service PD | + parent
+            + service RM | + parent
+            + service CPU | + parent
+            + service LOG | + parent
+            + service Timer | + parent
+          + config
+            + report | devices: yes
+            + policy | label_prefix: ps2  | + device ps2
+            + policy | label_prefix: fb   | info: yes | + pci | class: VGA
+            + policy | label_prefix: usb  | info: yes | + pci | class: USB
+
+        # The client under test. `ram: 20M` and `caps: 150` are the
+        # scrollstorm-measured values for a full-resolution vesa_fb
+        # capture client (docs/evidence/sponge-debug-scrollstorm.md);
+        # 150 caps exhausted the PD mapping cache when the framebuffer
+        # grew past 1024x768, which is why this node is sized the way
+        # the production boot_fb node is.
+        + start fb | caps: 6000 | ram: 20M
+          + binary vesa_fb
+          + route
+            + service ROM | label: config | + parent | label: fb.config
+            + service Report | + child report_rom
+            + service Dma | + child platform
+            + service Platform | + child platform
+            + service IO_PORT | + parent
+            + service IO_MEM | + parent
+            + service ROM | + parent
+            + service PD | + parent
+            + service CPU | + parent
+            + service LOG | + parent
+            + service Timer | + parent
+            + service Capture | + parent
+
+        + start ps2 | caps: 100 | ram: 1280K
+          + config
+          + route
+            + service Dma | + child platform
+            + service Platform | + child platform
+            + service Event | + child event_filter | label: ps2
+            + service ROM | + parent
+            + service PD | + parent
+            + service CPU | + parent
+            + service LOG | + parent
+            + service Timer | + parent
+
+        + start usb | caps: 200 | ram: 16M
+          + binary pc_usb_host
+          + provides | + service Usb
+          + config
+            + report | devices: yes
+            + policy | label_prefix: usb_hid | + device | class: 0x3
+          + route
+            + service Dma | + child platform
+            + service Platform | + child platform
+            + service Report | label: devices | + child report_rom
+            + service ROM | + parent
+            + service PD | + parent
+            + service RM | + parent
+            + service CPU | + parent
+            + service LOG | + parent
+            + service Timer | + parent
+
+        + start usb_hid | caps: 180 | ram: 10M
+          + route
+            + service ROM | label: report | + child report_rom
+            + service ROM | + parent
+            + service PD | + parent
+            + service RM | + parent
+            + service CPU | + parent
+            + service LOG | + parent
+            + service Timer | + parent
+            + service Event | + child event_filter | label: usb
+            + service Usb | + child usb
+
+        + start event_filter | caps: 90 | ram: 1280K
+          + provides | + service Event
+          + route
+            + service ROM | label: config | + parent | label: event_filter.config
+            + service Event | + parent
+            + service ROM | + parent
+            + service PD | + parent
+            + service CPU | + parent
+            + service LOG | + parent
+            + service Timer | + parent
+
+    #
+    # The component under test, as a DIRECT child of `system`.
+    #
+    # DEVIATION FROM THE PRODUCT SHAPE, stated plainly: in the product the
+    # package is hosted by a nested `pkg_runtime` init, and the heartbeat
+    # policy sits on that node. Here the package is a direct child of
+    # `system` and the policy sits on its own start node. The two are the
+    # same containment as far as the measured quantity is concerned: a
+    # heartbeat is generated by the sandbox that owns the children and
+    # policed per child, so the signal the client must service, the 2 s
+    # period and the 3-skipped (6 s) budget are byte-identical. What the
+    # extra `pkg_runtime` layer would add is a Gui/ROM route hop
+    # (`+ service Gui | + child nitpicker` from inside the nested init),
+    # and that hop is not free to write down: init starts children
+    # concurrently, so a nested init that asks a SIBLING for Gui before
+    # the sibling has opened its Gui provider session gets a hard denial
+    # ("no route to service Gui"), which is a startup race unrelated to
+    # the paint path under test. run/sponge-wm-tasks.run and
+    # run/sponge-de-sel4-interactive.run cover the WM hop itself.
+    #
+    # `caps: 1000 / ram: 64M` are the package's production figures
+    # (pkg/debug/metadata.xml).
+    #
+    + start debug | caps: 1000 | ram: 64M
+      $debug_hb
+      + binary | name: sponge_debug
+      + config
+        + vfs
+          + dir dev
+            + log
+            + inline rtc | : 2018-01-01 00:01
+          + dir pipe | + pipe
+          + tar qt6_dejavusans.tar
+          + tar qt6_libqgenode.tar
+        + libc | stdout: /dev/log | stderr: /dev/log | pipe: /pipe | rtc: /dev/rtc
+      + route
+        + service ROM | label: installed       | + child report_rom
+        + service ROM | label: window_list     | + child report_rom
+        + service ROM | label: launcher_result | + child report_rom
+        + service ROM | label: mesa_gpu.lib.so | + parent | label: mesa_gpu-softpipe.lib.so
+        + any-service
+          + parent
+          + any-child
+- }]
+
+#
+# On base-sel4 the boot image is one packed image.elf: every non-build-
+# artifact module must exist in bin/ before build_boot_image or it never
+# reaches the guest (docs/11-environment.md section 10.4).
+#
+exec mkdir -p bin
+
+set dejavu_dst "bin/qt6_dejavusans.tar"
+if {![file exists $dejavu_dst]} {
+	set dejavu_src [glob -nocomplain "${genode_dir}/contrib/qt6_base-*/src/lib/qt6_base/src/3rdparty/wasm/DejaVuSans.ttf"]
+	if {[llength $dejavu_src] == 0} {
+		error "DejaVuSans.ttf not found in the qt6_base port sources"
+	}
+	set staging "[run_dir]/dejavusans-staging"
+	file mkdir "$staging/qt/lib/fonts"
+	file copy -force [lindex $dejavu_src 0] "$staging/qt/lib/fonts/DejaVuSans.ttf"
+	exec tar -cf $dejavu_dst -C $staging qt
+	file delete -force $staging
+}
+
+set recipe_dir "${genode_dir}/repos/os/recipes/raw/drivers_interactive-pc"
+foreach f { drivers.config event_filter.config } {
+	if {![file exists "$recipe_dir/$f"]} {
+		error "$recipe_dir/$f missing (vendored drivers_interactive-pc recipe drifted?)"
+	}
+	exec cp -f "$recipe_dir/$f" "bin/$f"
+}
+
+# The stock drivers_interactive-pc fb.config pins 1024x768. This
+# scenario writes its own with the requested resolution — the same file
+# format the recipe uses (`config | width: <w> | height: <h> |
+# buffered: yes`), so nothing is hand-rolled.
+set fh [open "bin/fb.config" w]
+puts -nonewline $fh "config | width: $fb_w | height: $fb_h | buffered: yes\n-\n"
+close $fh
+
+set chargen_dir "${genode_dir}/repos/os/src/server/event_filter"
+foreach f { en_us.chargen special.chargen } {
+	if {![file exists "$chargen_dir/$f"]} {
+		error "$chargen_dir/$f missing (event_filter sources drifted?)"
+	}
+	exec cp -f "$chargen_dir/$f" "bin/$f"
+}
+
+set boot_modules [build_artifacts]
+foreach m { libQt6Core.lib.so libQt6Gui.lib.so libQt6Widgets.lib.so \
+            libqgenode.lib.so \
+            qt6_libqgenode.tar qt6_dejavusans.tar \
+            drivers.config fb.config event_filter.config \
+            en_us.chargen special.chargen } {
+	lappend boot_modules $m
+}
+build_boot_image $boot_modules
+
+append qemu_args " -nographic -m 4G "
+
+#
+# ONE gate plus host-side assertions on the captured serial log.
+#
+# `match_max` is raised for the whole measurement on purpose: the verbose
+# state report printed above emits ~40 bytes per child per second, which
+# is more than expect's default 2000-byte match window, so the marker
+# would scroll out of the window before the gate could match it. Same
+# failure and same remedy as the launch-phase flood documented in
+# run/terminal_runtime.inc.
+#
+# Gate 1 boots the guest. It deliberately matches the FIRST thing the
+# boot log prints, because every later gate reads from the same expect
+# buffer: matching late would consume the paint marker this scenario
+# exists to observe.
+run_genode_until {.*Genode v.*} 180
+
+global qemu_spawn_id
+#
+# Tee the whole remaining serial stream to a file. expect_out(buffer) is
+# NOT a log - it only holds the region around the last match - so the
+# host-side assertions below read this file instead of the `output`
+# global. Same idiom as run/sponge-desktop-disk-uefi-usb.run.
+#
+set fp_log [run_dir]/firstpaint.log
+
+#
+# Raise expect's match window before the paint gate consumes data. The
+# verbose state reports emit hundreds of bytes per child per second, more
+# than the default 2000-byte window, so the `FIRSTPAINT ms=` line would
+# scroll out of the window before a later gate could match it. Same
+# failure and same remedy as the launch-phase flood documented in
+# run/terminal_runtime.inc and run/sponge-de-sel4-interactive.run.
+#
+match_max -i $qemu_spawn_id 500000
+
+log_file -a $fp_log
+run_genode_until {.*sponge_debug: FIRSTPAINT ms=.*} $timeout $qemu_spawn_id
+
+# The gate matches the FIRSTPAINT line, which ends in the measured
+# millisecond count. The run tool powers the guest off the moment the
+# gate returns, and that cuts the serial stream mid-line - the number
+# would be lost. Give the console a moment to finish the line.
+sleep 3
+log_file
+
+set fh [open $fp_log r]
+set fp_out [read $fh]
+close $fh
+
+# The resolution must really be the one this scenario claims, or the
+# number below would not be the field resolution.
+if {![regexp "using ${fb_w}x${fb_h}" $fp_out]} {
+	error "the framebuffer did not come up at ${fb_w}x${fb_h} - the \
+	       measurement would not be the one this scenario claims"
+}
+
+# The restart detector. Every respawned child constructs again and logs
+# `construct done`, so a count above one IS a containment kill, and a
+# count in the tens is the unbounded respawn loop. A healthy client at
+# this resolution constructs exactly once.
+set constructs 0
+foreach line [split $fp_out "\n"] {
+	if {[string match "*sponge_debug: construct ms=*" $line]} { incr constructs }
+}
+
+set first_paint_ms "?"
+foreach line [split $fp_out "\n"] {
+	if {[regexp {sponge_debug: FIRSTPAINT ms=([0-9]+)} \
+	      $line -> first_paint_ms]} { break }
+}
+
+set max_skipped 0
+foreach line [split $fp_out "\n"] {
+	if {[regexp {skipped_heartbeats: ([0-9]+)} $line -> n] && {$n > $max_skipped}} {
+		set max_skipped $n
+	}
+}
+
+puts ""
+puts "  ================================================================"
+puts "  first paint: PASS"
+puts "    framebuffer        : ${fb_w}x${fb_h}"
+puts "    heartbeat          : $heartbeat"
+puts "    client spawns      : $constructs   (1 = no containment kill)"
+puts "    time to first paint: ${first_paint_ms} ms (client clock, measured"
+puts "                         from its own constructor)"
+puts "    max skipped beats  : $max_skipped  (0 = the entrypoint never missed"
+puts "                         a 2 s heartbeat)"
+puts "    serial log         : $fp_log"
+puts "  ================================================================"
+
+if {$constructs != 1} {
+	error "the client was constructed $constructs times: the heartbeat killed \
+	       and respawned it (a containment kill, not a paint bug)"
+}

@@ -891,6 +891,34 @@ A scenario defines:
   `docs/evidence/sponge-debug-scrollstorm.md`. base-sel4 only
   (`vesa_fb`/`ps2`/`usb_hid`).
 
+- `sponge-debug-firstpaint.run` — **time-to-first-paint of the SPONGE
+  DEBUG package against the containment budget, at an arbitrary
+  framebuffer resolution**. The 2026-10-16 field report ("the SPONGE
+  DEBUG window appears but never finishes rendering, then dies", LG
+  gram 17ZD90N, `boot_fb`/GOP 2560x1600, no error text) cannot be
+  diagnosed without a number for how long the client takes to reach its
+  first frame, so `sponge_debug` now reports its own progress on the
+  serial console (`construct ms=`, `paint-begin ms=`,
+  `FIRSTPAINT ms=`) and this scenario boots the real render chain
+  (`sponge_debug` → Qt6 QPA → `nitpicker` → `vesa_fb` → GOP) with the
+  production heartbeat at `SPONGE_FB_W` x `SPONGE_FB_H` (default
+  **2560x1600**, the LG gram's panel resolution). The host-side gate
+  asserts the framebuffer really came up at that resolution, that the
+  client constructed **exactly once** (more than one = a containment
+  kill), and prints the largest `skipped_heartbeats` the sandbox
+  reported for it. `SPONGE_HEARTBEAT=off` is the toggle arm — the
+  containment feature is never disabled in the product, only in this
+  scenario. Two stated deviations: the package is a direct child of
+  `system` rather than of a nested `pkg_runtime` (same generated
+  signal, period and budget; the extra layer only adds a route hop that
+  init's concurrent child start makes racy), and the display driver is
+  `vesa_fb` at the requested mode rather than `boot_fb` (only the
+  producer of the pixels differs). Result at 2560x1600: **1.3 s to
+  first paint against a 6 s budget, 1 spawn, 0 skipped heartbeats**,
+  unchanged with the heartbeat removed — which is what rules the
+  heartbeat out. Evidence `docs/evidence/sponge-debug-firstpaint.md`.
+  base-sel4 only (`vesa_fb`/`ps2`/`usb_hid`).
+
 ## Planned additions
 
 - Spin a usable Sponge OS install workflow through Leitzentrale (the

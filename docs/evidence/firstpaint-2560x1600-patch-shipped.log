@@ -1,0 +1,19 @@
+# source log: /tmp/opencode/fp-patch2.log
+# command:    SPONGE_HEARTBEAT=on  (QPA patch shipped, guard inverted)
+
+error: can't find command `loadfont'.
+Genode v0.2.0-83-gdd452acf23 <local changes>
+[init -> system -> debug] sponge_debug: construct ms=115
+[init -> system -> debug] sponge_debug: paint-begin ms=329
+[init -> system -> drivers -> fb] using 2560x1600 (2560x1600)
+[init -> system -> debug] sponge_debug: FIRSTPAINT ms=1300
+  ================================================================
+  first paint: PASS
+    framebuffer        : 2560x1600
+    heartbeat          : on
+    client spawns      : 1   (1 = no containment kill)
+    time to first paint: 1300 ms (client clock, measured
+    max skipped beats  : 0  (0 = the entrypoint never missed
+    serial log         : var/run/sponge-debug-firstpaint/firstpaint.log
+  ================================================================
+Run script execution successful.
