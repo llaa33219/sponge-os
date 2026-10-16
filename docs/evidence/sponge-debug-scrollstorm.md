@@ -250,7 +250,8 @@ either, which is the correct answer for a client-limited workload.
 
 ### 8.2 The verification gap — stated plainly
 
-**The benefit of this patch is NOT demonstrated by this harness.** On
+**The benefit of this patch is NOT demonstrated by this harness, and
+(measured 2026-10-16) it is not being delivered at all.** On
 QEMU/TCG at 1024x768 with softpipe, the client is the bottleneck: it
 produces ~10 repaints/s while nitpicker's compositor can drain ~25/s
 (its 40 ms frame cap, `genode/repos/os/src/server/nitpicker/main.cc:561-564`).
@@ -258,6 +259,20 @@ A backlog therefore **never forms here**, and the bounded wait never
 engages. What is measured on this host is a **cost of 1 repaint/s
 (~10%)**, attributable to the ~25 extra entrypoint sync-signal wakeups
 per second that registering `sync_sigh` adds — not to the wait.
+
+**Correction (2026-10-16).** The reason the wait never engages is a
+defect, not a workload property: `wait_for_frame()`'s fast-path guard
+is inverted (`if (!_previous_frame_consumed()) return;`), and
+`_previous_frame_consumed()` is true exactly when there is nothing to
+wait for, so the function returns immediately in the one case the wait
+exists for. The mechanism is inert; the "AFTER" column above measures
+only the registration overhead. Correcting the one line was built and
+measured on this very harness and collapses the storm to 13 ticks /
+0.4 Hz (max gap 2657 ms) against 310 ticks / 10 Hz (max gap 140 ms)
+shipped — a 24x regression, because the wait is called per
+`QGenodeWindowSurface::flush()` rather than once per frame. **The
+correction was reverted and this patch is unchanged.** Full receipts and
+the reasoning: `docs/evidence/sponge-debug-firstpaint.md` §4.
 
 Two earlier revisions of the patch were measured and **rejected** on
 exactly this harness, which is what pinned the final design down:

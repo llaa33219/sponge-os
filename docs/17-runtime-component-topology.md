@@ -188,9 +188,10 @@ component must never be able to freeze the desktop. Status after the
 2026-10-04 containment deployment and the 2026-10 quota-sizing fix
 (§6):
 
-- [x] **Repaint back-pressure — patched (ledger row #23), benefit
-  still unmeasured (§4a)**: a component that repaints faster than the
-  compositor can drain builds an unbounded backlog.
+- [~] **Repaint back-pressure — patched (ledger row #23), but the
+  mechanism is INERT and the intended behaviour was measured to be a
+  24x throughput regression (§4a)**: a component that repaints faster
+  than the compositor can drain builds an unbounded backlog.
   `Framebuffer::Session` already offers `sync_sigh`/`sync_source`
   (`genode/repos/os/include/framebuffer_session/framebuffer_session.h:218-231`)
   and nitpicker already implements the server side
@@ -201,15 +202,43 @@ component must never be able to freeze the desktop. Status after the
   `docs/11-environment.md` §4). The wait is bounded (250 ms ceiling)
   and self-disabling: it fires only when the client submits a frame
   without a sync having arrived since its last submit.
-  **Verification status, stated honestly:** the mechanism is certain by
-  construction and non-regressive (`sponge-de-test`, `sponge-launch`,
-  `sponge-de-sel4-interactive`, `sponge-desktop-disk` all PASS), but
-  its BENEFIT is unmeasured — on QEMU/softpipe the client (~10
-  repaints/s) is slower than the compositor (~25 Hz), so no backlog
-  ever forms and the wait never engages; the measured effect there is a
-  1 repaint/s cost from the extra sync-signal wakeups. Positive proof
-  needs real hardware. Details and the two rejected earlier revisions:
-  `docs/evidence/sponge-debug-scrollstorm.md` §8.
+  **Correction, measured 2026-10-16
+  (`docs/evidence/sponge-debug-firstpaint.md` §4):** the patch's
+  fast-path guard in `wait_for_frame()` is **inverted**
+  (`if (!_previous_frame_consumed()) return;`), and
+  `_previous_frame_consumed()` is true exactly when there is nothing to
+  wait for. The wait therefore never sleeps. So the benefit is not
+  merely unmeasured — it is **absent**, and the ~1 repaint/s "cost"
+  recorded in the row is entirely the extra entrypoint wakeups from
+  registering `sync_sigh`. Correcting the one-line guard was built and
+  measured: the repaint storm drops from **310 ticks / 10 Hz** to
+  **13 ticks / 0.4 Hz** (max tick gap 140 ms -> 2657 ms), a 24x
+  collapse, because `wait_for_frame()` is called per
+  `QGenodeWindowSurface::flush()` — several times per painted frame —
+  while the design budgets one wait per frame. **The correction was
+  reverted; the shipped patch is unchanged and inert.** Do not treat
+  that guard as a cleanup: flipping it produces a window that never
+  finishes rendering. Making the mechanism real needs a design change
+  (one wait per frame, not per flush) plus real-hardware measurement.
+  Non-regression of the shipped (inert) patch re-verified 2026-10-16:
+  `sponge-desktop-disk`, `sponge-de-sel4-interactive`,
+  `sponge-pkg-lifecycle`, `sponge-desktop-disk-uefi-usb` all PASS.
+- [ ] **Respawn budget and clamp leak — open (found 2026-10-16, NOT
+  the field regression)**: `<heartbeat restart_after_skipped="3"/>` has
+  no attempt budget and no backoff, so a child that cannot start is
+  respawned forever, and with `ram: 512G` each cycle leaks part of the
+  clamped grant (~35 KB/cycle measured). Reproduced only under a
+  `usb_block` storage stall in `run/sponge-desktop-disk-uefi-usb`, where
+  `report_rom` aborts with
+  `Attached_dataspace::Region_conflict` and every ROM-dependent child
+  loses its config source; a healthy boot of the same scenario shows
+  zero of it. Two changes are wanted — an init respawn budget/backoff
+  and a leak-free clamped grant — and neither is a first-paint fix. The
+  `report_rom` abort itself is not root-caused; the obvious candidate
+  (`rom_module.h` re-allocating a module backing store) was checked and
+  is **not** a leak, because `Genode::Constructible` inherits
+  `Reconstructible::construct()`, which destructs first. Evidence:
+  `docs/evidence/sponge-debug-firstpaint.md` §5.
 - [ ] **Real-hardware confirmation of row #23 — open**: reproduce a
   backlog on the LG gram 17ZD90N (2560x1600, where the field report
   originated) and measure the achieved rate and event-loop latency with
