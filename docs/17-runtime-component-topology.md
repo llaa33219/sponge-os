@@ -183,13 +183,17 @@ quota is not a fix for this class of report and none was applied.**
 
 The unbounded-backlog half of the mechanism — the QPA plugin never
 registering the framebuffer's sync signal, so a client never learns how
-far behind the compositor it is — is now patched: **ledger row #23**,
-`docs/patches/qt6-qpa-frame-sync.patch`. See §5 and
+far behind the compositor it is — is now patched by **frame coalescing**:
+**ledger row #23**, `docs/patches/qt6-qpa-frame-sync.patch`. See §5 and
 [`docs/evidence/sponge-debug-scrollstorm.md`](evidence/sponge-debug-scrollstorm.md)
-§8 for the before/after numbers and the honest verification gap: on
-QEMU/softpipe no backlog forms (the client is slower than the
-compositor), so the benefit is correct-by-construction but **unmeasured**;
-the real-hardware confirmation is an open item in §5.
+§8 for the before/after numbers. The benefit is now **measured, not just
+correct-by-construction**: because a QEMU/softpipe client is normally
+*slower* than the compositor and would never form a backlog on its own,
+the harness forces the condition with a dedicated arm, and coalescing is
+observed engaging (800 submit attempts collapse to 82 frame submissions
+in 30 s) with storm throughput up 11 → 19 Hz and no liveness regression.
+What remains open is the real-hardware magnitude at 2560x1600, not the
+mechanism — see §5.
 
 ## 5. Design gap register (what "microkernel-proper" would add)
 
