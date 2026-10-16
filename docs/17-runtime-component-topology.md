@@ -125,6 +125,16 @@ saturated. The discriminating tests, in order:
 1. **Diagnostic media** (`SPONGE_FBCON=on`): kernel fb console on the
    panel shows whether `usb_hid` enumerated the mouse at all, and any
    event_filter/nitpicker/pointer errors — on the real machine.
+   **Hard constraint (user directive 2026-10-16): the kernel fb
+   console and the desktop NEVER share the framebuffer.** FBCON media
+   is legitimate only for bring-up where the desktop never comes up;
+   once nitpicker owns the fb, an always-on console produces the worst
+   outcome (the screen flickers between the two, the console is
+   unreadable). In-desktop error surfacing is the debug package's
+   raison d'être plus the panel health label (§5); a *problem-triggered
+   console switch* (take the fb over on a fatal fault, show the log,
+   never draw both) is the sanctioned design for field diagnosis and
+   is registered as a follow-up in §5.
 2. **QEMU input test**: boot the 17:55-lineage image, drive the QEMU
    mouse via QMP, screendump — proves the chain works with the same
    binaries/configs.
@@ -374,6 +384,18 @@ component must never be able to freeze the desktop. Status after the
   scenario can run a timer on this host today. The disk/UEFI product
   path is unaffected. Revisit when the flat-boot HPET issue is
   root-caused (QEMU/seaBIOS ACPI exposure).
+- [ ] **Problem-triggered console switch (field diagnosis)**: the
+  framebuffer has exactly one owner at a time. Today, when the desktop
+  is up, component logs reach no user-visible surface on real hardware
+  (no serial on the LG gram; the FBCON diagnostic console must not run
+  alongside the desktop — §4). The debug package window + the panel
+  health label are the sanctioned in-desktop surfaces, but they show
+  *state*, not the *log stream*. The follow-up: on a fatal fault
+  (containment kill, repeated child death, storage-chain stall), switch
+  the fb to a console view that shows the relevant log tail — a
+  handover, never an overlay — and switch back on recovery. Until then,
+  field diagnosis relies on the panel health label and the debug
+  package's report views.
 
 ## 6. Quota ledger (the five desktop-disk scenarios)
 
