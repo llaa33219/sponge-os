@@ -52,6 +52,29 @@ Properties that matter for safety:
     never waited on. A client that outruns the compositor submits
     again first, and that is the one case that waits.
 
+    *** KNOWN DEFECT, SHIPPED AS-IS - READ BEFORE TOUCHING IT ***
+    wait_for_frame()'s fast-path guard below is INVERTED: it reads
+    'if (!_previous_frame_consumed()) return;', and
+    _previous_frame_consumed() is true exactly when there is nothing to
+    wait for. The wait therefore NEVER sleeps. The mechanism is INERT;
+    what this patch measurably adds is the sync_sigh registration and
+    its ~25 entrypoint wakeups per second - the ~1 repaint/s "cost"
+    recorded in docs/evidence/sponge-debug-scrollstorm.md section 8.1.
+
+    Do not correct that guard as a cleanup. Measured 2026-10-16 on
+    run/sponge-debug-scrollstorm.run, SPONGE_ARM=scroll:
+
+        guard inverted (shipped) : 310 ticks / 30 s,  10 Hz, max gap  140 ms
+        guard corrected          :  13 ticks / 30 s, 0.4 Hz, max gap 2657 ms
+
+    A 24x collapse, because wait_for_frame() is called from
+    QGenodeWindowSurface::flush(), which Qt's raster path invokes
+    SEVERAL TIMES PER PAINTED FRAME, while this design budgets one wait
+    per frame. Making the mechanism real needs a design change (a
+    per-frame latch, or pacing the submit rather than the flush) plus
+    real-hardware measurement - not the one-character fix. Evidence:
+    docs/evidence/sponge-debug-firstpaint.md section 4.
+
     Two earlier revisions were measured and rejected: waiting on every
     frame after observing two syncs cost 2 repaints/s (10 Hz -> 8 Hz),
     and a per-interval "more than one refresh in one compositor
