@@ -149,11 +149,36 @@ set iso_idx [lsearch -exact $include_list "image/iso"]
 if {$iso_idx >= 0} { set include_list [lreplace $include_list $iso_idx $iso_idx] }
 
 #
+# Top-level supervision (docs/17 §5, "Broker fault containment - top
+# level"). run/supervisor.inc carries the shared wiring: it derives the
+# supervisor's config templates from the desktop config staged below,
+# hands the top-level report_rom the two relay policies, moves the
+# `system` sandbox's config ROM from rom_sys to the relay, adds the
+# console's nitpicker domain, and starts the supervisor + console before
+# the sandbox. The templates are DERIVED, never authored twice, so this
+# file stays the single source of truth for the desktop composition.
+#
+source [file join [file dirname [file normalize [info script]]] \
+                    supervisor.inc]
+
 # Failure-channel selector: SPONGE_DISK_FAIL=1 corrupts system.config.
 #
 set fail_mode [expr {[info exists ::env(SPONGE_DISK_FAIL)] && $::env(SPONGE_DISK_FAIL) == "1"}]
 if {$fail_mode} {
 	puts "sponge-desktop-disk: FAILURE CHANNEL (corrupted system.config)"
+}
+
+#
+# The SPONGE_DISK_FAIL failure channel runs WITHOUT the supervisor: its
+# whole subject is "the nested init rejects a corrupted config", a
+# diagnostic that predates the supervisor, and wiring it in would make two
+# different failures indistinguishable in one log.
+#
+if {$fail_mode} { supervisor::enabled 0 }
+
+set sup_mode [supervisor::test_mode]
+if {$sup_mode ne "off"} {
+	puts "sponge-desktop-disk: supervisor fault-injection ARM '$sup_mode'"
 }
 
 #
@@ -174,7 +199,7 @@ set build_components {
 	sponge_configd sponge_themed sponge_pkgd pkg_hello sponge-de
 	app/qt6/examples/calculatorform sponge_files app/pdf_view
 	sponge_debug
-	cfg_probe
+	cfg_probe sponge_supervisor sponge_console
 	server/terminal
 	noux-pkg/bash-minimal noux-pkg/vim-minimal
 	noux-pkg/coreutils-minimal noux-pkg/grep noux-pkg/sed
@@ -190,6 +215,19 @@ set build_components {
 }
 
 build $build_components
+
+#
+# Fault-injection gate (docs/17 §5, top-level supervision). OFF by
+# default: shipped media carries the supervisor and the console, never a
+# fault child. With SPONGE_SUPERVISOR_TEST the scenario also stages a
+# wedging child inside the supervised sandbox and a Capture-side pixel
+# oracle, and gates the whole detect -> kill -> console -> recover chain
+# in the PRODUCT topology (the lean proof is
+# run/sponge-supervisor-takeover.run).
+#
+if {$sup_mode ne "off"} {
+	build { test/ep_wedge test/takeover_probe }
+}
 
 create_boot_directory
 
@@ -768,6 +806,14 @@ config
 	#
 	# Convert HID → XML so the nested init receives unambiguous XML.
 	#
+	#
+	# Top-level supervision: stamp a restart version onto every top-level
+	# <start> and derive the supervisor's two templates from THIS file
+	# (which stays the single source of truth for the desktop
+	# composition).
+	#
+	supervisor::prepare $sys_dir $sysconfig_hid
+
 	set xml_content [exec [genode_dir]/tool/hid format --output-xml "$sysconfig_hid"]
 	set sysconfig_final [open "$sys_dir/init/system.config" w]
 	puts -nonewline $sysconfig_final $xml_content
@@ -779,7 +825,7 @@ config
 # Tier-0 init configuration
 # ========================================================================
 
-install_config {
+install_config [supervisor::tier0 {
 config
 + parent-provides
   + service ROM
@@ -1087,7 +1133,7 @@ config
     + any-service
       + parent
       + any-child
-- }
+- }]
 
 #
 # Stage the driver sub-init config modules (Tier-0 boot modules).
@@ -1126,6 +1172,13 @@ foreach m { vfs.lib.so vfs_rump.lib.so rump.lib.so rump_fs.lib.so \
             fb.config event_filter.config } {
 	lappend boot_modules $m
 }
+
+#
+# Top-level supervision (sponge_supervisor + sponge_console + their two
+# config modules). Both are small base-lib binaries; the Tier-0 budget
+# check below is asserted against image.elf, not against a hope.
+#
+foreach m [supervisor::boot_modules] { lappend boot_modules $m }
 
 build_boot_image $boot_modules
 
@@ -1195,5 +1248,106 @@ if {$fail_mode} {
 	run_genode_until {.*init -> system.*Error.*config.*|.*system.*invalid.*|.*Error reading config.*} 120
 	puts "sponge-desktop-disk: FAILURE CHANNEL — system init rejected corrupted config (bounded, identified)"
 } else {
+
 	run_genode_until {.*alpha-probe: PASS.*} 900
+
+	#
+	# === Top-level supervision, product topology =========================
+	#
+	# Nothing below runs on the shipped media: the supervisor, its config
+	# relay and the fault console are always present there and always idle
+	# until a fault happens. What follows is the env-gated proof that the
+	# chain works in THIS topology - the lean proof is
+	# run/sponge-supervisor-takeover.run.
+	#
+	#   SPONGE_SUPERVISOR_TEST=takeover  the fault child has NO local
+	#     containment, so the supervisor is the single restart authority:
+	#     detect -> kill -> console (pixels) -> release -> display back
+	#
+	#   SPONGE_SUPERVISOR_TEST=control   the fault child carries the
+	#     product's OWN containment (restart_after_skipped=3), so the
+	#     sandbox respawns it forever and the supervisor must do nothing.
+	#     The desktop reaches alpha-probe: PASS while the wedged child is
+	#     restarted underneath it, which is the receipt that the two
+	#     containment layers do not fight - and that a clean probe exit is
+	#     not read as a fault.
+	#
+	#
+	# The run tool keeps only the last `match_max` bytes of the stream
+	# (2000 by default), and the product boot floods the serial console -
+	# so the supervisor's own lines are dropped before a late gate can see
+	# them. Raised for the whole proof window, the same fix
+	# run/qmp.inc documents for the launch phase.
+	#
+	match_max -i $qemu_spawn_id 400000
+
+	if {$sup_mode eq "takeover"} {
+
+		run_genode_until {.*sponge_supervisor: FAULT max_skipped=.*} 300 $qemu_spawn_id
+
+		#
+		# The kill receipt: the supervisor rewrote the config with a fresh
+		# <start> version, so the subtree really was abandoned and
+		# respawned. A second incarnation line can only appear if it was.
+		#
+		run_genode_until {.*sponge_supervisor: published <system> kill=2.*} 120 $qemu_spawn_id
+		run_genode_until {.*ep_wedge: alive .*entrypoint wedging now.*} 120 $qemu_spawn_id
+
+		# the console takes the display, and the claim is a PIXEL claim
+		run_genode_until {.*sponge_supervisor: phase=3 .*unrecoverable.*} 180 $qemu_spawn_id
+		run_genode_until {.*sponge_console: ARMED role=console.*} 120 $qemu_spawn_id
+		run_genode_until {.*takeover_probe: console-up state=console.*} 120 $qemu_spawn_id
+
+		#
+		# Bounded release, then the display goes back to the desktop. The
+		# gate order follows the EMISSION order, not the causal one: the
+		# supervisor logs "CONSOLE RELEASED" before the console has
+		# processed the disarming report, so the console's own DISARMED
+		# line comes after it. The run tool consumes the stream
+		# sequentially, so a gate can only match a marker that follows the
+		# previous gate's match (the same lesson as defect #12 in
+		# docs/evidence/top-level-supervision.md).
+		#
+		run_genode_until {.*sponge_supervisor: CONSOLE RELEASED.*} 180 $qemu_spawn_id
+		run_genode_until {.*sponge_console: DISARMED.*} 120 $qemu_spawn_id
+		run_genode_until {.*sponge_supervisor: phase=1 .desktop restored.*} 180 $qemu_spawn_id
+		run_genode_until {.*takeover_probe: pixel state=desktop.*} 180 $qemu_spawn_id
+
+		puts "\nsponge-desktop-disk: SUPERVISOR TAKEOVER PASS - fault detected in\
+  the product subtree, subtree killed, console owned the display by\
+  pixels, display handed back\n"
+
+	} elseif {$sup_mode eq "control"} {
+
+		#
+		# The supervisor must SEE the fault - the wedged child really is
+		# being restarted by the sandbox every few seconds - and must then
+		# leave everything alone. The second half is the one a log-line
+		# gate cannot express, so it is asserted against the run tool's
+		# accumulated output.
+		#
+		run_genode_until {.*sponge_supervisor: FAULT max_skipped=.*} 300 $qemu_spawn_id
+
+		#
+		# The periodic liveness line: the supervisor is still polling and
+		# still considers the subtree healthy, which is what must keep
+		# happening for the whole window.
+		#
+		run_genode_until {.*sponge_supervisor: nominal .*subtree healthy.*} 300 $qemu_spawn_id
+
+		if {[string first "sponge_supervisor: published <system> kill=2" $output] >= 0 ||
+		    [string first "sponge_supervisor: published <system_console>" $output] >= 0} {
+			puts "\nsponge-desktop-disk: SUPERVISOR CONTROL FAIL - the supervisor\
+  destroyed a desktop the supervised sandbox was already containing\n"
+			exit 1
+		}
+		if {[string first "sponge_console: ARMED" $output] >= 0} {
+			puts "\nsponge-desktop-disk: SUPERVISOR CONTROL FAIL - the console was\
+  armed on a contained fault\n"
+			exit 1
+		}
+
+		puts "\nsponge-desktop-disk: SUPERVISOR CONTROL PASS - the sandbox's own\
+  containment held, the supervisor killed nothing and armed no console\n"
+	}
 }
