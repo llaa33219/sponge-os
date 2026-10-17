@@ -988,6 +988,67 @@ A scenario defines:
   IO_MEM, while the disk path finds the same HPET normally.
   Receipts: `docs/evidence/top-level-supervision.md`.
 
+- `run/supervisor.inc` — the **shared product wiring** for top-level
+  supervision, used by all five desktop-disk scenarios. It exists
+  because the same four edits would otherwise be five hand-maintained
+  copies: (1) derive the supervisor's two config templates from the
+  `/system/init/system.config` the scenario already stages — staging
+  stays the single source of truth and the supervisor never carries a
+  second copy of the desktop composition; (2) add the two
+  `report_rom` relay policies and move the `system` sandbox's config ROM
+  from `rom_sys` to the relay; (3) add the console's own nitpicker
+  domain (`console`, layer 8 — above `pointer`/`panel`/`default`/
+  `launcher`) plus its policy; (4) start `sponge_supervisor` and
+  `sponge_console` **before** the `system` sandbox, which must stay the
+  last `<start>` node so its RAM remainder clamp (`docs/17` §6.1) is
+  intact. Every transform is **asserted**: a missing or drifted anchor
+  aborts the scenario loudly instead of booting a desktop without
+  supervision. Call sites:
+
+  ```tcl
+  source .../supervisor.inc
+  supervisor::prepare $sys_dir $sysconfig_hid     # templates + policy + version stamp
+  install_config [supervisor::tier0 { <the scenario's own config> }]
+  foreach m [supervisor::boot_modules] { lappend boot_modules $m }
+  ```
+
+  Version stamping is the subtle part: every top-level `<start>` is
+  stamped with a sentinel that becomes `@KILL@` in the templates and
+  `"1"` in the config init boots with — and `"1"` is exactly what the
+  supervisor's first publish substitutes, so the initial publish matches
+  every running child and the desktop is never rebuilt at boot.
+  `supervisor::enabled 0` turns the whole wiring off, which is what the
+  `SPONGE_DISK_FAIL` failure channel uses (its subject is the corrupted
+  config, a diagnostic that predates the supervisor). Mirrored at
+  `repos/sponge/run/supervisor.inc` by a committed relative symlink.
+
+- **`SPONGE_SUPERVISOR_TEST`** (env-gated, **off by default**; the
+  shipped media never carries a fault child) — the product-topology
+  proof, in `run/sponge-desktop-disk.run`. It stages a wedging child
+  inside the supervised sandbox plus `test/takeover_probe` (the pixel
+  oracle) and gates the whole chain against the real product config:
+
+  * `SPONGE_SUPERVISOR_TEST=takeover` (or `on`/`1`) — the fault child has
+    no local containment (`<heartbeat/>` ⇒ `restart_after_skipped` 0), so
+    the supervisor is the single restart authority:
+    detect → kill → console (asserted by **pixels**) → release → the
+    display is handed back. Marker:
+    `sponge-desktop-disk: SUPERVISOR TAKEOVER PASS`.
+  * `SPONGE_SUPERVISOR_TEST=control` — the same fault inside the
+    **product's own** containment (`restart_after_skipped="3"`), so the
+    sandbox respawns it forever and the supervisor must do nothing. The
+    desktop reaches `alpha-probe: PASS` underneath, and the negative
+    assertions (no `published <system> kill=2`, no
+    `published <system_console>`, no `sponge_console: ARMED`) run
+    against the run tool's accumulated output, because no log-line gate
+    can express an absence. Marker:
+    `sponge-desktop-disk: SUPERVISOR CONTROL PASS`.
+
+  Both arms raise `match_max` first: the product boot floods the serial
+  console and the run tool keeps only the last 2000 bytes by default,
+  so the supervisor's own lines would be dropped before a late gate
+  could see them. Receipts: `docs/evidence/product-supervision.md`.
+
 ## Planned additions
 
 - Spin a usable Sponge OS install workflow through Leitzentrale (the

@@ -32,11 +32,36 @@ Capture blit repaints only the compositor's dirty rectangles, so stale
 console text is never erased. "Takeover" here means taking over the
 **display**, which is the part the user actually sees.
 
+## Where it sits on the product media
+
+On the five desktop-disk product scenarios the console is a **Tier-0**
+child of the top-level init, alongside `nitpicker` and the framebuffer
+driver, and it takes the display through its **own nitpicker domain**
+(`console`, layer 8 — above `pointer` 0, `panel` 1, `default` 3 and
+`launcher` 4). It does not open the framebuffer on either topology; the
+display swap is entirely a question of which Gui client exists.
+
+The structural half of "never coexists with the desktop" is carried by
+the *supervised subtree*, not by the compositor: when the console is
+armed, the supervisor has published its `<system_console>` config, which
+is the desktop composition with the desktop clients (`sponge-de`,
+`alpha_probe`) removed — so the subtree holds no Gui client at all while
+the console is up. The services stay, which is what lets the subtree come
+back healthy without fetching anything again.
+
 ## Second role: `role="desktop"`
 
 The acceptance scenario needs a real Gui client *inside* the supervised
 subtree, so that "the console took the display" is a pixel claim and not
-a log line. `role="desktop"` is that stand-in. It paints once from its
+a log line. The product-topology proof does not need the role: there the
+real desktop is the other Gui client.
+
+With the product media there is one more thing the role cannot be used
+for: `test/takeover_probe` samples the composited screen there, and the
+sample point must be OFF-CENTRE, because nitpicker parks the pointer at
+the centre at boot and the `pointer` component paints its glyph exactly
+there (measured: `centre=0x909490` where the desktop background is
+`0x1e1e2e`). `role="desktop"` is that stand-in. It paints once from its
 static config and never subscribes to `console_state`. The two roles
 are never instantiated at the same time.
 
