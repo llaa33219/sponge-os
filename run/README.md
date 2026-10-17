@@ -901,6 +901,41 @@ A scenario defines:
   `docs/evidence/sponge-debug-scrollstorm.md`. base-sel4 only
   (`vesa_fb`/`ps2`/`usb_hid`).
 
+  **Extended 2026-10-17 with the field's defining parameters** (all
+  opt-in; every default leaves the four arms above bit-identical, so the
+  numbers in that evidence file still hold). A fifth arm `freeze` runs
+  the field gesture for 60 s. Knobs: `SPONGE_FB_W/H` (panel resolution,
+  default = the stock 1024x768 recipe), `SPONGE_STORM_WIN` (the
+  storming client's window geometry, default = the product 700x480 —
+  every render-path cost is proportional to the damaged area),
+  `SPONGE_HEARTBEAT=on` (production containment on every child, which
+  makes init print a per-child `skipped_heartbeats` counter — the
+  **starvation ranking**; `repostorm_probe` is deliberately excluded
+  because it runs its whole measurement inside `Component::construct`
+  and therefore can never answer a heartbeat), `SPONGE_SMP` (guest
+  vCPU count), `SPONGE_FB_PERIOD_MS` (the framebuffer driver's capture
+  period), `SPONGE_FB_CAPS`/`SPONGE_NITPICKER_CAPS`/`SPONGE_DRIVERS_CAPS`
+  (the control door for the mapping quotas, which are otherwise
+  **derived from the requested resolution**), and
+  `SPONGE_MIN_HZ`/`SPONGE_MAX_GAP_MS` (the pass/fail bounds; 0 = do not
+  assert). Two fixes make the numbers trustworthy: the probe's
+  measurement window is now **derived from the storm** so it strictly
+  contains the load (it previously finished at 80 s while the storm ran
+  to 84 s, and which end-of-run marker landed last flipped between
+  runs), and the storm's gate matches the **full** telemetry shape rather
+  than a prefix, because QEMU's `-nographic` serial splits a long write
+  and a prefix match cut the line mid-number.
+
+  **Result at the field resolution:** the 2026-10-17 field freeze (drag →
+  `pkgd` unresponsive → the mouse dies too) is **not** reproduced on a
+  correctly-sized configuration — 19 Hz, 387 ms worst gap, 0 kernel
+  page-table flushes. A **capability quota too small for the
+  panel-resolution buffer** does reproduce a 6x collapse (3 Hz, 1379 ms,
+  532 flushes) through base-sel4's mapping cache, and the shipped media
+  is already sized for it (`fb` 24000 / `nitpicker` 20000). Evidence,
+  the six-run bisection and the field check:
+  `docs/evidence/sponge-debug-panelfreeze.md`.
+
 - `sponge-debug-firstpaint.run` — **time-to-first-paint of the SPONGE
   DEBUG package against the containment budget, at an arbitrary
   framebuffer resolution**. The 2026-10-16 field report ("the SPONGE

@@ -1,0 +1,2130 @@
+0.2.0-89-g0149fa4de3 <local changes>
+1519 MiB RAM and 523288 caps assigned to init
+[init -> timer] timers=3, clock 10000000fs , 64bit counter , legacy routing support vendor=0x8086
+[init -> timer] timer0 GSI options 0xff0104, supports periodic
+[init -> timer] timer1 GSI options 0xff0104, supports periodic
+[init -> timer] timer2 GSI options 0xff0104, supports periodic
+[init -> timer] time wraps after 5849 years
+[init -> timer] irqs=off legacy=off
+[init -> timer] Using timer 2 -> using GSI 2 edge triggered
+[init -> report_rom] report 'system -> state'
+[init -> report_rom]   state
+[init -> report_rom]   + ram | quota: 335372156 | used: 960K | avail: 334389116
+[init -> report_rom]   + child repostorm_probe | binary: repostorm_probe
+[init -> report_rom]     + ram  | assigned: 8M  | quota: 8202034 | used: 516K | avail: 7673650
+[init -> report_rom]     + caps | assigned: 200 | quota: 178     | used: 6    | avail: 172
+[init -> report_rom]   + child sponge_debug | binary: sponge_debug
+[init -> report_rom]     + ram  | assigned: 64M  | quota: 66922290 | used: 740K | avail: 66164530
+[init -> report_rom]     + caps | assigned: 1000 | quota: 978      | used: 18   | avail: 960
+[init -> report_rom]   + child drivers | binary: init
+[init -> report_rom]     + ram  | assigned: 96M  | quota: 100476722 | used: 740K | avail: 99718962
+[init -> report_rom]     + caps | assigned: 1500 | quota: 1478      | used: 18   | avail: 1460
+[init -> report_rom]   + child nitpicker | binary: nitpicker
+[init -> report_rom]     + ram  | assigned: 16M | quota: 16590642 | used: 516K | avail: 16062258
+[init -> report_rom]     + caps | assigned: 200 | quota: 178      | used: 6    | avail: 172
+[init -> report_rom]   + child report_rom | binary: report_rom
+[init -> report_rom]     + ram  | assigned: 8M  | quota: 8202034 | used: 516K | avail: 7673650
+[init -> report_rom]     + caps | assigned: 300 | quota: 278     | used: 6    | avail: 272
+[init -> report_rom]   -
+[init -> report_rom] report 'system -> state'
+[init -> report_rom]   state
+[init -> report_rom]   + ram | quota: 335381540 | used: 976K | avail: 334382116
+[init -> report_rom]   + child repostorm_probe | binary: repostorm_probe
+[init -> report_rom]     + ram  | assigned: 8M  | quota: 8202034 | used: 516K | avail: 7673650
+[init -> report_rom]     + caps | assigned: 200 | quota: 178     | used: 6    | avail: 172
+[init -> report_rom]   + child sponge_debug | binary: sponge_debug
+[init -> report_rom]     + ram  | assigned: 64M  | quota: 66875186 | used: 1248K | avail: 65597234
+[init -> report_rom]     + caps | assigned: 1000 | quota: 963      | used: 32    | avail: 931
+[init -> report_rom]   + child drivers | binary: init
+[init -> report_rom]     + ram  | assigned: 96M  | quota: 100476722 | used: 740K | avail: 99718962
+[init -> report_rom]     + caps | assigned: 1500 | quota: 1478      | used: 21   | avail: 1457
+[init -> report_rom]   + child nitpicker | binary: nitpicker
+[init -> report_rom]     + ram  | assigned: 16M | quota: 16590642 | used: 540K | avail: 16037682
+[init -> report_rom]     + caps | assigned: 200 | quota: 178      | used: 9    | avail: 169
+[init -> report_rom]   + child report_rom | binary: report_rom
+[init -> report_rom]     + ram  | assigned: 8M  | quota: 8202034 | used: 540K | avail: 7649074
+[init -> report_rom]     + caps | assigned: 300 | quota: 278     | used: 9    | avail: 269
+[init -> report_rom]   -
+[init -> system -> repostorm_probe] repostorm-probe: starting
+[init -> system -> repostorm_probe] repostorm-probe: config settle_ms=20000 report_ms=1000 duration_ms=60000 threshold_kb=2048
+[init -> system -> sponge_debug] [34mWarning: Libc RNG not configured[0m
+[init -> system -> report_rom] report 'nitpicker -> focus'
+[init -> system -> report_rom]   focus
+[init -> system -> report_rom]   -
+[init -> system -> report_rom] report 'nitpicker -> hover'
+[init -> system -> report_rom]   hover | active: yes
+[init -> system -> report_rom]   -
+[init -> system -> report_rom] report 'nitpicker -> focus'
+[init -> system -> report_rom]   focus
+[init -> system -> report_rom]   -
+[init -> system -> sponge_debug] [34mWarning: ignoring unsupported RTLD_GLOBAL in dlopen()[0m
+[init -> system -> sponge_debug] libEGL warning: MESA-LOADER: failed to retrieve device information
+[init -> system -> sponge_debug] 
+[init -> system -> sponge_debug] libEGL warning: failed to get driver name for fd 0
+[init -> system -> sponge_debug] 
+[init -> report_rom] report 'system -> drivers -> state'
+[init -> report_rom]   state
+[init -> report_rom]   + ram | quota: 38078162 | used: 1088K | avail: 36964050
+[init -> report_rom]   + child event_filter | binary: event_filter
+[init -> report_rom]     + ram  | assigned: 1280K | quota: 1123336 | used: 516K | avail: 594952
+[init -> report_rom]     + caps | assigned: 90    | quota: 68      | used: 6    | avail: 62
+[init -> report_rom]   + child usb_hid | binary: usb_hid
+[init -> report_rom]     + ram  | assigned: 10M | quota: 10298376 | used: 516K | avail: 9769992
+[init -> system -> sponge_debug] [34mWarning: attempt to re-acquire file descriptor for /qt/lib/fonts/DejaVuSans.ttf (lseek)[0m
+[init -> report_rom]     + caps | assigned: 180 | quota: 158      | used: 6    | avail: 152
+[init -> system -> sponge_debug] [34mWarning: attempt to re-acquire file descriptor for /qt/lib/fonts/DejaVuSans.ttf (lseek)[0m
+[init -> report_rom]   + child usb | binary: pc_usb_host
+[init -> report_rom]     + ram  | assigned: 16M | quota: 16589832 | used: 516K | avail: 16061448
+[init -> report_rom]     + caps | assigned: 200 | quota: 178      | used: 6    | avail: 172
+[init -> report_rom]   + child ps2 | binary: ps2
+[init -> report_rom]     + ram  | assigned: 1280K | quota: 1123336 | used: 516K | avail: 594952
+[init -> report_rom]     + caps | assigned: 100   | quota: 78      | used: 6    | avail: 72
+[init -> report_rom]   + child fb | binary: vesa_fb
+[init -> system -> sponge_debug] sponge_debug: report 'installed' updated (0 bytes)
+[init -> report_rom]     + ram  | assigned: 20M | quota: 20784136 | used: 516K | avail: 20255752
+[init -> report_rom]     + caps | assigned: 150 | quota: 128      | used: 6    | avail: 122
+[init -> report_rom]   + child platform | binary: platform
+[init -> report_rom]     + ram  | assigned: 3M  | quota: 2958344 | used: 516K | avail: 2429960
+[init -> report_rom]     + caps | assigned: 200 | quota: 178     | used: 6    | avail: 172
+[init -> report_rom]   + child pci_decode | binary: pci_decode
+[init -> report_rom]     + ram  | assigned: 2M  | quota: 1909768 | used: 516K | avail: 1381384
+[init -> system -> sponge_debug] sponge_debug: report 'window_list' updated (0 bytes)
+[init -> report_rom]     + caps | assigned: 100 | quota: 78      | used: 6    | avail: 72
+[init -> report_rom]   + child acpi | binary: acpi
+[init -> report_rom]     + ram  | assigned: 4M  | quota: 4006920 | used: 516K | avail: 3478536
+[init -> report_rom]     + caps | assigned: 250 | quota: 228     | used: 6    | avail: 222
+[init -> report_rom]   + child report_rom | binary: report_rom
+[init -> report_rom]     + ram  | assigned: 2M  | quota: 1909768 | used: 516K | avail: 1381384
+[init -> report_rom]     + caps | assigned: 100 | quota: 78      | used: 6    | avail: 72
+[init -> report_rom]   -
+[init -> report_rom] report 'system -> drivers -> state'
+[init -> report_rom]   state
+[init -> report_rom]   + ram | quota: 38078162 | used: 1088K | avail: 36964050
+[init -> report_rom]   + child event_filter | binary: event_filter
+[init -> system -> sponge_debug] sponge_debug: report 'launcher_result' updated (0 bytes)
+[init -> report_rom]     + ram  | assigned: 1280K | quota: 1123336 | used: 516K | avail: 594952
+[init -> report_rom]     + caps | assigned: 90    | quota: 68      | used: 6    | avail: 62
+[init -> report_rom]   + child usb_hid | binary: usb_hid
+[init -> report_rom]     + ram  | assigned: 10M | quota: 10298376 | used: 516K | avail: 9769992
+[init -> report_rom]     + caps | assigned: 180 | quota: 158      | used: 6    | avail: 152
+[init -> report_rom]   + child usb | binary: pc_usb_host
+[init -> report_rom]     + ram  | assigned: 16M | quota: 16589832 | used: 516K | avail: 16061448
+[init -> report_rom]     + caps | assigned: 200 | quota: 178      | used: 6    | avail: 172
+[init -> report_rom]   + child ps2 | binary: ps2
+[init -> report_rom]     + ram  | assigned: 1280K | quota: 1123336 | used: 516K | avail: 594952
+[init -> report_rom]     + caps | assigned: 100   | quota: 78      | used: 6    | avail: 72
+[init -> report_rom]   + child fb | binary: vesa_fb
+[init -> report_rom]     + ram  | assigned: 20M | quota: 20784136 | used: 516K | avail: 20255752
+[init -> report_rom]     + caps | assigned: 150 | quota: 128      | used: 6    | avail: 122
+[init -> report_rom]   + child platform | binary: platform
+[init -> report_rom]     + ram  | assigned: 3M  | quota: 2958344 | used: 516K | avail: 2429960
+[init -> report_rom]     + caps | assigned: 200 | quota: 178     | used: 6    | avail: 172
+[init -> report_rom]   + child pci_decode | binary: pci_decode
+[init -> report_rom]     + ram  | assigned: 2M  | quota: 1909768 | used: 516K | avail: 1381384
+[init -> report_rom]     + caps | assigned: 100 | quota: 78      | used: 6    | avail: 72
+[init -> report_rom]   + child acpi | binary: acpi
+[init -> report_rom]     + ram  | assigned: 4M  | quota: 4006920 | used: 516K | avail: 3478536
+[init -> report_rom]     + caps | assigned: 250 | quota: 228     | used: 6    | avail: 222
+[init -> report_rom]   + child report_rom | binary: report_rom
+[init -> report_rom]     + ram  | assigned: 2M  | quota: 1909768 | used: 708K | avail: 1184776
+[init -> report_rom]     + caps | assigned: 100 | quota: 78      | used: 14   | avail: 64
+[init -> report_rom]   -
+[init -> report_rom] report 'system -> state'
+[init -> report_rom]   state
+[init -> report_rom]   + ram | quota: 335496776 | used: 1104K | avail: 334366280
+[init -> report_rom]   + child repostorm_probe | binary: repostorm_probe
+[init -> report_rom]     + ram  | assigned: 8M  | quota: 8173362 | used: 768K | avail: 7386930
+[init -> report_rom]     + caps | assigned: 200 | quota: 167     | used: 27   | avail: 140
+[init -> report_rom]   + child sponge_debug | binary: sponge_debug
+[init -> report_rom]     + ram  | assigned: 64M  | quota: 66582322 | used: 10136K | avail: 56203058
+[init -> report_rom]     + caps | assigned: 1000 | quota: 881      | used: 231    | avail: 650
+[init -> report_rom]   + child drivers | binary: init
+[init -> report_rom]     + ram  | assigned: 96M  | quota: 38078162 | used: 1088K | avail: 36964050
+[init -> report_rom]     + caps | assigned: 1500 | quota: 159      | used: 67    | avail: 92
+[init -> report_rom]   + child nitpicker | binary: nitpicker
+[init -> report_rom]     + ram  | assigned: 16M | quota: 16636936 | used: 988K | avail: 15625224
+[init -> report_rom]     + caps | assigned: 200 | quota: 180      | used: 53   | avail: 127
+[init -> report_rom]   + child report_rom | binary: report_rom
+[init -> report_rom]     + ram  | assigned: 8M  | quota: 8232800 | used: 868K | avail: 7343968
+[init -> report_rom]     + caps | assigned: 300 | quota: 285     | used: 51   | avail: 234
+[init -> report_rom]   -
+[init -> report_rom] report 'system -> state'
+[init -> report_rom]   state
+[init -> report_rom]   + ram | quota: 335497586 | used: 1104K | avail: 334367090
+[init -> report_rom]   + child repostorm_probe | binary: repostorm_probe
+[init -> report_rom]     + ram  | assigned: 8M  | quota: 8173362 | used: 768K | avail: 7386930
+[init -> report_rom]     + caps | assigned: 200 | quota: 167     | used: 27   | avail: 140
+[init -> report_rom]   + child sponge_debug | binary: sponge_debug
+[init -> report_rom]     + ram  | assigned: 64M  | quota: 66484018 | used: 10144K | avail: 56096562
+[init -> report_rom]     + caps | assigned: 1000 | quota: 863      | used: 234    | avail: 629
+[init -> report_rom]   + child drivers | binary: init
+[init -> report_rom]     + ram  | assigned: 96M  | quota: 38097404 | used: 1132K | avail: 36938236
+[init -> report_rom]     + caps | assigned: 1500 | quota: 168      | used: 72    | avail: 96
+[init -> report_rom]   + child nitpicker | binary: nitpicker
+[init -> report_rom]     + ram  | assigned: 16M | quota: 16734430 | used: 988K | avail: 15722718
+[init -> report_rom]     + caps | assigned: 200 | quota: 198      | used: 53   | avail: 145
+[init -> report_rom]   + child report_rom | binary: report_rom
+[init -> report_rom]     + ram  | assigned: 8M  | quota: 8232800 | used: 868K | avail: 7343968
+[init -> report_rom]     + caps | assigned: 300 | quota: 285     | used: 51   | avail: 234
+[init -> report_rom]   -
+[init -> system -> drivers -> acpi] Found MADT
+[init -> system -> drivers -> acpi] MADT IRQ 0 -> GSI 2 flags: 0
+[init -> system -> drivers -> acpi] MADT IRQ 5 -> GSI 5 flags: 13
+[init -> system -> drivers -> acpi] MADT IRQ 9 -> GSI 9 flags: 13
+[init -> system -> sponge_debug] qt.core.qobject.connect: QObject::connect: No such slot QGenodePlatformWindow::_frame_sync()
+[init -> system -> drivers -> acpi] MADT IRQ 10 -> GSI 10 flags: 13
+[init -> system -> drivers -> acpi] MADT IRQ 11 -> GSI 11 flags: 13
+[init -> system -> drivers -> acpi] Found HPET hw_id=0x1  vendor_id=0x8086 space_id=0x0 addr=0xfed00000 hpet_id=0x0
+[init -> system -> drivers -> acpi] Found MCFG
+[init -> system -> drivers -> acpi] MCFG BASE 0xb0000000 seg 0x0 bus 0x0-0xff
+[init -> system -> drivers -> acpi] RSDT OEM 'BOCHS ', table id 'BXPC    ', revision 1, creator 'BXPC' (1)
+[init -> report_rom] report 'system -> sponge_debug -> shape'
+[init -> report_rom]   
+[init -> report_rom] report 'system -> sponge_debug -> shape'
+[init -> report_rom]   
+[init -> report_rom] report 'system -> drivers -> state'
+[init -> system -> sponge_debug] sponge_debug: construct ms=512
+[init -> report_rom]   state
+[init -> report_rom]   + ram | quota: 38128796 | used: 1220K | avail: 36879516
+[init -> system -> sponge_debug] sponge_debug: no storm requested (storm_ms=0) — product behavior
+[init -> report_rom]   + child event_filter | binary: event_filter
+[init -> report_rom]     + ram  | assigned: 1280K | quota: 1120478 | used: 808K | avail: 293086
+[init -> report_rom]     + caps | assigned: 90    | quota: 65      | used: 24   | avail: 41
+[init -> report_rom]   + child usb_hid | binary: usb_hid
+[init -> system -> sponge_debug] sponge_debug: paint-begin ms=567
+[init -> report_rom]     + ram  | assigned: 10M | quota: 9751560 | used: 1092K | avail: 8633352
+[init -> report_rom]     + caps | assigned: 180 | quota: 142     | used: 37    | avail: 105
+[init -> report_rom]   + child usb | binary: pc_usb_host
+[init -> report_rom]     + ram  | assigned: 16M | quota: 17021150 | used: 1168K | avail: 15825118
+[init -> report_rom]     + caps | assigned: 200 | quota: 165      | used: 31    | avail: 134
+[init -> system -> sponge_debug] sponge_debug: FIRSTPAINT ms=623
+[init -> report_rom]   + child ps2 | binary: ps2
+[init -> report_rom]     + ram  | assigned: 1280K | quota: 1098760 | used: 776K | avail: 304136
+[init -> report_rom]     + caps | assigned: 100   | quota: 72      | used: 25   | avail: 47
+[init -> report_rom]   + child fb | binary: vesa_fb
+[init -> report_rom]     + ram  | assigned: 20M | quota: 20763656 | used: 812K | avail: 19932168
+[init -> report_rom]     + caps | assigned: 150 | quota: 122      | used: 24   | avail: 98
+[init -> report_rom]   + child platform | binary: platform
+[init -> report_rom]     + ram  | assigned: 3M  | quota: 3031262 | used: 852K | avail: 2158814
+[init -> report_rom]     + caps | assigned: 200 | quota: 190     | used: 24   | avail: 166
+[init -> report_rom]   + child pci_decode | binary: pci_decode
+[init -> report_rom]     + ram  | assigned: 2M  | quota: 1850376 | used: 784K | avail: 1047560
+[init -> report_rom]     + caps | assigned: 100 | quota: 69      | used: 25   | avail: 44
+[init -> report_rom]   + child acpi | binary: acpi
+[init -> report_rom]     + ram  | assigned: 4M  | quota: 3914760 | used: 892K | avail: 3001352
+[init -> report_rom]     + caps | assigned: 250 | quota: 215     | used: 29   | avail: 186
+[init -> system -> sponge_debug] [34mWarning: attempt to re-acquire file descriptor for /pipe/0/in (fcntl)[0m
+[init -> report_rom]   + child report_rom | binary: report_rom
+[init -> report_rom]     + ram  | assigned: 2M  | quota: 1953204 | used: 852K | avail: 1080756
+[init -> report_rom]     + caps | assigned: 100 | quota: 76      | used: 36   | avail: 40
+[init -> report_rom]   -
+[init -> system -> drivers -> acpi] [34mWarning: SMBIOSv3 entry point invalid[0m
+[init -> system -> drivers -> acpi] SMBIOSv2 table (entry point: 0x1b6520 structures: 0xf6540)
+[init -> system -> drivers -> fb] fb mapped to 0x6000
+[init -> system -> drivers -> fb] Found: VESA BIOS version 3.0
+[init -> system -> drivers -> fb] OEM: SeaBIOS VBE(C) 2011
+[init -> report_rom] report 'system -> state'
+[init -> report_rom]   state
+[init -> report_rom]   + ram | quota: 335530598 | used: 1116K | avail: 334387814
+[init -> report_rom]   + child repostorm_probe | binary: repostorm_probe
+[init -> report_rom]     + ram  | assigned: 8M  | quota: 8173362 | used: 768K | avail: 7386930
+[init -> report_rom]     + caps | assigned: 200 | quota: 167     | used: 27   | avail: 140
+[init -> report_rom]   + child sponge_debug | binary: sponge_debug
+[init -> report_rom]     + ram  | assigned: 64M  | quota: 65089758 | used: 12116K | avail: 52682974
+[init -> report_rom]     + caps | assigned: 1000 | quota: 860      | used: 275    | avail: 585
+[init -> report_rom]   + child drivers | binary: init
+[init -> report_rom]     + ram  | assigned: 96M  | quota: 38149520 | used: 1228K | avail: 36892048
+[init -> report_rom]     + caps | assigned: 1500 | quota: 180      | used: 85    | avail: 95
+[init -> report_rom]   + child nitpicker | binary: nitpicker
+[init -> report_rom]     + ram  | assigned: 16M | quota: 18095242 | used: 2344K | avail: 15694986
+[init -> report_rom]     + caps | assigned: 200 | quota: 201      | used: 65    | avail: 136
+[init -> report_rom]   + child report_rom | binary: report_rom
+[init -> report_rom]     + ram  | assigned: 8M  | quota: 8232800 | used: 868K | avail: 7343968
+[init -> report_rom]     + caps | assigned: 300 | quota: 285     | used: 51   | avail: 234
+[init -> report_rom]   -
+[init -> system -> drivers -> ps2] Using keyboard with scan code set 1 (xlate)
+[init -> system -> drivers -> fb] Found: physical frame buffer at 0xfd000000 size: 16777216
+[init -> system -> drivers -> fb] fb mapped to 0x17000000
+[init -> system -> drivers -> fb] using 2560x1600 (2560x1600)
+[init -> system -> report_rom] report 'nitpicker -> hover'
+[init -> system -> report_rom]   hover | xpos: 1279 | ypos: 799
+[init -> system -> report_rom]   -
+[init -> system -> drivers -> ps2] detected ExPS/2 mouse - activating scroll-wheel and 5-button support
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> system -> report_rom] report 'nitpicker -> hover'
+[init -> system -> report_rom]   hover | label: sponge_debug -> SPONGE DEBUG | color: #ffffff | domain: default | xpos: 1279 | ypos: 799
+[init -> system -> report_rom]   -
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> report_rom] report 'system -> drivers -> state'
+[init -> report_rom]   state
+[init -> report_rom]   + ram | quota: 38163764 | used: 1240K | avail: 36894004
+[init -> report_rom]   + child event_filter | binary: event_filter
+[init -> report_rom]     + ram  | assigned: 1280K | quota: 1075422 | used: 1004K | avail: 47326
+[init -> report_rom]     + caps | assigned: 90    | quota: 52      | used: 46    | avail: 6
+[init -> report_rom]   + child usb_hid | binary: usb_hid
+[init -> report_rom]     + ram  | assigned: 10M | quota: 9751560 | used: 1092K | avail: 8633352
+[init -> report_rom]     + caps | assigned: 180 | quota: 142     | used: 37    | avail: 105
+[init -> report_rom]   + child usb | binary: pc_usb_host
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> report_rom]     + ram  | assigned: 16M | quota: 16924894 | used: 1168K | avail: 15728862
+[init -> report_rom]     + caps | assigned: 200 | quota: 145      | used: 35    | avail: 110
+[init -> report_rom]   + child ps2 | binary: ps2
+[init -> report_rom]     + ram  | assigned: 1280K | quota: 996360 | used: 776K | avail: 201736
+[init -> report_rom]     + caps | assigned: 100   | quota: 43     | used: 28   | avail: 15
+[init -> report_rom]   + child fb | binary: vesa_fb
+[init -> report_rom]     + ram  | assigned: 20M | quota: 4109320 | used: 996K | avail: 3089416
+[init -> report_rom]     + caps | assigned: 150 | quota: 67      | used: 67   | avail: 0
+[init -> report_rom]   + child platform | binary: platform
+[init -> report_rom]     + ram  | assigned: 3M  | quota: 3215200 | used: 1064K | avail: 2125664
+[init -> report_rom]     + caps | assigned: 200 | quota: 230     | used: 62    | avail: 168
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> report_rom]   + child pci_decode | binary: pci_decode
+[init -> report_rom]     + ram  | assigned: 2M  | quota: 1856520 | used: 836K | avail: 1000456
+[init -> report_rom]     + caps | assigned: 100 | quota: 72      | used: 30   | avail: 42
+[init -> report_rom]   + child acpi | binary: acpi
+[init -> report_rom]     + ram  | assigned: 4M  | quota: 3975791 | used: 892K | avail: 3062383
+[init -> system -> sponge_debug] QGenodePlatformWindow: frame coalesced deferred= 1 submitted= 1 coalesced= 0 stale= 0
+[init -> report_rom]     + caps | assigned: 250 | quota: 219     | used: 29   | avail: 190
+[init -> report_rom]   + child report_rom | binary: report_rom
+[init -> report_rom]     + ram  | assigned: 2M  | quota: 1995429 | used: 940K | avail: 1032869
+[init -> report_rom]     + caps | assigned: 100 | quota: 88      | used: 63   | avail: 25
+[init -> report_rom]   -
+[init -> report_rom] report 'system -> state'
+[init -> report_rom]   state
+[init -> report_rom]   + ram | quota: 335538698 | used: 1128K | avail: 334383626
+[init -> report_rom]   + child repostorm_probe | binary: repostorm_probe
+[init -> report_rom]     + ram  | assigned: 8M  | quota: 8173362 | used: 768K | avail: 7386930
+[init -> report_rom]     + caps | assigned: 200 | quota: 167     | used: 27   | avail: 140
+[init -> report_rom]   + child sponge_debug | binary: sponge_debug
+[init -> report_rom]     + ram  | assigned: 64M  | quota: 50049758 | used: 27224K | avail: 22172382
+[init -> report_rom]     + caps | assigned: 1000 | quota: 860      | used: 381    | avail: 479
+[init -> report_rom]   + child drivers | binary: init
+[init -> report_rom]     + ram  | assigned: 96M  | quota: 38163764 | used: 1240K | avail: 36894004
+[init -> report_rom]     + caps | assigned: 1500 | quota: 183      | used: 86    | avail: 97
+[init -> report_rom]   + child nitpicker | binary: nitpicker
+[init -> report_rom]     + ram  | assigned: 16M | quota: 49554486 | used: 18860K | avail: 30241846
+[init -> report_rom]     + caps | assigned: 200 | quota: 204      | used: 196    | avail: 8
+[init -> report_rom]   + child report_rom | binary: report_rom
+[init -> report_rom]     + ram  | assigned: 8M  | quota: 8232800 | used: 868K | avail: 7343968
+[init -> report_rom]     + caps | assigned: 300 | quota: 285     | used: 51   | avail: 234
+[init -> report_rom]   -
+[init -> report_rom] report 'system -> sponge_debug -> shape'
+[init -> report_rom]   
+[init -> report_rom] report 'system -> drivers -> state'
+[init -> report_rom]   state
+[init -> report_rom]   + ram | quota: 38163764 | used: 1240K | avail: 36894004
+[init -> report_rom]   + child event_filter | binary: event_filter
+[init -> report_rom]     + ram  | assigned: 1280K | quota: 1075422 | used: 1004K | avail: 47326
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> report_rom]     + caps | assigned: 90    | quota: 52      | used: 46    | avail: 6
+[init -> report_rom]   + child usb_hid | binary: usb_hid
+[init -> report_rom]     + ram  | assigned: 10M | quota: 9751560 | used: 1092K | avail: 8633352
+[init -> report_rom]     + caps | assigned: 180 | quota: 142     | used: 37    | avail: 105
+[init -> report_rom]   + child usb | binary: pc_usb_host
+[init -> report_rom]     + ram  | assigned: 16M | quota: 16924894 | used: 1168K | avail: 15728862
+[init -> report_rom]     + caps | assigned: 200 | quota: 145      | used: 35    | avail: 110
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> report_rom]   + child ps2 | binary: ps2
+[init -> report_rom]     + ram  | assigned: 1280K | quota: 996360 | used: 776K | avail: 201736
+[init -> report_rom]     + caps | assigned: 100   | quota: 43     | used: 29   | avail: 14
+[init -> report_rom]   + child fb | binary: vesa_fb
+[init -> report_rom]     + ram  | assigned: 20M | quota: 4109320 | used: 928K | avail: 3159048
+[init -> report_rom]     + caps | assigned: 150 | quota: 67      | used: 50   | avail: 17
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> report_rom]   + child platform | binary: platform
+[init -> report_rom]     + ram  | assigned: 3M  | quota: 3215200 | used: 1064K | avail: 2125664
+[init -> report_rom]     + caps | assigned: 200 | quota: 230     | used: 62    | avail: 168
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> nitpicker out of CAP[0m
+[init -> report_rom]   + child pci_decode | binary: pci_decode
+[init -> report_rom]     + ram  | assigned: 2M  | quota: 1856520 | used: 836K | avail: 1000456
+[init -> report_rom]     + caps | assigned: 100 | quota: 72      | used: 30   | avail: 42
+[init -> report_rom]   + child acpi | binary: acpi
+[init -> report_rom]     + ram  | assigned: 4M  | quota: 3975791 | used: 892K | avail: 3062383
+[init -> report_rom]     + caps | assigned: 250 | quota: 219     | used: 29   | avail: 190
+[init -> report_rom]   + child report_rom | binary: report_rom
+[init -> report_rom]     + ram  | assigned: 2M  | quota: 1995429 | used: 940K | avail: 1032869
+[init -> report_rom]     + caps | assigned: 100 | quota: 88      | used: 63   | avail: 25
+[init -> report_rom]   -
+[init -> report_rom] report 'system -> state'
+[init -> report_rom]   state
+[init -> report_rom]   + ram | quota: 335538698 | used: 1128K | avail: 334383626
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> report_rom]   + child repostorm_probe | binary: repostorm_probe
+[init -> report_rom]     + ram  | assigned: 8M  | quota: 8173362 | used: 768K | avail: 7386930
+[init -> report_rom]     + caps | assigned: 200 | quota: 167     | used: 27   | avail: 140
+[init -> report_rom]   + child sponge_debug | binary: sponge_debug
+[init -> report_rom]     + ram  | assigned: 64M  | quota: 50049758 | used: 27240K | avail: 22155998
+[init -> report_rom]     + caps | assigned: 1000 | quota: 860      | used: 385    | avail: 475
+[init -> report_rom]   + child drivers | binary: init
+[init -> report_rom]     + ram  | assigned: 96M  | quota: 38163764 | used: 1240K | avail: 36894004
+[init -> report_rom]     + caps | assigned: 1500 | quota: 183      | used: 86    | avail: 97
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> report_rom]   + child nitpicker | binary: nitpicker
+[init -> report_rom]     + ram  | assigned: 16M | quota: 49554486 | used: 18860K | avail: 30241846
+[init -> report_rom]     + caps | assigned: 200 | quota: 204      | used: 196    | avail: 8
+[init -> report_rom]   + child report_rom | binary: report_rom
+[init -> report_rom]     + ram  | assigned: 8M  | quota: 8232800 | used: 868K | avail: 7343968
+[init -> report_rom]     + caps | assigned: 300 | quota: 285     | used: 51   | avail: 234
+[init -> report_rom]   -
+[init -> report_rom] report 'system -> drivers -> state'
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> report_rom]   state
+[init -> report_rom]   + ram | quota: 38164574 | used: 1240K | avail: 36894814
+[init -> report_rom]   + child event_filter | binary: event_filter
+[init -> report_rom]     + ram  | assigned: 1280K | quota: 1075422 | used: 1004K | avail: 47326
+[init -> report_rom]     + caps | assigned: 90    | quota: 52      | used: 46    | avail: 6
+[init -> report_rom]   + child usb_hid | binary: usb_hid
+[init -> report_rom]     + ram  | assigned: 10M | quota: 9751560 | used: 1092K | avail: 8633352
+[init -> report_rom]     + caps | assigned: 180 | quota: 142     | used: 37    | avail: 105
+[init -> report_rom]   + child usb | binary: pc_usb_host
+[init -> report_rom]     + ram  | assigned: 16M | quota: 16924894 | used: 1168K | avail: 15728862
+[init -> report_rom]     + caps | assigned: 200 | quota: 145      | used: 35    | avail: 110
+[init -> report_rom]   + child ps2 | binary: ps2
+[init -> report_rom]     + ram  | assigned: 1280K | quota: 996360 | used: 776K | avail: 201736
+[init -> report_rom]     + caps | assigned: 100   | quota: 43     | used: 29   | avail: 14
+[init -> report_rom]   + child fb | binary: vesa_fb
+[init -> report_rom]     + ram  | assigned: 20M | quota: 4109320 | used: 936K | avail: 3150856
+[init -> report_rom]     + caps | assigned: 150 | quota: 67      | used: 52   | avail: 15
+[init -> report_rom]   + child platform | binary: platform
+[init -> report_rom]     + ram  | assigned: 3M  | quota: 3204960 | used: 1064K | avail: 2115424
+[init -> report_rom]     + caps | assigned: 200 | quota: 227     | used: 62    | avail: 165
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> nitpicker out of CAP[0m
+[init -> report_rom]   + child pci_decode | binary: pci_decode
+[init -> report_rom]     + ram  | assigned: 2M  | quota: 1856520 | used: 836K | avail: 1000456
+[init -> report_rom]     + caps | assigned: 100 | quota: 72      | used: 30   | avail: 42
+[init -> report_rom]   + child acpi | binary: acpi
+[init -> report_rom]     + ram  | assigned: 4M  | quota: 3975791 | used: 892K | avail: 3062383
+[init -> report_rom]     + caps | assigned: 250 | quota: 219     | used: 29   | avail: 190
+[init -> report_rom]   + child report_rom | binary: report_rom
+[init -> report_rom]     + ram  | assigned: 2M  | quota: 1995429 | used: 940K | avail: 1032869
+[init -> report_rom]     + caps | assigned: 100 | quota: 88      | used: 63   | avail: 25
+[init -> report_rom]   -
+[init -> report_rom] report 'system -> state'
+[init -> report_rom]   state
+[init -> report_rom]   + ram | quota: 335539508 | used: 1128K | avail: 334384436
+[init -> report_rom]   + child repostorm_probe | binary: repostorm_probe
+[init -> report_rom]     + ram  | assigned: 8M  | quota: 8173362 | used: 768K | avail: 7386930
+[init -> report_rom]     + caps | assigned: 200 | quota: 167     | used: 27   | avail: 140
+[init -> report_rom]   + child sponge_debug | binary: sponge_debug
+[init -> report_rom]     + ram  | assigned: 64M  | quota: 50049758 | used: 27356K | avail: 22037214
+[init -> report_rom]     + caps | assigned: 1000 | quota: 860      | used: 414    | avail: 446
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> report_rom]   + child drivers | binary: init
+[init -> report_rom]     + ram  | assigned: 96M  | quota: 38164574 | used: 1240K | avail: 36894814
+[init -> report_rom]     + caps | assigned: 1500 | quota: 183      | used: 86    | avail: 97
+[init -> report_rom]   + child nitpicker | binary: nitpicker
+[init -> report_rom]     + ram  | assigned: 16M | quota: 49554486 | used: 33184K | avail: 15574070
+[init -> report_rom]     + caps | assigned: 200 | quota: 204      | used: 106    | avail: 98
+[init -> report_rom]   + child report_rom | binary: report_rom
+[init -> report_rom]     + ram  | assigned: 8M  | quota: 8232800 | used: 868K | avail: 7343968
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> report_rom]     + caps | assigned: 300 | quota: 285     | used: 51   | avail: 234
+[init -> report_rom]   -
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> report_rom] report 'system -> drivers -> state'
+[init -> report_rom]   state
+[init -> report_rom]   + ram | quota: 38158430 | used: 1240K | avail: 36888670
+[init -> report_rom]   + child event_filter | binary: event_filter
+[init -> report_rom]     + ram  | assigned: 1280K | quota: 1075422 | used: 1004K | avail: 47326
+[init -> report_rom]     + caps | assigned: 90    | quota: 52      | used: 46    | avail: 6
+[init -> report_rom]   + child usb_hid | binary: usb_hid | skipped_heartbeats: 1
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> report_rom]     + ram  | assigned: 10M | quota: 9751560 | used: 1092K | avail: 8633352
+[init -> report_rom]     + caps | assigned: 180 | quota: 142     | used: 37    | avail: 105
+[init -> report_rom]   + child usb | binary: pc_usb_host
+[init -> report_rom]     + ram  | assigned: 16M | quota: 16924894 | used: 1168K | avail: 15728862
+[init -> report_rom]     + caps | assigned: 200 | quota: 145      | used: 35    | avail: 110
+[init -> report_rom]   + child ps2 | binary: ps2
+[init -> report_rom]     + ram  | assigned: 1280K | quota: 1002504 | used: 776K | avail: 207880
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> report_rom]     + caps | assigned: 100   | quota: 46      | used: 30   | avail: 16
+[init -> report_rom]   + child fb | binary: vesa_fb
+[init -> report_rom]     + ram  | assigned: 20M | quota: 4109320 | used: 888K | avail: 3200008
+[init -> report_rom]     + caps | assigned: 150 | quota: 67      | used: 40   | avail: 27
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> report_rom]   + child platform | binary: platform
+[init -> report_rom]     + ram  | assigned: 3M  | quota: 3204960 | used: 1064K | avail: 2115424
+[init -> report_rom]     + caps | assigned: 200 | quota: 227     | used: 62    | avail: 165
+[init -> report_rom]   + child pci_decode | binary: pci_decode
+[init -> report_rom]     + ram  | assigned: 2M  | quota: 1856520 | used: 836K | avail: 1000456
+[init -> report_rom]     + caps | assigned: 100 | quota: 72      | used: 30   | avail: 42
+[init -> report_rom]   + child acpi | binary: acpi
+[init -> report_rom]     + ram  | assigned: 4M  | quota: 3975791 | used: 892K | avail: 3062383
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> report_rom]     + caps | assigned: 250 | quota: 219     | used: 29   | avail: 190
+[init -> report_rom]   + child report_rom | binary: report_rom
+[init -> report_rom]     + ram  | assigned: 2M  | quota: 1995429 | used: 940K | avail: 1032869
+[init -> report_rom]     + caps | assigned: 100 | quota: 88      | used: 63   | avail: 25
+[34mWarning: flush page table entries - mapping cache full - PD: init -> system -> drivers -> fb out of CAP[0m
+[init -> report_rom]   -
+[init -> report_rom] report 'system -> state'
+[init -> report_rom]   state
+[init -> report_rom]   + ram | quota: 335539508 | used: 1128K | avail: 334384436
+[init -> report_rom]   + child repostorm_probe | binary: repostorm_probe
+[init -> report_rom]     + ram  | assigned: 8M  | quota: 8173362 | used: 768K | avail: 7386930
+[init -> report_rom]     + caps | assigned: 200 | quota: 167     | used: 27   | avail: 140
+[init -> report_rom]   + child sponge_debug | binary: sponge_debug
+[init -> report_rom]     + ram  | assigned: 64M  | quota: 50049758 | used: 27676K | avail: 21709534
+[init -> report_rom]     + caps | assigned: 1000 | quota: 860      | used: 494    | avail: 366
+[init -> report_rom]   + child drivers | binary: init
+[init -> report_rom]     + ram  | assigned: 96M  | quota: 38158430 | used: 1240K | avail: 36888670
+[init -> report_rom]     + caps | assigned: 1500 | quota: 180      | used: 86    | avail: 94
+[init -> report_rom]   + child nitpicker | binary: nitpicker
+[init -> report_rom]     + ram  | assigned: 16M | quota: 49554486 | used: 33456K | avail: 15295542
+[init -> report_rom]     + caps | assigned: 200 | quota: 204      | used: 174    | avail: 30
+[init -> report_rom]   + child report_rom | binary: report_rom
+[init -> report_rom]     + ram  | assigned: 8M  | quota: 8232800 | used: 868K | avail: 7343968
+[init -> report_rom]     + caps | assigned: 300 | quota: 285     | used: 51   | avail: 234
+[init -> report_rom]   -
+[init -> report_rom] report 'system -> state'
+[init -> report_rom]   state
+[init -> report_rom]   + ram | quota: 335539508 | used: 1128K | avail: 334384436
+[init -> report_rom]   + child repostorm_probe | binary: repostorm_probe
+[init -> report_rom]     + ram  | assigned: 8M  | quota: 8173362 | used: 768K | avail: 7386930
+[init -> report_rom]     + caps | assigned: 200 | quota: 167     | used: 27   | avail: 140
+[init -> report_rom]   + child sponge_debug | binary: sponge_debug
+[init -> report_rom]     + ram  | assigned: 64M  | quota: 50049758 | used: 27676K | avail: 21709534
+[init -> report_rom]     + caps | assigned: 1000 | quota: 860      | used: 494    | avail: 366
+[init -> report_rom]   + child drivers | binary: init
+[init -> report_rom]     + ram  | assigned: 96M  | quota: 38158430 | used: 1240K | avail: 36888670
+[init -> report_rom]     + caps | assigned: 1500 | quota: 180      | used: 86    | avail: 94
+[init -> report_rom]   + child nitpicker | binary: nitpicker
+[init -> report_rom]     + ram  | assigned: 16M | quota: 49554486 | used: 33456K | avail: 15295542
+[init -> report_rom]     + caps | assigned: 200 | quota: 204      | used: 174    | avail: 30
+[init -> report_rom]   + child report_rom | binary: report_rom
+[init -> report_rom]     + ram  | assigned: 8M  | quota: 8232800 | used: 868K | avail: 7343968
+[init -> report_rom]     + caps | assigned: 300 | quota: 285     | used: 51   | avail: 234
+[init -> report_rom]   -
+[init -> report_rom] report 'system -> drivers -> state'
+[init -> report_rom]   state
+[init -> report_rom]   + ram | quota: 38158430 | used: 1240K | avail: 36888670
+[init -> report_rom]   + child event_filter | binary: event_filter
+[init -> report_rom]     + ram  | assigned: 1280K | quota: 1075422 | used: 1004K | avail: 47326
+[init -> report_rom]     + caps | assigned: 90    | quota: 52      | used: 46    | avail: 6
+[init -> report_rom]   + child usb_hid | binary: usb_hid | skipped_heartbeats: 1
+[init -> report_rom]     + ram  | assigned: 10M | quota: 9751560 | used: 1092K | avail: 8633352
+[init -> report_rom]     + caps | assigned: 180 | quota: 142     | used: 37    | avail: 105
+[init -> report_rom]   + child usb | binary: pc_usb_host
+[init -> report_rom]     + ram  | assigned: 16M | quota: 16924894 | used: 1168K | avail: 15728862
+[init -> report_rom]     + caps | assigned: 200 | quota: 145      | used: 35    | avail: 110
+[init -> report_rom]   + child ps2 | binary: ps2
+[init -> report_rom]     + ram  | assigned: 1280K | quota: 1002504 | used: 776K | avail: 207880
+[init -> report_rom]     + caps | assigned: 100   | quota: 46      | used: 30   | avail: 16
+[init -> report_rom]   + child fb | binary: vesa_fb
+[init -> report_rom]     + ram  | assigned: 20M | quota: 4109320 | used: 936K | avail: 3150856
+[init -> report_rom]     + caps | assigned: 150 | quota: 67      | used: 52   | avail: 15
+[init -> report_rom]   + child platform | binary: platform
+[init -> report_rom]     + ram  | assigned: 3M  | quota: 3204960 | used: 1064K | avail: 2115424
+[init -> report_rom]     + caps | assigned: 200 | quota: 227     | used: 62    | avail: 165
+[init -> report_rom]   + child pci_decode | binary: pci_decode
+[init -> report_rom]     + ram  | assigned: 2M  | quota: 1856520 | used: 836K | avail: 1000456
+[init -> report_rom]     + caps | assigned: 100 | quota: 72      | used: 30   | avail: 42
+[init -> report_rom]   + child acpi | binary: acpi
+[init -> report_rom]     + ram  | assigned: 4M  | quota: 3975791 | used: 892K | avail: 3062383
+[init -> report_rom]     + caps | assigned: 250 | quota: 219     | used: 29   | avail: 190
+[init -> report_rom]   + child report_rom | binary: report_rom
+[init -> report_rom]     + ram  | assigned: 2M  | quota: 1995429 | used: 940K | avail: 1032869
+[init -> report_rom]     + caps | assigned: 100 | quota: 88      | used: 63   | avail: 25
+[init -> report_rom]   -
+[init -> report_rom] report 'system -> drivers -> state'
+[init -> report_rom]   state
+[init -> report_rom]   + ram | quota: 38158430 | used: 1240K | avail: 36888670
+[init -> report_rom]   + child event_filter | binary: event_filter
+[init -> report_rom]     + ram  | assigned: 1280K | quota: 1075422 | used: 1004K | avail: 47326
+[init -> report_rom]     + caps | assigned: 90    | quota: 52      | used: 46    | avail: 6
+[init -> report_rom]   + child usb_hid | binary: usb_hid | skipped_heartbeats: 1
+[init -> report_rom]     + ram  | assigned: 10M | quota: 9751560 | used: 1092K | avail: 8633352
+[init -> report_rom]     + caps | assigned: 180 | quota: 142     | used: 37    | avail: 105
+[init -> report_rom]   + child usb | binary: pc_usb_host
+[init -> report_rom]     + ram  | assigned: 16M | quota: 16924894 | used: 1168K | avail: 15728862
+[init -> report_rom]     + caps | assigned: 200 | quota: 145      | used: 35    | avail: 110
+[init -> report_rom]   + child ps2 | binary: ps2
+[init -> report_rom]     + ram  | assigned: 1280K | quota: 1002504 | used: 776K | avail: 207880
+[init -> report_rom]     + caps | assigned: 100   | quota: 46      | used: 30   | avail: 16
+[init -> report_rom]   + child fb | binary: vesa_fb
+[init -> report_rom]     + ram  | assigned: 20M | quota: 4109320 | used: 936K | avail: 3150856
+[init -> report_rom]     + caps | assigned: 150 | quota: 67      | used: 52   | avail: 15
+[init -> report_rom]   + child platform | binary: platform
+[init -> report_rom]     + ram  | assigned: 3M  | quota: 3204960 | used: 1064K | avail: 2115424
+[init -> report_rom]     + caps | assigned: 200 | quota: 227     | used: 62    | avail: 165
+[init -> report_rom]   + child pci_decode | binary: pci_decode
+[init -> report_rom]     + ram  | assigned: 2M  | quota: 1856520 | used: 836K | avail: 1000456
+[init -> report_rom]     + caps | assigned: 100 | quota: 72      | used: 30   | avail: 42
+[init -> report_rom]   + child acpi | binary: acpi
+[init -> report_rom]     + ram  | assigned: 4M  | quota: 3975791 | used: 892K | avail: 3062383
+[init -> report_rom]     + caps | assigned: 250 | quota: 219     | used: 29   | avail: 190
+[init -> report_rom]   + child report_rom | binary: report_rom
+[init -> report_rom]     + ram  | assigned: 2M  | quota: 1995429 | used: 940K | avail: 1032869
+[init -> report_rom]     + caps | assigned: 100 | quota: 88      | used: 63   | avail: 25
+[init -> report_rom]   -
+[init -> report_rom] report 'system -> state'
+[init -> report_rom]   state
+[init -> report_rom]   + ram | quota: 335539508 | used: 1128K | avail: 334384436
+[init -> report_rom]   + child repostorm_probe | binary: repostorm_probe
+[init -> report_rom]     + ram  | assigned: 8M  | quota: 8173362 | used: 768K | avail: 7386930
+[init -> report_rom]     + caps | assigned: 200 | quota: 167     | used: 27   | avail: 140
+[init -> report_rom]   + child sponge_debug | binary: sponge_debug
+[init -> report_rom]     + ram  | assigned: 64M  | quota: 50049758 | used: 27676K | avail: 21709534
+[init -> report_rom]     + caps | assigned: 1000 | quota: 860      | used: 494    | avail: 366
+[init -> report_rom]   + child drivers | binary: init
+[init -> report_rom]     + ram  | assigned: 96M  | quota: 38158430 | used: 1240K | avail: 36888670
+[init -> report_rom]     + caps | assigned: 1500 | quota: 180      | used: 86    | avail: 94
+[init -> report_rom]   + child nitpicker | binary: nitpicker
+[init -> report_rom]     + ram  | assigned: 16M | quota: 49554486 | used: 33456K | avail: 15295542
+[init -> report_rom]     + caps | assigned: 200 | quota: 204      | used: 174    | avail: 30
+[init -> report_rom]   + child report_rom | binary: report_rom
+[init -> report_rom]     + ram  | assigned: 8M  | quota: 8232800 | used: 868K | avail: 7343968
+[init -> report_rom]     + caps | assigned: 300 | quota: 285     | used: 51   | avail: 234
+[init -> report_rom]   -
+[init -> report_rom] report 'system -> drivers -> state'
+[init -> report_rom]   state
+[init -> report_rom]   + ram | quota: 38158430 | used: 1240K | avail: 36888670
+[init -> report_rom]   + child event_filter | binary: event_filter
+[init -> report_rom]     + ram  | assigned: 1280K | quota: 1075422 | used: 1004K | avail: 47326
+[init -> report_rom]     + caps | assigned: 90    | quota: 52      | used: 46    | avail: 6
+[init -> report_rom]   + child usb_hid | binary: usb_hid | skipped_heartbeats: 2
+[init -> report_rom]     + ram  | assigned: 10M | quota: 9751560 | used: 1092K | avail: 8633352
+[init -> report_rom]     + caps | assigned: 180 | quota: 142     | used: 37    | avail: 105
+[init -> report_rom]   + child usb | binary: pc_usb_host
+[init -> report_rom]     + ram  | assigned: 16M | quota: 16924894 | used: 1168K | avail: 15728862
+[init -> report_rom]     + caps | assigned: 200 | quota: 145      | used: 35    | avail: 110
+[init -> report_rom]   + child ps2 | binary: ps2
+[init -> report_rom]     + ram  | assigned: 1280K | quota: 1002504 | used: 776K | avail: 207880
+[init -> report_rom]     + caps | assigned: 100   | quota: 46      | used: 30   | avail: 16
+[init -> report_rom]   + child fb | binary: vesa_fb
+[init -> report_rom]     + ram  | assigned: 20M | quota: 4109320 | used: 936K | avail: 3150856
+[init -> report_rom]     + caps | assigned: 150 | quota: 67      | used: 52   | avail: 15
+[init -> report_rom]   + child platform | binary: platform
+[init -> report_rom]     + ram  | assigned: 3M  | quota: 3204960 | used: 1064K | avail: 2115424
+[init -> report_rom]     + caps | assigned: 200 | quota: 227     | used: 62    | avail: 165
+[init -> report_rom]   + child pci_decode | binary: pci_decode
+[init -> report_rom]     + ram  | assigned: 2M  | quota: 1856520 | used: 836K | avail: 1000456
+[init -> report_rom]     + caps | assigned: 100 | quota: 72      | used: 30   | avail: 42
+[init -> report_rom]   + child acpi | binary: acpi
+[init -> report_rom]     + ram  | assigned: 4M  | quota: 3975791 | used: 892K | avail: 3062383
+[init -> report_rom]     + caps | assigned: 250 | quota: 219     | used: 29   | avail: 190
+[init -> report_rom]   + child report_rom | binary: report_rom
+[init -> report_rom]     + ram  | assigned: 2M  | quota: 1995429 | used: 940K | avail: 1032869
+[init -> report_rom]     + caps | assigned: 100 | quota: 88      | used: 63   | avail: 25
+[init -> report_rom]   -
+[init -> report_rom] report 'system -> state'
+[init -> report_rom]   state
+[init -> report_rom]   + ram | quota: 335539508 | used: 1128K | avail: 334384436
+[init -> report_rom]   + child repostorm_probe | binary: repostorm_probe
+[init -> report_rom]     + ram  | assigned: 8M  | quota: 8173362 | used: 768K | avail: 7386930
+[init -> report_rom]     + caps | assigned: 200 | quota: 167     | used: 27   | avail: 140
+[init -> report_rom]   + child sponge_debug | binary: sponge_debug
+[init -> report_rom]     + ram  | assigned: 64M  | quota: 50049758 | used: 27676K | avail: 21709534
+[init -> report_rom]     + caps | assigned: 1000 | quota: 860      | used: 494    | avail: 366
+[init -> report_rom]   + child drivers | binary: init
+[init -> report_rom]     + ram  | assigned: 96M  | quota: 38158430 | used: 1240K | avail: 36888670
+[init -> report_rom]     + caps | assigned: 1500 | quota: 180      | used: 86    | avail: 94
+[init -> report_rom]   + child nitpicker | binary: nitpicker
+[init -> report_rom]     + ram  | assigned: 16M | quota: 49554486 | used: 33456K | avail: 15295542
+[init -> report_rom]     + caps | assigned: 200 | quota: 204      | used: 174    | avail: 30
+[init -> report_rom]   + child report_rom | binary: report_rom
+[init -> report_rom]     + ram  | assigned: 8M  | quota: 8232800 | used: 868K | avail: 7343968
+[init -> report_rom]     + caps | assigned: 300 | quota: 285     | used: 51   | avail: 234
+[init -> report_rom]   -
+[init -> report_rom] report 'system -> drivers -> state'
+[init -> report_rom]   state
+[init -> report_rom]   + ram | quota: 38158430 | used: 1240K | avail: 36888670
+[init -> report_rom]   + child event_filter | binary: event_filter
+[init -> report_rom]     + ram  | assigned: 1280K | quota: 1075422 | used: 1004K | avail: 47326
+[init -> report_rom]     + caps | assigned: 90    | quota: 52      | used: 46    | avail: 6
+[init -> report_rom]   + child usb_hid | binary: usb_hid | skipped_heartbeats: 2
+[init -> report_rom]     + ram  | assigned: 10M | quota: 9751560 | used: 1092K | avail: 8633352
+[init -> report_rom]     + caps | assigned: 180 | quota: 142     | used: 37    | avail: 105
+[init -> report_rom]   + child usb | binary: pc_usb_host
+[init -> report_rom]     + ram  | assigned: 16M | quota: 16924894 | used: 1168K | avail: 15728862
+[init -> report_rom]     + caps | assigned: 200 | quota: 145      | used: 35    | avail: 110
+[init -> report_rom]   + child ps2 | binary: ps2
+[init -> report_rom]     + ram  | assigned: 1280K | quota: 1002504 | used: 776K | avail: 207880
+[init -> report_rom]     + caps | assigned: 100   | quota: 46      | used: 30   | avail: 16
+[init -> report_rom]   + child fb | binary: vesa_fb
+[init -> report_rom]     + ram  | assigned: 20M | quota: 4109320 | used: 936K | avail: 3150856
+[init -> report_rom]     + caps | assigned: 150 | quota: 67      | used: 52   | avail: 15
+[init -> report_rom]   + child platform | binary: platform
+[init -> report_rom]     + ram  | assigned: 3M  | quota: 3204960 | used: 1064K | avail: 2115424
+[init -> report_rom]     + caps | assigned: 200 | quota: 227     | used: 62    | avail: 165
+[init -> report_rom]   + child pci_decode | binary: pci_decode
+[init -> report_rom]     + ram  | assigned: 2M  | quota: 1856520 | used: 836K | avail: 1000456
+[init -> report_rom]     + caps | assigned: 100 | quota: 72      | used: 30   | avail: 42
+[init -> report_rom]   + child acpi | binary: acpi
+[init -> report_rom]     + ram  | assigned: 4M  | quota: 3975791 | used: 892K | avail: 3062383
+[init -> report_rom]     + caps | assigned: 250 | quota: 219     | used: 29   | avail: 190
+[init -> report_rom]   + child report_rom | binary: report_rom
+[init -> report_rom]     + ram  | assigned: 2M  | quota: 1995429 | used: 940K | avail: 1032869
+[init -> report_rom]     + caps | assigned: 100 | quota: 88      | used: 63   | avail: 25
+[init -> report_rom]   -
+[init -> report_rom] report 'system -> drivers -> state'
+[init -> report_rom]   state
+[init -> report_rom]   + ram | quota: 38158430 | used: 1240K | avail: 36888670
+[init -> report_rom]   + child event_filter | binary: event_filter
+[init -> report_rom]     + ram  | assigned: 1280K | quota: 1075422 | used: 1004K | avail: 47326
+[init -> report_rom]     + caps | assigned: 90    | quota: 52      | used: 46    | avail: 6
+[init -> report_rom]   + child usb_hid | binary: usb_hid | skipped_heartbeats: 2
+[init -> report_rom]     + ram  | assigned: 10M | quota: 9751560 | used: 1092K | avail: 8633352
+[init -> report_rom]     + caps | assigned: 180 | quota: 142     | used: 37    | avail: 105
+[init -> report_rom]   + child usb | binary: pc_usb_host
+[init -> report_rom]     + ram  | assigned: 16M | quota: 16924894 | used: 1168K | avail: 15728862
+[init -> report_rom]     + caps | assigned: 200 | quota: 145      | used: 35    | avail: 110
+[init -> report_rom]   + child ps2 | binary: ps2
+[init -> report_rom]     + ram  | assigned: 1280K | quota: 1002504 | used: 776K | avail: 207880
+[init -> report_rom]     + caps | assigned: 100   | quota: 46      | used: 30   | avail: 16
+[init -> report_rom]   + child fb | binary: vesa_fb
+[init -> report_rom]     + ram  | assigned: 20M | quota: 4109320 | used: 936K | avail: 3150856
+[init -> report_rom]     + caps | assigned: 150 | quota: 67      | used: 52   | avail: 15
+[init -> report_rom]   + child platform | binary: platform
+[init -> report_rom]     + ram  | assigned: 3M  | quota: 3204960 | used: 1064K | avail: 2115424
+[init -> report_rom]     + caps | assigned: 200 | quota: 227     | used: 62    | avail: 165
+[init -> report_rom]   + child pci_decode | binary: pci_decode
+[init -> report_rom]     + ram  | assigned: 2M  | quota: 1856520 | used: 836K | avail: 1000456
+[init -> report_rom]     + caps | assigned: 100 | quota: 72      | used: 30   | avail: 42
+[init -> report_rom]   + child acpi | binary: acpi
+[init -> report_rom]     + ram  | assigned: 4M  | quota: 3975791 | used: 892K | avail: 3062383
+[init -> report_rom]     + caps | assigned: 250 | quota: 219     | used: 29   | avail: 190
+[init -> report_rom]   + child report_rom | binary: report_rom
+[init -> report_rom]     + ram  | assigned: 2M  | quota: 1995429 | used: 940K | avail: 1032869
+[init -> report_rom]     + caps | assigned: 100 | quota: 88      | used: 63   | avail: 25
+[init -> report_rom]   -
+[init -> report_rom] report 'system -> state'
+[init -> report_rom]   state
+[init -> report_rom]   + ram | quota: 335539508 | used: 1128K | avail: 334384436
+[init -> report_rom]   + child repostorm_probe | binary: repostorm_probe
+[init -> report_rom]     + ram  | assigned: 8M  | quota: 8173362 | used: 768K | avail: 7386930
+[init -> report_rom]     + caps | assigned: 200 | quota: 167     | used: 27   | avail: 140
+[init -> report_rom]   + child sponge_debug | binary: sponge_debug
+[init -> report_rom]     + ram  | assigned: 64M  | quota: 50049758 | used: 27676K | avail: 21709534
+[init -> report_rom]     + caps | assigned: 1000 | quota: 860      | used: 494    | avail: 366
+[init -> report_rom]   + child drivers | binary: init
+[init -> report_rom]     + ram  | assigned: 96M  | quota: 38158430 | used: 1240K | avail: 36888670
+[init -> report_rom]     + caps | assigned: 1500 | quota: 180      | used: 86    | avail: 94
+[init -> report_rom]   + child nitpicker | binary: nitpicker
+[init -> report_rom]     + ram  | assigned: 16M | quota: 49554486 | used: 33456K | avail: 15295542
+[init -> report_rom]     + caps | assigned: 200 | quota: 204      | used: 174    | avail: 30
+[init -> report_rom]   + child report_rom | binary: report_rom
+[init -> report_rom]     + ram  | assigned: 8M  | quota: 8232800 | used: 868K | avail: 7343968
+[init -> report_rom]     + caps | assigned: 300 | quota: 285     | used: 51   | avail: 234
+[init -> report_rom]   -
+[init -> report_rom] report 'system -> drivers -> state'
+[init -> report_rom]   state
+[init -> report_rom]   + ram | quota: 38158430 | used: 1240K | avail: 36888670
+[init -> report_rom]   + child event_filter | binary: event_filter
+[init -> report_rom]     + ram  | assigned: 1280K | quota: 1075422 | used: 1004K | avail: 47326
+[init -> report_rom]     + caps | assigned: 90    | quota: 52      | used: 46    | avail: 6
+[init -> report_rom]   + child usb_hid | binary: usb_hid | skipped_heartbeats: 3
+[init -> report_rom]     + ram  | assigned: 10M | quota: 9751560 | used: 1092K | avail: 8633352
+[init -> report_rom]     + caps | assigned: 180 | quota: 142     | used: 37    | avail: 105
+[init -> report_rom]   + child usb | binary: pc_usb_host
+[init -> report_rom]     + ram  | assigned: 16M | quota: 16924894 | used: 1168K | avail: 15728862
+[init -> report_rom]     + caps | assigned: 200 | quota: 145      | used: 35    | avail: 110
+[init -> report_rom]   + child ps2 | binary: ps2
+[init -> report_rom]     + ram  | assigned: 1280K | quota: 1002504 | used: 776K | avail: 207880
+[init -> report_rom]     + caps | assigned: 100   | quota: 46      | used: 30   | avail: 16
+[init -> report_rom]   + child fb | binary: vesa_fb
+[init -> report_rom]     + ram  | assigned: 20M | quota: 4109320 | used: 936K | avail: 3150856
+[init -> report_rom]     + caps | assigned: 150 | quota: 67      | used: 52   | avail: 15
+[init -> report_rom]   + child platform | binary: platform
+[init -> report_rom]     + ram  | assigned: 3M  | quota: 3204960 | used: 1064K | avail: 2115424
+[init -> report_rom]     + caps | assigned: 200 | quota: 227     | used: 62    | avail: 165
+[init -> report_rom]   + child pci_decode | binary: pci_decode
+[init -> report_rom]     + ram  | assigned: 2M  | quota: 1856520 | used: 836K | avail: 1000456
+[init -> report_rom]     + caps | assigned: 100 | quota: 72      | used: 30   | avail: 42
+[init -> report_rom]   + child acpi | binary: acpi
+[init -> report_rom]     + ram  | assigned: 4M  | quota: 3975791 | used: 892K | avail: 3062383
+[init -> report_rom]     + caps | assigned: 250 | quota: 219     | used: 29   | avail: 190
+[init -> report_rom]   + child report_rom | binary: report_rom
+[init -> report_rom]     + ram  | assigned: 2M  | quota: 1995429 | used: 940K | avail: 1032869
+[init -> report_rom]     + caps | assigned: 100 | quota: 88      | used: 63   | avail: 25
+[init -> report_rom]   -
+[init -> report_rom] report 'system -> drivers -> state'
+[init -> report_rom]   state
+[init -> report_rom]   + ram | quota: 38158430 | used: 1240K | avail: 36888670
+[init -> report_rom]   + child event_filter | binary: event_filter
+[init -> report_rom]     + ram  | assigned: 1280K | quota: 1075422 | used: 1004K | avail: 47326
+[init -> report_rom]     + caps | assigned: 90    | quota: 52      | used: 46    | avail: 6
+[init -> report_rom]   + child usb_hid | binary: usb_hid | skipped_heartbeats: 3
+[init -> report_rom]     + ram  | assigned: 10M | quota: 9751560 | used: 1092K | avail: 8633352
+[init -> report_rom]     + caps | assigned: 180 | quota: 142     | used: 37    | avail: 105
+[init -> report_rom]   + child usb | binary: pc_usb_host
+[init -> report_rom]     + ram  | assigned: 16M | quota: 16924894 | used: 1168K | avail: 15728862
+[init -> report_rom]     + caps | assigned: 200 | quota: 145      | used: 35    | avail: 110
+[init -> report_rom]   + child ps2 | binary: ps2
+[init -> report_rom]     + ram  | assigned: 1280K | quota: 1002504 | used: 776K | avail: 207880
+[init -> report_rom]     + caps | assigned: 100   | quota: 46      | used: 30   | avail: 16
+[init -> report_rom]   + child fb | binary: vesa_fb
+[init -> report_rom]     + ram  | assigned: 20M | quota: 4109320 | used: 936K | avail: 3150856
+[init -> report_rom]     + caps | assigned: 150 | quota: 67      | used: 52   | avail: 15
+[init -> report_rom]   + child platform | binary: platform
+[init -> report_rom]     + ram  | assigned: 3M  | quota: 3204960 | used: 1064K | avail: 2115424
+[init -> report_rom]     + caps | assigned: 200 | quota: 227     | used: 62    | avail: 165
+[init -> report_rom]   + child pci_decode | binary: pci_decode
+[init -> report_rom]     + ram  | assigned: 2M  | quota: 1856520 | used: 836K | avail: 1000456
+[init -> report_rom]     + caps | assigned: 100 | quota: 72      | used: 30   | avail: 42
+[init -> report_rom]   + child acpi | binary: acpi
+[init -> report_rom]     + ram  | assigned: 4M  | quota: 3975791 | used: 892K | avail: 3062383
+[init -> report_rom]     + caps | assigned: 250 | quota: 219     | used: 29   | avail: 190
+[init -> report_rom]   + child report_rom | binary: report_rom
+[init -> report_rom]     + ram  | assigned: 2M  | quota: 1995429 | used: 940K | avail: 1032869
+[init -> report_rom]     + caps | assigned: 100 | quota: 88      | used: 63   | avail: 25
+[init -> report_rom]   -
+[init -> report_rom] report 'system -> drivers -> state'
+[init -> report_rom]   state
+[init -> report_rom]   + ram | quota: 38158430 | used: 1240K | avail: 36888670
+[init -> report_rom]   + child event_filter | binary: event_filter
+[init -> report_rom]     + ram  | assigned: 1280K | quota: 1075422 | used: 1004K | avail: 47326
+[init -> report_rom]     + caps | assigned: 90    | quota: 52      | used: 46    | avail: 6
+[init -> report_rom]   + child usb_hid | binary: usb_hid | skipped_heartbeats: 3
+[init -> report_rom]     + ram  | assigned: 10M | quota: 9751560 | used: 1092K | avail: 8633352
+[init -> report_rom]     + caps | assigned: 180 | quota: 142     | used: 37    | avail: 105
+[init -> report_rom]   + child usb | binary: pc_usb_host
+[init -> report_rom]     + ram  | assigned: 16M | quota: 16924894 | used: 1168K | avail: 15728862
+[init -> report_rom]     + caps | assigned: 200 | quota: 145      | used: 35    | avail: 110
+[init -> report_rom]   + child ps2 | binary: ps2
+[init -> report_rom]     + ram  | assigned: 1280K | quota: 1002504 | used: 776K | avail: 207880
+[init -> report_rom]     + caps | assigned: 100   | quota: 46      | used: 30   | avail: 16
+[init -> report_rom]   + child fb | binary: vesa_fb
+[init -> report_rom]     + ram  | assigned: 20M | quota: 4109320 | used: 936K | avail: 3150856
+[init -> report_rom]     + caps | assigned: 150 | quota: 67      | used: 52   | avail: 15
+[init -> report_rom]   + child platform | binary: platform
+[init -> report_rom]     + ram  | assigned: 3M  | quota: 3204960 | used: 1064K | avail: 2115424
+[init -> report_rom]     + caps | assigned: 200 | quota: 227     | used: 62    | avail: 165
+[init -> report_rom]   + child pci_decode | binary: pci_decode
+[init -> report_rom]     + ram  | assigned: 2M  | quota: 1856520 | used: 836K | avail: 1000456
+[init -> report_rom]     + caps | assigned: 100 | quota: 72      | used: 30   | avail: 42
+[init -> report_rom]   + child acpi | binary: acpi
+[init -> report_rom]     + ram  | assigned: 4M  | quota: 3975791 | used: 892K | avail: 3062383
+[init -> report_rom]     + caps | assigned: 250 | quota: 219     | used: 29   | avail: 190
+[init -> report_rom]   + child report_rom | binary: report_rom
+[init -> report_rom]     + ram  | assigned: 2M  | quota: 1995429 | used: 940K | avail: 1032869
+[init -> report_rom]     + caps | assigned: 100 | quota: 88      | used: 63   | avail: 25
+[init -> report_rom]   -
+[init -> report_rom] report 'system -> drivers -> state'
+[init -> report_rom]   state
+[init -> report_rom]   + ram | quota: 38158430 | used: 1240K | avail: 36888670
+[init -> report_rom]   + child event_filter | binary: event_filter
+[init -> report_rom]     + ram  | assigned: 1280K | quota: 1075422 | used: 1004K | avail: 47326
+[init -> report_rom]     + caps | assigned: 90    | quota: 52      | used: 46    | avail: 6
+[init -> report_rom]   + child usb_hid | binary: usb_hid | skipped_heartbeats: 4
+[init -> report_rom]     + ram  | assigned: 10M | quota: 9751560 | used: 1092K | avail: 8633352
+[init -> report_rom]     + caps | assigned: 180 | quota: 142     | used: 37    | avail: 105
+[init -> report_rom]   + child usb | binary: pc_usb_host
+[init -> report_rom]     + ram  | assigned: 16M | quota: 16924894 | used: 1168K | avail: 15728862
+[init -> report_rom]     + caps | assigned: 200 | quota: 145      | used: 35    | avail: 110
+[init -> report_rom]   + child ps2 | binary: ps2
+[init -> report_rom]     + ram  | assigned: 1280K | quota: 1002504 | used: 776K | avail: 207880
+[init -> report_rom]     + caps | assigned: 100   | quota: 46      | used: 30   | avail: 16
+[init -> report_rom]   + child fb | binary: vesa_fb
+[init -> report_rom]     + ram  | assigned: 20M | quota: 4109320 | used: 936K | avail: 3150856
+[init -> report_rom]     + caps | assigned: 150 | quota: 67      | used: 52   | avail: 15
+[init -> report_rom]   + child platform | binary: platform
+[init -> report_rom]     + ram  | assigned: 3M  | quota: 3204960 | used: 1064K | avail: 2115424
+[init -> report_rom]     + caps | assigned: 200 | quota: 227     | used: 62    | avail: 165
+[init -> report_rom]   + child pci_decode | binary: pci_decode
+[init -> report_rom]     + ram  | assigned: 2M  | quota: 1856520 | used: 836K | avail: 1000456
+[init -> report_rom]     + caps | assigned: 100 | quota: 72      | used: 30   | avail: 42
+[init -> report_rom]   + child acpi | binary: acpi
+[init -> report_rom]     + ram  | assigned: 4M  | quota: 3975791 | used: 892K | avail: 3062383
+[init -> report_rom]     + caps | assigned: 250 | quota: 219     | used: 29   | avail: 190
+[init -> report_rom]   + child report_rom | binary: report_rom
+[init -> report_rom]     + ram  | assigned: 2M  | quota: 1995429 | used: 940K | avail: 1032869
+[init -> report_rom]     + caps | assigned: 100 | quota: 88      | used: 63   | avail: 25
+[init -> report_rom]   -
+[init -> report_rom] report 'system -> drivers -> state'
+[init -> report_rom]   state
+[init -> report_rom]   + ram | quota: 38158430 | used: 1240K | avail: 36888670
+[init -> report_rom]   + child event_filter | binary: event_filter
+[init -> report_rom]     + ram  | assigned: 1280K | quota: 1075422 | used: 1004K | avail: 47326
+[init -> report_rom]     + caps | assigned: 90    | quota: 52      | used: 46    | avail: 6
+[init -> report_rom]   + child usb_hid | binary: usb_hid | skipped_heartbeats: 4
+[init -> report_rom]     + ram  | assigned: 10M | quota: 9751560 | used: 1092K | avail: 8633352
+[init -> report_rom]     + caps | assigned: 180 | quota: 142     | used: 37    | avail: 105
+[init -> report_rom]   + child usb | binary: pc_usb_host
+[init -> report_rom]     + ram  | assigned: 16M | quota: 16924894 | used: 1168K | avail: 15728862
+[init -> report_rom]     + caps | assigned: 200 | quota: 145      | used: 35    | avail: 110
+[init -> report_rom]   + child ps2 | binary: ps2
+[init -> report_rom]     + ram  | assigned: 1280K | quota: 1002504 | used: 776K | avail: 207880
+[init -> report_rom]     + caps | assigned: 100   | quota: 46      | used: 30   | avail: 16
+[init -> report_rom]   + child fb | binary: vesa_fb
+[init -> report_rom]     + ram  | assigned: 20M | quota: 4109320 | used: 936K | avail: 3150856
+[init -> report_rom]     + caps | assigned: 150 | quota: 67      | used: 52   | avail: 15
+[init -> report_rom]   + child platform | binary: platform
+[init -> report_rom]     + ram  | assigned: 3M  | quota: 3204960 | used: 1064K | avail: 2115424
+[init -> report_rom]     + caps | assigned: 200 | quota: 227     | used: 62    | avail: 165
+[init -> report_rom]   + child pci_decode | binary: pci_decode
+[init -> report_rom]     + ram  | assigned: 2M  | quota: 1856520 | used: 836K | avail: 1000456
+[init -> report_rom]     + caps | assigned: 100 | quota: 72      | used: 30   | avail: 42
+[init -> report_rom]   + child acpi | binary: acpi
+[init -> report_rom]     + ram  | assigned: 4M  | quota: 3975791 | used: 892K | avail: 3062383
+[init -> report_rom]     + caps | assigned: 250 | quota: 219     | used: 29   | avail: 190
+[init -> report_rom]   + child report_rom | binary: report_rom
+[init -> report_rom]     + ram  | assigned: 2M  | quota: 1995429 | used: 940K | avail: 1032869
+[init -> report_rom]     + caps | assigned: 100 | quota: 88      | used: 63   | avail: 25
+[init -> report_rom]   -
+[init -> report_rom] report 'system -> drivers -> state'
+[init -> report_rom]   state
+[init -> report_rom]   + ram | quota: 38158430 | used: 1240K | avail: 36888670
+[init -> report_rom]   + child event_filter | binary: event_filter
+[init -> report_rom]     + ram  | assigned: 1280K | quota: 1075422 | used: 1004K | avail: 47326
+[init -> report_rom]     + caps | assigned: 90    | quota: 52      | used: 46    | avail: 6
+[init -> report_rom]   + child usb_hid | binary: usb_hid | skipped_heartbeats: 5
+[init -> report_rom]     + ram  | assigned: 10M | quota: 9751560 | used: 1092K | avail: 8633352
+[init -> report_rom]     + caps | assigned: 180 | quota: 142     | used: 37    | avail: 105
+[init -> report_rom]   + child usb | binary: pc_usb_host
+[init -> report_rom]     + ram  | assigned: 16M | quota: 16924894 | used: 1168K | avail: 15728862
+[init -> report_rom]     + caps | assigned: 200 | quota: 145      | used: 35    | avail: 110
+[init -> report_rom]   + child ps2 | binary: ps2
+[init -> report_rom]     + ram  | assigned: 1280K | quota: 1002504 | used: 776K | avail: 207880
+[init -> report_rom]     + caps | assigned: 100   | quota: 46      | used: 30   | avail: 16
+[init -> report_rom]   + child fb | binary: vesa_fb
+[init -> report_rom]     + ram  | assigned: 20M | quota: 4109320 | used: 936K | avail: 3150856
+[init -> report_rom]     + caps | assigned: 150 | quota: 67      | used: 52   | avail: 15
+[init -> report_rom]   + child platform | binary: platform
+[init -> report_rom]     + ram  | assigned: 3M  | quota: 3204960 | used: 1064K | avail: 2115424
+[init -> report_rom]     + caps | assigned: 200 | quota: 227     | used: 62    | avail: 165
+[init -> report_rom]   + child pci_decode | binary: pci_decode
+[init -> report_rom]     + ram  | assigned: 2M  | quota: 1856520 | used: 836K | avail: 1000456
+[init -> report_rom]     + caps | assigned: 100 | quota: 72      | used: 30   | avail: 42
+[init -> report_rom]   + child acpi | binary: acpi
+[init -> report_rom]     + ram  | assigned: 4M  | quota: 3975791 | used: 892K | avail: 3062383
+[init -> report_rom]     + caps | assigned: 250 | quota: 219     | used: 29   | avail: 190
+[init -> report_rom]   + child report_rom | binary: report_rom
+[init -> report_rom]     + ram  | assigned: 2M  | quota: 1995429 | used: 940K | avail: 1032869
+[init -> report_rom]     + caps | assigned: 100 | quota: 88      | used: 63   | avail: 25
+[init -> report_rom]   -
+[init -> report_rom] report 'system -> drivers -> state'
+[init -> report_rom]   state
+[init -> report_rom]   + ram | quota: 38158430 | used: 1240K | avail: 36888670
+[init -> report_rom]   + child event_filter | binary: event_filter
+[init -> report_rom]     + ram  | assigned: 1280K | quota: 1075422 | used: 1004K | avail: 47326
+[init -> report_rom]     + caps | assigned: 90    | quota: 52      | used: 46    | avail: 6
+[init -> report_rom]   + child usb_hid | binary: usb_hid | skipped_heartbeats: 6
+[init -> report_rom]     + ram  | assigned: 10M | quota: 9751560 | used: 1092K | avail: 8633352
+[init -> report_rom]     + caps | assigned: 180 | quota: 142     | used: 37    | avail: 105
+[init -> report_rom]   + child usb | binary: pc_usb_host
+[init -> report_rom]     + ram  | assigned: 16M | quota: 16924894 | used: 1168K | avail: 15728862
+[init -> report_rom]     + caps | assigned: 200 | quota: 145      | used: 35    | avail: 110
+[init -> report_rom]   + child ps2 | binary: ps2
+[init -> report_rom]     + ram  | assigned: 1280K | quota: 1002504 | used: 776K | avail: 207880
+[init -> report_rom]     + caps | assigned: 100   | quota: 46      | used: 30   | avail: 16
+[init -> report_rom]   + child fb | binary: vesa_fb
+[init -> report_rom]     + ram  | assigned: 20M | quota: 4109320 | used: 936K | avail: 3150856
+[init -> report_rom]     + caps | assigned: 150 | quota: 67      | used: 52   | avail: 15
+[init -> report_rom]   + child platform | binary: platform
+[init -> report_rom]     + ram  | assigned: 3M  | quota: 3204960 | used: 1064K | avail: 2115424
+[init -> report_rom]     + caps | assigned: 200 | quota: 227     | used: 62    | avail: 165
+[init -> report_rom]   + child pci_decode | binary: pci_decode
+[init -> report_rom]     + ram  | assigned: 2M  | quota: 1856520 | used: 836K | avail: 1000456
+[init -> report_rom]     + caps | assigned: 100 | quota: 72      | used: 30   | avail: 42
+[init -> report_rom]   + child acpi | binary: acpi
+[init -> report_rom]     + ram  | assigned: 4M  | quota: 3975791 | used: 892K | avail: 3062383
+[init -> report_rom]     + caps | assigned: 250 | quota: 219     | used: 29   | avail: 190
+[init -> report_rom]   + child report_rom | binary: report_rom
+[init -> report_rom]     + ram  | assigned: 2M  | quota: 1995429 | used: 940K | avail: 1032869
+[init -> report_rom]     + caps | assigned: 100 | quota: 88      | used: 63   | avail: 25
+[init -> report_rom]   -
+[init -> report_rom] report 'system -> drivers -> state'
+[init -> report_rom]   state
+[init -> report_rom]   + ram | quota: 38158430 | used: 1240K | avail: 36888670
+[init -> report_rom]   + child event_filter | binary: event_filter
+[init -> report_rom]     + ram  | assigned: 1280K | quota: 1075422 | used: 1004K | avail: 47326
+[init -> report_rom]     + caps | assigned: 90    | quota: 52      | used: 46    | avail: 6
+[init -> report_rom]   + child usb_hid | binary: usb_hid | skipped_heartbeats: 7
+[init -> report_rom]     + ram  | assigned: 10M | quota: 9751560 | used: 1092K | avail: 8633352
+[init -> report_rom]     + caps | assigned: 180 | quota: 142     | used: 37    | avail: 105
+[init -> report_rom]   + child usb | binary: pc_usb_host
+[init -> report_rom]     + ram  | assigned: 16M | quota: 16924894 | used: 1168K | avail: 15728862
+[init -> report_rom]     + caps | assigned: 200 | quota: 145      | used: 35    | avail: 110
+[init -> report_rom]   + child ps2 | binary: ps2
+[init -> report_rom]     + ram  | assigned: 1280K | quota: 1002504 | used: 776K | avail: 207880
+[init -> report_rom]     + caps | assigned: 100   | quota: 46      | used: 30   | avail: 16
+[init -> report_rom]   + child fb | binary: vesa_fb
+[init -> report_rom]     + ram  | assigned: 20M | quota: 4109320 | used: 936K | avail: 3150856
+[init -> report_rom]     + caps | assigned: 150 | quota: 67      | used: 52   | avail: 15
+[init -> report_rom]   + child platform | binary: platform
+[init -> report_rom]     + ram  | assigned: 3M  | quota: 3204960 | used: 1064K | avail: 2115424
+[init -> report_rom]     + caps | assigned: 200 | quota: 227     | used: 62    | avail: 165
+[init -> report_rom]   + child pci_decode | binary: pci_decode
+[init -> report_rom]     + ram  | assigned: 2M  | quota: 1856520 | used: 836K | avail: 1000456
+[init -> report_rom]     + caps | assigned: 100 | quota: 72      | used: 30   | avail: 42
+[init -> report_rom]   + child acpi | binary: acpi
+[init -> report_rom]     + ram  | assigned: 4M  | quota: 3975791 | used: 892K | avail: 3062383
+[init -> report_rom]     + caps | assigned: 250 | quota: 219     | used: 29   | avail: 190
+[init -> report_rom]   + child report_rom | binary: report_rom
+[init -> report_rom]     + ram  | assigned: 2M  | quota: 1995429 | used: 940K | avail: 1032869
+[init -> report_rom]     + caps | assigned: 100 | quota: 88      | used: 63   | avail: 25
+[init -> report_rom]   -
+[init -> report_rom] report 'system -> drivers -> state'
+[init -> report_rom]   state
+[init -> report_rom]   + ram | quota: 38158430 | used: 1240K | avail: 36888670
+[init -> report_rom]   + child event_filter | binary: event_filter
+[init -> report_rom]     + ram  | assigned: 1280K | quota: 1075422 | used: 1004K | avail: 47326
+[init -> report_rom]     + caps | assigned: 90    | quota: 52      | used: 46    | avail: 6
+[init -> report_rom]   + child usb_hid | binary: usb_hid | skipped_heartbeats: 8
+[init -> report_rom]     + ram  | assigned: 10M | quota: 9751560 | used: 1092K | avail: 8633352
+[init -> report_rom]     + caps | assigned: 180 | quota: 142     | used: 37    | avail: 105
+[init -> report_rom]   + child usb | binary: pc_usb_host
+[init -> report_rom]     + ram  | assigned: 16M | quota: 16924894 | used: 1168K | avail: 15728862
+[init -> report_rom]     + caps | assigned: 200 | quota: 145      | used: 35    | avail: 110
+[init -> report_rom]   + child ps2 | binary: ps2
+[init -> report_rom]     + ram  | assigned: 1280K | quota: 1002504 | used: 776K | avail: 207880
+[init -> report_rom]     + caps | assigned: 100   | quota: 46      | used: 30   | avail: 16
+[init -> report_rom]   + child fb | binary: vesa_fb
+[init -> report_rom]     + ram  | assigned: 20M | quota: 4109320 | used: 936K | avail: 3150856
+[init -> report_rom]     + caps | assigned: 150 | quota: 67      | used: 52   | avail: 15
+[init -> report_rom]   + child platform | binary: platform
+[init -> report_rom]     + ram  | assigned: 3M  | quota: 3204960 | used: 1064K | avail: 2115424
+[init -> report_rom]     + caps | assigned: 200 | quota: 227     | used: 62    | avail: 165
+[init -> report_rom]   + child pci_decode | binary: pci_decode
+[init -> report_rom]     + ram  | assigned: 2M  | quota: 1856520 | used: 836K | avail: 1000456
+[init -> report_rom]     + caps | assigned: 100 | quota: 72      | used: 30   | avail: 42
+[init -> report_rom]   + child acpi | binary: acpi
+[init -> report_rom]     + ram  | assigned: 4M  | quota: 3975791 | used: 892K | avail: 3062383
+[init -> report_rom]     + caps | assigned: 250 | quota: 219     | used: 29   | avail: 190
+[init -> report_rom]   + child report_rom | binary: report_rom
+[init -> report_rom]     + ram  | assigned: 2M  | quota: 1995429 | used: 940K | avail: 1032869
+[init -> report_rom]     + caps | assigned: 100 | quota: 88      | used: 63   | avail: 25
+[init -> report_rom]   -
+[init -> system -> repostorm_probe] repostorm-probe: baseline 5 children
+[init -> system -> repostorm_probe] repostorm-probe: BASE repostorm_probe ram_used=786432
+[init -> system -> repostorm_probe] repostorm-probe: BASE sponge_debug ram_used=28340224
+[init -> system -> repostorm_probe] repostorm-probe: BASE drivers ram_used=1269760
+[init -> system -> repostorm_probe] repostorm-probe: BASE nitpicker ram_used=34258944
+[init -> system -> repostorm_probe] repostorm-probe: BASE report_rom ram_used=888832
+[init -> report_rom] report 'system -> drivers -> state'
+[init -> report_rom]   state
+[init -> report_rom]   + ram | quota: 38158430 | used: 1240K | avail: 36888670
+[init -> report_rom]   + child event_filter | binary: event_filter
+[init -> report_rom]     + ram  | assigned: 1280K | quota: 1075422 | used: 1004K | avail: 47326
+[init -> report_rom]     + caps | assigned: 90    | quota: 52      | used: 46    | avail: 6
+[init -> report_rom]   + child usb_hid | binary: usb_hid | skipped_heartbeats: 9
+[init -> report_rom]     + ram  | assigned: 10M | quota: 9751560 | used: 1092K | avail: 8633352
+[init -> report_rom]     + caps | assigned: 180 | quota: 142     | used: 37    | avail: 105
+[init -> report_rom]   + child usb | binary: pc_usb_host
+[init -> report_rom]     + ram  | assigned: 16M | quota: 16924894 | used: 1168K | avail: 15728862
+[init -> report_rom]     + caps | assigned: 200 | quota: 145      | used: 35    | avail: 110
+[init -> report_rom]   + child ps2 | binary: ps2
+[init -> report_rom]     + ram  | assigned: 1280K | quota: 1002504 | used: 776K | avail: 207880
+[init -> report_rom]     + caps | assigned: 100   | quota: 46      | used: 30   | avail: 16
+[init -> report_rom]   + child fb | binary: vesa_fb
+[init -> report_rom]     + ram  | assigned: 20M | quota: 4109320 | used: 936K | avail: 3150856
+[init -> report_rom]     + caps | assigned: 150 | quota: 67      | used: 52   | avail: 15
+[init -> report_rom]   + child platform | binary: platform
+[init -> report_rom]     + ram  | assigned: 3M  | quota: 3204960 | used: 1064K | avail: 2115424
+[init -> report_rom]     + caps | assigned: 200 | quota: 227     | used: 62    | avail: 165
+[init -> report_rom]   + child pci_decode | binary: pci_decode
+[init -> report_rom]     + ram  | assigned: 2M  | quota: 1856520 | used: 836K | avail: 1000456
+[init -> report_rom]     + caps | assigned: 100 | quota: 72      | used: 30   | avail: 42
+[init -> report_rom]   + child acpi | binary: acpi
+[init -> report_rom]     + ram  | assigned: 4M  | quota: 3975791 | used: 892K | avail: 3062383
+[init -> report_rom]     + caps | assigned: 250 | quota: 219     | used: 29   | avail: 190
+[init -> report_rom]   + child report_rom | binary: report_rom
+[init -> report_rom]     + ram  | assigned: 2M  | quota: 1995429 | used: 940K | avail: 1032869
+[init -> report_rom]     + caps | assigned: 100 | quota: 88      | used: 63   | avail: 25
+[init -> report_rom]   -
+[init -> report_rom] report 'system -> drivers -> state'
+[init -> report_rom]   state
+[init -> report_rom]   + ram | quota: 38158430 | used: 1240K | avail: 36888670
+[init -> report_rom]   + child event_filter | binary: event_filter
+[init -> report_rom]     + ram  | assigned: 1280K | quota: 1075422 | used: 1004K | avail: 47326
+[init -> report_rom]     + caps | assigned: 90    | quota: 52      | used: 46    | avail: 6
+[init -> report_rom]   + child usb_hid | binary: usb_hid | skipped_heartbeats: 10
+[init -> report_rom]     + ram  | assigned: 10M | quota: 9751560 | used: 1092K | avail: 8633352
+[init -> report_rom]     + caps | assigned: 180 | quota: 142     | used: 37    | avail: 105
+[init -> report_rom]   + child usb | binary: pc_usb_host
+[init -> report_rom]     + ram  | assigned: 16M | quota: 16924894 | used: 1168K | avail: 15728862
+[init -> report_rom]     + caps | assigned: 200 | quota: 145      | used: 35    | avail: 110
+[init -> report_rom]   + child ps2 | binary: ps2
+[init -> report_rom]     + ram  | assigned: 1280K | quota: 1002504 | used: 776K | avail: 207880
+[init -> report_rom]     + caps | assigned: 100   | quota: 46      | used: 30   | avail: 16
+[init -> report_rom]   + child fb | binary: vesa_fb
+[init -> report_rom]     + ram  | assigned: 20M | quota: 4109320 | used: 936K | avail: 3150856
+[init -> report_rom]     + caps | assigned: 150 | quota: 67      | used: 52   | avail: 15
+[init -> report_rom]   + child platform | binary: platform
+[init -> report_rom]     + ram  | assigned: 3M  | quota: 3204960 | used: 1064K | avail: 2115424
+[init -> report_rom]     + caps | assigned: 200 | quota: 227     | used: 62    | avail: 165
+[init -> report_rom]   + child pci_decode | binary: pci_decode
+[init -> report_rom]     + ram  | assigned: 2M  | quota: 1856520 | used: 836K | avail: 1000456
+[init -> report_rom]     + caps | assigned: 100 | quota: 72      | used: 30   | avail: 42
+[init -> report_rom]   + child acpi | binary: acpi
+[init -> report_rom]     + ram  | assigned: 4M  | quota: 3975791 | used: 892K | avail: 3062383
+[init -> report_rom]     + caps | assigned: 250 | quota: 219     | used: 29   | avail: 190
+[init -> report_rom]   + child report_rom | binary: report_rom
+[init -> report_rom]     + ram  | assigned: 2M  | quota: 1995429 | used: 940K | avail: 1032869
+[init -> report_rom]     + caps | assigned: 100 | quota: 88      | used: 63   | avail: 25
+[init -> report_rom]   -
+[init -> report_rom] report 'system -> drivers -> state'
+[init -> report_rom]   state
+[init -> report_rom]   + ram | quota: 38158430 | used: 1240K | avail: 36888670
+[init -> report_rom]   + child event_filter | binary: event_filter
+[init -> report_rom]     + ram  | assigned: 1280K | quota: 1075422 | used: 1004K | avail: 47326
+[init -> report_rom]     + caps | assigned: 90    | quota: 52      | used: 46    | avail: 6
+[init -> report_rom]   + child usb_hid | binary: usb_hid | skipped_heartbeats: 11
+[init -> report_rom]     + ram  | assigned: 10M | quota: 9751560 | used: 1092K | avail: 8633352
+[init -> report_rom]     + caps | assigned: 180 | quota: 142     | used: 37    | avail: 105
+[init -> report_rom]   + child usb | binary: pc_usb_host
+[init -> report_rom]     + ram  | assigned: 16M | quota: 16924894 | used: 1168K | avail: 15728862
+[init -> report_rom]     + caps | assigned: 200 | quota: 145      | used: 35    | avail: 110
+[init -> report_rom]   + child ps2 | binary: ps2
+[init -> report_rom]     + ram  | assigned: 1280K | quota: 1002504 | used: 776K | avail: 207880
+[init -> report_rom]     + caps | assigned: 100   | quota: 46      | used: 30   | avail: 16
+[init -> report_rom]   + child fb | binary: vesa_fb
+[init -> report_rom]     + ram  | assigned: 20M | quota: 4109320 | used: 936K | avail: 3150856
+[init -> report_rom]     + caps | assigned: 150 | quota: 67      | used: 52   | avail: 15
+[init -> report_rom]   + child platform | binary: platform
+[init -> report_rom]     + ram  | assigned: 3M  | quota: 3204960 | used: 1064K | avail: 2115424
+[init -> report_rom]     + caps | assigned: 200 | quota: 227     | used: 62    | avail: 165
+[init -> report_rom]   + child pci_decode | binary: pci_decode
+[init -> report_rom]     + ram  | assigned: 2M  | quota: 1856520 | used: 836K | avail: 1000456
+[init -> report_rom]     + caps | assigned: 100 | quota: 72      | used: 30   | avail: 42
+[init -> report_rom]   + child acpi | binary: acpi
+[init -> report_rom]     + ram  | assigned: 4M  | quota: 3975791 | used: 892K | avail: 3062383
+[init -> report_rom]     + caps | assigned: 250 | quota: 219     | used: 29   | avail: 190
+[init -> report_rom]   + child report_rom | binary: report_rom
+[init -> report_rom]     + ram  | assigned: 2M  | quota: 1995429 | used: 940K | avail: 1032869
+[init -> report_rom]     + caps | assigned: 100 | quota: 88      | used: 63   | avail: 25
+[init -> report_rom]   -
+[init -> report_rom] report 'system -> drivers -> state'
+[init -> report_rom]   state
+[init -> report_rom]   + ram | quota: 38158430 | used: 1240K | avail: 36888670
+[init -> report_rom]   + child event_filter | binary: event_filter
+[init -> report_rom]     + ram  | assigned: 1280K | quota: 1075422 | used: 1004K | avail: 47326
+[init -> report_rom]     + caps | assigned: 90    | quota: 52      | used: 46    | avail: 6
+[init -> report_rom]   + child usb_hid | binary: usb_hid | skipped_heartbeats: 12
+[init -> report_rom]     + ram  | assigned: 10M | quota: 9751560 | used: 1092K | avail: 8633352
+[init -> report_rom]     + caps | assigned: 180 | quota: 142     | used: 37    | avail: 105
+[init -> report_rom]   + child usb | binary: pc_usb_host
+[init -> report_rom]     + ram  | assigned: 16M | quota: 16924894 | used: 1168K | avail: 15728862
+[init -> report_rom]     + caps | assigned: 200 | quota: 145      | used: 35    | avail: 110
+[init -> report_rom]   + child ps2 | binary: ps2
+[init -> report_rom]     + ram  | assigned: 1280K | quota: 1002504 | used: 776K | avail: 207880
+[init -> report_rom]     + caps | assigned: 100   | quota: 46      | used: 30   | avail: 16
+[init -> report_rom]   + child fb | binary: vesa_fb
+[init -> report_rom]     + ram  | assigned: 20M | quota: 4109320 | used: 936K | avail: 3150856
+[init -> report_rom]     + caps | assigned: 150 | quota: 67      | used: 52   | avail: 15
+[init -> report_rom]   + child platform | binary: platform
+[init -> report_rom]     + ram  | assigned: 3M  | quota: 3204960 | used: 1064K | avail: 2115424
+[init -> report_rom]     + caps | assigned: 200 | quota: 227     | used: 62    | avail: 165
+[init -> report_rom]   + child pci_decode | binary: pci_decode
+[init -> report_rom]     + ram  | assigned: 2M  | quota: 1856520 | used: 836K | avail: 1000456
+[init -> report_rom]     + caps | assigned: 100 | quota: 72      | used: 30   | avail: 42
+[init -> report_rom]   + child acpi | binary: acpi
+[init -> report_rom]     + ram  | assigned: 4M  | quota: 3975791 | used: 892K | avail: 3062383
+[init -> report_rom]     + caps | assigned: 250 | quota: 219     | used: 29   | avail: 190
+[init -> report_rom]   + child report_rom | binary: report_rom
+[init -> report_rom]     + ram  | assigned: 2M  | quota: 1995429 | used: 940K | avail: 1032869
+[init -> report_rom]     + caps | assigned: 100 | quota: 88      | used: 63   | avail: 25
+[init -> report_rom]   -
+[init -> report_rom] report 'system -> drivers -> state'
+[init -> report_rom]   state
+[init -> report_rom]   + ram | quota: 38158430 | used: 1240K | avail: 36888670
+[init -> report_rom]   + child event_filter | binary: event_filter
+[init -> report_rom]     + ram  | assigned: 1280K | quota: 1075422 | used: 1004K | avail: 47326
+[init -> report_rom]     + caps | assigned: 90    | quota: 52      | used: 46    | avail: 6
+[init -> report_rom]   + child usb_hid | binary: usb_hid | skipped_heartbeats: 13
+[init -> report_rom]     + ram  | assigned: 10M | quota: 9751560 | used: 1092K | avail: 8633352
+[init -> report_rom]     + caps | assigned: 180 | quota: 142     | used: 37    | avail: 105
+[init -> report_rom]   + child usb | binary: pc_usb_host
+[init -> report_rom]     + ram  | assigned: 16M | quota: 16924894 | used: 1168K | avail: 15728862
+[init -> report_rom]     + caps | assigned: 200 | quota: 145      | used: 35    | avail: 110
+[init -> report_rom]   + child ps2 | binary: ps2
+[init -> report_rom]     + ram  | assigned: 1280K | quota: 1002504 | used: 776K | avail: 207880
+[init -> report_rom]     + caps | assigned: 100   | quota: 46      | used: 30   | avail: 16
+[init -> report_rom]   + child fb | binary: vesa_fb
+[init -> report_rom]     + ram  | assigned: 20M | quota: 4109320 | used: 936K | avail: 3150856
+[init -> report_rom]     + caps | assigned: 150 | quota: 67      | used: 52   | avail: 15
+[init -> report_rom]   + child platform | binary: platform
+[init -> report_rom]     + ram  | assigned: 3M  | quota: 3204960 | used: 1064K | avail: 2115424
+[init -> report_rom]     + caps | assigned: 200 | quota: 227     | used: 62    | avail: 165
+[init -> report_rom]   + child pci_decode | binary: pci_decode
+[init -> report_rom]     + ram  | assigned: 2M  | quota: 1856520 | used: 836K | avail: 1000456
+[init -> report_rom]     + caps | assigned: 100 | quota: 72      | used: 30   | avail: 42
+[init -> report_rom]   + child acpi | binary: acpi
+[init -> report_rom]     + ram  | assigned: 4M  | quota: 3975791 | used: 892K | avail: 3062383
+[init -> report_rom]     + caps | assigned: 250 | quota: 219     | used: 29   | avail: 190
+[init -> report_rom]   + child report_rom | binary: report_rom
+[init -> report_rom]     + ram  | assigned: 2M  | quota: 1995429 | used: 940K | avail: 1032869
+[init -> report_rom]     + caps | assigned: 100 | quota: 88      | used: 63   | avail: 25
+[init -> report_rom]   -
+[init -> report_rom] report 'system -> drivers -> state'
+[init -> report_rom]   state
+[init -> report_rom]   + ram | quota: 38158430 | used: 1240K | avail: 36888670
+[init -> report_rom]   + child event_filter | binary: event_filter
+[init -> report_rom]     + ram  | assigned: 1280K | quota: 1075422 | used: 1004K | avail: 47326
+[init -> report_rom]     + caps | assigned: 90    | quota: 52      | used: 46    | avail: 6
+[init -> report_rom]   + child usb_hid | binary: usb_hid | skipped_heartbeats: 14
+[init -> report_rom]     + ram  | assigned: 10M | quota: 9751560 | used: 1092K | avail: 8633352
+[init -> report_rom]     + caps | assigned: 180 | quota: 142     | used: 37    | avail: 105
+[init -> report_rom]   + child usb | binary: pc_usb_host
+[init -> report_rom]     + ram  | assigned: 16M | quota: 16924894 | used: 1168K | avail: 15728862
+[init -> report_rom]     + caps | assigned: 200 | quota: 145      | used: 35    | avail: 110
+[init -> report_rom]   + child ps2 | binary: ps2
+[init -> report_rom]     + ram  | assigned: 1280K | quota: 1002504 | used: 776K | avail: 207880
+[init -> report_rom]     + caps | assigned: 100   | quota: 46      | used: 30   | avail: 16
+[init -> report_rom]   + child fb | binary: vesa_fb
+[init -> report_rom]     + ram  | assigned: 20M | quota: 4109320 | used: 936K | avail: 3150856
+[init -> report_rom]     + caps | assigned: 150 | quota: 67      | used: 52   | avail: 15
+[init -> report_rom]   + child platform | binary: platform
+[init -> report_rom]     + ram  | assigned: 3M  | quota: 3204960 | used: 1064K | avail: 2115424
+[init -> report_rom]     + caps | assigned: 200 | quota: 227     | used: 62    | avail: 165
+[init -> report_rom]   + child pci_decode | binary: pci_decode
+[init -> report_rom]     + ram  | assigned: 2M  | quota: 1856520 | used: 836K | avail: 1000456
+[init -> report_rom]     + caps | assigned: 100 | quota: 72      | used: 30   | avail: 42
+[init -> report_rom]   + child acpi | binary: acpi
+[init -> report_rom]     + ram  | assigned: 4M  | quota: 3975791 | used: 892K | avail: 3062383
+[init -> report_rom]     + caps | assigned: 250 | quota: 219     | used: 29   | avail: 190
+[init -> report_rom]   + child report_rom | binary: report_rom
+[init -> report_rom]     + ram  | assigned: 2M  | quota: 1995429 | used: 940K | avail: 1032869
+[init -> report_rom]     + caps | assigned: 100 | quota: 88      | used: 63   | avail: 25
+[init -> report_rom]   -
+[init -> report_rom] report 'system -> drivers -> state'
+[init -> report_rom]   state
+[init -> report_rom]   + ram | quota: 38158430 | used: 1240K | avail: 36888670
+[init -> report_rom]   + child event_filter | binary: event_filter
+[init -> report_rom]     + ram  | assigned: 1280K | quota: 1075422 | used: 1004K | avail: 47326
+[init -> report_rom]     + caps | assigned: 90    | quota: 52      | used: 46    | avail: 6
+[init -> report_rom]   + child usb_hid | binary: usb_hid | skipped_heartbeats: 15
+[init -> report_rom]     + ram  | assigned: 10M | quota: 9751560 | used: 1092K | avail: 8633352
+[init -> report_rom]     + caps | assigned: 180 | quota: 142     | used: 37    | avail: 105
+[init -> report_rom]   + child usb | binary: pc_usb_host
+[init -> report_rom]     + ram  | assigned: 16M | quota: 16924894 | used: 1168K | avail: 15728862
+[init -> report_rom]     + caps | assigned: 200 | quota: 145      | used: 35    | avail: 110
+[init -> report_rom]   + child ps2 | binary: ps2
+[init -> report_rom]     + ram  | assigned: 1280K | quota: 1002504 | used: 776K | avail: 207880
+[init -> report_rom]     + caps | assigned: 100   | quota: 46      | used: 30   | avail: 16
+[init -> report_rom]   + child fb | binary: vesa_fb
+[init -> report_rom]     + ram  | assigned: 20M | quota: 4109320 | used: 936K | avail: 3150856
+[init -> report_rom]     + caps | assigned: 150 | quota: 67      | used: 52   | avail: 15
+[init -> report_rom]   + child platform | binary: platform
+[init -> report_rom]     + ram  | assigned: 3M  | quota: 3204960 | used: 1064K | avail: 2115424
+[init -> report_rom]     + caps | assigned: 200 | quota: 227     | used: 62    | avail: 165
+[init -> report_rom]   + child pci_decode | binary: pci_decode
+[init -> report_rom]     + ram  | assigned: 2M  | quota: 1856520 | used: 836K | avail: 1000456
+[init -> report_rom]     + caps | assigned: 100 | quota: 72      | used: 30   | avail: 42
+[init -> report_rom]   + child acpi | binary: acpi
+[init -> report_rom]     + ram  | assigned: 4M  | quota: 3975791 | used: 892K | avail: 3062383
+[init -> report_rom]     + caps | assigned: 250 | quota: 219     | used: 29   | avail: 190
+[init -> report_rom]   + child report_rom | binary: report_rom
+[init -> report_rom]     + ram  | assigned: 2M  | quota: 1995429 | used: 940K | avail: 1032869
+[init -> report_rom]     + caps | assigned: 100 | quota: 88      | used: 63   | avail: 25
+[init -> report_rom]   -
+[init -> report_rom] report 'system -> drivers -> state'
+[init -> report_rom]   state
+[init -> report_rom]   + ram | quota: 38158430 | used: 1240K | avail: 36888670
+[init -> report_rom]   + child event_filter | binary: event_filter
+[init -> report_rom]     + ram  | assigned: 1280K | quota: 1075422 | used: 1004K | avail: 47326
+[init -> report_rom]     + caps | assigned: 90    | quota: 52      | used: 46    | avail: 6
+[init -> report_rom]   + child usb_hid | binary: usb_hid | skipped_heartbeats: 16
+[init -> report_rom]     + ram  | assigned: 10M | quota: 9751560 | used: 1092K | avail: 8633352
+[init -> report_rom]     + caps | assigned: 180 | quota: 142     | used: 37    | avail: 105
+[init -> report_rom]   + child usb | binary: pc_usb_host
+[init -> report_rom]     + ram  | assigned: 16M | quota: 16924894 | used: 1168K | avail: 15728862
+[init -> report_rom]     + caps | assigned: 200 | quota: 145      | used: 35    | avail: 110
+[init -> report_rom]   + child ps2 | binary: ps2
+[init -> report_rom]     + ram  | assigned: 1280K | quota: 1002504 | used: 776K | avail: 207880
+[init -> report_rom]     + caps | assigned: 100   | quota: 46      | used: 30   | avail: 16
+[init -> report_rom]   + child fb | binary: vesa_fb
+[init -> report_rom]     + ram  | assigned: 20M | quota: 4109320 | used: 936K | avail: 3150856
+[init -> report_rom]     + caps | assigned: 150 | quota: 67      | used: 52   | avail: 15
+[init -> report_rom]   + child platform | binary: platform
+[init -> report_rom]     + ram  | assigned: 3M  | quota: 3204960 | used: 1064K | avail: 2115424
+[init -> report_rom]     + caps | assigned: 200 | quota: 227     | used: 62    | avail: 165
+[init -> report_rom]   + child pci_decode | binary: pci_decode
+[init -> report_rom]     + ram  | assigned: 2M  | quota: 1856520 | used: 836K | avail: 1000456
+[init -> report_rom]     + caps | assigned: 100 | quota: 72      | used: 30   | avail: 42
+[init -> report_rom]   + child acpi | binary: acpi
+[init -> report_rom]     + ram  | assigned: 4M  | quota: 3975791 | used: 892K | avail: 3062383
+[init -> report_rom]     + caps | assigned: 250 | quota: 219     | used: 29   | avail: 190
+[init -> report_rom]   + child report_rom | binary: report_rom
+[init -> report_rom]     + ram  | assigned: 2M  | quota: 1995429 | used: 940K | avail: 1032869
+[init -> report_rom]     + caps | assigned: 100 | quota: 88      | used: 63   | avail: 25
+[init -> report_rom]   -
+[init -> report_rom] report 'system -> drivers -> state'
+[init -> report_rom]   state
+[init -> report_rom]   + ram | quota: 38158430 | used: 1240K | avail: 36888670
+[init -> report_rom]   + child event_filter | binary: event_filter
+[init -> report_rom]     + ram  | assigned: 1280K | quota: 1075422 | used: 1004K | avail: 47326
+[init -> report_rom]     + caps | assigned: 90    | quota: 52      | used: 46    | avail: 6
+[init -> report_rom]   + child usb_hid | binary: usb_hid | skipped_heartbeats: 17
+[init -> report_rom]     + ram  | assigned: 10M | quota: 9751560 | used: 1092K | avail: 8633352
+[init -> report_rom]     + caps | assigned: 180 | quota: 142     | used: 37    | avail: 105
+[init -> report_rom]   + child usb | binary: pc_usb_host
+[init -> report_rom]     + ram  | assigned: 16M | quota: 16924894 | used: 1168K | avail: 15728862
+[init -> report_rom]     + caps | assigned: 200 | quota: 145      | used: 35    | avail: 110
+[init -> report_rom]   + child ps2 | binary: ps2
+[init -> report_rom]     + ram  | assigned: 1280K | quota: 1002504 | used: 776K | avail: 207880
+[init -> report_rom]     + caps | assigned: 100   | quota: 46      | used: 30   | avail: 16
+[init -> report_rom]   + child fb | binary: vesa_fb
+[init -> report_rom]     + ram  | assigned: 20M | quota: 4109320 | used: 936K | avail: 3150856
+[init -> report_rom]     + caps | assigned: 150 | quota: 67      | used: 52   | avail: 15
+[init -> report_rom]   + child platform | binary: platform
+[init -> report_rom]     + ram  | assigned: 3M  | quota: 3204960 | used: 1064K | avail: 2115424
+[init -> report_rom]     + caps | assigned: 200 | quota: 227     | used: 62    | avail: 165
+[init -> report_rom]   + child pci_decode | binary: pci_decode
+[init -> report_rom]     + ram  | assigned: 2M  | quota: 1856520 | used: 836K | avail: 1000456
+[init -> report_rom]     + caps | assigned: 100 | quota: 72      | used: 30   | avail: 42
+[init -> report_rom]   + child acpi | binary: acpi
+[init -> report_rom]     + ram  | assigned: 4M  | quota: 3975791 | used: 892K | avail: 3062383
+[init -> report_rom]     + caps | assigned: 250 | quota: 219     | used: 29   | avail: 190
+[init -> report_rom]   + child report_rom | binary: report_rom
+[init -> report_rom]     + ram  | assigned: 2M  | quota: 1995429 | used: 940K | avail: 1032869
+[init -> report_rom]     + caps | assigned: 100 | quota: 88      | used: 63   | avail: 25
+[init -> report_rom]   -
+[init -> report_rom] report 'system -> drivers -> state'
+[init -> report_rom]   state
+[init -> report_rom]   + ram | quota: 38158430 | used: 1240K | avail: 36888670
+[init -> report_rom]   + child event_filter | binary: event_filter
+[init -> report_rom]     + ram  | assigned: 1280K | quota: 1075422 | used: 1004K | avail: 47326
+[init -> report_rom]     + caps | assigned: 90    | quota: 52      | used: 46    | avail: 6
+[init -> report_rom]   + child usb_hid | binary: usb_hid | skipped_heartbeats: 18
+[init -> report_rom]     + ram  | assigned: 10M | quota: 9751560 | used: 1092K | avail: 8633352
+[init -> report_rom]     + caps | assigned: 180 | quota: 142     | used: 37    | avail: 105
+[init -> report_rom]   + child usb | binary: pc_usb_host
+[init -> report_rom]     + ram  | assigned: 16M | quota: 16924894 | used: 1168K | avail: 15728862
+[init -> report_rom]     + caps | assigned: 200 | quota: 145      | used: 35    | avail: 110
+[init -> report_rom]   + child ps2 | binary: ps2
+[init -> report_rom]     + ram  | assigned: 1280K | quota: 1002504 | used: 776K | avail: 207880
+[init -> report_rom]     + caps | assigned: 100   | quota: 46      | used: 30   | avail: 16
+[init -> report_rom]   + child fb | binary: vesa_fb
+[init -> report_rom]     + ram  | assigned: 20M | quota: 4109320 | used: 936K | avail: 3150856
+[init -> report_rom]     + caps | assigned: 150 | quota: 67      | used: 52   | avail: 15
+[init -> report_rom]   + child platform | binary: platform
+[init -> report_rom]     + ram  | assigned: 3M  | quota: 3204960 | used: 1064K | avail: 2115424
+[init -> report_rom]     + caps | assigned: 200 | quota: 227     | used: 62    | avail: 165
+[init -> report_rom]   + child pci_decode | binary: pci_decode
+[init -> report_rom]     + ram  | assigned: 2M  | quota: 1856520 | used: 836K | avail: 1000456
+[init -> report_rom]     + caps | assigned: 100 | quota: 72      | used: 30   | avail: 42
+[init -> report_rom]   + child acpi | binary: acpi
+[init -> report_rom]     + ram  | assigned: 4M  | quota: 3975791 | used: 892K | avail: 3062383
+[init -> report_rom]     + caps | assigned: 250 | quota: 219     | used: 29   | avail: 190
+[init -> report_rom]   + child report_rom | binary: report_rom
+[init -> report_rom]     + ram  | assigned: 2M  | quota: 1995429 | used: 940K | avail: 1032869
+[init -> report_rom]     + caps | assigned: 100 | quota: 88      | used: 63   | avail: 25
+[init -> report_rom]   -
+[init -> report_rom] report 'system -> drivers -> state'
+[init -> report_rom]   state
+[init -> report_rom]   + ram | quota: 38158430 | used: 1240K | avail: 36888670
+[init -> report_rom]   + child event_filter | binary: event_filter
+[init -> report_rom]     + ram  | assigned: 1280K | quota: 1075422 | used: 1004K | avail: 47326
+[init -> report_rom]     + caps | assigned: 90    | quota: 52      | used: 46    | avail: 6
+[init -> report_rom]   + child usb_hid | binary: usb_hid | skipped_heartbeats: 19
+[init -> report_rom]     + ram  | assigned: 10M | quota: 9751560 | used: 1092K | avail: 8633352
+[init -> report_rom]     + caps | assigned: 180 | quota: 142     | used: 37    | avail: 105
+[init -> report_rom]   + child usb | binary: pc_usb_host
+[init -> report_rom]     + ram  | assigned: 16M | quota: 16924894 | used: 1168K | avail: 15728862
+[init -> report_rom]     + caps | assigned: 200 | quota: 145      | used: 35    | avail: 110
+[init -> report_rom]   + child ps2 | binary: ps2
+[init -> report_rom]     + ram  | assigned: 1280K | quota: 1002504 | used: 776K | avail: 207880
+[init -> report_rom]     + caps | assigned: 100   | quota: 46      | used: 30   | avail: 16
+[init -> report_rom]   + child fb | binary: vesa_fb
+[init -> report_rom]     + ram  | assigned: 20M | quota: 4109320 | used: 936K | avail: 3150856
+[init -> report_rom]     + caps | assigned: 150 | quota: 67      | used: 52   | avail: 15
+[init -> report_rom]   + child platform | binary: platform
+[init -> report_rom]     + ram  | assigned: 3M  | quota: 3204960 | used: 1064K | avail: 2115424
+[init -> report_rom]     + caps | assigned: 200 | quota: 227     | used: 62    | avail: 165
+[init -> report_rom]   + child pci_decode | binary: pci_decode
+[init -> report_rom]     + ram  | assigned: 2M  | quota: 1856520 | used: 836K | avail: 1000456
+[init -> report_rom]     + caps | assigned: 100 | quota: 72      | used: 30   | avail: 42
+[init -> report_rom]   + child acpi | binary: acpi
+[init -> report_rom]     + ram  | assigned: 4M  | quota: 3975791 | used: 892K | avail: 3062383
+[init -> report_rom]     + caps | assigned: 250 | quota: 219     | used: 29   | avail: 190
+[init -> report_rom]   + child report_rom | binary: report_rom
+[init -> report_rom]     + ram  | assigned: 2M  | quota: 1995429 | used: 940K | avail: 1032869
+[init -> report_rom]     + caps | assigned: 100 | quota: 88      | used: 63   | avail: 25
+[init -> report_rom]   -
+[init -> report_rom] report 'system -> drivers -> state'
+[init -> report_rom]   state
+[init -> report_rom]   + ram | quota: 38158430 | used: 1240K | avail: 36888670
+[init -> report_rom]   + child event_filter | binary: event_filter
+[init -> report_rom]     + ram  | assigned: 1280K | quota: 1075422 | used: 1004K | avail: 47326
+[init -> report_rom]     + caps | assigned: 90    | quota: 52      | used: 46    | avail: 6
+[init -> report_rom]   + child usb_hid | binary: usb_hid | skipped_heartbeats: 20
+[init -> report_rom]     + ram  | assigned: 10M | quota: 9751560 | used: 1092K | avail: 8633352
+[init -> report_rom]     + caps | assigned: 180 | quota: 142     | used: 37    | avail: 105
+[init -> report_rom]   + child usb | binary: pc_usb_host
+[init -> report_rom]     + ram  | assigned: 16M | quota: 16924894 | used: 1168K | avail: 15728862
+[init -> report_rom]     + caps | assigned: 200 | quota: 145      | used: 35    | avail: 110
+[init -> report_rom]   + child ps2 | binary: ps2
+[init -> report_rom]     + ram  | assigned: 1280K | quota: 1002504 | used: 776K | avail: 207880
+[init -> report_rom]     + caps | assigned: 100   | quota: 46      | used: 30   | avail: 16
+[init -> report_rom]   + child fb | binary: vesa_fb
+[init -> report_rom]     + ram  | assigned: 20M | quota: 4109320 | used: 936K | avail: 3150856
+[init -> report_rom]     + caps | assigned: 150 | quota: 67      | used: 52   | avail: 15
+[init -> report_rom]   + child platform | binary: platform
+[init -> report_rom]     + ram  | assigned: 3M  | quota: 3204960 | used: 1064K | avail: 2115424
+[init -> report_rom]     + caps | assigned: 200 | quota: 227     | used: 62    | avail: 165
+[init -> report_rom]   + child pci_decode | binary: pci_decode
+[init -> report_rom]     + ram  | assigned: 2M  | quota: 1856520 | used: 836K | avail: 1000456
+[init -> report_rom]     + caps | assigned: 100 | quota: 72      | used: 30   | avail: 42
+[init -> report_rom]   + child acpi | binary: acpi
+[init -> report_rom]     + ram  | assigned: 4M  | quota: 3975791 | used: 892K | avail: 3062383
+[init -> report_rom]     + caps | assigned: 250 | quota: 219     | used: 29   | avail: 190
+[init -> report_rom]   + child report_rom | binary: report_rom
+[init -> report_rom]     + ram  | assigned: 2M  | quota: 1995429 | used: 940K | avail: 1032869
+[init -> report_rom]     + caps | assigned: 100 | quota: 88      | used: 63   | avail: 25
+[init -> report_rom]   -
+[init -> report_rom] report 'system -> drivers -> state'
+[init -> report_rom]   state
+[init -> report_rom]   + ram | quota: 38158430 | used: 1240K | avail: 36888670
+[init -> report_rom]   + child event_filter | binary: event_filter
+[init -> report_rom]     + ram  | assigned: 1280K | quota: 1075422 | used: 1004K | avail: 47326
+[init -> report_rom]     + caps | assigned: 90    | quota: 52      | used: 46    | avail: 6
+[init -> report_rom]   + child usb_hid | binary: usb_hid | skipped_heartbeats: 21
+[init -> report_rom]     + ram  | assigned: 10M | quota: 9751560 | used: 1092K | avail: 8633352
+[init -> report_rom]     + caps | assigned: 180 | quota: 142     | used: 37    | avail: 105
+[init -> report_rom]   + child usb | binary: pc_usb_host
+[init -> report_rom]     + ram  | assigned: 16M | quota: 16924894 | used: 1168K | avail: 15728862
+[init -> report_rom]     + caps | assigned: 200 | quota: 145      | used: 35    | avail: 110
+[init -> report_rom]   + child ps2 | binary: ps2
+[init -> report_rom]     + ram  | assigned: 1280K | quota: 1002504 | used: 776K | avail: 207880
+[init -> report_rom]     + caps | assigned: 100   | quota: 46      | used: 30   | avail: 16
+[init -> report_rom]   + child fb | binary: vesa_fb
+[init -> report_rom]     + ram  | assigned: 20M | quota: 4109320 | used: 936K | avail: 3150856
+[init -> report_rom]     + caps | assigned: 150 | quota: 67      | used: 52   | avail: 15
+[init -> report_rom]   + child platform | binary: platform
+[init -> report_rom]     + ram  | assigned: 3M  | quota: 3204960 | used: 1064K | avail: 2115424
+[init -> report_rom]     + caps | assigned: 200 | quota: 227     | used: 62    | avail: 165
+[init -> report_rom]   + child pci_decode | binary: pci_decode
+[init -> report_rom]     + ram  | assigned: 2M  | quota: 1856520 | used: 836K | avail: 1000456
+[init -> report_rom]     + caps | assigned: 100 | quota: 72      | used: 30   | avail: 42
+[init -> report_rom]   + child acpi | binary: acpi
+[init -> report_rom]     + ram  | assigned: 4M  | quota: 3975791 | used: 892K | avail: 3062383
+[init -> report_rom]     + caps | assigned: 250 | quota: 219     | used: 29   | avail: 190
+[init -> report_rom]   + child report_rom | binary: report_rom
+[init -> report_rom]     + ram  | assigned: 2M  | quota: 1995429 | used: 940K | avail: 1032869
+[init -> report_rom]     + caps | assigned: 100 | quota: 88      | used: 63   | avail: 25
+[init -> report_rom]   -
+[init -> report_rom] report 'system -> drivers -> state'
+[init -> report_rom]   state
+[init -> report_rom]   + ram | quota: 38158430 | used: 1240K | avail: 36888670
+[init -> report_rom]   + child event_filter | binary: event_filter
+[init -> report_rom]     + ram  | assigned: 1280K | quota: 1075422 | used: 1004K | avail: 47326
+[init -> report_rom]     + caps | assigned: 90    | quota: 52      | used: 46    | avail: 6
+[init -> report_rom]   + child usb_hid | binary: usb_hid | skipped_heartbeats: 22
+[init -> report_rom]     + ram  | assigned: 10M | quota: 9751560 | used: 1092K | avail: 8633352
+[init -> report_rom]     + caps | assigned: 180 | quota: 142     | used: 37    | avail: 105
+[init -> report_rom]   + child usb | binary: pc_usb_host
+[init -> report_rom]     + ram  | assigned: 16M | quota: 16924894 | used: 1168K | avail: 15728862
+[init -> report_rom]     + caps | assigned: 200 | quota: 145      | used: 35    | avail: 110
+[init -> report_rom]   + child ps2 | binary: ps2
+[init -> report_rom]     + ram  | assigned: 1280K | quota: 1002504 | used: 776K | avail: 207880
+[init -> report_rom]     + caps | assigned: 100   | quota: 46      | used: 30   | avail: 16
+[init -> report_rom]   + child fb | binary: vesa_fb
+[init -> report_rom]     + ram  | assigned: 20M | quota: 4109320 | used: 936K | avail: 3150856
+[init -> report_rom]     + caps | assigned: 150 | quota: 67      | used: 52   | avail: 15
+[init -> report_rom]   + child platform | binary: platform
+[init -> report_rom]     + ram  | assigned: 3M  | quota: 3204960 | used: 1064K | avail: 2115424
+[init -> report_rom]     + caps | assigned: 200 | quota: 227     | used: 62    | avail: 165
+[init -> report_rom]   + child pci_decode | binary: pci_decode
+[init -> report_rom]     + ram  | assigned: 2M  | quota: 1856520 | used: 836K | avail: 1000456
+[init -> report_rom]     + caps | assigned: 100 | quota: 72      | used: 30   | avail: 42
+[init -> report_rom]   + child acpi | binary: acpi
+[init -> report_rom]     + ram  | assigned: 4M  | quota: 3975791 | used: 892K | avail: 3062383
+[init -> report_rom]     + caps | assigned: 250 | quota: 219     | used: 29   | avail: 190
+[init -> report_rom]   + child report_rom | binary: report_rom
+[init -> report_rom]     + ram  | assigned: 2M  | quota: 1995429 | used: 940K | avail: 1032869
+[init -> report_rom]     + caps | assigned: 100 | quota: 88      | used: 63   | avail: 25
+[init -> report_rom]   -
+[init -> report_rom] report 'system -> drivers -> state'
+[init -> report_rom]   state
+[init -> report_rom]   + ram | quota: 38158430 | used: 1240K | avail: 36888670
+[init -> report_rom]   + child event_filter | binary: event_filter
+[init -> report_rom]     + ram  | assigned: 1280K | quota: 1075422 | used: 1004K | avail: 47326
+[init -> report_rom]     + caps | assigned: 90    | quota: 52      | used: 46    | avail: 6
+[init -> report_rom]   + child usb_hid | binary: usb_hid | skipped_heartbeats: 23
+[init -> report_rom]     + ram  | assigned: 10M | quota: 9751560 | used: 1092K | avail: 8633352
+[init -> report_rom]     + caps | assigned: 180 | quota: 142     | used: 37    | avail: 105
+[init -> report_rom]   + child usb | binary: pc_usb_host
+[init -> report_rom]     + ram  | assigned: 16M | quota: 16924894 | used: 1168K | avail: 15728862
+[init -> report_rom]     + caps | assigned: 200 | quota: 145      | used: 35    | avail: 110
+[init -> report_rom]   + child ps2 | binary: ps2
+[init -> report_rom]     + ram  | assigned: 1280K | quota: 1002504 | used: 776K | avail: 207880
+[init -> report_rom]     + caps | assigned: 100   | quota: 46      | used: 30   | avail: 16
+[init -> report_rom]   + child fb | binary: vesa_fb
+[init -> report_rom]     + ram  | assigned: 20M | quota: 4109320 | used: 936K | avail: 3150856
+[init -> report_rom]     + caps | assigned: 150 | quota: 67      | used: 52   | avail: 15
+[init -> report_rom]   + child platform | binary: platform
+[init -> report_rom]     + ram  | assigned: 3M  | quota: 3204960 | used: 1064K | avail: 2115424
+[init -> report_rom]     + caps | assigned: 200 | quota: 227     | used: 62    | avail: 165
+[init -> report_rom]   + child pci_decode | binary: pci_decode
+[init -> report_rom]     + ram  | assigned: 2M  | quota: 1856520 | used: 836K | avail: 1000456
+[init -> report_rom]     + caps | assigned: 100 | quota: 72      | used: 30   | avail: 42
+[init -> report_rom]   + child acpi | binary: acpi
+[init -> report_rom]     + ram  | assigned: 4M  | quota: 3975791 | used: 892K | avail: 3062383
+[init -> report_rom]     + caps | assigned: 250 | quota: 219     | used: 29   | avail: 190
+[init -> report_rom]   + child report_rom | binary: report_rom
+[init -> report_rom]     + ram  | assigned: 2M  | quota: 1995429 | used: 940K | avail: 1032869
+[init -> report_rom]     + caps | assigned: 100 | quota: 88      | used: 63   | avail: 25
+[init -> report_rom]   -
+[init -> report_rom] report 'system -> drivers -> state'
+[init -> report_rom]   state
+[init -> report_rom]   + ram | quota: 38158430 | used: 1240K | avail: 36888670
+[init -> report_rom]   + child event_filter | binary: event_filter
+[init -> report_rom]     + ram  | assigned: 1280K | quota: 1075422 | used: 1004K | avail: 47326
+[init -> report_rom]     + caps | assigned: 90    | quota: 52      | used: 46    | avail: 6
+[init -> report_rom]   + child usb_hid | binary: usb_hid | skipped_heartbeats: 24
+[init -> report_rom]     + ram  | assigned: 10M | quota: 9751560 | used: 1092K | avail: 8633352
+[init -> report_rom]     + caps | assigned: 180 | quota: 142     | used: 37    | avail: 105
+[init -> report_rom]   + child usb | binary: pc_usb_host
+[init -> report_rom]     + ram  | assigned: 16M | quota: 16924894 | used: 1168K | avail: 15728862
+[init -> report_rom]     + caps | assigned: 200 | quota: 145      | used: 35    | avail: 110
+[init -> report_rom]   + child ps2 | binary: ps2
+[init -> report_rom]     + ram  | assigned: 1280K | quota: 1002504 | used: 776K | avail: 207880
+[init -> report_rom]     + caps | assigned: 100   | quota: 46      | used: 30   | avail: 16
+[init -> report_rom]   + child fb | binary: vesa_fb
+[init -> report_rom]     + ram  | assigned: 20M | quota: 4109320 | used: 936K | avail: 3150856
+[init -> report_rom]     + caps | assigned: 150 | quota: 67      | used: 52   | avail: 15
+[init -> report_rom]   + child platform | binary: platform
+[init -> report_rom]     + ram  | assigned: 3M  | quota: 3204960 | used: 1064K | avail: 2115424
+[init -> report_rom]     + caps | assigned: 200 | quota: 227     | used: 62    | avail: 165
+[init -> report_rom]   + child pci_decode | binary: pci_decode
+[init -> report_rom]     + ram  | assigned: 2M  | quota: 1856520 | used: 836K | avail: 1000456
+[init -> report_rom]     + caps | assigned: 100 | quota: 72      | used: 30   | avail: 42
+[init -> report_rom]   + child acpi | binary: acpi
+[init -> report_rom]     + ram  | assigned: 4M  | quota: 3975791 | used: 892K | avail: 3062383
+[init -> report_rom]     + caps | assigned: 250 | quota: 219     | used: 29   | avail: 190
+[init -> report_rom]   + child report_rom | binary: report_rom
+[init -> report_rom]     + ram  | assigned: 2M  | quota: 1995429 | used: 940K | avail: 1032869
+[init -> report_rom]     + caps | assigned: 100 | quota: 88      | used: 63   | avail: 25
+[init -> report_rom]   -
+[init -> report_rom] report 'system -> drivers -> state'
+[init -> report_rom]   state
+[init -> report_rom]   + ram | quota: 38158430 | used: 1240K | avail: 36888670
+[init -> report_rom]   + child event_filter | binary: event_filter
+[init -> report_rom]     + ram  | assigned: 1280K | quota: 1075422 | used: 1004K | avail: 47326
+[init -> report_rom]     + caps | assigned: 90    | quota: 52      | used: 46    | avail: 6
+[init -> report_rom]   + child usb_hid | binary: usb_hid | skipped_heartbeats: 25
+[init -> report_rom]     + ram  | assigned: 10M | quota: 9751560 | used: 1092K | avail: 8633352
+[init -> report_rom]     + caps | assigned: 180 | quota: 142     | used: 37    | avail: 105
+[init -> report_rom]   + child usb | binary: pc_usb_host
+[init -> report_rom]     + ram  | assigned: 16M | quota: 16924894 | used: 1168K | avail: 15728862
+[init -> report_rom]     + caps | assigned: 200 | quota: 145      | used: 35    | avail: 110
+[init -> report_rom]   + child ps2 | binary: ps2
+[init -> report_rom]     + ram  | assigned: 1280K | quota: 1002504 | used: 776K | avail: 207880
+[init -> report_rom]     + caps | assigned: 100   | quota: 46      | used: 30   | avail: 16
+[init -> report_rom]   + child fb | binary: vesa_fb
+[init -> report_rom]     + ram  | assigned: 20M | quota: 4109320 | used: 936K | avail: 3150856
+[init -> report_rom]     + caps | assigned: 150 | quota: 67      | used: 52   | avail: 15
+[init -> report_rom]   + child platform | binary: platform
+[init -> report_rom]     + ram  | assigned: 3M  | quota: 3204960 | used: 1064K | avail: 2115424
+[init -> report_rom]     + caps | assigned: 200 | quota: 227     | used: 62    | avail: 165
+[init -> report_rom]   + child pci_decode | binary: pci_decode
+[init -> report_rom]     + ram  | assigned: 2M  | quota: 1856520 | used: 836K | avail: 1000456
+[init -> report_rom]     + caps | assigned: 100 | quota: 72      | used: 30   | avail: 42
+[init -> report_rom]   + child acpi | binary: acpi
+[init -> report_rom]     + ram  | assigned: 4M  | quota: 3975791 | used: 892K | avail: 3062383
+[init -> report_rom]     + caps | assigned: 250 | quota: 219     | used: 29   | avail: 190
+[init -> report_rom]   + child report_rom | binary: report_rom
+[init -> report_rom]     + ram  | assigned: 2M  | quota: 1995429 | used: 940K | avail: 1032869
+[init -> report_rom]     + caps | assigned: 100 | quota: 88      | used: 63   | avail: 25
+[init -> report_rom]   -
+[init -> report_rom] report 'system -> drivers -> state'
+[init -> report_rom]   state
+[init -> report_rom]   + ram | quota: 38158430 | used: 1240K | avail: 36888670
+[init -> report_rom]   + child event_filter | binary: event_filter
+[init -> report_rom]     + ram  | assigned: 1280K | quota: 1075422 | used: 1004K | avail: 47326
+[init -> report_rom]     + caps | assigned: 90    | quota: 52      | used: 46    | avail: 6
+[init -> report_rom]   + child usb_hid | binary: usb_hid | skipped_heartbeats: 26
+[init -> report_rom]     + ram  | assigned: 10M | quota: 9751560 | used: 1092K | avail: 8633352
+[init -> report_rom]     + caps | assigned: 180 | quota: 142     | used: 37    | avail: 105
+[init -> report_rom]   + child usb | binary: pc_usb_host
+[init -> report_rom]     + ram  | assigned: 16M | quota: 16924894 | used: 1168K | avail: 15728862
+[init -> report_rom]     + caps | assigned: 200 | quota: 145      | used: 35    | avail: 110
+[init -> report_rom]   + child ps2 | binary: ps2
+[init -> report_rom]     + ram  | assigned: 1280K | quota: 1002504 | used: 776K | avail: 207880
+[init -> report_rom]     + caps | assigned: 100   | quota: 46      | used: 30   | avail: 16
+[init -> report_rom]   + child fb | binary: vesa_fb
+[init -> report_rom]     + ram  | assigned: 20M | quota: 4109320 | used: 936K | avail: 3150856
+[init -> report_rom]     + caps | assigned: 150 | quota: 67      | used: 52   | avail: 15
+[init -> report_rom]   + child platform | binary: platform
+[init -> report_rom]     + ram  | assigned: 3M  | quota: 3204960 | used: 1064K | avail: 2115424
+[init -> report_rom]     + caps | assigned: 200 | quota: 227     | used: 62    | avail: 165
+[init -> report_rom]   + child pci_decode | binary: pci_decode
+[init -> report_rom]     + ram  | assigned: 2M  | quota: 1856520 | used: 836K | avail: 1000456
+[init -> report_rom]     + caps | assigned: 100 | quota: 72      | used: 30   | avail: 42
+[init -> report_rom]   + child acpi | binary: acpi
+[init -> report_rom]     + ram  | assigned: 4M  | quota: 3975791 | used: 892K | avail: 3062383
+[init -> report_rom]     + caps | assigned: 250 | quota: 219     | used: 29   | avail: 190
+[init -> report_rom]   + child report_rom | binary: report_rom
+[init -> report_rom]     + ram  | assigned: 2M  | quota: 1995429 | used: 940K | avail: 1032869
+[init -> report_rom]     + caps | assigned: 100 | quota: 88      | used: 63   | avail: 25
+[init -> report_rom]   -
+[init -> report_rom] report 'system -> drivers -> state'
+[init -> report_rom]   state
+[init -> report_rom]   + ram | quota: 38158430 | used: 1240K | avail: 36888670
+[init -> report_rom]   + child event_filter | binary: event_filter
+[init -> report_rom]     + ram  | assigned: 1280K | quota: 1075422 | used: 1004K | avail: 47326
+[init -> report_rom]     + caps | assigned: 90    | quota: 52      | used: 46    | avail: 6
+[init -> report_rom]   + child usb_hid | binary: usb_hid | skipped_heartbeats: 27
+[init -> report_rom]     + ram  | assigned: 10M | quota: 9751560 | used: 1092K | avail: 8633352
+[init -> report_rom]     + caps | assigned: 180 | quota: 142     | used: 37    | avail: 105
+[init -> report_rom]   + child usb | binary: pc_usb_host
+[init -> report_rom]     + ram  | assigned: 16M | quota: 16924894 | used: 1168K | avail: 15728862
+[init -> report_rom]     + caps | assigned: 200 | quota: 145      | used: 35    | avail: 110
+[init -> report_rom]   + child ps2 | binary: ps2
+[init -> report_rom]     + ram  | assigned: 1280K | quota: 1002504 | used: 776K | avail: 207880
+[init -> report_rom]     + caps | assigned: 100   | quota: 46      | used: 30   | avail: 16
+[init -> report_rom]   + child fb | binary: vesa_fb
+[init -> report_rom]     + ram  | assigned: 20M | quota: 4109320 | used: 936K | avail: 3150856
+[init -> report_rom]     + caps | assigned: 150 | quota: 67      | used: 52   | avail: 15
+[init -> report_rom]   + child platform | binary: platform
+[init -> report_rom]     + ram  | assigned: 3M  | quota: 3204960 | used: 1064K | avail: 2115424
+[init -> report_rom]     + caps | assigned: 200 | quota: 227     | used: 62    | avail: 165
+[init -> report_rom]   + child pci_decode | binary: pci_decode
+[init -> report_rom]     + ram  | assigned: 2M  | quota: 1856520 | used: 836K | avail: 1000456
+[init -> report_rom]     + caps | assigned: 100 | quota: 72      | used: 30   | avail: 42
+[init -> report_rom]   + child acpi | binary: acpi
+[init -> report_rom]     + ram  | assigned: 4M  | quota: 3975791 | used: 892K | avail: 3062383
+[init -> report_rom]     + caps | assigned: 250 | quota: 219     | used: 29   | avail: 190
+[init -> report_rom]   + child report_rom | binary: report_rom
+[init -> report_rom]     + ram  | assigned: 2M  | quota: 1995429 | used: 940K | avail: 1032869
+[init -> report_rom]     + caps | assigned: 100 | quota: 88      | used: 63   | avail: 25
+[init -> report_rom]   -
+[init -> report_rom] report 'system -> drivers -> state'
+[init -> report_rom]   state
+[init -> report_rom]   + ram | quota: 38158430 | used: 1240K | avail: 36888670
+[init -> report_rom]   + child event_filter | binary: event_filter
+[init -> report_rom]     + ram  | assigned: 1280K | quota: 1075422 | used: 1004K | avail: 47326
+[init -> report_rom]     + caps | assigned: 90    | quota: 52      | used: 46    | avail: 6
+[init -> report_rom]   + child usb_hid | binary: usb_hid | skipped_heartbeats: 28
+[init -> report_rom]     + ram  | assigned: 10M | quota: 9751560 | used: 1092K | avail: 8633352
+[init -> report_rom]     + caps | assigned: 180 | quota: 142     | used: 37    | avail: 105
+[init -> report_rom]   + child usb | binary: pc_usb_host
+[init -> report_rom]     + ram  | assigned: 16M | quota: 16924894 | used: 1168K | avail: 15728862
+[init -> report_rom]     + caps | assigned: 200 | quota: 145      | used: 35    | avail: 110
+[init -> report_rom]   + child ps2 | binary: ps2
+[init -> report_rom]     + ram  | assigned: 1280K | quota: 1002504 | used: 776K | avail: 207880
+[init -> report_rom]     + caps | assigned: 100   | quota: 46      | used: 30   | avail: 16
+[init -> report_rom]   + child fb | binary: vesa_fb
+[init -> report_rom]     + ram  | assigned: 20M | quota: 4109320 | used: 936K | avail: 3150856
+[init -> report_rom]     + caps | assigned: 150 | quota: 67      | used: 52   | avail: 15
+[init -> report_rom]   + child platform | binary: platform
+[init -> report_rom]     + ram  | assigned: 3M  | quota: 3204960 | used: 1064K | avail: 2115424
+[init -> report_rom]     + caps | assigned: 200 | quota: 227     | used: 62    | avail: 165
+[init -> report_rom]   + child pci_decode | binary: pci_decode
+[init -> report_rom]     + ram  | assigned: 2M  | quota: 1856520 | used: 836K | avail: 1000456
+[init -> report_rom]     + caps | assigned: 100 | quota: 72      | used: 30   | avail: 42
+[init -> report_rom]   + child acpi | binary: acpi
+[init -> report_rom]     + ram  | assigned: 4M  | quota: 3975791 | used: 892K | avail: 3062383
+[init -> report_rom]     + caps | assigned: 250 | quota: 219     | used: 29   | avail: 190
+[init -> report_rom]   + child report_rom | binary: report_rom
+[init -> report_rom]     + ram  | assigned: 2M  | quota: 1995429 | used: 940K | avail: 1032869
+[init -> report_rom]     + caps | assigned: 100 | quota: 88      | used: 63   | avail: 25
+[init -> report_rom]   -
+[init -> report_rom] report 'system -> drivers -> state'
+[init -> report_rom]   state
+[init -> report_rom]   + ram | quota: 38158430 | used: 1240K | avail: 36888670
+[init -> report_rom]   + child event_filter | binary: event_filter
+[init -> report_rom]     + ram  | assigned: 1280K | quota: 1075422 | used: 1004K | avail: 47326
+[init -> report_rom]     + caps | assigned: 90    | quota: 52      | used: 46    | avail: 6
+[init -> report_rom]   + child usb_hid | binary: usb_hid | skipped_heartbeats: 29
+[init -> report_rom]     + ram  | assigned: 10M | quota: 9751560 | used: 1092K | avail: 8633352
+[init -> report_rom]     + caps | assigned: 180 | quota: 142     | used: 37    | avail: 105
+[init -> report_rom]   + child usb | binary: pc_usb_host
+[init -> report_rom]     + ram  | assigned: 16M | quota: 16924894 | used: 1168K | avail: 15728862
+[init -> report_rom]     + caps | assigned: 200 | quota: 145      | used: 35    | avail: 110
+[init -> report_rom]   + child ps2 | binary: ps2
+[init -> report_rom]     + ram  | assigned: 1280K | quota: 1002504 | used: 776K | avail: 207880
+[init -> report_rom]     + caps | assigned: 100   | quota: 46      | used: 30   | avail: 16
+[init -> report_rom]   + child fb | binary: vesa_fb
+[init -> report_rom]     + ram  | assigned: 20M | quota: 4109320 | used: 936K | avail: 3150856
+[init -> report_rom]     + caps | assigned: 150 | quota: 67      | used: 52   | avail: 15
+[init -> report_rom]   + child platform | binary: platform
+[init -> report_rom]     + ram  | assigned: 3M  | quota: 3204960 | used: 1064K | avail: 2115424
+[init -> report_rom]     + caps | assigned: 200 | quota: 227     | used: 62    | avail: 165
+[init -> report_rom]   + child pci_decode | binary: pci_decode
+[init -> report_rom]     + ram  | assigned: 2M  | quota: 1856520 | used: 836K | avail: 1000456
+[init -> report_rom]     + caps | assigned: 100 | quota: 72      | used: 30   | avail: 42
+[init -> report_rom]   + child acpi | binary: acpi
+[init -> report_rom]     + ram  | assigned: 4M  | quota: 3975791 | used: 892K | avail: 3062383
+[init -> report_rom]     + caps | assigned: 250 | quota: 219     | used: 29   | avail: 190
+[init -> report_rom]   + child report_rom | binary: report_rom
+[init -> report_rom]     + ram  | assigned: 2M  | quota: 1995429 | used: 940K | avail: 1032869
+[init -> report_rom]     + caps | assigned: 100 | quota: 88      | used: 63   | avail: 25
+[init -> report_rom]   -
+[init -> report_rom] report 'system -> drivers -> state'
+[init -> report_rom]   state
+[init -> report_rom]   + ram | quota: 38158430 | used: 1240K | avail: 36888670
+[init -> report_rom]   + child event_filter | binary: event_filter
+[init -> report_rom]     + ram  | assigned: 1280K | quota: 1075422 | used: 1004K | avail: 47326
+[init -> report_rom]     + caps | assigned: 90    | quota: 52      | used: 46    | avail: 6
+[init -> report_rom]   + child usb_hid | binary: usb_hid | skipped_heartbeats: 30
+[init -> report_rom]     + ram  | assigned: 10M | quota: 9751560 | used: 1092K | avail: 8633352
+[init -> report_rom]     + caps | assigned: 180 | quota: 142     | used: 37    | avail: 105
+[init -> report_rom]   + child usb | binary: pc_usb_host
+[init -> report_rom]     + ram  | assigned: 16M | quota: 16924894 | used: 1168K | avail: 15728862
+[init -> report_rom]     + caps | assigned: 200 | quota: 145      | used: 35    | avail: 110
+[init -> report_rom]   + child ps2 | binary: ps2
+[init -> report_rom]     + ram  | assigned: 1280K | quota: 1002504 | used: 776K | avail: 207880
+[init -> report_rom]     + caps | assigned: 100   | quota: 46      | used: 30   | avail: 16
+[init -> report_rom]   + child fb | binary: vesa_fb
+[init -> report_rom]     + ram  | assigned: 20M | quota: 4109320 | used: 936K | avail: 3150856
+[init -> report_rom]     + caps | assigned: 150 | quota: 67      | used: 52   | avail: 15
+[init -> report_rom]   + child platform | binary: platform
+[init -> report_rom]     + ram  | assigned: 3M  | quota: 3204960 | used: 1064K | avail: 2115424
+[init -> report_rom]     + caps | assigned: 200 | quota: 227     | used: 62    | avail: 165
+[init -> report_rom]   + child pci_decode | binary: pci_decode
+[init -> report_rom]     + ram  | assigned: 2M  | quota: 1856520 | used: 836K | avail: 1000456
+[init -> report_rom]     + caps | assigned: 100 | quota: 72      | used: 30   | avail: 42
+[init -> report_rom]   + child acpi | binary: acpi
+[init -> report_rom]     + ram  | assigned: 4M  | quota: 3975791 | used: 892K | avail: 3062383
+[init -> report_rom]     + caps | assigned: 250 | quota: 219     | used: 29   | avail: 190
+[init -> report_rom]   + child report_rom | binary: report_rom
+[init -> report_rom]     + ram  | assigned: 2M  | quota: 1995429 | used: 940K | avail: 1032869
+[init -> report_rom]     + caps | assigned: 100 | quota: 88      | used: 63   | avail: 25
+[init -> report_rom]   -
+[init -> report_rom] report 'system -> drivers -> state'
+[init -> report_rom]   state
+[init -> report_rom]   + ram | quota: 37631712 | used: 1236K | avail: 36366048
+[init -> report_rom]   + child usb_hid | binary: usb_hid
+[init -> report_rom]     + ram  | assigned: 10M | quota: 10298376 | used: 572K | avail: 9712648
+[init -> report_rom]     + caps | assigned: 180 | quota: 158      | used: 10   | avail: 148
+[init -> report_rom]   + child event_filter | binary: event_filter
+[init -> report_rom]     + ram  | assigned: 1280K | quota: 1075422 | used: 1004K | avail: 47326
+[init -> report_rom]     + caps | assigned: 90    | quota: 52      | used: 46    | avail: 6
+[init -> report_rom]   + child usb | binary: pc_usb_host
+[init -> report_rom]     + ram  | assigned: 16M | quota: 16924894 | used: 1168K | avail: 15728862
+[init -> report_rom]     + caps | assigned: 200 | quota: 145      | used: 35    | avail: 110
+[init -> report_rom]   + child ps2 | binary: ps2
+[init -> report_rom]     + ram  | assigned: 1280K | quota: 1002504 | used: 776K | avail: 207880
+[init -> report_rom]     + caps | assigned: 100   | quota: 46      | used: 30   | avail: 16
+[init -> report_rom]   + child fb | binary: vesa_fb
+[init -> report_rom]     + ram  | assigned: 20M | quota: 4109320 | used: 936K | avail: 3150856
+[init -> report_rom]     + caps | assigned: 150 | quota: 67      | used: 52   | avail: 15
+[init -> report_rom]   + child platform | binary: platform
+[init -> report_rom]     + ram  | assigned: 3M  | quota: 3204960 | used: 1064K | avail: 2115424
+[init -> report_rom]     + caps | assigned: 200 | quota: 227     | used: 62    | avail: 165
+[init -> report_rom]   + child pci_decode | binary: pci_decode
+[init -> report_rom]     + ram  | assigned: 2M  | quota: 1856520 | used: 836K | avail: 1000456
+[init -> report_rom]     + caps | assigned: 100 | quota: 72      | used: 30   | avail: 42
+[init -> report_rom]   + child acpi | binary: acpi
+[init -> report_rom]     + ram  | assigned: 4M  | quota: 3975791 | used: 892K | avail: 3062383
+[init -> report_rom]     + caps | assigned: 250 | quota: 219     | used: 29   | avail: 190
+[init -> report_rom]   + child report_rom | binary: report_rom
+[init -> report_rom]     + ram  | assigned: 2M  | quota: 1995429 | used: 940K | avail: 1032869
+[init -> report_rom]     + caps | assigned: 100 | quota: 88      | used: 63   | avail: 25
+[init -> report_rom]   -
+[init -> report_rom] report 'system -> drivers -> state'
+[init -> report_rom]   state
+[init -> report_rom]   + ram | quota: 37632522 | used: 1248K | avail: 36354570
+[init -> report_rom]   + child usb_hid | binary: usb_hid
+[init -> report_rom]     + ram  | assigned: 10M | quota: 10292232 | used: 740K | avail: 9534472
+[init -> report_rom]     + caps | assigned: 180 | quota: 155      | used: 21   | avail: 134
+[init -> report_rom]   + child event_filter | binary: event_filter
+[init -> report_rom]     + ram  | assigned: 1280K | quota: 1075422 | used: 1004K | avail: 47326
+[init -> report_rom]     + caps | assigned: 90    | quota: 52      | used: 46    | avail: 6
+[init -> report_rom]   + child usb | binary: pc_usb_host
+[init -> report_rom]     + ram  | assigned: 16M | quota: 16924894 | used: 1168K | avail: 15728862
+[init -> report_rom]     + caps | assigned: 200 | quota: 145      | used: 35    | avail: 110
+[init -> report_rom]   + child ps2 | binary: ps2
+[init -> report_rom]     + ram  | assigned: 1280K | quota: 1002504 | used: 776K | avail: 207880
+[init -> report_rom]     + caps | assigned: 100   | quota: 46      | used: 30   | avail: 16
+[init -> report_rom]   + child fb | binary: vesa_fb
+[init -> report_rom]     + ram  | assigned: 20M | quota: 4109320 | used: 936K | avail: 3150856
+[init -> report_rom]     + caps | assigned: 150 | quota: 67      | used: 52   | avail: 15
+[init -> report_rom]   + child platform | binary: platform
+[init -> report_rom]     + ram  | assigned: 3M  | quota: 3204960 | used: 1064K | avail: 2115424
+[init -> report_rom]     + caps | assigned: 200 | quota: 227     | used: 62    | avail: 165
+[init -> report_rom]   + child pci_decode | binary: pci_decode
+[init -> report_rom]     + ram  | assigned: 2M  | quota: 1856520 | used: 836K | avail: 1000456
+[init -> report_rom]     + caps | assigned: 100 | quota: 72      | used: 30   | avail: 42
+[init -> report_rom]   + child acpi | binary: acpi
+[init -> report_rom]     + ram  | assigned: 4M  | quota: 3975791 | used: 892K | avail: 3062383
+[init -> report_rom]     + caps | assigned: 250 | quota: 219     | used: 29   | avail: 190
+[init -> report_rom]   + child report_rom | binary: report_rom
+[init -> report_rom]     + ram  | assigned: 2M  | quota: 1995429 | used: 940K | avail: 1032869
+[init -> report_rom]     + caps | assigned: 100 | quota: 88      | used: 63   | avail: 25
+[init -> report_rom]   -
+[init -> report_rom] report 'system -> state'
+[init -> report_rom]   state
+[init -> report_rom]   + ram | quota: 335539508 | used: 1128K | avail: 334384436
+[init -> report_rom]   + child repostorm_probe | binary: repostorm_probe
+[init -> report_rom]     + ram  | assigned: 8M  | quota: 8173362 | used: 768K | avail: 7386930
+[init -> report_rom]     + caps | assigned: 200 | quota: 167     | used: 27   | avail: 140
+[init -> report_rom]   + child sponge_debug | binary: sponge_debug
+[init -> report_rom]     + ram  | assigned: 64M  | quota: 50049758 | used: 27676K | avail: 21709534
+[init -> report_rom]     + caps | assigned: 1000 | quota: 860      | used: 494    | avail: 366
+[init -> report_rom]   + child drivers | binary: init
+[init -> report_rom]     + ram  | assigned: 96M  | quota: 37634952 | used: 1248K | avail: 36357000
+[init -> report_rom]     + caps | assigned: 1500 | quota: 172      | used: 88    | avail: 84
+[init -> report_rom]   + child nitpicker | binary: nitpicker
+[init -> report_rom]     + ram  | assigned: 16M | quota: 49554486 | used: 33456K | avail: 15295542
+[init -> report_rom]     + caps | assigned: 200 | quota: 204      | used: 174    | avail: 30
+[init -> report_rom]   + child report_rom | binary: report_rom
+[init -> report_rom]     + ram  | assigned: 8M  | quota: 8232800 | used: 868K | avail: 7343968
+[init -> report_rom]     + caps | assigned: 300 | quota: 285     | used: 51   | avail: 234
+[init -> report_rom]   -
+[init -> report_rom] report 'system -> drivers -> state'
+[init -> report_rom]   state
+[init -> report_rom]   + ram | quota: 37634952 | used: 1248K | avail: 36357000
+[init -> report_rom]   + child usb_hid | binary: usb_hid
+[init -> report_rom]     + ram  | assigned: 10M | quota: 9751560 | used: 1092K | avail: 8633352
+[init -> report_rom]     + caps | assigned: 180 | quota: 142     | used: 37    | avail: 105
+[init -> report_rom]   + child event_filter | binary: event_filter
+[init -> report_rom]     + ram  | assigned: 1280K | quota: 1075422 | used: 1004K | avail: 47326
+[init -> report_rom]     + caps | assigned: 90    | quota: 52      | used: 46    | avail: 6
+[init -> report_rom]   + child usb | binary: pc_usb_host
+[init -> report_rom]     + ram  | assigned: 16M | quota: 17448372 | used: 1168K | avail: 16252340
+[init -> report_rom]     + caps | assigned: 200 | quota: 153      | used: 35    | avail: 118
+[init -> report_rom]   + child ps2 | binary: ps2
+[init -> report_rom]     + ram  | assigned: 1280K | quota: 1002504 | used: 776K | avail: 207880
+[init -> report_rom]     + caps | assigned: 100   | quota: 46      | used: 30   | avail: 16
+[init -> report_rom]   + child fb | binary: vesa_fb
+[init -> report_rom]     + ram  | assigned: 20M | quota: 4109320 | used: 936K | avail: 3150856
+[init -> report_rom]     + caps | assigned: 150 | quota: 67      | used: 52   | avail: 15
+[init -> report_rom]   + child platform | binary: platform
+[init -> report_rom]     + ram  | assigned: 3M  | quota: 3204960 | used: 1064K | avail: 2115424
+[init -> report_rom]     + caps | assigned: 200 | quota: 227     | used: 62    | avail: 165
+[init -> report_rom]   + child pci_decode | binary: pci_decode
+[init -> report_rom]     + ram  | assigned: 2M  | quota: 1856520 | used: 836K | avail: 1000456
+[init -> report_rom]     + caps | assigned: 100 | quota: 72      | used: 30   | avail: 42
+[init -> report_rom]   + child acpi | binary: acpi
+[init -> report_rom]     + ram  | assigned: 4M  | quota: 3975791 | used: 892K | avail: 3062383
+[init -> report_rom]     + caps | assigned: 250 | quota: 219     | used: 29   | avail: 190
+[init -> report_rom]   + child report_rom | binary: report_rom
+[init -> report_rom]     + ram  | assigned: 2M  | quota: 1995429 | used: 940K | avail: 1032869
+[init -> report_rom]     + caps | assigned: 100 | quota: 88      | used: 63   | avail: 25
+[init -> report_rom]   -
+[init -> report_rom] report 'system -> state'
+[init -> report_rom]   state
+[init -> report_rom]   + ram | quota: 335539508 | used: 1128K | avail: 334384436
+[init -> report_rom]   + child repostorm_probe | binary: repostorm_probe
+[init -> report_rom]     + ram  | assigned: 8M  | quota: 8173362 | used: 768K | avail: 7386930
+[init -> report_rom]     + caps | assigned: 200 | quota: 167     | used: 27   | avail: 140
+[init -> report_rom]   + child sponge_debug | binary: sponge_debug
+[init -> report_rom]     + ram  | assigned: 64M  | quota: 50049758 | used: 27676K | avail: 21709534
+[init -> report_rom]     + caps | assigned: 1000 | quota: 860      | used: 494    | avail: 366
+[init -> report_rom]   + child drivers | binary: init
+[init -> report_rom]     + ram  | assigned: 96M  | quota: 37634952 | used: 1248K | avail: 36357000
+[init -> report_rom]     + caps | assigned: 1500 | quota: 172      | used: 88    | avail: 84
+[init -> report_rom]   + child nitpicker | binary: nitpicker
+[init -> report_rom]     + ram  | assigned: 16M | quota: 49554486 | used: 33456K | avail: 15295542
+[init -> report_rom]     + caps | assigned: 200 | quota: 204      | used: 174    | avail: 30
+[init -> report_rom]   + child report_rom | binary: report_rom
+[init -> report_rom]     + ram  | assigned: 8M  | quota: 8232800 | used: 868K | avail: 7343968
+[init -> report_rom]     + caps | assigned: 300 | quota: 285     | used: 51   | avail: 234
+[init -> report_rom]   -
+[init -> system -> repostorm_probe] repostorm: t=43000ms name=drivers ram_used=1277952 ram_avail=36357000 caps_used=88
+[init -> report_rom] report 'system -> drivers -> state'
+[init -> report_rom]   state
+[init -> report_rom]   + ram | quota: 37634952 | used: 1248K | avail: 36357000
+[init -> report_rom]   + child usb_hid | binary: usb_hid
+[init -> report_rom]     + ram  | assigned: 10M | quota: 9751560 | used: 1092K | avail: 8633352
+[init -> report_rom]     + caps | assigned: 180 | quota: 142     | used: 37    | avail: 105
+[init -> report_rom]   + child event_filter | binary: event_filter
+[init -> report_rom]     + ram  | assigned: 1280K | quota: 1075422 | used: 1004K | avail: 47326
+[init -> report_rom]     + caps | assigned: 90    | quota: 52      | used: 46    | avail: 6
+[init -> report_rom]   + child usb | binary: pc_usb_host
+[init -> report_rom]     + ram  | assigned: 16M | quota: 17448372 | used: 1168K | avail: 16252340
+[init -> report_rom]     + caps | assigned: 200 | quota: 153      | used: 35    | avail: 118
+[init -> report_rom]   + child ps2 | binary: ps2
+[init -> report_rom]     + ram  | assigned: 1280K | quota: 1002504 | used: 776K | avail: 207880
+[init -> report_rom]     + caps | assigned: 100   | quota: 46      | used: 30   | avail: 16
+[init -> report_rom]   + child fb | binary: vesa_fb
+[init -> report_rom]     + ram  | assigned: 20M | quota: 4109320 | used: 936K | avail: 3150856
+[init -> report_rom]     + caps | assigned: 150 | quota: 67      | used: 52   | avail: 15
+[init -> report_rom]   + child platform | binary: platform
+[init -> report_rom]     + ram  | assigned: 3M  | quota: 3204960 | used: 1064K | avail: 2115424
+[init -> report_rom]     + caps | assigned: 200 | quota: 227     | used: 62    | avail: 165
+[init -> report_rom]   + child pci_decode | binary: pci_decode
+[init -> report_rom]     + ram  | assigned: 2M  | quota: 1856520 | used: 836K | avail: 1000456
+[init -> report_rom]     + caps | assigned: 100 | quota: 72      | used: 30   | avail: 42
+[init -> report_rom]   + child acpi | binary: acpi
+[init -> report_rom]     + ram  | assigned: 4M  | quota: 3975791 | used: 892K | avail: 3062383
+[init -> report_rom]     + caps | assigned: 250 | quota: 219     | used: 29   | avail: 190
+[init -> report_rom]   + child report_rom | binary: report_rom
+[init -> report_rom]     + ram  | assigned: 2M  | quota: 1995429 | used: 940K | avail: 1032869
+[init -> report_rom]     + caps | assigned: 100 | quota: 88      | used: 63   | avail: 25
+[init -> report_rom]   -
+[init -> report_rom] report 'system -> drivers -> state'
+[init -> report_rom]   state
+[init -> report_rom]   + ram | quota: 37634952 | used: 1248K | avail: 36357000
+[init -> report_rom]   + child usb_hid | binary: usb_hid
+[init -> report_rom]     + ram  | assigned: 10M | quota: 9751560 | used: 1092K | avail: 8633352
+[init -> report_rom]     + caps | assigned: 180 | quota: 142     | used: 37    | avail: 105
+[init -> report_rom]   + child event_filter | binary: event_filter
+[init -> report_rom]     + ram  | assigned: 1280K | quota: 1075422 | used: 1004K | avail: 47326
+[init -> report_rom]     + caps | assigned: 90    | quota: 52      | used: 46    | avail: 6
+[init -> report_rom]   + child usb | binary: pc_usb_host
+[init -> report_rom]     + ram  | assigned: 16M | quota: 17448372 | used: 1168K | avail: 16252340
+[init -> report_rom]     + caps | assigned: 200 | quota: 153      | used: 35    | avail: 118
+[init -> report_rom]   + child ps2 | binary: ps2
+[init -> report_rom]     + ram  | assigned: 1280K | quota: 1002504 | used: 776K | avail: 207880
+[init -> report_rom]     + caps | assigned: 100   | quota: 46      | used: 30   | avail: 16
+[init -> report_rom]   + child fb | binary: vesa_fb
+[init -> report_rom]     + ram  | assigned: 20M | quota: 4109320 | used: 936K | avail: 3150856
+[init -> report_rom]     + caps | assigned: 150 | quota: 67      | used: 52   | avail: 15
+[init -> report_rom]   + child platform | binary: platform
+[init -> report_rom]     + ram  | assigned: 3M  | quota: 3204960 | used: 1064K | avail: 2115424
+[init -> report_rom]     + caps | assigned: 200 | quota: 227     | used: 62    | avail: 165
+[init -> report_rom]   + child pci_decode | binary: pci_decode
+[init -> report_rom]     + ram  | assigned: 2M  | quota: 1856520 | used: 836K | avail: 1000456
+[init -> report_rom]     + caps | assigned: 100 | quota: 72      | used: 30   | avail: 42
+[init -> report_rom]   + child acpi | binary: acpi
+[init -> report_rom]     + ram  | assigned: 4M  | quota: 3975791 | used: 892K | avail: 3062383
+[init -> report_rom]     + caps | assigned: 250 | quota: 219     | used: 29   | avail: 190
+[init -> report_rom]   + child report_rom | binary: report_rom
+[init -> report_rom]     + ram  | assigned: 2M  | quota: 1995429 | used: 940K | avail: 1032869
+[init -> report_rom]     + caps | assigned: 100 | quota: 88      | used: 63   | avail: 25
+[init -> report_rom]   -
+[init -> report_rom] report 'system -> drivers -> state'
+[init -> report_rom]   state
+[init -> report_rom]   + ram | quota: 37634952 | used: 1248K | avail: 36357000
+[init -> report_rom]   + child usb_hid | binary: usb_hid | skipped_heartbeats: 1
+[init -> report_rom]     + ram  | assigned: 10M | quota: 9751560 | used: 1092K | avail: 8633352
+[init -> report_rom]     + caps | assigned: 180 | quota: 142     | used: 37    | avail: 105
+[init -> report_rom]   + child event_filter | binary: event_filter
+[init -> report_rom]     + ram  | assigned: 1280K | quota: 1075422 | used: 1004K | avail: 47326
+[init -> report_rom]     + caps | assigned: 90    | quota: 52      | used: 46    | avail: 6
+[init -> report_rom]   + child usb | binary: pc_usb_host
+[init -> report_rom]     + ram  | assigned: 16M | quota: 17448372 | used: 1168K | avail: 16252340
+[init -> report_rom]     + caps | assigned: 200 | quota: 153      | used: 35    | avail: 118
+[init -> report_rom]   + child ps2 | binary: ps2
+[init -> report_rom]     + ram  | assigned: 1280K | quota: 1002504 | used: 776K | avail: 207880
+[init -> report_rom]     + caps | assigned: 100   | quota: 46      | used: 30   | avail: 16
+[init -> report_rom]   + child fb | binary: vesa_fb
+[init -> report_rom]     + ram  | assigned: 20M | quota: 4109320 | used: 936K | avail: 3150856
+[init -> report_rom]     + caps | assigned: 150 | quota: 67      | used: 52   | avail: 15
+[init -> report_rom]   + child platform | binary: platform
+[init -> report_rom]     + ram  | assigned: 3M  | quota: 3204960 | used: 1064K | avail: 2115424
+[init -> report_rom]     + caps | assigned: 200 | quota: 227     | used: 62    | avail: 165
+[init -> report_rom]   + child pci_decode | binary: pci_decode
+[init -> report_rom]     + ram  | assigned: 2M  | quota: 1856520 | used: 836K | avail: 1000456
+[init -> report_rom]     + caps | assigned: 100 | quota: 72      | used: 30   | avail: 42
+[init -> report_rom]   + child acpi | binary: acpi
+[init -> report_rom]     + ram  | assigned: 4M  | quota: 3975791 | used: 892K | avail: 3062383
+[init -> report_rom]     + caps | assigned: 250 | quota: 219     | used: 29   | avail: 190
+[init -> report_rom]   + child report_rom | binary: report_rom
+[init -> report_rom]     + ram  | assigned: 2M  | quota: 1995429 | used: 940K | avail: 1032869
+[init -> report_rom]     + caps | assigned: 100 | quota: 88      | used: 63   | avail: 25
+[init -> report_rom]   -
+[init -> report_rom] report 'system -> drivers -> state'
+[init -> report_rom]   state
+[init -> report_rom]   + ram | quota: 37634952 | used: 1248K | avail: 36357000
+[init -> report_rom]   + child usb_hid | binary: usb_hid | skipped_heartbeats: 2
+[init -> report_rom]     + ram  | assigned: 10M | quota: 9751560 | used: 1092K | avail: 8633352
+[init -> report_rom]     + caps | assigned: 180 | quota: 142     | used: 37    | avail: 105
+[init -> report_rom]   + child event_filter | binary: event_filter
+[init -> report_rom]     + ram  | assigned: 1280K | quota: 1075422 | used: 1004K | avail: 47326
+[init -> report_rom]     + caps | assigned: 90    | quota: 52      | used: 46    | avail: 6
+[init -> report_rom]   + child usb | binary: pc_usb_host
+[init -> report_rom]     + ram  | assigned: 16M | quota: 17448372 | used: 1168K | avail: 16252340
+[init -> report_rom]     + caps | assigned: 200 | quota: 153      | used: 35    | avail: 118
+[init -> report_rom]   + child ps2 | binary: ps2
+[init -> report_rom]     + ram  | assigned: 1280K | quota: 1002504 | used: 776K | avail: 207880
+[init -> report_rom]     + caps | assigned: 100   | quota: 46      | used: 30   | avail: 16
+[init -> report_rom]   + child fb | binary: vesa_fb
+[init -> report_rom]     + ram  | assigned: 20M | quota: 4109320 | used: 936K | avail: 3150856
+[init -> report_rom]     + caps | assigned: 150 | quota: 67      | used: 52   | avail: 15
+[init -> report_rom]   + child platform | binary: platform
+[init -> report_rom]     + ram  | assigned: 3M  | quota: 3204960 | used: 1064K | avail: 2115424
+[init -> report_rom]     + caps | assigned: 200 | quota: 227     | used: 62    | avail: 165
+[init -> report_rom]   + child pci_decode | binary: pci_decode
+[init -> report_rom]     + ram  | assigned: 2M  | quota: 1856520 | used: 836K | avail: 1000456
+[init -> report_rom]     + caps | assigned: 100 | quota: 72      | used: 30   | avail: 42
+[init -> report_rom]   + child acpi | binary: acpi
+[init -> report_rom]     + ram  | assigned: 4M  | quota: 3975791 | used: 892K | avail: 3062383
+[init -> report_rom]     + caps | assigned: 250 | quota: 219     | used: 29   | avail: 190
+[init -> report_rom]   + child report_rom | binary: report_rom
+[init -> report_rom]     + ram  | assigned: 2M  | quota: 1995429 | used: 940K | avail: 1032869
+[init -> report_rom]     + caps | assigned: 100 | quota: 88      | used: 63   | avail: 25
+[init -> report_rom]   -
+[init -> report_rom] report 'system -> drivers -> state'
+[init -> report_rom]   state
+[init -> report_rom]   + ram | quota: 37634952 | used: 1248K | avail: 36357000
+[init -> report_rom]   + child usb_hid | binary: usb_hid | skipped_heartbeats: 3
+[init -> report_rom]     + ram  | assigned: 10M | quota: 9751560 | used: 1092K | avail: 8633352
+[init -> report_rom]     + caps | assigned: 180 | quota: 142     | used: 37    | avail: 105
+[init -> report_rom]   + child event_filter | binary: event_filter
+[init -> report_rom]     + ram  | assigned: 1280K | quota: 1075422 | used: 1004K | avail: 47326
+[init -> report_rom]     + caps | assigned: 90    | quota: 52      | used: 46    | avail: 6
+[init -> report_rom]   + child usb | binary: pc_usb_host
+[init -> report_rom]     + ram  | assigned: 16M | quota: 17448372 | used: 1168K | avail: 16252340
+[init -> report_rom]     + caps | assigned: 200 | quota: 153      | used: 35    | avail: 118
+[init -> report_rom]   + child ps2 | binary: ps2
+[init -> report_rom]     + ram  | assigned: 1280K | quota: 1002504 | used: 776K | avail: 207880
+[init -> report_rom]     + caps | assigned: 100   | quota: 46      | used: 30   | avail: 16
+[init -> report_rom]   + child fb | binary: vesa_fb
+[init -> report_rom]     + ram  | assigned: 20M | quota: 4109320 | used: 936K | avail: 3150856
+[init -> report_rom]     + caps | assigned: 150 | quota: 67      | used: 52   | avail: 15
+[init -> report_rom]   + child platform | binary: platform
+[init -> report_rom]     + ram  | assigned: 3M  | quota: 3204960 | used: 1064K | avail: 2115424
+[init -> report_rom]     + caps | assigned: 200 | quota: 227     | used: 62    | avail: 165
+[init -> report_rom]   + child pci_decode | binary: pci_decode
+[init -> report_rom]     + ram  | assigned: 2M  | quota: 1856520 | used: 836K | avail: 1000456
+[init -> report_rom]     + caps | assigned: 100 | quota: 72      | used: 30   | avail: 42
+[init -> report_rom]   + child acpi | binary: acpi
+[init -> report_rom]     + ram  | assigned: 4M  | quota: 3975791 | used: 892K | avail: 3062383
+[init -> report_rom]     + caps | assigned: 250 | quota: 219     | used: 29   | avail: 190
+[init -> report_rom]   + child report_rom | binary: report_rom
+[init -> report_rom]     + ram  | assigned: 2M  | quota: 1995429 | used: 940K | avail: 1032869
+[init -> report_rom]     + caps | assigned: 100 | quota: 88      | used: 63   | avail: 25
+[init -> report_rom]   -
+[init -> report_rom] report 'system -> drivers -> state'
+[init -> report_rom]   state
+[init -> report_rom]   + ram | quota: 37634952 | used: 1248K | avail: 36357000
+[init -> report_rom]   + child usb_hid | binary: usb_hid | skipped_heartbeats: 4
+[init -> report_rom]     + ram  | assigned: 10M | quota: 9751560 | used: 1092K | avail: 8633352
+[init -> report_rom]     + caps | assigned: 180 | quota: 142     | used: 37    | avail: 105
+[init -> report_rom]   + child event_filter | binary: event_filter
+[init -> report_rom]     + ram  | assigned: 1280K | quota: 1075422 | used: 1004K | avail: 47326
+[init -> report_rom]     + caps | assigned: 90    | quota: 52      | used: 46    | avail: 6
+[init -> report_rom]   + child usb | binary: pc_usb_host
+[init -> report_rom]     + ram  | assigned: 16M | quota: 17448372 | used: 1168K | avail: 16252340
+[init -> report_rom]     + caps | assigned: 200 | quota: 153      | used: 35    | avail: 118
+[init -> report_rom]   + child ps2 | binary: ps2
+[init -> report_rom]     + ram  | assigned: 1280K | quota: 1002504 | used: 776K | avail: 207880
+[init -> report_rom]     + caps | assigned: 100   | quota: 46      | used: 30   | avail: 16
+[init -> report_rom]   + child fb | binary: vesa_fb
+[init -> report_rom]     + ram  | assigned: 20M | quota: 4109320 | used: 936K | avail: 3150856
+[init -> report_rom]     + caps | assigned: 150 | quota: 67      | used: 52   | avail: 15
+[init -> report_rom]   + child platform | binary: platform
+[init -> report_rom]     + ram  | assigned: 3M  | quota: 3204960 | used: 1064K | avail: 2115424
+[init -> report_rom]     + caps | assigned: 200 | quota: 227     | used: 62    | avail: 165
+[init -> report_rom]   + child pci_decode | binary: pci_decode
+[init -> report_rom]     + ram  | assigned: 2M  | quota: 1856520 | used: 836K | avail: 1000456
+[init -> report_rom]     + caps | assigned: 100 | quota: 72      | used: 30   | avail: 42
+[init -> report_rom]   + child acpi | binary: acpi
+[init -> report_rom]     + ram  | assigned: 4M  | quota: 3975791 | used: 892K | avail: 3062383
+[init -> report_rom]     + caps | assigned: 250 | quota: 219     | used: 29   | avail: 190
+[init -> report_rom]   + child report_rom | binary: report_rom
+[init -> report_rom]     + ram  | assigned: 2M  | quota: 1995429 | used: 940K | avail: 1032869
+[init -> report_rom]     + caps | assigned: 100 | quota: 88      | used: 63   | avail: 25
+[init -> report_rom]   -
+[init -> report_rom] report 'system -> drivers -> state'
+[init -> report_rom]   state
+[init -> report_rom]   + ram | quota: 37634952 | used: 1248K | avail: 36357000
+[init -> report_rom]   + child usb_hid | binary: usb_hid | skipped_heartbeats: 5
+[init -> report_rom]     + ram  | assigned: 10M | quota: 9751560 | used: 1092K | avail: 8633352
+[init -> report_rom]     + caps | assigned: 180 | quota: 142     | used: 37    | avail: 105
+[init -> report_rom]   + child event_filter | binary: event_filter
+[init -> report_rom]     + ram  | assigned: 1280K | quota: 1075422 | used: 1004K | avail: 47326
+[init -> report_rom]     + caps | assigned: 90    | quota: 52      | used: 46    | avail: 6
+[init -> report_rom]   + child usb | binary: pc_usb_host
+[init -> report_rom]     + ram  | assigned: 16M | quota: 17448372 | used: 1168K | avail: 16252340
+[init -> report_rom]     + caps | assigned: 200 | quota: 153      | used: 35    | avail: 118
+[init -> report_rom]   + child ps2 | binary: ps2
+[init -> report_rom]     + ram  | assigned: 1280K | quota: 1002504 | used: 776K | avail: 207880
+[init -> report_rom]     + caps | assigned: 100   | quota: 46      | used: 30   | avail: 16
+[init -> report_rom]   + child fb | binary: vesa_fb
+[init -> report_rom]     + ram  | assigned: 20M | quota: 4109320 | used: 936K | avail: 3150856
+[init -> report_rom]     + caps | assigned: 150 | quota: 67      | used: 52   | avail: 15
+[init -> report_rom]   + child platform | binary: platform
+[init -> report_rom]     + ram  | assigned: 3M  | quota: 3204960 | used: 1064K | avail: 2115424
+[init -> report_rom]     + caps | assigned: 200 | quota: 227     | used: 62    | avail: 165
+[init -> report_rom]   + child pci_decode | binary: pci_decode
+[init -> report_rom]     + ram  | assigned: 2M  | quota: 1856520 | used: 836K | avail: 1000456
+[init -> report_rom]     + caps | assigned: 100 | quota: 72      | used: 30   | avail: 42
+[init -> report_rom]   + child acpi | binary: acpi
+[init -> report_rom]     + ram  | assigned: 4M  | quota: 3975791 | used: 892K | avail: 3062383
+[init -> report_rom]     + caps | assigned: 250 | quota: 219     | used: 29   | avail: 190
+[init -> report_rom]   + child report_rom | binary: report_rom
+[init -> report_rom]     + ram  | assigned: 2M  | quota: 1995429 | used: 940K | avail: 1032869
+[init -> report_rom]     + caps | assigned: 100 | quota: 88      | used: 63   | avail: 25
+[init -> report_rom]   -
+[init -> report_rom] report 'system -> drivers -> state'
+[init -> report_rom]   state
+[init -> report_rom]   + ram | quota: 37634952 | used: 1248K | avail: 36357000
+[init -> report_rom]   + child usb_hid | binary: usb_hid | skipped_heartbeats: 6
+[init -> report_rom]     + ram  | assigned: 10M | quota: 9751560 | used: 1092K | avail: 8633352
+[init -> report_rom]     + caps | assigned: 180 | quota: 142     | used: 37    | avail: 105
+[init -> report_rom]   + child event_filter | binary: event_filter
+[init -> report_rom]     + ram  | assigned: 1280K | quota: 1075422 | used: 1004K | avail: 47326
+[init -> report_rom]     + caps | assigned: 90    | quota: 52      | used: 46    | avail: 6
+[init -> report_rom]   + child usb | binary: pc_usb_host
+[init -> report_rom]     + ram  | assigned: 16M | quota: 17448372 | used: 1168K | avail: 16252340
+[init -> report_rom]     + caps | assigned: 200 | quota: 153      | used: 35    | avail: 118
+[init -> report_rom]   + child ps2 | binary: ps2
+[init -> report_rom]     + ram  | assigned: 1280K | quota: 1002504 | used: 776K | avail: 207880
+[init -> report_rom]     + caps | assigned: 100   | quota: 46      | used: 30   | avail: 16
+[init -> report_rom]   + child fb | binary: vesa_fb
+[init -> report_rom]     + ram  | assigned: 20M | quota: 4109320 | used: 936K | avail: 3150856
+[init -> report_rom]     + caps | assigned: 150 | quota: 67      | used: 52   | avail: 15
+[init -> report_rom]   + child platform | binary: platform
+[init -> report_rom]     + ram  | assigned: 3M  | quota: 3204960 | used: 1064K | avail: 2115424
+[init -> report_rom]     + caps | assigned: 200 | quota: 227     | used: 62    | avail: 165
+[init -> report_rom]   + child pci_decode | binary: pci_decode
+[init -> report_rom]     + ram  | assigned: 2M  | quota: 1856520 | used: 836K | avail: 1000456
+[init -> report_rom]     + caps | assigned: 100 | quota: 72      | used: 30   | avail: 42
+[init -> report_rom]   + child acpi | binary: acpi
+[init -> report_rom]     + ram  | assigned: 4M  | quota: 3975791 | used: 892K | avail: 3062383
+[init -> report_rom]     + caps | assigned: 250 | quota: 219     | used: 29   | avail: 190
+[init -> report_rom]   + child report_rom | binary: report_rom
+[init -> report_rom]     + ram  | assigned: 2M  | quota: 1995429 | used: 940K | avail: 1032869
+[init -> report_rom]     + caps | assigned: 100 | quota: 88      | used: 63   | avail: 25
+[init -> report_rom]   -
+[init -> report_rom] report 'system -> drivers -> state'
+[init -> report_rom]   state
+[init -> report_rom]   + ram | quota: 37634952 | used: 1248K | avail: 36357000
+[init -> report_rom]   + child usb_hid | binary: usb_hid | skipped_heartbeats: 7
+[init -> report_rom]     + ram  | assigned: 10M | quota: 9751560 | used: 1092K | avail: 8633352
+[init -> report_rom]     + caps | assigned: 180 | quota: 142     | used: 37    | avail: 105
+[init -> report_rom]   + child event_filter | binary: event_filter
+[init -> report_rom]     + ram  | assigned: 1280K | quota: 1075422 | used: 1004K | avail: 47326
+[init -> report_rom]     + caps | assigned: 90    | quota: 52      | used: 46    | avail: 6
+[init -> report_rom]   + child usb | binary: pc_usb_host
+[init -> report_rom]     + ram  | assigned: 16M | quota: 17448372 | used: 1168K | avail: 16252340
+[init -> report_rom]     + caps | assigned: 200 | quota: 153      | used: 35    | avail: 118
+[init -> report_rom]   + child ps2 | binary: ps2
+[init -> report_rom]     + ram  | assigned: 1280K | quota: 1002504 | used: 776K | avail: 207880
+[init -> report_rom]     + caps | assigned: 100   | quota: 46      | used: 30   | avail: 16
+[init -> report_rom]   + child fb | binary: vesa_fb
+[init -> report_rom]     + ram  | assigned: 20M | quota: 4109320 | used: 936K | avail: 3150856
+[init -> report_rom]     + caps | assigned: 150 | quota: 67      | used: 52   | avail: 15
+[init -> report_rom]   + child platform | binary: platform
+[init -> report_rom]     + ram  | assigned: 3M  | quota: 3204960 | used: 1064K | avail: 2115424
+[init -> report_rom]     + caps | assigned: 200 | quota: 227     | used: 62    | avail: 165
+[init -> report_rom]   + child pci_decode | binary: pci_decode
+[init -> report_rom]     + ram  | assigned: 2M  | quota: 1856520 | used: 836K | avail: 1000456
+[init -> report_rom]     + caps | assigned: 100 | quota: 72      | used: 30   | avail: 42
+[init -> report_rom]   + child acpi | binary: acpi
+[init -> report_rom]     + ram  | assigned: 4M  | quota: 3975791 | used: 892K | avail: 3062383
+[init -> report_rom]     + caps | assigned: 250 | quota: 219     | used: 29   | avail: 190
+[init -> report_rom]   + child report_rom | binary: report_rom
+[init -> report_rom]     + ram  | assigned: 2M  | quota: 1995429 | used: 940K | avail: 1032869
+[init -> report_rom]     + caps | assigned: 100 | quota: 88      | used: 63   | avail: 25
+[init -> report_rom]   -
+[init -> report_rom] report 'system -> drivers -> state'
+[init -> report_rom]   state
+[init -> report_rom]   + ram | quota: 37634952 | used: 1248K | avail: 36357000
+[init -> report_rom]   + child usb_hid | binary: usb_hid | skipped_heartbeats: 8
+[init -> report_rom]     + ram  | assigned: 10M | quota: 9751560 | used: 1092K | avail: 8633352
+[init -> report_rom]     + caps | assigned: 180 | quota: 142     | used: 37    | avail: 105
+[init -> report_rom]   + child event_filter | binary: event_filter
+[init -> report_rom]     + ram  | assigned: 1280K | quota: 1075422 | used: 1004K | avail: 47326
+[init -> report_rom]     + caps | assigned: 90    | quota: 52      | used: 46    | avail: 6
+[init -> report_rom]   + child usb | binary: pc_usb_host
+[init -> report_rom]     + ram  | assigned: 16M | quota: 17448372 | used: 1168K | avail: 16252340
+[init -> report_rom]     + caps | assigned: 200 | quota: 153      | used: 35    | avail: 118
+[init -> report_rom]   + child ps2 | binary: ps2
+[init -> report_rom]     + ram  | assigned: 1280K | quota: 1002504 | used: 776K | avail: 207880
+[init -> report_rom]     + caps | assigned: 100   | quota: 46      | used: 30   | avail: 16
+[init -> report_rom]   + child fb | binary: vesa_fb
+[init -> report_rom]     + ram  | assigned: 20M | quota: 4109320 | used: 936K | avail: 3150856
+[init -> report_rom]     + caps | assigned: 150 | quota: 67      | used: 52   | avail: 15
+[init -> report_rom]   + child platform | binary: platform
+[init -> report_rom]     + ram  | assigned: 3M  | quota: 3204960 | used: 1064K | avail: 2115424
+[init -> report_rom]     + caps | assigned: 200 | quota: 227     | used: 62    | avail: 165
+[init -> report_rom]   + child pci_decode | binary: pci_decode
+[init -> report_rom]     + ram  | assigned: 2M  | quota: 1856520 | used: 836K | avail: 1000456
+[init -> report_rom]     + caps | assigned: 100 | quota: 72      | used: 30   | avail: 42
+[init -> report_rom]   + child acpi | binary: acpi
+[init -> report_rom]     + ram  | assigned: 4M  | quota: 3975791 | used: 892K | avail: 3062383
+[init -> report_rom]     + caps | assigned: 250 | quota: 219     | used: 29   | avail: 190
+[init -> report_rom]   + child report_rom | binary: report_rom
+[init -> report_rom]     + ram  | assigned: 2M  | quota: 1995429 | used: 940K | avail: 1032869
+[init -> report_rom]     + caps | assigned: 100 | quota: 88      | used: 63   | avail: 25
+[init -> report_rom]   -
+[init -> system -> repostorm_probe] repostorm-probe: TABLE repostorm_probe baseline=786432 last=786432 avail=7386930 delta=0 caps_used=27
+[init -> system -> repostorm_probe] repostorm-probe: TABLE sponge_debug baseline=28340224 last=28340224 avail=21709534 delta=0 caps_used=494
+[init -> system -> repostorm_probe] repostorm-probe: TABLE drivers baseline=1269760 last=1277952 avail=36357000 delta=8192 caps_used=88
+[init -> system -> repostorm_probe] repostorm-probe: TABLE nitpicker baseline=34258944 last=34258944 avail=15295542 delta=0 caps_used=174
+[init -> system -> repostorm_probe] repostorm-probe: TABLE report_rom baseline=888832 last=888832 avail=7343968 delta=0 caps_used=51
+[init -> system -> repostorm_probe] repostorm-probe: DETAIL delta_max=8192 worst=drivers threshold=2097152 samples=60 children=5
+[init -> system -> repostorm_probe] repostorm-probe: VERDICT PASS
