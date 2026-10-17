@@ -358,6 +358,21 @@ verified by PGP against the in-tree pubkey at
 The depot archives never leave the build host — `sponge_pkgd` does not
 fetch at runtime (Metis amendment A1).
 
+> **Incident note (2026-10-18, submodule split):** during the
+> subtree→submodule migration the `genode/contrib/` tree (git-ignored,
+> re-fetchable by design) was damaged by a full tmpfs mid-`mv`. All 37
+> ports were re-fetched and hash-verified except `libc`: its only
+> upstream (`ftp-archive.freebsd.org` `12.0-RELEASE/src.txz`) was
+> unreachable at the time, so the port content was reconstructed from
+> the `freebsd/freebsd-src` git tag `release/12.0.0` (the same source
+> content the release tarball packages) and then run through the port's
+> own patch/include-assembly steps (`prepare_port` with pre-satisfied
+> download stamps). The reconstructed tree compiles and boots, but it
+> did NOT pass the `.port` file's `SHA(libc)` download-integrity check
+> (that check binds the exact `src.txz` bytes). Re-running
+> `genode/tool/ports/prepare_port libc` once the canonical host is back
+> restores the canonical path; delete `genode/contrib/libc-*` first.
+
 | Depot archive | Version | SHA-256 of `<user>/<type>/<recipe>/<version>.tar.xz` | Used by | Notes |
 |---|---|---|---|---|
 | `cproc/pkg/falkon_qt6-jemalloc` | `2026-04-22` | `23e6a2b6be18b71cb7efc5a33018d3fa9b978310a9daf13ac0eae0f2fbc00b1e` | `pkg/falkon/` (todo 16) | Pinned by `genode/repos/gems/sculpt/deploy/falkon_web_browser` line 28. The pkg recipe name (`falkon_qt6-jemalloc`) differs from the underlying binary recipe name (`falkon_qt6`); `tool/pkg_import` resolves the correct `bin/x86_64/falkon_qt6/<version>` archive. The full transitive closure is ~1.8 GB (1 pkg + 25 src + 2 raw + 43 api archives). |

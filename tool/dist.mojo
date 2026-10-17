@@ -279,6 +279,13 @@ def run_argv_streaming_with_env(cmd: List[String], extra_env: Dict[String, Strin
     for k in ["MOJO_PYTHON_LIBRARY", "PYTHONEXECUTABLE", "PYTHONHOME"]:
         if k in env:
             env.pop(k, None)
+    # Hand the repo venv's python modules (lxml for the seL4 syscall
+    # generator, future for the sel4 port) to the child make: the venv
+    # python is a symlink to the system python, so PATH alone does not
+    # activate it (same contract as tool/build.mojo's run_argv).
+    env["PATH"] = repo_root() + "/.venv/bin:" + String(env["PATH"])
+    env["VIRTUAL_ENV"] = repo_root() + "/.venv"
+    env["PYTHONPATH"] = repo_root() + "/.venv/lib/python3.14/site-packages"
     for key in extra_env:
         var k = String(key)
         env[k] = extra_env[k]
