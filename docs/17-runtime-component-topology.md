@@ -426,6 +426,45 @@ component must never be able to freeze the desktop. Status after the
   scenario can run a timer on this host today. The disk/UEFI product
   path is unaffected. Revisit when the flat-boot HPET issue is
   root-caused (QEMU/seaBIOS ACPI exposure).
+- [~] **Persistent log on the writable partition (field diagnosis) —
+  PARTIAL, opt-in**: `repos/sponge/src/sponge_logdisk` is a LOG server
+  that writes the system log to `/log/boot.log` on SPONGE-VAR, one file
+  per boot with the previous boot preserved at `/log/boot.log.1`, capped
+  at 8 MiB, flushed per message. It is wired into
+  `run/sponge-desktop-disk-uefi-usb.run` behind `SPONGE_LOGDISK=on`
+  (**off by default**, see the coverage and coupling arguments in that
+  file and `docs/evidence/logdisk-field-diagnosis.md`).
+
+  What is closed: the *mechanism* — a durable, size-capped, per-boot
+  record on the writable partition that survives a hard reset, readable
+  with `cat` from a terminal or with `e2cp` off the media. Two design
+  findings came out of it and are documented in the component header:
+  a LOG provider must not issue its `File_system` request on the thread
+  that serves LOG writes (that deadlocked the boot right after `acpi`),
+  and the root must be managed on a secondary entrypoint, not `env.ep()`.
+
+  What is NOT closed: coverage, and therefore default-ON. init evaluates
+  a child's OWN `<route>` for that child's session requests, so a Tier-0
+  sink is only reachable from the Tier-0 children that carry no `<route>`
+  node (today `report_rom`, `nitpicker`, `timer`). The nested `system`
+  subtree — pkgd, configd, themed, wm, layouter, decorator, sponge-de,
+  the package runtimes, i.e. exactly the components a scroll-storm freeze
+  implicates — is not captured: reaching the sink from there requires the
+  sink to be a child of that same sandbox, and **a component inside a
+  nested sandbox cannot obtain a `File_system` from a service provided
+  by a SIBLING of the outer sandbox** (measured: the session is denied,
+  `docs/evidence/logdisk-field-diagnosis.md` §4). Core's own log is
+  not capturable at all — core writes it to the kernel's log memory and
+  the serial line; `sponge_logdisk` sits above it in userspace.
+
+  The follow-up that closes it: move the sink INSIDE the nested
+  `system` sandbox (giving it the sandbox's heartbeat containment, which
+  a Tier-0 component does not have) and give that sandbox its own `vfs`
+  + `part_block` over the log partition, so the sink's `File_system` is a
+  sibling grant like every other service inside the sandbox. Only then
+  does default-ON make sense. Core's log and the serial line remain the
+  fallback for the kernel phase.
+
 - [ ] **Problem-triggered console switch (field diagnosis)**: the
   framebuffer has exactly one owner at a time. Today, when the desktop
   is up, component logs reach no user-visible surface on real hardware

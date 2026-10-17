@@ -375,6 +375,7 @@ set build_components {
 	sponge_configd sponge_themed sponge_pkgd pkg_hello sponge-de
 	app/qt6/examples/calculatorform sponge_files app/pdf_view
 	sponge_debug
+	sponge_logdisk
 	cfg_probe
 	server/terminal
 	noux-pkg/bash-minimal noux-pkg/vim-minimal
@@ -432,7 +433,8 @@ close $empty_cfg
 foreach b { init report_rom wm window_layouter decorator \
             sponge_configd sponge_themed sponge_pkgd sponge-de \
             alpha_probe hello terminal sponge_files calculatorform \
-            pdf_view textedit sponge_debug cfg_probe boot_fb usb_block } {
+            pdf_view textedit sponge_debug cfg_probe boot_fb usb_block \
+            sponge_logdisk } {
 	if {[file exists "bin/$b"]} {
 		exec cp -fL "bin/$b" "$sys_dir/bin/$b"
 	}
@@ -916,6 +918,10 @@ config
 # for the real-hardware config-delivery timing); this is the SAME
 # invariant seen from the quota side. Do not append a start node under
 # this one without moving pkg_runtime back to the end of the file.
+# sponge_logdisk (when SPONGE_LOGDISK is on) is started BEFORE this
+# node, so its File_system request and the vfs_var service it consumes
+# resolve inside this same init.
+#
 # (The SPONGE_LAUNCHTEST block further down rewrites the sponge-de node
 # IN PLACE — its replacement nodes stay above this one, so the ordering
 # invariant survives that substitution.)
@@ -1039,7 +1045,130 @@ config
 #      report: usb -> usb -> devices`).
 #
 
-install_config {
+#
+# ========================================================================
+# Persistent log sink (SPONGE_LOGDISK) — the field-diagnosis lever
+# ========================================================================
+#
+# The LG gram has no serial port and no concurrent fb console is
+# allowed (docs/17 §4), so a freeze leaves no evidence at all: every
+# log line in the system terminates on a serial UART nobody reads
+# (repos/base/src/core/include/log_session_component.h -> Genode::log
+# -> Core::Core_log -> Kernel::log -> the seL4 boot UART).
+#
+# SPONGE_LOGDISK=on re-roots that stream onto SPONGE-VAR: the
+# 'sponge_logdisk' Tier-0 child PROVIDES the LOG service and writes it
+# to P4:/log/boot.log, and the two default-route rules below send the
+# LOG sessions that reach the top-level init's default-route to that
+# child instead of to core.
+#
+#   SPONGE_LOGDISK=on    sink wired, LOG on SPONGE-VAR
+#   SPONGE_LOGDISK=off   (DEFAULT for now) sink unwired, LOG stays on the
+#                        serial line — the pre-change behaviour, byte
+#                        for byte
+#
+# WHY OFF BY DEFAULT, despite this being the product media:
+#
+#   (a) COVERAGE. init evaluates a child's OWN <route> for that child's
+#       session requests (base/include/base/child.h hands every child a
+#       LOG env session routed with the child's policy), so the two
+#       default-route rules below only reach the Tier-0 children that
+#       carry no <route> node of their own — today report_rom,
+#       nitpicker and timer. The nested 'system' subtree (pkgd, configd,
+#       themed, wm, layouter, decorator, sponge-de, the package
+#       runtimes) is NOT captured, because reaching the sink from there
+#       would need the sink to be a child of that same sandbox, and a
+#       component inside a nested sandbox cannot obtain a File_system
+#       from a service provided by a SIBLING of the outer sandbox
+#       (measured: the session is denied, see
+#       docs/evidence/logdisk-field-diagnosis.md). Those are exactly the
+#       components the freeze investigation needs.
+#   (b) COUPLING. Every component whose LOG routes to the sink cannot
+#       START before the sink announces its service (init leaves a child
+#       STUCK with an incomplete env), so the sink is a single point of
+#       failure for the log path of those components.
+#
+# Shipping an opt-in lever with an honest limitation beats shipping a
+# default-on lever that captures a tenth of the stream and adds a boot
+# dependency. Default-ON is deferred to the follow-up named in
+# docs/17-runtime-component-topology.md §5, which moves the sink inside
+# the nested sandbox and gives that sandbox its own vfs over the log
+# partition.
+#
+# Cost: measured in docs/evidence/logdisk-cost.md — one File_system
+# write + sync per message, no measurable desktop slowdown. The sink
+# is the only component on the LOG path, so it is a single point of
+# failure for logging; it is written to never block for longer than
+# one filesystem write and to disable persistence (rather than wedge
+# its loggers) when the filesystem goes away.
+#
+# KNOB SEMANTICS ARE ALL-OR-NOTHING ON PURPOSE: 'off' removes the
+# provider AND both route rules, so the LOG service resolves to core
+# exactly as before. A half-state (provider without routes, or routes
+# without a provider) would leave every child STUCK in init's
+# 'incomplete environment' state (os/src/lib/sandbox/child.cc:40-49).
+#
+set logdisk_on [expr {[info exists ::env(SPONGE_LOGDISK)] && $::env(SPONGE_LOGDISK) eq "on"}]
+
+set logdisk_routes ""
+set logdisk_child  ""
+set vfs_log_policy ""
+
+if {$logdisk_on} {
+	puts "sponge-desktop-disk-uefi-usb: persistent log sink ON (SPONGE_LOGDISK=on) — SPONGE-VAR /log/boot.log (+ .1)"
+
+	#
+	# The FIRST rule is the bootstrap escape. Every child gets a LOG
+	# environment session before it is started, so the sink itself
+	# needs one too — and its own LOG session must NOT resolve to the
+	# sink, or the child can never start. 'label_last: sponge_logdisk'
+	# matches only the label the top-level init sends for THIS child's
+	# own env session (base/include/base/child.h:628 passes the local
+	# child name); every forwarded session carries a scoped label like
+	# "system -> wm", whose last element is never "sponge_logdisk".
+	# So the sink's own diagnostics stay on the serial line, where a
+	# broken sink is still readable, and everything else goes to disk.
+	#
+	set logdisk_routes "  + service LOG | label_last: sponge_logdisk | + parent
+  + service LOG | + child sponge_logdisk
+"
+
+	set logdisk_child "+ start sponge_logdisk | caps: 200 | ram: 16M
+  + binary | name: sponge_logdisk
+  + provides | + service LOG
+  + config | path: /boot.log | max_bytes: 8388608 | rotate_suffix: .1 | tick_ms: 5000
+    + vfs
+      + fs | name: log
+  + route
+    + service ROM | label_last: ld.lib.so     | + parent
+    + service ROM | label_last: vfs.lib.so    | + parent
+    + service ROM | label_last: vfs_rump.lib.so | + parent
+    + service ROM | label_last: rump.lib.so   | + parent
+    + service ROM | label_last: rump_fs.lib.so | + parent
+    + service File_system | + child vfs_var
+    + service Timer | + child timer
+    + any-service
+      + parent
+      + any-child
+"
+
+	#
+	# The label_prefix ends with " -> " on purpose. init prefixes a
+	# routed session label with the REQUESTING child's name, so the
+	# label the vfs server sees is "sponge_logdisk -> /" — the upstream
+	# idiom (genode/repos/dde_rump/run/rump_ext2.run:65,
+	# genode/repos/os/run/internet_checksum.run:50). The vfs server also
+	# requires the label's LAST element to start and end with '/', so
+	# a bare "vfs_log" label would be denied even when the policy
+	# matched. '/' it is, with the selection done by the prefix.
+	#
+	set vfs_log_policy "    + policy | label_prefix: sponge_logdisk -> | root: /log | writeable: yes
+"
+} else {
+	puts "sponge-desktop-disk-uefi-usb: persistent log sink OFF (default) — LOG stays on the serial line; SPONGE_LOGDISK=on enables it"
+}
+
+install_config [subst {
 config
 + parent-provides
   + service ROM
@@ -1053,7 +1182,7 @@ config
 
 + default | caps: 200 | ram: 4M
 + default-route
-  + any-service
+$logdisk_routes  + any-service
     + parent
     + any-child
 
@@ -1224,7 +1353,7 @@ config
     + vfs
       + rump | fs: ext2fs | ram: 16M | writeable: yes
     + policy | root: /pkgd | writeable: yes
-  + route
+$vfs_log_policy  + route
     + service ROM | label_last: ld.lib.so     | + parent
     + service ROM | label_last: vfs.lib.so    | + parent
     + service ROM | label_last: vfs_rump.lib.so | + parent
@@ -1404,6 +1533,18 @@ config
 #    SPONGE_LAUNCHTEST=on, still inside this grant.)
 # Grant 280000 caps => +10.1% caps headroom.
 #
+# NOTE (sponge_logdisk): the sink is a TIER-0 sibling of 'system', not
+# one of its children, and that placement is deliberate. base's Child
+# hands every child a LOG environment session BEFORE starting it
+# (base/include/base/child.h:628) and init refuses to start a child
+# with an incomplete environment (sandbox/child.cc:40-49). A LOG
+# provider inside 'system' would therefore deadlock: 'system' cannot
+# create the sink's env session because that session is routed to the
+# sink, which cannot announce until it has been created. At Tier-0 the
+# sink announces before it opens its File_system session, which breaks
+# the cycle in the other direction. Tier-0 caps are drawn from core, so
+# the 280000 / 512G grants above are unchanged by this new sibling.
+#
 # RAM: `512G` IS THE SAME DELIBERATELY-HUGE QUANTUM as pkg_runtime's,
 # one level up — same clamp mechanism, genode/repos/os/src/lib/sandbox/
 # child.cc:481-486. `system` is the LAST `+ start` node in THIS
@@ -1418,7 +1559,7 @@ config
 # do — the caps clamp hangs on seL4; see the caps rationale at the
 # pkg_runtime node below.
 #
-+ start system | caps: 280000 | ram: 512G
+$logdisk_child+ start system | caps: 280000 | ram: 512G
   + binary | name: bin/init
   + route
     + service ROM | label: config | + child rom_sys | label: init/system.config
@@ -1438,7 +1579,7 @@ config
     + any-service
       + parent
       + any-child
-- }
+- }]
 
 #
 # === Stage the driver sub-init config modules (Tier-0 boot modules) ===
@@ -1472,7 +1613,8 @@ foreach f { en_us.chargen special.chargen } {
 set boot_modules { }
 foreach m { core-sel4.a ld-sel4.lib.so init timer report_rom nitpicker platform acpi pci_decode \
             pc_usb_host usb_block part_block vfs cached_fs_rom \
-            boot_fb ps2 usb_hid event_filter pointer } {
+            boot_fb ps2 usb_hid event_filter pointer \
+            sponge_logdisk } {
 	lappend boot_modules $m
 }
 foreach m { vfs.lib.so vfs_rump.lib.so rump.lib.so rump_fs.lib.so \
@@ -1675,6 +1817,14 @@ set var_img  [run_dir]/var.img
 exec dd if=/dev/zero of=$var_img bs=1M count=64 2>/dev/null
 exec $mkfs_ext2 -F -q -L SPONGE-VAR $var_img
 exec $e2mkdir $var_img:/pkgd
+#
+# /log is the log sink's chroot on SPONGE-VAR: the vfs policy maps the
+# sponge_logdisk's File_system session onto this directory, and the
+# session ROOT is resolved when the session is created — a missing
+# directory fails the session itself, not merely the first write. It
+# is therefore created unconditionally, so enabling the sink on an
+# already-flashed medium never needs a re-flash.
+exec $e2mkdir $var_img:/log
 
 set home_img [run_dir]/home.img
 exec dd if=/dev/zero of=$home_img bs=1M count=1024 2>/dev/null
