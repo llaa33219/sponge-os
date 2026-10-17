@@ -357,6 +357,21 @@ def cmd_prepare() raises:
     var genode_dir = root + "/genode"
     var build_dir = genode_dir + "/build/x86_64"
 
+    # 0. The Genode base tree is a git submodule (github.com/llaa33219/
+    #    sponge-os-genode). Initialize/update it before anything else —
+    #    the patch-ledger verify below needs the tree present. (Manual
+    #    equivalent, AGENTS.md §3.5: `git submodule update --init genode`.)
+    if not os_path.isdir(genode_dir + "/repos"):
+        print("[sponge-build] genode/ not checked out; initializing the submodule")
+        var sub_env = Python.import_module("os").environ.copy()
+        var rc = run_argv_env(
+            ["git", "submodule", "update", "--init", "genode"], root, sub_env
+        )
+        if rc != 0 or not os_path.isdir(genode_dir + "/repos"):
+            print("error: genode submodule initialization failed")
+            print("Run manually: git submodule update --init genode")
+            exit(1)
+
     # Phase 12 W1 (docs/plans/phase12-hardware.md W1, risk 19): run the
     # read-only patch-ledger verify gate as the first action of every
     # build-related command, so the patch state is trusted before any
@@ -368,13 +383,8 @@ def cmd_prepare() raises:
     print("[sponge-build] prepare: setting up the Genode build directory")
     print()
 
-    # 1. The vendored Genode tree must exist.
-    if not os_path.isdir(genode_dir):
-        print("error: vendored Genode tree not found at " + genode_dir)
-        print("The repository is expected to vendor Genode at genode/ (see")
-        print("AGENTS.md §5.2). Restore the tree before running prepare.")
-        exit(1)
-    print("ok: vendored Genode tree found at " + genode_dir)
+    # 1. The submodule tree must exist (initialized above).
+    print("ok: Genode base tree (submodule) found at " + genode_dir)
 
     # 2. Create the build directory if absent.
     if os_path.isdir(build_dir):

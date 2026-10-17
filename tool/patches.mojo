@@ -70,6 +70,16 @@ def git_capture(args: List[String], cwd: String) raises -> PythonObject:
     return subprocess.run(py_args, cwd=cwd, capture_output=True, text=True)
 
 
+def git_capture_both(args: List[String], root: String) raises -> PythonObject:
+    """Run `git <args>` in genode/ first (vendored-tree patches), falling
+    back to the main repository (contrib patch-file commits). Returns the
+    first successful result, else the main-repo result."""
+    var res = git_capture(args, cwd=root + "/genode")
+    if Int(py=res.returncode) == 0:
+        return res
+    return git_capture(args, cwd=root)
+
+
 def read_text_file(path: String) raises -> String:
     var builtins = Python.import_module("builtins")
     var f = builtins.open(path, "r")
@@ -206,6 +216,7 @@ def print_help() raises:
 
 
 def cmd_list(rows: List[PatchRow], root: String) raises:
+    var genode_dir = root + "/genode"
     print("[sponge-patches] patch ledger (docs/11-environment.md §4)")
     print()
     for row in rows:
@@ -213,9 +224,7 @@ def cmd_list(rows: List[PatchRow], root: String) raises:
               + row.subject)
     print()
     for row in rows:
-        var res = git_capture(
-            ["log", "-1", "--format=%H%n%s", row.sha_prefix], cwd=root
-        )
+        var res = git_capture_both(["log", "-1", "--format=%H%n%s", row.sha_prefix], root)
         var rc = Int(py=res.returncode)
         if rc != 0:
             print("#" + String(row.number) + " " + row.sha_prefix
@@ -238,14 +247,13 @@ def cmd_list(rows: List[PatchRow], root: String) raises:
 
 
 def cmd_verify(rows: List[PatchRow], root: String) raises:
+    var genode_dir = root + "/genode"
     print("[sponge-patches] verify: ledger vs git reality")
     print()
     var failures = 0
     for row in rows:
         # (a) Does the commit exist at all?
-        var log_res = git_capture(
-            ["log", "-1", "--format=%H", row.sha_prefix], cwd=root
-        )
+        var log_res = git_capture_both(["log", "-1", "--format=%H", row.sha_prefix], root)
         if Int(py=log_res.returncode) != 0:
             print("FAIL #" + String(row.number) + " " + row.sha_prefix
                   + ": commit not found")
@@ -259,7 +267,7 @@ def cmd_verify(rows: List[PatchRow], root: String) raises:
         var anc_args: List[String] = ["merge-base", "--is-ancestor"]
         anc_args.append(full_sha)
         anc_args.append("HEAD")
-        var anc_res = git_capture(anc_args, cwd=root)
+        var anc_res = git_capture_both(anc_args, root)
         var is_ancestor = Int(py=anc_res.returncode) == 0
 
         # (c) Which paths does it touch? Reported, not policed: patch #5
@@ -267,7 +275,7 @@ def cmd_verify(rows: List[PatchRow], root: String) raises:
         # there is no genode/-only rule to enforce here.
         var stat_args: List[String] = ["show", "--format=", "--name-only"]
         stat_args.append(full_sha)
-        var stat_res = git_capture(stat_args, cwd=root)
+        var stat_res = git_capture_both(stat_args, root)
         var paths: List[String] = []
         for p in String(stat_res.stdout).split("\n"):
             var path = String(
@@ -304,6 +312,7 @@ def cmd_verify(rows: List[PatchRow], root: String) raises:
 def cmd_export(rows: List[PatchRow], root: String, out_dir: String) raises:
     var os_py = Python.import_module("os")
     var os_path = Python.import_module("os.path")
+    var genode_dir = root + "/genode"
 
     if not os_path.isdir(out_dir):
         os_py.makedirs(out_dir)
@@ -314,9 +323,7 @@ def cmd_export(rows: List[PatchRow], root: String, out_dir: String) raises:
     print()
     var failures = 0
     for row in rows:
-        var res = git_capture(
-            ["format-patch", "-1", row.sha_prefix, "--stdout"], cwd=root
-        )
+        var res = git_capture_both(["format-patch", "-1", row.sha_prefix, "--stdout"], root)
         if Int(py=res.returncode) != 0:
             print("FAIL #" + String(row.number) + " " + row.sha_prefix
                   + ": git format-patch failed")
@@ -337,6 +344,7 @@ def cmd_export(rows: List[PatchRow], root: String, out_dir: String) raises:
 
 
 def cmd_drop(rows: List[PatchRow], root: String, number: Int) raises:
+    var genode_dir = root + "/genode"
     var found = False
     var sha = String("")
     var subject = String("")
@@ -353,7 +361,7 @@ def cmd_drop(rows: List[PatchRow], root: String, number: Int) raises:
 
     # Resolve the full SHA so the printed command is unambiguous.
     var full_sha = sha
-    var res = git_capture(["log", "-1", "--format=%H", sha], cwd=root)
+    var res = git_capture_both(["log", "-1", "--format=%H", sha], root)
     if Int(py=res.returncode) == 0:
         full_sha = String(String(res.stdout).split("\n")[0])
     else:
@@ -380,7 +388,7 @@ def cmd_drop(rows: List[PatchRow], root: String, number: Int) raises:
     print()
     print("If upstream absorbed the fix via a subtree upgrade instead of a")
     print("plain revert, the alternative is re-running")
-    print("'git subtree pull --prefix=genode' and dropping the row in that")
+    print("the sponge-os-genode fork and dropping the row in that")
     print("same commit.")
 
 

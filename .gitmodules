@@ -1,0 +1,4 @@
+[submodule "genode"]
+	path = genode
+	url = https://github.com/llaa33219/sponge-os-genode.git
+	branch = main

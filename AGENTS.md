@@ -76,7 +76,7 @@ sponge-os/
 ├── README.md                  # User-facing introduction (short)
 ├── AGENTS.md                  # This file
 ├── docs/                      # All detailed documentation
-├── genode/                    # Vendored Genode source tree (git subtree, see §5.2)
+├── genode/                    # Genode base tree (git submodule -> sponge-os-genode, see §5.2)
 │   ├── repos/                 # Upstream Genode repositories (base, os, libports, ...)
 │   └── repos/sponge -> ../../repos/sponge  # Relative symlink wiring Sponge in
 ├── repos/
@@ -93,10 +93,11 @@ sponge-os/
 └── var/                       # Local caches (git-ignored): qt6 host tools, distfiles
 ```
 
-The Genode build system assumes a `repos/<name>/` layout. The vendored
-tree at `genode/` satisfies this via the committed relative symlink
+The Genode build system assumes a `repos/<name>/` layout. The submodule
+at `genode/` satisfies this via the committed relative symlink
 `genode/repos/sponge -> ../../repos/sponge`, so no external Genode
-checkout is ever required. See `docs/08-development.md` for the build
+checkout is ever required. Clone with `git clone --recursive` (or run
+`./tool/build prepare`, which initializes the submodule for you). See `docs/08-development.md` for the build
 flow and `docs/11-environment.md` for the full environment contract.
 
 ---
@@ -239,25 +240,31 @@ Claims like "user-friendly" must be backed by code. Specifically:
 measure how many commands or clicks complete a task, check whether the
 user must know Genode terminology, and put those numbers in the PR body.
 
-### 5.2 Genode Is Vendored, Pinned, and Never Re-implemented
+### 5.2 Genode Is Vendored as a Submodule, Pinned, and Never Re-implemented
 
-This repository **vendors** the Genode source tree at `genode/` via
-`git subtree`, pinned to an upstream release (currently **26.08**,
-upstream commit `d18ee9e917`). Rationale: reproducibility and stability
-must not depend on an external, mutable checkout.
+The Genode source tree lives in the dedicated fork repository
+**`github.com/llaa33219/sponge-os-genode`** (upstream 26.08 + the
+Sponge patch set) and is consumed here as the `genode/` **git
+submodule**, pinned to a specific fork commit. (History note:
+pre-2026-10-17 this was a `git subtree`; the split kept the tree
+byte-identical. The old history resolves on the
+`legacy/main-pre-genode-split` branch.) Rationale: reproducibility and
+stability must not depend on an external, mutable checkout.
 
 Rules:
 
-- **Pin, don't float.** The vendored tree tracks a specific upstream
-  release. Upgrades are deliberate (`git subtree pull --prefix=genode`),
-  recorded in the commit message, and verified before merging.
+- **Pin, don't float.** The submodule tracks a specific fork commit.
+  Upgrades are deliberate (merge upstream in the fork, record it in the
+  fork's commit message, then bump the submodule pin here in a commit
+  that says so), and verified before merging.
 - **Local patches are first-class.** Any Sponge-specific change to the
-  vendored tree is an ordinary commit on top of the subtree, and MUST be
+  fork tree is an ordinary commit on the fork's main, and MUST be
   recorded in the patch ledger in `docs/11-environment.md` (what, where,
-  why, and how to drop it when upstream absorbs the fix).
+  why, and how to drop it when upstream absorbs the fix). The submodule
+  pin is bumped here to bring it in.
 - **Do not re-implement Genode.** Vendoring is not a fork in spirit:
   keep Sponge OS-specific code in `repos/sponge/`, keep patches to the
-  vendored tree minimal, and do not depend on Genode internal headers
+  fork tree minimal, and do not depend on Genode internal headers
   or private APIs from Sponge components.
 - **Third-party port sources** (`genode/contrib/`) are NOT vendored.
   They are pinned by upstream `.port`/`.hash` files (SHA-256) and

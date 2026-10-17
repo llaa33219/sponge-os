@@ -45,7 +45,7 @@ the idiomatic Mojo pattern for missing functionality.
 ## Mutation boundary
 
 `tool/build prepare`, `tool/build ports`, and `tool/build run` automate
-steps against the **vendored** Genode tree at `<repo>/genode/` (creating
+steps against the Genode submodule tree at `<repo>/genode/` (creating
 `genode/build/x86_64`, appending a marker-delimited block to
 `genode/build/x86_64/etc/build.conf`, downloading port sources into
 `genode/contrib/`). AGENTS.md §3.5 explicitly permits this. The tools
@@ -95,7 +95,8 @@ propagates the make exit code.
 
 ### patches
 Manages the patch ledger (docs/11-environment.md §4): the Sponge-local
-commits on top of the vendored Genode subtree. Read-only against the
+commits on top of the pinned Genode fork (the `genode/` submodule).
+Read-only against the
 repository — `drop` prints manual instructions, it never reverts.
 
 ```bash

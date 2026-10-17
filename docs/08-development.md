@@ -28,7 +28,10 @@ without any per-developer wiring.
 
 Two facts that come out of this:
 
-- **No `git clone genode`.** A contributor only ever clones
+- **No separate `git clone genode`.** A contributor clones this
+  repository with `git clone --recursive` (the `genode/` submodule
+  follows automatically; `./tool/build prepare` initializes it if
+  forgotten). A contributor only ever clones
   `sponge-os`. The full Genode 26.05 source tree comes with it
   (~50 MB working tree, ~150 MB with the subtree's git history).
 - **No `ln -s repos/sponge`.** The symlink is committed. Moving the
