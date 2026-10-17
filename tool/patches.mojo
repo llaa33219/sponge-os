@@ -216,7 +216,6 @@ def print_help() raises:
 
 
 def cmd_list(rows: List[PatchRow], root: String) raises:
-    var genode_dir = root + "/genode"
     print("[sponge-patches] patch ledger (docs/11-environment.md §4)")
     print()
     for row in rows:
@@ -247,7 +246,6 @@ def cmd_list(rows: List[PatchRow], root: String) raises:
 
 
 def cmd_verify(rows: List[PatchRow], root: String) raises:
-    var genode_dir = root + "/genode"
     print("[sponge-patches] verify: ledger vs git reality")
     print()
     var failures = 0
@@ -312,7 +310,6 @@ def cmd_verify(rows: List[PatchRow], root: String) raises:
 def cmd_export(rows: List[PatchRow], root: String, out_dir: String) raises:
     var os_py = Python.import_module("os")
     var os_path = Python.import_module("os.path")
-    var genode_dir = root + "/genode"
 
     if not os_path.isdir(out_dir):
         os_py.makedirs(out_dir)
@@ -344,7 +341,6 @@ def cmd_export(rows: List[PatchRow], root: String, out_dir: String) raises:
 
 
 def cmd_drop(rows: List[PatchRow], root: String, number: Int) raises:
-    var genode_dir = root + "/genode"
     var found = False
     var sha = String("")
     var subject = String("")
