@@ -151,31 +151,75 @@ namespace Sponge {
 	 * included.
 	 *
 	 * Nesting of the same tag name is accounted for so a template may
-	 * legally contain a nested element of its own type. The returned
-	 * span is what gets written to the report verbatim: the supervisor
-	 * must not reformat the config it forwards, because a reformat is
-	 * indistinguishable from a semantic change to whoever reads it.
+	 * legally contain a nested element of its own type. ATTRIBUTES and
+	 * self-closing tags are accounted for too: a config produced by
+	 * `hid format --output-xml` is full of `<config verbose="no">` and
+	 * `<config/>` nodes, and a scanner that recognises only the bare
+	 * `<config>` counts an opening tag that is never closed - which
+	 * truncates the forwarded config at the first nested `</config>` and
+	 * hands init a config that silently starts three children instead of
+	 * eleven. (Measured: a 13662-byte template was forwarded as 3325
+	 * bytes, and the desktop simply never came up.)
+	 *
+	 * The returned span is what gets written to the report verbatim: the
+	 * supervisor must not reformat the config it forwards, because a
+	 * reformat is indistinguishable from a semantic change to whoever
+	 * reads it.
 	 */
 	inline bool element_text(char const *text, Genode::size_t sz,
 	                         char const *name,
 	                         char const *&out, Genode::size_t &out_len)
 	{
-		char open_tag [64] = { '<' };
-		char close_tag[64] = { '<', '/' };
-
 		Genode::size_t const n = Genode::strlen(name);
 
-		if (n + 4 >= sizeof(open_tag))
-			return false;
+		/* an open tag is "<name" followed by '>', whitespace or '/' */
+		auto is_open = [&] (Genode::size_t at) {
 
-		for (Genode::size_t i = 0; i < n; i++) {
-			open_tag [1 + i] = name[i];
-			close_tag[2 + i] = name[i];
-		}
-		open_tag [1 + n] = '>'; open_tag [2 + n] = '\0';
-		close_tag[2 + n] = '>'; close_tag[3 + n] = '\0';
+			if (at == 0 || text[at - 1] != '<' || !Detail::tag_at(text, sz, at, name))
+				return false;
 
-		Genode::size_t const close_len = n + 3;
+			if (at + n >= sz)
+				return false;
+
+			char const c = text[at + n];
+
+			return c == '>' || c == '/' || c == ' ' || c == '\t' ||
+			       c == '\n' || c == '\r';
+		};
+
+		auto is_close = [&] (Genode::size_t at) {
+
+			if (at == 0 || text[at - 1] != '<' || text[at] != '/')
+				return false;
+
+			return Detail::tag_at(text, sz, at + 1, name);
+		};
+
+		/*
+		 * Advance to just past the '>' ending the tag that starts at 'at',
+		 * stepping over quoted attribute values so a '>' inside one cannot
+		 * end the tag early.
+		 */
+		auto skip_tag = [&] (Genode::size_t at) {
+
+			bool quoted = false;
+			char q = 0;
+
+			while (at < sz) {
+				char const c = text[at];
+
+				if (quoted) {
+					if (c == q) quoted = false;
+				} else if (c == '"' || c == '\'') {
+					quoted = true; q = c;
+				} else if (c == '>') {
+					return at + 1;
+				}
+				at++;
+			}
+
+			return sz;
+		};
 
 		Genode::size_t depth = 0;
 		Genode::size_t start = 0;
@@ -186,30 +230,36 @@ namespace Sponge {
 			if (text[i] != '<')
 				continue;
 
-			if (Detail::tag_at(text, sz, i, open_tag)) {
+			if (is_open(i + 1)) {
+
+				Genode::size_t const tag_end = skip_tag(i + 1 + n);
+
+				/* "<name .../>" is a leaf and changes no depth */
+				bool const leaf = (tag_end >= 2 && text[tag_end - 2] == '/');
 
 				if (!have_start) {
 					start = i;
 					have_start = true;
-					/* skip the opening tag itself; an attribute value
-					 * containing '>' would end the scan early, which
-					 * is an acceptable and documented limitation */
-					while (i < sz && text[i] != '>') i++;
 				}
-				depth++;
+
+				if (!leaf)
+					depth++;
+
+				i = tag_end - 1;
 				continue;
 			}
 
-			if (Detail::tag_at(text, sz, i, close_tag)) {
+			if (is_close(i + 1)) {
 
-				if (depth == 0)
-					continue;
+				Genode::size_t const tag_end = skip_tag(i + 1 + n + 1);
 
-				if (--depth == 0) {
+				if (depth > 0 && --depth == 0) {
 					out     = text + start;
-					out_len = i + close_len - start;
+					out_len = tag_end - start;
 					return true;
 				}
+
+				i = tag_end - 1;
 			}
 		}
 

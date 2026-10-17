@@ -73,9 +73,13 @@
  * Phases:
  *
  *   BOOT     publish the nominal config once, then NOMINAL
- *   NOMINAL  healthy; the state report is polled but nothing is written
- *   CONTAIN  fault seen: rewrite `system` with a fresh @KILL@ (full
- *            teardown + respawn of the subtree) and start a grace timer
+ *   NOMINAL  healthy; the state report is polled but nothing is written.
+ *            A fault does NOT act immediately: it starts an escalation
+ *            window of `grace_ms` (see ESCALATION below) and the fault
+ *            flag is re-read on every tick of that window.
+ *   CONTAIN  the fault survived the escalation window: rewrite `system`
+ *            with a fresh @KILL@ (full teardown + respawn of the
+ *            subtree) and start a grace timer
  *   CONSOLE  the fault survived the grace window: publish the recovery
  *            config that starts the fault console, and swap the
  *            supervised config to its desktop-less variant so the
@@ -86,6 +90,36 @@
  *            stop the console. This is "automation = default, control =
  *            a door" applied to faults: nothing is asked of the user,
  *            and vct remains the manual door.
+ *
+ * ESCALATION - why a fault is not acted on immediately. The supervised
+ * sandbox may have its own containment. The product media runs
+ * `<heartbeat rate_ms="2000"/>` with `restart_after_skipped="3"` on the
+ * critical children, so the sandbox itself abandons and respawns a
+ * wedged child about six seconds after it stopped answering - and a
+ * slow Qt6 first paint or a heavy repaint is indistinguishable from a
+ * wedge at that scale. A supervisor that acted on the same signal at the
+ * same instant would be a SECOND supervisor fighting the first over one
+ * child, and the casualty is the user's session: a full subtree rebuild
+ * on every transient. So the rule is
+ *
+ *   act only when the supervised sandbox's own containment has FAILED
+ *   or been EXHAUSTED - i.e. the fault is still there after `grace_ms`,
+ *   which is longer than the sandbox's own restart threshold - or when
+ *   the sandbox has published nothing at all within `boot_grace_ms`
+ *   (which covers the sandbox init itself not coming up).
+ *
+ * A fault that the sandbox's own restart genuinely fixed therefore costs
+ * exactly one log line and nothing else. The escalation window is a
+ * TIMING rule, not a threshold: no detection threshold is changed by it.
+ *
+ * CLEAN EXITS. A boot probe is expected to exit - `alpha_probe` prints
+ * its PASS marker and exits, `cfg_probe` likewise - and Genode keeps an
+ * exited child in the state report until it is abandoned, so an
+ * unconditional "any exit is a fault" rule would tear down a perfectly
+ * healthy desktop at every boot. The `ignore_exited` policy carries the
+ * names that are allowed to exit; the same pair is excluded by
+ * sponge-de's health watcher (repos/sponge/src/sponge-de/main.cc), so
+ * the panel and the supervisor agree on what a clean exit is.
  *
  * Timing uses a TICK COUNT, not a wall-clock read: the supervisor's own
  * Timer is the only clock inside the failure domain it trusts, and a
@@ -172,6 +206,20 @@ struct Sponge::Supervisor::Main
 	unsigned _console_hold_ms { 4000 };
 	unsigned _settle_ms       { 3000 };
 
+	/*
+	 * Comma-separated child names whose `exited` attribute is NOT a
+	 * fault. A boot probe is expected to exit - `alpha_probe` exits 0
+	 * after printing its PASS marker, `cfg_probe` likewise - and
+	 * Genode keeps an exited child in the state report until it is
+	 * abandoned, so without this exclusion a product desktop would be
+	 * torn down at every boot, minutes after the probe did its job.
+	 * The exclusion is CONFIGURATION, not code: the same logic is
+	 * mirrored in sponge-de/main.cc's health watcher (which hides a
+	 * clean `exited(0)` for exactly these two names), so the panel and
+	 * the supervisor agree on what a clean exit is.
+	 */
+	char _ignore_exited[128] { };
+
 	/* deadlines in ticks */
 	unsigned _boot_grace_ticks { 0 };
 	unsigned _grace_ticks      { 0 };
@@ -190,6 +238,9 @@ struct Sponge::Supervisor::Main
 	/* first tick at which the subtree looked healthy after the last kill */
 	unsigned _healthy_since { 0 };
 	bool     _ever_healthy { false };
+
+	/* tick at which the current, still-unacted fault run began */
+	unsigned _fault_since   { 0 };
 
 	/*
 	 * Number of children reported as `exited` the last time the subtree
@@ -255,6 +306,14 @@ struct Sponge::Supervisor::Main
 		_grace_ms        = _num(cfg, sz, "grace_ms",        _grace_ms);
 		_console_hold_ms = _num(cfg, sz, "console_hold_ms", _console_hold_ms);
 		_settle_ms       = _num(cfg, sz, "settle_ms",       _settle_ms);
+
+		char const *ign = nullptr;
+		size_t      ign_len = 0;
+
+		Sponge::scan_attr(cfg, sz, "ignore_exited", ign, ign_len);
+		if (ign_len < sizeof(_ignore_exited))
+			Sponge::copy_value(_ignore_exited, ign, ign_len,
+			                   sizeof(_ignore_exited));
 
 		unsigned const poll = _poll_ms ? _poll_ms : 250;
 
@@ -338,6 +397,20 @@ struct Sponge::Supervisor::Main
 			return false;
 		}
 
+		/*
+		 * A forwarded config that does not END in the element it started
+		 * with is truncated, and a truncated config is the worst thing
+		 * this component could hand init: it parses, it applies, and the
+		 * desktop simply never comes up. Refuse instead of forwarding -
+		 * the previous config stays in effect, which is a visible stall
+		 * rather than a mystery.
+		 */
+		if (len < 9 || Genode::memcmp(text + len - 9, "</config>", 9) != 0) {
+			warning("sponge_supervisor: template <", template_name, "> (", len,
+			        " bytes) is truncated - not publishing");
+			return false;
+		}
+
 		static char buf[160*1024];
 
 		size_t const out = Sponge::substitute_decimal(text, len, "@KILL@",
@@ -374,6 +447,51 @@ struct Sponge::Supervisor::Main
 
 	/* ---- observation ---------------------------------------------- */
 
+	/**
+	 * Is the comma-separated `_ignore_exited` list carrying 'name'?
+	 *
+	 * The list is a fixed buffer scanned in place: the names are short,
+	 * the list is fixed-length, and a linear scan keeps the supervisor
+	 * free of any dynamic allocation.
+	 */
+	bool _excluded(Genode::String<64> const &name) const
+	{
+		char const *p = _ignore_exited;
+
+		while (*p) {
+
+			char const *e = p;
+			while (*e && *e != ',') e++;
+
+			/*
+			 * Compare the SPAN, not the rest of the list: `strcmp` on the
+			 * list's tail would compare "alpha_probe,cfg_probe" against
+			 * "alpha_probe" and never match, which would silently turn the
+			 * whole exclusion off.
+			 *
+			 * The length comes from strlen, not from String::length() -
+			 * which counts the terminating null, not the characters - and
+			 * not from String::size(), which is a static capacity and
+			 * compiles into a silent always-false comparison.
+			 */
+			size_t const n = Genode::strlen(name.string());
+
+			if ((size_t)(e - p) == n) {
+
+				bool same = true;
+				for (size_t i = 0; i < n; i++)
+					if (p[i] != name.string()[i]) { same = false; break; }
+
+				if (same)
+					return true;
+			}
+
+			p = (*e == ',') ? e + 1 : e;
+		}
+
+		return false;
+	}
+
 	void _scan_state()
 	{
 		if (!_state.valid())
@@ -402,7 +520,9 @@ struct Sponge::Supervisor::Main
 			bool     const gone    = n.has_attribute("exited");
 
 			if (skipped > _max_skipped) _max_skipped = skipped;
-			if (gone)                   _exited++;
+
+			if (gone && !_excluded(n.attribute_value("name", String<64>())))
+				_exited++;
 		});
 	}
 
@@ -462,6 +582,10 @@ struct Sponge::Supervisor::Main
 	{
 		_phase       = phase;
 		_phase_since = _ticks;
+
+		if (phase == Phase::NOMINAL)
+			_fault_since = 0;
+
 		log("sponge_supervisor: phase=", (int)phase, " (", why, ")");
 	}
 
@@ -491,6 +615,8 @@ struct Sponge::Supervisor::Main
 
 			if (!fault) {
 
+				_fault_since = 0;
+
 				/*
 				 * Periodic liveness line. It is not decoration: on
 				 * real hardware there is no serial console, so this
@@ -507,14 +633,51 @@ struct Sponge::Supervisor::Main
 				break;
 			}
 
+			/*
+			 * ESCALATION. The supervised sandbox may have its own
+			 * containment: the product media runs `<heartbeat rate_ms=
+			 * 2000/>` with `restart_after_skipped="3"` on the
+			 * critical children, so a wedged child is abandoned and
+			 * respawned by the sandbox itself about six seconds after
+			 * it stopped answering. Acting on the same signal at the
+			 * same instant would be two supervisors fighting over one
+			 * child, and the loser is the user's session: a full
+			 * subtree rebuild on every transient wedge (a slow Qt6
+			 * first paint is a transient wedge).
+			 *
+			 * So the supervisor does NOT act on the first fault. It
+			 * watches for `grace_ms` and re-reads the fault flag on
+			 * every tick: if the sandbox's own containment worked, the
+			 * skipped count has already reset and nothing happens at
+			 * all. Only a fault that is STILL there after the grace
+			 * window is escalated - which is exactly the condition
+			 * "the sandbox's own containment has failed or been
+			 * exhausted". The window also gives the sandbox's own
+			 * restart time to complete: a restart is asynchronous, and
+			 * the freshly respawned child reports skipped=0 only after
+			 * init has processed it.
+			 */
+			if (_fault_since == 0) {
+				_fault_since = _ticks;
+				_log_fault();
+				log("sponge_supervisor: escalation - fault held for ",
+				    _grace_ms, "ms before any action "
+				    "(the supervised sandbox has its own containment)");
+				break;
+			}
+
+			if ((_ticks - _fault_since) < _grace_ticks)
+				break;
+
 			_log_fault();
 
 			/* Kill: bump @KILL@ on every <start> node of the supervised
 			 * config. The wedged children are abandoned and respawned
 			 * from the same template. */
 			_publish(*_system_reporter, "system");
+			_fault_since = 0;
 			_ever_healthy = false;
-			_enter(Phase::CONTAIN, "fault detected, subtree killed");
+			_enter(Phase::CONTAIN, "fault survived the escalation window, subtree killed");
 			break;
 
 		case Phase::CONTAIN:
