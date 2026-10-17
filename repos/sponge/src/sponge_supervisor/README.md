@@ -58,6 +58,48 @@ The `RELEASE` phase exists so that "the console never coexists with the
 desktop" is a timing property, not a hope: the rebuild is published a
 settle window *after* the disarming report.
 
+## Escalation — when it acts, and when it does not
+
+The supervised sandbox may have its own containment. The product media
+runs `<heartbeat rate_ms="2000"/>` with `restart_after_skipped="3"` on
+the critical children, so the sandbox itself abandons and respawns a
+wedged child about eight seconds after it stopped answering — and a slow
+first paint or a heavy repaint is indistinguishable from a wedge at that
+scale.
+
+So a fault does **not** act on the first tick. It starts an escalation
+window of `grace_ms`, and the fault flag is re-read on every tick of
+that window. The rule:
+
+> act only when the supervised sandbox's own containment has **failed
+> or been exhausted** — the fault is still there after `grace_ms`,
+> which is longer than the sandbox's own restart threshold — or when
+> the sandbox has published nothing at all within `boot_grace_ms`,
+> which covers the sandbox init itself not coming up.
+
+A fault the sandbox's own restart genuinely fixed therefore costs one
+log line and nothing else. This is a *timing* rule: no detection
+threshold is changed by it, and the acceptance scenario
+(`run/sponge-supervisor-takeover.run`) passes unchanged with it.
+
+`settle_ms` is a **topology** parameter, not a constant: it must exceed
+the time a respawned child needs to climb back over `fault_skipped`, or
+the supervisor declares the fault "contained" while the respawned child
+has not reached the threshold yet — and the console phase becomes
+structurally unreachable. Measured: 1.75 s at the acceptance
+scenario's 500 ms heartbeat, 10–12 s on the product media's 2000 ms one.
+
+## Clean exits
+
+A boot probe is expected to exit: `alpha_probe` prints its PASS marker
+and exits, `cfg_probe` likewise. Genode keeps an exited child in the
+state report until it is abandoned, so an unconditional "any exit is a
+fault" rule tears down a healthy desktop minutes after a successful
+boot. The `ignore_exited` policy carries the names that are allowed to
+exit; the same pair is excluded by sponge-de's health watcher
+(`repos/sponge/src/sponge-de/main.cc`), so the panel and the supervisor
+cannot disagree about what a clean exit is.
+
 ## Detection
 
 Primary: `skipped_heartbeats` on a monitored child. The supervised
@@ -95,10 +137,21 @@ Own policy (`config` ROM) — all optional:
 | `poll_ms` | 250 | Timer period; also the time base for every deadline |
 | `fault_skipped` | 3 | `skipped_heartbeats` at which a child counts as wedged |
 | `grace_ms` | 4000 | how long a killed subtree may take to come back before the console is armed |
-| `settle_ms` | 3000 | how long it must stay healthy to count as recovered, and how long the console's release is awaited |
+| `settle_ms` | 3000 | how long it must stay healthy to count as recovered, and how long the console's release is awaited. **Must exceed the respawn-to-refault time** of the supervised sandbox, which is 1.75 s at a 500 ms heartbeat and 10-12 s at the product media's 2000 ms — hence `settle_ms: 20000` in `run/supervisor.inc` |
 | `console_hold_ms` | 6000 | how long the console stays on the display |
 | `boot_grace_ms` | 30000 | how long the sandbox may publish nothing at all before that counts as a fault |
+| `ignore_exited` | *(empty)* | comma-separated child names whose `exited` is not a fault (product media: `alpha_probe,cfg_probe`) |
 
-`templates` ROM — one XML document containing a `<system>` and a
+`templates` ROM — one document containing a `<system>` and a
 `<system_console>` element, each wrapping the `<config>` element that is
 forwarded verbatim.
+
+The document is not well-formed XML (two roots) on purpose: the scanner
+is a text scanner, not a parser. That scanner handles attributes and
+self-closing tags, because a config produced by `tool/hid format
+--output-xml` is full of `<config verbose="no">` nodes and a scanner
+that recognises only the bare `<config>` returns the first nested
+`</config>` — a 13662-byte template forwarded as 3325 bytes, which
+parses, applies, and starts three children out of eleven. As a second
+line of defence `_publish()` **refuses** any config that does not end
+in `</config>`.
