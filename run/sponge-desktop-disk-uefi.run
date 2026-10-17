@@ -382,12 +382,32 @@ if {[info exists ::env(SPONGE_OVMF_VARS)]} {
 }
 
 #
+# Top-level supervision (docs/17 §5, "Broker fault containment - top
+# level"). run/supervisor.inc carries the shared wiring: it derives the
+# supervisor's config templates from the desktop config staged below,
+# hands the top-level report_rom the two relay policies, moves the
+# `system` sandbox's config ROM from rom_sys to the relay, adds the
+# console's nitpicker domain, and starts the supervisor + console before
+# the sandbox. The templates are DERIVED, never authored twice, so this
+# file stays the single source of truth for the desktop composition.
+#
+source [file join [file dirname [file normalize [info script]]] \
+                    supervisor.inc]
+
 # === Failure-channel selector (SPONGE_DISK_FAIL=1) ===
 #
 set fail_mode [expr {[info exists ::env(SPONGE_DISK_FAIL)] && $::env(SPONGE_DISK_FAIL) == "1"}]
 if {$fail_mode} {
 	puts "sponge-desktop-disk-uefi: FAILURE CHANNEL (corrupted system.config)"
 }
+
+#
+# The SPONGE_DISK_FAIL failure channel runs WITHOUT the supervisor: its
+# whole subject is "the nested init rejects a corrupted config", a
+# diagnostic that predates the supervisor, and wiring it in would make two
+# different failures indistinguishable in one log.
+#
+if {$fail_mode} { supervisor::enabled 0 }
 
 #
 # === Build — Tier-0 chain + desktop components ===
@@ -416,7 +436,7 @@ set build_components {
 	sponge_configd sponge_themed sponge_pkgd pkg_hello sponge-de
 	app/qt6/examples/calculatorform sponge_files app/pdf_view
 	sponge_debug
-	cfg_probe
+	cfg_probe sponge_supervisor sponge_console
 	server/terminal
 	noux-pkg/bash-minimal noux-pkg/vim-minimal
 	noux-pkg/coreutils-minimal noux-pkg/grep noux-pkg/sed
@@ -924,6 +944,14 @@ config
 -}
 	close $sysconfig_fh
 
+	#
+	# Top-level supervision: stamp a restart version onto every top-level
+	# <start> and derive the supervisor's two templates from THIS file
+	# (which stays the single source of truth for the desktop
+	# composition).
+	#
+	supervisor::prepare $sys_dir $sysconfig_hid
+
 	set xml_content [exec [genode_dir]/tool/hid format --output-xml "$sysconfig_hid"]
 	set sysconfig_final [open "$sys_dir/init/system.config" w]
 	puts -nonewline $sysconfig_final $xml_content
@@ -944,7 +972,7 @@ config
 #      real-mode VBE).
 #
 
-install_config {
+install_config [supervisor::tier0 {
 config
 + parent-provides
   + service ROM
@@ -1276,7 +1304,7 @@ config
     + any-service
       + parent
       + any-child
-- }
+- }]
 
 #
 # === Stage the driver sub-init config modules (Tier-0 boot modules) ===
@@ -1321,6 +1349,13 @@ foreach m { vfs.lib.so vfs_rump.lib.so rump.lib.so rump_fs.lib.so \
             fb.config event_filter.config } {
 	lappend boot_modules $m
 }
+
+#
+# Top-level supervision (sponge_supervisor + sponge_console + their two
+# config modules). Both are small base-lib binaries; the Tier-0 budget
+# check below is asserted against image.elf, not against a hope.
+#
+foreach m [supervisor::boot_modules] { lappend boot_modules $m }
 
 build_boot_image $boot_modules
 
