@@ -63,18 +63,30 @@ struct Sponge::Takeover_probe::Main
 		bool     valid { false };
 	};
 
+	static constexpr unsigned SCREEN_W = 1024;
+	static constexpr unsigned SCREEN_H = 768;
+
 	State   _states[MAX_STATES] { };
 	unsigned _state_count { 0 };
 	unsigned _poll_ms { 250 };
+
+	/*
+	 * The sampled point. The default is the screen centre, which is where
+	 * the acceptance topology wants it: there the only client is the
+	 * console, so the centre is flat background for both roles. That
+	 * default is WRONG on the product media, where nitpicker parks the
+	 * pointer at the centre at boot and the upstream `pointer` component
+	 * paints the cursor glyph exactly there - the probe would then read
+	 * the cursor, not the desktop. Hence `sample_x`/`sample_y`.
+	 */
+	unsigned _sample_x { SCREEN_W / 2 };
+	unsigned _sample_y { SCREEN_H / 2 };
 
 	/* last classification, so a transition is logged only once */
 	int  _current { -1 };
 	bool _announced[2] { false, false };
 
 	unsigned _last_r { 0 }, _last_g { 0 }, _last_b { 0 };
-
-	static constexpr unsigned SCREEN_W = 1024;
-	static constexpr unsigned SCREEN_H = 768;
 
 	Capture::Connection                _capture { _env, "takeover_probe" };
 	Constructible<Attached_dataspace> _ds { };
@@ -100,7 +112,7 @@ struct Sponge::Takeover_probe::Main
 	/*
 	 * Config shape (read as text so XML and HID both work):
 	 *
-	 *   <config poll_ms: 250
+	 *   <config poll_ms: 250 | sample_x: 768 | sample_y: 576
 	 *     + state | name: desktop | color: #204080
 	 *     + state | name: console | color: #601010
 	 *
@@ -124,6 +136,22 @@ struct Sponge::Takeover_probe::Main
 				for (size_t i = 0; i < n && v[i] >= '0' && v[i] <= '9'; i++)
 					r = r * 10 + unsigned(v[i] - '0');
 				if (r) _poll_ms = r;
+			}
+		}
+
+		{
+			char const *v = nullptr; size_t n = 0;
+			if (Sponge::scan_attr(cfg, sz, "sample_x", v, n) && n > 0) {
+				unsigned r = 0;
+				for (size_t i = 0; i < n && v[i] >= '0' && v[i] <= '9'; i++)
+					r = r * 10 + unsigned(v[i] - '0');
+				if (r < SCREEN_W) _sample_x = r;
+			}
+			if (Sponge::scan_attr(cfg, sz, "sample_y", v, n) && n > 0) {
+				unsigned r = 0;
+				for (size_t i = 0; i < n && v[i] >= '0' && v[i] <= '9'; i++)
+					r = r * 10 + unsigned(v[i] - '0');
+				if (r < SCREEN_H) _sample_y = r;
 			}
 		}
 
@@ -227,7 +255,7 @@ struct Sponge::Takeover_probe::Main
 		 * the first thing to go stale when the compositor repaints only
 		 * its dirty rectangles.
 		 */
-		Pixel_rgb888 const p = px[(SCREEN_H / 2) * SCREEN_W + (SCREEN_W / 2)];
+		Pixel_rgb888 const p = px[_sample_y * SCREEN_W + _sample_x];
 
 		unsigned const r = unsigned(p.r() & 0xff);
 		unsigned const g = unsigned(p.g() & 0xff);
@@ -293,7 +321,8 @@ struct Sponge::Takeover_probe::Main
 		_timer.trigger_periodic(_poll_ms * 1000);
 
 		log("takeover_probe: ", _state_count, " states, poll=", _poll_ms,
-		    "ms, screen ", SCREEN_W, "x", SCREEN_H);
+		    "ms, screen ", SCREEN_W, "x", SCREEN_H,
+		    " sample ", _sample_x, "x", _sample_y);
 
 		for (unsigned i = 0; i < _state_count; i++)
 			log("takeover_probe: state[", i, "]=",
