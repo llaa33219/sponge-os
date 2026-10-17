@@ -242,6 +242,44 @@ scenario-verified acceptance probe (per the Phase 16 plan,
   `/system/background/default.png`); the change persists via
   configd.
 
+### 5.2 Top-level supervision (product `.img`)
+
+The five desktop-disk product scenarios ship a **top-level supervisor**
+(`sponge_supervisor`, Tier-0) and a **fault console**
+(`sponge_console`). On a healthy boot both are inert: the supervisor
+owns the desktop sandbox's configuration and publishes it unchanged once,
+then does nothing. Nothing about the normal desktop changes.
+
+What the user sees on a real fault:
+
+- a child of the desktop that stops answering is **restarted by the
+  desktop sandbox itself** (the shipped heartbeat, ~8 s) — this is
+  unchanged and is the path a transient hiccup takes;
+- if that does not fix it, the supervisor restarts the whole desktop
+  subtree (the same thing a fresh boot does). The screen goes blank
+  while the desktop comes back — on QEMU a minute or two, on real
+  hardware as long as a normal boot takes;
+- if the fault survives that, the **fault console** takes the display:
+  a dark red screen with a `SYSTEM FAULT - RESTARTING` banner and the
+  line `NO INPUT. WAIT FOR RECOVERY.`. The framebuffer keeps its single
+  writer (`vesa_fb`/`boot_fb`) throughout — the console is the topmost
+  *Gui client*, not a second framebuffer writer, because two components
+  mapping the same physical framebuffer is permanent screen corruption.
+  The banner leaves by itself after a bounded hold; the desktop is then
+  rebuilt and the display returns to it.
+
+The console shows what the supervisor knows (that a fault is in the
+desktop subtree), not a log tail — getting the log stream to a component
+above the supervised subtree is still open (`docs/17` §5). Until then
+the panel's health label and the serial console remain the diagnosis
+channels.
+
+Proof: `run/sponge-desktop-disk.run` with
+`SPONGE_SUPERVISOR_TEST=takeover` (detect → kill → console, asserted by
+pixels) and `SPONGE_SUPERVISOR_TEST=control` (the same fault inside the
+sandbox's own containment must lead to **no** action). Receipts:
+`docs/evidence/product-supervision.md`.
+
 On the **product `.img`**, installs persist across reboots via the SPONGE-DATA partition (`run/sponge-persist-disk.run` proves the two-boot restoration on the same image). On the **`.iso`**, nothing persists — Tier 2 is a RAM filesystem (the read-only optical medium cannot deliver persistence).
 
 ## 6. Known limitations

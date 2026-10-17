@@ -174,8 +174,8 @@ configuration:
 | `sponge_pkgd` | Package manager backend (planned) | not implemented |
 | `sponge_configd` | Configuration manager backend (planned) | not implemented |
 | `sponge_automated` | Automation engine (planned) | not implemented |
-| `sponge_supervisor` | Top-level supervisor: owns the `system` sandbox config, watches its state report, kills it, and hands the display to the fault console | implemented (`docs/17` §5) |
-| `sponge_console` | Qt-free full-screen fault console; takes the display as the only Gui client while armed | implemented (`docs/17` §5) |
+| `sponge_supervisor` | Top-level supervisor: owns the `system` sandbox config, watches its state report, kills it, and hands the display to the fault console | implemented, deployed in the product media (`docs/17` §5, `docs/evidence/product-supervision.md`) |
+| `sponge_console` | Qt-free full-screen fault console; takes the display as the only Gui client while armed | implemented, deployed in the product media (`docs/17` §5, `docs/evidence/product-supervision.md`) |
 
 Genode-provided components (reused):
 

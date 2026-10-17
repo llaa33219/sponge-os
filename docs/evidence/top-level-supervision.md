@@ -228,12 +228,22 @@ forces a report on every tick — both are upstream questions, not
 configuration. Registered as a `[ ]` row in
 `docs/17-runtime-component-topology.md` §5.
 
+## 8. Follow-up: the product rollout (closed, with four new findings)
+
+The mechanism proved here was rolled into the five desktop-disk product
+scenarios. That rollout changed this component in three measured ways —
+the **escalation grace** (act only when the supervised sandbox's own
+containment has failed), the **`ignore_exited`** policy (a boot probe's
+clean exit is not a fault) and a **`element_text()` fix** (a config
+forwarded truncated starts three children out of eleven). Both the fault
+run and the control run above still PASS with all three in place, which
+is what keeps them honest rather than historical.
+
+Receipts, the four product-only defects, the escalation rule and the
+env-gated product proof: [`product-supervision.md`](product-supervision.md).
+
 Also not done, and deliberately so:
 
-- The supervisor is wired into the six **product** scenarios. v1 proves
-  the mechanism in a lean topology; the product rollout is a separate
-  change with its own regression budget (a top-level `report_rom` policy
-  plus the `system` config becoming supervisor-owned on real media).
 - The console shows the state the supervisor knows. It does not yet show
   a log tail — that needs the log stream to reach a component above the
   subtree, which is the same relay problem in a different shape.

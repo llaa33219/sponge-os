@@ -1,0 +1,244 @@
+including /home/luke/sponge-os/genode/tool/run/power_on/qemu
+including /home/luke/sponge-os/genode/tool/run/log/qemu
+including /home/luke/sponge-os/genode/tool/run/image/iso
+including /home/luke/sponge-os/genode/tool/run/boot_dir/sel4
+including /home/luke/sponge-os/repos/sponge/run/sponge-minimal.run
+building targets:  core lib/ld init vct 
+spawn make core lib/ld init vct
+  [00;33mLibrary[0m ld.abi.so
+  [00;33mLibrary[0m ldso_so_support.lib.a
+  [00;33mLibrary[0m kernel-sel4-pc.lib.a
+ninja: no work to do.
+  [00;33mLibrary[0m syscall-sel4-pc.lib.a
+  [00;33mLibrary[0m syscall-sel4.lib.a
+  [00;33mLibrary[0m startup-sel4.lib.a
+  [00;33mLibrary[0m base-sel4-common.lib.a
+  [00;33mLibrary[0m timeout.lib.a
+  [00;33mLibrary[0m cxx.lib.a
+  [00;33mLibrary[0m base-sel4.lib.a
+  [00;33mLibrary[0m ld-sel4.lib.so
+  [00;33mLibrary[0m ld.lib.so
+  [00;33mLibrary[0m core-sel4.lib.a
+    COMPILE  version.o
+    MERGE    core-sel4.lib.a
+  [01;33mProgram[0m core/sel4/core
+  [00;33mLibrary[0m base.lib.a
+  [01;33mProgram[0m init/init
+  [00;33mLibrary[0m sponge_backend_client.lib.a
+  [01;33mProgram[0m vct/vct
+genode build completed
+building targets: kernel/sel4 lib/ld-sel4
+spawn make kernel/sel4 lib/ld-sel4
+  [00;33mLibrary[0m kernel-sel4-pc.lib.a
+ninja: no work to do.
+  [00;33mLibrary[0m syscall-sel4-pc.lib.a
+  [00;33mLibrary[0m syscall-sel4.lib.a
+  [00;33mLibrary[0m startup-sel4.lib.a
+  [00;33mLibrary[0m base-sel4-common.lib.a
+  [00;33mLibrary[0m timeout.lib.a
+  [00;33mLibrary[0m cxx.lib.a
+  [00;33mLibrary[0m base-sel4.lib.a
+  [00;33mLibrary[0m ldso_so_support.lib.a
+  [00;33mLibrary[0m ld-sel4.lib.so
+  [01;33mProgram[0m kernel/sel4/sel4-pc
+genode build completed
+using 'core-sel4.a' as 'core.a'
+using 'ld-sel4.lib.so' as 'ld.lib.so'
+install bootloader
+
+spawn qemu-system-x86_64 -accel kvm -nographic -m 1G -serial mon:stdio -cdrom var/run/sponge-minimal.iso -machine q35 -cpu Skylake-Client -net nic,model=e1000,netdev=net0 -netdev user,id=net0
+qemu-system-x86_64: warning: host doesn't support requested feature: CPUID[eax=0Dh,ecx=01h].EAX.xsavec [bit 1]
+qemu-system-x86_64: warning: host doesn't support requested feature: CPUID[eax=0Dh,ecx=01h].EAX.xgetbv1 [bit 2]
+c[?7l[2J[0mSeaBIOS (version Arch Linux 1.17.0-2-2)
+
+
+
+iPXE (http://ipxe.org) 00:02.0 C900 PCI2.10 PnP PMM+3EFD3DA0+3EF33DA0 C900
+
+Press Ctrl-B to configure iPXE (PCI 00:02.0)...
+                                                                               
+
+
+
+Booting from Hard Disk...
+
+Boot failed: could not read the boot disk
+
+
+Booting from DVD/CD...
+
+error: can't find command `loadfont'.
+
+  Booting `Genode on seL4'
+
+
+[01;01H
+
+Bender Version 0.9-beta7-51-g77a6918-dirty
+
+Patching BDA with I/O port 0x3f8.
+
+Bender: Hello World.
+
+hwp config: eeo=na irq=na hwp=na epp=na epb=na
+Boot config: debug_port = 0x3f8
+
+Boot config: disable_iommu = true
+
+  module #0: start=0xf6af000 end=0xfdf6410 size=0x747410 name='image.elf'
+
+	Physical Memory Region from 0 size 9fc00 type 1
+
+	Physical Memory Region from 9fc00 size 400 type 2
+
+	Physical Memory Region from f0000 size 10000 type 2
+
+	Physical Memory Region from 100000 size 3fedf000 type 1
+
+Adding physical memory region 0x100000-0x3ffdf000
+
+	Physical Memory Region from 3ffdf000 size 21000 type 2
+
+	Physical Memory Region from b0000000 size 10000000 type 2
+
+	Physical Memory Region from fed1c000 size 4000 type 2
+
+	Physical Memory Region from feffc000 size 4000 type 2
+
+	Physical Memory Region from fffc0000 size 40000 type 2
+
+Got framebuffer info in multiboot2. Current video mode is at physical address=fd000000 pitch=5120 resolution=1280x800@32 type=1
+
+Detected 1 boot module(s):
+
+Kernel loaded to: start=0x200000 end=0xe3e000 size=0xc3e000 entry=0x2002a3
+
+ACPI: RSDT paddr=0x3ffe2345
+
+ACPI: RSDT vaddr=0x3ffe2345
+
+ACPI: FADT paddr=0x3ffe213d
+
+ACPI: FADT vaddr=0x3ffe213d
+
+ACPI: FADT flags=0x84a5
+
+ACPI: MADT paddr=0x3ffe2231
+
+ACPI: MADT vaddr=0x3ffe2231
+
+ACPI: MADT apic_addr=0xfee00000
+
+ACPI: MADT flags=0x1
+
+ACPI: MADT_APIC apic_id=0x0
+
+ACPI: MADT_IOAPIC ioapic_id=0 ioapic_addr=0xfec00000 gsib=0
+
+ACPI: MADT_ISO bus=0 source=0 gsi=0x002 flags=0x0
+
+ACPI: MADT_ISO bus=0 source=5 gsi=0x005 flags=0xd
+
+ACPI: MADT_ISO bus=0 source=9 gsi=0x009 flags=0xd
+
+ACPI: MADT_ISO bus=0 source=10 gsi=0x00a flags=0xd
+
+ACPI: MADT_ISO bus=0 source=11 gsi=0x00b flags=0xd
+
+ACPI: 1 CPU(s) detected
+
+ELF-loading userland images from boot modules:
+
+size=0x2146000 v_entry=0x2000018 v_start=0x2000000 v_end=0x4146000 p_start=0xfdf7000 p_end=0x11f3d000
+
+Moving loaded userland images to final location: from=0xfdf7000 to=0xe3e000 size=0x2146000
+
+Starting node #0 with APIC ID 0
+
+Mapping kernel window is done
+
+vt-x: not supported
+
+Available phys memory regions: 1
+
+  [100000..3ffdf000)
+
+Reserved virt address space regions: 1
+
+  [ffffff8000200000..ffffff8002f84000)
+
+Booting all finished, dropped to user space
+
+[34mWarning: init_freemem artifact untyped skipped: 0x200000 size 0x200000[0m
+
+[34mWarning: init_freemem artifact untyped skipped: 0x400000 size 0x400000[0m
+
+[34mWarning: init_freemem artifact untyped skipped: 0x800000 size 0x200000[0m
+
+:phys_mem_16k:     Allocator 0x257a7f8 dump:
+
+ Block: [0000000000100000,0000000000200000) size=1M avail=1M max_avail=1M
+
+ Block: [0000000002f84000,0000000003000000) size=496K avail=496K max_avail=113424K
+
+ Block: [0000000008000000,000000000eec4000) size=113424K avail=113424K max_avail=113424K
+
+ => mem_size=117702656 (112 MB) / mem_avail=117702656 (112 MB)
+
+
+
+[34mWarning: failed to register I/O range: [0000000040000000,0000000040100000)[0m
+
+[34mWarning: failed to register I/O range: [0000000080000000,0000000080100000)[0m
+
+virtual address layout of core:
+
+ overall    [0000000000002000,0000001000000000)
+
+ core image [0000000002000000,0000000004146000)
+
+ ipc buffer [0000000004146000,0000000004147000)
+
+ boot_info  [0000000004147000,0000000004148532)
+
+ stack area [0000000040000000,0000000050000000)
+
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+
+Physical memory per PD at most: 512M
+
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+
+boot module 'config' (241 bytes)
+
+boot module 'init' (507176 bytes)
+
+boot module 'init.hsd' (4125 bytes)
+
+boot module 'init.xsd' (8118 bytes)
+
+boot module 'ld.lib.so' (1107760 bytes)
+
+boot module 'vct' (397408 bytes)
+
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+
+Genode v0.2.0-94-g05bf04042e <local changes>
+
+575 MiB RAM and 523288 caps assigned to init
+
+[init -> vct] vct (0.2.0 / Archaeocyte) starting
+
+[init -> vct] vct 0.2.0
+
+[init -> vct] Sponge OS codename: Archaeocyte
+
+
+Run script execution successful.
+EXIT=0

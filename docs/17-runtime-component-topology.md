@@ -336,14 +336,90 @@ component must never be able to freeze the desktop. Status after the
   before the detector was rewritten. Closing it needs a periodic
   report mechanism upstream, or a monitor that forces a report on every
   heartbeat tick; both are upstream questions, not configuration.
-- [ ] **`sponge_supervisor` is not yet wired into the six product
-  scenarios.** v1 proves the mechanism in a lean topology
-  (`run/sponge-supervisor-takeover.run`). The product rollout means
-  giving the top-level `report_rom` the extra policies and moving the
-  `system` config from a boot module to a supervisor-owned report on
-  real media — a separate change with its own regression budget.
-- [ ] **Broker fault containment — `run/sponge-alpha.run` (blocked by
-  topology)**: alpha is a FLAT topology. `wm`, `layouter`,
+- [x] **`sponge_supervisor` wired into the product media (deployed
+  2026-10-17)**: all five desktop-disk scenarios
+  (`run/sponge-desktop-disk{,-nvme,-uefi,-uefi-nvme,-uefi-usb}.run`)
+  now run the supervisor and the console. `run/supervisor.inc` is the
+  shared, **asserted** wiring: it derives the supervisor's two config
+  templates from the `/system/init/system.config` the scenario already
+  stages (staging stays the single source of truth — the supervisor
+  never carries a second copy of the desktop composition), moves the
+  `system` sandbox's config ROM from `rom_sys` to the top-level
+  `report_rom`, adds the console's own nitpicker domain (layer 8, above
+  panel/launcher/default) and starts the supervisor + console **before**
+  the sandbox, which must stay the last `<start>` node so its RAM
+  remainder clamp is intact. A drifted anchor aborts the scenario
+  loudly instead of booting an unsupervised desktop.
+
+  Three product-only findings, each measured (receipts:
+  [`docs/evidence/product-supervision.md`](evidence/product-supervision.md)):
+
+  1. **ESCALATION — the sandbox contains first.** The product sandbox
+     runs `<heartbeat rate_ms="2000"/>` with
+     `restart_after_skipped="3"`, so it abandons and respawns a wedged
+     child itself at ~8 s. The supervisor therefore does not act on the
+     first fault: it holds the fault for `grace_ms` (4 s) and re-reads
+     the flag every tick. A fault the sandbox's own restart fixed costs
+     one log line and nothing else. The rule is *act only when the
+     supervised sandbox's own containment has failed or been
+     exhausted, or when the sandbox has published nothing at all within
+     `boot_grace_ms`*. No detection threshold changed.
+  2. **Clean exits are excluded BY CONFIGURATION.** `alpha_probe` and
+     `cfg_probe` exit 0 after doing their job, and Genode keeps an
+     exited child in the state report until it is abandoned, so an
+     unconditional "any exit is a fault" test tears down the desktop
+     minutes after a successful boot. The `ignore_exited` policy carries
+     the same pair sponge-de's health watcher excludes
+     (`repos/sponge/src/sponge-de/main.cc`), so panel and supervisor
+     cannot disagree about what a clean exit is.
+  3. **`settle_ms` is a product parameter, not a constant.** The lean
+     proof runs the sandbox heartbeat at 500 ms; the product runs it at
+     2000 ms, and a respawned child needs 10–12 s to climb back over
+     `fault_skipped`. With the lean 3 s settle window the supervisor
+     declared the fault "contained" before the respawned child had
+     reached the threshold and the console phase was structurally
+     unreachable. `settle_ms = 20000` over the measured 12 s.
+
+  Product-topology proof, env-gated and **off by default**
+  (`SPONGE_SUPERVISOR_TEST`, shipped media never carries a fault
+  child): `takeover` shows detect → kill → console (a **pixel** claim,
+  `test/takeover_probe` reading the composited screen) → hand back;
+  `control` puts the SAME fault inside the product's own
+  `restart_after_skipped="3"` containment and asserts the negative — no
+  kill, no console — while the desktop reaches `alpha-probe: PASS`
+  underneath. The control arm is the half that matters: a supervisor
+  that tears down a healthy desktop on a timer is worse than one that
+  does nothing.
+
+  One structural limitation, recorded honestly: a *persistent* fault
+  plus a full-subtree restart lever are mutually exclusive with a fully
+  booted desktop, because the supervisor keeps killing a subtree that
+  needs minutes to boot. The recovery receipt in the takeover arm is
+  therefore the display handover (console disarmed, `phase=1 desktop
+  restored`, pixels back to the desktop background), not a second
+  `alpha-probe: PASS`; the healthy path is what the five scenario
+  regressions and the control arm prove. Same root as the respawn
+  budget row below.
+- [~] **Broker fault containment — `run/sponge-alpha.run`: evaluated
+  2026-10-17, NOT APPLICABLE (deliberately unchanged)**: the supervisor
+  was evaluated against alpha as part of the product rollout and does not
+  apply. The supervisor works by OWNING the config of a *nested* sandbox
+  through `report_rom`; in alpha the desktop children are direct
+  children of the TOP-LEVEL init, whose config is not reachable that way
+  — there is no parent to relay it, and the supervisor cannot be handed
+  the config of the init that started it. Two further reasons, in order:
+  (i) no Timer — the supervisor's own clock is a Tier-0 `timer` child,
+  and this host's flat ISO boot denies the HPET `IO_MEM` (the row above),
+  while alpha's default media mode is the ISO; (ii) no state report to
+  read — with no nested sandbox there is no `system -> state` for the
+  top-level relay to carry, so the whole observation channel would have
+  to be built. Making the supervisor meaningful on alpha would mean
+  restructuring it into the nested-`system` shape the disk scenarios use,
+  which invalidates alpha's own `alpha-probe: PASS` evidence. Alpha
+  remains the ISO/live-media reference scenario. Rationale in full:
+  `docs/evidence/product-supervision.md` §7. Superseded detail below:
+
+  alpha is a FLAT topology. `wm`, `layouter`,
   `decorator`, `sponge_configd`, `sponge_themed`, `sponge_pkgd`,
   `sponge-de` and `pkg_runtime` are direct children of the
   TOP-LEVEL init; its only nested init (`drivers`) hosts the hardware
