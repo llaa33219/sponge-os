@@ -288,7 +288,7 @@ Two further observations, recorded rather than smoothed over:
 
 | Scenario | Kernel | Result |
 |---|---|---|
-| `sponge-desktop-disk` (supervisor live, default arm) | sel4 | **PASS** — `alpha-probe: PASS`, `published <system> kill=1 (13589 bytes)`, no fault declared |
+| `sponge-desktop-disk` (supervisor live, default arm) | sel4 | **PASS** — `alpha-probe: PASS`, `published <system> kill=1 (13589 bytes)`, zero fault declarations, `settle=20000ms` confirmed live |
 | `sponge-desktop-disk` + `SPONGE_SUPERVISOR_TEST=control` | sel4 | **PASS** |
 | `sponge-desktop-disk` + `SPONGE_SUPERVISOR_TEST=takeover` | sel4 | **PASS** |
 | `sponge-supervisor-takeover` (lean, after the component changes) | sel4 | **PASS** |
