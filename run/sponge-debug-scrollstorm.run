@@ -73,6 +73,76 @@
 #   relative recipe is +-1px but accumulates). Driving the repaint path
 #   directly is deterministic, headless, and kernel-independent.
 #
+# FIELD-SHAPE KNOBS (opt-in; every default preserves the original arms)
+#
+#   SPONGE_FB_W / SPONGE_FB_H   framebuffer size. Unset = the stock
+#                                drivers_interactive-pc fb.config
+#                                (1024x768). SPONGE_FB_W=2560
+#                                SPONGE_FB_H=1600 reaches the LG gram's
+#                                panel resolution — the field topology.
+#   SPONGE_HEARTBEAT=on|off      production containment heartbeat
+#                                (rate_ms 2000, restart_after_skipped
+#                                30 - see the comment at the knob) on
+#                                EVERY child of both sandboxes.
+#                                Default off: containment is what the
+#                                product arms must not have perturbed,
+#                                and arming it makes the state report
+#                                print a per-child `skipped_heartbeats`
+#                                counter, which is the STARVATION RANKING
+#                                this scenario uses to localize a freeze
+#                                (a child that stops answering for 2 s
+#                                intervals is starved; the one that keeps
+#                                answering and is not idle is the hog).
+#   SPONGE_STORM_WIN            window geometry of the storming client.
+#                                Default = the product 700x480. Every cost
+#                                on the render path is proportional to the
+#                                DAMAGED AREA, so a 2560x1600 window at a
+#                                2560x1600 framebuffer is the only
+#                                geometry that carries the field's
+#                                per-frame magnitude.
+#   SPONGE_STORM_BURST_HZ       override for storm_burst_hz.
+#   SPONGE_MIN_HZ / SPONGE_MAX_GAP_MS
+#                                the BOUNDS that turn this scenario into a
+#                                pass/fail measurement instead of a log to
+#                                read. Both default 0 = "do not assert",
+#                                which is what every pre-existing arm
+#                                wants. `SPONGE_MIN_HZ` asserts the storm's
+#                                own `achieved_hz`; `SPONGE_MAX_GAP_MS`
+#                                asserts its `max_gap_ms`, the largest
+#                                interval between two delivered Qt event
+#                                loop ticks - a saturated loop delivers
+#                                them late and bunched up, so that number
+#                                IS the liveness bound. A storm that does
+#                                not reach its own `STORM done` line
+#                                already fails before either bound is
+#                                evaluated.
+#   SPONGE_FB_CAPS / SPONGE_NITPICKER_CAPS
+#                                capability quotas for the two components
+#                                that MAP the panel buffer. Defaults are
+#                                this scenario's original 1024x768-era
+#                                values; the product media grants
+#                                fb 24000 / nitpicker 20000.
+#   SPONGE_FB_PERIOD_MS         the framebuffer driver's capture period
+#                                (its config `period_ms`, default 20).
+#                                Raises the rate cap of the LAST stage of
+#                                the render path.
+#   SPONGE_SMP                  QEMU vCPU count (default: QEMU's own 1).
+#                                The LG gram is multi-core, so this is the
+#                                field-faithful setting; see the gate note
+#                                below.
+#
+#   The `freeze` arm (60 s of the burst gesture instead of 30) is the
+#   field shape in one selector: use it with the knobs above.
+#
+# FREEZE GATE (the liveness measurement)
+#
+#   When a storm is armed, the storm's own `STORM done` line is a gate of
+#   its own, BEFORE the probe's verdict. A storm that never reaches its
+#   own end-of-storm line means the Qt event loop stopped draining, which
+#   is the field symptom; the run tool then times out and reports a
+#   failure. `STORM checkpoint` lines plus the verbose state report carry
+#   the last known tick rate and the starvation ranking into the log.
+#
 # ARMS (select with SPONGE_ARM, default "scroll")
 #
 #   baseline  no storm at all (storm_ms=0). Establishes which components
@@ -143,6 +213,125 @@ assert {[have_spec sel4]} \
 set arm "scroll"
 if {[info exists ::env(SPONGE_ARM)]} { set arm $::env(SPONGE_ARM) }
 
+# Framebuffer size. Empty = keep the stock drivers_interactive-pc
+# fb.config (1024x768), which is what every arm in the evidence document
+# was measured at.
+set fb_w ""
+set fb_h ""
+if {[info exists ::env(SPONGE_FB_W)]} { set fb_w $::env(SPONGE_FB_W) }
+if {[info exists ::env(SPONGE_FB_H)]} { set fb_h $::env(SPONGE_FB_H) }
+if {($fb_w eq "") != ($fb_h eq "")} {
+	error "SPONGE_FB_W and SPONGE_FB_H must be set together"
+}
+if {$fb_w eq ""} { set fb_desc "stock(1024x768)" } else { set fb_desc "${fb_w}x${fb_h}" }
+
+# Framebuffer driver's capture/flush period in ms (its config attribute
+# `period_ms`, default 20). This is the rate at which the driver pulls the
+# composited buffer and blits the damaged rectangles into the panel, i.e.
+# the rate of the LAST stage of the render path - the only knob that
+# separates "the pipeline costs too much PER FRAME" from "the pipeline is
+# asked for too many frames".
+# Capability quotas for the two components that MAP the panel buffer.
+# Defaults are this scenario's original 1024x768-era values, so every
+# pre-existing arm is untouched. They are knobs because they are exactly
+# what the field-resolution arms have to get right: at 2560x1600 the
+# kernel prints "flush page table entries - mapping cache full" when they
+# are too small (run/sponge-debug-firstpaint.run sizes these the same way,
+# and the product media grants fb 24000 / nitpicker 20000).
+#
+# DERIVED, not hard-coded: asking for a panel resolution ALSO sizes the
+# capability quotas of the two components that map the panel buffer.
+#
+# A 2560x1600x32 buffer is 16 MiB, and base-sel4's per-PD mapping cache is
+# sized by the PD's cap quota. When the quota is smaller than the mapping
+# needs, the cache overflows on access and the kernel falls back to
+# "flush page table entries" - once per composited frame, hundreds of
+# times a minute under a repaint storm. Measured on this very scenario:
+# 521-567 kernel flushes and a storm that collapses 15 Hz -> 3 Hz with a
+# 3672 ms event-loop stall at the original 150/200/1500, versus ZERO
+# flushes and 17 Hz / 421 ms with the sizes below. Receipts and the full
+# bisection: docs/evidence/sponge-debug-panelfreeze.md.
+#
+# So a user who asks for the field resolution gets a run that can actually
+# answer the question (AGENTS.md 1.1: convenience) instead of one that
+# re-measures a harness artefact. The knobs below stay as the explicit
+# control door, and the ORIGINAL values are what the stock-resolution
+# arms use, so every arm in the evidence document is untouched.
+#
+set fb_caps 150
+set nitpicker_caps 200
+set drivers_caps 1500
+if {$fb_w ne ""} {
+	# run/sponge-debug-firstpaint.run measured 6000 as sufficient for a
+	# full-resolution vesa_fb / nitpicker; `drivers` must additionally
+	# hold `fb`'s quota plus the rest of the driver set, or init denies
+	# every PD session in that sandbox instead.
+	set fb_caps 6000
+	set nitpicker_caps 6000
+	set drivers_caps 20000
+}
+if {[info exists ::env(SPONGE_FB_CAPS)]} { set fb_caps $::env(SPONGE_FB_CAPS) }
+if {[info exists ::env(SPONGE_NITPICKER_CAPS)]} {
+	set nitpicker_caps $::env(SPONGE_NITPICKER_CAPS)
+}
+if {[info exists ::env(SPONGE_DRIVERS_CAPS)]} {
+	set drivers_caps $::env(SPONGE_DRIVERS_CAPS)
+}
+
+set fb_period_ms 0
+if {[info exists ::env(SPONGE_FB_PERIOD_MS)]} {
+	set fb_period_ms $::env(SPONGE_FB_PERIOD_MS)
+}
+
+# Production containment heartbeat on every child of both sandboxes.
+# Default off so the original arms are bit-identical.
+set heartbeat "off"
+if {[info exists ::env(SPONGE_HEARTBEAT)]} { set heartbeat $::env(SPONGE_HEARTBEAT) }
+if {$heartbeat ni {on off}} {
+	error "SPONGE_HEARTBEAT must be 'on' or 'off' (got '$heartbeat')"
+}
+if {$heartbeat eq "on"} {
+	# `rate_ms` belongs to the sandbox that OWNS the children (it needs
+	# the Timer to generate them); `restart_after_skipped` belongs to the
+	# policed child node. Same split run/sponge-debug-firstpaint.run uses.
+	# rate_ms is the PRODUCTION 2 s period and is the thing that measures
+	# starvation. restart_after_skipped is deliberately widened from the
+	# production 3 to 30: QEMU gives the guest ONE vCPU, and a boot that
+	# compiles and rasterizes a Qt first paint behind a full driver stack
+	# already misses 2 s scheduling intervals, so the production budget
+	# kills and respawns children during the settle period - which
+	# destroys the instrument (the respawned repostorm_probe never emits
+	# its verdict) without telling us anything the skip counter does not
+	# already say. The skip COUNTER is identical either way; only the
+	# containment kill is deferred.
+	set hb_rate      "+ heartbeat | rate_ms: 2000"
+	set hb           "+ heartbeat | restart_after_skipped: 30"
+	set hb_off       "# SPONGE_HEARTBEAT=off - containment not armed for this arm"
+	set hb_verbose   "verbose: yes"
+} else {
+	set hb_rate      "# SPONGE_HEARTBEAT=off - containment not armed for this arm"
+	set hb           "# SPONGE_HEARTBEAT=off - containment not armed for this arm"
+	set hb_off       "# SPONGE_HEARTBEAT=off - containment not armed for this arm"
+	set hb_verbose   "verbose: no"
+}
+
+# Storming client window geometry (see the FIELD-SHAPE KNOBS header).
+# Liveness bounds (0 = do not assert).
+set min_hz 0
+set max_gap_ms 0
+if {[info exists ::env(SPONGE_MIN_HZ)]} { set min_hz $::env(SPONGE_MIN_HZ) }
+if {[info exists ::env(SPONGE_MAX_GAP_MS)]} { set max_gap_ms $::env(SPONGE_MAX_GAP_MS) }
+
+set win_w 700
+set win_h 480
+if {[info exists ::env(SPONGE_STORM_WIN)]} {
+	set win_w [lindex [split $::env(SPONGE_STORM_WIN) "x"] 0]
+	set win_h [lindex [split $::env(SPONGE_STORM_WIN) "x"] 1]
+	if {![string is integer -strict $win_w] || ![string is integer -strict $win_h]} {
+		error "SPONGE_STORM_WIN must be <w>x<h> in pixels"
+	}
+}
+
 # Per-arm storm knobs (see the ARMS table above).
 set storm_ms 30000
 # The instrument settles 20 s and then measures 45 s. The storm must
@@ -166,8 +355,40 @@ switch -- $arm {
 	scroll   { set storm_ms 30000 ; set storm_grow 0 }
 	grow     { set storm_ms 30000 ; set storm_grow 1 ; set threshold_kb 262144 }
 	burst    { set storm_ms 30000 ; set storm_grow 0 ; set storm_burst_hz 100 }
-	default  { error "SPONGE_ARM must be one of: baseline | scroll | grow | burst (got '$arm')" }
+# freeze: the FIELD shape in one arm - the field gesture (burst) for 60 s
+# instead of 30, so a saturation that takes tens of seconds to develop has
+# room inside one run. Combine with SPONGE_FB_W/H=2560x1600 and
+# SPONGE_STORM_WIN=2560x1600 (see the FIELD-SHAPE KNOBS header) and
+# SPONGE_HEARTBEAT=on for the starvation ranking.
+freeze  { set storm_ms 60000 ; set storm_grow 0 ; set storm_burst_hz 100 }
+	default  { error "SPONGE_ARM must be one of: baseline | scroll | grow | burst | freeze (got '$arm')" }
 }
+# Optional escape hatch on top of the arm's own value, so a sweep does
+# not need a new arm per rate.
+if {[info exists ::env(SPONGE_STORM_BURST_HZ)]} {
+	set storm_burst_hz $::env(SPONGE_STORM_BURST_HZ)
+}
+
+#
+# The instrument's measurement window must STRICTLY CONTAIN the storm's.
+#
+# The probe settles for settle_ms and then samples for duration_ms; the
+# storm starts at storm_start_ms and runs storm_ms. With the stock numbers
+# the probe finished at 80 s and the storm at 84 s, i.e. the storm outlived
+# the measurement that is supposed to observe it. Beyond being wrong,
+# the ordering was not stable: measured here, the probe's own exit
+# coincided with the storm stalling (last storm tick at 57.2 s of a 60 s
+# budget, no further serial output at all for the rest of the gate), so
+# which of the two terminal markers landed LAST flipped between runs and
+# no sequential gate pair could be order-independent. Deriving the
+# window from the storm removes the race by construction.
+#
+if {$storm_ms > 0} {
+	set probe_duration_ms [expr {$storm_start_ms + $storm_ms + 15000}]
+} else {
+	set probe_duration_ms 60000
+}
+
 
 build { core lib/ld init timer server/report_rom server/nitpicker \
          driver/acpi app/pci_decode driver/platform \
@@ -220,18 +441,21 @@ config
 # inside the `system` config).
 #
 + start timer
+  $hb
   + provides | + service Timer
 
 + start report_rom | caps: 100 | ram: 4M
+  $hb
   + provides
     + service Report
     + service ROM
-  + config | verbose: no
+  + config | $hb_verbose
     + policy | label_suffix: state | report: system -> state
 
 + start system | caps: 30000 | ram: 512M
   + binary init
   + config
+    $hb_rate
     + parent-provides
       + service ROM
       + service PD
@@ -276,10 +500,11 @@ config
     + report | init_ram: yes | child_ram: yes | child_caps: yes | delay_ms: 1000
 
     + start report_rom | caps: 300 | ram: 8M
+      $hb
       + provides
         + service Report
         + service ROM
-      + config | verbose: yes
+      + config | $hb_verbose
         # The instrument.
         + policy | label_suffix: state | report: system -> state
         # SPONGE DEBUG's three subscriptions. This scenario has no package
@@ -291,7 +516,8 @@ config
         + policy | label: sponge_debug -> window_list     | report: wm -> window_list
         + policy | label: sponge_debug -> launcher_result | report: wm -> window_list
 
-    + start nitpicker | ram: 16M
+    + start nitpicker | caps: $nitpicker_caps | ram: 16M
+      $hb
       + provides
         + service Gui
         + service Capture
@@ -329,7 +555,7 @@ config
     #
     # The vendored recipes/raw/drivers_interactive-pc set is unchanged.
     #
-    + start drivers | caps: 1500 | ram: 96M | managing_system: yes
+    + start drivers | caps: $drivers_caps | ram: 96M | managing_system: yes
       + binary init
       + route
         + service ROM | label: config | + parent | label: drivers.config
@@ -338,6 +564,7 @@ config
         + any-service
           + parent
       + config
+        $hb_rate
         + report | init_ram: yes | child_ram: yes | child_caps: yes | delay_ms: 1000
         + parent-provides
           + service IRQ
@@ -355,6 +582,7 @@ config
         + default | caps: 60
 
         + start report_rom | caps: 100 | ram: 2M
+          $hb
           + provides
             + service ROM
             + service Report
@@ -370,6 +598,7 @@ config
             + service Timer | + parent
 
         + start acpi | caps: 250 | ram: 4M
+          $hb
           + route
             + service IO_MEM | + parent
             + service LOG | + parent
@@ -380,6 +609,7 @@ config
             + service Report | + child report_rom
 
         + start pci_decode | caps: 100 | ram: 2M
+          $hb
           + route
             + service Report | + child report_rom
             + service ROM | label: system | + child report_rom
@@ -391,6 +621,7 @@ config
             + service ROM | + parent
 
         + start platform | caps: 200 | ram: 3M | managing_system: yes
+          $hb
           + provides
             + service Dma
             + service Platform
@@ -412,7 +643,8 @@ config
             + policy | label_prefix: fb  | info: yes | + pci | class: VGA
             + policy | label_prefix: usb | info: yes | + pci | class: USB
 
-        + start fb | caps: 150 | ram: 20M
+        + start fb | caps: $fb_caps | ram: 20M
+          $hb
           + binary vesa_fb
           + route
             + service ROM | label: config | + parent | label: fb.config
@@ -429,6 +661,7 @@ config
             + service Capture | + parent
 
         + start ps2 | caps: 100 | ram: 1280K
+          $hb
           + config
           + route
             + service Dma | + child platform
@@ -441,6 +674,7 @@ config
             + service Timer | + parent
 
         + start usb | caps: 200 | ram: 16M
+          $hb
           + binary pc_usb_host
           + provides | + service Usb
           + config
@@ -458,6 +692,7 @@ config
             + service Timer | + parent
 
         + start usb_hid | caps: 180 | ram: 10M
+          $hb
           + route
             + service ROM | label: report | + child report_rom
             + service ROM | + parent
@@ -470,6 +705,7 @@ config
             + service Usb | + child usb
 
         + start event_filter | caps: 90 | ram: 1280K
+          $hb
           + provides | + service Event
           + route
             + service ROM | label: config | + parent | label: event_filter.config
@@ -500,7 +736,8 @@ config
     # a silent hang (docs/09-roadmap.md section 11.1). ram: 64M is the
     # package's production figure (pkg/debug/metadata.xml).
     + start sponge_debug | caps: 1000 | ram: 64M
-      + config | storm_ms: $storm_ms | storm_start_ms: $storm_start_ms | storm_hz: $storm_hz | storm_lines: $storm_lines | storm_grow: $storm_grow | storm_burst_hz: $storm_burst_hz
+      $hb
+      + config | storm_ms: $storm_ms | storm_start_ms: $storm_start_ms | storm_hz: $storm_hz | storm_lines: $storm_lines | storm_grow: $storm_grow | storm_burst_hz: $storm_burst_hz | storm_win_w: $win_w | storm_win_h: $win_h
         + vfs
           + dir dev
             + log
@@ -519,8 +756,23 @@ config
           + parent
           + any-child
 
+    #
+    # The instrument itself is deliberately NOT heartbeat-policed, and
+    # this is a measured fact, not a preference: repostorm_probe runs its
+    # whole measurement INSIDE Component::construct (probe.run()), so its
+    # entrypoint thread never returns to the event loop and can never
+    # dispatch the heartbeat handler. Armed, its counter climbs from 1 at
+    # boot to 31 in ~60 s on a completely quiet system and init then kills
+    # and respawns it - destroying the instrument without saying anything
+    # the counter would have said anyway.
+    #
+    # Every other child here IS ep-driven, so a rising counter there means
+    # real starvation. usb_hid's counter also climbs while idle (its ep is
+    # bound up in the DDE-Linux USB host), which is why the ranking is
+    # read as a DELTA between a quiet baseline arm and the storm arm.
+    #
     + start repostorm_probe | caps: 200 | ram: 8M
-      + config | settle_ms: 20000 | report_ms: 1000 | duration_ms: 60000 | threshold_kb: $threshold_kb
+      + config | settle_ms: 20000 | report_ms: 1000 | duration_ms: $probe_duration_ms | threshold_kb: $threshold_kb
   + route
     + service ROM | label_last: ld.lib.so | + parent
     # The instrument reads this sandbox's OWN state report. The ROM
@@ -566,6 +818,30 @@ foreach f { drivers.config fb.config event_filter.config } {
 }
 
 #
+# The stock drivers_interactive-pc fb.config pins 1024x768. At the field
+# resolution this scenario writes its own, in the same file format the
+# recipe uses (`config | width: <w> | height: <h> | buffered: yes`), so
+# nothing is hand-rolled and the stock file is untouched when the knobs
+# are unset. 2560x1600 is the LG gram 17ZD90N's panel and what OVMF's
+# GOP hands the field-identical driver.
+#
+if {$fb_w ne "" || $fb_period_ms > 0} {
+	if {$fb_w eq ""} {
+		set fw 1024
+		set fh_ 768
+	} else {
+		set fw $fb_w
+		set fh_ $fb_h
+	}
+	set period_attr ""
+	if {$fb_period_ms > 0} { set period_attr " | period_ms: $fb_period_ms" }
+	set fh [open "bin/fb.config" w]
+	puts -nonewline $fh "config | width: $fw | height: $fh_ | buffered: yes$period_attr\n-\n"
+	close $fh
+	puts "sponge-debug-scrollstorm: framebuffer ${fw}x${fh_} period_ms=$fb_period_ms"
+}
+
+#
 # event_filter.config is the recipe's own config, unmodified. The
 # absolute-pointer scale and the PS/2 acceleration deviations that
 # run/sponge-de-sel4-interactive.run writes exist only so a HOST-side QMP
@@ -592,10 +868,159 @@ foreach m { libQt6Core.lib.so libQt6Gui.lib.so libQt6Widgets.lib.so \
 }
 build_boot_image $boot_modules
 
+# SPONGE_SMP: QEMU defaults to ONE vCPU, which turns any CPU contention
+# into total system starvation. The field machine is not single-core, so
+# the SMP arms are the discriminating experiment between "too much work
+# for the cores we have" (contention: more cores restore liveness) and
+# "an entrypoint is BLOCKED" (no core count helps).
+set smp ""
+if {[info exists ::env(SPONGE_SMP)]} { set smp $::env(SPONGE_SMP) }
+if {$smp eq ""} { set smp 1 }
+append qemu_args " -smp $smp"
+
 append qemu_args " -nographic -m 2G "
 
 #
-# The gate is the measurement itself. A missing verdict (timeout) means
-# the system wedged — which is the field symptom, reported as a failure.
+# GATES
 #
-run_genode_until {.*repostorm-probe: VERDICT.*} 240
+#   Gate 1 boots the guest. It matches the FIRST thing the boot log
+#   prints on purpose: every later gate reads from the same expect
+#   buffer, and matching late would consume the storm telemetry this
+#   scenario exists to observe.
+#
+#   Gate 2 (only when a storm is armed) is the LIVENESS gate: the storm's
+#   own `STORM done` line. A storm that never reaches it means the Qt
+#   event loop stopped draining — the field symptom — and the run tool
+#   times out and reports a failure. This is what makes "bounded gaps"
+#   (PASS) and "stall" (FAIL) distinguishable at the field resolution.
+#
+#   Gate 3 is the measurement itself. A missing verdict means the system
+#   wedged, reported as a failure.
+#
+global qemu_spawn_id
+
+set ss_log [run_dir]/scrollstorm.log
+
+run_genode_until {.*Genode v.*} 180
+
+# The verbose state report emits hundreds of bytes per child per second,
+# more than expect's default 2000-byte match window, so a later gate
+# would not find an earlier line. Same remedy as
+# run/sponge-de-sel4-interactive.run and run/terminal_runtime.inc.
+match_max -i $qemu_spawn_id 500000
+log_file -a $ss_log
+
+#
+# ONE terminal gate, not two. The probe's verdict and the storm's closing
+# line are both end-of-run markers, and WHICH one comes first is a race:
+# the probe's own budget is settle_ms+duration_ms (20+60 s) while the
+# storm's is storm_start_ms+storm_ms (24+60 s), so the verdict can and
+# does land FIRST. Two sequential gates then lose whichever marker the
+# first gate consumed - measured, not argued. So the VERDICT is the only
+# expect gate and the storm's telemetry is asserted host-side below,
+# straight out of the captured log, with its own bounded failure.
+#
+set liveness [expr {($storm_start_ms + $storm_ms)/1000 + 180}]
+puts "sponge-debug-scrollstorm: arm=$arm fb=$fb_desc \
+win=${win_w}x${win_h} heartbeat=$heartbeat burst_hz=$storm_burst_hz \
+smp=$smp min_hz=$min_hz max_gap_ms=$max_gap_ms gate=${liveness}s"
+#
+# ONE expect gate: the probe's verdict. Because the probe's window now
+# strictly contains the storm (see 'probe_duration_ms' above), the storm's
+# closing line is ALWAYS already in the buffer by the time this matches,
+# which is what makes a single gate sufficient - two gates consume
+# everything up to their match, so a second gate could only ever find data
+# the first one swallowed. The storm's own telemetry is asserted host-side
+# from the captured log below, with its own bounded failure.
+#
+# A stall still fails here: the run tool times out rather than returning,
+# and a stall of the storm alone (the rest of the guest still alive) is
+# caught by that host-side assertion instead, which names it.
+#
+run_genode_until {.*repostorm-probe: VERDICT.*} $liveness $qemu_spawn_id
+
+# The run tool stops logging and cuts the stream; let the closing
+# numbers reach the file before it is read back.
+sleep 2
+log_file
+
+set fh [open $ss_log r]
+set ss_out [read $fh]
+close $fh
+
+set storm_line "n/a (no storm armed)"
+foreach line [split $ss_out "\n"] {
+	if {[string match "*sponge_debug: STORM done*" $line]} { set storm_line $line }
+}
+set burst_line "n/a"
+foreach line [split $ss_out "\n"] {
+	if {[string match "*sponge_debug: BURST done*" $line]} { set burst_line $line }
+}
+
+# Per-child starvation ranking: the largest skipped_heartbeats init ever
+# reported for each child. With SPONGE_HEARTBEAT=off this table is empty
+# by construction (no heartbeat is armed at all).
+#
+# The state report prints one `+ child <name> | ... | skipped_heartbeats: <n>`
+# line per policed child per revision, so the maximum per name over the
+# whole run is the starvation ranking. Read it as a DELTA against a quiet
+# `SPONGE_ARM=baseline` run: a child whose counter climbs on a quiet
+# system is not ep-driven and its counter carries no information.
+array set skip_max {}
+foreach line [split $ss_out "\n"] {
+	if {[regexp {\+ child ([a-zA-Z_0-9]+) \| binary: [a-zA-Z_0-9]+ \| skipped_heartbeats: ([0-9]+)} \
+	      $line -> nm cnt]} {
+		if {![info exists skip_max($nm)] || $cnt > $skip_max($nm)} {
+			set skip_max($nm) $cnt
+		}
+	}
+}
+set worst_skip 0
+set worst_skip_name "-"
+foreach nm [lsort [array names skip_max]] {
+	if {$skip_max($nm) > $worst_skip} {
+		set worst_skip $skip_max($nm)
+		set worst_skip_name $nm
+	}
+}
+
+puts ""
+#
+# The bounds. Parsed out of the storm's OWN closing telemetry line so the
+# assertion is on the measured number, not on the run's exit code.
+#
+set storm_hz_achieved 0
+set storm_gap_ms 0
+if {$storm_ms > 0} {
+	if {![regexp {STORM done ticks=[0-9]+ elapsed_ms=[0-9]+ achieved_hz=([0-9]+) max_gap_ms=([0-9]+)} \
+	       $storm_line -> storm_hz_achieved storm_gap_ms]} {
+		error "the storm never reached its own STORM done line - the Qt \
+		       event loop stopped draining. This is the freeze. \
+		       Last storm line: [lindex [split $ss_out \n] end] ; \
+		       full log: $ss_log"
+	}
+
+	if {$min_hz > 0 && $storm_hz_achieved < $min_hz} {
+		error "storm achieved only ${storm_hz_achieved} Hz (bound: >= \
+		       $min_hz) - the Qt event loop could not keep up; see $ss_log"
+	}
+	if {$max_gap_ms > 0 && $storm_gap_ms > $max_gap_ms} {
+		error "storm tick gap reached ${storm_gap_ms} ms (bound: <= \
+		       ${max_gap_ms} ms) - the event loop stalled; see $ss_log"
+	}
+}
+
+puts "  ================================================================"
+puts "  scrollstorm: arm=$arm"
+puts "    framebuffer       : $fb_desc"
+puts "    storm window      : ${win_w}x${win_h}"
+puts "    heartbeat         : $heartbeat"
+puts "    guest vcpus       : $smp"
+puts "    storm telemetry   : $storm_line"
+puts "    burst telemetry   : $burst_line"
+puts "    worst heartbeat   : $worst_skip skips (child: $worst_skip_name)"
+foreach nm [lsort [array names skip_max]] {
+	puts "      starved rank    : $nm = $skip_max($nm) skipped 2 s intervals"
+}
+puts "    serial log        : $ss_log"
+puts "  ================================================================"
