@@ -964,6 +964,30 @@ A scenario defines:
   heartbeat out. Evidence `docs/evidence/sponge-debug-firstpaint.md`.
   base-sel4 only (`vesa_fb`/`ps2`/`usb_hid`).
 
+- `sponge-supervisor-takeover.run` — closes the top-level containment
+  gap in `docs/17-runtime-component-topology.md` §5. Red→green proof of
+  the whole chain in headless QEMU: a child of the supervised `system`
+  sandbox wedges its entrypoint on every incarnation, the Tier-0
+  `sponge_supervisor` sees the rising `skipped_heartbeats` in that
+  sandbox's own state report, rewrites the config with a fresh
+  `<start>` version (the only restart lever a config owner has — see
+  `docs/evidence/config-regen-survival.md`), and when the fault
+  survives the grace window arms `sponge_console`, which takes the
+  display as the only Gui client. The takeover is asserted by a
+  **pixel oracle** (`test/takeover_probe`, a Capture client reading the
+  composited screen), not by a log line, and the desktop's return is
+  asserted the same way. Marker:
+  `supervisor-takeover: PASS - wedge detected, subtree killed, console
+  owned the display, desktop restored`. Env knob
+  `SPONGE_TAKE_NO_FAULT=1` runs the control (healthy) variant, which
+  asserts with a *negative* check that the supervisor never reports a
+  fault and never kills a healthy subtree. Env knob
+  `SPONGE_TAKE_DUMP=1` prints the staged templates and configs.
+  base-sel4 only, and it boots the **disk** image rather than a flat
+  ISO — the flat-ISO HPET blocker (`docs/17` §5) denies `timer` its
+  IO_MEM, while the disk path finds the same HPET normally.
+  Receipts: `docs/evidence/top-level-supervision.md`.
+
 ## Planned additions
 
 - Spin a usable Sponge OS install workflow through Leitzentrale (the

@@ -303,12 +303,45 @@ component must never be able to freeze the desktop. Status after the
   sponge_pkgd, vct_tty, sponge-de, pkg_runtime). A child whose
   entrypoint wedges is abandoned and respawned within ~6 s. Verified:
   the product scenario boots PASS with the deployment in place.
-- [ ] **Broker fault containment — top level (blocked by design)**:
-  the top-level init cannot run a heartbeat because core provides no
-  Timer on base-sel4 (empirically confirmed: the session is denied
-  and init stops). Restarting a wedged `system` child from above
-  requires a supervisor that owns the top-level config (the pkgd
-  pattern applied one level up) — recorded as the follow-up design.
+- [x] **Broker fault containment — top level (closed)**: the top-level
+  init still cannot run a heartbeat — core provides no Timer on
+  base-sel4, the session is denied and init stops (the constraint is
+  unchanged and still true) — but nothing above the sandbox needs
+  init's heartbeat any more. `sponge_supervisor` is a plain Tier-0
+  component that holds a Timer of its own, OWNS the `system`
+  sandbox's config through `report_rom` (the pkgd pattern applied one
+  level up), and READS that sandbox's own `state` report through the
+  **top-level** relay, never through a relay inside the subtree it
+  supervises. On a rising `skipped_heartbeats` it rewrites the config
+  with a fresh `<start>` version — the only restart lever a config
+  owner has (`Start_model::matches()` compares only `name` and
+  `version`) — which abandons and respawns the subtree; if the fault
+  survives the grace window it arms `sponge_console`, which takes the
+  display as the only Gui client, and hands it back a bounded hold
+  later. QEMU red→green with a pixel oracle:
+  `run/sponge-supervisor-takeover.run` →
+  `supervisor-takeover: PASS - wedge detected, subtree killed, console
+  owned the display, desktop restored`, plus a control run that
+  asserts a healthy system is never touched. Receipts, the measured
+  timings, and the fourteen defects found on the way:
+  `docs/evidence/top-level-supervision.md`.
+- [ ] **A wedged `system` *init* is still unobservable** (the residual
+  gap of the row above): the supervisor detects wedged *children*
+  (rising `skipped_heartbeats`), children that have exited, and a
+  sandbox that publishes nothing at all within its 30 s boot budget. It
+  cannot detect a sandbox whose own init stopped publishing, because a
+  Genode state report is **event-driven** — a healthy sandbox publishes
+  nothing, so report age cannot distinguish quiet from dead. Measured,
+  not assumed: the control run produced exactly that false positive
+  before the detector was rewritten. Closing it needs a periodic
+  report mechanism upstream, or a monitor that forces a report on every
+  heartbeat tick; both are upstream questions, not configuration.
+- [ ] **`sponge_supervisor` is not yet wired into the six product
+  scenarios.** v1 proves the mechanism in a lean topology
+  (`run/sponge-supervisor-takeover.run`). The product rollout means
+  giving the top-level `report_rom` the extra policies and moving the
+  `system` config from a boot module to a supervisor-owned report on
+  real media — a separate change with its own regression budget.
 - [ ] **Broker fault containment — `run/sponge-alpha.run` (blocked by
   topology)**: alpha is a FLAT topology. `wm`, `layouter`,
   `decorator`, `sponge_configd`, `sponge_themed`, `sponge_pkgd`,
@@ -465,17 +498,27 @@ component must never be able to freeze the desktop. Status after the
   does default-ON make sense. Core's log and the serial line remain the
   fallback for the kernel phase.
 
-- [ ] **Problem-triggered console switch (field diagnosis)**: the
-  framebuffer has exactly one owner at a time. Today, when the desktop
-  is up, component logs reach no user-visible surface on real hardware
-  (no serial on the LG gram; the FBCON diagnostic console must not run
-  alongside the desktop — §4). The debug package window + the panel
-  health label are the sanctioned in-desktop surfaces, but they show
-  *state*, not the *log stream*. The follow-up: on a fatal fault
-  (containment kill, repeated child death, storage-chain stall), switch
-  the fb to a console view that shows the relevant log tail — a
-  handover, never an overlay — and switch back on recovery. Until then,
-  field diagnosis relies on the panel health label and the debug
+- [~] **Problem-triggered console switch (mechanism delivered, log tail
+  outstanding)**: the framebuffer has exactly one owner at a time, and
+  that property is now *enforced* rather than *convention*: the
+  supervisor destroys the wedged subtree first, arms `sponge_console`
+  second, and waits `settle_ms` for the console's Gui session to
+  actually close before it rebuilds the desktop — so there is no
+  instant at which both are clients
+  (`run/sponge-supervisor-takeover.run`, phase 5). The handover is
+  over the **display**, not over the fb device: the compositor keeps
+  the fb with exactly one writer (`vesa_fb`/`boot_fb`, a Capture
+  client) and the console is simply the only Gui client while it runs.
+  Seizing the device instead would mean two components mapping the same
+  physical memory — the permanent corruption `docs/11-environment.md`
+  row 12 measured on real hardware, where `boot_fb`'s Capture blit
+  repaints only the compositor's dirty rectangles and stale console
+  text is never erased.
+  **Outstanding:** the console shows the *state* the supervisor knows
+  (the fault banner), not a *log tail*. Getting the log stream to a
+  component above the supervised subtree is the same relay problem in a
+  different shape, and it is not done. Until then, field diagnosis of
+  the log stream still relies on the panel health label and the debug
   package's report views.
 
 ## 6. Quota ledger (the five desktop-disk scenarios)
