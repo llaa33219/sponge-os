@@ -1,0 +1,678 @@
+#
+# \brief  Top-level supervisor + console-takeover acceptance scenario
+# \author Sponge OS contributors
+# \date   2026
+#
+# Closes the containment gap in docs/17-runtime-component-topology.md
+# §5 ("Broker fault containment - top level"). The scenario is a
+# red -> green proof of the whole chain, with a marker for every phase:
+#
+#   1. DESKTOP UP      the supervised subtree paints the screen
+#   2. DETECTED        the supervisor sees a rising skipped_heartbeats
+#                      count in the subtree's OWN state report
+#   3. KILLED          the supervisor rewrote the config with a fresh
+#                      <start> version, so the wedged child was really
+#                      abandoned and respawned (a second incarnation log
+#                      line is the receipt)
+#   4. CONSOLE UP      the fault survived the grace window, so the
+#                      supervisor armed the console. The capture probe -
+#                      a pixel oracle, not a log reader - confirms the
+#                      console's colour is on the display AND that the
+#                      desktop's colour is gone
+#   5. RESTORED        after the bounded hold the console disarmed and
+#                      the desktop came back; the probe sees the
+#                      desktop colour again
+#
+# Topology (the pkgd pattern one level up):
+#
+#   init  (TOP-LEVEL; core gives it no Timer, which is the whole reason
+#          this scenario exists)
+#   + timer                  the supervisor's own clock
+#   + report_rom              the top-level relay: state in, config out
+#   + platform, acpi, pci_decode
+#   + nitpicker               Gui/Capture/Event; owns the composited view
+#   + fb (vesa_fb)            the ONE writer of the physical framebuffer
+#   + sponge_supervisor       Timer + ROM(config, templates, state) +
+#                            Report. Owns `system`'s config and the
+#                            console's arming report. Depends on NOTHING
+#                            inside `system`.
+#   + system (init)           THE SUPERVISED SUBTREE. Its config arrives
+#                            from the supervisor via report_rom.
+#     + desktop              sponge_console in role=desktop: a real Gui
+#                            client, so "the console took the display" is
+#                            a pixel claim
+#     + driver               ep_wedge wedge_ms=N: the critical child that
+#                            wedges its entrypoint on every incarnation
+#     + witness              ep_wedge behave=yes: must survive every cycle
+#   + console                  sponge_console, started but INERT; opens its
+#                              Gui session only while the supervisor arms it
+#   + takeover_probe          Capture-side pixel oracle
+#
+# Two deliberate asymmetries:
+#
+#   * The supervisor is created BEFORE `system` in the top-level config so
+#     its first report lands before the supervised sandbox has applied
+#     anything. It does not rely on that: report_rom serves any reader
+#     whose label matches a configured policy, so `system` receives an
+#     EMPTY-but-VALID config ROM and starts with no children. Losing the
+#     race costs one redundant apply, never a denied session.
+#   * There is exactly ONE relayed config. One report_rom cannot serve two
+#     children that both request ROM "config" - report_rom resolves a
+#     reader label to exactly ONE writer module
+#     (genode/repos/os/src/server/report_rom/rom_registry.h:_report_name)
+#     - so the console's static config is inline in the top-level config
+#     and only its ARMING report is relayed.
+#
+# The DISK path is mandatory here, exactly as docs/17 §5 records: on this
+# host a flat ISO boot denies the HPET IO_MEM, so `timer` cannot start
+# ("timer: no route to service IO_MEM") and any flat scenario that needs a
+# Timer is dead. `run/sponge-heartbeat-restart.run` is still blocked for
+# that reason; this scenario sidesteps it by booting the image that
+# image/disk builds, where the ACPI driver finds the HPET normally.
+#
+# base-sel4 only.
+#
+# Build:
+#   make -C genode/build/x86_64 run/sponge-supervisor-takeover \
+#       KERNEL=sel4 BOARD=pc
+#
+# Knobs (all optional):
+#   SPONGE_TAKE_NO_FAULT=1    keep `driver` healthy (behave=yes): the
+#                            scenario then proves the "no false positive"
+#                            half - with a NEGATIVE assertion that the
+#                            supervisor reported no fault and killed
+#                            nothing while the system was healthy.
+#   SPONGE_TAKE_DUMP=1        print the staged supervisor.templates,
+#                            supervisor.config and init config to stdout.
+#
+
+assert {[have_spec sel4]} \
+	"sponge-supervisor-takeover requires KERNEL=sel4 (BOARD=pc)."
+
+proc ensure_plugin_loaded { name } {
+	if {![have_include $name]} {
+		set path [genode_dir]/tool/run/$name
+		puts "sourcing $path (missing from RUN_OPT, restored by run script)"
+		source $path
+		global include_list
+		lappend include_list $name
+	}
+}
+
+ensure_plugin_loaded boot_dir/sel4
+ensure_plugin_loaded power_on/qemu
+ensure_plugin_loaded log/qemu
+ensure_plugin_loaded image/disk
+
+# The boot image is a disk image here, so image/iso must not be in the
+# include list or the ISO wins the QEMU command line and the guest finds
+# no boot medium (same dance as sponge-desktop-disk).
+global include_list
+set iso_idx [lsearch -exact $include_list "image/iso"]
+if {$iso_idx >= 0} { set include_list [lreplace $include_list $iso_idx $iso_idx] }
+
+#
+# Fault-injection knob.
+#
+
+
+set inject_fault 1
+if {[info exists ::env(SPONGE_TAKE_NO_FAULT)] &&
+    $::env(SPONGE_TAKE_NO_FAULT) == "1"} {
+	set inject_fault 0
+}
+
+#
+# Supervisor timing. The windows must satisfy:
+#
+#   wedge_ms  >  poll + fault_skipped*heartbeat   (so the wedge is seen)
+#   grace_ms  >  fault_skipped*heartbeat          (so the kill happens
+#                                                 before the console)
+#   wedge_ms  >  grace_ms                         (so the wedge is still
+#                                                 present when the grace
+#                                                 window expires - the
+#                                                 wedge must survive the
+#                                                 respawn, which is what
+#                                                 makes it unrecoverable)
+#   console_hold_ms > poll                        (bounded, observable)
+#
+set poll_ms    250
+set hb_ms      500
+set skipped    3
+set grace_ms   4000
+set settle_ms  3000
+set console_ms 6000
+set wedge_ms   20000
+
+if {$inject_fault} {
+	# The heartbeat rate decides how fast skipped_heartbeats climbs:
+	# init checks once per heartbeat period, so the detector needs
+	# skipped*hb_ms of unresponsiveness plus one poll interval.
+	set detect_ms [expr {$skipped * $hb_ms + $poll_ms}]
+	if {$wedge_ms < [expr {$detect_ms + 2 * $poll_ms}]} {
+		puts "sponge-supervisor-takeover: wedge_ms=$wedge_ms is too short to be detected (need > $detect_ms)"
+		exit 1
+	}
+	if {$grace_ms < $detect_ms} {
+		puts "sponge-supervisor-takeover: grace_ms=$grace_ms is shorter than detection ($detect_ms) - the console would never be reached"
+		exit 1
+	}
+	if {$wedge_ms <= [expr {$grace_ms + $settle_ms}]} {
+		puts "sponge-supervisor-takeover: wedge_ms=$wedge_ms must exceed grace+settle ($settle_ms+$grace_ms ms) so the wedge survives the respawn"
+		exit 1
+	}
+}
+
+puts "sponge-supervisor-takeover: wedge_ms=$wedge_ms fault=$inject_fault poll=${poll_ms}ms grace=${grace_ms}ms settle=${settle_ms}ms console_hold=${console_ms}ms"
+
+#
+# Build list. server/report_rom is the top-level relay; the display chain
+# is the product chain (platform + acpi + pci_decode + nitpicker + vesa_fb).
+#
+build {
+	core lib/ld init timer
+	server/report_rom server/nitpicker
+	driver/platform driver/acpi app/pci_decode
+	driver/framebuffer/vesa
+	sponge_supervisor sponge_console
+	test/ep_wedge test/takeover_probe
+}
+
+create_boot_directory
+
+#
+# === The supervisor's config templates (staged as a boot module) ========
+#
+# Written as proper XML, and forwarded VERBATIM by the supervisor with
+# one substitution: every @KILL@ becomes a fresh decimal counter. That
+# substitution is the restart lever, and it is the only lever a config
+# owner has - Genode's Start_model::matches()
+# (genode/repos/os/src/lib/sandbox/config_model.h:171) compares only the
+# `name` and `version` attributes of a <start> node, so a node whose
+# version changes is abandoned and recreated while an unchanged node
+# survives (the finding in docs/evidence/config-regen-survival.md).
+#
+# The templates are wrapped in <system>/<system_console> so the
+# supervisor can find them by name; the wrapper is stripped before the
+# config reaches init, because init applies the <config> ELEMENT, not
+# whatever element happens to be outermost
+# (Attached_rom_dataspace::node() resolves to the document's first
+# element child - genode/repos/base/src/lib/base/node.cc:151).
+#
+set templates [open "[run_dir]/genode/supervisor.templates" w]
+
+#
+# Per-child route block. PD/CPU/LOG/RM/ROM are spelled out rather than
+# left to the sandbox's default-route: a child with an explicit <route>
+# gets no default-route fallback, and a denied environment session is
+# fatal (base-lib DENIED -> sleep_forever).
+#
+proc child_routes {{timer 0}} {
+	set r "    <route>\n"
+	append r "      <service name=\"PD\"><parent/></service>\n"
+	append r "      <service name=\"CPU\"><parent/></service>\n"
+	append r "      <service name=\"LOG\"><parent/></service>\n"
+	append r "      <service name=\"RM\"><parent/></service>\n"
+	append r "      <service name=\"ROM\"><parent/></service>\n"
+	if {$timer} {
+		append r "      <service name=\"Timer\"><parent/></service>\n"
+	}
+	append r "      <service name=\"ROM\" label_last=\"ld.lib.so\"><parent/></service>\n"
+	append r "    </route>\n"
+	return $r
+}
+
+set desktop_child ""
+append desktop_child "  <start name=\"desktop\" version=\"@KILL@\" caps=\"200\" ram=\"8M\">\n"
+append desktop_child "    <binary name=\"sponge_console\"/>\n"
+append desktop_child "    <config label=\"desktop\" role=\"desktop\" color=\"#1e3a6e\" title=\"SPONGE DESKTOP\"/>\n"
+append desktop_child "    <route>\n"
+append desktop_child "      <service name=\"PD\"><parent/></service>\n"
+append desktop_child "      <service name=\"CPU\"><parent/></service>\n"
+append desktop_child "      <service name=\"LOG\"><parent/></service>\n"
+append desktop_child "      <service name=\"RM\"><parent/></service>\n"
+append desktop_child "      <service name=\"ROM\"><parent/></service>\n"
+append desktop_child "      <service name=\"Gui\"><parent/></service>\n"
+append desktop_child "      <service name=\"ROM\" label_last=\"ld.lib.so\"><parent/></service>\n"
+append desktop_child "    </route>\n"
+append desktop_child "  </start>\n"
+
+if {$inject_fault} {
+	set driver_cfg "wedge_ms=\"$wedge_ms\""
+} else {
+	set driver_cfg "behave=\"yes\""
+}
+
+set driver_child ""
+append driver_child "  <start name=\"driver\" version=\"@KILL@\" caps=\"200\" ram=\"8M\">\n"
+append driver_child "    <binary name=\"ep_wedge\"/>\n"
+append driver_child "    <heartbeat/>\n"
+append driver_child "    <config $driver_cfg/>\n"
+append driver_child [child_routes 1]
+append driver_child "  </start>\n"
+
+set witness_child ""
+append witness_child "  <start name=\"witness\" version=\"@KILL@\" caps=\"200\" ram=\"8M\">\n"
+append witness_child "    <binary name=\"ep_wedge\"/>\n"
+append witness_child "    <config behave=\"yes\"/>\n"
+append witness_child [child_routes 0]
+append witness_child "  </start>\n"
+
+#
+# The sandbox preamble: parent-provides + heartbeat + the <report> node
+# that makes this sandbox publish its own state report. The report is
+# what the supervisor reads - it is the whole observation channel.
+#
+proc sandbox_head {} {
+	global hb_ms
+	set h "  <parent-provides>\n"
+	# Gui is re-provided so a nested-init child can reach the Tier-0
+	# compositor: the sandbox has no nitpicker child of its own, so
+	# '<child name="nitpicker"/>' would resolve against the sandbox's own
+	# (empty) child list. '<parent/>' here hands it up to the top-level
+	# init, whose own routing DOES have nitpicker as a child.
+	foreach s { ROM PD CPU LOG Timer Gui } {
+		append h "    <service name=\"$s\"/>\n"
+	}
+	append h "  </parent-provides>\n"
+	append h "  <default caps=\"400\" ram=\"32M\"/>\n"
+	append h "  <heartbeat rate_ms=\"$hb_ms\"/>\n"
+	append h "  <report delay_ms=\"100\" init_ram=\"yes\" child_ram=\"yes\"/>\n"
+	append h "  <default-route>\n    <any-service>\n      <parent/>\n      <any-child/>\n    </any-service>\n  </default-route>\n"
+	return $h
+}
+
+#
+# <system>: the nominal supervised subtree, desktop role included.
+#
+puts $templates "<!-- supervised subtree: desktop role"
+if {$inject_fault} {
+	puts $templates "     + a driver that wedges every incarnation -->"
+} else {
+	puts $templates "     CONTROL RUN: no injected fault -->"
+}
+puts $templates "<system>"
+puts $templates "  <config>"
+puts -nonewline $templates [sandbox_head]
+puts -nonewline $templates $desktop_child
+puts -nonewline $templates $driver_child
+puts -nonewline $templates $witness_child
+puts $templates "  </config>"
+puts $templates "</system>"
+puts $templates ""
+puts $templates "<!-- same subtree with the desktop role removed: the console is"
+puts $templates "     then the only Gui client, which is what \"the console owns the"
+puts $templates "     display\" means on a compositor that never lets go of the"
+puts $templates "     framebuffer -->"
+puts $templates "<system_console>"
+puts $templates "  <config>"
+puts -nonewline $templates [sandbox_head]
+puts -nonewline $templates $driver_child
+puts -nonewline $templates $witness_child
+puts $templates "  </config>"
+puts $templates "</system_console>"
+close $templates
+
+if {[info exists ::env(SPONGE_TAKE_DUMP)]} {
+	set fd [open "[run_dir]/genode/supervisor.templates" r]
+	puts "--- supervisor.templates ---"
+	puts -nonewline [read $fd]
+	puts "--- end ---"
+	close $fd
+}
+
+#
+# === Top-level init config ==============================================
+#
+install_config [subst {
+config
++ parent-provides
+  + service ROM
+  + service PD
+  + service RM
+  + service CPU
+  + service LOG
+  + service IRQ
+  + service IO_MEM
+  + service IO_PORT
+
++ default | caps: 200 | ram: 4M
+
++ default-route
+  + any-service
+    + parent
+    + any-child
+
++ start timer | caps: 100 | ram: 4M
+  + provides | + service Timer
+
++ start report_rom | caps: 300 | ram: 8M
+  + provides
+    + service Report
+    + service ROM
+  + config | verbose: no
+    # The reader label is the requesting child's name joined to the
+    # label it asked for ("system -> config"), so every policy below is
+    # spelled out rather than abbreviated.
+    # The 'report' side must be the writer's FULL session label, i.e.
+    # "<writer child name> -> <report label>" - that string is the module
+    # name report_rom registers the report under, so a truncated label
+    # silently hands the reader an always-empty module.
+    + policy | label: system -> config        | report: sponge_supervisor -> system_config
+    + policy | label_suffix: console_state    | report: sponge_supervisor -> console_state
+    + policy | label_suffix: system_state     | report: system -> state
+    + policy | label: pci_decode -> system  | report: acpi -> acpi
+    + policy | label: platform -> devices   | report: pci_decode -> devices
+
++ start acpi | caps: 350 | ram: 4M
+  + route
+    + service ROM | label_last: ld.lib.so | + parent
+    + service Report | + child report_rom
+    + service IO_MEM | + parent
+    + service LOG | + parent
+    + service PD | + parent
+    + service RM | + parent
+    + service CPU | + parent
+    + service ROM | + parent
+    + any-service
+      + parent
+      + any-child
+
++ start pci_decode | caps: 350 | ram: 2M
+  + route
+    + service ROM | label_last: ld.lib.so | + parent
+    + service Report | + child report_rom
+    + service ROM | label: system | + child report_rom
+    + service IO_MEM | + parent
+    + service IO_PORT | + parent
+    + service LOG | + parent
+    + service PD | + parent
+    + service RM | + parent
+    + service CPU | + parent
+    + service ROM | + parent
+    + any-service
+      + parent
+      + any-child
+
++ start platform | caps: 200 | ram: 3M | managing_system: yes
+  + provides
+    + service Platform
+    + service Dma
+  + route
+    + service ROM | label_last: ld.lib.so | + parent
+    + service ROM | label: devices | + child report_rom
+    + service Report | + child report_rom
+    + service Timer | + child timer
+    + service IRQ | + parent
+    + service IO_MEM | + parent
+    + service IO_PORT | + parent
+    + service ROM | + parent
+    + service PD | + parent
+    + service CPU | + parent
+    + service LOG | + parent
+  + config
+    + report | devices: yes
+    # Only the VGA device is declared: this scenario has no block
+    # driver, no USB and no PS/2 input, so nothing else is discovered.
+    + policy | label_prefix: fb | info: yes | + pci | class: VGA
+
++ start nitpicker | caps: 2000 | ram: 64M
+  + provides
+    + service Gui
+    + service Capture
+    + service Event
+  + route
+    + service ROM | label_last: ld.lib.so | + parent
+    + service Timer | + child timer
+    + any-service
+      + parent
+      + any-child
+  + config
+    + capture
+    # 'content: client' means the CLIENT supplies the surface content and
+    # its size - so the console fills whatever the compositor's screen
+    # really is, with no geometry duplicated between the run script and
+    # the component.
+    + domain desktop | layer: 2 | content: client | label: no
+    + domain console | layer: 3 | content: client | label: no
+    + default-policy | domain: desktop
+    + background | color: #101010
+
++ start fb | caps: 1200 | ram: 32M
+  + binary vesa_fb
+  + route
+    + service ROM | label_last: ld.lib.so | + parent
+    + service ROM | label: config | + parent | label: fb.config
+    + service Report | + child report_rom
+    + service Dma | + child platform
+    + service Platform | + child platform
+    + service IO_PORT | + parent
+    + service IO_MEM | + parent
+    + service ROM | + parent
+    + service PD | + parent
+    + service CPU | + parent
+    + service LOG | + parent
+    + service Timer | + child timer
+    + service Capture | + child nitpicker
+
++ start sponge_supervisor | caps: 400 | ram: 24M
+  + route
+    + service ROM | label_last: ld.lib.so | + parent
+    + service ROM | label: config    | + parent | label: supervisor.config
+    + service ROM | label: templates | + parent | label: supervisor.templates
+    + service ROM | label: supervisor -> system_state | + child report_rom
+    + service Report | + child report_rom
+    + service Timer | + child timer
+    + any-service
+      + parent
+      + any-child
+
++ start system | caps: 1200 | ram: 96M
+  + binary | name: init
+  + route
+    + service ROM | label: config | + child report_rom
+    + service ROM | label_last: ld.lib.so | + parent
+    + service Timer | + child timer
+    + service Report | + child report_rom
+    + service Gui | + child nitpicker
+    + any-service
+      + parent
+      + any-child
+
+#
+# The console is a TOP-LEVEL child, not a member of a nested sandbox.
+# Two reasons:
+#   1. it must survive the destruction of `system`, and
+#   2. a top-level child gets its PD/CPU/LOG/ROM environment sessions
+#      from the top-level init directly, so the console depends on the
+#      smallest possible amount of other people's routing decisions.
+# It is always started and is INERT until armed: a component that merely
+# has a config ROM is not a display client. The supervisor opens its Gui
+# session by writing the console_state report, which is what makes
+# "the console never coexists with the desktop" structural.
+#
++ start console | caps: 400 | ram: 16M
+  + binary | name: sponge_console
+  + config | label: console | role: console
+  + route
+    + service ROM | label_last: ld.lib.so | + parent
+    + service ROM | label: console_state | + child report_rom
+    + service Gui | + child nitpicker
+    + any-service
+      + parent
+      + any-child
+
++ start takeover_probe | caps: 400 | ram: 16M
+  + binary | name: takeover_probe
+  + route
+    + service ROM | label_last: ld.lib.so | + parent
+    + service Capture | + child nitpicker
+    + service Timer | + child timer
+    + any-service
+      + parent
+      + any-child
+  + config | poll_ms: 250
+    + state | name: desktop | color: #1e3a6e
+    + state | name: console | color: #601010
+- }]
+
+#
+# Stage the extra boot modules. Every boot_dir plugin picks up whatever is
+# written under [run_dir]/genode/, so supervisor.config, supervisor.templates,
+# supervisor.config and fb.config all land in the image.
+#
+set recipe_dir "${genode_dir}/repos/os/recipes/raw/drivers_interactive-pc"
+foreach f { fb.config } {
+	if {![file exists "$recipe_dir/$f"]} {
+		puts "sponge-supervisor-takeover: required recipe file $f is missing"
+		exit 1
+	}
+	set out [open "[run_dir]/genode/$f" w]
+	set in  [open "$recipe_dir/$f" r]
+	puts -nonewline $out [read $in]
+	close $in
+	close $out
+}
+
+#
+# The supervisor's own policy. Plain XML on purpose: a ".config" boot
+# module is validated as XML by boot_dir, and this component reads its
+# policy as raw text precisely so it does not care which serialisation
+# arrived - but the file itself still has to be legal.
+#
+set sup_path "[run_dir]/supervisor.config.hid"
+set sup_cfg  [open $sup_path w]
+#
+# The attributes live in
+# a <policy> sub-node because the supervisor reads them with a tolerant
+# text scan (its config may arrive as XML or HID depending on the
+# linker), so the nesting is for human legibility, not for the parser.
+#
+puts $sup_cfg [subst {
+config
++ policy | poll_ms: $poll_ms | fault_skipped: $skipped
+         | grace_ms: $grace_ms | console_hold_ms: $console_ms
+         | settle_ms: $settle_ms | boot_grace_ms: 30000
+-
+}]
+close $sup_cfg
+exec [genode_dir]/tool/hid format --output-xml $sup_path > "[run_dir]/genode/supervisor.config"
+
+if {[info exists ::env(SPONGE_TAKE_DUMP)]} {
+	set fd [open "[run_dir]/genode/supervisor.config" r]
+	puts "--- supervisor.config ---"; puts -nonewline [read $fd]
+	puts "--- end ---"; close $fd
+}
+
+if {[info exists ::env(SPONGE_TAKE_DUMP)]} {
+	set fd [open "[run_dir]/genode/config" r]
+	puts "--- init config ---"
+	puts -nonewline [read $fd]
+	puts "--- end ---"
+	close $fd
+}
+
+build_boot_image [build_artifacts]
+
+append qemu_args " -machine q35 -cpu Skylake-Client "
+append qemu_args " -nographic -m 1G "
+
+#
+# === The gate ===========================================================
+#
+# Only the FIRST gate boots; every later one waits on the ALREADY RUNNING
+# QEMU via $qemu_spawn_id. Omitting it makes the run tool power-cycle the
+# machine between gates (run_genode_until -> run_power_cycle), which would
+# restart the scenario from scratch at every marker - the same chaining
+# sponge-hw-matrix.run uses.
+#
+#
+# Order matters: the run tool consumes the stream sequentially, so a
+# gate can only match a marker that appears AFTER the previous gate's
+# match. The witness logs before the desktop paints, so it is gated
+# first.
+#
+run_genode_until {.*witness: alive and well.*} 120
+
+run_genode_until {.*sponge_console: role=desktop label=desktop.*} 60 $qemu_spawn_id
+
+#
+# Phase 1 receipt: the pixel oracle sees the DESKTOP colour. This is a
+# capture-side observation of the composited screen, so it cannot be
+# satisfied by a log line.
+#
+run_genode_until {.*takeover_probe: desktop-up state=desktop.*} 90 $qemu_spawn_id
+
+if {$inject_fault} {
+
+	# Phase 2: detection. The supervisor's own log, driven by the
+	# subtree's own state report - not by anything inside the subtree.
+	run_genode_until {.*sponge_supervisor: FAULT max_skipped=.*} 120 $qemu_spawn_id
+
+	# Phase 3: the kill. Two independent receipts: the supervisor logged
+	# the rewrite, and ep_wedge logged a SECOND incarnation - which can
+	# only happen if the <start> version really changed.
+	run_genode_until {.*sponge_supervisor: published <system> kill=2.*} 60 $qemu_spawn_id
+	run_genode_until {.*ep_wedge: incarnation alive.*} 60 $qemu_spawn_id
+
+	# The fault survived the grace window and the settle window, so the
+	# supervisor declared the subtree unrecoverable.
+	run_genode_until {.*sponge_supervisor: phase=3 .*unrecoverable.*} 120 $qemu_spawn_id
+
+	# Phase 4: the takeover. Two independent receipts:
+	#   - the console opened its Gui session, and
+	#   - the pixel oracle sees the console colour where the desktop
+	#     colour used to be. "UNKNOWN" in between is expected and is not a
+	#     failure: it is the instant in which the display is empty,
+	#     between the desktop's destruction and the console's first paint.
+	run_genode_until {.*sponge_console: ARMED role=console.*} 90 $qemu_spawn_id
+	run_genode_until {.*takeover_probe: console-up state=console.*} 90 $qemu_spawn_id
+
+	# Phase 5: bounded recovery. The console disarms BEFORE the desktop is
+	# rebuilt, so the display is never shared by the two.
+	run_genode_until {.*sponge_console: DISARMED.*} 120 $qemu_spawn_id
+	run_genode_until {.*sponge_supervisor: CONSOLE RELEASED.*} 60 $qemu_spawn_id
+	run_genode_until {.*sponge_supervisor: phase=1 .desktop restored.*} 60 $qemu_spawn_id
+	run_genode_until {.*takeover_probe: pixel state=desktop.*} 120 $qemu_spawn_id
+
+	puts "\nsupervisor-takeover: PASS - wedge detected, subtree killed,\
+ console owned the display, desktop restored\n"
+
+} else {
+	# Control run: a healthy system must be left completely alone. The
+	# probe finding the desktop colour is the baseline; the supervisor
+	# must never reach CONTAIN. The bounded wait below is the whole
+	# assertion - a supervisor that restarted a healthy subtree would
+	# emit a second "incarnation alive" line inside it.
+	puts "\nsupervisor-takeover: CONTROL - healthy system observed, waiting for a second liveness line"
+	#
+	# The supervisor's periodic "nominal — subtree healthy" line is the
+	# marker: it proves the supervisor is still polling the state report
+	# and still considers the system healthy, which is exactly what must
+	# keep happening for the whole control window.
+	#
+	run_genode_until {.*sponge_supervisor: nominal .*subtree healthy.*} 120 $qemu_spawn_id
+
+	#
+	# A NEGATIVE assertion, which run_genode_until cannot express: the run
+	# tool accumulates every matched line in the global 'output', so the
+	# absence of a marker is assertable after the fact. A supervisor that
+	# restarts a healthy system is worse than one that does nothing -
+	# it destroys the user's session on a timer - so this is the half of
+	# the property that matters most and the half a log-line gate cannot
+	# check.
+	#
+	if {[string first "sponge_supervisor: FAULT" $output] >= 0} {
+		puts "\nsupervisor-takeover: CONTROL FAIL - the supervisor reported\
+ a fault on a healthy system\n"
+		exit 1
+	}
+	if {[string first "sponge_supervisor: contained" $output] >= 0} {
+		puts "\nsupervisor-takeover: CONTROL FAIL - the supervisor killed\
+ a healthy subtree\n"
+		exit 1
+	}
+	puts "\nsupervisor-takeover: CONTROL PASS - no fault injected, no takeover\n"
+}
+
+puts "\nRun script execution successful.\n"

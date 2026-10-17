@@ -1,7 +1,7 @@
 /*
- * ep_wedge — sandbox heartbeat-restart test component.
+ * ep_wedge — sandbox heartbeat / supervisor fault-injection component.
  *
- * Two modes, selected by the component config:
+ * Modes, selected by the component config:
  *
  *   default (no config / behave unset):
  *     Logs one line and blocks its entrypoint forever.
@@ -11,13 +11,31 @@
  *     deployed to contain (docs/17-runtime-component-topology.md §5).
  *     A parent running <heartbeat rate_ms="..."/> with this child
  *     configured <heartbeat restart_after_skipped="N"/> observes
- *     skipped heartbeats, abandons the wedged instance, and
- *     respawns it — which makes the "alive" line appear again.
+ *     skipped heartbeats, abandons the wedged instance, and respawns
+ *     it — which makes the "alive" line appear again.
  *
  *   <config behave="yes"/>:
  *     The witness: logs once and returns from construct (a healthy
  *     idle component). It must SURVIVE any number of sibling
  *     wedge-restart cycles — the independence assertion.
+ *
+ *   <config wedge_ms="N"/>:
+ *     A BOUNDED wedge. The component logs which incarnation it is,
+ *     then blocks its entrypoint for N milliseconds and afterwards
+ *     returns from construct, becoming responsive again. A bounded
+ *     wedge is what makes a recovery claim falsifiable: a fault that
+ *     heals on a timer AFTER the supervisor has already killed and
+ *     respawned the subtree proves the kill worked, and the console
+ *     takeover is only reachable once the supervisor has decided the
+ *     respawn did not help.
+ *
+ *   <config behave="yes" wedge_ms="N"/>:
+ *     behave wins — a witness is a witness.
+ *
+ * The incarnation number is not remembered by this component: it is
+ * stateless by design. The supervisor's kill-and-respawn is what
+ * produces the second "alive" line; that line repeating after a kill is
+ * the proof, exactly as in run/sponge-heartbeat-restart.run.
  *
  * SPDX-License-Identifier: Apache-2.0
  */
@@ -27,29 +45,139 @@
 #include <base/component.h>
 #include <base/log.h>
 #include <base/sleep.h>
+#include <timer_session/connection.h>
+#include <util/string.h>
 
-void Component::construct(Genode::Env &env)
-{
-	bool behave = false;
+namespace {
+
+	struct Mode
+	{
+		bool     behave { false };
+		unsigned wedge_ms { 0 };
+	};
+
+	/*
+	 * The config reaches this component as XML or HID depending on how
+	 * the linker delivered it, so both spellings are accepted: a
+	 * fault-injection component that silently ignored its own config
+	 * would turn every containment test into a false PASS.
+	 */
+	unsigned _uint_attr(char const *cfg, Genode::size_t sz, char const *key)
+	{
+		Genode::size_t const key_len = Genode::strlen(key);
+
+		for (Genode::size_t i = 0; i + key_len < sz; i++) {
+
+			if (Genode::strcmp(cfg + i, key, key_len) != 0)
+				continue;
+
+			/* must not be the tail of a longer attribute name */
+			if (i > 0) {
+				char const p = cfg[i - 1];
+				bool const name_char = (p >= 'a' && p <= 'z') ||
+				                       (p >= 'A' && p <= 'Z') ||
+				                       (p >= '0' && p <= '9') ||
+				                       p == '_' || p == '-' || p == ':';
+				if (name_char)
+					continue;
+			}
+
+			Genode::size_t j = i + key_len;
+
+			if (j >= sz || (cfg[j] != '=' && cfg[j] != ':'))
+				continue;
+
+			j++;
+			if (j < sz && cfg[j] == '"') j++;
+			while (j < sz && (cfg[j] == ' ' || cfg[j] == '\t')) j++;
+
+			unsigned r = 0;
+			while (j < sz && cfg[j] >= '0' && cfg[j] <= '9') {
+				r = r * 10 + unsigned(cfg[j] - '0');
+				j++;
+			}
+			return r;
+		}
+
+		return 0;
+	}
+
+	bool _behave_attr(char const *cfg, Genode::size_t sz)
+	{
+		Genode::size_t const key_len = 6; /* "behave" */
+
+		for (Genode::size_t i = 0; i + key_len < sz; i++) {
+
+			if (Genode::strcmp(cfg + i, "behave", key_len) != 0)
+				continue;
+
+			if (i > 0) {
+				char const p = cfg[i - 1];
+				bool const name_char = (p >= 'a' && p <= 'z') ||
+				                       (p >= 'A' && p <= 'Z') ||
+				                       (p >= '0' && p <= '9') ||
+				                       p == '_' || p == '-' || p == ':';
+				if (name_char)
+					continue;
+			}
+
+			/* skip separator and optional opening quote */
+			Genode::size_t j = i + key_len;
+			while (j < sz && (cfg[j] == ' ' || cfg[j] == '=' ||
+			                  cfg[j] == ':' || cfg[j] == '"'))
+				j++;
+
+			return Genode::strcmp(cfg + j, "yes", 3) == 0;
+		}
+
+		return false;
+	}
+
+	Mode _mode(Genode::Env &env)
 	{
 		Genode::Attached_rom_dataspace cfg { env, "config" };
 		cfg.update();
-		if (cfg.valid()) {
-			char const * const base = cfg.local_addr<char const>();
-			Genode::size_t  const sz  = cfg.size();
-			for (Genode::size_t i = 0; i + 12 < sz; ++i) {
-				if (Genode::strcmp(base + i, "behave: yes",    11) == 0 ||
-				    Genode::strcmp(base + i, "behave=\"yes\"", 12) == 0)
-					behave = true;
-			}
-		}
-	}
 
-	if (behave) {
+		Mode m;
+		if (!cfg.valid())
+			return m;
+
+		char const *raw = cfg.local_addr<char const>();
+		Genode::size_t const sz = cfg.size();
+
+		m.wedge_ms = _uint_attr(raw, sz, "wedge_ms");
+		m.behave   = _behave_attr(raw, sz);
+
+		return m;
+	}
+}
+
+void Component::construct(Genode::Env &env)
+{
+	Mode const m = _mode(env);
+
+	if (m.behave) {
 		Genode::log("witness: alive and well");
 		return;
 	}
 
-	Genode::log("ep_wedge: alive — entrypoint wedging now");
-	Genode::sleep_forever();
+	if (m.wedge_ms == 0) {
+		Genode::log("ep_wedge: alive — entrypoint wedging now");
+		Genode::sleep_forever();
+	}
+
+	/*
+	 * Bounded wedge: unresponsive for 'wedge_ms', then alive again.
+	 * The Timer session comes from the parent sandbox's `timer`
+	 * sibling, so this component depends on nothing it supervises.
+	 */
+Timer::Connection timer { env };
+
+	Genode::log("ep_wedge: incarnation alive — wedging for ",
+	            m.wedge_ms, " ms");
+
+	timer.msleep(m.wedge_ms);
+
+	Genode::log("ep_wedge: incarnation un-wedged after ",
+	            m.wedge_ms, " ms");
 }
