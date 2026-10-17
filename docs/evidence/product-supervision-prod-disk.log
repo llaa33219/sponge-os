@@ -1,0 +1,1025 @@
+including /home/luke/sponge-os/genode/tool/run/image/disk
+including /home/luke/sponge-os/repos/sponge/run/sponge-desktop-disk.run
+sourcing /home/luke/sponge-os/genode/tool/run/boot_dir/sel4 (missing from RUN_OPT, restored by run script)
+sourcing /home/luke/sponge-os/genode/tool/run/power_on/qemu (missing from RUN_OPT, restored by run script)
+sourcing /home/luke/sponge-os/genode/tool/run/log/qemu (missing from RUN_OPT, restored by run script)
+building targets:  core lib/ld init timer server/report_rom server/nitpicker driver/platform driver/acpi app/pci_decode driver/framebuffer/vesa driver/ps2 driver/usb_host/pc driver/usb_hid server/event_filter server/part_block server/vfs server/cached_fs_rom lib/vfs lib/vfs_rump lib/rump lib/rump_fs server/wm app/window_layouter app/decorator app/pointer sponge_configd sponge_themed sponge_pkgd pkg_hello sponge-de app/qt6/examples/calculatorform sponge_files app/pdf_view sponge_debug cfg_probe sponge_supervisor sponge_console server/terminal noux-pkg/bash-minimal noux-pkg/vim-minimal noux-pkg/coreutils-minimal noux-pkg/grep noux-pkg/sed noux-pkg/tar noux-pkg/less noux-pkg/findutils noux-pkg/diffutils noux-pkg/which test/alpha_probe qt6/base lib/libc lib/libm lib/stdcxx lib/mesa lib/mesa_gpu-softpipe lib/egl lib/softpipe lib/libdrm lib/expat lib/qt6_component lib/vfs lib/vfs_pipe lib/vfs_gpu lib/rom_filter lib/zlib lib/libpng lib/blit lib/vfs_ttf lib/vfs_import lib/posix lib/ncurses lib/pcre driver/ahci
+
+spawn make core lib/ld init timer server/report_rom server/nitpicker driver/platform driver/acpi app/pci_decode driver/framebuffer/vesa driver/ps2 driver/usb_host/pc driver/usb_hid server/event_filter server/part_block server/vfs server/cached_fs_rom lib/vfs lib/vfs_rump lib/rump lib/rump_fs server/wm app/window_layouter app/decorator app/pointer sponge_configd sponge_themed sponge_pkgd pkg_hello sponge-de app/qt6/examples/calculatorform sponge_files app/pdf_view sponge_debug cfg_probe sponge_supervisor sponge_console server/terminal noux-pkg/bash-minimal noux-pkg/vim-minimal noux-pkg/coreutils-minimal noux-pkg/grep noux-pkg/sed noux-pkg/tar noux-pkg/less noux-pkg/findutils noux-pkg/diffutils noux-pkg/which test/alpha_probe qt6/base lib/libc lib/libm lib/stdcxx lib/mesa lib/mesa_gpu-softpipe lib/egl lib/softpipe lib/libdrm lib/expat lib/qt6_component lib/vfs lib/vfs_pipe lib/vfs_gpu lib/rom_filter lib/zlib lib/libpng lib/blit lib/vfs_ttf lib/vfs_import lib/posix lib/ncurses lib/pcre driver/ahci
+Makefile:213: ターゲット 'lib/vfs' が同一ルール内で複数回与えられました
+Library-description file 'rom_filter.mk' is missing
+Skip target driver/platform/pc/spec/x86_32 because it requires 'x86_32'
+Skip target driver/ps2/pl050 because it requires 'arm_v7'
+Skip target driver/usb_hid/spec/arm_v7 because it requires 'arm_v7'
+Skip target driver/usb_hid/spec/arm_v8 because it requires 'arm_v8'
+Skip target driver/usb_hid/spec/x86_32 because it requires 'x86_32'
+Skip target driver/usb_host/pc/spec/x86_32 because it requires '32bit'
+  [00;33mLibrary[0m ld.abi.so
+  [00;33mLibrary[0m ldso_so_support.lib.a
+  [00;33mLibrary[0m kernel-sel4-pc.lib.a
+ninja: no work to do.
+  [00;33mLibrary[0m syscall-sel4-pc.lib.a
+  [00;33mLibrary[0m syscall-sel4.lib.a
+  [00;33mLibrary[0m startup-sel4.lib.a
+  [00;33mLibrary[0m base-sel4-common.lib.a
+  [00;33mLibrary[0m timeout.lib.a
+  [00;33mLibrary[0m cxx.lib.a
+  [00;33mLibrary[0m base-sel4.lib.a
+  [00;33mLibrary[0m ld-sel4.lib.so
+  [00;33mLibrary[0m ld.lib.so
+  [00;33mLibrary[0m vfs.abi.so
+  [00;33mLibrary[0m base.lib.a
+  [00;33mLibrary[0m vfs.lib.so
+  [00;33mLibrary[0m format.lib.a
+  [00;33mLibrary[0m rump_include.lib.a
+  [00;33mLibrary[0m rump.lib.so
+  [00;33mLibrary[0m rump_tools.lib.a
+  [00;33mLibrary[0m rump_fs.lib.so
+  [00;33mLibrary[0m vfs_rump.lib.so
+  [00;33mLibrary[0m libc.abi.so
+  [00;33mLibrary[0m libc-string.lib.a
+  [00;33mLibrary[0m libc-locale.lib.a
+  [00;33mLibrary[0m libc-stdlib.lib.a
+  [00;33mLibrary[0m libc-stdio.lib.a
+  [00;33mLibrary[0m libc-gen.lib.a
+  [00;33mLibrary[0m libc-gdtoa.lib.a
+  [00;33mLibrary[0m libc-inet.lib.a
+  [00;33mLibrary[0m libc-stdtime.lib.a
+  [00;33mLibrary[0m libc-regex.lib.a
+  [00;33mLibrary[0m libc-compat.lib.a
+  [00;33mLibrary[0m libc-setjmp.lib.a
+  [00;33mLibrary[0m libc-mem.lib.a
+  [00;33mLibrary[0m libc-resolv.lib.a
+  [00;33mLibrary[0m libc-isc.lib.a
+  [00;33mLibrary[0m libc-nameser.lib.a
+  [00;33mLibrary[0m libc-net.lib.a
+  [00;33mLibrary[0m libc-rpc.lib.a
+  [00;33mLibrary[0m libc-tzcode.lib.a
+  [00;33mLibrary[0m libc-libkern.lib.a
+  [00;33mLibrary[0m libc.lib.so
+  [00;33mLibrary[0m libm.abi.so
+  [00;33mLibrary[0m libm.lib.so
+  [00;33mLibrary[0m stdcxx.abi.so
+  [00;33mLibrary[0m stdcxx-c++98.lib.a
+  [00;33mLibrary[0m stdcxx-c++11.lib.a
+  [00;33mLibrary[0m stdcxx-c++17.lib.a
+  [00;33mLibrary[0m stdcxx-c++20.lib.a
+  [00;33mLibrary[0m stdcxx.lib.so
+  [00;33mLibrary[0m mesa.abi.so
+  [00;33mLibrary[0m iris_gen80.lib.a
+  [00;33mLibrary[0m iris_gen90.lib.a
+  [00;33mLibrary[0m iris_gen110.lib.a
+  [00;33mLibrary[0m iris_gen120.lib.a
+  [00;33mLibrary[0m iris_gen125.lib.a
+  [00;33mLibrary[0m iris_gen200.lib.a
+  [00;33mLibrary[0m isl_gen80.lib.a
+  [00;33mLibrary[0m isl_gen90.lib.a
+  [00;33mLibrary[0m isl_gen110.lib.a
+  [00;33mLibrary[0m isl_gen120.lib.a
+  [00;33mLibrary[0m isl_gen125.lib.a
+  [00;33mLibrary[0m isl_gen200.lib.a
+  [00;33mLibrary[0m libdrm.abi.so
+  [00;33mLibrary[0m expat.abi.so
+  [00;33mLibrary[0m zlib.abi.so
+  [00;33mLibrary[0m iris.lib.a
+  [00;33mLibrary[0m softpipe.lib.a
+  [00;33mLibrary[0m mesa_api.lib.a
+  [00;33mLibrary[0m glapi.lib.so
+  [00;33mLibrary[0m mesa.lib.so
+  [00;33mLibrary[0m egl.abi.so
+  [00;33mLibrary[0m mesa_gpu-softpipe.lib.so
+  [00;33mLibrary[0m blit.lib.a
+  [00;33mLibrary[0m egl.lib.so
+  [00;33mLibrary[0m vfs_gpu.abi.so
+  [00;33mLibrary[0m libdrm.lib.so
+  [00;33mLibrary[0m expat.lib.so
+  [00;33mLibrary[0m qt6_component.abi.so
+  [00;33mLibrary[0m qt6_component.lib.so
+  [00;33mLibrary[0m vfs_pipe.lib.so
+  [00;33mLibrary[0m vfs_gpu.lib.so
+  [00;33mLibrary[0m zlib.lib.so
+  [00;33mLibrary[0m libpng.abi.so
+  [00;33mLibrary[0m libpng.lib.so
+  [00;33mLibrary[0m ttf_font.lib.a
+  [00;33mLibrary[0m vfs_ttf.lib.so
+  [00;33mLibrary[0m vfs_import.lib.so
+  [00;33mLibrary[0m posix.abi.so
+  [00;33mLibrary[0m posix.lib.so
+  [00;33mLibrary[0m ncurses.abi.so
+  [00;33mLibrary[0m ncurses.lib.so
+  [00;33mLibrary[0m pcre.abi.so
+  [00;33mLibrary[0m pcre.lib.so
+  [01;33mProgram[0m app/decorator/decorator
+  [01;33mProgram[0m app/pci_decode/pci_decode
+  [00;33mLibrary[0m mupdf.abi.so
+  [01;33mProgram[0m app/pdf_view/pdf_view
+  [01;33mProgram[0m app/pointer/pointer
+  [00;33mLibrary[0m qt6_qmake.lib.a
+  [01;33mProgram[0m app/qt6/examples/calculatorform/calculatorform.pro.qmake_target
+/home/luke/sponge-os/genode/build/x86_64/app/qt6/examples/calculatorform/build_dependencies/mkspecs/features/qt.prf:85: Cannot find feature permissions
+  [01;33mProgram[0m app/window_layouter/window_layouter
+  [01;33mProgram[0m cfg_probe/cfg_probe
+  [00;33mLibrary[0m core-sel4.lib.a
+    COMPILE  version.o
+    MERGE    core-sel4.lib.a
+  [01;33mProgram[0m core/sel4/core
+  [01;33mProgram[0m driver/acpi/spec/x86/acpi
+  [01;33mProgram[0m driver/ahci/ahci
+  [00;33mLibrary[0m x86emu.lib.a
+  [01;33mProgram[0m driver/framebuffer/vesa/vesa_fb
+  [01;33mProgram[0m driver/platform/pc/spec/x86_64/pc_platform
+  [01;33mProgram[0m driver/platform/platform
+  [01;33mProgram[0m driver/ps2/x86/ps2
+  [00;33mLibrary[0m jitterentropy.lib.a
+  [00;33mLibrary[0m virt_lx_emul.lib.a
+  [00;33mLibrary[0m virt_linux_generated.lib.a
+  [01;33mProgram[0m driver/usb_hid/spec/x86_64/usb_hid
+  [00;33mLibrary[0m pc_lx_emul.lib.a
+  [00;33mLibrary[0m pc_linux_generated.lib.a
+  [01;33mProgram[0m driver/usb_host/pc/spec/x86_64/pc_usb_host
+  [01;33mProgram[0m init/init
+  [01;33mProgram[0m noux-pkg/bash-minimal/bash-minimal
+  [01;33mProgram[0m noux-pkg/coreutils-minimal/coreutils-minimal
+  [01;33mProgram[0m noux-pkg/diffutils/diffutils
+  [01;33mProgram[0m noux-pkg/findutils/findutils
+  [01;33mProgram[0m noux-pkg/grep/grep
+  [01;33mProgram[0m noux-pkg/less/less
+  [01;33mProgram[0m noux-pkg/sed/sed
+  [01;33mProgram[0m noux-pkg/tar/tar
+  [01;33mProgram[0m noux-pkg/vim-minimal/vim-minimal
+  [01;33mProgram[0m noux-pkg/which/which
+  [01;33mProgram[0m pkg_hello/hello
+  [00;33mLibrary[0m qt6_cmake.lib.a
+  [00;33mLibrary[0m qoost.lib.a
+  [01;33mProgram[0m qt6/base/qt6_base.cmake_target
+[0m
+-- Configuration summary has been written to /home/luke/sponge-os/genode/build/x86_64/qt6/base/config.summary[0m
+[0m[0m
+[  0%] Built target ZlibPrivate_sync_headers
+[  0%] Built target Core_lib_pri
+[  0%] Built target JpegPrivate_sync_headers
+[  1%] Built target BundledLibpng_ext_pri
+[  2%] Built target BundledLibjpeg_ext_pri
+[  1%] Built target PngPrivate_sync_headers
+[  2%] Built target qmodule_pri
+[  2%] Built target BundledFreetype_ext_pri
+[  2%] Built target Concurrent_lib_pri
+[  2%] Built target HarfbuzzPrivate_sync_headers
+[  2%] Built target Xml_lib_pri
+[  2%] Built target Network_lib_pri
+[  2%] Built target Gui_lib_pri
+[  2%] Built target OpenGL_lib_pri
+[  2%] Built target Test_lib_pri
+[  2%] Built target Widgets_lib_pri
+[  3%] Built target Platform
+[  3%] Built target PrintSupport_lib_pri
+[  3%] Built target ExampleIconsPrivate_sync_headers
+[  3%] Built target OpenGLWidgets_lib_pri
+[  3%] Built target FreetypePrivate_sync_headers
+[  3%] Built target Sql_lib_pri
+[1m[35mConsolidate compiler generated dependencies of target BundledLibjpeg16bits[0m
+[1m[35mConsolidate compiler generated dependencies of target BundledLibjpeg12bits[0m
+[1m[35mConsolidate compiler generated dependencies of target BundledPcre2[0m
+[  3%] Built target PngPrivate
+[  3%] Built target ZlibPrivate
+[  3%] Built target Core_sync_headers
+[  3%] Built target JpegPrivate
+[  4%] Built target BundledLibjpeg16bits
+[  4%] Built target ExampleIconsPrivate_autogen_timestamp_deps
+[  6%] Built target BundledLibjpeg12bits
+[  8%] Built target BundledPcre2
+[1m[35mConsolidate compiler generated dependencies of target BundledZLIB[0m
+[1m[35mConsolidate compiler generated dependencies of target ExampleIconsPrivate_resources_1[0m
+[  8%] Built target Core_autogen_timestamp_deps
+[1m[35mConsolidate compiler generated dependencies of target BundledLibjpeg[0m
+[  8%] Built target Concurrent_sync_headers
+[  8%] Built target DeviceDiscoverySupportPrivate_sync_headers
+[  8%] Built target Network_sync_headers
+[  8%] Built target Xml_sync_headers
+[  8%] Built target Sql_sync_headers
+[  8%] Built target ExampleIconsPrivate_resources_1
+[  8%] Built target Gui_sync_headers
+[  8%] Built target ExampleIconsPrivate_autogen
+[  9%] Built target BundledZLIB
+[1m[35mConsolidate compiler generated dependencies of target BundledHarfbuzz[0m
+[  9%] [1m[34mRunning AUTOMOC file extraction for target ExampleIconsPrivate[0m
+[ 14%] Built target BundledLibjpeg
+[ 14%] Built target QTlsBackendCertOnlyPlugin_autogen_timestamp_deps
+[ 14%] Built target DeviceDiscoverySupportPrivate_autogen_timestamp_deps
+[ 14%] Built target Test_sync_headers
+[ 14%] Built target FbSupportPrivate_sync_headers
+[ 14%] Built target OpenGL_sync_headers
+[ 14%] Built target Widgets_sync_headers
+[1m[35mConsolidate compiler generated dependencies of target ExampleIconsPrivate[0m
+[ 14%] Built target Core_autogen
+[ 15%] Built target ExampleIconsPrivate
+[ 15%] Built target FbSupportPrivate_autogen_timestamp_deps
+[ 15%] Built target PrintSupport_sync_headers
+[ 15%] Built target OpenGLWidgets_sync_headers
+[ 15%] Built target DeviceDiscoverySupportPrivate_autogen
+[ 15%] Built target QTlsBackendCertOnlyPlugin_autogen
+[ 15%] Built target FbSupportPrivate_autogen
+[ 19%] Built target BundledHarfbuzz
+[1m[35mConsolidate compiler generated dependencies of target Core[0m
+[ 37%] Built target Core
+[1m[35mConsolidate compiler generated dependencies of target DeviceDiscoverySupportPrivate[0m
+[1m[35mConsolidate compiler generated dependencies of target BundledLibpng[0m
+[ 37%] Built target Concurrent_autogen_timestamp_deps
+[ 37%] Built target Test_autogen_timestamp_deps
+[ 37%] Built target Network_autogen_timestamp_deps
+[ 37%] Built target QSQLiteDriverPlugin_autogen_timestamp_deps
+[ 37%] Built target Sql_autogen_timestamp_deps
+[ 37%] Built target Xml_autogen_timestamp_deps
+[ 37%] Built target Gui_autogen_timestamp_deps
+[ 37%] Built target DeviceDiscoverySupportPrivate
+[ 38%] Built target BundledLibpng
+[ 38%] Built target Concurrent_autogen
+[ 39%] Built target Xml_autogen
+[1m[35mConsolidate compiler generated dependencies of target BundledFreetype[0m
+[ 39%] Built target Sql_autogen
+[ 39%] Built target QSQLiteDriverPlugin_autogen
+[ 39%] Built target Test_autogen
+[ 39%] Built target Network_autogen
+[ 39%] [1m[34mRunning AUTOMOC file extraction for target Concurrent[0m
+[ 39%] [1m[34mRunning AUTOMOC file extraction for target Xml[0m
+[ 39%] Built target Gui_autogen
+[1m[35mConsolidate compiler generated dependencies of target Sql[0m
+[1m[35mConsolidate compiler generated dependencies of target Concurrent[0m
+[1m[35mConsolidate compiler generated dependencies of target Xml[0m
+[1m[35mConsolidate compiler generated dependencies of target Test[0m
+[ 42%] Built target BundledFreetype
+[ 43%] Built target Xml
+[ 43%] Built target Concurrent
+[ 45%] Built target Sql
+[1m[35mConsolidate compiler generated dependencies of target Network[0m
+[1m[35mConsolidate compiler generated dependencies of target QSQLiteDriverPlugin[0m
+[ 48%] Built target Test
+[ 49%] Built target QSQLiteDriverPlugin
+[1m[35mConsolidate compiler generated dependencies of target Gui[0m
+[ 56%] Built target Network
+[1m[35mConsolidate compiler generated dependencies of target QTlsBackendCertOnlyPlugin[0m
+[ 57%] Built target QTlsBackendCertOnlyPlugin
+[ 75%] Built target Gui
+[1m[35mConsolidate compiler generated dependencies of target FbSupportPrivate[0m
+[ 75%] Built target QGenodeIntegrationPlugin_autogen_timestamp_deps
+[ 75%] Built target QICOPlugin_autogen_timestamp_deps
+[ 75%] Built target OpenGL_autogen_timestamp_deps
+[ 75%] Built target QTuioTouchPlugin_autogen_timestamp_deps
+[ 75%] Built target QJpegPlugin_autogen_timestamp_deps
+[ 75%] Built target QGifPlugin_autogen_timestamp_deps
+[ 75%] Built target Widgets_autogen_timestamp_deps
+[ 76%] Built target FbSupportPrivate
+[ 76%] Built target QICOPlugin_autogen
+[ 76%] Built target QGenodeIntegrationPlugin_autogen
+[ 76%] Built target QGifPlugin_autogen
+[ 76%] Built target OpenGL_autogen
+[ 76%] Built target QTuioTouchPlugin_autogen
+[ 76%] Built target QJpegPlugin_autogen
+[ 76%] Built target Widgets_autogen
+[1m[35mConsolidate compiler generated dependencies of target QICOPlugin[0m
+[1m[35mConsolidate compiler generated dependencies of target QGifPlugin[0m
+[1m[35mConsolidate compiler generated dependencies of target QTuioTouchPlugin[0m
+[1m[35mConsolidate compiler generated dependencies of target QJpegPlugin[0m
+[1m[35mConsolidate compiler generated dependencies of target QGenodeIntegrationPlugin[0m
+[ 77%] Built target QICOPlugin
+[ 77%] Built target QGifPlugin
+[ 77%] Built target QJpegPlugin
+[ 77%] Built target QTuioTouchPlugin
+[1m[35mConsolidate compiler generated dependencies of target OpenGL[0m
+[ 78%] Built target QGenodeIntegrationPlugin
+[ 83%] Built target OpenGL
+[1m[35mConsolidate compiler generated dependencies of target Widgets[0m
+[ 97%] Built target Widgets
+[ 97%] Built target PrintSupport_autogen_timestamp_deps
+[ 97%] Built target OpenGLWidgets_autogen_timestamp_deps
+[ 97%] Built target OpenGLWidgets_autogen
+[ 97%] Built target PrintSupport_autogen
+[1m[35mConsolidate compiler generated dependencies of target OpenGLWidgets[0m
+[1m[35mConsolidate compiler generated dependencies of target PrintSupport[0m
+[ 97%] Built target OpenGLWidgets
+[100%] Built target PrintSupport
+[  1%] Built target ZlibPrivate_sync_headers
+[  1%] Built target Platform
+[  2%] Built target qmodule_pri
+[  2%] Built target Core_lib_pri
+[  2%] Built target Network_lib_pri
+[  2%] Built target BundledLibjpeg_ext_pri
+[  2%] Built target PngPrivate_sync_headers
+[  2%] Built target FreetypePrivate_sync_headers
+[  2%] Built target JpegPrivate_sync_headers
+[  3%] Built target BundledLibpng_ext_pri
+[  3%] Built target Concurrent_lib_pri
+[  3%] Built target Gui_lib_pri
+[  3%] Built target HarfbuzzPrivate_sync_headers
+[  3%] Built target BundledFreetype_ext_pri
+[  3%] Built target Sql_lib_pri
+[  3%] Built target ExampleIconsPrivate_sync_headers
+[  3%] Built target Widgets_lib_pri
+[  3%] Built target OpenGL_lib_pri
+[  3%] Built target Xml_lib_pri
+[  3%] Built target OpenGLWidgets_lib_pri
+[  3%] Built target PrintSupport_lib_pri
+[  3%] Built target Test_lib_pri
+[  3%] Built target JpegPrivate
+[  3%] Built target ZlibPrivate
+[  3%] Built target ExampleIconsPrivate_autogen_timestamp_deps
+[  3%] Built target Core_sync_headers
+[  3%] Built target PngPrivate
+[  5%] Built target BundledPcre2
+[  6%] Built target BundledLibjpeg16bits
+[  8%] Built target BundledLibjpeg12bits
+[  8%] Built target Xml_sync_headers
+[  8%] Built target Core_autogen_timestamp_deps
+[  8%] Built target ExampleIconsPrivate_autogen
+[  8%] Built target Network_sync_headers
+[  8%] Built target Gui_sync_headers
+[  8%] Built target DeviceDiscoverySupportPrivate_sync_headers
+[  9%] Built target Concurrent_sync_headers
+[  9%] Built target ExampleIconsPrivate_resources_1
+[  9%] Built target Sql_sync_headers
+[  9%] Built target BundledZLIB
+[ 14%] Built target BundledLibjpeg
+[ 14%] [1m[34mRunning AUTOMOC file extraction for target ExampleIconsPrivate[0m
+[ 14%] Built target Widgets_sync_headers
+[ 14%] Built target Test_sync_headers
+[ 14%] Built target FbSupportPrivate_sync_headers
+[ 14%] Built target DeviceDiscoverySupportPrivate_autogen_timestamp_deps
+[ 14%] Built target QTlsBackendCertOnlyPlugin_autogen_timestamp_deps
+[ 14%] Built target OpenGL_sync_headers
+[ 14%] Built target Core_autogen
+[ 15%] Built target ExampleIconsPrivate
+[ 19%] Built target BundledHarfbuzz
+[ 19%] Built target FbSupportPrivate_autogen_timestamp_deps
+[ 19%] Built target PrintSupport_sync_headers
+[ 19%] Built target OpenGLWidgets_sync_headers
+[ 19%] Built target DeviceDiscoverySupportPrivate_autogen
+[ 19%] Built target QTlsBackendCertOnlyPlugin_autogen
+[ 19%] Built target FbSupportPrivate_autogen
+[ 37%] Built target Core
+[ 38%] Built target Concurrent_autogen_timestamp_deps
+[ 38%] Built target Network_autogen_timestamp_deps
+[ 38%] Built target Sql_autogen_timestamp_deps
+[ 38%] Built target Xml_autogen_timestamp_deps
+[ 38%] Built target BundledLibpng
+[ 38%] Built target Test_autogen_timestamp_deps
+[ 38%] Built target Gui_autogen_timestamp_deps
+[ 38%] Built target QSQLiteDriverPlugin_autogen_timestamp_deps
+[ 38%] Built target DeviceDiscoverySupportPrivate
+[ 38%] Built target Concurrent_autogen
+[ 39%] Built target Xml_autogen
+[ 39%] Built target QSQLiteDriverPlugin_autogen
+[ 39%] Built target Sql_autogen
+[ 39%] Built target Test_autogen
+[ 39%] Built target Network_autogen
+[ 40%] Built target Gui_autogen
+[ 42%] Built target BundledFreetype
+[ 42%] [1m[34mRunning AUTOMOC file extraction for target Concurrent[0m
+[ 42%] [1m[34mRunning AUTOMOC file extraction for target Xml[0m
+[ 42%] Built target Xml
+[ 43%] Built target Concurrent
+[ 45%] Built target Sql
+[ 48%] Built target Test
+[ 49%] Built target QSQLiteDriverPlugin
+[ 56%] Built target Network
+[ 57%] Built target QTlsBackendCertOnlyPlugin
+[ 75%] Built target Gui
+[ 75%] Built target QGenodeIntegrationPlugin_autogen_timestamp_deps
+[ 75%] Built target QJpegPlugin_autogen_timestamp_deps
+[ 75%] Built target Widgets_autogen_timestamp_deps
+[ 75%] Built target QTuioTouchPlugin_autogen_timestamp_deps
+[ 75%] Built target QICOPlugin_autogen_timestamp_deps
+[ 75%] Built target QGifPlugin_autogen_timestamp_deps
+[ 75%] Built target OpenGL_autogen_timestamp_deps
+[ 76%] Built target FbSupportPrivate
+[ 76%] Built target QICOPlugin_autogen
+[ 76%] Built target QGenodeIntegrationPlugin_autogen
+[ 76%] Built target QJpegPlugin_autogen
+[ 76%] Built target QTuioTouchPlugin_autogen
+[ 76%] Built target QGifPlugin_autogen
+[ 76%] Built target OpenGL_autogen
+[ 76%] Built target Widgets_autogen
+[ 77%] Built target QJpegPlugin
+[ 77%] Built target QGifPlugin
+[ 77%] Built target QICOPlugin
+[ 77%] Built target QTuioTouchPlugin
+[ 78%] Built target QGenodeIntegrationPlugin
+[ 83%] Built target OpenGL
+[ 97%] Built target Widgets
+[ 97%] Built target OpenGLWidgets_autogen_timestamp_deps
+[ 97%] Built target PrintSupport_autogen_timestamp_deps
+[ 97%] Built target OpenGLWidgets_autogen
+[ 97%] Built target PrintSupport_autogen
+[ 97%] Built target OpenGLWidgets
+[100%] Built target PrintSupport
+[36mInstall the project...[0m
+-- Install configuration: "RelWithDebInfo"
+  [01;33mProgram[0m server/cached_fs_rom/cached_fs_rom
+  [01;33mProgram[0m server/event_filter/event_filter
+  [01;33mProgram[0m server/nitpicker/nitpicker
+  [01;33mProgram[0m server/part_block/part_block
+  [01;33mProgram[0m server/report_rom/report_rom
+  [01;33mProgram[0m server/terminal/terminal
+  [01;33mProgram[0m server/vfs/vfs
+  [01;33mProgram[0m server/wm/wm
+  [01;33mProgram[0m sponge-de/sponge_de.pro.qmake_target
+  [01;33mProgram[0m sponge_configd/sponge_configd
+  [01;33mProgram[0m sponge_console/sponge_console
+  [01;33mProgram[0m sponge_debug/sponge_debug.pro.qmake_target
+  [01;33mProgram[0m sponge_files/sponge_files.pro.qmake_target
+  [01;33mProgram[0m sponge_pkgd/sponge_pkgd
+  [01;33mProgram[0m sponge_supervisor/sponge_supervisor
+  [01;33mProgram[0m sponge_themed/sponge_themed
+  [01;33mProgram[0m test/alpha_probe/alpha_probe
+  [01;33mProgram[0m timer/hpet/hpet_timer
+genode build completed
+bake: profile=desktop  mode=img  destdir=var/run/sponge-desktop-disk/system
+bake:   pkgs (1):  hello, terminal, textedit, files, calculator, pdf_view, falkon, debug
+bake:   config: 4 keys
+bake:   theme: default
+bake: staged 8 packages + manifest in var/run/sponge-desktop-disk/system
+building targets: kernel/sel4 lib/ld-sel4
+spawn make kernel/sel4 lib/ld-sel4
+  [00;33mLibrary[0m kernel-sel4-pc.lib.a
+ninja: no work to do.
+  [00;33mLibrary[0m syscall-sel4-pc.lib.a
+  [00;33mLibrary[0m syscall-sel4.lib.a
+  [00;33mLibrary[0m startup-sel4.lib.a
+  [00;33mLibrary[0m base-sel4-common.lib.a
+  [00;33mLibrary[0m timeout.lib.a
+  [00;33mLibrary[0m cxx.lib.a
+  [00;33mLibrary[0m base-sel4.lib.a
+  [00;33mLibrary[0m ldso_so_support.lib.a
+  [00;33mLibrary[0m ld-sel4.lib.so
+  [01;33mProgram[0m kernel/sel4/sel4-pc
+genode build completed
+using 'core-sel4.a' as 'core.a'
+using 'ld-sel4.lib.so' as 'ld.lib.so'
+using 'hpet_timer' as 'timer'
+Created image file var/run/sponge-desktop-disk.img (687036kiB)
+sponge-desktop-disk: image.elf = 16 MiB (17228816 bytes)
+spawn qemu-system-x86_64 -accel kvm -machine q35 -cpu Skylake-Client -nographic -m 6G -device nec-usb-xhci,id=xhci -device usb-tablet -serial mon:stdio -drive format=raw,file=var/run/sponge-desktop-disk.img -machine q35 -net nic,model=e1000,netdev=net0 -netdev user,id=net0
+qemu-system-x86_64: warning: host doesn't support requested feature: CPUID[eax=0Dh,ecx=01h].EAX.xsavec [bit 1]
+qemu-system-x86_64: warning: host doesn't support requested feature: CPUID[eax=0Dh,ecx=01h].EAX.xgetbv1 [bit 2]
+c[?7l[2J[0mSeaBIOS (version Arch Linux 1.17.0-2-2)
+
+
+
+iPXE (http://ipxe.org) 00:02.0 C900 PCI2.10 PnP PMM+7EFD3D50+7EF33D50 C900
+
+Press Ctrl-B to configure iPXE (PCI 00:02.0)...
+                                                                               
+
+
+
+Booting from Hard Disk...
+
+GRUB loading.
+
+[01;01H
+
+Bender Version 0.9-beta7-51-g77a6918-dirty
+
+Patching BDA with I/O port 0x3f8.
+
+Bender: Hello World.
+
+hwp config: eeo=na irq=na hwp=na epp=na epb=na
+Boot config: debug_port = 0x3f8
+
+Boot config: disable_iommu = true
+
+  module #0: start=0xed88000 end=0xfdf6410 size=0x106e410 name='image.elf'
+
+	Physical Memory Region from 0 size 9fc00 type 1
+
+	Physical Memory Region from 9fc00 size 400 type 2
+
+	Physical Memory Region from f0000 size 10000 type 2
+
+	Physical Memory Region from 100000 size 7fede000 type 1
+
+Adding physical memory region 0x100000-0x7ffde000
+
+	Physical Memory Region from 7ffde000 size 22000 type 2
+
+	Physical Memory Region from b0000000 size 10000000 type 2
+
+	Physical Memory Region from fed1c000 size 4000 type 2
+
+	Physical Memory Region from feffc000 size 4000 type 2
+
+	Physical Memory Region from fffc0000 size 40000 type 2
+
+	Physical Memory Region from 100000000 size 100000000 type 1
+
+Adding physical memory region 0x100000000-0x200000000
+
+Got framebuffer info in multiboot2. Current video mode is at physical address=fd000000 pitch=5120 resolution=1280x800@32 type=1
+
+Detected 1 boot module(s):
+
+Kernel loaded to: start=0x200000 end=0xe3e000 size=0xc3e000 entry=0x2002a3
+
+ACPI: RSDT paddr=0x7ffe2356
+
+ACPI: RSDT vaddr=0x7ffe2356
+
+ACPI: FADT paddr=0x7ffe214e
+
+ACPI: FADT vaddr=0x7ffe214e
+
+ACPI: FADT flags=0x84a5
+
+ACPI: MADT paddr=0x7ffe2242
+
+ACPI: MADT vaddr=0x7ffe2242
+
+ACPI: MADT apic_addr=0xfee00000
+
+ACPI: MADT flags=0x1
+
+ACPI: MADT_APIC apic_id=0x0
+
+ACPI: MADT_IOAPIC ioapic_id=0 ioapic_addr=0xfec00000 gsib=0
+
+ACPI: MADT_ISO bus=0 source=0 gsi=0x002 flags=0x0
+
+ACPI: MADT_ISO bus=0 source=5 gsi=0x005 flags=0xd
+
+ACPI: MADT_ISO bus=0 source=9 gsi=0x009 flags=0xd
+
+ACPI: MADT_ISO bus=0 source=10 gsi=0x00a flags=0xd
+
+ACPI: MADT_ISO bus=0 source=11 gsi=0x00b flags=0xd
+
+ACPI: 1 CPU(s) detected
+
+ELF-loading userland images from boot modules:
+
+size=0x2a6d000 v_entry=0x2000018 v_start=0x2000000 v_end=0x4a6d000 p_start=0xfdf7000 p_end=0x12864000
+
+Moving loaded userland images to final location: from=0xfdf7000 to=0xe3e000 size=0x2a6d000
+
+Starting node #0 with APIC ID 0
+
+Mapping kernel window is done
+
+vt-x: not supported
+
+Available phys memory regions: 2
+
+  [100000..7ffde000)
+
+  [100000000..200000000)
+
+Reserved virt address space regions: 1
+
+  [ffffff8000200000..ffffff80038ab000)
+
+Booting all finished, dropped to user space
+
+[34mWarning: init_freemem artifact untyped skipped: 0x200000 size 0x200000[0m
+
+[34mWarning: init_freemem artifact untyped skipped: 0x400000 size 0x400000[0m
+
+[34mWarning: init_freemem artifact untyped skipped: 0x800000 size 0x200000[0m
+
+:phys_mem_16k:     Allocator 0x257a7f8 dump:
+
+ Block: [0000000000100000,0000000000200000) size=1M avail=1M max_avail=1M
+
+ Block: [00000000038ac000,0000000004000000) size=7504K avail=7504K max_avail=106416K
+
+ Block: [0000000008000000,000000000e7ec000) size=106416K avail=106416K max_avail=106416K
+
+ => mem_size=117702656 (112 MB) / mem_avail=117702656 (112 MB)
+
+
+
+virtual address layout of core:
+
+ overall    [0000000000002000,0000001000000000)
+
+ core image [0000000002000000,0000000004a6d000)
+
+ ipc buffer [0000000004a6d000,0000000004a6e000)
+
+ boot_info  [0000000004a6e000,0000000004a6f532)
+
+ stack area [0000000040000000,0000000050000000)
+
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+
+Physical memory per PD at most: 512M
+
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+
+boot module 'config' (11829 bytes)
+
+boot module 'ld.lib.so' (1107760 bytes)
+
+boot module 'init' (507176 bytes)
+
+boot module 'timer' (139920 bytes)
+
+boot module 'report_rom' (150784 bytes)
+
+boot module 'nitpicker' (530128 bytes)
+
+boot module 'platform' (594696 bytes)
+
+boot module 'acpi' (185600 bytes)
+
+boot module 'pci_decode' (171336 bytes)
+
+boot module 'ahci' (264592 bytes)
+
+boot module 'part_block' (192336 bytes)
+
+boot module 'vfs' (254248 bytes)
+
+boot module 'cached_fs_rom' (165200 bytes)
+
+boot module 'vesa_fb' (334336 bytes)
+
+boot module 'ps2' (156632 bytes)
+
+boot module 'pc_usb_host' (1569304 bytes)
+
+boot module 'usb_hid' (1132576 bytes)
+
+boot module 'event_filter' (342048 bytes)
+
+boot module 'pointer' (208296 bytes)
+
+boot module 'vfs.lib.so' (769424 bytes)
+
+boot module 'vfs_rump.lib.so' (96072 bytes)
+
+boot module 'rump.lib.so' (1343008 bytes)
+
+boot module 'rump_fs.lib.so' (1113128 bytes)
+
+boot module 'en_us.chargen' (8852 bytes)
+
+boot module 'special.chargen' (1218 bytes)
+
+boot module 'fb.config' (53 bytes)
+
+boot module 'event_filter.config' (661 bytes)
+
+boot module 'sponge_supervisor' (77224 bytes)
+
+boot module 'sponge_console' (119112 bytes)
+
+boot module 'supervisor.templates' (23795 bytes)
+
+boot module 'supervisor.config' (178 bytes)
+
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+
+Genode v0.2.0-94-g05bf04042e <local changes>
+
+5686 MiB RAM and 523288 caps assigned to init
+
+[init] [34mWarning: system: configured RAM exceeds available RAM, proceed with 4998443488[0m
+
+[init -> timer] timers=3, clock 10000000fs , 64bit counter , legacy routing support vendor=0x8086
+
+[init -> acpi] Found MADT
+
+[init -> timer] timer0 GSI options 0xff0104, supports periodic
+
+[init -> acpi] MADT IRQ 0 -> GSI 2 flags: 0
+
+[init -> acpi] MADT IRQ 5 -> GSI 5 flags: 13
+
+[init -> timer] timer1 GSI options 0xff0104, supports periodic
+
+[init -> acpi] MADT IRQ 9 -> GSI 9 flags: 13
+
+[init -> acpi] MADT IRQ 10 -> GSI 10 flags: 13
+
+[init -> timer] timer2 GSI options 0xff0104, supports periodic
+
+[init -> acpi] MADT IRQ 11 -> GSI 11 flags: 13
+
+[init -> acpi] Found HPET hw_id=0x1  vendor_id=0x8086 space_id=0x0 addr=0xfed00000 hpet_id=0x0
+
+[init -> timer] time wraps after 5849 years
+
+[init -> acpi] Found MCFG
+
+[init -> acpi] MCFG BASE 0xb0000000 seg 0x0 bus 0x0-0xff
+
+[init -> timer] irqs=off legacy=off
+
+[init -> acpi] RSDT OEM 'BOCHS ', table id 'BXPC    ', revision 1, creator 'BXPC' (1)
+
+[init -> timer] Using timer 2 -> using GSI 2 edge triggered
+
+[init -> ahci] --- Starting AHCI driver ---
+
+[init -> acpi] [34mWarning: SMBIOSv3 entry point invalid[0m
+
+[init -> acpi] SMBIOSv2 table (entry point: 0x1b64f0 structures: 0xf6510)
+
+[init -> console] sponge_console: ready (role=console label=console, awaiting console_state)
+
+[init -> sponge_supervisor] sponge_supervisor: armed poll=250ms fault_skipped=3 grace=4000ms console_hold=6000ms settle=3000ms boot_grace=30000ms
+
+[init -> sponge_supervisor] sponge_supervisor: published <system> kill=1 (13589 bytes)
+
+[init -> sponge_supervisor] sponge_supervisor: phase=1 (initial publish)
+
+[init -> fb] fb mapped to 0x6000
+
+[init -> fb] Found: VESA BIOS version 3.0
+
+[init -> fb] OEM: SeaBIOS VBE(C) 2011
+
+[init -> fb] Found: physical frame buffer at 0xfd000000 size: 16777216
+
+[init -> fb] fb mapped to 0x17000000
+
+[init -> fb] using 1024x768 (1024x768)
+
+[init -> ahci] version: major=0x1 minor=0x0
+
+[init -> ahci] command slots: 32
+
+[init -> ahci] native command queuing: yes
+
+[init -> ahci] 64-bit support: yes
+
+[init -> ps2] Using keyboard with scan code set 1 (xlate)
+
+[init -> ahci] port scan:
+
+[init -> usb] SLUB: HWalign=64, Order=0-1, MinObjects=0, CPUs=1, Nodes=1
+
+[init -> usb] NR_IRQS: 4352, nr_irqs: 4352, preallocated irqs: 256
+
+[init -> usb] clocksource: dde_counter: mask: 0xffffffffffffff max_cycles: 0x1d854df40, max_idle_ns: 3526361616960 ns
+
+[init -> ahci] 		#0: ATA
+
+[init -> ahci] 		#1:  off (unknown device signature)
+
+[init -> ahci] 		#2: off (ATAPI)
+
+[init -> ahci] 		#3:  off (unknown device signature)
+
+[init -> ahci] 		#4:  off (unknown device signature)
+
+[init -> ahci] 		#5:  off (unknown device signature)
+
+[init -> usb] clocksource: jiffies: mask: 0xffffffff max_cycles: 0xffffffff, max_idle_ns: 7645041785100000 ns
+
+[init -> ps2] detected ExPS/2 mouse - activating scroll-wheel and 5-button support
+
+[init -> usb] usbcore: registered new interface driver usbfs
+
+[init -> usb] usbcore: registered new interface driver hub
+
+[init -> usb] usbcore: registered new device driver usb
+
+[init -> usb] clocksource: Switched to clocksource dde_counter
+
+[init -> usb] usbcore: registered new interface driver genode
+
+[init -> usb] xhci_hcd 00:03.0: xHCI Host Controller
+
+[init -> usb] xhci_hcd 00:03.0: new USB bus registered, assigned bus number 1
+
+[init -> usb] xhci_hcd 00:03.0: hcc params 0x00087001 hci version 0x100 quirks 0x0000000000000014
+
+[init -> usb] xhci_hcd 00:03.0: xHCI Host Controller
+
+[init -> usb] xhci_hcd 00:03.0: new USB bus registered, assigned bus number 2
+
+[init -> usb] xhci_hcd 00:03.0: Host supports USB 3.0 SuperSpeed
+
+[init -> usb] hub 1-0:1.0: USB hub found
+
+[init -> usb] hub 1-0:1.0: 4 ports detected
+
+[init -> usb] usb usb2: We don't know the algorithms for LPM for this host, disabling LPM.
+
+[init -> usb] hub 2-0:1.0: USB hub found
+
+[init -> usb] hub 2-0:1.0: 4 ports detected
+
+[init -> usb] sched_clock: Marking stable (77887000, 139083000)->(301567000, -84597000)
+
+[init -> usb_hid] SLUB: HWalign=64, Order=0-1, MinObjects=0, CPUs=1, Nodes=1
+
+[init -> usb_hid] clocksource: dde_counter: mask: 0xffffffffffffff max_cycles: 0x1d854df40, max_idle_ns: 3526361616960 ns
+
+[init -> usb_hid] clocksource: jiffies: mask: 0xffffffff max_cycles: 0xffffffff, max_idle_ns: 7645041785100000 ns
+
+[init -> usb_hid] usbcore: registered new interface driver usbfs
+
+[init -> usb_hid] usbcore: registered new interface driver hub
+
+[init -> usb_hid] usbcore: registered new device driver usb
+
+[init -> usb_hid] clocksource: Switched to clocksource dde_counter
+
+[init -> usb_hid] usbcore: registered new interface driver usbhid
+
+[init -> usb_hid] hid_core: USB HID core driver
+
+[init -> usb_hid] sched_clock: Marking stable (0, 851559000)->(855351000, -3792000)
+
+[init -> part_block] GPT Partition 1: LBA 40 (101 blocks) type: '21686148-6449-6e6f-744e-656564454649' name: 'BIOSBOOT'
+
+[init -> part_block] GPT Partition 2: LBA 141 (4515 blocks) type: 'c12a7328-f81f-11d2-ba4b-00a0c93ec93b' name: 'GRUB2'
+
+[init -> part_block] GPT Partition 3: LBA 4952 (1394928 blocks) type: '0fc63daf-8483-4772-8e79-3d69d8477de4' name: 'GENODE'
+
+[init -> vfs] [34mWarning: ram donation is 4246742 but used RAM is 4164KB, 'rom_lib -> /'[0m
+
+[init -> vfs] [34mWarning: cap donation is 11 but used caps is 17, 'rom_lib -> /'[0m
+
+[init -> vfs] [34mWarning: ram donation is 4246742 but used RAM is 4176KB, 'rom_sys -> /'[0m
+
+[init -> vfs] [34mWarning: cap donation is 11 but used caps is 21, 'rom_sys -> /'[0m
+
+[init -> usb] usb 1-1: new high-speed USB device number 2 using xhci_hcd
+
+[init -> system] [34mWarning: pkg_runtime: configured RAM exceeds available RAM, proceed with 4698638620[0m
+
+[init -> usb_hid] input: QEMU QEMU USB Tablet as /devices/usb-1-2/0-0:1.0/0003:0627:0001.0001/input/input0
+
+[init -> usb_hid] Connected device: input0 (QEMU QEMU USB Tablet at usb-usbbus-0/input0) POINTER
+
+[init -> usb_hid] hid-generic 0003:0627:0001.0001: input: USB HID v0.01 Mouse [QEMU QEMU USB Tablet] on usb-usbbus-0/input0
+
+[init -> system -> sponge_configd] sponge_configd: ready
+
+[init -> system -> sponge_configd] sponge_configd: baked defaults available
+
+[init -> system -> sponge_configd] sponge_configd: applied 5 baked default(s) from profile 'desktop' @ v1
+
+[init -> system -> sponge_themed] sponge_themed: ready
+
+[init -> system -> cfg_probe] cfg_probe: config size=0
+
+[34mWarning: flush page table entries - mapping cache full - PD: init -> rom_lib out of CAP[0m
+
+[init -> system -> alpha_probe] alpha-probe: starting
+
+[init -> system -> alpha_probe] alpha-probe: skip_lz=yes (criterion d deferred to P5)
+
+[init -> system -> sponge-de] [34mWarning: Libc RNG not configured[0m
+
+[init -> system -> alpha_probe] alpha-probe: [1] install the 7 desktop packages via sponge_pkgd
+
+[init -> system -> sponge_pkgd] sponge_pkgd: ready
+
+[init -> system -> sponge_pkgd] sponge_pkgd: binary_prefix='bin/'
+
+[init -> system -> sponge_pkgd] sponge_pkgd: seeded 8 baked package root(s) from the bake manifest
+
+[init -> system -> sponge_pkgd] sponge_pkgd: resource admission armed (pkg_runtime state report)
+
+[init -> system -> sponge-de] [34mWarning: ignoring unsupported RTLD_GLOBAL in dlopen()[0m
+
+[init -> system -> sponge-de] libEGL warning: MESA-LOADER: failed to retrieve device information
+
+[init -> system -> sponge-de] 
+
+[init -> system -> sponge-de] libEGL warning: failed to get driver name for fd 0
+
+[init -> system -> sponge-de] 
+
+[init -> system -> sponge-de] sponge-de: config source=none (no configd wiring; panel/launcher/clock keep their ctor-time defaults)
+
+[init -> system -> sponge-de] sponge-de: de_config source=none (no SettingsController wiring; settings dialog unavailable in this topology)
+
+[init -> system -> sponge-de] sponge-de: shortcuts source=none (no ShortcutController wiring; framework unavailable in this topology)
+
+[init -> system -> cfg_probe] cfg_probe: config size=4096
+
+[init -> system -> sponge_pkgd] sponge_pkgd: launcher_request channel enabled
+
+[init -> system -> sponge-de] sponge-de: launcher source=pkgd (live)
+
+[init -> system -> sponge-de] [34mWarning: attempt to re-acquire file descriptor for /qt/lib/fonts/DejaVuSans.ttf (lseek)[0m
+
+[init -> system -> sponge-de] [34mWarning: attempt to re-acquire file descriptor for /qt/lib/fonts/DejaVuSans.ttf (lseek)[0m
+
+[init -> system -> pkg_runtime -> hello] hello from package: running
+
+[init -> system -> sponge-de] sponge-de diag gates: sz=4096 runtime_state=0 system_state=0 cfg_probe=0 head=config
+
+[init -> system -> sponge-de] + theme | source: themed
+
+[init -> system -> sponge-de] + launcher | source: pkgd
+
+[init -> system -> sponge-de] + demo
+
+[init -> system -> sponge_pkgd] sponge_pkgd: duplicate request install|hello| — replaying the cached result
+
+[init -> system -> sponge-de] qt.core.qobject.connect: QObject::connect: No such slot QGenodePlatformWindow::_frame_sync()
+
+[init -> system -> sponge-de] sponge-de: panel shown
+
+[init -> system -> sponge-de] sponge-de: demo window disabled by config
+
+[init -> system -> alpha_probe] alpha-probe: [1] install hello ok
+
+[init -> system -> sponge-de] sponge-de: after attach_notify_poster
+
+[init -> system -> sponge-de] sponge-de: panel and window shown
+
+[init -> system -> sponge-de] sponge-de: applying theme 'default'
+
+[init -> system -> sponge-de] sponge-de: launcher list updated (8 apps)
+
+[init -> system -> alpha_probe] alpha-probe: [1] install terminal ok
+
+[init -> system -> pkg_runtime -> debug] [34mWarning: Libc RNG not configured[0m
+
+[init -> system -> pkg_runtime -> debug] [34mWarning: ignoring unsupported RTLD_GLOBAL in dlopen()[0m
+
+[init -> system -> pkg_runtime -> debug] libEGL warning: MESA-LOADER: failed to retrieve device information
+
+[init -> system -> pkg_runtime -> debug] 
+
+[init -> system -> pkg_runtime -> debug] libEGL warning: failed to get driver name for fd 0
+
+[init -> system -> pkg_runtime -> debug] 
+
+[init -> system -> pkg_runtime -> debug] [34mWarning: attempt to re-acquire file descriptor for /qt/lib/fonts/DejaVuSans.ttf (lseek)[0m
+
+[init -> system -> pkg_runtime -> debug] [34mWarning: attempt to re-acquire file descriptor for /qt/lib/fonts/DejaVuSans.ttf (lseek)[0m
+
+[init -> system -> pkg_runtime -> debug] sponge_debug: report 'installed' updated (4096 bytes)
+
+[init -> system -> pkg_runtime -> debug] sponge_debug: report 'window_list' updated (4096 bytes)
+
+[init -> system -> pkg_runtime -> debug] sponge_debug: report 'launcher_result' updated (0 bytes)
+
+[init -> system -> pkg_runtime -> debug] qt.core.qobject.connect: QObject::connect: No such slot QGenodePlatformWindow::_frame_sync()
+
+[init -> system -> pkg_runtime -> debug] sponge_debug: construct ms=27
+
+[init -> system -> pkg_runtime -> debug] sponge_debug: no storm requested (storm_ms=0) — product behavior
+
+[init -> system -> sponge-de] QGenodePlatformWindow: frame coalesced deferred= 1 submitted= 1 coalesced= 0 stale= 0
+
+[init -> system -> alpha_probe] alpha-probe: [1] install textedit ok
+
+[init -> system -> pkg_runtime -> debug] sponge_debug: paint-begin ms=118
+
+[init -> system -> pkg_runtime -> debug] sponge_debug: FIRSTPAINT ms=208
+
+[init -> system -> pkg_runtime -> debug] QGenodePlatformWindow: frame coalesced deferred= 1 submitted= 1 coalesced= 0 stale= 0
+
+[init -> system -> alpha_probe] alpha-probe: [1] install files ok
+
+[init -> system -> alpha_probe] alpha-probe: [1] install calculator ok
+
+[init -> system -> alpha_probe] alpha-probe: [1] install pdf_view ok
+
+[init -> system -> alpha_probe] alpha-probe: [1] install falkon ok
+
+[init -> system -> alpha_probe] alpha-probe: [3] assert (c) configd broadcast carries the baked key set
+
+[init -> system -> alpha_probe] alpha-probe: (c) configd broadcast carries all 8 baked keys
+
+[init -> system -> alpha_probe] alpha-probe: [4] assert (a) themed panel rendered
+
+[init -> system -> alpha_probe] alpha-probe: (a) panel band rendered at (512,4) = 0xff1e1e2e
+
+[init -> system -> alpha_probe] alpha-probe: [5] assert (b) launcher has all 7 desktop packages
+
+[init -> system -> alpha_probe] alpha-probe: (b) launcher report contains hello/Utilities
+
+[init -> system -> alpha_probe] alpha-probe: (b) launcher report contains terminal/System
+
+[init -> system -> alpha_probe] alpha-probe: (b) launcher report contains textedit/Editors
+
+[init -> system -> alpha_probe] alpha-probe: (b) launcher report contains files/Utilities
+
+[init -> system -> alpha_probe] alpha-probe: (b) launcher report contains calculator/Utilities
+
+[init -> system -> alpha_probe] alpha-probe: (b) launcher report contains pdf_view/Utilities
+
+[init -> system -> alpha_probe] alpha-probe: (b) launcher report contains falkon/Internet
+
+[init -> system -> alpha_probe] alpha-probe: (b) launcher report contains all 7 desktop packages
+
+[init -> system -> alpha_probe] alpha-probe: PASS
+
+
+Run script execution successful.
+EXIT=0

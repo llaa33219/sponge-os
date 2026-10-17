@@ -1,0 +1,749 @@
+including /home/luke/sponge-os/genode/tool/run/power_on/qemu
+including /home/luke/sponge-os/genode/tool/run/log/qemu
+including /home/luke/sponge-os/genode/tool/run/image/iso
+including /home/luke/sponge-os/genode/tool/run/boot_dir/sel4
+including /home/luke/sponge-os/repos/sponge/run/sponge-de-test.run
+building targets:  core lib/ld init timer server/report_rom server/nitpicker sponge-de test/sponge_de_probe qt6/base lib/libc lib/libm lib/stdcxx lib/mesa lib/mesa_gpu-softpipe lib/egl lib/softpipe lib/libdrm lib/expat lib/qt6_component lib/vfs lib/vfs_pipe lib/vfs_gpu lib/rom_filter lib/zlib lib/libpng 
+spawn make core lib/ld init timer server/report_rom server/nitpicker sponge-de test/sponge_de_probe qt6/base lib/libc lib/libm lib/stdcxx lib/mesa lib/mesa_gpu-softpipe lib/egl lib/softpipe lib/libdrm lib/expat lib/qt6_component lib/vfs lib/vfs_pipe lib/vfs_gpu lib/rom_filter lib/zlib lib/libpng
+Library-description file 'rom_filter.mk' is missing
+  [00;33mLibrary[0m ld.abi.so
+  [00;33mLibrary[0m ldso_so_support.lib.a
+  [00;33mLibrary[0m kernel-sel4-pc.lib.a
+ninja: no work to do.
+  [00;33mLibrary[0m syscall-sel4-pc.lib.a
+  [00;33mLibrary[0m syscall-sel4.lib.a
+  [00;33mLibrary[0m startup-sel4.lib.a
+  [00;33mLibrary[0m base-sel4-common.lib.a
+  [00;33mLibrary[0m timeout.lib.a
+  [00;33mLibrary[0m cxx.lib.a
+  [00;33mLibrary[0m base-sel4.lib.a
+  [00;33mLibrary[0m ld-sel4.lib.so
+  [00;33mLibrary[0m ld.lib.so
+  [00;33mLibrary[0m libc.abi.so
+  [00;33mLibrary[0m libc-string.lib.a
+  [00;33mLibrary[0m libc-locale.lib.a
+  [00;33mLibrary[0m libc-stdlib.lib.a
+  [00;33mLibrary[0m libc-stdio.lib.a
+  [00;33mLibrary[0m libc-gen.lib.a
+  [00;33mLibrary[0m libc-gdtoa.lib.a
+  [00;33mLibrary[0m libc-inet.lib.a
+  [00;33mLibrary[0m libc-stdtime.lib.a
+  [00;33mLibrary[0m libc-regex.lib.a
+  [00;33mLibrary[0m libc-compat.lib.a
+  [00;33mLibrary[0m libc-setjmp.lib.a
+  [00;33mLibrary[0m libc-mem.lib.a
+  [00;33mLibrary[0m libc-resolv.lib.a
+  [00;33mLibrary[0m libc-isc.lib.a
+  [00;33mLibrary[0m libc-nameser.lib.a
+  [00;33mLibrary[0m libc-net.lib.a
+  [00;33mLibrary[0m libc-rpc.lib.a
+  [00;33mLibrary[0m libc-tzcode.lib.a
+  [00;33mLibrary[0m libc-libkern.lib.a
+  [00;33mLibrary[0m base.lib.a
+  [00;33mLibrary[0m vfs.abi.so
+  [00;33mLibrary[0m libc.lib.so
+  [00;33mLibrary[0m libm.abi.so
+  [00;33mLibrary[0m libm.lib.so
+  [00;33mLibrary[0m stdcxx.abi.so
+  [00;33mLibrary[0m stdcxx-c++98.lib.a
+  [00;33mLibrary[0m stdcxx-c++11.lib.a
+  [00;33mLibrary[0m stdcxx-c++17.lib.a
+  [00;33mLibrary[0m stdcxx-c++20.lib.a
+  [00;33mLibrary[0m stdcxx.lib.so
+  [00;33mLibrary[0m mesa.abi.so
+  [00;33mLibrary[0m iris_gen80.lib.a
+  [00;33mLibrary[0m iris_gen90.lib.a
+  [00;33mLibrary[0m iris_gen110.lib.a
+  [00;33mLibrary[0m iris_gen120.lib.a
+  [00;33mLibrary[0m iris_gen125.lib.a
+  [00;33mLibrary[0m iris_gen200.lib.a
+  [00;33mLibrary[0m isl_gen80.lib.a
+  [00;33mLibrary[0m isl_gen90.lib.a
+  [00;33mLibrary[0m isl_gen110.lib.a
+  [00;33mLibrary[0m isl_gen120.lib.a
+  [00;33mLibrary[0m isl_gen125.lib.a
+  [00;33mLibrary[0m isl_gen200.lib.a
+  [00;33mLibrary[0m libdrm.abi.so
+  [00;33mLibrary[0m expat.abi.so
+  [00;33mLibrary[0m zlib.abi.so
+  [00;33mLibrary[0m iris.lib.a
+  [00;33mLibrary[0m softpipe.lib.a
+  [00;33mLibrary[0m mesa_api.lib.a
+  [00;33mLibrary[0m format.lib.a
+  [00;33mLibrary[0m glapi.lib.so
+  [00;33mLibrary[0m mesa.lib.so
+  [00;33mLibrary[0m egl.abi.so
+  [00;33mLibrary[0m mesa_gpu-softpipe.lib.so
+  [00;33mLibrary[0m blit.lib.a
+  [00;33mLibrary[0m egl.lib.so
+  [00;33mLibrary[0m vfs_gpu.abi.so
+  [00;33mLibrary[0m libdrm.lib.so
+  [00;33mLibrary[0m expat.lib.so
+  [00;33mLibrary[0m qt6_component.abi.so
+  [00;33mLibrary[0m qt6_component.lib.so
+  [00;33mLibrary[0m vfs.lib.so
+  [00;33mLibrary[0m vfs_pipe.lib.so
+  [00;33mLibrary[0m vfs_gpu.lib.so
+  [00;33mLibrary[0m zlib.lib.so
+  [00;33mLibrary[0m libpng.abi.so
+  [00;33mLibrary[0m libpng.lib.so
+  [00;33mLibrary[0m core-sel4.lib.a
+    COMPILE  version.o
+    MERGE    core-sel4.lib.a
+  [01;33mProgram[0m core/sel4/core
+  [01;33mProgram[0m init/init
+  [00;33mLibrary[0m qt6_cmake.lib.a
+  [00;33mLibrary[0m qoost.lib.a
+  [01;33mProgram[0m qt6/base/qt6_base.cmake_target
+[0m
+-- Configuration summary has been written to /home/luke/sponge-os/genode/build/x86_64/qt6/base/config.summary[0m
+[0m[0m
+[  1%] Built target ZlibPrivate_sync_headers
+[  1%] Built target Platform
+[  2%] Built target qmodule_pri
+[  3%] Built target Core_lib_pri
+[  3%] Built target PngPrivate_sync_headers
+[  3%] Built target BundledLibpng_ext_pri
+[  3%] Built target JpegPrivate_sync_headers
+[  3%] Built target BundledLibjpeg_ext_pri
+[  3%] Built target FreetypePrivate_sync_headers
+[  3%] Built target BundledFreetype_ext_pri
+[  3%] Built target HarfbuzzPrivate_sync_headers
+[  3%] Built target Xml_lib_pri
+[  3%] Built target Sql_lib_pri
+[  3%] Built target Gui_lib_pri
+[  3%] Built target Concurrent_lib_pri
+[  3%] Built target OpenGL_lib_pri
+[  3%] Built target ExampleIconsPrivate_sync_headers
+[  3%] Built target Network_lib_pri
+[  3%] Built target Test_lib_pri
+[  3%] Built target Widgets_lib_pri
+[  3%] Built target OpenGLWidgets_lib_pri
+[  3%] Built target PrintSupport_lib_pri
+[1m[35mConsolidate compiler generated dependencies of target BundledLibjpeg16bits[0m
+[1m[35mConsolidate compiler generated dependencies of target BundledPcre2[0m
+[1m[35mConsolidate compiler generated dependencies of target BundledLibjpeg12bits[0m
+[  3%] Built target ZlibPrivate
+[  3%] Built target PngPrivate
+[  3%] Built target JpegPrivate
+[  3%] Built target ExampleIconsPrivate_autogen_timestamp_deps
+[  3%] Built target Core_sync_headers
+[  4%] Built target BundledLibjpeg16bits
+[  8%] Built target BundledPcre2
+[  8%] Built target BundledLibjpeg12bits
+[1m[35mConsolidate compiler generated dependencies of target ExampleIconsPrivate_resources_1[0m
+[1m[35mConsolidate compiler generated dependencies of target BundledZLIB[0m
+[1m[35mConsolidate compiler generated dependencies of target BundledLibjpeg[0m
+[  8%] Built target Core_autogen_timestamp_deps
+[  8%] Built target Network_sync_headers
+[  8%] Built target Sql_sync_headers
+[  8%] Built target DeviceDiscoverySupportPrivate_sync_headers
+[  8%] Built target ExampleIconsPrivate_resources_1
+[  8%] Built target ExampleIconsPrivate_autogen
+[  8%] Built target Concurrent_sync_headers
+[  8%] Built target Xml_sync_headers
+[  8%] Built target Gui_sync_headers
+[  9%] Built target BundledZLIB
+[  9%] [1m[34mRunning AUTOMOC file extraction for target ExampleIconsPrivate[0m
+[1m[35mConsolidate compiler generated dependencies of target BundledHarfbuzz[0m
+[ 14%] Built target BundledLibjpeg
+[ 14%] Built target QTlsBackendCertOnlyPlugin_autogen_timestamp_deps
+[ 14%] Built target DeviceDiscoverySupportPrivate_autogen_timestamp_deps
+[1m[35mConsolidate compiler generated dependencies of target ExampleIconsPrivate[0m
+[ 14%] Built target Test_sync_headers
+[ 14%] Built target FbSupportPrivate_sync_headers
+[ 14%] Built target Widgets_sync_headers
+[ 14%] Built target OpenGL_sync_headers
+[ 14%] Built target Core_autogen
+[ 15%] Built target ExampleIconsPrivate
+[ 15%] Built target PrintSupport_sync_headers
+[ 15%] Built target OpenGLWidgets_sync_headers
+[ 15%] Built target FbSupportPrivate_autogen_timestamp_deps
+[ 15%] Built target QTlsBackendCertOnlyPlugin_autogen
+[ 15%] Built target DeviceDiscoverySupportPrivate_autogen
+[ 15%] Built target FbSupportPrivate_autogen
+[ 19%] Built target BundledHarfbuzz
+[1m[35mConsolidate compiler generated dependencies of target Core[0m
+[ 37%] Built target Core
+[1m[35mConsolidate compiler generated dependencies of target DeviceDiscoverySupportPrivate[0m
+[1m[35mConsolidate compiler generated dependencies of target BundledLibpng[0m
+[ 37%] Built target Gui_autogen_timestamp_deps
+[ 37%] Built target Xml_autogen_timestamp_deps
+[ 37%] Built target Sql_autogen_timestamp_deps
+[ 37%] Built target QSQLiteDriverPlugin_autogen_timestamp_deps
+[ 37%] Built target Concurrent_autogen_timestamp_deps
+[ 37%] Built target Network_autogen_timestamp_deps
+[ 37%] Built target Test_autogen_timestamp_deps
+[ 38%] Built target DeviceDiscoverySupportPrivate
+[ 38%] Built target BundledLibpng
+[ 38%] Built target Concurrent_autogen
+[ 39%] Built target Xml_autogen
+[1m[35mConsolidate compiler generated dependencies of target BundledFreetype[0m
+[ 39%] Built target Sql_autogen
+[ 39%] Built target QSQLiteDriverPlugin_autogen
+[ 39%] Built target Test_autogen
+[ 39%] Built target Network_autogen
+[ 39%] Built target Gui_autogen
+[ 39%] [1m[34mRunning AUTOMOC file extraction for target Xml[0m
+[ 39%] [1m[34mRunning AUTOMOC file extraction for target Concurrent[0m
+[1m[35mConsolidate compiler generated dependencies of target Sql[0m
+[1m[35mConsolidate compiler generated dependencies of target Xml[0m
+[1m[35mConsolidate compiler generated dependencies of target Concurrent[0m
+[ 42%] Built target BundledFreetype
+[1m[35mConsolidate compiler generated dependencies of target Test[0m
+[ 43%] Built target Xml
+[ 43%] Built target Concurrent
+[ 45%] Built target Sql
+[1m[35mConsolidate compiler generated dependencies of target Network[0m
+[1m[35mConsolidate compiler generated dependencies of target QSQLiteDriverPlugin[0m
+[ 46%] Built target QSQLiteDriverPlugin
+[ 49%] Built target Test
+[1m[35mConsolidate compiler generated dependencies of target Gui[0m
+[ 56%] Built target Network
+[1m[35mConsolidate compiler generated dependencies of target QTlsBackendCertOnlyPlugin[0m
+[ 57%] Built target QTlsBackendCertOnlyPlugin
+[ 75%] Built target Gui
+[1m[35mConsolidate compiler generated dependencies of target FbSupportPrivate[0m
+[ 75%] Built target QGenodeIntegrationPlugin_autogen_timestamp_deps
+[ 75%] Built target OpenGL_autogen_timestamp_deps
+[ 75%] Built target QGifPlugin_autogen_timestamp_deps
+[ 75%] Built target QTuioTouchPlugin_autogen_timestamp_deps
+[ 75%] Built target QICOPlugin_autogen_timestamp_deps
+[ 75%] Built target Widgets_autogen_timestamp_deps
+[ 75%] Built target QJpegPlugin_autogen_timestamp_deps
+[ 76%] Built target FbSupportPrivate
+[ 76%] Built target QICOPlugin_autogen
+[ 76%] Built target QTuioTouchPlugin_autogen
+[ 76%] Built target QGifPlugin_autogen
+[ 76%] Built target QGenodeIntegrationPlugin_autogen
+[ 76%] Built target QJpegPlugin_autogen
+[ 76%] Built target OpenGL_autogen
+[ 76%] Built target Widgets_autogen
+[1m[35mConsolidate compiler generated dependencies of target QGifPlugin[0m
+[1m[35mConsolidate compiler generated dependencies of target QJpegPlugin[0m
+[1m[35mConsolidate compiler generated dependencies of target QICOPlugin[0m
+[1m[35mConsolidate compiler generated dependencies of target QTuioTouchPlugin[0m
+[1m[35mConsolidate compiler generated dependencies of target QGenodeIntegrationPlugin[0m
+[ 76%] Built target QGifPlugin
+[ 77%] Built target QICOPlugin
+[ 77%] Built target QJpegPlugin
+[1m[35mConsolidate compiler generated dependencies of target OpenGL[0m
+[ 77%] Built target QTuioTouchPlugin
+[ 78%] Built target QGenodeIntegrationPlugin
+[ 83%] Built target OpenGL
+[1m[35mConsolidate compiler generated dependencies of target Widgets[0m
+[ 97%] Built target Widgets
+[ 97%] Built target OpenGLWidgets_autogen_timestamp_deps
+[ 97%] Built target PrintSupport_autogen_timestamp_deps
+[ 97%] Built target OpenGLWidgets_autogen
+[ 97%] Built target PrintSupport_autogen
+[1m[35mConsolidate compiler generated dependencies of target OpenGLWidgets[0m
+[1m[35mConsolidate compiler generated dependencies of target PrintSupport[0m
+[ 97%] Built target OpenGLWidgets
+[100%] Built target PrintSupport
+[  2%] Built target PngPrivate_sync_headers
+[  3%] Built target HarfbuzzPrivate_sync_headers
+[  2%] Built target JpegPrivate_sync_headers
+[  3%] Built target Concurrent_lib_pri
+[  3%] Built target BundledLibjpeg_ext_pri
+[  3%] Built target BundledLibpng_ext_pri
+[  3%] Built target ZlibPrivate_sync_headers
+[  2%] Built target Core_lib_pri
+[  3%] Built target qmodule_pri
+[  3%] Built target Platform
+[  2%] Built target FreetypePrivate_sync_headers
+[  3%] Built target Sql_lib_pri
+[  3%] Built target Network_lib_pri
+[  3%] Built target Xml_lib_pri
+[  3%] Built target BundledFreetype_ext_pri
+[  3%] Built target OpenGL_lib_pri
+[  3%] Built target Widgets_lib_pri
+[  3%] Built target ExampleIconsPrivate_sync_headers
+[  3%] Built target OpenGLWidgets_lib_pri
+[  3%] Built target PrintSupport_lib_pri
+[  3%] Built target Test_lib_pri
+[  3%] Built target Gui_lib_pri
+[  4%] Built target PngPrivate
+[  4%] Built target ExampleIconsPrivate_autogen_timestamp_deps
+[  4%] Built target JpegPrivate
+[  4%] Built target BundledLibjpeg16bits
+[  8%] Built target Core_sync_headers
+[  8%] Built target BundledPcre2
+[  6%] Built target ZlibPrivate
+[  8%] Built target BundledLibjpeg12bits
+[  8%] Built target ExampleIconsPrivate_autogen
+[  8%] Built target Sql_sync_headers
+[  8%] Built target Concurrent_sync_headers
+[  8%] Built target DeviceDiscoverySupportPrivate_sync_headers
+[  8%] Built target Xml_sync_headers
+[  8%] Built target ExampleIconsPrivate_resources_1
+[  8%] Built target Network_sync_headers
+[  8%] Built target Gui_sync_headers
+[  8%] Built target Core_autogen_timestamp_deps
+[  9%] Built target BundledZLIB
+[ 14%] Built target BundledLibjpeg
+[ 14%] [1m[34mRunning AUTOMOC file extraction for target ExampleIconsPrivate[0m
+[ 14%] Built target QTlsBackendCertOnlyPlugin_autogen_timestamp_deps
+[ 14%] Built target DeviceDiscoverySupportPrivate_autogen_timestamp_deps
+[ 14%] Built target OpenGL_sync_headers
+[ 14%] Built target Widgets_sync_headers
+[ 14%] Built target FbSupportPrivate_sync_headers
+[ 14%] Built target Test_sync_headers
+[ 14%] Built target Core_autogen
+[ 15%] Built target ExampleIconsPrivate
+[ 19%] Built target BundledHarfbuzz
+[ 19%] Built target FbSupportPrivate_autogen_timestamp_deps
+[ 19%] Built target PrintSupport_sync_headers
+[ 19%] Built target QTlsBackendCertOnlyPlugin_autogen
+[ 19%] Built target OpenGLWidgets_sync_headers
+[ 19%] Built target DeviceDiscoverySupportPrivate_autogen
+[ 19%] Built target FbSupportPrivate_autogen
+[ 37%] Built target Core
+[ 37%] Built target Test_autogen_timestamp_deps
+[ 37%] Built target Gui_autogen_timestamp_deps
+[ 37%] Built target Sql_autogen_timestamp_deps
+[ 37%] Built target Concurrent_autogen_timestamp_deps
+[ 37%] Built target Xml_autogen_timestamp_deps
+[ 37%] Built target Network_autogen_timestamp_deps
+[ 38%] Built target BundledLibpng
+[ 38%] Built target DeviceDiscoverySupportPrivate
+[ 38%] Built target QSQLiteDriverPlugin_autogen_timestamp_deps
+[ 39%] Built target Xml_autogen
+[ 39%] Built target Concurrent_autogen
+[ 39%] Built target Test_autogen
+[ 39%] Built target Sql_autogen
+[ 39%] Built target QSQLiteDriverPlugin_autogen
+[ 39%] Built target Network_autogen
+[ 40%] Built target Gui_autogen
+[ 42%] Built target BundledFreetype
+[ 42%] [1m[34mRunning AUTOMOC file extraction for target Xml[0m
+[ 42%] [1m[34mRunning AUTOMOC file extraction for target Concurrent[0m
+[ 43%] Built target Concurrent
+[ 45%] Built target Sql
+[ 45%] Built target Xml
+[ 48%] Built target Test
+[ 49%] Built target QSQLiteDriverPlugin
+[ 56%] Built target Network
+[ 57%] Built target QTlsBackendCertOnlyPlugin
+[ 75%] Built target Gui
+[ 75%] Built target Widgets_autogen_timestamp_deps
+[ 75%] Built target QICOPlugin_autogen_timestamp_deps
+[ 75%] Built target OpenGL_autogen_timestamp_deps
+[ 75%] Built target QGenodeIntegrationPlugin_autogen_timestamp_deps
+[ 75%] Built target QGifPlugin_autogen_timestamp_deps
+[ 75%] Built target QJpegPlugin_autogen_timestamp_deps
+[ 75%] Built target QTuioTouchPlugin_autogen_timestamp_deps
+[ 76%] Built target FbSupportPrivate
+[ 76%] Built target QGifPlugin_autogen
+[ 76%] Built target QTuioTouchPlugin_autogen
+[ 76%] Built target QJpegPlugin_autogen
+[ 76%] Built target QICOPlugin_autogen
+[ 76%] Built target OpenGL_autogen
+[ 76%] Built target QGenodeIntegrationPlugin_autogen
+[ 76%] Built target Widgets_autogen
+[ 77%] Built target QGifPlugin
+[ 77%] Built target QICOPlugin
+[ 77%] Built target QJpegPlugin
+[ 77%] Built target QTuioTouchPlugin
+[ 78%] Built target QGenodeIntegrationPlugin
+[ 83%] Built target OpenGL
+[ 97%] Built target Widgets
+[ 97%] Built target OpenGLWidgets_autogen_timestamp_deps
+[ 97%] Built target PrintSupport_autogen_timestamp_deps
+[ 97%] Built target OpenGLWidgets_autogen
+[ 97%] Built target PrintSupport_autogen
+[ 97%] Built target OpenGLWidgets
+[100%] Built target PrintSupport
+[36mInstall the project...[0m
+-- Install configuration: "RelWithDebInfo"
+  [01;33mProgram[0m server/nitpicker/nitpicker
+  [01;33mProgram[0m server/report_rom/report_rom
+  [00;33mLibrary[0m qt6_qmake.lib.a
+  [01;33mProgram[0m sponge-de/sponge_de.pro.qmake_target
+  [01;33mProgram[0m test/sponge_de_probe/sponge_de_probe
+  [01;33mProgram[0m timer/hpet/hpet_timer
+genode build completed
+building targets: kernel/sel4 lib/ld-sel4
+spawn make kernel/sel4 lib/ld-sel4
+  [00;33mLibrary[0m kernel-sel4-pc.lib.a
+ninja: no work to do.
+  [00;33mLibrary[0m syscall-sel4-pc.lib.a
+  [00;33mLibrary[0m syscall-sel4.lib.a
+  [00;33mLibrary[0m startup-sel4.lib.a
+  [00;33mLibrary[0m base-sel4-common.lib.a
+  [00;33mLibrary[0m timeout.lib.a
+  [00;33mLibrary[0m cxx.lib.a
+  [00;33mLibrary[0m base-sel4.lib.a
+  [00;33mLibrary[0m ldso_so_support.lib.a
+  [00;33mLibrary[0m ld-sel4.lib.so
+  [01;33mProgram[0m kernel/sel4/sel4-pc
+genode build completed
+using 'core-sel4.a' as 'core.a'
+using 'hpet_timer' as 'timer'
+using 'ld-sel4.lib.so' as 'ld.lib.so'
+install bootloader
+
+spawn qemu-system-x86_64 -accel kvm -nographic -serial mon:stdio -m 800 -cdrom var/run/sponge-de-test.iso -machine q35 -cpu Skylake-Client -net nic,model=e1000,netdev=net0 -netdev user,id=net0
+qemu-system-x86_64: warning: host doesn't support requested feature: CPUID[eax=0Dh,ecx=01h].EAX.xsavec [bit 1]
+qemu-system-x86_64: warning: host doesn't support requested feature: CPUID[eax=0Dh,ecx=01h].EAX.xgetbv1 [bit 2]
+c[?7l[2J[0mSeaBIOS (version Arch Linux 1.17.0-2-2)
+
+
+
+iPXE (http://ipxe.org) 00:02.0 C900 PCI2.10 PnP PMM+30FD3DA0+30F33DA0 C900
+
+Press Ctrl-B to configure iPXE (PCI 00:02.0)...
+                                                                               
+
+
+
+Booting from Hard Disk...
+
+Boot failed: could not read the boot disk
+
+
+Booting from DVD/CD...
+
+error: can't find command `loadfont'.
+
+  Booting `Genode on seL4'
+
+
+[01;01H
+
+Bender Version 0.9-beta7-51-g77a6918-dirty
+
+Patching BDA with I/O port 0x3f8.
+
+Bender: Hello World.
+
+hwp config: eeo=na irq=na hwp=na epp=na epb=na
+Boot config: debug_port = 0x3f8
+
+Boot config: disable_iommu = true
+
+  module #0: start=0xac06000 end=0xfdf6410 size=0x51f0410 name='image.elf'
+
+	Physical Memory Region from 0 size 9fc00 type 1
+
+	Physical Memory Region from 9fc00 size 400 type 2
+
+	Physical Memory Region from f0000 size 10000 type 2
+
+	Physical Memory Region from 100000 size 31edf000 type 1
+
+Adding physical memory region 0x100000-0x31fdf000
+
+	Physical Memory Region from 31fdf000 size 21000 type 2
+
+	Physical Memory Region from b0000000 size 10000000 type 2
+
+	Physical Memory Region from fed1c000 size 4000 type 2
+
+	Physical Memory Region from feffc000 size 4000 type 2
+
+	Physical Memory Region from fffc0000 size 40000 type 2
+
+Got framebuffer info in multiboot2. Current video mode is at physical address=fd000000 pitch=5120 resolution=1280x800@32 type=1
+
+Detected 1 boot module(s):
+
+Kernel loaded to: start=0x200000 end=0xe3e000 size=0xc3e000 entry=0x2002a3
+
+ACPI: RSDT paddr=0x31fe2345
+
+ACPI: RSDT vaddr=0x31fe2345
+
+ACPI: FADT paddr=0x31fe213d
+
+ACPI: FADT vaddr=0x31fe213d
+
+ACPI: FADT flags=0x84a5
+
+ACPI: MADT paddr=0x31fe2231
+
+ACPI: MADT vaddr=0x31fe2231
+
+ACPI: MADT apic_addr=0xfee00000
+
+ACPI: MADT flags=0x1
+
+ACPI: MADT_APIC apic_id=0x0
+
+ACPI: MADT_IOAPIC ioapic_id=0 ioapic_addr=0xfec00000 gsib=0
+
+ACPI: MADT_ISO bus=0 source=0 gsi=0x002 flags=0x0
+
+ACPI: MADT_ISO bus=0 source=5 gsi=0x005 flags=0xd
+
+ACPI: MADT_ISO bus=0 source=9 gsi=0x009 flags=0xd
+
+ACPI: MADT_ISO bus=0 source=10 gsi=0x00a flags=0xd
+
+ACPI: MADT_ISO bus=0 source=11 gsi=0x00b flags=0xd
+
+ACPI: 1 CPU(s) detected
+
+ELF-loading userland images from boot modules:
+
+size=0x6bef000 v_entry=0x2000018 v_start=0x2000000 v_end=0x8bef000 p_start=0xfdf7000 p_end=0x169e6000
+
+Moving loaded userland images to final location: from=0xfdf7000 to=0xe3e000 size=0x6bef000
+
+Starting node #0 with APIC ID 0
+
+Mapping kernel window is done
+
+vt-x: not supported
+
+Available phys memory regions: 1
+
+  [100000..31fdf000)
+
+Reserved virt address space regions: 1
+
+  [ffffff8000200000..ffffff8007a2d000)
+
+Booting all finished, dropped to user space
+
+[34mWarning: init_freemem artifact untyped skipped: 0x200000 size 0x200000[0m
+
+[34mWarning: init_freemem artifact untyped skipped: 0x400000 size 0x400000[0m
+
+[34mWarning: init_freemem artifact untyped skipped: 0x800000 size 0x200000[0m
+
+:phys_mem_16k:     Allocator 0x257a7f8 dump:
+
+ Block: [0000000000100000,0000000000200000) size=1M avail=1M max_avail=1M
+
+ Block: [0000000007a30000,0000000008000000) size=5952K avail=5952K max_avail=107968K
+
+ Block: [0000000010000000,0000000016970000) size=107968K avail=107968K max_avail=107968K
+
+ => mem_size=117702656 (112 MB) / mem_avail=117702656 (112 MB)
+
+
+
+[34mWarning: failed to register I/O range: [0000000032000000,0000000032100000)[0m
+
+[34mWarning: failed to register I/O range: [0000000034000000,0000000034100000)[0m
+
+[34mWarning: failed to register I/O range: [0000000038000000,0000000038100000)[0m
+
+[34mWarning: failed to register I/O range: [0000000040000000,0000000040100000)[0m
+
+[34mWarning: failed to register I/O range: [0000000080000000,0000000080100000)[0m
+
+virtual address layout of core:
+
+ overall    [0000000000002000,0000001000000000)
+
+ core image [0000000002000000,0000000008bef000)
+
+ ipc buffer [0000000008bef000,0000000008bf0000)
+
+ boot_info  [0000000008bf0000,0000000008bf1532)
+
+ stack area [0000000040000000,0000000050000000)
+
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+
+Physical memory per PD at most: 512M
+
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+
+boot module 'config' (3133 bytes)
+
+boot module 'egl.lib.so' (174944 bytes)
+
+boot module 'expat.lib.so' (202952 bytes)
+
+boot module 'glapi.lib.so' (578776 bytes)
+
+boot module 'timer' (139920 bytes)
+
+boot module 'init' (507176 bytes)
+
+boot module 'init.hsd' (4125 bytes)
+
+boot module 'init.xsd' (8118 bytes)
+
+boot module 'ld.lib.so' (1107760 bytes)
+
+boot module 'libQt6Concurrent.lib.so' (28864 bytes)
+
+boot module 'libQt6Network.lib.so' (2028640 bytes)
+
+boot module 'libQt6OpenGL.lib.so' (772904 bytes)
+
+boot module 'libQt6OpenGLWidgets.lib.so' (66848 bytes)
+
+boot module 'libQt6PrintSupport.lib.so' (497608 bytes)
+
+boot module 'libQt6Sql.lib.so' (412752 bytes)
+
+boot module 'libQt6Test.lib.so' (535192 bytes)
+
+boot module 'libQt6Xml.lib.so' (194712 bytes)
+
+boot module 'libc.lib.so' (2067672 bytes)
+
+boot module 'libdrm.lib.so' (223560 bytes)
+
+boot module 'libm.lib.so' (291512 bytes)
+
+boot module 'libpng.lib.so' (257960 bytes)
+
+boot module 'libqjpeg.lib.so' (668936 bytes)
+
+boot module 'libqsqlite.lib.so' (1937728 bytes)
+
+boot module 'mesa.lib.so' (28227960 bytes)
+
+boot module 'mesa_gpu-softpipe.lib.so' (207456 bytes)
+
+boot module 'nitpicker' (530128 bytes)
+
+boot module 'qt6_component.lib.so' (34224 bytes)
+
+boot module 'qt6_libqjpeg.tar' (675840 bytes)
+
+boot module 'qt6_libqsqlite.tar' (1945600 bytes)
+
+boot module 'report_rom' (150784 bytes)
+
+boot module 'sponge-de' (804792 bytes)
+
+boot module 'sponge_de_probe' (150544 bytes)
+
+boot module 'stdcxx.lib.so' (2735712 bytes)
+
+boot module 'vfs.lib.so' (769424 bytes)
+
+boot module 'vfs_gpu.lib.so' (110344 bytes)
+
+boot module 'vfs_pipe.lib.so' (92416 bytes)
+
+boot module 'zlib.lib.so' (108384 bytes)
+
+boot module 'libQt6Core.lib.so' (8171216 bytes)
+
+boot module 'libQt6Gui.lib.so' (11824264 bytes)
+
+boot module 'libQt6Widgets.lib.so' (9479856 bytes)
+
+boot module 'libqgenode.lib.so' (368768 bytes)
+
+boot module 'qt6_libqgenode.tar' (378880 bytes)
+
+boot module 'qt6_dejavusans.tar' (768000 bytes)
+
+boot module 'default.theme' (722 bytes)
+
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+
+Genode v0.2.0-94-g05bf04042e <local changes>
+
+228 MiB RAM and 523288 caps assigned to init
+
+[init -> timer] timers=3, clock 10000000fs , 64bit counter , legacy routing support vendor=0x8086
+
+[init -> timer] timer0 GSI options 0xff0104, supports periodic
+
+[init -> timer] timer1 GSI options 0xff0104, supports periodic
+
+[init -> timer] timer2 GSI options 0xff0104, supports periodic
+
+[init -> timer] time wraps after 5849 years
+
+[init -> timer] irqs=off legacy=off
+
+[init -> timer] Using timer 2 -> using GSI 2 edge triggered
+
+[init -> sponge-de] [34mWarning: Libc RNG not configured[0m
+
+[init -> sponge-de] [34mWarning: ignoring unsupported RTLD_GLOBAL in dlopen()[0m
+
+[init -> sponge-de] libEGL warning: MESA-LOADER: failed to retrieve device information
+
+[init -> sponge-de] 
+
+[init -> sponge-de] libEGL warning: failed to get driver name for fd 0
+
+[init -> sponge-de] 
+
+[init -> sponge_de_probe] sponge-de-probe: starting
+
+[init -> sponge_de_probe] sponge-de-probe: phases_attr='' run_panel_config_only=0
+
+[init -> sponge-de] sponge-de: theme source=default.theme (fallback; no live reload)
+
+[init -> sponge-de] sponge-de: theme loaded: default.theme (fallback)
+
+[init -> sponge-de] sponge-de: config source=none (no configd wiring; panel/launcher/clock keep their ctor-time defaults)
+
+[init -> sponge-de] sponge-de: de_config source=none (no SettingsController wiring; settings dialog unavailable in this topology)
+
+[init -> sponge-de] sponge-de: shortcuts source=none (no ShortcutController wiring; framework unavailable in this topology)
+
+[init -> sponge-de] sponge-de: launcher source=none (no pkgd wiring; panel button will report 'not attached')
+
+[init -> sponge-de] [34mWarning: attempt to re-acquire file descriptor for /qt/lib/fonts/DejaVuSans.ttf (lseek)[0m
+
+[init -> sponge-de] [34mWarning: attempt to re-acquire file descriptor for /qt/lib/fonts/DejaVuSans.ttf (lseek)[0m
+
+[init -> sponge-de] sponge-de diag gates: sz=4096 runtime_state=0 system_state=0 cfg_probe=0 head=config
+
+[init -> sponge-de] + vfs
+
+[init -> sponge-de]   + dir dev
+
+[init -> sponge-de]     + log
+
+[init -> sponge-de]     + inline rtc | : 2018-01-
+
+[init -> sponge-de] optional ROM "system_state" session not granted (error 0)
+
+[init -> sponge-de] [34mWarning: system_state ROM unavailable; health watcher disabled[0m
+
+[init -> sponge_de_probe] sponge-de-probe: capture poll 0 bg=0x1e1e2e demo=0x1e1e2e
+
+[init -> sponge-de] qt.core.qobject.connect: QObject::connect: No such slot QGenodePlatformWindow::_frame_sync()
+
+[init -> sponge-de] sponge-de: panel shown
+
+[init -> sponge-de] Sponge DE window created (Sponge OS 0.2.0 / Archaeocyte)
+
+[init -> sponge-de] qt.core.qobject.connect: QObject::connect: No such slot QGenodePlatformWindow::_frame_sync()
+
+[init -> sponge-de] sponge-de: demo window shown
+
+[init -> sponge-de] sponge-de: after attach_notify_poster
+
+[init -> sponge-de] sponge-de: panel and window shown
+
+[init -> sponge-de] [34mWarning: attempt to re-acquire file descriptor for /pipe/0/in (fcntl)[0m
+
+[init -> sponge_de_probe] sponge-de-probe: window detected in demo domain
+
+[init -> sponge_de_probe] sponge-de-probe: panel pixel at (512,14) = 0xff1e1e2e (informational; theme panel_bg == nitpicker bg)
+
+[init -> sponge_de_probe] sponge-de-probe: injecting click at (512,460)
+
+[init -> sponge-de] QGenodePlatformWindow: frame coalesced deferred= 1 submitted= 1 coalesced= 0 stale= 0
+
+[init -> sponge-de] sponge-de: input event received (button clicked)
+
+[init -> sponge_de_probe] sponge-de-probe: input report confirms press press=82,23
+
+[init -> sponge_de_probe] sponge-de-probe: PASS
+
+
+Run script execution successful.
+EXIT=0

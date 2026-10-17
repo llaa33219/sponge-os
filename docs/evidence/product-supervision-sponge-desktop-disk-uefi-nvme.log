@@ -1,0 +1,841 @@
+including /home/luke/sponge-os/genode/tool/run/image/disk
+including /home/luke/sponge-os/repos/sponge/run/sponge-desktop-disk-uefi-nvme.run
+sourcing /home/luke/sponge-os/genode/tool/run/boot_dir/sel4 (missing from RUN_OPT, restored by run script)
+sourcing /home/luke/sponge-os/genode/tool/run/power_on/qemu (missing from RUN_OPT, restored by run script)
+sourcing /home/luke/sponge-os/genode/tool/run/log/qemu (missing from RUN_OPT, restored by run script)
+sponge-desktop-disk-uefi-nvme: OVMF_CODE = var/ovmf/OVMF_CODE.fd (pinned 2024.02)
+sponge-desktop-disk-uefi-nvme: OVMF_VARS = var/ovmf/OVMF_VARS.fd (pinned 2024.02)
+building targets:  core lib/ld init timer server/report_rom server/nitpicker driver/platform driver/acpi app/pci_decode driver/framebuffer/boot driver/ps2 driver/usb_host/pc driver/usb_hid server/event_filter server/part_block server/vfs server/cached_fs_rom lib/vfs lib/vfs_rump lib/rump lib/rump_fs server/wm app/window_layouter app/decorator app/pointer sponge_configd sponge_themed sponge_pkgd pkg_hello sponge-de app/qt6/examples/calculatorform sponge_files app/pdf_view sponge_debug cfg_probe sponge_supervisor sponge_console server/terminal noux-pkg/bash-minimal noux-pkg/vim-minimal noux-pkg/coreutils-minimal noux-pkg/grep noux-pkg/sed noux-pkg/tar noux-pkg/less noux-pkg/findutils noux-pkg/diffutils noux-pkg/which test/alpha_probe qt6/base lib/libc lib/libm lib/stdcxx lib/mesa lib/mesa_gpu-softpipe lib/egl lib/softpipe lib/libdrm lib/expat lib/qt6_component lib/vfs lib/vfs_pipe lib/vfs_gpu lib/rom_filter lib/zlib lib/libpng lib/blit lib/vfs_ttf lib/vfs_import lib/posix lib/ncurses lib/pcre driver/nvme
+
+spawn make core lib/ld init timer server/report_rom server/nitpicker driver/platform driver/acpi app/pci_decode driver/framebuffer/boot driver/ps2 driver/usb_host/pc driver/usb_hid server/event_filter server/part_block server/vfs server/cached_fs_rom lib/vfs lib/vfs_rump lib/rump lib/rump_fs server/wm app/window_layouter app/decorator app/pointer sponge_configd sponge_themed sponge_pkgd pkg_hello sponge-de app/qt6/examples/calculatorform sponge_files app/pdf_view sponge_debug cfg_probe sponge_supervisor sponge_console server/terminal noux-pkg/bash-minimal noux-pkg/vim-minimal noux-pkg/coreutils-minimal noux-pkg/grep noux-pkg/sed noux-pkg/tar noux-pkg/less noux-pkg/findutils noux-pkg/diffutils noux-pkg/which test/alpha_probe qt6/base lib/libc lib/libm lib/stdcxx lib/mesa lib/mesa_gpu-softpipe lib/egl lib/softpipe lib/libdrm lib/expat lib/qt6_component lib/vfs lib/vfs_pipe lib/vfs_gpu lib/rom_filter lib/zlib lib/libpng lib/blit lib/vfs_ttf lib/vfs_import lib/posix lib/ncurses lib/pcre driver/nvme
+Makefile:213: ターゲット 'lib/vfs' が同一ルール内で複数回与えられました
+Library-description file 'rom_filter.mk' is missing
+Skip target driver/nvme/spec/arm_64 because it requires 'arm_64'
+Skip target driver/platform/pc/spec/x86_32 because it requires 'x86_32'
+Skip target driver/ps2/pl050 because it requires 'arm_v7'
+Skip target driver/usb_hid/spec/arm_v7 because it requires 'arm_v7'
+Skip target driver/usb_hid/spec/arm_v8 because it requires 'arm_v8'
+Skip target driver/usb_hid/spec/x86_32 because it requires 'x86_32'
+Skip target driver/usb_host/pc/spec/x86_32 because it requires '32bit'
+  [00;33mLibrary[0m ld.abi.so
+  [00;33mLibrary[0m ldso_so_support.lib.a
+  [00;33mLibrary[0m kernel-sel4-pc.lib.a
+ninja: no work to do.
+  [00;33mLibrary[0m syscall-sel4-pc.lib.a
+  [00;33mLibrary[0m syscall-sel4.lib.a
+  [00;33mLibrary[0m startup-sel4.lib.a
+  [00;33mLibrary[0m base-sel4-common.lib.a
+  [00;33mLibrary[0m timeout.lib.a
+  [00;33mLibrary[0m cxx.lib.a
+  [00;33mLibrary[0m base-sel4.lib.a
+  [00;33mLibrary[0m ld-sel4.lib.so
+  [00;33mLibrary[0m ld.lib.so
+  [00;33mLibrary[0m vfs.abi.so
+  [00;33mLibrary[0m base.lib.a
+  [00;33mLibrary[0m vfs.lib.so
+  [00;33mLibrary[0m format.lib.a
+  [00;33mLibrary[0m rump_include.lib.a
+  [00;33mLibrary[0m rump.lib.so
+  [00;33mLibrary[0m rump_tools.lib.a
+  [00;33mLibrary[0m rump_fs.lib.so
+  [00;33mLibrary[0m vfs_rump.lib.so
+  [00;33mLibrary[0m libc.abi.so
+  [00;33mLibrary[0m libc-string.lib.a
+  [00;33mLibrary[0m libc-locale.lib.a
+  [00;33mLibrary[0m libc-stdlib.lib.a
+  [00;33mLibrary[0m libc-stdio.lib.a
+  [00;33mLibrary[0m libc-gen.lib.a
+  [00;33mLibrary[0m libc-gdtoa.lib.a
+  [00;33mLibrary[0m libc-inet.lib.a
+  [00;33mLibrary[0m libc-stdtime.lib.a
+  [00;33mLibrary[0m libc-regex.lib.a
+  [00;33mLibrary[0m libc-compat.lib.a
+  [00;33mLibrary[0m libc-setjmp.lib.a
+  [00;33mLibrary[0m libc-mem.lib.a
+  [00;33mLibrary[0m libc-resolv.lib.a
+  [00;33mLibrary[0m libc-isc.lib.a
+  [00;33mLibrary[0m libc-nameser.lib.a
+  [00;33mLibrary[0m libc-net.lib.a
+  [00;33mLibrary[0m libc-rpc.lib.a
+  [00;33mLibrary[0m libc-tzcode.lib.a
+  [00;33mLibrary[0m libc-libkern.lib.a
+  [00;33mLibrary[0m libc.lib.so
+  [00;33mLibrary[0m libm.abi.so
+  [00;33mLibrary[0m libm.lib.so
+  [00;33mLibrary[0m stdcxx.abi.so
+  [00;33mLibrary[0m stdcxx-c++98.lib.a
+  [00;33mLibrary[0m stdcxx-c++11.lib.a
+  [00;33mLibrary[0m stdcxx-c++17.lib.a
+  [00;33mLibrary[0m stdcxx-c++20.lib.a
+  [00;33mLibrary[0m stdcxx.lib.so
+  [00;33mLibrary[0m mesa.abi.so
+  [00;33mLibrary[0m iris_gen80.lib.a
+  [00;33mLibrary[0m iris_gen90.lib.a
+  [00;33mLibrary[0m iris_gen110.lib.a
+  [00;33mLibrary[0m iris_gen120.lib.a
+  [00;33mLibrary[0m iris_gen125.lib.a
+  [00;33mLibrary[0m iris_gen200.lib.a
+  [00;33mLibrary[0m isl_gen80.lib.a
+  [00;33mLibrary[0m isl_gen90.lib.a
+  [00;33mLibrary[0m isl_gen110.lib.a
+  [00;33mLibrary[0m isl_gen120.lib.a
+  [00;33mLibrary[0m isl_gen125.lib.a
+  [00;33mLibrary[0m isl_gen200.lib.a
+  [00;33mLibrary[0m libdrm.abi.so
+  [00;33mLibrary[0m expat.abi.so
+  [00;33mLibrary[0m zlib.abi.so
+  [00;33mLibrary[0m iris.lib.a
+  [00;33mLibrary[0m softpipe.lib.a
+  [00;33mLibrary[0m mesa_api.lib.a
+  [00;33mLibrary[0m glapi.lib.so
+  [00;33mLibrary[0m mesa.lib.so
+  [00;33mLibrary[0m egl.abi.so
+  [00;33mLibrary[0m mesa_gpu-softpipe.lib.so
+  [00;33mLibrary[0m blit.lib.a
+  [00;33mLibrary[0m egl.lib.so
+  [00;33mLibrary[0m vfs_gpu.abi.so
+  [00;33mLibrary[0m libdrm.lib.so
+  [00;33mLibrary[0m expat.lib.so
+  [00;33mLibrary[0m qt6_component.abi.so
+  [00;33mLibrary[0m qt6_component.lib.so
+  [00;33mLibrary[0m vfs_pipe.lib.so
+  [00;33mLibrary[0m vfs_gpu.lib.so
+  [00;33mLibrary[0m zlib.lib.so
+  [00;33mLibrary[0m libpng.abi.so
+  [00;33mLibrary[0m libpng.lib.so
+  [00;33mLibrary[0m ttf_font.lib.a
+  [00;33mLibrary[0m vfs_ttf.lib.so
+  [00;33mLibrary[0m vfs_import.lib.so
+  [00;33mLibrary[0m posix.abi.so
+  [00;33mLibrary[0m posix.lib.so
+  [00;33mLibrary[0m ncurses.abi.so
+  [00;33mLibrary[0m ncurses.lib.so
+  [00;33mLibrary[0m pcre.abi.so
+  [00;33mLibrary[0m pcre.lib.so
+  [01;33mProgram[0m app/decorator/decorator
+  [01;33mProgram[0m app/pci_decode/pci_decode
+  [00;33mLibrary[0m mupdf.abi.so
+  [01;33mProgram[0m app/pdf_view/pdf_view
+  [01;33mProgram[0m app/pointer/pointer
+  [00;33mLibrary[0m qt6_qmake.lib.a
+  [01;33mProgram[0m app/qt6/examples/calculatorform/calculatorform.pro.qmake_target
+/home/luke/sponge-os/genode/build/x86_64/app/qt6/examples/calculatorform/build_dependencies/mkspecs/features/qt.prf:85: Cannot find feature permissions
+  [01;33mProgram[0m app/window_layouter/window_layouter
+  [01;33mProgram[0m cfg_probe/cfg_probe
+  [00;33mLibrary[0m core-sel4.lib.a
+    COMPILE  version.o
+    MERGE    core-sel4.lib.a
+  [01;33mProgram[0m core/sel4/core
+  [01;33mProgram[0m driver/acpi/spec/x86/acpi
+  [01;33mProgram[0m driver/framebuffer/boot/boot_fb
+  [01;33mProgram[0m driver/nvme/spec/x86/nvme
+  [01;33mProgram[0m driver/platform/pc/spec/x86_64/pc_platform
+  [01;33mProgram[0m driver/platform/platform
+  [01;33mProgram[0m driver/ps2/x86/ps2
+  [00;33mLibrary[0m jitterentropy.lib.a
+  [00;33mLibrary[0m virt_lx_emul.lib.a
+  [00;33mLibrary[0m virt_linux_generated.lib.a
+  [01;33mProgram[0m driver/usb_hid/spec/x86_64/usb_hid
+  [00;33mLibrary[0m pc_lx_emul.lib.a
+  [00;33mLibrary[0m pc_linux_generated.lib.a
+  [01;33mProgram[0m driver/usb_host/pc/spec/x86_64/pc_usb_host
+  [01;33mProgram[0m init/init
+  [01;33mProgram[0m noux-pkg/bash-minimal/bash-minimal
+  [01;33mProgram[0m noux-pkg/coreutils-minimal/coreutils-minimal
+  [01;33mProgram[0m noux-pkg/diffutils/diffutils
+  [01;33mProgram[0m noux-pkg/findutils/findutils
+  [01;33mProgram[0m noux-pkg/grep/grep
+  [01;33mProgram[0m noux-pkg/less/less
+  [01;33mProgram[0m noux-pkg/sed/sed
+  [01;33mProgram[0m noux-pkg/tar/tar
+  [01;33mProgram[0m noux-pkg/vim-minimal/vim-minimal
+  [01;33mProgram[0m noux-pkg/which/which
+  [01;33mProgram[0m pkg_hello/hello
+  [00;33mLibrary[0m qt6_cmake.lib.a
+  [00;33mLibrary[0m qoost.lib.a
+  [01;33mProgram[0m qt6/base/qt6_base.cmake_target
+[0m
+-- Configuration summary has been written to /home/luke/sponge-os/genode/build/x86_64/qt6/base/config.summary[0m
+[0m[0m
+[  1%] Built target JpegPrivate_sync_headers
+[  1%] Built target Platform
+[  1%] Built target ZlibPrivate_sync_headers
+[  1%] Built target HarfbuzzPrivate_sync_headers
+[  1%] Built target FreetypePrivate_sync_headers
+[  1%] Built target BundledLibjpeg_ext_pri
+[  3%] Built target qmodule_pri
+[  2%] Built target Core_lib_pri
+[  3%] Built target BundledLibpng_ext_pri
+[  3%] Built target BundledFreetype_ext_pri
+[  3%] Built target PngPrivate_sync_headers
+[  1%] Built target Network_lib_pri
+[  3%] Built target Gui_lib_pri
+[  3%] Built target Xml_lib_pri
+[  3%] Built target Concurrent_lib_pri
+[  3%] Built target ExampleIconsPrivate_sync_headers
+[  3%] Built target OpenGL_lib_pri
+[  3%] Built target Widgets_lib_pri
+[  3%] Built target Test_lib_pri
+[  3%] Built target Sql_lib_pri
+[  3%] Built target OpenGLWidgets_lib_pri
+[  3%] Built target PrintSupport_lib_pri
+[1m[35mConsolidate compiler generated dependencies of target BundledLibjpeg16bits[0m
+[1m[35mConsolidate compiler generated dependencies of target BundledPcre2[0m
+[1m[35mConsolidate compiler generated dependencies of target BundledLibjpeg12bits[0m
+[  3%] Built target ExampleIconsPrivate_autogen_timestamp_deps
+[  3%] Built target PngPrivate
+[  3%] Built target ZlibPrivate
+[  4%] Built target BundledLibjpeg16bits
+[  4%] Built target JpegPrivate
+[  4%] Built target Core_sync_headers
+[  8%] Built target BundledLibjpeg12bits
+[  8%] Built target BundledPcre2
+[1m[35mConsolidate compiler generated dependencies of target ExampleIconsPrivate_resources_1[0m
+[1m[35mConsolidate compiler generated dependencies of target BundledZLIB[0m
+[1m[35mConsolidate compiler generated dependencies of target BundledLibjpeg[0m
+[  8%] Built target ExampleIconsPrivate_autogen
+[  8%] Built target ExampleIconsPrivate_resources_1
+[  8%] Built target DeviceDiscoverySupportPrivate_sync_headers
+[  8%] Built target Sql_sync_headers
+[  8%] Built target Concurrent_sync_headers
+[  8%] Built target Xml_sync_headers
+[  8%] Built target Core_autogen_timestamp_deps
+[  8%] Built target Network_sync_headers
+[  8%] Built target Gui_sync_headers
+[  9%] Built target BundledZLIB
+[  9%] [1m[34mRunning AUTOMOC file extraction for target ExampleIconsPrivate[0m
+[ 14%] Built target BundledLibjpeg
+[1m[35mConsolidate compiler generated dependencies of target BundledHarfbuzz[0m
+[1m[35mConsolidate compiler generated dependencies of target ExampleIconsPrivate[0m
+[ 14%] Built target QTlsBackendCertOnlyPlugin_autogen_timestamp_deps
+[ 14%] Built target DeviceDiscoverySupportPrivate_autogen_timestamp_deps
+[ 14%] Built target FbSupportPrivate_sync_headers
+[ 14%] Built target OpenGL_sync_headers
+[ 14%] Built target Test_sync_headers
+[ 14%] Built target Widgets_sync_headers
+[ 14%] Built target Core_autogen
+[ 15%] Built target ExampleIconsPrivate
+[ 15%] Built target PrintSupport_sync_headers
+[ 15%] Built target QTlsBackendCertOnlyPlugin_autogen
+[ 15%] Built target OpenGLWidgets_sync_headers
+[ 15%] Built target FbSupportPrivate_autogen_timestamp_deps
+[ 15%] Built target DeviceDiscoverySupportPrivate_autogen
+[ 15%] Built target FbSupportPrivate_autogen
+[ 19%] Built target BundledHarfbuzz
+[1m[35mConsolidate compiler generated dependencies of target Core[0m
+[ 37%] Built target Core
+[1m[35mConsolidate compiler generated dependencies of target BundledLibpng[0m
+[1m[35mConsolidate compiler generated dependencies of target DeviceDiscoverySupportPrivate[0m
+[ 37%] Built target QSQLiteDriverPlugin_autogen_timestamp_deps
+[ 37%] Built target Xml_autogen_timestamp_deps
+[ 37%] Built target Gui_autogen_timestamp_deps
+[ 37%] Built target Network_autogen_timestamp_deps
+[ 37%] Built target Concurrent_autogen_timestamp_deps
+[ 37%] Built target Test_autogen_timestamp_deps
+[ 37%] Built target Sql_autogen_timestamp_deps
+[ 38%] Built target BundledLibpng
+[ 38%] Built target DeviceDiscoverySupportPrivate
+[ 39%] Built target Xml_autogen
+[ 39%] Built target Concurrent_autogen
+[ 39%] Built target QSQLiteDriverPlugin_autogen
+[ 39%] Built target Sql_autogen
+[1m[35mConsolidate compiler generated dependencies of target BundledFreetype[0m
+[ 39%] Built target Test_autogen
+[ 39%] Built target Network_autogen
+[ 39%] [1m[34mRunning AUTOMOC file extraction for target Xml[0m
+[ 39%] [1m[34mRunning AUTOMOC file extraction for target Concurrent[0m
+[ 39%] Built target Gui_autogen
+[1m[35mConsolidate compiler generated dependencies of target Sql[0m
+[1m[35mConsolidate compiler generated dependencies of target Concurrent[0m
+[1m[35mConsolidate compiler generated dependencies of target Xml[0m
+[1m[35mConsolidate compiler generated dependencies of target Test[0m
+[ 42%] Built target BundledFreetype
+[ 42%] Built target Xml
+[ 43%] Built target Concurrent
+[ 45%] Built target Sql
+[1m[35mConsolidate compiler generated dependencies of target Network[0m
+[1m[35mConsolidate compiler generated dependencies of target QSQLiteDriverPlugin[0m
+[ 47%] Built target QSQLiteDriverPlugin
+[ 49%] Built target Test
+[1m[35mConsolidate compiler generated dependencies of target Gui[0m
+[ 56%] Built target Network
+[1m[35mConsolidate compiler generated dependencies of target QTlsBackendCertOnlyPlugin[0m
+[ 57%] Built target QTlsBackendCertOnlyPlugin
+[ 75%] Built target Gui
+[1m[35mConsolidate compiler generated dependencies of target FbSupportPrivate[0m
+[ 75%] Built target OpenGL_autogen_timestamp_deps
+[ 75%] Built target QICOPlugin_autogen_timestamp_deps
+[ 75%] Built target QGifPlugin_autogen_timestamp_deps
+[ 75%] Built target QJpegPlugin_autogen_timestamp_deps
+[ 75%] Built target QGenodeIntegrationPlugin_autogen_timestamp_deps
+[ 75%] Built target QTuioTouchPlugin_autogen_timestamp_deps
+[ 75%] Built target Widgets_autogen_timestamp_deps
+[ 76%] Built target FbSupportPrivate
+[ 76%] Built target QGenodeIntegrationPlugin_autogen
+[ 76%] Built target OpenGL_autogen
+[ 76%] Built target QTuioTouchPlugin_autogen
+[ 76%] Built target QICOPlugin_autogen
+[ 76%] Built target QGifPlugin_autogen
+[ 76%] Built target QJpegPlugin_autogen
+[ 76%] Built target Widgets_autogen
+[1m[35mConsolidate compiler generated dependencies of target QJpegPlugin[0m
+[1m[35mConsolidate compiler generated dependencies of target QICOPlugin[0m
+[1m[35mConsolidate compiler generated dependencies of target QGifPlugin[0m
+[1m[35mConsolidate compiler generated dependencies of target QTuioTouchPlugin[0m
+[1m[35mConsolidate compiler generated dependencies of target QGenodeIntegrationPlugin[0m
+[ 76%] Built target QJpegPlugin
+[ 76%] Built target QGifPlugin
+[ 77%] Built target QICOPlugin
+[ 77%] Built target QTuioTouchPlugin
+[1m[35mConsolidate compiler generated dependencies of target OpenGL[0m
+[ 78%] Built target QGenodeIntegrationPlugin
+[ 83%] Built target OpenGL
+[1m[35mConsolidate compiler generated dependencies of target Widgets[0m
+[ 97%] Built target Widgets
+[ 97%] Built target OpenGLWidgets_autogen_timestamp_deps
+[ 97%] Built target PrintSupport_autogen_timestamp_deps
+[ 97%] Built target PrintSupport_autogen
+[ 97%] Built target OpenGLWidgets_autogen
+[1m[35mConsolidate compiler generated dependencies of target OpenGLWidgets[0m
+[1m[35mConsolidate compiler generated dependencies of target PrintSupport[0m
+[ 97%] Built target OpenGLWidgets
+[100%] Built target PrintSupport
+[  2%] Built target Core_lib_pri
+[  2%] Built target qmodule_pri
+[  2%] Built target Platform
+[  3%] Built target JpegPrivate_sync_headers
+[  3%] Built target HarfbuzzPrivate_sync_headers
+[  3%] Built target BundledLibjpeg_ext_pri
+[  3%] Built target BundledLibpng_ext_pri
+[  3%] Built target PngPrivate_sync_headers
+[  3%] Built target ZlibPrivate_sync_headers
+[  3%] Built target FreetypePrivate_sync_headers
+[  3%] Built target BundledFreetype_ext_pri
+[  3%] Built target Network_lib_pri
+[  3%] Built target Sql_lib_pri
+[  3%] Built target Concurrent_lib_pri
+[  3%] Built target OpenGLWidgets_lib_pri
+[  3%] Built target Xml_lib_pri
+[  3%] Built target Gui_lib_pri
+[  3%] Built target Test_lib_pri
+[  3%] Built target OpenGL_lib_pri
+[  3%] Built target ExampleIconsPrivate_sync_headers
+[  3%] Built target Widgets_lib_pri
+[  3%] Built target PrintSupport_lib_pri
+[  4%] Built target ExampleIconsPrivate_autogen_timestamp_deps
+[  4%] Built target JpegPrivate
+[  4%] Built target ZlibPrivate
+[  4%] Built target BundledLibjpeg16bits
+[  6%] Built target BundledPcre2
+[  6%] Built target Core_sync_headers
+[  6%] Built target PngPrivate
+[  8%] Built target BundledLibjpeg12bits
+[  8%] Built target Core_autogen_timestamp_deps
+[  8%] Built target Xml_sync_headers
+[  8%] Built target Sql_sync_headers
+[  8%] Built target ExampleIconsPrivate_autogen
+[  8%] Built target ExampleIconsPrivate_resources_1
+[  9%] Built target BundledZLIB
+[  9%] Built target Network_sync_headers
+[  9%] Built target Concurrent_sync_headers
+[  9%] Built target Gui_sync_headers
+[  9%] Built target DeviceDiscoverySupportPrivate_sync_headers
+[ 14%] Built target BundledLibjpeg
+[ 14%] [1m[34mRunning AUTOMOC file extraction for target ExampleIconsPrivate[0m
+[ 14%] Built target QTlsBackendCertOnlyPlugin_autogen_timestamp_deps
+[ 14%] Built target DeviceDiscoverySupportPrivate_autogen_timestamp_deps
+[ 14%] Built target FbSupportPrivate_sync_headers
+[ 14%] Built target OpenGL_sync_headers
+[ 14%] Built target Test_sync_headers
+[ 14%] Built target Widgets_sync_headers
+[ 14%] Built target Core_autogen
+[ 15%] Built target ExampleIconsPrivate
+[ 19%] Built target BundledHarfbuzz
+[ 19%] Built target FbSupportPrivate_autogen_timestamp_deps
+[ 19%] Built target OpenGLWidgets_sync_headers
+[ 19%] Built target PrintSupport_sync_headers
+[ 19%] Built target QTlsBackendCertOnlyPlugin_autogen
+[ 19%] Built target DeviceDiscoverySupportPrivate_autogen
+[ 19%] Built target FbSupportPrivate_autogen
+[ 37%] Built target Core
+[ 37%] Built target QSQLiteDriverPlugin_autogen_timestamp_deps
+[ 37%] Built target Network_autogen_timestamp_deps
+[ 37%] Built target Sql_autogen_timestamp_deps
+[ 37%] Built target Xml_autogen_timestamp_deps
+[ 37%] Built target Test_autogen_timestamp_deps
+[ 37%] Built target Gui_autogen_timestamp_deps
+[ 37%] Built target Concurrent_autogen_timestamp_deps
+[ 38%] Built target BundledLibpng
+[ 38%] Built target DeviceDiscoverySupportPrivate
+[ 39%] Built target Concurrent_autogen
+[ 39%] Built target Xml_autogen
+[ 39%] Built target Sql_autogen
+[ 39%] Built target QSQLiteDriverPlugin_autogen
+[ 39%] Built target Network_autogen
+[ 39%] Built target Test_autogen
+[ 40%] Built target Gui_autogen
+[ 42%] Built target BundledFreetype
+[ 42%] [1m[34mRunning AUTOMOC file extraction for target Concurrent[0m
+[ 42%] [1m[34mRunning AUTOMOC file extraction for target Xml[0m
+[ 43%] Built target Xml
+[ 43%] Built target Concurrent
+[ 45%] Built target Sql
+[ 48%] Built target Test
+[ 49%] Built target QSQLiteDriverPlugin
+[ 56%] Built target Network
+[ 57%] Built target QTlsBackendCertOnlyPlugin
+[ 75%] Built target Gui
+[ 75%] Built target QTuioTouchPlugin_autogen_timestamp_deps
+[ 75%] Built target OpenGL_autogen_timestamp_deps
+[ 75%] Built target QGenodeIntegrationPlugin_autogen_timestamp_deps
+[ 75%] Built target QICOPlugin_autogen_timestamp_deps
+[ 75%] Built target QGifPlugin_autogen_timestamp_deps
+[ 75%] Built target QJpegPlugin_autogen_timestamp_deps
+[ 75%] Built target Widgets_autogen_timestamp_deps
+[ 76%] Built target FbSupportPrivate
+[ 76%] Built target QJpegPlugin_autogen
+[ 76%] Built target QTuioTouchPlugin_autogen
+[ 76%] Built target QGenodeIntegrationPlugin_autogen
+[ 76%] Built target OpenGL_autogen
+[ 76%] Built target QICOPlugin_autogen
+[ 76%] Built target QGifPlugin_autogen
+[ 76%] Built target Widgets_autogen
+[ 77%] Built target QGifPlugin
+[ 77%] Built target QTuioTouchPlugin
+[ 77%] Built target QICOPlugin
+[ 77%] Built target QJpegPlugin
+[ 78%] Built target QGenodeIntegrationPlugin
+[ 83%] Built target OpenGL
+[ 97%] Built target Widgets
+[ 97%] Built target PrintSupport_autogen_timestamp_deps
+[ 97%] Built target OpenGLWidgets_autogen_timestamp_deps
+[ 97%] Built target OpenGLWidgets_autogen
+[ 97%] Built target PrintSupport_autogen
+[ 97%] Built target OpenGLWidgets
+[100%] Built target PrintSupport
+[36mInstall the project...[0m
+-- Install configuration: "RelWithDebInfo"
+  [01;33mProgram[0m server/cached_fs_rom/cached_fs_rom
+  [01;33mProgram[0m server/event_filter/event_filter
+  [01;33mProgram[0m server/nitpicker/nitpicker
+  [01;33mProgram[0m server/part_block/part_block
+  [01;33mProgram[0m server/report_rom/report_rom
+  [01;33mProgram[0m server/terminal/terminal
+  [01;33mProgram[0m server/vfs/vfs
+  [01;33mProgram[0m server/wm/wm
+  [01;33mProgram[0m sponge-de/sponge_de.pro.qmake_target
+  [01;33mProgram[0m sponge_configd/sponge_configd
+  [01;33mProgram[0m sponge_console/sponge_console
+  [01;33mProgram[0m sponge_debug/sponge_debug.pro.qmake_target
+  [01;33mProgram[0m sponge_files/sponge_files.pro.qmake_target
+  [01;33mProgram[0m sponge_pkgd/sponge_pkgd
+  [01;33mProgram[0m sponge_supervisor/sponge_supervisor
+  [01;33mProgram[0m sponge_themed/sponge_themed
+  [01;33mProgram[0m test/alpha_probe/alpha_probe
+  [01;33mProgram[0m timer/hpet/hpet_timer
+genode build completed
+bake: profile=desktop  mode=img  destdir=var/run/sponge-desktop-disk-uefi-nvme/system
+bake:   pkgs (1):  hello, terminal, textedit, files, calculator, pdf_view, falkon, debug
+bake:   config: 4 keys
+bake:   theme: default
+bake: staged 8 packages + manifest in var/run/sponge-desktop-disk-uefi-nvme/system
+building targets: kernel/sel4 lib/ld-sel4
+spawn make kernel/sel4 lib/ld-sel4
+  [00;33mLibrary[0m kernel-sel4-pc.lib.a
+ninja: no work to do.
+  [00;33mLibrary[0m syscall-sel4-pc.lib.a
+  [00;33mLibrary[0m syscall-sel4.lib.a
+  [00;33mLibrary[0m startup-sel4.lib.a
+  [00;33mLibrary[0m base-sel4-common.lib.a
+  [00;33mLibrary[0m timeout.lib.a
+  [00;33mLibrary[0m cxx.lib.a
+  [00;33mLibrary[0m base-sel4.lib.a
+  [00;33mLibrary[0m ldso_so_support.lib.a
+  [00;33mLibrary[0m ld-sel4.lib.so
+  [01;33mProgram[0m kernel/sel4/sel4-pc
+genode build completed
+using 'core-sel4.a' as 'core.a'
+using 'ld-sel4.lib.so' as 'ld.lib.so'
+using 'hpet_timer' as 'timer'
+sponge-desktop-disk-uefi-nvme: image.elf = 16 MiB (17036304 bytes)
+
+[sponge-desktop-disk-uefi-nvme] structural gate 1/N: sgdisk -p on bootloader .img
+Disk var/run/sponge-desktop-disk-uefi-nvme.img: 262144 sectors, 128.0 MiB
+Sector size (logical): 512 bytes
+Disk identifier (GUID): E8EB333A-F4F3-4623-835F-F292D3C229BA
+Partition table holds up to 128 entries
+Main partition table begins at sector 2 and ends at sector 33
+First usable sector is 34, last usable sector is 262110
+Partitions will be aligned on 2048-sector boundaries
+Total free space is 65469 sectors (32.0 MiB)
+
+Number  Start (sector)    End (sector)  Size       Code  Name
+   1            2048          133119   64.0 MiB    EF00  ESP
+   3          133120          198655   32.0 MiB    8300  GENODE
+[sponge-desktop-disk-uefi-nvme] PASS — bootloader .img has P1=EF00(ESP) + P3=8300(GENODE) + P2 absent
+
+[sponge-desktop-disk-uefi-nvme] structural gate 2/N: mdir on bootloader .img ESP
+ Volume in drive : is ESP        
+ Volume Serial Number is AFF3-EB2C
+Directory for ::/
+
+EFI          <DIR>     2026-10-17  20:24 
+boot         <DIR>     2026-10-17  20:24 
+        2 files                   0 bytes
+
+Directory for ::/EFI
+
+.            <DIR>     2026-10-17  20:24 
+..           <DIR>     2026-10-17  20:24 
+BOOT         <DIR>     2026-10-17  20:24 
+        3 files                   0 bytes
+
+Directory for ::/EFI/BOOT
+
+.            <DIR>     2026-10-17  20:24 
+..           <DIR>     2026-10-17  20:24 
+BOOTX64  EFI    999424 2026-10-17  20:24 
+grub     cfg       509 2026-10-17  20:24 
+        4 files             999 933 bytes
+
+Directory for ::/boot
+
+.            <DIR>     2026-10-17  20:24 
+..           <DIR>     2026-10-17  20:24 
+grub         <DIR>     2026-10-17  20:24 
+font     pf2      7024 2026-10-17  20:24 
+        4 files               7 024 bytes
+
+Directory for ::/boot/grub
+
+.            <DIR>     2026-10-17  20:24 
+..           <DIR>     2026-10-17  20:24 
+grub     cfg       509 2026-10-17  20:24 
+        3 files                 509 bytes
+
+Total files listed:
+       16 files           1 007 466 bytes
+                         65 939 456 bytes free
+
+[sponge-desktop-disk-uefi-nvme] PASS — bootloader .img ESP contains EFI/BOOT/BOOTX64.EFI and grub.cfg
+
+[sponge-desktop-disk-uefi-nvme] structural gate 3/N: e2ls on NVMe disk P3
+  /system/bake: bake_manifest.json  config.defaults     theme.defaults      
+  /system/bin:  alpha_probe         boot_fb             calculatorform      cfg_probe           
+decorator           hello               init                pdf_view            
+report_rom          sponge-de           sponge_configd      sponge_debug        
+sponge_files        sponge_pkgd         sponge_themed       terminal            
+window_layouter     wm                  
+  /system:      bake                bin                 config              default.theme       
+init                lib                 light.theme         pkg                 
+pkg_calculator.xml  pkg_debug.xml       pkg_falkon.xml      pkg_files.xml       
+pkg_hello.xml       pkg_index.xml       pkg_pdf_view.xml    pkg_terminal.xml    
+pkg_textedit.xml    qt6_dejavusans.tar  qt6_libqgenode.tar  
+[sponge-desktop-disk-uefi-nvme] PASS — NVMe disk P3 carries bake_manifest.json, /system/bin/boot_fb, and the profile's pkg_*.xml set
+
+[sponge-desktop-disk-uefi-nvme] host-side structural verification summary:
+  3 / 3 gates passed
+
+spawn qemu-system-x86_64 -accel kvm -machine q35 -cpu Skylake-Client -nographic -m 8G -snapshot -device nec-usb-xhci,id=xhci -device usb-tablet -drive if=pflash,format=raw,readonly=on,file=/home/luke/sponge-os/var/ovmf/OVMF_CODE.fd -drive if=pflash,format=raw,file=/home/luke/sponge-os/var/ovmf/OVMF_VARS.fd -fw_cfg name=opt/org.tianocore/UninstallMemAttrProtocol,string=yes -device pcie-root-port,id=root_port1 -drive id=disk0,file=bin/nvme_disk.img,format=raw,if=none -device nvme,drive=disk0,serial=fnord,id=nvme0,bus=root_port1 -serial mon:stdio -drive format=raw,file=var/run/sponge-desktop-disk-uefi-nvme.img -machine q35 -net nic,model=e1000,netdev=net0 -netdev user,id=net0
+
+[sponge-desktop-disk-uefi-nvme] starting bounded QEMU boot (≤180 s)
+  serial log: var/run/sponge-desktop-disk-uefi-nvme/uefi-boot.log
+  expected: OVMF → GRUB2 → bender → seL4 → core warnings → hang
+            (per W1 OVMF core-init hang, docs/evidence/phase15-uefi-boot-smoke.log)
+qemu-system-x86_64: warning: host doesn't support requested feature: CPUID[eax=0Dh,ecx=01h].EAX.xsavec [bit 1]
+qemu-system-x86_64: warning: host doesn't support requested feature: CPUID[eax=0Dh,ecx=01h].EAX.xgetbv1 [bit 2]
+[2J[01;01H[=3h[2J[01;01H[2J[01;01H[=3h[2J[01;01H[2J[01;01H[=3h[2J[01;01HBdsDxe: loading Boot0001 "UEFI QEMU HARDDISK QM00001 " from PciRoot(0x0)/Pci(0x1F,0x2)/Sata(0x0,0xFFFF,0x0)
+
+BdsDxe: starting Boot0001 "UEFI QEMU HARDDISK QM00001 " from PciRoot(0x0)/Pci(0x1F,0x2)/Sata(0x0,0xFFFF,0x0)
+
+
+
+Bender Version 0.9-beta7-51-g77a6918-dirty
+
+Patching BDA with I/O port 0x3f8.
+
+Bender: Hello World.
+
+hwp config: eeo=na irq=na hwp=na epp=na epb=na
+Bender: tolerating overlap with reclaimable region 800000+8000 type=4 (phdr 20835f+609bc1)
+
+Bender: tolerating overlap with reclaimable region 80b000+1000 type=4 (phdr 20835f+609bc1)
+
+Bender: tolerating overlap with reclaimable region 810000+f0000 type=4 (phdr 20835f+609bc1)
+
+Boot config: debug_port = 0x3f8
+
+Boot config: disable_iommu = true
+
+  module #0: start=0x1780000 end=0x27bf410 size=0x103f410 name='image.elf'
+
+	Physical Memory Region from 0 size a0000 type 1
+
+	Physical Memory Region from 100000 size 700000 type 1
+
+Adding physical memory region 0x100000-0x800000
+
+	Physical Memory Region from 800000 size 8000 type 4
+
+	Physical Memory Region from 808000 size 3000 type 1
+
+Adding physical memory region 0x808000-0x80b000
+
+	Physical Memory Region from 80b000 size 1000 type 4
+
+	Physical Memory Region from 80c000 size 4000 type 1
+
+Adding physical memory region 0x80c000-0x810000
+
+	Physical Memory Region from 810000 size f0000 type 4
+
+	Physical Memory Region from 900000 size 7e70e000 type 1
+
+Adding physical memory region 0x900000-0x7f00e000
+
+	Physical Memory Region from 7f00e000 size c1000 type 2
+
+	Physical Memory Region from 7f0cf000 size 81e000 type 1
+
+Adding physical memory region 0x7f0cf000-0x7f8ed000
+
+	Physical Memory Region from 7f8ed000 size 100000 type 2
+
+	Physical Memory Region from 7f9ed000 size 100000 type 20
+
+	Physical Memory Region from 7faed000 size 80000 type 2
+
+	Physical Memory Region from 7fb6d000 size 12000 type 3
+
+	Physical Memory Region from 7fb7f000 size 80000 type 4
+
+	Physical Memory Region from 7fbff000 size 2f5000 type 1
+
+Adding physical memory region 0x7fbff000-0x7fef4000
+
+	Physical Memory Region from 7fef4000 size 84000 type 2
+
+	Physical Memory Region from 7ff78000 size 88000 type 4
+
+	Physical Memory Region from e0000000 size 10000000 type 2
+
+	Physical Memory Region from feffc000 size 4000 type 2
+
+	Physical Memory Region from ffc00000 size 400000 type 2
+
+	Physical Memory Region from 100000000 size 180000000 type 1
+
+Adding physical memory region 0x100000000-0x280000000
+
+Got framebuffer info in multiboot2. Current video mode is at physical address=80000000 pitch=10240 resolution=2560x1600@32 type=1
+
+Detected 1 boot module(s):
+
+Kernel loaded to: start=0x200000 end=0xe3e000 size=0xc3e000 entry=0x2002a3
+
+ACPI: RSDT paddr=0x7fb7d074
+
+ACPI: RSDT vaddr=0x7fb7d074
+
+ACPI: FADT paddr=0x7fb79000
+
+ACPI: FADT vaddr=0x7fb79000
+
+ACPI: FADT flags=0x84a5
+
+ACPI: MADT paddr=0x7fb78000
+
+ACPI: MADT vaddr=0x7fb78000
+
+ACPI: MADT apic_addr=0xfee00000
+
+ACPI: MADT flags=0x1
+
+ACPI: MADT_APIC apic_id=0x0
+
+ACPI: MADT_IOAPIC ioapic_id=0 ioapic_addr=0xfec00000 gsib=0
+
+ACPI: MADT_ISO bus=0 source=0 gsi=0x002 flags=0x0
+
+ACPI: MADT_ISO bus=0 source=5 gsi=0x005 flags=0xd
+
+ACPI: MADT_ISO bus=0 source=9 gsi=0x009 flags=0xd
+
+ACPI: MADT_ISO bus=0 source=10 gsi=0x00a flags=0xd
+
+ACPI: MADT_ISO bus=0 source=11 gsi=0x00b flags=0xd
+
+ACPI: 1 CPU(s) detected
+
+ELF-loading userland images from boot modules:
+
+size=0x2a3e000 v_entry=0x2000018 v_start=0x2000000 v_end=0x4a3e000 p_start=0x27c0000 p_end=0x51fe000
+
+Moving loaded userland images to final location: from=0x27c0000 to=0xe3e000 size=0x2a3e000
+
+Starting node #0 with APIC ID 0
+
+Mapping kernel window is done
+
+vt-x: not supported
+
+Available phys memory regions: 7
+
+  [100000..800000)
+
+  [808000..80b000)
+
+  [80c000..810000)
+
+  [900000..7f00e000)
+
+  [7f0cf000..7f8ed000)
+
+  [7fbff000..7fef4000)
+
+  [100000000..280000000)
+
+Reserved virt address space regions: 1
+
+  [ffffff8000200000..ffffff800387c000)
+
+Booting all finished, dropped to user space
+
+[34mWarning: init_freemem artifact untyped skipped: 0x200000 size 0x200000[0m
+
+[34mWarning: init_freemem artifact untyped skipped: 0x400000 size 0x400000[0m
+
+[34mWarning: init_freemem artifact untyped skipped: 0x800000 size 0x200000[0m
+
+:phys_mem_16k:     Allocator 0x257a7f8 dump:
+
+ Block: [0000000000100000,0000000000200000) size=1M avail=1M max_avail=1M
+
+ Block: [000000000387c000,0000000004000000) size=7696K avail=7696K max_avail=106224K
+
+ Block: [0000000008000000,000000000e7bc000) size=106224K avail=106224K max_avail=106224K
+
+ => mem_size=117702656 (112 MB) / mem_avail=117702656 (112 MB)
+
+
+
+[34mWarning:        memory in range [0000000200000000,0000000240000000) is unavailable (due to limited untyped cnode range)[0m
+
+[34mWarning:        memory in range [0000000240000000,0000000260000000) is unavailable (due to limited untyped cnode range)[0m
+
+[34mWarning:        memory in range [0000000260000000,0000000270000000) is unavailable (due to limited untyped cnode range)[0m
+
+[34mWarning:        memory in range [0000000270000000,0000000278000000) is unavailable (due to limited untyped cnode range)[0m
+
+[34mWarning:        memory in range [000000027c000000,000000027e000000) is unavailable (due to limited untyped cnode range)[0m
+
+[34mWarning:        memory in range [000000027f01e000,000000027f020000) is unavailable (due to limited untyped cnode range)[0m
+
+[34mWarning:        memory in range [000000027f020000,000000027f040000) is unavailable (due to limited untyped cnode range)[0m
+
+[34mWarning:        memory in range [000000027f040000,000000027f080000) is unavailable (due to limited untyped cnode range)[0m
+
+[34mWarning:        memory in range [000000027f100000,000000027f200000) is unavailable (due to limited untyped cnode range)[0m
+
+[34mWarning:        memory in range [000000027f200000,000000027f400000) is unavailable (due to limited untyped cnode range)[0m
+
+[34mWarning:        memory in range [000000027f400000,000000027f800000) is unavailable (due to limited untyped cnode range)[0m
+
+[34mWarning:        memory in range [000000027f800000,0000000280000000) is unavailable (due to limited untyped cnode range)[0m
+
+virtual address layout of core:
+
+ overall    [0000000000002000,0000001000000000)
+
+ core image [0000000002000000,0000000004a3e000)
+
+ ipc buffer [0000000004a3e000,0000000004a3f000)
+
+ boot_info  [0000000004a3f000,0000000004a40532)
+
+ stack area [0000000040000000,0000000050000000)
+
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+
+Physical memory per PD at most: 512M
+
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+
+boot module 'config' (11483 bytes)
+
+boot module 'ld.lib.so' (1107760 bytes)
+
+boot module 'init' (507176 bytes)
+
+boot module 'timer' (139920 bytes)
+
+boot module 'report_rom' (150784 bytes)
+
+boot module 'nitpicker' (530128 bytes)
+
+boot module 'platform' (594696 bytes)
+
+boot module 'acpi' (185600 bytes)
+
+boot module 'pci_decode' (171336 bytes)
+
+boot module 'nvme' (285440 bytes)
+
+boot module 'part_block' (192336 bytes)
+
+boot module 'vfs' (254248 bytes)
+
+boot module 'cached_fs_rom' (165200 bytes)
+
+boot module 'boot_fb' (119800 bytes)
+
+boot module 'ps2' (156632 bytes)
+
+boot module 'pc_usb_host' (1569304 bytes)
+
+boot module 'usb_hid' (1132576 bytes)
+
+boot module 'event_filter' (342048 bytes)
+
+boot module 'pointer' (208296 bytes)
+
+boot module 'vfs.lib.so' (769424 bytes)
+
+boot module 'vfs_rump.lib.so' (96072 bytes)
+
+boot module 'rump.lib.so' (1343008 bytes)
+
+boot module 'rump_fs.lib.so' (1113128 bytes)
+
+boot module 'en_us.chargen' (8852 bytes)
+
+boot module 'special.chargen' (1218 bytes)
+
+boot module 'fb.config' (53 bytes)
+
+boot module 'event_filter.config' (661 bytes)
+
+boot module 'sponge_supervisor' (77224 bytes)
+
+boot module 'sponge_console' (119112 bytes)
+
+boot module 'supervisor.templates' (23342 bytes)
+
+boot module 'supervisor.config' (179 bytes)
+
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+
+Genode v0.[sponge-desktop-disk-uefi-nvme] UNEXPECTED — QEMU reached the Genode v... banner
+[sponge-desktop-disk-uefi-nvme] serial log captured: var/run/sponge-desktop-disk-uefi-nvme/uefi-boot.log (8450 bytes)
+
+[sponge-desktop-disk-uefi-nvme] UNEXPECTED — QEMU reached the Genode v... banner
+  (QEMU UEFI boot PASSED; the 15-3 real-hardware diagnostic is now
+   the binding test for this media)
+  exit 0 (host structural gates passed + QEMU reached the unexpected banner)
+EXIT=0
