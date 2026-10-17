@@ -103,17 +103,31 @@ def repo_root() raises -> String:
 def run_argv(cmd: List[String], cwd: String) raises -> Int:
     """Run a command, streaming stdout/stderr to this terminal, and return
     the child exit code. Uses Python subprocess because the Mojo stdlib has
-    no process-spawning facility yet (see tool/README.md)."""
+    no process-spawning facility yet (see tool/README.md).
+
+    The repo-local .venv/bin is prepended to PATH so that Genode's
+    python-driven build steps (the seL4 syscall generator needs `lxml`,
+    the sel4 port check needs `future`) resolve the pinned venv modules
+    instead of failing against the bare system python."""
     var subprocess = Python.import_module("subprocess")
+    var os_py = Python.import_module("os")
     var builtins = Python.import_module("builtins")
     var py_args = builtins.list()
     for part in cmd:
         py_args.append(part)
+    var env = os_py.environ.copy()
+    env["PATH"] = repo_root() + "/.venv/bin:" + String(env["PATH"])
+    # The venv python is a symlink to /usr/bin/python3, so PATH alone does
+    # NOT activate the venv (pyvenv.cfg is resolved against the real
+    # executable). Set PYTHONPATH explicitly — same contract as the
+    # verify gate above.
+    env["VIRTUAL_ENV"] = repo_root() + "/.venv"
+    env["PYTHONPATH"] = repo_root() + "/.venv/lib/python3.14/site-packages"
     var rc: PythonObject
     if cwd.byte_length() > 0:
-        rc = subprocess.call(py_args, cwd=cwd)
+        rc = subprocess.call(py_args, cwd=cwd, env=env)
     else:
-        rc = subprocess.call(py_args)
+        rc = subprocess.call(py_args, env=env)
     return Int(py=rc)
 
 
