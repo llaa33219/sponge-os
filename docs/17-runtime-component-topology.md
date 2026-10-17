@@ -240,6 +240,38 @@ component must never be able to freeze the desktop. Status after the
   and that first paint is never deferred. Non-regression: `sponge-de-test`,
   `sponge-launch`, `sponge-de-sel4-interactive`, `sponge-desktop-disk`
   all PASS.
+- [ ] **Field freeze: NOT reproduced at the panel resolution, and the
+  mechanism that would produce it is named and measured (2026-10-17)**.
+  The field report is a fast scrollbar drag on a resizeable window on the
+  2560x1600 panel, after which the panel reads `⚠ sponge_pkgd
+  unresponsive(N)` and the whole system freezes **including the mouse**.
+  `run/sponge-debug-scrollstorm.run` now boots the field's two defining
+  parameters (panel resolution + window geometry) and measures:
+
+  * **a correctly-sized panel configuration is healthy** — 19 Hz with a
+    387 ms worst event-loop gap and **0** kernel page-table flushes, on a
+    *single* QEMU vCPU. The freeze does not reproduce there;
+  * a **capability quota too small for the panel-resolution buffer**
+    saturates base-sel4's PD mapping cache, and the kernel then falls
+    back to `flush page table entries` **hundreds of times per minute**
+    under a repaint storm (567 vs 25 idle at the same resolution). That
+    is a kernel-wide cost, which is exactly why an idle `pkgd` and the
+    input path (§2: no node of the mouse chain lives inside `system`)
+    fall with it. RED → GREEN on this scenario: **3 Hz / 1379 ms /
+    532 flushes → 19 Hz / 387 ms / 0 flushes**;
+  * ruled out **with numbers**, at the field resolution: a RAM/caps leak
+    (delta_max 0), the client's own rasterisation (a full-panel client
+    window on a 1024x768 framebuffer is healthy at 16 Hz), the
+    compositor's poll rate (5x slower driver: no change), and blocked
+    entrypoints (the heartbeat ranking does not move).
+
+  The shipped media is already sized correctly (`fb | caps: 24000`,
+  `nitpicker | caps: 20000`; `run/sponge-desktop-disk-uefi*.run`), so
+  **the field cause is still open**, and the discriminating test is one
+  grep on the real console — `grep -c 'mapping cache full'` during the
+  drag versus idle. Zero throughout ⇒ a different cause, and the next
+  candidates are the two rows below. Evidence, receipts and the full
+  bisection: [`docs/evidence/sponge-debug-panelfreeze.md`](evidence/sponge-debug-panelfreeze.md).
 - [ ] **Respawn budget and clamp leak — open (found 2026-10-16, NOT
   the field regression)**: `<heartbeat restart_after_skipped="3"/>` has
   no attempt budget and no backoff, so a child that cannot start is
