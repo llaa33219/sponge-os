@@ -28,6 +28,14 @@
  *
  *   storm_ms / storm_start_ms / storm_hz / storm_lines / storm_grow
  *   storm_burst_hz
+ *   storm_win_w / storm_win_h
+ *
+ *   storm_win_w/storm_win_h resize the window (default 700x480, the
+ *   product geometry) so a scenario can drive the field-resolution
+ *   per-frame cost: the compositor's cost is proportional to the
+ *   DAMAGED AREA, so a 2560x1600 window at a 2560x1600 framebuffer is
+ *   the only way to reproduce the field's "mere rendering shouldn't
+ *   kill it" magnitude. Unset = the product geometry, unchanged.
  *
  *   The storm also emits telemetry the measurement is built on:
  *   "STORM checkpoint <ticks> elapsed_ms= rate_hz= max_gap_ms=" every 5 s and
@@ -244,6 +252,8 @@ struct Main
 	unsigned      storm_lines    { 2000 };
 	bool          storm_grow     { false };
 	unsigned      storm_burst_hz { 0 };
+	int           storm_win_w    { 700 };
+	int           storm_win_h    { 480 };
 	unsigned      storm_ticks    { 0 };
 	unsigned      storm_ticks_max { 0 };
 	qint64        storm_last_ms  { 0 };
@@ -304,6 +314,25 @@ struct Main
 		grow = cfg.attribute_value("storm_grow", grow);
 storm_grow     = (grow != 0);
 		storm_burst_hz = cfg.attribute_value("storm_burst_hz", storm_burst_hz);
+		storm_win_w    = cfg.attribute_value("storm_win_w",    storm_win_w);
+		storm_win_h    = cfg.attribute_value("storm_win_h",    storm_win_h);
+
+		/*
+		 * Window geometry is a measurement lever, not a product
+		 * feature. Every cost on the render path (the client's own
+		 * viewport repaint, nitpicker's composite, the framebuffer
+		 * driver's blit to the panel) is proportional to the DAMAGED
+		 * AREA, so the frozen-field magnitude only exists when the
+		 * window is as large as the framebuffer. Left at the product
+		 * 700x480 the measurement would understate the per-frame cost
+		 * by ~6x.
+		 */
+		if (storm_win_w > 0 && storm_win_h > 0 &&
+		    (storm_win_w != window.width() || storm_win_h != window.height())) {
+			window.resize(storm_win_w, storm_win_h);
+			log("sponge_debug: window resized to ",
+			    storm_win_w, "x", storm_win_h);
+		}
 
 		if (storm_ms == 0) {
 			log("sponge_debug: no storm requested (storm_ms=0) — "
