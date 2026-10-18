@@ -352,18 +352,37 @@ puts $index_fh "  <pkg name=\"hello\"/>"
 puts $index_fh "</packages>"
 close $index_fh
 
+# --- driver packages (docs/12 §4.5, §4.6) ---
 #
-# Driver packages (docs/12-package-format.md section 4.5). Opt-in: none
-# of these is listed in a bake profile, so none of them becomes a
-# first-boot root - `vct install pc_nic` is what brings a driver up.
-# Called after this scenario has written pkg_index.xml, which
-# driver_runtime::stage extends.
+# This variant deliberately stages NO bake profile: its package set is
+# the single `hello` probe marker, and making it a full desktop media is
+# a different, larger change — its staging carries neither the Qt6 tars
+# nor the desktop lib set (measured: sponge-de comes up with "Could not
+# find the Qt platform plugin"). That remains the documented
+# limitation in docs/13-installation.md.
 #
-# The DISPLAY driver is the deliberate exception: this scenario stages
-# no bake profile at all (its package set is the single `hello` probe
-# marker), so driver_packages::stage synthesizes a first-boot manifest
-# naming fb_vesa alone. Without a display driver the desktop cannot be
-# pixel-verified, which is this scenario's whole purpose.
+# What the display DOES need is a first-boot root for the fb package,
+# and there is no manifest here to name one — so driver_packages::stage
+# synthesizes a minimal one: a display, and nothing else, is what this
+# variant needs seeded. That also ends the pre-existing `+ bake` ROM
+# denial documented for this scenario (pkgd asked rom_sys for
+# `bake_manifest.json`, which did not exist, and was DENIED it at every
+# boot); the synthesized file is exactly what it asked for, so pkgd now
+# comes up, seeds fb_vesa and the desktop reaches its panel.
+#
+# NOTE: this variant deliberately stages NO bake profile. Its package set
+# is the single `hello` probe marker, and turning it into a full desktop
+# media is a different change (it would also need the Qt6 tars and the
+# desktop lib set, which its staging does not carry — measured: sponge-de
+# comes up with "Could not find the Qt platform plugin"). That stays a
+# documented limitation, docs/13-installation.md.
+#
+# What the display DOES need is a first-boot root for the fb package, and
+# there is no manifest to name one — so driver_packages::stage synthesizes
+# a minimal one (a display, and nothing else, is what this variant needs
+# seeded). That also ends the pre-existing `+ bake` ROM denial: pkgd asks
+# rom_sys for `bake_manifest.json`, and the synthesized file is exactly
+# what it asked for.
 #
 driver_runtime::fb_package fb_vesa
 driver_runtime::stage $sys_dir
