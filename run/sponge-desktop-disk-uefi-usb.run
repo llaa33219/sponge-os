@@ -411,7 +411,7 @@ set build_components {
 	sponge_debug
 	sponge_logdisk
 	cfg_probe sponge_supervisor sponge_console
-	server/terminal
+	server/terminal vct_tty
 	noux-pkg/bash-minimal noux-pkg/vim-minimal
 	noux-pkg/coreutils-minimal noux-pkg/grep noux-pkg/sed
 	noux-pkg/tar noux-pkg/less noux-pkg/findutils

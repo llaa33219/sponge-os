@@ -292,8 +292,50 @@ userspace churn; it does not make a saturated kernel recoverable.
 | `sponge-supervisor-takeover` | sel4 | **PASS** |
 | `sponge-minimal` | linux | **PASS** |
 
-Logs: `churn-regression-*.log` in this directory. The RED-arm receipts
-are in §3/§6.
+Logs: `churn-regression-*.log` in this directory — one per row. The
+RED-arm receipts are in §3/§6.
+
+Verifying the receipts turned up a second pre-existing defect, fixed
+here because it is the same failure class and it sits in the very
+scenario whose log was being read: **`sponge-desktop-disk-uefi-usb`
+declared a `vct_tty` child it never built.** `docs/17` §1 says that
+variant is the one that carries `vct_tty` (and is sized for it at 280000
+caps against the other four's 263000), the scenario has the `<start
+name="vct_tty">` node and a staging guard for `bin/vct_tty` — but the
+guard is `if {[file exists "bin/$b"]}` and `vct_tty` was in no variant's
+`$build_components`, so the copy was skipped **silently** and every boot
+carried
+
+```
+[init -> rom_sys] Error: /bin/vct_tty not found
+[init -> system] Error: vct_tty: environment ROM session denied (label="vct_tty", …)
+```
+
+A product child that has never once started, invisible to the scenario's
+gates because none of them assert it. Under the OLD unbounded restart
+that child was also a permanent churn source — one of the cycles this
+whole document is about. Adding `vct_tty` to `$build_components` fixes
+it; the re-run logs `vct_tty: ready (tty_request channel)`, zero "not
+found", and all four structural gates still PASS. **The lesson worth
+more than the fix:** a staging guard that silently skips a missing
+binary turns a build-list omission into a runtime mystery. The guard
+should be the other way round for anything a `<start>` node names.
+
+### What deliberately did NOT get a budget
+
+- `run/sponge-alpha.run` — the flat ISO reference topology. It has **no
+  `<heartbeat>` restart nodes at all** (only comments explaining that
+  fault containment does not apply there), so there is nothing to bound.
+- `run/sponge-heartbeat-restart.run` — the dedicated diagnostic harness
+  for the restart mechanism, and it is blocked by the pre-existing
+  flat-ISO HPET issue (`docs/17` §5), so it does not run. Its subject
+  IS the restart behaviour; adding a budget would change what it
+  measures. Noted here so the omission reads as a decision rather than
+  an oversight.
+- `run/supervisor.inc`'s control arm — it mirrors the product's
+  `restart_after_skipped="3"` on purpose so the control asserts the same
+  containment the product has. The arm asserts "no fault injected", so a
+  budget can never fire there.
 
 ### One regression run failed, and it is reported rather than re-run away
 
@@ -354,6 +396,8 @@ shape catches.
 | 5 | Genode's log server emits one `write()` per format argument, so a gate regex ending in `.*` can match mid-line and swallow the token the assertion needs (`churn-probe: VERDICT ` with no PASS/FAIL) | the scenario's own leak assertion |
 | 6 | Gates must be ordered by **emission** order, not by assertion order: the budget is spent at ~10 s and the probe's verdict lands at ~30 s, so gating the verdict first swallows the budget line and then waits 120 s for a second one | two 120 s timeouts |
 | 7 | `Genode::Thread`'s constructor does not start the thread; `start()` is separate and its `Start_result` must be checked | `pkg-lifecycle` regressed to "install did not answer" |
+| 8 | `sponge-desktop-disk-uefi-usb` declares a `vct_tty` child that no build list produces, and the staging guard skips it silently | reading that scenario's own regression receipt |
+| 9 | `sponge-minimal` on base-linux needs `BOARD=linux` as well as `KERNEL=linux`; with the build directory's default `BOARD ?= pc` it takes `boot_dir/linux`'s disk-image path and dies in `build_initrd` before the guest starts | the first regression sweep reported it as a failure |
 
 ## 10. Follow-up, stated rather than implied
 
