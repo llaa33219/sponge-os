@@ -1,0 +1,76 @@
+<!--
+  fb_vesa — the VESA BIOS framebuffer driver, as a replaceable driver
+  package.
+
+  Binary `vesa_fb` is built from genode/repos/libports/src/driver/
+  framebuffer/vesa (upstream target `driver/framebuffer/vesa`; sources
+  main.cc/framebuffer.cc/ifx86emu.cc/hw_emul.cc, LIBS = base blit x86emu
+  format). It programs a mode through the BIOS INT 10h interface
+  (hw_emul.cc), opens a Capture session and blits into the mode's
+  physical framebuffer.
+
+  This package REPLACES the static Tier-0 `+ start fb` node that the
+  product media used to carry: the display driver is now an ordinary
+  package whose <start> node sponge_pkgd emits into driver_runtime, so
+  `vct install fb_vesa` / `vct remove fb_vesa` are the whole lifecycle
+  and no privileged Tier-0 fixture is involved.
+
+  <autostart/> is present because the driver is QEMU-verified end to end
+  on the BIOS product media (docs/15-hardware-compatibility.md §8), and
+  it is the package the BIOS media's bake manifest seeds: without it a
+  freshly installed medium would boot to a storage-only system with no
+  display at all (docs/13-installation.md, known limitations).
+
+  <exclusive group="fb"/> is load-bearing: the PCI VGA class is offered
+  to exactly one policy, so a second fb driver running beside this one
+  would take the display away rather than add a capability. sponge_pkgd
+  refuses the conflicting operation with `exclusive-conflict` naming the
+  running peer, and the documented switch is
+      vct remove fb_vesa && vct install fb_boot
+  (docs/12-package-format.md §4.6).
+
+  The inline <config> is the former Tier-0 boot module `fb.config`
+  (genode/repos/os/recipes/raw/drivers_interactive-pc/fb.config)
+  verbatim: the requested mode is 1024x768, and every other attribute
+  vesa_fb understands (period_ms, per-connector rotate/flip) keeps its
+  upstream default. Under UEFI this package is installed but NOT
+  started — the GOP path there is pkg/fb_boot.
+-->
+<package>
+  <name>fb_vesa</name>
+  <version>1.0</version>
+  <description>VESA BIOS framebuffer driver (BIOS display path).</description>
+
+  <kind>driver</kind>
+  <binary>vesa_fb</binary>
+  <quota ram="32M" caps="1000"/>
+
+  <!-- At most one package per exclusive group may run (docs/12 §4.6). -->
+  <exclusive group="fb"/>
+  <autostart/>
+
+  <dependencies/>
+
+  <config width="1024" height="768"/>
+
+  <sessions>
+    <!-- The PCI VGA path: Platform + Dma for the device resource, and
+         the physical aperture as Io_mem / Io_port. -->
+    <session name="Platform" default-route="parent"/>
+    <session name="Dma"      default-route="parent"/>
+    <!-- Spelled as the session service_name() spells it
+         (irq_session / io_mem_session / io_port_session). The route
+         match is case-sensitive, so Io_mem would be a rule nothing
+         ever hits. -->
+    <session name="IRQ"      default-route="parent"/>
+    <session name="IO_MEM"   default-route="parent"/>
+    <session name="IO_PORT"  default-route="parent"/>
+    <!-- The periodic frame pump. -->
+    <session name="Timer"    default-route="parent"/>
+    <!-- The connector inventory report the driver publishes. -->
+    <session name="Report"   default-route="parent"/>
+    <!-- Where the pixels go: nitpicker, reached through the parent
+         chain (system -> Tier-0), never as a <child>. -->
+    <session name="Capture"  default-route="parent"/>
+  </sessions>
+</package>

@@ -1,0 +1,74 @@
+<!--
+  fb_boot — the UEFI GOP framebuffer driver, as a replaceable driver
+  package.
+
+  Binary `boot_fb` is built from genode/repos/os/src/driver/framebuffer/
+  boot (upstream target `driver/framebuffer/boot`; sources main.cc,
+  LIBS = base blit). It maps the framebuffer the kernel reported in
+  `platform_info/boot/framebuffer` (phys/width/height/bpp/pitch/type),
+  REJECTS the mode unless bpp == 32 and type == 1 (RGB), and opens a
+  Capture session to blit into it.
+
+  This package REPLACES the static Tier-0 `+ start fb` node that the
+  UEFI product media used to carry: the display driver is now an
+  ordinary package whose <start> node sponge_pkgd emits into
+  driver_runtime, so install / remove is the whole lifecycle and the
+  VGA policy grant follows the package (docs/15 §8.2).
+
+  <autostart/> is present because the driver is QEMU-verified end to end
+  on the UEFI product media (docs/15-hardware-compatibility.md §8), and
+  it is the package the UEFI media's bake manifest seeds.
+
+  <exclusive group="fb"/> keeps at most one framebuffer driver running
+  (docs/12-package-format.md §4.6): the PCI VGA class is a single
+  resource, so a second fb driver would take the display away rather
+  than add a capability. The documented switch to the BIOS path is
+      vct remove fb_boot && vct install fb_vesa
+  — honest caveat: vesa_fb programs INT 10h, which OVMF does not
+  provide, so on UEFI media that switch is expected to leave the
+  display dark (docs/13-installation.md, known limitations). The
+  BIOS-to-UEFI direction is the verified one.
+
+  The quota is NOT the BIOS package's 32M/1000: boot_fb maps the WHOLE
+  GOP framebuffer and allocates a full-size Capture buffer, and the
+  measured floor on this media is caps 24000 / ram 96M (the value the
+  static Tier-0 node carried — 150 caps exhausted the PD mapping cache
+  at 1024x768 and 6000 caps was still short at the OVMF resolution).
+
+  The inline <config> carries the period_ms the driver defaults to
+  anyway (20 ms); the width/height hints the old Tier-0 fb.config held
+  are meaningless here because boot_fb sizes itself from the GOP
+  report.
+-->
+<package>
+  <name>fb_boot</name>
+  <version>1.0</version>
+  <description>UEFI GOP framebuffer driver (GOP display path).</description>
+
+  <kind>driver</kind>
+  <binary>boot_fb</binary>
+  <quota ram="96M" caps="24000"/>
+
+  <!-- At most one package per exclusive group may run (docs/12 §4.6). -->
+  <exclusive group="fb"/>
+  <autostart/>
+
+  <dependencies/>
+
+  <config period_ms="20"/>
+
+  <sessions>
+    <!-- The kernel's framebuffer aperture. boot_fb does NOT request
+         Platform / Dma / IO_PORT: it is the GOP path, not the VGA PCI
+         path, so it takes no PCI device and claims no exclusive
+         resource beyond the mapping. -->
+    <session name="IO_MEM"   default-route="parent"/>
+    <!-- platform_info: the relay's report_rom policy
+         (label: platform_info | report: platform -> platform_info)
+         turns the kernel's GOP report into this ROM. -->
+    <session name="ROM"      default-route="parent" label="platform_info"/>
+    <session name="Timer"    default-route="parent"/>
+    <session name="Report"   default-route="parent"/>
+    <session name="Capture"  default-route="parent"/>
+  </sessions>
+</package>
