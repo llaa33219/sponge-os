@@ -132,6 +132,60 @@ release. **Not every command ships in the first release.**
 | `vct search <term>` | Phase 7 (delivered) | Search the on-image repository by name or description |
 | `vct launch <package>` | Phase 7 (delivered) | Start an installed package through `sponge_pkgd` |
 
+#### Driver packages: no `vct` change, and why that is the point
+
+`vct install pc_nic` works through the **same** code path as
+`vct install falkon`. There is no driver-specific branch anywhere in
+`vct`: `InstallCommand` forwards the package name verbatim as
+`client.request("install", pkg)`, with no allowlist and no hardcoded
+package names (`repos/sponge/src/vct/commands.cc`), and `sponge_pkgd`
+answers. That is the whole driver UX:
+
+```
+vct install pc_nic     # driver package -> the driver_runtime sandbox
+vct list               # includes pc_nic; per-package kind="driver" in the result
+vct launch pc_nic      # for a driver that has no <autostart/>
+vct remove pc_nic      # drops it from driver_runtime
+vct install pc_nic --explain    # same plan machinery, same renderers
+```
+
+The interesting part is where the *product* differs, and it is all
+downstream of `vct`:
+
+| Question | Answer, and where it comes from |
+|---|---|
+| Which sandbox does the driver run in? | `pkg_runtime` or `driver_runtime`, decided by the package's `<kind>` element — `sponge_pkgd` reads it, not `vct` (docs/12 §4.5). |
+| Why did the install fail on resources? | `sponge_pkgd`'s admission pre-flight refuses before mutating anything and answers `insufficient-resources` with the four figures. `vct` renders that status like any other. |
+| Is the driver running yet? | `<autostart/>` packages get their `<start>` node at install; the others install STOPPED and need `vct launch` (docs/12 §4.5). |
+| Why did it start and then find no hardware? | Not a `vct` question at all — it is a Tier-0 `platform` policy decision, documented in docs/15 §8.2. |
+
+**What `vct` does not yet do.** Two presentation gaps, neither of them
+a flow gap, and both deliberately left rather than guessed at:
+
+- `vct status` does not read `driver_runtime_state`, so it cannot say
+  "the NIC driver is installed but its device is unbound" or "this
+  driver was refused for caps". The data needed for both already
+  exists — `driver_runtime`'s sandbox state report is published and
+  relayed under that label — so this is a rendering gap.
+- The **human-readable** `vct list` table does not print `kind`. The
+  attribute is present in the `list` result and in the installed
+  broadcast, so `vct list --json` and the DE launcher can both read it
+  today; only the human table is undecided about how to show a driver
+  among apps without implying it is launchable from the application
+  launcher, which it is not.
+
+A status line that cannot be backed by a live read is worse than no
+status line, so neither is invented here.
+
+The convention the driver set follows is worth stating here because it
+is a UX contract, not an implementation detail: **on a driver package,
+`<autostart/>` means "verified end to end"**. `pc_nic` carries it; the
+four build-only drivers deliberately do not, so a user who installs one
+gets a package that has not silently claimed to be working. Automation
+default (install) and control (launch, remove, and the Tier-0 policy as
+a manual path — a driver can be started straight from a run script with
+no package manager involved at all) both hold.
+
 #### `vct update [package]`
 
 Synopsis:

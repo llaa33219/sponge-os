@@ -2251,6 +2251,11 @@ void Sponge::Pkgd::Main::_generate_installed_report()
 					 */
 					g.attribute("running",
 					            _is_running(p.name.string()) ? "yes" : "no");
+					/* Which sandbox hosts the package (docs/12 §4.5), so
+					 * a long-lived watcher — the Sponge DE launcher above
+					 * all — can render drivers apart from apps instead of
+					 * offering a driver in the application launcher. */
+					g.attribute("kind", p.kind.string());
 					if (p.has_launcher)
 						g.attribute("category", p.launcher_category);
 					g.attribute("description", p.description);
