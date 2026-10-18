@@ -38,9 +38,9 @@
     <session name="Usb"      default-route="parent"/>
     <session name="Platform" default-route="parent"/>
     <session name="Dma"      default-route="parent"/>
-    <session name="Irq"      default-route="parent"/>
-    <session name="Io_mem"   default-route="parent"/>
-    <session name="Io_port"  default-route="parent"/>
+    <session name="IRQ"      default-route="parent"/>
+    <session name="IO_MEM"   default-route="parent"/>
+    <session name="IO_PORT"  default-route="parent"/>
     <session name="Report"   default-route="parent"/>
     <session name="Timer"    default-route="parent"/>
     <session name="Uplink"   default-route="parent"/>
