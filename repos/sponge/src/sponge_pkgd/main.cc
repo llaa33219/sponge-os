@@ -41,6 +41,19 @@
  * order, no volatile fields) so init's config-diff leaves unchanged
  * children running across unrelated installs.
  *
+ * Two sandboxes, two configs (docs/12-package-format.md §4.5): a
+ * package whose metadata declares <kind>driver</kind> is emitted into
+ * the driver_runtime config instead — a sibling nested init inside the
+ * `system` sandbox whose config this daemon also owns. The split is the
+ * capability boundary: driver_runtime's generated <parent-provides>
+ * carries only the sessions the installed DRIVER packages declared,
+ * pkg_runtime's carries only the sessions the installed APP packages
+ * declared plus the fixed application set. No application package can
+ * reach Platform/Irq/Io_mem/Io_port even by naming them
+ * (AGENTS.md §1.2). Both configs are regenerated together on every
+ * install/remove/launch, so the two sandboxes can never disagree about
+ * the installed set.
+ *
  * Persistence (Phase 4 follow-up #2 / docs/09-roadmap.md §6): the set
  * of explicitly-installed roots is mirrored to a tiny versioned XML
  * store on a File_system session, so installs survive a reboot. The
@@ -111,6 +124,15 @@ struct Sponge::Pkgd::Package
 
 	bool                has_autostart  { false };
 	bool                has_launcher   { false };
+
+	/* Which sandbox owns this package's <start> node: pkg_runtime ("app")
+	 * or driver_runtime ("driver"). The split is what keeps hardware
+	 * capabilities out of the application runtime (AGENTS.md §1.2);
+	 * docs/12-package-format.md §4.5. */
+	Genode::String<16>  kind            { "app" };
+
+	bool is_driver() const
+	{ return Genode::strcmp(kind.string(), "driver") == 0; }
 	bool                resizeable     { true };   /* Phase 16 W9: default-yes; opt-out
 	                                                  is <resizeable>no</resizeable>. The
 	                                                  closed-form token is yes/no (D16.10). */
@@ -304,6 +326,34 @@ class Sponge::Pkgd::Main
 		Genode::Expanding_reporter _runtime_reporter {
 			_env, "config", "runtime",
 			{ .value = RUNTIME_CONFIG_BUFFER } };
+
+		/*
+		 * driver_runtime config report: the second sandbox. A driver
+		 * package (<kind>driver</kind>, docs/12 §4.5) is emitted HERE
+		 * instead of into the pkg_runtime config, into a nested init
+		 * that is a sibling of pkg_runtime inside the `system` sandbox.
+		 *
+		 * Splitting the two configs is the minimum-privilege boundary:
+		 * driver_runtime's generated <parent-provides> carries the
+		 * hardware services (Platform/Irq/Io_mem/Io_port/...) that only
+		 * the installed driver packages declared, while pkg_runtime's
+		 * fixed list stays exactly as it was. An application package can
+		 * therefore never obtain a Platform or Io_port session, no
+		 * matter what it asks for.
+		 *
+		 * Size derivation: the driver set is small and each driver's
+		 * <config> block is a handful of lines (the largest, pc_nic, is
+		 * ~1 KiB). 8192 covers the whole Sculpt PC driver inventory
+		 * (pc_nic + pc_wifi + usb_net + intel_gpu + pc_intel_fb +
+		 * pc_discover + rom_reporter) with ~4x headroom, and matches the
+		 * pre-sized-buffer discipline documented on _runtime_reporter
+		 * above (no growth path, so no transient empty-config window).
+		 */
+		static constexpr Genode::size_t DRIVER_CONFIG_BUFFER = 8192;
+
+		Genode::Expanding_reporter _driver_runtime_reporter {
+			_env, "config", "driver_runtime",
+			{ .value = DRIVER_CONFIG_BUFFER } };
 
 		/*
 		 * Installed-set broadcast (Phase 5c). Long-lived watchers
@@ -541,6 +591,16 @@ class Sponge::Pkgd::Main
 		Genode::Constructible<Genode::Attached_rom_dataspace> _state_rom { };
 		bool               _admission_armed { false };
 
+		/* driver_runtime's sandbox state report. Same shape and same
+		 * reason as _state_rom, but for the driver sandbox: a driver
+		 * package's declared quota has to fit driver_runtime's own
+		 * remaining budget, not pkg_runtime's. Opened only when the
+		 * deployment writes BOTH <admission/> and <driver_admission/>,
+		 * because the relay has to exist in the scenario — a denied ROM
+		 * session is fatal under the base Env policy. */
+		Genode::Constructible<Genode::Attached_rom_dataspace> _driver_state_rom { };
+		bool               _driver_admission_armed { false };
+
 		/*
 		 * Admission safety margin. A refusal threshold of exactly
 		 * `avail >= need` would admit a razor-thin package that init then
@@ -622,6 +682,10 @@ class Sponge::Pkgd::Main
 
 		/* ---- resource admission control (optional, config-gated) ---- */
 		void _init_admission();
+		void _init_driver_admission();
+		static bool _read_budget(Genode::Attached_rom_dataspace &state,
+		                         Genode::size_t &avail_ram,
+		                         unsigned &avail_caps);
 		bool _admission_state(Genode::size_t &avail_ram, unsigned &avail_caps);
 		bool _admits(Package const &p, Genode::size_t need_ram,
 		             Genode::size_t &avail_ram,
@@ -633,6 +697,8 @@ class Sponge::Pkgd::Main
 
 		/* ---- runtime-config generation (deterministic) ---- */
 		void _generate_runtime_config();
+		void _emit_runtime_config(Genode::Expanding_reporter &reporter,
+		                          bool drivers);
 
 		/* ---- installed-broadcast generation (Phase 5c) ---- */
 		void _generate_installed_report();
@@ -1015,6 +1081,23 @@ void Sponge::Pkgd::Main::_parse_package(Genode::Xml_node const &pkg,
 		}
 		else if (child.has_type("autostart")) {
 			out.has_autostart = true;
+		}
+		else if (child.has_type("kind")) {
+			/* Closed-form set (docs/12 §4.5): anything other than
+			 * "driver" is the "app" default. Rejecting unknown kinds
+			 * loudly rather than guessing keeps a typo from silently
+			 * landing a driver in the application runtime. */
+			Genode::String<16> const v =
+				child.decoded_content<Genode::String<16>>();
+			if (v == Genode::String<16>("driver") ||
+			    v == Genode::String<16>("app"))
+				out.kind = v;
+			else {
+				Genode::warning("pkg: <kind> in ", name,
+				                " must be app or driver (got '",
+				                v, "'); defaulting to app");
+				out.kind = Genode::String<16>("app");
+			}
 		}
 		else if (child.has_type("resizeable")) {
 			/*
@@ -1460,10 +1543,17 @@ void Sponge::Pkgd::Main::_do_install(Genode::String<128> const &pkg)
 	 * decremented per admitted package, so a chain of autostart deps is
 	 * checked against what each leaves the next one.
 	 */
-	if (_admission_armed && _state_rom.constructed()) {
-		Genode::size_t free_ram { 0 }, avail_ram { 0 };
-		unsigned       free_caps { 0 }, avail_caps { 0 };
-		bool           budget_known { false };
+	if (_admission_armed || _driver_admission_armed) {
+		/* One budget per sandbox. A plan may legitimately mix kinds (a
+		 * driver with an app dependency, or the reverse), and each kind
+		 * is admitted against the grant of the sandbox it will actually
+		 * be spawned in — not against a merged pool that neither sandbox
+		 * would ever refuse. */
+		Genode::size_t free_ram  [2] { 0, 0 };
+		unsigned       free_caps[2] { 0, 0 };
+		bool           known    [2] { false, false };
+		Genode::size_t avail_ram  { 0 };
+		unsigned       avail_caps { 0 };
 
 		for (unsigned i = 0; i < _num_plan; ++i) {
 			Package const &c = _plan[i];
@@ -1479,17 +1569,27 @@ void Sponge::Pkgd::Main::_do_install(Genode::String<128> const &pkg)
 				return;
 			}
 
-			if (!budget_known) {
-				if (!_admission_state(free_ram, free_caps)) {
-					Genode::log("sponge_pkgd: no pkg_runtime state report "
-					            "yet — admitting ", c.name);
+			unsigned const k = c.is_driver() ? 1u : 0u;
+			if (!known[k]) {
+				bool ok = (k == 1)
+					? (_driver_admission_armed &&
+					   _driver_state_rom.constructed() &&
+					   _read_budget(*_driver_state_rom,
+					                free_ram[k], free_caps[k]))
+					: (_admission_armed && _state_rom.constructed() &&
+					   _read_budget(*_state_rom,
+					                free_ram[k], free_caps[k]));
+				if (!ok) {
+					Genode::log("sponge_pkgd: no ",
+					            k ? "driver_runtime" : "pkg_runtime",
+					            " state report yet — admitting ", c.name);
 					break;
 				}
-				budget_known = true;
+				known[k] = true;
 			}
 
-			avail_ram  = free_ram;
-			avail_caps = free_caps;
+			avail_ram  = free_ram[k];
+			avail_caps = free_caps[k];
 
 			if (!_admits(c, need_ram, avail_ram, c.caps, avail_caps)) {
 				_report_insufficient("install", c.name, need_ram,
@@ -1497,8 +1597,8 @@ void Sponge::Pkgd::Main::_do_install(Genode::String<128> const &pkg)
 				return;
 			}
 
-			free_ram  -= need_ram;
-			free_caps -= (c.caps > free_caps ? 0u : c.caps);
+			free_ram [k] -= need_ram;
+			free_caps[k] -= (c.caps > free_caps[k] ? 0u : c.caps);
 		}
 	}
 
@@ -1695,6 +1795,15 @@ void Sponge::Pkgd::Main::_do_launch(Genode::String<128> const &pkg)
  * init diffs the new config against the live tree, so unchanged
  * children keep running across an unrelated install.
  */
+/*
+ * Emit BOTH sandbox configs from _installed.
+ *
+ * One request produces two deterministic configs: the pkg_runtime one
+ * for <kind>app</kind> packages and the driver_runtime one for
+ * <kind>driver</kind> packages (docs/12 §4.5). They are emitted together
+ * so no call site can ever publish one without the other and leave the
+ * two sandboxes disagreeing about the installed set.
+ */
 void Sponge::Pkgd::Main::_generate_runtime_config()
 {
 	/* test-only (repro harness): delay the first generation to model the
@@ -1795,6 +1904,7 @@ void Sponge::Pkgd::Main::_generate_runtime_config()
 		Genode::log("sponge_pkgd: publishing EMPTY config (write ",
 		            _runtime_config_writes, ") — control channel");
 		_runtime_reporter.generate_xml([&](Genode::Xml_generator &) { });
+		_emit_runtime_config(_driver_runtime_reporter, true);
 		return;
 	}
 	if (repro_pad)
@@ -1813,6 +1923,24 @@ void Sponge::Pkgd::Main::_generate_runtime_config()
 		            " buffer=", (Genode::size_t)RUNTIME_CONFIG_BUFFER);
 	}
 
+	_emit_runtime_config(_runtime_reporter,     false);
+	_emit_runtime_config(_driver_runtime_reporter, true);
+}
+
+
+/*
+ * Emit one sandbox config. `drivers` selects which half of the installed
+ * set lands in it: false = the pkg_runtime config (app packages), true =
+ * the driver_runtime config (driver packages). Every other part of the
+ * generator — the sorted <start> order, the fixed attribute order, the
+ * absence of volatile fields — is shared, so both configs carry the same
+ * determinism contract (the reason unchanged children survive an
+ * unrelated install).
+ */
+void Sponge::Pkgd::Main::_emit_runtime_config(Genode::Expanding_reporter &reporter,
+                                              bool drivers)
+{
+
 	/* Selection-sort the installed set by name into a stable index order. */
 	unsigned order[MAX_PACKAGES] { };
 	for (unsigned i = 0; i < _num_installed; ++i) order[i] = i;
@@ -1830,7 +1958,7 @@ void Sponge::Pkgd::Main::_generate_runtime_config()
 		}
 	}
 
-	_runtime_reporter.generate_xml([&](Genode::Xml_generator &g) {
+	reporter.generate_xml([&](Genode::Xml_generator &g) {
 		/*
 		 * Sandbox state reporting (bring-up observability + admission
 		 * control): makes pkg_runtime emit a periodic <state> report
@@ -1852,7 +1980,7 @@ void Sponge::Pkgd::Main::_generate_runtime_config()
 			g.attribute("init_caps", "yes");
 			g.attribute("child_ram", "yes");
 		});
-		if (pad_bytes)
+		if (!drivers && pad_bytes)
 			g.node("repro_padding", [&] {
 				/*
 				 * One node per 64 pad bytes, each carrying a
@@ -1873,14 +2001,24 @@ void Sponge::Pkgd::Main::_generate_runtime_config()
 			});
 
 		/*
-		 * Extended parent-provides (docs/12 §7.2): the original
-		 * ROM/PD/CPU/LOG/Timer set could not resolve <parent/> routes
-		 * for Gui/Input/Report/File_system/NIC. Phase 7 adds exactly
-		 * those five (Timer is retained, not duplicated).
+		 * The parent-provides set differs between the two sandboxes, and
+		 * that difference IS the capability boundary (AGENTS.md §1.2):
+		 *
+		 *   - pkg_runtime keeps the fixed application set of docs/12 §7.2
+		 *     unchanged and unions in the sessions the installed APP
+		 *     packages declared. It carries no hardware service at all,
+		 *     so an application package cannot obtain Platform/Irq/
+		 *     Io_mem/Io_port even by naming them.
+		 *   - driver_runtime carries only the five services a component
+		 *     cannot construct without (ROM/PD/RM/CPU/LOG) plus exactly
+		 *     the sessions the installed DRIVER packages declared.
+		 *     Nothing hardware-related is pre-granted: with no driver
+		 *     installed the list is the bare five.
 		 */
 		g.node("parent-provides", [&] {
-			g.node("service", [&] { g.attribute("name", "ROM"); });
-			g.node("service", [&] { g.attribute("name", "PD"); });
+			static char const *const APP_BASE[] = {
+				"ROM", "PD", "RM", "CPU", "LOG", "Timer", "Gui",
+				"Input", "Report", "File_system", "Nic", "Rtc" };
 			/*
 			 * RM is a distinct core service (base/src/core/main.cc
 			 * Core_service<Rm_session_component>), NOT subsumed by PD.
@@ -1891,43 +2029,37 @@ void Sponge::Pkgd::Main::_generate_runtime_config()
 			 * PD only hands out the component's own address_space/
 			 * stack_area/linker_area region maps; additional region
 			 * maps require a separate RM session routed to core.
-			 */
-			g.node("service", [&] { g.attribute("name", "RM"); });
-			g.node("service", [&] { g.attribute("name", "CPU"); });
-			g.node("service", [&] { g.attribute("name", "LOG"); });
-			g.node("service", [&] { g.attribute("name", "Timer"); });
-			g.node("service", [&] { g.attribute("name", "Gui"); });
-			g.node("service", [&] { g.attribute("name", "Input"); });
-			g.node("service", [&] { g.attribute("name", "Report"); });
-			g.node("service", [&] { g.attribute("name", "File_system"); });
-			/*
+			 *
 			 * Nic + Rtc use Genode's canonical service-name casing
 			 * (case-sensitive). The prior "NIC" never matched a real
 			 * request; without Rtc here, a networked+rtc package child
 			 * (e.g. falkon) is stopped at construction with
 			 * "parent denied Rtc-session".
 			 */
-			g.node("service", [&] { g.attribute("name", "Nic"); });
-			g.node("service", [&] { g.attribute("name", "Rtc"); });
+			static char const *const DRIVER_BASE[] = {
+				"ROM", "PD", "RM", "CPU", "LOG" };
+
+			char const *const *fixed = drivers ? DRIVER_BASE : APP_BASE;
+			unsigned const num_fixed = drivers ?
+				(sizeof(DRIVER_BASE)/sizeof(DRIVER_BASE[0]))
+				: (sizeof(APP_BASE)/sizeof(APP_BASE[0]));
 
 			/*
-			 * Union in the installed packages' declared session
-			 * names (e.g. the terminal package's Terminal bridge
-			 * session): a service name missing here stops the
-			 * forwarding child with "parent denied <svc>-session"
-			 * — the fixed list above cannot anticipate package-
-			 * specific service types. Static: this runs on the
-			 * ep thread's small stack (same lesson as fresh[]).
+			 * Union in the declared session names of the packages that
+			 * belong to THIS sandbox (e.g. the terminal package's
+			 * Terminal bridge session, or a driver's Platform session):
+			 * a service name missing here stops the forwarding child
+			 * with "parent denied <svc>-session". Static: this runs on
+			 * the ep thread's small stack (same lesson as fresh[]).
 			 */
 			static Genode::String<32> emitted[64] { };
 			static unsigned      num_emitted  { 0 };
 			num_emitted = 0;
-			char const *fixed[] = { "ROM", "PD", "RM", "CPU", "LOG",
-			                    "Timer", "Gui", "Input", "Report",
-			                    "File_system", "Nic", "Rtc" };
-			for (char const *n : fixed)
-				emitted[num_emitted++] = Genode::String<32>(n);
-			for (unsigned i = 0; i < _num_installed; ++i)
+			for (unsigned i = 0; i < num_fixed; ++i)
+				emitted[num_emitted++] = Genode::String<32>(fixed[i]);
+			for (unsigned i = 0; i < _num_installed; ++i) {
+				if (_installed[i].is_driver() != drivers)
+					continue;
 				for (unsigned s = 0; s < _installed[i].num_sessions; ++s) {
 					Genode::String<32> const &n =
 						_installed[i].sessions[s].name;
@@ -1939,9 +2071,11 @@ void Sponge::Pkgd::Main::_generate_runtime_config()
 					if (dup)
 						continue;
 					emitted[num_emitted++] = n;
-					g.node("service", [&] {
-						g.attribute("name", n.string()); });
 				}
+			}
+			for (unsigned i = 0; i < num_emitted; ++i)
+				g.node("service", [&] {
+					g.attribute("name", emitted[i].string()); });
 		});
 
 		g.node("default-route", [&] {
@@ -1969,6 +2103,15 @@ void Sponge::Pkgd::Main::_generate_runtime_config()
 
 		for (unsigned n = 0; n < _num_installed; ++n) {
 			Package const &c = _installed[order[n]];
+
+			/*
+			 * Sandbox split (docs/12 §4.5): a driver package is emitted
+			 * into the driver_runtime config, everything else into the
+			 * pkg_runtime config. This is the single place the two
+			 * sandboxes' membership is decided.
+			 */
+			if (c.is_driver() != drivers)
+				continue;
 
 			/*
 			 * Phase 7 lifecycle gate (docs/12-package-format.md §9.2.1):
@@ -2340,6 +2483,9 @@ void Sponge::Pkgd::Main::_report_list_ok()
 					g.attribute("binary", p.binary);
 					g.attribute("running",
 					            _is_running(p.name.string()) ? "yes" : "no");
+					/* Which sandbox hosts the package (docs/12 §4.5), so
+					 * a watcher can render drivers apart from apps. */
+					g.attribute("kind", p.kind.string());
 					if (p.has_launcher)
 						g.attribute("category", p.launcher_category);
 					g.attribute("description", p.description);
@@ -2887,14 +3033,12 @@ bool Sponge::Pkgd::Main::_quota_bytes(Genode::String<16> const &q,
  * Returns false when no usable report is available yet; the caller then
  * admits (see _admits).
  */
-bool Sponge::Pkgd::Main::_admission_state(Genode::size_t &avail_ram,
-                                          unsigned &avail_caps)
+bool Sponge::Pkgd::Main::_read_budget(Genode::Attached_rom_dataspace &state,
+                                      Genode::size_t &avail_ram,
+                                      unsigned &avail_caps)
 {
-	if (!_state_rom.constructed())
-		return false;
-
-	_state_rom->update();
-	if (!_state_rom->valid() || _state_rom->size() == 0)
+	state.update();
+	if (!state.valid() || state.size() == 0)
 		return false;
 
 	bool ram_ok { false }, caps_ok { false };
@@ -2902,7 +3046,7 @@ bool Sponge::Pkgd::Main::_admission_state(Genode::size_t &avail_ram,
 
 	try {
 		Genode::Hid_node const root(Genode::Const_byte_range_ptr(
-			_state_rom->local_addr<char const>(), _state_rom->size()));
+			state.local_addr<char const>(), state.size()));
 
 		Genode::String<16> ram_avail  { }, caps_avail { };
 		root.for_each_sub_node([&] (Genode::Hid_node const &n) {
@@ -2931,6 +3075,15 @@ bool Sponge::Pkgd::Main::_admission_state(Genode::size_t &avail_ram,
 }
 
 
+bool Sponge::Pkgd::Main::_admission_state(Genode::size_t &avail_ram,
+                                          unsigned &avail_caps)
+{
+	if (!_state_rom.constructed())
+		return false;
+	return _read_budget(*_state_rom, avail_ram, avail_caps);
+}
+
+
 /*
  * Admission decision for one package, against the budget `avail_ram` /
  * `avail_caps` (which the caller may have already decremented for
@@ -2952,16 +3105,38 @@ bool Sponge::Pkgd::Main::_admits(Package const &p,
                                  Genode::size_t &avail_ram,
                                  unsigned need_caps, unsigned &avail_caps)
 {
-	if (!_admission_armed || !_state_rom.constructed()) {
+	if (p.is_driver()) {
+		if (!_driver_admission_armed || !_driver_state_rom.constructed()) {
+			Genode::log("sponge_pkgd: driver admission not armed — admitting ",
+			            p.name);
+			return true;
+		}
+	} else if (!_admission_armed || !_state_rom.constructed()) {
 		Genode::log("sponge_pkgd: admission not armed — admitting ", p.name);
 		return true;
 	}
 
+	/*
+	 * A driver package is checked against driver_runtime's budget, not
+	 * pkg_runtime's — the two sandboxes have separate grants, so reading
+	 * the app report would compare a driver's quota against a number it
+	 * is never subtracted from.
+	 */
 	Genode::size_t free_ram  { 0 };
 	unsigned       free_caps { 0 };
-	if (!_admission_state(free_ram, free_caps)) {
-		Genode::log("sponge_pkgd: no pkg_runtime state report yet — "
-		            "admitting ", p.name);
+	bool have_budget { false };
+	if (p.is_driver()) {
+		if (_driver_admission_armed && _driver_state_rom.constructed())
+			have_budget = _read_budget(*_driver_state_rom,
+			                          free_ram, free_caps);
+	} else {
+		have_budget = _read_budget(*_state_rom, free_ram, free_caps);
+	}
+
+	if (!have_budget) {
+		Genode::log("sponge_pkgd: no ",
+		            p.is_driver() ? "driver_runtime" : "pkg_runtime",
+		            " state report yet — admitting ", p.name);
 		return true;
 	}
 
@@ -3037,6 +3212,30 @@ void Sponge::Pkgd::Main::_init_admission()
 }
 
 
+/*
+ * Arm admission control for the driver sandbox. Opt-in via a separate
+ * <driver_admission/> node so a deployment that has no driver_runtime at
+ * all (every scenario predating it) does not open a ROM session that
+ * would be denied — and a denied ROM session is fatal here, not a
+ * catchable throw.
+ */
+void Sponge::Pkgd::Main::_init_driver_admission()
+{
+	try {
+		_config_rom.node().with_optional_sub_node("driver_admission",
+			[&] (Genode::Node const &) {
+				_driver_state_rom.construct(_env, "driver_runtime_state");
+				_driver_admission_armed = true;
+				Genode::log("sponge_pkgd: driver resource admission armed "
+				            "(driver_runtime state report)");
+			});
+	} catch (Genode::Xml_node::Invalid_syntax) {
+		Genode::warning("sponge_pkgd: malformed <config> — "
+		                "driver resource admission disabled");
+	}
+}
+
+
 Sponge::Pkgd::Main::Main(Genode::Env &env) : _env(env)
 {
 	Genode::log("sponge_pkgd: ready");
@@ -3081,7 +3280,8 @@ _init_binary_manifest();
 	 * that does not relay the state report (a denied ROM session is
 	 * fatal under the base Env policy).
 	 */
-	_init_admission();
+_init_admission();
+	_init_driver_admission();
 
 	/* Rebuild the full installed set from whatever roots we now have
 	 * (empty on a fresh start, possibly restored on a reboot). This is
