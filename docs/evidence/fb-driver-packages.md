@@ -207,12 +207,27 @@ later.
 | `sponge-desktop-disk` + `SPONGE_FB_SWITCH=on` | `fb_vesa` -> `fb_boot` | `using boot framebuffer: 1280x800x32`, screen settled | 0 |
 | `sponge-desktop-disk-uefi` (OVMF) | `fb_boot` | `using boot framebuffer: 2560x1600x32 @ 0x80000000` + `alpha-probe: PASS` | 0 |
 | `sponge-desktop-disk-uefi-nvme` | `fb_boot` | `using boot framebuffer: 2560x1600x32` + `sponge-de: panel shown` | 0 |
-| `sponge-desktop-disk-uefi-usb` | `fb_boot` | DE started on OVMF from the USB stick | 0 |
+| `sponge-desktop-disk-uefi-usb` | `fb_boot` | `using boot framebuffer: 2560x1600x32 @ 0x80000000` + `sponge-de: panel shown` | 0 (see note) |
 | `sponge-desktop-disk-nvme` | `fb_vesa` (synthesized manifest) | `using 1024x768` + `sponge-de: panel shown` + `partition-check: PASS (Number: 3)` | 2 — see below |
 
 Regressions: `sponge-pkg-driver` (0, incl. the new exclusivity gate),
 `sponge-minimal` (0), `sponge-supervisor-takeover` (0, console takeover
 and desktop restore by pixels).
+
+**The `uefi-usb` row needed a second run to earn its receipt, and the
+reason is that scenario's own gate.** Its QEMU phase stops at the
+`sponge-de diag gates:` marker and prints PASS — which fires *before*
+`driver_runtime`'s child can log, so a default run proves "the storage
+chain serves /system from the stick" and nothing about the display. The
+receipt above is from the same scenario with `SPONGE_LAUNCHTEST=on`,
+whose arm keeps the guest alive past that marker; the driver's own line
+and the desktop's `panel shown` then appear. That arm's own launch gate
+(`launch-gate FAIL — terminal request`) timed out on the heavy Qt6
+package launches under softpipe on seL4 — an unrelated flake in an
+opt-in arm, and it does not bear on the display, which is what this row
+is about. The honest summary: **`uefi-usb` needs `SPONGE_LAUNCHTEST=on`
+to show its display receipt, because its default gate ends too early to
+contain one.**
 
 **The NVMe variant's non-zero exit is not a display failure.** Its
 display comes up through the packaged driver and the desktop renders
