@@ -36,6 +36,12 @@
  *     + pkg: pc_nic            # package to install (required)
  *     + expect_status: ok      # optional; non-"ok" asserts a refusal
  *     + timeout_ms: 40000      # optional; per-phase ceiling, default 40s
+ *     + expect_child: yes      # optional; "no" skips the state-report
+ *                              # assertion. Needed when the driver cannot
+ *                              # really come up in this topology (a
+ *                              # framebuffer driver with no compositor)
+ *                              # but pkgd's RUNNING set is what the test
+ *                              # is about.
  *
  * Both phases are bounded by wall-clock sleeps, never by an unbounded
  * poll: docs/09-roadmap.md §11.1 makes a silent hang the worst possible
@@ -80,6 +86,7 @@ struct Driver_probe
 	Genode::String<64> _pkg          { };
 	Genode::String<16> _expect_status{ "ok" };
 	unsigned           _timeout_ms   { 40000 };
+	bool               _expect_child { true  };
 
 	Driver_probe(Genode::Env &env) : _env(env) { }
 
@@ -152,6 +159,7 @@ void Driver_probe::_parse_config()
 		_pkg = root.attribute_value("pkg", Genode::String<64>());
 		_expect_status = root.attribute_value("expect_status", Genode::String<16>("ok"));
 		_timeout_ms = root.attribute_value("timeout_ms", 40000u);
+		_expect_child = root.attribute_value("expect_child", true);
 		return;
 	}
 
@@ -160,6 +168,7 @@ void Driver_probe::_parse_config()
 	_pkg = root.attribute_value("pkg", Genode::String<64>());
 	_expect_status = root.attribute_value("expect_status", Genode::String<16>("ok"));
 	_timeout_ms = root.attribute_value("timeout_ms", 40000u);
+	_expect_child = root.attribute_value("expect_child", true);
 }
 
 
@@ -253,6 +262,12 @@ void Driver_probe::_run()
 	 */
 	if (_expect_status != Genode::String<16>("ok")) {
 		Genode::log("driver-probe: PASS (refusal as expected)");
+		_env.parent().exit(0);
+		Genode::sleep_forever();
+	}
+
+	if (!_expect_child) {
+		Genode::log("driver-probe: PASS (child assertion skipped)");
 		_env.parent().exit(0);
 		Genode::sleep_forever();
 	}

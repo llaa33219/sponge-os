@@ -66,6 +66,7 @@ build { core lib/ld init timer server/report_rom \
         driver/acpi app/pci_decode driver/platform \
         server/nic_router \
         driver/nic/pc \
+        driver/framebuffer/vesa \
         sponge_pkgd test/driver_probe \
         lib/vfs }
 
@@ -80,9 +81,21 @@ create_boot_directory
 set repo_root [file normalize [file join [run_dir] "../../../../../.."]]
 exec mkdir -p bin
 exec cp -fL "$repo_root/pkg/pc_nic/metadata.xml" "bin/pkg_pc_nic.xml"
+#
+# The two framebuffer packages are staged for the EXCLUSIVITY gate
+# (docs/12 §4.6): fb_boot's install must be refused while fb_vesa holds
+# the `fb` group. This topology has no compositor, so the vesa driver
+# itself cannot come up here — the probe is told to skip the child
+# assertion, because what is under test is pkgd's RUNNING set, not the
+# hardware.
+#
+exec cp -fL "$repo_root/pkg/fb_vesa/metadata.xml" "bin/pkg_fb_vesa.xml"
+exec cp -fL "$repo_root/pkg/fb_boot/metadata.xml" "bin/pkg_fb_boot.xml"
 set idx [open "bin/pkg_index.xml" w]
 puts $idx {<packages>}
 puts $idx {  <pkg name="pc_nic"/>}
+puts $idx {  <pkg name="fb_vesa"/>}
+puts $idx {  <pkg name="fb_boot"/>}
 puts $idx {</packages>}
 close $idx
 
@@ -341,6 +354,36 @@ config
         + any-service
           + parent
 
+    #
+    # The exclusivity gate (docs/12 §4.6). Two fb drivers must never
+    # race for the single PCI VGA resource, so the second install is
+    # REFUSED with `exclusive-conflict` naming the incumbent. The two
+    # probes run in config order and each exits when done.
+    #
+    + start fb_lock_probe | caps: 200 | ram: 8M
+      + binary | name: driver_probe
+      + config | pkg: fb_vesa | timeout_ms: 40000 | expect_child: no
+      + route
+        + service ROM | label_last: ld.lib.so       | + parent
+        + service ROM | label: result               | + child report_rom
+        + service ROM | label: installed            | + child report_rom
+        + service ROM | label: driver_runtime_state | + child report_rom
+        + service Report | + child report_rom
+        + any-service
+          + parent
+    + start fb_conflict_probe | caps: 200 | ram: 8M
+      + binary | name: driver_probe
+      + config | pkg: fb_boot | expect_status: exclusive-conflict
+        | timeout_ms: 40000 | expect_child: no
+      + route
+        + service ROM | label_last: ld.lib.so       | + parent
+        + service ROM | label: result               | + child report_rom
+        + service ROM | label: installed            | + child report_rom
+        + service ROM | label: driver_runtime_state | + child report_rom
+        + service Report | + child report_rom
+        + any-service
+          + parent
+
 #
     # pkg_runtime LAST, with the deliberate 512G RAM clamp (docs/14 §4.4).
     # On a fresh boot pkgd publishes an empty-but-valid config, so this
@@ -368,7 +411,7 @@ config
 # in a topology that never opens a File_system session.
 #
 set boot_modules [build_artifacts]
-foreach m { vfs.lib.so pkg_index.xml pkg_pc_nic.xml } {
+foreach m { vfs.lib.so pkg_index.xml pkg_pc_nic.xml pkg_fb_vesa.xml pkg_fb_boot.xml } {
 	if {[file exists "bin/$m"]} { lappend boot_modules $m }
 }
 build_boot_image $boot_modules
@@ -410,6 +453,6 @@ if {$rc != 0} {
 	exit $rc
 }
 
-puts "sponge-pkg-driver: PASS (pc_nic installed as a package into driver_runtime, bound the e1000, leased 10.0.2.15)"
+puts "sponge-pkg-driver: PASS (pc_nic installed as a package into driver_runtime, bound the e1000, leased 10.0.2.15; a second fb driver was REFUSED as exclusive-conflict)"
 
 # vi: set ft=tcl :
