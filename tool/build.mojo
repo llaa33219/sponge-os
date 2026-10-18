@@ -90,6 +90,16 @@ def port_list() -> List[String]:
         # mirrored by recipes/src/qt6_calculatorform (pkg/calculator).
         "pcre",
         "qt6_tools",
+        # Driver packages (docs/12-package-format.md section 4.5). `libnl`
+        # + `wpa_supplicant` are the userspace half of the DDE-Linux
+        # Wi-Fi stack that pkg/pc_wifi ships (driver/wifi); `openssl`
+        # supplies the libcrypto/libssl they link. Pulled in because the
+        # product media builds driver/wifi unconditionally - see
+        # run/driver_runtime.inc. `libnl` and `wpa_supplicant` come from
+        # repos/dde_linux/ports, `openssl` from repos/libports/ports.
+        "libnl",
+        "openssl",
+        "wpa_supplicant",
     ]
 
 

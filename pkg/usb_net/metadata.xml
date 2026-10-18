@@ -1,0 +1,49 @@
+<!--
+  usb_net — the DDE-Linux USB network driver, as an installable package.
+
+  Binary `usb_net` is built from genode/repos/dde_linux/src/driver/usb_net
+  (upstream target `driver/usb_net`; part of Sculpt's sculpt_drivers-pc
+  driver set). It drives USB CDC-ECM / CDC-NCM / AX88179A adapters and
+  presents each as a Genode Uplink client.
+
+  NOT autostarted, and deliberately so. Two reasons, both load-bearing:
+
+    1. The DDE-Linux option interface opens a Terminal session
+       (genode_terminal_init in src/driver/usb_net/option.cc). No Terminal
+       provider is routed into driver_runtime on the shipped media, so an
+       autostarting install would be refused by nothing and would simply
+       produce a driver that dies at construction. Routing a Terminal
+       provider is a bring-up step, and a bring-up step is the user's
+       explicit act — not something a package install does behind their
+       back (AGENTS.md §1.1).
+    2. It is QEMU-unverified: the scenario that proves pc_nic does not
+       exercise a USB Ethernet adapter.
+
+  `vct install usb_net` registers it as STOPPED (the Phase 7 lifecycle
+  semantics every other non-autostart package follows); `vct launch
+  usb_net` starts it once the Terminal route exists.
+-->
+<package>
+  <name>usb_net</name>
+  <version>1.0</version>
+  <description>Network driver for USB Ethernet adapters and LTE modems (CDC-ECM, CDC-NCM, AX88179A).</description>
+
+  <kind>driver</kind>
+  <binary>usb_net</binary>
+  <quota ram="64M" caps="1500"/>
+
+  <dependencies/>
+
+  <sessions>
+    <session name="Usb"      default-route="parent"/>
+    <session name="Platform" default-route="parent"/>
+    <session name="Dma"      default-route="parent"/>
+    <session name="Irq"      default-route="parent"/>
+    <session name="Io_mem"   default-route="parent"/>
+    <session name="Io_port"  default-route="parent"/>
+    <session name="Report"   default-route="parent"/>
+    <session name="Timer"    default-route="parent"/>
+    <session name="Uplink"   default-route="parent"/>
+    <session name="Terminal" default-route="parent"/>
+  </sessions>
+</package>

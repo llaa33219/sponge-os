@@ -1,0 +1,50 @@
+<!--
+  pc_wifi — the DDE-Linux Wi-Fi stack, as an installable package.
+
+  Binary `wifi` is built from genode/repos/dde_linux/src/driver/wifi
+  (upstream target `driver/wifi`, the driver behind Sculpt's `pc_wifi`
+  package). It brings up the Linux wireless stack plus wpa_supplicant
+  and presents the association as a Genode Uplink client.
+
+  NO FIRMWARE IS BUNDLED. The iwlwifi/ath9k/rtlwifi drivers load their
+  firmware as files from /firmware inside the driver's VFS (see
+  src/driver/wifi/main.cc, `Fw_path { "/firmware/", request.name }`). The
+  linux-firmware package is GPL-2.0-licensed redistribution subject to
+  its own distribution terms, so it is deliberately NOT vendored here.
+  The acquisition step is documented in docs/15-hardware-compatibility.md
+  ("Wi-Fi firmware"); until it is performed, this driver cannot associate.
+
+  NOT autostarted. Beyond the general rule (an unverified package must
+  not spawn on install), the declared session set below is derived from
+  reading the source, NOT from a run: the driver's libc/vfs layout,
+  /firmware mount and wpa_supplicant bring-up are all unverified on this
+  media. `vct install pc_wifi` registers it STOPPED; `vct launch pc_wifi`
+  is the explicit user act that attempts a start.
+
+  Ports this driver needs beyond the standard set: libnl, openssl and
+  wpa_supplicant (docs/11-environment.md §4).
+-->
+<package>
+  <name>pc_wifi</name>
+  <version>1.0</version>
+  <description>Wi-Fi driver (iwlwifi/ath9k/rtlwifi) with wpa_supplicant. Requires firmware you supply; none is bundled.</description>
+
+  <kind>driver</kind>
+  <binary>wifi</binary>
+  <quota ram="128M" caps="2500"/>
+
+  <dependencies/>
+
+  <sessions>
+    <session name="Platform"    default-route="parent"/>
+    <session name="Dma"         default-route="parent"/>
+    <session name="Irq"         default-route="parent"/>
+    <session name="Io_mem"      default-route="parent"/>
+    <session name="Io_port"     default-route="parent"/>
+    <session name="Report"      default-route="parent"/>
+    <session name="Timer"       default-route="parent"/>
+    <session name="Rtc"         default-route="parent"/>
+    <session name="File_system" default-route="parent"/>
+    <session name="Uplink"      default-route="parent"/>
+  </sessions>
+</package>

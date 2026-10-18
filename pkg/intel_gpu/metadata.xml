@@ -1,0 +1,38 @@
+<!--
+  intel_gpu — the Intel iGPU driver, as an installable package.
+
+  Binary `intel_gpu` is built from genode/repos/os/src/driver/gpu/intel
+  (upstream target `driver/gpu/intel`; part of Sculpt's sculpt_drivers-pc
+  driver set). It drives Intel Gen graphics hardware.
+
+  NOT autostarted, for a reason that is not about verification alone: the
+  product media's static `platform` policy already hands every PCI VGA
+  device to the vesa_fb framebuffer under the label prefix `fb`
+  (run/sponge-desktop-disk.run). Installing this driver therefore means
+  re-routing the VGA class away from vesa_fb — a Tier-0 wiring change
+  that the operator must make deliberately (the control door,
+  AGENTS.md §1.1), not something an install does silently. See
+  docs/15-hardware-compatibility.md.
+
+  Session set below is derived from the source
+  (src/driver/gpu/intel/main.cc: Timer, Dma, Platform, config ROM) and is
+  not yet verified on hardware.
+-->
+<package>
+  <name>intel_gpu</name>
+  <version>1.0</version>
+  <description>Intel integrated-GPU driver.</description>
+
+  <kind>driver</kind>
+  <binary>intel_gpu</binary>
+  <quota ram="32M" caps="1200"/>
+
+  <dependencies/>
+
+  <sessions>
+    <session name="Platform" default-route="parent"/>
+    <session name="Dma"      default-route="parent"/>
+    <session name="Timer"    default-route="parent"/>
+    <session name="Report"   default-route="parent"/>
+  </sessions>
+</package>

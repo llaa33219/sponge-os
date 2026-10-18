@@ -1,0 +1,58 @@
+<!--
+  pc_nic — the DDE-Linux PC Ethernet driver, as an installable package.
+
+  Binary `pc_nic` is built from genode/repos/pc/src/driver/nic/pc (upstream
+  `driver/nic/pc`, upstream depot pkg recipe repos/pc/recipes/pkg/pc_nic).
+  The driver runs the Linux network stack and presents its netdev as a
+  Genode Uplink client; the Uplink-to-Nic bridge itself is a system service
+  (nic_router), not part of this package.
+
+  <kind>driver</kind> (docs/12 §4.5) puts this <start> node into the
+  driver_runtime sandbox instead of pkg_runtime, so the Platform/Dma/Irq/
+  Io_mem/Io_port capabilities it needs are granted by driver_runtime's
+  generated <parent-provides> — and stay unavailable to every application
+  package (AGENTS.md §1.2).
+
+  <autostart/>: installing the driver starts it. Unlike every other
+  package in this repository, that is not an optimization — a driver is
+  useless until it binds its hardware, and the user who typed
+  `vct install pc_nic` asked for the network to work. The quota is
+  admitted against driver_runtime's live state report before the <start>
+  node is emitted, so the install is refused rather than silently clamped
+  when it does not fit.
+
+  VERIFIED: run/sponge-pkg-driver.run installs this package through
+  sponge_pkgd into driver_runtime on QEMU `-device e1000` and gates on the
+  e1000 module-init log line plus driver_runtime's state report.
+-->
+<package>
+  <name>pc_nic</name>
+  <version>1.0</version>
+  <description>Ethernet driver for PCI NICs (e1000, rtl8169 and friends) via the Linux network stack.</description>
+
+  <kind>driver</kind>
+  <binary>pc_nic</binary>
+  <quota ram="32M" caps="1000"/>
+
+  <autostart/>
+
+  <config>
+    <ld_verbose value="yes"/>
+  </config>
+
+  <dependencies/>
+
+  <sessions>
+    <session name="Platform" default-route="parent"/>
+    <session name="Dma"     default-route="parent"/>
+    <session name="Irq"     default-route="parent"/>
+    <session name="Io_mem"  default-route="parent"/>
+    <session name="Io_port" default-route="parent"/>
+    <session name="Report"  default-route="parent"/>
+    <!-- The DDE-Linux kernel clock is driven by a Genode Timer session;
+         declared because a missing one is a construction-time denial,
+         not a degraded mode. -->
+    <session name="Timer"   default-route="parent"/>
+    <session name="Uplink"  default-route="parent"/>
+  </sessions>
+</package>

@@ -1,0 +1,45 @@
+<!--
+  pc_intel_fb — the DDE-Linux Intel framebuffer driver, as an installable
+  package.
+
+  Binary `pc_intel_fb` is built from
+  genode/repos/pc/src/driver/framebuffer/intel/pc (upstream target
+  `driver/framebuffer/intel/pc/spec/x86_64`; part of Sculpt's
+  sculpt_drivers-pc driver set). It runs the Linux i915 framebuffer path
+  and reports connectors (main.cc: `Expanding_reporter{env, "connectors",
+  "connectors"}`).
+
+  NOT autostarted, and not verified on hardware: the product media's
+  static `platform` policy gives every PCI VGA device to vesa_fb under the
+  label prefix `fb`, so this driver cannot bind without a deliberate
+  Tier-0 re-wiring. `vct install pc_intel_fb` registers it STOPPED;
+  `vct launch pc_intel_fb` is the explicit user act that attempts a start
+  once the VGA policy has been re-pointed. See
+  docs/15-hardware-compatibility.md.
+
+  Session set derived from the source: the DDE-Linux lx_emul hardware
+  sessions plus the optional Capture session the driver opens for its
+  Screen.
+-->
+<package>
+  <name>pc_intel_fb</name>
+  <version>1.0</version>
+  <description>Intel framebuffer driver (DDE-Linux i915 path).</description>
+
+  <kind>driver</kind>
+  <binary>pc_intel_fb</binary>
+  <quota ram="64M" caps="1500"/>
+
+  <dependencies/>
+
+  <sessions>
+    <session name="Platform" default-route="parent"/>
+    <session name="Dma"      default-route="parent"/>
+    <session name="Irq"      default-route="parent"/>
+    <session name="Io_mem"   default-route="parent"/>
+    <session name="Io_port"  default-route="parent"/>
+    <session name="Report"   default-route="parent"/>
+    <session name="Timer"    default-route="parent"/>
+    <session name="Capture"  default-route="parent"/>
+  </sessions>
+</package>
