@@ -1,0 +1,294 @@
+make: ディレクトリ '/home/luke/sponge-os/genode/build/x86_64'　に入ります
+including /home/luke/sponge-os/genode/tool/run/power_on/qemu
+including /home/luke/sponge-os/genode/tool/run/log/qemu
+including /home/luke/sponge-os/genode/tool/run/image/iso
+including /home/luke/sponge-os/genode/tool/run/boot_dir/sel4
+including /home/luke/sponge-os/repos/sponge/run/sponge-supervisor-takeover.run
+sourcing /home/luke/sponge-os/genode/tool/run/image/disk (missing from RUN_OPT, restored by run script)
+sponge-supervisor-takeover: wedge_ms=20000 fault=1 poll=250ms grace=4000ms settle=3000ms console_hold=6000ms
+building targets:  core lib/ld init timer server/report_rom server/nitpicker driver/platform driver/acpi app/pci_decode driver/framebuffer/vesa sponge_supervisor sponge_console test/ep_wedge test/takeover_probe
+
+spawn make core lib/ld init timer server/report_rom server/nitpicker driver/platform driver/acpi app/pci_decode driver/framebuffer/vesa sponge_supervisor sponge_console test/ep_wedge test/takeover_probe
+make[1]: ディレクトリ '/home/luke/sponge-os/genode/build/x86_64' に入ります
+Skip target driver/platform/pc/spec/x86_32 because it requires 'x86_32'
+  [00;33mLibrary[0m ld.abi.so
+  [00;33mLibrary[0m ldso_so_support.lib.a
+  [00;33mLibrary[0m kernel-sel4-pc.lib.a
+ninja: Jobserver mode detected:  -j80 --jobserver-auth=fifo:/tmp/GMfifo3249070 --no-print-directory -- DEBUG_DIR=/home/luke/sponge-os/genode/build/x86_64/debug INSTALL_DIR=/home/luke/sponge-os/genode/build/x86_64/bin BUILD_BASE_DIR=/home/luke/sponge-os/genode/build/x86_64 SHARED_LIBS= ARCHIVES= LIB=kernel-sel4-pc LIB_MK=/home/luke/sponge-os/genode/repos/base-sel4/lib/mk/spec/x86_64/kernel-sel4-pc.mk REP_DIR=/home/luke/sponge-os/genode/repos/base-sel4 KERNEL=sel4 BOARD=pc SHELL=/usr/bin/bash
+ninja: no work to do.
+  [00;33mLibrary[0m syscall-sel4-pc.lib.a
+  [00;33mLibrary[0m syscall-sel4.lib.a
+  [00;33mLibrary[0m startup-sel4.lib.a
+  [00;33mLibrary[0m base-sel4-common.lib.a
+  [00;33mLibrary[0m timeout.lib.a
+  [00;33mLibrary[0m cxx.lib.a
+  [00;33mLibrary[0m base-sel4.lib.a
+  [00;33mLibrary[0m ld-sel4.lib.so
+  [00;33mLibrary[0m ld.lib.so
+  [00;33mLibrary[0m base.lib.a
+  [01;33mProgram[0m app/pci_decode/pci_decode
+  [00;33mLibrary[0m core-sel4.lib.a
+    COMPILE  version.o
+    MERGE    core-sel4.lib.a
+  [01;33mProgram[0m core/sel4/core
+  [01;33mProgram[0m driver/acpi/spec/x86/acpi
+  [00;33mLibrary[0m blit.lib.a
+  [00;33mLibrary[0m x86emu.lib.a
+  [00;33mLibrary[0m format.lib.a
+  [01;33mProgram[0m driver/framebuffer/vesa/vesa_fb
+  [01;33mProgram[0m driver/platform/pc/spec/x86_64/pc_platform
+  [01;33mProgram[0m driver/platform/platform
+  [01;33mProgram[0m init/init
+  [01;33mProgram[0m server/nitpicker/nitpicker
+  [01;33mProgram[0m server/report_rom/report_rom
+  [01;33mProgram[0m sponge_console/sponge_console
+  [01;33mProgram[0m sponge_supervisor/sponge_supervisor
+  [01;33mProgram[0m test/ep_wedge/ep_wedge
+  [01;33mProgram[0m test/takeover_probe/takeover_probe
+  [01;33mProgram[0m timer/hpet/hpet_timer
+make[1]: ディレクトリ '/home/luke/sponge-os/genode/build/x86_64' から出ます
+genode build completed
+building targets: kernel/sel4 lib/ld-sel4
+spawn make kernel/sel4 lib/ld-sel4
+make[1]: ディレクトリ '/home/luke/sponge-os/genode/build/x86_64' に入ります
+  [00;33mLibrary[0m kernel-sel4-pc.lib.a
+ninja: Jobserver mode detected:  -j80 --jobserver-auth=fifo:/tmp/GMfifo3249395 --no-print-directory -- DEBUG_DIR=/home/luke/sponge-os/genode/build/x86_64/debug INSTALL_DIR=/home/luke/sponge-os/genode/build/x86_64/bin BUILD_BASE_DIR=/home/luke/sponge-os/genode/build/x86_64 SHARED_LIBS= ARCHIVES= LIB=kernel-sel4-pc LIB_MK=/home/luke/sponge-os/genode/repos/base-sel4/lib/mk/spec/x86_64/kernel-sel4-pc.mk REP_DIR=/home/luke/sponge-os/genode/repos/base-sel4 KERNEL=sel4 BOARD=pc SHELL=/usr/bin/bash
+ninja: no work to do.
+  [00;33mLibrary[0m syscall-sel4-pc.lib.a
+  [00;33mLibrary[0m syscall-sel4.lib.a
+  [00;33mLibrary[0m startup-sel4.lib.a
+  [00;33mLibrary[0m base-sel4-common.lib.a
+  [00;33mLibrary[0m timeout.lib.a
+  [00;33mLibrary[0m cxx.lib.a
+  [00;33mLibrary[0m base-sel4.lib.a
+  [00;33mLibrary[0m ldso_so_support.lib.a
+  [00;33mLibrary[0m ld-sel4.lib.so
+  [01;33mProgram[0m kernel/sel4/sel4-pc
+make[1]: ディレクトリ '/home/luke/sponge-os/genode/build/x86_64' から出ます
+genode build completed
+using 'core-sel4.a' as 'core.a'
+using 'hpet_timer' as 'timer'
+using 'ld-sel4.lib.so' as 'ld.lib.so'
+Created image file var/run/sponge-supervisor-takeover.img (14676kiB)
+spawn qemu-system-x86_64 -accel kvm -machine q35 -cpu Skylake-Client -nographic -m 1G -serial mon:stdio -drive format=raw,file=var/run/sponge-supervisor-takeover.img -machine q35 -net nic,model=e1000,netdev=net0 -netdev user,id=net0
+qemu-system-x86_64: warning: host doesn't support requested feature: CPUID[eax=0Dh,ecx=01h].EAX.xsavec [bit 1]
+qemu-system-x86_64: warning: host doesn't support requested feature: CPUID[eax=0Dh,ecx=01h].EAX.xgetbv1 [bit 2]
+c[?7l[2J[0mSeaBIOS (version Arch Linux 1.17.0-2-2)
+
+
+iPXE (http://ipxe.org) 00:02.0 C900 PCI2.10 PnP PMM+3EFD3DA0+3EF33DA0 C900
+Press Ctrl-B to configure iPXE (PCI 00:02.0)...                                                                               
+
+
+Booting from Hard Disk...
+GRUB loading.
+[01;01H
+Bender Version 0.9-beta7-51-g77a6918-dirty
+Patching BDA with I/O port 0x3f8.
+Bender: Hello World.
+hwp config: eeo=na irq=na hwp=na epp=na epb=na
+Boot config: debug_port = 0x3f8
+Boot config: disable_iommu = true
+  module #0: start=0xf40a000 end=0xfdf6410 size=0x9ec410 name='image.elf'
+	Physical Memory Region from 0 size 9fc00 type 1
+	Physical Memory Region from 9fc00 size 400 type 2
+	Physical Memory Region from f0000 size 10000 type 2
+	Physical Memory Region from 100000 size 3fedf000 type 1
+Adding physical memory region 0x100000-0x3ffdf000
+	Physical Memory Region from 3ffdf000 size 21000 type 2
+	Physical Memory Region from b0000000 size 10000000 type 2
+	Physical Memory Region from fed1c000 size 4000 type 2
+	Physical Memory Region from feffc000 size 4000 type 2
+	Physical Memory Region from fffc0000 size 40000 type 2
+Got framebuffer info in multiboot2. Current video mode is at physical address=fd000000 pitch=5120 resolution=1280x800@32 type=1
+Detected 1 boot module(s):
+Kernel loaded to: start=0x200000 end=0xe3e000 size=0xc3e000 entry=0x2002a3
+ACPI: RSDT paddr=0x3ffe2345
+ACPI: RSDT vaddr=0x3ffe2345
+ACPI: FADT paddr=0x3ffe213d
+ACPI: FADT vaddr=0x3ffe213d
+ACPI: FADT flags=0x84a5
+ACPI: MADT paddr=0x3ffe2231
+ACPI: MADT vaddr=0x3ffe2231
+ACPI: MADT apic_addr=0xfee00000
+ACPI: MADT flags=0x1
+ACPI: MADT_APIC apic_id=0x0
+ACPI: MADT_IOAPIC ioapic_id=0 ioapic_addr=0xfec00000 gsib=0
+ACPI: MADT_ISO bus=0 source=0 gsi=0x002 flags=0x0
+ACPI: MADT_ISO bus=0 source=5 gsi=0x005 flags=0xd
+ACPI: MADT_ISO bus=0 source=9 gsi=0x009 flags=0xd
+ACPI: MADT_ISO bus=0 source=10 gsi=0x00a flags=0xd
+ACPI: MADT_ISO bus=0 source=11 gsi=0x00b flags=0xd
+ACPI: 1 CPU(s) detected
+ELF-loading userland images from boot modules:
+size=0x23eb000 v_entry=0x2000018 v_start=0x2000000 v_end=0x43eb000 p_start=0xfdf7000 p_end=0x121e2000
+Moving loaded userland images to final location: from=0xfdf7000 to=0xe3e000 size=0x23eb000
+Starting node #0 with APIC ID 0
+Mapping kernel window is done
+vt-x: not supported
+Available phys memory regions: 1
+  [100000..3ffdf000)
+Reserved virt address space regions: 1
+  [ffffff8000200000..ffffff8003229000)
+Booting all finished, dropped to user space
+:phys_mem_16k:     Allocator 0x257a7f8 dump:
+ Block: [0000000000100000,0000000000a00000) size=9M avail=9M max_avail=9M
+ Block: [000000000322c000,0000000004000000) size=14160K avail=14160K max_avail=91568K
+ Block: [0000000008000000,000000000d96c000) size=91568K avail=91568K max_avail=91568K
+ => mem_size=117702656 (112 MB) / mem_avail=117702656 (112 MB)
+
+virtual address layout of core:
+ overall    [0000000000002000,0000001000000000)
+ core image [0000000002000000,00000000043eb000)
+ ipc buffer [00000000043eb000,00000000043ec000)
+ boot_info  [00000000043ec000,00000000043ed532)
+ stack area [0000000040000000,0000000050000000)
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+Physical memory per PD at most: 512M
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+boot module 'supervisor.templates' (3764 bytes)
+boot module 'config' (6342 bytes)
+boot module 'fb.config' (53 bytes)
+boot module 'supervisor.config' (140 bytes)
+boot module 'acpi' (185600 bytes)
+boot module 'ep_wedge' (44560 bytes)
+boot module 'timer' (139920 bytes)
+boot module 'init' (511560 bytes)
+boot module 'init.hsd' (4125 bytes)
+boot module 'init.xsd' (8118 bytes)
+boot module 'ld.lib.so' (1107760 bytes)
+boot module 'nitpicker' (530128 bytes)
+boot module 'pc_platform' (720576 bytes)
+boot module 'pci_decode' (171336 bytes)
+boot module 'platform' (594696 bytes)
+boot module 'report_rom' (150784 bytes)
+boot module 'sponge_console' (119112 bytes)
+boot module 'sponge_supervisor' (77224 bytes)
+boot module 'takeover_probe' (62784 bytes)
+boot module 'vesa_fb' (334336 bytes)
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+Genode 26.08-21-gf44bc47ee5
+580 MiB RAM and 523288 caps assigned to init
+[init -> timer] timers=3, clock 10000000fs , 64bit counter , legacy routing support vendor=0x8086
+[init -> timer] timer0 GSI options 0xff0104, supports periodic
+[init -> timer] timer1 GSI options 0xff0104, supports periodic
+[init -> timer] timer2 GSI options 0xff0104, supports periodic
+[init -> timer] time wraps after 5849 years
+[init -> timer] irqs=off legacy=off
+[init -> timer] Using timer 2 -> using GSI 2 edge triggered
+[init -> acpi] Found MADT
+[init -> acpi] MADT IRQ 0 -> GSI 2 flags: 0
+[init -> acpi] MADT IRQ 5 -> GSI 5 flags: 13
+[init -> acpi] MADT IRQ 9 -> GSI 9 flags: 13
+[init -> acpi] MADT IRQ 10 -> GSI 10 flags: 13
+[init -> acpi] MADT IRQ 11 -> GSI 11 flags: 13
+[init -> acpi] Found HPET hw_id=0x1  vendor_id=0x8086 space_id=0x0 addr=0xfed00000 hpet_id=0x0
+[init -> acpi] Found MCFG
+[init -> acpi] MCFG BASE 0xb0000000 seg 0x0 bus 0x0-0xff
+[init -> acpi] RSDT OEM 'BOCHS ', table id 'BXPC    ', revision 1, creator 'BXPC' (1)
+[init -> console] sponge_console: ready (role=console label=console, awaiting console_state)
+[init -> acpi] [34mWarning: SMBIOSv3 entry point invalid[0m
+[init -> acpi] SMBIOSv2 table (entry point: 0x1b6520 structures: 0xf6540)
+[init -> sponge_supervisor] sponge_supervisor: armed poll=250ms fault_skipped=3 grace=4000ms console_hold=6000ms settle=3000ms boot_grace=30000ms
+[init -> takeover_probe] takeover_probe: 2 states, poll=250ms, screen 1024x768 sample 512x384
+[init -> takeover_probe] takeover_probe: state[0]=desktop bg=0x1e3a6e
+[init -> takeover_probe] takeover_probe: state[1]=console bg=0x601010
+[init -> takeover_probe] takeover_probe: sample band=0x101010 centre=0x101010 corner=0x101010
+[init -> takeover_probe] takeover_probe: pixel UNKNOWN bg=0x101010
+[init -> sponge_supervisor] sponge_supervisor: published <system> kill=1 (1966 bytes)
+[init -> sponge_supervisor] sponge_supervisor: phase=1 (initial publish)
+[init -> fb] fb mapped to 0x6000
+[init -> fb] Found: VESA BIOS version 3.0
+[init -> fb] OEM: SeaBIOS VBE(C) 2011
+[init -> fb] Found: physical frame buffer at 0xfd000000 size: 16777216
+[init -> fb] fb mapped to 0x17000000
+[init -> fb] using 1024x768 (1024x768)
+[init -> system -> desktop] sponge_console: ready (role=desktop label=desktop)
+[init -> system -> driver] ep_wedge: incarnation alive — wedging for 20000 ms
+[init -> system -> witness] witness: alive and well
+[init -> system -> desktop] sponge_console: role=desktop label=desktop 1024x768 owns the display
+[init -> takeover_probe] takeover_probe: sample band=0x5a76aa centre=0x1e3a6e corner=0x1e3a6e
+[init -> takeover_probe] takeover_probe: desktop-up state=desktop centre=0x1e3a6e
+[init -> sponge_supervisor] sponge_supervisor: FAULT max_skipped=3 exited=0 state_seen=1 state_age_ms=250
+[init -> sponge_supervisor] sponge_supervisor: escalation - fault held for 4000ms before any action (the supervised sandbox has its own containment)
+[init -> sponge_supervisor] sponge_supervisor: FAULT max_skipped=11 exited=0 state_seen=1 state_age_ms=250
+[init -> sponge_supervisor] sponge_supervisor: published <system> kill=2 (1966 bytes)
+[init -> sponge_supervisor] sponge_supervisor: phase=2 (fault survived the escalation window, subtree killed)
+[init -> takeover_probe] takeover_probe: sample band=0x101010 centre=0x101010 corner=0x101010
+[init -> takeover_probe] takeover_probe: pixel UNKNOWN bg=0x101010
+[init -> system -> witness] witness: alive and well
+[init -> system -> driver] ep_wedge: incarnation alive — wedging for 20000 ms
+[init -> system -> desktop] sponge_console: ready (role=desktop label=desktop)
+[init -> system -> desktop] sponge_console: role=desktop label=desktop 1024x768 owns the display
+[init -> takeover_probe] takeover_probe: sample band=0x5a76aa centre=0x1e3a6e corner=0x1e3a6e
+[init -> takeover_probe] takeover_probe: pixel state=desktop centre=0x1e3a6e
+[init -> sponge_supervisor] sponge_supervisor: FAULT max_skipped=6 exited=0 state_seen=1 state_age_ms=250
+[init -> sponge_supervisor] sponge_supervisor: published <system_console> kill=3 (1410 bytes)
+[init -> sponge_supervisor] sponge_supervisor: phase=3 (unrecoverable - console owns the display)
+[init -> console] sponge_console: ARMED role=console label=console 1024x768 owns the display
+[init -> takeover_probe] takeover_probe: sample band=0x9c4c4c centre=0x601010 corner=0x601010
+[init -> takeover_probe] takeover_probe: console-up state=console centre=0x601010
+[init -> system -> witness] witness: alive and well
+[init -> system -> driver] ep_wedge: incarnation alive — wedging for 20000 ms
+[init -> sponge_supervisor] sponge_supervisor: console hold elapsed, still faulted
+[init -> sponge_supervisor] sponge_supervisor: CONSOLE RELEASED — display handed back, waiting for the console session to close
+[init -> sponge_supervisor] sponge_supervisor: phase=4 (console hold elapsed)
+[init -> console] sponge_console: DISARMED — display released
+[init -> takeover_probe] takeover_probe: sample band=0x101010 centre=0x101010 corner=0x101010
+[init -> takeover_probe] takeover_probe: pixel UNKNOWN bg=0x101010
+[init -> sponge_supervisor] sponge_supervisor: published <system> kill=4 (1966 bytes)
+[init -> sponge_supervisor] sponge_supervisor: phase=1 (desktop restored)
+[init -> system -> witness] witness: alive and well
+[init -> system -> desktop] sponge_console: ready (role=desktop label=desktop)
+[init -> system -> driver] ep_wedge: incarnation alive — wedging for 20000 ms
+[init -> system -> desktop] sponge_console: role=desktop label=desktop 1024x768 owns the display
+[init -> sponge_supervisor] sponge_supervisor: nominal — subtree healthy, no action (20s)
+[init -> takeover_probe] takeover_probe: sample band=0x5a76aa centre=0x1e3a6e corner=0x1e3a6e
+[init -> takeover_probe] takeover_probe: pixel state=desktop centre=0x1e3a6e
+[init -> sponge_supervisor] sponge_supervisor: FAULT max_skipped=3 exited=0 state_seen=1 state_age_ms=250
+[init -> sponge_supervisor] sponge_supervisor: escalation - fault held for 4000ms before any action (the supervised sandbox has its own containment)
+[init -> sponge_supervisor] sponge_supervisor: FAULT max_skipped=11 exited=0 state_seen=1 state_age_ms=250
+[init -> sponge_supervisor] sponge_supervisor: published <system> kill=5 (1966 bytes)
+[init -> sponge_supervisor] sponge_supervisor: phase=2 (fault survived the escalation window, subtree killed)
+[init -> takeover_probe] takeover_probe: sample band=0x101010 centre=0x101010 corner=0x101010
+[init -> takeover_probe] takeover_probe: pixel UNKNOWN bg=0x101010
+[init -> system -> witness] witness: alive and well
+[init -> system -> desktop] sponge_console: ready (role=desktop label=desktop)
+[init -> system -> driver] ep_wedge: incarnation alive — wedging for 20000 ms
+[init -> system -> desktop] sponge_console: role=desktop label=desktop 1024x768 owns the display
+[init -> takeover_probe] takeover_probe: sample band=0x5a76aa centre=0x1e3a6e corner=0x1e3a6e
+[init -> takeover_probe] takeover_probe: pixel state=desktop centre=0x1e3a6e
+[init -> sponge_supervisor] sponge_supervisor: FAULT max_skipped=6 exited=0 state_seen=1 state_age_ms=250
+[init -> sponge_supervisor] sponge_supervisor: published <system_console> kill=6 (1410 bytes)
+[init -> sponge_supervisor] sponge_supervisor: phase=3 (unrecoverable - console owns the display)
+[init -> console] sponge_console: ARMED role=console label=console 1024x768 owns the display
+[init -> takeover_probe] takeover_probe: sample band=0x9c4c4c centre=0x601010 corner=0x601010
+[init -> takeover_probe] takeover_probe: pixel state=console centre=0x601010
+[init -> system -> witness] witness: alive and well
+[init -> system -> driver] ep_wedge: incarnation alive — wedging for 20000 ms
+[init -> sponge_supervisor] sponge_supervisor: console hold elapsed, still faulted
+[init -> sponge_supervisor] sponge_supervisor: CONSOLE RELEASED — display handed back, waiting for the console session to close
+[init -> sponge_supervisor] sponge_supervisor: phase=4 (console hold elapsed)
+[init -> console] sponge_console: DISARMED — display released
+[init -> takeover_probe] takeover_probe: sample band=0x101010 centre=0x101010 corner=0x101010
+[init -> takeover_probe] takeover_probe: pixel UNKNOWN bg=0x101010
+[init -> sponge_supervisor] sponge_supervisor: published <system> kill=7 (1966 bytes)
+[init -> sponge_supervisor] sponge_supervisor: phase=1 (desktop restored)
+[init -> system -> driver] ep_wedge: incarnation alive — wedging for 20000 ms
+[init -> system -> witness] witness: alive and well
+[init -> system -> desktop] sponge_console: ready (role=desktop label=desktop)
+[init -> system -> desktop] sponge_console: role=desktop label=desktop 1024x768 owns the display
+[init -> sponge_supervisor] sponge_supervisor: nominal — subtree healthy, no action (39s)
+[init -> takeover_probe] takeover_probe: sample band=0x5a76aa centre=0x1e3a6e corner=0x1e3a6e
+[init -> takeover_probe] takeover_probe: pixel state=desktop
+supervisor-takeover: PASS - wedge detected, subtree killed, console owned the display, desktop restored
+
+
+Run script execution successful.
+
+
+Run script execution successful.
+make: ディレクトリ '/home/luke/sponge-os/genode/build/x86_64' から出ます

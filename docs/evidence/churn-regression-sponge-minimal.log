@@ -1,0 +1,38 @@
+make: ディレクトリ '/home/luke/sponge-os/genode/build/x86_64'　に入ります
+including /home/luke/sponge-os/genode/tool/run/power_on/linux
+including /home/luke/sponge-os/genode/tool/run/log/linux
+including /home/luke/sponge-os/genode/tool/run/boot_dir/linux
+including /home/luke/sponge-os/repos/sponge/run/sponge-minimal.run
+building targets:  core lib/ld init vct 
+spawn make core lib/ld init vct
+make[1]: ディレクトリ '/home/luke/sponge-os/genode/build/x86_64' に入ります
+  [00;33mLibrary[0m ld.abi.so
+  [00;33mLibrary[0m ldso_so_support.lib.a
+  [00;33mLibrary[0m syscall-linux.lib.a
+  [00;33mLibrary[0m base-linux-common.lib.a
+  [00;33mLibrary[0m timeout.lib.a
+  [00;33mLibrary[0m startup-linux.lib.a
+  [00;33mLibrary[0m cxx.lib.a
+  [00;33mLibrary[0m seccomp.lib.a
+  [00;33mLibrary[0m base-linux.lib.a
+  [00;33mLibrary[0m ld-linux.lib.so
+  [00;33mLibrary[0m ld.lib.so
+  [00;33mLibrary[0m core-linux.lib.a
+  [01;33mProgram[0m core/linux/core-linux
+    COMPILE  version.o
+    LINK     core-linux
+  [00;33mLibrary[0m base.lib.a
+  [01;33mProgram[0m init/init
+  [00;33mLibrary[0m sponge_backend_client.lib.a
+  [01;33mProgram[0m vct/vct
+make[1]: ディレクトリ '/home/luke/sponge-os/genode/build/x86_64' から出ます
+genode build completed
+spawn ./core
+Genode 26.08-21-gf44bc47ee5
+17592186044415 MiB RAM and 19000 caps assigned to init
+[init -> vct] vct (0.2.0 / Archaeocyte) starting
+[init -> vct] vct 0.2.0
+[init -> vct] Sponge OS codename: Archaeocyte
+
+Run script execution successful.
+make: ディレクトリ '/home/luke/sponge-os/genode/build/x86_64' から出ます

@@ -1,0 +1,371 @@
+make: ディレクトリ '/home/luke/sponge-os/genode/build/x86_64'　に入ります
+including /home/luke/sponge-os/genode/tool/run/power_on/qemu
+including /home/luke/sponge-os/genode/tool/run/log/qemu
+including /home/luke/sponge-os/genode/tool/run/image/iso
+including /home/luke/sponge-os/genode/tool/run/boot_dir/sel4
+including /home/luke/sponge-os/repos/sponge/run/sponge-containment-churn.run
+sourcing /home/luke/sponge-os/genode/tool/run/image/disk (missing from RUN_OPT, restored by run script)
+sponge-containment-churn: hb=500ms skipped=3 budget=4 poll=500ms window=20000ms detect=1500ms
+building targets:  core lib/ld init timer server/report_rom server/nitpicker driver/platform driver/acpi app/pci_decode driver/framebuffer/vesa sponge_console test/ep_wedge test/takeover_probe test/churn_probe
+
+spawn make core lib/ld init timer server/report_rom server/nitpicker driver/platform driver/acpi app/pci_decode driver/framebuffer/vesa sponge_console test/ep_wedge test/takeover_probe test/churn_probe
+make[1]: ディレクトリ '/home/luke/sponge-os/genode/build/x86_64' に入ります
+Skip target driver/platform/pc/spec/x86_32 because it requires 'x86_32'
+  [00;33mLibrary[0m ld.abi.so
+  [00;33mLibrary[0m ldso_so_support.lib.a
+  [00;33mLibrary[0m kernel-sel4-pc.lib.a
+ninja: Jobserver mode detected:  -j80 --jobserver-auth=fifo:/tmp/GMfifo3227062 --no-print-directory -- DEBUG_DIR=/home/luke/sponge-os/genode/build/x86_64/debug INSTALL_DIR=/home/luke/sponge-os/genode/build/x86_64/bin BUILD_BASE_DIR=/home/luke/sponge-os/genode/build/x86_64 SHARED_LIBS= ARCHIVES= LIB=kernel-sel4-pc LIB_MK=/home/luke/sponge-os/genode/repos/base-sel4/lib/mk/spec/x86_64/kernel-sel4-pc.mk REP_DIR=/home/luke/sponge-os/genode/repos/base-sel4 KERNEL=sel4 BOARD=pc SHELL=/usr/bin/bash
+ninja: no work to do.
+  [00;33mLibrary[0m syscall-sel4-pc.lib.a
+  [00;33mLibrary[0m syscall-sel4.lib.a
+  [00;33mLibrary[0m startup-sel4.lib.a
+  [00;33mLibrary[0m base-sel4-common.lib.a
+  [00;33mLibrary[0m timeout.lib.a
+  [00;33mLibrary[0m cxx.lib.a
+  [00;33mLibrary[0m base-sel4.lib.a
+  [00;33mLibrary[0m ld-sel4.lib.so
+  [00;33mLibrary[0m ld.lib.so
+  [00;33mLibrary[0m base.lib.a
+  [01;33mProgram[0m app/pci_decode/pci_decode
+  [00;33mLibrary[0m core-sel4.lib.a
+    COMPILE  version.o
+    MERGE    core-sel4.lib.a
+  [01;33mProgram[0m core/sel4/core
+  [01;33mProgram[0m driver/acpi/spec/x86/acpi
+  [00;33mLibrary[0m blit.lib.a
+  [00;33mLibrary[0m x86emu.lib.a
+  [00;33mLibrary[0m format.lib.a
+  [01;33mProgram[0m driver/framebuffer/vesa/vesa_fb
+  [01;33mProgram[0m driver/platform/pc/spec/x86_64/pc_platform
+  [01;33mProgram[0m driver/platform/platform
+  [01;33mProgram[0m init/init
+    COMPILE  library.o
+    COMPILE  config_model.o
+    COMPILE  server.o
+    LINK     init
+  [01;33mProgram[0m server/nitpicker/nitpicker
+  [01;33mProgram[0m server/report_rom/report_rom
+  [01;33mProgram[0m sponge_console/sponge_console
+  [01;33mProgram[0m test/churn_probe/churn_probe
+  [01;33mProgram[0m test/ep_wedge/ep_wedge
+  [01;33mProgram[0m test/takeover_probe/takeover_probe
+  [01;33mProgram[0m timer/hpet/hpet_timer
+make[1]: ディレクトリ '/home/luke/sponge-os/genode/build/x86_64' から出ます
+genode build completed
+building targets: kernel/sel4 lib/ld-sel4
+spawn make kernel/sel4 lib/ld-sel4
+make[1]: ディレクトリ '/home/luke/sponge-os/genode/build/x86_64' に入ります
+  [00;33mLibrary[0m kernel-sel4-pc.lib.a
+ninja: Jobserver mode detected:  -j80 --jobserver-auth=fifo:/tmp/GMfifo3227486 --no-print-directory -- DEBUG_DIR=/home/luke/sponge-os/genode/build/x86_64/debug INSTALL_DIR=/home/luke/sponge-os/genode/build/x86_64/bin BUILD_BASE_DIR=/home/luke/sponge-os/genode/build/x86_64 SHARED_LIBS= ARCHIVES= LIB=kernel-sel4-pc LIB_MK=/home/luke/sponge-os/genode/repos/base-sel4/lib/mk/spec/x86_64/kernel-sel4-pc.mk REP_DIR=/home/luke/sponge-os/genode/repos/base-sel4 KERNEL=sel4 BOARD=pc SHELL=/usr/bin/bash
+ninja: no work to do.
+  [00;33mLibrary[0m syscall-sel4-pc.lib.a
+  [00;33mLibrary[0m syscall-sel4.lib.a
+  [00;33mLibrary[0m startup-sel4.lib.a
+  [00;33mLibrary[0m base-sel4-common.lib.a
+  [00;33mLibrary[0m timeout.lib.a
+  [00;33mLibrary[0m cxx.lib.a
+  [00;33mLibrary[0m base-sel4.lib.a
+  [00;33mLibrary[0m ldso_so_support.lib.a
+  [00;33mLibrary[0m ld-sel4.lib.so
+  [01;33mProgram[0m kernel/sel4/sel4-pc
+make[1]: ディレクトリ '/home/luke/sponge-os/genode/build/x86_64' から出ます
+genode build completed
+using 'core-sel4.a' as 'core.a'
+using 'hpet_timer' as 'timer'
+using 'ld-sel4.lib.so' as 'ld.lib.so'
+Created image file var/run/sponge-containment-churn.img (14680kiB)
+spawn qemu-system-x86_64 -accel kvm -machine q35 -cpu Skylake-Client -nographic -m 1G -serial mon:stdio -drive format=raw,file=var/run/sponge-containment-churn.img -machine q35 -net nic,model=e1000,netdev=net0 -netdev user,id=net0
+qemu-system-x86_64: warning: host doesn't support requested feature: CPUID[eax=0Dh,ecx=01h].EAX.xsavec [bit 1]
+qemu-system-x86_64: warning: host doesn't support requested feature: CPUID[eax=0Dh,ecx=01h].EAX.xgetbv1 [bit 2]
+c[?7l[2J[0mSeaBIOS (version Arch Linux 1.17.0-2-2)
+
+
+iPXE (http://ipxe.org) 00:02.0 C900 PCI2.10 PnP PMM+3EFD3DA0+3EF33DA0 C900
+Press Ctrl-B to configure iPXE (PCI 00:02.0)...                                                                               
+
+
+Booting from Hard Disk...
+GRUB loading.
+[01;01H
+Bender Version 0.9-beta7-51-g77a6918-dirty
+Patching BDA with I/O port 0x3f8.
+Bender: Hello World.
+hwp config: eeo=na irq=na hwp=na epp=na epb=na
+Boot config: debug_port = 0x3f8
+Boot config: disable_iommu = true
+  module #0: start=0xf408000 end=0xfdf6410 size=0x9ee410 name='image.elf'
+	Physical Memory Region from 0 size 9fc00 type 1
+	Physical Memory Region from 9fc00 size 400 type 2
+	Physical Memory Region from f0000 size 10000 type 2
+	Physical Memory Region from 100000 size 3fedf000 type 1
+Adding physical memory region 0x100000-0x3ffdf000
+	Physical Memory Region from 3ffdf000 size 21000 type 2
+	Physical Memory Region from b0000000 size 10000000 type 2
+	Physical Memory Region from fed1c000 size 4000 type 2
+	Physical Memory Region from feffc000 size 4000 type 2
+	Physical Memory Region from fffc0000 size 40000 type 2
+Got framebuffer info in multiboot2. Current video mode is at physical address=fd000000 pitch=5120 resolution=1280x800@32 type=1
+Detected 1 boot module(s):
+Kernel loaded to: start=0x200000 end=0xe3e000 size=0xc3e000 entry=0x2002a3
+ACPI: RSDT paddr=0x3ffe2345
+ACPI: RSDT vaddr=0x3ffe2345
+ACPI: FADT paddr=0x3ffe213d
+ACPI: FADT vaddr=0x3ffe213d
+ACPI: FADT flags=0x84a5
+ACPI: MADT paddr=0x3ffe2231
+ACPI: MADT vaddr=0x3ffe2231
+ACPI: MADT apic_addr=0xfee00000
+ACPI: MADT flags=0x1
+ACPI: MADT_APIC apic_id=0x0
+ACPI: MADT_IOAPIC ioapic_id=0 ioapic_addr=0xfec00000 gsib=0
+ACPI: MADT_ISO bus=0 source=0 gsi=0x002 flags=0x0
+ACPI: MADT_ISO bus=0 source=5 gsi=0x005 flags=0xd
+ACPI: MADT_ISO bus=0 source=9 gsi=0x009 flags=0xd
+ACPI: MADT_ISO bus=0 source=10 gsi=0x00a flags=0xd
+ACPI: MADT_ISO bus=0 source=11 gsi=0x00b flags=0xd
+ACPI: 1 CPU(s) detected
+ELF-loading userland images from boot modules:
+size=0x23ed000 v_entry=0x2000018 v_start=0x2000000 v_end=0x43ed000 p_start=0xfdf7000 p_end=0x121e4000
+Moving loaded userland images to final location: from=0xfdf7000 to=0xe3e000 size=0x23ed000
+Starting node #0 with APIC ID 0
+Mapping kernel window is done
+vt-x: not supported
+Available phys memory regions: 1
+  [100000..3ffdf000)
+Reserved virt address space regions: 1
+  [ffffff8000200000..ffffff800322b000)
+Booting all finished, dropped to user space
+:phys_mem_16k:     Allocator 0x257a7f8 dump:
+ Block: [0000000000100000,0000000000a00000) size=9M avail=9M max_avail=9M
+ Block: [000000000322c000,0000000004000000) size=14160K avail=14160K max_avail=91568K
+ Block: [0000000008000000,000000000d96c000) size=91568K avail=91568K max_avail=91568K
+ => mem_size=117702656 (112 MB) / mem_avail=117702656 (112 MB)
+
+virtual address layout of core:
+ overall    [0000000000002000,0000001000000000)
+ core image [0000000002000000,00000000043ed000)
+ ipc buffer [00000000043ed000,00000000043ee000)
+ boot_info  [00000000043ee000,00000000043ef532)
+ stack area [0000000040000000,0000000050000000)
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+Physical memory per PD at most: 512M
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+boot module 'churn_system' (1983 bytes)
+boot module 'config' (4975 bytes)
+boot module 'fb.config' (53 bytes)
+boot module 'acpi' (185600 bytes)
+boot module 'churn_probe' (88976 bytes)
+boot module 'ep_wedge' (44560 bytes)
+boot module 'timer' (139920 bytes)
+boot module 'init' (511560 bytes)
+boot module 'init.hsd' (4125 bytes)
+boot module 'init.xsd' (8118 bytes)
+boot module 'ld.lib.so' (1107760 bytes)
+boot module 'nitpicker' (530128 bytes)
+boot module 'pc_platform' (720576 bytes)
+boot module 'pci_decode' (171336 bytes)
+boot module 'platform' (594696 bytes)
+boot module 'report_rom' (150784 bytes)
+boot module 'sponge_console' (119112 bytes)
+boot module 'takeover_probe' (62784 bytes)
+boot module 'vesa_fb' (334336 bytes)
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+Genode 26.08-21-gf44bc47ee5
+580 MiB RAM and 523288 caps assigned to init
+[init -> acpi] Found MADT
+[init -> acpi] MADT IRQ 0 -> GSI 2 flags: 0
+[init -> acpi] MADT IRQ 5 -> GSI 5 flags: 13
+[init -> acpi] MADT IRQ 9 -> GSI 9 flags: 13
+[init -> acpi] MADT IRQ 10 -> GSI 10 flags: 13
+[init -> acpi] MADT IRQ 11 -> GSI 11 flags: 13
+[init -> acpi] Found HPET hw_id=0x1  vendor_id=0x8086 space_id=0x0 addr=0xfed00000 hpet_id=0x0
+[init -> acpi] Found MCFG
+[init -> acpi] MCFG BASE 0xb0000000 seg 0x0 bus 0x0-0xff
+[init -> acpi] RSDT OEM 'BOCHS ', table id 'BXPC    ', revision 1, creator 'BXPC' (1)
+[init -> timer] timers=3, clock 10000000fs , 64bit counter , legacy routing support vendor=0x8086
+[init -> timer] timer0 GSI options 0xff0104, supports periodic
+[init -> timer] timer1 GSI options 0xff0104, supports periodic
+[init -> timer] timer2 GSI options 0xff0104, supports periodic
+[init -> timer] time wraps after 5849 years
+[init -> timer] irqs=off legacy=off
+[init -> timer] Using timer 2 -> using GSI 2 edge triggered
+[init -> acpi] [34mWarning: SMBIOSv3 entry point invalid[0m
+[init -> acpi] SMBIOSv2 table (entry point: 0x1b6520 structures: 0xf6540)
+[init -> churn_probe] churn-probe: starting
+[init -> churn_probe] churn-probe: config poll_ms=500 ticks=40 tail_ticks=8 leak_bytes=32768 label=sandbox
+[init -> takeover_probe] takeover_probe: 1 states, poll=500ms, screen 1024x768 sample 512x384
+[init -> takeover_probe] takeover_probe: state[0]=desktop bg=0x1e3a6e
+[init -> takeover_probe] takeover_probe: sample band=0x101010 centre=0x101010 corner=0x101010
+[init -> takeover_probe] takeover_probe: pixel UNKNOWN bg=0x101010
+[init -> system -> critical] ep_wedge: alive — entrypoint wedging now
+[init -> fb] fb mapped to 0x6000
+[init -> fb] Found: VESA BIOS version 3.0
+[init -> fb] OEM: SeaBIOS VBE(C) 2011
+[init -> fb] Found: physical frame buffer at 0xfd000000 size: 16777216
+[init -> fb] fb mapped to 0x17000000
+[init -> system -> desktop] sponge_console: ready (role=desktop label=desktop)
+[init -> fb] using 1024x768 (1024x768)
+[init -> system -> desktop] sponge_console: role=desktop label=desktop 1024x768 owns the display
+[init -> churn_probe] churn-probe: label=sandbox tick=0 t=0 init_avail=74316348 init_used=983040 children=3
+[init -> takeover_probe] takeover_probe: sample band=0x5a76aa centre=0x1e3a6e corner=0x1e3a6e
+[init -> takeover_probe] takeover_probe: desktop-up state=desktop centre=0x1e3a6e
+[init -> system -> bystander] bystander: alive t=500 ms
+[init -> churn_probe] churn-probe: label=sandbox tick=1 t=500 init_avail=74287248 init_used=1032192 children=3
+[init -> churn_probe] churn-probe: SLOPE tick=1 avail_delta=-29100 total=-29100 cycles=0
+[init -> system -> bystander] bystander: alive t=1000 ms
+[init -> takeover_probe] takeover_probe: repeat state=desktop centre=0x1e3a6e
+[init -> churn_probe] churn-probe: label=sandbox tick=2 t=1000 init_avail=74287248 init_used=1032192 children=3
+[init -> churn_probe] churn-probe: SLOPE tick=2 avail_delta=0 total=-29100 cycles=0
+[init -> system -> bystander] bystander: alive t=1500 ms
+[init -> system -> critical] ep_wedge: alive — entrypoint wedging now
+[init -> churn_probe] churn-probe: label=sandbox tick=3 t=1500 init_avail=74289296 init_used=1024000 children=3
+[init -> churn_probe] churn-probe: SLOPE tick=3 avail_delta=2048 total=-27052 cycles=0
+[init -> system -> bystander] bystander: alive t=2000 ms
+[init -> churn_probe] churn-probe: label=sandbox tick=4 t=2000 init_avail=74279056 init_used=1040384 children=3
+[init -> churn_probe] churn-probe: SLOPE tick=4 avail_delta=-10240 total=-37292 cycles=0
+[init -> system -> bystander] bystander: alive t=2500 ms
+[init -> churn_probe] churn-probe: label=sandbox tick=5 t=2500 init_avail=74279056 init_used=1040384 children=3
+[init -> churn_probe] churn-probe: SLOPE tick=5 avail_delta=0 total=-37292 cycles=0
+[init -> system -> bystander] bystander: alive t=3000 ms
+[init -> takeover_probe] takeover_probe: repeat state=desktop centre=0x1e3a6e
+[init -> churn_probe] churn-probe: label=sandbox tick=6 t=3000 init_avail=74279056 init_used=1040384 children=3
+[init -> churn_probe] churn-probe: SLOPE tick=6 avail_delta=0 total=-37292 cycles=0
+[init -> system -> bystander] bystander: alive t=3500 ms
+[init -> churn_probe] churn-probe: label=sandbox tick=7 t=3500 init_avail=74279056 init_used=1040384 children=3
+[init -> churn_probe] churn-probe: SLOPE tick=7 avail_delta=0 total=-37292 cycles=0
+[init -> system -> bystander] bystander: alive t=4000 ms
+[init -> system -> critical] ep_wedge: alive — entrypoint wedging now
+[init -> churn_probe] churn-probe: label=sandbox tick=8 t=4000 init_avail=74297488 init_used=1015808 children=3
+[init -> churn_probe] churn-probe: SLOPE tick=8 avail_delta=18432 total=-18860 cycles=0
+[init -> system -> bystander] bystander: alive t=4500 ms
+[init -> churn_probe] churn-probe: label=sandbox tick=9 t=4500 init_avail=74287248 init_used=1032192 children=3
+[init -> churn_probe] churn-probe: SLOPE tick=9 avail_delta=-10240 total=-29100 cycles=0
+[init -> takeover_probe] takeover_probe: repeat state=desktop centre=0x1e3a6e
+[init -> system -> bystander] bystander: alive t=5000 ms
+[init -> churn_probe] churn-probe: label=sandbox tick=10 t=5000 init_avail=74287248 init_used=1032192 children=3
+[init -> churn_probe] churn-probe: SLOPE tick=10 avail_delta=0 total=-29100 cycles=0
+[init -> system -> bystander] bystander: alive t=5500 ms
+[init -> churn_probe] churn-probe: label=sandbox tick=11 t=5500 init_avail=74287248 init_used=1032192 children=3
+[init -> churn_probe] churn-probe: SLOPE tick=11 avail_delta=0 total=-29100 cycles=0
+[init -> system -> bystander] bystander: alive t=6000 ms
+[init -> system -> critical] ep_wedge: alive — entrypoint wedging now
+[init -> churn_probe] churn-probe: label=sandbox tick=12 t=6000 init_avail=74279056 init_used=1040384 children=3
+[init -> churn_probe] churn-probe: SLOPE tick=12 avail_delta=-8192 total=-37292 cycles=0
+[init -> system -> bystander] bystander: alive t=6500 ms
+[init -> takeover_probe] takeover_probe: repeat state=desktop centre=0x1e3a6e
+[init -> churn_probe] churn-probe: label=sandbox tick=13 t=6500 init_avail=74279056 init_used=1040384 children=3
+[init -> churn_probe] churn-probe: SLOPE tick=13 avail_delta=0 total=-37292 cycles=0
+[init -> system -> bystander] bystander: alive t=7000 ms
+[init -> churn_probe] churn-probe: label=sandbox tick=14 t=7000 init_avail=74279056 init_used=1040384 children=3
+[init -> churn_probe] churn-probe: SLOPE tick=14 avail_delta=0 total=-37292 cycles=0
+[init -> system -> bystander] bystander: alive t=7500 ms
+[init -> churn_probe] churn-probe: label=sandbox tick=15 t=7500 init_avail=74279056 init_used=1040384 children=3
+[init -> churn_probe] churn-probe: SLOPE tick=15 avail_delta=0 total=-37292 cycles=0
+[init -> system -> bystander] bystander: alive t=8000 ms
+[init -> churn_probe] churn-probe: label=sandbox tick=16 t=8000 init_avail=74279056 init_used=1040384 children=3
+[init -> churn_probe] churn-probe: SLOPE tick=16 avail_delta=0 total=-37292 cycles=0
+[init -> system -> bystander] bystander: alive t=8500 ms
+[init -> takeover_probe] takeover_probe: repeat state=desktop centre=0x1e3a6e
+[init -> system -> critical] ep_wedge: alive — entrypoint wedging now
+[init -> churn_probe] churn-probe: label=sandbox tick=17 t=8500 init_avail=74297488 init_used=1015808 children=3
+[init -> churn_probe] churn-probe: SLOPE tick=17 avail_delta=18432 total=-18860 cycles=0
+[init -> system -> bystander] bystander: alive t=9000 ms
+[init -> churn_probe] churn-probe: label=sandbox tick=18 t=9000 init_avail=74287248 init_used=1032192 children=3
+[init -> churn_probe] churn-probe: SLOPE tick=18 avail_delta=-10240 total=-29100 cycles=0
+[init -> system -> bystander] bystander: alive t=9500 ms
+[init -> churn_probe] churn-probe: label=sandbox tick=19 t=9500 init_avail=74287248 init_used=1032192 children=3
+[init -> churn_probe] churn-probe: SLOPE tick=19 avail_delta=0 total=-29100 cycles=0
+[init -> system -> bystander] bystander: alive t=10000 ms
+[init -> churn_probe] churn-probe: label=sandbox tick=20 t=10000 init_avail=74287248 init_used=1032192 children=3
+[init -> takeover_probe] takeover_probe: repeat state=desktop centre=0x1e3a6e
+[init -> churn_probe] churn-probe: SLOPE tick=20 avail_delta=0 total=-29100 cycles=0
+[init -> system -> bystander] bystander: alive t=10500 ms
+[init -> system] [34mWarning: critical: heartbeat restart budget (4) exhausted after 4 restarts - child left stopped, escalation is up to whoever owns the config[0m
+[init -> churn_probe] churn-probe: label=sandbox tick=21 t=10500 init_avail=82673136 init_used=1015808 children=2
+[init -> churn_probe] churn-probe: SLOPE tick=21 avail_delta=8385888 total=8356788 cycles=0
+[init -> system -> bystander] bystander: alive t=11000 ms
+[init -> churn_probe] churn-probe: label=sandbox tick=22 t=11000 init_avail=82673136 init_used=1015808 children=2
+[init -> churn_probe] churn-probe: SLOPE tick=22 avail_delta=0 total=8356788 cycles=0
+[init -> system -> bystander] bystander: alive t=11500 ms
+[init -> churn_probe] churn-probe: label=sandbox tick=23 t=11500 init_avail=82673136 init_used=1015808 children=2
+[init -> churn_probe] churn-probe: SLOPE tick=23 avail_delta=0 total=8356788 cycles=0
+[init -> system -> bystander] bystander: alive t=12000 ms
+[init -> takeover_probe] takeover_probe: repeat state=desktop centre=0x1e3a6e
+[init -> churn_probe] churn-probe: label=sandbox tick=24 t=12000 init_avail=82673136 init_used=1015808 children=2
+[init -> churn_probe] churn-probe: SLOPE tick=24 avail_delta=0 total=8356788 cycles=0
+[init -> system -> bystander] bystander: alive t=12500 ms
+[init -> churn_probe] churn-probe: label=sandbox tick=25 t=12500 init_avail=82673136 init_used=1015808 children=2
+[init -> churn_probe] churn-probe: SLOPE tick=25 avail_delta=0 total=8356788 cycles=0
+[init -> system -> bystander] bystander: alive t=13000 ms
+[init -> churn_probe] churn-probe: label=sandbox tick=26 t=13000 init_avail=82673136 init_used=1015808 children=2
+[init -> churn_probe] churn-probe: SLOPE tick=26 avail_delta=0 total=8356788 cycles=0
+[init -> system -> bystander] bystander: alive t=13500 ms
+[init -> churn_probe] churn-probe: label=sandbox tick=27 t=13500 init_avail=82673136 init_used=1015808 children=2
+[init -> churn_probe] churn-probe: SLOPE tick=27 avail_delta=0 total=8356788 cycles=0
+[init -> takeover_probe] takeover_probe: repeat state=desktop centre=0x1e3a6e
+[init -> system -> bystander] bystander: alive t=14000 ms
+[init -> churn_probe] churn-probe: label=sandbox tick=28 t=14000 init_avail=82673136 init_used=1015808 children=2
+[init -> churn_probe] churn-probe: SLOPE tick=28 avail_delta=0 total=8356788 cycles=0
+[init -> system -> bystander] bystander: alive t=14500 ms
+[init -> churn_probe] churn-probe: label=sandbox tick=29 t=14500 init_avail=82673136 init_used=1015808 children=2
+[init -> churn_probe] churn-probe: SLOPE tick=29 avail_delta=0 total=8356788 cycles=0
+[init -> system -> bystander] bystander: alive t=15000 ms
+[init -> churn_probe] churn-probe: label=sandbox tick=30 t=15000 init_avail=82673136 init_used=1015808 children=2
+[init -> churn_probe] churn-probe: SLOPE tick=30 avail_delta=0 total=8356788 cycles=0
+[init -> system -> bystander] bystander: alive t=15500 ms
+[init -> takeover_probe] takeover_probe: repeat state=desktop centre=0x1e3a6e
+[init -> churn_probe] churn-probe: label=sandbox tick=31 t=15500 init_avail=82673136 init_used=1015808 children=2
+[init -> churn_probe] churn-probe: SLOPE tick=31 avail_delta=0 total=8356788 cycles=0
+[init -> system -> bystander] bystander: alive t=16000 ms
+[init -> churn_probe] churn-probe: label=sandbox tick=32 t=16000 init_avail=82673136 init_used=1015808 children=2
+[init -> churn_probe] churn-probe: SLOPE tick=32 avail_delta=0 total=8356788 cycles=0
+[init -> system -> bystander] bystander: alive t=16500 ms
+[init -> churn_probe] churn-probe: label=sandbox tick=33 t=16500 init_avail=82673136 init_used=1015808 children=2
+[init -> churn_probe] churn-probe: SLOPE tick=33 avail_delta=0 total=8356788 cycles=0
+[init -> system -> bystander] bystander: alive t=17000 ms
+[init -> churn_probe] churn-probe: label=sandbox tick=34 t=17000 init_avail=82673136 init_used=1015808 children=2
+[init -> churn_probe] churn-probe: SLOPE tick=34 avail_delta=0 total=8356788 cycles=0
+[init -> system -> bystander] bystander: alive t=17500 ms
+[init -> takeover_probe] takeover_probe: repeat state=desktop centre=0x1e3a6e
+[init -> churn_probe] churn-probe: label=sandbox tick=35 t=17500 init_avail=82673136 init_used=1015808 children=2
+[init -> churn_probe] churn-probe: SLOPE tick=35 avail_delta=0 total=8356788 cycles=0
+[init -> system -> bystander] bystander: alive t=18000 ms
+[init -> churn_probe] churn-probe: label=sandbox tick=36 t=18000 init_avail=82673136 init_used=1015808 children=2
+[init -> churn_probe] churn-probe: SLOPE tick=36 avail_delta=0 total=8356788 cycles=0
+[init -> system -> bystander] bystander: alive t=18500 ms
+[init -> churn_probe] churn-probe: label=sandbox tick=37 t=18500 init_avail=82673136 init_used=1015808 children=2
+[init -> churn_probe] churn-probe: SLOPE tick=37 avail_delta=0 total=8356788 cycles=0
+[init -> system -> bystander] bystander: alive t=19000 ms
+[init -> churn_probe] churn-probe: label=sandbox tick=38 t=19000 init_avail=82673136 init_used=1015808 children=2
+[init -> churn_probe] churn-probe: SLOPE tick=38 avail_delta=0 total=8356788 cycles=0
+[init -> takeover_probe] takeover_probe: repeat state=desktop centre=0x1e3a6e
+[init -> system -> bystander] bystander: alive t=19500 ms
+[init -> churn_probe] churn-probe: label=sandbox tick=39 t=19500 init_avail=82673136 init_used=1015808 children=2
+[init -> churn_probe] churn-probe: SLOPE tick=39 avail_delta=0 total=8356788 cycles=0
+[init -> system -> bystander] bystander: alive t=20000 ms
+[init -> system -> bystander] bystander: alive t=20500 ms
+[init -> system -> bystander] bystander: alive t=21000 ms
+[init -> takeover_probe] takeover_probe: repeat state=desktop centre=0x1e3a6e
+[init -> system -> bystander] bystander: alive t=21500 ms
+[init -> system -> bystander] bystander: alive t=22000 ms
+[init -> system -> bystander] bystander: alive t=22500 ms
+[init -> system -> bystander] bystander: alive t=23000 ms
+[init -> takeover_probe] takeover_probe: repeat state=desktop centre=0x1e3a6e
+[init -> system -> bystander] bystander: alive t=23500 ms
+[init -> churn_probe] churn-probe: DETAIL label=sandbox samples=40 cycles=0 total_avail_delta=8356788 tail_spread=0 tail_ticks=8 init_avail=82673136 init_used=1015808
+[init -> churn_probe] churn-probe: VERDICT PASS
+[init] child "churn_probe" exited with exit value 0
+[init -> system -> bystander] bystander: alive t=24000 ms
+[init -> system -> bystander] bystander: alive t=24500 ms
+[init -> takeover_probe] takeover_probe: repeat state=desktop
+sponge-containment-churn: PASS - wedged critical child contained: respawn loop bounded at 4, container RAM settled, bystander answering after the budget was spent, display held the desktop
+
+
+Run script execution successful.
+
+
+Run script execution successful.
+make: ディレクトリ '/home/luke/sponge-os/genode/build/x86_64' から出ます

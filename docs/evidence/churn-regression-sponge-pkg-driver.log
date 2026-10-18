@@ -1,0 +1,2621 @@
+make: ディレクトリ '/home/luke/sponge-os/genode/build/x86_64'　に入ります
+including /home/luke/sponge-os/genode/tool/run/power_on/qemu
+including /home/luke/sponge-os/genode/tool/run/log/qemu
+including /home/luke/sponge-os/genode/tool/run/image/iso
+including /home/luke/sponge-os/genode/tool/run/boot_dir/sel4
+including /home/luke/sponge-os/repos/sponge/run/sponge-pkg-driver.run
+building targets:  core lib/ld init timer server/report_rom driver/acpi app/pci_decode driver/platform server/nic_router driver/nic/pc driver/framebuffer/vesa sponge_pkgd test/driver_probe lib/vfs 
+spawn make core lib/ld init timer server/report_rom driver/acpi app/pci_decode driver/platform server/nic_router driver/nic/pc driver/framebuffer/vesa sponge_pkgd test/driver_probe lib/vfs
+make[1]: ディレクトリ '/home/luke/sponge-os/genode/build/x86_64' に入ります
+Skip target driver/nic/pc/spec/x86_32 because it requires 'x86_32'
+Skip target driver/platform/pc/spec/x86_32 because it requires 'x86_32'
+  [00;33mLibrary[0m ld.abi.so
+  [00;33mLibrary[0m ldso_so_support.lib.a
+  [00;33mLibrary[0m kernel-sel4-pc.lib.a
+ninja: Jobserver mode detected:  -j80 --jobserver-auth=fifo:/tmp/GMfifo3247153 --no-print-directory -- DEBUG_DIR=/home/luke/sponge-os/genode/build/x86_64/debug INSTALL_DIR=/home/luke/sponge-os/genode/build/x86_64/bin BUILD_BASE_DIR=/home/luke/sponge-os/genode/build/x86_64 SHARED_LIBS= ARCHIVES= LIB=kernel-sel4-pc LIB_MK=/home/luke/sponge-os/genode/repos/base-sel4/lib/mk/spec/x86_64/kernel-sel4-pc.mk REP_DIR=/home/luke/sponge-os/genode/repos/base-sel4 KERNEL=sel4 BOARD=pc SHELL=/usr/bin/bash
+ninja: no work to do.
+  [00;33mLibrary[0m syscall-sel4-pc.lib.a
+  [00;33mLibrary[0m syscall-sel4.lib.a
+  [00;33mLibrary[0m startup-sel4.lib.a
+  [00;33mLibrary[0m base-sel4-common.lib.a
+  [00;33mLibrary[0m timeout.lib.a
+  [00;33mLibrary[0m cxx.lib.a
+  [00;33mLibrary[0m base-sel4.lib.a
+  [00;33mLibrary[0m ld-sel4.lib.so
+  [00;33mLibrary[0m ld.lib.so
+  [00;33mLibrary[0m vfs.abi.so
+  [00;33mLibrary[0m base.lib.a
+  [00;33mLibrary[0m vfs.lib.so
+  [01;33mProgram[0m app/pci_decode/pci_decode
+  [00;33mLibrary[0m core-sel4.lib.a
+    COMPILE  version.o
+    MERGE    core-sel4.lib.a
+  [01;33mProgram[0m core/sel4/core
+  [01;33mProgram[0m driver/acpi/spec/x86/acpi
+  [00;33mLibrary[0m blit.lib.a
+  [00;33mLibrary[0m x86emu.lib.a
+  [00;33mLibrary[0m format.lib.a
+  [01;33mProgram[0m driver/framebuffer/vesa/vesa_fb
+  [00;33mLibrary[0m pc_lx_emul.lib.a
+  [00;33mLibrary[0m jitterentropy.lib.a
+  [00;33mLibrary[0m pc_linux_generated.lib.a
+  [01;33mProgram[0m driver/nic/pc/spec/x86_64/pc_nic
+  [01;33mProgram[0m driver/platform/pc/spec/x86_64/pc_platform
+  [01;33mProgram[0m driver/platform/platform
+  [01;33mProgram[0m init/init
+  [00;33mLibrary[0m net.lib.a
+  [01;33mProgram[0m server/nic_router/nic_router
+  [01;33mProgram[0m server/report_rom/report_rom
+  [01;33mProgram[0m sponge_pkgd/sponge_pkgd
+  [01;33mProgram[0m test/driver_probe/driver_probe
+  [01;33mProgram[0m timer/hpet/hpet_timer
+make[1]: ディレクトリ '/home/luke/sponge-os/genode/build/x86_64' から出ます
+genode build completed
+building targets: kernel/sel4 lib/ld-sel4
+spawn make kernel/sel4 lib/ld-sel4
+make[1]: ディレクトリ '/home/luke/sponge-os/genode/build/x86_64' に入ります
+  [00;33mLibrary[0m kernel-sel4-pc.lib.a
+ninja: Jobserver mode detected:  -j80 --jobserver-auth=fifo:/tmp/GMfifo3247549 --no-print-directory -- DEBUG_DIR=/home/luke/sponge-os/genode/build/x86_64/debug INSTALL_DIR=/home/luke/sponge-os/genode/build/x86_64/bin BUILD_BASE_DIR=/home/luke/sponge-os/genode/build/x86_64 SHARED_LIBS= ARCHIVES= LIB=kernel-sel4-pc LIB_MK=/home/luke/sponge-os/genode/repos/base-sel4/lib/mk/spec/x86_64/kernel-sel4-pc.mk REP_DIR=/home/luke/sponge-os/genode/repos/base-sel4 KERNEL=sel4 BOARD=pc SHELL=/usr/bin/bash
+ninja: no work to do.
+  [00;33mLibrary[0m syscall-sel4-pc.lib.a
+  [00;33mLibrary[0m syscall-sel4.lib.a
+  [00;33mLibrary[0m startup-sel4.lib.a
+  [00;33mLibrary[0m base-sel4-common.lib.a
+  [00;33mLibrary[0m timeout.lib.a
+  [00;33mLibrary[0m cxx.lib.a
+  [00;33mLibrary[0m base-sel4.lib.a
+  [00;33mLibrary[0m ldso_so_support.lib.a
+  [00;33mLibrary[0m ld-sel4.lib.so
+  [01;33mProgram[0m kernel/sel4/sel4-pc
+make[1]: ディレクトリ '/home/luke/sponge-os/genode/build/x86_64' から出ます
+genode build completed
+using 'core-sel4.a' as 'core.a'
+using 'hpet_timer' as 'timer'
+using 'ld-sel4.lib.so' as 'ld.lib.so'
+install bootloader
+creating ISO image...
+xorriso 1.5.8.pl02 : RockRidge filesystem manipulator, libburnia project.
+
+spawn qemu-system-x86_64 -accel kvm -machine q35 -cpu Skylake-Client -nographic -m 2G -serial mon:stdio -cdrom var/run/sponge-pkg-driver.iso -machine q35 -net nic,model=e1000,netdev=net0 -netdev user,id=net0
+qemu-system-x86_64: warning: host doesn't support requested feature: CPUID[eax=0Dh,ecx=01h].EAX.xsavec [bit 1]
+qemu-system-x86_64: warning: host doesn't support requested feature: CPUID[eax=0Dh,ecx=01h].EAX.xgetbv1 [bit 2]
+c[?7l[2J[0mSeaBIOS (version Arch Linux 1.17.0-2-2)
+
+
+iPXE (http://ipxe.org) 00:02.0 C900 PCI2.10 PnP PMM+7EFD3DA0+7EF33DA0 C900
+Press Ctrl-B to configure iPXE (PCI 00:02.0)...                                                                               
+
+
+Booting from Hard Disk...
+Boot failed: could not read the boot disk
+
+Booting from DVD/CD...
+error: can't find command `loadfont'.
+  Booting `Genode on seL4'
+
+[01;01H
+Bender Version 0.9-beta7-51-g77a6918-dirty
+Patching BDA with I/O port 0x3f8.
+Bender: Hello World.
+hwp config: eeo=na irq=na hwp=na epp=na epb=na
+Boot config: debug_port = 0x3f8
+Boot config: disable_iommu = true
+  module #0: start=0xf168000 end=0xfdf6410 size=0xc8e410 name='image.elf'
+	Physical Memory Region from 0 size 9fc00 type 1
+	Physical Memory Region from 9fc00 size 400 type 2
+	Physical Memory Region from f0000 size 10000 type 2
+	Physical Memory Region from 100000 size 7fedf000 type 1
+Adding physical memory region 0x100000-0x7ffdf000
+	Physical Memory Region from 7ffdf000 size 21000 type 2
+	Physical Memory Region from b0000000 size 10000000 type 2
+	Physical Memory Region from fed1c000 size 4000 type 2
+	Physical Memory Region from feffc000 size 4000 type 2
+	Physical Memory Region from fffc0000 size 40000 type 2
+Got framebuffer info in multiboot2. Current video mode is at physical address=fd000000 pitch=5120 resolution=1280x800@32 type=1
+Detected 1 boot module(s):
+Kernel loaded to: start=0x200000 end=0xe3e000 size=0xc3e000 entry=0x2002a3
+ACPI: RSDT paddr=0x7ffe2345
+ACPI: RSDT vaddr=0x7ffe2345
+ACPI: FADT paddr=0x7ffe213d
+ACPI: FADT vaddr=0x7ffe213d
+ACPI: FADT flags=0x84a5
+ACPI: MADT paddr=0x7ffe2231
+ACPI: MADT vaddr=0x7ffe2231
+ACPI: MADT apic_addr=0xfee00000
+ACPI: MADT flags=0x1
+ACPI: MADT_APIC apic_id=0x0
+ACPI: MADT_IOAPIC ioapic_id=0 ioapic_addr=0xfec00000 gsib=0
+ACPI: MADT_ISO bus=0 source=0 gsi=0x002 flags=0x0
+ACPI: MADT_ISO bus=0 source=5 gsi=0x005 flags=0xd
+ACPI: MADT_ISO bus=0 source=9 gsi=0x009 flags=0xd
+ACPI: MADT_ISO bus=0 source=10 gsi=0x00a flags=0xd
+ACPI: MADT_ISO bus=0 source=11 gsi=0x00b flags=0xd
+ACPI: 1 CPU(s) detected
+ELF-loading userland images from boot modules:
+size=0x268d000 v_entry=0x2000018 v_start=0x2000000 v_end=0x468d000 p_start=0xfdf7000 p_end=0x12484000
+Moving loaded userland images to final location: from=0xfdf7000 to=0xe3e000 size=0x268d000
+Starting node #0 with APIC ID 0
+Mapping kernel window is done
+vt-x: not supported
+Available phys memory regions: 1
+  [100000..7ffdf000)
+Reserved virt address space regions: 1
+  [ffffff8000200000..ffffff80034cb000)
+Booting all finished, dropped to user space
+:phys_mem_16k:     Allocator 0x257a7f8 dump:
+ Block: [0000000000100000,0000000000a00000) size=9M avail=9M max_avail=9M
+ Block: [00000000034cc000,0000000004000000) size=11472K avail=11472K max_avail=94256K
+ Block: [0000000008000000,000000000dc0c000) size=94256K avail=94256K max_avail=94256K
+ => mem_size=117702656 (112 MB) / mem_avail=117702656 (112 MB)
+
+virtual address layout of core:
+ overall    [0000000000002000,0000001000000000)
+ core image [0000000002000000,000000000468d000)
+ ipc buffer [000000000468d000,000000000468e000)
+ boot_info  [000000000468e000,000000000468f532)
+ stack area [0000000040000000,0000000050000000)
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+Physical memory per PD at most: 512M
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+boot module 'config' (11876 bytes)
+boot module 'acpi' (185600 bytes)
+boot module 'driver_probe' (99408 bytes)
+boot module 'timer' (139920 bytes)
+boot module 'init' (511560 bytes)
+boot module 'init.hsd' (4125 bytes)
+boot module 'init.xsd' (8118 bytes)
+boot module 'ld.lib.so' (1107760 bytes)
+boot module 'nic_router' (609048 bytes)
+boot module 'nic_router.hsd' (4758 bytes)
+boot module 'nic_router.xsd' (7871 bytes)
+boot module 'pc_nic' (1819416 bytes)
+boot module 'pc_platform' (720576 bytes)
+boot module 'pci_decode' (171336 bytes)
+boot module 'platform' (594696 bytes)
+boot module 'report_rom' (150784 bytes)
+boot module 'sponge_pkgd' (272848 bytes)
+boot module 'vesa_fb' (334336 bytes)
+boot module 'vfs.lib.so' (769424 bytes)
+boot module 'pkg_index.xml' (94 bytes)
+boot module 'pkg_pc_nic.xml' (2382 bytes)
+boot module 'pkg_fb_vesa.xml' (3389 bytes)
+boot module 'pkg_fb_boot.xml' (3275 bytes)
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+Genode 26.08-21-gf44bc47ee5
+1602 MiB RAM and 523288 caps assigned to init
+[init] [34mWarning: system: configured RAM exceeds available RAM, proceed with 1636192192[0m
+[init -> acpi] Found MADT
+[init -> acpi] MADT IRQ 0 -> GSI 2 flags: 0
+[init -> acpi] MADT IRQ 5 -> GSI 5 flags: 13
+[init -> timer] timers=3, clock 10000000fs , 64bit counter , legacy routing support vendor=0x8086
+[init -> timer] timer0 GSI options 0xff0104, supports periodic
+[init -> timer] timer1 GSI options 0xff0104, supports periodic
+[init -> timer] timer2 GSI options 0xff0104, supports periodic
+[init -> timer] time wraps after 5849 years
+[init -> timer] irqs=off legacy=off
+[init -> acpi] MADT IRQ 9 -> GSI 9 flags: 13
+[init -> acpi] MADT IRQ 10 -> GSI 10 flags: 13
+[init -> acpi] MADT IRQ 11 -> GSI 11 flags: 13
+[init -> acpi] Found HPET hw_id=0x1  vendor_id=0x8086 space_id=0x0 addr=0xfed00000 hpet_id=0x0
+[init -> acpi] Found MCFG
+[init -> acpi] MCFG BASE 0xb0000000 seg 0x0 bus 0x0-0xff
+[init -> acpi] RSDT OEM 'BOCHS ', table id 'BXPC    ', revision 1, creator 'BXPC' (1)
+[init -> timer] Using timer 2 -> using GSI 2 edge triggered
+[init -> system] [34mWarning: pkg_runtime: configured RAM exceeds available RAM, proceed with 1248570492[0m
+[init -> nic_router] [uplink] dynamic IP config: none
+[init -> nic_router] [uplink] NIC sessions: 0
+[init -> report_rom] report 'acpi -> acpi'
+[init -> report_rom]   acpi
+[init -> report_rom]   + sci_int | irq: 9
+[init -> report_rom]   + reset | io_port: 0xcf9 | value: 15
+[init -> report_rom]   + table WAET | addr: 0x7ffe231d | size: 40
+[init -> report_rom]   + table MCFG | addr: 0x7ffe22e1 | size: 60
+[init -> report_rom]   + table HPET | addr: 0x7ffe22a9 | size: 56
+[init -> report_rom]   + table APIC | addr: 0x7ffe2231 | size: 120
+[init -> report_rom]   + table DSDT | addr: 0x7ffe0040 | size: 8445
+[init -> report_rom]   + table FACP | addr: 0x7ffe213d | size: 244
+[init -> report_rom]   + table RSDT | addr: 0x7ffe2345 | size: 56
+[init -> report_rom]   + root_bridge | bdf: 0x0
+[init -> report_rom]   + bdf | start: 0 | count: 65536 | base: 0xb0000000
+[init -> report_rom]   + irq_override | irq: 11 | gsi: 11 | flags: 0xd
+[init -> report_rom]   + irq_override | irq: 10 | gsi: 10 | flags: 0xd
+[init -> report_rom]   + irq_override | irq: 9 | gsi: 9 | flags: 0xd
+[init -> report_rom]   + irq_override | irq: 5 | gsi: 5 | flags: 0xd
+[init -> report_rom]   + irq_override | irq: 0 | gsi: 2 | flags: 0x0
+[init -> report_rom]   + ioapic | id: 0 | base_irq: 0 | addr: 0xfec00000
+[init -> report_rom]   -
+[init -> acpi] [34mWarning: SMBIOSv3 entry point invalid[0m
+[init -> acpi] SMBIOSv2 table (entry point: 0x1b6520 structures: 0xf6540)
+[init -> report_rom] report 'acpi -> smbios_table'
+[init -> report_rom]   _SM_-L
+[init -> report_rom] report 'pci_decode -> devices'
+[init -> report_rom]   devices
+[init -> report_rom]   + device 00:00.0 | type: pci
+[init -> report_rom]     + pci-config | address: 0xb0000000 | bus: 0x0 | device: 0x0 | function: 0x0 | vendor_id: 0x8086 | device_id: 0x29c0 | class: 0x60000 | revision: 0x0 | bridge: yes | io_base_limit: 0x0 | memory_base:
+[init -> report_rom]    0x0 | memory_limit: 0x0 | prefetch_memory_base: 0x0 | prefetch_memory_base_upper: 0x0 | prefetch_memory_limit_upper: 0x11001af4 | io_base_limit_upper: 0x0 | expansion_rom_base: 0x0 | bridge_control: 
+[init -> report_rom]   0x0
+[init -> report_rom]   + device 00:01.0 | type: pci
+[init -> report_rom]     + pci-config | address: 0xb0008000 | bus: 0x0 | device: 0x1 | function: 0x0 | vendor_id: 0x1234 | device_id: 0x1111 | class: 0x30000 | revision: 0x2 | bridge: no | sub_vendor_id: 0x1af4 | sub_device
+[init -> report_rom]   _id: 0x1100
+[init -> report_rom]     + io_mem | pci_bar: 0 | address: 0xfd000000 | size: 0x1000000 | prefetchable: true | wc: true
+[init -> report_rom]     + io_mem | pci_bar: 2 | address: 0xfebf0000 | size: 0x1000
+[init -> report_rom]   + device 00:02.0 | type: pci
+[init -> report_rom]     + pci-config | address: 0xb0010000 | bus: 0x0 | device: 0x2 | function: 0x0 | vendor_id: 0x8086 | device_id: 0x100e | class: 0x20000 | revision: 0x3 | bridge: no | sub_vendor_id: 0x1af4 | sub_device
+[init -> report_rom]   _id: 0x1100
+[init -> report_rom]     + io_mem | pci_bar: 0 | address: 0xfebc0000 | size: 0x20000
+[init -> report_rom]     + io_port_range | pci_bar: 1 | address: 0xc000 | size: 0x40
+[init -> report_rom]     + irq | polarity: high | mode: level | number: 11
+[init -> report_rom]   + device 00:1f.0 | type: pci
+[init -> report_rom]     + pci-config | address: 0xb00f8000 | bus: 0x0 | device: 0x1f | function: 0x0 | vendor_id: 0x8086 | device_id: 0x2918 | class: 0x60100 | revision: 0x2 | bridge: yes | io_base_limit: 0x0 | memory_base
+[init -> report_rom]   : 0x0 | memory_limit: 0x0 | prefetch_memory_base: 0x0 | prefetch_memory_base_upper: 0x0 | prefetch_memory_limit_upper: 0x11001af4 | io_base_limit_upper: 0x0 | expansion_rom_base: 0x0 | bridge_control:
+[init -> report_rom]    0x0
+[init -> report_rom]   + device 00:1f.2 | type: pci | msi: 1
+[init -> report_rom]     + pci-config | address: 0xb00fa000 | bus: 0x0 | device: 0x1f | function: 0x2 | vendor_id: 0x8086 | device_id: 0x2922 | class: 0x10601 | revision: 0x2 | bridge: no | sub_vendor_id: 0x1af4 | sub_devic
+[init -> report_rom]   e_id: 0x1100
+[init -> report_rom]     + io_port_range | pci_bar: 4 | address: 0xc080 | size: 0x20
+[init -> report_rom]     + io_mem | pci_bar: 5 | address: 0xfebf1000 | size: 0x1000
+[init -> report_rom]     + irq | polarity: high | mode: level | number: 10
+[init -> report_rom]   + device 00:1f.3 | type: pci
+[init -> report_rom]     + pci-config | address: 0xb00fb000 | bus: 0x0 | device: 0x1f | function: 0x3 | vendor_id: 0x8086 | device_id: 0x2930 | class: 0xc0500 | revision: 0x2 | bridge: no | sub_vendor_id: 0x1af4 | sub_devic
+[init -> report_rom]   e_id: 0x1100
+[init -> report_rom]     + io_port_range | pci_bar: 4 | address: 0x700 | size: 0x40
+[init -> report_rom]     + irq | polarity: high | mode: level | number: 10
+[init -> report_rom]   + device ps2
+[init -> report_rom]     + irq | number: 1
+[init -> report_rom]     + irq | number: 12
+[init -> report_rom]     + io_port_range | address: 0x60 | size: 1
+[init -> report_rom]     + io_port_range | address: 0x64 | size: 1
+[init -> report_rom]   + device pit
+[init -> report_rom]     + irq | number: 0
+[init -> report_rom]     + io_port_range | address: 0x40 | size: 4
+[init -> report_rom]   + device acpi | type: acpi
+[init -> report_rom]     + irq | number: 9
+[init -> report_rom]   + device ioapic0 | type: ioapic
+[init -> report_rom]     + io_mem | address: 0xfec00000 | size: 0x1000
+[init -> report_rom]     + property irq_start | value: 0
+[init -> report_rom]   + device INT34C5 | type: acpi
+[init -> report_rom]     + irq | number: 14 | mode: level | polarity: low
+[init -> report_rom]     + io_mem | address: 0xfd690000 | size: 0x1000
+[init -> report_rom]     + io_mem | address: 0xfd6a0000 | size: 0x1000
+[init -> report_rom]     + io_mem | address: 0xfd6d0000 | size: 0x1000
+[init -> report_rom]     + io_mem | address: 0xfd6e0000 | size: 0x1000
+[init -> report_rom]   + device STARLITE_TOUCH | type: acpi
+[init -> report_rom]     + irq | number: 104 | mode: level | polarity: low
+[init -> report_rom]   + device INTC1083 | type: acpi
+[init -> report_rom]     + irq | number: 14 | mode: level | polarity: low
+[init -> report_rom]     + io_mem | address: 0xe0d50000 | size: 0x1000
+[init -> report_rom]     + io_mem | address: 0xe0d40000 | size: 0x1000
+[init -> system -> report_rom] [34mWarning: no valid policy for ROM request 'fb_conflict_probe -> result'[0m
+[init -> report_rom]     + io_mem | address: 0xe0d30000 | size: 0x1000
+[init -> report_rom]     + io_mem | address: 0xe0d20000 | size: 0x1000
+[init -> report_rom]     + io_mem | address: 0xe0d10000 | size: 0x1000
+[init -> report_rom]   -
+[init -> system -> fb_conflict_probe] [31mError: stop because parent denied ROM-session: label="result", , ram_quota=6K, cap_quota=3[0m
+[init -> system -> report_rom] [34mWarning: no valid policy for ROM request 'fb_lock_probe -> result'[0m
+[init -> system -> fb_lock_probe] [31mError: stop because parent denied ROM-session: label="result", , ram_quota=6K, cap_quota=3[0m
+[init -> system -> driver_probe] driver-probe: installing driver package 'pc_nic'
+[init -> system -> report_rom] report 'driver_probe -> request'
+[init -> system -> report_rom]   <request op="install" pkg="pc_nic" seq="1"/>
+[init -> system -> driver_probe] driver-probe: sending install request
+[init -> system -> sponge_pkgd] sponge_pkgd: ready
+spawn qemu-system-x86_64 -accel kvm -machine q35 -cpu Skylake-Client -nographic -m 2G -serial mon:stdio -cdrom var/run/sponge-pkg-driver.iso -machine q35 -net nic,model=e1000,netdev=net0 -netdev user,id=net0
+qemu-system-x86_64: warning: host doesn't support requested feature: CPUID[eax=0Dh,ecx=01h].EAX.xsavec [bit 1]
+qemu-system-x86_64: warning: host doesn't support requested feature: CPUID[eax=0Dh,ecx=01h].EAX.xgetbv1 [bit 2]
+c[?7l[2J[0mSeaBIOS (version Arch Linux 1.17.0-2-2)
+
+
+iPXE (http://ipxe.org) 00:02.0 C900 PCI2.10 PnP PMM+7EFD3DA0+7EF33DA0 C900
+Press Ctrl-B to configure iPXE (PCI 00:02.0)...                                                                               
+
+
+Booting from Hard Disk...
+Boot failed: could not read the boot disk
+
+Booting from DVD/CD...
+error: can't find command `loadfont'.
+  Booting `Genode on seL4'
+
+[01;01H
+Bender Version 0.9-beta7-51-g77a6918-dirty
+Patching BDA with I/O port 0x3f8.
+Bender: Hello World.
+hwp config: eeo=na irq=na hwp=na epp=na epb=na
+Boot config: debug_port = 0x3f8
+Boot config: disable_iommu = true
+  module #0: start=0xf168000 end=0xfdf6410 size=0xc8e410 name='image.elf'
+	Physical Memory Region from 0 size 9fc00 type 1
+	Physical Memory Region from 9fc00 size 400 type 2
+	Physical Memory Region from f0000 size 10000 type 2
+	Physical Memory Region from 100000 size 7fedf000 type 1
+Adding physical memory region 0x100000-0x7ffdf000
+	Physical Memory Region from 7ffdf000 size 21000 type 2
+	Physical Memory Region from b0000000 size 10000000 type 2
+	Physical Memory Region from fed1c000 size 4000 type 2
+	Physical Memory Region from feffc000 size 4000 type 2
+	Physical Memory Region from fffc0000 size 40000 type 2
+Got framebuffer info in multiboot2. Current video mode is at physical address=fd000000 pitch=5120 resolution=1280x800@32 type=1
+Detected 1 boot module(s):
+Kernel loaded to: start=0x200000 end=0xe3e000 size=0xc3e000 entry=0x2002a3
+ACPI: RSDT paddr=0x7ffe2345
+ACPI: RSDT vaddr=0x7ffe2345
+ACPI: FADT paddr=0x7ffe213d
+ACPI: FADT vaddr=0x7ffe213d
+ACPI: FADT flags=0x84a5
+ACPI: MADT paddr=0x7ffe2231
+ACPI: MADT vaddr=0x7ffe2231
+ACPI: MADT apic_addr=0xfee00000
+ACPI: MADT flags=0x1
+ACPI: MADT_APIC apic_id=0x0
+ACPI: MADT_IOAPIC ioapic_id=0 ioapic_addr=0xfec00000 gsib=0
+ACPI: MADT_ISO bus=0 source=0 gsi=0x002 flags=0x0
+ACPI: MADT_ISO bus=0 source=5 gsi=0x005 flags=0xd
+ACPI: MADT_ISO bus=0 source=9 gsi=0x009 flags=0xd
+ACPI: MADT_ISO bus=0 source=10 gsi=0x00a flags=0xd
+ACPI: MADT_ISO bus=0 source=11 gsi=0x00b flags=0xd
+ACPI: 1 CPU(s) detected
+ELF-loading userland images from boot modules:
+size=0x268d000 v_entry=0x2000018 v_start=0x2000000 v_end=0x468d000 p_start=0xfdf7000 p_end=0x12484000
+Moving loaded userland images to final location: from=0xfdf7000 to=0xe3e000 size=0x268d000
+Starting node #0 with APIC ID 0
+Mapping kernel window is done
+vt-x: not supported
+Available phys memory regions: 1
+  [100000..7ffdf000)
+Reserved virt address space regions: 1
+  [ffffff8000200000..ffffff80034cb000)
+Booting all finished, dropped to user space
+:phys_mem_16k:     Allocator 0x257a7f8 dump:
+ Block: [0000000000100000,0000000000a00000) size=9M avail=9M max_avail=9M
+ Block: [00000000034cc000,0000000004000000) size=11472K avail=11472K max_avail=94256K
+ Block: [0000000008000000,000000000dc0c000) size=94256K avail=94256K max_avail=94256K
+ => mem_size=117702656 (112 MB) / mem_avail=117702656 (112 MB)
+
+virtual address layout of core:
+ overall    [0000000000002000,0000001000000000)
+ core image [0000000002000000,000000000468d000)
+ ipc buffer [000000000468d000,000000000468e000)
+ boot_info  [000000000468e000,000000000468f532)
+ stack area [0000000040000000,0000000050000000)
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+Physical memory per PD at most: 512M
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+boot module 'config' (11876 bytes)
+boot module 'acpi' (185600 bytes)
+boot module 'driver_probe' (99408 bytes)
+boot module 'timer' (139920 bytes)
+boot module 'init' (511560 bytes)
+boot module 'init.hsd' (4125 bytes)
+boot module 'init.xsd' (8118 bytes)
+boot module 'ld.lib.so' (1107760 bytes)
+boot module 'nic_router' (609048 bytes)
+boot module 'nic_router.hsd' (4758 bytes)
+boot module 'nic_router.xsd' (7871 bytes)
+boot module 'pc_nic' (1819416 bytes)
+boot module 'pc_platform' (720576 bytes)
+boot module 'pci_decode' (171336 bytes)
+boot module 'platform' (594696 bytes)
+boot module 'report_rom' (150784 bytes)
+boot module 'sponge_pkgd' (272848 bytes)
+boot module 'vesa_fb' (334336 bytes)
+boot module 'vfs.lib.so' (769424 bytes)
+boot module 'pkg_index.xml' (94 bytes)
+boot module 'pkg_pc_nic.xml' (2382 bytes)
+boot module 'pkg_fb_vesa.xml' (3389 bytes)
+boot module 'pkg_fb_boot.xml' (3275 bytes)
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+Genode 26.08-21-gf44bc47ee5
+1602 MiB RAM and 523288 caps assigned to init
+[init] [34mWarning: system: configured RAM exceeds available RAM, proceed with 1636192192[0m
+[init -> acpi] Found MADT
+[init -> timer] timers=3, clock 10000000fs , 64bit counter , legacy routing support vendor=0x8086
+[init -> timer] timer0 GSI options 0xff0104, supports periodic
+[init -> timer] timer1 GSI options 0xff0104, supports periodic
+[init -> timer] timer2 GSI options 0xff0104, supports periodic
+[init -> timer] time wraps after 5849 years
+[init -> timer] irqs=off legacy=off
+[init -> acpi] MADT IRQ 0 -> GSI 2 flags: 0
+[init -> timer] Using timer 2 -> using GSI 2 edge triggered
+[init -> acpi] MADT IRQ 5 -> GSI 5 flags: 13
+[init -> acpi] MADT IRQ 9 -> GSI 9 flags: 13
+[init -> acpi] MADT IRQ 10 -> GSI 10 flags: 13
+[init -> acpi] MADT IRQ 11 -> GSI 11 flags: 13
+[init -> acpi] Found HPET hw_id=0x1  vendor_id=0x8086 space_id=0x0 addr=0xfed00000 hpet_id=0x0
+[init -> acpi] Found MCFG
+[init -> acpi] MCFG BASE 0xb0000000 seg 0x0 bus 0x0-0xff
+[init -> acpi] RSDT OEM 'BOCHS ', table id 'BXPC    ', revision 1, creator 'BXPC' (1)
+[init -> report_rom] report 'acpi -> acpi'
+[init -> report_rom]   acpi
+[init -> report_rom]   + sci_int | irq: 9
+[init -> report_rom]   + reset | io_port: 0xcf9 | value: 15
+[init -> report_rom]   + table WAET | addr: 0x7ffe231d | size: 40
+[init -> report_rom]   + table MCFG | addr: 0x7ffe22e1 | size: 60
+[init -> report_rom]   + table HPET | addr: 0x7ffe22a9 | size: 56
+[init -> report_rom]   + table APIC | addr: 0x7ffe2231 | size: 120
+[init -> report_rom]   + table DSDT | addr: 0x7ffe0040 | size: 8445
+[init -> report_rom]   + table FACP | addr: 0x7ffe213d | size: 244
+[init -> nic_router] [uplink] dynamic IP config: none
+[init -> nic_router] [uplink] NIC sessions: 0
+[init -> report_rom]   + table RSDT | addr: 0x7ffe2345 | size: 56
+[init -> report_rom]   + root_bridge | bdf: 0x0
+[init -> report_rom]   + bdf | start: 0 | count: 65536 | base: 0xb0000000
+[init -> report_rom]   + irq_override | irq: 11 | gsi: 11 | flags: 0xd
+[init -> report_rom]   + irq_override | irq: 10 | gsi: 10 | flags: 0xd
+[init -> report_rom]   + irq_override | irq: 9 | gsi: 9 | flags: 0xd
+[init -> report_rom]   + irq_override | irq: 5 | gsi: 5 | flags: 0xd
+[init -> report_rom]   + irq_override | irq: 0 | gsi: 2 | flags: 0x0
+[init -> report_rom]   + ioapic | id: 0 | base_irq: 0 | addr: 0xfec00000
+[init -> report_rom]   -
+[init -> system] [34mWarning: pkg_runtime: configured RAM exceeds available RAM, proceed with 1248570492[0m
+[init -> acpi] [34mWarning: SMBIOSv3 entry point invalid[0m
+[init -> acpi] SMBIOSv2 table (entry point: 0x1b6520 structures: 0xf6540)
+[init -> report_rom] report 'pci_decode -> devices'
+[init -> report_rom]   devices
+[init -> report_rom]   + device 00:00.0 | type: pci
+[init -> report_rom]     + pci-config | address: 0xb0000000 | bus: 0x0 | device: 0x0 | function: 0x0 | vendor_id: 0x8086 | device_id: 0x29c0 | class: 0x60000 | revision: 0x0 | bridge: yes | io_base_limit: 0x0 | memory_base:
+[init -> report_rom]    0x0 | memory_limit: 0x0 | prefetch_memory_base: 0x0 | prefetch_memory_base_upper: 0x0 | prefetch_memory_limit_upper: 0x11001af4 | io_base_limit_upper: 0x0 | expansion_rom_base: 0x0 | bridge_control: 
+[init -> report_rom]   0x0
+[init -> report_rom]   + device 00:01.0 | type: pci
+[init -> report_rom]     + pci-config | address: 0xb0008000 | bus: 0x0 | device: 0x1 | function: 0x0 | vendor_id: 0x1234 | device_id: 0x1111 | class: 0x30000 | revision: 0x2 | bridge: no | sub_vendor_id: 0x1af4 | sub_device
+[init -> report_rom]   _id: 0x1100
+[init -> report_rom]     + io_mem | pci_bar: 0 | address: 0xfd000000 | size: 0x1000000 | prefetchable: true | wc: true
+[init -> report_rom]     + io_mem | pci_bar: 2 | address: 0xfebf0000 | size: 0x1000
+[init -> report_rom]   + device 00:02.0 | type: pci
+[init -> report_rom]     + pci-config | address: 0xb0010000 | bus: 0x0 | device: 0x2 | function: 0x0 | vendor_id: 0x8086 | device_id: 0x100e | class: 0x20000 | revision: 0x3 | bridge: no | sub_vendor_id: 0x1af4 | sub_device
+[init -> report_rom]   _id: 0x1100
+[init -> report_rom]     + io_mem | pci_bar: 0 | address: 0xfebc0000 | size: 0x20000
+[init -> report_rom]     + io_port_range | pci_bar: 1 | address: 0xc000 | size: 0x40
+[init -> report_rom]     + irq | polarity: high | mode: level | number: 11
+[init -> report_rom]   + device 00:1f.0 | type: pci
+[init -> report_rom]     + pci-config | address: 0xb00f8000 | bus: 0x0 | device: 0x1f | function: 0x0 | vendor_id: 0x8086 | device_id: 0x2918 | class: 0x60100 | revision: 0x2 | bridge: yes | io_base_limit: 0x0 | memory_base
+[init -> report_rom]   : 0x0 | memory_limit: 0x0 | prefetch_memory_base: 0x0 | prefetch_memory_base_upper: 0x0 | prefetch_memory_limit_upper: 0x11001af4 | io_base_limit_upper: 0x0 | expansion_rom_base: 0x0 | bridge_control:
+[init -> report_rom]    0x0
+[init -> report_rom]   + device 00:1f.2 | type: pci | msi: 1
+[init -> report_rom]     + pci-config | address: 0xb00fa000 | bus: 0x0 | device: 0x1f | function: 0x2 | vendor_id: 0x8086 | device_id: 0x2922 | class: 0x10601 | revision: 0x2 | bridge: no | sub_vendor_id: 0x1af4 | sub_devic
+[init -> report_rom]   e_id: 0x1100
+[init -> report_rom]     + io_port_range | pci_bar: 4 | address: 0xc080 | size: 0x20
+[init -> report_rom]     + io_mem | pci_bar: 5 | address: 0xfebf1000 | size: 0x1000
+[init -> report_rom]     + irq | polarity: high | mode: level | number: 10
+[init -> report_rom]   + device 00:1f.3 | type: pci
+[init -> report_rom]     + pci-config | address: 0xb00fb000 | bus: 0x0 | device: 0x1f | function: 0x3 | vendor_id: 0x8086 | device_id: 0x2930 | class: 0xc0500 | revision: 0x2 | bridge: no | sub_vendor_id: 0x1af4 | sub_devic
+[init -> report_rom]   e_id: 0x1100
+[init -> report_rom]     + io_port_range | pci_bar: 4 | address: 0x700 | size: 0x40
+[init -> report_rom]     + irq | polarity: high | mode: level | number: 10
+[init -> report_rom]   + device ps2
+[init -> report_rom]     + irq | number: 1
+[init -> report_rom]     + irq | number: 12
+[init -> report_rom]     + io_port_range | address: 0x60 | size: 1
+[init -> report_rom]     + io_port_range | address: 0x64 | size: 1
+[init -> report_rom]   + device pit
+[init -> report_rom]     + irq | number: 0
+[init -> report_rom]     + io_port_range | address: 0x40 | size: 4
+[init -> report_rom]   + device acpi | type: acpi
+[init -> report_rom]     + irq | number: 9
+[init -> report_rom]   + device ioapic0 | type: ioapic
+[init -> report_rom]     + io_mem | address: 0xfec00000 | size: 0x1000
+[init -> report_rom]     + property irq_start | value: 0
+[init -> report_rom]   + device INT34C5 | type: acpi
+[init -> report_rom]     + irq | number: 14 | mode: level | polarity: low
+[init -> report_rom]     + io_mem | address: 0xfd690000 | size: 0x1000
+[init -> report_rom]     + io_mem | address: 0xfd6a0000 | size: 0x1000
+[init -> report_rom]     + io_mem | address: 0xfd6d0000 | size: 0x1000
+[init -> report_rom]     + io_mem | address: 0xfd6e0000 | size: 0x1000
+[init -> report_rom]   + device STARLITE_TOUCH | type: acpi
+[init -> report_rom]     + irq | number: 104 | mode: level | polarity: low
+[init -> report_rom]   + device INTC1083 | type: acpi
+[init -> report_rom]     + irq | number: 14 | mode: level | polarity: low
+[init -> report_rom]     + io_mem | address: 0xe0d50000 | size: 0x1000
+[init -> report_rom]     + io_mem | address: 0xe0d40000 | size: 0x1000
+[init -> report_rom]     + io_mem | address: 0xe0d30000 | size: 0x1000
+[init -> report_rom]     + io_mem | address: 0xe0d20000 | size: 0x1000
+[init -> report_rom]     + io_mem | address: 0xe0d10000 | size: 0x1000
+[init -> report_rom]   -
+[init -> report_rom] report 'acpi -> smbios_table'
+[init -> report_rom]   _SM_-L
+[init -> system -> report_rom] [34mWarning: no valid policy for ROM request 'fb_conflict_probe -> result'[0m
+[init -> system -> report_rom] [34mWarning: no valid policy for ROM request 'fb_lock_probe -> result'[0m
+[init -> system -> fb_conflict_probe] [31mError: stop because parent denied ROM-session: label="result", , ram_quota=6K, cap_quota=3[0m
+[init -> system -> fb_lock_probe] [31mError: stop because parent denied ROM-session: label="result", , ram_quota=6K, cap_quota=3[0m
+[init -> system -> driver_probe] driver-probe: installing driver package 'pc_nic'
+[init -> system -> report_rom] report 'driver_probe -> request'
+[init -> system -> report_rom]   <request op="install" pkg="pc_nic" seq="1"/>
+[init -> system -> driver_probe] driver-probe: sending install request
+[init -> system -> sponge_pkgd] sponge_pkgd: ready
+[init -> system -> sponge_pkgd] sponge_pkgd: binary_prefix=''
+[init -> system -> sponge_pkgd] sponge_pkgd: bootstrap thread started
+[init -> system -> sponge_pkgd] sponge_pkgd: resource admission armed (pkg_runtime state report)
+[init -> system -> sponge_pkgd] sponge_pkgd: driver resource admission armed (driver_rspawn qemu-system-x86_64 -accel kvm -machine q35 -cpu Skylake-Client -nographic -m 2G -serial mon:stdio -cdrom var/run/sponge-pkg-driver.iso -machine q35 -net nic,model=e1000,netdev=net0 -netdev user,id=net0
+qemu-system-x86_64: warning: host doesn't support requested feature: CPUID[eax=0Dh,ecx=01h].EAX.xsavec [bit 1]
+qemu-system-x86_64: warning: host doesn't support requested feature: CPUID[eax=0Dh,ecx=01h].EAX.xgetbv1 [bit 2]
+c[?7l[2J[0mSeaBIOS (version Arch Linux 1.17.0-2-2)
+
+
+iPXE (http://ipxe.org) 00:02.0 C900 PCI2.10 PnP PMM+7EFD3DA0+7EF33DA0 C900
+Press Ctrl-B to configure iPXE (PCI 00:02.0)...                                                                               
+
+
+Booting from Hard Disk...
+Boot failed: could not read the boot disk
+
+Booting from DVD/CD...
+error: can't find command `loadfont'.
+  Booting `Genode on seL4'
+
+
+Bender Version 0.9-beta7-51-g77a6918-dirty
+Patching BDA with I/O port 0x3f8.
+Bender: Hello World.
+hwp config: eeo=na irq=na hwp=na epp=na epb=na
+Boot config: debug_port = 0x3f8
+Boot config: disable_iommu = true
+  module #0: start=0xf168000 end=0xfdf6410 size=0xc8e410 name='image.elf'
+	Physical Memory Region from 0 size 9fc00 type 1
+	Physical Memory Region from 9fc00 size 400 type 2
+	Physical Memory Region from f0000 size 10000 type 2
+	Physical Memory Region from 100000 size 7fedf000 type 1
+Adding physical memory region 0x100000-0x7ffdf000
+	Physical Memory Region from 7ffdf000 size 21000 type 2
+	Physical Memory Region from b0000000 size 10000000 type 2
+	Physical Memory Region from fed1c000 size 4000 type 2
+	Physical Memory Region from feffc000 size 4000 type 2
+	Physical Memory Region from fffc0000 size 40000 type 2
+Got framebuffer info in multiboot2. Current video mode is at physical address=fd000000 pitch=5120 resolution=1280x800@32 type=1
+Detected 1 boot module(s):
+Kernel loaded to: start=0x200000 end=0xe3e000 size=0xc3e000 entry=0x2002a3
+ACPI: RSDT paddr=0x7ffe2345
+ACPI: RSDT vaddr=0x7ffe2345
+ACPI: FADT paddr=0x7ffe213d
+ACPI: FADT vaddr=0x7ffe213d
+ACPI: FADT flags=0x84a5
+ACPI: MADT paddr=0x7ffe2231
+ACPI: MADT vaddr=0x7ffe2231
+ACPI: MADT apic_addr=0xfee00000
+ACPI: MADT flags=0x1
+ACPI: MADT_APIC apic_id=0x0
+ACPI: MADT_IOAPIC ioapic_id=0 ioapic_addr=0xfec00000 gsib=0
+ACPI: MADT_ISO bus=0 source=0 gsi=0x002 flags=0x0
+ACPI: MADT_ISO bus=0 source=5 gsi=0x005 flags=0xd
+ACPI: MADT_ISO bus=0 source=9 gsi=0x009 flags=0xd
+ACPI: MADT_ISO bus=0 source=10 gsi=0x00a flags=0xd
+ACPI: MADT_ISO bus=0 source=11 gsi=0x00b flags=0xd
+ACPI: 1 CPU(s) detected
+ELF-loading userland images from boot modules:
+size=0x268d000 v_entry=0x2000018 v_start=0x2000000 v_end=0x468d000 p_start=0xfdf7000 p_end=0x12484000
+Moving loaded userland images to final location: from=0xfdf7000 to=0xe3e000 size=0x268d000
+Starting node #0 with APIC ID 0
+Mapping kernel window is done
+vt-x: not supported
+Available phys memory regions: 1
+  [100000..7ffdf000)
+Reserved virt address space regions: 1
+  [ffffff8000200000..ffffff80034cb000)
+Booting all finished, dropped to user space
+:phys_mem_16k:     Allocator 0x257a7f8 dump:
+ Block: [0000000000100000,0000000000a00000) size=9M avail=9M max_avail=9M
+ Block: [00000000034cc000,0000000004000000) size=11472K avail=11472K max_avail=94256K
+ Block: [0000000008000000,000000000dc0c000) size=94256K avail=94256K max_avail=94256K
+ => mem_size=117702656 (112 MB) / mem_avail=117702656 (112 MB)
+
+virtual address layout of core:
+ overall    [0000000000002000,0000001000000000)
+ core image [0000000002000000,000000000468d000)
+ ipc buffer [000000000468d000,000000000468e000)
+ boot_info  [000000000468e000,000000000468f532)
+ stack area [0000000040000000,0000000050000000)
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+Physical memory per PD at most: 512M
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+boot module 'config' (11876 bytes)
+boot module 'acpi' (185600 bytes)
+boot module 'driver_probe' (99408 bytes)
+boot module 'timer' (139920 bytes)
+boot module 'init' (511560 bytes)
+boot module 'init.hsd' (4125 bytes)
+boot module 'init.xsd' (8118 bytes)
+boot module 'ld.lib.so' (1107760 bytes)
+boot module 'nic_router' (609048 bytes)
+boot module 'nic_router.hsd' (4758 bytes)
+boot module 'nic_router.xsd' (7871 bytes)
+boot module 'pc_nic' (1819416 bytes)
+boot module 'pc_platform' (720576 bytes)
+boot module 'pci_decode' (171336 bytes)
+boot module 'platform' (594696 bytes)
+boot module 'report_rom' (150784 bytes)
+boot module 'sponge_pkgd' (272848 bytes)
+boot module 'vesa_fb' (334336 bytes)
+boot module 'vfs.lib.so' (769424 bytes)
+boot module 'pkg_index.xml' (94 bytes)
+boot module 'pkg_pc_nic.xml' (2382 bytes)
+boot module 'pkg_fb_vesa.xml' (3389 bytes)
+boot module 'pkg_fb_boot.xml' (3275 bytes)
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+Genode 26.08-21-gf44bc47ee5
+1602 MiB RAM and 523288 caps assigned to init
+[init] [34mWarning: system: configured RAM exceeds available RAM, proceed with 1636192192[0m
+[init -> acpi] Found MADT
+[init -> acpi] MADT IRQ 0 -> GSI 2 flags: 0
+[init -> acpi] MADT IRQ 5 -> GSI 5 flags: 13
+[init -> acpi] MADT IRQ 9 -> GSI 9 flags: 13
+[init -> acpi] MADT IRQ 10 -> GSI 10 flags: 13
+[init -> acpi] MADT IRQ 11 -> GSI 11 flags: 13
+[init -> acpi] Found HPET hw_id=0x1  vendor_id=0x8086 space_id=0x0 addr=0xfed00000 hpet_id=0x0
+[init -> acpi] Found MCFG
+[init -> acpi] MCFG BASE 0xb0000000 seg 0x0 bus 0x0-0xff
+[init -> acpi] RSDT OEM 'BOCHS ', table id 'BXPC    ', revision 1, creator 'BXPC' (1)
+[init -> timer] timers=3, clock 10000000fs , 64bit counter , legacy routing support vendor=0x8086
+[init -> timer] timer0 GSI options 0xff0104, supports periodic
+[init -> timer] timer1 GSI options 0xff0104, supports periodic
+[init -> timer] timer2 GSI options 0xff0104, supports periodic
+[init -> timer] time wraps after 5849 years
+[init -> timer] irqs=off legacy=off
+[init -> timer] Using timer 2 -> using GSI 2 edge triggered
+[init -> nic_router] [uplink] dynamic IP config: none
+[init -> nic_router] [uplink] NIC sessions: 0
+[init -> report_rom] report 'acpi -> acpi'
+[init -> report_rom]   acpi
+[init -> report_rom]   + sci_int | irq: 9
+[init -> report_rom]   + reset | io_port: 0xcf9 | value: 15
+[init -> report_rom]   + table WAET | addr: 0x7ffe231d | size: 40
+[init -> report_rom]   + table MCFG | addr: 0x7ffe22e1 | size: 60
+[init -> report_rom]   + table HPET | addr: 0x7ffe22a9 | size: 56
+[init -> report_rom]   + table APIC | addr: 0x7ffe2231 | size: 120
+[init -> report_rom]   + table DSDT | addr: 0x7ffe0040 | size: 8445
+[init -> report_rom]   + table FACP | addr: 0x7ffe213d | size: 244
+[init -> report_rom]   + table RSDT | addr: 0x7ffe2345 | size: 56
+[init -> report_rom]   + root_bridge | bdf: 0x0
+[init -> report_rom]   + bdf | start: 0 | count: 65536 | base: 0xb0000000
+[init -> report_rom]   + irq_override | irq: 11 | gsi: 11 | flags: 0xd
+[init -> report_rom]   + irq_override | irq: 10 | gsi: 10 | flags: 0xd
+[init -> report_rom]   + irq_override | irq: 9 | gsi: 9 | flags: 0xd
+[init -> report_rom]   + irq_override | irq: 5 | gsi: 5 | flags: 0xd
+[init -> report_rom]   + irq_override | irq: 0 | gsi: 2 | flags: 0x0
+[init -> report_rom]   + ioapic | id: 0 | base_irq: 0 | addr: 0xfec00000
+[init -> report_rom]   -
+[init -> system] [34mWarning: pkg_runtime: configured RAM exceeds available RAM, proceed with 1248570492[0m
+[init -> report_rom] report 'pci_decode -> devices'
+[init -> report_rom]   devices
+[init -> report_rom]   + device 00:00.0 | type: pci
+[init -> report_rom]     + pci-config | address: 0xb0000000 | bus: 0x0 | device: 0x0 | function: 0x0 | vendor_id: 0x8086 | device_id: 0x29c0 | class: 0x60000 | revision: 0x0 | bridge: yes | io_base_limit: 0x0 | memory_base:
+[init -> acpi] [34mWarning: SMBIOSv3 entry point invalid[0m
+[init -> acpi] SMBIOSv2 table (entry point: 0x1b6520 structures: 0xf6540)
+[init -> report_rom]    0x0 | memory_limit: 0x0 | prefetch_memory_base: 0x0 | prefetch_memory_base_upper: 0x0 | prefetch_memory_limit_upper: 0x11001af4 | io_base_limit_upper: 0x0 | expansion_rom_base: 0x0 | bridge_control: 
+[init -> report_rom]   0x0
+[init -> report_rom]   + device 00:01.0 | type: pci
+[init -> report_rom]     + pci-config | address: 0xb0008000 | bus: 0x0 | device: 0x1 | function: 0x0 | vendor_id: 0x1234 | device_id: 0x1111 | class: 0x30000 | revision: 0x2 | bridge: no | sub_vendor_id: 0x1af4 | sub_device
+[init -> report_rom]   _id: 0x1100
+[init -> report_rom]     + io_mem | pci_bar: 0 | address: 0xfd000000 | size: 0x1000000 | prefetchable: true | wc: true
+[init -> report_rom]     + io_mem | pci_bar: 2 | address: 0xfebf0000 | size: 0x1000
+[init -> report_rom]   + device 00:02.0 | type: pci
+[init -> report_rom]     + pci-config | address: 0xb0010000 | bus: 0x0 | device: 0x2 | function: 0x0 | vendor_id: 0x8086 | device_id: 0x100e | class: 0x20000 | revision: 0x3 | bridge: no | sub_vendor_id: 0x1af4 | sub_device
+[init -> report_rom]   _id: 0x1100
+[init -> report_rom]     + io_mem | pci_bar: 0 | address: 0xfebc0000 | size: 0x20000
+[init -> report_rom]     + io_port_range | pci_bar: 1 | address: 0xc000 | size: 0x40
+[init -> report_rom]     + irq | polarity: high | mode: level | number: 11
+[init -> report_rom]   + device 00:1f.0 | type: pci
+[init -> report_rom]     + pci-config | address: 0xb00f8000 | bus: 0x0 | device: 0x1f | function: 0x0 | vendor_id: 0x8086 | device_id: 0x2918 | class: 0x60100 | revision: 0x2 | bridge: yes | io_base_limit: 0x0 | memory_base
+[init -> report_rom]   : 0x0 | memory_limit: 0x0 | prefetch_memory_base: 0x0 | prefetch_memory_base_upper: 0x0 | prefetch_memory_limit_upper: 0x11001af4 | io_base_limit_upper: 0x0 | expansion_rom_base: 0x0 | bridge_control:
+[init -> report_rom]    0x0
+[init -> report_rom]   + device 00:1f.2 | type: pci | msi: 1
+[init -> report_rom]     + pci-config | address: 0xb00fa000 | bus: 0x0 | device: 0x1f | function: 0x2 | vendor_id: 0x8086 | device_id: 0x2922 | class: 0x10601 | revision: 0x2 | bridge: no | sub_vendor_id: 0x1af4 | sub_devic
+[init -> report_rom]   e_id: 0x1100
+[init -> report_rom]     + io_port_range | pci_bar: 4 | address: 0xc080 | size: 0x20
+[init -> report_rom]     + io_mem | pci_bar: 5 | address: 0xfebf1000 | size: 0x1000
+[init -> report_rom]     + irq | polarity: high | mode: level | number: 10
+[init -> report_rom]   + device 00:1f.3 | type: pci
+[init -> report_rom]     + pci-config | address: 0xb00fb000 | bus: 0x0 | device: 0x1f | function: 0x3 | vendor_id: 0x8086 | device_id: 0x2930 | class: 0xc0500 | revision: 0x2 | bridge: no | sub_vendor_id: 0x1af4 | sub_devic
+[init -> report_rom]   e_id: 0x1100
+[init -> report_rom]     + io_port_range | pci_bar: 4 | address: 0x700 | size: 0x40
+[init -> report_rom]     + irq | polarity: high | mode: level | number: 10
+[init -> report_rom]   + device ps2
+[init -> report_rom]     + irq | number: 1
+[init -> report_rom]     + irq | number: 12
+[init -> report_rom]     + io_port_range | address: 0x60 | size: 1
+[init -> report_rom]     + io_port_range | address: 0x64 | size: 1
+[init -> report_rom]   + device pit
+[init -> report_rom]     + irq | number: 0
+[init -> report_rom]     + io_port_range | address: 0x40 | size: 4
+[init -> report_rom]   + device acpi | type: acpi
+[init -> report_rom]     + irq | number: 9
+[init -> report_rom]   + device ioapic0 | type: ioapic
+[init -> report_rom]     + io_mem | address: 0xfec00000 | size: 0x1000
+[init -> report_rom]     + property irq_start | value: 0
+[init -> report_rom]   + device INT34C5 | type: acpi
+[init -> report_rom]     + irq | number: 14 | mode: level | polarity: low
+[init -> report_rom]     + io_mem | address: 0xfd690000 | size: 0x1000
+[init -> report_rom]     + io_mem | address: 0xfd6a0000 | size: 0x1000
+[init -> report_rom]     + io_mem | address: 0xfd6d0000 | size: 0x1000
+[init -> report_rom]     + io_mem | address: 0xfd6e0000 | size: 0x1000
+[init -> report_rom]   + device STARLITE_TOUCH | type: acpi
+[init -> report_rom]     + irq | number: 104 | mode: level | polarity: low
+[init -> report_rom]   + device INTC1083 | type: acpi
+[init -> report_rom]     + irq | number: 14 | mode: level | polarity: low
+[init -> report_rom]     + io_mem | address: 0xe0d50000 | size: 0x1000
+[init -> report_rom]     + io_mem | address: 0xe0d40000 | size: 0x1000
+[init -> report_rom]     + io_mem | address: 0xe0d30000 | size: 0x1000
+[init -> report_rom]     + io_mem | address: 0xe0d20000 | size: 0x1000
+[init -> report_rom]     + io_mem | address: 0xe0d10000 | size: 0x1000
+[init -> report_rom]   -
+[init -> report_rom] report 'acpi -> smbios_table'
+[init -> report_rom]   _SM_-L
+[init -> system -> report_rom] [34mWarning: no valid policy for ROM request 'fb_conflict_probe -> result'[0m
+[init -> system -> report_rom] [34mWarning: no valid policy for ROM request 'fb_lock_probe -> result'[0m
+[init -> system -> fb_conflict_probe] [31mError: stop because parent denied ROM-session: label="result", , ram_quota=6K, cap_quota=3[0m
+[init -> system -> fb_lock_probe] [31mError: stop because parent denied ROM-session: label="result", , ram_quota=6K, cap_quota=3[0m
+[init -> system -> driver_probe] driver-probe: installing driver package 'pc_nic'
+[init -> system -> report_rom] report 'driver_probe -> request'
+[init -> system -> report_rom]   <request op="install" pkg="pc_nic" seq="1"/>
+[init -> system -> driver_probe] driver-probe: sending install request
+[init -> system -> sponge_pkgd] sponge_pkgd: ready
+[init -> system -> sponge_pkgd] sponge_pkgd: binary_prefix=''
+[init -> system -> sponge_pkgd] sponge_pkgd: bootstrap thread started
+[init -> system -> sponge_pkgd] sponge_pkgd: resource admission armed (pkg_runtime state report)
+[init -> system -> sponge_pkgd] sponge_pkgd: driver resource admission armed (driver_runtime state report)
+[init -> system -> report_rom] report 'sponge_pkgd -> runtime'
+[init -> system -> report_rom]   <config>
+[init -> system -> report_rom]   	<report delay_ms="2000" init_ram="yes" init_caps="yes" child_ram="yes"/>
+[init -> system -> report_rom]   	<parent-provides>
+[init -> system -> report_rom]   		<service name="ROM"/>
+[init -> system -> report_rom]   		<service name="PD"/>
+[init -> system -> report_rom]   		<service name="RM"/>
+[init -> system -> report_rom]   		<service name="CPU"/>
+[init -> system -> report_rom]   		<service name="LOG"/>
+[init -> system -> report_rom]   		<service name="Timer"/>
+[init -> system -> report_rom]   		<service name="Gui"/>
+[init -> system -> report_rom]   		<service name="Input"/>
+[init -> system -> report_rom]   		<service name="Report"/>
+[init -> system -> report_rom]   		<service name="File_system"/>
+[init -> system -> report_rom]   		<service name="Nic"/>
+[init -> system -> report_rom]   		<service name="Rtc"/>
+[init -> system -> report_rom]   	</parent-provides>
+[init -> system -> report_rom]   	<default-route>
+[init -> system -> report_rom]   		<any-service>
+[init -> system -> report_rom]   			<parent/>
+[init -> system -> report_rom]   			<any-child/>
+[init -> system -> report_rom]   		</any-service>
+[init -> system -> report_rom]   	</default-route>
+[init -> system -> report_rom]   	<default caps="1000"/>
+[init -> system -> report_rom]   </config>
+[init -> system -> report_rom] report 'sponge_pkgd -> driver_runtime'
+[init -> system -> report_rom]   <config>
+[init -> system -> report_rom]   	<report delay_ms="2000" init_ram="yes" init_caps="yes" child_ram="yes"/>
+[init -> system -> report_rom]   	<parent-provides>
+[init -> system -> report_rom]   		<service name="ROM"/>
+[init -> system -> report_rom]   		<service name="PD"/>
+[init -> system -> report_rom]   		<service name="RM"/>
+[init -> system -> report_rom]   		<service name="CPU"/>
+[init -> system -> report_rom]   		<service name="LOG"/>
+[init -> system -> report_rom]   	</parent-provides>
+[init -> system -> report_rom]   	<default-route>
+[init -> system -> report_rom]   		<any-service>
+[init -> system -> report_rom]   			<parent/>
+[init -> system -> report_rom]   			<any-child/>
+[init -> system -> report_rom]   		</any-service>
+[init -> system -> report_rom]   	</default-route>
+[init -> system -> report_rom]   	<default caps="1000"/>
+[init -> system -> report_rom]   </config>
+[init -> system -> report_rom] report 'sponge_pkgd -> installed'
+[init -> system -> report_rom]   <installed count="0" config_writes="1">
+[init -> system -> report_rom]   	<packages/>
+[init -> system -> report_rom]   </installed>
+[init -> system -> sponge_pkgd] sponge_pkgd: no driver_runtime state report yet — admitting pc_nic
+[init -> system -> report_rom] report 'sponge_pkgd -> runtime'
+[init -> system -> report_rom]   <config>
+[init -> system -> report_rom]   	<report delay_ms="2000" init_ram="yes" init_caps="yes" child_ram="yes"/>
+[init -> system -> report_rom]   	<parent-provides>
+[init -> system -> report_rom]   		<service name="ROM"/>
+[init -> system -> report_rom]   		<service name="PD"/>
+[init -> system -> report_rom]   		<service name="RM"/>
+[init -> system -> report_rom]   		<service name="CPU"/>
+[init -> system -> report_rom]   		<service name="LOG"/>
+[init -> system -> report_rom]   		<service name="Timer"/>
+[init -> system -> report_rom]   		<service name="Gui"/>
+[init -> system -> report_rom]   		<service name="Input"/>
+[init -> system -> report_rom]   		<service name="Report"/>
+[init -> system -> report_rom]   		<service name="File_system"/>
+[init -> system -> report_rom]   		<service name="Nic"/>
+[init -> system -> report_rom]   		<service name="Rtc"/>
+[init -> system -> report_rom]   	</parent-provides>
+[init -> system -> report_rom]   	<default-route>
+[init -> system -> report_rom]   		<any-service>
+[init -> system -> report_rom]   			<parent/>
+[init -> system -> report_rom]   			<any-child/>
+[init -> system -> report_rom]   		</any-service>
+[init -> system -> report_rom]   	</default-route>
+[init -> system -> report_rom]   	<default caps="1000"/>
+[init -> system -> report_rom]   </config>
+[init -> system -> report_rom] report 'sponge_pkgd -> driver_runtime'
+[init -> system -> report_rom]   <config>
+[init -> system -> report_rom]   	<report delay_ms="2000" init_ram="yes" init_caps="yes" child_ram="yes"/>
+[init -> system -> report_rom]   	<parent-provides>
+[init -> system -> report_rom]   		<service name="ROM"/>
+[init -> system -> report_rom]   		<service name="PD"/>
+[init -> system -> report_rom]   		<service name="RM"/>
+[init -> system -> report_rom]   		<service name="CPU"/>
+[init -> system -> report_rom]   		<service name="LOG"/>
+[init -> system -> report_rom]   		<service name="Platform"/>
+[init -> system -> report_rom]   		<service name="Dma"/>
+[init -> system -> report_rom]   		<service name="IRQ"/>
+[init -> system -> report_rom]   		<service name="IO_MEM"/>
+[init -> system -> report_rom]   		<service name="IO_PORT"/>
+[init -> system -> report_rom]   		<service name="Report"/>
+[init -> system -> report_rom]   		<service name="Timer"/>
+[init -> system -> report_rom]   		<service name="Uplink"/>
+[init -> system -> report_rom]   	</parent-provides>
+[init -> system -> report_rom]   	<default-route>
+[init -> system -> report_rom]   		<any-service>
+[init -> system -> report_rom]   			<parent/>
+[init -> system -> report_rom]   			<any-child/>
+[init -> system -> report_rom]   		</any-service>
+[init -> system -> report_rom]   	</default-route>
+[init -> system -> report_rom]   	<default caps="1000"/>
+[init -> system -> report_rom]   	<start name="pc_nic" caps="1000">
+[init -> system -> report_rom]   		<resource name="RAM" quantum="32M"/><config>
+[init -> system -> report_rom]   	<ld_verbose value="yes"/>
+[init -> system -> report_rom]   </config>
+[init -> system -> report_rom]   
+[init -> system -> report_rom]   		<route>
+[init -> system -> report_rom]   			<service name="ROM" label_last="ld.lib.so">
+[init -> system -> report_rom]   				<parent/>
+[init -> system -> report_rom]   			</service>
+[init -> system -> report_rom]   			<service name="Platform">
+[init -> system -> report_rom]   				<parent/>
+[init -> system -> report_rom]   			</service>
+[init -> system -> report_rom]   			<service name="Dma">
+[init -> system -> report_rom]   				<parent/>
+[init -> system -> report_rom]   			</service>
+[init -> system -> report_rom]   			<service name="IRQ">
+[init -> system -> report_rom]   				<parent/>
+[init -> system -> report_rom]   			</service>
+[init -> system -> report_rom]   			<service name="IO_MEM">
+[init -> system -> report_rom]   				<parent/>
+[init -> system -> report_rom]   			</service>
+[init -> system -> report_rom]   			<service name="IO_PORT">
+[init -> system -> report_rom]   				<parent/>
+[init -> system -> report_rom]   			</service>
+[init -> system -> report_rom]   			<service name="Report">
+[init -> system -> report_rom]   				<parent/>
+[init -> system -> report_rom]   			</service>
+[init -> system -> report_rom]   			<service name="Timer">
+[init -> system -> report_rom]   				<parent/>
+[init -> system -> report_rom]   			</service>
+[init -> system -> report_rom]   			<service name="Uplink">
+[init -> system -> report_rom]   				<parent/>
+[init -> system -> report_rom]   			</service>
+[init -> system -> report_rom]   			<any-service>
+[init -> system -> report_rom]   				<parent/>
+[init -> system -> report_rom]   			</any-service>
+[init -> system -> report_rom]   		</route>
+[init -> system -> report_rom]   	</start>
+[init -> system -> report_rom]   </config>
+[init -> system -> driver_probe] driver-probe: pkgd broadcast seen
+[init -> system -> report_rom] report 'sponge_pkgd -> installed'
+[init -> system -> report_rom]   <installed count="1" config_writes="2">
+[init -> system -> report_rom]   	<packages>
+[init -> system -> report_rom]   		<package name="pc_nic" version="1.0" binary="pc_nic" running="yes" kind="driver" exclusive="" description="Ethernet driver for PCI NICs (e1000, rtl8169 and friends) via the Linux network stack."/>
+[init -> system -> report_rom]   	</packages>
+[init -> system -> report_rom]   </installed>
+[init -> system -> report_rom] report 'sponge_pkgd -> result'
+[init -> system -> report_rom]   <result status="ok" op="install" pkg="pc_nic" version="1.0">
+[init -> system -> report_rom]   	<components_added>
+[init -> system -> report_rom]   		<component name="pc_nic"/>
+[init -> system -> report_rom]   	</components_added>
+[init -> system -> report_rom]   </result>
+[init -> system -> sponge_pkgd] sponge_pkgd: bootstrap complete
+[init -> system -> report_rom] report 'driver_runtime -> state'
+[init -> system -> report_rom]   state
+[init -> system -> report_rom]   + ram  | quota: 301767122 | used: 888K | avail: 300857810
+[init -> system -> report_rom]   + caps | quota: 7975      | used: 43   | avail: 7932
+[init -> system -> report_rom]   + child pc_nic | binary: pc_nic
+[init -> system -> report_rom]     + ram | assigned: 32M | quota: 33367048 | used: 500K | avail: 32855048
+[init -> system -> report_rom]   -
+[init -> system -> report_rom] report 'driver_runtime -> state'
+[init -> system -> report_rom]   state
+[init -> system -> report_rom]   + ram  | quota: 301767122 | used: 888K | avail: 300857810
+[init -> system -> report_rom]   + caps | quota: 7975      | used: 43   | avail: 7932
+[init -> system -> report_rom]   + child pc_nic | binary: pc_nic
+[init -> system -> report_rom]     + ram | assigned: 32M | quota: 33367048 | used: 572K | avail: 32781320
+[init -> system -> report_rom]   -
+[init -> system -> driver_runtime -> pc_nic] SLUB: HWalign=64, Order=0-1, MinObjects=0, CPUs=1, Nodes=1
+[init -> system -> driver_runtime -> pc_nic] NR_IRQS: 4352, nr_irqs: 4352, preallocated irqs: 256
+[init -> system -> driver_runtime -> pc_nic] clocksource: dde_counter: mask: 0xffffffffffffff max_cycles: 0x1d854df40, max_idle_ns: 3526361616960 ns
+[init -> system -> driver_probe] driver-probe: install answered status=ok
+[inispawn qemu-system-x86_64 -accel kvm -machine q35 -cpu Skylake-Client -nographic -m 2G -serial mon:stdio -cdrom var/run/sponge-pkg-driver.iso -machine q35 -net nic,model=e1000,netdev=net0 -netdev user,id=net0
+qemu-system-x86_64: warning: host doesn't support requested feature: CPUID[eax=0Dh,ecx=01h].EAX.xsavec [bit 1]
+qemu-system-x86_64: warning: host doesn't support requested feature: CPUID[eax=0Dh,ecx=01h].EAX.xgetbv1 [bit 2]
+c[?7l[2J[0mSeaBIOS (version Arch Linux 1.17.0-2-2)
+
+
+iPXE (http://ipxe.org) 00:02.0 C900 PCI2.10 PnP PMM+7EFD3DA0+7EF33DA0 C900
+Press Ctrl-B to configure iPXE (PCI 00:02.0)...                                                                               
+
+
+Booting from Hard Disk...
+Boot failed: could not read the boot disk
+
+Booting from DVD/CD...
+error: can't find command `loadfont'.
+  Booting `Genode on seL4'
+
+[01;01H
+Bender Version 0.9-beta7-51-g77a6918-dirty
+Patching BDA with I/O port 0x3f8.
+Bender: Hello World.
+hwp config: eeo=na irq=na hwp=na epp=na epb=na
+Boot config: debug_port = 0x3f8
+Boot config: disable_iommu = true
+  module #0: start=0xf168000 end=0xfdf6410 size=0xc8e410 name='image.elf'
+	Physical Memory Region from 0 size 9fc00 type 1
+	Physical Memory Region from 9fc00 size 400 type 2
+	Physical Memory Region from f0000 size 10000 type 2
+	Physical Memory Region from 100000 size 7fedf000 type 1
+Adding physical memory region 0x100000-0x7ffdf000
+	Physical Memory Region from 7ffdf000 size 21000 type 2
+	Physical Memory Region from b0000000 size 10000000 type 2
+	Physical Memory Region from fed1c000 size 4000 type 2
+	Physical Memory Region from feffc000 size 4000 type 2
+	Physical Memory Region from fffc0000 size 40000 type 2
+Got framebuffer info in multiboot2. Current video mode is at physical address=fd000000 pitch=5120 resolution=1280x800@32 type=1
+Detected 1 boot module(s):
+Kernel loaded to: start=0x200000 end=0xe3e000 size=0xc3e000 entry=0x2002a3
+ACPI: RSDT paddr=0x7ffe2345
+ACPI: RSDT vaddr=0x7ffe2345
+ACPI: FADT paddr=0x7ffe213d
+ACPI: FADT vaddr=0x7ffe213d
+ACPI: FADT flags=0x84a5
+ACPI: MADT paddr=0x7ffe2231
+ACPI: MADT vaddr=0x7ffe2231
+ACPI: MADT apic_addr=0xfee00000
+ACPI: MADT flags=0x1
+ACPI: MADT_APIC apic_id=0x0
+ACPI: MADT_IOAPIC ioapic_id=0 ioapic_addr=0xfec00000 gsib=0
+ACPI: MADT_ISO bus=0 source=0 gsi=0x002 flags=0x0
+ACPI: MADT_ISO bus=0 source=5 gsi=0x005 flags=0xd
+ACPI: MADT_ISO bus=0 source=9 gsi=0x009 flags=0xd
+ACPI: MADT_ISO bus=0 source=10 gsi=0x00a flags=0xd
+ACPI: MADT_ISO bus=0 source=11 gsi=0x00b flags=0xd
+ACPI: 1 CPU(s) detected
+ELF-loading userland images from boot modules:
+size=0x268d000 v_entry=0x2000018 v_start=0x2000000 v_end=0x468d000 p_start=0xfdf7000 p_end=0x12484000
+Moving loaded userland images to final location: from=0xfdf7000 to=0xe3e000 size=0x268d000
+Starting node #0 with APIC ID 0
+Mapping kernel window is done
+vt-x: not supported
+Available phys memory regions: 1
+  [100000..7ffdf000)
+Reserved virt address space regions: 1
+  [ffffff8000200000..ffffff80034cb000)
+Booting all finished, dropped to user space
+:phys_mem_16k:     Allocator 0x257a7f8 dump:
+ Block: [0000000000100000,0000000000a00000) size=9M avail=9M max_avail=9M
+ Block: [00000000034cc000,0000000004000000) size=11472K avail=11472K max_avail=94256K
+ Block: [0000000008000000,000000000dc0c000) size=94256K avail=94256K max_avail=94256K
+ => mem_size=117702656 (112 MB) / mem_avail=117702656 (112 MB)
+
+virtual address layout of core:
+ overall    [0000000000002000,0000001000000000)
+ core image [0000000002000000,000000000468d000)
+ ipc buffer [000000000468d000,000000000468e000)
+ boot_info  [000000000468e000,000000000468f532)
+ stack area [0000000040000000,0000000050000000)
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+Physical memory per PD at most: 512M
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+boot module 'config' (11876 bytes)
+boot module 'acpi' (185600 bytes)
+boot module 'driver_probe' (99408 bytes)
+boot module 'timer' (139920 bytes)
+boot module 'init' (511560 bytes)
+boot module 'init.hsd' (4125 bytes)
+boot module 'init.xsd' (8118 bytes)
+boot module 'ld.lib.so' (1107760 bytes)
+boot module 'nic_router' (609048 bytes)
+boot module 'nic_router.hsd' (4758 bytes)
+boot module 'nic_router.xsd' (7871 bytes)
+boot module 'pc_nic' (1819416 bytes)
+boot module 'pc_platform' (720576 bytes)
+boot module 'pci_decode' (171336 bytes)
+boot module 'platform' (594696 bytes)
+boot module 'report_rom' (150784 bytes)
+boot module 'sponge_pkgd' (272848 bytes)
+boot module 'vesa_fb' (334336 bytes)
+boot module 'vfs.lib.so' (769424 bytes)
+boot module 'pkg_index.xml' (94 bytes)
+boot module 'pkg_pc_nic.xml' (2382 bytes)
+boot module 'pkg_fb_vesa.xml' (3389 bytes)
+boot module 'pkg_fb_boot.xml' (3275 bytes)
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+Genode 26.08-21-gf44bc47ee5
+1602 MiB RAM and 523288 caps assigned to init
+[init] [34mWarning: system: configured RAM exceeds available RAM, proceed with 1636192192[0m
+[init -> timer] timers=3, clock 10000000fs , 64bit counter , legacy routing support vendor=0x8086
+[init -> timer] timer0 GSI options 0xff0104, supports periodic
+[init -> timer] timer1 GSI options 0xff0104, supports periodic
+[init -> timer] timer2 GSI options 0xff0104, supports periodic
+[init -> timer] time wraps after 5849 years
+[init -> timer] irqs=off legacy=off
+[init -> acpi] Found MADT
+[init -> acpi] MADT IRQ 0 -> GSI 2 flags: 0
+[init -> acpi] MADT IRQ 5 -> GSI 5 flags: 13
+[init -> acpi] MADT IRQ 9 -> GSI 9 flags: 13
+[init -> acpi] MADT IRQ 10 -> GSI 10 flags: 13
+[init -> acpi] MADT IRQ 11 -> GSI 11 flags: 13
+[init -> acpi] Found HPET hw_id=0x1  vendor_id=0x8086 space_id=0x0 addr=0xfed00000 hpet_id=0x0
+[init -> timer] Using timer 2 -> using GSI 2 edge triggered
+[init -> acpi] Found MCFG
+[init -> acpi] MCFG BASE 0xb0000000 seg 0x0 bus 0x0-0xff
+[init -> acpi] RSDT OEM 'BOCHS ', table id 'BXPC    ', revision 1, creator 'BXPC' (1)
+[init -> report_rom] report 'acpi -> acpi'
+[init -> report_rom]   acpi
+[init -> report_rom]   + sci_int | irq: 9
+[init -> report_rom]   + reset | io_port: 0xcf9 | value: 15
+[init -> report_rom]   + table WAET | addr: 0x7ffe231d | size: 40
+[init -> report_rom]   + table MCFG | addr: 0x7ffe22e1 | size: 60
+[init -> report_rom]   + table HPET | addr: 0x7ffe22a9 | size: 56
+[init -> report_rom]   + table APIC | addr: 0x7ffe2231 | size: 120
+[init -> report_rom]   + table DSDT | addr: 0x7ffe0040 | size: 8445
+[init -> report_rom]   + table FACP | addr: 0x7ffe213d | size: 244
+[init -> report_rom]   + table RSDT | addr: 0x7ffe2345 | size: 56
+[init -> report_rom]   + root_bridge | bdf: 0x0
+[init -> report_rom]   + bdf | start: 0 | count: 65536 | base: 0xb0000000
+[init -> report_rom]   + irq_override | irq: 11 | gsi: 11 | flags: 0xd
+[init -> report_rom]   + irq_override | irq: 10 | gsi: 10 | flags: 0xd
+[init -> report_rom]   + irq_override | irq: 9 | gsi: 9 | flags: 0xd
+[init -> report_rom]   + irq_override | irq: 5 | gsi: 5 | flags: 0xd
+[init -> report_rom]   + irq_override | irq: 0 | gsi: 2 | flags: 0x0
+[init -> report_rom]   + ioapic | id: 0 | base_irq: 0 | addr: 0xfec00000
+[init -> report_rom]   -
+[init -> system] [34mWarning: pkg_runtime: configured RAM exceeds available RAM, proceed with 1248570492[0m
+[init -> nic_router] [uplink] dynamic IP config: none
+[init -> nic_router] [uplink] NIC sessions: 0
+[init -> acpi] [34mWarning: SMBIOSv3 entry point invalid[0m
+[init -> acpi] SMBIOSv2 table (entry point: 0x1b6520 structures: 0xf6540)
+[init -> report_rom] report 'pci_decode -> devices'
+[init -> report_rom]   devices
+[init -> report_rom]   + device 00:00.0 | type: pci
+[init -> report_rom]     + pci-config | address: 0xb0000000 | bus: 0x0 | device: 0x0 | function: 0x0 | vendor_id: 0x8086 | device_id: 0x29c0 | class: 0x60000 | revision: 0x0 | bridge: yes | io_base_limit: 0x0 | memory_base:
+[init -> report_rom]    0x0 | memory_limit: 0x0 | prefetch_memory_base: 0x0 | prefetch_memory_base_upper: 0x0 | prefetch_memory_limit_upper: 0x11001af4 | io_base_limit_upper: 0x0 | expansion_rom_base: 0x0 | bridge_control: 
+[init -> report_rom]   0x0
+[init -> report_rom]   + device 00:01.0 | type: pci
+[init -> report_rom]     + pci-config | address: 0xb0008000 | bus: 0x0 | device: 0x1 | function: 0x0 | vendor_id: 0x1234 | device_id: 0x1111 | class: 0x30000 | revision: 0x2 | bridge: no | sub_vendor_id: 0x1af4 | sub_device
+[init -> report_rom]   _id: 0x1100
+[init -> report_rom]     + io_mem | pci_bar: 0 | address: 0xfd000000 | size: 0x1000000 | prefetchable: true | wc: true
+[init -> report_rom]     + io_mem | pci_bar: 2 | address: 0xfebf0000 | size: 0x1000
+[init -> report_rom]   + device 00:02.0 | type: pci
+[init -> report_rom]     + pci-config | address: 0xb0010000 | bus: 0x0 | device: 0x2 | function: 0x0 | vendor_id: 0x8086 | device_id: 0x100e | class: 0x20000 | revision: 0x3 | bridge: no | sub_vendor_id: 0x1af4 | sub_device
+[init -> report_rom]   _id: 0x1100
+[init -> report_rom]     + io_mem | pci_bar: 0 | address: 0xfebc0000 | size: 0x20000
+[init -> report_rom]     + io_port_range | pci_bar: 1 | address: 0xc000 | size: 0x40
+[init -> report_rom]     + irq | polarity: high | mode: level | number: 11
+[init -> report_rom]   + device 00:1f.0 | type: pci
+[init -> report_rom]     + pci-config | address: 0xb00f8000 | bus: 0x0 | device: 0x1f | function: 0x0 | vendor_id: 0x8086 | device_id: 0x2918 | class: 0x60100 | revision: 0x2 | bridge: yes | io_base_limit: 0x0 | memory_base
+[init -> report_rom]   : 0x0 | memory_limit: 0x0 | prefetch_memory_base: 0x0 | prefetch_memory_base_upper: 0x0 | prefetch_memory_limit_upper: 0x11001af4 | io_base_limit_upper: 0x0 | expansion_rom_base: 0x0 | bridge_control:
+[init -> report_rom]    0x0
+[init -> report_rom]   + device 00:1f.2 | type: pci | msi: 1
+[init -> report_rom]     + pci-config | address: 0xb00fa000 | bus: 0x0 | device: 0x1f | function: 0x2 | vendor_id: 0x8086 | device_id: 0x2922 | class: 0x10601 | revision: 0x2 | bridge: no | sub_vendor_id: 0x1af4 | sub_devic
+[init -> report_rom]   e_id: 0x1100
+[init -> report_rom]     + io_port_range | pci_bar: 4 | address: 0xc080 | size: 0x20
+[init -> report_rom]     + io_mem | pci_bar: 5 | address: 0xfebf1000 | size: 0x1000
+[init -> report_rom]     + irq | polarity: high | mode: level | number: 10
+[init -> report_rom]   + device 00:1f.3 | type: pci
+[init -> report_rom]     + pci-config | address: 0xb00fb000 | bus: 0x0 | device: 0x1f | function: 0x3 | vendor_id: 0x8086 | device_id: 0x2930 | class: 0xc0500 | revision: 0x2 | bridge: no | sub_vendor_id: 0x1af4 | sub_devic
+[init -> report_rom]   e_id: 0x1100
+[init -> report_rom]     + io_port_range | pci_bar: 4 | address: 0x700 | size: 0x40
+[init -> report_rom]     + irq | polarity: high | mode: level | number: 10
+[init -> report_rom]   + device ps2
+[init -> report_rom]     + irq | number: 1
+[init -> report_rom]     + irq | number: 12
+[init -> report_rom]     + io_port_range | address: 0x60 | size: 1
+[init -> report_rom]     + io_port_range | address: 0x64 | size: 1
+[init -> report_rom]   + device pit
+[init -> report_rom]     + irq | number: 0
+[init -> report_rom]     + io_port_range | address: 0x40 | size: 4
+[init -> report_rom]   + device acpi | type: acpi
+[init -> report_rom]     + irq | number: 9
+[init -> report_rom]   + device ioapic0 | type: ioapic
+[init -> report_rom]     + io_mem | address: 0xfec00000 | size: 0x1000
+[init -> report_rom]     + property irq_start | value: 0
+[init -> report_rom]   + device INT34C5 | type: acpi
+[init -> report_rom]     + irq | number: 14 | mode: level | polarity: low
+[init -> report_rom]     + io_mem | address: 0xfd690000 | size: 0x1000
+[init -> report_rom]     + io_mem | address: 0xfd6a0000 | size: 0x1000
+[init -> report_rom]     + io_mem | address: 0xfd6d0000 | size: 0x1000
+[init -> report_rom]     + io_mem | address: 0xfd6e0000 | size: 0x1000
+[init -> report_rom]   + device STARLITE_TOUCH | type: acpi
+[init -> report_rom]     + irq | number: 104 | mode: level | polarity: low
+[init -> report_rom]   + device INTC1083 | type: acpi
+[init -> report_rom]     + irq | number: 14 | mode: level | polarity: low
+[init -> report_rom]     + io_mem | address: 0xe0d50000 | size: 0x1000
+[init -> report_rom]     + io_mem | address: 0xe0d40000 | size: 0x1000
+[init -> report_rom]     + io_mem | address: 0xe0d30000 | size: 0x1000
+[init -> report_rom]     + io_mem | address: 0xe0d20000 | size: 0x1000
+[init -> report_rom]     + io_mem | address: 0xe0d10000 | size: 0x1000
+[init -> report_rom]   -
+[init -> report_rom] report 'acpi -> smbios_table'
+[init -> report_rom]   _SM_-L
+[init -> system -> report_rom] [34mWarning: no valid policy for ROM request 'fb_conflict_probe -> result'[0m
+[init -> system -> fb_conflict_probe] [31mError: stop because parent denied ROM-session: label="result", , ram_quota=6K, cap_quota=3[0m
+[init -> system -> report_rom] [34mWarning: no valid policy for ROM request 'fb_lock_probe -> result'[0m
+[init -> system -> fb_lock_probe] [31mError: stop because parent denied ROM-session: label="result", , ram_quota=6K, cap_quota=3[0m
+[init -> system -> driver_probe] driver-probe: installing driver package 'pc_nic'
+[init -> system -> report_rom] report 'driver_probe -> request'
+[init -> system -> report_rom]   <request op="install" pkg="pc_nic" seq="1"/>
+[init -> system -> driver_probe] driver-probe: sending install request
+[init -> system -> sponge_pkgd] sponge_pkgd: ready
+[init -> system -> sponge_pkgd] sponge_pkgd: binary_prefix=''
+[init -> system -> sponge_pkgd] sponge_pkgd: bootstrap thread started
+[init -> system -> sponge_pkgd] sponge_pkgd: resource admission armed (pkg_runtime state report)
+[init -> system -> sponge_pkgd] sponge_pkgd: driver resource admission armed (driver_runtime state report)
+[init -> system -> report_rom] report 'sponge_pkgd -> runtime'
+[init -> system -> report_rom]   <config>
+[init -> system -> report_rom]   	<report delay_ms="2000" init_ram="yes" init_caps="yes" child_ram="yes"/>
+[init -> system -> report_rom]   	<parent-provides>
+[init -> system -> report_rom]   		<service name="ROM"/>
+[init -> system -> report_rom]   		<service name="PD"/>
+[init -> system -> report_rom]   		<service name="RM"/>
+[init -> system -> report_rom]   		<service name="CPU"/>
+[init -> system -> report_rom]   		<service name="LOG"/>
+[init -> system -> report_rom]   		<service name="Timer"/>
+[init -> system -> report_rom]   		<service name="Gui"/>
+[init -> system -> report_rom]   		<service name="Input"/>
+[init -> system -> report_rom]   		<service name="Report"/>
+[init -> system -> report_rom]   		<service name="File_system"/>
+[init -> system -> report_rom]   		<service name="Nic"/>
+[init -> system -> report_rom]   		<service name="Rtc"/>
+[init -> system -> report_rom]   	</parent-provides>
+[init -> system -> report_rom]   	<default-route>
+[init -> system -> report_rom]   		<any-service>
+[init -> system -> report_rom]   			<parent/>
+[init -> system -> report_rom]   			<any-child/>
+[init -> system -> report_rom]   		</any-service>
+[init -> system -> report_rom]   	</default-route>
+[init -> system -> report_rom]   	<default caps="1000"/>
+[init -> system -> report_rom]   </config>
+[init -> system -> report_rom] report 'sponge_pkgd -> driver_runtime'
+[init -> system -> report_rom]   <config>
+[init -> system -> report_rom]   	<report delay_ms="2000" init_ram="yes" init_caps="yes" child_ram="yes"/>
+[init -> system -> report_rom]   	<parent-provides>
+[init -> system -> report_rom]   		<service name="ROM"/>
+[init -> system -> report_rom]   		<service name="PD"/>
+[init -> system -> report_rom]   		<service name="RM"/>
+[init -> system -> report_rom]   		<service name="CPU"/>
+[init -> system -> report_rom]   		<service name="LOG"/>
+[init -> system -> report_rom]   	</parent-provides>
+[init -> system -> report_rom]   	<default-route>
+[init -> system -> report_rom]   		<any-service>
+[init -> system -> report_rom]   			<parent/>
+[init -> system -> report_rom]   			<any-child/>
+[init -> system -> report_rom]   		</any-service>
+[init -> system -> report_rom]   	</default-route>
+[init -> system -> report_rom]   	<default caps="1000"/>
+[init -> system -> report_rom]   </config>
+[init -> system -> report_rom] report 'sponge_pkgd -> installed'
+[init -> system -> report_rom]   <installed count="0" config_writes="1">
+[init -> system -> report_rom]   	<packages/>
+[init -> system -> report_rom]   </installed>
+[init -> system -> sponge_pkgd] sponge_pkgd: no driver_runtime state report yet — admitting pc_nic
+[init -> system -> report_rom] report 'sponge_pkgd -> runtime'
+[init -> system -> report_rom]   <config>
+[init -> system -> report_rom]   	<report delay_ms="2000" init_ram="yes" init_caps="yes" child_ram="yes"/>
+[init -> system -> report_rom]   	<parent-provides>
+[init -> system -> report_rom]   		<service name="ROM"/>
+[init -> system -> report_rom]   		<service name="PD"/>
+[init -> system -> report_rom]   		<service name="RM"/>
+[init -> system -> report_rom]   		<service name="CPU"/>
+[init -> system -> report_rom]   		<service name="LOG"/>
+[init -> system -> report_rom]   		<service name="Timer"/>
+[init -> system -> report_rom]   		<service name="Gui"/>
+[init -> system -> report_rom]   		<service name="Input"/>
+[init -> system -> report_rom]   		<service name="Report"/>
+[init -> system -> report_rom]   		<service name="File_system"/>
+[init -> system -> report_rom]   		<service name="Nic"/>
+[init -> system -> report_rom]   		<service name="Rtc"/>
+[init -> system -> report_rom]   	</parent-provides>
+[init -> system -> report_rom]   	<default-route>
+[init -> system -> report_rom]   		<any-service>
+[init -> system -> report_rom]   			<parent/>
+[init -> system -> report_rom]   			<any-child/>
+[init -> system -> report_rom]   		</any-service>
+[init -> system -> report_rom]   	</default-route>
+[init -> system -> report_rom]   	<default caps="1000"/>
+[init -> system -> report_rom]   </config>
+[init -> system -> report_rom] report 'sponge_pkgd -> driver_runtime'
+[init -> system -> report_rom]   <config>
+[init -> system -> report_rom]   	<report delay_ms="2000" init_ram="yes" init_caps="yes" child_ram="yes"/>
+[init -> system -> report_rom]   	<parent-provides>
+[init -> system -> report_rom]   		<service name="ROM"/>
+[init -> system -> report_rom]   		<service name="PD"/>
+[init -> system -> report_rom]   		<service name="RM"/>
+[init -> system -> report_rom]   		<service name="CPU"/>
+[init -> system -> report_rom]   		<service name="LOG"/>
+[init -> system -> report_rom]   		<service name="Platform"/>
+[init -> system -> report_rom]   		<service name="Dma"/>
+[init -> system -> report_rom]   		<service name="IRQ"/>
+[init -> system -> report_rom]   		<service name="IO_MEM"/>
+[init -> system -> report_rom]   		<service name="IO_PORT"/>
+[init -> system -> report_rom]   		<service name="Report"/>
+[init -> system -> report_rom]   		<service name="Timer"/>
+[init -> system -> report_rom]   		<service name="Uplink"/>
+[init -> system -> report_rom]   	</parent-provides>
+[init -> system -> report_rom]   	<default-route>
+[init -> system -> report_rom]   		<any-service>
+[init -> system -> report_rom]   			<parent/>
+[init -> system -> report_rom]   			<any-child/>
+[init -> system -> report_rom]   		</any-service>
+[init -> system -> report_rom]   	</default-route>
+[init -> system -> report_rom]   	<default caps="1000"/>
+[init -> system -> report_rom]   	<start name="pc_nic" caps="1000">
+[init -> system -> report_rom]   		<resource name="RAM" quantum="32M"/><config>
+[init -> system -> report_rom]   	<ld_verbose value="yes"/>
+[init -> system -> report_rom]   </config>
+[init -> system -> report_rom]   
+[init -> system -> report_rom]   		<route>
+[init -> system -> report_rom]   			<service name="ROM" label_last="ld.lib.so">
+[init -> system -> report_rom]   				<parent/>
+[init -> system -> report_rom]   			</service>
+[init -> system -> report_rom]   			<service name="Platform">
+[init -> system -> report_rom]   				<parent/>
+[init -> system -> report_rom]   			</service>
+[init -> system -> report_rom]   			<service name="Dma">
+[init -> system -> report_rom]   				<parent/>
+[init -> system -> report_rom]   			</service>
+[init -> system -> report_rom]   			<service name="IRQ">
+[init -> system -> report_rom]   				<parent/>
+[init -> system -> report_rom]   			</service>
+[init -> system -> report_rom]   			<service name="IO_MEM">
+[init -> system -> report_rom]   				<parent/>
+[init -> system -> report_rom]   			</service>
+[init -> system -> report_rom]   			<service name="IO_PORT">
+[init -> system -> report_rom]   				<parent/>
+[init -> system -> report_rom]   			</service>
+[init -> system -> report_rom]   			<service name="Report">
+[init -> system -> report_rom]   				<parent/>
+[init -> system -> report_rom]   			</service>
+[init -> system -> report_rom]   			<service name="Timer">
+[init -> system -> report_rom]   				<parent/>
+[init -> system -> report_rom]   			</service>
+[init -> system -> report_rom]   			<service name="Uplink">
+[init -> system -> report_rom]   				<parent/>
+[init -> system -> report_rom]   			</service>
+[init -> system -> report_rom]   			<any-service>
+[init -> system -> report_rom]   				<parent/>
+[init -> system -> report_rom]   			</any-service>
+[init -> system -> report_rom]   		</route>
+[init -> system -> report_rom]   	</start>
+[init -> system -> report_rom]   </config>
+[init -> system -> driver_probe] driver-probe: pkgd broadcast seen
+[init -> system -> report_rom] report 'sponge_pkgd -> installed'
+[init -> system -> report_rom]   <installed count="1" config_writes="2">
+[init -> system -> report_rom]   	<packages>
+[init -> system -> report_rom]   		<package name="pc_nic" version="1.0" binary="pc_nic" running="yes" kind="driver" exclusive="" description="Ethernet driver for PCI NICs (e1000, rtl8169 and friends) via the Linux network stack."/>
+[init -> system -> report_rom]   	</packages>
+[init -> system -> report_rom]   </installed>
+[init -> system -> report_rom] report 'sponge_pkgd -> result'
+[init -> system -> report_rom]   <result status="ok" op="install" pkg="pc_nic" version="1.0">
+[init -> system -> report_rom]   	<components_added>
+[init -> system -> report_rom]   		<component name="pc_nic"/>
+[init -> system -> report_rom]   	</components_added>
+[init -> system -> report_rom]   </result>
+[init -> system -> sponge_pkgd] sponge_pkgd: bootstrap complete
+[init -> system -> report_rom] report 'driver_runtime -> state'
+[init -> system -> report_rom]   state
+[init -> system -> report_rom]   + ram  | quota: 301767122 | used: 888K | avail: 300857810
+[init -> system -> report_rom]   + caps | quota: 7975      | used: 43   | avail: 7932
+[init -> system -> report_rom]   + child pc_nic | binary: pc_nic
+[init -> system -> report_rom]     + ram | assigned: 32M | quota: 33367048 | used: 500K | avail: 32855048
+[init -> system -> report_rom]   -
+[init -> system -> report_rom] report 'driver_runtime -> state'
+[init -> system -> report_rom]   state
+[init -> system -> report_rom]   + ram  | quota: 301767122 | used: 888K | avail: 300857810
+[init -> system -> report_rom]   + caps | quota: 7975      | used: 43   | avail: 7932
+[init -> system -> report_rom]   + child pc_nic | binary: pc_nic
+[init -> system -> report_rom]     + ram | assigned: 32M | quota: 33367048 | used: 508K | avail: 32846856
+[init -> system -> report_rom]   -
+[init -> system -> driver_runtime -> pc_nic] SLUB: HWalign=64, Order=0-1, MinObjects=0, CPUs=1, Nodes=1
+[init -> system -> driver_runtime -> pc_nic] NR_IRQS: 4352, nr_irqs: 4352, preallocated irqs: 256
+[init -> system -> driver_runtime -> pc_nic] clocksource: dde_counter: mask: 0xffffffffffffff max_cycles: 0x1d854df40, max_idle_ns: 3526361616960 ns
+[init -> system -> driver_probe] driver-probe: install answered status=ok
+[init -> system -> driver_probe] driver-probe: driver_runtime lists child 'pc_nic'
+[init -> systespawn qemu-system-x86_64 -accel kvm -machine q35 -cpu Skylake-Client -nographic -m 2G -serial mon:stdio -cdrom var/run/sponge-pkg-driver.iso -machine q35 -net nic,model=e1000,netdev=net0 -netdev user,id=net0
+qemu-system-x86_64: warning: host doesn't support requested feature: CPUID[eax=0Dh,ecx=01h].EAX.xsavec [bit 1]
+qemu-system-x86_64: warning: host doesn't support requested feature: CPUID[eax=0Dh,ecx=01h].EAX.xgetbv1 [bit 2]
+c[?7l[2J[0mSeaBIOS (version Arch Linux 1.17.0-2-2)
+
+
+iPXE (http://ipxe.org) 00:02.0 C900 PCI2.10 PnP PMM+7EFD3DA0+7EF33DA0 C900
+Press Ctrl-B to configure iPXE (PCI 00:02.0)...                                                                               
+
+
+Booting from Hard Disk...
+Boot failed: could not read the boot disk
+
+Booting from DVD/CD...
+error: can't find command `loadfont'.
+  Booting `Genode on seL4'
+
+[01;01H
+Bender Version 0.9-beta7-51-g77a6918-dirty
+Patching BDA with I/O port 0x3f8.
+Bender: Hello World.
+hwp config: eeo=na irq=na hwp=na epp=na epb=na
+Boot config: debug_port = 0x3f8
+Boot config: disable_iommu = true
+  module #0: start=0xf168000 end=0xfdf6410 size=0xc8e410 name='image.elf'
+	Physical Memory Region from 0 size 9fc00 type 1
+	Physical Memory Region from 9fc00 size 400 type 2
+	Physical Memory Region from f0000 size 10000 type 2
+	Physical Memory Region from 100000 size 7fedf000 type 1
+Adding physical memory region 0x100000-0x7ffdf000
+	Physical Memory Region from 7ffdf000 size 21000 type 2
+	Physical Memory Region from b0000000 size 10000000 type 2
+	Physical Memory Region from fed1c000 size 4000 type 2
+	Physical Memory Region from feffc000 size 4000 type 2
+	Physical Memory Region from fffc0000 size 40000 type 2
+Got framebuffer info in multiboot2. Current video mode is at physical address=fd000000 pitch=5120 resolution=1280x800@32 type=1
+Detected 1 boot module(s):
+Kernel loaded to: start=0x200000 end=0xe3e000 size=0xc3e000 entry=0x2002a3
+ACPI: RSDT paddr=0x7ffe2345
+ACPI: RSDT vaddr=0x7ffe2345
+ACPI: FADT paddr=0x7ffe213d
+ACPI: FADT vaddr=0x7ffe213d
+ACPI: FADT flags=0x84a5
+ACPI: MADT paddr=0x7ffe2231
+ACPI: MADT vaddr=0x7ffe2231
+ACPI: MADT apic_addr=0xfee00000
+ACPI: MADT flags=0x1
+ACPI: MADT_APIC apic_id=0x0
+ACPI: MADT_IOAPIC ioapic_id=0 ioapic_addr=0xfec00000 gsib=0
+ACPI: MADT_ISO bus=0 source=0 gsi=0x002 flags=0x0
+ACPI: MADT_ISO bus=0 source=5 gsi=0x005 flags=0xd
+ACPI: MADT_ISO bus=0 source=9 gsi=0x009 flags=0xd
+ACPI: MADT_ISO bus=0 source=10 gsi=0x00a flags=0xd
+ACPI: MADT_ISO bus=0 source=11 gsi=0x00b flags=0xd
+ACPI: 1 CPU(s) detected
+ELF-loading userland images from boot modules:
+size=0x268d000 v_entry=0x2000018 v_start=0x2000000 v_end=0x468d000 p_start=0xfdf7000 p_end=0x12484000
+Moving loaded userland images to final location: from=0xfdf7000 to=0xe3e000 size=0x268d000
+Starting node #0 with APIC ID 0
+Mapping kernel window is done
+vt-x: not supported
+Available phys memory regions: 1
+  [100000..7ffdf000)
+Reserved virt address space regions: 1
+  [ffffff8000200000..ffffff80034cb000)
+Booting all finished, dropped to user space
+:phys_mem_16k:     Allocator 0x257a7f8 dump:
+ Block: [0000000000100000,0000000000a00000) size=9M avail=9M max_avail=9M
+ Block: [00000000034cc000,0000000004000000) size=11472K avail=11472K max_avail=94256K
+ Block: [0000000008000000,000000000dc0c000) size=94256K avail=94256K max_avail=94256K
+ => mem_size=117702656 (112 MB) / mem_avail=117702656 (112 MB)
+
+virtual address layout of core:
+ overall    [0000000000002000,0000001000000000)
+ core image [0000000002000000,000000000468d000)
+ ipc buffer [000000000468d000,000000000468e000)
+ boot_info  [000000000468e000,000000000468f532)
+ stack area [0000000040000000,0000000050000000)
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+Physical memory per PD at most: 512M
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+boot module 'config' (11876 bytes)
+boot module 'acpi' (185600 bytes)
+boot module 'driver_probe' (99408 bytes)
+boot module 'timer' (139920 bytes)
+boot module 'init' (511560 bytes)
+boot module 'init.hsd' (4125 bytes)
+boot module 'init.xsd' (8118 bytes)
+boot module 'ld.lib.so' (1107760 bytes)
+boot module 'nic_router' (609048 bytes)
+boot module 'nic_router.hsd' (4758 bytes)
+boot module 'nic_router.xsd' (7871 bytes)
+boot module 'pc_nic' (1819416 bytes)
+boot module 'pc_platform' (720576 bytes)
+boot module 'pci_decode' (171336 bytes)
+boot module 'platform' (594696 bytes)
+boot module 'report_rom' (150784 bytes)
+boot module 'sponge_pkgd' (272848 bytes)
+boot module 'vesa_fb' (334336 bytes)
+boot module 'vfs.lib.so' (769424 bytes)
+boot module 'pkg_index.xml' (94 bytes)
+boot module 'pkg_pc_nic.xml' (2382 bytes)
+boot module 'pkg_fb_vesa.xml' (3389 bytes)
+boot module 'pkg_fb_boot.xml' (3275 bytes)
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+Genode 26.08-21-gf44bc47ee5
+1602 MiB RAM and 523288 caps assigned to init
+[init] [34mWarning: system: configured RAM exceeds available RAM, proceed with 1636192192[0m
+[init -> acpi] Found MADT
+[init -> acpi] MADT IRQ 0 -> GSI 2 flags: 0
+[init -> acpi] MADT IRQ 5 -> GSI 5 flags: 13
+[init -> acpi] MADT IRQ 9 -> GSI 9 flags: 13
+[init -> acpi] MADT IRQ 10 -> GSI 10 flags: 13
+[init -> acpi] MADT IRQ 11 -> GSI 11 flags: 13
+[init -> acpi] Found HPET hw_id=0x1  vendor_id=0x8086 space_id=0x0 addr=0xfed00000 hpet_id=0x0
+[init -> acpi] Found MCFG
+[init -> acpi] MCFG BASE 0xb0000000 seg 0x0 bus 0x0-0xff
+[init -> acpi] RSDT OEM 'BOCHS ', table id 'BXPC    ', revision 1, creator 'BXPC' (1)
+[init -> timer] timers=3, clock 10000000fs , 64bit counter , legacy routing support vendor=0x8086
+[init -> timer] timer0 GSI options 0xff0104, supports periodic
+[init -> timer] timer1 GSI options 0xff0104, supports periodic
+[init -> timer] timer2 GSI options 0xff0104, supports periodic
+[init -> timer] time wraps after 5849 years
+[init -> timer] irqs=off legacy=off
+[init -> timer] Using timer 2 -> using GSI 2 edge triggered
+[init -> report_rom] report 'acpi -> acpi'
+[init -> report_rom]   acpi
+[init -> report_rom]   + sci_int | irq: 9
+[init -> report_rom]   + reset | io_port: 0xcf9 | value: 15
+[init -> report_rom]   + table WAET | addr: 0x7ffe231d | size: 40
+[init -> report_rom]   + table MCFG | addr: 0x7ffe22e1 | size: 60
+[init -> system] [34mWarning: pkg_runtime: configured RAM exceeds available RAM, proceed with 1248570492[0m
+[init -> report_rom]   + table HPET | addr: 0x7ffe22a9 | size: 56
+[init -> nic_router] [uplink] dynamic IP config: none
+[init -> nic_router] [uplink] NIC sessions: 0
+[init -> report_rom]   + table APIC | addr: 0x7ffe2231 | size: 120
+[init -> report_rom]   + table DSDT | addr: 0x7ffe0040 | size: 8445
+[init -> report_rom]   + table FACP | addr: 0x7ffe213d | size: 244
+[init -> report_rom]   + table RSDT | addr: 0x7ffe2345 | size: 56
+[init -> report_rom]   + root_bridge | bdf: 0x0
+[init -> report_rom]   + bdf | start: 0 | count: 65536 | base: 0xb0000000
+[init -> report_rom]   + irq_override | irq: 11 | gsi: 11 | flags: 0xd
+[init -> report_rom]   + irq_override | irq: 10 | gsi: 10 | flags: 0xd
+[init -> report_rom]   + irq_override | irq: 9 | gsi: 9 | flags: 0xd
+[init -> report_rom]   + irq_override | irq: 5 | gsi: 5 | flags: 0xd
+[init -> report_rom]   + irq_override | irq: 0 | gsi: 2 | flags: 0x0
+[init -> report_rom]   + ioapic | id: 0 | base_irq: 0 | addr: 0xfec00000
+[init -> report_rom]   -
+[init -> acpi] [34mWarning: SMBIOSv3 entry point invalid[0m
+[init -> acpi] SMBIOSv2 table (entry point: 0x1b6520 structures: 0xf6540)
+[init -> report_rom] report 'acpi -> smbios_table'
+[init -> report_rom]   _SM_-L
+[init -> report_rom] report 'pci_decode -> devices'
+[init -> report_rom]   devices
+[init -> report_rom]   + device 00:00.0 | type: pci
+[init -> report_rom]     + pci-config | address: 0xb0000000 | bus: 0x0 | device: 0x0 | function: 0x0 | vendor_id: 0x8086 | device_id: 0x29c0 | class: 0x60000 | revision: 0x0 | bridge: yes | io_base_limit: 0x0 | memory_base:
+[init -> report_rom]    0x0 | memory_limit: 0x0 | prefetch_memory_base: 0x0 | prefetch_memory_base_upper: 0x0 | prefetch_memory_limit_upper: 0x11001af4 | io_base_limit_upper: 0x0 | expansion_rom_base: 0x0 | bridge_control: 
+[init -> report_rom]   0x0
+[init -> report_rom]   + device 00:01.0 | type: pci
+[init -> report_rom]     + pci-config | address: 0xb0008000 | bus: 0x0 | device: 0x1 | function: 0x0 | vendor_id: 0x1234 | device_id: 0x1111 | class: 0x30000 | revision: 0x2 | bridge: no | sub_vendor_id: 0x1af4 | sub_device
+[init -> report_rom]   _id: 0x1100
+[init -> report_rom]     + io_mem | pci_bar: 0 | address: 0xfd000000 | size: 0x1000000 | prefetchable: true | wc: true
+[init -> report_rom]     + io_mem | pci_bar: 2 | address: 0xfebf0000 | size: 0x1000
+[init -> report_rom]   + device 00:02.0 | type: pci
+[init -> report_rom]     + pci-config | address: 0xb0010000 | bus: 0x0 | device: 0x2 | function: 0x0 | vendor_id: 0x8086 | device_id: 0x100e | class: 0x20000 | revision: 0x3 | bridge: no | sub_vendor_id: 0x1af4 | sub_device
+[init -> report_rom]   _id: 0x1100
+[init -> report_rom]     + io_mem | pci_bar: 0 | address: 0xfebc0000 | size: 0x20000
+[init -> report_rom]     + io_port_range | pci_bar: 1 | address: 0xc000 | size: 0x40
+[init -> report_rom]     + irq | polarity: high | mode: level | number: 11
+[init -> report_rom]   + device 00:1f.0 | type: pci
+[init -> report_rom]     + pci-config | address: 0xb00f8000 | bus: 0x0 | device: 0x1f | function: 0x0 | vendor_id: 0x8086 | device_id: 0x2918 | class: 0x60100 | revision: 0x2 | bridge: yes | io_base_limit: 0x0 | memory_base
+[init -> report_rom]   : 0x0 | memory_limit: 0x0 | prefetch_memory_base: 0x0 | prefetch_memory_base_upper: 0x0 | prefetch_memory_limit_upper: 0x11001af4 | io_base_limit_upper: 0x0 | expansion_rom_base: 0x0 | bridge_control:
+[init -> report_rom]    0x0
+[init -> report_rom]   + device 00:1f.2 | type: pci | msi: 1
+[init -> report_rom]     + pci-config | address: 0xb00fa000 | bus: 0x0 | device: 0x1f | function: 0x2 | vendor_id: 0x8086 | device_id: 0x2922 | class: 0x10601 | revision: 0x2 | bridge: no | sub_vendor_id: 0x1af4 | sub_devic
+[init -> report_rom]   e_id: 0x1100
+[init -> report_rom]     + io_port_range | pci_bar: 4 | address: 0xc080 | size: 0x20
+[init -> report_rom]     + io_mem | pci_bar: 5 | address: 0xfebf1000 | size: 0x1000
+[init -> report_rom]     + irq | polarity: high | mode: level | number: 10
+[init -> report_rom]   + device 00:1f.3 | type: pci
+[init -> report_rom]     + pci-config | address: 0xb00fb000 | bus: 0x0 | device: 0x1f | function: 0x3 | vendor_id: 0x8086 | device_id: 0x2930 | class: 0xc0500 | revision: 0x2 | bridge: no | sub_vendor_id: 0x1af4 | sub_devic
+[init -> report_rom]   e_id: 0x1100
+[init -> report_rom]     + io_port_range | pci_bar: 4 | address: 0x700 | size: 0x40
+[init -> report_rom]     + irq | polarity: high | mode: level | number: 10
+[init -> report_rom]   + device ps2
+[init -> report_rom]     + irq | number: 1
+[init -> report_rom]     + irq | number: 12
+[init -> report_rom]     + io_port_range | address: 0x60 | size: 1
+[init -> report_rom]     + io_port_range | address: 0x64 | size: 1
+[init -> report_rom]   + device pit
+[init -> report_rom]     + irq | number: 0
+[init -> report_rom]     + io_port_range | address: 0x40 | size: 4
+[init -> report_rom]   + device acpi | type: acpi
+[init -> report_rom]     + irq | number: 9
+[init -> report_rom]   + device ioapic0 | type: ioapic
+[init -> report_rom]     + io_mem | address: 0xfec00000 | size: 0x1000
+[init -> report_rom]     + property irq_start | value: 0
+[init -> report_rom]   + device INT34C5 | type: acpi
+[init -> report_rom]     + irq | number: 14 | mode: level | polarity: low
+[init -> report_rom]     + io_mem | address: 0xfd690000 | size: 0x1000
+[init -> report_rom]     + io_mem | address: 0xfd6a0000 | size: 0x1000
+[init -> report_rom]     + io_mem | address: 0xfd6d0000 | size: 0x1000
+[init -> report_rom]     + io_mem | address: 0xfd6e0000 | size: 0x1000
+[init -> report_rom]   + device STARLITE_TOUCH | type: acpi
+[init -> report_rom]     + irq | number: 104 | mode: level | polarity: low
+[init -> report_rom]   + device INTC1083 | type: acpi
+[init -> report_rom]     + irq | number: 14 | mode: level | polarity: low
+[init -> report_rom]     + io_mem | address: 0xe0d50000 | size: 0x1000
+[init -> report_rom]     + io_mem | address: 0xe0d40000 | size: 0x1000
+[init -> report_rom]     + io_mem | address: 0xe0d30000 | size: 0x1000
+[init -> report_rom]     + io_mem | address: 0xe0d20000 | size: 0x1000
+[init -> report_rom]     + io_mem | address: 0xe0d10000 | size: 0x1000
+[init -> report_rom]   -
+[init -> system -> report_rom] [34mWarning: no valid policy for ROM request 'fb_lock_probe -> result'[0m
+[init -> system -> fb_lock_probe] [31mError: stop because parent denied ROM-session: label="result", , ram_quota=6K, cap_quota=3[0m
+[init -> system -> report_rom] [34mWarning: no valid policy for ROM request 'fb_conflict_probe -> result'[0m
+[init -> system -> fb_conflict_probe] [31mError: stop because parent denied ROM-session: label="result", , ram_quota=6K, cap_quota=3[0m
+[init -> system -> driver_probe] driver-probe: installing driver package 'pc_nic'
+[init -> system -> report_rom] report 'driver_probe -> request'
+[init -> system -> report_rom]   <request op="install" pkg="pc_nic" seq="1"/>
+[init -> system -> driver_probe] driver-probe: sending install request
+[init -> system -> sponge_pkgd] sponge_pkgd: ready
+[init -> system -> sponge_pkgd] sponge_pkgd: binary_prefix=''
+[init -> system -> sponge_pkgd] sponge_pkgd: bootstrap thread started
+[init -> system -> sponge_pkgd] sponge_pkgd: resource admission armed (pkg_runtime state report)
+[init -> system -> sponge_pkgd] sponge_pkgd: driver resource admission armed (driver_runtime state report)
+[init -> system -> report_rom] report 'sponge_pkgd -> runtime'
+[init -> system -> report_rom]   <config>
+[init -> system -> report_rom]   	<report delay_ms="2000" init_ram="yes" init_caps="yes" child_ram="yes"/>
+[init -> system -> report_rom]   	<parent-provides>
+[init -> system -> report_rom]   		<service name="ROM"/>
+[init -> system -> report_rom]   		<service name="PD"/>
+[init -> system -> report_rom]   		<service name="RM"/>
+[init -> system -> report_rom]   		<service name="CPU"/>
+[init -> system -> report_rom]   		<service name="LOG"/>
+[init -> system -> report_rom]   		<service name="Timer"/>
+[init -> system -> report_rom]   		<service name="Gui"/>
+[init -> system -> report_rom]   		<service name="Input"/>
+[init -> system -> report_rom]   		<service name="Report"/>
+[init -> system -> report_rom]   		<service name="File_system"/>
+[init -> system -> report_rom]   		<service name="Nic"/>
+[init -> system -> report_rom]   		<service name="Rtc"/>
+[init -> system -> report_rom]   	</parent-provides>
+[init -> system -> report_rom]   	<default-route>
+[init -> system -> report_rom]   		<any-service>
+[init -> system -> report_rom]   			<parent/>
+[init -> system -> report_rom]   			<any-child/>
+[init -> system -> report_rom]   		</any-service>
+[init -> system -> report_rom]   	</default-route>
+[init -> system -> report_rom]   	<default caps="1000"/>
+[init -> system -> report_rom]   </config>
+[init -> system -> report_rom] report 'sponge_pkgd -> driver_runtime'
+[init -> system -> report_rom]   <config>
+[init -> system -> report_rom]   	<report delay_ms="2000" init_ram="yes" init_caps="yes" child_ram="yes"/>
+[init -> system -> report_rom]   	<parent-provides>
+[init -> system -> report_rom]   		<service name="ROM"/>
+[init -> system -> report_rom]   		<service name="PD"/>
+[init -> system -> report_rom]   		<service name="RM"/>
+[init -> system -> report_rom]   		<service name="CPU"/>
+[init -> system -> report_rom]   		<service name="LOG"/>
+[init -> system -> report_rom]   	</parent-provides>
+[init -> system -> report_rom]   	<default-route>
+[init -> system -> report_rom]   		<any-service>
+[init -> system -> report_rom]   			<parent/>
+[init -> system -> report_rom]   			<any-child/>
+[init -> system -> report_rom]   		</any-service>
+[init -> system -> report_rom]   	</default-route>
+[init -> system -> report_rom]   	<default caps="1000"/>
+[init -> system -> report_rom]   </config>
+[init -> system -> report_rom] report 'sponge_pkgd -> installed'
+[init -> system -> report_rom]   <installed count="0" config_writes="1">
+[init -> system -> report_rom]   	<packages/>
+[init -> system -> report_rom]   </installed>
+[init -> system -> sponge_pkgd] sponge_pkgd: no driver_runtime state report yet — admitting pc_nic
+[init -> system -> report_rom] report 'sponge_pkgd -> runtime'
+[init -> system -> report_rom]   <config>
+[init -> system -> report_rom]   	<report delay_ms="2000" init_ram="yes" init_caps="yes" child_ram="yes"/>
+[init -> system -> report_rom]   	<parent-provides>
+[init -> system -> report_rom]   		<service name="ROM"/>
+[init -> system -> report_rom]   		<service name="PD"/>
+[init -> system -> report_rom]   		<service name="RM"/>
+[init -> system -> report_rom]   		<service name="CPU"/>
+[init -> system -> report_rom]   		<service name="LOG"/>
+[init -> system -> report_rom]   		<service name="Timer"/>
+[init -> system -> report_rom]   		<service name="Gui"/>
+[init -> system -> report_rom]   		<service name="Input"/>
+[init -> system -> report_rom]   		<service name="Report"/>
+[init -> system -> report_rom]   		<service name="File_system"/>
+[init -> system -> report_rom]   		<service name="Nic"/>
+[init -> system -> report_rom]   		<service name="Rtc"/>
+[init -> system -> report_rom]   	</parent-provides>
+[init -> system -> report_rom]   	<default-route>
+[init -> system -> report_rom]   		<any-service>
+[init -> system -> report_rom]   			<parent/>
+[init -> system -> report_rom]   			<any-child/>
+[init -> system -> report_rom]   		</any-service>
+[init -> system -> report_rom]   	</default-route>
+[init -> system -> report_rom]   	<default caps="1000"/>
+[init -> system -> report_rom]   </config>
+[init -> system -> report_rom] report 'sponge_pkgd -> driver_runtime'
+[init -> system -> report_rom]   <config>
+[init -> system -> report_rom]   	<report delay_ms="2000" init_ram="yes" init_caps="yes" child_ram="yes"/>
+[init -> system -> report_rom]   	<parent-provides>
+[init -> system -> report_rom]   		<service name="ROM"/>
+[init -> system -> report_rom]   		<service name="PD"/>
+[init -> system -> report_rom]   		<service name="RM"/>
+[init -> system -> report_rom]   		<service name="CPU"/>
+[init -> system -> report_rom]   		<service name="LOG"/>
+[init -> system -> report_rom]   		<service name="Platform"/>
+[init -> system -> report_rom]   		<service name="Dma"/>
+[init -> system -> report_rom]   		<service name="IRQ"/>
+[init -> system -> report_rom]   		<service name="IO_MEM"/>
+[init -> system -> report_rom]   		<service name="IO_PORT"/>
+[init -> system -> report_rom]   		<service name="Report"/>
+[init -> system -> report_rom]   		<service name="Timer"/>
+[init -> system -> report_rom]   		<service name="Uplink"/>
+[init -> system -> report_rom]   	</parent-provides>
+[init -> system -> report_rom]   	<default-route>
+[init -> system -> report_rom]   		<any-service>
+[init -> system -> report_rom]   			<parent/>
+[init -> system -> report_rom]   			<any-child/>
+[init -> system -> report_rom]   		</any-service>
+[init -> system -> report_rom]   	</default-route>
+[init -> system -> report_rom]   	<default caps="1000"/>
+[init -> system -> report_rom]   	<start name="pc_nic" caps="1000">
+[init -> system -> report_rom]   		<resource name="RAM" quantum="32M"/><config>
+[init -> system -> report_rom]   	<ld_verbose value="yes"/>
+[init -> system -> report_rom]   </config>
+[init -> system -> report_rom]   
+[init -> system -> report_rom]   		<route>
+[init -> system -> report_rom]   			<service name="ROM" label_last="ld.lib.so">
+[init -> system -> report_rom]   				<parent/>
+[init -> system -> report_rom]   			</service>
+[init -> system -> report_rom]   			<service name="Platform">
+[init -> system -> report_rom]   				<parent/>
+[init -> system -> report_rom]   			</service>
+[init -> system -> report_rom]   			<service name="Dma">
+[init -> system -> report_rom]   				<parent/>
+[init -> system -> report_rom]   			</service>
+[init -> system -> report_rom]   			<service name="IRQ">
+[init -> system -> report_rom]   				<parent/>
+[init -> system -> report_rom]   			</service>
+[init -> system -> report_rom]   			<service name="IO_MEM">
+[init -> system -> report_rom]   				<parent/>
+[init -> system -> report_rom]   			</service>
+[init -> system -> report_rom]   			<service name="IO_PORT">
+[init -> system -> report_rom]   				<parent/>
+[init -> system -> report_rom]   			</service>
+[init -> system -> report_rom]   			<service name="Report">
+[init -> system -> report_rom]   				<parent/>
+[init -> system -> report_rom]   			</service>
+[init -> system -> report_rom]   			<service name="Timer">
+[init -> system -> report_rom]   				<parent/>
+[init -> system -> report_rom]   			</service>
+[init -> system -> report_rom]   			<service name="Uplink">
+[init -> system -> report_rom]   				<parent/>
+[init -> system -> report_rom]   			</service>
+[init -> system -> report_rom]   			<any-service>
+[init -> system -> report_rom]   				<parent/>
+[init -> system -> report_rom]   			</any-service>
+[init -> system -> report_rom]   		</route>
+[init -> system -> report_rom]   	</start>
+[init -> system -> report_rom]   </config>
+[init -> system -> driver_probe] driver-probe: pkgd broadcast seen
+[init -> system -> report_rom] report 'sponge_pkgd -> installed'
+[init -> system -> report_rom]   <installed count="1" config_writes="2">
+[init -> system -> report_rom]   	<packages>
+[init -> system -> report_rom]   		<package name="pc_nic" version="1.0" binary="pc_nic" running="yes" kind="driver" exclusive="" description="Ethernet driver for PCI NICs (e1000, rtl8169 and friends) via the Linux network stack."/>
+[init -> system -> report_rom]   	</packages>
+[init -> system -> report_rom]   </installed>
+[init -> system -> report_rom] report 'sponge_pkgd -> result'
+[init -> system -> report_rom]   <result status="ok" op="install" pkg="pc_nic" version="1.0">
+[init -> system -> report_rom]   	<components_added>
+[init -> system -> report_rom]   		<component name="pc_nic"/>
+[init -> system -> report_rom]   	</components_added>
+[init -> system -> report_rom]   </result>
+[init -> system -> sponge_pkgd] sponge_pkgd: bootstrap complete
+[init -> system -> report_rom] report 'driver_runtime -> state'
+[init -> system -> report_rom]   state
+[init -> system -> report_rom]   + ram  | quota: 301767122 | used: 888K | avail: 300857810
+[init -> system -> report_rom]   + caps | quota: 7975      | used: 43   | avail: 7932
+[init -> system -> report_rom]   + child pc_nic | binary: pc_nic
+[init -> system -> report_rom]     + ram | assigned: 32M | quota: 33367048 | used: 500K | avail: 32855048
+[init -> system -> report_rom]   -
+[init -> system -> report_rom] report 'driver_runtime -> state'
+[init -> system -> report_rom]   state
+[init -> system -> report_rom]   + ram  | quota: 301767122 | used: 888K | avail: 300857810
+[init -> system -> report_rom]   + caps | quota: 7975      | used: 43   | avail: 7932
+[init -> system -> report_rom]   + child pc_nic | binary: pc_nic
+[init -> system -> report_rom]     + ram | assigned: 32M | quota: 33367048 | used: 700K | avail: 32650248
+[init -> system -> report_rom]   -
+[init -> system -> driver_runtime -> pc_nic] SLUB: HWalign=64, Order=0-1, MinObjects=0, CPUs=1, Nodes=1
+[init -> system -> driver_runtime -> pc_nic] NR_IRQS: 4352, nr_irqs: 4352, preallocated irqs: 256
+[init -> system -> driver_runtime -> pc_nic] clocksource: dde_counter: mask: 0xffffffffffffff max_cycles: 0x1d854df40, max_idle_ns: 3526361616960 ns
+[init -> system -> driver_probe] driver-probe: install answered status=ok
+[init -> system -> driver_probe] driver-probe: driver_runtime lists child 'pc_nic'
+[init -> system -> driver_probe] driver-probe: PASS
+[init -> system] child "driver_probe" exited with exit value 0
+[init -> system -> driver_runtime -> pc_nic] clocksource: jiffies: mask: 0xffffffff max_cycles: 0xffffffff, max_idle_ns: 7645041785100000 ns
+[init -> system -> driver_runtime -> pc_nic] clocksource: Switched to clocksource dde_counter
+[init -> system -> driver_runtime -> pc_nic] netdev: Intel(R) PRO/1000 Network Driver
+[init -> systespawn qemu-system-x86_64 -accel kvm -machine q35 -cpu Skylake-Client -nographic -m 2G -serial mon:stdio -cdrom var/run/sponge-pkg-driver.iso -machine q35 -net nic,model=e1000,netdev=net0 -netdev user,id=net0
+qemu-system-x86_64: warning: host doesn't support requested feature: CPUID[eax=0Dh,ecx=01h].EAX.xsavec [bit 1]
+qemu-system-x86_64: warning: host doesn't support requested feature: CPUID[eax=0Dh,ecx=01h].EAX.xgetbv1 [bit 2]
+c[?7l[2J[0mSeaBIOS (version Arch Linux 1.17.0-2-2)
+
+
+iPXE (http://ipxe.org) 00:02.0 C900 PCI2.10 PnP PMM+7EFD3DA0+7EF33DA0 C900
+Press Ctrl-B to configure iPXE (PCI 00:02.0)...                                                                               
+
+
+Booting from Hard Disk...
+Boot failed: could not read the boot disk
+
+Booting from DVD/CD...
+error: can't find command `loadfont'.
+  Booting `Genode on seL4'
+
+[01;01H
+Bender Version 0.9-beta7-51-g77a6918-dirty
+Patching BDA with I/O port 0x3f8.
+Bender: Hello World.
+hwp config: eeo=na irq=na hwp=na epp=na epb=na
+Boot config: debug_port = 0x3f8
+Boot config: disable_iommu = true
+  module #0: start=0xf168000 end=0xfdf6410 size=0xc8e410 name='image.elf'
+	Physical Memory Region from 0 size 9fc00 type 1
+	Physical Memory Region from 9fc00 size 400 type 2
+	Physical Memory Region from f0000 size 10000 type 2
+	Physical Memory Region from 100000 size 7fedf000 type 1
+Adding physical memory region 0x100000-0x7ffdf000
+	Physical Memory Region from 7ffdf000 size 21000 type 2
+	Physical Memory Region from b0000000 size 10000000 type 2
+	Physical Memory Region from fed1c000 size 4000 type 2
+	Physical Memory Region from feffc000 size 4000 type 2
+	Physical Memory Region from fffc0000 size 40000 type 2
+Got framebuffer info in multiboot2. Current video mode is at physical address=fd000000 pitch=5120 resolution=1280x800@32 type=1
+Detected 1 boot module(s):
+Kernel loaded to: start=0x200000 end=0xe3e000 size=0xc3e000 entry=0x2002a3
+ACPI: RSDT paddr=0x7ffe2345
+ACPI: RSDT vaddr=0x7ffe2345
+ACPI: FADT paddr=0x7ffe213d
+ACPI: FADT vaddr=0x7ffe213d
+ACPI: FADT flags=0x84a5
+ACPI: MADT paddr=0x7ffe2231
+ACPI: MADT vaddr=0x7ffe2231
+ACPI: MADT apic_addr=0xfee00000
+ACPI: MADT flags=0x1
+ACPI: MADT_APIC apic_id=0x0
+ACPI: MADT_IOAPIC ioapic_id=0 ioapic_addr=0xfec00000 gsib=0
+ACPI: MADT_ISO bus=0 source=0 gsi=0x002 flags=0x0
+ACPI: MADT_ISO bus=0 source=5 gsi=0x005 flags=0xd
+ACPI: MADT_ISO bus=0 source=9 gsi=0x009 flags=0xd
+ACPI: MADT_ISO bus=0 source=10 gsi=0x00a flags=0xd
+ACPI: MADT_ISO bus=0 source=11 gsi=0x00b flags=0xd
+ACPI: 1 CPU(s) detected
+ELF-loading userland images from boot modules:
+size=0x268d000 v_entry=0x2000018 v_start=0x2000000 v_end=0x468d000 p_start=0xfdf7000 p_end=0x12484000
+Moving loaded userland images to final location: from=0xfdf7000 to=0xe3e000 size=0x268d000
+Starting node #0 with APIC ID 0
+Mapping kernel window is done
+vt-x: not supported
+Available phys memory regions: 1
+  [100000..7ffdf000)
+Reserved virt address space regions: 1
+  [ffffff8000200000..ffffff80034cb000)
+Booting all finished, dropped to user space
+:phys_mem_16k:     Allocator 0x257a7f8 dump:
+ Block: [0000000000100000,0000000000a00000) size=9M avail=9M max_avail=9M
+ Block: [00000000034cc000,0000000004000000) size=11472K avail=11472K max_avail=94256K
+ Block: [0000000008000000,000000000dc0c000) size=94256K avail=94256K max_avail=94256K
+ => mem_size=117702656 (112 MB) / mem_avail=117702656 (112 MB)
+
+virtual address layout of core:
+ overall    [0000000000002000,0000001000000000)
+ core image [0000000002000000,000000000468d000)
+ ipc buffer [000000000468d000,000000000468e000)
+ boot_info  [000000000468e000,000000000468f532)
+ stack area [0000000040000000,0000000050000000)
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+Physical memory per PD at most: 512M
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+boot module 'config' (11876 bytes)
+boot module 'acpi' (185600 bytes)
+boot module 'driver_probe' (99408 bytes)
+boot module 'timer' (139920 bytes)
+boot module 'init' (511560 bytes)
+boot module 'init.hsd' (4125 bytes)
+boot module 'init.xsd' (8118 bytes)
+boot module 'ld.lib.so' (1107760 bytes)
+boot module 'nic_router' (609048 bytes)
+boot module 'nic_router.hsd' (4758 bytes)
+boot module 'nic_router.xsd' (7871 bytes)
+boot module 'pc_nic' (1819416 bytes)
+boot module 'pc_platform' (720576 bytes)
+boot module 'pci_decode' (171336 bytes)
+boot module 'platform' (594696 bytes)
+boot module 'report_rom' (150784 bytes)
+boot module 'sponge_pkgd' (272848 bytes)
+boot module 'vesa_fb' (334336 bytes)
+boot module 'vfs.lib.so' (769424 bytes)
+boot module 'pkg_index.xml' (94 bytes)
+boot module 'pkg_pc_nic.xml' (2382 bytes)
+boot module 'pkg_fb_vesa.xml' (3389 bytes)
+boot module 'pkg_fb_boot.xml' (3275 bytes)
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+Genode 26.08-21-gf44bc47ee5
+1602 MiB RAM and 523288 caps assigned to init
+[init] [34mWarning: system: configured RAM exceeds available RAM, proceed with 1636192192[0m
+[init -> timer] timers=3, clock 10000000fs , 64bit counter , legacy routing support vendor=0x8086
+[init -> timer] timer0 GSI options 0xff0104, supports periodic
+[init -> timer] timer1 GSI options 0xff0104, supports periodic
+[init -> timer] timer2 GSI options 0xff0104, supports periodic
+[init -> timer] time wraps after 5849 years
+[init -> timer] irqs=off legacy=off
+[init -> timer] Using timer 2 -> using GSI 2 edge triggered
+[init -> acpi] Found MADT
+[init -> acpi] MADT IRQ 0 -> GSI 2 flags: 0
+[init -> acpi] MADT IRQ 5 -> GSI 5 flags: 13
+[init -> acpi] MADT IRQ 9 -> GSI 9 flags: 13
+[init -> acpi] MADT IRQ 10 -> GSI 10 flags: 13
+[init -> acpi] MADT IRQ 11 -> GSI 11 flags: 13
+[init -> acpi] Found HPET hw_id=0x1  vendor_id=0x8086 space_id=0x0 addr=0xfed00000 hpet_id=0x0
+[init -> acpi] Found MCFG
+[init -> acpi] MCFG BASE 0xb0000000 seg 0x0 bus 0x0-0xff
+[init -> acpi] RSDT OEM 'BOCHS ', table id 'BXPC    ', revision 1, creator 'BXPC' (1)
+[init -> nic_router] [uplink] dynamic IP config: none
+[init -> nic_router] [uplink] NIC sessions: 0
+[init -> system] [34mWarning: pkg_runtime: configured RAM exceeds available RAM, proceed with 1248570492[0m
+[init -> report_rom] report 'acpi -> acpi'
+[init -> report_rom]   acpi
+[init -> report_rom]   + sci_int | irq: 9
+[init -> report_rom]   + reset | io_port: 0xcf9 | value: 15
+[init -> report_rom]   + table WAET | addr: 0x7ffe231d | size: 40
+[init -> report_rom]   + table MCFG | addr: 0x7ffe22e1 | size: 60
+[init -> report_rom]   + table HPET | addr: 0x7ffe22a9 | size: 56
+[init -> report_rom]   + table APIC | addr: 0x7ffe2231 | size: 120
+[init -> report_rom]   + table DSDT | addr: 0x7ffe0040 | size: 8445
+[init -> report_rom]   + table FACP | addr: 0x7ffe213d | size: 244
+[init -> report_rom]   + table RSDT | addr: 0x7ffe2345 | size: 56
+[init -> report_rom]   + root_bridge | bdf: 0x0
+[init -> report_rom]   + bdf | start: 0 | count: 65536 | base: 0xb0000000
+[init -> report_rom]   + irq_override | irq: 11 | gsi: 11 | flags: 0xd
+[init -> report_rom]   + irq_override | irq: 10 | gsi: 10 | flags: 0xd
+[init -> report_rom]   + irq_override | irq: 9 | gsi: 9 | flags: 0xd
+[init -> report_rom]   + irq_override | irq: 5 | gsi: 5 | flags: 0xd
+[init -> report_rom]   + irq_override | irq: 0 | gsi: 2 | flags: 0x0
+[init -> report_rom]   + ioapic | id: 0 | base_irq: 0 | addr: 0xfec00000
+[init -> report_rom]   -
+[init -> acpi] [34mWarning: SMBIOSv3 entry point invalid[0m
+[init -> acpi] SMBIOSv2 table (entry point: 0x1b6520 structures: 0xf6540)
+[init -> report_rom] report 'acpi -> smbios_table'
+[init -> report_rom]   _SM_-L
+[init -> report_rom] report 'pci_decode -> devices'
+[init -> report_rom]   devices
+[init -> report_rom]   + device 00:00.0 | type: pci
+[init -> report_rom]     + pci-config | address: 0xb0000000 | bus: 0x0 | device: 0x0 | function: 0x0 | vendor_id: 0x8086 | device_id: 0x29c0 | class: 0x60000 | revision: 0x0 | bridge: yes | io_base_limit: 0x0 | memory_base:
+[init -> report_rom]    0x0 | memory_limit: 0x0 | prefetch_memory_base: 0x0 | prefetch_memory_base_upper: 0x0 | prefetch_memory_limit_upper: 0x11001af4 | io_base_limit_upper: 0x0 | expansion_rom_base: 0x0 | bridge_control: 
+[init -> report_rom]   0x0
+[init -> report_rom]   + device 00:01.0 | type: pci
+[init -> report_rom]     + pci-config | address: 0xb0008000 | bus: 0x0 | device: 0x1 | function: 0x0 | vendor_id: 0x1234 | device_id: 0x1111 | class: 0x30000 | revision: 0x2 | bridge: no | sub_vendor_id: 0x1af4 | sub_device
+[init -> report_rom]   _id: 0x1100
+[init -> report_rom]     + io_mem | pci_bar: 0 | address: 0xfd000000 | size: 0x1000000 | prefetchable: true | wc: true
+[init -> report_rom]     + io_mem | pci_bar: 2 | address: 0xfebf0000 | size: 0x1000
+[init -> report_rom]   + device 00:02.0 | type: pci
+[init -> report_rom]     + pci-config | address: 0xb0010000 | bus: 0x0 | device: 0x2 | function: 0x0 | vendor_id: 0x8086 | device_id: 0x100e | class: 0x20000 | revision: 0x3 | bridge: no | sub_vendor_id: 0x1af4 | sub_device
+[init -> report_rom]   _id: 0x1100
+[init -> report_rom]     + io_mem | pci_bar: 0 | address: 0xfebc0000 | size: 0x20000
+[init -> report_rom]     + io_port_range | pci_bar: 1 | address: 0xc000 | size: 0x40
+[init -> report_rom]     + irq | polarity: high | mode: level | number: 11
+[init -> report_rom]   + device 00:1f.0 | type: pci
+[init -> report_rom]     + pci-config | address: 0xb00f8000 | bus: 0x0 | device: 0x1f | function: 0x0 | vendor_id: 0x8086 | device_id: 0x2918 | class: 0x60100 | revision: 0x2 | bridge: yes | io_base_limit: 0x0 | memory_base
+[init -> report_rom]   : 0x0 | memory_limit: 0x0 | prefetch_memory_base: 0x0 | prefetch_memory_base_upper: 0x0 | prefetch_memory_limit_upper: 0x11001af4 | io_base_limit_upper: 0x0 | expansion_rom_base: 0x0 | bridge_control:
+[init -> report_rom]    0x0
+[init -> report_rom]   + device 00:1f.2 | type: pci | msi: 1
+[init -> report_rom]     + pci-config | address: 0xb00fa000 | bus: 0x0 | device: 0x1f | function: 0x2 | vendor_id: 0x8086 | device_id: 0x2922 | class: 0x10601 | revision: 0x2 | bridge: no | sub_vendor_id: 0x1af4 | sub_devic
+[init -> report_rom]   e_id: 0x1100
+[init -> report_rom]     + io_port_range | pci_bar: 4 | address: 0xc080 | size: 0x20
+[init -> report_rom]     + io_mem | pci_bar: 5 | address: 0xfebf1000 | size: 0x1000
+[init -> report_rom]     + irq | polarity: high | mode: level | number: 10
+[init -> report_rom]   + device 00:1f.3 | type: pci
+[init -> report_rom]     + pci-config | address: 0xb00fb000 | bus: 0x0 | device: 0x1f | function: 0x3 | vendor_id: 0x8086 | device_id: 0x2930 | class: 0xc0500 | revision: 0x2 | bridge: no | sub_vendor_id: 0x1af4 | sub_devic
+[init -> report_rom]   e_id: 0x1100
+[init -> report_rom]     + io_port_range | pci_bar: 4 | address: 0x700 | size: 0x40
+[init -> report_rom]     + irq | polarity: high | mode: level | number: 10
+[init -> report_rom]   + device ps2
+[init -> report_rom]     + irq | number: 1
+[init -> report_rom]     + irq | number: 12
+[init -> report_rom]     + io_port_range | address: 0x60 | size: 1
+[init -> report_rom]     + io_port_range | address: 0x64 | size: 1
+[init -> report_rom]   + device pit
+[init -> report_rom]     + irq | number: 0
+[init -> report_rom]     + io_port_range | address: 0x40 | size: 4
+[init -> report_rom]   + device acpi | type: acpi
+[init -> report_rom]     + irq | number: 9
+[init -> report_rom]   + device ioapic0 | type: ioapic
+[init -> report_rom]     + io_mem | address: 0xfec00000 | size: 0x1000
+[init -> report_rom]     + property irq_start | value: 0
+[init -> report_rom]   + device INT34C5 | type: acpi
+[init -> report_rom]     + irq | number: 14 | mode: level | polarity: low
+[init -> report_rom]     + io_mem | address: 0xfd690000 | size: 0x1000
+[init -> report_rom]     + io_mem | address: 0xfd6a0000 | size: 0x1000
+[init -> report_rom]     + io_mem | address: 0xfd6d0000 | size: 0x1000
+[init -> report_rom]     + io_mem | address: 0xfd6e0000 | size: 0x1000
+[init -> report_rom]   + device STARLITE_TOUCH | type: acpi
+[init -> report_rom]     + irq | number: 104 | mode: level | polarity: low
+[init -> report_rom]   + device INTC1083 | type: acpi
+[init -> report_rom]     + irq | number: 14 | mode: level | polarity: low
+[init -> report_rom]     + io_mem | address: 0xe0d50000 | size: 0x1000
+[init -> report_rom]     + io_mem | address: 0xe0d40000 | size: 0x1000
+[init -> report_rom]     + io_mem | address: 0xe0d30000 | size: 0x1000
+[init -> report_rom]     + io_mem | address: 0xe0d20000 | size: 0x1000
+[init -> report_rom]     + io_mem | address: 0xe0d10000 | size: 0x1000
+[init -> report_rom]   -
+[init -> system -> report_rom] [34mWarning: no valid policy for ROM request 'fb_conflict_probe -> result'[0m
+[init -> system -> report_rom] [34mWarning: no valid policy for ROM request 'fb_lock_probe -> result'[0m
+[init -> system -> fb_conflict_probe] [31mError: stop because parent denied ROM-session: label="result", , ram_quota=6K, cap_quota=3[0m
+[init -> system -> fb_lock_probe] [31mError: stop because parent denied ROM-session: label="result", , ram_quota=6K, cap_quota=3[0m
+[init -> system -> driver_probe] driver-probe: installing driver package 'pc_nic'
+[init -> system -> report_rom] report 'driver_probe -> request'
+[init -> system -> report_rom]   <request op="install" pkg="pc_nic" seq="1"/>
+[init -> system -> driver_probe] driver-probe: sending install request
+[init -> system -> sponge_pkgd] sponge_pkgd: ready
+[init -> system -> sponge_pkgd] sponge_pkgd: binary_prefix=''
+[init -> system -> sponge_pkgd] sponge_pkgd: bootstrap thread started
+[init -> system -> sponge_pkgd] sponge_pkgd: resource admission armed (pkg_runtime state report)
+[init -> system -> sponge_pkgd] sponge_pkgd: driver resource admission armed (driver_runtime state report)
+[init -> system -> report_rom] report 'sponge_pkgd -> runtime'
+[init -> system -> report_rom]   <config>
+[init -> system -> report_rom]   	<report delay_ms="2000" init_ram="yes" init_caps="yes" child_ram="yes"/>
+[init -> system -> report_rom]   	<parent-provides>
+[init -> system -> report_rom]   		<service name="ROM"/>
+[init -> system -> report_rom]   		<service name="PD"/>
+[init -> system -> report_rom]   		<service name="RM"/>
+[init -> system -> report_rom]   		<service name="CPU"/>
+[init -> system -> report_rom]   		<service name="LOG"/>
+[init -> system -> report_rom]   		<service name="Timer"/>
+[init -> system -> report_rom]   		<service name="Gui"/>
+[init -> system -> report_rom]   		<service name="Input"/>
+[init -> system -> report_rom]   		<service name="Report"/>
+[init -> system -> report_rom]   		<service name="File_system"/>
+[init -> system -> report_rom]   		<service name="Nic"/>
+[init -> system -> report_rom]   		<service name="Rtc"/>
+[init -> system -> report_rom]   	</parent-provides>
+[init -> system -> report_rom]   	<default-route>
+[init -> system -> report_rom]   		<any-service>
+[init -> system -> report_rom]   			<parent/>
+[init -> system -> report_rom]   			<any-child/>
+[init -> system -> report_rom]   		</any-service>
+[init -> system -> report_rom]   	</default-route>
+[init -> system -> report_rom]   	<default caps="1000"/>
+[init -> system -> report_rom]   </config>
+[init -> system -> report_rom] report 'sponge_pkgd -> driver_runtime'
+[init -> system -> report_rom]   <config>
+[init -> system -> report_rom]   	<report delay_ms="2000" init_ram="yes" init_caps="yes" child_ram="yes"/>
+[init -> system -> report_rom]   	<parent-provides>
+[init -> system -> report_rom]   		<service name="ROM"/>
+[init -> system -> report_rom]   		<service name="PD"/>
+[init -> system -> report_rom]   		<service name="RM"/>
+[init -> system -> report_rom]   		<service name="CPU"/>
+[init -> system -> report_rom]   		<service name="LOG"/>
+[init -> system -> report_rom]   	</parent-provides>
+[init -> system -> report_rom]   	<default-route>
+[init -> system -> report_rom]   		<any-service>
+[init -> system -> report_rom]   			<parent/>
+[init -> system -> report_rom]   			<any-child/>
+[init -> system -> report_rom]   		</any-service>
+[init -> system -> report_rom]   	</default-route>
+[init -> system -> report_rom]   	<default caps="1000"/>
+[init -> system -> report_rom]   </config>
+[init -> system -> report_rom] report 'sponge_pkgd -> installed'
+[init -> system -> report_rom]   <installed count="0" config_writes="1">
+[init -> system -> report_rom]   	<packages/>
+[init -> system -> report_rom]   </installed>
+[init -> system -> sponge_pkgd] sponge_pkgd: no driver_runtime state report yet — admitting pc_nic
+[init -> system -> report_rom] report 'sponge_pkgd -> runtime'
+[init -> system -> report_rom]   <config>
+[init -> system -> report_rom]   	<report delay_ms="2000" init_ram="yes" init_caps="yes" child_ram="yes"/>
+[init -> system -> report_rom]   	<parent-provides>
+[init -> system -> report_rom]   		<service name="ROM"/>
+[init -> system -> report_rom]   		<service name="PD"/>
+[init -> system -> report_rom]   		<service name="RM"/>
+[init -> system -> report_rom]   		<service name="CPU"/>
+[init -> system -> report_rom]   		<service name="LOG"/>
+[init -> system -> report_rom]   		<service name="Timer"/>
+[init -> system -> report_rom]   		<service name="Gui"/>
+[init -> system -> report_rom]   		<service name="Input"/>
+[init -> system -> report_rom]   		<service name="Report"/>
+[init -> system -> report_rom]   		<service name="File_system"/>
+[init -> system -> report_rom]   		<service name="Nic"/>
+[init -> system -> report_rom]   		<service name="Rtc"/>
+[init -> system -> report_rom]   	</parent-provides>
+[init -> system -> report_rom]   	<default-route>
+[init -> system -> report_rom]   		<any-service>
+[init -> system -> report_rom]   			<parent/>
+[init -> system -> report_rom]   			<any-child/>
+[init -> system -> report_rom]   		</any-service>
+[init -> system -> report_rom]   	</default-route>
+[init -> system -> report_rom]   	<default caps="1000"/>
+[init -> system -> report_rom]   </config>
+[init -> system -> report_rom] report 'sponge_pkgd -> driver_runtime'
+[init -> system -> report_rom]   <config>
+[init -> system -> report_rom]   	<report delay_ms="2000" init_ram="yes" init_caps="yes" child_ram="yes"/>
+[init -> system -> report_rom]   	<parent-provides>
+[init -> system -> report_rom]   		<service name="ROM"/>
+[init -> system -> report_rom]   		<service name="PD"/>
+[init -> system -> report_rom]   		<service name="RM"/>
+[init -> system -> report_rom]   		<service name="CPU"/>
+[init -> system -> report_rom]   		<service name="LOG"/>
+[init -> system -> report_rom]   		<service name="Platform"/>
+[init -> system -> report_rom]   		<service name="Dma"/>
+[init -> system -> report_rom]   		<service name="IRQ"/>
+[init -> system -> report_rom]   		<service name="IO_MEM"/>
+[init -> system -> report_rom]   		<service name="IO_PORT"/>
+[init -> system -> report_rom]   		<service name="Report"/>
+[init -> system -> report_rom]   		<service name="Timer"/>
+[init -> system -> report_rom]   		<service name="Uplink"/>
+[init -> system -> report_rom]   	</parent-provides>
+[init -> system -> report_rom]   	<default-route>
+[init -> system -> report_rom]   		<any-service>
+[init -> system -> report_rom]   			<parent/>
+[init -> system -> report_rom]   			<any-child/>
+[init -> system -> report_rom]   		</any-service>
+[init -> system -> report_rom]   	</default-route>
+[init -> system -> report_rom]   	<default caps="1000"/>
+[init -> system -> report_rom]   	<start name="pc_nic" caps="1000">
+[init -> system -> report_rom]   		<resource name="RAM" quantum="32M"/><config>
+[init -> system -> report_rom]   	<ld_verbose value="yes"/>
+[init -> system -> report_rom]   </config>
+[init -> system -> report_rom]   
+[init -> system -> report_rom]   		<route>
+[init -> system -> report_rom]   			<service name="ROM" label_last="ld.lib.so">
+[init -> system -> report_rom]   				<parent/>
+[init -> system -> report_rom]   			</service>
+[init -> system -> report_rom]   			<service name="Platform">
+[init -> system -> report_rom]   				<parent/>
+[init -> system -> report_rom]   			</service>
+[init -> system -> report_rom]   			<service name="Dma">
+[init -> system -> report_rom]   				<parent/>
+[init -> system -> report_rom]   			</service>
+[init -> system -> report_rom]   			<service name="IRQ">
+[init -> system -> report_rom]   				<parent/>
+[init -> system -> report_rom]   			</service>
+[init -> system -> report_rom]   			<service name="IO_MEM">
+[init -> system -> report_rom]   				<parent/>
+[init -> system -> report_rom]   			</service>
+[init -> system -> report_rom]   			<service name="IO_PORT">
+[init -> system -> report_rom]   				<parent/>
+[init -> system -> report_rom]   			</service>
+[init -> system -> report_rom]   			<service name="Report">
+[init -> system -> report_rom]   				<parent/>
+[init -> system -> report_rom]   			</service>
+[init -> system -> report_rom]   			<service name="Timer">
+[init -> system -> report_rom]   				<parent/>
+[init -> system -> report_rom]   			</service>
+[init -> system -> report_rom]   			<service name="Uplink">
+[init -> system -> report_rom]   				<parent/>
+[init -> system -> report_rom]   			</service>
+[init -> system -> report_rom]   			<any-service>
+[init -> system -> report_rom]   				<parent/>
+[init -> system -> report_rom]   			</any-service>
+[init -> system -> report_rom]   		</route>
+[init -> system -> report_rom]   	</start>
+[init -> system -> report_rom]   </config>
+[init -> system -> driver_probe] driver-probe: pkgd broadcast seen
+[init -> system -> report_rom] report 'sponge_pkgd -> installed'
+[init -> system -> report_rom]   <installed count="1" config_writes="2">
+[init -> system -> report_rom]   	<packages>
+[init -> system -> report_rom]   		<package name="pc_nic" version="1.0" binary="pc_nic" running="yes" kind="driver" exclusive="" description="Ethernet driver for PCI NICs (e1000, rtl8169 and friends) via the Linux network stack."/>
+[init -> system -> report_rom]   	</packages>
+[init -> system -> report_rom]   </installed>
+[init -> system -> report_rom] report 'sponge_pkgd -> result'
+[init -> system -> report_rom]   <result status="ok" op="install" pkg="pc_nic" version="1.0">
+[init -> system -> report_rom]   	<components_added>
+[init -> system -> report_rom]   		<component name="pc_nic"/>
+[init -> system -> report_rom]   	</components_added>
+[init -> system -> report_rom]   </result>
+[init -> system -> sponge_pkgd] sponge_pkgd: bootstrap complete
+[init -> system -> report_rom] report 'driver_runtime -> state'
+[init -> system -> report_rom]   state
+[init -> system -> report_rom]   + ram  | quota: 301767122 | used: 888K | avail: 300857810
+[init -> system -> report_rom]   + caps | quota: 7975      | used: 43   | avail: 7932
+[init -> system -> report_rom]   + child pc_nic | binary: pc_nic
+[init -> system -> report_rom]     + ram | assigned: 32M | quota: 33367048 | used: 500K | avail: 32855048
+[init -> system -> report_rom]   -
+[init -> system -> report_rom] report 'driver_runtime -> state'
+[init -> system -> report_rom]   state
+[init -> system -> report_rom]   + ram  | quota: 301767122 | used: 888K | avail: 300857810
+[init -> system -> report_rom]   + caps | quota: 7975      | used: 43   | avail: 7932
+[init -> system -> report_rom]   + child pc_nic | binary: pc_nic
+[init -> system -> report_rom]     + ram | assigned: 32M | quota: 33367048 | used: 700K | avail: 32650248
+[init -> system -> report_rom]   -
+[init -> system -> driver_runtime -> pc_nic] SLUB: HWalign=64, Order=0-1, MinObjects=0, CPUs=1, Nodes=1
+[init -> system -> driver_runtime -> pc_nic] NR_IRQS: 4352, nr_irqs: 4352, preallocated irqs: 256
+[init -> system -> driver_runtime -> pc_nic] clocksource: dde_counter: mask: 0xffffffffffffff max_cycles: 0x1d854df40, max_idle_ns: 3526361616960 ns
+[init -> system -> driver_probe] driver-probe: install answered status=ok
+[init -> system -> driver_probe] driver-probe: driver_runtime lists child 'pc_nic'
+[init -> system -> driver_probe] driver-probe: PASS
+[init -> system] child "driver_probe" exited with exit value 0
+[init -> system -> driver_runtime -> pc_nic] clocksource: jiffies: mask: 0xffffffff max_cycles: 0xffffffff, max_idle_ns: 7645041785100000 ns
+[init -> system -> driver_runtime -> pc_nic] clocksource: Switched to clocksource dde_counter
+[init -> system -> driver_runtime -> pc_nic] netdev: Intel(R) PRO/1000 Network Driver
+[init -> system -> driver_runtime -> pc_nic] netdev: Copyright(c) 1999 - 2015 Intel Corporation.
+[init -> system -> driver_runtime -> pc_nic] e1000_main: Intel(R) PRO/1000 Network Driver
+[init -> system -> driver_runtime -> pc_nic] e1000_main: Copyright (c) 1999-2006 Intel Corporation.
+[init -> report_rom] report 'platform -> devices'
+[init -> report_rom]   devices | resumed: 0
+[init -> report_rom]   + device 00:00.0 | type: pci | used: false
+[init -> report_rom]     + pci-config | vendor_id: 0x8086 | device_id: 0x29c0 | class: 0x60000 | revision: 0x0 | sub_vendor_id: 0xffff | sub_device_id: 0xffff
+[init -> report_rom]   + device 00:01.0 | type: pci | used: false
+[init -> report_rom]     + io_mem | pci_bar: 0 | phys_addr: 0xfd000000 | size: 0x1000000 | wc: true
+[init -> report_rom]     + io_mem | pci_bar: 2 | phys_addr: 0xfebf0000 | size: 0x1000
+[init -> report_rom]     + pci-config | vendor_id: 0x1234 | device_id: 0x1111 | class: 0x30000 | revision: 0x2 | sub_vendor_id: 0x1af4 | sub_device_id: 0x1100
+[init -> report_rom]   + device 00:02.0 | type: pci | used: true
+[init -> report_rom]     + io_mem | pci_bar: 0 | phys_addr: 0xfebc0000 | size: 0x20000
+[init -> report_rom]     + irq | number: 11
+[init -> report_rom]     + io_port_range | pci_bar: 1 | phys_addr: 0xc000 | size: 0x40
+[init -> report_rom]     + pci-config | vendor_id: 0x8086 | device_id: 0x100e | class: 0x20000 | revision: 0x3 | sub_vendor_id: 0x1af4 | sub_device_id: 0x1100
+[init -> report_rom]   + device 00:1f.0 | type: pci | used: false
+[init -> report_rom]     + pci-config | vendor_id: 0x8086 | device_id: 0x2918 | class: 0x60100 | revision: 0x2 | sub_vendor_id: 0xffff | sub_device_id: 0xffff
+[init -> report_rom]   + device 00:1f.2 | type: pci | used: false | msi: 1
+[init -> report_rom]     + io_mem | pci_bar: 5 | phys_addr: 0xfebf1000 | size: 0x1000
+[init -> report_rom]     + irq | number: 10 | shared: true
+[init -> report_rom]     + io_port_range | pci_bar: 4 | phys_addr: 0xc080 | size: 0x20
+[init -> report_rom]     + pci-config | vendor_id: 0x8086 | device_id: 0x2922 | class: 0x10601 | revision: 0x2 | sub_vendor_id: 0x1af4 | sub_device_id: 0x1100
+[init -> report_rom]   + device 00:1f.3 | type: pci | used: false
+[init -> report_rom]     + irq | number: 10 | shared: true
+[init -> report_rom]     + io_port_range | pci_bar: 4 | phys_addr: 0x700 | size: 0x40
+[init -> report_rom]     + pci-config | vendor_id: 0x8086 | device_id: 0x2930 | class: 0xc0500 | revision: 0x2 | sub_vendor_id: 0x1af4 | sub_device_id: 0x1100
+[init -> report_rom]   + device ps2 | type:  | used: false
+[init -> report_rom]     + irq | number: 1
+[init -> report_rom]     + irq | number: 12
+[init -> report_rom]     + io_port_range | phys_addr: 0x60 | size: 0x1
+[init -> report_rom]     + io_port_range | phys_addr: 0x64 | size: 0x1
+[init -> report_rom]   + device pit | type:  | used: false
+[init -> report_rom]     + irq | number: 0
+[init -> report_rom]     + io_port_range | phys_addr: 0x40 | size: 0x4
+[init -> report_rom]   + device acpi | type: acpi | used: false
+[init -> report_rom]     + irq | number: 9
+[init -> report_rom]   + device ioapic0 | type: ioapic | used: false
+[init -> report_rom]     + io_mem | phys_addr: 0xfec00000 | size: 0x1000
+[init -> report_rom]     + property irq_start | value: 0
+[init -> report_rom]   + device INT34C5 | type: acpi | used: false
+[init -> report_rom]     + io_mem | phys_addr: 0xfd690000 | size: 0x1000
+[init -> report_rom]     + io_mem | phys_addr: 0xfd6a0000 | size: 0x1000
+[init -> report_rom]     + io_mem | phys_addr: 0xfd6d0000 | size: 0x1000
+[init -> report_rom]     + io_mem | phys_addr: 0xfd6e0000 | size: 0x1000
+[init -> report_rom]     + irq | number: 14 | shared: true
+[init -> report_rom]   + device STARLITE_TOUCH | type: acpi | used: false
+[init -> report_rom]     + irq | number: 104
+[init -> report_rom]   + device INTC1083 | type: acpi | used: false
+[init -> report_rom]     + io_mem | phys_addr: 0xe0d50000 | size: 0x1000
+[init -> report_rom]     + io_mem | phys_addr: 0xe0d40000 | size: 0x1000
+[init -> report_rom]     + io_mem | phys_addr: 0xe0d30000 | size: 0x1000
+[init -> report_rom]     + io_mem | phys_addr: 0xe0d20000 | size: 0x1000
+[init -> report_rom]     + io_mem | phys_addr: 0xe0d10000 | size: 0x1000
+[init -> report_rom]     + irq | number: 14 | shared: true
+[init -> report_rom]   -
+[init -> system -> driver_runtime -> pc_nic] e1000 00:02.0 eth0: (PCI:33MHz:32-bit) 52:54:00:12:34:56
+[init -> system -> driver_runtime -> pc_nic] e1000 00:02.0 eth0: Intel(R) PRO/1000 Network Connection
+[init -> system -> driver_runtime -> pc_nic] sched_clock: Marking stable (692030000, 22336000)->(793372000, -79006000)
+[init -> system -> report_rom] report 'pkg_runtime -> state'
+[init -> system -> report_rom]   state
+[init -> system -> report_rom]   + ram  | quota: 1248613966 | used: 868K | avail: 1247725134
+[init -> system -> report_rom]   + caps | quota: 19968      | used: 35   | avail: 19933
+[init -> system -> report_rom]   -
+[init -> system -> report_rom] report 'driver_runtime -> state'
+[init -> system -> report_rom]   state
+[init -> system -> report_rom]   + ram  | quota: 301775696 | used: 904K | avail: 300850000
+[init -> system -> report_rom]   + caps | quota: 7978      | used: 45   | avail: 7933
+[init -> system -> report_rom]   + child pc_nic | binary: pc_nic
+[init -> system -> report_rom]     + ram | assigned: 32M | quota: 31605768 | used: 2120K | avail: 29434888
+[init -> system -> report_rom]   -
+[init -> system -> report_rom] report 'driver_runtime -> state'
+[init -> system -> report_rom]   state
+[init -> system -> report_rom]   + ram  | quota: 301775696 | used: 904K | avail: 300850000
+[init -> system -> report_rom]   + caps | quota: 7978      | used: 45   | avail: 7933
+[init -> system -> report_rom]   + child pc_nic | binary: pc_nic
+[init -> system -> report_rom]     + ram | assigned: 32M | quota: 31605768 | used: 2120K | avail: 29434888
+[init -> system -> report_rom]   -
+[init -> system -> driver_runtime -> pc_nic] e1000_main: eth0 NIC Link is Up 1000 Mbps Full Duplex, Flow Control: RX
+[init -> system -> driver_runtime -> pc_nic] create uplink for net device eth0
+[init -> nic_router] [uplink] NIC sessions: 1
+[init -> nic_router] [uplink] dhcp offer from 10.0.2.2, offering 10.0.2.15, subnet-spawn qemu-system-x86_64 -accel kvm -machine q35 -cpu Skylake-Client -nographic -m 2G -serial mon:stdio -cdrom var/run/sponge-pkg-driver.iso -machine q35 -net nic,model=e1000,netdev=net0 -netdev user,id=net0
+qemu-system-x86_64: warning: host doesn't support requested feature: CPUID[eax=0Dh,ecx=01h].EAX.xsavec [bit 1]
+qemu-system-x86_64: warning: host doesn't support requested feature: CPUID[eax=0Dh,ecx=01h].EAX.xgetbv1 [bit 2]
+c[?7l[2J[0mSeaBIOS (version Arch Linux 1.17.0-2-2)
+
+
+iPXE (http://ipxe.org) 00:02.0 C900 PCI2.10 PnP PMM+7EFD3DA0+7EF33DA0 C900
+Press Ctrl-B to configure iPXE (PCI 00:02.0)...                                                                               
+
+
+Booting from Hard Disk...
+Boot failed: could not read the boot disk
+
+Booting from DVD/CD...
+error: can't find command `loadfont'.
+  Booting `Genode on seL4'
+
+[01;01H
+Bender Version 0.9-beta7-51-g77a6918-dirty
+Patching BDA with I/O port 0x3f8.
+Bender: Hello World.
+hwp config: eeo=na irq=na hwp=na epp=na epb=na
+Boot config: debug_port = 0x3f8
+Boot config: disable_iommu = true
+  module #0: start=0xf168000 end=0xfdf6410 size=0xc8e410 name='image.elf'
+	Physical Memory Region from 0 size 9fc00 type 1
+	Physical Memory Region from 9fc00 size 400 type 2
+	Physical Memory Region from f0000 size 10000 type 2
+	Physical Memory Region from 100000 size 7fedf000 type 1
+Adding physical memory region 0x100000-0x7ffdf000
+	Physical Memory Region from 7ffdf000 size 21000 type 2
+	Physical Memory Region from b0000000 size 10000000 type 2
+	Physical Memory Region from fed1c000 size 4000 type 2
+	Physical Memory Region from feffc000 size 4000 type 2
+	Physical Memory Region from fffc0000 size 40000 type 2
+Got framebuffer info in multiboot2. Current video mode is at physical address=fd000000 pitch=5120 resolution=1280x800@32 type=1
+Detected 1 boot module(s):
+Kernel loaded to: start=0x200000 end=0xe3e000 size=0xc3e000 entry=0x2002a3
+ACPI: RSDT paddr=0x7ffe2345
+ACPI: RSDT vaddr=0x7ffe2345
+ACPI: FADT paddr=0x7ffe213d
+ACPI: FADT vaddr=0x7ffe213d
+ACPI: FADT flags=0x84a5
+ACPI: MADT paddr=0x7ffe2231
+ACPI: MADT vaddr=0x7ffe2231
+ACPI: MADT apic_addr=0xfee00000
+ACPI: MADT flags=0x1
+ACPI: MADT_APIC apic_id=0x0
+ACPI: MADT_IOAPIC ioapic_id=0 ioapic_addr=0xfec00000 gsib=0
+ACPI: MADT_ISO bus=0 source=0 gsi=0x002 flags=0x0
+ACPI: MADT_ISO bus=0 source=5 gsi=0x005 flags=0xd
+ACPI: MADT_ISO bus=0 source=9 gsi=0x009 flags=0xd
+ACPI: MADT_ISO bus=0 source=10 gsi=0x00a flags=0xd
+ACPI: MADT_ISO bus=0 source=11 gsi=0x00b flags=0xd
+ACPI: 1 CPU(s) detected
+ELF-loading userland images from boot modules:
+size=0x268d000 v_entry=0x2000018 v_start=0x2000000 v_end=0x468d000 p_start=0xfdf7000 p_end=0x12484000
+Moving loaded userland images to final location: from=0xfdf7000 to=0xe3e000 size=0x268d000
+Starting node #0 with APIC ID 0
+Mapping kernel window is done
+vt-x: not supported
+Available phys memory regions: 1
+  [100000..7ffdf000)
+Reserved virt address space regions: 1
+  [ffffff8000200000..ffffff80034cb000)
+Booting all finished, dropped to user space
+:phys_mem_16k:     Allocator 0x257a7f8 dump:
+ Block: [0000000000100000,0000000000a00000) size=9M avail=9M max_avail=9M
+ Block: [00000000034cc000,0000000004000000) size=11472K avail=11472K max_avail=94256K
+ Block: [0000000008000000,000000000dc0c000) size=94256K avail=94256K max_avail=94256K
+ => mem_size=117702656 (112 MB) / mem_avail=117702656 (112 MB)
+
+virtual address layout of core:
+ overall    [0000000000002000,0000001000000000)
+ core image [0000000002000000,000000000468d000)
+ ipc buffer [000000000468d000,000000000468e000)
+ boot_info  [000000000468e000,000000000468f532)
+ stack area [0000000040000000,0000000050000000)
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+Physical memory per PD at most: 512M
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+boot module 'config' (11876 bytes)
+boot module 'acpi' (185600 bytes)
+boot module 'driver_probe' (99408 bytes)
+boot module 'timer' (139920 bytes)
+boot module 'init' (511560 bytes)
+boot module 'init.hsd' (4125 bytes)
+boot module 'init.xsd' (8118 bytes)
+boot module 'ld.lib.so' (1107760 bytes)
+boot module 'nic_router' (609048 bytes)
+boot module 'nic_router.hsd' (4758 bytes)
+boot module 'nic_router.xsd' (7871 bytes)
+boot module 'pc_nic' (1819416 bytes)
+boot module 'pc_platform' (720576 bytes)
+boot module 'pci_decode' (171336 bytes)
+boot module 'platform' (594696 bytes)
+boot module 'report_rom' (150784 bytes)
+boot module 'sponge_pkgd' (272848 bytes)
+boot module 'vesa_fb' (334336 bytes)
+boot module 'vfs.lib.so' (769424 bytes)
+boot module 'pkg_index.xml' (94 bytes)
+boot module 'pkg_pc_nic.xml' (2382 bytes)
+boot module 'pkg_fb_vesa.xml' (3389 bytes)
+boot module 'pkg_fb_boot.xml' (3275 bytes)
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+Genode 26.08-21-gf44bc47ee5
+1602 MiB RAM and 523288 caps assigned to init
+[init] [34mWarning: system: configured RAM exceeds available RAM, proceed with 1636192192[0m
+[init -> acpi] Found MADT
+[init -> acpi] MADT IRQ 0 -> GSI 2 flags: 0
+[init -> acpi] MADT IRQ 5 -> GSI 5 flags: 13
+[init -> acpi] MADT IRQ 9 -> GSI 9 flags: 13
+[init -> acpi] MADT IRQ 10 -> GSI 10 flags: 13
+[init -> acpi] MADT IRQ 11 -> GSI 11 flags: 13
+[init -> acpi] Found HPET hw_id=0x1  vendor_id=0x8086 space_id=0x0 addr=0xfed00000 hpet_id=0x0
+[init -> acpi] Found MCFG
+[init -> acpi] MCFG BASE 0xb0000000 seg 0x0 bus 0x0-0xff
+[init -> timer] timers=3, clock 10000000fs , 64bit counter , legacy routing support vendor=0x8086
+[init -> timer] timer0 GSI options 0xff0104, supports periodic
+[init -> timer] timer1 GSI options 0xff0104, supports periodic
+[init -> timer] timer2 GSI options 0xff0104, supports periodic
+[init -> timer] time wraps after 5849 years
+[init -> timer] irqs=off legacy=off
+[init -> acpi] RSDT OEM 'BOCHS ', table id 'BXPC    ', revision 1, creator 'BXPC' (1)
+[init -> timer] Using timer 2 -> using GSI 2 edge triggered
+[init -> report_rom] report 'acpi -> acpi'
+[init -> report_rom]   acpi
+[init -> report_rom]   + sci_int | irq: 9
+[init -> report_rom]   + reset | io_port: 0xcf9 | value: 15
+[init -> report_rom]   + table WAET | addr: 0x7ffe231d | size: 40
+[init -> report_rom]   + table MCFG | addr: 0x7ffe22e1 | size: 60
+[init -> report_rom]   + table HPET | addr: 0x7ffe22a9 | size: 56
+[init -> report_rom]   + table APIC | addr: 0x7ffe2231 | size: 120
+[init -> report_rom]   + table DSDT | addr: 0x7ffe0040 | size: 8445
+[init -> report_rom]   + table FACP | addr: 0x7ffe213d | size: 244
+[init -> report_rom]   + table RSDT | addr: 0x7ffe2345 | size: 56
+[init -> report_rom]   + root_bridge | bdf: 0x0
+[init -> report_rom]   + bdf | start: 0 | count: 65536 | base: 0xb0000000
+[init -> report_rom]   + irq_override | irq: 11 | gsi: 11 | flags: 0xd
+[init -> report_rom]   + irq_override | irq: 10 | gsi: 10 | flags: 0xd
+[init -> report_rom]   + irq_override | irq: 9 | gsi: 9 | flags: 0xd
+[init -> report_rom]   + irq_override | irq: 5 | gsi: 5 | flags: 0xd
+[init -> report_rom]   + irq_override | irq: 0 | gsi: 2 | flags: 0x0
+[init -> report_rom]   + ioapic | id: 0 | base_irq: 0 | addr: 0xfec00000
+[init -> report_rom]   -
+[init -> report_rom] report 'pci_decode -> devices'
+[init -> report_rom]   devices
+[init -> report_rom]   + device 00:00.0 | type: pci
+[init -> report_rom]     + pci-config | address: 0xb0000000 | bus: 0x0 | device: 0x0 | function: 0x0 | vendor_id: 0x8086 | device_id: 0x29c0 | class: 0x60000 | revision: 0x0 | bridge: yes | io_base_limit: 0x0 | memory_base:
+[init -> report_rom]    0x0 | memory_limit: 0x0 | prefetch_memory_base: 0x0 | prefetch_memory_base_upper: 0x0 | prefetch_memory_limit_upper: 0x11001af4 | io_base_limit_upper: 0x0 | expansion_rom_base: 0x0 | bridge_control: 
+[init -> report_rom]   0x0
+[init -> report_rom]   + device 00:01.0 | type: pci
+[init -> report_rom]     + pci-config | address: 0xb0008000 | bus: 0x0 | device: 0x1 | function: 0x0 | vendor_id: 0x1234 | device_id: 0x1111 | class: 0x30000 | revision: 0x2 | bridge: no | sub_vendor_id: 0x1af4 | sub_device
+[init -> report_rom]   _id: 0x1100
+[init -> report_rom]     + io_mem | pci_bar: 0 | address: 0xfd000000 | size: 0x1000000 | prefetchable: true | wc: true
+[init -> report_rom]     + io_mem | pci_bar: 2 | address: 0xfebf0000 | size: 0x1000
+[init -> acpi] [34mWarning: SMBIOSv3 entry point invalid[0m
+[init -> acpi] SMBIOSv2 table (entry point: 0x1b6520 structures: 0xf6540)
+[init -> report_rom]   + device 00:02.0 | type: pci
+[init -> report_rom]     + pci-config | address: 0xb0010000 | bus: 0x0 | device: 0x2 | function: 0x0 | vendor_id: 0x8086 | device_id: 0x100e | class: 0x20000 | revision: 0x3 | bridge: no | sub_vendor_id: 0x1af4 | sub_device
+[init -> report_rom]   _id: 0x1100
+[init -> report_rom]     + io_mem | pci_bar: 0 | address: 0xfebc0000 | size: 0x20000
+[init -> report_rom]     + io_port_range | pci_bar: 1 | address: 0xc000 | size: 0x40
+[init -> report_rom]     + irq | polarity: high | mode: level | number: 11
+[init -> report_rom]   + device 00:1f.0 | type: pci
+[init -> report_rom]     + pci-config | address: 0xb00f8000 | bus: 0x0 | device: 0x1f | function: 0x0 | vendor_id: 0x8086 | device_id: 0x2918 | class: 0x60100 | revision: 0x2 | bridge: yes | io_base_limit: 0x0 | memory_base
+[init -> nic_router] [uplink] dynamic IP config: none
+[init -> nic_router] [uplink] NIC sessions: 0
+[init -> report_rom]   : 0x0 | memory_limit: 0x0 | prefetch_memory_base: 0x0 | prefetch_memory_base_upper: 0x0 | prefetch_memory_limit_upper: 0x11001af4 | io_base_limit_upper: 0x0 | expansion_rom_base: 0x0 | bridge_control:
+[init -> report_rom]    0x0
+[init -> report_rom]   + device 00:1f.2 | type: pci | msi: 1
+[init -> report_rom]     + pci-config | address: 0xb00fa000 | bus: 0x0 | device: 0x1f | function: 0x2 | vendor_id: 0x8086 | device_id: 0x2922 | class: 0x10601 | revision: 0x2 | bridge: no | sub_vendor_id: 0x1af4 | sub_devic
+[init -> report_rom]   e_id: 0x1100
+[init -> report_rom]     + io_port_range | pci_bar: 4 | address: 0xc080 | size: 0x20
+[init -> report_rom]     + io_mem | pci_bar: 5 | address: 0xfebf1000 | size: 0x1000
+[init -> report_rom]     + irq | polarity: high | mode: level | number: 10
+[init -> report_rom]   + device 00:1f.3 | type: pci
+[init -> report_rom]     + pci-config | address: 0xb00fb000 | bus: 0x0 | device: 0x1f | function: 0x3 | vendor_id: 0x8086 | device_id: 0x2930 | class: 0xc0500 | revision: 0x2 | bridge: no | sub_vendor_id: 0x1af4 | sub_devic
+[init -> report_rom]   e_id: 0x1100
+[init -> report_rom]     + io_port_range | pci_bar: 4 | address: 0x700 | size: 0x40
+[init -> report_rom]     + irq | polarity: high | mode: level | number: 10
+[init -> report_rom]   + device ps2
+[init -> report_rom]     + irq | number: 1
+[init -> report_rom]     + irq | number: 12
+[init -> report_rom]     + io_port_range | address: 0x60 | size: 1
+[init -> report_rom]     + io_port_range | address: 0x64 | size: 1
+[init -> system] [34mWarning: pkg_runtime: configured RAM exceeds available RAM, proceed with 1248570492[0m
+[init -> report_rom]   + device pit
+[init -> report_rom]     + irq | number: 0
+[init -> report_rom]     + io_port_range | address: 0x40 | size: 4
+[init -> report_rom]   + device acpi | type: acpi
+[init -> report_rom]     + irq | number: 9
+[init -> report_rom]   + device ioapic0 | type: ioapic
+[init -> report_rom]     + io_mem | address: 0xfec00000 | size: 0x1000
+[init -> report_rom]     + property irq_start | value: 0
+[init -> report_rom]   + device INT34C5 | type: acpi
+[init -> report_rom]     + irq | number: 14 | mode: level | polarity: low
+[init -> report_rom]     + io_mem | address: 0xfd690000 | size: 0x1000
+[init -> report_rom]     + io_mem | address: 0xfd6a0000 | size: 0x1000
+[init -> report_rom]     + io_mem | address: 0xfd6d0000 | size: 0x1000
+[init -> report_rom]     + io_mem | address: 0xfd6e0000 | size: 0x1000
+[init -> report_rom]   + device STARLITE_TOUCH | type: acpi
+[init -> report_rom]     + irq | number: 104 | mode: level | polarity: low
+[init -> report_rom]   + device INTC1083 | type: acpi
+[init -> report_rom]     + irq | number: 14 | mode: level | polarity: low
+[init -> report_rom]     + io_mem | address: 0xe0d50000 | size: 0x1000
+[init -> report_rom]     + io_mem | address: 0xe0d40000 | size: 0x1000
+[init -> report_rom]     + io_mem | address: 0xe0d30000 | size: 0x1000
+[init -> report_rom]     + io_mem | address: 0xe0d20000 | size: 0x1000
+[init -> report_rom]     + io_mem | address: 0xe0d10000 | size: 0x1000
+[init -> report_rom]   -
+[init -> report_rom] report 'acpi -> smbios_table'
+[init -> report_rom]   _SM_-L
+[init -> system -> report_rom] [34mWarning: no valid policy for ROM request 'fb_conflict_probe -> result'[0m
+[init -> system -> report_rom] [34mWarning: no valid policy for ROM request 'fb_lock_probe -> result'[0m
+[init -> system -> fb_conflict_probe] [31mError: stop because parent denied ROM-session: label="result", , ram_quota=6K, cap_quota=3[0m
+[init -> system -> fb_lock_probe] [31mError: stop because parent denied ROM-session: label="result", , ram_quota=6K, cap_quota=3[0m
+[init -> system -> driver_probe] driver-probe: installing driver package 'pc_nic'
+[init -> system -> report_rom] report 'driver_probe -> request'
+[init -> system -> report_rom]   <request op="install" pkg="pc_nic" seq="1"/>
+[init -> system -> driver_probe] driver-probe: sending install request
+[init -> system -> sponge_pkgd] sponge_pkgd: ready
+[init -> system -> sponge_pkgd] sponge_pkgd: binary_prefix=''
+[init -> system -> sponge_pkgd] sponge_pkgd: bootstrap thread started
+[init -> system -> sponge_pkgd] sponge_pkgd: resource admission armed (pkg_runtime state report)
+[init -> system -> sponge_pkgd] sponge_pkgd: driver resource admission armed (driver_runtime state report)
+[init -> system -> report_rom] report 'sponge_pkgd -> runtime'
+[init -> system -> report_rom]   <config>
+[init -> system -> report_rom]   	<report delay_ms="2000" init_ram="yes" init_caps="yes" child_ram="yes"/>
+[init -> system -> report_rom]   	<parent-provides>
+[init -> system -> report_rom]   		<service name="ROM"/>
+[init -> system -> report_rom]   		<service name="PD"/>
+[init -> system -> report_rom]   		<service name="RM"/>
+[init -> system -> report_rom]   		<service name="CPU"/>
+[init -> system -> report_rom]   		<service name="LOG"/>
+[init -> system -> report_rom]   		<service name="Timer"/>
+[init -> system -> report_rom]   		<service name="Gui"/>
+[init -> system -> report_rom]   		<service name="Input"/>
+[init -> system -> report_rom]   		<service name="Report"/>
+[init -> system -> report_rom]   		<service name="File_system"/>
+[init -> system -> report_rom]   		<service name="Nic"/>
+[init -> system -> report_rom]   		<service name="Rtc"/>
+[init -> system -> report_rom]   	</parent-provides>
+[init -> system -> report_rom]   	<default-route>
+[init -> system -> report_rom]   		<any-service>
+[init -> system -> report_rom]   			<parent/>
+[init -> system -> report_rom]   			<any-child/>
+[init -> system -> report_rom]   		</any-service>
+[init -> system -> report_rom]   	</default-route>
+[init -> system -> report_rom]   	<default caps="1000"/>
+[init -> system -> report_rom]   </config>
+[init -> system -> report_rom] report 'sponge_pkgd -> driver_runtime'
+[init -> system -> report_rom]   <config>
+[init -> system -> report_rom]   	<report delay_ms="2000" init_ram="yes" init_caps="yes" child_ram="yes"/>
+[init -> system -> report_rom]   	<parent-provides>
+[init -> system -> report_rom]   		<service name="ROM"/>
+[init -> system -> report_rom]   		<service name="PD"/>
+[init -> system -> report_rom]   		<service name="RM"/>
+[init -> system -> report_rom]   		<service name="CPU"/>
+[init -> system -> report_rom]   		<service name="LOG"/>
+[init -> system -> report_rom]   	</parent-provides>
+[init -> system -> report_rom]   	<default-route>
+[init -> system -> report_rom]   		<any-service>
+[init -> system -> report_rom]   			<parent/>
+[init -> system -> report_rom]   			<any-child/>
+[init -> system -> report_rom]   		</any-service>
+[init -> system -> report_rom]   	</default-route>
+[init -> system -> report_rom]   	<default caps="1000"/>
+[init -> system -> report_rom]   </config>
+[init -> system -> report_rom] report 'sponge_pkgd -> installed'
+[init -> system -> report_rom]   <installed count="0" config_writes="1">
+[init -> system -> report_rom]   	<packages/>
+[init -> system -> report_rom]   </installed>
+[init -> system -> sponge_pkgd] sponge_pkgd: no driver_runtime state report yet — admitting pc_nic
+[init -> system -> report_rom] report 'sponge_pkgd -> runtime'
+[init -> system -> report_rom]   <config>
+[init -> system -> report_rom]   	<report delay_ms="2000" init_ram="yes" init_caps="yes" child_ram="yes"/>
+[init -> system -> report_rom]   	<parent-provides>
+[init -> system -> report_rom]   		<service name="ROM"/>
+[init -> system -> report_rom]   		<service name="PD"/>
+[init -> system -> report_rom]   		<service name="RM"/>
+[init -> system -> report_rom]   		<service name="CPU"/>
+[init -> system -> report_rom]   		<service name="LOG"/>
+[init -> system -> report_rom]   		<service name="Timer"/>
+[init -> system -> report_rom]   		<service name="Gui"/>
+[init -> system -> report_rom]   		<service name="Input"/>
+[init -> system -> report_rom]   		<service name="Report"/>
+[init -> system -> report_rom]   		<service name="File_system"/>
+[init -> system -> report_rom]   		<service name="Nic"/>
+[init -> system -> report_rom]   		<service name="Rtc"/>
+[init -> system -> report_rom]   	</parent-provides>
+[init -> system -> report_rom]   	<default-route>
+[init -> system -> report_rom]   		<any-service>
+[init -> system -> report_rom]   			<parent/>
+[init -> system -> report_rom]   			<any-child/>
+[init -> system -> report_rom]   		</any-service>
+[init -> system -> report_rom]   	</default-route>
+[init -> system -> report_rom]   	<default caps="1000"/>
+[init -> system -> report_rom]   </config>
+[init -> system -> driver_probe] driver-probe: pkgd broadcast seen
+[init -> system -> report_rom] report 'sponge_pkgd -> driver_runtime'
+[init -> system -> report_rom]   <config>
+[init -> system -> report_rom]   	<report delay_ms="2000" init_ram="yes" init_caps="yes" child_ram="yes"/>
+[init -> system -> report_rom]   	<parent-provides>
+[init -> system -> report_rom]   		<service name="ROM"/>
+[init -> system -> report_rom]   		<service name="PD"/>
+[init -> system -> report_rom]   		<service name="RM"/>
+[init -> system -> report_rom]   		<service name="CPU"/>
+[init -> system -> report_rom]   		<service name="LOG"/>
+[init -> system -> report_rom]   		<service name="Platform"/>
+[init -> system -> report_rom]   		<service name="Dma"/>
+[init -> system -> report_rom]   		<service name="IRQ"/>
+[init -> system -> report_rom]   		<service name="IO_MEM"/>
+[init -> system -> report_rom]   		<service name="IO_PORT"/>
+[init -> system -> report_rom]   		<service name="Report"/>
+[init -> system -> report_rom]   		<service name="Timer"/>
+[init -> system -> report_rom]   		<service name="Uplink"/>
+[init -> system -> report_rom]   	</parent-provides>
+[init -> system -> report_rom]   	<default-route>
+[init -> system -> report_rom]   		<any-service>
+[init -> system -> report_rom]   			<parent/>
+[init -> system -> report_rom]   			<any-child/>
+[init -> system -> report_rom]   		</any-service>
+[init -> system -> report_rom]   	</default-route>
+[init -> system -> report_rom]   	<default caps="1000"/>
+[init -> system -> report_rom]   	<start name="pc_nic" caps="1000">
+[init -> system -> report_rom]   		<resource name="RAM" quantum="32M"/><config>
+[init -> system -> report_rom]   	<ld_verbose value="yes"/>
+[init -> system -> report_rom]   </config>
+[init -> system -> report_rom]   
+[init -> system -> report_rom]   		<route>
+[init -> system -> report_rom]   			<service name="ROM" label_last="ld.lib.so">
+[init -> system -> report_rom]   				<parent/>
+[init -> system -> report_rom]   			</service>
+[init -> system -> report_rom]   			<service name="Platform">
+[init -> system -> report_rom]   				<parent/>
+[init -> system -> report_rom]   			</service>
+[init -> system -> report_rom]   			<service name="Dma">
+[init -> system -> report_rom]   				<parent/>
+[init -> system -> report_rom]   			</service>
+[init -> system -> report_rom]   			<service name="IRQ">
+[init -> system -> report_rom]   				<parent/>
+[init -> system -> report_rom]   			</service>
+[init -> system -> report_rom]   			<service name="IO_MEM">
+[init -> system -> report_rom]   				<parent/>
+[init -> system -> report_rom]   			</service>
+[init -> system -> report_rom]   			<service name="IO_PORT">
+[init -> system -> report_rom]   				<parent/>
+[init -> system -> report_rom]   			</service>
+[init -> system -> report_rom]   			<service name="Report">
+[init -> system -> report_rom]   				<parent/>
+[init -> system -> report_rom]   			</service>
+[init -> system -> report_rom]   			<service name="Timer">
+[init -> system -> report_rom]   				<parent/>
+[init -> system -> report_rom]   			</service>
+[init -> system -> report_rom]   			<service name="Uplink">
+[init -> system -> report_rom]   				<parent/>
+[init -> system -> report_rom]   			</service>
+[init -> system -> report_rom]   			<any-service>
+[init -> system -> report_rom]   				<parent/>
+[init -> system -> report_rom]   			</any-service>
+[init -> system -> report_rom]   		</route>
+[init -> system -> report_rom]   	</start>
+[init -> system -> report_rom]   </config>
+[init -> system -> report_rom] report 'sponge_pkgd -> installed'
+[init -> system -> report_rom]   <installed count="1" config_writes="2">
+[init -> system -> report_rom]   	<packages>
+[init -> system -> report_rom]   		<package name="pc_nic" version="1.0" binary="pc_nic" running="yes" kind="driver" exclusive="" description="Ethernet driver for PCI NICs (e1000, rtl8169 and friends) via the Linux network stack."/>
+[init -> system -> report_rom]   	</packages>
+[init -> system -> report_rom]   </installed>
+[init -> system -> report_rom] report 'sponge_pkgd -> result'
+[init -> system -> report_rom]   <result status="ok" op="install" pkg="pc_nic" version="1.0">
+[init -> system -> report_rom]   	<components_added>
+[init -> system -> report_rom]   		<component name="pc_nic"/>
+[init -> system -> report_rom]   	</components_added>
+[init -> system -> report_rom]   </result>
+[init -> system -> sponge_pkgd] sponge_pkgd: bootstrap complete
+[init -> system -> driver_probe] driver-probe: install answered status=ok
+[init -> system -> report_rom] report 'driver_runtime -> state'
+[init -> system -> report_rom]   state
+[init -> system -> report_rom]   + ram  | quota: 301767122 | used: 888K | avail: 300857810
+[init -> system -> report_rom]   + caps | quota: 7975      | used: 43   | avail: 7932
+[init -> system -> report_rom]   + child pc_nic | binary: pc_nic
+[init -> system -> report_rom]     + ram | assigned: 32M | quota: 33367048 | used: 500K | avail: 32855048
+[init -> system -> report_rom]   -
+[init -> system -> report_rom] report 'driver_runtime -> state'
+[init -> system -> report_rom]   state
+[init -> system -> report_rom]   + ram  | quota: 301767122 | used: 888K | avail: 300857810
+[init -> system -> report_rom]   + caps | quota: 7975      | used: 43   | avail: 7932
+[init -> system -> report_rom]   + child pc_nic | binary: pc_nic
+[init -> system -> report_rom]     + ram | assigned: 32M | quota: 33367048 | used: 700K | avail: 32650248
+[init -> system -> report_rom]   -
+[init -> system -> driver_runtime -> pc_nic] SLUB: HWalign=64, Order=0-1, MinObjects=0, CPUs=1, Nodes=1
+[init -> system -> driver_runtime -> pc_nic] NR_IRQS: 4352, nr_irqs: 4352, preallocated irqs: 256
+[init -> system -> driver_runtime -> pc_nic] clocksource: dde_counter: mask: 0xffffffffffffff max_cycles: 0x1d854df40, max_idle_ns: 3526361616960 ns
+[init -> system -> driver_probe] driver-probe: driver_runtime lists child 'pc_nic'
+[init -> system -> driver_probe] driver-probe: PASS
+sponge-pkg-driver: PASS (pc_nic installed as a package into driver_runtime, bound the e1000, leased 10.0.2.15; a second fb driver was REFUSED as exclusive-conflict)
+
+Run script execution successful.
+make: ディレクトリ '/home/luke/sponge-os/genode/build/x86_64' から出ます

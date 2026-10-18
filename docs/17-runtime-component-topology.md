@@ -307,22 +307,72 @@ component must never be able to freeze the desktop. Status after the
   drag versus idle. Zero throughout ⇒ a different cause, and the next
   candidates are the two rows below. Evidence, receipts and the full
   bisection: [`docs/evidence/sponge-debug-panelfreeze.md`](evidence/sponge-debug-panelfreeze.md).
-- [ ] **Respawn budget and clamp leak — open (found 2026-10-16, NOT
-  the field regression)**: `<heartbeat restart_after_skipped="3"/>` has
-  no attempt budget and no backoff, so a child that cannot start is
-  respawned forever, and with `ram: 512G` each cycle leaks part of the
-  clamped grant (~35 KB/cycle measured). Reproduced only under a
-  `usb_block` storage stall in `run/sponge-desktop-disk-uefi-usb`, where
-  `report_rom` aborts with
-  `Attached_dataspace::Region_conflict` and every ROM-dependent child
-  loses its config source; a healthy boot of the same scenario shows
-  zero of it. Two changes are wanted — an init respawn budget/backoff
-  and a leak-free clamped grant — and neither is a first-paint fix. The
-  `report_rom` abort itself is not root-caused; the obvious candidate
-  (`rom_module.h` re-allocating a module backing store) was checked and
-  is **not** a leak, because `Genode::Constructible` inherits
-  `Reconstructible::construct()`, which destructs first. Evidence:
-  `docs/evidence/sponge-debug-firstpaint.md` §5.
+- [x] **Respawn budget — FIXED (ledger row #24, 2026-10-18); the clamp
+  leak is SEPARATED and still open (found 2026-10-16)**.
+  `<heartbeat restart_after_skipped="3"/>` had no attempt budget and no
+  backoff, so a child that cannot start was respawned forever. The row's
+  own evidence was a flake ("reproduced only under a `usb_block` storage
+  stall"), which also left two candidate mechanisms — an unbounded loop
+  and a per-cycle RAM leak — conflated. `run/sponge-containment-churn.run`
+  separates them, deterministically:
+
+  * **The loop reproduced, and it is the cascade.** A permanently wedged
+    critical child respawned every **2500 ms median** (heartbeat 500 ms,
+    `restart_after_skipped` 3) — 48 respawns inside a 20 s window and
+    still climbing. Each cycle destroys and rebuilds a PD, its ROM
+    sessions and its sliced-heap slabs, so it costs CPU in init *and* in
+    the kernel while the child stays permanently unusable, and it never
+    converges — which is what made the supervisor's escalation phase
+    structurally unreachable on the field machine.
+  * **The `~35 KB/cycle` leak did NOT reproduce** on a healthy storage
+    chain: the container's own `avail` oscillates by exactly ±10 240 B
+    (one init allocation quantum) per cycle and returns to baseline.
+    So the field's decreasing `pkg_runtime: … proceed with N` needs
+    something this topology lacks — an abandoned child whose env
+    sessions can never complete their close handshake because
+    `rom_sys`/`cached_fs_rom` over a stalled `usb_block` never answers
+    (`Library::_destroy_abandoned_children()` waits forever on
+    `env_sessions_closed()`). **Still open, and named.**
+
+  Fixes, both red→green on the new scenario:
+
+  1. **`restart_budget` in `init`** (fork patch `aa1aac7305`, ledger row
+     #24). The count lives on the config model's `<start>` node, because
+     the `Child` is destroyed and rebuilt on every restart; a child that
+     answers a heartbeat again resets it, so the budget bounds a *run of
+     failures*, not a lifetime. On exhaustion the child is torn down
+     through the existing restart path but **not** recreated, and init
+     logs `Warning: <name>: heartbeat restart budget (N) exhausted after
+     M restarts — child left stopped, escalation is up to whoever owns
+     the config`. Only a new config generation — which needs the config
+     owner to act — revives it, which is exactly the hand-off
+     `sponge_supervisor` requires. `0` means unlimited, so it is opt-in
+     per `<start>` node and upstream behaviour is unchanged where
+     absent; the five product scenarios and `run/driver_runtime.inc` set
+     it to **3**. RED 48 respawns / no marker → GREEN 4 restarts /
+     marker present / container `avail` tail spread **0**.
+  2. **`sponge_pkgd` no longer waits on storage from its entrypoint** —
+     the `docs/evidence/logdisk-field-diagnosis.md` §3(a) rule applied
+     to pkgd. `Component::construct()` runs on `env.ep()`, and `_init_store`
+     / `_load_store` / `_seed_roots_from_bake` all block it on
+     `File_system` + `commit_and_wait()`. The constructor now does only
+     work that provably cannot touch storage and hands the rest to a
+     dedicated `Bootstrap` thread, so a child *waiting on its store* is
+     no longer a child with a wedged entrypoint. This is the field's
+     trigger (`unresponsive(1)` immediately after first paint).
+
+  **What the supervisor can survive, measured** (§7 of the evidence
+  file): with a sibling churning every 2.5 s, the Tier-0 `churn_probe`
+  sampled continuously, the Tier-0 pixel oracle kept repainting and kept
+  re-announcing the desktop, and the in-sandbox bystander kept emitting.
+  A containment loop inside `system` does **not** starve Tier-0 — the
+  field machine did not lack a supervisor that could act, it lacked an
+  end to the loop for the supervisor to observe. A *kernel-level*
+  freeze still starves every user thread including the supervisor and is
+  out of reach of any userspace answer; this work bounds userspace
+  churn.
+
+  Receipts: `docs/evidence/containment-churn.md`.
 - [ ] **Real-hardware confirmation of row #23 — open (the only open
   half)**: the coalescing mechanism is built and measured on QEMU
   (§ above), but the magnitude at 2560x1600 on the LG gram 17ZD90N —

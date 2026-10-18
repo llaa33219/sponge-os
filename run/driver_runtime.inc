@@ -249,12 +249,22 @@ namespace eval driver_runtime {
     # child. Naming those services here would grant the sandbox a
     # capability no code in it ever requests.
     #
+    # restart_budget on every heartbeat of the product media: without it
+    # a child that can never start is abandoned and respawned forever at
+    # the full heartbeat rate (measured 2.5 s per cycle on
+    # run/sponge-containment-churn.run), which is both a permanent CPU
+    # tax in init and in the kernel and a fault the outer supervisor can
+    # never escalate. Three restarts is enough to outlast a transient
+    # (a stalled storage read, a slow first paint) and short enough that
+    # sponge_supervisor reaches its console phase while the user is still
+    # looking at it.
+    #
     proc start_node {} {
         variable GRANT_CAPS
         variable GRANT_RAM
         return "+ start driver_runtime | caps: $GRANT_CAPS | ram: $GRANT_RAM
   + binary | name: bin/init
-  + heartbeat | restart_after_skipped: 3
+  + heartbeat | restart_after_skipped: 3 | restart_budget: 3
   + route
     + service ROM | label: config               | + child report_rom
     + service ROM | label: driver_runtime_state | + child report_rom

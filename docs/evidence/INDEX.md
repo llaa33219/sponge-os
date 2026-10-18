@@ -11,6 +11,7 @@ reproduction scenario.
 
 | Question | Verdict | Artifact |
 |---|---|---|
+| Can a wedged critical child take the whole container down, and can its heartbeat respawn loop be bounded? | **Loop reproduced and now bounded.** 2500 ms median respawn cadence, 48 cycles in a 20 s window, no end; fixed by `restart_budget` (ledger row #24). The per-cycle RAM leak did **not** reproduce without a stalled storage chain. Tier-0 observers survive the churn. | [`containment-churn.md`](containment-churn.md) (`run/sponge-containment-churn.run`) |
 | Does a `pkgd` config regeneration that crosses the reporter-buffer boundary kill running `pkg_runtime` children? | **Falsified** — the children survive | [`config-regen-survival.md`](config-regen-survival.md) (`run/sponge-config-regen-survival.run`) |
 | Does `sponge_pkgd` refuse a launch whose quota does not fit, or silently let the sandbox clamp it? | **Refused** — `insufficient-resources` with the figures | [`pkg-admission-control.md`](pkg-admission-control.md) (`run/sponge-pkg-admission.run`) |
 | Does Genode 26.08's `init` grant or forward a child's `resource_request()` upward? | **No upward forwarding**; grant-from-slack works, revival only via a config change to the hosting sandbox | [`dynamic-resource-topup.md`](dynamic-resource-topup.md) (`run/sponge-resource-request.run`) |
