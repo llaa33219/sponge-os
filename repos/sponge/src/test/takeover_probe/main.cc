@@ -69,6 +69,12 @@ struct Sponge::Takeover_probe::Main
 	State   _states[MAX_STATES] { };
 	unsigned _state_count { 0 };
 	unsigned _poll_ms { 250 };
+	/* Optional unconditional re-announcement. A transition-only probe
+	 * can prove the screen reached a state but not that it is STILL
+	 * there, which is the half a containment-churn claim needs. */
+	unsigned _repeat_ms { 0 };
+	unsigned _repeats { 0 };
+	unsigned _repeat_every { 1 };
 
 	/*
 	 * The sampled point. The default is the screen centre, which is where
@@ -113,8 +119,13 @@ struct Sponge::Takeover_probe::Main
 	 * Config shape (read as text so XML and HID both work):
 	 *
 	 *   <config poll_ms: 250 | sample_x: 768 | sample_y: 576
+	 *     | repeat_ms: 2000
 	 *     + state | name: desktop | color: #204080
 	 *     + state | name: console | color: #601010
+	 *
+	 * `repeat_ms` re-announces the CURRENT state on that period
+	 * regardless of whether anything changed, so a scenario can assert
+	 * that the screen is still showing a state N seconds later.
 	 *
 	 * Each `state` line is scanned in order, so the table needs no
 	 * parser and stays trivially inspectable in the run script.
@@ -136,6 +147,16 @@ struct Sponge::Takeover_probe::Main
 				for (size_t i = 0; i < n && v[i] >= '0' && v[i] <= '9'; i++)
 					r = r * 10 + unsigned(v[i] - '0');
 				if (r) _poll_ms = r;
+			}
+			if (Sponge::scan_attr(cfg, sz, "repeat_ms", v, n) && n > 0) {
+				unsigned r = 0;
+				for (size_t i = 0; i < n && v[i] >= '0' && v[i] <= '9'; i++)
+					r = r * 10 + unsigned(v[i] - '0');
+				_repeat_ms = r;
+				if (r) {
+					unsigned const every = r / _poll_ms;
+					_repeat_every = every ? (every ? every : 1) : 1;
+				}
 			}
 		}
 
@@ -304,6 +325,9 @@ struct Sponge::Takeover_probe::Main
 		_capture.capture_at(Capture::Point(0, 0));
 
 		_sample();
+
+		if (_repeat_ms && (++_repeats % _repeat_every) == 0)
+			_report("repeat", _current);
 	}
 
 	Main(Env &env) : _env(env)

@@ -1,0 +1,508 @@
+#
+# \brief  Containment churn: a wedged critical child must not take the
+#         container down, and its respawn loop must be bounded
+# \author Sponge OS contributors
+#
+# THE FIELD FAILURE THIS REPRODUCES
+#
+#   boot -> desktop appears -> "sponge_pkgd unresponsive(1)" -> TOTAL
+#   freeze: mouse dead, no console takeover, no recovery.
+#
+# Docs 17 §5 already registers the shape as an open row ("Respawn
+# budget and clamp leak"): `<heartbeat restart_after_skipped="3"/>` has
+# no attempt budget and no backoff, so a child that can never start is
+# respawned forever, and under a `usb_block` storage stall
+# `report_rom` aborts with `Attached_dataspace::Region_conflict` while
+# the sandbox's own RAM grant shrinks by ~35 KB every cycle. That row
+# says "reproduced only under a usb_block storage stall" — a flake, not
+# a test. This scenario is the deterministic version.
+#
+# TOPOLOGY
+#
+#   init  (TOP-LEVEL)
+#   + timer, report_rom, platform/acpi/pci_decode
+#   + nitpicker + fb (vesa_fb)      the composited display chain
+#   + churn_probe                    Tier-0 observer: samples the
+#                                   sandbox's OWN remaining RAM and
+#                                   proves the outside stays alive
+#   + takeover_probe                 pixel oracle: the display is still
+#                                   showing what it showed before
+#   + system (init)                  THE SANDBOX UNDER TEST
+#     + desktop                     sponge_console: a real Gui client
+#                                   inside the churning container
+#     + critical                    ep_wedge: wedges its entrypoint on
+#                                   EVERY incarnation. This is the
+#                                   stalled/unresponsive critical child.
+#     + bystander                   ep_wedge liveness_ms: emits a line
+#                                   forever. If an unbounded respawn
+#                                   loop starves or wedges the sandbox,
+#                                   this is what stops talking.
+#
+# WHAT PASS MEANS
+#
+#   1. BOUNDED  the number of `critical` respawns never exceeds the
+#               configured budget - the loop stops instead of running
+#               forever.
+#   2. LEAK-FREE after the budget is spent, the sandbox's own avail RAM
+#               stops falling (churn_probe tail spread under threshold).
+#   3. CONTAINED the bystander inside the sandbox keeps emitting, the
+#               Tier-0 probe keeps sampling, and the display still shows
+#               the desktop at the end of the window - so the stalled
+#               child did not cascade.
+#
+# The third is the field claim; the first two are the fix. A scenario
+# that only checked one of them would let the other regress silently.
+#
+# base-sel4 only, DISK image: a flat ISO boot on this host denies the
+# HPET IO_MEM, so `timer` cannot start and no heartbeat can run at all
+# (docs/17 §5; docs/evidence/top-level-supervision.md §2).
+#
+# Build:
+#   make -C genode/build/x86_64 run/sponge-containment-churn \
+#       KERNEL=sel4 BOARD=pc
+#
+# Knobs (all optional):
+#   SPONGE_CHURN_DUMP=1     print the staged init config to stdout.
+#   SPONGE_CHURN_BUDGET=0   set the restart budget to 0 in the child
+#                           config, i.e. run the arms against a sandbox
+#                           that was never taught to stop. Used to show
+#                           the RED arm is the absence of the budget
+#                           and not some other difference.
+#
+
+assert {[have_spec sel4]} \
+	"sponge-containment-churn requires KERNEL=sel4 (BOARD=pc)."
+
+proc ensure_plugin_loaded { name } {
+	if {![have_include $name]} {
+		set path [genode_dir]/tool/run/$name
+		puts "sourcing $path (missing from RUN_OPT, restored by run script)"
+		source $path
+		global include_list
+		lappend include_list $name
+	}
+}
+
+ensure_plugin_loaded boot_dir/sel4
+ensure_plugin_loaded power_on/qemu
+ensure_plugin_loaded log/qemu
+ensure_plugin_loaded image/disk
+
+# The boot image is a disk image here, so image/iso must not be in the
+# include list or the ISO wins the QEMU command line and the guest finds
+# no boot medium.
+global include_list
+set iso_idx [lsearch -exact $include_list "image/iso"]
+if {$iso_idx >= 0} { set include_list [lreplace $include_list $iso_idx $iso_idx] }
+
+#
+# Timing. The windows must satisfy:
+#
+#   detect_ms  = restart_after_skipped * hb_ms   (the sandbox's own
+#                                                containment must fire,
+#                                                or the scenario proves
+#                                                nothing)
+#   window_ms  > budget * detect_ms               (the churn must have
+#                                                time to run past the
+#                                                budget and settle)
+#
+# init reports PD statistics in 10240-byte allocation units, so a single
+# abandon/respawn cycle moves avail by +/-10240. The leak threshold has
+# to sit above that quantum or the probe counts ordinary churn as a leak,
+# and below the ~35 KB/cycle the field report describes so a real one
+# still trips it.
+set leak_bytes  32768
+set hb_ms       500
+set skipped     3
+set poll_ms     500
+set budget      4
+set window_ticks 40
+set tail_ticks  8
+
+set detect_ms [expr {$skipped * $hb_ms}]
+set window_ms [expr {$window_ticks * $poll_ms}]
+
+if {$window_ms <= [expr {$budget * $detect_ms}]} {
+	puts "sponge-containment-churn: window=${window_ms}ms must exceed\
+ budget*detect=[expr {$budget * $detect_ms}]ms"
+	exit 1
+}
+
+# Heartbeat attributes written into the wedged child's config. The
+# sandbox config is plain XML, so these are XML attributes; the HID
+# spelling silently produces an unparsable document, which makes the
+# whole sandbox config vanish rather than fail loudly.
+set hb_attrs "restart_after_skipped=\"$skipped\""
+if {![info exists ::env(SPONGE_CHURN_BUDGET)] ||
+    $::env(SPONGE_CHURN_BUDGET) != "0"} {
+	set hb_attrs "$hb_attrs restart_budget=\"$budget\""
+}
+
+puts "sponge-containment-churn: hb=${hb_ms}ms skipped=$skipped\
+ budget=$budget poll=${poll_ms}ms window=${window_ms}ms detect=${detect_ms}ms"
+
+#
+# Build list. The display chain is the product chain (platform + acpi +
+# pci_decode + nitpicker + vesa_fb) so the pixel oracle means what it
+# says on the media it imitates.
+#
+build {
+	core lib/ld init timer
+	server/report_rom server/nitpicker
+	driver/platform driver/acpi app/pci_decode
+	driver/framebuffer/vesa
+	sponge_console
+	test/ep_wedge test/takeover_probe test/churn_probe
+}
+
+create_boot_directory
+
+#
+# The supervised subtree. Staged as an ordinary boot module and routed
+# into the sandbox through the top-level report_rom, the same shape the
+# supervisor uses on the product media - but with a STATIC module here,
+# because this scenario measures the SANDBOX's own containment, not the
+# supervisor's.
+#
+set sys_path "[run_dir]/genode/churn_system"
+set sys_cfg  [open $sys_path w]
+
+# A child with an explicit <route> gets no default-route fallback and a
+# denied environment session is fatal, so every route is spelled out.
+proc child_routes {{gui 0} {timer 0}} {
+	set r "    <route>\n"
+	append r "      <service name=\"PD\"><parent/></service>\n"
+	append r "      <service name=\"CPU\"><parent/></service>\n"
+	append r "      <service name=\"LOG\"><parent/></service>\n"
+	append r "      <service name=\"RM\"><parent/></service>\n"
+	append r "      <service name=\"ROM\"><parent/></service>\n"
+	if {$gui} {
+		append r "      <service name=\"Gui\"><parent/></service>\n"
+	}
+	if {$timer} {
+		append r "      <service name=\"Timer\"><parent/></service>\n"
+	}
+	append r "      <service name=\"ROM\" label_last=\"ld.lib.so\"><parent/></service>\n"
+	append r "    </route>\n"
+	return $r
+}
+
+puts $sys_cfg "<config>"
+puts $sys_cfg "  <parent-provides>"
+foreach s { ROM PD CPU LOG Timer Gui } {
+	puts $sys_cfg "    <service name=\"$s\"/>"
+}
+puts $sys_cfg "  </parent-provides>"
+puts $sys_cfg "  <default caps=\"400\" ram=\"32M\"/>"
+puts $sys_cfg "  <heartbeat rate_ms=\"$hb_ms\"/>"
+#
+# init_ram is what puts the sandbox's OWN remaining budget in the report
+# as a top-level <ram/> node (genode/repos/os/src/lib/sandbox/library.cc:
+# 134-137). Without it the per-cycle leak is invisible to churn_probe,
+# because a leak in the abandon/respawn path debits the container without
+# ever appearing as a growing child.
+#
+puts $sys_cfg "  <report delay_ms=\"$poll_ms\" init_ram=\"yes\" child_ram=\"yes\"/>"
+puts $sys_cfg "  <default-route>"
+puts $sys_cfg "    <any-service><parent/><any-child/></any-service>"
+puts $sys_cfg "  </default-route>"
+
+puts $sys_cfg "  <start name=\"desktop\" version=\"1\" caps=\"200\" ram=\"8M\">"
+puts $sys_cfg "    <binary name=\"sponge_console\"/>"
+puts $sys_cfg "    <config label=\"desktop\" role=\"desktop\" color=\"#1e3a6e\" title=\"SPONGE DESKTOP\"/>"
+puts -nonewline $sys_cfg [child_routes 1 0]
+puts $sys_cfg "  </start>"
+
+#
+# The stalled critical child. It wedges its entrypoint on every
+# incarnation and never recovers, so every respawn is a failed
+# incarnation: exactly the shape of a critical child that cannot start
+# because whatever it blocks on (a storage chain, a wedged broker) never
+# comes back.
+#
+puts $sys_cfg "  <start name=\"critical\" version=\"1\" caps=\"200\" ram=\"8M\">"
+puts $sys_cfg "    <binary name=\"ep_wedge\"/>"
+puts $sys_cfg "    <heartbeat $hb_attrs/>"
+puts $sys_cfg "    <config/>"
+puts -nonewline $sys_cfg [child_routes 0 0]
+puts $sys_cfg "  </start>"
+
+puts $sys_cfg "  <start name=\"bystander\" version=\"1\" caps=\"200\" ram=\"8M\">"
+puts $sys_cfg "    <binary name=\"ep_wedge\"/>"
+puts $sys_cfg "    <config liveness_ms=\"$poll_ms\"/>"
+puts -nonewline $sys_cfg [child_routes 0 1]
+puts $sys_cfg "  </start>"
+
+puts $sys_cfg "</config>"
+close $sys_cfg
+
+#
+# === Top-level init config ==============================================
+#
+install_config [subst {
+config
++ parent-provides
+  + service ROM
+  + service PD
+  + service RM
+  + service CPU
+  + service LOG
+  + service IRQ
+  + service IO_MEM
+  + service IO_PORT
+
++ default | caps: 200 | ram: 4M
+
++ default-route
+  + any-service
+    + parent
+    + any-child
+
++ start timer | caps: 100 | ram: 4M
+  + provides | + service Timer
+
++ start report_rom | caps: 300 | ram: 8M
+  + provides
+    + service Report
+    + service ROM
+  + config | verbose: no
+    + policy | label: churn_probe -> state | report: system -> state
+    + policy | label: pci_decode -> system | report: acpi -> acpi
+    + policy | label: platform -> devices | report: pci_decode -> devices
+
++ start acpi | caps: 350 | ram: 4M
+  + route
+    + service ROM | label_last: ld.lib.so | + parent
+    + service Report | + child report_rom
+    + service IO_MEM | + parent
+    + service LOG | + parent
+    + service PD | + parent
+    + service RM | + parent
+    + service CPU | + parent
+    + service ROM | + parent
+    + any-service
+      + parent
+      + any-child
+
++ start pci_decode | caps: 350 | ram: 2M
+  + route
+    + service ROM | label_last: ld.lib.so | + parent
+    + service Report | + child report_rom
+    + service ROM | label: system | + child report_rom
+    + service IO_MEM | + parent
+    + service IO_PORT | + parent
+    + service LOG | + parent
+    + service PD | + parent
+    + service RM | + parent
+    + service CPU | + parent
+    + service ROM | + parent
+    + any-service
+      + parent
+      + any-child
+
++ start platform | caps: 200 | ram: 3M | managing_system: yes
+  + provides
+    + service Platform
+    + service Dma
+  + route
+    + service ROM | label_last: ld.lib.so | + parent
+    + service ROM | label: devices | + child report_rom
+    + service Report | + child report_rom
+    + service Timer | + child timer
+    + service IRQ | + parent
+    + service IO_MEM | + parent
+    + service IO_PORT | + parent
+    + service ROM | + parent
+    + service PD | + parent
+    + service CPU | + parent
+    + service LOG | + parent
+  + config
+    + report | devices: yes
+    + policy | label_prefix: fb | info: yes | + pci | class: VGA
+
++ start nitpicker | caps: 2000 | ram: 64M
+  + provides
+    + service Gui
+    + service Capture
+    + service Event
+  + route
+    + service ROM | label_last: ld.lib.so | + parent
+    + service Timer | + child timer
+    + any-service
+      + parent
+      + any-child
+  + config
+    + capture
+    + domain desktop | layer: 2 | content: client | label: no
+    + default-policy | domain: desktop
+    + background | color: #101010
+
++ start fb | caps: 1200 | ram: 32M
+  + binary vesa_fb
+  + route
+    + service ROM | label_last: ld.lib.so | + parent
+    + service ROM | label: config | + parent | label: fb.config
+    + service Report | + child report_rom
+    + service Dma | + child platform
+    + service Platform | + child platform
+    + service IO_PORT | + parent
+    + service IO_MEM | + parent
+    + service ROM | + parent
+    + service PD | + parent
+    + service CPU | + parent
+    + service LOG | + parent
+    + service Timer | + child timer
+    + service Capture | + child nitpicker
+
+#
+# The sandbox under test. Its config arrives from the staged boot
+# module through report_rom, so the observation channel (its <state>)
+# and the fault (its wedged child) are wired independently.
+#
++ start system | caps: 1200 | ram: 96M
+  + binary | name: init
+  + route
+    # A nested init asks its parent for ROM label "config" - the same
+    # label the TOP-LEVEL init's own config boot module carries. Routing
+    # it to <parent> unrenamed therefore hands the sandbox the whole
+    # top-level config and it tries to start nitpicker, fb and platform
+    # inside itself. The second label attribute renames the forwarded
+    # request to the staged module.
+    + service ROM | label: config | + parent | label: churn_system
+    + service ROM | label_last: ld.lib.so | + parent
+    + service Timer | + child timer
+    + service Report | + child report_rom
+    + service Gui | + child nitpicker
+    + any-service
+      + parent
+      + any-child
+
+#
+# The Tier-0 observer. It lives outside the sandbox precisely so that
+# "the containment loop did not starve the machine" is a measurement
+# taken by something the loop cannot touch.
+#
++ start churn_probe | caps: 400 | ram: 16M
+  + binary | name: churn_probe
+  + route
+    + service ROM | label_last: ld.lib.so | + parent
+    + service ROM | label: state | + child report_rom
+    + service Timer | + child timer
+    + any-service
+      + parent
+      + any-child
+  + config | poll_ms: $poll_ms | ticks: $window_ticks
+           | tail_ticks: $tail_ticks | leak_bytes: $leak_bytes | label: sandbox
+
++ start takeover_probe | caps: 400 | ram: 16M
+  + binary | name: takeover_probe
+  + route
+    + service ROM | label_last: ld.lib.so | + parent
+    + service Capture | + child nitpicker
+    + service Timer | + child timer
+    + any-service
+      + parent
+      + any-child
+  + config | poll_ms: $poll_ms | repeat_ms: 2000
+    + state | name: desktop | color: #1e3a6e
+-}]
+
+#
+# fb.config: the recipe file the vesa driver needs.
+#
+set recipe_dir "${genode_dir}/repos/os/recipes/raw/drivers_interactive-pc"
+foreach f { fb.config } {
+	if {![file exists "$recipe_dir/$f"]} {
+		puts "sponge-containment-churn: required recipe file $f is missing"
+		exit 1
+	}
+	set out [open "[run_dir]/genode/$f" w]
+	set in  [open "$recipe_dir/$f" r]
+	puts -nonewline $out [read $in]
+	close $in
+	close $out
+}
+
+if {[info exists ::env(SPONGE_CHURN_DUMP)]} {
+	foreach f { config churn_system } {
+		set fd [open "[run_dir]/genode/$f" r]
+		puts "--- $f ---"; puts -nonewline [read $fd]; puts "--- end ---"
+		close $fd
+	}
+}
+
+build_boot_image [build_artifacts]
+
+append qemu_args " -machine q35 -cpu Skylake-Client "
+append qemu_args " -nographic -m 1G "
+
+#
+# === The gates ==========================================================
+#
+# Only the FIRST gate boots; every later one waits on the ALREADY
+# RUNNING QEMU via $qemu_spawn_id, because omitting it makes the run
+# tool power-cycle the machine between gates and the scenario restarts
+# from scratch at every marker. Order matters: the run tool consumes the
+# stream sequentially, so a gate can only match a marker emitted after
+# the previous gate's match.
+#
+run_genode_until {.*sponge_console: role=desktop label=desktop.*} 120
+
+#
+# The pixel oracle sees the desktop colour. A composited-screen
+# observation, not a log reader.
+#
+run_genode_until {.*takeover_probe: desktop-up state=desktop.*} 90 $qemu_spawn_id
+
+run_genode_until {.*bystander: alive t=.*} 60 $qemu_spawn_id
+
+run_genode_until {.*ep_wedge: alive .*wedging now.*} 60 $qemu_spawn_id
+
+#
+# 1. BOUNDED. The loop must STOP, not merely be slow. This marker can
+#    only appear when init decided to give up, and it is the FIRST
+#    marker gated after the fault, because the run tool consumes the
+#    stream sequentially: gating the probe's verdict first would swallow
+#    this line and then wait forever for a second one.
+#
+run_genode_until {.*restart budget \([0-9]+\) exhausted after.*} 120 $qemu_spawn_id
+
+#
+# 2. LEAK-FREE. The probe's verdict is the last thing it prints, so this
+#    single expect also consumes the whole measurement window into the
+#    run tool's accumulated 'output'.
+#
+# Genode's log server emits one write() per format argument, so a
+# trailing ".*" can make expect stop mid-line and swallow the verdict
+# word itself. Requiring one character after the PASS/FAIL token makes
+# the match wait for it.
+run_genode_until {.*churn-probe: VERDICT (PASS|FAIL)} 180 $qemu_spawn_id
+
+if {[string first "churn-probe: VERDICT PASS" $output] < 0} {
+	puts "\nsponge-containment-churn: FAIL - the container's RAM did not\
+ settle (see churn-probe: DETAIL above)\n"
+	exit 1
+}
+
+#
+# 3. CONTAINED, in-sandbox: a bystander line AFTER the budget was spent
+#    and after the measurement window closed can only exist if the
+#    sibling churn neither wedged nor starved the sandbox. This is the
+#    field failure in miniature - a stalled critical child taking the
+#    container with it.
+#
+run_genode_until {.*bystander: alive t=[2-9][0-9]{4} ms.*} 90 $qemu_spawn_id
+
+#
+# 4. CONTAINED, out-of-sandbox: the Tier-0 pixel oracle re-announces the
+#    desktop state periodically regardless of change, so a 'repeat'
+#    line after gates 3 proves the compositor chain still owns and
+#    paints the display once the churn has stopped.
+#
+run_genode_until {.*takeover_probe: repeat state=desktop.*} 90 $qemu_spawn_id
+
+puts "\nsponge-containment-churn: PASS - wedged critical child contained:\
+ respawn loop bounded at $budget, container RAM settled, bystander\
+ answering after the budget was spent, display held the desktop\n"
+
+puts "\nRun script execution successful.\n"

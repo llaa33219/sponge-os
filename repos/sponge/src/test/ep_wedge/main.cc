@@ -32,6 +32,17 @@
  *   <config behave="yes" wedge_ms="N"/>:
  *     behave wins — a witness is a witness.
  *
+ *   <config liveness_ms="N"/>:
+ *     A LIVENESS ORACLE. Logs one "bystander: alive t=<ms>" line every
+ *     N milliseconds, forever, and never blocks its entrypoint. It is
+ *     the in-sandbox half of "a stalled sibling did not take the
+ *     container down": the component keeps producing output while a
+ *     sibling is being respawned underneath it, so an unbounded
+ *     containment loop that starves the whole sandbox is falsifiable.
+ *     Without a periodically-emitting component a scenario cannot tell
+ *     "the sandbox is fine" from "the sandbox stopped talking", which
+ *     is precisely the field failure being reproduced.
+ *
  * The incarnation number is not remembered by this component: it is
  * stateless by design. The supervisor's kill-and-respawn is what
  * produces the second "alive" line; that line repeating after a kill is
@@ -54,6 +65,7 @@ namespace {
 	{
 		bool     behave { false };
 		unsigned wedge_ms { 0 };
+		unsigned liveness_ms { 0 };
 	};
 
 	/*
@@ -147,6 +159,7 @@ namespace {
 
 		m.wedge_ms = _uint_attr(raw, sz, "wedge_ms");
 		m.behave   = _behave_attr(raw, sz);
+		m.liveness_ms = _uint_attr(raw, sz, "liveness_ms");
 
 		return m;
 	}
@@ -159,6 +172,20 @@ void Component::construct(Genode::Env &env)
 	if (m.behave) {
 		Genode::log("witness: alive and well");
 		return;
+	}
+
+	/* A periodic line is the one thing that keeps flowing while a sibling
+	 * is respawned underneath it, so its continued output is evidence
+	 * about the CONTAINER, not about this component. Checked before the
+	 * wedge branch so a liveness oracle can never wedge. */
+	if (m.liveness_ms) {
+		Timer::Connection timer { env };
+		Genode::size_t elapsed { 0 };
+		while (true) {
+			timer.msleep(m.liveness_ms);
+			elapsed += m.liveness_ms;
+			Genode::log("bystander: alive t=", elapsed, " ms");
+		}
 	}
 
 	if (m.wedge_ms == 0) {

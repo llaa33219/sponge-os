@@ -1011,6 +1011,40 @@ A scenario defines:
   heartbeat out. Evidence `docs/evidence/sponge-debug-firstpaint.md`.
   base-sel4 only (`vesa_fb`/`ps2`/`usb_hid`).
 
+- `sponge-containment-churn.run` — **bounds the heartbeat respawn
+  loop**, the row `docs/17-runtime-component-topology.md` §5 registered
+  as open with only a flake as evidence. A nested `system` sandbox runs
+  the product containment shape (`<heartbeat rate_ms="500"/>` plus
+  `restart_after_skipped="3"` on the critical children) and hosts a
+  child that wedges its entrypoint on EVERY incarnation. Four
+  independent oracles, because a single one cannot distinguish "the
+  system survived" from "the observer stopped":
+  (1) `test/ep_wedge <config liveness_ms>` — a **new** mode emitting a
+  line forever from a *sibling inside* the churning sandbox;
+  (2) `test/churn_probe` (**new**) — a Tier-0 observer that samples the
+  sandbox's **own** remaining RAM from the top-level `<ram avail=/>`
+  node `init_ram="yes"` puts in the state report. That is the subject
+  on purpose: a leak in the abandon/respawn path debits the *container*
+  without ever appearing as a growing child, so per-child accounting
+  cannot see it;
+  (3) `test/takeover_probe` with the new `repeat_ms` knob — re-announces
+  the composited screen state periodically, so "the display still holds
+  the desktop" is assertable at the END of the window rather than only
+  at the start;
+  (4) init's own `restart budget (N) exhausted` warning (ledger row
+  #24) — the marker that the loop **stopped**, not merely ran slowly.
+  Marker: `sponge-containment-churn: PASS`. `SPONGE_CHURN_BUDGET=0`
+  omits the budget attribute and is the RED arm (the scenario times out
+  waiting for a marker that never comes); `SPONGE_CHURN_DUMP=1` prints
+  the staged configs. Measured: **2500 ms median respawn cadence, 48
+  respawns in a 20 s window with no end**; bounded to 4 restarts plus
+  the exhaustion warning. The per-cycle RAM leak the §5 row cites did
+  **not** reproduce without a stalled storage chain — see the evidence
+  file for why that narrows the row rather than repeating it. Receipts:
+  `docs/evidence/containment-churn.md`. base-sel4 only, and it boots
+  the **disk** image for the same flat-ISO HPET reason as
+  `sponge-supervisor-takeover.run`.
+
 - `sponge-supervisor-takeover.run` — closes the top-level containment
   gap in `docs/17-runtime-component-topology.md` §5. Red→green proof of
   the whole chain in headless QEMU: a child of the supervised `system`
