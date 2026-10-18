@@ -199,7 +199,51 @@ and a substituted `<policy>` line inside a `<route>` block corrupts the
 node — which surfaces as `Error: binary is not an ELF` three minutes
 later.
 
-## 6. Receipts
+## 6. Per-media results
+
+| media | seeded driver | display evidence | scenario exit |
+|---|---|---|---|
+| `sponge-desktop-disk` (BIOS) | `fb_vesa` | `using 1024x768 (1024x768)` + `alpha-probe: PASS` | 0 |
+| `sponge-desktop-disk` + `SPONGE_FB_SWITCH=on` | `fb_vesa` -> `fb_boot` | `using boot framebuffer: 1280x800x32`, screen settled | 0 |
+| `sponge-desktop-disk-uefi` (OVMF) | `fb_boot` | `using boot framebuffer: 2560x1600x32 @ 0x80000000` + `alpha-probe: PASS` | 0 |
+| `sponge-desktop-disk-uefi-nvme` | `fb_boot` | `using boot framebuffer: 2560x1600x32` + `sponge-de: panel shown` | 0 |
+| `sponge-desktop-disk-uefi-usb` | `fb_boot` | DE started on OVMF from the USB stick | 0 |
+| `sponge-desktop-disk-nvme` | `fb_vesa` (synthesized manifest) | `using 1024x768` + `sponge-de: panel shown` + `partition-check: PASS (Number: 3)` | 2 — see below |
+
+Regressions: `sponge-pkg-driver` (0, incl. the new exclusivity gate),
+`sponge-minimal` (0), `sponge-supervisor-takeover` (0, console takeover
+and desktop restore by pixels).
+
+**The NVMe variant's non-zero exit is not a display failure.** Its
+display comes up through the packaged driver and the desktop renders
+on it; the scenario then fails its `alpha-probe` gate because that
+probe installs seven desktop packages this media never stages (it
+stages the `hello` marker only) and `sponge-de` reports "Could not
+find the Qt platform plugin". Both are recorded in docs/13 as the
+pre-existing limitation they are, with the measured lines.
+
+**`sponge-debug-firstpaint` and `sponge-debug-scrollstorm`: their probes
+pass, their scenario pre-gates do not, and that is pre-existing.** Both
+scenarios open with `run_genode_until {.*Genode v.*} 180`. Nothing in
+these topologies prints that string: the vendored kernel announces
+itself as `Genode 26.08-20-g87c8ebf33f`, while the evidence logs that
+predate the Genode-as-submodule switch carry
+`Genode v0.2.0-83-gdd452acf23 <local changes>`. The marker the gate
+waits for stopped being printed when the version stamp moved to the
+submodule, long before this work. The load-bearing markers are present
+and good:
+
+```
+[init -> system -> debug] sponge_debug: FIRSTPAINT ms=884
+[init -> system -> repostorm_probe] repostorm-probe: VERDICT PASS
+```
+
+Neither scenario, nor anything that supplies the banner, is touched by
+this series. Left as-is deliberately: fixing a stale version-string
+gate is unrelated churn, and changing it here would hide a real
+repository-wide inconsistency behind this task's diff.
+
+## 7. Receipts
 
 | what | where |
 |---|---|
