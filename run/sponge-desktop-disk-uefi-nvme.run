@@ -214,6 +214,18 @@ if {[info exists ::env(SPONGE_OVMF_VARS)]} {
 source [file join [file dirname [file normalize [info script]]] \
                     supervisor.inc]
 
+# Driver packages (docs/12-package-format.md section 4.5).
+# run/driver_runtime.inc is the single source of truth for the
+# driver_runtime sandbox: the HID fragments it emits, the quota
+# arithmetic, and the staging of the driver binaries and metadata onto
+# /system. Sourced here so this scenario and its sibling variants cannot
+# drift apart.
+source [file join [file dirname [file normalize [info script]]] \
+                    driver_runtime.inc]
+
+# This media's `system` caps grant before driver_runtime joins it.
+driver_runtime::base_caps 280000
+
 # === Failure-channel selector ===
 #
 set fail_mode [expr {[info exists ::env(SPONGE_DISK_FAIL)] && $::env(SPONGE_DISK_FAIL) == "1"}]
@@ -261,7 +273,10 @@ set build_components {
 	lib/zlib lib/libpng lib/blit lib/vfs_ttf lib/vfs_import lib/posix
 	lib/ncurses lib/pcre
 	driver/nvme
+	server/nic_router driver/nic/pc driver/usb_net driver/wifi \
+	driver/gpu/intel driver/framebuffer/intel/pc/spec/x86_64
 }
+
 
 build $build_components
 
@@ -372,6 +387,14 @@ source [file join [file dirname [file normalize [info script]]] \
 
 bake::stage $sys_dir img
 
+#
+# Driver packages (docs/12-package-format.md section 4.5). Opt-in: none
+# of these is listed in a bake profile, so none of them becomes a
+# first-boot root - `vct install pc_nic` is what brings a driver up.
+# Called after bake::stage, which owns pkg_index.xml.
+#
+driver_runtime::stage $sys_dir
+
 # ========================================================================
 # Write /system/init/system.config — the nested system init config
 # ========================================================================
@@ -387,6 +410,16 @@ if {$fail_mode} {
 	set sysconfig_fh [open "$sysconfig_hid" w]
 puts $sysconfig_fh {
 config
+# This sandbox is the hardware gateway: driver_runtime below may ask for
+# a hardware service. The list is deliberately broad because the set of
+# installable drivers is open-ended.
+#
+# The boundary that protects applications is NOT this list - it is the
+# parent-provides pkgd GENERATES for pkg_runtime, which carries the
+# application service set only. A package route is emitted from its
+# declared <sessions>, so no application package can name Platform / Irq
+# / Io_mem / Io_port and obtain one even though this sandbox would route
+# it (AGENTS.md 1.2).
 + parent-provides
   + service ROM
   + service PD
@@ -396,6 +429,17 @@ config
   + service Gui
   + service Capture
   + service Event
+  + service Platform
+  + service Dma
+  + service Irq
+  + service Io_mem
+  + service Io_port
+  + service Usb
+  + service Rtc
+  + service File_system
+  + service Uplink
+  + service Nic
+  + service Terminal
 
 + default | caps: 200 | ram: 4M
 + default-route
@@ -449,6 +493,7 @@ config
     + policy | label: sponge-de -> window_list   | report: wm -> window_list
     + policy | label: sponge-de -> window_layout | report: layouter -> window_layout
     + policy | label: alpha_probe -> sponge_de_launcher | report: sponge-de -> launcher
+    @DRIVER_RELAY_POLICIES@
 
 + start wm | caps: 2000 | ram: 16M
   + binary | name: bin/wm
@@ -559,12 +604,14 @@ config
   + config | binary_prefix: bin/
     + launcher_request
     + admission
+    + driver_admission
     + bake
   + route
     + service ROM | label_last: ld.lib.so | + parent
     + service ROM | label_last: request | + child report_rom
     + service ROM | label_last: launcher_request | + child report_rom
     + service ROM | label: runtime_state | + child report_rom
+    + service ROM | label: driver_runtime_state | + child report_rom
     + service ROM | label: bake_manifest | + parent | label: bake_manifest.json
     + service Report | + child report_rom
     + any-service
@@ -702,6 +749,7 @@ config
 #      forbids. RAM carries no such failure mode, which is why only
 #      RAM uses the clamp.
 #
+@DRIVER_START_NODE@
 + start pkg_runtime | caps: 230000 | ram: 512G
   + binary | name: bin/init
   + heartbeat | restart_after_skipped: 3
@@ -722,6 +770,21 @@ config
 	close $sysconfig_fh
 
 	#
+	# Expand the driver_runtime placeholders (run/driver_runtime.inc).
+	# They are @-delimited rather than Tcl [command] calls because this
+	# block is emitted inside a braced Tcl literal, where no substitution
+	# happens at all - an unexpanded bracket would reach the HID parser
+	# as a policy node and fail schema validation.
+	#
+	set drv_fh [open $sysconfig_hid r]
+	set drv_hid [driver_runtime::expand [read $drv_fh] \
+	                       [list @DRIVER_RELAY_POLICIES@ @DRIVER_START_NODE@ @SYSTEM_CAPS@]]
+	close $drv_fh
+	set drv_fh [open $sysconfig_hid w]
+	puts -nonewline $drv_fh $drv_hid
+	close $drv_fh
+
+	#
 	# Top-level supervision: stamp a restart version onto every top-level
 	# <start> and derive the supervisor's two templates from THIS file
 	# (which stays the single source of truth for the desktop
@@ -740,7 +803,7 @@ config
 # Tier-0 init configuration (driver swap: ahci → nvme)
 # ========================================================================
 
-install_config [supervisor::tier0 {
+set tier0_config [supervisor::tier0 {
 config
 + parent-provides
   + service ROM
@@ -819,6 +882,28 @@ config
     + policy | label_prefix: nvme | + pci | class: NVME
     + policy | label_prefix: ps2  | + device ps2
     + policy | label_prefix: usb  | info: yes | + pci | class: USB
+    @DRIVER_PLATFORM_POLICIES@
+
+# The Uplink<->Nic bridge. A SYSTEM SERVICE, not part of any driver
+# package: the driver produces raw frames, the router gives the rest of
+# the system a Nic session. Its policy matches the sandbox path rather
+# than a per-driver name, so installing a second Uplink-providing driver
+# needs no change here.
++ start nic_router | caps: 300 | ram: 16M
+  + provides
+    + service Uplink
+    + service Nic
+  + config | verbose: yes
+    |        | verbose_domain_state: yes
+    |        | dhcp_discover_timeout_sec: 10
+    |        | dhcp_request_timeout_sec:  6
+    + policy | label_prefix: system -> driver_runtime | domain: uplink
+    + domain uplink
+    +   | verbose_packets:  no
+    +   | icmp_echo_server: yes
+  + route
+    + service Timer | + child timer
+    + any-service   | + parent | + any-child
 
 + start nvme | caps: 5000 | ram: 64M
   + provides | + service Block
@@ -1023,7 +1108,7 @@ config
 # do — the caps clamp hangs on seL4; see the caps rationale at the
 # pkg_runtime node below.
 #
-+ start system | caps: 280000 | ram: 512G
++ start system | caps: @SYSTEM_CAPS@ | ram: 512G
   + binary | name: bin/init
   + route
     + service ROM | label: config | + child rom_sys | label: init/system.config
@@ -1042,6 +1127,9 @@ config
       + parent
       + any-child
 - }]
+set tier0_config [driver_runtime::expand $tier0_config \
+                       [list @DRIVER_PLATFORM_POLICIES@]]
+install_config $tier0_config
 
 #
 # === Stage driver sub-init config + keyboard layouts (Tier-0 boot modules) ===
@@ -1067,7 +1155,7 @@ foreach f { en_us.chargen special.chargen } {
 #
 set boot_modules { }
 foreach m { core-sel4.a ld-sel4.lib.so init timer report_rom nitpicker platform acpi pci_decode \
-            nvme part_block vfs cached_fs_rom \
+            nvme part_block vfs cached_fs_rom nic_router \
             boot_fb ps2 pc_usb_host usb_hid event_filter pointer } {
 	lappend boot_modules $m
 }
