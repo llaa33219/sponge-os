@@ -99,6 +99,7 @@ rely on order, but authors should write in this order for readability.
 | `<resizeable>` | 0..1 | Phase 16 W9 opt-in marker (closed-form string content: `yes` or `no`). Default: `yes`. Documents whether the launched window should accept resize affordances (drag on edge/corner sizers, wm `resize_request` propagation). The Qt6 QPA registers `gui_connection.info_sigh()` for every `QPlatformWindow` (genode/contrib/qt6_base-.../src/plugins/platforms/genode/qgenodeplatformwindow.cpp:665), so every Qt6 app is automatically resizeable — the `<resizeable>` attribute is a forward-compatible explicit declaration rather than a runtime gate. Foreground control (Phase 17+, non-Qt apps): an explicit `<resizeable>no</resizeable>` would tell `sponge_pkgd`'s runtime-config generator to add `<signal>` plumbing that suppresses the Gui session's resize signal. For Phase 16 the attribute is documentary; the criterion-9 release-media gate (`run/sponge-de-release-resize.run`) and themed-chrome sibling (`run/sponge-de-themed-chrome-resize.run`) exercise the propagation through the existing wm + window_layouter + motif decorator stack. |
 | `<config>` | 0..1 | Optional inline Genode configuration. Its inner XML is emitted verbatim into the package's generated `<start>` node. This is used for application wiring such as a libc node and a `vfs` node with font or plugin tar files. |
 | `<kind>` | 0..1 | `app` (the default) or `driver` — closed-form, exactly like `<resizeable>`. Decides **which sandbox** `sponge_pkgd` emits the package's `<start>` node into: `pkg_runtime` for an app, `driver_runtime` for a driver (§4.5). Any other value is warned about and treated as `app`, so a typo can never silently land a driver in the application runtime. |
+| `<exclusive>` | 0..1 | Carries one attribute, `group`. At most one **running** package may carry the same group at a time; an install or launch that would create a second one is refused with `exclusive-conflict` naming the incumbent (§4.6). An absent or `group`-less element means "no exclusive claim". The framebuffer drivers use `group="fb"`. |
 | `<autostart>` | 0..1 | If present, the package is started automatically when it is installed and when its installed state is restored. Without it, installation registers the package but does not create a `<start>` node. |
 | `<launcher>` | 0..1 | If present, the package gets a launcher entry. Carries one attribute `category`. |
 | `<dependencies>` | 0..1 | Container of `<pkg>` children, each naming another package by `<name>`. Empty container means "no dependencies". |
@@ -243,12 +244,14 @@ separate config markers (`<admission/>` for `pkg_runtime`,
 exist in the deployment and a denied `ROM` session is fatal.
 
 **Autostart policy for drivers.** A driver package carries
-`<autostart/>` **only when it has been verified end to end** —
-`pc_nic` is the one that is. An unverified driver deliberately installs
-as STOPPED, and `vct launch <driver>` is the user's explicit act that
-attempts a start (AGENTS.md §1.1: automation by default, control as a
-door that is always open). `docs/15-hardware-compatibility.md` records
-the per-driver verification state.
+`<autostart/>` **only when it has been verified end to end** on some
+shipped media — `pc_nic` (QEMU `-device e1000`), `fb_vesa` (BIOS media)
+and `fb_boot` (UEFI media) are the three. An unverified driver
+deliberately installs as STOPPED, and `vct launch <driver>` is the
+user's explicit act that attempts a start (AGENTS.md §1.1: automation
+by default, control as a door that is always open).
+`docs/15-hardware-compatibility.md` records the per-driver verification
+state.
 
 **What a driver package still needs from the operator.** The Tier-0
 `platform` device policy is a *grant* published whether or not a driver
@@ -256,6 +259,59 @@ is installed; it is not something a package install can add. The
 packaged drivers whose hardware class is not yet granted (see
 `run/driver_runtime.inc`) are marked as bring-up steps in
 `docs/15-hardware-compatibility.md`.
+
+### 4.6 Exclusive groups — at most one running package per group
+
+```xml
+<exclusive group="fb"/>
+```
+
+Some hardware can only be driven by one component at a time. The PCI
+`VGA` class is the shipped case: the `platform` driver offers a PCI
+device to exactly one policy, so a second framebuffer driver does not
+add a capability, it takes the display away — silently, with nothing on
+the console to say why the screen went dark.
+
+`<exclusive group="G">` declares that claim. The rule is enforced by
+`sponge_pkgd` on both paths that move a package into the running set:
+
+* **`install`** — an `<autostart/>` package enters the running set the
+  moment the install lands, so an install *is* a spawn and is gated
+  before any state is mutated (no root, no installed entry, no config
+  regeneration on a refusal).
+* **`launch`** — the same gate on the explicit path. Unreachable
+  through `vct` for the shipped `fb` group today (the install pre-flight
+  already refuses), and kept as the invariant's guard for any future
+  peer or any deployment that marks a package not-autostart.
+
+The refusal is a **status, not an error**:
+
+```
+status="exclusive-conflict" op="install" pkg="fb_boot"
+group="fb" peer="fb_vesa" remedy="remove the running package, then retry"
+```
+
+**Why refuse rather than auto-stop the incumbent.** A package is never
+taken away by an operation the user did not name; the swap is two
+explicit commands, both visible:
+
+```
+vct remove fb_vesa
+vct install fb_boot
+```
+
+`vct` renders the refusal with that remedy inline, and `--json` emits
+the structured `group` / `peer` fields.
+
+**The scope is the RUNNING set, not the installed set.** Both fb
+packages are staged on every product medium so the switch is one
+`remove` + `install` away; only the active one holds the group.
+
+**Proof.** `run/sponge-pkg-driver.run` installs `fb_vesa` and asserts
+that the following `fb_boot` install answers `exclusive-conflict`. The
+runtime handover itself — remove, install, and the composited screen
+coming back — is `run/sponge-desktop-disk.run` with
+`SPONGE_FB_SWITCH=on` (`test/fb_switch_probe`).
 
 ---
 

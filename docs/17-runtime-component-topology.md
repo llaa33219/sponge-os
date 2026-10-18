@@ -32,9 +32,8 @@ seL4 kernel
       ├─ rom_sys        cached_fs_rom chroot /system  → ROM (binaries,
       │                 configs of every system child)
       ├─ rom_lib        cached_fs_rom chroot /system/lib → ROM (.lib.so)
-      ├─ fb             boot_fb — GOP framebuffer + capture buffer
-      ├─ nitpicker      the GUI server: framebuffer owner, domains,
-      │                 input focus, compositing
+      ├─ nitpicker      the GUI server: domains, input focus,
+      │                 compositing — a COMPONENT, not a driver
       ├─ pointer        draws the mouse cursor (Gui client of
       │                 nitpicker's pointer domain); emits the hover
       │                 Report that the layouter's hover-state
@@ -55,15 +54,21 @@ seL4 kernel
          ├─ sponge-de        the desktop (panel, launcher, tasklist,
          │                   background, settings, shortcuts)
          ├─ alpha_probe / cfg_probe   boot-time verifiers
-         ├─ driver_runtime  (nested init #2 — caps 9000, ram 320M, both
+         ├─ driver_runtime  (nested init #2 — caps 36000, ram 448M, both
          │                   EXPLICIT: it precedes pkg_runtime, so it
          │                   cannot use the remainder clamp without
          │                   taking its RAM out of pkg_runtime's pool.
-         │                   Hosts <kind>driver</kind> packages —
-         │                   pc_nic, usb_net, pc_wifi, intel_gpu,
-         │                   pc_intel_fb. Empty on a fresh boot; the
-         │                   <start> nodes appear when the user runs
-         │                   `vct install <driver>`.)
+         │                   Hosts <kind>driver</kind> packages.
+         │                   Exactly ONE of them is present from the
+         │                   first boot: the media's bake manifest
+         │                   seeds the display driver (fb_vesa on the
+         │                   BIOS media, fb_boot on the UEFI one) and
+         │                   its <autostart/> puts the <start> node
+         │                   here. The rest appear on `vct install
+         │                   <driver>`, and `vct remove` takes any of
+         │                   them away again — including the display
+         │                   driver: the runtime fb switch is a
+         │                   package operation (test/fb_switch_probe).
          └─ pkg_runtime  (nested init #3 — caps 230000, RAM = the remainder)
             └─ hello, calculator, pdf_view, falkon, terminal, …
 ```
@@ -98,8 +103,20 @@ system child — this is the boot-critical path.
 Entirely top-level. **No node of this chain lives inside `system`.**
 
 **Graphics** (how pixels reach the panel):
-`sponge-de / apps → wm → nitpicker → fb → GOP framebuffer`
-Apps are three broker hops from the hardware.
+`sponge-de / apps → wm → nitpicker → fb_<pkg> → framebuffer`
+Apps are three broker hops from the hardware, and the last hop is a
+PACKAGE inside `driver_runtime`, not a Tier-0 node. `nitpicker` sits in
+Tier 0 because it is the compositor server the whole desktop shares —
+not a driver, and not something a package install should be able to
+replace underneath every client at once.
+
+**Display** (why the driver is a package): the framebuffer driver is
+`pkg/fb_vesa` or `pkg/fb_boot`, both `<kind>driver</kind>`. The media
+chooses one in its bake manifest, `sponge_pkgd` emits its `<start>`
+node into `driver_runtime`, and the Tier-0 `platform` policy grants the
+PCI `VGA` class under that package's own label prefix. Switching is
+`vct remove <old> && vct install <new>` (docs/15 §8.2) and is refused
+while the incumbent runs (docs/12 §4.6).
 
 ## 3. Why a terminal component froze the desktop (the honest analysis)
 
@@ -655,11 +672,24 @@ explicit:
 | pc_wifi | 2500 | 128M | no |
 | intel_gpu | 1200 | 32M | no |
 | pc_intel_fb | 1500 | 64M | no |
-| **sum** | **7700** | **320M** | |
+| fb_vesa | 1000 | 32M | yes (BIOS media, QEMU-verified) |
+| fb_boot | 24000 | 96M | yes (UEFI media, QEMU-verified) |
+| **sum** | **31700** | **448M** | |
 
-`driver_runtime | caps: 9000 | ram: 320M` — **+16.9% caps** headroom
-(docs/17 §5 practice, rounded up), RAM at the exact sum. `system`'s own
-caps grant rises by the same 9000 through
+`driver_runtime | caps: 36000 | ram: 448M` — **+13.6% caps** headroom
+(docs/17 §5 practice, rounded up), RAM at the exact sum.
+
+Only ONE fb driver ever runs (docs/12 §4.6 exclusive group), so the
+sum over both is deliberately conservative: a grant sized to whichever
+one the media happens to seed would have to be re-derived per firmware
+variant, and the arithmetic would live in five scenarios instead of one
+place. The two fb packages dominate the caps figure for the same
+reason — `boot_fb` maps the whole GOP framebuffer and allocates a
+full-size Capture buffer, and 6000 caps was still short at the OVMF
+resolution.
+
+`system`'s own
+caps grant rises by the same 36000 through
 `driver_runtime::caps_for_system`, which each media variant feeds with
 its own pre-driver figure (263000 on the BIOS/NVMe media, 280000 on
 the UEFI media) so no variant's budget is silently shrunk.

@@ -153,10 +153,21 @@ The repository currently contains:
   `usb_net`, `pc_wifi`, `intel_gpu` and `pc_intel_fb` build and install
   but are deliberately **not** autostarted — no QEMU model exists for
   their hardware, so starting them silently would be a claim we cannot
-  back. Per-driver state and bring-up steps:
+  back. **The display driver is a package too**: `fb_vesa` (BIOS/VESA)
+  and `fb_boot` (UEFI/GOP) are ordinary driver packages that the media's
+  bake manifest seeds, so the boot display arrives through
+  `driver_runtime` instead of a privileged Tier-0 node, and switching
+  display drivers is `vct remove <old> && vct install <new>` — verified
+  at runtime, with the composited screen coming back on the other
+  driver (`SPONGE_FB_SWITCH=on`). A second fb driver running at the
+  same time is refused by `sponge_pkgd` as `exclusive-conflict`.
+  Per-driver state and bring-up steps:
   [`docs/15-hardware-compatibility.md` §8](docs/15-hardware-compatibility.md);
-  receipts: [`docs/evidence/driver-packages.md`](docs/evidence/driver-packages.md).
-  Gate: `run/sponge-pkg-driver.run`.
+  receipts: [`docs/evidence/driver-packages.md`](docs/evidence/driver-packages.md)
+  and [`docs/evidence/fb-driver-packages.md`](docs/evidence/fb-driver-packages.md).
+  Gates: `run/sponge-pkg-driver.run` (install + exclusivity),
+  `run/sponge-desktop-disk.run` and `run/sponge-desktop-disk-uefi.run`
+  (the display, and the runtime switch with `SPONGE_FB_SWITCH=on`).
 - ✅ Leitzentrale integration: Sculpt's expert interface boots as a
   subsystem, shows as a Sponge DE window via `lz_viewer`, and model
   changes are detected and resolved (`vct leitzentrale keep/revert`)

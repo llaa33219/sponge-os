@@ -434,6 +434,28 @@ A scenario defines:
   that is substituted into a HID text free of leading indentation on
   its first line, or it lands one level deeper than intended.
 
+- `sponge-pkg-driver.run` also carries the **framebuffer exclusivity
+  gate** (docs/12-package-format.md §4.6): two extra `driver_probe`
+  instances install `fb_vesa` and then assert that installing `fb_boot`
+  is refused with `exclusive-conflict` naming the incumbent. Both pass
+  `expect_child: no` because this topology has no compositor — what is
+  under test is `sponge_pkgd`'s running set, not the hardware. The
+  runtime *handover* itself (remove, install, the screen coming back)
+  is `run/sponge-desktop-disk.run` with `SPONGE_FB_SWITCH=on`, via
+  `test/fb_switch_probe`.
+
+- `sponge-desktop-disk.run` with `SPONGE_FB_SWITCH=on` — the
+  **runtime framebuffer-driver switch** proof in the product topology
+  (docs/17 §1, docs/15 §8.2). The framebuffer driver is a package, so
+  the media's bake manifest seeds one (`fb_vesa` on BIOS, `fb_boot` on
+  UEFI) and `sponge_pkgd` starts it inside `driver_runtime`; the arm
+  adds `test/fb_switch_probe`, which asserts the seeded driver is a
+  `driver_runtime` child, that the composited screen shows a rendered
+  desktop, that `remove` + `install` moves the driver to the other fb
+  package, and that the screen comes back and SETTLES on a rendered
+  desktop. The probe's last line is the gate; it exits 1 with the
+  failing phase named if anything inside it fails.
+
 - `sponge-pkg-lifecycle.run` — Phase 7 todo 9: installed-vs-running
   lifecycle verification (docs/12-package-format.md §9.2.1). The
   `pkg_lifecycle_probe` (modeled on `pkg_seq_probe`) drives a six-step

@@ -292,6 +292,14 @@ Automation-default behavior:
     non-zero. `sponge_pkgd` detects this before emitting a `<start>`
     node, because `pkg_runtime`'s `init` would otherwise drop the child
     with nothing but a kernel warning.
+  - `exclusive-conflict`: the package declares
+    `<exclusive group="G">` and another **running** package already
+    holds `G`; exit non-zero. `vct` prints the incumbent and the
+    remedy inline (`vct remove <peer>` then retry), and `--json`
+    carries `group` and `peer`. The framebuffer drivers are the first
+    such group (`docs/12-package-format.md` §4.6), so this is the status
+    a user meets when trying to start a second display driver. Like the
+    refusals above it is decided before the `<start>` node exists.
   - `insufficient-resources`: the package's declared `<quota>` does not
     fit `pkg_runtime`'s remaining budget; exit non-zero. Both surfaces
     print the four figures (`needs N bytes RAM / N caps, N bytes RAM /

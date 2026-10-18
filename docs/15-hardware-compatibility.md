@@ -706,7 +706,9 @@ recorded here rather than glossed.
 | `pc_nic` | `driver/nic/pc` | `pc_nic` | **verified in QEMU** | Installed through `sponge_pkgd` into `driver_runtime` on QEMU `-device e1000`; the e1000e driver binds (`e1000 00:02.0 eth0: Intel(R) PRO/1000 Network Connection`) and `nic_router` leases `10.0.2.15` from QEMU's slirp DHCP. Gate: `run/sponge-pkg-driver.run`. |
 | `usb_net` | `driver/usb_net` | `usb_net` | builds only | Needs a USB Ethernet adapter (QEMU's `usb-net` is untested here) **and** a `Terminal` service provider routed into `driver_runtime` for its DDE-Linux option interface. Deliberately not autostarted. |
 | `pc_wifi` | `driver/wifi` | `wifi` | builds only | Needs real Wi-Fi hardware and firmware the user supplies (§8.1). Not autostarted. |
-| `intel_gpu` | `driver/gpu/intel` | `intel_gpu` | builds only | Conflicts with the static `fb` platform policy (§8.2). Not autostarted. |
+| `fb_vesa` | `driver/framebuffer/vesa` | `vesa_fb` | **verified in QEMU** | The BIOS/VESA display path, as a package. Installed into `driver_runtime` from the BIOS media's bake manifest (`<autostart/>`), programs a 1024x768 INT 10h mode (`Found: VESA BIOS version 3.0` / `using 1024x768 (1024x768)`), and the desktop's pixel gate passes on top of it. Gate: `run/sponge-desktop-disk.run` (`alpha-probe: PASS`). |
+| `fb_boot` | `driver/framebuffer/boot` | `boot_fb` | **verified in QEMU** | The UEFI/GOP display path, as a package. Installed into `driver_runtime` from the UEFI media's bake manifest; maps the framebuffer the kernel reported (`using boot framebuffer: 2560x1600x32 @ 0x80000000` on OVMF, `1280x800x32 @ 0xfd000000` on the BIOS media's GRUB2 framebuffer tag). Gate: `run/sponge-desktop-disk-uefi.run` and `run/sponge-desktop-disk.run` with `SPONGE_FB_SWITCH=on`. |
+| `intel_gpu` | `driver/gpu/intel` | `intel_gpu` | builds only | Competes with the ACTIVE `fb` package for the PCI VGA class (§8.2). Not autostarted. |
 | `pc_intel_fb` | `driver/framebuffer/intel/pc/spec/x86_64` | `pc_intel_fb` | builds only | Same VGA conflict (§8.2). Not autostarted. |
 
 The rule the table encodes: **`<autostart/>` means "verified end to
@@ -715,6 +717,15 @@ end"**. An unverified driver installs as STOPPED and only
 (AGENTS.md §1.1). The verified set is therefore self-declaring: a
 driver that regresses silently loses its autostart marker rather than
 failing every boot.
+
+**The display driver is one of them.** There is no static framebuffer
+node in any product topology any more: `Tier-0` starts `nitpicker`
+(the compositor server, a component) and nothing that produces pixels.
+The pixel producer is whichever `fb_*` package the medium's bake
+manifest names — `fb_vesa` on the BIOS media, `fb_boot` on the UEFI
+one — and it is an ordinary package from then on. Both are staged on
+every medium, so the other one is one `vct remove` + `vct install`
+away (§8.2).
 
 ### 8.1 Wi-Fi firmware is not bundled
 
@@ -739,25 +750,111 @@ Acquisition, when `pc_wifi` is wanted on real hardware:
 Until steps 2 and 3 are done, `pc_wifi` starts and then fails to
 associate. That is the honest expected outcome, not a defect.
 
-### 8.2 The VGA conflict (intel_gpu, pc_intel_fb)
+### 8.2 The VGA conflict — how it is resolved now, and what is left
 
-The product media's Tier-0 `platform` config grants the PCI `VGA` class
-to the static `fb` label prefix, which feeds `vesa_fb` — the compositor's
-Capture client. `intel_gpu` and `pc_intel_fb` need the same class, and a
-PCI device is offered to exactly one policy. Installing either therefore
-requires re-pointing the Tier-0 policy from `fb` at the driver, which
-means giving up the framebuffer the desktop currently renders to.
+**Status: resolved for the packaged framebuffer drivers; still open for
+`intel_gpu` / `pc_intel_fb`.**
 
-That is a deliberate, visible, reversible change to the system's boot
-wiring, so it is left to the operator rather than performed by a package
-install (AGENTS.md §1.1). Concretely, in the scenario's Tier-0
-`platform` `<config>`, replace
+The conflict used to be structural. The product media's Tier-0
+`platform` config granted the PCI `VGA` class to the static `fb` label
+prefix, which fed a static `+ start fb` node:
 
 ```
     + policy | label_prefix: fb | info: yes | + pci | class: VGA
 ```
 
-with a policy naming the driver's label prefix (for example
-`intel_gpu`), then rebuild. `run/driver_runtime.inc::platform_policies`
-is where the product media's own grants live; add the class there when
-you make the change, so the next media build keeps it.
+`intel_gpu` and `pc_intel_fb` need the same class, and a PCI device is
+offered to exactly one policy, so installing either meant re-pointing
+the Tier-0 policy — a deliberate, visible, reversible edit to the
+system's boot wiring, and therefore left to the operator.
+
+Two things changed:
+
+1. **The display driver became a package** (`docs/17` §1). The grant
+   no longer names a static node; it names each fb package's own label
+   prefix, in `run/driver_runtime.inc::platform_policies`:
+
+   ```
+   + policy | label_prefix: system -> driver_runtime -> fb_vesa | info: yes | + pci | class: VGA
+   + policy | label_prefix: system -> driver_runtime -> fb_boot | info: yes | + pci | class: VGA
+   ```
+
+   Two grants for one class is safe because the packages are mutually
+   exclusive at RUN time (`docs/12` §4.6): the `platform` driver
+   publishes the device under both prefixes and only the running driver
+   opens a `Platform` session. What a grant cannot do is decide WHICH
+   driver runs — that is the bake manifest at first boot, and
+   `vct remove` / `vct install` afterwards.
+
+2. **The exclusivity is enforced, not hoped for.** `sponge_pkgd`
+   refuses a second running member of the `fb` group with
+   `exclusive-conflict`, naming the incumbent.
+
+**Switching display drivers — the exact commands:**
+
+```
+# BIOS media: VESA INT 10h  ->  UEFI GOP framebuffer
+vct remove fb_vesa
+vct install fb_boot          # <autostart/>: no separate launch needed
+
+# the other direction
+vct remove fb_boot
+vct install fb_vesa
+```
+
+A switch attempt while the incumbent runs is refused with the remedy
+in the message (`vct remove fb_vesa` first), which is the "control is
+a door that is always open" half of AGENTS.md §1.1; the two-command
+sequence above is the automation.
+
+**Verified, and verified where.** `SPONGE_FB_SWITCH=on` on the BIOS
+media removes `fb_vesa`, installs `fb_boot`, and requires the
+composited screen to come back and SETTLE on a rendered desktop
+(`test/fb_switch_probe`). Measured on that run:
+
+```
+[init -> system -> driver_runtime -> fb_vesa] using 1024x768 (1024x768)
+[init -> system -> driver_runtime -> fb_boot]  using boot framebuffer: 1280x800x32 @ 0xfd000000 type=1 pitch=5120 -> 1280x800
+[init -> system -> fb_switch_probe] fb-switch-probe: post-switch frame rendered 247/640 sampled pixels (settled)
+[init -> system -> fb_switch_probe] fb-switch-probe: PASS
+```
+
+So the display recovery is a property of the package handover, not of
+a hand-wired Tier-0 node: `nitpicker` survives its Capture client
+disappearing and reappearing at a different resolution, and the
+desktop repaints onto the new one.
+
+**Honest limits of the reverse direction.** `vesa_fb` programs the BIOS
+INT 10h interface through `x86emu`. OVMF provides no INT 10h, so
+`vct remove fb_boot && vct install fb_vesa` on UEFI media is expected
+to leave the display dark. That direction is a documented gap, not a
+supported switch; the BIOS→GOP direction is the verified one.
+
+**What is still open.** `intel_gpu` and `pc_intel_fb` want the same PCI
+`VGA` class the active `fb_*` package holds. They are still not
+granted: taking the class away from a working display driver is still a
+Tier-0 decision, and it is recorded here as a bring-up step rather than
+done. A user who wants one removes the fb package first, then makes the
+policy edit, exactly as before — the difference is that the display
+driver itself no longer has to be edited.
+
+**One Genode routing subtlety this work exposed**, recorded because it
+cost real time and will bite the next driver that needs a core ROM:
+`platform_info` (a CORE rom module, exported by base-sel4 from the
+multiboot2 boot info) is requested by a packaged driver as a
+grandchild of the Tier-0 `system` node, and the route rule that
+reaches it must be
+
+```
++ service ROM | label_last: platform_info | + parent
+```
+
+placed BEFORE that node's `+ service ROM | + child rom_sys`
+catch-all. Two reasons, both in
+`genode/repos/os/src/lib/sandbox/route_model.h`: the query label is
+scoped to the child at whichever node the request arrives at, so a
+`label:` rule cannot match across a nesting level while `label_last:`
+can; and every `<service>` node sets `_specific_service`, so a denial
+inside the `rom_sys` catch-all STOPS the rule search instead of
+falling through to `any-service -> parent`. The failure mode is a
+silent `parent denied ROM-session` with no "no route to service" line.
