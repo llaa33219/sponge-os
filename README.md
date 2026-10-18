@@ -141,6 +141,22 @@ The repository currently contains:
 - ✅ Configuration and theme backends (`sponge_configd`, `sponge_themed`)
   with live theme reload shared by vct and Sponge DE
 - ✅ Launcher menu fed by `sponge_pkgd`'s installed-set broadcast
+- ✅ PC drivers as **installable packages**: `vct install pc_nic` brings
+  the Ethernet driver up through the stock package flow in a dedicated
+  `driver_runtime` sandbox — a second nested `init` inside `system`,
+  sibling of `pkg_runtime`, whose config `sponge_pkgd` also owns. The
+  split is the minimum-privilege boundary: hardware capabilities
+  (`Platform`, `Dma`, `Irq`, `Io_mem`, `Io_port`) are granted by a
+  generated `<parent-provides>` list that no application package can
+  reach. `pc_nic` is verified end to end in QEMU (installed into
+  `driver_runtime`, binds the e1000, leases `10.0.2.15`);
+  `usb_net`, `pc_wifi`, `intel_gpu` and `pc_intel_fb` build and install
+  but are deliberately **not** autostarted — no QEMU model exists for
+  their hardware, so starting them silently would be a claim we cannot
+  back. Per-driver state and bring-up steps:
+  [`docs/15-hardware-compatibility.md` §8](docs/15-hardware-compatibility.md);
+  receipts: [`docs/evidence/driver-packages.md`](docs/evidence/driver-packages.md).
+  Gate: `run/sponge-pkg-driver.run`.
 - ✅ Leitzentrale integration: Sculpt's expert interface boots as a
   subsystem, shows as a Sponge DE window via `lz_viewer`, and model
   changes are detected and resolved (`vct leitzentrale keep/revert`)

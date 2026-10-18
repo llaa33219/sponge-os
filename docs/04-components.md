@@ -40,6 +40,41 @@ actually implemented.
 > the Unix convention). The RPC interface used by user-interface
 > components lives under `include/sponge/`.
 
+### 1.2.1 The Two Runtime Sandboxes: `pkg_runtime` and `driver_runtime`
+
+Neither is a Sponge OS component: both are the stock Genode `init`,
+started inside the `system` sandbox, and **both have their `<config>`
+owned by `sponge_pkgd`** (delivered as a report and relayed by
+`report_rom`, exactly like every other pkgd channel —
+[`12-package-format.md`](12-package-format.md) §4.5).
+
+| | `pkg_runtime` | `driver_runtime` |
+|---|---|---|
+| Hosts | `<kind>app</kind>` packages | `<kind>driver</kind>` packages |
+| Created by | the scenario's `system.config` (a static `<start>` node) | the same, as a sibling placed **before** `pkg_runtime` |
+| Config owner | `sponge_pkgd`, report `sponge_pkgd -> runtime` | `sponge_pkgd`, report `sponge_pkgd -> driver_runtime` |
+| Quota | `caps: 230000`, `ram: 512G` (RAM is the deliberate remainder clamp) | `caps: 9000`, `ram: 320M` (both explicit) |
+| Admission | `runtime_state` report, armed by `<admission/>` | `driver_runtime_state` report, armed by `<driver_admission/>` |
+| What it may reach | application services only | the hardware services the installed drivers declared |
+
+The two are deliberately asymmetric in their quota shape. `pkg_runtime`
+carries `ram: 512G` so it absorbs every MiB `init` still has, which is
+what makes the media physical-RAM-size agnostic — and that only holds
+while it is the **last** node in the config. `driver_runtime` is
+therefore created before it, with an explicit grant: a node created
+after `pkg_runtime` would take its RAM out of `pkg_runtime`'s clamp
+rather than out of a declared budget, silently. `driver_runtime`'s caps
+stay explicit for the same reason `pkg_runtime`'s do — the caps clamp
+*hangs* on seL4, so a grant that absorbed a remainder would starve the
+next sibling instead of failing visibly
+([`09-roadmap.md`](09-roadmap.md) §11.1).
+
+Everything shared by the product scenarios lives in
+[`run/driver_runtime.inc`](../run/driver_runtime.inc): the driver
+package list, the HID fragments, the quota arithmetic and the staging
+step. A scenario sources it and calls `driver_runtime::stage`, so the
+five desktop-disk media variants cannot drift apart.
+
 ### 1.3 Genode-Provided Components (Reused)
 
 Components that Sponge OS does not implement itself and uses as Genode

@@ -55,9 +55,27 @@ seL4 kernel
          ├─ sponge-de        the desktop (panel, launcher, tasklist,
          │                   background, settings, shortcuts)
          ├─ alpha_probe / cfg_probe   boot-time verifiers
-         └─ pkg_runtime  (nested init #2 — caps 230000, RAM = the remainder)
+         ├─ driver_runtime  (nested init #2 — caps 9000, ram 320M, both
+         │                   EXPLICIT: it precedes pkg_runtime, so it
+         │                   cannot use the remainder clamp without
+         │                   taking its RAM out of pkg_runtime's pool.
+         │                   Hosts <kind>driver</kind> packages —
+         │                   pc_nic, usb_net, pc_wifi, intel_gpu,
+         │                   pc_intel_fb. Empty on a fresh boot; the
+         │                   <start> nodes appear when the user runs
+         │                   `vct install <driver>`.)
+         └─ pkg_runtime  (nested init #3 — caps 230000, RAM = the remainder)
             └─ hello, calculator, pdf_view, falkon, terminal, …
 ```
+
+`driver_runtime` exists so that the capability boundary is structural
+rather than conventional
+([`12-package-format.md`](12-package-format.md) §4.5): `sponge_pkgd`
+generates two `<parent-provides>` lists from two package kinds, and
+only the driver list carries `Platform` / `Dma` / `Irq` / `Io_mem` /
+`Io_port`. An application package cannot name its way to a hardware
+session even though `system` would happily route one. See
+[`04-components.md`](04-components.md) §1.2.1.
 
 Both RAM grants read "the remainder", not a fixed number — see §6.1.
 Caps stay fixed and hand-derived. The `caps` figures above are the
@@ -623,6 +641,33 @@ scenarios: **+11.9% caps** over the enabled sum, and **RAM by the
 remainder-clamp** described in §6.1 — a grant that tracks the machine
 instead of a constant that has to be re-derived per `-m` value and per
 package-profile change.
+
+### 6.0 `driver_runtime`'s grant
+
+`driver_runtime` is sized from the driver set, not from a bake profile
+(no driver is in a profile — they are opt-in), and both dimensions are
+explicit:
+
+| package | caps | RAM | autostart? |
+|---|---:|---:|---|
+| pc_nic | 1000 | 32M | yes (QEMU-verified end to end) |
+| usb_net | 1500 | 64M | no |
+| pc_wifi | 2500 | 128M | no |
+| intel_gpu | 1200 | 32M | no |
+| pc_intel_fb | 1500 | 64M | no |
+| **sum** | **7700** | **320M** | |
+
+`driver_runtime | caps: 9000 | ram: 320M` — **+16.9% caps** headroom
+(docs/17 §5 practice, rounded up), RAM at the exact sum. `system`'s own
+caps grant rises by the same 9000 through
+`driver_runtime::caps_for_system`, which each media variant feeds with
+its own pre-driver figure (263000 on the BIOS/NVMe media, 280000 on
+the UEFI media) so no variant's budget is silently shrunk.
+
+RAM is the exact sum rather than headroom because RAM has no hang
+failure mode: a shortfall is a visible `init` warning and a **refused
+install** (`insufficient-resources` from the admission pre-flight),
+which is a far better failure than a hang. Caps would be the opposite.
 
 Before this change the four ahci/nvme desktop-disk variants granted
 `pkg_runtime` 8000 caps / 1536M — falkon (200000 caps) was **25x

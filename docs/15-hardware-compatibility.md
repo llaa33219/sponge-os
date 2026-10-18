@@ -692,3 +692,72 @@ reported from the 17ZD90N on both stack generations. The acpi
 driver now skips DMAR parsing (report-only information); the
 regression gate is `./tool/hwrepro --case acpi-dmar` (injects
 `run/fixtures/dmar-rmrr.aml` and requires the usb chain to boot).
+
+## 8. Driver packages — per-driver verification state
+
+The PC driver set is installable with the ordinary package flow
+(`vct install <driver>`) and runs in the `driver_runtime` sandbox
+(docs/12-package-format.md §4.5). QEMU emulates exactly one of these
+drivers' hardware, so the verification state is deliberately uneven and
+recorded here rather than glossed.
+
+| Package | Upstream build target | Binary | State | What the state means |
+|---|---|---|---|---|
+| `pc_nic` | `driver/nic/pc` | `pc_nic` | **verified in QEMU** | Installed through `sponge_pkgd` into `driver_runtime` on QEMU `-device e1000`; the e1000e driver binds (`e1000 00:02.0 eth0: Intel(R) PRO/1000 Network Connection`) and `nic_router` leases `10.0.2.15` from QEMU's slirp DHCP. Gate: `run/sponge-pkg-driver.run`. |
+| `usb_net` | `driver/usb_net` | `usb_net` | builds only | Needs a USB Ethernet adapter (QEMU's `usb-net` is untested here) **and** a `Terminal` service provider routed into `driver_runtime` for its DDE-Linux option interface. Deliberately not autostarted. |
+| `pc_wifi` | `driver/wifi` | `wifi` | builds only | Needs real Wi-Fi hardware and firmware the user supplies (§8.1). Not autostarted. |
+| `intel_gpu` | `driver/gpu/intel` | `intel_gpu` | builds only | Conflicts with the static `fb` platform policy (§8.2). Not autostarted. |
+| `pc_intel_fb` | `driver/framebuffer/intel/pc/spec/x86_64` | `pc_intel_fb` | builds only | Same VGA conflict (§8.2). Not autostarted. |
+
+The rule the table encodes: **`<autostart/>` means "verified end to
+end"**. An unverified driver installs as STOPPED and only
+`vct launch <driver>` attempts a start — the user's explicit act
+(AGENTS.md §1.1). The verified set is therefore self-declaring: a
+driver that regresses silently loses its autostart marker rather than
+failing every boot.
+
+### 8.1 Wi-Fi firmware is not bundled
+
+`driver/wifi` loads its firmware as files from `/firmware` inside the
+driver's VFS (`genode/repos/dde_linux/src/driver/wifi/main.cc`, the
+`Fw_path { "/firmware/", request.name }` requests). The `linux-firmware`
+archive is GPL-2.0 redistribution with its own distribution terms, so it
+is deliberately **not** vendored into this repository.
+
+Acquisition, when `pc_wifi` is wanted on real hardware:
+
+1. Fetch the kernel firmware for your adapter (Debian/Ubuntu:
+   `apt-get install firmware-iwlwifi` or `firmware-atheros`; Arch:
+   `linux-firmware`; Fedora: `iwl-firmware` / `atheros-firmware`).
+2. Stage the matching files where the driver's VFS makes them visible
+   (a `File_system` session declared by the package's `<sessions>`, and
+   the `firmware` directory of the driver sandbox — the mapping is a
+   bring-up step and is **not** yet wired on the product media).
+3. `vct install pc_wifi && vct launch pc_wifi`, then confirm association
+   in the `nic_router` domain state.
+
+Until steps 2 and 3 are done, `pc_wifi` starts and then fails to
+associate. That is the honest expected outcome, not a defect.
+
+### 8.2 The VGA conflict (intel_gpu, pc_intel_fb)
+
+The product media's Tier-0 `platform` config grants the PCI `VGA` class
+to the static `fb` label prefix, which feeds `vesa_fb` — the compositor's
+Capture client. `intel_gpu` and `pc_intel_fb` need the same class, and a
+PCI device is offered to exactly one policy. Installing either therefore
+requires re-pointing the Tier-0 policy from `fb` at the driver, which
+means giving up the framebuffer the desktop currently renders to.
+
+That is a deliberate, visible, reversible change to the system's boot
+wiring, so it is left to the operator rather than performed by a package
+install (AGENTS.md §1.1). Concretely, in the scenario's Tier-0
+`platform` `<config>`, replace
+
+```
+    + policy | label_prefix: fb | info: yes | + pci | class: VGA
+```
+
+with a policy naming the driver's label prefix (for example
+`intel_gpu`), then rebuild. `run/driver_runtime.inc::platform_policies`
+is where the product media's own grants live; add the class there when
+you make the change, so the next media build keeps it.
