@@ -243,7 +243,18 @@ this series. Left as-is deliberately: fixing a stale version-string
 gate is unrelated churn, and changing it here would hide a real
 repository-wide inconsistency behind this task's diff.
 
-## 7. Receipts
+## 7. What is still not a package
+
+`run/sponge-supervisor-takeover.run` — the lean supervisor/takeover
+harness, not one of the five product media — still carries its own
+static `+ start fb` and its own `label_prefix: fb` VGA grant. It does
+not source `driver_runtime.inc`; it is a diagnostic topology whose pixel
+oracle is the takeover itself, and converting it is a separate change
+from the product media. It passes (console takes the display, desktop
+is restored, both by pixels). Flagged here rather than left to be
+discovered.
+
+## 8. Receipts
 
 | what | where |
 |---|---|
