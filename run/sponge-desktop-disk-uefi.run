@@ -439,7 +439,7 @@ set build_components {
 	core lib/ld init timer
 	server/report_rom server/nitpicker
 	driver/platform driver/acpi app/pci_decode
-	driver/framebuffer/boot
+	driver/framebuffer/boot driver/framebuffer/vesa
 	driver/ps2
 	driver/usb_host/pc driver/usb_hid server/event_filter
 	server/part_block server/vfs server/cached_fs_rom
@@ -592,6 +592,13 @@ if {[file exists "bin/qt6_libqgenode.tar"]} {
 source [file join [file dirname [file normalize [info script]]] \
                     bake.inc]
 
+#
+# Boot display driver: this media is UEFI/GOP, so the seeded first-boot
+# root is the fb_boot PACKAGE (docs/17 §1). driver_packages::stage
+# asserts the choice reached the staged bake manifest.
+#
+driver_runtime::fb_package fb_boot
+
 bake::stage $sys_dir img
 
 #
@@ -652,14 +659,28 @@ config
   + service CPU
   + service LOG
   + service Timer
+  # Report is here because a driver package declares it: the framebuffer
+  # driver publishes a `connectors` inventory. Without it in THIS list
+  # the request from driver_runtime would be denied at this hop even
+  # though the Tier-0 node routes Report to report_rom.
+  + service Report
   + service Gui
   + service Capture
   + service Event
   + service Platform
   + service Dma
-  + service Irq
-  + service Io_mem
-  + service Io_port
+  # The three hardware services below are spelled the way the CLIENTS
+  # request them, which is NOT the CamelCase a human would write:
+  # Genode's session service_name() is "IRQ" / "IO_MEM" / "IO_PORT"
+  # (io_mem_session.h:37 and friends), and the parent-provides match is
+  # case-sensitive. The old Irq/Io_mem/Io_port spelling was never
+  # requested by anyone and silently denied every one of them at this
+  # hop — invisible while every hardware component was a Tier-0 child,
+  # and the reason a packaged fb_vesa died with
+  # 'parent denied IO_MEM-session'.
+  + service IRQ
+  + service IO_MEM
+  + service IO_PORT
   + service Usb
   + service Rtc
   + service File_system
@@ -1262,35 +1283,23 @@ config
 # full-size Capture buffer. No trailing comment on the start line because
 # the HID format silently falls back to the default quota for the last
 # attribute otherwise.
-+ start fb | caps: 24000 | ram: 96M
-  #
-  # UEFI display driver (D15.13 / D15.16 / R15.2). The vendored
-  # binary at genode/repos/os/src/driver/framebuffer/boot/ (LIBS
-  # = base blit; sources = main.cc only). The driver:
-  #   - reads `platform_info/boot/framebuffer` (relayed as a ROM
-  #     by the new report_rom policy above)
-  #   - opens a Capture session (served by nitpicker)
-  #   - publishes a "connectors" report (consumed by Report
-  #     session for downstream tools)
-  #   - REJECTS the GOP mode if bpp != 32 OR type != 1 (RGB) —
-  #     this is the R15.2 gate, and the bound here is the
-  #     documented OVMF default (1024x768x32 RGB on Skylake).
-  #
-  # boot_fb does NOT request Platform/Dma/IO_PORT (it is the GOP
-  # path, not the VGA PCI path). The route below reflects that.
-  #
-  + binary boot_fb
-  + route
-    + service ROM | label: config        | + parent | label: fb.config
-    + service ROM | label: platform_info | + parent
-    + service Report | + child report_rom
-    + service IO_MEM | + parent
-    + service ROM | + parent
-    + service PD | + parent
-    + service CPU | + parent
-    + service LOG | + parent
-    + service Timer | + child timer
-    + service Capture | + child nitpicker
+# The display driver is the fb_boot PACKAGE now (docs/17 §1): there is no
+# static `+ start fb` node here any more. pkgd starts it inside
+# driver_runtime from the first-boot manifest, and the route it gets is
+# the one pkgd generates from the package's <sessions>
+# (pkg/fb_boot/metadata.xml), not the hand-written list that stood here.
+# What that list encoded, and where it lives now:
+#   - `rom platform_info` — the ROM relay policy in the Tier-0 report_rom
+#     (unchanged, see above); the package declares it as a labelled
+#     `<session name="ROM" label="platform_info"/>`.
+#   - Capture to nitpicker, Report to report_rom, IO_MEM/PD/CPU/LOG/Timer
+#     to the parent chain — the declared default-route="parent" sessions.
+#   - the 24000/96M quota, which is the GOP framebuffer mapping plus a
+#     full-size Capture buffer (150 caps exhausted the PD mapping cache;
+#     6000 was still short at the OVMF resolution) — now the package's
+#     own <quota>.
+# The GOP mode gate (bpp == 32, type == 1 RGB) is boot_fb's own check and
+# is unchanged.
 
 + start ps2 | caps: 100 | ram: 1280K
   + config
@@ -1379,6 +1388,24 @@ config
     + service ROM | label_last: focus | + child report_rom
     + service ROM | label_last: hover | + child report_rom
     + service ROM | label_last: system_state | + child report_rom
+    #
+    # platform_info BEFORE the rom_sys catch-all below, and matched by
+    # label_LAST rather than label. Two Genode facts combine here
+    # (both documented in run/driver_runtime.inc):
+    #   1. init evaluates a route query with the label SCOPED to the
+    #      requesting child ("fb_boot -> platform_info"), so a
+    #      `label: platform_info` rule never matches a request that
+    #      crossed a nesting level; `label_last` does, because it
+    #      compares the final element.
+    #   2. every `<service>` node is "specific" in
+    #      repos/os/src/lib/sandbox/route_model.h, and a denial inside
+    #      one STOPS the search instead of falling through to
+    #      `any-service -> parent`. The rom_sys catch-all denies the
+    #      label, so without this rule the request dies SILENTLY at
+    #      `parent denied ROM-session` with no "no route to service".
+    # The module itself is a CORE rom (base-sel4 exports it from the
+    # seL4 boot info, core/platform.cc:629), hence `<parent/>`.
+    + service ROM | label_last: platform_info | + parent
     + service ROM | + child rom_sys
     + service Gui | + child nitpicker
     + service Capture | + child nitpicker
@@ -1402,7 +1429,9 @@ install_config $tier0_config
 # fb.config as the BIOS scenario is reused (NOT vendored-tree-edited).
 #
 set recipe_dir "${genode_dir}/repos/os/recipes/raw/drivers_interactive-pc"
-foreach f { fb.config event_filter.config } {
+# fb.config is gone: the GOP driver takes its period_ms from
+# pkg/fb_boot/metadata.xml, so there is no Tier-0 ROM to relay.
+foreach f { event_filter.config } {
 	if {![file exists "$recipe_dir/$f"]} {
 		error "$recipe_dir/$f missing (vendored drivers_interactive-pc recipe drifted?)"
 	}
@@ -1428,12 +1457,12 @@ foreach f { en_us.chargen special.chargen } {
 set boot_modules { }
 foreach m { core-sel4.a ld-sel4.lib.so init timer report_rom nitpicker platform acpi pci_decode \
             ahci part_block vfs cached_fs_rom nic_router \
-            boot_fb ps2 pc_usb_host usb_hid event_filter pointer } {
+            ps2 pc_usb_host usb_hid event_filter pointer } {
 	lappend boot_modules $m
 }
 foreach m { vfs.lib.so vfs_rump.lib.so rump.lib.so rump_fs.lib.so \
             en_us.chargen special.chargen \
-            fb.config event_filter.config } {
+            event_filter.config } {
 	lappend boot_modules $m
 }
 
@@ -1872,27 +1901,36 @@ puts "  serial log: $uefi_log"
 puts "  expected: OVMF → GRUB2 → bender → seL4 → core warnings → hang"
 puts "            (per W1 OVMF core-init hang, docs/evidence/phase15-uefi-boot-smoke.log)"
 
-# Single-shot expect with the Genode banner as the wait_for_re.
-# On timeout (the W1 expected outcome), the timeout arm fires and
-# we capture the buffer + classify the hang signature.
+# Single-shot expect on the desktop gate.
 #
-# Tcl's `expect_out(buffer)` is only set on the matched arm
-# (banner/eof pattern), NOT on the timeout arm. We use `log_file`
-# to tee the serial output to a file as it arrives, and read the
-# file after the timeout. The `log_file` is set up before the
-# expect call so the timeout arm's "no buffer" issue is moot.
+# The wait target used to be the Genode banner, which this media never
+# printed; the pattern only ever matched by accident, and the other two
+# arms were dead code — `-i $qemu_spawn_id` inside the FIRST arm scoped
+# the spawn id to that arm only, so `eof` / `timeout` watched the run
+# tool's own (silent) spawn id and could never fire. The scenario then
+# hung until the outer run timeout killed it (make exit 143). Now that
+# the UEFI media boots all the way to a pixel-verified desktop, the gate
+# waits for the marker that actually means "the display came up on the
+# packaged GOP driver", and every arm is scoped explicitly.
+#
+# Tcl's `expect_out(buffer)` is only set on the matched arm, NOT on the
+# timeout arm, so `log_file` tees the serial output to a file as it
+# arrives and the file is read after the expect returns.
 #
 set uefi_log [run_dir]/uefi-boot.log
 log_file -a $uefi_log
-set timeout 180
+set timeout 420
 expect {
+    -i $qemu_spawn_id -re {alpha-probe: PASS} {
+        puts "\[sponge-desktop-disk-uefi\] desktop gate reached — alpha-probe: PASS"
+    }
     -i $qemu_spawn_id -re ".*Genode v.*" {
         puts "\[sponge-desktop-disk-uefi\] UNEXPECTED — QEMU reached the Genode v... banner"
     }
-    eof {
+    -i $qemu_spawn_id eof {
         puts "\[sponge-desktop-disk-uefi\] QEMU exited (eof)"
     }
-    timeout {
+    -i $qemu_spawn_id timeout {
         puts "\[sponge-desktop-disk-uefi\] QEMU boot attempt timed out (expected per W1)"
     }
 }
@@ -1912,7 +1950,26 @@ set has_warning_1 [regexp $hang_sig_1 $output]
 set has_warning_2 [regexp $hang_sig_2 $output]
 set has_banner [regexp $banner $output]
 
+#
+# The desktop gate is the load-bearing one for this media now: the
+# display driver is the packaged fb_boot (docs/17 §1), so a boot that
+# reaches alpha-probe: PASS has proven that the GOP framebuffer was
+# mapped and composited by a driver pkgd started inside driver_runtime.
+# The W1 hang signature below is the historical alternative.
+#
+set desktop_ok [regexp {alpha-probe: PASS} $output]
+set fb_ok      [regexp {driver_runtime -> fb_boot] using boot framebuffer} $output]
+
 puts ""
+if {$desktop_ok} {
+    puts "\[sponge-desktop-disk-uefi\] PASS — UEFI product media boots on OVMF,"
+    puts "  the packaged fb_boot driver claimed the GOP framebuffer:"
+    puts "  $fb_ok"
+    puts "  (driver package + driver_runtime, not a static Tier-0 fb node)"
+    puts "  and the desktop reached its pixel-verified gate (alpha-probe: PASS)."
+    exit 0
+}
+
 if {$has_banner} {
     puts "\[sponge-desktop-disk-uefi\] UNEXPECTED — QEMU reached the Genode v... banner"
     puts "  (QEMU UEFI boot PASSED; the 15-3 real-hardware diagnostic is now"

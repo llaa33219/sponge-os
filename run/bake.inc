@@ -177,6 +177,24 @@ namespace eval bake {
     variable staged_already        0
 
     #
+    # Packages a scenario injects into the staged media ON TOP of the
+    # profile's own [packages] list.
+    #
+    # Why this exists: the first-boot seed is driven by
+    # /system/bake/bake_manifest.json (pkgd's <bake/> seeding,
+    # docs/12 §13.5), so a package that must RUN on a freshly installed
+    # medium has to be named in the manifest — there is no other way in.
+    # The framebuffer driver is exactly such a package (docs/17 §1), and
+    # WHICH fb package is correct depends on the firmware the media was
+    # built for (BIOS -> fb_vesa, UEFI -> fb_boot), a fact the profile
+    # file cannot know: one profile serves both media families.
+    #
+    # Empty by default, so every scenario that never calls add_package is
+    # byte-identical to before.
+    #
+    variable extra_pkgs            [list]
+
+    #
     # Literal '[' and ']' characters, generated at runtime via
     # [binary format c ...]. We cannot put them in Tcl string
     # literals (`\[` would yield a 2-char backslash+bracket, and a
@@ -913,6 +931,37 @@ namespace eval bake {
     }
 
     #
+    # bake::add_package <name>
+    #
+    # Inject one package into the media this scenario stages: its
+    # metadata is copied to <destdir>/pkg_<name>.xml, it is listed in
+    # pkg_index.xml, and it is named in the bake manifest — which is
+    # what makes sponge_pkgd seed it as a first-boot root (and, for a
+    # package carrying <autostart/>, start it).
+    #
+    # Must be called BEFORE bake::stage: the manifest is written once,
+    # per stage call. Called again after staging, or with a name the
+    # profile already enables, it errors loudly rather than producing an
+    # index that lists a package twice.
+    #
+    proc add_package {name} {
+        variable staged_already
+        variable extra_pkgs
+
+        if {$staged_already} {
+            error "bake::add_package '$name': staging already ran — \
+                   call it before bake::stage"
+        }
+        if {$name eq ""} {
+            error "bake::add_package: empty package name"
+        }
+        if {[lsearch -exact $extra_pkgs $name] >= 0} {
+            error "bake::add_package '$name': already injected"
+        }
+        lappend extra_pkgs $name
+    }
+
+    #
     # bake::stage <destdir> <mode>
     #
     # The main staging entry point. See header for the full contract.
@@ -954,6 +1003,18 @@ namespace eval bake {
         set bakes_dir "${::genode_dir}/../pkg/bake"
         set profile   "${bakes_dir}/${name}.profile"
         _parse_profile $profile $name
+
+        # Scenario-injected packages join the staged set (see the
+        # extra_pkgs comment). A name the profile already enables is
+        # dropped rather than duplicated: pkg_index.xml, the manifest
+        # and the metadata copy must each list it exactly once.
+        variable extra_pkgs
+        foreach p $extra_pkgs {
+            if {[lsearch -exact $active_profile_pkgs $p] < 0} {
+                lappend active_profile_pkgs $p
+                puts "bake: injected package '$p' (scenario override)"
+            }
+        }
 
         set active_profile_name $name
         set active_profile_path $profile

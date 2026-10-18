@@ -21,29 +21,51 @@
 #         ├─ vfs (Vfs_block + <rump fs="ext2fs"/>) → File_system
 #         ├─ rom_sys: cached_fs_rom(chroot /system)        → ROM
 #         ├─ rom_lib: cached_fs_rom(chroot /system/lib)    → ROM (.lib.so only)
-#         ├─ nitpicker
-#         ├─ drivers (sub-init: vesa_fb/ps2/usb_hid/event_filter)
+#         ├─ nitpicker  (the compositor server — a component, not a driver)
+#         ├─ drivers (sub-init: ps2/usb_hid/event_filter)
 #         └─ system (nested init from disk)
 #             ├─ binary "init" from rom_sys at /system/bin/init
 #             ├─ config from rom_sys at /system/init/system.config
 #             ├─ ROM label_last="ld.lib.so" → parent (§4.6)
+#             ├─ driver_runtime: the fb_vesa PACKAGE (vesa_fb) lives
+#             │  here, started by sponge_pkgd from the baked first-boot
+#             │  manifest — see "Display driver as a package" below
 #             └─ hosts: report_rom, wm, window_layouter, decorator,
 #                       sponge_configd, sponge_themed, sponge_pkgd,
 #                       pkg_runtime, sponge-de, alpha_probe
 #                  (ALL binaries+libs served from /system via rom_sys/rom_lib)
 #
+# === Display driver as a package (docs/17 §1) ===
+#
+# There is no `+ start fb` node in Tier 0 any more. The framebuffer
+# driver is the `fb_vesa` package (pkg/fb_vesa/metadata.xml, BIOS /
+# INT 10h path), and `driver_runtime::fb_package fb_vesa` above seeds it
+# into the bake manifest so the FIRST boot of a freshly installed
+# medium already has a display: pkgd's first-boot seeding installs it,
+# its <autostart/> puts it into driver_runtime's generated config, and
+# init starts it there. `vct remove fb_vesa` / `vct install fb_boot`
+# is the runtime switch (docs/15 §8.2); the PCI VGA grant in the
+# Tier-0 platform policy is a per-package label prefix declared by
+# run/driver_runtime.inc.
+#
+# Honest consequence, accepted by the user: the display now depends on
+# the storage chain being alive. A dead AHCI/NVMe chain means no
+# image.elf siblings either, so this is not a new coupling — but the
+# second-order case is: a chain that boots and then fails to serve
+# /system/pkg_fb_vesa.xml leaves a running system with no display and no
+# on-screen diagnostic. The FBCON diagnostic media is the answer for
+# that (docs/13-installation.md, known limitations).
+#
 # === Tier-0 roster (docs/14 §4.5) ===
 #
 # In Tier 0: kernel/core/init/ld.lib.so, timer/report_rom,
 # platform/acpi/pci_decode, ahci/part_block, vfs+vfs_rump+libc deps,
-# cached_fs_rom (×2), nitpicker, vesa_fb/ps2/usb_hid/event_filter,
-# their config files, and the Tier-0 init config.
+# cached_fs_rom (×2), nitpicker, ps2/usb_hid/event_filter, their config
+# files, and the Tier-0 init config.
 #
-# Display/input drivers in Tier 0 — justification against §4.5:
-#   The §4.5 rule allows Tier-0 placement for boot-critical and rescue-
-#   display components (§4.7). vesa_fb + nitpicker are explicitly listed
-#   as rescue-display components. The input drivers (ps2/usb_hid/event_
-#   filter) are NOT strictly rescue-display, but:
+# Input drivers in Tier 0 — justification against §4.5:
+#   The input drivers (ps2/usb_hid/event_filter) are NOT strictly
+#   rescue-display, but:
 #     (a) they are boot-critical — without them the desktop renders but
 #         cannot accept input, which is useless for verification;
 #     (b) they are small (~3 MiB total) — the §4.5 target is ≤80 MiB;
@@ -55,7 +77,11 @@
 #
 # rescue-minimal nitpicker: skipped for P2 (noted as P5 work, §4.7).
 # The current nitpicker in Tier 0 IS the full nitpicker; a dedicated
-# rescue display with a console logger is future work.
+# rescue display with a console logger is future work. Note that with the
+# fb driver gone from Tier 0 there is no longer even a Tier-0-resident
+# display producer, so this line of work now also covers "a display when
+# the packaged driver cannot start" rather than only "a display while
+# the desktop is down".
 #
 # === ld.lib.so rule (docs/14 §4.6) ===
 #
@@ -185,6 +211,14 @@ if {$fail_mode} {
 if {$fail_mode} { supervisor::enabled 0 }
 
 set sup_mode [supervisor::test_mode]
+
+# SPONGE_FB_SWITCH=on adds the runtime framebuffer-driver switch proof
+# (test/fb_switch_probe) to the product topology. Off by default: the
+# shipped media carries no probe.
+set fb_switch 0
+if {[info exists ::env(SPONGE_FB_SWITCH)] && $::env(SPONGE_FB_SWITCH) eq "on"} {
+	set fb_switch 1
+}
 if {$sup_mode ne "off"} {
 	puts "sponge-desktop-disk: supervisor fault-injection ARM '$sup_mode'"
 }
@@ -199,7 +233,7 @@ set build_components {
 	core lib/ld init timer
 	server/report_rom server/nitpicker
 	driver/platform driver/acpi app/pci_decode
-	driver/framebuffer/vesa driver/ps2
+	driver/framebuffer/vesa driver/framebuffer/boot driver/ps2
 	driver/usb_host/pc driver/usb_hid server/event_filter
 	server/part_block server/vfs server/cached_fs_rom
 	lib/vfs lib/vfs_rump lib/rump lib/rump_fs
@@ -237,6 +271,21 @@ build $build_components
 #
 if {$sup_mode ne "off"} {
 	build { test/ep_wedge test/takeover_probe }
+}
+
+#
+# The framebuffer-switch probe (SPONGE_FB_SWITCH) is built HERE, next to
+# the supervisor test arm and not in the wiring block further down: the
+# `desktop binaries -> /system/bin/` staging loop runs before the
+# system.config is generated, so a binary built later never reaches the
+# disk image and init reports "binary is not an ELF".
+#
+if {$fb_switch} {
+	build { test/fb_switch_probe }
+	# The probe exits cleanly when it is done; a clean exit must not be
+	# read by the supervisor as a fault (it would tear the desktop down
+	# after a PASS).
+	supervisor::ignore_exited fb_switch_probe
 }
 
 create_boot_directory
@@ -293,7 +342,7 @@ close $empty_cfg
 foreach b { init report_rom wm window_layouter decorator \
             sponge_configd sponge_themed sponge_pkgd sponge-de \
             alpha_probe hello terminal sponge_files calculatorform \
-            pdf_view textedit sponge_debug cfg_probe } {
+            pdf_view textedit sponge_debug cfg_probe fb_switch_probe } {
 	#
 	# Some packages (terminal) use a different binary name from
 	# their package name (pkg/terminal has <binary>init</binary> —
@@ -304,6 +353,22 @@ foreach b { init report_rom wm window_layouter decorator \
 	if {[file exists "bin/$b"]} {
 		exec cp -fL "bin/$b" "$sys_dir/bin/$b"
 	}
+}
+
+# The switch probe is staged by the loop above (it is a no-op entry when
+# the arm is off), so a missing or truncated binary must fail HERE with a
+# path, not three minutes later as init's opaque "binary is not an ELF".
+if {$fb_switch} {
+	set fbsw "$sys_dir/bin/fb_switch_probe"
+	if {![file exists $fbsw]} {
+		error "fb-switch: $fbsw was not staged — the build of\
+ test/fb_switch_probe must run BEFORE this copy loop"
+	}
+	if {[file size $fbsw] < 4096} {
+		error "fb-switch: $fbsw is only [file size $fbsw] bytes —\
+ truncated staging"
+	}
+	puts "fb-switch: staged $fbsw ([file size $fbsw] bytes)"
 }
 
 # --- shared libraries → /system/lib/ ---
@@ -404,6 +469,15 @@ if {[file exists "bin/qt6_libqgenode.tar"]} {
 source [file join [file dirname [file normalize [info script]]] \
                     bake.inc]
 
+#
+# The DISPLAY driver is a package, not a Tier-0 node (docs/17 §1). This
+# media boots through the BIOS INT 10h path, so the seeded first-boot
+# root is fb_vesa; the UEFI variants of this scenario seed fb_boot
+# instead. driver_packages::stage asserts that the choice reached the
+# staged bake manifest.
+#
+driver_runtime::fb_package fb_vesa
+
 bake::stage $sys_dir img
 
 #
@@ -488,14 +562,29 @@ config
   + service CPU
   + service LOG
   + service Timer
+  # Report is here because a driver package declares it: the framebuffer
+  # drivers publish a `connectors` inventory (pc_intel_fb and pc_wifi do
+  # the same). Without it in THIS list the request from driver_runtime
+  # would be denied at this hop even though the Tier-0 node routes Report
+  # to report_rom below.
+  + service Report
   + service Gui
   + service Capture
   + service Event
   + service Platform
   + service Dma
-  + service Irq
-  + service Io_mem
-  + service Io_port
+  # The three hardware services below are spelled the way the CLIENTS
+  # request them, which is NOT the CamelCase a human would write:
+  # Genode's session service_name() is "IRQ" / "IO_MEM" / "IO_PORT"
+  # (io_mem_session.h:37 and friends), and the parent-provides match is
+  # case-sensitive. The old Irq/Io_mem/Io_port spelling was never
+  # requested by anyone and silently denied every one of them at this
+  # hop — invisible while every hardware component was a Tier-0 child,
+  # and the reason a packaged fb_vesa died with
+  # 'parent denied IO_MEM-session'.
+  + service IRQ
+  + service IO_MEM
+  + service IO_PORT
   + service Usb
   + service Rtc
   + service File_system
@@ -846,6 +935,82 @@ config
 -}
 	close $sysconfig_fh
 
+
+#
+# ===========================================================================
+# SPONGE_FB_SWITCH=on — the runtime framebuffer-driver switch arm
+# ===========================================================================
+#
+# The claim under test is that the display driver is an ordinary,
+# replaceable package (docs/17 §1), so a display-driver change is a
+# package operation with no privileged Tier-0 fixture to edit. The probe
+# (test/fb_switch_probe) asserts four things in the PRODUCT topology:
+# the seeded fb package is a driver_runtime child; the composited
+# screen shows a rendered desktop; and after `remove` + `install` the
+# other driver takes over and the screen comes back and SETTLES on a
+# rendered desktop again. The exclusivity refusal is proven separately,
+# in run/sponge-pkg-driver.run.
+#
+# Off by default, like every other product-media test arm: the shipped
+# media carries no probe and no extra relay policy. The arm uses the
+# same FBCON env-gate pattern as SPONGE_SUPERVISOR_TEST and
+# SPONGE_LAUNCHTEST.
+#
+if {[info exists ::env(SPONGE_FB_SWITCH)] && $::env(SPONGE_FB_SWITCH) eq "on"} {
+	puts "fb-switch: SPONGE_FB_SWITCH=on — fb_switch_probe wired into system.config"
+
+	set fs_fh [open $sysconfig_hid r]
+	set fs_cfg [read $fs_fh]
+	close $fs_fh
+
+	# pkgd's dedicated probe channel (report_rom is single-writer per
+	# label, and `request`/`launcher_request` are already spent).
+	set fs_cfg [string map [list \
+		"    + policy | label: alpha_probe -> result       | report: sponge_pkgd -> result" \
+		"    + policy | label: alpha_probe -> result       | report: sponge_pkgd -> result\n    + policy | label: sponge_pkgd -> probe_request | report: fb_switch_probe -> probe_request\n    + policy | label: fb_switch_probe -> probe_result | report: sponge_pkgd -> probe_result\n    + policy | label: fb_switch_probe -> driver_runtime_state | report: driver_runtime -> state"] \
+		$fs_cfg]
+
+	set fs_cfg [string map [list "    + launcher_request\n" \
+		"    + launcher_request\n    + probe_request\n"] $fs_cfg]
+
+	set fs_cfg [string map [list "    + service ROM | label_last: launcher_request | + child report_rom" \
+		"    + service ROM | label_last: launcher_request | + child report_rom\n    + service ROM | label_last: probe_request | + child report_rom"] \
+		$fs_cfg]
+
+	set fs_cfg [string map [list "+ start sponge-de | caps: 4000 | ram: 160M" {+ start fb_switch_probe | caps: 400 | ram: 24M
+  + binary | name: bin/fb_switch_probe
+  + config | active: fb_vesa | alternate: fb_boot | timeout_ms: 120000
+    | settle_ms: 4000 | screen_w: 1024 | screen_h: 768
+  + route
+    + service ROM | label_last: ld.lib.so | + parent
+    # driver_runtime's own state report, on a relay label of the
+    # probe's own (report_rom is single-writer per ROM label, and the
+    # driver relay policy already spends pkgd's label slot).
+    # (A comment here must never name a driver_runtime.inc placeholder:
+    # the expander substitutes every occurrence in the file, comments
+    # included, and a substituted policy line inside a <route> block
+    # corrupts the node - which is exactly the "binary is not an ELF"
+    # this cost once.)
+    # The `label:` here is matched against the CHILD-SCOPED query label
+    # (route_model: skip_label_prefix strips "<child> -> "), so the
+    # unscoped spelling is the correct one here; report_rom publishes
+    # the ROM under the scoped name, exactly as driver_probe does in
+    # run/sponge-pkg-driver.run.
+    + service ROM | label: driver_runtime_state | + child report_rom
+    + service ROM | label: probe_result | + child report_rom
+    + service Report | label: probe_request | + child report_rom
+    + service Timer | + parent
+    + service Capture | + parent
+    + any-service
+      + parent
+
++ start sponge-de | caps: 4000 | ram: 160M}] $fs_cfg]
+
+	set fs_fh [open $sysconfig_hid w]
+	puts -nonewline $fs_fh $fs_cfg
+	close $fs_fh
+}
+
 	#
 	# Expand the driver_runtime placeholders (run/driver_runtime.inc).
 	# They are @-delimited rather than written as Tcl [command] calls
@@ -1100,23 +1265,6 @@ config
       + parent
       + any-child
 
-+ start fb | caps: 1000 | ram: 32M
-  + binary vesa_fb
-  + route
-    + service ROM | label_last: ld.lib.so | + parent
-    + service ROM | label: config | + parent | label: fb.config
-    + service Report | + child report_rom
-    + service Dma | + child platform
-    + service Platform | + child platform
-    + service IO_PORT | + parent
-    + service IO_MEM | + parent
-    + service ROM | + parent
-    + service PD | + parent
-    + service CPU | + parent
-    + service LOG | + parent
-    + service Timer | + child timer
-    + service Capture | + child nitpicker
-
 + start ps2 | caps: 100 | ram: 1280K
   + config
   + route
@@ -1204,6 +1352,19 @@ config
     + service ROM | label_last: focus | + child report_rom
     + service ROM | label_last: hover | + child report_rom
     + service ROM | label_last: system_state | + child report_rom
+    #
+    # platform_info BEFORE the rom_sys catch-all: a CORE rom module
+    # (base-sel4 exports it from the multiboot2 boot info,
+    # core/platform.cc:629), matched by label_LAST because the query
+    # label is child-scoped at whichever node the request arrives at.
+    # Every `<service>` node is "specific" in
+    # repos/os/src/lib/sandbox/route_model.h, so the rom_sys denial
+    # below would otherwise stop the search silently. The BIOS media
+    # needs it too once the display driver is a package: the fb-switch
+    # proof installs fb_boot here, and fb_boot reads this ROM. Whether
+    # the SeaBIOS/GRUB2 media actually carries a framebuffer tag is a
+    # separate, measured question (docs/15 §8).
+    + service ROM | label_last: platform_info | + parent
     + service ROM | + child rom_sys
     + service Gui | + child nitpicker
     + service Capture | + child nitpicker
@@ -1221,8 +1382,12 @@ install_config $tier0_config
 #
 # Stage the driver sub-init config modules (Tier-0 boot modules).
 #
+# fb.config is gone from this list: the framebuffer mode is declared in
+# pkg/fb_vesa/metadata.xml and reaches the driver as the inline <config>
+# of its generated <start> node, so there is no Tier-0 ROM to relay.
+#
 set recipe_dir "${genode_dir}/repos/os/recipes/raw/drivers_interactive-pc"
-foreach f { fb.config event_filter.config } {
+foreach f { event_filter.config } {
 	if {![file exists "$recipe_dir/$f"]} {
 		error "$recipe_dir/$f missing (vendored drivers_interactive-pc recipe drifted?)"
 	}
@@ -1245,14 +1410,18 @@ foreach f { en_us.chargen special.chargen } {
 # Desktop components (wm/sponge-de/Qt6/Mesa/etc.) are on DISK, NOT here.
 #
 set boot_modules { }
+# vesa_fb is NOT here any more: it is the fb_vesa PACKAGE's binary and
+# is served from /system/bin like every other packaged component
+# (driver_packages::stage copies it). The display comes up when pkgd
+# seeds the manifest and starts it inside driver_runtime.
 foreach m { core-sel4.a ld-sel4.lib.so init timer report_rom nitpicker platform acpi pci_decode \
             ahci part_block vfs cached_fs_rom nic_router \
-            vesa_fb ps2 pc_usb_host usb_hid event_filter pointer } {
+            ps2 pc_usb_host usb_hid event_filter pointer } {
 	lappend boot_modules $m
 }
 foreach m { vfs.lib.so vfs_rump.lib.so rump.lib.so rump_fs.lib.so \
             en_us.chargen special.chargen \
-            fb.config event_filter.config } {
+            event_filter.config } {
 	lappend boot_modules $m
 }
 
@@ -1332,7 +1501,49 @@ if {$fail_mode} {
 	puts "sponge-desktop-disk: FAILURE CHANNEL — system init rejected corrupted config (bounded, identified)"
 } else {
 
-	run_genode_until {.*alpha-probe: PASS.*} 900
+	#
+	# Gate ORDER follows emission order, and the run tool consumes the
+	# serial stream sequentially: a gate can only match a marker that
+	# comes AFTER the previous gate matched. alpha_probe and
+	# fb_switch_probe run concurrently, so which of the two finishes
+	# first is a race — with the fb arm enabled, the switch proof is
+	# gated FIRST (its PASS is its own last marker, and it exits 1 with
+	# the failing phase named if anything inside it fails), then
+	# alpha-probe as the second receipt.
+	#
+	#
+	# alpha_probe and fb_switch_probe are independent and concurrent, so
+	# which of the two finishes first is a race — gating them in a fixed
+	# order is a coin flip. ONE gate with an alternation waits for
+	# whichever lands first, and the two receipts are then asserted
+	# against the accumulated output, which is order-independent.
+	#
+	if {$fb_switch} {
+		run_genode_until {.*(alpha-probe: PASS|fb-switch-probe: PASS).*} 1200
+		#
+		# Follow-up gates MUST pass $qemu_spawn_id: a call without it is
+		# a fresh BOOT (run_genode_until does run_power_cycle +
+		# run_load), and a second boot while the first QEMU still holds
+		# the image is a write-lock failure, not a test result.
+		#
+		if {[string first "alpha-probe: PASS" $output] < 0} {
+			run_genode_until {.*alpha-probe: PASS.*} 900 $qemu_spawn_id
+		}
+		if {[string first "fb-switch-probe: PASS" $output] < 0} {
+			run_genode_until {.*fb-switch-probe: PASS.*} 900 $qemu_spawn_id
+		}
+		set _missing ""
+		foreach m {"alpha-probe: PASS" "fb-switch-probe: PASS"} {
+			if {[string first $m $output] < 0} { append _missing " $m" }
+		}
+		if {$_missing ne ""} {
+			puts "\nsponge-desktop-disk: FB SWITCH FAIL - missing receipt(s):\
+ $_missing\n"
+			exit 1
+		}
+	} else {
+		run_genode_until {.*alpha-probe: PASS.*} 900
+	}
 
 	#
 	# === Top-level supervision, product topology =========================
@@ -1432,5 +1643,39 @@ if {$fail_mode} {
 
 		puts "\nsponge-desktop-disk: SUPERVISOR CONTROL PASS - the sandbox's own\
   containment held, the supervisor killed nothing and armed no console\n"
+	} elseif {$fb_switch} {
+
+		#
+		# === Runtime framebuffer-driver switch (SPONGE_FB_SWITCH) =====
+		#
+		# The display came up through a driver PACKAGE (the seeded fb
+		# package inside driver_runtime), which alpha-probe's pixel gate
+		# has just proven. Now the same claim for the CHANGE: stop the
+		# active driver package, start the other one, and require the
+		# composited screen to come back and settle on a rendered
+		# desktop. The probe also asserts the exclusivity refusal on the
+		# way through, so the switch cannot silently race two drivers
+		# for the one PCI VGA resource.
+		#
+		# The probe's own PASS is the gate: it is emitted only after the
+		# driver child was seen, the pre-switch frame was rendered, the
+		# incumbent was removed, the other driver entered driver_runtime
+		# and the screen settled on a rendered desktop again. Every one
+		# of those is a named internal phase that makes the probe exit 1
+		# with the phase spelled out, so the single marker is complete
+		# rather than convenient. (Gating the intermediate markers
+		# individually is not possible: they race alpha_probe's PASS on
+		# the same serial stream.)
+		#
+		if {[string first "fb-switch-probe: FAIL" $output] >= 0} {
+			puts "\nsponge-desktop-disk: FB SWITCH FAIL - see the\
+ fb-switch-probe: FAIL phase= line above\n"
+			exit 1
+		}
+
+		puts "\nsponge-desktop-disk: FB SWITCH PASS - the display driver is a\
+  package: the running one was removed, the other installed, and the\
+  composited screen came back and settled on a rendered desktop\n"
+
 	}
 }

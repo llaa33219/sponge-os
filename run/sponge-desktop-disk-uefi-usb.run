@@ -397,7 +397,7 @@ set build_components {
 	core lib/ld init timer
 	server/report_rom server/nitpicker
 	driver/platform driver/acpi app/pci_decode
-	driver/framebuffer/boot
+	driver/framebuffer/boot driver/framebuffer/vesa
 	driver/ps2
 	driver/usb_host/pc driver/usb_hid server/event_filter
 	server/part_block server/vfs server/cached_fs_rom
@@ -605,6 +605,13 @@ if {[file exists "bin/qt6_libqgenode.tar"]} {
 source [file join [file dirname [file normalize [info script]]] \
                     bake.inc]
 
+#
+# Boot display driver: this media is UEFI/GOP, so the seeded first-boot
+# root is the fb_boot PACKAGE (docs/17 §1). driver_packages::stage
+# asserts the choice reached the staged bake manifest.
+#
+driver_runtime::fb_package fb_boot
+
 bake::stage $sys_dir img
 
 #
@@ -665,14 +672,28 @@ config
   + service CPU
   + service LOG
   + service Timer
+  # Report is here because a driver package declares it: the framebuffer
+  # driver publishes a `connectors` inventory. Without it in THIS list
+  # the request from driver_runtime would be denied at this hop even
+  # though the Tier-0 node routes Report to report_rom.
+  + service Report
   + service Gui
   + service Capture
   + service Event
   + service Platform
   + service Dma
-  + service Irq
-  + service Io_mem
-  + service Io_port
+  # The three hardware services below are spelled the way the CLIENTS
+  # request them, which is NOT the CamelCase a human would write:
+  # Genode's session service_name() is "IRQ" / "IO_MEM" / "IO_PORT"
+  # (io_mem_session.h:37 and friends), and the parent-provides match is
+  # case-sensitive. The old Irq/Io_mem/Io_port spelling was never
+  # requested by anyone and silently denied every one of them at this
+  # hop — invisible while every hardware component was a Tier-0 child,
+  # and the reason a packaged fb_vesa died with
+  # 'parent denied IO_MEM-session'.
+  + service IRQ
+  + service IO_MEM
+  + service IO_PORT
   + service Usb
   + service Rtc
   + service File_system
@@ -1582,19 +1603,10 @@ $vfs_log_policy  + route
 # and allocates a full-size Capture buffer (16 MiB at 2560x1600x32). caps
 # 6000 for the page-table-registry entries. No trailing comment on the
 # start line — see the nitpicker comment above for why.
-+ start fb | caps: 24000 | ram: 96M
-  + binary boot_fb
-  + route
-    + service ROM | label: config        | + parent | label: fb.config
-    + service ROM | label: platform_info | + parent
-    + service Report | + child report_rom
-    + service IO_MEM | + parent
-    + service ROM | + parent
-    + service PD | + parent
-    + service CPU | + parent
-    + service LOG | + parent
-    + service Timer | + child timer
-    + service Capture | + child nitpicker
+# The display driver is the fb_boot PACKAGE now (docs/17 §1): no static
+# `+ start fb` node. pkgd starts it inside driver_runtime from the
+# first-boot manifest, with the route its <sessions> declare
+# (pkg/fb_boot/metadata.xml) rather than the hand-written list below.
 
 + start ps2 | caps: 100 | ram: 1280K
   + config
@@ -1682,6 +1694,24 @@ $logdisk_child+ start system | caps: [driver_runtime::caps_for_system] | ram: 51
     + service ROM | label_last: focus | + child report_rom
     + service ROM | label_last: hover | + child report_rom
     + service ROM | label_last: system_state | + child report_rom
+    #
+    # platform_info BEFORE the rom_sys catch-all below, and matched by
+    # label_LAST rather than label. Two Genode facts combine here
+    # (both documented in run/driver_runtime.inc):
+    #   1. init evaluates a route query with the label SCOPED to the
+    #      requesting child ("fb_boot -> platform_info"), so a
+    #      `label: platform_info` rule never matches a request that
+    #      crossed a nesting level; `label_last` does, because it
+    #      compares the final element.
+    #   2. every `<service>` node is "specific" in
+    #      repos/os/src/lib/sandbox/route_model.h, and a denial inside
+    #      one STOPS the search instead of falling through to
+    #      `any-service -> parent`. The rom_sys catch-all denies the
+    #      label, so without this rule the request dies SILENTLY at
+    #      `parent denied ROM-session` with no "no route to service".
+    # The module itself is a CORE rom (base-sel4 exports it from the
+    # seL4 boot info, core/platform.cc:629), hence `<parent/>`.
+    + service ROM | label_last: platform_info | + parent
     + service ROM | + child rom_sys
     + service Gui | + child nitpicker
     + service Capture | + child nitpicker
@@ -1698,7 +1728,9 @@ $logdisk_child+ start system | caps: [driver_runtime::caps_for_system] | ram: 51
 # (Identical to the AHCI UEFI variant.)
 #
 set recipe_dir "${genode_dir}/repos/os/recipes/raw/drivers_interactive-pc"
-foreach f { fb.config event_filter.config } {
+# fb.config is gone: the GOP driver takes its period_ms from
+# pkg/fb_boot/metadata.xml, so there is no Tier-0 ROM to relay.
+foreach f { event_filter.config } {
 	if {![file exists "$recipe_dir/$f"]} {
 		error "$recipe_dir/$f missing (vendored drivers_interactive-pc recipe drifted?)"
 	}
@@ -1725,13 +1757,13 @@ foreach f { en_us.chargen special.chargen } {
 set boot_modules { }
 foreach m { core-sel4.a ld-sel4.lib.so init timer report_rom nitpicker platform acpi pci_decode \
             pc_usb_host usb_block part_block vfs cached_fs_rom nic_router \
-            boot_fb ps2 usb_hid event_filter pointer \
+            ps2 usb_hid event_filter pointer \
             sponge_logdisk } {
 	lappend boot_modules $m
 }
 foreach m { vfs.lib.so vfs_rump.lib.so rump.lib.so rump_fs.lib.so \
             en_us.chargen special.chargen \
-            fb.config event_filter.config } {
+            event_filter.config } {
 	lappend boot_modules $m
 }
 

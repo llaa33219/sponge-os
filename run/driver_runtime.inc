@@ -43,27 +43,61 @@
 # absorbed the whole remainder would starve the next sibling added to the
 # config.
 #
+# === A GENODE ROUTING TRAP THE PACKAGED fb DRIVERS WALKED INTO ==========
+#
+# `platform_info` is a CORE rom module (base-sel4 exports it from the
+# seL4 boot info, repos/base-sel4/src/core/platform.cc:629), so only
+# init's parent serves it. A packaged driver reaches the Tier-0 `system`
+# node as a GRANDCHILD request (fb -> driver_runtime -> system), and
+# two independent Genode facts turn that into a SILENT denial:
+#
+#   1. init evaluates a route query with the label SCOPED to the
+#      requesting child, i.e. "fb_boot -> platform_info"
+#      (repos/os/src/lib/sandbox/route_model.h: `Query::label_checksum`
+#      calls `skip_label_prefix(child, label)`). So a route rule of
+#      `+ service ROM | label: platform_info` never matches such a
+#      request no matter where it sits - `label_last:` does, because it
+#      compares only the final element.
+#
+#   2. every `<service>` node sets `_specific_service`
+#      (route_model.h), and Route_model::resolve RETHROWS on a denial
+#      from such a rule instead of trying the next one. The
+#      `+ service ROM | + child rom_sys` catch-all on the `system` node
+#      denies the label, so it swallows the request before
+#      `any-service -> parent` (which would have reached core) is tried.
+#
+# Together the symptom is a completely silent
+# `parent denied ROM-session` with no "no route to service" line. The fix
+# is one explicit rule placed BEFORE the rom_sys catch-all in the UEFI
+# product scenarios' Tier-0 `system` route:
+#
+#   + service ROM | label_last: platform_info | + parent
+#
+# Recorded here because both facts are properties of Genode's policy
+# model rather than of any one scenario, and because the silent failure
+# is expensive to re-diagnose.
+#
 # === QUOTA DERIVATION ====================================================
 #
-# The full shipped driver set, from the <quota> of each package:
+# The derivation now lives next to the `packages` list and the grant
+# variables at the top of the namespace below, so the arithmetic, the
+# package list and the staged set cannot drift apart. The short version:
 #
-#   pc_nic       32M /  1000 caps   (autostart, QEMU-verified)
+#   pc_nic       32M /  1000 caps
 #   usb_net      64M /  1500 caps
 #   pc_wifi     128M /  2500 caps
 #   intel_gpu    32M /  1200 caps
 #   pc_intel_fb  64M /  1500 caps
+#   fb_vesa      32M /  1000 caps   (BIOS media, autostarted)
+#   fb_boot      96M / 24000 caps   (UEFI media, autostarted)
 #   -------------------------
-#   total       320M /  7700 caps
+#   total       448M / 31700 caps
 #
-# GRANT_CAPS adds the ~10% headroom docs/17 §5 requires, so adding one
-# more driver is not a cliff-edge operation on a grant sized to fit:
-# 7700 * 1.10 = 8470, rounded up to 9000.
-#
-# GRANT_RAM is the exact 320M sum — RAM carries no hang failure mode (a
-# shortfall is a visible init warning and a refused launch via admission
-# control, not a silent hang), so headroom is spent where it buys
-# something: driver_runtime's own accounting plus the per-child overhead
-# the admission margin already budgets separately.
+# GRANT_CAPS 36000 (+13.4% over the sum), GRANT_RAM 448M (the exact sum).
+# The two framebuffer packages dominate the caps figure because only one
+# of them ever runs (docs/12 §4.6 exclusive group); the grant is sized
+# from the SUM anyway so that changing the media's firmware does not
+# change the number.
 #
 
 namespace eval driver_runtime {
@@ -78,10 +112,63 @@ namespace eval driver_runtime {
         pc_wifi     driver/wifi
         intel_gpu   driver/gpu/intel
         pc_intel_fb driver/framebuffer/intel/pc/spec/x86_64
+        fb_vesa     driver/framebuffer/vesa
+        fb_boot     driver/framebuffer/boot
     }
 
-    variable GRANT_CAPS 9000
-    variable GRANT_RAM  320M
+    #
+    # The display driver is an ordinary package now (docs/17 §1): there
+    # is no static `+ start fb` node left in any product topology, and
+    # the boot-time display comes up because the media's bake manifest
+    # names one of the two fb packages as a first-boot root and that
+    # package carries <autostart/> (docs/12 §4.5).
+    #
+    # WHICH one is a property of the firmware the media was built for,
+    # not of the machine class: vesa_fb programs the BIOS INT 10h mode
+    # set (BIOS / SeaBoot media), boot_fb maps the GOP framebuffer the
+    # kernel reported (UEFI / OVMF media). A scenario states it once:
+    #
+    #     driver_runtime::fb_package fb_vesa
+    #
+    # Both packages are STAGED on every medium, so the other one is one
+    # `vct remove` + `vct install` away (docs/15 §8.2).
+    #
+    variable fb_default "fb_vesa"
+    variable fb_active ""
+
+    #
+    # Grant sizing. The shipped driver set, from each package's
+    # <quota>:
+    #
+    #   pc_nic       32M /  1000 caps
+    #   usb_net      64M /  1500 caps
+    #   pc_wifi     128M /  2500 caps
+    #   intel_gpu    32M /  1200 caps
+    #   pc_intel_fb  64M /  1500 caps
+    #   fb_vesa      32M /  1000 caps   (BIOS media, autostarted)
+    #   fb_boot      96M / 24000 caps   (UEFI media, autostarted)
+    #   -------------------------
+    #   total       448M / 31700 caps
+    #
+    # Only ONE fb driver ever runs (docs/12 §4.6 exclusive group), but
+    # the grant is sized from the SUM so that a media whose manifest
+    # names the other one needs no edit here — a grant sized to the
+    # active driver would have to change with the firmware, and the
+    # arithmetic would live in five scenarios instead of one place.
+    #
+    # GRANT_CAPS adds the ~10% headroom docs/17 §5 requires, so adding
+    # one more driver is not a cliff-edge operation on a grant sized to
+    # fit: 31700 * 1.10 = 34870, rounded up to 36000.
+    #
+    # GRANT_RAM is the exact 448M sum — RAM carries no hang failure mode
+    # (a shortfall is a visible init warning and a refused launch via
+    # admission control, not a silent hang), so headroom is spent where
+    # it buys something: driver_runtime's own accounting plus the
+    # per-child overhead the admission margin already budgets
+    # separately.
+    #
+    variable GRANT_CAPS 36000
+    variable GRANT_RAM  448M
 
     #
     # The `system` sandbox's caps grant WITHOUT driver_runtime. Each
@@ -189,16 +276,36 @@ namespace eval driver_runtime {
     # (AGENTS.md §1.1) — the operator can also start a driver straight
     # from a run script with no package manager involved.
     #
-    # Only ETHERNET is listed. It is the class the QEMU-verified pc_nic
-    # path needs (run/sponge-pc-nic.run, upstream-proven shape). WIFI
-    # (pc_wifi) and VGA (intel_gpu, pc_intel_fb) are deliberately NOT
-    # granted here: VGA is already spoken for by the static fb policy
-    # that feeds vesa_fb, and taking it away is a Tier-0 decision the
-    # operator must make on purpose. docs/15-hardware-compatibility.md
-    # documents both.
+    # ETHERNET is the class the QEMU-verified pc_nic path needs
+    # (run/sponge-pc-nic.run, upstream-proven shape).
+    #
+    # VGA is granted to BOTH fb packages, under each package's OWN label
+    # prefix — the grant follows the package, which is what replaced the
+    # static `label_prefix: fb` policy of the old Tier-0 `+ start fb`
+    # node. Two grants for one class is safe precisely because the
+    # packages are mutually exclusive at RUN time (docs/12 §4.6,
+    # <exclusive group="fb"/>): the platform driver publishes the device
+    # under both prefixes, and only the running driver opens a Platform
+    # session. What the grant cannot do is decide WHICH driver runs —
+    # that is the bake manifest (first boot) or `vct install` /
+    # `vct remove` (afterwards), both of which are user-facing actions.
+    #
+    # This is also the change that dissolves docs/15 §8.2's "re-point the
+    # Tier-0 policy from scratch" bring-up step for the fb case: the
+    # grant no longer names a static node, so switching display drivers
+    # is a package operation on this media and a Tier-0 edit only on
+    # media built before it.
+    #
+    # WIFI (pc_wifi) and the two GPU/Intel drivers stay ungranted: they
+    # need a device class nothing on the product media claims, and
+    # taking a class away from a working driver is still a Tier-0
+    # decision the operator must make on purpose.
+    # docs/15-hardware-compatibility.md documents them.
     #
     proc platform_policies {} {
-        return "+ policy | label_prefix: system -> driver_runtime -> pc_nic | info: yes | + pci | class: ETHERNET"
+        return "+ policy | label_prefix: system -> driver_runtime -> pc_nic | info: yes | + pci | class: ETHERNET
+    + policy | label_prefix: system -> driver_runtime -> fb_vesa | info: yes | + pci | class: VGA
+    + policy | label_prefix: system -> driver_runtime -> fb_boot | info: yes | + pci | class: VGA"
     }
 
     #
@@ -239,6 +346,49 @@ namespace eval driver_runtime {
     }
 
     #
+    # driver_runtime::fb_package <name>
+    #
+    # State which framebuffer package THIS media boots with, once. The
+    # call also seeds the package into the bake manifest (via
+    # bake::add_package, when run/bake.inc was sourced) so the display
+    # comes up on the FIRST boot of a freshly installed medium — there
+    # is no other way in, because pkgd's first-boot seed is
+    # manifest-driven (docs/12 §13.5) and the two fb packages differ per
+    # firmware, which no single profile file can express.
+    #
+    # `stage` then ASSERTS that the choice actually reached the staged
+    # manifest, so a scenario that forgets the call aborts loudly instead
+    # of shipping media that boots to a dark screen.
+    #
+    proc fb_package {name} {
+        variable packages
+        variable fb_default
+        variable fb_active
+
+        if {[llength $packages] % 2 != 0} {
+            error "driver_runtime: packages list is malformed"
+        }
+        set known {}
+        foreach {n t} $packages { lappend known $n }
+        if {[lsearch -exact $known $name] < 0} {
+            error "driver_runtime::fb_package '$name' is not a staged \
+                   driver package (have: $known)"
+        }
+
+        if {$fb_active eq $name} { return $name }
+        if {$fb_active ne ""} {
+            error "driver_runtime::fb_package: media already declared \
+                   '$fb_active'; cannot also declare '$name'"
+        }
+        set fb_active $name
+
+        if {[info commands ::bake::add_package] ne ""} {
+            ::bake::add_package $name
+        }
+        return $name
+    }
+
+    #
     # Stage the driver packages onto a disk-served product media tree.
     #
     #   driver_packages::stage <sys_dir>
@@ -255,12 +405,24 @@ namespace eval driver_runtime {
     # is opt-in — vct install pc_nic — and this include keeps it that
     # way while still making it installable.
     #
+    # The ONE exception is the display driver, seeded by the scenario
+    # through fb_package rather than by the profile: a medium whose
+    # manifest does not name an fb package boots a desktop nobody can
+    # see, and `vct install fb_vesa` is not available yet at that point
+    # (the medium is not installed, and the storage chain is what brought
+    # the system up at all). The choice is per-scenario because it
+    # depends on the firmware, and the assertion at the end of this proc
+    # is what keeps the choice and the staged media from drifting apart.
+    #
     proc stage {sys_dir} {
         variable packages
+        variable fb_active
+        variable fb_default
         set index "${sys_dir}/pkg_index.xml"
         if {![file exists $index]} {
             error "driver_packages: ${index} missing — call bake::stage first"
         }
+        if {$fb_active eq ""} { set fb_active $fb_default }
 
         set repo "${::genode_dir}/.."
 
@@ -317,7 +479,58 @@ namespace eval driver_runtime {
         puts -nonewline $fh $body
         close $fh
 
+        #
+        # The boot-display assertion. The bake manifest is the ONLY
+        # first-boot root mechanism sponge_pkgd has (docs/12 §13.5), so
+        # the active fb package has to be named IN IT — being in
+        # pkg_index.xml is not enough (index = "installable",
+        # manifest = "seeded on first boot").
+        #
+        # Two cases, and the distinction is the scenario's, not this
+        # proc's: a scenario that sources run/bake.inc owns the manifest
+        # and must have named the fb package through
+        # driver_runtime::fb_package (which forwards to bake::add_package);
+        # a scenario that stages its own minimal package set (the NVMe
+        # storage variant) has no manifest at all, and one is synthesized
+        # here naming exactly the fb package — a display, and nothing
+        # else, is what that variant needs seeded.
+        #
+        set manifest "${sys_dir}/bake/bake_manifest.json"
+        if {[file exists $manifest]} {
+            set fh [open $manifest r]
+            set body [read $fh]
+            close $fh
+            if {![string match "*\"${fb_active}\"*" $body]} {
+                error "driver_packages: '${fb_active}' is staged but NOT \
+                       named in ${manifest} — the media would boot with no \
+                       display driver at all. Call driver_runtime::fb_package \
+                       ${fb_active} before bake::stage."
+            }
+        } else {
+            #
+            # pkgd reads the manifest as the FLAT /system/bake_manifest.json
+            # (every scenario's pkgd route asks its parent for exactly that
+            # label), which is why the file is written here and not into
+            # bake/.
+            #
+            set flat "${sys_dir}/bake_manifest.json"
+            set fh [open $flat w]
+            puts $fh "{"
+            puts $fh "  \"profile\": \"$fb_active\","
+            # The brackets are escaped: inside a Tcl double-quoted
+            # string a bare [ starts command substitution, and the JSON
+            # array would be evaluated as a command named after the
+            # package.
+            puts $fh "  \"staged_packages\": \[\"${fb_active}\"\]"
+            puts $fh "}"
+            close $fh
+            puts "driver_packages: this scenario stages no bake profile —\
+                   synthesized ${flat} seeding the display driver alone"
+        }
+
         puts "driver_packages: staged [expr {[llength $packages] / 2}] driver packages \
                into ${sys_dir} (opt-in: 'vct install <driver>')"
+        puts "driver_packages: boot display driver = '${fb_active}' \
+               (seeded from the bake manifest)"
     }
 }

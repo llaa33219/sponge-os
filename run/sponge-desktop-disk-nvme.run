@@ -190,7 +190,7 @@ set build_components {
 	core lib/ld init timer
 	server/report_rom server/nitpicker
 	driver/platform driver/acpi app/pci_decode
-	driver/framebuffer/vesa driver/ps2
+	driver/framebuffer/vesa driver/framebuffer/boot driver/ps2
 	driver/usb_host/pc driver/usb_hid server/event_filter
 	server/part_block server/vfs server/cached_fs_rom
 	lib/vfs lib/vfs_rump lib/rump lib/rump_fs
@@ -359,6 +359,13 @@ close $index_fh
 # Called after this scenario has written pkg_index.xml, which
 # driver_runtime::stage extends.
 #
+# The DISPLAY driver is the deliberate exception: this scenario stages
+# no bake profile at all (its package set is the single `hello` probe
+# marker), so driver_packages::stage synthesizes a first-boot manifest
+# naming fb_vesa alone. Without a display driver the desktop cannot be
+# pixel-verified, which is this scenario's whole purpose.
+#
+driver_runtime::fb_package fb_vesa
 driver_runtime::stage $sys_dir
 
 # ========================================================================
@@ -412,14 +419,28 @@ config
   + service CPU
   + service LOG
   + service Timer
+  # Report is here because a driver package declares it: the framebuffer
+  # driver publishes a `connectors` inventory. Without it in THIS list
+  # the request from driver_runtime would be denied at this hop even
+  # though the Tier-0 node routes Report to report_rom.
+  + service Report
   + service Gui
   + service Capture
   + service Event
   + service Platform
   + service Dma
-  + service Irq
-  + service Io_mem
-  + service Io_port
+  # The three hardware services below are spelled the way the CLIENTS
+  # request them, which is NOT the CamelCase a human would write:
+  # Genode's session service_name() is "IRQ" / "IO_MEM" / "IO_PORT"
+  # (io_mem_session.h:37 and friends), and the parent-provides match is
+  # case-sensitive. The old Irq/Io_mem/Io_port spelling was never
+  # requested by anyone and silently denied every one of them at this
+  # hop — invisible while every hardware component was a Tier-0 child,
+  # and the reason a packaged fb_vesa died with
+  # 'parent denied IO_MEM-session'.
+  + service IRQ
+  + service IO_MEM
+  + service IO_PORT
   + service Usb
   + service Rtc
   + service File_system
@@ -1077,22 +1098,10 @@ config
       + parent
       + any-child
 
-+ start fb | caps: 1000 | ram: 32M
-  + binary vesa_fb
-  + route
-    + service ROM | label_last: ld.lib.so | + parent
-    + service ROM | label: config | + parent | label: fb.config
-    + service Report | + child report_rom
-    + service Dma | + child platform
-    + service Platform | + child platform
-    + service IO_PORT | + parent
-    + service IO_MEM | + parent
-    + service ROM | + parent
-    + service PD | + parent
-    + service CPU | + parent
-    + service LOG | + parent
-    + service Timer | + child timer
-    + service Capture | + child nitpicker
+# The display driver is the fb_vesa PACKAGE now (docs/17 §1): no static
+# `+ start fb` node. pkgd starts it inside driver_runtime from the
+# first-boot manifest, with the route its <sessions> declare
+# (pkg/fb_vesa/metadata.xml) rather than the hand-written list above.
 
 + start ps2 | caps: 100 | ram: 1280K
   + config
@@ -1181,6 +1190,19 @@ config
     + service ROM | label_last: focus | + child report_rom
     + service ROM | label_last: hover | + child report_rom
     + service ROM | label_last: system_state | + child report_rom
+    #
+    # platform_info BEFORE the rom_sys catch-all: a CORE rom module
+    # (base-sel4 exports it from the multiboot2 boot info,
+    # core/platform.cc:629), matched by label_LAST because the query
+    # label is child-scoped at whichever node the request arrives at.
+    # Every `<service>` node is "specific" in
+    # repos/os/src/lib/sandbox/route_model.h, so the rom_sys denial
+    # below would otherwise stop the search silently. The BIOS media
+    # needs it too once the display driver is a package: the fb-switch
+    # proof installs fb_boot here, and fb_boot reads this ROM. Whether
+    # the SeaBIOS/GRUB2 media actually carries a framebuffer tag is a
+    # separate, measured question (docs/15 §8).
+    + service ROM | label_last: platform_info | + parent
     + service ROM | + child rom_sys
     + service Gui | + child nitpicker
     + service Capture | + child nitpicker
@@ -1199,7 +1221,9 @@ install_config $tier0_config
 # Stage the driver sub-init config modules (Tier-0 boot modules).
 #
 set recipe_dir "${genode_dir}/repos/os/recipes/raw/drivers_interactive-pc"
-foreach f { fb.config event_filter.config } {
+# fb.config is gone: the framebuffer mode is declared in
+# pkg/fb_vesa/metadata.xml, so there is no Tier-0 ROM to relay.
+foreach f { event_filter.config } {
 	if {![file exists "$recipe_dir/$f"]} {
 		error "$recipe_dir/$f missing (vendored drivers_interactive-pc recipe drifted?)"
 	}
@@ -1224,12 +1248,12 @@ foreach f { en_us.chargen special.chargen } {
 set boot_modules { }
 foreach m { core-sel4.a ld-sel4.lib.so init timer report_rom nitpicker platform acpi pci_decode \
             nvme part_block partition_check vfs cached_fs_rom nic_router \
-            vesa_fb ps2 pc_usb_host usb_hid event_filter pointer } {
+            ps2 pc_usb_host usb_hid event_filter pointer } {
 	lappend boot_modules $m
 }
 foreach m { vfs.lib.so vfs_rump.lib.so rump.lib.so rump_fs.lib.so \
             en_us.chargen special.chargen \
-            fb.config event_filter.config } {
+            event_filter.config } {
 	lappend boot_modules $m
 }
 

@@ -101,6 +101,12 @@ namespace eval supervisor {
 	# desktop at every boot. Mirrors the exclusion in sponge-de's health
 	# watcher (repos/sponge/src/sponge-de/main.cc).
 	#
+	#
+	# A scenario that adds another clean-exiting boot probe appends it
+	# here (supervisor::ignore_exited) — a probe that did its job must
+	# not be read as a fault, and a probe that FAILED should be allowed
+	# to stay loud rather than being silenced by this list.
+	#
 	variable ignore_exited "alpha_probe,cfg_probe"
 
 	#
@@ -485,6 +491,15 @@ found $n - the supervised sandbox's config source drifted"
 #
 # Boot modules the product media must carry.
 #
+proc supervisor::ignore_exited { names } {
+	variable ignore_exited
+	foreach n $names {
+		if {[string first $n $ignore_exited] < 0} {
+			append ignore_exited ",$n"
+		}
+	}
+}
+
 proc supervisor::boot_modules {} {
 	variable enabled
 
