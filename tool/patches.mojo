@@ -158,11 +158,13 @@ def parse_ledger(root: String) raises -> List[PatchRow]:
 
 def slugify(subject: String) raises -> String:
     """Turn a commit subject into a filename-safe slug:
-    lowercase, every run of non-alphanumeric bytes becomes one '-'."""
+    lowercase, every run of non-alphanumeric bytes becomes one '-'.
+    Iterates by codepoint — byte-index slicing crashes on multi-byte
+    UTF-8 (e.g. an em-dash in a subject)."""
     var out = String("")
     var last_was_dash = True  # suppress a leading dash
-    for i in range(subject.byte_length()):
-        var ch = String(subject[byte=i])
+    for cp in subject.codepoints():
+        var ch = String(cp)
         var lower = String(Python.import_module("builtins").str(ch).lower())
         var is_alnum = False
         if lower.byte_length() == 1:
@@ -370,22 +372,24 @@ def cmd_drop(rows: List[PatchRow], root: String, number: Int) raises:
     print("Dropping a patch is a deliberate act and is NOT automated")
     print("(AGENTS.md §5.2). Perform these steps by hand:")
     print()
-    print("  1. Revert the patch commit:")
-    print("       git revert " + full_sha)
+    print("  1. Revert the patch commit IN THE FORK (the genode/ submodule):")
+    print("       cd genode && git revert " + full_sha)
+    print("       git push origin main   # github.com/llaa33219/sponge-os-genode")
+    print("     (Contrib patch-file rows — the ones whose commit lives in")
+    print("      this repo — are dropped by deleting the docs/patches file")
+    print("      and its recipe wiring instead.)")
     print()
-    print("  2. Remove row #" + String(number)
-          + " from the patch ledger table in")
-    print("     docs/11-environment.md §4 and renumber if needed.")
-    print()
-    print("  3. Commit the revert together with the ledger edit as its own")
+    print("  2. Bump the submodule pin here AND remove row #" + String(number))
+    print("     from the patch ledger (docs/11-environment.md §4) in ONE")
     print("     commit on main, with a message that records the drop, e.g.:")
     print("       revert(genode): drop patch #" + String(number)
           + " (absorbed upstream)")
+    print("     (git add genode docs/11-environment.md)")
     print()
-    print("If upstream absorbed the fix via a subtree upgrade instead of a")
-    print("plain revert, the alternative is re-running")
-    print("the sponge-os-genode fork and dropping the row in that")
-    print("same commit.")
+    print("If upstream absorbed the fix via a Genode upgrade instead of a")
+    print("plain revert, the alternative is merging upstream in the fork")
+    print("(dropping the patch there) and bumping the pin + the row here in")
+    print("that same commit.")
 
 
 def main() raises:
