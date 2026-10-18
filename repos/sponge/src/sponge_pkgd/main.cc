@@ -133,6 +133,19 @@ struct Sponge::Pkgd::Package
 
 	bool is_driver() const
 	{ return Genode::strcmp(kind.string(), "driver") == 0; }
+
+	/*
+	 * Exclusive group (docs/12-package-format.md §4.6). Empty means the
+	 * package claims no exclusive hardware; a non-empty value means at
+	 * most one RUNNING package may carry the same group at a time. The
+	 * framebuffer drivers are the first such group: the PCI VGA class is
+	 * offered to exactly one policy, so a second fb driver would take
+	 * the display away rather than add a capability.
+	 */
+	Genode::String<16>  exclusive_group { };
+
+	bool exclusive() const
+	{ return Genode::strcmp(exclusive_group.string(), "") != 0; }
 	bool                resizeable     { true };   /* Phase 16 W9: default-yes; opt-out
 	                                                  is <resizeable>no</resizeable>. The
 	                                                  closed-form token is yes/no (D16.10). */
@@ -426,6 +439,11 @@ class Sponge::Pkgd::Main
 		unsigned       _last_need_caps  { 0 };
 		unsigned       _last_avail_caps { 0 };
 
+		/* Cached for the same reason: the peer and group a replayed
+		 * exclusive-conflict must name, not re-derive. */
+		Genode::String<64> _last_peer  { };
+		Genode::String<16> _last_group { };
+
 		/*
 		 * Selects which result reporter the _report_* helpers write to
 		 * during an in-flight request. Set at the top of each handler
@@ -718,6 +736,11 @@ class Sponge::Pkgd::Main
 		void _report_insufficient(char const *op, Genode::String<128> const &pkg,
 		                          Genode::size_t need_ram, Genode::size_t avail_ram,
 		                          unsigned need_caps, unsigned avail_caps);
+		void _report_conflict(char const *op, Genode::String<128> const &pkg,
+		                      Genode::String<64> const &peer,
+		                      Genode::String<16> const &group);
+		Genode::String<64> _exclusive_peer(Package const &p,
+		                                  Genode::String<64> const &self);
 
 		/*
 		 * Re-emit the cached result of the previous request on the
@@ -975,6 +998,23 @@ void Sponge::Pkgd::Main::_parse_package(Genode::Xml_node const &pkg,
 					Genode::Byte_range_ptr(cfg_buf, sizeof(cfg_buf)),
 					Genode::Xml_generator::Tag_name("config"),
 					[&](Genode::Xml_generator &g) {
+						/*
+						 * The metadata <config> element's own attributes
+						 * are configuration and are copied verbatim;
+						 * append_node_content alone preserves only the
+						 * CHILD nodes, so a bare `<config>` used to be
+						 * emitted with every attribute dropped. Silent
+						 * for the shipped app packages (children-only
+						 * configs) and fatal for an attribute-driven one:
+						 * vesa_fb reads width/height off its config root,
+						 * so a packaged framebuffer driver came up with
+						 * 0x0 and set no mode at all.
+						 */
+						child.for_each_attribute([&] (auto const &attr) {
+							Genode::String<64> v { };
+							attr.value(v);
+							g.attribute(attr.name().string(), v);
+						});
 						/* append_node_content is nodiscard: failure
 						 * (max-depth exceeded) just yields a shorter
 						 * serialized fragment, logged below. */
@@ -1081,6 +1121,16 @@ void Sponge::Pkgd::Main::_parse_package(Genode::Xml_node const &pkg,
 		}
 		else if (child.has_type("autostart")) {
 			out.has_autostart = true;
+		}
+		else if (child.has_type("exclusive")) {
+			/*
+			 * Closed-form: only the `group` attribute is read, and an
+			 * empty / missing value means "no exclusive claim" rather
+			 * than an error — a package with no hardware exclusivity to
+			 * declare simply omits the element (docs/12 §4.6).
+			 */
+			out.exclusive_group =
+				child.attribute_value("group", Genode::String<16>());
 		}
 		else if (child.has_type("kind")) {
 			/* Closed-form set (docs/12 §4.5): anything other than
@@ -1519,6 +1569,35 @@ void Sponge::Pkgd::Main::_sync_running_state()
 }
 
 
+/*
+ * The running peer that holds `name`'s exclusive group, or an empty
+ * string when the group is free (docs/12-package-format.md §4.6).
+ *
+ * Scans the RUNNING set only: the constraint is about simultaneous
+ * hardware claims, not about what is staged on the media. Both frame-
+ * buffer packages are staged on every product medium so the user can
+ * switch; only the active one holds the group.
+ */
+Genode::String<64> Sponge::Pkgd::Main::_exclusive_peer(
+	Package const &p, Genode::String<64> const &self)
+{
+	if (!p.exclusive()) return Genode::String<64>();
+
+	for (unsigned i = 0; i < _num_installed; ++i) {
+		Package const &o = _installed[i];
+		if (!o.exclusive() || !_is_running(o.name.string()))
+			continue;
+		if (Genode::strcmp(o.exclusive_group.string(),
+		                   p.exclusive_group.string()) != 0)
+			continue;
+		if (Genode::strcmp(o.name.string(), self.string()) == 0)
+			continue;
+		return o.name;
+	}
+	return Genode::String<64>();
+}
+
+
 void Sponge::Pkgd::Main::_do_install(Genode::String<128> const &pkg)
 {
 	char const *const name = pkg.string();
@@ -1712,6 +1791,24 @@ void Sponge::Pkgd::Main::_do_launch(Genode::String<128> const &pkg)
 	if (_is_running(name)) {
 		_report_launch_ok(pkg, "already-running");
 		return;
+	}
+
+	/* Exclusive-group gate, same rule as the install path
+	 * (docs/12 §4.6). Defense in depth for the shipped framebuffer
+	 * drivers: today the install pre-flight already refuses the second
+	 * one, so this branch is unreachable through vct — but it is the
+	 * guard that keeps the invariant true for any future peer in the
+	 * group, and for a deployment that marks a package NOT autostart. */
+	for (unsigned i = 0; i < _num_installed; ++i) {
+		if (Genode::strcmp(_installed[i].name.string(), name) != 0)
+			continue;
+		Genode::String<64> const peer = _exclusive_peer(_installed[i], name);
+		if (peer != Genode::String<64>()) {
+			_report_conflict("launch", pkg, peer,
+			                 _installed[i].exclusive_group);
+			return;
+		}
+		break;
 	}
 
 	/*
@@ -2256,6 +2353,7 @@ void Sponge::Pkgd::Main::_generate_installed_report()
 					 * all — can render drivers apart from apps instead of
 					 * offering a driver in the application launcher. */
 					g.attribute("kind", p.kind.string());
+					g.attribute("exclusive", p.exclusive_group.string());
 					if (p.has_launcher)
 						g.attribute("category", p.launcher_category);
 					g.attribute("description", p.description);
@@ -2491,6 +2589,11 @@ void Sponge::Pkgd::Main::_report_list_ok()
 					/* Which sandbox hosts the package (docs/12 §4.5), so
 					 * a watcher can render drivers apart from apps. */
 					g.attribute("kind", p.kind.string());
+					/* Exclusive-group claim (docs/12 §4.6), empty for
+					 * the overwhelming majority; a watcher uses it to
+					 * tell the user which package must be removed before
+					 * another one in the same group can start. */
+					g.attribute("exclusive", p.exclusive_group.string());
 					if (p.has_launcher)
 						g.attribute("category", p.launcher_category);
 					g.attribute("description", p.description);
@@ -2532,6 +2635,11 @@ void Sponge::Pkgd::Main::_replay_last_result()
 		                     _last_need_caps, _last_avail_caps);
 		return;
 	}
+	if (_last_status == Genode::String<32>("exclusive-conflict")) {
+		_report_conflict(_last_op.string(), _last_pkg,
+		                 _last_peer, _last_group);
+		return;
+	}
 	if (_last_status == Genode::String<32>("error")) {
 		_report_error(_last_op.string(), _last_pkg, _last_message.string());
 		return;
@@ -2545,7 +2653,35 @@ void Sponge::Pkgd::Main::_replay_last_result()
 		return;
 	}
 	if (_last_op == Genode::String<32>("install")) {
-		Package const &root = _plan[_num_plan > 0 ? _num_plan - 1 : 0];
+Package const &root = _plan[_num_plan > 0 ? _num_plan - 1 : 0];
+
+	/*
+	 * Exclusive-group pre-flight (docs/12 §4.6). An <autostart/>
+	 * package enters the running set the moment the install lands, so an
+	 * install IS a spawn: `vct install fb_boot` on a medium where
+	 * fb_vesa is already driving the display must be REFUSED rather than
+	 * quietly produce two claimants of the PCI VGA class — the visible
+	 * result of that race is a dark screen with no diagnosis anywhere.
+	 *
+	 * Refusing (rather than auto-stopping the incumbent) keeps the rule
+	 * one-directional and auditable: a package is never taken away by
+	 * an operation the user did not name. The remedy is in the message
+	 * and in docs/15 §8.2 — `vct remove <old>` then install again.
+	 */
+	for (unsigned i = 0; i < _num_plan; ++i) {
+		Package const &c = _plan[i];
+		if (!c.has_autostart || _is_running(c.name.string()))
+			continue;
+		Genode::String<64> const peer = _exclusive_peer(c, c.name);
+		if (c.exclusive())
+			Genode::log("sponge_pkgd: exclusive-group check on '", c.name,
+			            "' group='", c.exclusive_group, "' peer='", peer, "'");
+		if (peer != Genode::String<64>()) {
+			_report_conflict("install", c.name, peer,
+			                 c.exclusive_group);
+			return;
+		}
+	}
 		_report_install_ok(_last_pkg, root, _last_items, _num_last_items);
 		return;
 	}
@@ -3189,6 +3325,47 @@ void Sponge::Pkgd::Main::_report_insufficient(char const *op,
 		g.attribute("avail_ram",  avail_ram);
 		g.attribute("need_caps",  need_caps);
 		g.attribute("avail_caps", avail_caps);
+	});
+}
+
+
+/*
+ * Refusal for the exclusive-group gate (docs/12 §4.6). Carries the
+ * running peer and the group name so the caller can act on the answer
+ * instead of guessing: `exclusive-conflict` is a normal status, not an
+ * error, and the remedy is in the same message.
+ */
+void Sponge::Pkgd::Main::_report_conflict(char const *op,
+                                          Genode::String<128> const &pkg,
+                                          Genode::String<64> const &peer,
+                                          Genode::String<16> const &group)
+{
+	_last_op      = Genode::String<32>(op);
+	_last_pkg     = pkg;
+	_last_status  = Genode::String<32>("exclusive-conflict");
+	_last_message = Genode::String<256>();
+	_last_peer    = peer;
+	_last_group   = group;
+
+	Genode::log("sponge_pkgd: ", op, " ", pkg, " -> exclusive-conflict (",
+	            group, " is held by the running package ", peer, ")");
+
+	/* `error` is carried as well as the structured fields so every
+	 * generic renderer in vct (the --manual install path, the JSON
+	 * fallback) has something to print without special-casing this
+	 * status. */
+	Genode::String<256> const msg("the '", group, "' resource is in use by ",
+	                              peer, "; remove it before starting ", pkg);
+	_last_message = msg;
+
+	_result().generate_xml([&](Genode::Xml_generator &g) {
+		g.attribute("status", "exclusive-conflict");
+		g.attribute("op",     op);
+		g.attribute("pkg",    pkg);
+		g.attribute("group",  group.string());
+		g.attribute("peer",   peer.string());
+		g.attribute("remedy", "remove the running package, then retry");
+		g.attribute("error",  msg.string());
 	});
 }
 
