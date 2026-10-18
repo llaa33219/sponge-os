@@ -646,6 +646,17 @@ int InstallCommand::_render_install_human(Genode::Xml_node const &result)
 	Genode::String<128> const pkg =
 		result.attribute_value("pkg", Genode::String<128>());
 
+	if (status == Genode::String<32>("exclusive-conflict")) {
+		Genode::String<64> const peer =
+			result.attribute_value("peer", Genode::String<64>());
+		Genode::log("install: ", pkg,
+		            " cannot start while ", peer,
+		            " holds the same hardware resource");
+		Genode::log("  remedy: vct remove ", peer);
+		Genode::log("          vct install ", pkg);
+		return 1;
+	}
+
 	if (status != Genode::String<32>("ok")) {
 		Genode::String<256> const err =
 			result.attribute_value("error", Genode::String<256>());
@@ -714,6 +725,15 @@ int InstallCommand::_render_install_json(Genode::Xml_node const &result)
 	Genode::String<128> const pkg =
 		result.attribute_value("pkg", Genode::String<128>());
 
+	if (status == Genode::String<32>("exclusive-conflict")) {
+		Genode::log("{\"command\":\"install\",\"package\":\"", pkg,
+		            "\",\"status\":\"error\",\"error\":\"exclusive-conflict\",\"peer\":\"",
+		            result.attribute_value("peer", Genode::String<64>()),
+		            "\",\"group\":\"",
+		            result.attribute_value("group", Genode::String<32>()),
+		            "\"}");
+		return 1;
+	}
 	if (status != Genode::String<32>("ok")) {
 		Genode::String<256> const err =
 			result.attribute_value("error", Genode::String<256>());
@@ -956,6 +976,16 @@ int LaunchCommand::_render_human(Genode::Xml_node const &result)
 		            " failed — its binary is not present in this image");
 		return 1;
 	}
+	if (status == Genode::String<32>("exclusive-conflict")) {
+		Genode::String<64> const peer =
+			result.attribute_value("peer", Genode::String<64>());
+		Genode::log("launch: ", pkg,
+		            " failed — ", peer,
+		            " already holds this hardware resource");
+		Genode::log("  remedy: vct remove ", peer);
+		Genode::log("          vct launch ", pkg);
+		return 1;
+	}
 	if (status == Genode::String<32>("insufficient-resources")) {
 		Genode::log("launch: ", pkg,
 		            " failed — not enough memory or capabilities "
@@ -1003,6 +1033,15 @@ int LaunchCommand::_render_json(Genode::Xml_node const &result)
 	if (status == Genode::String<32>("binary-missing")) {
 		Genode::log("{\"command\":\"launch\",\"package\":\"", pkg,
 		            "\",\"status\":\"error\",\"error\":\"binary-missing\"}");
+		return 1;
+	}
+	if (status == Genode::String<32>("exclusive-conflict")) {
+		Genode::log("{\"command\":\"launch\",\"package\":\"", pkg,
+		            "\",\"status\":\"error\",\"error\":\"exclusive-conflict\",\"peer\":\"",
+		            result.attribute_value("peer", Genode::String<64>()),
+		            "\",\"group\":\"",
+		            result.attribute_value("group", Genode::String<32>()),
+		            "\"}");
 		return 1;
 	}
 	if (status == Genode::String<32>("insufficient-resources")) {
