@@ -75,6 +75,7 @@
  */
 
 #include <base/attached_rom_dataspace.h>
+#include <base/thread.h>
 #include <base/component.h>
 #include <base/heap.h>
 #include <base/log.h>
@@ -549,6 +550,57 @@ class Sponge::Pkgd::Main
 		Genode::Constructible<Genode::Vfs::Root> _vfs_env { };
 
 		/*
+		 * Thread that runs the boot-time part of the work which TOUCHES
+		 * STORAGE.
+		 *
+		 * Component::construct() runs on env.ep()'s dispatch thread, so a
+		 * File_system session request issued from the constructor blocks
+		 * the entrypoint for as long as the storage chain takes to answer.
+		 * That is the same defect docs/evidence/logdisk-field-diagnosis.md
+		 * §3(a) records for the log sink, and pkgd repeats it three times:
+		 * _init_store() opens the vfs File_system, _load_store() stats and
+		 * reads it, _seed_roots_from_bake()/_init_bake() write it. On a
+		 * slow or stalled USB boot device none of that comes back, the
+		 * sandbox heartbeat counts skips, and pkgd is abandoned and
+		 * respawned - repeatedly, because it blocks in exactly the same
+		 * place every incarnation.
+		 *
+		 * Moving the bootstrap off the constructor leaves env.ep() free to
+		 * answer from the first instruction after member construction, so
+		 * a child that is merely WAITING ON ITS STORE is not a child with
+		 * a wedged entrypoint. env.ep() still dispatches the storage
+		 * chain's completion signals - only the blocking calls move.
+		 *
+		 * The two never run concurrently: the bootstrap completes before
+		 * the request handlers are armed.
+		 */
+		struct Bootstrap : Genode::Thread
+		{
+			Sponge::Pkgd::Main &_main;
+
+			Bootstrap(Genode::Env &env, Sponge::Pkgd::Main &main)
+			: Thread(env, "pkgd-store", Stack_size { 64 * 1024 }), _main(main) { }
+
+			void entry() override
+			{
+				_main._bootstrap();
+				Genode::sleep_forever();
+			}
+
+			bool start_or_log()
+			{
+				if (start() != Start_result::OK) {
+					Genode::error("sponge_pkgd: storage thread could not be\
+ created - falling back to the entrypoint");
+					return false;
+				}
+				return true;
+			}
+		};
+
+		Genode::Constructible<Bootstrap> _bootstrap_thread { };
+
+		/*
 		 * Bake-manifest ROM (optional, config-gated by <bake/>): the
 		 * first-boot package seed source (see _seed_roots_from_bake).
 		 */
@@ -671,6 +723,9 @@ class Sponge::Pkgd::Main
 		void _visit(char const *name);
 
 		void _load_index();
+
+		/* Runs on the Bootstrap thread, never on env.ep(). */
+		void _bootstrap();
 		bool _load_package(char const *name, Package &out);
 		void _parse_package(Genode::Xml_node const &pkg, char const *name, Package &out);
 
@@ -3418,20 +3473,19 @@ void Sponge::Pkgd::Main::_init_driver_admission()
 }
 
 
-Sponge::Pkgd::Main::Main(Genode::Env &env) : _env(env)
+/*
+ * The boot-time bootstrap, run on the Bootstrap thread.
+ *
+ * Split out of the constructor because the constructor runs on
+ * env.ep() and everything below can block on the storage chain - see the
+ * Bootstrap comment. Everything here happens exactly once, before any
+ * request handler is armed, so no request can observe a
+ * half-bootstrapped daemon.
+ */
+void Sponge::Pkgd::Main::_bootstrap()
 {
-	Genode::log("sponge_pkgd: ready");
-
+	Genode::log("sponge_pkgd: bootstrap thread started");
 	_load_index();
-
-	_config_rom.update();
-	if (_config_rom.valid()) {
-		_binary_prefix = _config_rom.node().attribute_value(
-		    "binary_prefix", Genode::String<32>());
-		Genode::log("sponge_pkgd: binary_prefix='", _binary_prefix, "'");
-	} else {
-		Genode::warning("sponge_pkgd: config ROM not valid at construct");
-	}
 
 	/* Optional persistent store: activate it if <config> declares a
 	 * <vfs>, then reload the previously-installed root set (if any). In
@@ -3494,6 +3548,21 @@ _init_admission();
 	 * away — on a restored boot this already lists the survivors. */
 	_generate_installed_report();
 
+	/*
+	 * Hand over to env.ep().
+	 *
+	 * Order matters and is the whole point of the split. The pending
+	 * request is drained HERE, on the bootstrap thread, because at this
+	 * point no signal handler is armed and nothing else can touch the
+	 * resolver. Only once that is done is the primary sigh armed, from
+	 * which moment env.ep() owns request handling and the bootstrap thread
+	 * touches nothing the ep can reach. Arming the sigh before draining
+	 * would let both threads run _handle_request() concurrently against
+	 * the same unsynchronised _roots/_installed/_last_request_sig - the
+	 * de-duplication replay makes that usually harmless, which is exactly
+	 * why it must not be left to chance.
+	 */
+	_handle_request();
 	_request_rom.sigh(_request_handler);
 	_request_rom.update();
 
@@ -3504,11 +3573,43 @@ _init_admission();
 	 * so the ROM session MUST NOT be opened in scenarios that do not
 	 * route it. The config gate is the same opt-in pattern _init_store
 	 * uses for <vfs>.
+	 *
+	 * Last, because arming these sighs is the point at which env.ep() may
+	 * start running handlers; nothing after this call touches resolver
+	 * state.
 	 */
 	_init_launcher_channel();
 
-	/* Process a request that arrived before the signal handler was wired. */
-	_handle_request();
+	Genode::log("sponge_pkgd: bootstrap complete");
+}
+
+
+Sponge::Pkgd::Main::Main(Genode::Env &env) : _env(env)
+{
+	Genode::log("sponge_pkgd: ready");
+
+	_config_rom.update();
+	if (_config_rom.valid()) {
+		_binary_prefix = _config_rom.node().attribute_value(
+		    "binary_prefix", Genode::String<32>());
+		Genode::log("sponge_pkgd: binary_prefix='", _binary_prefix, "'");
+	} else {
+		Genode::warning("sponge_pkgd: config ROM not valid at construct");
+	}
+
+	/* The config ROM is served by init from this component's own inline
+	 * <config> node, so reading it above cannot involve the storage
+	 * chain. Everything that can - the vfs session, the store, the bake
+	 * seeding - runs on its own thread instead, and env.ep() is free from
+	 * here on. */
+	_bootstrap_thread.construct(_env, *this);
+	if (!_bootstrap_thread->start_or_log()) {
+		/* No thread: a single-threaded daemon is the old behaviour, and
+		 * is strictly better than a daemon whose storage work has not
+		 * happened at all. */
+		_bootstrap_thread.destruct();
+		_bootstrap();
+	}
 }
 
 
