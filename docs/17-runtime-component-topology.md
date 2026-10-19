@@ -307,6 +307,43 @@ component must never be able to freeze the desktop. Status after the
   drag versus idle. Zero throughout ⇒ a different cause, and the next
   candidates are the two rows below. Evidence, receipts and the full
   bisection: [`docs/evidence/sponge-debug-panelfreeze.md`](evidence/sponge-debug-panelfreeze.md).
+- [x] **The quota-request wedge — the permanent-freeze mechanism, found
+  and fixed (ledger row #25, 2026-10-19); the field's *total* freeze is
+  still NOT reproduced in QEMU.** The 2026-10-19 field report adds the
+  fact that rules out saturation: the freeze **never heals**. `Parent::
+  upgrade` carries no "denied" answer, and `Sandbox::Child::
+  resource_request` answered a request it could not satisfy by
+  transferring the child's **own** (exhausted) leftover quota, warned
+  about the failure and then logged `granted immediately` anyway — so
+  the client looped forever, one RPC per iteration, against
+  `Sandbox::Child`'s `_env.ep().rpc_ep()`: the single entrypoint that
+  carries **every** child's `Parent::session`/`upgrade`/`close`/`exit`
+  **and** the heartbeat alarm. Measured RED → GREEN on the new
+  `run/sponge-quota-deadlock.run`: **3701 upgrade RPCs and 3701 false
+  grants before, 4 and 0 after**, containment settling on its
+  `restart_budget`. The four unbounded upgrade loops (signal-context
+  caps, RPC-cap allocation, heap growth, file open) are bounded by a
+  shared `Parent::UPGRADE_ATTEMPTS`, so a structurally unsatisfiable
+  request is now a loud, terminating failure the heartbeat can act on
+  instead of a spin.
+
+  **`sponge_pkgd | caps: 200` is the smallest budget in the render
+  chain** (`run/sponge-desktop-disk-uefi-usb.run:861`) and
+  `Signal_receiver::manage` is the allocator the input path uses for
+  every signal context, which is why the health label reads pkgd first.
+  **No product quota was changed** — exhausting one is now visible and
+  contained, and the log names the requested/assigned/configured/our-slack
+  values, so the quota policy decision is the operator's, made from a
+  diagnosis instead of a freeze. Still open: the *deadlocked* variant
+  (`Child::upgrade` → `PENDING` → the client blocked in
+  `Component_env::_block_for_session()` holding its mutex, plus the
+  nested `Try_parent_service::initiate_request` → `_env.upgrade()` on
+  that same entrypoint) is proved from source and not reproduced; QEMU's
+  single vCPU also flatters the RED arm, because a spinner alone on the
+  only core degrades differently than a spinner competing with a
+  compositor and a USB HID stack on four cores. Evidence, the field
+  greps, and the honest scope:
+  [`docs/evidence/sponge-quota-deadlock.md`](evidence/sponge-quota-deadlock.md).
 - [x] **Respawn budget — FIXED (ledger row #24, 2026-10-18); the clamp
   leak is SEPARATED and still open (found 2026-10-16)**.
   `<heartbeat restart_after_skipped="3"/>` had no attempt budget and no

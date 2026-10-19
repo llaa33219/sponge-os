@@ -1011,6 +1011,50 @@ A scenario defines:
   heartbeat out. Evidence `docs/evidence/sponge-debug-firstpaint.md`.
   base-sel4 only (`vesa_fb`/`ps2`/`usb_hid`).
 
+- `sponge-quota-deadlock.run` — **the quota-request wedge**: a
+  `Parent::upgrade` that the sandbox cannot satisfy must fail *loudly and
+  boundedly*, never spin forever on the sandbox's shared main entrypoint.
+  Addresses the 2026-10-19 LG gram field report (fast scrollbar drag →
+  `⚠ sponge_pkgd unresponsive(N)` → mouse dead → **the freeze never
+  heals**). `Parent::upgrade` has no "denied" answer, so the client
+  cannot distinguish "the parent will grant this" from "the parent will
+  never grant this" — and ledger row #21's immediate-grant path answered
+  such a request by transferring the **child's own exhausted leftover
+  quota** (which is what `Account::transfer_quota` bounds the transfer
+  by), warned about the failure, and then logged `granted immediately`
+  anyway. The client therefore looped forever, one RPC per iteration,
+  against `_env.ep().rpc_ep()` — the one entrypoint that also carries
+  every other child's `Parent` RPC, the heartbeat alarm, and the
+  `session_requests` handler.
+
+  The topology makes the request unsatisfiable **by construction**: a
+  child with a *fixed* quota (`victim | caps: 3000 | ram: 4M`, no
+  `<resource>`) spends it and then drains its PD with 1000 signal
+  contexts, the same allocation the product's input/compositor chain
+  performs under load. Witnesses at two levels (`ep_wedge behave` at
+  Tier-0, `ep_wedge liveness_ms` inside the sandbox) plus the product
+  containment shape (`restart_after_skipped: 3 | restart_budget: 3`).
+  Everything inside the sandbox reaches its services through
+  `+ any-service | + parent | + any-child`, so every one of the victim's
+  sessions really is a `Try_parent_service` — the nesting is the default
+  route, not a simulation.
+
+  Measured RED → GREEN: **3701 upgrade RPCs and 3701 false
+  `granted immediately` before, 4 RPCs and 0 false grants after** (925x),
+  with containment settling on its restart budget instead of never
+  converging. The host-side assertions grep the captured serial log
+  (false-grant phrase must be 0, request count must be ≤ 4, in-sandbox
+  bystander must have run), because a gate that only waits for a log
+  line cannot tell "refused" from "granted once and never repeated". No
+  control knob: the RED arm is `git -C genode checkout f44bc47ee5` and
+  re-run. The *deadlocked* variant (`PENDING` → the client blocked in
+  `Component_env::_block_for_session()` holding its mutex, plus the
+  nested `Try_parent_service::initiate_request` → `_env.upgrade()` on
+  init's own dispatch thread) is proved from source and **not**
+  reproduced — stated plainly in the scenario header. Evidence:
+  `docs/evidence/sponge-quota-deadlock.md`; receipts:
+  `docs/evidence/sponge-quota-deadlock-regressions.md`. base-sel4 only.
+
 - `sponge-containment-churn.run` — **bounds the heartbeat respawn
   loop**, the row `docs/17-runtime-component-topology.md` §5 registered
   as open with only a flake as evidence. A nested `system` sandbox runs

@@ -1,0 +1,261 @@
+#
+# \brief  A quota request the sandbox cannot satisfy must fail loudly
+#         and boundedly, never spin forever on the shared entrypoint
+# \author Sponge OS contributors
+#
+# THE FIELD FAILURE THIS ATTACKS
+#
+#   boot -> desktop -> fast scrollbar drag -> the panel health label
+#   reads "W sponge_pkgd unresponsive(N)" -> TOTAL freeze, mouse dead,
+#   and — the fact that rules out saturation — it does NOT recover.
+#
+# `Parent::upgrade` has no "denied" answer (Parent::Upgrade_result is
+# {OK, PENDING, OUT_OF_RAM, OUT_OF_CAPS}), so a client cannot tell "the
+# parent will grant this" from "the parent will never grant this". This
+# scenario drives a component into that gap with a request that is
+# unsatisfiable BY CONSTRUCTION - its quota is fixed and nothing will
+# ever reconfigure the system - and then holds the sandbox to the only
+# two answers that are honest:
+#
+#   * refuse, naming the reason (requested / assigned / configured /
+#     our slack), instead of reporting a grant that did not happen; and
+#   * let containment settle, instead of letting the client hammer the
+#     sandbox's main entrypoint forever.
+#
+# WHY THE SHARED ENTRYPOINT IS THE RIGHT SUBJECT
+#
+#   Parent RPCs are served on Sandbox::Child's _env.ep().rpc_ep()
+#   (os/src/lib/sandbox/child.h:438) - init's ONE main entrypoint,
+#   which also carries every other child's Parent::session / upgrade /
+#   close / exit, the heartbeat alarm, and the session_requests ROM
+#   handler. A client that retries forever against it does not just
+#   hurt itself: it starves the whole container, including the
+#   containment that would have noticed.
+#
+# THE FOUR UNBOUNDED LOOPS THIS EXERCISES (all in the vendored tree)
+#
+#   base/src/lib/base/signal.cc:234          Signal_receiver::manage
+#       one PD cap per signal context. The victim drains its PD with
+#       1000 signal contexts here, and this is the same allocation the
+#       product's input/compositor chain performs under load.
+#   base/src/lib/base/rpc_cap_alloc.cc:44    Rpc_entrypoint::_alloc_rpc_cap
+#   base/include/rm_session/connection.h:32  Rm_connection::create
+#   os/include/file_system_session/connection.h:42  _retry
+#
+#   All four are bounded by the shared Parent::UPGRADE_ATTEMPTS.
+#
+# NOT REPRODUCED HERE, and claimed nowhere: the *deadlocked* variant,
+# where Sandbox::Child::resource_request answers PENDING so the client
+# blocks in Component_env::_block_for_session() holding its mutex
+# (base/src/lib/base/component.cc:252-258), and where
+# Try_parent_service::initiate_request issues a NESTED blocking
+# upgrade from inside init's own dispatch thread
+# (base/include/base/service.h:371). Both are proved from the source
+# and neither was reproduced in QEMU. See
+# docs/evidence/sponge-quota-deadlock.md.
+#
+# TOPOLOGY
+#
+#   init                                     THE TOP-LEVEL INIT
+#   + timer                                  so a heartbeat can exist
+#   + witness            ep_wedge behave     Tier-0 liveness oracle
+#   + sandbox            init                THE INIT UNDER TEST
+#     + witness2         ep_wedge behave     in-sandbox liveness oracle
+#     + bystander        ep_wedge liveness   keeps emitting during the wedge
+#     + victim           test/resource_request  exhausts RAM, then upgrades
+#
+#   Everything inside `sandbox` reaches its services through
+#   `+ any-service | + parent | + any-child`, so every one of the victim's
+#   sessions is a Try_parent_service — the nesting of step 3 is not
+#   simulated, it is the default route.
+#
+# WHAT PASS/FAIL MEANS
+#
+#   RED   (ledger row #21's shortcut intact): the sandbox logs
+#         "resource request granted immediately" for a transfer that
+#         failed, 3701 times in one run. The client retries forever.
+#   GREEN (ledger row #25): the request is refused truthfully and
+#         boundedly, one request per incarnation, containment exhausts
+#         its restart budget, and the in-sandbox bystander never stops.
+#
+#         RED:    3701 requests, 3701 false grants, exit 2
+#         GREEN:     4 requests,    0 false grants, exit 0
+#
+# The host-side assertions are what make this falsifiable: a gate that
+# merely waits for a log line cannot tell "the request was refused"
+# from "the request was granted once and never repeated", so the
+# scenario greps the captured serial log for the false-grant phrase
+# (must be 0) and counts the requests (must be <= 4, one per
+# incarnation).
+#
+# KNOB: none. The RED arm is reached by reverting the ledger row #25
+# commit, which run/README.md and the evidence file both document;
+#   git -C genode checkout f44bc47ee5
+#   make -C genode/build/x86_64 run/sponge-quota-deadlock   # exit 2
+#   git -C genode checkout 342900343b
+#
+assert {[have_spec sel4]} \
+	"sponge-quota-deadlock requires KERNEL=sel4 (BOARD=pc)."
+
+# The victim must be able to reach its services, and its RAM must run out
+# while its Rm session is routed to init's parent.
+build { core lib/ld init timer test/ep_wedge test/resource_request }
+
+create_boot_directory
+
+# ---------------------------------------------------------------------------
+# in-sandbox config
+# ---------------------------------------------------------------------------
+set sandbox_cfg [open "[run_dir]/genode/sandbox.config" w]
+puts $sandbox_cfg {
+config
++ parent-provides
+  + service ROM
+  + service PD
+  + service RM
+  + service CPU
+  + service LOG
+  + service Timer
+  + service IRQ
+  + service IO_MEM
+  + service IO_PORT
+
++ default | caps: 100 | ram: 8M
++ heartbeat | rate_ms: 1000
+
++ default-route
+  + any-service
+    + parent
+    + any-child
+
++ start witness2 | caps: 100 | ram: 8M
+  + binary | name: ep_wedge
+  + config | behave: yes
+
++ start bystander | caps: 100 | ram: 8M
+  + binary | name: ep_wedge
+  + config | liveness_ms: 1000
+
++ start victim | caps: 3000 | ram: 4M
+  + binary | name: test-resource_request
+  + config | role: child
+  + heartbeat | restart_after_skipped: 3 | restart_budget: 3
+-
+}
+close $sandbox_cfg
+
+# ---------------------------------------------------------------------------
+# top-level config
+# ---------------------------------------------------------------------------
+install_config {
+config
++ parent-provides
+  + service ROM
+  + service PD
+  + service RM
+  + service CPU
+  + service LOG
+  + service Timer
+  + service IRQ
+  + service IO_MEM
+  + service IO_PORT
+
++ default | caps: 100 | ram: 4M
+
++ default-route
+  + any-service
+    + parent
+    + any-child
+
++ start timer | caps: 100 | ram: 4M
+  + provides | + service Timer
+
++ start witness | caps: 100 | ram: 8M
+  + binary | name: ep_wedge
+  + config | behave: yes
+
++ start sandbox | caps: 600 | ram: 24M
+  + binary | name: init
+  + route
+    + service ROM | label: config | + parent | label: sandbox.config
+    + service Timer | + child timer
+    + any-service
+      + parent
+      + any-child
+-
+}
+
+build_boot_image [build_artifacts]
+
+append qemu_args " -machine q35 -cpu Skylake-Client -nographic -m 1G "
+
+global qemu_spawn_id
+
+set qd_log [run_dir]/quota-deadlock.log
+
+run_genode_until {.*witness: alive and well.*} 60
+
+# The refusal fires once per incarnation and the log grows with it, so the
+# expect buffer has to be raised before the first gate that depends on it
+# (same remedy as run/sponge-debug-scrollstorm.run).
+match_max -i $qemu_spawn_id 500000
+log_file -a $qd_log
+
+run_genode_until {.*test-resource_request started.*} 60 $qemu_spawn_id
+
+# 2. The victim burns its quota and then drains its PD session with 1000
+#    signal contexts. Every context is a PD cap, so this is the step that
+#    drives the component into Signal_receiver::manage's upgrade loop -
+#    the same allocation the product's input chain performs under load.
+run_genode_until {.*draining PD session.*} 60 $qemu_spawn_id
+
+# 3. The refusal must name the reason instead of deferring silently.
+run_genode_until {.*resource request NOT granted.*} 60 $qemu_spawn_id
+
+# 4. Containment settles. With the retry bounded, the victim's heartbeat
+#    restart budget is what decides the outcome, and it must EXHAUST
+#    rather than run forever.
+run_genode_until {.*heartbeat restart budget .* exhausted.*} 120 $qemu_spawn_id
+
+# ---------------------------------------------------------------------------
+# Host-side assertions — the falsifiable instrument. A gate that only waits
+# for a log line cannot tell "the request was refused" from "the request was
+# granted once and never repeated". These can.
+# ---------------------------------------------------------------------------
+sleep 2
+log_file
+
+set fh [open $qd_log r]
+set log_text [read $fh]
+close $fh
+
+# The sandbox must never report a grant it did not perform.
+if {[regexp -all {resource request granted immediately} $log_text] != 0} {
+	error "the sandbox reported an immediate grant - the false-success path \
+is back; a child would spin on it forever. full log: $qd_log"
+}
+
+# One upgrade request per incarnation, and no more. Unbounded.
+set reqs [regexp -all {requests resources: } $log_text]
+if {$reqs > 4} {
+	error "the victim issued $reqs upgrade requests for an unsatisfiable \
+quota - the retry loop is not bounded. full log: $qd_log"
+}
+
+# The refusal has to be truthful about WHY: the child's assigned quota has
+# already reached the quota its config authorises, so no reconfiguration
+# can ever satisfy the request.
+if {![regexp {resource request NOT granted \(requested ram=8192/caps=0, assigned ram=4194304/caps=3000, configured ram=4194304/caps=3000} $log_text]} {
+	error "the refusal did not name the reason (assigned vs configured \
+quota). full log: $qd_log"
+}
+
+# And the container itself must still be alive at the end.
+if {![regexp {bystander: alive} $log_text]} {
+	error "the in-sandbox bystander never ran - the sandbox is not alive. \
+full log: $qd_log"
+}
+
+puts "\nquota-deadlock: PASS - the unsatisfiable quota request was refused \
+truthfully and boundedly ($reqs requests, no false grant), containment \
+exhausted its budget, and the container stayed alive\n"
