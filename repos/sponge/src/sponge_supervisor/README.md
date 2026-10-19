@@ -120,7 +120,7 @@ publishes it: a child in that condition carries
 not read as a fault, and it is counted separately in the FAULT log
 line. The classification itself, and the measurement that forced it
 (`sponge-de` at 10 s against a 10 s budget on a 4 MB/s medium), are in
-[`docs/evidence/startup-grace.md`](../../../docs/evidence/startup-grace.md).
+[`docs/evidence/startup-grace.md`](../../../../docs/evidence/startup-grace.md).
 The exemption is policy (`ignore_starting`) so that the acceptance
 scenario can switch it off and prove the supervisor's half of the
 defect independently.
