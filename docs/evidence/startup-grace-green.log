@@ -1,0 +1,389 @@
+Failed to initialize Crashpad.  Crash reporting will not be available.  Cause: while locating crashpad handler: unable to locate crashpad handler executable
+[sponge-build] pre-flight: verifying patch ledger (read-only)
+Failed to initialize Crashpad.  Crash reporting will not be available.  Cause: while locating crashpad handler: unable to locate crashpad handler executable
+[sponge-patches] verify: ledger vs git reality
+
+OK   #1 252a6aa4b7: exists, ancestor of HEAD
+     touches:
+       repos/libports/ports/stdcxx.hash
+       repos/libports/ports/stdcxx.port
+OK   #2 55adeec3f0: exists, ancestor of HEAD
+     touches:
+       tool/tool_chain_qt6
+OK   #3 dd6465e014: exists, ancestor of HEAD
+     touches:
+       repos/libports/lib/import/import-qt6.inc
+OK   #4 d8604ff9bf: exists, ancestor of HEAD
+     touches:
+       repos/libports/src/qt6/base/target.mk
+OK   #5 935941ad68: exists, ancestor of HEAD
+     touches:
+       repos/sponge
+OK   #6 847483031a: exists, ancestor of HEAD
+     touches:
+       repos/base-sel4/src/core/include/cnode.h
+       repos/base-sel4/src/core/include/core_cspace.h
+       repos/base-sel4/src/core/include/initial_untyped_pool.h
+       repos/base-sel4/src/core/include/platform.h
+       repos/base-sel4/src/core/include/untyped_memory.h
+       repos/base-sel4/src/core/include/vm_space.h
+       repos/base-sel4/src/core/io_mem_session_support.cc
+       repos/base-sel4/src/core/platform.cc
+       repos/base-sel4/src/core/platform_pd.cc
+       repos/base-sel4/src/core/spec/arm/platform.cc
+       repos/base-sel4/src/core/spec/arm_v8a/platform.cc
+       repos/base-sel4/src/core/spec/x86/platform_thread.cc
+       repos/base-sel4/src/core/spec/x86/vm_space.cc
+       repos/base-sel4/src/core/spec/x86_64/platform.cc
+       repos/base-sel4/src/include/base/internal/capability_space_sel4.h
+OK   #7 847483031a: exists, ancestor of HEAD
+     touches:
+       repos/base-sel4/src/core/include/cnode.h
+       repos/base-sel4/src/core/include/core_cspace.h
+       repos/base-sel4/src/core/include/initial_untyped_pool.h
+       repos/base-sel4/src/core/include/platform.h
+       repos/base-sel4/src/core/include/untyped_memory.h
+       repos/base-sel4/src/core/include/vm_space.h
+       repos/base-sel4/src/core/io_mem_session_support.cc
+       repos/base-sel4/src/core/platform.cc
+       repos/base-sel4/src/core/platform_pd.cc
+       repos/base-sel4/src/core/spec/arm/platform.cc
+       repos/base-sel4/src/core/spec/arm_v8a/platform.cc
+       repos/base-sel4/src/core/spec/x86/platform_thread.cc
+       repos/base-sel4/src/core/spec/x86/vm_space.cc
+       repos/base-sel4/src/core/spec/x86_64/platform.cc
+       repos/base-sel4/src/include/base/internal/capability_space_sel4.h
+OK   #8 59e50cdba4: exists, ancestor of HEAD
+     touches:
+       repos/libports/ports/gmp.port
+       repos/libports/ports/libiconv.port
+       repos/libports/ports/ncurses.hash
+       repos/libports/ports/ncurses.port
+       repos/ports/ports/bash.hash
+       repos/ports/ports/bash.port
+       repos/ports/ports/coreutils.hash
+       repos/ports/ports/coreutils.port
+       repos/ports/ports/diffutils.hash
+       repos/ports/ports/diffutils.port
+       repos/ports/ports/findutils.hash
+       repos/ports/ports/findutils.port
+       repos/ports/ports/grep.hash
+       repos/ports/ports/grep.port
+       repos/ports/ports/sed.hash
+       repos/ports/ports/sed.port
+       repos/ports/ports/tar.hash
+       repos/ports/ports/tar.port
+       repos/ports/ports/which.hash
+       repos/ports/ports/which.port
+OK   #9 010ad9ea0b: exists, ancestor of HEAD
+     touches:
+       repos/os/src/server/nitpicker/user_state.cc
+OK   #10 ec3a711f7c: exists, ancestor of HEAD
+     touches:
+       tool/boot/bender
+OK   #11 4904d06c4b: exists, ancestor of HEAD
+     touches:
+       repos/base-sel4/src/core/include/initial_untyped_pool.h
+OK   #12 ed354a4bd3: exists, ancestor of HEAD
+     touches:
+       docs/11-environment.md
+       docs/evidence/phase15-fb-console/README.md
+       docs/evidence/phase15-fb-console/fb-banner-only.png
+       docs/evidence/phase15-fb-console/fb-banner-zoom.png
+       docs/evidence/phase15-fb-console/fb-decoded-t2.txt
+       docs/evidence/phase15-fb-console/fb-decoded.txt
+       docs/evidence/phase15-fb-console/fb-screendump-t2-top.png
+       docs/evidence/phase15-fb-console/fb-screendump-t2.png
+       docs/evidence/phase15-fb-console/fb-screendump-t2.ppm
+       docs/evidence/phase15-fb-console/fb-screendump-t3-resized.png
+       docs/evidence/phase15-fb-console/fb-screendump-t3.png
+       docs/evidence/phase15-fb-console/fb-screendump-t3.ppm
+       docs/patches/sel4-early-fb-console.patch
+OK   #13 1bd88ee53d: exists, ancestor of HEAD
+     touches:
+       docs/11-environment.md
+       docs/patches/sel4-device-untyped-coverage.patch
+       docs/patches/sel4-early-fb-console.patch
+       docs/plans/phase15-hardware-boot-protocol.md
+OK   #14 847483031a: exists, ancestor of HEAD
+     touches:
+       repos/base-sel4/src/core/include/cnode.h
+       repos/base-sel4/src/core/include/core_cspace.h
+       repos/base-sel4/src/core/include/initial_untyped_pool.h
+       repos/base-sel4/src/core/include/platform.h
+       repos/base-sel4/src/core/include/untyped_memory.h
+       repos/base-sel4/src/core/include/vm_space.h
+       repos/base-sel4/src/core/io_mem_session_support.cc
+       repos/base-sel4/src/core/platform.cc
+       repos/base-sel4/src/core/platform_pd.cc
+       repos/base-sel4/src/core/spec/arm/platform.cc
+       repos/base-sel4/src/core/spec/arm_v8a/platform.cc
+       repos/base-sel4/src/core/spec/x86/platform_thread.cc
+       repos/base-sel4/src/core/spec/x86/vm_space.cc
+       repos/base-sel4/src/core/spec/x86_64/platform.cc
+       repos/base-sel4/src/include/base/internal/capability_space_sel4.h
+OK   #15 847483031a: exists, ancestor of HEAD
+     touches:
+       repos/base-sel4/src/core/include/cnode.h
+       repos/base-sel4/src/core/include/core_cspace.h
+       repos/base-sel4/src/core/include/initial_untyped_pool.h
+       repos/base-sel4/src/core/include/platform.h
+       repos/base-sel4/src/core/include/untyped_memory.h
+       repos/base-sel4/src/core/include/vm_space.h
+       repos/base-sel4/src/core/io_mem_session_support.cc
+       repos/base-sel4/src/core/platform.cc
+       repos/base-sel4/src/core/platform_pd.cc
+       repos/base-sel4/src/core/spec/arm/platform.cc
+       repos/base-sel4/src/core/spec/arm_v8a/platform.cc
+       repos/base-sel4/src/core/spec/x86/platform_thread.cc
+       repos/base-sel4/src/core/spec/x86/vm_space.cc
+       repos/base-sel4/src/core/spec/x86_64/platform.cc
+       repos/base-sel4/src/include/base/internal/capability_space_sel4.h
+OK   #16 731c931373: exists, ancestor of HEAD
+     touches:
+       repos/os/src/driver/acpi/acpi.cc
+OK   #17 3449ef9cbb: exists, ancestor of HEAD
+     touches:
+       repos/gems/src/app/themed_decorator/theme.cc
+       repos/gems/src/app/themed_decorator/theme.h
+       repos/gems/src/app/themed_decorator/window.cc
+       repos/gems/src/app/themed_decorator/window.h
+OK   #18 46da4e43b9: exists, ancestor of HEAD
+     touches:
+       repos/os/include/os/packet_stream.h
+OK   #19 391272b3e3: exists, ancestor of HEAD
+     touches:
+       repos/base/src/lib/base/component.cc
+       repos/base/src/lib/base/root_proxy.cc
+OK   #20 391272b3e3: exists, ancestor of HEAD
+     touches:
+       repos/base/src/lib/base/component.cc
+       repos/base/src/lib/base/root_proxy.cc
+OK   #21 10d172b3dd: exists, ancestor of HEAD
+     touches:
+       repos/os/src/lib/sandbox/child.cc
+OK   #22 f16ad10cba: exists, ancestor of HEAD
+     touches:
+       repos/base-sel4/lib/mk/spec/x86_64/kernel-sel4-pc.mk
+OK   #23 1c2dd297aa: exists, ancestor of HEAD
+     touches:
+       docs/evidence/sponge-debug-scrollstorm-coalesce-after-baseline.log
+       docs/evidence/sponge-debug-scrollstorm-coalesce-after-burst.log
+       docs/evidence/sponge-debug-scrollstorm-coalesce-after-grow.log
+       docs/evidence/sponge-debug-scrollstorm-coalesce-after-scroll.log
+       docs/evidence/sponge-debug-scrollstorm-coalesce-before-baseline.log
+       docs/evidence/sponge-debug-scrollstorm-coalesce-before-burst.log
+       docs/evidence/sponge-debug-scrollstorm-coalesce-before-grow.log
+       docs/evidence/sponge-debug-scrollstorm-coalesce-before-scroll.log
+       docs/patches/qt6-qpa-frame-sync.patch
+       repos/sponge/src/sponge_debug/main.cc
+       run/sponge-debug-scrollstorm.run
+OK   #24 f44bc47ee5: exists, ancestor of HEAD
+     touches:
+       repos/os/src/lib/sandbox/child.cc
+       repos/os/src/lib/sandbox/child.h
+       repos/os/src/lib/sandbox/config_model.h
+       repos/os/src/lib/sandbox/library.cc
+OK   #25 342900343b: exists, ancestor of HEAD
+     touches:
+       repos/base/include/base/connection.h
+       repos/base/include/parent/parent.h
+       repos/base/include/rm_session/connection.h
+       repos/base/src/lib/base/rpc_cap_alloc.cc
+       repos/base/src/lib/base/signal.cc
+       repos/os/include/file_system_session/connection.h
+       repos/os/src/lib/sandbox/child.cc
+OK   #26 dda40f3a87: exists, ancestor of HEAD
+     touches:
+       repos/base/include/base/child.h
+       repos/base/src/lib/base/child.cc
+       repos/os/src/init/init.hsd
+       repos/os/src/lib/sandbox/child.cc
+       repos/os/src/lib/sandbox/child.h
+       repos/os/src/lib/sandbox/heartbeat.h
+
+verify: OK (all 26 ledger rows match git reality)
+
+make: ディレクトリ '/home/luke/sponge-os/genode/build/x86_64'　に入ります
+including /home/luke/sponge-os/genode/tool/run/power_on/qemu
+including /home/luke/sponge-os/genode/tool/run/log/qemu
+including /home/luke/sponge-os/genode/tool/run/image/iso
+including /home/luke/sponge-os/genode/tool/run/boot_dir/sel4
+including /home/luke/sponge-os/repos/sponge/run/sponge-startup-grace.run
+sourcing /home/luke/sponge-os/genode/tool/run/image/disk (missing from RUN_OPT, restored by run script)
+sponge-startup-grace: construct=20000 ms budget=10000 ms startup_grace=60000 ms supervisor_ignore_starting=yes
+building targets:  core lib/ld init timer server/report_rom sponge_supervisor test/ep_wedge
+
+spawn make core lib/ld init timer server/report_rom sponge_supervisor test/ep_wedge
+make[1]: ディレクトリ '/home/luke/sponge-os/genode/build/x86_64' に入ります
+  [00;33mLibrary[0m ld.abi.so
+  [00;33mLibrary[0m ldso_so_support.lib.a
+  [00;33mLibrary[0m kernel-sel4-pc.lib.a
+ninja: Jobserver mode detected:  -j80 --jobserver-auth=fifo:/tmp/GMfifo214451 --no-print-directory -- DEBUG_DIR=/home/luke/sponge-os/genode/build/x86_64/debug INSTALL_DIR=/home/luke/sponge-os/genode/build/x86_64/bin BUILD_BASE_DIR=/home/luke/sponge-os/genode/build/x86_64 SHARED_LIBS= ARCHIVES= LIB=kernel-sel4-pc LIB_MK=/home/luke/sponge-os/genode/repos/base-sel4/lib/mk/spec/x86_64/kernel-sel4-pc.mk REP_DIR=/home/luke/sponge-os/genode/repos/base-sel4 SHELL=/usr/bin/bash
+ninja: no work to do.
+  [00;33mLibrary[0m syscall-sel4-pc.lib.a
+  [00;33mLibrary[0m syscall-sel4.lib.a
+  [00;33mLibrary[0m startup-sel4.lib.a
+  [00;33mLibrary[0m base-sel4-common.lib.a
+  [00;33mLibrary[0m timeout.lib.a
+  [00;33mLibrary[0m cxx.lib.a
+  [00;33mLibrary[0m base-sel4.lib.a
+  [00;33mLibrary[0m ld-sel4.lib.so
+  [00;33mLibrary[0m ld.lib.so
+  [00;33mLibrary[0m core-sel4.lib.a
+    COMPILE  version.o
+    MERGE    core-sel4.lib.a
+  [01;33mProgram[0m core/sel4/core
+  [00;33mLibrary[0m base.lib.a
+  [01;33mProgram[0m init/init
+  [01;33mProgram[0m server/report_rom/report_rom
+  [01;33mProgram[0m sponge_supervisor/sponge_supervisor
+  [01;33mProgram[0m test/ep_wedge/ep_wedge
+  [01;33mProgram[0m timer/hpet/hpet_timer
+make[1]: ディレクトリ '/home/luke/sponge-os/genode/build/x86_64' から出ます
+genode build completed
+building targets: kernel/sel4 lib/ld-sel4
+spawn make kernel/sel4 lib/ld-sel4
+make[1]: ディレクトリ '/home/luke/sponge-os/genode/build/x86_64' に入ります
+  [00;33mLibrary[0m kernel-sel4-pc.lib.a
+ninja: Jobserver mode detected:  -j80 --jobserver-auth=fifo:/tmp/GMfifo214737 --no-print-directory -- DEBUG_DIR=/home/luke/sponge-os/genode/build/x86_64/debug INSTALL_DIR=/home/luke/sponge-os/genode/build/x86_64/bin BUILD_BASE_DIR=/home/luke/sponge-os/genode/build/x86_64 SHARED_LIBS= ARCHIVES= LIB=kernel-sel4-pc LIB_MK=/home/luke/sponge-os/genode/repos/base-sel4/lib/mk/spec/x86_64/kernel-sel4-pc.mk REP_DIR=/home/luke/sponge-os/genode/repos/base-sel4 SHELL=/usr/bin/bash
+ninja: no work to do.
+  [00;33mLibrary[0m syscall-sel4-pc.lib.a
+  [00;33mLibrary[0m syscall-sel4.lib.a
+  [00;33mLibrary[0m startup-sel4.lib.a
+  [00;33mLibrary[0m base-sel4-common.lib.a
+  [00;33mLibrary[0m timeout.lib.a
+  [00;33mLibrary[0m cxx.lib.a
+  [00;33mLibrary[0m base-sel4.lib.a
+  [00;33mLibrary[0m ldso_so_support.lib.a
+  [00;33mLibrary[0m ld-sel4.lib.so
+  [01;33mProgram[0m kernel/sel4/sel4-pc
+make[1]: ディレクトリ '/home/luke/sponge-os/genode/build/x86_64' から出ます
+genode build completed
+using 'core-sel4.a' as 'core.a'
+using 'hpet_timer' as 'timer'
+using 'ld-sel4.lib.so' as 'ld.lib.so'
+Created image file var/run/sponge-startup-grace.img (12000kiB)
+spawn qemu-system-x86_64 -accel kvm -machine q35 -cpu Skylake-Client -nographic -m 1G -serial mon:stdio -drive format=raw,file=var/run/sponge-startup-grace.img -machine q35 -net nic,model=e1000,netdev=net0 -netdev user,id=net0
+qemu-system-x86_64: warning: host doesn't support requested feature: CPUID[eax=0Dh,ecx=01h].EAX.xsavec [bit 1]
+qemu-system-x86_64: warning: host doesn't support requested feature: CPUID[eax=0Dh,ecx=01h].EAX.xgetbv1 [bit 2]
+c[?7l[2J[0mSeaBIOS (version Arch Linux 1.17.0-2-2)
+
+
+iPXE (http://ipxe.org) 00:02.0 C900 PCI2.10 PnP PMM+3EFD3DA0+3EF33DA0 C900
+Press Ctrl-B to configure iPXE (PCI 00:02.0)...                                                                               
+
+
+Booting from Hard Disk...
+GRUB loading.
+[01;01H
+Bender Version 0.9-beta7-51-g77a6918-dirty
+Patching BDA with I/O port 0x3f8.
+Bender: Hello World.
+hwp config: eeo=na irq=na hwp=na epp=na epb=na
+Boot config: debug_port = 0x3f8
+Boot config: disable_iommu = true
+  module #0: start=0xf6a5000 end=0xfdf6410 size=0x751410 name='image.elf'
+	Physical Memory Region from 0 size 9fc00 type 1
+	Physical Memory Region from 9fc00 size 400 type 2
+	Physical Memory Region from f0000 size 10000 type 2
+	Physical Memory Region from 100000 size 3fedf000 type 1
+Adding physical memory region 0x100000-0x3ffdf000
+	Physical Memory Region from 3ffdf000 size 21000 type 2
+	Physical Memory Region from b0000000 size 10000000 type 2
+	Physical Memory Region from fed1c000 size 4000 type 2
+	Physical Memory Region from feffc000 size 4000 type 2
+	Physical Memory Region from fffc0000 size 40000 type 2
+Got framebuffer info in multiboot2. Current video mode is at physical address=fd000000 pitch=5120 resolution=1280x800@32 type=1
+Detected 1 boot module(s):
+Kernel loaded to: start=0x200000 end=0xe3e000 size=0xc3e000 entry=0x2002a3
+ACPI: RSDT paddr=0x3ffe2345
+ACPI: RSDT vaddr=0x3ffe2345
+ACPI: FADT paddr=0x3ffe213d
+ACPI: FADT vaddr=0x3ffe213d
+ACPI: FADT flags=0x84a5
+ACPI: MADT paddr=0x3ffe2231
+ACPI: MADT vaddr=0x3ffe2231
+ACPI: MADT apic_addr=0xfee00000
+ACPI: MADT flags=0x1
+ACPI: MADT_APIC apic_id=0x0
+ACPI: MADT_IOAPIC ioapic_id=0 ioapic_addr=0xfec00000 gsib=0
+ACPI: MADT_ISO bus=0 source=0 gsi=0x002 flags=0x0
+ACPI: MADT_ISO bus=0 source=5 gsi=0x005 flags=0xd
+ACPI: MADT_ISO bus=0 source=9 gsi=0x009 flags=0xd
+ACPI: MADT_ISO bus=0 source=10 gsi=0x00a flags=0xd
+ACPI: MADT_ISO bus=0 source=11 gsi=0x00b flags=0xd
+ACPI: 1 CPU(s) detected
+ELF-loading userland images from boot modules:
+size=0x2150000 v_entry=0x2000018 v_start=0x2000000 v_end=0x4150000 p_start=0xfdf7000 p_end=0x11f47000
+Moving loaded userland images to final location: from=0xfdf7000 to=0xe3e000 size=0x2150000
+Starting node #0 with APIC ID 0
+Mapping kernel window is done
+vt-x: not supported
+Available phys memory regions: 1
+  [100000..3ffdf000)
+Reserved virt address space regions: 1
+  [ffffff8000200000..ffffff8002f8e000)
+Booting all finished, dropped to user space
+[34mWarning: init_freemem artifact untyped skipped: 0x200000 size 0x200000[0m
+[34mWarning: init_freemem artifact untyped skipped: 0x400000 size 0x400000[0m
+[34mWarning: init_freemem artifact untyped skipped: 0x800000 size 0x200000[0m
+:phys_mem_16k:     Allocator 0x257a7f8 dump:
+ Block: [0000000000100000,0000000000200000) size=1M avail=1M max_avail=1M
+ Block: [0000000002f90000,0000000003000000) size=448K avail=448K max_avail=113472K
+ Block: [0000000008000000,000000000eed0000) size=113472K avail=113472K max_avail=113472K
+ => mem_size=117702656 (112 MB) / mem_avail=117702656 (112 MB)
+
+[34mWarning: failed to register I/O range: [0000000040000000,0000000040100000)[0m
+[34mWarning: failed to register I/O range: [0000000080000000,0000000080100000)[0m
+virtual address layout of core:
+ overall    [0000000000002000,0000001000000000)
+ core image [0000000002000000,0000000004150000)
+ ipc buffer [0000000004150000,0000000004151000)
+ boot_info  [0000000004151000,0000000004152532)
+ stack area [0000000040000000,0000000050000000)
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+Physical memory per PD at most: 512M
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+boot module 'supervisor.templates' (2987 bytes)
+boot module 'config' (1479 bytes)
+boot module 'supervisor.config' (162 bytes)
+boot module 'ep_wedge' (49080 bytes)
+boot module 'timer' (139920 bytes)
+boot module 'init' (511368 bytes)
+boot module 'init.hsd' (4237 bytes)
+boot module 'init.xsd' (8118 bytes)
+boot module 'ld.lib.so' (1111912 bytes)
+boot module 'report_rom' (150784 bytes)
+boot module 'sponge_supervisor' (81480 bytes)
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+Genode 26.08-25-gdda40f3a87
+575 MiB RAM and 523288 caps assigned to init
+[init -> timer] timers=3, clock 10000000fs , 64bit counter , legacy routing support vendor=0x8086
+[init -> timer] timer0 GSI options 0xff0104, supports periodic
+[init -> timer] timer1 GSI options 0xff0104, supports periodic
+[init -> timer] timer2 GSI options 0xff0104, supports periodic
+[init -> timer] time wraps after 5849 years
+[init -> timer] irqs=off legacy=off
+[init -> timer] Using timer 2 -> using GSI 2 edge triggered
+[init -> sponge_supervisor] sponge_supervisor: armed poll=250ms fault_skipped=3 grace=4000ms console_hold=6000ms settle=3000ms boot_grace=30000ms ignore_starting=yes
+[init -> sponge_supervisor] sponge_supervisor: published <system> kill=1 (1453 bytes)
+[init -> sponge_supervisor] sponge_supervisor: phase=1 (initial publish)
+[init -> system -> witness] witness: alive and well
+[init -> system -> slow] ep_wedge: incarnation alive — wedging for 20000 ms
+[init -> sponge_supervisor] sponge_supervisor: nominal — subtree healthy, no action (10s)
+[init -> sponge_supervisor] sponge_supervisor: nominal — subtree healthy, no action (20s)
+[init -> system -> slow] ep_wedge: incarnation un-wedged after 20000 ms
+[init -> system] [34mWarning: slow: startup took 20000 ms - the heartbeat budget (10000 ms) would have killed it, the startup grace (60000 ms) applied[0m
+[init -> sponge_supervisor] sponge_supervisor: nominal — subtree healthy,
+sponge-startup-grace: PASS - a child whose construct took 20000 ms (budget 10000 ms) was STARTING, not wedged: it survived its slow start, the supervisor reported no fault and killed nothing
+
+
+Run script execution successful.
+
+
+Run script execution successful.
+make: ディレクトリ '/home/luke/sponge-os/genode/build/x86_64' から出ます

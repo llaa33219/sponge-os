@@ -423,8 +423,35 @@ component must never be able to freeze the desktop. Status after the
   `<heartbeat restart_after_skipped="3"/>` on the critical
   children (wm, layouter, decorator, sponge_configd, sponge_themed,
   sponge_pkgd, vct_tty, sponge-de, pkg_runtime). A child whose
-  entrypoint wedges is abandoned and respawned within ~6 s. Verified:
+  entrypoint wedges is abandoned and respawned within **10 s** — the
+  skip count lags one heartbeat behind the unanswered count, so the
+  kill lands on the fifth unanswered heartbeat at this rate, not the
+  fourth (the "~6 s" this row used to state was wrong). Verified:
   the product scenario boots PASS with the deployment in place.
+- [x] **A child that is slow to START is not a wedged child (closed
+  2026-10-19, ledger row #26)**: in the classic (non-pthread) Genode,
+  `Component::construct()` runs **on the entrypoint thread** — the
+  very thread that has to process the heartbeat signal — so a child
+  whose construct outlives the 10 s budget cannot answer a single
+  heartbeat, and both the sandbox and `sponge_supervisor` above it read
+  that as a wedge: abandon, respawn, kill the whole subtree, restart
+  from zero. That is the LG gram's `published system kill=25`. The
+  missing signal was the sticky one — *has this child ever answered
+  anything?* — and it now exists: `base::Child::heartbeat_responded()`,
+  a per-child `startup_grace_ms` (product media: 120 s, opt-in, 0 =
+  upstream behaviour), and `heartbeat_state="starting"` in the state
+  report, which the supervisor reads instead of guessing from the skip
+  count (`ignore_starting`, default on). Measured: on the product media
+  with a 4 MB/s boot medium, **five contained children — `sponge-de`
+  among them — take 8–10 s to become responsive against that 10 s
+  budget**; the margin is already gone at a bandwidth a USB 2.0 stick
+  exceeds. The grace is bounded and reported: a child that never
+  answers produces a "startup grace exhausted" warning and is killed
+  when the window ends, and the restart budget still bounds the
+  attempts. Red→green with a three-arm scenario
+  (`run/sponge-startup-grace.run`) and the field's own signature
+  (`kill=2`) reproduced by switching the supervisor's exemption off.
+  Receipts: `docs/evidence/startup-grace.md`.
 - [x] **Broker fault containment — top level (closed)**: the top-level
   init still cannot run a heartbeat — core provides no Timer on
   base-sel4, the session is denied and init stops (the constraint is
