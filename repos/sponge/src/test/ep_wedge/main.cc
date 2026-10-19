@@ -32,6 +32,19 @@
  *   <config behave="yes" wedge_ms="N"/>:
  *     behave wins — a witness is a witness.
  *
+ *   <config wedge_after_ms="N"/>:
+ *     A wedge AFTER startup. The component returns from construct
+ *     immediately — so it registers its heartbeat handler, becomes
+ *     responsive and ANSWERS heartbeats — and wedges its entrypoint N
+ *     milliseconds later, forever. This is the fault the product
+ *     actually suffers (`sponge_pkgd unresponsive(N)` on the LG gram),
+ *     and it is the only mode a supervisor above the sandbox can be
+ *     expected to detect: `wedge_ms` blocks the entrypoint inside the
+ *     constructor, where a child that has never answered a heartbeat
+ *     is legitimately classified as STARTING rather than wedged (the
+ *     startup grace, docs/evidence/startup-grace.md). A wedge that
+ *     happens after the first response has none of that excuse.
+ *
  *   <config liveness_ms="N"/>:
  *     A LIVENESS ORACLE. Logs one "bystander: alive t=<ms>" line every
  *     N milliseconds, forever, and never blocks its entrypoint. It is
@@ -55,6 +68,7 @@
 #include <base/attached_rom_dataspace.h>
 #include <base/component.h>
 #include <base/log.h>
+#include <base/signal.h>
 #include <base/sleep.h>
 #include <timer_session/connection.h>
 #include <util/string.h>
@@ -65,6 +79,7 @@ namespace {
 	{
 		bool     behave { false };
 		unsigned wedge_ms { 0 };
+		unsigned wedge_after_ms { 0 };
 		unsigned liveness_ms { 0 };
 	};
 
@@ -157,9 +172,10 @@ namespace {
 		char const *raw = cfg.local_addr<char const>();
 		Genode::size_t const sz = cfg.size();
 
-		m.wedge_ms = _uint_attr(raw, sz, "wedge_ms");
-		m.behave   = _behave_attr(raw, sz);
-		m.liveness_ms = _uint_attr(raw, sz, "liveness_ms");
+		m.wedge_ms       = _uint_attr(raw, sz, "wedge_ms");
+		m.wedge_after_ms = _uint_attr(raw, sz, "wedge_after_ms");
+		m.behave         = _behave_attr(raw, sz);
+		m.liveness_ms    = _uint_attr(raw, sz, "liveness_ms");
 
 		return m;
 	}
@@ -186,6 +202,41 @@ void Component::construct(Genode::Env &env)
 			elapsed += m.liveness_ms;
 			Genode::log("bystander: alive t=", elapsed, " ms");
 		}
+	}
+
+	/*
+	 * Wedge AFTER startup: return from construct first, so the entrypoint
+	 * is free to answer heartbeats, and block it later. The Timer signal
+	 * handler runs on the entrypoint, so `sleep_forever` there is the
+	 * wedge - the same shape as a component that stops servicing its
+	 * entrypoint while it is RUNNING, not while it is being built.
+	 */
+	if (m.wedge_after_ms) {
+
+		struct Wedge
+		{
+			void _handle(Genode::Duration) {
+				Genode::log("ep_wedge: wedge fired - entrypoint parked");
+				Genode::sleep_forever();
+			}
+		};
+
+		/*
+		 * `One_shot_io_timeout` owns the sigh plumbing, so the timeout
+		 * signal reaches THIS handler instead of the timer connection's
+		 * internal one (a bare `trigger_once()` would wake the connection
+		 * and nobody else).
+		 */
+		static Timer::Connection          timer   { env };
+		static Wedge                      wedge;
+		static Timer::One_shot_io_timeout<Wedge> timeout {
+			timer, wedge, &Wedge::_handle };
+
+		Genode::log("ep_wedge: incarnation alive — wedging in ",
+		            m.wedge_after_ms, " ms");
+
+		timeout.schedule(Genode::Microseconds { Genode::uint64_t(m.wedge_after_ms) * 1000 });
+		return;
 	}
 
 	if (m.wedge_ms == 0) {

@@ -95,9 +95,10 @@
  * sandbox may have its own containment. The product media runs
  * `<heartbeat rate_ms="2000"/>` with `restart_after_skipped="3"` on the
  * critical children, so the sandbox itself abandons and respawns a
- * wedged child about six seconds after it stopped answering - and a
- * slow Qt6 first paint or a heavy repaint is indistinguishable from a
- * wedge at that scale. A supervisor that acted on the same signal at the
+ * wedged child ten seconds after it stopped answering (the skip count
+ * lags one heartbeat behind the unanswered count, so the kill lands on
+ * the fifth one) - and a slow Qt6 first paint or a heavy repaint is
+ * indistinguishable from a wedge at that scale. A supervisor that acted on the same signal at the
  * same instant would be a SECOND supervisor fighting the first over one
  * child, and the casualty is the user's session: a full subtree rebuild
  * on every transient. So the rule is
@@ -259,6 +260,18 @@ struct Sponge::Supervisor::Main
 	unsigned _state_at    { 0 };
 	unsigned _max_skipped { 0 };
 	unsigned _exited      { 0 };
+	unsigned _starting    { 0 };
+
+	/*
+	 * Whether a child the sandbox reports as "starting" is exempt from
+	 * the skipped-heartbeat fault detection. On by default: the sandbox
+	 * knows whether a child has ever answered a heartbeat, and that
+	 * distinction is the whole point. The attribute exists so the
+	 * acceptance scenario can switch the exemption OFF and prove that
+	 * the supervisor's own misclassification is real and independent of
+	 * the sandbox's patience.
+	 */
+	bool _ignore_starting { true };
 
 	Timer::Connection   _timer { _env };
 	Signal_handler<Main> _tick  { _env.ep(), *this, &Main::_handle_tick };
@@ -290,6 +303,20 @@ struct Sponge::Supervisor::Main
 		return r;
 	}
 
+	bool _bool(char const *cfg, size_t sz, char const *key, bool dflt) const
+	{
+		char const *v = nullptr;
+		size_t      n = 0;
+
+		if (!Sponge::scan_attr(cfg, sz, key, v, n) || n == 0)
+			return dflt;
+
+		if (n == 3 && Genode::strcmp(v, "yes", 3) == 0) return true;
+		if (n == 2 && Genode::strcmp(v, "no", 2) == 0)  return false;
+
+		return dflt;
+	}
+
 	void _read_policy()
 	{
 		_config.update();
@@ -306,6 +333,7 @@ struct Sponge::Supervisor::Main
 		_grace_ms        = _num(cfg, sz, "grace_ms",        _grace_ms);
 		_console_hold_ms = _num(cfg, sz, "console_hold_ms", _console_hold_ms);
 		_settle_ms       = _num(cfg, sz, "settle_ms",       _settle_ms);
+		_ignore_starting = _bool(cfg, sz, "ignore_starting", _ignore_starting);
 
 		char const *ign = nullptr;
 		size_t      ign_len = 0;
@@ -502,6 +530,7 @@ struct Sponge::Supervisor::Main
 
 		_max_skipped = 0;
 		_exited      = 0;
+		_starting    = 0;
 
 		/*
 		 * The 26.08 state report is HID-serialised - the same lesson
@@ -519,7 +548,24 @@ struct Sponge::Supervisor::Main
 			unsigned const skipped = n.attribute_value("skipped_heartbeats", 0u);
 			bool     const gone    = n.has_attribute("exited");
 
-			if (skipped > _max_skipped) _max_skipped = skipped;
+			/*
+			 * A child the supervised sandbox marks as "starting" has not
+			 * answered a single heartbeat yet: it is inside its first
+			 * construct, and its skip count says nothing about whether it
+			 * is wedged. Reading that count as a fault is how a slow
+			 * storage chain turns into a kill loop: the sandbox patiently
+			 * waits for the child to come up, and the supervisor above it
+			 * tears the whole subtree down because a child that is merely
+			 * slow looks exactly like a child that is stuck.
+			 */
+			bool const starting =
+				n.attribute_value("heartbeat_state", String<16>()) == "starting";
+
+			if (starting)
+				_starting++;
+
+			if (skipped > _max_skipped && !(starting && _ignore_starting))
+				_max_skipped = skipped;
 
 			if (gone && !_excluded(n.attribute_value("name", String<64>())))
 				_exited++;
@@ -567,6 +613,7 @@ struct Sponge::Supervisor::Main
 	{
 		log("sponge_supervisor: FAULT max_skipped=", _max_skipped,
 		    " exited=",      _exited,
+		    " starting=",   _starting,
 		    " state_seen=",  _state_seen,
 		    " state_age_ms=",
 		    _state_seen ? (_ticks - _state_at) * _poll_ms : 0);
@@ -638,7 +685,7 @@ struct Sponge::Supervisor::Main
 			 * containment: the product media runs `<heartbeat rate_ms=
 			 * 2000/>` with `restart_after_skipped="3"` on the
 			 * critical children, so a wedged child is abandoned and
-			 * respawned by the sandbox itself about six seconds after
+			 * respawned by the sandbox itself about ten seconds after
 			 * it stopped answering. Acting on the same signal at the
 			 * same instant would be two supervisors fighting over one
 			 * child, and the loser is the user's session: a full
@@ -820,7 +867,8 @@ struct Sponge::Supervisor::Main
 		    " grace=",          _grace_ms,
 		    "ms console_hold=", _console_hold_ms,
 		    "ms settle=",       _settle_ms,
-		    "ms boot_grace=",   _boot_grace_ms, "ms");
+		    "ms boot_grace=",   _boot_grace_ms, "ms",
+		    " ignore_starting=", _ignore_starting ? "yes" : "no");
 	}
 };
 

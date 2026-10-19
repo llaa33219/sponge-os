@@ -63,7 +63,7 @@ settle window *after* the disarming report.
 The supervised sandbox may have its own containment. The product media
 runs `<heartbeat rate_ms="2000"/>` with `restart_after_skipped="3"` on
 the critical children, so the sandbox itself abandons and respawns a
-wedged child about eight seconds after it stopped answering — and a slow
+wedged child ten seconds after it stopped answering — and a slow
 first paint or a heavy repaint is indistinguishable from a wedge at that
 scale.
 
@@ -108,6 +108,23 @@ turns monitoring **on** with `restart_after_skipped` defaulting to `0` —
 local auto-restart deliberately **off**, so this supervisor is the
 single authority that restarts them.
 
+**A rising skip count is only a fault if the child ever answered.** A
+child that has registered its heartbeat handler but has not answered a
+single heartbeat is *starting*: in the classic Genode the constructor
+runs on the entrypoint thread, so a slow first construct — a slow
+storage chain, a heavy dlopen — cannot answer anything, and reading
+that as a wedge makes this supervisor tear the whole subtree down over
+a child that was about to come up. The sandbox knows the difference and
+publishes it: a child in that condition carries
+`heartbeat_state="starting"` in the state report, its skip count is
+not read as a fault, and it is counted separately in the FAULT log
+line. The classification itself, and the measurement that forced it
+(`sponge-de` at 10 s against a 10 s budget on a 4 MB/s medium), are in
+[`docs/evidence/startup-grace.md`](../../../docs/evidence/startup-grace.md).
+The exemption is policy (`ignore_starting`) so that the acceptance
+scenario can switch it off and prove the supervisor's half of the
+defect independently.
+
 Secondary: a **rise** in the number of exited children above the
 baseline recorded while healthy. Genode keeps an exited child in the
 report with its `exited` attribute until it is abandoned, so a plain
@@ -140,6 +157,7 @@ Own policy (`config` ROM) — all optional:
 | `settle_ms` | 3000 | how long it must stay healthy to count as recovered, and how long the console's release is awaited. **Must exceed the respawn-to-refault time** of the supervised sandbox, which is 1.75 s at a 500 ms heartbeat and 10-12 s at the product media's 2000 ms — hence `settle_ms: 20000` in `run/supervisor.inc` |
 | `console_hold_ms` | 6000 | how long the console stays on the display |
 | `boot_grace_ms` | 30000 | how long the sandbox may publish nothing at all before that counts as a fault |
+| `ignore_starting` | `yes` | whether a child the sandbox reports as `heartbeat_state="starting"` (never answered a heartbeat) is exempt from the `skipped_heartbeats` fault detection |
 | `ignore_exited` | *(empty)* | comma-separated child names whose `exited` is not a fault (product media: `alpha_probe,cfg_probe`) |
 
 `templates` ROM — one document containing a `<system>` and a
