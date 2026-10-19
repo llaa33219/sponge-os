@@ -1,0 +1,443 @@
+#
+# \brief  Startup grace — a child that is SLOW TO START is not a wedged child
+# \author Sponge OS contributors
+# \date   2026
+#
+# The red -> green proof for the classification defect behind the
+# 2026-10-19 LG gram field report ("published system kill=25": the
+# supervisor killed and rebuilt the whole `system` subtree 25 times while
+# the desktop never stabilised).
+#
+# THE DEFECT. In the classic (non-pthread) Genode, `Component::construct()`
+# is executed by the ENTRYPOINT thread - the very thread that has to
+# process the heartbeat signal (genode/repos/base/src/lib/base/entrypoint.cc:
+# the constructor is invoked as an RPC on the entrypoint). A child whose
+# construct takes longer than the heartbeat budget therefore cannot
+# answer a single heartbeat, and the parent reads that as a WEDGE:
+#
+#   skipped_heartbeats climbs to restart_after_skipped (3) at rate_ms
+#   (2000) -> the child is abandoned and respawned -> the new incarnation
+#   loads just as slowly -> killed again -> infinite churn.
+#
+# On a host with cached storage every construct finishes inside the
+# 6 s budget, so QEMU never shows it. On real hardware with a slow USB
+# storage chain, the Qt6/Mesa-bearing children do not fit into 6 s, and
+# the churn is what the field machine showed.
+#
+# THE FIX (two halves, both needed):
+#
+#   1. the sandbox classifies: a child that has registered its heartbeat
+#      handler but has NOT answered a single heartbeat is STARTING, not
+#      wedged. It is given a bounded `startup_grace_ms` window; after
+#      that window it is a wedge again (a child that truly wedges in its
+#      construct is still caught, just on a longer leash);
+#   2. the supervisor above the sandbox reads that classification from
+#      the state report (`heartbeat_state="starting"`) instead of
+#      reading a rising skip count of a merely slow child as a fault.
+#
+# Topology (the pkgd pattern one level up, the same wiring as
+# run/sponge-supervisor-takeover.run):
+#
+#   init  (TOP-LEVEL)
+#   + timer                  the supervisor's own clock
+#   + report_rom              the top-level relay: state in, config out
+#   + sponge_supervisor       owns the `system` config; reads the
+#                             sandbox's state report
+#   + system (init)           THE SUPERVISED SUBTREE
+#     + slow                 ep_wedge wedge_ms=N: a child whose CONSTRUCT
+#                             takes N ms - the slow start under test
+#     + witness              ep_wedge behave=yes: must survive untouched
+#
+# Knobs (all optional):
+#   SPONGE_STARTUP_GRACE_MS   the child's `startup_grace_ms` (default
+#                             60000). 0 disables the grace - that is the
+#                             RED arm, which reproduces the churn.
+#   SPONGE_START_DELAY_MS     how long the child's construct takes
+#                             (default 20000, i.e. more than three times
+#                             the 6 s budget)
+#   SPONGE_SUP_STARTING=0     switch the supervisor's "starting" exemption
+#                             OFF: the sandbox stays patient while the
+#                             supervisor above it tears the subtree down.
+#                             Isolates the second half of the defect.
+#
+# The three arms:
+#   (default)          GREEN  - the sandbox classifies and the supervisor
+#                                 reads the classification: the child
+#                                 survives its slow start, nothing is
+#                                 killed.
+#   GRACE=0            RED    - the sandbox half of the defect: the
+#                                 child is killed and respawned while it
+#                                 is still starting.
+#   SUP_STARTING=0     RED    - the supervisor half of the defect: the
+#                                 sandbox is patient, the supervisor tears
+#                                 the subtree down anyway.
+#
+# base-sel4 only.
+#
+# Build:
+#   make -C genode/build/x86_64 run/sponge-startup-grace \
+#       KERNEL=sel4 BOARD=pc
+#
+
+assert {[have_spec sel4]} \
+	"sponge-startup-grace requires KERNEL=sel4 (BOARD=pc)."
+
+proc ensure_plugin_loaded { name } {
+	if {![have_include $name]} {
+		set path [genode_dir]/tool/run/$name
+		puts "sourcing $path (missing from RUN_OPT, restored by run script)"
+		source $path
+		global include_list
+		lappend include_list $name
+	}
+}
+
+ensure_plugin_loaded boot_dir/sel4
+ensure_plugin_loaded power_on/qemu
+ensure_plugin_loaded log/qemu
+ensure_plugin_loaded image/disk
+
+# The boot image is a disk image here, so image/iso must not be in the
+# include list or the ISO wins the QEMU command line and the guest finds
+# no boot medium (same dance as sponge-desktop-disk).
+global include_list
+set iso_idx [lsearch -exact $include_list "image/iso"]
+if {$iso_idx >= 0} { set include_list [lreplace $include_list $iso_idx $iso_idx] }
+
+#
+# === Knobs ==============================================================
+#
+set grace_ms 60000
+if {[info exists ::env(SPONGE_STARTUP_GRACE_MS)]} {
+	set grace_ms $::env(SPONGE_STARTUP_GRACE_MS)
+}
+
+set start_delay_ms 20000
+if {[info exists ::env(SPONGE_START_DELAY_MS)]} {
+	set start_delay_ms $::env(SPONGE_START_DELAY_MS)
+}
+
+set ignore_starting "yes"
+if {[info exists ::env(SPONGE_SUP_STARTING)] \
+    && $::env(SPONGE_SUP_STARTING) == "0"} {
+	set ignore_starting "no"
+}
+
+#
+# The heartbeat parameters are the PRODUCT's, not a toy: rate 2000 ms and
+# restart_after_skipped 3 give the 6 s budget that the field machine
+# exceeded. The grace must exceed the slow construct, otherwise the
+# scenario measures the grace instead of the defect.
+#
+set hb_ms    2000
+set skipped  3
+# the child is killed when the skip count EXCEEDS restart_after_skipped,
+# i.e. on the (restart_after_skipped + 2)-th unanswered heartbeat
+set budget_ms [expr {($skipped + 2) * $hb_ms}]
+
+if {$grace_ms > 0 && $grace_ms <= $start_delay_ms} {
+	puts "sponge-startup-grace: startup_grace_ms ($grace_ms) must exceed\
+ the construct time ($start_delay_ms ms)"
+	exit 1
+}
+
+set poll_ms   250
+set grace_sup 4000
+set settle_ms 3000
+set console_ms 6000
+set boot_grace_ms 30000
+
+puts "sponge-startup-grace: construct=$start_delay_ms ms budget=$budget_ms ms\
+ startup_grace=$grace_ms ms supervisor_ignore_starting=$ignore_starting"
+
+#
+# === Build ===============================================================
+#
+build {
+	core lib/ld init timer
+	server/report_rom
+	sponge_supervisor
+	test/ep_wedge
+}
+
+create_boot_directory
+
+#
+# === The supervisor's config templates ===================================
+#
+# The templates are wrapped in <system>/<system_console> so the
+# supervisor can find them by name; the wrapper is stripped before the
+# config reaches init (init applies the <config> ELEMENT).
+#
+set templates [open "[run_dir]/genode/supervisor.templates" w]
+
+#
+# Per-child route block. PD/CPU/LOG/RM/ROM are spelled out rather than
+# left to the sandbox's default-route: a child with an explicit <route>
+# gets no default-route fallback, and a denied environment session is
+# fatal.
+#
+proc child_routes {{timer 0}} {
+	set r "    <route>\n"
+	append r "      <service name=\"PD\"><parent/></service>\n"
+	append r "      <service name=\"CPU\"><parent/></service>\n"
+	append r "      <service name=\"LOG\"><parent/></service>\n"
+	append r "      <service name=\"RM\"><parent/></service>\n"
+	append r "      <service name=\"ROM\"><parent/></service>\n"
+	if {$timer} {
+		append r "      <service name=\"Timer\"><parent/></service>\n"
+	}
+	append r "      <service name=\"ROM\" label_last=\"ld.lib.so\"><parent/></service>\n"
+	append r "    </route>\n"
+	return $r
+}
+
+#
+# The child under test: a construct that takes $start_delay_ms. The
+# heartbeat node carries the PRODUCT's containment (restart_after_skipped
+# 3, restart_budget 3) plus the startup grace.
+#
+set slow_child ""
+append slow_child "  <start name=\"slow\" version=\"@KILL@\" caps=\"200\" ram=\"8M\">\n"
+append slow_child "    <binary name=\"ep_wedge\"/>\n"
+append slow_child "    <heartbeat restart_after_skipped=\"$skipped\" restart_budget=\"3\" startup_grace_ms=\"$grace_ms\"/>\n"
+append slow_child "    <config wedge_ms=\"$start_delay_ms\"/>\n"
+append slow_child [child_routes 1]
+append slow_child "  </start>\n"
+
+set witness_child ""
+append witness_child "  <start name=\"witness\" version=\"@KILL@\" caps=\"200\" ram=\"8M\">\n"
+append witness_child "    <binary name=\"ep_wedge\"/>\n"
+append witness_child "    <config behave=\"yes\"/>\n"
+append witness_child [child_routes 0]
+append witness_child "  </start>\n"
+
+#
+# The sandbox preamble: parent-provides + heartbeat + the <report> node
+# that makes this sandbox publish its own state report. The report is
+# what the supervisor reads - it is the whole observation channel, and
+# the place where the "starting" classification becomes visible.
+#
+proc sandbox_head {} {
+	global hb_ms
+	set h "  <parent-provides>\n"
+	foreach s { ROM PD CPU LOG Timer } {
+		append h "    <service name=\"$s\"/>\n"
+	}
+	append h "  </parent-provides>\n"
+	append h "  <default caps=\"400\" ram=\"32M\"/>\n"
+	append h "  <heartbeat rate_ms=\"$hb_ms\"/>\n"
+	append h "  <report delay_ms=\"100\" init_ram=\"yes\" child_ram=\"yes\"/>\n"
+	append h "  <default-route>\n    <any-service>\n      <parent/>\n      <any-child/>\n    </any-service>\n  </default-route>\n"
+	return $h
+}
+
+puts $templates "<system>"
+puts $templates "  <config>"
+puts -nonewline $templates [sandbox_head]
+puts -nonewline $templates $slow_child
+puts -nonewline $templates $witness_child
+puts $templates "  </config>"
+puts $templates "</system>"
+puts $templates ""
+puts $templates "<system_console>"
+puts $templates "  <config>"
+puts -nonewline $templates [sandbox_head]
+puts -nonewline $templates $slow_child
+puts -nonewline $templates $witness_child
+puts $templates "  </config>"
+puts $templates "</system_console>"
+close $templates
+
+#
+# === Top-level init config ==============================================
+#
+install_config [subst {
+config
++ parent-provides
+  + service ROM
+  + service PD
+  + service RM
+  + service CPU
+  + service LOG
+  + service IRQ
+  + service IO_MEM
+  + service IO_PORT
+
++ default | caps: 200 | ram: 4M
+
++ default-route
+  + any-service
+    + parent
+    + any-child
+
++ start timer | caps: 100 | ram: 4M
+  + provides | + service Timer
+
++ start report_rom | caps: 300 | ram: 8M
+  + provides
+    + service Report
+    + service ROM
+  + config | verbose: no
+    + policy | label: system -> config        | report: sponge_supervisor -> system_config
+    + policy | label_suffix: console_state    | report: sponge_supervisor -> console_state
+    + policy | label_suffix: system_state     | report: system -> state
+
++ start sponge_supervisor | caps: 400 | ram: 24M
+  + route
+    + service ROM | label_last: ld.lib.so | + parent
+    + service ROM | label: config    | + parent | label: supervisor.config
+    + service ROM | label: templates | + parent | label: supervisor.templates
+    + service ROM | label: supervisor -> system_state | + child report_rom
+    + service Report | + child report_rom
+    + service Timer | + child timer
+    + any-service
+      + parent
+      + any-child
+
++ start system | caps: 1200 | ram: 96M
+  + binary | name: init
+  + route
+    + service ROM | label: config | + child report_rom
+    + service ROM | label_last: ld.lib.so | + parent
+    + service Timer | + child timer
+    + service Report | + child report_rom
+    + any-service
+      + parent
+      + any-child
+- }]
+
+#
+# The supervisor's own policy. Plain XML on purpose: a ".config" boot
+# module is validated as XML by boot_dir, and this component reads its
+# policy as raw text precisely so it does not care which serialisation
+# arrived - but the file itself still has to be legal.
+#
+set sup_path "[run_dir]/supervisor.config.hid"
+set sup_cfg  [open $sup_path w]
+puts $sup_cfg [subst {
+config
++ policy | poll_ms: $poll_ms | fault_skipped: $skipped
+         | grace_ms: $grace_sup | console_hold_ms: $console_ms
+         | settle_ms: $settle_ms | boot_grace_ms: $boot_grace_ms
+         | ignore_starting: $ignore_starting
+-
+}]
+close $sup_cfg
+exec [genode_dir]/tool/hid format --output-xml $sup_path > "[run_dir]/genode/supervisor.config"
+
+if {[info exists ::env(SPONGE_STARTUP_DUMP)]} {
+	set fd [open "[run_dir]/genode/supervisor.config" r]
+	puts "--- supervisor.config ---"; puts -nonewline [read $fd]
+	puts "--- end ---"; close $fd
+}
+
+build_boot_image [build_artifacts]
+
+append qemu_args " -machine q35 -cpu Skylake-Client "
+append qemu_args " -nographic -m 1G "
+
+#
+# === The gates ===========================================================
+#
+# Only the FIRST gate boots; every later one waits on the ALREADY RUNNING
+# QEMU via $qemu_spawn_id. Omitting it makes the run tool power-cycle the
+# machine between gates.
+#
+# The witness's line is the "the sandbox is up" receipt. It is the FIRST
+# gate on purpose: the two children start concurrently, so their log
+# lines race, and a gate on the child's line could match a line that
+# the witness's gate has already consumed.
+#
+run_genode_until {.*witness: alive and well.*} 120
+
+if {$grace_ms == 0} {
+
+	#
+	# RED ARM (sandbox half): no startup grace. The child's construct
+	# exceeds the 6 s heartbeat budget, so the sandbox abandons it and
+	# respawns it - the churn the field machine showed. The receipt is
+	# the sandbox's own budget warning: it is printed after the third
+	# restart, so it is deterministic where an incarnation count is not.
+	#
+	run_genode_until {.*heartbeat restart budget .* exhausted.*} 180 $qemu_spawn_id
+
+	set incarnations [regexp -all -inline {ep_wedge: incarnation alive} $output]
+	if {[llength $incarnations] < 2} {
+		puts "\nsponge-startup-grace: RED ARM INCONCLUSIVE - the child was\
+ not respawned; the defect did not reproduce\n"
+		exit 1
+	}
+
+	puts "\nsponge-startup-grace: RED (sandbox half) - the child was killed\
+ while it was still starting: [llength $incarnations] incarnations after\
+ the construct exceeded the $budget_ms ms heartbeat budget\n"
+	exit 1
+
+} elseif {$ignore_starting == "no"} {
+
+	#
+	# RED ARM (supervisor half): the sandbox is patient, but the
+	# supervisor above it is not told that a starting child is a starting
+	# child. The supervisor reads the rising skip count of a merely slow
+	# child as a fault and tears the whole subtree down - which is the
+	# field machine's "published system kill=25".
+	#
+	run_genode_until {.*sponge_supervisor: published <system> kill=2.*} 120 $qemu_spawn_id
+
+	puts "\nsponge-startup-grace: RED (supervisor half) - the supervisor\
+ killed the subtree while a child was still starting\n"
+	exit 1
+
+} else {
+
+	#
+	# GREEN ARM: the startup grace keeps the child alive across its slow
+	# construct. The "un-wedged" line is the receipt: it is printed by
+	# the SAME incarnation that started, so it can only appear if the
+	# child was never abandoned.
+	#
+	run_genode_until {.*ep_wedge: incarnation un-wedged after .* ms.*} 90 $qemu_spawn_id
+
+	#
+	# The supervisor must have stayed healthy: its periodic nominal line
+	# is the receipt that it kept polling and kept considering the
+	# subtree healthy.
+	#
+	run_genode_until {.*sponge_supervisor: nominal .*subtree healthy.*} 60 $qemu_spawn_id
+
+	#
+	# NEGATIVE assertions. A supervisor that tore the subtree down while
+	# a child was merely slow is worse than one that does nothing, and a
+	# log-line gate cannot express the absence of a marker - the run tool
+	# accumulates every matched line in the global 'output', so the
+	# absence is assertable after the fact.
+	#
+	if {[string first "sponge_supervisor: FAULT" $output] >= 0} {
+		puts "\nsponge-startup-grace: FAIL - the supervisor reported a\
+ fault while a child was still starting\n"
+		exit 1
+	}
+	if {[string first "sponge_supervisor: published <system> kill=2" $output] >= 0} {
+		puts "\nsponge-startup-grace: FAIL - the supervisor killed the\
+ subtree while a child was still starting\n"
+		exit 1
+	}
+
+	#
+	# Exactly ONE incarnation of the child under test: no respawn.
+	#
+	set incarnations [regexp -all -inline {ep_wedge: incarnation alive} $output]
+	if {[llength $incarnations] != 1} {
+		puts "\nsponge-startup-grace: FAIL - the child was respawned\
+ [llength $incarnations] times during its slow start\n"
+		exit 1
+	}
+
+	puts "\nsponge-startup-grace: PASS - a child whose construct took\
+ $start_delay_ms ms (budget $budget_ms ms) was STARTING, not wedged: it\
+ survived its slow start, the supervisor reported no fault and killed\
+ nothing\n"
+}
+
+puts "\nRun script execution successful.\n"

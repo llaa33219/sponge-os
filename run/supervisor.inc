@@ -523,20 +523,42 @@ proc supervisor::boot_modules {} {
 # behaviour for a fault the sandbox CAN fix, and the reason the control
 # arm below exists.
 #
-# wedge_ms per arm:
-#   takeover  60000 - outlives every window in the escalation chain
-#   control      8000 - shorter than the escalation window
-#                     (fault_skipped*heartbeat + poll_ms + grace_ms), so
-#                     the fault heals INSIDE the supervisor's grace and
-#                     no kill may happen at all.
+# The wedge happens AFTER the child has answered heartbeats
+# (`wedge_after_ms`), not inside its constructor: a child that has never
+# answered a heartbeat is legitimately classified as STARTING by the
+# sandbox (the startup grace, docs/evidence/startup-grace.md), and the
+# supervisor exempts starting children by policy. A fault injected
+# inside a constructor would therefore test the exemption, not the
+# escalation.
+#
+# wedge_after_ms per arm - how long a RESPAWNED child stays responsive
+# before it wedges again. That number has to be read against the
+# supervisor's settle window (20000 here), not only against the grace:
+# a fault that recurs later than the settle window is declared
+# "contained" on every round and the console phase is structurally
+# unreachable - the same race the settle_ms row exists for.
+#
+#   takeover  6000 - the fault recurs well inside the 20 s settle
+#                     window, so "contained" is never reached and the
+#                     console is; the child's own containment is off
+#                     (bare <heartbeat/>), so nothing else restarts it
+#   control   9000 - the fault lands inside the sandbox's own kill
+#                     budget (10 s) instead of past it: the sandbox
+#                     abandons and respawns the child itself, every
+#                     ~10 s, and the fault clears with it, so the
+#                     supervisor's 4 s escalation window never fills
+#                     and nothing may be killed. The supervisor does
+#                     observe the fault - skipped_heartbeats reaches 3
+#                     at 8 s - which is the arm's point.
 #
 # The child goes in BEFORE pkg_runtime, which must stay the last <start>
 # of this config (RAM remainder clamp).
 #
 proc supervisor::_test_child_hid { mode } {
 	#
-	# ep_wedge with no attributes blocks its entrypoint FOREVER, on every
-	# incarnation: a persistent fault, which is the only kind the
+	# ep_wedge in `wedge_after_ms` mode returns from its constructor
+	# (so it becomes responsive and answers heartbeats) and parks its
+	# entrypoint later: a persistent fault, which is the only kind the
 	# supervisor can escalate to the console (a fault that heals inside a
 	# kill window is contained, by design - that is the control arm).
 	#
@@ -559,12 +581,16 @@ proc supervisor::_test_child_hid { mode } {
 	# would make the supervisor kill the desktop minutes later.
 	#
 	set hb "  + heartbeat"
-	if {$mode eq "control"} { set hb "  + heartbeat | restart_after_skipped: 3" }
+	set wedge_after 6000
+	if {$mode eq "control"} {
+		set hb "  + heartbeat | restart_after_skipped: 3"
+		set wedge_after 9000
+	}
 
 	set h "+ start wedge | caps: 200 | ram: 4M\n"
 	append h "  + binary | name: bin/ep_wedge\n"
 	append h "$hb\n"
-	append h "  + config\n"
+	append h "  + config | wedge_after_ms: $wedge_after\n"
 	append h "  + route\n"
 	append h "    + service ROM | label_last: ld.lib.so | + parent\n"
 	append h "    + service Timer | + parent\n"

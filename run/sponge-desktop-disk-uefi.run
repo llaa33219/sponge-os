@@ -698,7 +698,18 @@ config
 
 # Fault containment (docs/17 §5): a child whose entrypoint wedges is
 # abandoned and respawned by the sandbox after 3 skipped heartbeats
-# (~6 s at rate 2000 ms). The input chain (top-level) is untouched.
+# (8 s at rate 2000 ms: the child is killed on the FOURTH unanswered
+# heartbeat). The input chain (top-level) is untouched.
+#
+# Every contained child additionally carries `startup_grace_ms`: a child
+# that has not answered a SINGLE heartbeat is not wedged, it is inside
+# its first construct - and in the classic Genode the construct runs on
+# the very thread that has to answer the heartbeat. A child that loads
+# its shared libraries (Qt6, Mesa) over a slow storage chain therefore
+# looks exactly like a wedge to the parent. The grace gives such a
+# child a bounded window to come up; when it expires, the normal wedge
+# rules apply unchanged. Measurements and the field receipt:
+# docs/evidence/startup-grace.md.
 + heartbeat | rate_ms: 2000
 
 + start report_rom | caps: 300 | ram: 8M
@@ -744,7 +755,7 @@ config
 
 + start wm | caps: 2000 | ram: 16M
   + binary | name: bin/wm
-  + heartbeat | restart_after_skipped: 3 | restart_budget: 3
+  + heartbeat | restart_after_skipped: 3 | restart_budget: 3 | startup_grace_ms: 120000
   + provides
     + service Gui
     + service Report
@@ -766,7 +777,7 @@ config
 
 + start layouter | caps: 1000 | ram: 8M
   + binary | name: bin/window_layouter
-  + heartbeat | restart_after_skipped: 3 | restart_budget: 3
+  + heartbeat | restart_after_skipped: 3 | restart_budget: 3 | startup_grace_ms: 120000
   + config | rules: rom
     + report | rules: yes
     + rules
@@ -792,7 +803,7 @@ config
 
 + start decorator | caps: 6000 | ram: 64M
   + binary | name: bin/decorator
-  + heartbeat | restart_after_skipped: 3 | restart_budget: 3
+  + heartbeat | restart_after_skipped: 3 | restart_budget: 3 | startup_grace_ms: 120000
   + config
     + controls
       + maximizer
@@ -810,7 +821,7 @@ config
 
 + start sponge_configd | caps: 200 | ram: 16M
   + binary | name: bin/sponge_configd
-  + heartbeat | restart_after_skipped: 3 | restart_budget: 3
+  + heartbeat | restart_after_skipped: 3 | restart_budget: 3 | startup_grace_ms: 120000
   + config
     + bake
   + route
@@ -830,7 +841,7 @@ config
 
 + start sponge_themed | caps: 200 | ram: 8M
   + binary | name: bin/sponge_themed
-  + heartbeat | restart_after_skipped: 3 | restart_budget: 3
+  + heartbeat | restart_after_skipped: 3 | restart_budget: 3 | startup_grace_ms: 120000
   + route
     + service ROM | label_last: ld.lib.so | + parent
     + service ROM | label_last: config       | + child report_rom
@@ -843,7 +854,7 @@ config
 
 + start sponge_pkgd | caps: 200 | ram: 16M
   + binary | name: bin/sponge_pkgd
-  + heartbeat | restart_after_skipped: 3 | restart_budget: 3
+  + heartbeat | restart_after_skipped: 3 | restart_budget: 3 | startup_grace_ms: 120000
   + config | binary_prefix: bin/
     + launcher_request
     + admission
@@ -864,7 +875,7 @@ config
 
 + start sponge-de | caps: 8000 | ram: 128M
   + binary | name: bin/sponge-de
-  + heartbeat | restart_after_skipped: 3 | restart_budget: 3
+  + heartbeat | restart_after_skipped: 3 | restart_budget: 3 | startup_grace_ms: 120000
   + config
     + theme | source: themed
     + launcher | source: pkgd
@@ -995,7 +1006,7 @@ config
 @DRIVER_START_NODE@
 + start pkg_runtime | caps: 230000 | ram: 512G
   + binary | name: bin/init
-  + heartbeat | restart_after_skipped: 3 | restart_budget: 3
+  + heartbeat | restart_after_skipped: 3 | restart_budget: 3 | startup_grace_ms: 120000
   + route
     + service ROM | label_last: ld.lib.so | + parent
     + service ROM | label_last: mesa_gpu.lib.so | + parent | label: mesa_gpu-softpipe.lib.so

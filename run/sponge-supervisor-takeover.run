@@ -41,8 +41,10 @@
 #     + desktop              sponge_console in role=desktop: a real Gui
 #                            client, so "the console took the display" is
 #                            a pixel claim
-#     + driver               ep_wedge wedge_ms=N: the critical child that
-#                            wedges its entrypoint on every incarnation
+#     + driver               ep_wedge wedge_after_ms=N: the critical child
+#                            that wedges its entrypoint on every
+#                            incarnation, AFTER it has become responsive
+#                            (see the fault-injection note below)
 #     + witness              ep_wedge behave=yes: must survive every cycle
 #   + console                  sponge_console, started but INERT; opens its
 #                              Gui session only while the supervisor arms it
@@ -125,30 +127,55 @@ if {[info exists ::env(SPONGE_TAKE_NO_FAULT)] &&
 #
 # Supervisor timing. The windows must satisfy:
 #
-#   wedge_ms  >  poll + fault_skipped*heartbeat   (so the wedge is seen)
-#   grace_ms  >  fault_skipped*heartbeat          (so the kill happens
+#   detect_ms  =  (fault_skipped + 2) * heartbeat + poll
+#                                                (the skip count lags one
+#                                                 heartbeat behind, so the
+#                                                 detector needs
+#                                                 skipped*hb_ms of
+#                                                 unresponsiveness plus
+#                                                 one poll interval)
+#   wedge_ms   >  detect_ms                       (so the wedge is seen)
+#   grace_ms   >  detect_ms                       (so the kill happens
 #                                                 before the console)
-#   wedge_ms  >  grace_ms                         (so the wedge is still
-#                                                 present when the grace
-#                                                 window expires - the
-#                                                 wedge must survive the
-#                                                 respawn, which is what
-#                                                 makes it unrecoverable)
+#   settle_ms  >  wedge_ms + grace_ms             (THE ONE THAT BITES:
+#                                                 after the kill the
+#                                                 respawned child is
+#                                                 RESPONSIVE for wedge_ms
+#                                                 before it wedges again,
+#                                                 so a settle window
+#                                                 shorter than that would
+#                                                 declare the fault
+#                                                 "contained" every round
+#                                                 and the console phase
+#                                                 would be structurally
+#                                                 unreachable - exactly the
+#                                                 race the product media's
+#                                                 settle_ms: 20000 exists
+#                                                 to avoid)
 #   console_hold_ms > poll                        (bounded, observable)
 #
 set poll_ms    250
 set hb_ms      500
 set skipped    3
 set grace_ms   4000
-set settle_ms  3000
+set settle_ms  30000
 set console_ms 6000
+# The wedge happens AFTER the child has answered heartbeats
+# (`wedge_after_ms`), not inside its constructor (`wedge_ms`): a child
+# that has never answered a heartbeat is legitimately classified as
+# STARTING by the supervised sandbox - the startup grace,
+# docs/evidence/startup-grace.md - and this scenario's subject is the
+# supervisor's handling of a child that IS up and goes unresponsive,
+# which is the fault the field actually reported
+# (`sponge_pkgd unresponsive(N)` after a working boot).
 set wedge_ms   20000
 
 if {$inject_fault} {
 	# The heartbeat rate decides how fast skipped_heartbeats climbs:
-	# init checks once per heartbeat period, so the detector needs
-	# skipped*hb_ms of unresponsiveness plus one poll interval.
-	set detect_ms [expr {$skipped * $hb_ms + $poll_ms}]
+	# init checks once per heartbeat period, and the skip count lags one
+	# heartbeat behind the unanswered count, so the detector needs
+	# (skipped+2)*hb_ms of unresponsiveness plus one poll interval.
+	set detect_ms [expr {($skipped + 2) * $hb_ms + $poll_ms}]
 	if {$wedge_ms < [expr {$detect_ms + 2 * $poll_ms}]} {
 		puts "sponge-supervisor-takeover: wedge_ms=$wedge_ms is too short to be detected (need > $detect_ms)"
 		exit 1
@@ -157,8 +184,8 @@ if {$inject_fault} {
 		puts "sponge-supervisor-takeover: grace_ms=$grace_ms is shorter than detection ($detect_ms) - the console would never be reached"
 		exit 1
 	}
-	if {$wedge_ms <= [expr {$grace_ms + $settle_ms}]} {
-		puts "sponge-supervisor-takeover: wedge_ms=$wedge_ms must exceed grace+settle ($settle_ms+$grace_ms ms) so the wedge survives the respawn"
+	if {$settle_ms <= [expr {$wedge_ms + $grace_ms}]} {
+		puts "sponge-supervisor-takeover: settle_ms=$settle_ms must exceed wedge+grace ($wedge_ms+$grace_ms ms) or the respawned child is declared healthy before it wedges again"
 		exit 1
 	}
 }
@@ -238,7 +265,7 @@ append desktop_child "    </route>\n"
 append desktop_child "  </start>\n"
 
 if {$inject_fault} {
-	set driver_cfg "wedge_ms=\"$wedge_ms\""
+	set driver_cfg "wedge_after_ms=\"$wedge_ms\""
 } else {
 	set driver_cfg "behave=\"yes\""
 }
@@ -613,7 +640,7 @@ if {$inject_fault} {
 	# the rewrite, and ep_wedge logged a SECOND incarnation - which can
 	# only happen if the <start> version really changed.
 	run_genode_until {.*sponge_supervisor: published <system> kill=2.*} 60 $qemu_spawn_id
-	run_genode_until {.*ep_wedge: incarnation alive.*} 60 $qemu_spawn_id
+	run_genode_until {.*ep_wedge: incarnation alive . wedging in.*} 60 $qemu_spawn_id
 
 	# The fault survived the grace window and the settle window, so the
 	# supervisor declared the subtree unrecoverable.
@@ -628,10 +655,29 @@ if {$inject_fault} {
 	run_genode_until {.*sponge_console: ARMED role=console.*} 90 $qemu_spawn_id
 	run_genode_until {.*takeover_probe: console-up state=console.*} 90 $qemu_spawn_id
 
-	# Phase 5: bounded recovery. The console disarms BEFORE the desktop is
-	# rebuilt, so the display is never shared by the two.
-	run_genode_until {.*sponge_console: DISARMED.*} 120 $qemu_spawn_id
-	run_genode_until {.*sponge_supervisor: CONSOLE RELEASED.*} 60 $qemu_spawn_id
+	# Phase 5: bounded recovery. The desktop is only rebuilt AFTER the
+	# console has been told to disarm, so the display is never shared by
+	# the two - which is what the ORDER of the next two receipts shows.
+	#
+	# The two disarm receipts ("CONSOLE RELEASED" from the supervisor,
+	# "DISARMED" from the console) are asserted over the accumulated
+	# output instead of being gated one after the other: the console reads
+	# the arming report asynchronously, so the two lines can land in
+	# either order, and a sequential gate on the wrong one blocks until
+	# the timeout. The ORDER that matters - release before rebuild - is
+	# carried by gating the rebuild itself after them.
+	run_genode_until {.*sponge_supervisor: published <system> kill=4.*} 180 $qemu_spawn_id
+
+	if {[string first "sponge_console: DISARMED" $output] < 0} {
+		puts "\nsupervisor-takeover: FAIL - the console was never disarmed\n"
+		exit 1
+	}
+	if {[string first "sponge_supervisor: CONSOLE RELEASED" $output] < 0} {
+		puts "\nsupervisor-takeover: FAIL - the supervisor never released the console\n"
+		exit 1
+	}
+
+	# The desktop is back on the display, and the supervisor says so.
 	run_genode_until {.*sponge_supervisor: phase=1 .desktop restored.*} 60 $qemu_spawn_id
 	run_genode_until {.*takeover_probe: pixel state=desktop.*} 120 $qemu_spawn_id
 

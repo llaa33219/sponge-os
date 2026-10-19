@@ -259,12 +259,21 @@ namespace eval driver_runtime {
     # sponge_supervisor reaches its console phase while the user is still
     # looking at it.
     #
+    # startup_grace_ms on the same node: a child that has not answered a
+    # SINGLE heartbeat is not wedged, it is inside its first construct -
+    # and in the classic Genode the construct runs on the very thread
+    # that has to answer the heartbeat. A driver that loads its shared
+    # libraries over a slow storage chain therefore looks exactly like a
+    # wedge to the parent. The grace gives such a child a bounded window
+    # to come up; when it expires, the normal wedge rules apply
+    # unchanged. Measurements: docs/evidence/startup-grace.md.
+    #
     proc start_node {} {
         variable GRANT_CAPS
         variable GRANT_RAM
         return "+ start driver_runtime | caps: $GRANT_CAPS | ram: $GRANT_RAM
   + binary | name: bin/init
-  + heartbeat | restart_after_skipped: 3 | restart_budget: 3
+  + heartbeat | restart_after_skipped: 3 | restart_budget: 3 | startup_grace_ms: 120000
   + route
     + service ROM | label: config               | + child report_rom
     + service ROM | label: driver_runtime_state | + child report_rom

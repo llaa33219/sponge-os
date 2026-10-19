@@ -1174,6 +1174,35 @@ A scenario defines:
   so the supervisor's own lines would be dropped before a late gate
   could see them. Receipts: `docs/evidence/product-supervision.md`.
 
+- **`SPONGE_SLOW_STORAGE_KBPS`** (env-gated, **off by default**;
+  measurement only) — a slow-storage emulation on the boot medium of
+  `run/sponge-desktop-disk-uefi-usb.run`, the field's own media. It
+  limits the read/write bandwidth of the stick with QEMU's block
+  throttling, so the QEMU/field gap around component startup can be
+  **measured** instead of argued: at 4 MB/s five contained children —
+  `sponge-de` among them — take 8–10 s to become responsive against the
+  sandbox's 10 s heartbeat budget, and the sandbox says so by name
+  (`startup took N ms - the heartbeat budget (M ms) would have killed
+  it`). The gate timeout scales with the knob. Never shipped; receipts
+  in `docs/evidence/startup-grace.md` §2.
+
+- **`run/sponge-startup-grace.run`** — the red→green proof for the
+  classification defect behind the 2026-10-19 LG gram loop
+  (`published system kill=25`). In the classic Genode
+  `Component::construct()` runs on the entrypoint thread, so a child
+  whose construct outlives the heartbeat budget cannot answer a single
+  heartbeat and is read as a wedge. Three arms, one scenario:
+
+  | arm | knobs | claim |
+  |---|---|---|
+  | GREEN | default (`startup_grace_ms=60000`) | a child whose construct takes 20 s against a 10 s budget is STARTING: one incarnation, no fault, nothing killed |
+  | RED (sandbox half) | `SPONGE_STARTUP_GRACE_MS=0` | without the grace the child is killed and respawned 4× and then left stopped — FAIL as designed |
+  | RED (supervisor half) | `SPONGE_SUP_STARTING=0` | with the sandbox patient, the supervisor still tears the subtree down (`published <system> kill=2`) — the field's signature, isolated |
+
+  `SPONGE_START_DELAY_MS` moves the construct time; the product's own
+  heartbeat parameters (`rate_ms` 2000, `restart_after_skipped` 3,
+  `restart_budget` 3) are used verbatim.
+
 ## Planned additions
 
 - Spin a usable Sponge OS install workflow through Leitzentrale (the

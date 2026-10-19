@@ -711,7 +711,18 @@ config
 
 # Fault containment (docs/17 §5): a child whose entrypoint wedges is
 # abandoned and respawned by the sandbox after 3 skipped heartbeats
-# (~6 s at rate 2000 ms). The input chain (top-level) is untouched.
+# (8 s at rate 2000 ms: the child is killed on the FOURTH unanswered
+# heartbeat). The input chain (top-level) is untouched.
+#
+# Every contained child additionally carries `startup_grace_ms`: a child
+# that has not answered a SINGLE heartbeat is not wedged, it is inside
+# its first construct - and in the classic Genode the construct runs on
+# the very thread that has to answer the heartbeat. A child that loads
+# its shared libraries (Qt6, Mesa) over a slow storage chain therefore
+# looks exactly like a wedge to the parent. The grace gives such a
+# child a bounded window to come up; when it expires, the normal wedge
+# rules apply unchanged. Measurements and the field receipt:
+# docs/evidence/startup-grace.md.
 + heartbeat | rate_ms: 2000
 
 + start report_rom | caps: 300 | ram: 8M
@@ -761,7 +772,7 @@ config
 
 + start wm | caps: 2000 | ram: 16M
   + binary | name: bin/wm
-  + heartbeat | restart_after_skipped: 3 | restart_budget: 3
+  + heartbeat | restart_after_skipped: 3 | restart_budget: 3 | startup_grace_ms: 120000
   + provides
     + service Gui
     + service Report
@@ -783,7 +794,7 @@ config
 
 + start layouter | caps: 1000 | ram: 8M
   + binary | name: bin/window_layouter
-  + heartbeat | restart_after_skipped: 3 | restart_budget: 3
+  + heartbeat | restart_after_skipped: 3 | restart_budget: 3 | startup_grace_ms: 120000
   + config | rules: rom
     + report | rules: yes
     + rules
@@ -809,7 +820,7 @@ config
 
 + start decorator | caps: 6000 | ram: 64M
   + binary | name: bin/decorator
-  + heartbeat | restart_after_skipped: 3 | restart_budget: 3
+  + heartbeat | restart_after_skipped: 3 | restart_budget: 3 | startup_grace_ms: 120000
   + config
     + controls
       + maximizer
@@ -827,7 +838,7 @@ config
 
 + start sponge_configd | caps: 200 | ram: 16M
   + binary | name: bin/sponge_configd
-  + heartbeat | restart_after_skipped: 3 | restart_budget: 3
+  + heartbeat | restart_after_skipped: 3 | restart_budget: 3 | startup_grace_ms: 120000
   + config
     + bake
   + route
@@ -847,7 +858,7 @@ config
 
 + start sponge_themed | caps: 200 | ram: 8M
   + binary | name: bin/sponge_themed
-  + heartbeat | restart_after_skipped: 3 | restart_budget: 3
+  + heartbeat | restart_after_skipped: 3 | restart_budget: 3 | startup_grace_ms: 120000
   + route
     + service ROM | label_last: ld.lib.so | + parent
     + service ROM | label_last: config       | + child report_rom
@@ -860,7 +871,7 @@ config
 
 + start sponge_pkgd | caps: 200 | ram: 16M
   + binary | name: bin/sponge_pkgd
-  + heartbeat | restart_after_skipped: 3 | restart_budget: 3
+  + heartbeat | restart_after_skipped: 3 | restart_budget: 3 | startup_grace_ms: 120000
   + config | binary_prefix: bin/
     + launcher_request
     + admission
@@ -884,7 +895,7 @@ config
 
 + start vct_tty | caps: 200 | ram: 8M
   + binary | name: bin/vct_tty
-  + heartbeat | restart_after_skipped: 3 | restart_budget: 3
+  + heartbeat | restart_after_skipped: 3 | restart_budget: 3 | startup_grace_ms: 120000
   + provides | + service Terminal
   + config
   + route
@@ -898,7 +909,7 @@ config
 
 + start sponge-de | caps: 8000 | ram: 128M
   + binary | name: bin/sponge-de
-  + heartbeat | restart_after_skipped: 3 | restart_budget: 3
+  + heartbeat | restart_after_skipped: 3 | restart_budget: 3 | startup_grace_ms: 120000
   + config
     + theme | source: themed
     + launcher | source: pkgd
@@ -1037,7 +1048,7 @@ config
 @DRIVER_START_NODE@
 + start pkg_runtime | caps: 230000 | ram: 512G
   + binary | name: bin/init
-  + heartbeat | restart_after_skipped: 3 | restart_budget: 3
+  + heartbeat | restart_after_skipped: 3 | restart_budget: 3 | startup_grace_ms: 120000
   + route
     + service ROM | label_last: ld.lib.so | + parent
     + service ROM | label_last: mesa_gpu.lib.so | + parent | label: mesa_gpu-softpipe.lib.so
@@ -2105,7 +2116,37 @@ append qemu_args " -nographic -m 8G -snapshot "
 append qemu_args " -device nec-usb-xhci,id=xhci "
 append qemu_args " -device usb-tablet,bus=xhci.0 "
 append qemu_args " -device usb-storage,drive=stick,bus=xhci.0 "
-append qemu_args " -drive id=stick,format=raw,file=[run_dir].img,if=none "
+#
+# Slow-storage emulation knob (MEASUREMENT ONLY, off by default).
+#
+# SPONGE_SLOW_STORAGE_KBPS limits the READ/WRITE bandwidth of the boot
+# medium with QEMU's block throttling. The field machine's boot stick is
+# a slow USB stick behind xHCI + ext2/rump + cached_fs_rom, and it is
+# the /system reads (every child's shared libraries) that a slow chain
+# taxes; a bandwidth limit on the very same medium is the honest
+# emulation of it. The shipped media is never throttled - the knob only
+# exists so the QEMU/field gap can be MEASURED instead of argued.
+#
+# The unit is KB/s rather than MB/s because the field's EFFECTIVE
+# throughput is far below a stick's raw speed (the whole protocol and
+# stack overhead is charged to it), and the numbers that matter are the
+# ones below 1 MB/s.
+#
+set stick_drive "id=stick,format=raw,file=[run_dir].img,if=none"
+set slow_storage_kbps 0
+if {[info exists ::env(SPONGE_SLOW_STORAGE_KBPS)]} {
+	set slow_storage_kbps $::env(SPONGE_SLOW_STORAGE_KBPS)
+}
+if {$slow_storage_kbps > 0} {
+	set slow_bps [expr {$slow_storage_kbps * 1024}]
+	# QEMU rejects a bps-total together with a per-direction bps limit
+	# ("bps/iops/max total values and read/write values cannot be used at
+	#  the same time"), so the limit is spelled per direction.
+	append stick_drive ",throttling.bps-read=$slow_bps,throttling.bps-write=$slow_bps"
+	puts "\[sponge-desktop-disk-uefi-usb\] SLOW STORAGE EMULATION: media bandwidth\
+ limited to $slow_storage_kbps KB/s"
+}
+append qemu_args " -drive $stick_drive "
 append qemu_args " -drive if=pflash,format=raw,readonly=on,file=$ovmf_code "
 append qemu_args " -drive if=pflash,format=raw,file=$ovmf_vars "
 # W^X workaround (edk2 PR #10667 fw_cfg opt-in knob). Silent no-op
@@ -2253,7 +2294,7 @@ if {![run_load]} {
 
 set uefi_log [run_dir]/uefi-boot.log
 puts ""
-puts "\[sponge-desktop-disk-uefi-usb\] starting QEMU boot — usb storage-chain gate (≤300 s)"
+puts "\[sponge-desktop-disk-uefi-usb\] starting QEMU boot — usb storage-chain gate (≤$timeout s)"
 puts "  serial log: $uefi_log"
 puts "  marker: 'sponge-de diag gates:' from \[init -> system -> sponge-de\]"
 puts "          (the nested system init and its children are served from"
@@ -2261,7 +2302,12 @@ puts "           /system on P3 via usb_block — impossible without the full"
 puts "           xHCI → usb_block → part_block → vfs → cached_fs_rom chain)"
 
 log_file -a $uefi_log
+# The QEMU boot gate's budget scales with the slow-storage emulation: a
+# throttled medium needs proportionally longer to serve /system.
 set timeout 300
+if {$slow_storage_kbps > 0} {
+	set timeout 2400
+}
 set storage_chain_proven 0
 expect {
     -i $qemu_spawn_id -re "sponge-de diag gates:" {
