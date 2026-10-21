@@ -1,0 +1,159 @@
+#
+# \brief  A quota upgrade that is never answered must not park the
+#         sandbox's entrypoint
+# \author Sponge OS contributors
+# \date   2026
+#
+# THE FIELD FAILURE THIS ATTACKS
+#
+#   2026-10-19, LG gram 17ZD90N: a fast scrollbar drag in the SPONGE
+#   DEBUG window freezes the whole system. The mouse dies, the panel
+#   health label reads "sponge_pkgd unresponsive(N)", and the freeze
+#   NEVER heals - which rules out saturation and establishes that a
+#   thread is blocked.
+#
+#   The blocked thread is a sandbox init's ENTRYPOINT, and the protocol
+#   that blocks it is the quota upgrade:
+#
+#     victim --Parent::upgrade--> sandbox init --nested upgrade-->
+#             top init --PENDING--> provider (never answers)
+#
+#   'Parent::Upgrade_result::PENDING' is not a promise - it means "the
+#   request has been taken, the session's provider has not acted on it
+#   yet". A provider that is stuck (the field's file-system server on a
+#   stalled USB stick) never answers, and the sandbox init - whose
+#   entrypoint serves every child's session plumbing AND the
+#   containment alarm - waits for it forever. The whole container dies
+#   silently, and the alarm that would have noticed is parked with it.
+#
+# WHAT IS MEASURED HERE
+#
+#   The provider is a component that never answers a quota upgrade (the
+#   field's stuck file-system server, made deterministic). The victim
+#   asks for an upgrade on a session to that provider. The witness
+#   opens a session once per second and logs each round - a session
+#   request goes through the sandbox's entrypoint, so the witness stops
+#   talking exactly when the container is wedged.
+#
+#   RED   (unpatched base): the sandbox's entrypoint parks; the witness
+#         stops; the gate never matches; the run times out -> exit 2.
+#   GREEN (patched base): the upgrade is refused truthfully, the
+#         victim's request fails fast, the witness keeps its rounds,
+#         the gate matches -> exit 0.
+#
+# TOPOLOGY
+#
+#   init                                     THE TOP-LEVEL INIT
+#   + timer                                  the only Timer source
+#   + report_rom                             serves the 'system' state report
+#   + upgrade_wedge            role: provider  the stuck server
+#   + system                    init          THE CONTAINER UNDER TEST
+#     + upgrade_wedge           role: witness  the liveness oracle
+#     + upgrade_wedge           role: victim   the upgrade request
+#
+#   The victim reaches 'Test_service' through the default route, so its
+#   session is parent-routed: the 'system' init forwards the upgrade to
+#   the top init, which forwards it to the provider. That is the
+#   product's shape - the vfs lives in the top-level sandbox, the
+#   clients live in 'system' - and the nesting is not simulated, it is
+#   the default route.
+#
+
+assert {[have_spec sel4]} \
+	"sponge-upgrade-wedge requires KERNEL=sel4 (BOARD=pc)."
+
+build { core lib/ld init timer test/upgrade_wedge }
+
+create_boot_directory
+
+install_config [subst {
+config
++ parent-provides
+  + service ROM
+  + service PD
+  + service RM
+  + service CPU
+  + service LOG
+  + service IRQ
+  + service IO_MEM
+  + service IO_PORT
+
++ default | caps: 200 | ram: 4M
++ default-route
+  + any-service
+    + parent
+    + any-child
+
++ start timer | caps: 100 | ram: 1M
+  + provides | + service Timer
+
++ start upgrade_wedge | caps: 100 | ram: 4M
+  + binary | name: upgrade_wedge
+  + config | role: 0
+  + provides | + service Test_service
+
++ start system | caps: 1000 | ram: 24M
+  + binary init
+  + config
+    + parent-provides
+      + service ROM
+      + service PD
+      + service RM
+      + service CPU
+      + service LOG
+      + service Timer
+      + service Test_service
+      + service IRQ
+      + service IO_MEM
+      + service IO_PORT
+    + default | caps: 200 | ram: 4M
+    + default-route
+      + any-service
+        + parent
+        + any-child
+    + start witness | caps: 100 | ram: 4M
+      + binary | name: upgrade_wedge
+      + config | role: 2
+    + start victim | caps: 200 | ram: 4M
+      + binary | name: upgrade_wedge
+      + config | role: 1
+  + route
+    + service PD           | + parent
+    + service CPU          | + parent
+    + service LOG          | + parent
+    + service ROM          | + parent
+    + service Timer        | + any-child
+    + service Test_service | + any-child
+- }]
+
+build_boot_image [build_artifacts]
+
+append qemu_args " -nographic -m 512M "
+
+#
+# GATES
+#
+#   Gate 1 boots the guest.
+#   Gate 2 is the measurement: the witness must reach its third round.
+#   A wedged container stops the witness, so the gate times out and the
+#   run tool reports a failure - the field symptom, reproduced.
+#
+global qemu_spawn_id
+
+run_genode_until {.*Genode [0-9].*} 120
+
+set uw_log [run_dir]/upgrade-wedge.log
+match_max -i $qemu_spawn_id 500000
+log_file -a $uw_log
+
+run_genode_until {.*witness: round 3 ok.*} 40 $qemu_spawn_id
+
+sleep 1
+log_file
+
+puts ""
+puts "  ================================================================"
+puts "  upgrade-wedge: the container survived a never-answered upgrade"
+puts "    witness rounds : 3 (the sandbox's entrypoint kept serving)"
+puts "    serial log     : $uw_log"
+puts "  ================================================================"
