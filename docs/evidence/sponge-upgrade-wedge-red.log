@@ -1,0 +1,12 @@
+6.08-26-g20d0ff31d8
+63 MiB RAM and 523288 caps assigned to init
+[init -> timer] timers=3, clock 10000000fs , 64bit counter , legacy routing support vendor=0x8086
+[init -> timer] timer0 GSI options 0xff0104, supports periodic
+[init -> timer] timer1 GSI options 0xff0104, supports periodic
+[init -> timer] timer2 GSI options 0xff0104, supports periodic
+[init -> timer] time wraps after 5849 years
+[init -> timer] irqs=off legacy=off
+[init -> upgrade_wedge] provider: announced Test_service
+[init -> timer] Using timer 2 -> using GSI 2 edge triggered
+[init -> system -> victim] victim: session to Test_service established - requesting a quota upgrade
+[init -> upgrade_wedge] provider: quota-upgrade request received - not answering (the stuck file-system server)
