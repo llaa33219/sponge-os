@@ -497,7 +497,7 @@ append qemu_args " -nographic -m 4G "
 # boot log prints, because every later gate reads from the same expect
 # buffer: matching late would consume the paint marker this scenario
 # exists to observe.
-run_genode_until {.*Genode v.*} 180
+run_genode_until {.*Genode [0-9].*} 180
 
 global qemu_spawn_id
 #

@@ -1072,7 +1072,7 @@ if {![run_load]} {
 
 set timeout 120
 expect {
-    -i $qemu_spawn_id -re ".*Genode v.*" {
+    -i $qemu_spawn_id -re ".*Genode [0-9].*" {
         puts "\[sponge-fbprobe-uefi\] UNEXPECTED - QEMU reached the Genode v... banner"
     }
     eof {

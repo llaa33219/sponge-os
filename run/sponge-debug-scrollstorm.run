@@ -901,7 +901,7 @@ global qemu_spawn_id
 
 set ss_log [run_dir]/scrollstorm.log
 
-run_genode_until {.*Genode v.*} 180
+run_genode_until {.*Genode [0-9].*} 180
 
 # The verbose state report emits hundreds of bytes per child per second,
 # more than expect's default 2000-byte match window, so a later gate

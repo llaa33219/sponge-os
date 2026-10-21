@@ -127,85 +127,129 @@ The upgrade is **refused truthfully** ("RAM upgrade of Test_service
 failed"), the victim does not park, the sandbox's entrypoint keeps
 serving, and the witness keeps its rounds. The run exits 0.
 
-## 3. The fix
+## 3. Why the first fix attempt was reverted
 
-Three edits in the vendored tree (fork commit `500cb2cc8a`, ledger row
-#28):
+Two variants were implemented and **measured**, not argued:
 
-1. **`genode/repos/base/include/base/env.h`** — a new
-   `Env::try_upgrade()`, the **non-blocking** variant: the parent's
-   answer is passed through as-is, `PENDING` included.
-2. **`genode/repos/base/src/lib/base/component.cc`** —
-   `Component_env::try_upgrade()` implements it: one RPC, no wait. The
-   existing `Env::upgrade()` (which waits) is **unchanged**, so a leaf
-   component keeps waiting for its provider's answer.
-3. **`genode/repos/base/include/base/service.h`** —
-   `Try_parent_service::initiate_request()` uses `try_upgrade()` and
-   reports a quota that was **not** granted as not granted
-   (`Initiate_error::OUT_OF_RAM` → `Parent::Upgrade_result::OUT_OF_RAM`),
-   instead of pretending success.
+* **Variant A - refuse the upgrade.** The container forwards the
+  request without waiting and reports the quota as *not granted*
+  (`OUT_OF_RAM`); the requesting client retries.
+* **Variant B - forward without waiting, report "taken".** The
+  container forwards the request without waiting, keeps the quota
+  transfer, and answers `PENDING`; the client waits for the session
+  notification.
 
-`genode/repos/libports/src/lib/libc/internal/env.h` forwards the new
-method for libc-based components.
+Variant A is the obvious one and it **breaks the product**: the e1000
+driver of the `pc_nic` package never comes up. The reason is visible
+in the code: the quota transfer is **reverted** when the request is
+refused, so the provider never receives the extra quota and the
+client's allocation keeps failing.
 
-**Why this is the root and not a mitigation.** The container's entrypoint
-never blocks on a call into its own parent again; a provider that never
-answers can no longer take a whole sandbox with it. The requesting client
-gets a terminal answer and retries (its retry loop is already bounded by
-ledger row #25's `Parent::UPGRADE_ATTEMPTS`), so the failure is loud
-and bounded instead of silent and eternal.
+Variant B keeps the transfer but breaks the **notification chain**: the
+container answers `PENDING` and the client parks - but the
+notification that would release it travels through the container
+(`Child::session_ready` -> the client's session signal), and a container
+that is *not* waiting drops the upper init's session signal. The
+client therefore parks forever, and the e1000 driver hangs at startup
+instead of failing.
 
-## 4. Honest limits
+Measured (fork commit `500cb2cc8a`, reverted in `3df26cf22b`):
 
-* **A nested upgrade is now refused, not waited for.** A client that
-  upgrades a session to a service provided by the *parent* sandbox (the
-  product's `vfs_*` File_system servers) gets `OUT_OF_RAM` instead of a
-  completed quota transfer. The quota itself still moves up the chain
-  (the transfer happens before the answer), so the client's retried
-  operation succeeds; what the client loses is the *promise* that the
-  upgrade is already in place. The alternative — letting the container
-  park until the provider answers — is the field's freeze.
-  Completing the promise needs a background re-drive of the pending
-  upgrade in the sandbox (a timer-driven retry that notifies the client
-  when the chain completes); that is registered as a follow-up, not
-  shipped here.
-* The same-level case (the provider is a child of the *same* sandbox)
-  is unchanged: the container answers `PENDING`, the leaf waits in
-  `Env::upgrade()`, and the provider's answer releases it. The wait is
-  bounded by the containment, because the container's entrypoint is
-  alive and its alarm can fire.
-* The reproduction uses a synthetic service, not the product's `vfs_*`
-  servers: the field's trigger is a *stuck* provider, and a stuck
-  provider cannot be made deterministic in QEMU without a second fault
-  injection. The protocol path, the nesting and the wedge are the
+| scenario | without the patch | with the patch |
+|---|---|---|
+| `sponge-upgrade-wedge` | **WEDGED** (0 witness rounds) | ALIVE (3+ rounds) |
+| `sponge-pkg-driver` | PASS (the e1000 banner appears) | **FAIL** (no banner, the gate times out) |
+| `sponge-supervisor-takeover` | PASS | **FAIL** (the gate times out) |
+
+`git -C genode revert 500cb2cc8a` is the shipped state; the fork pin
+is `3df26cf22b`. **No vendored patch is shipped for this defect, and
+there is no ledger row for it** (AGENTS.md 5.2: a reverted patch loses
+its row).
+
+## 4. The fix this defect needs
+
+The requirements are now measured, and they are three:
+
+1. **The container's entrypoint must never block on a call into its
+   own parent.** A nested upgrade has to be forwarded without waiting.
+2. **The quota transfer must not be reverted** when the provider has
+   not answered yet - the quota has to reach the provider even though
+   the provider is busy.
+3. **The client must learn when the chain completed.** Today that
+   notification is produced by the container *waiting*: the container
+   wakes on the upper init's session signal, continues, and answers
+   the client `OK`. Without the wait there is no producer - and the
+   client's own wait is unbounded.
+
+The smallest shape that satisfies all three is an **asynchronous
+completion of the nested upgrade, off the container's entrypoint**: the
+container forwards the upgrade, keeps the transfer, answers the client
+`PENDING`, and a completion path (a dedicated thread, or a
+timer-driven re-drive in the sandbox) notifies the client when the
+upper init's provider has answered. The re-drive has a natural place
+to live: the sandbox already owns a timer (the heartbeat alarm), and
+the pending upgrades are already marked in the session state
+(`Session_state::UPGRADE_REQUESTED`).
+
+Until that exists, the defect is **contained rather than fixed**: the
+container's park ends when the provider's own sandbox kills the
+provider (the containment of the provider's sandbox, not the
+container's), so the system recovers on its own - but the container's
+own containment is dead while it is parked, so the components that
+wedged with it are not restarted.
+
+## 5. Honest limits - what this does and does not establish
+
+**Established, with numbers:**
+
+* The quota-upgrade protocol allows a **permanent, container-wide**
+  wedge: a sandbox init's single entrypoint can be parked by a
+  provider that never answers, and the containment that would notice
+  is parked with it. Reproduced in QEMU, measured (0 witness rounds),
+  with the scenario in the tree.
+* The nesting that produces it is not simulated: it is the product's
+  default route, with the provider in the parent sandbox.
+* The first fix attempt breaks a working system, and **how** it breaks
+  it is measured (the e1000 driver), so the next attempt does not
+  repeat it.
+
+**Not established:**
+
+* **That this is the 2026-10-19 field freeze.** The field's freeze is
+  permanent; the wedge reproduced here is permanent in the *constructed*
+  case (the provider never answers, and the provider's sandbox has no
+  containment for it). In the product, the vfs lives in the top-level
+  sandbox, whose containment is alive - so the chain is expected to
+  unwind when that containment kills the vfs. **The field's permanence
+  is therefore still unexplained**, and this document does not claim it
+  is explained. The discriminating field check is in
+  `docs/evidence/sponge-quota-deadlock.md` section 6.
+* The reproduction uses a synthetic service rather than the product's
+  `vfs_*` servers: the field's trigger is a *stuck* provider, and a
+  stuck provider cannot be made deterministic in QEMU without a second
+  fault injection. The protocol path, the nesting and the wedge are the
   product's.
 
-## 5. What the field should observe
-
-* The fast scrollbar drag no longer freezes the system. If it does, the
-  console shows the upgrade being refused (not a hang) and the panel
-  health label stays green.
-* `grep -c 'RAM upgrade of .* failed'` on the console is the new
-  discriminator: a rising count means a client keeps asking for quota
-  the provider cannot grant — a quota policy question, visible and
-  bounded, not a freeze.
-* The mouse stays alive in every case, because the mouse's components
-  live in the same sandbox as the client that used to wedge it.
-
-## 6. Manual equivalent (AGENTS.md §3.5)
+## 6. Manual equivalent (AGENTS.md 3.5)
 
 ```bash
-# what is installed
-git -C genode log --oneline -1
+# the measurement
+./tool/build run sponge-upgrade-wedge
+#   -> "upgrade-wedge: container verdict = WEDGED"
+#      "witness rounds : 0"
 
-# run the repro
-./tool/build run sponge-upgrade-wedge        # exit 0 with the fix
-
-# reproduce the RED arm without reverting anything
-git -C genode stash
-./tool/build run sponge-upgrade-wedge        # exit 2 (the container wedges)
-git -C genode stash pop
+# the first fix attempt, for the record (it breaks sponge-pkg-driver)
+git -C genode checkout 500cb2cc8a
+./tool/build run sponge-upgrade-wedge        # ALIVE
+./tool/build run sponge-pkg-driver          # FAIL - the e1000 driver
+git -C genode checkout main                 # back to 3df26cf22b
 ```
 
-Reverting is `git -C genode revert 500cb2cc8a` plus the removal of
-ledger row #28 in the same commit (AGENTS.md §5.2).
+## 7. What the field should observe (once the fix lands)
+
+* The fast scrollbar drag must not freeze the system. If it does, the
+  console shows the upgrade being refused or left pending (not a hang)
+  and the panel health label stays green.
+* `grep -c 'RAM upgrade of .* failed'` is the new discriminator: a
+  rising count means a client keeps asking for quota the provider
+  cannot grant - a quota policy question, visible and bounded.

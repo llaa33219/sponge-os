@@ -275,28 +275,27 @@ component must never be able to freeze the desktop. Status after the
   and that first paint is never deferred. Non-regression: `sponge-de-test`,
   `sponge-launch`, `sponge-de-sel4-interactive`, `sponge-desktop-disk`
   all PASS.
-- [x] **The permanent freeze: a never-answered quota upgrade parked the
-  container's entrypoint - FIXED (ledger row #28, 2026-10-21)**: the
-  2026-10-19 field report (fast scrollbar drag -> mouse dead,
-  `sponge_pkgd unresponsive(N)`, and the freeze NEVER healing) was the
-  deadlock variant that `docs/evidence/sponge-quota-deadlock.md` §2
-  could prove from source but not reproduce. A sandbox init forwards a
-  child's quota upgrade to its own parent and then waits for the answer
-  on its SINGLE main entrypoint - the thread that serves every child's
-  session plumbing and the containment alarm.
+- [ ] **The permanent freeze: a never-answered quota upgrade parks the
+  container's entrypoint - REPRODUCED, fix NOT shipped (2026-10-21)**:
+  a sandbox init forwards a child's quota upgrade to its own parent and
+  waits for the answer on its SINGLE main entrypoint - the thread that
+  serves every child's session plumbing and the containment alarm.
   `Parent::Upgrade_result::PENDING` is not a promise (it means "the
   request has been taken, the session's provider has not acted on it
-  yet"), and a provider that is stuck - the field's file-system server
-  on a stalled USB stick - never answers, so the entrypoint parks
-  forever, the container dies silently, and the alarm that would have
-  noticed is parked with it. Fixed by the non-blocking
-  `Env::try_upgrade()` (row #28): the container forwards the upgrade
-  and reports the answer truthfully instead of waiting, the client
-  retries (bounded, row #25), and a provider's silence can no longer
-  take a whole sandbox with it. Reproduced and fixed in QEMU
-  (`run/sponge-upgrade-wedge.run`): unpatched, the in-sandbox witness
-  goes silent; patched, it keeps its rounds. Receipts:
-  `docs/evidence/sponge-upgrade-wedge.md`.
+  yet"), and a provider that never answers - the field's file-system
+  server on a stalled USB stick - parks the entrypoint forever, so the
+  container dies silently and the alarm that would have noticed is
+  parked with it. Reproduced and measured in QEMU
+  (`run/sponge-upgrade-wedge.run`, verdict WEDGED, 0 witness rounds);
+  the deadlock cycle, the two fix variants and the reason the first
+  one was REVERTED (it broke the e1000 driver of `sponge-pkg-driver`)
+  are in `docs/evidence/sponge-upgrade-wedge.md`. The fix this defect
+  needs is an ASYNCHRONOUS completion of the nested upgrade, off the
+  container's entrypoint, that keeps the quota transfer and notifies
+  the client - not yet implemented. Until then the field's permanence
+  is NOT attributed to this defect: in the product the provider lives
+  in the top-level sandbox, whose containment is alive, so the chain is
+  expected to unwind there.
 - [ ] **Field freeze: NOT reproduced at the panel resolution, and the
   mechanism that would produce it is named and measured (2026-10-17)**.
   The field report is a fast scrollbar drag on a resizeable window on the

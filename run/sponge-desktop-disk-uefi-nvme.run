@@ -1604,7 +1604,7 @@ set uefi_log [run_dir]/uefi-boot.log
 log_file -a $uefi_log
 set timeout 180
 expect {
-    -i $qemu_spawn_id -re ".*Genode v.*" {
+    -i $qemu_spawn_id -re ".*Genode [0-9].*" {
         puts "\[sponge-desktop-disk-uefi-nvme\] UNEXPECTED — QEMU reached the Genode v... banner"
     }
     eof {

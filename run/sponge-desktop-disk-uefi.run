@@ -1935,7 +1935,7 @@ expect {
     -i $qemu_spawn_id -re {alpha-probe: PASS} {
         puts "\[sponge-desktop-disk-uefi\] desktop gate reached — alpha-probe: PASS"
     }
-    -i $qemu_spawn_id -re ".*Genode v.*" {
+    -i $qemu_spawn_id -re ".*Genode [0-9].*" {
         puts "\[sponge-desktop-disk-uefi\] UNEXPECTED — QEMU reached the Genode v... banner"
     }
     -i $qemu_spawn_id eof {

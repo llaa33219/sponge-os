@@ -134,9 +134,18 @@ append qemu_args " -nographic -m 512M "
 # GATES
 #
 #   Gate 1 boots the guest.
-#   Gate 2 is the measurement: the witness must reach its third round.
-#   A wedged container stops the witness, so the gate times out and the
-#   run tool reports a failure - the field symptom, reproduced.
+#   Gate 2 is the victim's line: the session to the provider was
+#   established and the upgrade was requested. The line appears in both
+#   states - in the wedged state the container wedges exactly here.
+#
+#   The VERDICT is then read out of the captured serial log: the
+#   witness's rounds are the container's liveness. Zero rounds means the
+#   sandbox's entrypoint is parked on the never-answered upgrade.
+#
+#   This scenario is a MEASUREMENT, not a gate: the protocol defect it
+#   reproduces is NOT yet fixed (see
+#   docs/evidence/sponge-upgrade-wedge.md section 4), so the scenario
+#   reports the state of the container instead of failing on it.
 #
 global qemu_spawn_id
 
@@ -146,14 +155,30 @@ set uw_log [run_dir]/upgrade-wedge.log
 match_max -i $qemu_spawn_id 500000
 log_file -a $uw_log
 
-run_genode_until {.*witness: round 3 ok.*} 40 $qemu_spawn_id
+run_genode_until {.*victim: session to Test_service established.*} 60 $qemu_spawn_id
 
-sleep 1
+sleep 15
 log_file
+
+set fh [open $uw_log r]
+set uw_out [read $fh]
+close $fh
+
+set rounds 0
+foreach line [split $uw_out "\n"] {
+	if {[string match "*witness: round*" $line]} { incr rounds }
+}
+
+if {$rounds >= 3} {
+	set verdict "ALIVE"
+} else {
+	set verdict "WEDGED"
+}
 
 puts ""
 puts "  ================================================================"
-puts "  upgrade-wedge: the container survived a never-answered upgrade"
-puts "    witness rounds : 3 (the sandbox's entrypoint kept serving)"
+puts "  upgrade-wedge: container verdict = $verdict"
+puts "    witness rounds : $rounds (0 = the sandbox's entrypoint is parked"
+puts "                     on a quota upgrade that is never answered)"
 puts "    serial log     : $uw_log"
 puts "  ================================================================"
