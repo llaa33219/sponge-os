@@ -40,6 +40,20 @@
 # twin places the emulated BAR at 54 TiB. Same class: high device
 # MMIO the stack cannot map.
 #
+# A SECOND, sharper reproduction lives in the 'midwindow' case. The
+# in-window case puts the BAR at 0x800000000 (32 GiB) — which is
+# exactly the BASE of the device untyped that covers it, so the
+# mapping works by luck and the case never exercises the interesting
+# path. The 'midwindow' case adds one more 64-bit-BAR device, so
+# OVMF hands the xHCI 0x800004000 (32 GiB + 16 KiB): the same
+# "inside a device untyped, not at its base" class as the gram's
+# 0x601d140000. There, the frame cap used to land at the untyped's
+# BASE (the mapping read zeroes — the xHCI probe timed out with
+# "Host halt failed, -110" and the storage chain died), because
+# seL4 resets a device untyped's free index whenever it has no live
+# child — and the row-14 watermark fast-forward deleted its
+# throwaway frames, so every retype saw a childless untyped.
+#
 # Bisection notes (2026-09-14): VT-d/intremap/irqchip-split and
 # storage throttling are NOT required (the earlier attribution to
 # the DMAR MMIO was a coincidence — the 0x380000000000 range is
@@ -54,6 +68,7 @@
 # Usage:
 #   ./tool/hwrepro                 # boundary case (default)
 #   ./tool/hwrepro --case inwindow # in-window high-BAR control
+#   ./tool/hwrepro --case midwindow# mid-untyped high-BAR case (the gram's class)
 #   ./tool/hwrepro <img> [--case C] [--dry-run]
 #
 # Cases:
@@ -65,9 +80,13 @@
 #             inside [RAM top, 512 GiB) like a real board's high
 #             BARs — the stack must boot the usb chain clean; a
 #             stall here is a regression gate failure.
+#   midwindow -cpu Cascadelake-Server plus a second 64-bit-BAR
+#             device: the xHCI BAR lands INSIDE a device untyped
+#             (32 GiB + 16 KiB), the gram's class. The stack must
+#             boot the usb chain clean here too.
 #
 # Verdicts: REPRODUCED (boundary: stall signature found),
-# CLEAN (inwindow: usb chain + system init alive), FAIL/OTHER
+# CLEAN (inwindow/midwindow: usb chain + system init alive), FAIL/OTHER
 # otherwise. Full serial log: var/hwrepro/<img-stem>-<case>.log.
 # The manual equivalent (exact QEMU command) is printed by
 # --dry-run (AGENTS §3.5).
@@ -92,7 +111,7 @@ def main() raises:
             if i < len(args):
                 case_name = String(args[i])
         elif a == "--help" or a == "-h":
-            print("usage: tool/hwrepro [img] [--case boundary|inwindow]"
+            print("usage: tool/hwrepro [img] [--case boundary|inwindow|midwindow]"
                   + " [--dry-run]")
             return
         elif not a.startswith("-"):
@@ -100,9 +119,10 @@ def main() raises:
         i += 1
 
     if case_name != String("boundary") and case_name != String("inwindow") \
+            and case_name != String("midwindow") \
             and case_name != String("acpi-dmar"):
         print("hwrepro: unknown --case '" + case_name
-              + "' (expected boundary|inwindow|acpi-dmar)")
+              + "' (expected boundary|inwindow|midwindow|acpi-dmar)")
         exit(1)
         return
 
@@ -132,12 +152,15 @@ def main() raises:
 
     # GRUB-menu media (the August diag images) wait for Enter —
     # select the default entry via QMP at t+100 s. Production media
-    # auto-boot and the keypress is harmless.
+    # auto-boot and the keypress is harmless. The same helper dumps
+    # the PCI BAR layout, so the verdict can name the address the
+    # xHCI controller was given (the midwindow case's whole point).
     var helper = "var/hwrepro/_grub_enter.py"
+    var pcifile = "var/hwrepro/" + stem + "-" + case_name + ".pci.txt"
     var builtins0 = Python.import_module("builtins")
     var hfh = builtins0.open(helper, "w")
     hfh.write(
-        "import socket, time\n"
+        "import socket, time, json\n"
         "s = socket.create_connection((\"127.0.0.1\", 44460), timeout=10)\n"
         "f = s.makefile(\"rw\")\n"
         "f.readline()\n"
@@ -149,6 +172,30 @@ def main() raises:
         "{\"type\":\"key\",\"data\":{\"down\":false,"
         "\"key\":{\"type\":\"qcode\",\"data\":\"ret\"}}}]}}\\n')\n"
         "    time.sleep(4)\n"
+        "s.sendall(json.dumps({'execute':'human-monitor-command',"
+        "'arguments':{'command-line':'info pci'}}).encode() + b'\\n')\n"
+        "time.sleep(2)\n"
+        "s.settimeout(5)\n"
+        "out = b''\n"
+        "try:\n"
+        "    out = s.recv(200000)\n"
+        "except Exception:\n"
+        "    pass\n"
+        "text = out.decode('utf-8', 'replace')\n"
+        "try:\n"
+        "    for line in text.split('\\n'):\n"
+        "        line = line.strip()\n"
+        "        if not line:\n"
+        "            continue\n"
+        "        obj = json.loads(line)\n"
+        "        if isinstance(obj, dict) and 'return' in obj:\n"
+        "            val = obj['return']\n"
+        "            if isinstance(val, str) and val:\n"
+        "                text = val\n"
+        "                break\n"
+        "except Exception:\n"
+        "    pass\n"
+        "open(\"" + pcifile + "\", \"w\").write(text)\n"
     )
     hfh.close()
 
@@ -164,7 +211,11 @@ def main() raises:
     # inwindow: Cascadelake-Server (46 phys-bits) → the window lands
     # inside [RAM top, 512 GiB) like a real board's high BARs → the
     # stack must boot clean; a stall here would be a regression.
-    if case_name == String("inwindow"):
+    # midwindow: the same CPU, plus a second 64-bit-BAR device that
+    # makes OVMF place the xHCI BAR *inside* a device untyped instead
+    # of at its base — the gram's class (its PCH xHCI BAR sits at
+    # 0x601d140000, mid-untyped).
+    if case_name == String("inwindow") or case_name == String("midwindow"):
         cmd += " -cpu Cascadelake-Server -smp 8"
     else:
         cmd += " -cpu host -smp 8"
@@ -172,6 +223,11 @@ def main() raises:
     cmd += " -device nec-usb-xhci,id=xhci"
     cmd += " -device usb-mouse,bus=xhci.0"
     cmd += " -device usb-storage,drive=stick,bus=xhci.0"
+    if case_name == String("midwindow"):
+        # an NVMe controller (no drive, no driver) takes the first
+        # 64-bit BAR slot, so the xHCI BAR moves to base+16 KiB —
+        # inside the same device untyped, not at its base
+        cmd += " -device nvme,serial=hwrepro0"
     cmd += " -drive id=stick,format=raw,file=" + img + ",if=none"
     cmd += (" -drive if=pflash,format=raw,readonly=on,"
             + "file=var/ovmf/OVMF_CODE.fd")
@@ -204,6 +260,26 @@ def main() raises:
 
     print("\n==== hwrepro verdict (case: " + case_name + ") ====")
 
+    # the xHCI BAR address OVMF handed out (the QMP dump), so the
+    # verdict names the exact address the mapping had to reach
+    var bar = String("(unknown)")
+    if Bool(py=pathlib.Path(pcifile).exists()):
+        var pfh = builtins.open(pcifile, "r")
+        var pcitext = String(pfh.read())
+        pfh.close()
+        var pcilines = pcitext.split("\n")
+        var in_usb = False
+        for ln in pcilines:
+            var pl = String(ln)
+            if pl.find("USB controller") >= 0:
+                in_usb = True
+            elif in_usb and pl.find("BAR0: 64 bit memory at ") >= 0:
+                var fields = pl.split(" at ")
+                if len(fields) > 1:
+                    bar = String(fields[1].split(" ")[0])
+                break
+    print("xHCI BAR0: " + bar)
+
     # signature A (current stack): core refuses the high MMIO range
     var mmio_refused = log.find("I/O memory") >= 0 \
         and log.find("not available") >= 0 \
@@ -212,18 +288,29 @@ def main() raises:
     var halt_timeout = log.find("halt failed, -110") >= 0 \
         or log.find("Will sleep forever") >= 0
 
-    if case_name == String("inwindow") or case_name == String("acpi-dmar"):
-        # the in-window / dmar controls must boot the usb chain fully
+    if case_name == String("inwindow") or case_name == String("midwindow") \
+            or case_name == String("acpi-dmar"):
+        # the in-window / mid-window / dmar controls must boot the usb
+        # chain fully
         var dmar_seen = log.find("Found DMAR (skipped") >= 0
         if log.find("Connected device") >= 0 \
                 and log.find("sponge_configd: ready") >= 0 \
                 and (case_name != String("acpi-dmar") or dmar_seen):
-            print("CLEAN — usb chain + system init alive"
-                  + (" with injected DMAR skipped (row 16)"
-                     if case_name == String("acpi-dmar") else
-                     " (in-window high BARs)"))
+            if case_name == String("midwindow"):
+                print("CLEAN — usb chain + system init alive"
+                      + " (mid-untyped high BAR)")
+            elif case_name == String("acpi-dmar"):
+                print("CLEAN — usb chain + system init alive"
+                      + " with injected DMAR skipped (row 16)")
+            else:
+                print("CLEAN — usb chain + system init alive"
+                      + " (in-window high BARs)")
             return
         print("FAIL — " + case_name + " case stalled:")
+        if halt_timeout:
+            print("  | (signature B: the xHCI MMIO mapping read zeroes —")
+            print("  |  the frame landed at the device untyped's base,")
+            print("  |  not at the BAR address)")
         var lines3 = log.split("\n")
         var shown3 = 0
         var idx3 = len(lines3) - 1

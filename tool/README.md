@@ -296,6 +296,8 @@ there too.
 ```bash
 ./tool/hwrepro                  # boundary case (default): expect REPRODUCED
 ./tool/hwrepro --case inwindow  # in-window high-BAR control: expect CLEAN
+./tool/hwrepro --case midwindow # mid-untyped high-BAR case (the gram's
+                                #   class): expect CLEAN
 ./tool/hwrepro --case acpi-dmar # injected firmware DMAR (DRHD+RMRR):
                                 #   expect CLEAN (row-16 skip keeps the
                                 #   acpi child alive; usb chain boots)
@@ -303,7 +305,7 @@ there too.
 ./tool/hwrepro --dry-run        # print the exact QEMU command, run nothing
 ```
 
-A two-case battery over the LG gram 17ZD90N real-hardware stall
+A three-case battery over the LG gram 17ZD90N real-hardware stall
 (background + pointer cursor only; no panel, no mouse):
 
 * **boundary** (`-cpu host`, Ice Lake host, 52 phys-bits): OVMF
@@ -324,6 +326,21 @@ A two-case battery over the LG gram 17ZD90N real-hardware stall
   the usb chain clean here; a stall is a regression-gate failure.
   Currently CLEAN (machinery healthy — see also
   `run/sponge-high-phys-probe.run`).
+* **midwindow** (`-cpu Cascadelake-Server` plus one extra 64-bit-BAR
+  device): the xHCI BAR lands INSIDE a device untyped
+  (`0x800004000` = 32 GiB + 16 KiB) instead of at its base
+  (`0x800000000`) — the gram's class, whose BAR is 128.9 GiB into
+  its untyped. This is the case that found the real defect: seL4
+  resets a device untyped's free index to the untyped's base when the
+  untyped has no live child, so a frame created for a BAR in the
+  middle of a untyped landed on the untyped's BASE — the mapping read
+  zeroes, the xHCI probe timed out ("Host halt failed, -110") and the
+  storage chain died, exactly as on the gram. Before ledger row 27
+  this case reproduced that signature; it is CLEAN now (the kernel
+  keeps a device untyped's free index, and the high-MMIO device
+  untypeds form a uniform 64 GiB grid so two distant device windows
+  do not share a watermark). Receipts:
+  `docs/evidence/xhci-high-bar-mapping.md`.
 * **acpi-dmar**: injects `run/fixtures/dmar-rmrr.aml` (a spec-shaped
   DMAR with DRHD+RMRR, as every real Intel board ships; QEMU's
   synthetic tables omit it). Before ledger row 16 this killed the
@@ -347,8 +364,9 @@ datum, and its MADT/DMAR (acpidump) can be replayed via
 `-acpitable` if captured.
 
 Verdicts: `REPRODUCED` (boundary: stall signature), `CLEAN`
-(inwindow: usb chain + system init alive), `FAIL`/`OTHER`
-otherwise. Full serial log: `var/hwrepro/<img-stem>-<case>.log`.
+(inwindow/midwindow: usb chain + system init alive), `FAIL`/`OTHER`
+otherwise. Each verdict names the xHCI BAR address the firmware
+handed out (dumped over QMP at t+100 s). Full serial log: `var/hwrepro/<img-stem>-<case>.log`.
 The manual equivalent (exact QEMU command) is printed by
 `--dry-run` (AGENTS §3.5).
 
