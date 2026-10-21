@@ -1,0 +1,43 @@
+FORWARDING NOTICE — this file is no longer the durable record.
+
+The seL4 kernel change (ledger row 27 — a DEVICE untyped keeps its free
+index when its last child is deleted, and the high-MMIO device-untyped
+ladder becomes a uniform 64 GiB grid) lives IN the Genode fork as a
+port patch file:
+
+    genode/repos/base-sel4/patches/sel4-device-untyped-ladder.patch
+    (fork: github.com/llaa33219/sponge-os-genode, `repos/base-sel4/patches/`)
+
+`sel4.port` feeds `PATCHES := $(sort $(wildcard $(REP_DIR)/patches/*.patch))`
+into `install.mk`, which applies each file with `patch -p0` during
+`prepare_port sel4`. Nothing has to be applied by hand and nothing is
+lost when `genode/contrib/` is re-fetched.
+
+The patch carries two hunks:
+
+  * `src/kernel/sel4/src/object/untyped.c` — the retype path keeps a
+    device untyped's free index (its watermark) when the untyped has
+    no live child, instead of resetting it to the untyped's base. The
+    reset is what silently moved every frame created from a device
+    untyped back to the untyped's base, so a device BAR in the middle
+    of the untyped was mapped to the wrong physical address and the
+    driver read zeroes (the LG gram 17ZD90N's xHCI BAR at
+    0x601d140000: "Host halt failed, -110").
+
+  * `src/kernel/sel4/src/kernel/boot.c` — `create_untypeds_for_region()`
+    grows a `max_size_bits` parameter, and the HIGH device region
+    above the memory map is covered by a uniform grid of 64 GiB device
+    untypeds (the doubling ladder only fills the gap between the
+    memory map and the first grid point). One free index per untyped
+    means two device windows inside the same untyped can only be
+    placed in increasing address order; the grid gives the gram's GOP
+    framebuffer (256 GiB) and its xHCI BAR (384.9 GiB) independent
+    untypeds, so their order no longer matters.
+
+To read or edit the change, open the fork file above. To see the diff
+against a prepared tree:
+
+    diff -u genode/contrib/sel4-*/<file> <(patch -R -o - -p0 < \
+        genode/repos/base-sel4/patches/sel4-device-untyped-ladder.patch)
+
+Drop condition: unchanged from ledger row 27.

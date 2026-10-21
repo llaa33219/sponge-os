@@ -746,6 +746,52 @@ component must never be able to freeze the desktop. Status after the
   the log stream still relies on the panel health label and the debug
   package's report views.
 
+- [x] **The xHCI BAR was mapped to the WRONG physical address — FOUND
+  AND FIXED (ledger row 27, 2026-10-21); the storage chain of §2 is
+  now whole on the gram's class of device address.** The field report
+  from the LG gram 17ZD90N was `xhci_hcd 00:03.0: Host halt failed,
+  -110` → the Tier-0 storage chain (§2: `xHCI → pc_usb_host →
+  usb_block → part_block → vfs`) died → `/system` was never served →
+  `system` never started → the supervisor kill-looped the subtree
+  (`state_seen=0`, `kill=N`). `status = 0x0` in the driver's own
+  message said the controller's MMIO read **zeroes**: the frame cap
+  did not cover the BAR's address.
+  **The mechanism was the kernel's, not core's.** seL4 creates the
+  objects retyped from an untyped at that untyped's free index — one
+  monotonic watermark per untyped. Core's high-phys path (row 14)
+  fast-forwards the watermark with throwaway frames to reach a BAR in
+  the middle of a device untyped, but seL4 resets the free index to
+  the untyped's base whenever the untyped has no live child — and the
+  throwaway frames are deleted immediately, so the untyped was
+  childless at every step. The fast-forward consumed nothing and the
+  real frame was created at the untyped's BASE: the gram's BAR
+  (0x601d140000, 384.9 GiB) was mapped to 256 GiB — the GOP
+  framebuffer's address, which is why the display worked while the
+  storage chain did not. Every address verified so far (16 GiB,
+  32 GiB, the QEMU GOP at 2 GiB) sat exactly on a untyped boundary,
+  where the buggy and the correct path coincide; that is why every
+  QEMU gate passed.
+  **The fix (row 27, a kernel port patch):** a device untyped keeps
+  its free index when its last child is deleted, and the high-MMIO
+  device-untyped ladder becomes a uniform 64 GiB grid so that device
+  windows far apart (the gram's framebuffer at 256 GiB and its xHCI
+  BAR at 384.9 GiB) get independent untypeds and their mapping order
+  stops mattering.
+  **The proof is the new harness case** `tool/hwrepro --case
+  midwindow`: one extra 64-bit-BAR device makes OVMF place the xHCI
+  BAR at 32 GiB + 16 KiB — inside a device untyped, the gram's class.
+  Before the fix it reproduced the field signature verbatim; after it
+  the case is CLEAN (the usb chain enumerates the mouse and the
+  stick, `sponge_configd: ready`), `inwindow` stays CLEAN and
+  `boundary` still REPRODUCED the 54 TiB out-of-range stall.
+  Receipts: `docs/evidence/xhci-high-bar-mapping.md`.
+  **Still open:** the panel itself (one reflash-and-eyeball on the
+  gram — the laptop has no serial, the on-panel boot log is the only
+  witness), and the residual limitation this row does not remove:
+  within one device untyped the watermark is monotonic, so the same
+  device window can be materialised only once (a driver that closes
+  and re-opens the same BAR gets a clean refusal, not a second frame).
+
 ## 6. Quota ledger (the five desktop-disk scenarios)
 
 `pkg_runtime` hosts every enabled package **simultaneously**, so its
