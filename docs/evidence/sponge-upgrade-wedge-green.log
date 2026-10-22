@@ -1,6 +1,6 @@
-8-26-g20d0ff31d8 <local changes>
+08-28-g3df26cf22b <local changes>
 63 MiB RAM and 523288 caps assigned to init
-[init -> upgrade_wedge] provider: announced Test_service
+[init] [34mWarning: no Timer service (session request failed: 0) - the deadline of the pending session operations is unbounded[0m
 [init -> timer] timers=3, clock 10000000fs , 64bit counter , legacy routing support vendor=0x8086
 [init -> timer] timer0 GSI options 0xff0104, supports periodic
 [init -> timer] timer1 GSI options 0xff0104, supports periodic
@@ -8,11 +8,35 @@
 [init -> timer] time wraps after 5849 years
 [init -> timer] irqs=off legacy=off
 [init -> timer] Using timer 2 -> using GSI 2 edge triggered
+[init -> upgrade_wedge] provider: announced Test_service
+[init -> system -> witness] witness: round 1 sleep begin
 [init -> system -> victim] victim: session to Test_service established - requesting a quota upgrade
-[init -> system] [34mWarning: victim: RAM upgrade of Test_service failed[0m
-[init -> system] child "victim" requests resources: ram_quota=4K
-[init -> system] child "victim": resource request NOT granted (requested ram=4096/caps=0, assigned ram=4194304/caps=200, configured ram=4194304/caps=200, our slack ram=15351280/caps=628) - deferring to the next config application
 [init -> upgrade_wedge] provider: quota-upgrade request received - not answering (the stuck file-system server)
+[init -> system -> witness] witness: round 1 sleep end
+[init -> system -> witness] witness: round 1 probe begin
+[init -> system -> witness] witness: round 1 probe end
 [init -> system -> witness] witness: round 1 ok
+[init] [34mWarning: system requested session cap for unknown ID[0m
+[init -> system -> witness] witness: round 2 sleep begin
+[init -> system] [34mWarning: victim: RAM upgrade of Test_service (session 6) failed - the provider did not answer within 5000 ms[0m
+[init -> system -> victim] victim: quota upgrade returned
+[init -> system -> witness] witness: round 2 sleep end
+[init -> system -> witness] witness: round 2 probe begin
+[init] [34mWarning: system: attempt to request cap for unavailable session: service=Timer cid=20 args=', cap_quota=2, label="system -> witness -> ", ram_quota=8620' state=CREATING ram_quota=8620, cap_quota=2[0m
+[init -> system -> witness] witness: round 2 probe end
 [init -> system -> witness] witness: round 2 ok
-[init -> system -> witness] witness: round 3 ok
+[init] [34mWarning: system requested session cap for unknown ID[0m
+[init -> system -> witness] witness: round 3 sleep begin
+[init -> system] [34mWarning: victim: close of Test_service (session 6) failed - the provider did not answer within 5000 ms[0m
+[init -> system -> witness] witness: round 3 sleep end
+[init -> system -> witness] witness: round 3 probe begin
+[init] [34mWarning: system: attempt to request cap for unavailable session: service=Timer cid=20 args=', cap_quota=2, label="system -> witness -> ", ram_quota=8620' state=CREATING ram_quota=8620, cap_quota=2[0m
+[init -> system -> witness] witness: round 3 probe end
+[init -> system -> witness] witness: round 3 ok
+[init] [34mWarning: system requested session cap for unknown ID[0m
+[init -> system -> witness] witness: round 4 sleep begin
+[init -> system -> witness] witness: round 4 sleep end
+[init -> system -> witness] witness: round 4 probe begin
+[init] [34mWarning: system: attempt to request cap for unavailable session: service=Timer cid=20 args=', cap_quota=2, label="system -> witness -> ", ram_quota=8620' state=CREATING ram_quota=8620, cap_quota=2[0m
+[init -> system -> witness] witness: round 4 probe end
+[init -> system -> witness] witness: round 4 ok

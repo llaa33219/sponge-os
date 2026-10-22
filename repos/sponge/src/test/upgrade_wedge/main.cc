@@ -187,8 +187,16 @@ void Component::construct(Genode::Env &env)
 			unsigned round { 0 };
 
 			for (;;) {
-				timer.msleep(3000);
 				round++;
+
+				/*
+				 * The markers localise a stall: the last marker seen in
+				 * the log tells whether the witness was sleeping, waiting
+				 * for the probe, or already done.
+				 */
+				Genode::log("witness: round ", round, " sleep begin");
+				timer.msleep(3000);
+				Genode::log("witness: round ", round, " sleep end");
 
 				/*
 				 * A fresh session request per round. It must not use
@@ -199,7 +207,9 @@ void Component::construct(Genode::Env &env)
 				 * entrypoint and is answered by a healthy server, so a
 				 * silent witness means the CONTAINER is wedged.
 				 */
+				Genode::log("witness: round ", round, " probe begin");
 				Timer::Connection probe { env };
+				Genode::log("witness: round ", round, " probe end");
 
 				Genode::log("witness: round ", round, " ok");
 			}

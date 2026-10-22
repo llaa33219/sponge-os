@@ -37,9 +37,13 @@
 #
 #   RED   (unpatched base): the sandbox's entrypoint parks; the witness
 #         stops; the gate never matches; the run times out -> exit 2.
-#   GREEN (patched base): the upgrade is refused truthfully, the
-#         victim's request fails fast, the witness keeps its rounds,
-#         the gate matches -> exit 0.
+#   GREEN (patched base): the container's entrypoint keeps serving, the
+#         never-answered upgrade fails LOUDLY at the deadline, the
+#         victim's request returns, the witness keeps its rounds, the
+#         gate matches -> exit 0.
+#
+#   A container that releases the victim WITHOUT the loud failure is a
+#   SPURIOUS SUCCESS and fails this run (exit 1).
 #
 # TOPOLOGY
 #
@@ -138,14 +142,23 @@ append qemu_args " -nographic -m 512M "
 #   established and the upgrade was requested. The line appears in both
 #   states - in the wedged state the container wedges exactly here.
 #
-#   The VERDICT is then read out of the captured serial log: the
-#   witness's rounds are the container's liveness. Zero rounds means the
-#   sandbox's entrypoint is parked on the never-answered upgrade.
+#   The VERDICT is then read out of the captured serial log. The
+#   container is ALIVE if and only if ALL of the following are in the
+#   log:
 #
-#   This scenario is a MEASUREMENT, not a gate: the protocol defect it
-#   reproduces is NOT yet fixed (see
-#   docs/evidence/sponge-upgrade-wedge.md section 4), so the scenario
-#   reports the state of the container instead of failing on it.
+#     (a) the provider received the quota-upgrade request
+#     (b) the container reported the failure LOUDLY - the provider never
+#         answered within the deadline
+#     (c) the victim's upgrade request returned
+#     (d) the witness kept its rounds (round 3)
+#
+#   (b) is what makes the gate more than a liveness check: a container
+#   that answers the client while the provider is still stuck has
+#   released the client WITHOUT reporting the failure. That signature -
+#   (c) present, (b) absent - is a SPURIOUS SUCCESS and fails the run.
+#
+#   The witness's last marker is printed as well: it localises a stall
+#   for free (sleeping, probing, or already done).
 #
 global qemu_spawn_id
 
@@ -157,28 +170,69 @@ log_file -a $uw_log
 
 run_genode_until {.*victim: session to Test_service established.*} 60 $qemu_spawn_id
 
-sleep 15
+#   The observation window must KEEP DRAINING the serial console. A plain
+#   'sleep' stops the run tool from reading the console, and the guest then
+#   stalls on its own console output (the seL4 kernel writes the console
+#   polled) - the capture ends mid-line and every marker that follows the
+#   first match is lost. 'expect' keeps the console flowing while the
+#   container is observed.
+#
+#   The window ends with the witness's round 4, i.e. strictly AFTER the
+#   never-answered upgrade ran into its deadline (5 s) and after round 3 -
+#   the two markers the verdict is read from. A container that is wedged
+#   never reaches round 4: the wait times out, the verdict is read from
+#   the log that was captured up to that point, and the run fails.
+set timeout 90
+expect {
+	-i $qemu_spawn_id -re {.*witness: round 4 ok.*} { }
+	timeout { }
+}
 log_file
 
 set fh [open $uw_log r]
 set uw_out [read $fh]
 close $fh
 
-set rounds 0
+# the last witness marker - it localises a stall for free
+set last_marker "none"
 foreach line [split $uw_out "\n"] {
-	if {[string match "*witness: round*" $line]} { incr rounds }
+	if {[string match "*witness: round*" $line]} { set last_marker $line }
 }
 
-if {$rounds >= 3} {
+set has_provider [regexp -- {provider: quota-upgrade request received} $uw_out]
+set has_loud     [regexp -- {\[init -> system\].*RAM upgrade of Test_service \(session [0-9]+\) failed - the provider did not answer} $uw_out]
+set has_returned [regexp -- {victim: quota upgrade returned} $uw_out]
+set has_round3   [regexp -- {witness: round 3 ok} $uw_out]
+
+set verdict "WEDGED"
+set ok 0
+
+if {$has_provider && $has_loud && $has_returned && $has_round3} {
 	set verdict "ALIVE"
-} else {
-	set verdict "WEDGED"
+	set ok 1
+}
+
+# the spurious-success signature: the client was released but the
+# container never reported the failure
+if {$has_returned && !$has_loud} {
+	set verdict "SPURIOUS-SUCCESS"
+	set ok 0
 }
 
 puts ""
 puts "  ================================================================"
 puts "  upgrade-wedge: container verdict = $verdict"
-puts "    witness rounds : $rounds (0 = the sandbox's entrypoint is parked"
-puts "                     on a quota upgrade that is never answered)"
-puts "    serial log     : $uw_log"
+puts "    provider request   : [expr {$has_provider  ? {yes} : {no}}]"
+puts "    loud failure       : [expr {$has_loud      ? {yes} : {no}}]"
+puts "    upgrade returned   : [expr {$has_returned  ? {yes} : {no}}]"
+puts "    witness round 3    : [expr {$has_round3    ? {yes} : {no}}]"
+puts "    last witness marker: $last_marker"
+puts "    serial log         : $uw_log"
 puts "  ================================================================"
+
+if {!$ok} {
+	puts "upgrade-wedge: FAIL ($verdict)"
+	exit 1
+}
+
+puts "upgrade-wedge: PASS (the container is alive and the never-answered quota upgrade failed loudly)"
