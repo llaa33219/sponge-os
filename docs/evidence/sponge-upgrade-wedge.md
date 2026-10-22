@@ -606,6 +606,65 @@ well (the same two failures, both pre-existing in the fork commit
   `run/sponge-pkg-driver` and `run/sponge-supervisor-takeover` stay
   green.
 
+  **The forwarded CREATEs starved (fork commit `73e5859da8`).** The
+  non-blocking API was dead code: `Try_parent_service::initiate_request`
+  still called the four-argument (blocking) `Env::try_session` on the
+  `CREATE_REQUESTED` path, so a container that forwards a session request
+  to its own parent still parked its single entrypoint on an answer that
+  may never come.
+
+  The create path keeps the blocking request, though - measured, not
+  assumed: the completion channel of a forwarded CREATE is the parent's
+  `session_cap` answer, because a parent-provided session has no
+  server-side ID (the provider assigns one) and therefore cannot
+  receive its capability through `deliver_session_cap`. Switching the
+  create path to the non-blocking request removes the wait but leaves
+  the session in `CREATE_REQUESTED` forever, and the environment
+  sessions of the forwarded children become unavailable
+  (`PD session (label="wm", ...) unavailable`). The non-blocking form
+  therefore stays available for callers that bring their own
+  completion.
+
+  The completion channel needed the same care. `probe_at_parent` mapped
+  "the parent answers with an invalid capability and no error" to
+  `Parent_state::Gone` - but a session that is still being created,
+  upgraded or closed at the parent is IN FLIGHT and the parent answers
+  exactly that way (`Child::session_cap` returns an invalid capability
+  without an error for every non-alive phase). The probe therefore
+  destroyed sessions the parent still owned: the parent-side ID was
+  released while the session was running, the container's ID space
+  collapsed (measured: 113x8, then 174x8) and the parent's ID space was
+  corrupted. The probe now reports a distinct `Parent_state::Pending` for
+  the in-flight phases, and the resolution of a pending operation is a
+  no-op for it.
+
+  A third defect was a lost wake-up on the client side: the parent does
+  not re-submit the session signal when it answers an upgrade
+  (`Child::session_sigh` only latches the phases in which a session
+  *becomes* available), so a client that parked in the Blockade after the
+  answer arrived waited forever. `Env::upgrade` now re-polls the session
+  capability after the park, the same way the create path does it.
+
+  Measured after the three changes: in `run/sponge-desktop-disk` the
+  strings `attempt to request cap for unavailable session ...
+  state=CREATING` (ROM), `system requested session cap for unknown ID`,
+  `PD: init -> rom_sys|rom_lib out of CAP`, `decorator|layouter: no
+  heartbeat response`, the seL4 null-cap lines and `illegal READ` are
+  all **0 hits**, and the package manager answers its install request
+  (`sponge_pkgd did not answer install hello` is gone as well).
+
+  **Two things are still open.** The tier-0 init has no clock: it cannot
+  open a Timer session for itself (the kernel has no Timer service - the
+  request is DENIED, not OUT_OF_RAM), and a `<heartbeat>` in the tier-0
+  config does not help either, because the heartbeat needs a Timer from
+  the same parent - the init then stops with `stop because parent
+  denied Timer-session`. The tier-0 deadlines therefore stay unbounded
+  until the tier-0 init gets a clock from somewhere else. And the
+  desktop-disk scenario is still red, now with `PD session (label="wm",
+  ...) unavailable` - the next thing to instrument is the
+  `Component_env::try_session` park (count per thread), as the
+  consultation advised.
+
 Both are consequences of the same root (a close that the parent has
 not confirmed yet) and are the next step of this work; they are
 tracked here rather than silently left in the log.
