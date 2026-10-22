@@ -420,3 +420,161 @@ git -C genode checkout main                 # back to the shipped pin
 * `grep -c 'RAM upgrade of .* failed'` is the new discriminator: a
   rising count means a client keeps asking for quota the provider
   cannot grant — a quota policy question, visible and bounded.
+
+---
+
+## 9. Addendum (2026-10-23): the same non-blocking close broke the child's teardown
+
+The fix above (fork commit `ea04b06868`, ledger row 28) made the
+container forward a **close** without waiting for the parent's answer.
+The takeover regression (`run/sponge-supervisor-takeover`) found the
+consequence, and it is a second, independent defect:
+
+> **A `Genode::Child` must not own a live `Session_state` when it is
+> destroyed.** The session meta data is allocated from a slab that is
+> released together with the child.
+
+At the teardown of a child whose close is still pending at the parent,
+the container has three options, and two of them are wrong:
+
+| option | consequence |
+|---|---|
+| destroy the session state | the slab is released with a live state → `freeing non-empty slab block`, and the state that is written after the release corrupts the memory it lived in → `illegal WRITE at address ...` |
+| destroy the state and release the parent-side ID | the parent's ID space keeps a dangling entry → the next session request that reuses the ID is rejected → `requested conflicting session ID ...` |
+| **keep the state alive until the parent answers** | the child's slab stays occupied → the child must not be destroyed before the parent's answer arrives |
+
+The third option is the one that is implemented now (fork commit
+`662fb14f12`):
+
+* the teardown discards the client-side ID and keeps the state alive;
+* the pending close is registered in the child's pending-operation
+  registry, and `Child::pending_parent_ops()` tells the sandbox that
+  the child still owns a session the parent holds;
+* the sandbox destroys an abandoned child only when
+  `env_sessions_closed() && !pending_parent_ops()` — otherwise the child
+  is left for the next configuration application (a retry);
+* the deadline of a pending close abandons the *wait*, not the session:
+  it neither closes the session nor releases the parent-side ID. The
+  parent's late answer (`session_response(CLOSED)`) is the completion
+  channel, and it destroys the state and clears the operation.
+
+Two smaller defects came out of the same measurement:
+
+* `Session_state::id_at_client()` throws when the client-side ID was
+  discarded (the client vanished). The teardown touched such an ID and
+  aborted the container's entrypoint (`attempt to access unconstructed
+  object` → `abort called - thread: ep`). `Session_state::
+  id_at_client_if_valid()` is the null-safe accessor, and
+  `Session_state::destroy()` now fails loudly if it is called with a
+  live parent-side ID — a violation of the invariant above becomes a
+  diagnosable error instead of a silent corruption.
+* the sandbox's parent-service probe (the one-shot `session_cap` query
+  that asks the parent whether a forwarded operation completed) is the
+  completion channel for a **quota upgrade** that the container
+  forwarded to its own parent. Removing it made every forwarded
+  upgrade run into its deadline (`RAM upgrade of Gui (session 7) failed
+  - the provider did not answer within 5000 ms`), so it stays.
+
+### Measurement (QEMU/base-sel4, Sponge OS)
+
+| scenario | result |
+|---|---|
+| `run/sponge-supervisor-takeover` | **PASS** — `ep_wedge: incarnation alive` appears three times (the respawn after `published <system> kill=2` is visible), and none of `freeing non-empty slab block`, `illegal WRITE at address`, `illegal READ at address`, `attempt to access unconstructed object`, `Uncaught exception`, `abort called`, `requested conflicting session ID`, `too many pending session operations` appears |
+| `run/sponge-upgrade-wedge` | **PASS** — the container verdict is `ALIVE`, the never-answered upgrade still fails loudly at the deadline, the witness keeps its rounds |
+| `run/sponge-pkg-driver` (twice) | **PASS** — `driver-probe: PASS` and `sponge-pkg-driver: PASS`, no corruption string |
+
+The scenario that the teardown defect broke first
+(`run/sponge-supervisor-takeover`) was red before the fix with
+`freeing non-empty slab block` + `illegal WRITE at address 0x285d8` in
+the supervised sandbox, and the respawn of the wedged child never
+happened.
+
+**Not fixed by this commit (honest scope).**
+`run/sponge-desktop-disk` is still red, and it was red before it as
+well (the same two failures, both pre-existing in the fork commit
+`ea04b06868`):
+
+* the pending-operation registry of a child held at most 8 entries,
+  and the sandbox's many short-lived ROM sessions filled it
+  (`too many pending session operations - failing the close of session
+  91`). The registry now holds 64 entries, which fits a configuration
+  generation of a busy sandbox; the string is gone from the log.
+* the desktop is still red, and the cause is **not** a capability
+  budget. The order in the log is the diagnosis: a near-NULL read kills
+  the *client* first, and everything after it is downstream.
+
+  The faulting instruction is at `ip=0xc3e61` in the dynamic linker
+  (the ld.so is mapped at 0x0 in every PD, so the address identifies the
+  code, not the process). `addr2line` against
+  `genode/build/x86_64/debug/ld-sel4.lib.so.debug` names it:
+
+  ```
+  Genode::Expanding_parent_client::upgrade(Parent::Client::Id, Rpc_in_buffer<160> const&)
+    -> Genode::Rpc_in_buffer<160>::string()      (rpc_args.h:131)
+       -> Genode::Rpc_in_buffer<160>::valid_string()  (rpc_args.h:119)
+  ```
+
+  The disassembly pins it down further: the faulting instruction is
+  `mov 0x8(%rdi),%rax` with `%rdi == 0` - i.e. the **third argument
+  (the `Upgrade_args` object) is NULL**, and the crash happens at the
+  very first use of that argument (`args.string()`). The preceding
+  `cmp $0x1,%rsi` is the `id == Env::pd()` test, and it is *not* taken:
+  this is a **session** upgrade (not a PD upgrade).
+
+  So the sequence in `run/sponge-desktop-disk` is:
+
+  1. `illegal READ at address 0x8 ... pd='init -> system -> sponge-de'
+     thread='ep'` - the client-side upgrade path of sponge-de dereferences
+     a NULL argument buffer. The component's entrypoint dies with it.
+  2. `seL4: Attempted to invoke a null cap` and
+     `system: attempt to request cap for unavailable session: service=ROM
+     cid=114 ... state=CREATING` - the *sandbox* is still waiting for the
+     ROM session of the dead component.
+  3. `CPU (init -> system -> sponge-de) create_thread: invalid PD
+     argument` and `failed to create initial thread for new PD` - the
+     respawn of the dead component cannot even start.
+
+  The `alpha-probe` then never gets its package installation done.
+
+  **Instrumented run (temporary logging in `Component_env::upgrade` and
+  `Expanding_parent_client::upgrade`, since reverted).** The log of the
+  same scenario shows, for every *healthy* upgrade of sponge-de:
+
+  ```
+  [init -> system -> sponge-de] DBGX Component_env::upgrade id=25 args=0x403f9680
+  [init -> system -> sponge-de] DBGX EPA::upgrade          id=25 args=0x403f9680
+  ```
+
+  i.e. a valid *stack* address for the `Upgrade_args` object - and for
+  the upgrade that kills the component:
+
+  ```
+  [init -> system -> sponge-de] DBGX Component_env::upgrade id=29 args=0x0
+  [init -> system -> sponge-de] DBGX EPA::upgrade          id=29 args=0x0
+  Error: illegal READ at address 0x8 ... ip=0xc40fa
+  ```
+
+  The `Upgrade_args` **object itself is at address 0** - the caller
+  passed a NULL reference, and the caller's own return address is
+  garbage as well (it points into no mapping of the PD). Both values
+  come out of the caller's stack frame, so the **caller's frame is
+  corrupt** when the upgrade is issued: the client-side upgrade is
+  called with a smashed stack, not with a malformed argument.
+
+  The upgrade that fails is a *session* upgrade (id 29, not
+  `Env::pd()`), it happens on sponge-de's entrypoint right after the
+  `dlopen` of the EGL/mesa libraries, and it is the only upgrade of
+  that component in the run. The client-side path is therefore the
+  suspect, and the fork's contribution to it is the machinery that
+  makes a session complete *before* the client parks in the Blockade
+  (`async_client_notify` + the shared `Signal_receiver`): a completion
+  that races the client's Blockade registration can leave the client
+  with a stale `Connection`/signal state. The exact race - notification
+  delivered while no sigh is registered, delivered twice, or the
+  `Connection` object's sigh re-registration racing the completion - is
+  still open; the fix must make the Blockade/notification handshake
+  idempotent for a session that completes before the client parks.
+
+Both are consequences of the same root (a close that the parent has
+not confirmed yet) and are the next step of this work; they are
+tracked here rather than silently left in the log.
