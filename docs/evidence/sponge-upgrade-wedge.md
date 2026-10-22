@@ -564,16 +564,47 @@ well (the same two failures, both pre-existing in the fork commit
   The upgrade that fails is a *session* upgrade (id 29, not
   `Env::pd()`), it happens on sponge-de's entrypoint right after the
   `dlopen` of the EGL/mesa libraries, and it is the only upgrade of
-  that component in the run. The client-side path is therefore the
-  suspect, and the fork's contribution to it is the machinery that
-  makes a session complete *before* the client parks in the Blockade
-  (`async_client_notify` + the shared `Signal_receiver`): a completion
-  that races the client's Blockade registration can leave the client
-  with a stale `Connection`/signal state. The exact race - notification
-  delivered while no sigh is registered, delivered twice, or the
-  `Connection` object's sigh re-registration racing the completion - is
-  still open; the fix must make the Blockade/notification handshake
-  idempotent for a session that completes before the client parks.
+  that component in the run.
+
+  **Resolution: it was not a logic bug but a vtable ABI break.** The
+  fork inserted three virtuals into the *middle* of `Genode::Env`
+  (`try_upgrade`, `try_close`, five-argument `try_session`), which
+  shifted the slots of every later virtual: `Env::close` moved from
+  `vptr+0x68` to `vptr+0x70`. A component dispatches the virtuals of
+  this interface by SLOT INDEX, so a component that was not rebuilt
+  against the new header now calls a function with a mismatched
+  signature.
+
+  The qmake-built components are exactly that class: the qmake build
+  has no header dependencies (`build_with_qmake` was `.PHONY`, without
+  a `$(BASE_DIR)/include` dependency), so a change of a base header
+  did not invalidate the objects built by qmake. The stale `sponge-de`
+  binary (2026-10-18) carried **111** `call *0x68(vptr)` sites (in
+  `~Connection`, `~Rom_connection`, `~Attached_rom_dataspace` and
+  `~Main`) that were `Env::close` calls in the old layout and became
+  `Component_env::try_upgrade` calls in the new one. The mismatched
+  call passed a NULL `Upgrade_args`, which is exactly what the
+  instrumented run showed (`args=0x0`), and the callee read it at
+  offset 8 - the `illegal READ at address 0x8`. The second live
+  mis-dispatch was the four-argument `try_session` (old slot `+0x78`),
+  which landed on `try_close` and passed a garbage session ID.
+
+  The fix (fork commit `0a329d4fff`, ledger row 29) appends the three
+  new virtuals at the END of `Genode::Env`, so every pre-existing slot
+  keeps its meaning - the vtable of the freshly built `Component_env`
+  has `Env::close` at `vptr+0x68` again (verified by reading the
+  vtable relocations of the built `ld.so`). The libc's
+  `Libc::Env_implementation` forwards the three new virtuals (otherwise
+  the libc inherits the blocking defaults and re-introduces the parked
+  entrypoint), and the qmake build now depends on the public base
+  headers, so a prebuilt component can never again be linked against
+  an interface with a different vtable layout.
+
+  Measured: the `illegal READ at address 0x8` is gone from
+  `run/sponge-desktop-disk` (0 hits, and 0 hits for the other
+  corruption strings), and `run/sponge-upgrade-wedge`,
+  `run/sponge-pkg-driver` and `run/sponge-supervisor-takeover` stay
+  green.
 
 Both are consequences of the same root (a close that the parent has
 not confirmed yet) and are the next step of this work; they are
