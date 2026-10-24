@@ -209,6 +209,20 @@ running until the compositor proves itself (`alpha-probe: PASS` or
   install hello` even though the desktop itself comes up. The probe's
   budget — not the session machinery — is what limits the slow-media
   bring-up.
+* **OPEN:** `run/sponge-pkg-driver` still fails at its DHCP gate. The
+  driver package comes up (`e1000 00:02.0 eth0: Intel(R) PRO/1000 Network
+  Connection`, `NIC Link is Up 1000 Mbps`, `create uplink for net device
+  eth0`), and the package manager's install is acknowledged
+  (`driver-probe: PASS`) — but the **uplink session**, which crosses the
+  `system` sandbox boundary (the driver runtime -> the system sandbox ->
+  the top-level init -> the `nic_router`), never completes: the
+  `nic_router` never sees a NIC session and the DHCP offer never arrives.
+  The pre-change run of the same scenario (with the same scenario-side
+  build) reaches `dhcp offer from 10.0.2.2` — so this is a REGRESSION of
+  the create chain, not a scenario-side artefact. Its cause is not yet
+  isolated: no create expires, no session is denied, and no pending
+  operation is left behind (the driver package's own sessions complete).
+
 * At 400 KB/s the honest bring-up of the Qt6 desktop exceeds the 120 s
   startup grace of the heartbeat (`startup_grace_ms`): the container
   declares the desktop environment wedged and tears it down, which
