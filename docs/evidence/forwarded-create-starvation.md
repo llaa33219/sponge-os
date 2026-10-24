@@ -2,7 +2,7 @@
 
 **Artifact type:** runtime measurement (instrumented QEMU/base-sel4 boots)
 **Scenario:** `run/sponge-desktop-disk-uefi-usb` (product UEFI USB media)
-**Fork commits:** `74c84f9f0a` → `e0c2706225` (non-blocking create) → `205b84fcad` (quota-erosion recovery, coherent expiry)
+**Fork commits:** `74c84f9f0a` → `e0c2706225` (non-blocking create) → `205b84fcad` (quota-erosion recovery, coherent expiry) → `82f0143d1f` (the re-issued session must not outlive its pending operation)
 **Ledger row:** #31 (`docs/11-environment.md` §4)
 
 ## 1. The question
