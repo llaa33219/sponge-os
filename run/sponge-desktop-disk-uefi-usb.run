@@ -2320,6 +2320,38 @@ expect {
         puts "\[sponge-desktop-disk-uefi-usb\] QEMU boot timed out (300 s) without the marker"
     }
 }
+
+#
+# === Compositor-health gate ===
+#
+# The gate above closes at the DE's first diagnostic line - long before the
+# compositor is healthy. That gap is what hid the field defect: the
+# container's entrypoint starved the children's heartbeat dispatch, the
+# decorator/layouter were declared wedged, the windows stayed black, and
+# the gate had already said PASS.
+#
+# So the capture CONTINUES here: the gate does not close before the
+# compositor has proved itself. The proof is the DE's first paint - the
+# 'alpha-probe: PASS' of the headless probe (it reads the panel's pixels
+# off the framebuffer) or the 'FIRSTPAINT' line of the debug component in
+# the package runtime.
+#
+set compositor_healthy 0
+set timeout 300
+if {$slow_storage_kbps > 0} {
+	set timeout 1200
+}
+expect {
+    -i $qemu_spawn_id -re {alpha-probe: PASS|sponge_debug: FIRSTPAINT ms=} {
+        set compositor_healthy 1
+    }
+    eof {
+        puts "\[sponge-desktop-disk-uefi-usb\] QEMU exited (eof) before the compositor proved itself"
+    }
+    timeout {
+        puts "\[sponge-desktop-disk-uefi-usb\] QEMU boot timed out without a compositor-health marker"
+    }
+}
 log_file
 
 set fh [open $uefi_log r]
@@ -2327,12 +2359,29 @@ set output [read $fh]
 close $fh
 puts "\[sponge-desktop-disk-uefi-usb\] serial log captured: $uefi_log ([string length $output] bytes)"
 
+#
+# The wedge/starvation signatures. Both are the field defect's own
+# fingerprint in the serial log:
+#
+#   - 'treating the child as wedged': the container's heartbeat gave up on
+#     a child (the decorator/layouter in the field),
+#   - 'state=CREATING' on a capability request: the container polls for a
+#     session capability that the provider has not created yet. A stream of
+#     them is the starvation signature of the blocking create (the 'Gui'
+#     and 'Timer' sessions of the window stack in the field).
+#
+set has_wedge [regexp -- {treating the child as wedged} $output]
+set has_starving [regexp -- {attempt to request cap for unavailable session[^\n]*state=CREATING} $output]
+
 puts ""
-if {$storage_chain_proven} {
+if {$storage_chain_proven && $compositor_healthy && !$has_wedge && !$has_starving} {
     puts "  ================================================================"
     puts "  PASS — UEFI USB-stick media boots on OVMF and the usb_block"
     puts "  storage chain serves /system from the stick (DE started)."
     puts "  ================================================================"
+    puts "  compositor health: $compositor_healthy (first paint observed)"
+    puts "  wedge lines       : 0"
+    puts "  starvation lines  : 0"
 
     #
     # === Launch-path gate (SPONGE_LAUNCHTEST=on only) ===
@@ -2401,8 +2450,16 @@ if {$storage_chain_proven} {
     exit 0
 }
 puts "  ================================================================"
-puts "  FAIL — the usb_block storage chain did NOT reach configd within"
-puts "  300 s on OVMF. Inspect the serial log (xHCI BAR I/O-memory errors,"
-puts "  usb_block start, part_block P3 probe, vfs mount)."
+puts "  FAIL — the media did not reach a healthy compositor on OVMF."
+puts "  Either the usb_block storage chain did not reach configd within"
+puts "  300 s (inspect the serial log: xHCI BAR I/O-memory errors,"
+puts "  usb_block start, part_block P3 probe, vfs mount), or the"
+puts "  compositor never proved itself, or the container starved a child"
+puts "  (the field defect's signature)."
+puts "  ================================================================"
+puts "  storage chain proven : $storage_chain_proven"
+puts "  compositor healthy    : $compositor_healthy"
+puts "  wedge lines          : [expr {$has_wedge      ? {YES} : {no}}]"
+puts "  starvation lines     : [expr {$has_starving  ? {YES} : {no}}]"
 puts "  ================================================================"
 exit 1
