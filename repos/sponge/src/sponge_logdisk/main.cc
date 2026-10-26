@@ -668,12 +668,19 @@ struct Sponge::Logdisk : Genode::Noncopyable
 		if (_tick_ms) {
 			try {
 				_timer.construct(_env);
-				_ms = _timer->curr_time().trunc_to_plain_ms().value;
 			} catch (...) {
-				Genode::warning("sponge_logdisk: no Timer session — no timestamps");
+				Genode::warning("sponge_logdisk: no Timer session — no tick flush");
 			}
-			_timer->sigh(_tick_sig);
-			_timer->trigger_periodic(_tick_ms*1000);
+			if (_timer.constructed()) {
+				/*
+				 * Do not call 'curr_time' on this connection: it would
+				 * switch the connection into the timeout-framework mode,
+				 * which rejects the custom signal handler below. The
+				 * timestamps are boot-relative, advanced by each tick.
+				 */
+				_timer->sigh(_tick_sig);
+				_timer->trigger_periodic(_tick_ms*1000);
+			}
 		}
 
 		/* Flush whatever accumulated while the filesystem was coming up. */
@@ -690,6 +697,7 @@ void Sponge::Logdisk::handle_tick()
 	{
 		Genode::Mutex::Guard g { _lock };
 		_tick_pending = true;
+		_ms += _tick_ms;
 	}
 	_drain();
 }
