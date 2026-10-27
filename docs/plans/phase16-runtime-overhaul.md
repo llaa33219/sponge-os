@@ -1,6 +1,8 @@
 # Phase 16 Runtime Overhaul (Work Plan)
 
-> Status: plan only; no implementation of this plan has landed. Created
+> Status: in progress. P0 baseline/audits, P1.1, P1.3, P1.4, and the
+> config-emission portion of P1.2 have landed through `e5ccb99a9d`; the
+> remaining P1.2 extractions, P1.5, and P2-P5 remain open. Created
 > 2026-10-28 on branch `refactor/phase16-runtime-overhaul` (pre-work HEAD
 > `3afb40c922`).
 > Relationship: this is the runtime-overhaul track of the reopened Phase 16
@@ -222,6 +224,8 @@ the commit that flips P1.1 green.
 Gate: `run/sponge-config-authority.run` -> `config-authority-probe: PASS`.
 Commits: `fix(pkgd): regenerate only the dirty runtime config` (1) + green receipt commit.
 Owns: the pkgd emission module from P1.3.
+Landed: `e5ccb99a9d` (`fix(pkgd): stop cross-runtime config republication`).
+QEMU/seL4 receipt: `docs/evidence/phase16-runtime-config-coupling.md` §12.
 
 **P1.5 Emission validation.**
 Every emitted runtime config is validated before install (init.xsd /

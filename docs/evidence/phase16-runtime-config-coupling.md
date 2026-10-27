@@ -480,3 +480,87 @@ points a P2.6 implementer edits:
 - The full forwarded-create / provider-chain I/O map and the NIC uplink
   regression (FD1, D16R.17) — owned by P0.2/P0.5/P4.2.
 - Any classification of ledger rows #25-#31 — P4.1's job.
+
+---
+
+## 12. P1.3/P1.4 implementation and green receipt (2026-10-28)
+
+**Machine:** QEMU q35, `Skylake-Client`, KVM, base-sel4. This is not a
+real-hardware result. **Implementation commit:** `e5ccb99a9d`
+(`fix(pkgd): stop cross-runtime config republication`).
+
+### 12.1 Landed module map
+
+The P1.3 split is file/linkage structure only; it added no thread and kept
+one `Main` class and one request backend. The landed responsibilities are:
+
+| File | Responsibility |
+|---|---|
+| `pkgd.h` | package metadata model and `Main` declaration |
+| `main.cc` | request/result channels, replay, runtime-report emission, bootstrap and construction |
+| `metadata.cc` | index/package parsing and dependency resolution |
+| `registry.cc` | roots, installed closure, running set and exclusive-peer lookup |
+| `ops.cc` | install/remove/launch and launch pre-flight |
+| `admission.cc` | quota parsing, budget reads and admission decisions |
+| `store.cc` | opt-in persistent root store and bake seeding |
+
+`sponge_pkg_config` is the landed pure, host-testable emission library. The
+other P1.2 extractions named in §9 remain open; this receipt does not mark
+them complete.
+
+### 12.2 Dirty-scoped emission
+
+Install marks targets from the resolved plan's package kinds before the plan
+is rebuilt. Remove marks the kinds actually dropped from the installed
+closure. Launch marks only the launched package's kind after every refusal
+path. Bootstrap marks both targets. `_generate_runtime_config()` consumes
+and clears both marks, and publishes only marked targets; mixed dependency
+plans therefore still publish both, while app-only and driver-only
+operations no longer republish the other runtime.
+
+The config-authority scenario was hardened at the same time: every gate
+observes one QEMU boot, each optional defect window closes on an explicit
+next-operation/control landmark, a missing landmark is a harness failure,
+and either cross-runtime publication direction independently produces RED.
+This closes the former stacked-respawn and `A && B` false-PASS holes.
+
+### 12.3 Commands and observed gates
+
+All Genode scenarios ran serially with `make -j1`; no concurrent build used
+`genode/build/x86_64`.
+
+```sh
+make -j1 -C genode/build/x86_64 run/sponge-config-authority KERNEL=sel4 BOARD=pc
+# config-authority-probe: PASS
+
+make -j1 -C genode/build/x86_64 run/sponge-pkg-lifecycle KERNEL=sel4 BOARD=pc
+# lifecycle-probe: PASS
+# Run script execution successful.
+
+make -j1 -C genode/build/x86_64 run/sponge-pkg-admission KERNEL=sel4 BOARD=pc
+# admission-probe: PASS
+# Run script execution successful.
+```
+
+The unchanged pure generator also passed its host equivalence and golden
+snapshot test (full reproducible build command is in `self_test.cc:20-35`):
+
+```sh
+g++ -std=c++20 -O1 \
+  -I genode/repos/base/include \
+  -I genode/repos/base/include/spec/64bit \
+  -I genode/repos/base/include/spec/x86_64 \
+  -I genode/repos/base/include/spec/x86 \
+  -I genode/repos/base/src/include \
+  -I repos/sponge/include \
+  repos/sponge/lib/src/sponge_pkg_config/self_test.cc \
+  repos/sponge/lib/src/sponge_pkg_config/pkg_config.cc \
+  genode/repos/base/src/lib/base/xml_generator.cc \
+  genode/repos/base/src/lib/base/output.cc \
+  -o /tmp/sponge_pkg_config_self_test \
+&& /tmp/sponge_pkg_config_self_test
+# self-test: PASS (equivalence + golden snapshots)
+```
+
+This receipt closes P1.4 only. P1.5 emission validation and the DE/provider
+failure-isolation tasks remain separate gates.
