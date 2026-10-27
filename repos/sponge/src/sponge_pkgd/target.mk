@@ -13,12 +13,15 @@
 
 # Module map (Phase 16 P1.3 responsibility split, zero behavior change):
 #   main.cc     - channels (request/result, dedup/replay), emission
-#                 wiring, bootstrap thread + constructor
+#                 wiring, bootstrap thread + constructor, persistence/
+#                 bake until store.cc lands
 #   registry.cc - installed/running state
 #   metadata.cc - metadata parsing + DFS resolution
-#   planned     - admission.cc, ops.cc, store.cc (added here as they land)
+#   admission.cc - resource admission math + ROM arming
+#   ops.cc      - install/remove/launch + binary-manifest pre-flight
+#   planned     - store.cc (added here as it lands)
 TARGET   := sponge_pkgd
-SRC_CC   := main.cc registry.cc metadata.cc
+SRC_CC   := main.cc registry.cc metadata.cc admission.cc ops.cc
 LIBS     := base vfs sponge_pkg_config
 INC_DIR  := $(PRG_DIR)/include \
             $(REP_DIR)/include
