@@ -11,8 +11,14 @@
 # the persistent installed-set store (docs/12-package-format.md §13).
 # Purely signal-driven — no Timer, no libc, no Qt, no exceptions.
 
+# Module map (Phase 16 P1.3 responsibility split, zero behavior change):
+#   main.cc     - channels (request/result, dedup/replay), emission
+#                 wiring, bootstrap thread + constructor
+#   registry.cc - installed/running state
+#   metadata.cc - metadata parsing + DFS resolution
+#   planned     - admission.cc, ops.cc, store.cc (added here as they land)
 TARGET   := sponge_pkgd
-SRC_CC   := main.cc
+SRC_CC   := main.cc registry.cc metadata.cc
 LIBS     := base vfs sponge_pkg_config
 INC_DIR  := $(PRG_DIR)/include \
             $(REP_DIR)/include

@@ -4,6 +4,25 @@ The package-management backend for Sponge OS. It is a long-lived,
 signal-driven Genode component that resolves package metadata and
 dependency graphs and answers `vct install` requests.
 
+## Source layout (Phase 16 P1.3 module map)
+
+The daemon is one component split into responsibility modules —
+file/linkage structure only, zero behavior change (no new threads,
+identical report labels and bootstrap ordering):
+
+| File | Responsibility |
+|---|---|
+| `pkgd.h` | `Package` metadata type + `Main` class declaration |
+| `main.cc` | request/result channels (dedup/replay), runtime-config + installed-broadcast emission wiring, bootstrap thread and constructor |
+| `registry.cc` | installed/running state (roots, closure, running set, exclusive-group peer lookup) |
+| `metadata.cc` | `pkg_index.xml` / `pkg_<name>.xml` parsing, DFS dependency resolution |
+| `admission.cc` *(planned)* | resource admission math (`_admits`, budget reads) |
+| `ops.cc` *(planned)* | install/remove/launch operations (`_do_*`) |
+| `store.cc` *(planned)* | persistent installed-set store + bake seeding |
+
+`target.mk` lists the landed modules in `SRC_CC` and is extended as
+each planned module lands.
+
 ## Communication channel (settled design)
 
 `sponge_pkgd` does **not** expose an RPC interface. It communicates
