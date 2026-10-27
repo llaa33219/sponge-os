@@ -1,0 +1,185 @@
+#
+# \brief  Sponge OS per-runtime config-authority characterization
+# \author Sponge OS contributors
+# \date   2026-10-28
+#
+# Phase 16 runtime-overhaul P1.1 (docs/plans/phase16-runtime-overhaul.md).
+#
+# Claim under test: a package operation must publish only the config of the
+# runtime it dirtied. Today pkgd republishes BOTH configs on every operation:
+# an app operation also republishes driver_runtime, and a driver operation
+# also republishes the application runtime.
+#
+# Detector: report_rom's verbose publication log (report_service.h: each
+# submission logs `report '<module name>'` plus the content). No ROM-signal
+# semantics are involved, so this works even when the content is unchanged.
+#
+# Sequence and expected verdicts:
+#   startup             runtime + driver_runtime are published once each.
+#   install hello       runtime is published (positive control), then
+#                       driver_runtime is ALSO published (app -> driver defect).
+#   install usb_net     runtime is ALSO published (driver -> app defect), then
+#                       driver_runtime is published (positive control).
+#   byte stability      the hello <start> block is visible in the app config
+#                       after both operations (the untouched block survives).
+#
+# The scenario currently reaches `config-authority-probe: RED` and exits 1.
+# After dirty-scoped emission, the two defect gates stop matching and the
+# scenario reaches `config-authority-probe: PASS` and exits 0.
+#
+# Build:
+#   make -C genode/build/x86_64 run/sponge-config-authority \
+#       KERNEL=sel4 BOARD=pc
+#
+
+assert {[have_spec sel4]} \
+	"sponge-config-authority requires KERNEL=sel4 (BOARD=pc)."
+
+build { core lib/ld init timer server/report_rom lib/vfs sponge_pkgd \
+        pkg_hello test/pkg_lifecycle_probe }
+
+create_boot_directory
+
+#
+# Metadata staging: hello is an autostarted app; usb_net is a driver package
+# that is not autostarted, so no hardware driver is required for this test.
+#
+set staged_pkgs { hello usb_net }
+foreach pkg $staged_pkgs {
+	set src "${genode_dir}/../pkg/$pkg/metadata.xml"
+	if {![file exists $src]} {
+		error "package metadata not found: $src"
+	}
+	exec cp -L $src "[run_dir]/genode/pkg_$pkg.xml"
+}
+
+set index_fh [open "[run_dir]/genode/pkg_index.xml" w]
+puts $index_fh "<packages>"
+foreach pkg $staged_pkgs {
+	puts $index_fh "  <pkg name=\"$pkg\"/>"
+}
+puts $index_fh "</packages>"
+close $index_fh
+
+install_config [subst {
+config
++ parent-provides
+  + service LOG
+  + service PD
+  + service CPU
+  + service ROM
+  + service IRQ
+  + service IO_MEM
+  + service IO_PORT
+
++ default-route
+  + any-service
+    + parent
+    + any-child
++ default | caps: 200 | ram: 8M
+
++ start timer
+  + provides | + service Timer
+
++ start report_rom | ram: 8M
+  + provides
+    + service Report
+    + service ROM
+  + config | verbose: yes
+    + policy | label: sponge_pkgd -> request         | report: pkg_lifecycle_probe -> request
+    + policy | label: pkg_lifecycle_probe -> result  | report: sponge_pkgd -> result
+    + policy | label: pkg_lifecycle_probe -> installed | report: sponge_pkgd -> installed
+    + policy | label: pkg_lifecycle_probe -> launcher_request | report: sponge_pkgd -> launcher_request
+    + policy | label: pkg_lifecycle_probe -> launcher_result | report: sponge_pkgd -> launcher_result
+    + policy | label: pkg_runtime -> config          | report: sponge_pkgd -> runtime
+    + policy | label: driver_runtime -> config       | report: sponge_pkgd -> driver_runtime
+
++ start sponge_pkgd | caps: 400 | ram: 32M
+  + route
+    + service ROM | label_last: request | + child report_rom
+    + service Report | + child report_rom
+    + any-service
+      + parent
+      + any-child
+
++ start pkg_runtime | caps: 400 | ram: 32M
+  + binary init
+  + route
+    + service ROM | label: config | + child report_rom
+    + any-service
+      + parent
+      + any-child
+
++ start driver_runtime | caps: 400 | ram: 32M
+  + binary init
+  + route
+    + service ROM | label: config | + child report_rom
+    + any-service
+      + parent
+      + any-child
+
++ start pkg_lifecycle_probe | caps: 200 | ram: 16M
+  + config | launcher: yes
+    + step | op: install | pkg: hello
+    + step | op: install | pkg: usb_net
+  + route
+    + service Timer | + child timer
+    + service ROM | label_last: result | + child report_rom
+    + service ROM | label_last: installed | + child report_rom
+    + service ROM | label_last: launcher_result | + child report_rom
+    + service Report | + child report_rom
+    + any-service
+      + parent
+      + any-child
+- }]
+
+build_boot_image [build_artifacts]
+
+append qemu_args " -nographic -m 1G "
+
+#
+# Required gate: a publication must occur or the harness is broken.
+#
+proc gate { pattern timeout_s } {
+	if {[catch { run_genode_until $pattern $timeout_s } err]} {
+		puts "config-authority-probe: FAIL harness ($err)"
+		exit 1
+	}
+}
+
+#
+# Optional defect gate: return 1 when the spurious publication is observed,
+# 0 when dirty-scoped emission has removed it.
+#
+proc maybe { pattern timeout_s } {
+	if {[catch { run_genode_until $pattern $timeout_s } err]} {
+		return 0
+	}
+	return 1
+}
+
+# Startup publications: the detector must see both modules before any op.
+gate {.*report 'sponge_pkgd -> runtime'.*} 90
+gate {.*report 'sponge_pkgd -> driver_runtime'.*} 90
+
+# App operation: runtime is the positive control; driver_runtime is the defect.
+gate {.*report 'sponge_pkgd -> runtime'.*} 120
+set app_to_driver [maybe {.*report 'sponge_pkgd -> driver_runtime'.*} 60]
+
+# The hello start block is present in the app config after the app operation.
+gate {.*<start name="hello".*} 60
+
+# Driver operation: runtime is the defect; driver_runtime is the control.
+set driver_to_app [maybe {.*report 'sponge_pkgd -> runtime'.*} 120]
+gate {.*report 'sponge_pkgd -> driver_runtime'.*} 60
+
+# Byte-stability: the untouched hello start block is still present.
+gate {.*<start name="hello".*} 60
+
+if {$app_to_driver && $driver_to_app} {
+	puts "config-authority-probe: RED (app operation republished driver_runtime; driver operation republished runtime)"
+	exit 1
+}
+
+puts "config-authority-probe: PASS"
+exit 0
