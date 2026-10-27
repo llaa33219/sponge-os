@@ -259,7 +259,9 @@ void Sponge::Pkgd::Main::_handle_request_impl(Genode::Xml_node const &req)
 /* ===================== runtime-config generation ===================== */
 
 /*
- * Emit the full pkg_runtime <config> from _installed.
+ * Emit the sandbox configs dirtied by the current operation from
+ * _installed (dirty-scoped emission, D16R.4 — see the dirty invariant
+ * on _app_config_dirty/_driver_config_dirty in pkgd.h).
  *
  * Determinism contract (the highest-risk constraint of Phase 4b):
  * the output for a given installed set is byte-identical every run.
@@ -272,13 +274,18 @@ void Sponge::Pkgd::Main::_handle_request_impl(Genode::Xml_node const &req)
  * children keep running across an unrelated install.
  */
 /*
- * Emit BOTH sandbox configs from _installed.
- *
- * One request produces two deterministic configs: the pkg_runtime one
- * for <kind>app</kind> packages and the driver_runtime one for
- * <kind>driver</kind> packages (docs/12 §4.5). They are emitted together
- * so no call site can ever publish one without the other and leave the
- * two sandboxes disagreeing about the installed set.
+ * One request may produce two deterministic configs: the pkg_runtime
+ * one for <kind>app</kind> packages and the driver_runtime one for
+ * <kind>driver</kind> packages (docs/12 §4.5). Which of the two are
+ * published is decided by the per-target dirty marks the operation
+ * set from its resolved plan kinds — an app-only operation publishes
+ * only the pkg_runtime config, a driver-only operation only the
+ * driver_runtime one, and a plan that mixes kinds both. Bootstrap
+ * marks both. A target that is not dirty is never published: its
+ * content is a function of its own kind's packages alone (the
+ * generator's membership filter), so an unmarked target is
+ * byte-unchanged and republishing it would be pure config churn
+ * against the other runtime (the failure domain D16R.4 closes).
  */
 void Sponge::Pkgd::Main::_generate_runtime_config()
 {
@@ -376,11 +383,24 @@ void Sponge::Pkgd::Main::_generate_runtime_config()
 			}
 		}
 	}
+	/*
+	 * Consume the per-target dirty marks set by the operation from its
+	 * resolved plan kinds (or both, at bootstrap). Clearing here means
+	 * every later generation is driven purely by what the next
+	 * operation dirties.
+	 */
+	bool const emit_app    = _app_config_dirty;
+	bool const emit_driver = _driver_config_dirty;
+	_app_config_dirty    = false;
+	_driver_config_dirty = false;
+
 	if (repro_empty_from && _runtime_config_writes >= repro_empty_from) {
 		Genode::log("sponge_pkgd: publishing EMPTY config (write ",
 		            _runtime_config_writes, ") — control channel");
-		_runtime_reporter.generate_xml([&](Genode::Xml_generator &) { });
-		_emit_runtime_config(_driver_runtime_reporter, true);
+		if (emit_app)
+			_runtime_reporter.generate_xml([&](Genode::Xml_generator &) { });
+		if (emit_driver)
+			_emit_runtime_config(_driver_runtime_reporter, true);
 		return;
 	}
 	if (repro_pad)
@@ -399,8 +419,10 @@ void Sponge::Pkgd::Main::_generate_runtime_config()
 		            " buffer=", (Genode::size_t)RUNTIME_CONFIG_BUFFER);
 	}
 
-	_emit_runtime_config(_runtime_reporter,     false);
-	_emit_runtime_config(_driver_runtime_reporter, true);
+	if (emit_app)
+		_emit_runtime_config(_runtime_reporter,     false);
+	if (emit_driver)
+		_emit_runtime_config(_driver_runtime_reporter, true);
 }
 
 
@@ -1069,7 +1091,12 @@ _init_admission();
 	 * it. On a restored boot this already contains the previously-
 	 * installed components, so pkg_runtime starts them without any
 	 * user action. (Published here so init — which constructs children
-	 * in config order — sees it before it constructs pkg_runtime.) */
+	 * in config order — sees it before it constructs pkg_runtime.)
+	 * Bootstrap dirties BOTH targets (the dirty invariant in pkgd.h):
+	 * both sandboxes need their initial config whether or not the
+	 * restored set happens to span both kinds. */
+	_app_config_dirty    = true;
+	_driver_config_dirty = true;
 	_generate_runtime_config();
 
 	/* Publish the initial installed-set broadcast so watchers (e.g.

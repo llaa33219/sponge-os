@@ -122,6 +122,19 @@ void Sponge::Pkgd::Main::_do_install(Genode::String<128> const &pkg)
 		}
 	}
 
+	/* Dirty-scoped emission: mark the targets this install's RESOLVED
+	 * plan touches — plan kinds, not the request string. A plan can
+	 * legitimately mix kinds (a driver with an app dependency, or the
+	 * reverse), and each kind dirties only its own runtime config.
+	 * Marked before _sync_installed_from_roots() because that call
+	 * re-resolves every root and clobbers _plan. */
+	for (unsigned i = 0; i < _num_plan; ++i) {
+		if (_plan[i].is_driver())
+			_driver_config_dirty = true;
+		else
+			_app_config_dirty = true;
+	}
+
 	/* Snapshot the installed names before the change, to report exactly
 	 * what this install added. */
 	Genode::String<64> before[MAX_PACKAGES] { };
@@ -164,11 +177,18 @@ void Sponge::Pkgd::Main::_do_remove(Genode::String<128> const &pkg)
 		return;
 	}
 
-	/* Snapshot before, to report what removal dropped. */
+	/* Snapshot before, to report what removal dropped — names and
+	 * kinds: the kind snapshot feeds the dirty marks below, which must
+	 * be derived before _sync_installed_from_roots() erases the
+	 * dropped entries. */
 	Genode::String<64> before[MAX_PACKAGES] { };
+	bool before_driver[MAX_PACKAGES] { };
 	unsigned num_before { 0 };
-	for (unsigned i = 0; i < _num_installed && i < MAX_PACKAGES; ++i)
-		before[num_before++] = _installed[i].name;
+	for (unsigned i = 0; i < _num_installed && i < MAX_PACKAGES; ++i) {
+		before[num_before]        = _installed[i].name;
+		before_driver[num_before] = _installed[i].is_driver();
+		++num_before;
+	}
 
 	/* Drop the root; re-derive the closure so unused deps are GC'd. */
 	for (unsigned i = 0; i < _num_roots; ++i) {
@@ -180,6 +200,20 @@ void Sponge::Pkgd::Main::_do_remove(Genode::String<128> const &pkg)
 	}
 	_sync_installed_from_roots();
 	_sync_running_state();   /* drops the removed name from _running too */
+
+	/* Dirty-scoped emission: the removed closure — the root plus any
+	 * dependency the GC drops — can span both kinds, so the targets
+	 * come from the kinds of the packages actually dropped, not from
+	 * the request string. */
+	for (unsigned b = 0; b < num_before; ++b) {
+		if (_installed_contains(before[b].string()))
+			continue;
+		if (before_driver[b])
+			_driver_config_dirty = true;
+		else
+			_app_config_dirty = true;
+	}
+
 	_save_store();   /* flush before broadcast so the change survives a reboot */
 	_generate_runtime_config();
 	_generate_installed_report();
@@ -261,13 +295,13 @@ void Sponge::Pkgd::Main::_do_launch(Genode::String<128> const &pkg)
 	 * WARNING (sandbox/library.cc), so the launch silently evaporates.
 	 * Gate on the staged-binary manifest BEFORE touching _running.
 	 */
+	Package const *found { nullptr };
+	for (unsigned i = 0; i < _num_installed; ++i)
+		if (Genode::strcmp(_installed[i].name.string(), name) == 0) {
+			found = &_installed[i];
+			break;
+		}
 	{
-		Package const *found { nullptr };
-		for (unsigned i = 0; i < _num_installed; ++i)
-			if (Genode::strcmp(_installed[i].name.string(), name) == 0) {
-				found = &_installed[i];
-				break;
-			}
 		if (found && !_binary_available(*found)) {
 			Genode::log("sponge_pkgd: launch ", pkg,
 			            " -> binary-missing (", _binary_prefix,
@@ -305,6 +339,18 @@ void Sponge::Pkgd::Main::_do_launch(Genode::String<128> const &pkg)
 	}
 
 	_add_running(name);
+
+	/* Dirty-scoped emission: a launch dirties only the runtime that
+	 * hosts the package (its resolved <kind>), never both. Marked here
+	 * — after every refusal path has returned — so a refused launch
+	 * never leaves a stale mark behind. */
+	if (found) {
+		if (found->is_driver())
+			_driver_config_dirty = true;
+		else
+			_app_config_dirty = true;
+	}
+
 	/*
 	 * _save_store() persists only the installed root set; _running is
 	 * intentionally NOT persisted (docs/12 §9.2.1 + §13). On reboot,

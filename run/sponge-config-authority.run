@@ -14,18 +14,36 @@
 # submission logs `report '<module name>'` plus the content). No ROM-signal
 # semantics are involved, so this works even when the content is unchanged.
 #
-# Sequence and expected verdicts:
-#   startup             runtime + driver_runtime are published once each.
-#   install hello       runtime is published (positive control), then
-#                       driver_runtime is ALSO published (app -> driver defect).
-#   install usb_net     runtime is ALSO published (driver -> app defect), then
-#                       driver_runtime is published (positive control).
-#   byte stability      the hello <start> block is visible in the app config
-#                       after both operations (the untouched block survives).
+# All gates observe ONE QEMU boot. The two-argument run_genode_until
+# respawns QEMU per call, so stacked gates would each re-run the probe
+# on a fresh IDENTICAL boot and could never order one operation's
+# publications against the next (the observation the claim is made of).
+# The first gate spawns the boot; every later gate chains on the same
+# spawn ($qemu_spawn_id, the sponge-de-stability idiom). The optional
+# defect gates are closed by an explicit landmark — the next operation's
+# request line, or the control publication — rather than by a bare
+# timeout window, so the FOLLOWING operation's legitimate publication of
+# the other runtime can never be misread as the current operation's
+# defect.
 #
-# The scenario currently reaches `config-authority-probe: RED` and exits 1.
-# After dirty-scoped emission, the two defect gates stop matching and the
-# scenario reaches `config-authority-probe: PASS` and exits 0.
+# Sequence and expected verdicts (single boot):
+#   startup             runtime + driver_runtime are published once each.
+#   install hello       runtime is published (positive control) and the
+#                       hello <start> block is present and complete in
+#                       it; a driver_runtime publication before the
+#                       usb_net request is the app -> driver defect.
+#   install usb_net     driver_runtime is published (positive control);
+#                       a runtime publication ahead of it is the
+#                       driver -> app defect. Because the driver
+#                       operation never republishes the app config, the
+#                       hello block published above is still the live
+#                       app config byte for byte (the untouched block
+#                       survives).
+#
+# With whole-regen emission the scenario reaches
+# `config-authority-probe: RED` and exits 1. After dirty-scoped
+# emission the two defect gates stop matching and the scenario reaches
+# `config-authority-probe: PASS` and exits 0.
 #
 # Build:
 #   make -C genode/build/x86_64 run/sponge-config-authority \
@@ -139,45 +157,93 @@ append qemu_args " -nographic -m 1G "
 
 #
 # Required gate: a publication must occur or the harness is broken.
+# The first call spawns QEMU via the run tool; every later call chains
+# on the same boot (a two-argument run_genode_until would respawn).
 #
 proc gate { pattern timeout_s } {
-	if {[catch { run_genode_until $pattern $timeout_s } err]} {
-		puts "config-authority-probe: FAIL harness ($err)"
-		exit 1
+	global qemu_spawn_id
+	if {$qemu_spawn_id eq ""} {
+		if {[catch { run_genode_until $pattern $timeout_s } err]} {
+			puts "config-authority-probe: FAIL harness ($err)"
+			exit 1
+		}
+		return
+	}
+	set timeout $timeout_s
+	expect {
+		-i $qemu_spawn_id -re $pattern { }
+		-i $qemu_spawn_id eof {
+			puts "config-authority-probe: FAIL harness (QEMU died)"
+			exit 1
+		}
+		timeout {
+			puts "config-authority-probe: FAIL harness (no match for '$pattern' within ${timeout_s}s)"
+			exit 1
+		}
 	}
 }
 
 #
-# Optional defect gate: return 1 when the spurious publication is observed,
-# 0 when dirty-scoped emission has removed it.
+# Optional defect gate: return 1 when the spurious publication (pattern)
+# is observed before the window's closing landmark (close_pattern), 0
+# when the landmark closes the window first. A silent timeout is a FAIL,
+# not a clean verdict: both worlds must produce the landmark (the next
+# operation's request line, or the control publication), so silence
+# means the harness is broken. Written as a direct expect because
+# run_genode_until's timeout path calls exit (uncatchable), which would
+# kill the scenario instead of recording a clean 0.
 #
-proc maybe { pattern timeout_s } {
-	if {[catch { run_genode_until $pattern $timeout_s } err]} {
-		return 0
+proc maybe { pattern close_pattern timeout_s } {
+	global qemu_spawn_id
+	set timeout $timeout_s
+	expect {
+		-i $qemu_spawn_id -re $pattern       { return 1 }
+		-i $qemu_spawn_id -re $close_pattern { return 0 }
+		-i $qemu_spawn_id eof {
+			puts "config-authority-probe: FAIL harness (QEMU died)"
+			exit 1
+		}
+		timeout {
+			puts "config-authority-probe: FAIL harness (neither defect nor closing landmark within ${timeout_s}s)"
+			exit 1
+		}
 	}
-	return 1
 }
 
 # Startup publications: the detector must see both modules before any op.
 gate {.*report 'sponge_pkgd -> runtime'.*} 90
 gate {.*report 'sponge_pkgd -> driver_runtime'.*} 90
 
-# App operation: runtime is the positive control; driver_runtime is the defect.
+# App operation: runtime is the positive control.
 gate {.*report 'sponge_pkgd -> runtime'.*} 120
-set app_to_driver [maybe {.*report 'sponge_pkgd -> driver_runtime'.*} 60]
 
-# The hello start block is present in the app config after the app operation.
+# The hello start block is present and complete in the app config the
+# app operation published (byte-stability of the untouched block: it is
+# published intact, and the driver -> app gate below proves the driver
+# operation never republishes - and so never rewrites - it).
 gate {.*<start name="hello".*} 60
+gate {.*</start>.*} 60
 
-# Driver operation: runtime is the defect; driver_runtime is the control.
-set driver_to_app [maybe {.*report 'sponge_pkgd -> runtime'.*} 120]
-gate {.*report 'sponge_pkgd -> driver_runtime'.*} 60
+# App -> driver defect window, closed by the next operation's request:
+# a driver_runtime publication before the usb_net request can only be
+# the app operation republishing the driver config.
+set app_to_driver [maybe {.*report 'sponge_pkgd -> driver_runtime'.*} \
+                         {.*lifecycle-probe: \[2\] install usb_net.*} 60]
 
-# Byte-stability: the untouched hello start block is still present.
-gate {.*<start name="hello".*} 60
+# Driver operation: a runtime publication ahead of the driver_runtime
+# control is the driver -> app defect; driver_runtime closing the window
+# is the positive control.
+set driver_to_app [maybe {.*report 'sponge_pkgd -> runtime'.*} \
+                         {.*report 'sponge_pkgd -> driver_runtime'.*} 120]
 
-if {$app_to_driver && $driver_to_app} {
-	puts "config-authority-probe: RED (app operation republished driver_runtime; driver operation republished runtime)"
+# When the defect fired, the positive control must still follow before
+# the verdict (the closing landmark above already proved it otherwise).
+if {$driver_to_app} {
+	gate {.*report 'sponge_pkgd -> driver_runtime'.*} 60
+}
+
+if {$app_to_driver || $driver_to_app} {
+	puts "config-authority-probe: RED (app->driver=$app_to_driver driver->app=$driver_to_app)"
 	exit 1
 }
 

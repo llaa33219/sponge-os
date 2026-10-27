@@ -460,6 +460,24 @@ class Sponge::Pkgd::Main
 		 */
 		unsigned _runtime_config_writes { 0 };
 		unsigned pad_bytes { 0 };
+
+		/*
+		 * Dirty-scoped emission invariant (D16R.4): a package
+		 * operation marks exactly the runtime targets its RESOLVED
+		 * plan kinds touch — never just the request string — and
+		 * _generate_runtime_config() publishes a target only when its
+		 * mark is set, clearing the mark on emission. Bootstrap marks
+		 * BOTH targets so the initial publish reaches both sandboxes.
+		 * The marks are exact rather than approximate because the
+		 * generator's per-target membership filter makes each config a
+		 * function of its own kind's packages alone; an unmarked target
+		 * therefore really is byte-unchanged and is not republished.
+		 * Emitted reports stay byte-identical to the pre-split
+		 * generator for the same package state.
+		 */
+		bool _app_config_dirty    { false };
+		bool _driver_config_dirty { false };
+
 		unsigned           _num_roots               { 0 };
 
 		/*
