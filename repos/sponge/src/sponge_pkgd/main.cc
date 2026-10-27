@@ -81,6 +81,7 @@
 #include <base/log.h>
 #include <os/reporter.h>
 #include <report_session/connection.h>
+#include <sponge/pkg_config.h>
 #include <util/hid.h>
 #include <util/reconstructible.h>
 #include <util/string.h>
@@ -773,6 +774,17 @@ class Sponge::Pkgd::Main
 		void _emit_runtime_config(Genode::Expanding_reporter &reporter,
 		                          bool drivers);
 
+		/*
+		 * Emission snapshot: the pure sponge_pkg_config library takes
+		 * explicit view values, so each emission first snapshots
+		 * _installed/_running into _config_views (the runtime_class
+		 * token reproduces the pre-extraction is_driver() split).
+		 * Member storage — never static, never on the small ep stack.
+		 */
+		void _refresh_config_views();
+		Sponge::Pkg_config::Package_view _config_views[MAX_PACKAGES] { };
+		unsigned                       _num_config_views  { 0 };
+
 		/* ---- installed-broadcast generation (Phase 5c) ---- */
 		void _generate_installed_report();
 
@@ -812,19 +824,6 @@ class Sponge::Pkgd::Main
 		                      char const *name);
 		static Genode::String<256> _cycle_message(Genode::String<64> const *visiting,
 		                                           unsigned n, char const *repeat);
-
-		/*
-		 * Session-routing helpers (docs/12-package-format.md §7.2).
-		 * _is_parent_route: a declared default-route routes via <parent/>
-		 * when it is the literal "parent" OR names an outer-system
-		 * service (nitpicker/vfs/event_filter/...) that lives outside
-		 * pkg_runtime — never as a <child name="nitpicker"/> (rule 1).
-		 * _session_label: materialize the label attribute per rule 2
-		 * (explicit label wins; read-only File_system gets "<pkg>-ro").
-		 */
-		static bool _is_parent_route(char const *route);
-		static Genode::String<96> _session_label(char const *pkg_name,
-		                                         Package::Session const &s);
 };
 
 
@@ -869,48 +868,11 @@ Genode::String<256> Sponge::Pkgd::Main::_cycle_message(
 
 
 /*
- * Outer-system service/component names that live outside pkg_runtime and
- * therefore route via <parent/>, never <child> (docs/12 §7.2 rule 1). The
- * set is the union of (a) the literal "parent", and (b) every named
- * outer-system service the run scenarios actually wire (nitpicker/vfs/
- * event_filter/wm/report_rom/timer/input_drv). A default-route that is
- * none of these is assumed to name a sibling package inside pkg_runtime
- * and routes via <child name="..."/>.
+ * Session-routing helpers (_is_parent_route/_session_label, docs/12
+ * §7.2 rules 1-2) moved to Sponge::Pkg_config (see
+ * <sponge/pkg_config.h>) as part of the Phase 16 P1.2 emission-library
+ * extraction. Emission calls them through the library.
  */
-bool Sponge::Pkgd::Main::_is_parent_route(char const *route)
-{
-	if (route == nullptr || route[0] == '\0') return true;
-	if (Genode::strcmp(route, "parent") == 0) return true;
-
-	static char const *const OUTER[] = {
-		"nitpicker", "vfs", "event_filter", "wm",
-		"report_rom", "timer", "input_drv"
-	};
-	for (char const *o : OUTER)
-		if (Genode::strcmp(route, o) == 0)
-			return true;
-	return false;
-}
-
-
-/*
- * Materialize a session label per docs/12 §7.2 rule 2:
- *   - an explicit <session label="..."> is forwarded as-is;
- *   - a read-only File_system session with no explicit label gets the
- *     "<pkg>-ro" suffix (the convention the outer vfs policy matches);
- *   - everything else has no label attribute (empty string).
- */
-Genode::String<96> Sponge::Pkgd::Main::_session_label(
-	char const *pkg_name, Package::Session const &s)
-{
-	if (Genode::strcmp(s.label.string(), "") != 0)
-		return Genode::String<96>(s.label);
-
-	if (s.readonly && Genode::strcmp(s.name.string(), "File_system") == 0)
-		return Genode::String<96>(pkg_name, "-ro");
-
-	return Genode::String<96>();
-}
 
 
 /* ===================== index + metadata loading ===================== */
@@ -2081,281 +2043,78 @@ void Sponge::Pkgd::Main::_generate_runtime_config()
 
 
 /*
- * Emit one sandbox config. `drivers` selects which half of the installed
- * set lands in it: false = the pkg_runtime config (app packages), true =
- * the driver_runtime config (driver packages). Every other part of the
- * generator — the sorted <start> order, the fixed attribute order, the
- * absence of volatile fields — is shared, so both configs carry the same
- * determinism contract (the reason unchanged children survive an
- * unrelated install).
+ * Snapshot the state _emit_runtime_config has always read (_installed
+ * in array order, the Phase 7 running gate, the is_driver() split) as
+ * explicit view values for the pure sponge_pkg_config library. The
+ * runtime_class token reproduces the pre-extraction membership filter
+ * (`is_driver() != drivers`) exactly: "driver" versus "app". Member
+ * storage keeps the snapshot off the requesting thread's small stack
+ * (the pre-extraction code's lesson for its emit scratch buffers).
+ */
+void Sponge::Pkgd::Main::_refresh_config_views()
+{
+	_num_config_views = 0;
+	for (unsigned i = 0; i < _num_installed && i < MAX_PACKAGES; ++i) {
+		Package const &c = _installed[i];
+		Sponge::Pkg_config::Package_view &v =
+			_config_views[_num_config_views++];
+		v.name          = c.name.string();
+		v.binary        = c.binary.string();
+		v.ram           = c.ram.string();
+		v.caps          = c.caps;
+		v.config_xml    = c.config_xml.string();
+		v.runtime_class = c.is_driver() ? "driver" : "app";
+		v.running       = _is_running(c.name.string());
+		v.num_sessions  = 0;
+		for (unsigned s = 0; s < c.num_sessions &&
+		                s < Sponge::Pkg_config::MAX_SESSIONS; ++s) {
+			Sponge::Pkg_config::Session_view &sv =
+				v.sessions[v.num_sessions++];
+			sv.name     = c.sessions[s].name.string();
+			sv.route    = c.sessions[s].route.string();
+			sv.readonly = c.sessions[s].readonly;
+			sv.label    = c.sessions[s].label.string();
+		}
+	}
+}
+
+
+/*
+ * Emit one sandbox config through the pure sponge_pkg_config library
+ * (Phase 16 P1.2 extraction; the pre-extraction generator lived here
+ * and is preserved byte for byte by the library — see
+ * <sponge/pkg_config.h> and lib/src/sponge_pkg_config/self_test.cc).
+ * `drivers` selects which half of the installed set lands in it:
+ * false = the pkg_runtime config (app packages), true = the
+ * driver_runtime config (driver packages). The library shares every
+ * other part of the generator between targets — the sorted <start>
+ * order, the fixed attribute order, the absence of volatile fields —
+ * so both configs carry the same determinism contract (the reason
+ * unchanged children survive an unrelated install).
  */
 void Sponge::Pkgd::Main::_emit_runtime_config(Genode::Expanding_reporter &reporter,
                                               bool drivers)
 {
+	_refresh_config_views();
 
-	/* Selection-sort the installed set by name into a stable index order. */
-	unsigned order[MAX_PACKAGES] { };
-	for (unsigned i = 0; i < _num_installed; ++i) order[i] = i;
-	for (unsigned i = 0; i < _num_installed; ++i) {
-		unsigned best { i };
-		for (unsigned j = i + 1; j < _num_installed; ++j) {
-			if (Genode::strcmp(_installed[order[j]].name.string(),
-			                   _installed[order[best]].name.string()) < 0)
-				best = j;
-		}
-		if (best != i) {
-			unsigned tmp = order[i];
-			order[i] = order[best];
-			order[best] = tmp;
-		}
-	}
+	Sponge::Pkg_config::Emit_options options { };
+	options.binary_prefix = _binary_prefix.string();
 
-	reporter.generate_xml([&](Genode::Xml_generator &g) {
-		/*
-		 * Sandbox state reporting (bring-up observability + admission
-		 * control): makes pkg_runtime emit a periodic <state> report
-		 * listing every spawned child and its state. Relayed to
-		 * sponge-de as the panel-title C:<n> readout — on hardware where
-		 * children never produce windows, C: discriminates "the sandbox
-		 * never spawned them" (config delivery broken) from "they
-		 * spawned but died before opening a Gui session".
-		 *
-		 * init_ram/init_caps add pkg_runtime's OWN top-level <ram>/<caps>
-		 * nodes (quota/used/avail for the sandbox itself, not per child).
-		 * Those avail figures are what _admits compares a package's
-		 * declared quota against — without init_caps the caps dimension
-		 * of the budget would simply be absent from the report.
-		 */
-		g.node("report", [&] {
-			g.attribute("delay_ms", "2000");
-			g.attribute("init_ram", "yes");
-			g.attribute("init_caps", "yes");
-			g.attribute("child_ram", "yes");
-		});
-		if (!drivers && pad_bytes)
-			g.node("repro_padding", [&] {
-				/*
-				 * One node per 64 pad bytes, each carrying a
-				 * 64-character attribute value. Such a node
-				 * serializes to clearly more than 64 bytes (two
-				 * tabs, the node and attribute syntax, the 64
-				 * characters, and the line break), so the EMITTED
-				 * padding is always at least pad_bytes. That makes
-				 * "this write overflows RUNTIME_CONFIG_BUFFER" a
-				 * fact provable from the knob's audit line instead
-				 * of an estimate that depends on the serializer's
-				 * formatting.
-				 */
-				for (unsigned i = 0; i < pad_bytes / 64; ++i)
-					g.node("p", [&] {
-						g.attribute("v", "................................"
-						                "................................"); });
-			});
+	/*
+	 * test-only (repro harness): the pad budget lands only in the
+	 * pkg_runtime (app) config, exactly as the pre-extraction code had
+	 * it (`if (!drivers && pad_bytes)`). The driver emission always
+	 * passes 0.
+	 */
+	options.pad_bytes = drivers ? 0 : pad_bytes;
 
-		/*
-		 * The parent-provides set differs between the two sandboxes, and
-		 * that difference IS the capability boundary (AGENTS.md §1.2):
-		 *
-		 *   - pkg_runtime keeps the fixed application set of docs/12 §7.2
-		 *     unchanged and unions in the sessions the installed APP
-		 *     packages declared. It carries no hardware service at all,
-		 *     so an application package cannot obtain Platform/Irq/
-		 *     Io_mem/Io_port even by naming them.
-		 *   - driver_runtime carries only the five services a component
-		 *     cannot construct without (ROM/PD/RM/CPU/LOG) plus exactly
-		 *     the sessions the installed DRIVER packages declared.
-		 *     Nothing hardware-related is pre-granted: with no driver
-		 *     installed the list is the bare five.
-		 */
-		g.node("parent-provides", [&] {
-			static char const *const APP_BASE[] = {
-				"ROM", "PD", "RM", "CPU", "LOG", "Timer", "Gui",
-				"Input", "Report", "File_system", "Nic", "Rtc" };
-			/*
-			 * RM is a distinct core service (base/src/core/main.cc
-			 * Core_service<Rm_session_component>), NOT subsumed by PD.
-			 * Without it in parent-provides, a package child that
-			 * constructs an Rm_connection (e.g. falkon/WebEngine for
-			 * mmap / qtwebengine_shm) is stopped with
-			 * "no route to service RM" (sandbox/route_model.h:272).
-			 * PD only hands out the component's own address_space/
-			 * stack_area/linker_area region maps; additional region
-			 * maps require a separate RM session routed to core.
-			 *
-			 * Nic + Rtc use Genode's canonical service-name casing
-			 * (case-sensitive). The prior "NIC" never matched a real
-			 * request; without Rtc here, a networked+rtc package child
-			 * (e.g. falkon) is stopped at construction with
-			 * "parent denied Rtc-session".
-			 */
-			static char const *const DRIVER_BASE[] = {
-				"ROM", "PD", "RM", "CPU", "LOG" };
+	Sponge::Pkg_config::Target const target =
+		drivers ? Sponge::Pkg_config::driver_target()
+		        : Sponge::Pkg_config::app_target();
 
-			char const *const *fixed = drivers ? DRIVER_BASE : APP_BASE;
-			unsigned const num_fixed = drivers ?
-				(sizeof(DRIVER_BASE)/sizeof(DRIVER_BASE[0]))
-				: (sizeof(APP_BASE)/sizeof(APP_BASE[0]));
-
-			/*
-			 * Union in the declared session names of the packages that
-			 * belong to THIS sandbox (e.g. the terminal package's
-			 * Terminal bridge session, or a driver's Platform session):
-			 * a service name missing here stops the forwarding child
-			 * with "parent denied <svc>-session". Static: this runs on
-			 * the ep thread's small stack (same lesson as fresh[]).
-			 */
-			static Genode::String<32> emitted[64] { };
-			static unsigned      num_emitted  { 0 };
-			num_emitted = 0;
-			for (unsigned i = 0; i < num_fixed; ++i)
-				emitted[num_emitted++] = Genode::String<32>(fixed[i]);
-			for (unsigned i = 0; i < _num_installed; ++i) {
-				if (_installed[i].is_driver() != drivers)
-					continue;
-				for (unsigned s = 0; s < _installed[i].num_sessions; ++s) {
-					Genode::String<32> const &n =
-						_installed[i].sessions[s].name;
-					if (n == Genode::String<32>() || num_emitted >= 64)
-						continue;
-					bool dup { false };
-					for (unsigned k = 0; k < num_emitted; ++k)
-						if (emitted[k] == n) { dup = true; break; }
-					if (dup)
-						continue;
-					emitted[num_emitted++] = n;
-				}
-			}
-			for (unsigned i = 0; i < num_emitted; ++i)
-				g.node("service", [&] {
-					g.attribute("name", emitted[i].string()); });
-		});
-
-		g.node("default-route", [&] {
-			g.node("any-service", [&] {
-				g.node("parent");
-				g.node("any-child");
-			});
-		});
-
-		g.node("default", [&] {
-			/*
-			 * GUI-safe caps floor (docs/09-roadmap.md §11.1 lesson,
-			 * Metis A3). The previous caps="100" silently exhausted
-			 * on seL4 mid-Qt-init, hanging with zero diagnostics.
-			 * Each <start> still carries its own per-package <quota>
-			 * caps (honored below); this floor protects any child
-			 * that lacks an explicit value. No default ram: each
-			 * <start> carries its own <resource name="RAM">, and a
-			 * non-zero default ram would make sandbox/child.cc flag
-			 * the explicit resource as an "ambiguous RAM-quota
-			 * definition".
-			 */
-			g.attribute("caps", "1000");
-		});
-
-		for (unsigned n = 0; n < _num_installed; ++n) {
-			Package const &c = _installed[order[n]];
-
-			/*
-			 * Sandbox split (docs/12 §4.5): a driver package is emitted
-			 * into the driver_runtime config, everything else into the
-			 * pkg_runtime config. This is the single place the two
-			 * sandboxes' membership is decided.
-			 */
-			if (c.is_driver() != drivers)
-				continue;
-
-			/*
-			 * Phase 7 lifecycle gate (docs/12-package-format.md §9.2.1):
-			 * emit <start> only for packages in _running. Installed-but-
-			 * stopped packages are deliberately absent from pkg_runtime,
-			 * so init never constructs them until a launch adds them.
-			 */
-			if (!_is_running(c.name.string()))
-				continue;
-
-			g.node("start", [&] {
-				g.attribute("name", c.name);
-				g.attribute("caps", c.caps);
-
-				/*
-				 * (a) <binary> when the effective binary path differs
-				 * from the package name (docs/12 §4.1). In disk-served
-				 * mode (binary_prefix set, docs/14 §4.4) the path is
-				 * "bin/<binary>" so cached_fs_rom resolves it from
-				 * /system/bin/. In boot-module mode the prefix is empty
-				 * and the legacy single-name form is preserved.
-				 */
-				Genode::String<96> const bin_path(_binary_prefix,
-				                                  c.binary);
-				if (Genode::strcmp(bin_path.string(),
-				                   c.name.string()) != 0) {
-					g.node("binary", [&] {
-						g.attribute("name", bin_path);
-					});
-				}
-
-				g.node("resource", [&] {
-					g.attribute("name", "RAM");
-					g.attribute("quantum", c.ram);
-				});
-
-				/*
-				 * (b) Inline <config> from metadata, emitted verbatim
-				 * via raw append (Xml_generator::append is the non-
-				 * sanitized path). config_xml already includes its own
-				 * <config>...</config> wrapper.
-				 */
-				if (Genode::strcmp(c.config_xml.string(), "") != 0)
-					g.append(c.config_xml.string());
-
-			g.node("route", [&] {
-				/*
-				 * §4.6 ld.lib.so rule (docs/14-boot-storage-architecture.md):
-				 * every dynamically linked child routes ld.lib.so to
-				 * <parent/>, cascading up to core's boot-module ROM.
-				 * Harmless in boot-module mode (same target); load-
-				 * bearing in disk-served mode (prevents a chicken-and-
-				 * egg: the component that loads a dynamically linked
-				 * binary must itself already be loaded).
-				 */
-				g.node("service", [&] {
-					g.attribute("name", "ROM");
-					g.attribute("label_last", "ld.lib.so");
-					g.node("parent");
-				});
-
-				for (unsigned s = 0; s < c.num_sessions; ++s) {
-						Package::Session const &session = c.sessions[s];
-
-						bool const parent_route =
-							_is_parent_route(session.route.string());
-
-						Genode::String<96> const label =
-							_session_label(c.name.string(), session);
-
-						/*
-						 * (c)+(e) service route: <parent/> for
-						 * outer-system routes (rule 1), <child> for
-						 * siblings; label materialized per rule 2.
-						 */
-						g.node("service", [&] {
-							g.attribute("name", session.name);
-							if (Genode::strcmp(label.string(), "") != 0)
-								g.attribute("label", label);
-							if (parent_route) {
-								g.node("parent");
-							} else {
-								g.node("child", [&] {
-									g.attribute("name", session.route);
-								});
-							}
-						});
-					}
-					g.node("any-service", [&] { g.node("parent"); });
-				});
-			});
-		}
+	reporter.generate_xml([&] (Genode::Xml_generator &g) {
+		Sponge::Pkg_config::emit_target(g, target, _config_views,
+		                                _num_config_views, options);
 	});
 }
 

@@ -13,6 +13,6 @@
 
 TARGET   := sponge_pkgd
 SRC_CC   := main.cc
-LIBS     := base vfs
+LIBS     := base vfs sponge_pkg_config
 INC_DIR  := $(PRG_DIR)/include \
             $(REP_DIR)/include
