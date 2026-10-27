@@ -426,6 +426,17 @@ set build_components {
 
 build $build_components
 
+#
+# Launch-path TEST arm build (SPONGE_LAUNCHTEST=on only). Build the probe
+# after the main list and before create_boot_directory: the staging loop
+# copies from bin/, so a binary built later never reaches the disk image
+# and the nested init's start node resolves no binary (baseline E7).
+# Default (non-launchtest) runs build nothing extra here.
+#
+if {[info exists ::env(SPONGE_LAUNCHTEST)] && $::env(SPONGE_LAUNCHTEST) eq "on"} {
+	build { test/prod_launch_probe }
+}
+
 create_boot_directory
 
 #
@@ -485,9 +496,18 @@ foreach b { init report_rom wm window_layouter decorator \
 #
 if {[info exists ::env(SPONGE_LAUNCHTEST)] && $::env(SPONGE_LAUNCHTEST) eq "on"} {
 	foreach b { prod_launch_probe } {
-		if {[file exists "bin/$b"]} {
-			exec cp -fL "bin/$b" "$sys_dir/bin/$b"
+		# Fail loud (not silent skip): the build {} above must have
+		# produced the binary. A missing binary used to be copied
+		# over silently and the arm degraded to a guaranteed
+		# first-marker timeout (baseline E7) — that hides a harness
+		# defect behind a product-looking failure.
+		if {![file exists "bin/$b"]} {
+			puts "sponge-desktop-disk-uefi-usb: ERROR — bin/$b missing after build {}"
+			puts "  (SPONGE_LAUNCHTEST=on requires test/prod_launch_probe;"
+			puts "   refusing to stage an unbuildable launch-test arm)"
+			exit 1
 		}
+		exec cp -fL "bin/$b" "$sys_dir/bin/$b"
 	}
 }
 foreach b { vfs cached_fs_rom vct_tty } {
@@ -2361,6 +2381,64 @@ puts "           /system on P3 via usb_block — impossible without the full"
 puts "           xHCI → usb_block → part_block → vfs → cached_fs_rom chain)"
 
 log_file -a $uefi_log
+
+#
+# === Launch-marker stash (SPONGE_LAUNCHTEST=on only) ===
+#
+# MECHANISM (docs/evidence/phase16-runtime-baseline.md E6, measured 2/2):
+# a plain sequential `expect` consumes EVERY byte that arrives while it
+# waits — a marker that does not match the current gate is scanned and
+# DISCARDED, never kept for a later gate. The probe posts its three
+# launch requests 3 s after boot (+6 s settles), so its first ack lands
+# while the storage/compositor gates are still expecting (run 1: eaten
+# while matching 'sponge-de diag gates:'; run 2: while matching
+# 'sponge_debug: FIRSTPAINT'). By the time the launch gate looks for
+# 'prod-launch-probe: launch terminal -> ok' the marker is gone although
+# it IS in the serial — a deterministic harness race, not a product or
+# timing flake. The fix is NOT a longer sleep.
+#
+# Fix: every gate below matches its own marker AND all launch-gate
+# markers in ONE alternation. Expect resolves a single regex leftmost —
+# the earliest marker in the buffer wins no matter which alternative is
+# listed first (the proven rendezvous idiom of
+# run/sponge-usb-kbd-via-qmp.run, where mixed markers must not be lost).
+# A launch marker that arrives before the gate's own marker is appended
+# to launch_stash and the wait continues (exp_continue); a gate marker
+# that arrives first returns, leaving any later launch marker in the
+# buffer for the NEXT gate's capture. Nothing is ever consumed by a gate
+# that does not claim it. The launch gate then drains the stash (arrival
+# order, shared cursor so a marker is consumed exactly once) before
+# waiting live for whatever is still missing.
+#
+# All capture patterns are full literals (no open-ended quantifiers), so
+# a partially received line can never be matched and split across
+# captures; the probe logs its ack as one complete '-> ok' / '-> FAIL'
+# line and init's child-path labels are substrings of complete lines.
+#
+set launchtest_arm [expr {[info exists ::env(SPONGE_LAUNCHTEST)] && $::env(SPONGE_LAUNCHTEST) eq "on"}]
+set launch_stash ""
+set launch_cursor 0
+set launch_marker_re {prod-launch-probe: launch terminal -> ok|prod-launch-probe: launch terminal -> FAIL|prod-launch-probe: launch files -> ok|prod-launch-probe: launch files -> FAIL|prod-launch-probe: launch falkon -> ok|prod-launch-probe: launch falkon -> FAIL|pkg_runtime -> terminal -> vfs}
+
+# Consume the earliest stash occurrence of $marker at/after the shared
+# cursor. Returns 1 and advances the cursor past it (each marker is
+# replayed exactly once), 0 if not present yet.
+proc launch_drain { marker } {
+	global launch_stash launch_cursor
+	set pos [string first $marker $launch_stash $launch_cursor]
+	if {$pos < 0} { return 0 }
+	set launch_cursor [expr {$pos + [string length $marker]}]
+	return 1
+}
+
+if {$launchtest_arm} {
+	# Raise the match window like the qmp rendezvous scenarios: the
+	# serial between two markers carries Qt/pkgd spam (the ~140 KB
+	# bursts of run/sponge-usb-kbd-via-qmp.run) and a marker lost to
+	# match_max overflow would recreate the race in a new disguise.
+	match_max -i $qemu_spawn_id 200000
+}
+
 # The QEMU boot gate's budget scales with the slow-storage emulation: a
 # throttled medium needs proportionally longer to serve /system.
 set timeout 300
@@ -2368,9 +2446,20 @@ if {$slow_storage_kbps > 0} {
 	set timeout 2400
 }
 set storage_chain_proven 0
+set storage_re "(sponge-de diag gates:)"
+if {$launchtest_arm} {
+	set storage_re "($launch_marker_re|sponge-de diag gates:)"
+}
 expect {
-    -i $qemu_spawn_id -re "sponge-de diag gates:" {
-        set storage_chain_proven 1
+    -i $qemu_spawn_id -re $storage_re {
+        set m $expect_out(0,string)
+        if {[string first "sponge-de diag gates:" $m] >= 0} {
+            set storage_chain_proven 1
+        } else {
+            puts "\[sponge-desktop-disk-uefi-usb\] stashed launch marker: '[string trim $m]'"
+            append launch_stash $m "\n"
+            exp_continue
+        }
     }
     eof {
         puts "\[sponge-desktop-disk-uefi-usb\] QEMU exited (eof) before the marker"
@@ -2390,19 +2479,46 @@ expect {
 # the gate had already said PASS.
 #
 # So the capture CONTINUES here: the gate does not close before the
-# compositor has proved itself. The proof is the DE's first paint - the
-# 'alpha-probe: PASS' of the headless probe (it reads the panel's pixels
-# off the framebuffer) or the 'FIRSTPAINT' line of the debug component in
-# the package runtime.
+# compositor has proved itself. The ONLY accepted proof is
+# 'alpha-probe: PASS' — the headless probe's verdict after it read the
+# PANEL's pixels off the framebuffer (plus its configd/launcher feeds).
+#
+# Baseline E2 fix: 'sponge_debug: FIRSTPAINT ms=' is NOT an alternative.
+# That line is the debug app's CLIENT-SIDE self-report ("frame handed to
+# the QPA plugin") — it proves neither the panel pixels nor any other
+# window, and in both baseline runs it is what the old gate consumed, so
+# a green compositor verdict could rest on one app announcing its own
+# paint. An 'alpha-probe: FAIL' verdict fails the gate immediately (the
+# debug paint can never mask it), and a lone FIRSTPAINT is only noted.
 #
 set compositor_healthy 0
 set timeout 300
 if {$slow_storage_kbps > 0} {
 	set timeout 1200
 }
+set compositor_re "(alpha-probe: PASS|alpha-probe: FAIL|sponge_debug: FIRSTPAINT ms=)"
+if {$launchtest_arm} {
+	set compositor_re "($launch_marker_re|alpha-probe: PASS|alpha-probe: FAIL|sponge_debug: FIRSTPAINT ms=)"
+}
 expect {
-    -i $qemu_spawn_id -re {alpha-probe: PASS|sponge_debug: FIRSTPAINT ms=} {
-        set compositor_healthy 1
+    -i $qemu_spawn_id -re $compositor_re {
+        set m $expect_out(0,string)
+        if {[string first "alpha-probe: PASS" $m] >= 0} {
+            set compositor_healthy 1
+        } elseif {[string first "alpha-probe: FAIL" $m] >= 0} {
+            puts "\[sponge-desktop-disk-uefi-usb\] alpha-probe verdict was FAIL — the compositor gate"
+            puts "  cannot pass without the panel-pixel proof; sponge_debug FIRSTPAINT"
+            puts "  is a client-side self-report and is deliberately NOT accepted (E2)."
+        } elseif {[string first "sponge_debug: FIRSTPAINT" $m] >= 0} {
+            puts "\[sponge-desktop-disk-uefi-usb\] note — '$m' seen but NOT accepted as compositor"
+            puts "  proof (E2: client-side paint self-report ≠ panel pixels); still"
+            puts "  waiting for alpha-probe: PASS."
+            exp_continue
+        } else {
+            puts "\[sponge-desktop-disk-uefi-usb\] stashed launch marker: '[string trim $m]'"
+            append launch_stash $m "\n"
+            exp_continue
+        }
     }
     eof {
         puts "\[sponge-desktop-disk-uefi-usb\] QEMU exited (eof) before the compositor proved itself"
@@ -2417,6 +2533,13 @@ set fh [open $uefi_log r]
 set output [read $fh]
 close $fh
 puts "\[sponge-desktop-disk-uefi-usb\] serial log captured: $uefi_log ([string length $output] bytes)"
+# Re-open the serial capture: the wedge/starvation scan above needed a
+# closed (flushed) file, but the launch gate below still runs and its
+# late markers (and the RED apps' boot errors) must land in the same
+# serial log — the old early close silently dropped everything after the
+# compositor gate. Tcl flushes open channels on exit, so the exits below
+# need no explicit close.
+log_file -a $uefi_log
 
 #
 # The wedge/starvation signatures. Both are the field defect's own
@@ -2455,6 +2578,15 @@ if {$storage_chain_proven && $compositor_healthy && !$has_wedge && !$has_starvin
     # packages. Each package must reach its real boot markers — this
     # is the regression net for "clicked the launcher, no window".
     #
+    # Race-proofing (baseline E6): the probe posts its acks seconds
+    # after boot — long before this gate runs — so every stage FIRST
+    # drains the launch_stash the early gates captured (shared cursor:
+    # each marker replays exactly once, in arrival order), and only
+    # then waits live. The live wait uses the same leftmost-alternation
+    # capture as the early gates, so a marker that arrives while this
+    # stage waits for a DIFFERENT marker is stashed for its own stage
+    # instead of being consumed (see the MECHANISM comment above).
+    #
     set timeout 240
     set launch_ok 1
     # ENFORCED: the terminal end-to-end (green in three consecutive
@@ -2465,44 +2597,96 @@ if {$storage_chain_proven && $compositor_healthy && !$has_wedge && !$has_starvin
     } {
         set marker  [lindex $stage 0]
         set meaning [lindex $stage 1]
-        expect {
-            -i $qemu_spawn_id -re $marker {
-                puts "  launch-gate PASS — $meaning"
+        set outcome ""
+        if {[launch_drain $marker]} {
+            set outcome "ok"
+            puts "  launch-gate note — '$marker' replayed from the marker stash"
+            puts "    (captured live before this gate; the early gates did not eat it)"
+        } else {
+            expect {
+                -i $qemu_spawn_id -re "($marker)|($launch_marker_re)" {
+                    set m $expect_out(0,string)
+                    if {[string first $marker $m] < 0} {
+                        puts "  launch-gate note — stashed concurrent marker '[string trim $m]'"
+                        append launch_stash $m "\n"
+                        exp_continue
+                    }
+                    set outcome "ok"
+                }
+                timeout {
+                    set outcome "timeout"
+                }
+                eof {
+                    set outcome "eof"
+                }
             }
-            timeout {
-                puts "  launch-gate FAIL — $meaning (marker: '$marker')"
-                set launch_ok 0
-            }
-            eof {
-                puts "  launch-gate FAIL — QEMU exited during '$meaning'"
-                set launch_ok 0
-            }
+        }
+        if {$outcome eq "ok"} {
+            puts "  launch-gate PASS — $meaning"
+        } elseif {$outcome eq "eof"} {
+            puts "  launch-gate FAIL — QEMU exited during '$meaning'"
+            set launch_ok 0
+        } else {
+            puts "  launch-gate FAIL — $meaning (marker: '$marker')"
+            set launch_ok 0
         }
         if {!$launch_ok} { break }
     }
-    if {!$launch_ok} { exit 1 }
 
-    # WARNING-ONLY (timing-sensitive while heavy packages launch
-    # back-to-back; promote to enforced once tuned):
+    # WARNING-ONLY: kept warning-only ON PURPOSE because their product
+    # boot is known RED on this topology (baseline F3/F4 — files and
+    # falkon stall at a ROM create); promoting them would only restate
+    # a known product failure as a harness verdict. Their request
+    # markers are still REPORTED even when an enforced stage failed —
+    # the verdict is decided after this loop, so the run shows their
+    # real markers instead of exiting before ever looking:
     foreach stage {
         {"prod-launch-probe: launch files -> ok"     "files request"}
         {"prod-launch-probe: launch falkon -> ok"    "falkon request"}
     } {
         set marker  [lindex $stage 0]
         set meaning [lindex $stage 1]
-        expect {
-            -i $qemu_spawn_id -re $marker {
-                puts "  launch-gate PASS — $meaning (warning-level)"
+        set outcome ""
+        if {[launch_drain $marker]} {
+            set outcome "ok"
+            puts "  launch-gate note — '$marker' replayed from the marker stash"
+        } else {
+            expect {
+                -i $qemu_spawn_id -re "($marker)|($launch_marker_re)" {
+                    set m $expect_out(0,string)
+                    if {[string first $marker $m] < 0} {
+                        puts "  launch-gate note — stashed concurrent marker '[string trim $m]'"
+                        append launch_stash $m "\n"
+                        exp_continue
+                    }
+                    set outcome "ok"
+                }
+                timeout {
+                    set outcome "timeout"
+                }
+                eof {
+                    set outcome "eof"
+                }
             }
-            timeout {
-                puts "  launch-gate WARN — $meaning not observed (known timing-sensitive; not enforced yet)"
-            }
-            eof {
-                puts "  launch-gate WARN — QEMU exited during '$meaning'"
-            }
+        }
+        if {$outcome eq "ok"} {
+            puts "  launch-gate PASS — $meaning (warning-level)"
+        } elseif {$outcome eq "eof"} {
+            puts "  launch-gate WARN — QEMU exited during '$meaning'"
+        } else {
+            puts "  launch-gate WARN — $meaning not observed (warning-only — never flips the verdict; see the comment above)"
         }
     }
     puts "  ================================================================"
+    if {!$launch_ok} {
+        puts "  FAIL — launch-path gate: an ENFORCED stage failed (see the"
+        puts "  launch-gate FAIL line above for the first unmet marker)."
+        puts "  files/falkon stages are warning-only and never flip the"
+        puts "  verdict (their product boot is known RED —"
+        puts "  docs/evidence/phase16-runtime-baseline.md F3/F4)."
+        puts "  ================================================================"
+        exit 1
+    }
     puts "  PASS — launch path verified: a launcher request boots the"
     puts "  terminal package end-to-end (files/falkon stages logged)."
     puts "  ================================================================"
