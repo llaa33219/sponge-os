@@ -44,6 +44,17 @@ concurrent callers actually appear.
   (pkg/config commands) and `sponge-de` (launcher polling). Sources:
   `lib/src/sponge_backend_client/`. Header:
   `<sponge/backend_client.h>`.
+- `sponge_pkg_config` — pure runtime-config generation for the package
+  sandboxes (Phase 16 P1.2, D16R.5). Extracted verbatim from
+  `sponge_pkgd`'s emission templating so it is testable and reusable
+  without I/O: no Env, no Report/ROM sessions, no File_system — the
+  caller owns the output buffers. `sponge_pkgd` remains the only
+  caller today; the extraction is the deliberate precondition for the
+  per-runtime topology work (not a cross-component-sharing trigger).
+  Sources: `lib/src/sponge_pkg_config/`. Header:
+  `<sponge/pkg_config.h>`. Host-side golden self-test:
+  `lib/src/sponge_pkg_config/self_test.cc` (build/run command in its
+  header comment; deliberately not part of the Genode build).
 
 ## Planned libraries
 
