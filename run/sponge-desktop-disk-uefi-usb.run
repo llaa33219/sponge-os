@@ -1265,10 +1265,14 @@ config
 # its loggers) when the filesystem goes away.
 #
 # KNOB SEMANTICS ARE ALL-OR-NOTHING ON PURPOSE: 'off' removes the
-# provider AND both route rules, so the LOG service resolves to core
-# exactly as before. A half-state (provider without routes, or routes
-# without a provider) would leave every child STUCK in init's
-# 'incomplete environment' state (os/src/lib/sandbox/child.cc:40-49).
+# provider AND every route that points at it (the two default-route
+# rules below and the input-chain LOG route at ps2/usb_hid/event_filter),
+# so the LOG service resolves to core exactly as before. A half-state
+# (provider without routes, or routes without a provider — the
+# 3afb40c922 regression, where the three input drivers kept the sink
+# route while the sink was unwired and logged 'LOG environment session
+# denied') would leave every child STUCK in init's 'incomplete
+# environment' state (os/src/lib/sandbox/child.cc:40-49).
 #
 set logdisk_on [expr {[info exists ::env(SPONGE_LOGDISK)] && $::env(SPONGE_LOGDISK) eq "on"}]
 
@@ -1276,8 +1280,17 @@ set logdisk_routes ""
 set logdisk_child  ""
 set vfs_log_policy ""
 
+#
+# Input-chain LOG route used by ps2, usb_hid and event_filter.
+# OFF restores the original parent route; ON uses the sink. The sink is
+# placed immediately BEFORE ps2 so it announces before these environment
+# sessions are created.
+#
+set logdisk_input_log "    + service LOG | + parent"
+
 if {$logdisk_on} {
 	puts "sponge-desktop-disk-uefi-usb: persistent log sink ON (SPONGE_LOGDISK=on) — SPONGE-VAR /log/boot.log (+ .1)"
+	set logdisk_input_log "    + service LOG | + child sponge_logdisk"
 
 	#
 	# The FIRST rule is the bootstrap escape. Every child gets a LOG
@@ -1659,6 +1672,12 @@ $vfs_log_policy  + route
 # first-boot manifest, with the route its <sessions> declare
 # (pkg/fb_boot/metadata.xml) rather than the hand-written list below.
 
+#
+# When enabled, the sink starts here, before the input chain and system.
+# This single position is sufficient: the sink must appear exactly once,
+# and system does not route its own LOG to the sink. OFF expands to the
+# empty string and restores the original ps2 start node.
+#
 $logdisk_child+ start ps2 | caps: 100 | ram: 1280K
   + config
   + route
@@ -1669,7 +1688,7 @@ $logdisk_child+ start ps2 | caps: 100 | ram: 1280K
     + service ROM | + parent
     + service PD | + parent
     + service CPU | + parent
-    + service LOG | + child sponge_logdisk
+$logdisk_input_log
     + service Timer | + child timer
 
 + start usb_hid | caps: 180 | ram: 10M
@@ -1680,7 +1699,7 @@ $logdisk_child+ start ps2 | caps: 100 | ram: 1280K
     + service PD | + parent
     + service RM | + parent
     + service CPU | + parent
-    + service LOG | + child sponge_logdisk
+$logdisk_input_log
     + service Timer | + child timer
     + service Event | + child event_filter | label: usb
     + service Usb | + child usb
@@ -1694,7 +1713,7 @@ $logdisk_child+ start ps2 | caps: 100 | ram: 1280K
     + service ROM | + parent
     + service PD | + parent
     + service CPU | + parent
-    + service LOG | + child sponge_logdisk
+$logdisk_input_log
     + service Timer | + child timer
 
 # caps carry ~10% headroom per docs/17 §5 (adding a child must not be
