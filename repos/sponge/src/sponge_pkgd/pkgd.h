@@ -16,8 +16,9 @@
  *   registry.cc - installed/running state (roots, closure, running
  *                 set, exclusive-group peer lookup)
  *   metadata.cc - pkg_index/pkg_<name>.xml parsing, DFS resolution
- *   planned     - admission.cc (resource math), ops.cc
- *                 (install/remove/launch), store.cc (persistence/bake)
+ *   admission.cc - resource admission math + ROM arming
+ *   ops.cc      - install/remove/launch + binary-manifest pre-flight
+ *   store.cc    - persistent installed-set store + bake seeding
  */
 
 #pragma once
