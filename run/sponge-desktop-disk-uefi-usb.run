@@ -522,7 +522,47 @@ done < /dev/vct}
 close $vct_fd
 exec chmod +x .vct-stage/bin/vct
 exec tar -cf bin/vct-bin.tar -C .vct-stage bin
-foreach t { VeraMono.ttf bash-minimal.tar vim-minimal.tar \
+#
+# --- VeraMono.ttf: explicit producer + fail-loud staging ---
+#
+# The terminal loads this font through vfs_ttf from the ROM named
+# 'VeraMono.ttf', which rom_sys resolves at /system/VeraMono.ttf
+# (docs/evidence/phase16-runtime-rom-failures.md §2). VeraMono.ttf is
+# NOT a build target — nothing in the product build produces
+# bin/VeraMono.ttf — so the payload loop below used to skip it under a
+# silent `if {[file exists]}` guard, and a clean build tree denied the
+# terminal's ROM session deterministically (only build-dir residue from
+# the dedicated terminal scenarios masked it).
+#
+# The producer is the same single copy from the prepared
+# ttf-bitstream-vera port that run/terminal_runtime.inc:141-147 and
+# run/sponge-alpha.run:195-204 perform.
+# run/terminal_runtime.inc is deliberately NOT sourced: its
+# stage_vera_metadata also stages pkg_terminal.xml/pkg_index.xml (that
+# scenario's flat package metadata) and would change the product's
+# package set. Loud on both ends of the staging: a missing source is an
+# unprepared port, a missing destination is a broken media build —
+# neither may pass silently (§2 H-a1).
+#
+set vera_dir [lindex [glob -nocomplain \
+    "${genode_dir}/contrib/ttf-bitstream-vera-*/ttf/bitstream-vera"] 0]
+if {$vera_dir eq "" || ![file exists "$vera_dir/VeraMono.ttf"]} {
+	error "VeraMono.ttf source missing — ttf-bitstream-vera port not prepared; run: ./genode/tool/ports/prepare_port ttf-bitstream-vera"
+}
+exec cp -fL "$vera_dir/VeraMono.ttf" "bin/VeraMono.ttf"
+if {![file exists "bin/VeraMono.ttf"]} {
+	error "bin/VeraMono.ttf missing after producer copy from $vera_dir"
+}
+exec cp -fL "bin/VeraMono.ttf" "$sys_dir/VeraMono.ttf"
+if {![file exists "$sys_dir/VeraMono.ttf"]} {
+	error "$sys_dir/VeraMono.ttf missing after staging from bin/VeraMono.ttf"
+}
+
+# (VeraMono.ttf is staged by the explicit fail-loud block above, NOT by
+#  this conditional loop — its silent `if {[file exists]}` skip is
+#  exactly what hid the font gap, §2 H-a1. The loop keeps staging only
+#  the build-produced tar payloads.)
+foreach t { bash-minimal.tar vim-minimal.tar \
             coreutils-minimal.tar grep.tar sed.tar tar.tar \
             less.tar findutils.tar diffutils.tar which.tar vct-bin.tar } {
 	if {[file exists "bin/$t"]} {
