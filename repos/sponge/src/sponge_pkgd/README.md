@@ -13,15 +13,14 @@ identical report labels and bootstrap ordering):
 | File | Responsibility |
 |---|---|
 | `pkgd.h` | `Package` metadata type + `Main` class declaration |
-| `main.cc` | request/result channels (dedup/replay), runtime-config + installed-broadcast emission wiring, bootstrap thread and constructor (plus persistence/bake until `store.cc` lands) |
+| `main.cc` | request/result channels (dedup/replay), runtime-config + installed-broadcast emission wiring, bootstrap thread and constructor |
 | `registry.cc` | installed/running state (roots, closure, running set, exclusive-group peer lookup) |
 | `metadata.cc` | `pkg_index.xml` / `pkg_<name>.xml` parsing, DFS dependency resolution |
 | `admission.cc` | resource admission math (`_admits`, budget reads, quota parsing) + config-gated ROM arming |
 | `ops.cc` | install/remove/launch operations (`_do_*`) + launch pre-flight binary-manifest helpers |
-| `store.cc` *(planned)* | persistent installed-set store + bake seeding |
+| `store.cc` | persistent installed-set store (opt-in `<vfs>`) + bake seeding |
 
-`target.mk` lists the landed modules in `SRC_CC` and is extended as
-each planned module lands.
+`target.mk` lists the landed modules in `SRC_CC`.
 
 ## Communication channel (settled design)
 
@@ -284,6 +283,11 @@ successful install/remove, before the change is broadcast.
 
 The reference proof is `run/sponge-pkg-persist.run` (base-linux,
 `lx_fs`-backed, two boots over the same host directory).
+Product-media observation (docs/evidence/phase16-runtime-config-coupling.md
+§5.1): the pkgd start nodes in the `sponge-desktop-disk*` family carry
+**no `<vfs>` node**, so the store path is inactive there (whether
+product-media persistence should be armed is not decided); the
+disk-backed store is exercised by `run/sponge-persist-disk.run`.
 
 ## What is deliberately not implemented
 
