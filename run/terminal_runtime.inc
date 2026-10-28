@@ -59,6 +59,16 @@
 #
 # Procs provided:
 #
+#   terminal_runtime::copy_vera_font <dst>
+#       THE single VeraMono.ttf producer. Copies the font out of the
+#       prepared ttf-bitstream-vera port to <dst>, loudly on both ends
+#       of the copy. Used by stage_vera_metadata below AND by the
+#       product media payload stage (run/runtime-terminal.inc,
+#       runtime_terminal::stage_payload), so the terminal scenarios and
+#       the product media can never drift apart again (the §2 H-a1
+#       class of bug: one staging path had the font, the other had a
+#       silent skip).
+#
 #   terminal_stage_vera_metadata <bin_dir>
 #       Stages pkg_terminal.xml, pkg_index.xml, and VeraMono.ttf into
 #       the scenario's bin_dir. Errors loudly if the pkg metadata or
@@ -111,6 +121,46 @@ namespace eval terminal_runtime {
     variable staged_font_file     "VeraMono.ttf"
 
     #
+    # THE single VeraMono.ttf producer.
+    #
+    # terminal_runtime::copy_vera_font <dst>
+    #
+    # Copies VeraMono.ttf out of the prepared ttf-bitstream-vera port
+    # to <dst>. Loud on BOTH ends of the copy (Phase 16 §2 H-a1): a
+    # missing source is an unprepared port, a missing destination is a
+    # broken staging step — neither may pass silently. Every staging
+    # path that ships the font funnels through this one proc so the
+    # producer exists exactly once in the tree:
+    #
+    #   - the terminal scenarios' boot-module staging (via
+    #     stage_vera_metadata below), and
+    #   - the product media's flat payload (via
+    #     runtime_terminal::stage_payload in run/runtime-terminal.inc).
+    #
+    proc copy_vera_font { dst } {
+        variable staged_font_file
+
+        if {![info exists ::genode_dir]} {
+            error "terminal_runtime::copy_vera_font: \
+                   genode_dir is not set (sourced outside a run script?)"
+        }
+
+        set vera_dir [lindex [glob -nocomplain \
+            "${::genode_dir}/contrib/ttf-bitstream-vera-*/ttf/bitstream-vera"] 0]
+        if {$vera_dir eq "" || ![file exists "$vera_dir/${staged_font_file}"]} {
+            error "${staged_font_file} source missing — ttf-bitstream-vera \
+                   port not prepared; run: \
+                   ./genode/tool/ports/prepare_port ttf-bitstream-vera"
+        }
+        exec cp -fL "$vera_dir/${staged_font_file}" $dst
+        if {![file exists $dst]} {
+            error "terminal_runtime::copy_vera_font: ${dst} missing after \
+                   copy from ${vera_dir}"
+        }
+        return $dst
+    }
+
+    #
     # Stage the package metadata + index + VeraMono.ttf into the
     # caller's bin/ directory. Mirrors the scheme in
     # run/sponge-terminal.run (which this include replaces).
@@ -138,13 +188,7 @@ namespace eval terminal_runtime {
         puts $index_fh "</packages>"
         close $index_fh
 
-        set vera_dir [lindex [glob -nocomplain \
-            "${::genode_dir}/contrib/ttf-bitstream-vera-*/ttf/bitstream-vera"] 0]
-        if {$vera_dir eq ""} {
-            error "ttf-bitstream-vera port not prepared; run: \
-                   ./genode/tool/ports/prepare_port ttf-bitstream-vera"
-        }
-        exec cp -fL "$vera_dir/VeraMono.ttf" "${bin_dir}/${staged_font_file}"
+        copy_vera_font "${bin_dir}/${staged_font_file}"
 
         return $staged_metadata_file
     }
