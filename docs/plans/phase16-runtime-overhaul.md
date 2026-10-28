@@ -1,8 +1,9 @@
 # Phase 16 Runtime Overhaul (Work Plan)
 
-> Status: in progress. P0 baseline/audits, P1.1, P1.3, P1.4, and the
-> config-emission portion of P1.2 have landed through `e5ccb99a9d`; the
-> remaining P1.2 extractions, P1.5, and P2-P5 remain open. Created
+> Status: in progress. P0 baseline/audits, P1.1, P1.3, P1.4, the
+> config-emission portion of P1.2, and the P3.1 red scenario have landed
+> through `66509efd9c`; the remaining P1.2 extractions, P1.5, P2, and P3.2-P5
+> remain open. Created
 > 2026-10-28 on branch `refactor/phase16-runtime-overhaul` (pre-work HEAD
 > `3afb40c922`).
 > Relationship: this is the runtime-overhaul track of the reopened Phase 16
@@ -322,6 +323,8 @@ Currently red or partially red.
 Gate: RED receipt committed; marker `provider-isolation-probe: PASS` absent.
 Commits: `test(providers): add the provider-stall isolation red scenario` (1).
 Owns: `run/sponge-provider-stall.run`, its probe, symlink.
+Landed: `66509efd9c` (`test(run): add the provider-stall isolation red scenario`).
+QEMU/seL4 RED receipt: `docs/evidence/phase16-runtime-provider-stall.md`.
 
 **P3.2 vfs_pkg / vfs_log split.**
 Separate the package-store and log-sink File_system provider paths
