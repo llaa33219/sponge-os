@@ -261,7 +261,12 @@ runtime class (`simple` / `terminal` / `browser`) with the quota rows from
 P1's pure emission libraries; changes no grouping yet.
 Gate: the product disk scenarios build and boot unchanged topology
 (groups still as today) with the new include structure in place.
-Commits: `build(run): split the runtime config targets per runtime class` (1-2).
+Landed: `1e4e42030c` (includes + uefi-usb), `35d2cb1ec1` (remaining four),
+with hello-only acceptance support in `6dea5ad432`. The receipt is
+`docs/evidence/phase16-runtime-targets.md`: all static equivalence checks
+pass, BIOS/AHCI and NVMe reach `alpha-probe: PASS`, UEFI variants retain
+their documented structural-only QEMU limits, and the pure emission
+self-test passes.
 Owns: `run/runtime-*.inc` (new), the product `run/sponge-desktop-disk*.run`
 edits, `repos/sponge/run/` symlinks.
 

@@ -832,6 +832,22 @@ profile (`pkg/bake/desktop.profile`) enables eight packages:
 | debug | 1000 | 64M |
 | **enabled sum** | **205612** | **2536M** |
 
+Phase 16 P2.2 makes the class rows below the machine-checked source of
+truth. The current single `pkg_runtime` topology is unchanged; each
+scenario keeps its literal grant and calls `runtime_quota::verify` to
+reject drift.
+
+| runtime class | caps | RAM | owning include |
+|---|---:|---:|---|
+| simple (hello, textedit, files, calculator, pdf_view, debug) | 4512 | 1288M | `run/runtime-simple.inc` |
+| terminal | 1100 | 224M | `run/runtime-terminal.inc` |
+| browser (falkon) | 200000 | 1024M | `run/runtime-browser.inc` |
+
+`run/runtime-quota.inc` derives the single grant from these rows and
+preserves the app/driver capability split: `Platform`, `Dma`, `Irq`,
+`Io_mem`, and `Io_port` remain driver-runtime-only. The validation receipt
+is `docs/evidence/phase16-runtime-targets.md`.
+
 (206512 caps counting the `nano` 600 + `ncurses` 300 pair reachable
 from the editor packages.) Hence the uniform
 `pkg_runtime | caps: 230000 | ram: 512G` on all five desktop-disk
