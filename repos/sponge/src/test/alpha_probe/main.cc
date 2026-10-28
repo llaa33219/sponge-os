@@ -197,6 +197,18 @@ struct Alpha_probe
 	 */
 	bool _skip_lz { false };
 
+	/*
+	 * Phase 8 P2 hello-only smoke contract (D16.7): when the inline
+	 * config carries <config minimal="yes"/>, the probe asserts the
+	 * pre-W3 acceptance contract only — install hello (not the
+	 * 7-package set), configd broadcast live/non-empty (not the 8
+	 * baked keys), launcher hello/Utilities (not the full pair set).
+	 * Criterion (a) panel pixel and the skip_lz behavior are
+	 * unchanged. Absent/false keeps the full Phase 16 W3 contract
+	 * byte-identical.
+	 */
+	bool _minimal { false };
+
 	Alpha_probe(Genode::Env &env) : _env(env) { }
 
 	void _fail(char const *reason)
@@ -346,6 +358,26 @@ struct Alpha_probe
 		if (_is_broadcast_root_empty(_cfgsys_root)) return false;
 		out = &_cfgsys_root;
 		return true;
+	}
+
+	/*
+	 * Minimal (hello-only pre-W3 smoke) criterion (c): the configd
+	 * broadcast is live — readable, not the report_rom <empty/>
+	 * sentinel, and rooted at <config> (_fetch_broadcast_root
+	 * rejects all three). The full baked-key assertion below stays
+	 * the default contract.
+	 */
+	bool _broadcast_live()
+	{
+		for (unsigned attempt = 0; attempt < CONFIGD_POLL_ITERS && _ok; ++attempt) {
+			Genode::Xml_node const *root = nullptr;
+			if (_fetch_broadcast_root(root)) {
+				Genode::log("alpha-probe: (c) configd broadcast live");
+				return true;
+			}
+			_timer.msleep(100);
+		}
+		return false;
 	}
 
 	bool _broadcast_has_baked_keys()
@@ -529,6 +561,9 @@ struct Alpha_probe
 			_skip_lz = cfg.node().attribute_value("skip_lz", false);
 			if (_skip_lz)
 				Genode::log("alpha-probe: skip_lz=yes (criterion d deferred to P5)");
+			_minimal = cfg.node().attribute_value("minimal", false);
+			if (_minimal)
+				Genode::log("alpha-probe: minimal=yes (hello-only pre-W3 smoke contract)");
 		}
 
 		/*
@@ -556,8 +591,12 @@ struct Alpha_probe
 		 * full Alpha also enable leitzentrale via configd (for
 		 * criterion d) — skipped when _skip_lz is set.
 		 */
-		Genode::log("alpha-probe: [1] install the 7 desktop packages via sponge_pkgd");
-		for (unsigned i = 0; i < LAUNCHER_PAIR_COUNT; ++i) {
+		unsigned const install_pairs = _minimal ? 1 : LAUNCHER_PAIR_COUNT;
+		if (_minimal)
+			Genode::log("alpha-probe: [1] install hello via sponge_pkgd (minimal mode)");
+		else
+			Genode::log("alpha-probe: [1] install the 7 desktop packages via sponge_pkgd");
+		for (unsigned i = 0; i < install_pairs; ++i) {
 			char const *pkg = LAUNCHER_PAIRS[i].name;
 			if (!_pkg_install_and_wait(pkg)) {
 				_fail(Genode::String<256>("sponge_pkgd did not answer install ",
@@ -594,11 +633,19 @@ struct Alpha_probe
 		 * Criterion (d) lz_viewer pixel is last and only checked
 		 * when _skip_lz is false.
 		 */
-		Genode::log("alpha-probe: [3] assert (c) configd broadcast carries "
-		            "the baked key set");
-		if (!_broadcast_has_baked_keys()) {
-			_fail("configd broadcast did not carry the full baked key set");
-			return;
+		if (_minimal) {
+			Genode::log("alpha-probe: [3] assert (c) configd broadcast live (minimal mode)");
+			if (!_broadcast_live()) {
+				_fail("configd broadcast never became live");
+				return;
+			}
+		} else {
+			Genode::log("alpha-probe: [3] assert (c) configd broadcast carries "
+			            "the baked key set");
+			if (!_broadcast_has_baked_keys()) {
+				_fail("configd broadcast did not carry the full baked key set");
+				return;
+			}
 		}
 
 		Genode::log("alpha-probe: [4] assert (a) themed panel rendered");
@@ -607,10 +654,18 @@ struct Alpha_probe
 			return;
 		}
 
-		Genode::log("alpha-probe: [5] assert (b) launcher has all 7 desktop packages");
-		if (!_wait_launcher_has_all_pairs()) {
-			_fail("launcher report missing one or more desktop packages");
-			return;
+		if (_minimal) {
+			Genode::log("alpha-probe: [5] assert (b) launcher has hello (minimal mode)");
+			if (!_wait_launcher_has_hello()) {
+				_fail("launcher report missing hello/Utilities");
+				return;
+			}
+		} else {
+			Genode::log("alpha-probe: [5] assert (b) launcher has all 7 desktop packages");
+			if (!_wait_launcher_has_all_pairs()) {
+				_fail("launcher report missing one or more desktop packages");
+				return;
+			}
 		}
 
 		if (!_skip_lz) {
