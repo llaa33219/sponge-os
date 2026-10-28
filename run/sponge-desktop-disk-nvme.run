@@ -165,6 +165,24 @@ source [file join [file dirname [file normalize [info script]]] \
 # This media's `system` caps grant before driver_runtime joins it.
 driver_runtime::base_caps 263000
 
+# Per-runtime-class targets (Phase 16 P2.2). Sourced for the
+# falkon/WebEngine exclusion list (runtime_browser::exclude_lib) and
+# the pkg_runtime grant drift check (runtime_quota::verify) only:
+# this hello-only media does NOT compose the class build/staging sets
+# (runtime_simple/runtime_terminal build_targets and stage_* are
+# deliberately not used — the package set stays hello-only, no
+# terminal/simple packages and no terminal payload). All four
+# includes are sourced because run/runtime-quota.inc derives the
+# grant from the three class rows (runtime-quota.inc USAGE).
+source [file join [file dirname [file normalize [info script]]] \
+                    runtime-simple.inc]
+source [file join [file dirname [file normalize [info script]]] \
+                    runtime-terminal.inc]
+source [file join [file dirname [file normalize [info script]]] \
+                    runtime-browser.inc]
+source [file join [file dirname [file normalize [info script]]] \
+                    runtime-quota.inc]
+
 # Failure-channel selector: SPONGE_DISK_FAIL=1 corrupts system.config.
 #
 set fail_mode [expr {[info exists ::env(SPONGE_DISK_FAIL)] && $::env(SPONGE_DISK_FAIL) == "1"}]
@@ -265,39 +283,14 @@ foreach b { init report_rom wm window_layouter decorator \
 # the Falkon/WebEngine-specific libs (P4 payload, not desktop). The
 # desktop's transitive deps are covered by staging the full set minus
 # these exclusions.
-set falkon_libs {
-	libFalkonPrivate.lib.so
-	libQt6WebEngineCore.lib.so
-	libQt6WebEngineQuick.lib.so
-	libQt6WebEngineWidgets.lib.so
-	libQt6WebChannel.lib.so
-	libQt6WebChannelQuick.lib.so
-	libQt6PrintSupport.lib.so
-	libQt6Qml.lib.so
-	libQt6QmlMeta.lib.so
-	libQt6QmlModels.lib.so
-	libQt6QmlWorkerScript.lib.so
-	libQt6Quick.lib.so
-	libQt6QuickWidgets.lib.so
-	libqtquick2plugin.lib.so
-	libqtwebenginequickplugin.lib.so
-	libworkerscriptplugin.lib.so
-	nss3.lib.so
-	nssckbi.lib.so
-	freebl3.lib.so
-	softokn3.lib.so
-	libssl.lib.so
-	libcrypto.lib.so
-	libssh.lib.so
-	curl.lib.so
-	vfs_lwip.lib.so
-	vfs_qtwebengine_shm.lib.so
-	vfs_jitterentropy.lib.so
-	vfs_xoroshiro.lib.so
-	vfs_oss.lib.so
-	ncurses.lib.so
-}
-
+#
+# The Falkon/WebEngine payload closure is runtime_browser::payload_libs
+# (run/runtime-browser.inc — the exact former inline list);
+# exclude_lib is the same membership test. P2.2 is exclusion-only:
+# falkon's payload is NOT staged here (P2.6). The Tier-0 exceptions
+# below (ld*, rump*, vfs_rump) stay inline — they are storage-chain
+# properties of the media, not browser properties.
+#
 foreach lib [glob -nocomplain bin/*.lib.so] {
 	set libname [file tail $lib]
 	# Skip ld-*.lib.so (Tier-0 boot module, §4.6 — never on disk)
@@ -305,7 +298,7 @@ foreach lib [glob -nocomplain bin/*.lib.so] {
 	# Skip ld.lib.so itself (the generic name — Tier-0 only)
 	if {$libname eq "ld.lib.so"} { continue }
 	# Skip Falkon/WebEngine-specific libs (P4 payload)
-	if {[lsearch -exact $falkon_libs $libname] >= 0} { continue }
+	if {[runtime_browser::exclude_lib $libname]} { continue }
 	# Skip rump storage-chain libs (Tier-0 deps)
 	if {$libname eq "rump.lib.so" || $libname eq "rump_fs.lib.so"} { continue }
 	# Skip vfs_rump (Tier-0 storage chain dep)
@@ -411,6 +404,16 @@ if {$fail_mode} {
 	puts $sysconfig_fh {<config THIS IS DELIBERATELY BROKEN XML><unclosed}
 	close $sysconfig_fh
 } else {
+	#
+	# Fail-loud drift check (Phase 16 P2.2): the `caps: 230000 |
+	# ram: 512G` literal in the config below must match what
+	# run/runtime-quota.inc derives from the class rows. A class
+	# quota row that moved aborts the run here — the literal is
+	# kept, never substituted (docs/14 §4.4). The grant stays
+	# media-independent even though this media enables hello only.
+	#
+	runtime_quota::verify 230000 512G
+
 	#
 	# Write system.config in HID format to a temp file, then convert
 	# to XML using the `hid` tool. The nested init reads the config
@@ -709,7 +712,7 @@ config
 
 + start alpha_probe | caps: 200 | ram: 16M
   + binary | name: bin/alpha_probe
-  + config | skip_lz: yes
+  + config | skip_lz: yes | minimal: yes
   + route
     + service ROM | label_last: ld.lib.so | + parent
     + service Capture | + parent
@@ -734,64 +737,25 @@ config
       + any-child
 
 #
-# Quota arithmetic (2026-10-xx, pkg_runtime sizing fix): pkg_runtime
-# hosts the WHOLE enabled package set simultaneously, so its grant must
-# cover the SUM of every package's declared quota, not one package.
-# The `desktop` bake profile enables 8 packages:
-#   hello 256/8M · terminal 1100/224M · textedit 1000/64M ·
-#   files 1000/64M · calculator 1000/64M · pdf_view 256/1G ·
-#   falkon 200000/1G · debug 1000/64M
-#   => 205612 caps / 2536M   (206512 caps incl. the nano+ncurses pair)
-# The previous 8000 caps made falkon (200000 caps) structurally
-# un-launchable — 25x short. Caps grant: 230000, i.e. +11.9% over the
-# enabled sum above.
-# Media-independent: all five desktop-disk scenarios carry this same
-# caps value (docs/14 §4.4 "init config is data, not image").
+# pkg_runtime sizing (Phase 16 P2.2): the `caps: 230000 | ram: 512G`
+# pair below is derived and drift-checked in run/runtime-quota.inc —
+# the class rows (simple 4512 / terminal 1100 / browser 200000), the
+# editor closure, the documented headroom/round-up, and the RAM
+# remainder-clamp rationale all live there (docs/17 §6/§6.1). The
+# literal is kept on purpose (docs/14 §4.4 "init config is data, not
+# image" — the grant is media-independent even though this media
+# enables hello only) and is checked against the derivation by the
+# runtime_quota::verify call above this section — a class row that
+# moves aborts the run here instead of drifting.
 #
-# ============ RAM: THE DELIBERATELY-HUGE 512G QUANTUM =====================
-# `ram: 512G` below is INTENTIONAL. It is NOT a claim that this system
-# needs 512 GiB. It is the MECHANISM by which pkg_runtime receives ALL
-# RAM still unallocated at the moment it is created:
-#
-#   Genode's init SILENTLY CLAMPS a child's RAM quantum to whatever its
-#   parent still has available at creation time. See
-#   genode/repos/os/src/lib/sandbox/child.cc:481-486: `avail_ram =
-#   effective_quota(quota_limit.ram)` is the parent budget minus
-#   everything the parent already granted and consumed; when the
-#   declared quantum exceeds it, init logs "configured RAM exceeds
-#   available RAM, proceed with <avail>" and transfers `avail` instead.
-#   (The caps path is the identical clamp at child.cc:490-495.) Here
-#   the clamp IS the desired semantics: "take everything left".
-#
-# REQUIREMENT — pkg_runtime MUST be the LAST `+ start` node in THIS
-# system config. The grant is only "everything left" if nothing is
-# created afterwards; a child appended below takes its RAM out of
-# pkg_runtime's pool rather than out of a declared budget, silently.
-# The ordering was introduced by 248afa12d6 ("start pkg_runtime LAST",
-# for the real-hardware config-delivery timing); this is the SAME
-# invariant seen from the quota side. Do not append a start node under
-# this one without moving pkg_runtime back to the end of the file.
-#
-# WHAT IT BUYS: physical-RAM-size agnosticism. One unchanged file boots
-# QEMU -m 4G, -m 6G, and a 16 GiB laptop; the grant follows the machine
-# instead of a hand-derived constant. The fixed 2816M it replaces had
-# to be re-derived for every -m value and every package-profile change
-# (git history: 8000/1536M -> 210000/2048M -> 230000/2816M), and any
-# under-estimate was silently clamped to a grant too small for the
-# enabled set — invisible in the config, visible only as packages that
-# refuse to launch.
-#
-# WHY caps: 230000 STAYS EXPLICIT — the caps clamp is deliberately NOT
-# used as a mechanism here:
-#   1. caps exhaustion on seL4 HANGS. A child that cannot obtain a
-#      capability waits forever instead of failing (docs/09-roadmap.md
-#      §11.1) — a silent hang is the worst failure mode a resource can
-#      have.
-#   2. A cap grant that absorbs the whole remainder would starve any
-#      FUTURE sibling added to this config: the remainder is zero-sum,
-#      so the next addition becomes exactly the cliff edge docs/17 §5
-#      forbids. RAM carries no such failure mode, which is why only
-#      RAM uses the clamp.
+# HARD ORDERING INVARIANT: pkg_runtime MUST remain the LAST `+ start`
+# node of THIS config. `ram: 512G` only means "everything left" if
+# nothing is created afterwards — a node appended below takes its RAM
+# out of this pool silently. The @DRIVER_START_NODE@ expansion and the
+# supervisor's fault-child injection (run/supervisor.inc) both land
+# above this node. Caps stay EXPLICIT (never a clamp): caps exhaustion
+# on seL4 HANGS (docs/09-roadmap.md §11.1), and a remainder-sized cap
+# grant would starve any future sibling (docs/17 §5).
 #
 @DRIVER_START_NODE@
 + start pkg_runtime | caps: 230000 | ram: 512G

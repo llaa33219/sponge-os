@@ -226,6 +226,24 @@ source [file join [file dirname [file normalize [info script]]] \
 # This media's `system` caps grant before driver_runtime joins it.
 driver_runtime::base_caps 280000
 
+# Per-runtime-class targets (Phase 16 P2.2). run/runtime-simple.inc,
+# run/runtime-terminal.inc and run/runtime-browser.inc own the class
+# package maps, build targets, staging steps and the falkon/WebEngine
+# exclusion list; run/runtime-quota.inc owns the single pkg_runtime
+# grant derivation. Sourced alongside the shared includes so the build
+# block, the staging steps and the quota literal below cannot drift
+# apart. (runtime-terminal.inc sources run/terminal_runtime.inc for
+# the shared VeraMono producer; stage_vera_metadata is NOT called
+# here, so the product's package set is unchanged.)
+source [file join [file dirname [file normalize [info script]]] \
+                    runtime-simple.inc]
+source [file join [file dirname [file normalize [info script]]] \
+                    runtime-terminal.inc]
+source [file join [file dirname [file normalize [info script]]] \
+                    runtime-browser.inc]
+source [file join [file dirname [file normalize [info script]]] \
+                    runtime-quota.inc]
+
 # === Failure-channel selector ===
 #
 set fail_mode [expr {[info exists ::env(SPONGE_DISK_FAIL)] && $::env(SPONGE_DISK_FAIL) == "1"}]
@@ -257,15 +275,8 @@ set build_components {
 	server/part_block server/vfs server/cached_fs_rom
 	lib/vfs lib/vfs_rump lib/rump lib/rump_fs
 	server/wm app/window_layouter app/decorator app/pointer
-	sponge_configd sponge_themed sponge_pkgd pkg_hello sponge-de
-	app/qt6/examples/calculatorform sponge_files app/pdf_view
-	sponge_debug
+	sponge_configd sponge_themed sponge_pkgd sponge-de
 	cfg_probe sponge_supervisor sponge_console
-	server/terminal
-	noux-pkg/bash-minimal noux-pkg/vim-minimal
-	noux-pkg/coreutils-minimal noux-pkg/grep noux-pkg/sed
-	noux-pkg/tar noux-pkg/less noux-pkg/findutils
-	noux-pkg/diffutils noux-pkg/which
 	test/alpha_probe
 	qt6/base lib/libc lib/libm lib/stdcxx lib/mesa
 	lib/mesa_gpu-softpipe lib/egl lib/softpipe lib/libdrm lib/expat
@@ -276,7 +287,20 @@ set build_components {
 	server/nic_router driver/nic/pc driver/usb_net driver/wifi \
 	driver/gpu/intel driver/framebuffer/intel/pc/spec/x86_64
 }
-
+#
+# Per-runtime-class build targets (Phase 16 P2.2): the simple-class
+# package targets and the terminal toolset closure are composed from
+# the class includes (run/runtime-simple.inc, run/runtime-terminal.inc)
+# instead of being spelled out above. The Tier-0 and lib-tail entries
+# above stay literal — server/vfs, server/cached_fs_rom and several
+# libs serve the storage chain and Qt regardless of class — so a
+# shared target can appear twice in the goal list (the literal already
+# repeats lib/vfs today); `make` treats duplicate goals as one.
+# Browser stays exclusion-only (run/runtime-browser.inc) — falkon is
+# not built here (P2.6 stages its payload).
+#
+lappend build_components {*}[runtime_simple::build_targets]
+lappend build_components {*}[runtime_terminal::build_targets]
 
 build $build_components
 
@@ -304,54 +328,72 @@ close $empty_cfg
 # --- desktop binaries → /system/bin/ ---
 # (boot_fb also staged here even though it lives in Tier-0 —
 # the structural gate e2ls-on-P3 checks for it as a build-marker.)
+#
+# The per-runtime-class package binaries are NOT listed here (Phase
+# 16 P2.2): the simple class is staged by runtime_simple::stage_binaries
+# below. `terminal` stays listed here on purpose (see the helper note).
+#
 foreach b { init report_rom wm window_layouter decorator \
             sponge_configd sponge_themed sponge_pkgd sponge-de \
-            alpha_probe hello terminal sponge_files calculatorform \
-            pdf_view textedit sponge_debug cfg_probe boot_fb } {
+            alpha_probe terminal cfg_probe boot_fb } {
 	if {[file exists "bin/$b"]} {
 		exec cp -fL "bin/$b" "$sys_dir/bin/$b"
 	}
 }
 
-# --- shared libraries → /system/lib/ ---
-set falkon_libs {
-	libFalkonPrivate.lib.so
-	libQt6WebEngineCore.lib.so
-	libQt6WebEngineQuick.lib.so
-	libQt6WebEngineWidgets.lib.so
-	libQt6WebChannel.lib.so
-	libQt6WebChannelQuick.lib.so
-	libQt6PrintSupport.lib.so
-	libQt6Qml.lib.so
-	libQt6QmlMeta.lib.so
-	libQt6QmlModels.lib.so
-	libQt6QmlWorkerScript.lib.so
-	libQt6Quick.lib.so
-	libQt6QuickWidgets.lib.so
-	libqtquick2plugin.lib.so
-	libqtwebenginequickplugin.lib.so
-	libworkerscriptplugin.lib.so
-	nss3.lib.so
-	nssckbi.lib.so
-	freebl3.lib.so
-	softokn3.lib.so
-	libssl.lib.so
-	libcrypto.lib.so
-	libssh.lib.so
-	curl.lib.so
-	vfs_lwip.lib.so
-	vfs_qtwebengine_shm.lib.so
-	vfs_jitterentropy.lib.so
-	vfs_xoroshiro.lib.so
-	vfs_oss.lib.so
-	ncurses.lib.so
-}
+# Per-runtime-class package binaries (Phase 16 P2.2). Same staged
+# files as the old inline list, now fail-loud on both ends:
+#   runtime_simple — hello, files(sponge_files),
+#                    calculator(calculatorform), pdf_view, debug;
+#                    textedit is payload-supplied and is NOT copied
+#                    into /system/bin/ (its binary is staged by
+#                    bake::stage under pkg/textedit/payload/, which
+#                    is where the old silent `if exists` skip left
+#                    it too — no /system/bin/textedit before or
+#                    after this migration).
+# runtime_terminal::stage_binaries is deliberately NOT adopted here:
+# it stages the terminal sub-init trio (terminal, vfs, cached_fs_rom)
+# and this scenario stages neither /system/bin/vfs nor
+# /system/bin/cached_fs_rom today — adopting it would add them to the
+# staged file set, which P2.2 must not do. `terminal` therefore stays
+# in the inline loop above (the terminal payload gap is closed
+# separately by runtime_terminal::stage_payload below).
+runtime_simple::stage_binaries $sys_dir
 
+# --- terminal payload → /system/ (flat, ROM-served) ---
+#
+# The sub-init's vfs child mounts the noux tars as ROM sessions
+# (<tar name="..."/>); the terminal server loads VeraMono.ttf via the
+# vfs_ttf rom plugin (rom_sys resolves it at /system/VeraMono.ttf,
+# docs/evidence/phase16-runtime-rom-failures.md §2). On the product
+# media these resolve through rom_sys at the /system root (same layout
+# as the qt6 tars).
+#
+# Phase 16 P2.2: the vct-bin.tar producer (kept in the build dir), the
+# shared VeraMono.ttf producer (terminal_runtime::copy_vera_font) and
+# the fail-loud noux-tar staging live in run/runtime-terminal.inc.
+# The staged payload is exactly the 12 flat files of
+# run/sponge-desktop-disk-uefi-usb.run (10 noux toolset tars +
+# vct-bin.tar + VeraMono.ttf) — closing this media's terminal payload
+# gap. The helper's copies are fail-loud where the old silent
+# `if {[file exists]}` skip let a clean tree drop the payload (the §2
+# H-a1 anti-pattern). vct_tty is NOT added: the in-terminal vct bridge
+# stays uefi-usb-specific (no new start node or route here).
+runtime_terminal::stage_payload $sys_dir
+
+# --- shared libraries → /system/lib/ ---
+# The Falkon/WebEngine payload closure is runtime_browser::payload_libs
+# (run/runtime-browser.inc — the exact former inline list);
+# exclude_lib is the same membership test. P2.2 is exclusion-only:
+# falkon's payload is NOT staged here (P2.6). The Tier-0 exceptions
+# below (ld*, rump*, vfs_rump) stay inline — they are storage-chain
+# properties of the media, not browser properties.
+#
 foreach lib [glob -nocomplain bin/*.lib.so] {
 	set libname [file tail $lib]
 	if {[string match "ld-*.lib.so" $libname]} { continue }
 	if {$libname eq "ld.lib.so"} { continue }
-	if {[lsearch -exact $falkon_libs $libname] >= 0} { continue }
+	if {[runtime_browser::exclude_lib $libname]} { continue }
 	if {$libname eq "rump.lib.so" || $libname eq "rump_fs.lib.so"} { continue }
 	if {$libname eq "vfs_rump.lib.so"} { continue }
 	exec cp -fL $lib "$sys_dir/lib/$libname"
@@ -429,6 +471,15 @@ if {$fail_mode} {
 	puts $sysconfig_fh {<config THIS IS DELIBERATELY BROKEN XML><unclosed}
 	close $sysconfig_fh
 } else {
+	#
+	# Fail-loud drift check (Phase 16 P2.2): the `caps: 230000 |
+	# ram: 512G` literal in the config below must match what
+	# run/runtime-quota.inc derives from the class rows. A class
+	# quota row that moved aborts the run here — the literal is
+	# kept, never substituted (docs/14 §4.4).
+	#
+	runtime_quota::verify 230000 512G
+
 	set sysconfig_hid "[run_dir]/system.config.hid"
 	set sysconfig_fh [open "$sysconfig_hid" w]
 puts $sysconfig_fh {
@@ -738,64 +789,24 @@ config
       + any-child
 
 #
-# Quota arithmetic (2026-10-xx, pkg_runtime sizing fix): pkg_runtime
-# hosts the WHOLE enabled package set simultaneously, so its grant must
-# cover the SUM of every package's declared quota, not one package.
-# The `desktop` bake profile enables 8 packages:
-#   hello 256/8M · terminal 1100/224M · textedit 1000/64M ·
-#   files 1000/64M · calculator 1000/64M · pdf_view 256/1G ·
-#   falkon 200000/1G · debug 1000/64M
-#   => 205612 caps / 2536M   (206512 caps incl. the nano+ncurses pair)
-# The previous 8000 caps made falkon (200000 caps) structurally
-# un-launchable — 25x short. Caps grant: 230000, i.e. +11.9% over the
-# enabled sum above.
-# Media-independent: all five desktop-disk scenarios carry this same
-# caps value (docs/14 §4.4 "init config is data, not image").
+# pkg_runtime sizing (Phase 16 P2.2): the `caps: 230000 | ram: 512G`
+# pair below is derived and drift-checked in run/runtime-quota.inc —
+# the class rows (simple 4512 / terminal 1100 / browser 200000), the
+# editor closure, the documented headroom/round-up, and the RAM
+# remainder-clamp rationale all live there (docs/17 §6/§6.1). The
+# literal is kept on purpose (docs/14 §4.4 "init config is data, not
+# image") and is checked against the derivation by the
+# runtime_quota::verify call above this section — a class row that
+# moves aborts the run here instead of drifting.
 #
-# ============ RAM: THE DELIBERATELY-HUGE 512G QUANTUM =====================
-# `ram: 512G` below is INTENTIONAL. It is NOT a claim that this system
-# needs 512 GiB. It is the MECHANISM by which pkg_runtime receives ALL
-# RAM still unallocated at the moment it is created:
-#
-#   Genode's init SILENTLY CLAMPS a child's RAM quantum to whatever its
-#   parent still has available at creation time. See
-#   genode/repos/os/src/lib/sandbox/child.cc:481-486: `avail_ram =
-#   effective_quota(quota_limit.ram)` is the parent budget minus
-#   everything the parent already granted and consumed; when the
-#   declared quantum exceeds it, init logs "configured RAM exceeds
-#   available RAM, proceed with <avail>" and transfers `avail` instead.
-#   (The caps path is the identical clamp at child.cc:490-495.) Here
-#   the clamp IS the desired semantics: "take everything left".
-#
-# REQUIREMENT — pkg_runtime MUST be the LAST `+ start` node in THIS
-# system config. The grant is only "everything left" if nothing is
-# created afterwards; a child appended below takes its RAM out of
-# pkg_runtime's pool rather than out of a declared budget, silently.
-# The ordering was introduced by 248afa12d6 ("start pkg_runtime LAST",
-# for the real-hardware config-delivery timing); this is the SAME
-# invariant seen from the quota side. Do not append a start node under
-# this one without moving pkg_runtime back to the end of the file.
-#
-# WHAT IT BUYS: physical-RAM-size agnosticism. One unchanged file boots
-# QEMU -m 4G, -m 8G, and a 16 GiB laptop; the grant follows the machine
-# instead of a hand-derived constant. The fixed 2816M it replaces had
-# to be re-derived for every -m value and every package-profile change
-# (git history: 8000/1536M -> 210000/2048M -> 230000/2816M), and any
-# under-estimate was silently clamped to a grant too small for the
-# enabled set — invisible in the config, visible only as packages that
-# refuse to launch.
-#
-# WHY caps: 230000 STAYS EXPLICIT — the caps clamp is deliberately NOT
-# used as a mechanism here:
-#   1. caps exhaustion on seL4 HANGS. A child that cannot obtain a
-#      capability waits forever instead of failing (docs/09-roadmap.md
-#      §11.1) — a silent hang is the worst failure mode a resource can
-#      have.
-#   2. A cap grant that absorbs the whole remainder would starve any
-#      FUTURE sibling added to this config: the remainder is zero-sum,
-#      so the next addition becomes exactly the cliff edge docs/17 §5
-#      forbids. RAM carries no such failure mode, which is why only
-#      RAM uses the clamp.
+# HARD ORDERING INVARIANT: pkg_runtime MUST remain the LAST `+ start`
+# node of THIS config. `ram: 512G` only means "everything left" if
+# nothing is created afterwards — a node appended below takes its RAM
+# out of this pool silently. The @DRIVER_START_NODE@ expansion and the
+# supervisor's fault-child injection (run/supervisor.inc) both land
+# above this node. Caps stay EXPLICIT (never a clamp): caps exhaustion
+# on seL4 HANGS (docs/09-roadmap.md §11.1), and a remainder-sized cap
+# grant would starve any future sibling (docs/17 §5).
 #
 @DRIVER_START_NODE@
 + start pkg_runtime | caps: 230000 | ram: 512G
@@ -1604,7 +1615,7 @@ set uefi_log [run_dir]/uefi-boot.log
 log_file -a $uefi_log
 set timeout 180
 expect {
-    -i $qemu_spawn_id -re ".*Genode [0-9].*" {
+    -i $qemu_spawn_id -re {.*Genode [0-9].*} {
         puts "\[sponge-desktop-disk-uefi-nvme\] UNEXPECTED — QEMU reached the Genode v... banner"
     }
     eof {
