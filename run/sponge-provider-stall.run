@@ -1,0 +1,847 @@
+#
+# \brief  Sponge OS provider-stall isolation scenario (P3.1 red scenario)
+# \author Sponge OS contributors
+# \date   2026-10-28
+#
+# Phase 16 runtime-overhaul task P3.1 (docs/plans/phase16-runtime-overhaul.md),
+# failure domain FD4 / decision D16R.8. RED receipt first (D16R.16): on
+# today's shared vfs_var this scenario FAILS at its per-path gates; the
+# P3.2 vfs_pkg/vfs_log split flips it green.
+#
+# ========================================================================
+# What is under test
+# ========================================================================
+#
+# The product's P4 (SPONGE-VAR) File_system provider is ONE `vfs`
+# instance, `vfs_var`, carrying BOTH P4 session regions (the P0.5 audit,
+# docs/evidence/phase16-runtime-patch-io-audit.md §3.1):
+#
+#   policy region /pkgd — the package store (sponge_pkgd's <vfs> store
+#                         mount, the "other P4 consumer")
+#   policy region /log  — the log sink (sponge_logdisk's <vfs> mount,
+#                         label_prefix: sponge_logdisk ->)
+#
+# One instance = one entrypoint, one rump ext2 mount, one Block session
+# to part_block/P4. Whatever stalls that instance stalls BOTH consumers
+# (the shared-fate property this scenario demonstrates). P3.2 splits the
+# wiring into two instances on the same partition (vfs_pkg / vfs_log);
+# then a log-path stall stays on vfs_log and the store survives.
+#
+# ========================================================================
+# The injected fault: a deterministic SOFTWARE provider stall
+# ========================================================================
+#
+# The P4 provider's Block route points at 'blk_stall' — a test/ep_wedge
+# in its default mode ("logs one line and blocks its entrypoint
+# forever"). It never announces any service, so init queues every Block
+# session request aimed at it forever. The vfs instance's rump ext2
+# mount opens its Block session at construct and therefore parks in
+# construct: the provider NEVER announces File_system, and every P4
+# session create queues at init indefinitely. That is the stall.
+#
+# This is SOFTWARE, not media:
+#   * the injection is a start-node route line plus ep_wedge's own
+#     "ep_wedge: alive — entrypoint wedging now" marker — deterministic,
+#     greppable, and absent on a healthy boot;
+#   * the QEMU disk is never touched. The SAME disk keeps serving P3
+#     throughout the stall — part_block still enumerates the GPT
+#     (test/partition_check reuses its byte assertion "Number: 3") and
+#     the rom_sys chain (cached_fs_rom -> vfs_sys -> part_block/P3)
+#     still serves a marker ROM DURING the stall window. A physical
+#     USB/media death would take those down too; the scenario asserts
+#     they stay up and prints
+#       provider-stall-control: PASS — ... software provider stall —
+#       NOT a physical media/USB failure
+#     so the receipt can never be mistaken for a media-failure test.
+#
+# The affected consumer (the log sink, sponge_logdisk) degrades
+# VISIBLY: its File_system create is parked inside its constructor, so
+# its healthy markers ("sponge_logdisk: logging to ..." and the
+# tick_log tick lines) never appear. The scenario asserts their absence
+# (bounded, host-side) and prints an explicit
+#   provider-stall: path=log-sink DEGRADED (expected ...)
+# marker.
+#
+# ========================================================================
+# Positive control (the fault detector must demonstrably fire)
+# ========================================================================
+#
+# An "isolation" claim is void if the fault never landed or the
+# detector is blind. Before any isolation verdict the scenario asserts,
+# and fails loudly otherwise:
+#   (1) the injection fired       — 'ep_wedge: alive' present;
+#   (2) the log consumer degraded — no 'sponge_logdisk: logging to',
+#                                   no 'tick alive' within the window;
+#   (3) the container is alive    — the liveness bystander (ep_wedge
+#                                   liveness_ms mode) keeps printing
+#                                   'bystander: alive t=' through the
+#                                   stall (no entrypoint/global park);
+#   (4) the media is alive        — 'partition-check: PASS' (part_block
+#                                   GPT enumeration on the same disk).
+# These print 'provider-stall-control: PASS/FAIL'.
+#
+# ========================================================================
+# Per-path assertions (explicit per-path RED markers)
+# ========================================================================
+#
+#   path=sys-rom    PASS/RED  — ROM 'sys_marker' read via the rom_sys
+#                               chain during the stall (unrelated ROM +
+#                               media-alive evidence).
+#   path=pkgd-store PASS/RED  — write + read back /pkgd/store/pstall.txt
+#                               through the P4 store region, BOUNDED.
+#                               Today (shared vfs_var) the create rides
+#                               the stalled instance and parks: RED,
+#                               'reason=create_parked_30000ms'. After
+#                               the split: PASS.
+#   path=log-sink   DEGRADED  — asserted host-side (see above). No probe
+#                               can reach that policy: only a child
+#                               literally named 'sponge_logdisk' matches
+#                               the 'sponge_logdisk -> ' label_prefix.
+#
+# Markers are printed by repos/sponge/src/test/provider_isolation_probe
+# (per path: 'provider-isolation-probe: PASS path=...' or
+# 'provider-isolation-probe: RED path=... reason=...') and by this
+# script ('provider-stall: path=...'). Every wait is bounded: the probe
+# bounds its workers at 30 s and always prints its verdict; every
+# run_genode_until below carries a finite timeout.
+#
+# Expected RED receipt (today, shared vfs_var):
+#   provider-stall-control: PASS
+#   provider-isolation-probe: PASS path=sys-rom
+#   provider-isolation-probe: RED path=pkgd-store reason=create_parked_30000ms
+#   provider-stall: path=pkgd-store RED (shared vfs_var fate ...)
+#   -> error exit; 'provider-isolation-probe: PASS' absent.
+#
+# ========================================================================
+# P3.2 flip guide (the commit that turns this scenario green)
+# ========================================================================
+#
+# Split the 'vfs_var' start node below into TWO instances on partition 4
+# (same binary, same lib routes; no new partitions — D16R.2):
+#
+#   vfs_pkg: config = '+ vfs | + rump ...' +
+#            '+ default-policy | root: /pkgd | writeable: yes'
+#            Block route: '+ service Block | + child part_block'
+#            (part_block gains '+ policy | label_prefix: vfs_pkg |
+#             partition: 4 | writeable: yes' next to vfs_sys's P3 row)
+#   vfs_log: config = '+ vfs | + rump ...' +
+#            '+ policy | label_prefix: sponge_logdisk -> | root: /log |
+#             writeable: yes'
+#            Block route: '+ service Block | + child blk_stall'
+#            (THE STALL STAYS ON THE LOG PATH — that is the point.)
+#
+#   Then re-aim the consumers: the probe's File_system route to
+#   '+ child vfs_pkg', sponge_logdisk's to '+ child vfs_log', and the
+#   part_block 'vfs_var' policy row to 'vfs_pkg'.
+#
+#   Expected result: 'provider-isolation-probe: PASS' (store round-trip
+#   works AND is corroborated on media by e2cp read-back), while the log
+#   sink still degrades visibly — the isolated-fate property of
+#   D16R.8/FD4.
+#
+# ========================================================================
+# Conventions and known gotchas applied (docs/08-development.md §4,
+# docs/evidence/logdisk-field-diagnosis.md §5)
+# ========================================================================
+#
+#   * lib/ld in the build list; build_boot_image $boot_modules with the
+#     vfs/rump chain libs listed explicitly (transitive deps of
+#     lib/vfs_rump are not build artifacts — run/sponge-boot.run idiom).
+#   * image/iso is dropped from the include list: power_on/qemu prefers
+#     a stale ISO over the disk image (logdisk §5.1) and this scenario's
+#     assertions are about the DISK chain.
+#   * No run_power_cycle before the boot (logdisk §5.2) — single boot.
+#   * tool/mkdata is NOT invoked from tclsh (its Mojo launcher dies
+#     under tclsh exec — logdisk §5.4, also breaks sponge-persist-disk
+#     in this environment): the docs/14 §4.3 P4 sequence is spelled out
+#     inline below, same steps.
+#   * mke2fs's exit status is not the success signal (logdisk §5.3):
+#     the e2mkdir that follows it is.
+#   * /pkgd, /pkgd/store and /log are pre-created on P4: vfs resolves a
+#     session root at create time (logdisk §3(c)).
+#   * Component LOG deliberately stays on core/serial — nothing routes
+#     LOG to the sink here. The LOG-bootstrapping coupling (logdisk §4)
+#     is a separate failure mode that P3.2 does not address; mixing it
+#     into this scenario would make the P3.2 flip ambiguous.
+#   * GUI sessions are not asserted: this is the minimal headless slice
+#     (headless like run/sponge-persist-disk.run). The plan P3.1
+#     parenthetical mentions GUI; that stays with the full product
+#     scenarios.
+#
+# Build + run:
+#   make -C genode/build/x86_64 run/sponge-provider-stall \
+#       KERNEL=sel4 BOARD=pc RUN_OPT="--include image/disk"
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+
+assert {[have_spec sel4]} \
+	"sponge-provider-stall requires KERNEL=sel4 (BOARD=pc)."
+
+##
+# Ensure essential run-framework plugins are loaded (a command-line
+# RUN_OPT override discards build.conf's accumulated --include lines).
+#
+proc ensure_plugin_loaded { name } {
+	if {![have_include $name]} {
+		set path [genode_dir]/tool/run/$name
+		puts "sourcing $path (missing from RUN_OPT, restored by run script)"
+		source $path
+		global include_list
+		lappend include_list $name
+	}
+}
+
+ensure_plugin_loaded boot_dir/sel4
+ensure_plugin_loaded power_on/qemu
+ensure_plugin_loaded log/qemu
+
+#
+# logdisk-field-diagnosis §5.1: a stale image/iso in the include list
+# silently beats the disk image (power_on/qemu prefers the ISO, and the
+# ISO is only rebuilt when the run directory changes). This scenario is
+# a disk-chain scenario — drop image/iso unconditionally.
+#
+global include_list
+set include_list [lsearch -all -inline -not -exact $include_list "image/iso"]
+
+#
+# P4 (SPONGE-VAR) data-area size. The product's SPONGE-VAR is 64 MiB
+# (docs/evidence/logdisk-field-diagnosis.md §2) — same here, so the
+# ext2/rump behaviour matches the media.
+#
+set data_mib 64
+
+#
+# Build — Tier-0 storage chain (run/sponge-persist-disk.run's shape)
+# plus the shared-provider wiring under test: rom_sys (unrelated system
+# ROM), sponge_logdisk (log-path consumer) and the probes.
+#
+set build_components {
+	core lib/ld init timer
+	server/report_rom
+	driver/platform driver/acpi app/pci_decode
+	driver/ahci
+	server/part_block server/vfs server/cached_fs_rom
+	lib/vfs lib/vfs_rump
+	sponge_logdisk
+	test/provider_isolation_probe test/partition_check test/ep_wedge
+}
+
+build $build_components
+
+create_boot_directory
+
+#
+# On base-sel4 every boot module must land in bin/ BEFORE
+# build_boot_image (sponge-persist-disk idiom).
+#
+exec mkdir -p bin
+
+#
+# Stage the sys-rom marker at [run_dir]/system/sys_marker — image/disk
+# copies the run directory into P3's ext2, so it lands at
+# /system/sys_marker, served by rom_sys (cached_fs_rom root /system).
+# The probe byte-compares against the same literal.
+#
+exec mkdir -p [run_dir]/system
+set marker_fh [open "[run_dir]/system/sys_marker" w]
+fconfigure $marker_fh -translation binary
+puts -nonewline $marker_fh "sponge-provider-stall sys-rom marker\n"
+close $marker_fh
+
+# ========================================================================
+# init configuration (Tier 0, HID)
+# ========================================================================
+
+install_config {
+config
++ parent-provides
+  + service ROM
+  + service IRQ
+  + service IO_MEM
+  + service IO_PORT
+  + service PD
+  + service RM
+  + service CPU
+  + service LOG
+
++ default-route
+  + any-service
+    + parent
+    + any-child
++ default | caps: 100 | ram: 1M
+
++ start timer
+  + provides | + service Timer
+
++ start report_rom | ram: 4M
+  + provides
+    + service Report
+    + service ROM
+  + config | verbose: no
+    #
+    # Storage-chain inter-driver routing (sponge-boot.run /
+    # sponge-persist-disk.run): acpi reports the pci table pci_decode
+    # reads; pci_decode reports the device tree platform reads. Without
+    # these the storage chain never comes up.
+    #
+    + policy | label: pci_decode -> system | report: acpi -> acpi
+    + policy | label: platform -> devices  | report: pci_decode -> devices
+    #
+    # part_block's partitions report, read by test/partition_check
+    # (run/sponge-desktop-disk-nvme.run Tier-0 idiom). The label is the
+    # requesting child's name + ROM label.
+    #
+    + policy | label: partition_check -> partitions | report: part_block -> partitions
+
++ start acpi | caps: 350 | ram: 4M
+  + route
+    + service ROM | label_last: ld.lib.so | + parent
+    + service Report | + child report_rom
+    + service IO_MEM | + parent
+    + service LOG | + parent
+    + service PD | + parent
+    + service RM | + parent
+    + service CPU | + parent
+    + service ROM | + parent
+
++ start pci_decode | caps: 350 | ram: 2M
+  + route
+    + service ROM | label_last: ld.lib.so | + parent
+    + service Report | + child report_rom
+    + service ROM | label: system | + child report_rom
+    + service IO_MEM | + parent
+    + service LOG | + parent
+    + service PD | + parent
+    + service RM | + parent
+    + service CPU | + parent
+    + service ROM | + parent
+
++ start platform | caps: 200 | ram: 3M | managing_system: yes
+  + provides
+    + service Platform
+    + service Dma
+  + route
+    + service ROM | label_last: ld.lib.so | + parent
+    + service ROM | label: devices | + child report_rom
+    + service Report | + child report_rom
+    + service Timer | + child timer
+    + service IRQ | + parent
+    + service IO_MEM | + parent
+    + service IO_PORT | + parent
+    + service ROM | + parent
+    + service PD | + parent
+    + service CPU | + parent
+    + service LOG | + parent
+  + config
+    + report | devices: yes
+    + policy | label_prefix: ahci | + pci | class: AHCI
+
+#
+# ahci -> Block. The QEMU q35 machine auto-attaches image/disk's
+# -drive format=raw,file=<img> to the ICH9 SATA controller (docs/14 §11
+# risk 1: ram 128M / caps 5000 for the DMA-able pool).
+#
++ start ahci | caps: 5000 | ram: 128M
+  + provides | + service Block
+  + config
+    + report | ports: yes
+    + policy | label_prefix: part_block | device: 0 | writeable: yes
+  + route
+    + service ROM | label_last: ld.lib.so | + parent
+    + service Platform | + child platform
+    + service Dma | + child platform
+    + service Timer | + child timer
+    + service Report | + child report_rom
+    + service ROM | + parent
+    + service PD | + parent
+    + service CPU | + parent
+    + service LOG | + parent
+
+#
+# part_block: partitions pinned BY NUMBER (docs/14 §4.4, the W4
+# contract) — P3 GENODE (system ROM chain) and P4 SPONGE-VAR (the
+# shared provider under test). The partitions report is enabled for
+# test/partition_check (the media-alive witness). The Report route must
+# be explicit BEFORE any-service or the report cascades to parent and
+# part_block stops (sponge-desktop-disk-nvme.run's note).
+#
++ start part_block | caps: 200 | ram: 8M
+  + provides | + service Block
+  + config
+    + report | partitions: yes
+    + policy | label_prefix: vfs_sys | partition: 3 | writeable: no
+    + policy | label_prefix: vfs_var | partition: 4 | writeable: yes
+  + route
+    + service ROM | label_last: ld.lib.so | + parent
+    + service Block | + child ahci
+    + service Report | + child report_rom
+    + any-service
+      + parent
+      + any-child
+
+#
+# blk_stall — THE INJECTED FAULT (software provider stall).
+#
+# test/ep_wedge in its default mode: it logs one line and blocks its
+# entrypoint forever. It announces NO service, so init queues every
+# session request routed to it indefinitely. The P4 provider's Block
+# route below points here, which parks the provider's rump ext2 mount
+# at construct — the provider never announces File_system.
+#
+# P3.2 note: this node stays as the LOG path's Block source after the
+# split (see the header's flip guide) — the stall is always aimed at
+# "the provider instance serving the log path".
+#
++ start blk_stall | caps: 100 | ram: 4M
+  + binary | name: ep_wedge
+  + provides | + service Block
+  + config
+
+#
+# bystander — the liveness oracle (ep_wedge liveness_ms mode): prints
+# "bystander: alive t=" every second and never blocks. Its continued
+# output is the container-alive half of the positive control.
+#
++ start bystander | caps: 100 | ram: 4M
+  + binary | name: ep_wedge
+  + config | liveness_ms: 1000
+
+#
+# vfs_sys — the UNRELATED system ROM chain (partition P3): read-only
+# rump ext2 over part_block/P3, chroot /system for rom_sys.
+#
++ start vfs_sys | caps: 2000 | ram: 32M
+  + binary vfs
+  + provides | + service File_system
+  + config
+    + vfs
+      + rump | fs: ext2fs | ram: 16M | writeable: no
+    + policy | label_prefix: rom_sys | root: /system | writeable: no
+  + route
+    + service ROM | label_last: ld.lib.so       | + parent
+    + service ROM | label_last: vfs.lib.so      | + parent
+    + service ROM | label_last: vfs_rump.lib.so | + parent
+    + service ROM | label_last: rump.lib.so     | + parent
+    + service ROM | label_last: rump_fs.lib.so  | + parent
+    + service Block | + child part_block
+    + any-service
+      + parent
+      + any-child
+
++ start rom_sys | caps: 200 | ram: 16M
+  + binary cached_fs_rom
+  + provides | + service ROM
+  + route
+    + service File_system | + child vfs_sys
+    + service ROM | label_last: ld.lib.so | + parent
+    + any-service
+      + parent
+      + any-child
+
+#
+# vfs_var — THE WIRING UNDER TEST (today's shared P4 provider,
+# mirroring the product's run/sponge-desktop-disk-uefi-usb.run:1566 and
+# the P0.5 audit §3.1): ONE vfs instance over part_block/P4 carrying
+# BOTH session regions:
+#
+#   default-policy root /pkgd   — the package-store region
+#   label_prefix: sponge_logdisk -> root /log — the log-sink region
+#
+# The catch-all is spelled 'default-policy' (the upstream catch-all
+# idiom, genode/repos/os/run/vfs_xoroshiro.run) so the healthy-state
+# store check can actually pass: vfs policy matching scores
+# label-bearing policies over label-less ones (os/include/os/
+# session_policy.h), and a 'default-policy' node is the spelling that
+# serves unmatched labels.
+#
+# Block route -> blk_stall: THE FAULT. With both regions on this one
+# instance, stalling it stalls the store path too — the shared fate
+# that makes this scenario RED today. P3.2 splits this node per the
+# header's flip guide and keeps blk_stall on vfs_log only.
+#
++ start vfs_var | caps: 2000 | ram: 32M
+  + binary vfs
+  + provides | + service File_system
+  + config
+    + vfs
+      + rump | fs: ext2fs | ram: 16M | writeable: yes
+    + default-policy | root: /pkgd | writeable: yes
+    + policy | label_prefix: sponge_logdisk -> | root: /log | writeable: yes
+  + route
+    + service ROM | label_last: ld.lib.so       | + parent
+    + service ROM | label_last: vfs.lib.so      | + parent
+    + service ROM | label_last: vfs_rump.lib.so | + parent
+    + service ROM | label_last: rump.lib.so     | + parent
+    + service ROM | label_last: rump_fs.lib.so  | + parent
+    + service Block | + child blk_stall
+    + any-service
+      + parent
+      + any-child
+
+#
+# sponge_logdisk — the log-path consumer (product component, used
+# unmodified, run/sponge-desktop-disk-uefi-usb.run's start node shape).
+# tick_log gives headless scenarios a serial marker for the healthy
+# state; under the stall its constructor parks on the File_system
+# create, so neither "logging to" nor any tick ever appears.
+#
+# Its own LOG session resolves to core (default-route parent) — the
+# product's bootstrap-escape rule shape, simplified because nothing in
+# this scenario routes LOG to the sink.
+#
++ start sponge_logdisk | caps: 200 | ram: 16M
+  + provides | + service LOG
+  + config | path: /boot.log | max_bytes: 8388608 | rotate_suffix: .1 | tick_ms: 2000 | tick_log: yes
+    + vfs
+      + fs | name: log
+  + route
+    + service LOG | + parent
+    + service ROM | label_last: ld.lib.so     | + parent
+    + service ROM | label_last: vfs.lib.so    | + parent
+    + service ROM | label_last: vfs_rump.lib.so | + parent
+    + service ROM | label_last: rump.lib.so   | + parent
+    + service ROM | label_last: rump_fs.lib.so | + parent
+    + service File_system | + child vfs_var
+    + service Timer | + child timer
+    + any-service
+      + parent
+      + any-child
+
+#
+# provider_isolation_probe — the per-path checks (bounded; see
+# repos/sponge/src/test/provider_isolation_probe/main.cc). Its <vfs>
+# node is the pkgd-store consumer shape (run/sponge-pkg-persist.run:
+# <vfs><dir store><fs/></vfs> mounts the P4 store region at /store).
+#
++ start provider_isolation_probe | caps: 200 | ram: 16M
+  + config
+    + vfs
+      + dir store | + fs
+  + route
+    + service ROM | label_last: ld.lib.so | + parent
+    + service ROM | label_last: sys_marker | + child rom_sys
+    + service File_system | + child vfs_var
+    + service Timer | + child timer
+    + any-service
+      + parent
+      + any-child
+
+#
+# partition_check — the media-alive witness (existing probe,
+# repos/sponge/src/test/partition_check): byte-asserts part_block's
+# partitions report still lists number="3". Run-script contract per its
+# README.
+#
++ start partition_check | caps: 100 | ram: 4M
+  + route
+    + service ROM | label: partitions | + child report_rom
+    + service ROM | label_last: ld.lib.so | + parent
+    + any-service
+      + parent
+      + any-child
+-
+}
+
+#
+# Boot modules: the vfs+rump chain libs are transitive deps of
+# lib/vfs_rump and not in build_artifacts, so list them explicitly
+# (run/sponge-boot.run / sponge-persist-disk.run idiom). On base-sel4
+# boot_dir/sel4 auto-injects ld.lib.so.
+#
+set boot_modules [build_artifacts]
+foreach m { vfs.lib.so vfs_rump.lib.so rump.lib.so rump_fs.lib.so } {
+	lappend boot_modules $m
+}
+
+build_boot_image $boot_modules
+
+# ========================================================================
+# Post-build: create P4 (SPONGE-VAR) on the image
+# ========================================================================
+#
+# image/disk produced [run_dir].img with the firmware partitions + P3
+# (GENODE) and no free space (it resize2fs -M's P3 and moves the backup
+# GPT to the image end). The docs/14 §4.3 grow/repartition sequence
+# normally lives in tool/mkdata — which cannot run from inside a Genode
+# run script in this environment (logdisk-field-diagnosis §5.4) — so it
+# is spelled out inline here, step for step (tool/mkdata.mojo is the
+# reference). Idempotent: a re-run finds P4 and skips creation.
+#
+set img_path "[run_dir].img"
+set sgdisk  [installed_command sgdisk]
+set e2mkdir [installed_command e2mkdir]
+
+# Parse `sgdisk -i <N> <img>` into {first last}, or {} when absent.
+proc part_first_last { sgdisk img num } {
+	set info [exec $sgdisk -i $num $img 2>@1]
+	if {[regexp {First sector: ([0-9]+)} $info -> first] &&
+	    [regexp {Last sector: ([0-9]+)} $info -> last]} {
+		return [list $first $last]
+	}
+	return {}
+}
+
+set p4_fresh 0
+set p4_existing [part_first_last $sgdisk $img_path 4]
+
+if {[llength $p4_existing] > 0} {
+	set p4_info [exec $sgdisk -i 4 $img_path 2>@1]
+	if {![regexp {Partition name: '?SPONGE-VAR'?} $p4_info]} {
+		puts stderr "sponge-provider-stall: ERROR — P4 exists with an \
+unexpected name; refusing to overwrite (reset manually with \
+'sgdisk --delete=4 $img_path' if intended)"
+		exit 1
+	}
+	puts "sponge-provider-stall: P4 (SPONGE-VAR) already present — re-run no-op"
+} else {
+	set p4_fresh 1
+
+	set p3 [part_first_last $sgdisk $img_path 3]
+	if {[llength $p3] == 0} {
+		puts stderr "sponge-provider-stall: ERROR — P3 (GENODE) not found \
+on $img_path (a fresh image/disk output is expected)"
+		exit 1
+	}
+	lassign $p3 p3_first p3_last
+	puts "sponge-provider-stall: P3 captured: first=$p3_first last=$p3_last"
+
+	# 1. grow the image file
+	exec truncate -s +[expr {$data_mib * 1024 * 1024}] $img_path
+
+	# 2. drop the P3 GPT entry (the bytes stay)
+	exec $sgdisk --delete=3 $img_path
+
+	# 3. move the backup GPT to the new end
+	exec $sgdisk --move-second-header $img_path
+
+	# 4. re-pin P3 at its old offset + re-apply the name
+	exec $sgdisk --new=3:$p3_first:$p3_last $img_path
+	exec $sgdisk --change-name=3:GENODE $img_path
+
+	# 5. create P4 in the new free space (BACKUP_GPT_SECTORS = 34:
+	#    GPT backup header + partition-entry array + one gap sector,
+	#    tool/mkdata.mojo's constant)
+	set total_sectors [expr {[file size $img_path] / 512}]
+	set p4_first_req  [expr {$p3_last + 1}]
+	set p4_last_req   [expr {$total_sectors - 34}]
+	if {$p4_last_req <= $p4_first_req} {
+		puts stderr "sponge-provider-stall: ERROR — no room for P4 \
+(p4_first=$p4_first_req p4_last=$p4_last_req); data-size $data_mib MiB \
+too small for this image"
+		exit 1
+	}
+	exec $sgdisk --new=4:$p4_first_req:$p4_last_req $img_path
+	exec $sgdisk --change-name=4:SPONGE-VAR $img_path
+
+	# 6. format P4 as ext2 at its ACTUAL byte offset. sgdisk auto-aligns
+	#    partition starts to 2048-sector boundaries, so re-query (the
+	#    tool/mkdata lesson: formatting at the requested offset would
+	#    silently corrupt). mke2fs's own exit status is NOT the success
+	#    signal in this environment (logdisk-field-diagnosis §5.3) — the
+	#    e2mkdir below is.
+	set p4 [part_first_last $sgdisk $img_path 4]
+	lassign $p4 p4_first p4_last
+	set p4_byte_off [expr {$p4_first * 512}]
+	set p4_kib [expr {($p4_last - $p4_first + 1) * 512 / 1024}]
+	puts "sponge-provider-stall: formatting P4 ext2: offset=$p4_byte_off \
+size=$p4_kib KiB label=SPONGE-VAR"
+	set mkfs [installed_command mkfs.ext2]
+	catch {
+		exec $mkfs -E offset=$p4_byte_off -L SPONGE-VAR -F -q \
+			$img_path ${p4_kib}K 2>@1
+	} mkfs_out
+
+	# 7. rebuild the hybrid MBR from the first three GPT partitions
+	#    (P4 stays GPT-only — docs/14 §4.3)
+	exec $sgdisk --hybrid $img_path
+}
+
+# --- stage the P4 directory skeleton (e2mkdir via dd extract/write-back)
+#
+# /pkgd + /pkgd/store = the package-store region; /log = the log-sink
+# region. All must pre-exist: vfs resolves a session root at session
+# creation time (logdisk-field-diagnosis §3(c)).
+#
+set p4 [part_first_last $sgdisk $img_path 4]
+lassign $p4 p4_first p4_last
+set p4_count [expr {$p4_last - $p4_first + 1}]
+set p4_extract "[run_dir].p4_staging.ext2"
+exec dd if=$img_path of=$p4_extract bs=512 skip=$p4_first count=$p4_count 2>/dev/null
+
+if {$p4_fresh} {
+	# On a fresh P4 this e2mkdir IS the mkfs success signal (§5.3).
+	if {[catch { exec $e2mkdir $p4_extract:/pkgd 2>@1 } e2err]} {
+		puts stderr "sponge-provider-stall: ERROR — P4 staging failed \
+(mkfs did not produce a usable ext2?): $e2err"
+		exit 1
+	}
+} else {
+	catch { exec $e2mkdir $p4_extract:/pkgd 2>@1 }
+}
+catch { exec $e2mkdir $p4_extract:/pkgd/store 2>@1 }
+catch { exec $e2mkdir $p4_extract:/log 2>@1 }
+
+exec dd if=$p4_extract of=$img_path bs=512 seek=$p4_first conv=notrunc 2>/dev/null
+exec rm -f $p4_extract
+
+puts "sponge-provider-stall: P4 staged: /pkgd, /pkgd/store, /log \
+(sectors $p4_first..$p4_last)"
+
+#
+# Helper: extract P4 from the image and read a file via e2cp (the
+# sponge-persist-disk.run read-back idiom — host-side corroboration,
+# independent of any guest log). Returns "" when absent.
+#
+proc read_p4_file { path } {
+	global img_path p4_first p4_count
+	set tmp "[run_dir].p4_readback.ext2"
+	catch { exec dd if=$img_path of=$tmp bs=512 skip=$p4_first count=$p4_count 2>/dev/null }
+	if {![file exists $tmp]} { return "" }
+	set data ""
+	catch {
+		set e2cp [installed_command e2cp]
+		set data [exec $e2cp $tmp:$path /dev/stdout 2>/dev/null]
+	}
+	catch { exec rm -f $tmp }
+	return $data
+}
+
+#
+# QEMU: pin the platform explicitly (Phase 12 W1). Headless; no
+# -snapshot so the .img writes are real (single boot anyway — no
+# run_power_cycle, logdisk-field-diagnosis §5.2).
+#
+append qemu_args " -machine q35 -cpu Skylake-Client "
+append qemu_args " -nographic -m 1G "
+
+# ========================================================================
+# Bounded gates + host-side analysis
+# ========================================================================
+
+global qemu_spawn_id
+
+set ps_log [run_dir]/provider-stall.log
+log_file $ps_log
+
+#
+# Gate 1 (boots the guest): the injection fired. ep_wedge's default
+# mode prints its marker and wedges — without this line the whole run
+# is void (positive-control leg 1 is asserted host-side too).
+#
+run_genode_until {.*ep_wedge: alive.*} 120
+
+# Raise the expect buffer before the gates that depend on it
+# (run/sponge-quota-deadlock.run idiom).
+match_max -i $qemu_spawn_id 500000
+
+#
+# Gate 2: the media enumerated (partition_check reads part_block's
+# partitions report and exits). Same-boot gate -> 3-arg form.
+#
+run_genode_until {.*partition-check: PASS.*} 120 $qemu_spawn_id
+
+#
+# Gate 3: the probe's verdict is in (bounded workers, always prints).
+#
+run_genode_until {.*provider-isolation-probe: DONE.*} 120 $qemu_spawn_id
+
+sleep 2
+log_file
+
+set fh [open $ps_log r]
+set log_text [read $fh]
+close $fh
+
+# ------------------------------------------------------------------------
+# Positive control — the fault detector must demonstrably fire, or any
+# isolation verdict would be void.
+# ------------------------------------------------------------------------
+
+if {![regexp {ep_wedge: alive} $log_text]} {
+	error "provider-stall-control: FAIL (injection not observed — the \
+stall body never wedged, so any isolation result would be void). \
+full log: $ps_log"
+}
+
+if {[regexp -all {sponge_logdisk: logging to} $log_text] != 0} {
+	error "provider-stall-control: FAIL (log consumer unaffected — \
+sponge_logdisk reached its File_system despite the injected stall; \
+the detector is blind or the fault is not on the log path). \
+full log: $ps_log"
+}
+
+if {[regexp -all {tick alive} $log_text] != 0} {
+	error "provider-stall-control: FAIL (log consumer unaffected — \
+sponge_logdisk produced tick lines despite the injected stall). \
+full log: $ps_log"
+}
+
+if {[regexp -all {bystander: alive} $log_text] < 2} {
+	error "provider-stall-control: FAIL (container dead — the liveness \
+bystander stopped printing, so per-path results would be void). \
+full log: $ps_log"
+}
+
+if {![regexp {partition-check: PASS} $log_text]} {
+	error "provider-stall-control: FAIL (media dead — part_block did \
+not enumerate the partitions; that would be a physical-media failure, \
+not the injected software stall). full log: $ps_log"
+}
+
+puts "\nprovider-stall-control: PASS — injection observed, log consumer \
+degraded as expected, container alive, media healthy (software provider \
+stall — NOT a physical media/USB failure)\n"
+
+# ------------------------------------------------------------------------
+# Per-path verdicts (explicit per-path RED markers)
+# ------------------------------------------------------------------------
+
+if {[regexp {provider-isolation-probe: PASS path=sys-rom} $log_text]} {
+	puts "provider-stall: path=sys-rom    PASS \
+(rom_sys served from the healthy disk during the stall)"
+} else {
+	error "provider-stall: path=sys-rom    RED — the unrelated system ROM \
+chain did not survive the provider stall (see \
+provider-isolation-probe: RED path=sys-rom). full log: $ps_log"
+}
+
+if {[regexp {provider-isolation-probe: PASS path=pkgd-store} $log_text]} {
+
+	# ---- GREEN: the P3.2 vfs_pkg/vfs_log split is in place. ----
+	# Corroborate the guest claim on media (host-side read-back).
+	set store_data [read_p4_file /pkgd/store/pstall.txt]
+	if {![regexp {provider-isolation-probe store roundtrip} $store_data]} {
+		error "provider-stall: GREEN claim not corroborated on media — \
+/pkgd/store/pstall.txt missing or wrong on P4: '$store_data'. \
+full log: $ps_log"
+	}
+	puts "provider-stall: path=pkgd-store PASS \
+(store round-trip + media read-back)"
+	puts "provider-stall: path=log-sink   DEGRADED (expected — the stall \
+stays on the log path, sponge_logdisk never reached its File_system)"
+	puts "\nprovider-stall: PASS - the log-path stall stayed on its own \
+provider path (the vfs_pkg/vfs_log split holds): system ROM and the \
+package store kept working while the log sink degraded\n"
+
+} else {
+
+	# ---- RED: today's shared vfs_var — the store parked with it. ----
+	puts "provider-stall: path=pkgd-store RED (shared vfs_var fate — \
+the package-store create rode the same provider instance as the \
+stalled log path)"
+	set store_data [read_p4_file /pkgd/store/pstall.txt]
+	if {$store_data ne ""} {
+		error "provider-stall: unexpected media state — \
+/pkgd/store/pstall.txt exists although the probe reported the create \
+parked: '$store_data'. full log: $ps_log"
+	}
+	puts "provider-stall: path=log-sink   DEGRADED (expected — \
+sponge_logdisk's File_system create is parked on the stalled provider)"
+	error "provider-stall: RED - today's shared vfs_var gives the \
+package store and the log sink ONE provider path: stalling the log \
+path stalled the store too (per-path RED markers above; full log: \
+$ps_log). The P3.2 vfs_pkg/vfs_log split (see this file's header) \
+flips this scenario green."
+}
