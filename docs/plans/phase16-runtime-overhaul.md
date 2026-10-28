@@ -245,7 +245,10 @@ Owns: the pkgd emission module + its validation helper.
 New scenario `run/sponge-de-pkgd-failure.run`: wedge or kill `sponge_pkgd`
 during a package-control operation; assert sponge-de stays interactive
 (input still reaches it), shows the health label, and surfaces a structured
-error. Currently red.
+error. The 2026-10-28 QEMU RED receipt is recorded in
+`docs/evidence/phase16-runtime-de-failure-modes.md` §7: C1-C3 and P1-P5 are
+green, only the documented C4 machine-witness and C5 persistence gaps are
+RED, and `de-survival-probe: PASS` is absent.
 Gate: RED receipt committed; marker `de-survival-probe: PASS` absent.
 Commits: `test(sponge-de): add the package-control failure survival red scenario` (1).
 Owns: `run/sponge-de-pkgd-failure.run`, its probe, symlink.

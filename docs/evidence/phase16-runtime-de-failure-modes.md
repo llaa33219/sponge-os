@@ -1,10 +1,9 @@
 # Phase 16 P0.4 — sponge-de failure modes under package-control failure
 
 Task: **P0.4 DE failure-mode audit** (`docs/plans/phase16-runtime-overhaul.md`).
-Scope: code audit only — no scenario was run, no code was changed (the
-runtime-execution work is owned by another agent). Date: 2026-10-28.
-All observations are from source and run-script reading; no real-hardware
-claim is made or implied (D16R.12).
+Scope: sections 1–6 are the code audit; section 7 is the verified P2.1
+runtime RED receipt. Date: 2026-10-28. No real-hardware claim is made or
+implied (D16R.12).
 
 Purpose: enumerate what sponge-de does today when package control
 (`sponge_pkgd`) hangs, dies, times out, goes stale, fails an operation, or
@@ -241,3 +240,31 @@ first-paint-plus-input acceptance (D16R.11).
   label vs persistent panel state) is a P2.5 design choice; P2.1's probe
   should assert against the log marker first and switch when the channel
   lands, so the red receipt stays comparable.
+
+---
+
+## 7. P2.1 runtime RED receipt (2026-10-28)
+
+`run/sponge-de-pkgd-failure.run` was executed serially on base-sel4/QEMU
+with the stock QEMU spawn path. The host's 8 MiB memlock limit required a
+non-committed io_uring queue-depth clamp for QEMU 11.1.2; no shim or other
+host workaround is part of the scenario. This is QEMU evidence only.
+
+The probe completed launcher launch → first paint → real QMP input in both
+healthy and degraded windows and emitted `de-survival-probe: verdict RED
+(c4 c5)`. The scenario exited nonzero intentionally and printed the P2.1
+receipt; `de-survival-probe: PASS` was absent (N1).
+
+- **Green:** C1 first paint and continued compositing, C2 degraded-window
+  input, C3 health-label substring witness, and all positive controls
+  P1–P5. The receipt counted two pkgd launch results, two `pkg_gui_demo`
+  first paints, and five launcher-feed updates.
+- **Intentional RED:** C4 lacks the stable, probe-readable operation-error
+  artifact, and C5 lacks error persistence until acknowledged. The bounded
+  human-readable `launch 'hello' failed: no answer from the package
+  manager` error did surface, so the RED is limited to the documented
+  missing mechanisms rather than a frozen DE or a broken harness.
+- **Q2 observed:** restart churn settled; the pkgd node disappeared after
+  the restart budget was exhausted (about 16.7 s in the final run).
+- **Q3 remains open for P2.5:** `de_op_error` is still empty, which is the
+  explicit C4/C5 RED witness the hardening change must flip.
