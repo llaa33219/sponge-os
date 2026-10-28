@@ -1,0 +1,970 @@
+#
+# \brief  P2.1 RED scenario: sponge-de survival under package-control
+#         failure (sponge_pkgd wedged/killed mid-operation).
+# \author Sponge OS contributors
+# \date   2026
+#
+# Contract: docs/evidence/phase16-runtime-de-failure-modes.md (P0.4
+# failure-mode audit) - section 4 target degraded-state contract C1-C5,
+# section 5 positive controls P1-P5 / negative controls N1-N6, section 6
+# open questions Q1-Q3. Plan: docs/plans/phase16-runtime-overhaul.md
+# P2.1 (this RED test) and P2.5 (the DE hardening that flips it green).
+# Failure domain FD2 / decision D16R.7: the DE stays interactive and
+# labeled; package-control failures are contained to the operation.
+#
+# RUN (serial runner only, D16R.13):
+#
+#   ./tool/build run sponge-de-pkgd-failure
+#
+# EXPECTED OUTCOME ON CURRENT CODE (the P2.1 RED receipt):
+#
+#   The scenario FAILS with the per-contract RED markers and WITHOUT
+#   the green marker (N1):
+#     de-survival-probe: [c4] RED - operation-error machine witness
+#         absent ... (contract section 4 C4 gap: log-only transient
+#         witness today; Q3 candidate channel)
+#     de-survival-probe: [c5] RED - the failed operation's error is
+#         not persistent ... (contract section 4 C5 ...)
+#     de-survival-probe: verdict RED (c4 c5)
+#   Everything else passes: the positive controls P1-P5, C1 (panel +
+#   demo first paint, popup repaint during the degraded window), C2
+#   (QMP input flip), C3 (health label `sponge_pkgd unresponsive(N)`
+#   substrate - it is GREEN here because `system_state` is routed and
+#   asserted by substring), and the C4/C5 log-side halves (the bounded
+#   `launch problem` error and the <= 3 s feed-recovery window). The
+#   RED lands exactly on the documented missing mechanisms: a stable,
+#   probe-readable operation-error artifact (C4) and the error-stays-
+#   visible-until-acknowledged / explicit degraded-recovered semantics
+#   (C5). P2.5 lands those, this scenario flips to
+#   `de-survival-probe: PASS` with no scenario edit (see the probe
+#   header, Q3).
+#
+# WHAT THE SCENARIO WIRES (base: run/sponge-de-sel4-interactive.run,
+# the proven QMP input + Qt6/Mesa softpipe template):
+#
+#   init
+#   + timer
+#   + report_rom        (relays every probe/DE/pkgd channel; policies
+#                        below, including the `system -> config` config
+#                        relay and `system -> state` -> `system_state`)
+#   + nitpicker         (domains: panel 28px, launcher popup, demo
+#                        window, default - same as the template)
+#   + drivers           (sub-init: acpi -> report_rom -> pci_decode ->
+#                        platform, vesa_fb, ps2, usb=pc_usb_host,
+#                        usb_hid, event_filter - the real input chain)
+#   + sponge-de         (Qt6 DE; <launcher source="pkgd"/> +
+#                        <launcher_state source="report"/> + the
+#                        `system_state` ROM route for the health label)
+#   + pkg_runtime       (nested init hosting launched packages)
+#   + cfg_probe         (bystander; the alpha_probe/cfg_probe health
+#                        exclusion semantics are exercised defensively
+#                        - see N3/Q1 in the probe header)
+#   + system            (nested init; hosts sponge_pkgd so its state
+#                        report is the health-watcher input; its config
+#                        is the PROBE-OWNED relay, so the scenario can
+#                        kill/wedge/revive pkgd by config version bumps
+#                        - Start_model::matches() keys on name+version)
+#   + de_survival_probe (the P2.1 probe; choreography + assertions)
+#
+# THE INJECTION (contract section 2.3 item 4: wedge/kill the pkgd child
+# only, shared substrate healthy, heartbeat machinery accounted for):
+# the probe publishes `system` config v2, which bumps sponge_pkgd's
+# start-node version (init kills the healthy incarnation) and re-routes
+# its `request` ROM to the unresolvable label `sponge_pkgd_wedge_denied`
+# so the replacement incarnation sleeps forever in its first entrypoint-
+# thread session open ("stop because parent denied"). Heartbeat skips
+# accumulate (`+ heartbeat | rate_ms: 2000`, product-shaped
+# `restart_after_skipped: 3 | restart_budget: 3`, short 3 s startup
+# grace on the wedge incarnation), the health watcher composes
+# `sponge_pkgd unresponsive(N)`, the churn settles (Q2 is OBSERVED and
+# recorded by the probe), and config v3 revives pkgd. An in-flight
+# `explain hello` request dies with the killed incarnation (P2.1:
+# "wedge or kill sponge_pkgd during a package-control operation"; N5:
+# it is never asserted for an answer).
+#
+# The degraded-window launch target is a package whose launcher_result
+# never arrived (the menu is swapped pkg_gui_demo -> hello before the
+# wedge): LauncherController::_poll_launch_result matches results by
+# (op, pkg) only, so a re-launch of the pre-wedge package would be
+# answered from the STALE launcher_result ROM and silently "succeed" -
+# the scenario must witness the designed bounded timeout + structured
+# error instead (contract section 3 mode C).
+#
+# CONTROLS ENFORCED BY THIS SCRIPT + THE PROBE:
+#   P1  pre-wedge launch click -> sponge_pkgd: launch result
+#       'pkg_gui_demo' -> ok (contract P1 allows the pkgd-side witness;
+#       the DE's own 'launched' log races its 6 s result poll) +
+#       pkg_gui_demo: window shown + green first paint (real input!)
+#   P2  pre-wedge feed live    -> launcher report lists pkg_gui_demo
+#       (corroborated by the `sponge-de: launcher list updated` log,
+#       asserted post-hoc from the captured log)
+#   P3  pre-wedge health label absent (derived warnings empty)
+#   P4  post-recovery launch click -> launched 'pkg_gui_demo' again +
+#       green pixel (pixels guard against the stale-result false PASS)
+#   P5  QMP input witness during the degraded window (input report
+#       press flip + popup repaint)
+#   N1  green marker absent while RED (verdict block asserts it)
+#   N2  substrate health: system_state keeps updating + the panel
+#       keeps compositing through the window (C1b/C2 pixels) + the DE
+#       answers input - a frozen substrate cannot produce those
+#   N3  no alpha_probe/cfg_probe segment is ever asserted (probe
+#       skip-list mirrors the DE exclusion predicate)
+#   N4  no install/remove on the DE's launcher_request channel (the
+#       probe's ops go through probe_request/probe_result)
+#   N5  no assertion requires pkgd to answer while wedged
+#   N6  health assertions are substring-only, never whole-label
+#
+# First paint + real input are mandatory evidence (D16R.11): the panel
+# toggle + demo window pixels gate the pre-wedge phase, the popup
+# repaints on a real QMP click inside the degraded window, and the
+# pkg_gui_demo green pixel proves both launch halves. QEMU evidence
+# only (D16R.12).
+#
+
+assert {[have_spec sel4]} \
+	"sponge-de-pkgd-failure requires KERNEL=sel4 (BOARD=pc) in build.conf. \
+	 This scenario drives the real PC input chain (vesa_fb/ps2/usb_hid); \
+	 use run/sponge-de.run for the base-linux fb_sdl variant."
+
+build { core lib/ld init timer server/report_rom server/nitpicker \
+         driver/acpi app/pci_decode driver/platform \
+         driver/framebuffer/vesa driver/ps2 \
+         driver/usb_host/pc driver/usb_hid \
+         server/event_filter \
+         sponge_pkgd sponge-de cfg_probe pkg_hello \
+         test/pkg_gui_demo test/de_survival_probe \
+         qt6/base lib/libc lib/libm lib/stdcxx lib/mesa \
+         lib/mesa_gpu-softpipe lib/egl lib/softpipe lib/libdrm lib/expat \
+         lib/qt6_component lib/vfs lib/vfs_pipe lib/vfs_gpu lib/rom_filter \
+         lib/zlib lib/libpng lib/blit }
+
+create_boot_directory
+
+install_config {
+config
++ parent-provides
+  + service ROM
+  + service PD
+  + service RM
+  + service CPU
+  + service LOG
+  + service IRQ
+  + service IO_MEM
+  + service IO_PORT
+
++ default | caps: 200 | ram: 4M
++ default-route
+  + any-service
+    + parent
+    + any-child
+
++ start timer
+  + provides | + service Timer
+
+#
+# report_rom - the single relay. Policy labels use the FULL session
+# label chains: pkgd lives one init deeper (`system`), so its sessions
+# arrive as `system -> sponge_pkgd -> <label>` (the same chaining as
+# the product's `pkg_runtime -> debug -> installed` policies,
+# run/sponge-desktop-disk.run:650-652).
+#
++ start report_rom | caps: 300 | ram: 8M
+  + provides
+    + service Report
+    + service ROM
+  + config | verbose: yes
+    #
+    # The system-sandbox config relay (the sponge_supervisor pattern,
+    # run/supervisor.inc::sys_config_relay): the probe publishes the
+    # nested init's config as the report `system_config`.
+    #
+    + policy | label: system -> config | report: de_survival_probe -> system_config
+    #
+    # The nested init's state report -> the health-watcher input ROM
+    # (suffix matcher so the DE and the probe can both read it).
+    #
+    + policy | label_suffix: system_state | report: system -> state
+    #
+    # pkgd's channels. `request` is mapped to a NEVER-WRITTEN report
+    # label so the always-open ROM is empty (pkgd idles; the
+    # run/sponge-de-sel4-interactive.run trick). launcher_request is
+    # the DE's launch-only writer channel (N4: the probe never writes
+    # install/remove there). probe_request/probe_result are the
+    # probe's own transport.
+    #
+    + policy | label: system -> sponge_pkgd -> request          | report: de_survival_probe -> idle_request
+    + policy | label: system -> sponge_pkgd -> probe_request    | report: de_survival_probe -> probe_request
+    + policy | label: system -> sponge_pkgd -> launcher_request | report: sponge-de -> launcher_request
+    + policy | label: de_survival_probe -> probe_result | report: system -> sponge_pkgd -> probe_result
+    + policy | label: de_survival_probe -> installed    | report: system -> sponge_pkgd -> installed
+    + policy | label: sponge-de -> installed            | report: system -> sponge_pkgd -> installed
+    + policy | label: sponge-de -> launcher_result      | report: system -> sponge_pkgd -> launcher_result
+    + policy | label: pkg_runtime -> config             | report: system -> sponge_pkgd -> runtime
+    + policy | label: cfg_probe -> config               | report: system -> sponge_pkgd -> runtime
+    #
+    # sponge-de's reports -> the probe's witnesses.
+    #
+    + policy | label: de_survival_probe -> sponge_de_input | report: sponge-de -> input
+    + policy | label: de_survival_probe -> launcher_state | report: sponge-de -> launcher_state
+    + policy | label: de_survival_probe -> launcher       | report: sponge-de -> launcher
+    #
+    # C4/C5 candidate operation-error artifact (Q3): empty until P2.5
+    # makes sponge-de write it - the probe asserts against this ROM.
+    #
+    + policy | label: de_survival_probe -> de_op_error    | report: sponge-de -> de_op_error
+
++ start nitpicker | ram: 16M
+  + provides
+    + service Gui
+    + service Capture
+    + service Event
+  + route
+    + service Report | + child report_rom
+    + service Timer | + child timer
+    + any-service
+      + parent
+      + any-child
+  + config
+    + capture
+    + event
+    + domain panel | layer: 1 | content: client | label: no
+                   | hover: always | focus: click | ypos: 0 | height: 28
+    + domain launcher | layer: 0 | content: client | label: no
+                      | hover: always | focus: click
+                      | xpos: 0 | ypos: 28 | width: 341 | height: 480
+    + domain demo | layer: 2 | content: client | label: no
+                  | hover: always | focus: click
+                  | xpos: 192 | ypos: 172 | width: 640 | height: 480
+    + domain default | layer: 3 | content: client | label: no
+                     | hover: always | focus: click | ypos: 28 | height: -28
+    + policy | label_prefix: sponge-de -> Sponge Panel   | domain: panel
+    + policy | label_prefix: sponge-de -> Sponge Launcher | domain: launcher
+    + policy | label_prefix: sponge-de -> Sponge DE Demo | domain: demo
+    + default-policy | domain: default
+    + background | color: #1e1e2e
+
++ start drivers | caps: 1500 | ram: 96M | managing_system: yes
+  + binary init
+  + route
+    + service ROM | label: config | + parent | label: drivers.config
+    + service Timer | + child timer
+    + service Capture | + child nitpicker
+    + service Event | + child nitpicker
+    + any-service                 | + parent
+  + config
+    + parent-provides
+      + service IRQ
+      + service IO_MEM
+      + service IO_PORT
+      + service ROM
+      + service PD
+      + service RM
+      + service CPU
+      + service LOG
+      + service Timer
+      + service Capture
+      + service Event
+
+    + default | caps: 60
+
+    + start acpi | caps: 250 | ram: 4M
+      + route
+        + service IO_MEM | + parent
+        + service LOG | + parent
+        + service PD | + parent
+        + service RM | + parent
+        + service CPU | + parent
+        + service ROM | + parent
+        + service Report | + child report_rom
+
+    + start report_rom | caps: 100 | ram: 2M
+      + provides
+      | + service ROM
+      | + service Report
+      + config
+      | + policy | label: pci_decode -> system | report: acpi -> acpi
+      | + policy | label: platform -> devices  | report: pci_decode -> devices
+      | + policy | label: usb_hid -> report    | report: usb -> devices
+      + route
+        + service LOG | + parent
+        + service PD | + parent
+        + service CPU | + parent
+        + service ROM | + parent
+
+    + start pci_decode | caps: 100 | ram: 2M
+      + route
+        + service Report | + child report_rom
+        + service ROM | label: system | + child report_rom
+        + service IO_MEM | + parent
+        + service LOG | + parent
+        + service PD | + parent
+        + service RM | + parent
+        + service CPU | + parent
+        + service ROM | + parent
+
+    + start platform | caps: 200 | ram: 3M | managing_system: yes
+      + provides
+      | + service Dma
+      | + service Platform
+      + route
+      | + service ROM | label: devices | + child report_rom
+      | + service Report | + child report_rom
+      | + service IRQ | + parent
+      | + service IO_MEM | + parent
+      | + service IO_PORT | + parent
+      | + service ROM | + parent
+      | + service PD | + parent
+      | + service CPU | + parent
+      | + service LOG | + parent
+      | + service Timer | + parent
+      + config
+        + report | devices: yes
+        + policy | label_prefix: ps2             | + device ps2
+        + policy | label_prefix: fb  | info: yes | + pci | class: VGA
+        + policy | label_prefix: usb | info: yes | + pci | class: USB
+
+    + start fb | caps: 150 | ram: 20M
+      + binary vesa_fb
+      + route
+        + service ROM | label: config | + parent | label: fb.config
+        + service Report | + child report_rom
+        + service Dma | + child platform
+        + service Platform | + child platform
+        + service IO_PORT | + parent
+        + service IO_MEM | + parent
+        + service ROM | + parent
+        + service PD | + parent
+        + service CPU | + parent
+        + service LOG | + parent
+        + service Timer | + parent
+        + service Capture | + parent
+
+    + start ps2 | caps: 100 | ram: 1280K
+      + config
+      + route
+        + service Dma | + child platform
+        + service Platform | + child platform
+        + service Event | + child event_filter | label: ps2
+        + service ROM | + parent
+        + service PD | + parent
+        + service CPU | + parent
+        + service LOG | + parent
+        + service Timer | + parent
+
+    + start usb | caps: 200 | ram: 16M
+      + binary pc_usb_host
+      + provides | + service Usb
+      + config
+      | + report | devices: yes
+      | + policy | label_prefix: usb_hid | + device | class: 0x3
+      + route
+        + service Dma | + child platform
+        + service Platform | + child platform
+        + service Report | label: devices | + child report_rom
+        + service ROM | + parent
+        + service PD | + parent
+        + service RM | + parent
+        + service CPU | + parent
+        + service LOG | + parent
+        + service Timer | + parent
+
+    + start usb_hid | caps: 180 | ram: 10M
+      + route
+        + service ROM | label: report | + child report_rom
+        + service ROM | + parent
+        + service PD | + parent
+        + service RM | + parent
+        + service CPU | + parent
+        + service LOG | + parent
+        + service Timer | + parent
+        + service Event | + child event_filter | label: usb
+        + service Usb | + child usb
+
+    + start event_filter | caps: 90 | ram: 1280K
+      + provides | + service Event
+      + route
+        + service ROM | label: config | + parent | label: event_filter.config
+        + service Event | + parent
+        + service ROM | + parent
+        + service PD | + parent
+        + service CPU | + parent
+        + service LOG | + parent
+        + service Timer | + parent
+
+#
+# sponge-de - the Qt6 DE. Launcher wired to pkgd (the installed
+# broadcast + the launch-only launcher_request/launcher_result pair),
+# launcher_state report ON (the C2 flip witness), system_state ROM
+# routed (C3 health label; Optional_rom_dataspace keeps it non-fatal).
+#
++ start sponge-de | caps: 1000 | ram: 128M
+  + config
+    + launcher | source: pkgd
+    + launcher_state | source: report
+    + vfs
+      + dir dev
+        + log
+        + inline rtc | : 2018-01-01 00:01
+      + dir pipe | + pipe
+      + tar qt6_dejavusans.tar
+      + tar qt6_libqgenode.tar
+    + libc | stdout: /dev/log | stderr: /dev/log | pipe: /pipe | rtc: /dev/rtc
+  + route
+    + service Gui | label_last: Sponge Panel   | + child nitpicker
+    + service Gui | label_last: Sponge Launcher | + child nitpicker
+    + service Gui | + child nitpicker
+    + service Report | label: shape  | + child report_rom
+    + service Report | label: input  | + child report_rom
+    + service Report | label: launcher          | + child report_rom
+    + service Report | label: launcher_request  | + child report_rom
+    + service Report | label: launcher_state    | + child report_rom
+    + service ROM | label: installed            | + child report_rom
+    + service ROM | label: launcher_result      | + child report_rom
+    + service ROM | label: system_state         | + child report_rom
+    + service ROM | label: default.theme        | + parent
+    + service ROM | label: mesa_gpu.lib.so | + parent | label: mesa_gpu-softpipe.lib.so
+    + any-service
+      + parent
+      + any-child
+
+#
+# pkg_runtime - nested init hosting launched packages (same shape as
+# run/sponge-de-sel4-interactive.run: Gui straight to nitpicker, no wm).
+#
++ start pkg_runtime | caps: 2000 | ram: 256M
+  + binary init
+  + route
+    + service ROM | label: config                 | + child report_rom
+    + service ROM | label_last: mesa_gpu.lib.so   | + parent | label: mesa_gpu-softpipe.lib.so
+    + service Gui | + child nitpicker
+    + service Report | + child report_rom
+    + any-service
+      + parent
+      + any-child
+
+#
+# cfg_probe - the product-shaped bystander (its clean exits are in the
+# health-watcher exclusion pair, so it also exercises the N3 exclusion
+# semantics without polluting the assertions). Event-driven log lines,
+# kept as corroboration only.
+#
++ start cfg_probe | caps: 100 | ram: 4M
+  + route
+    + service ROM | label: config | + child report_rom
+    + service Report | + child report_rom
+    + any-service
+      + parent
+      + any-child
+
+#
+# system - the nested sandbox that hosts sponge_pkgd. Its CONFIG comes
+# from the probe's `system_config` report (the relay policy above), so
+# the scenario can kill/wedge/revive pkgd by publishing config v1/v2/v3
+# (start-node version bumps; Start_model::matches() is name+version).
+# Its STATE report (`system -> state`) is the health-watcher input.
+#
+# pool covers the init's own overhead + pkgd's 400 + a full restart
+# margin (observed with caps: 200: slack=13 and restarts clamped to
+# "configured caps exceed available caps, proceed with 51", which left
+# the child unable to create signal contexts - permanent wedge).
++ start system | caps: 800 | ram: 64M
+  + binary init
+  + route
+    + service ROM | label: config | + child report_rom
+    + service Report | + child report_rom
+    + service Timer | + child timer
+    + service ROM | label_last: request          | + child report_rom
+    + service ROM | label_last: probe_request    | + child report_rom
+    + service ROM | label_last: launcher_request | + child report_rom
+    + any-service
+      + parent
+
+#
+# de_survival_probe - the P2.1 probe. Observe-only (Capture + Timer +
+# report_rom channels; no Event session - the input is real QMP).
+#
++ start de_survival_probe | caps: 200 | ram: 16M
+  + config | render_iters: 9000
+  + route
+    + service Capture | + child nitpicker
+    + service Timer | + child timer
+    + service ROM | label: sponge_de_input | + child report_rom
+    + service ROM | label: launcher_state  | + child report_rom
+    + service ROM | label: launcher        | + child report_rom
+    + service ROM | label: installed       | + child report_rom
+    + service ROM | label: system_state    | + child report_rom
+    + service ROM | label: probe_result    | + child report_rom
+    + service ROM | label: de_op_error     | + child report_rom
+    + service Report | + child report_rom
+    + any-service
+      + parent
+      + any-child
+- }
+
+#
+# Stage every non-build-artifact boot module into bin/ BEFORE
+# build_boot_image (on base-sel4 the boot image is a single packed
+# image.elf; modules added later never reach the guest - the same
+# staging recipe as run/sponge-de-sel4-interactive.run).
+#
+exec mkdir -p bin
+
+set dejavu_dst "bin/qt6_dejavusans.tar"
+if {![file exists $dejavu_dst]} {
+	set dejavu_src [glob -nocomplain "${genode_dir}/contrib/qt6_base-*/src/lib/qt6_base/src/3rdparty/wasm/DejaVuSans.ttf"]
+	if {[llength $dejavu_src] == 0} {
+		error "DejaVuSans.ttf not found in the qt6_base port sources"
+	}
+	set staging "[run_dir]/dejavusans-staging"
+	file mkdir "$staging/qt/lib/fonts"
+	file copy -force [lindex $dejavu_src 0] "$staging/qt/lib/fonts/DejaVuSans.ttf"
+	exec tar -cf $dejavu_dst -C $staging qt
+	file delete -force $staging
+}
+
+set recipe_dir "${genode_dir}/repos/os/recipes/raw/drivers_interactive-pc"
+foreach f { drivers.config fb.config } {
+	if {![file exists "$recipe_dir/$f"]} {
+		error "$recipe_dir/$f missing (vendored drivers_interactive-pc recipe drifted?)"
+	}
+	exec cp -f "$recipe_dir/$f" "bin/$f"
+}
+
+#
+# event_filter.config - WRITTEN (not copied) with the two proven
+# deviations of the template: no <accelerate> wrapper on the ps2 input
+# (1:1 rel mapping for the PS/2 click recipe) and a <transform> scale
+# on the usb input (QEMU usb-tablet device units -> 1024x768 pixels).
+# See run/sponge-de-sel4-interactive.run for the full rationale.
+#
+set ef_fh [open "bin/event_filter.config" w]
+puts $ef_fh {config
++ output
+  + chargen
+    + merge
+    | + transform
+    | | + scale | x: 0.0312517 | y: 0.0234382
+    | | + input usb
+    + button-scroll
+    | |   + input ps2
+    | |   + vertical   | button: BTN_MIDDLE | speed_percent: -10
+    | |   + horizontal | button: BTN_MIDDLE | speed_percent: -10
+  + mod1
+  | + key KEY_LEFTSHIFT
+  | + key KEY_RIGHTSHIFT
+  + mod2
+  | + key KEY_LEFTCTRL
+  | + key KEY_RIGHTCTRL
+  + mod3
+  | + key KEY_RIGHTALT | . AltGr
+  + repeat | delay_ms: 230 | rate_ms: 90
+  + include | rom: en_us.chargen
+  + include | rom: special.chargen
++ policy | label: ps2 | input: ps2
++ policy | label: usb | input: usb
+-}
+close $ef_fh
+
+set chargen_dir "${genode_dir}/repos/os/src/server/event_filter"
+foreach f { en_us.chargen special.chargen } {
+	if {![file exists "$chargen_dir/$f"]} {
+		error "$chargen_dir/$f missing (event_filter sources drifted?)"
+	}
+	exec cp -f "$chargen_dir/$f" "bin/$f"
+}
+
+exec cp -f "${genode_dir}/repos/sponge/src/sponge-de/themes/default.theme" \
+           "bin/default.theme"
+
+#
+# Stage package metadata + the derived index. pkg_gui_demo is the
+# launch target (green first paint); hello is the degraded-window
+# FRESH launch target and the swap package (its metadata declares
+# <autostart/>, which is fine - it only ever installs while pkgd is
+# healthy or after revival). Same scheme as run/sponge-launch.run.
+#
+set staged_pkgs { pkg_gui_demo hello }
+foreach pkg $staged_pkgs {
+	set src "${genode_dir}/../pkg/$pkg/metadata.xml"
+	if {![file exists $src]} {
+		error "package metadata not found: $src"
+	}
+	exec cp -L $src "bin/pkg_$pkg.xml"
+}
+
+set index_fh [open "bin/pkg_index.xml" w]
+puts $index_fh "<packages>"
+foreach pkg $staged_pkgs {
+	puts $index_fh "  <pkg name=\"$pkg\"/>"
+}
+puts $index_fh "</packages>"
+close $index_fh
+
+#
+# Full boot module list. [build_artifacts] provides the shared libs
+# (egl.lib.so, expat.lib.so, the Qt libs, ... - inherently artifact
+# tracked and validated by check_for_missing_lib_build); the explicit
+# names below make the list DETERMINISTIC against a flaky artifact
+# harvest on the shared build dir (observed 2026-10-28: successive warm
+# makes recorded different artifact sets - run1 missed the Qt libs,
+# run3 missed core-sel4.a - the D16R.13 concurrent-make hazard).
+# Kernel-variant names are the ones the boot_dir/sel4 staging
+# normalizes (core-sel4.a -> linked as core.a, ld-sel4.lib.so ->
+# ld.lib.so, hpet_timer -> timer). Duplicates from the harvest are
+# harmless (copy_file -force).
+#
+set boot_modules [build_artifacts]
+foreach m { core-sel4.a ld-sel4.lib.so hpet_timer \
+            init report_rom nitpicker \
+            acpi pci_decode platform vesa_fb ps2 pc_usb_host usb_hid event_filter \
+            sponge_pkgd sponge-de cfg_probe hello pkg_gui_demo de_survival_probe \
+            libQt6Core.lib.so libQt6Gui.lib.so libQt6Widgets.lib.so \
+            libqgenode.lib.so qt6_libqgenode.tar qt6_dejavusans.tar \
+            drivers.config fb.config event_filter.config \
+            en_us.chargen special.chargen \
+            default.theme \
+            pkg_pkg_gui_demo.xml pkg_hello.xml pkg_index.xml } {
+	lappend boot_modules $m
+}
+
+#
+# Dedicated build pass recording exactly the artifact-tracked names the
+# stage check validates (every *.lib.so boot module must appear as a
+# BUILD_ARTIFACTS entry of the `build` step): ld-sel4.lib.so via
+# lib/ld and the Qt libs via qt6/base. The combined build above does
+# not reliably re-record them on warm trees (see the header comment of
+# the boot-module list); a dedicated make re-runs the import steps and
+# the `build` proc accumulates the entries - verified empirically
+# (progress.log after `make qt6/base` carries libQt6Core.lib.so ..
+# qt6_libqgenode.tar).
+#
+build { core lib/ld qt6/base }
+
+build_boot_image $boot_modules
+
+#
+# QEMU: base-sel4 needs >= 1 GiB guest RAM; 2G matches the template
+# (pkg_runtime 256M + a second Qt6/Mesa softpipe renderer).
+# -nographic keeps it headless (serial only). The nec-usb-xhci +
+# usb-tablet give the absolute pointer usb_hid binds.
+#
+source [file join [file dirname [file normalize [info script]]] qmp.inc]
+
+#
+# Entry-click dispatch: matches the probe's `QMP-TARGET entry <x> <y>`
+# marker (the capture-located launcher-button center) and routes it
+# through qmp_tablet_click (the usb-tablet abs recipe). Unlike
+# qmp_exec_target_launch_click, which hard-codes (170,120), this takes
+# the probe-observed coordinates - the popup geometry drifts between
+# boots (QPA geometry.topLeft (0,0)/(0,28) shift, qmp.inc header +
+# docs/evidence/task-3b-phase12-launch-click.md), so a fixed target is
+# not reliable here.
+#
+proc de_tablet_click { chan tx ty } {
+	set idx [qmp_tablet_index $chan]
+	if {$idx eq ""} {
+		puts stderr "\nFAIL: query-mice shows no absolute mouse device"
+		exit 1
+	}
+	qmp_hmp $chan "mouse_set $idx"
+	set ax [expr {($tx * 32767 + 512) / 1024}]
+	set ay [expr {($ty * 32767 + 384) / 768}]
+	qmp_cmd $chan [format {{"execute":"input-send-event","arguments":{"events":[{"type":"abs","data":{"axis":"x","value":%d}},{"type":"abs","data":{"axis":"y","value":%d}}]}}} $ax $ay]
+	after 15
+	qmp_hmp $chan "mouse_button 1"
+	after 15
+	qmp_hmp $chan "mouse_button 0"
+}
+
+
+proc dispatch_sequence { chan timeout_s } {
+	global qemu_spawn_id output
+	if {![info exists qemu_spawn_id]} {
+		puts stderr "\nFAIL: qemu_spawn_id not set for dispatch_sequence"
+		exit 1
+	}
+	set timeout $timeout_s
+	match_max -i $qemu_spawn_id 200000
+	while {1} {
+		expect {
+			-i $qemu_spawn_id
+			-re {QMP-TARGET entry (-?\d+) (-?\d+)\r*\n} {
+				set ex $expect_out(1,string)
+				set ey $expect_out(2,string)
+				# Save the outer scan before the nested press wait
+				# replaces expect_out. This region may contain markers
+				# needed by subsequent history-aware gates.
+				append output $expect_out(buffer)
+				set done_pending 0
+				#
+				# Press-verified tablet click with retries: the
+				# button events drop intermittently on this host
+				# (run14) and qmp_hmp swallows HMP errors; the DE's
+				# own input report is the only landing signal. A
+				# landed click always produces a press, so a toggle
+				# can never be double-flipped by the retry.
+				#
+				set timeout 5
+				for {set attempt 1} {$attempt <= 3} {incr attempt} {
+					puts "\nqmp: dispatching entry click at ($ex,$ey) via usb-tablet abs (attempt $attempt)"
+					de_tablet_click $chan $ex $ey
+					set got_press 0
+					expect {
+						-i $qemu_spawn_id
+						-re {(QMP-TARGET done|<input press=)} {
+							# One pattern is required: separate Expect
+							# arms are tried in pattern order, so a press
+							# arm can consume an earlier done as scan text.
+							if {$expect_out(1,string) eq "QMP-TARGET done"} {
+								set done_pending 1
+								exp_continue -continue_timer
+							}
+							set got_press 1
+						}
+						-re {de-survival-probe: FAIL.*\r*\n} {
+							puts stderr "\nFAIL - probe reported failure during click"
+							exit 1
+						}
+						timeout { }
+					}
+					append output $expect_out(buffer)
+					if {$got_press} {
+						puts "\nqmp: entry click confirmed by input press"
+						break
+					}
+					puts "\nqmp: no input press after entry click attempt $attempt - retrying"
+					after 300
+				}
+				set timeout $timeout_s
+				if {$done_pending} {
+					puts "\nqmp: sequence done"
+					return
+				}
+			}
+			-re {QMP-TARGET done\r*\n} {
+				puts "\nqmp: sequence done"
+				append output $expect_out(buffer)
+				return
+			}
+			-re {de-survival-probe: FAIL.*\r*\n} {
+				puts stderr "\nFAIL - probe reported failure"
+				exit 1
+			}
+			timeout {
+				puts stderr "\nFAIL - no sequence marker within ${timeout_s}s"
+				exit 1
+			}
+		}
+	}
+}
+
+
+append qemu_args " -nographic -m 2G "
+append qemu_args " -device nec-usb-xhci,id=xhci -device usb-tablet "
+
+#
+# Gate plan. Gates 1-2 verify the driver substrate on throwaway boots
+# (the run tool respawns QEMU per run_genode_until call without a
+# spawn id). Gate 3 starts the SINGLE long-lived boot the probe's
+# whole choreography runs in; every later gate chains on that spawn.
+#
+run_genode_until {.*\[init -> drivers -> fb\] using 1024x768} 300
+run_genode_until {.*Connected device.*QEMU QEMU USB Tablet.*POINTER} 300
+
+set qmp_port [qmp_pick_port]
+append qemu_args " -qmp tcp:127.0.0.1:${qmp_port},server=on,wait=off "
+
+run_genode_until {.*de-survival-probe: \[boot\] ok} 1200
+# The first two driver gates use throwaway boots. Require the tablet
+# on this long-lived boot too before any QMP click is attempted.
+run_genode_until {.*Connected device.*QEMU QEMU USB Tablet.*POINTER} 300 $qemu_spawn_id
+
+set qmp_chan [qmp_connect $qmp_port]
+global qemu_spawn_id
+#
+# Raise the expect match-window for the QEMU serial stream BEFORE any
+# further expect block can consume data (the poll-spam match_max root
+# cause documented in docs/evidence/task-2-phase10-interactive.md).
+#
+match_max -i $qemu_spawn_id 200000
+
+#
+# Capture the serial stream for the post-hoc contract receipt (the
+# upgrade-wedge pattern, run/sponge-upgrade-wedge.run).
+#
+set de_log "[run_dir]/sponge-de-pkgd-failure.log"
+log_file -a $de_log
+
+#
+# dispatch_sequence must scan past unrelated serial lines while looking
+# for QMP markers. It appends everything it consumes to the run tool's
+# global output history, so a later gate first checks that history
+# instead of timing out on a marker that has already gone by.
+#
+rename run_genode_until de_stock_run_genode_until
+proc run_genode_until {args} {
+	global output
+	if {[regexp [lindex $args 0] $output]} {
+		return
+	}
+	set result [uplevel 1 [list de_stock_run_genode_until {*}$args]]
+	return $result
+}
+
+#
+# P2/P3/C1 (pre-wedge substrate + positive controls). The flow is
+# driven by the probe's strictly-ordered markers; the
+# `sponge-de: launcher list updated` feed log is asserted post-hoc
+# from the captured log (its interleaving with the probe markers is
+# inherently racy - the DE polls at 1500 ms).
+#
+run_genode_until {.*de-survival-probe: \[install\] ok} 120 $qemu_spawn_id
+run_genode_until {.*de-survival-probe: \[p2\] ok} 60 $qemu_spawn_id
+run_genode_until {.*de-survival-probe: \[p3\] ok} 60 $qemu_spawn_id
+run_genode_until {.*de-survival-probe: \[c1\] ok} 60 $qemu_spawn_id
+
+#
+# P1: pre-wedge launch click over the real input path. S-toggle click
+# (PS/2 recipe) opens the popup; the entry click goes through the
+# proven usb-tablet recipe (dispatch_entry_click uses the probe-located
+# coordinates - see its header; the old fixed-landing helper at
+# (170,120)); the green pixel + `window shown` are the real-launch
+# evidence (D16R.11). The green-pixel marker is the synchronization
+# gate: dispatch_sequence may consume the earlier pkgd/window lines
+# while waiting for QMP-TARGET done, so those lines are asserted from
+# the captured log instead of gated a second time.
+#
+dispatch_sequence $qmp_chan 300
+run_genode_until {.*de-survival-probe: \[p1\] ok - popup opened} 300 $qemu_spawn_id
+dispatch_sequence $qmp_chan 600
+match_max -i $qemu_spawn_id 200000
+run_genode_until {.*de-survival-probe: \[p1\] ok - pkg_gui_demo green} 600 $qemu_spawn_id
+run_genode_until {.*de-survival-probe: \[p1\] ok - popup closed} 60 $qemu_spawn_id
+
+#
+# Menu swap (pkg_gui_demo -> hello) + the injection.
+#
+run_genode_until {.*de-survival-probe: \[swap\] ok} 120 $qemu_spawn_id
+dispatch_sequence $qmp_chan 300
+run_genode_until {.*de-survival-probe: \[wedge\] injected} 60 $qemu_spawn_id
+
+#
+# C3: the health-label substrate (substring witness). The probe may
+# spend 45 s on each of three wedge publishes; the host gate must not
+# cut off that documented retry sequence.
+#
+run_genode_until {.*de-survival-probe: \[c3\] ok} 240 $qemu_spawn_id
+
+#
+# C2/P5: QMP input during the degraded window (press flip + popup
+# repaint). The probe keeps the popup window short so the C4 entry
+# click follows immediately.
+#
+dispatch_sequence $qmp_chan 300
+run_genode_until {.*de-survival-probe: \[c2\] ok} 300 $qemu_spawn_id
+
+#
+# C4: the DE's launch op into the wedge. The bounded structured error
+# (the log half of C4 - green today) must surface within the ~6 s
+# poll timeout; the machine-readable half is the probe's RED item.
+#
+dispatch_sequence $qmp_chan 300
+match_max -i $qemu_spawn_id 200000
+run_genode_until {.*launch problem surfaced on the panel: launch 'hello' failed: no answer from the package manager} 30 $qemu_spawn_id
+run_genode_until {.*de-survival-probe: \[c4\] (RED|ok)} 120 $qemu_spawn_id
+
+#
+# Q2: the restart-churn outcome observation (contract section 6).
+#
+run_genode_until {.*de-survival-probe: \[q2\] (settled|bounded)} 120 $qemu_spawn_id
+
+#
+# Recovery + C5 (the feed window and the label clear are measured
+# probe-side; the `launcher list updated` lines are asserted post-hoc).
+#
+run_genode_until {.*de-survival-probe: \[recovery\]} 60 $qemu_spawn_id
+run_genode_until {.*de-survival-probe: \[c5\] (ok|RED) - installed republicated} 180 $qemu_spawn_id
+run_genode_until {.*de-survival-probe: \[c5\] (ok|RED) - health label} 30 $qemu_spawn_id
+run_genode_until {.*de-survival-probe: \[c5\] (ok|RED) - menu repopulated} 60 $qemu_spawn_id
+
+#
+# P4: post-recovery launch click. The probe closes any leftover popup
+# first (its marker is dispatched below), then S + entry; the green
+# pixel is the real-re-launch witness (the stale-result false-PASS
+# guard).
+#
+dispatch_sequence $qmp_chan 300
+run_genode_until {.*de-survival-probe: \[p4\] ok - popup opened} 300 $qemu_spawn_id
+dispatch_sequence $qmp_chan 600
+match_max -i $qemu_spawn_id 200000
+run_genode_until {.*de-survival-probe: \[p4\] ok - pkg_gui_demo green} 600 $qemu_spawn_id
+run_genode_until {.*de-survival-probe: \[p4\] ok - popup closed} 60 $qemu_spawn_id
+
+#
+# Final verdict marker (always emitted - green or red).
+#
+run_genode_until {.*de-survival-probe: verdict } 120 $qemu_spawn_id
+
+qmp_disconnect $qmp_chan
+log_file
+
+#
+# Contract receipt (post-hoc assertions over the captured serial log).
+#
+set fd [open $de_log r]
+set de_out [read $fd]
+close $fd
+
+set has_green_marker [regexp {de-survival-probe: PASS} $de_out]
+set n_listed   [regexp -all {sponge-de: launcher list updated} $de_out]
+set n_launched [regexp -all {sponge_pkgd: launch result pkg_gui_demo -> ok} $de_out]
+set n_windows  [regexp -all {pkg_gui_demo: window shown} $de_out]
+set has_problem [regexp {launch problem surfaced on the panel: launch 'hello' failed: no answer from the package manager} $de_out]
+set red_c4 [regexp {de-survival-probe: \[c4\] RED} $de_out]
+set red_c5 [regexp {de-survival-probe: \[c5\] RED} $de_out]
+
+puts "\nde-survival-probe: ---- P2.1 contract receipt (QEMU-labeled, D16R.12) ----"
+puts "de-survival-probe: c1 panel/demo first paint ....... witnessed (probe pixels)"
+puts "de-survival-probe: c2 QMP input in degraded window  witnessed (press flip + popup)"
+puts "de-survival-probe: c3 health label substrate ....... witnessed (substring)"
+if {$has_problem} {
+	puts "de-survival-probe: c4 bounded structured error .... witnessed (launch problem log)"
+} else {
+	puts "de-survival-probe: c4 bounded structured error .... MISSING (gate failed)"
+}
+if {$red_c4} {
+	puts "de-survival-probe: c4 machine-readable witness .... RED (documented P0.4 section 4 C4 gap)"
+} else {
+	puts "de-survival-probe: c4 machine-readable witness .... ok"
+}
+puts "de-survival-probe: c5 feed recovery window ......... measured probe-side (see \[c5\] markers)"
+if {$red_c5} {
+	puts "de-survival-probe: c5 error persistence / state .... RED (documented P0.4 section 4 C5 gap)"
+} else {
+	puts "de-survival-probe: c5 error persistence / state .... ok"
+}
+puts "de-survival-probe: p1/p4 launch clicks .............. launched x$n_launched, windows x$n_windows (expect 2 each), feed updates x$n_listed (expect >= 3)"
+if {$has_green_marker} {
+	puts "de-survival-probe: n1 green marker ................ present (scenario GREEN)"
+} else {
+	puts "de-survival-probe: n1 green marker ................ absent - the P2.1 red gate holds (marker de-survival-probe:PASS deliberately not printed here)"
+}
+
+if {!$has_problem} {
+	puts "de-survival-probe: FAIL - the bounded structured error never surfaced (harness or DE regression)"
+	exit 1
+}
+
+if {$n_launched != 2 || $n_windows != 2 || $n_listed < 3} {
+	puts "de-survival-probe: FAIL - launch/window/feed positive controls are incomplete (harness or DE regression)"
+	exit 1
+}
+
+if {$has_green_marker} {
+	puts "de-survival-probe: scenario GREEN (P2.5 mechanisms present)"
+	exit 0
+}
+
+puts "\nde-survival-probe: scenario RED - expected before P2.5: c4 machine-readable error artifact + c5 error-persistence/explicit degraded-recovery semantics are absent (contract section 4)."
+puts "de-survival-probe: See the per-item markers above; the red receipt is this log."
+exit 1
