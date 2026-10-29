@@ -24,6 +24,16 @@
  *
  *   The methods block the calling thread for up to ~6s (200ms initial
  *   settle + up to 60 x 100ms polls) waiting for a matching result.
+ *   The poll budget is per-instance: the constructor takes a poll
+ *   timeout (default 6000ms, exactly the historical 60 x 100ms polls)
+ *   and stores the corresponding poll-iteration count, which every
+ *   request loop uses in place of the old literal 60. Existing callers
+ *   keep the default; only a caller with a measured slow-backend
+ *   budget overrides it (prod_launch_probe passes 30000ms - its launch
+ *   requests can be answered only after the package runtimes' boot
+ *   path on the storage chain, which may exceed 6s). A spent budget
+ *   still returns false and the caller fails loudly; raising the
+ *   budget never masks a missing result.
  *   vct is short-lived and blocks happily. sponge-de MUST NOT call
  *   these from the GUI thread (Qt event loop): the launcher uses a
  *   QTimer-driven non-blocking poll path instead (launcher_controller),
@@ -83,10 +93,17 @@ class ReportRomClient
 		 * client opens and the ROM it polls. Defaults ("request" /
 		 * "result") preserve the sponge_pkgd wiring; sponge_configd is
 		 * reached with "config_request" / "config_result".
+		 *
+		 * `poll_timeout_ms` bounds each request's wait for a matching
+		 * result (the 200ms settle is additional). It is stored as the
+		 * poll-iteration count - one 100ms poll per iteration - so the
+		 * default 6000ms is exactly the historical 60 polls. Callers
+		 * keep the default unless they have a measured reason not to.
 		 */
 		explicit ReportRomClient(Genode::Env &env,
 		                         char const *request_label = "request",
-		                         char const *result_label  = "result");
+		                         char const *result_label  = "result",
+		                         unsigned poll_timeout_ms = 6000);
 
 		/* ---- sponge_pkgd requests ---- */
 
@@ -119,6 +136,11 @@ class ReportRomClient
 		 * (members initialize in declaration order). */
 		Genode::String<32> const _request_label;
 		Genode::String<32> const _result_label;
+
+		/* Poll budget for every request loop: one 100ms poll per
+		 * iteration, derived from the constructor's poll_timeout_ms
+		 * (6000ms default -> 60 iterations). */
+		unsigned const _poll_iters;
 
 		Timer::Connection                _timer            { _env };
 		Genode::Expanding_reporter       _request_reporter { _env, "request", _request_label.string() };

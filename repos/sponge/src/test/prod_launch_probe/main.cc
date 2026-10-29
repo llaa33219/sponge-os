@@ -37,8 +37,13 @@ struct Prod_launch_probe::Main
 
 	Timer::Connection _timer { _env };
 
+	/* 30s result budget: a launch answer can come only after the
+	 * package runtimes' boot path on the storage chain has processed
+	 * the request, which on product media may exceed the 6s default.
+	 * A spent budget still FAILs loudly below; the budget is a wait,
+	 * not a mask. */
 	Sponge::Backend::ReportRomClient _launcher {
-		_env, "probe_request", "probe_result" };
+		_env, "probe_request", "probe_result", 30000 };
 
 	Main(Genode::Env &env) : _env(env)
 	{

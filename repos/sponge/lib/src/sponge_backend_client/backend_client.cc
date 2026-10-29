@@ -66,11 +66,13 @@ bool Result_match::config(Genode::Xml_node const &r,
 
 ReportRomClient::ReportRomClient(Genode::Env &env,
                                  char const *request_label,
-                                 char const *result_label)
+                                 char const *result_label,
+                                 unsigned poll_timeout_ms)
 :
 	_env(env),
 	_request_label(request_label),
-	_result_label(result_label)
+	_result_label(result_label),
+	_poll_iters(poll_timeout_ms / 100)
 { }
 
 
@@ -84,7 +86,7 @@ bool ReportRomClient::request(char const *op, char const *pkg)
 	});
 
 	_timer.msleep(200);
-	for (unsigned i = 0; i < 60; ++i) {
+	for (unsigned i = 0; i < _poll_iters; ++i) {
 		_result_rom.update();
 		try {
 			if (_result_rom.valid() &&
@@ -105,7 +107,7 @@ bool ReportRomClient::request(char const *op)
 	});
 
 	_timer.msleep(200);
-	for (unsigned i = 0; i < 60; ++i) {
+	for (unsigned i = 0; i < _poll_iters; ++i) {
 		_result_rom.update();
 		try {
 			if (_result_rom.valid() &&
@@ -129,7 +131,7 @@ bool ReportRomClient::config_get(char const *key)
 	});
 
 	_timer.msleep(200);
-	for (unsigned i = 0; i < 60; ++i) {
+	for (unsigned i = 0; i < _poll_iters; ++i) {
 		_result_rom.update();
 		try {
 			if (_result_rom.valid() &&
@@ -152,7 +154,7 @@ bool ReportRomClient::config_set(char const *key, char const *value)
 	});
 
 	_timer.msleep(200);
-	for (unsigned i = 0; i < 60; ++i) {
+	for (unsigned i = 0; i < _poll_iters; ++i) {
 		_result_rom.update();
 		try {
 			if (_result_rom.valid() &&
@@ -173,7 +175,7 @@ bool ReportRomClient::config_list()
 	});
 
 	_timer.msleep(200);
-	for (unsigned i = 0; i < 60; ++i) {
+	for (unsigned i = 0; i < _poll_iters; ++i) {
 		_result_rom.update();
 		try {
 			if (_result_rom.valid() &&
