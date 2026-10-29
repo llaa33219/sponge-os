@@ -897,7 +897,13 @@ Result validate_report(Cursor &c, Elem const &e)
 /*
  * <repro_padding> — the ONLY test-only exception (see the header):
  * the repro-harness knobs of sponge_pkgd emit
- * pad_bytes/64 <p v="64 chars"/> nodes. Shape checked conservatively.
+ * pad_bytes/64 <p v="64 chars"/> nodes. Shape checked conservatively:
+ * no attributes, <p> children only, each v exactly 64 characters.
+ * The <p> node COUNT is deliberately NOT bounded — repro_pad_grow's
+ * budget grows linearly with the write counter without an upper bound
+ * (pkgd.h REPRO_PAD_GROW_BYTES), so a count cap returns INVALID_VALUE
+ * for legitimate repro writes (the write-3 regression the self-test
+ * pins).
  */
 Result validate_repro_padding(Cursor &c, Elem const &e, Workspace &)
 {
@@ -912,7 +918,6 @@ Result validate_repro_padding(Cursor &c, Elem const &e, Workspace &)
 	if (e.self_closing)
 		return Result();
 
-	unsigned num_p = 0;
 	for (;;) {
 		r = skip_misc(c);
 		if (!r.ok)
@@ -941,13 +946,6 @@ Result validate_repro_padding(Cursor &c, Elem const &e, Workspace &)
 			m.add_quoted(p.name, p.name_len);
 			m.add(" (only <p> is allowed)");
 			return error(Code::UNKNOWN_NODE, line, m);
-		}
-
-		if (++num_p > 1024) {
-			Msg m;
-			m.add(ctx.buf, ctx.len);
-			m.add(": more than 1024 <p> nodes");
-			return error(Code::INVALID_VALUE, line, m);
 		}
 
 		Msg pctx;

@@ -97,7 +97,10 @@
  *      the validator permits it for compatibility with the current
  *      repro scenarios and validates its shape conservatively: no
  *      attributes, children only <p v="..."/>, each v exactly 64
- *      characters.
+ *      characters. The <p> node COUNT is deliberately not bounded:
+ *      repro_pad_grow's budget grows linearly with the write counter
+ *      without an upper bound (pkgd.h REPRO_PAD_GROW_BYTES), so any
+ *      count cap would reject legitimate repro writes.
  *   2. The inline <config> block inside <start> is OPAQUE production
  *      content: it is package metadata emitted verbatim (raw append),
  *      and init's own schema treats it as "anything"

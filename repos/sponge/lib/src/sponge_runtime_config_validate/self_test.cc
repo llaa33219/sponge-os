@@ -279,6 +279,40 @@ int main()
 		pad_options.pad_bytes     = 128;
 		expect_ok("rendered: pad/app (repro_padding accepted)",
 		          render(app, FIX_PAD, 1, pad_options));
+
+		/*
+		 * Regression pin for a return-status bug: repro_pad_grow pads
+		 * write N with N * REPRO_PAD_GROW_BYTES (pkgd.h) and the
+		 * emitter turns that into pad_bytes/64 <p> nodes WITHOUT an
+		 * upper bound, so a shape-valid <repro_padding> may carry far
+		 * more than 1024 children. The validator used to reject the
+		 * overflow ("more than 1024 <p> nodes" -> INVALID_VALUE),
+		 * which failed the regen-survival scenario's write 3 (98304
+		 * pad bytes = 1536 nodes) although the document is exactly the
+		 * documented test-only exception. Render that exact budget and
+		 * require OK; the shape gates (below) must keep rejecting
+		 * genuine violations regardless of node count.
+		 */
+		{
+			static char pad3_buf[262144];
+
+			Emit_options pad3 { };
+			pad3.binary_prefix = "bin/";
+			pad3.pad_bytes     = 98304;
+
+			Genode::size_t const used = Sponge::Pkg_config::emit_config(
+				pad3_buf, sizeof(pad3_buf), app, FIX_PAD, 1, pad3);
+
+			if (used == 0) {
+				++cases;
+				fail("rendered: repro_pad_grow write-3 pad accepted",
+				     "render buffer exhausted", Result());
+			} else {
+				expect_ok("rendered: repro_pad_grow write-3 pad accepted "
+				          "(1536 <p> nodes)",
+				          std::string(pad3_buf, used - 2));
+			}
+		}
 	}
 
 	/* ============ 2. hand-written positive literals ============ */
@@ -848,6 +882,105 @@ int main()
 	           Code::XML_SYNTAX,
 	           render(Sponge::Pkg_config::app_target(),
 	                  FIX_MALFORMED, 1, Emit_options { }));
+
+	/* ============ 10. publication seam (P1.5) pins ============ */
+
+	/*
+	 * The exact repro_malformed corruption — a raw tag truncated
+	 * mid-attribute, appended after the renderer, app config only —
+	 * must be rejected with a non-empty detail that does NOT echo the
+	 * tail token. run/sponge-config-emission-invalid.run matches
+	 * "repro_malformed_tail" ANYWHERE in the serial log as proof of a
+	 * silent publication, so a rejection reason quoting the token
+	 * would false-positive that detector; the same reason is also
+	 * serialized into <result error="..."/>, whose attribute must stay
+	 * parseable. The raw-'<' pin records why sponge_pkgd's
+	 * attribute-safe scrub of the detail is load-bearing (the detail
+	 * legitimately quotes the offending construct).
+	 */
+	{
+		static char tail_buf[65536];
+
+		Genode::size_t const used =
+			Genode::Xml_generator::generate(
+				Genode::Byte_range_ptr(tail_buf, sizeof(tail_buf)),
+				"config",
+				[&] (Genode::Xml_generator &g) {
+					Sponge::Pkg_config::emit_target(
+						g, Sponge::Pkg_config::app_target(),
+						FIX_PAD, 1, Emit_options { });
+					g.append("<start name=\"repro_malformed_tail");
+				}).convert<Genode::size_t>(
+					[] (Genode::size_t n) { return n; },
+					[] (Genode::Buffer_error) { return (Genode::size_t)0; });
+
+		++cases;
+		if (used == 0) {
+			fail("seam: malformed tail render",
+			     "render buffer exhausted", Result());
+		} else {
+			Workspace ws;
+			Result const r = Sponge::Runtime_config_validate::validate(
+				tail_buf, (unsigned)(used - 2), ws);
+
+			if (r.ok)
+				fail("seam: malformed tail rejected",
+				     "expected rejection", r);
+			else if (strstr(r.detail, "repro_malformed_tail") != nullptr)
+				fail("seam: detail must not echo the detector token",
+				     "would false-positive the publication detector", r);
+			else if (r.detail[0] == '\0')
+				fail("seam: non-empty detail", "detail empty", r);
+			else if (strchr(r.detail, '<') == nullptr)
+				fail("seam: detail quotes the offending construct",
+				     "the attribute-scrub pin lost its reason", r);
+		}
+	}
+
+	/*
+	 * Body-append republish (the seam's publish step) is byte-
+	 * identical to the validated document: Xml_generator::generate
+	 * opens a fresh <config> root and the BODY of the rendered
+	 * document (everything between the root open tag and </config>) is
+	 * appended raw — no nested <config> root, no drift, no truncation.
+	 * Pins the exact framing the seam derives (doc = used - 2; body =
+	 * [8, doc_len - 9)).
+	 */
+	{
+		static char rendered[65536], republished[65536];
+
+		Genode::size_t const used_r = Sponge::Pkg_config::emit_config(
+			rendered, sizeof(rendered), Sponge::Pkg_config::app_target(),
+			FIX_MIXED, 5, Emit_options { });
+
+		++cases;
+		if (used_r < 2 + 8 + 9) {
+			fail("seam: republish render",
+			     "render buffer exhausted", Result());
+		} else {
+			Genode::size_t const doc_len  = used_r - 2;
+			char const *const   body      = rendered + 8;
+			Genode::size_t const body_len = doc_len - 8 - 9;
+
+			Genode::size_t const used_p =
+				Genode::Xml_generator::generate(
+					Genode::Byte_range_ptr(republished, sizeof(republished)),
+					"config",
+					[&] (Genode::Xml_generator &g) {
+						g.append(body, body_len);
+					}).convert<Genode::size_t>(
+						[] (Genode::size_t n) { return n; },
+						[] (Genode::Buffer_error) {
+							return (Genode::size_t)0;
+						});
+
+			if (used_p != used_r ||
+			    memcmp(rendered, republished, used_r) != 0)
+				fail("seam: republish is byte-identical",
+				     "body-append diverged from the rendered document",
+				     Result());
+		}
+	}
 
 	if (failures) {
 		printf("self-test: FAIL (%u of %u case(s))\n", failures, cases);
