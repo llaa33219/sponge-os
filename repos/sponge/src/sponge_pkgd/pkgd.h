@@ -750,6 +750,11 @@ class Sponge::Pkgd::Main
 		 * throw — the same reason <binaries/> and <launcher_request/>
 		 * are gated), so a scenario that does not relay the report must
 		 * not carry the node.
+		 *
+		 * Legacy mode only: in grouped mode (<grouped_runtimes/>) this
+		 * single-app gate is replaced by the per-class gates below and
+		 * runtime_state is never opened — <admission/> then acts as the
+		 * simple-class alias (P2.4 commit 2).
 		 */
 		Genode::Constructible<Genode::Attached_rom_dataspace> _state_rom { };
 		bool               _admission_armed { false };
@@ -763,6 +768,37 @@ class Sponge::Pkgd::Main
 		 * session is fatal under the base Env policy. */
 		Genode::Constructible<Genode::Attached_rom_dataspace> _driver_state_rom { };
 		bool               _driver_admission_armed { false };
+
+		/*
+		 * Per-class admission (grouped mode, P2.4 commit 2). Each app
+		 * runtime class has its own sandbox state report —
+		 * runtime_simple_state / runtime_terminal_state /
+		 * runtime_browser_state — because each class runtime is a
+		 * separate sandbox with its own grant: reading another class's
+		 * budget would compare a quota against a pool it is never
+		 * subtracted from (the same rule that keeps drivers on
+		 * driver_runtime_state).
+		 *
+		 * Arming is per class: <simple_admission/>, <terminal_admission/>
+		 * and <browser_admission/>, one node per class relay. In grouped
+		 * mode <admission/> is the SIMPLE-class alias (it arms the same
+		 * gate with one diagnostic, so legacy deployments can flip
+		 * <grouped_runtimes/> on without rewriting their admission
+		 * node); in legacy mode it stays the unchanged single-app gate
+		 * above. The per-class nodes are inert (warned, ignored) without
+		 * <grouped_runtimes/>.
+		 *
+		 * Same opt-in/fail-open contract as _state_rom: a node opens
+		 * its ROM (denied sessions are fatal), an unarmed class admits
+		 * (explicit escape hatch), and a not-yet-published report admits
+		 * (delayed first report) — per class, never by borrowing another
+		 * class's budget. Indexed by app-class slot (SLOT_APP = simple,
+		 * SLOT_TERMINAL, SLOT_BROWSER).
+		 */
+		static constexpr unsigned NUM_APP_CLASSES = 3;
+
+		Genode::Constructible<Genode::Attached_rom_dataspace> _class_state_rom[NUM_APP_CLASSES] { };
+		bool _class_admission_armed[NUM_APP_CLASSES] { };
 
 		/*
 		 * Admission safety margin. The MATH lives in the pure
@@ -838,6 +874,8 @@ class Sponge::Pkgd::Main
 		/* ---- resource admission control (optional, config-gated) ---- */
 		void _init_admission();
 		void _init_driver_admission();
+		void _init_class_admission();
+		bool _arm_class_admission(unsigned slot);
 		static bool _read_budget(Genode::Attached_rom_dataspace &state,
 		                         Genode::size_t &avail_ram,
 		                         unsigned &avail_caps);
@@ -845,6 +883,16 @@ class Sponge::Pkgd::Main
 		bool _admits(Package const &p, Genode::size_t need_ram,
 		             Genode::size_t &avail_ram,
 		             unsigned need_caps, unsigned &avail_caps);
+
+		/*
+		 * Diagnostic name of the sandbox state report one slot admits
+		 * against ("pkg_runtime" / "driver_runtime" in legacy mode,
+		 * "runtime_simple" / "runtime_terminal" / "runtime_browser"
+		 * per grouped app class) — the log vocabulary of the fail-open
+		 * lines, kept in one place so the per-class and legacy messages
+		 * cannot drift.
+		 */
+		char const *_slot_state_label(unsigned slot) const;
 
 		/* ---- launcher channel (optional, config-gated) ---- */
 		void _init_launcher_channel();

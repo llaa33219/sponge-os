@@ -87,48 +87,55 @@ bool Sponge::Pkgd::Main::_admits(Package const &p,
                                  Genode::size_t &avail_ram,
                                  unsigned need_caps, unsigned &avail_caps)
 {
-	if (p.is_driver()) {
+	/*
+	 * Budget selection is by emission slot (P2.4 commit 2): a package
+	 * is admitted against the sandbox it will actually be spawned in —
+	 * driver_runtime for a driver, its OWN class runtime's report in
+	 * grouped mode, pkg_runtime's single-app report in legacy mode —
+	 * never against another class's pool, which would compare the
+	 * quota against a number it is never subtracted from.
+	 */
+	unsigned const slot   = _emission_slot(p);
+	bool   const driver  = (slot == SLOT_DRIVER);
+
+	if (driver) {
 		if (!_driver_admission_armed || !_driver_state_rom.constructed()) {
 			Genode::log("sponge_pkgd: driver admission not armed — admitting ",
 			            p.name);
 			return true;
 		}
 	} else if (_grouped_runtimes) {
-		/*
-		 * Grouped mode: app-class admission is unarmed in this unit
-		 * (see _init_admission) — the legacy runtime_state budget
-		 * must not be read for a terminal/browser class (wrong
-		 * sandbox). Fail-open with a clear log until the per-class
-		 * budgets land.
-		 */
-		Genode::log("sponge_pkgd: grouped runtimes: per-class admission "
-		            "not armed — admitting ", p.name);
-		return true;
+		/* Per-class escape hatch: an unarmed class admits (never by
+		 * borrowing another class's budget). */
+		if (!_class_admission_armed[slot]) {
+			Genode::log("sponge_pkgd: ", _slot_name(slot),
+			            " admission not armed — admitting ", p.name);
+			return true;
+		}
 	} else if (!_admission_armed || !_state_rom.constructed()) {
 		Genode::log("sponge_pkgd: admission not armed — admitting ", p.name);
 		return true;
 	}
 
-	/*
-	 * A driver package is checked against driver_runtime's budget, not
-	 * pkg_runtime's — the two sandboxes have separate grants, so reading
-	 * the app report would compare a driver's quota against a number it
-	 * is never subtracted from.
-	 */
 	Genode::size_t free_ram  { 0 };
 	unsigned       free_caps { 0 };
 	bool have_budget { false };
-	if (p.is_driver()) {
+	if (driver) {
 		if (_driver_admission_armed && _driver_state_rom.constructed())
 			have_budget = _read_budget(*_driver_state_rom,
+			                          free_ram, free_caps);
+	} else if (_grouped_runtimes) {
+		if (_class_state_rom[slot].constructed())
+			have_budget = _read_budget(*_class_state_rom[slot],
 			                          free_ram, free_caps);
 	} else {
 		have_budget = _read_budget(*_state_rom, free_ram, free_caps);
 	}
 
+	/* Delayed first report: a not-yet-published report admits, per
+	 * class (see _init_class_admission). */
 	if (!have_budget) {
-		Genode::log("sponge_pkgd: no ",
-		            p.is_driver() ? "driver_runtime" : "pkg_runtime",
+		Genode::log("sponge_pkgd: no ", _slot_state_label(slot),
 		            " state report yet — admitting ", p.name);
 		return true;
 	}
@@ -146,21 +153,35 @@ bool Sponge::Pkgd::Main::_admits(Package const &p,
 }
 
 
+char const *Sponge::Pkgd::Main::_slot_state_label(unsigned slot) const
+{
+	if (slot == SLOT_DRIVER)
+		return "driver_runtime";
+	if (!_grouped_runtimes)
+		return "pkg_runtime";
+	switch (slot) {
+	case SLOT_APP:      return "runtime_simple";
+	case SLOT_TERMINAL: return "runtime_terminal";
+	default:            return "runtime_browser";
+	}
+}
+
+
 /*
- * Arm admission control. Opt-in via an <admission/> node in this
+ * Arm admission control for the legacy single-app gate — or, in grouped
+ * mode, the simple-class alias. Opt-in via an <admission/> node in this
  * component's <config>, the same gate <binaries/> and
- * <launcher_request/> use: the "runtime_state" ROM route must be wired
- * by the scenario, and a denied ROM session is fatal under Genode's base
+ * <launcher_request/> use: the state-report ROM route must be wired by
+ * the scenario, and a denied ROM session is fatal under Genode's base
  * Env policy (sleep_forever, not a catchable throw).
  *
- * Grouped mode (<grouped_runtimes/>) deliberately does NOT arm this:
- * the legacy runtime_state report is pkg_runtime's single-app budget,
- * and per-class budgets (runtime_simple/runtime_terminal/
- * runtime_browser state reports) are the next unit's work. Reading the
- * single-app budget for a terminal/browser class would be checking the
- * wrong sandbox, so grouped mode leaves app-class admission UNARMED
- * (fail-open with this warning) until then. Legacy <admission/>
- * behavior is unchanged, and driver admission is unaffected either way
+ * In grouped mode (<grouped_runtimes/>) <admission/> is the SIMPLE-class
+ * alias: it arms exactly what <simple_admission/> arms (the
+ * runtime_simple_state report) with one diagnostic, so a legacy
+ * deployment can flip the marker on without rewriting its admission
+ * node. The legacy runtime_state report is pkg_runtime's single-app
+ * pool and is deliberately never opened in grouped mode. Legacy mode
+ * keeps this gate unchanged. Driver admission is unaffected either way
  * (driver_runtime is the same sandbox in both modes).
  */
 void Sponge::Pkgd::Main::_init_admission()
@@ -169,13 +190,11 @@ void Sponge::Pkgd::Main::_init_admission()
 		_config_rom.node().with_optional_sub_node("admission",
 			[&] (Genode::Node const &) {
 				if (_grouped_runtimes) {
-					Genode::warning(
-						"sponge_pkgd: grouped runtimes: <admission/> "
-						"cannot be armed yet — per-class budgets "
-						"(runtime_simple/terminal/browser state "
-						"reports) land in the next unit; app-class "
-						"installs/launches are admitted without a "
-						"budget check");
+					Genode::log("sponge_pkgd: grouped runtimes: "
+					            "<admission/> is the simple-class alias "
+					            "(runtime_simple_state) — prefer "
+					            "<simple_admission/>");
+					_arm_class_admission(SLOT_APP);
 					return;
 				}
 				_state_rom.construct(_env, "runtime_state");
@@ -187,6 +206,70 @@ void Sponge::Pkgd::Main::_init_admission()
 		Genode::warning("sponge_pkgd: malformed <config> — "
 		                "resource admission disabled");
 	}
+}
+
+
+/*
+ * Per-class admission arming (grouped mode, P2.4 commit 2).
+ * <simple_admission/>, <terminal_admission/> and <browser_admission/>
+ * each open that class's sandbox state report (runtime_simple_state /
+ * runtime_terminal_state / runtime_browser_state); the grouped
+ * <admission/> alias arms the same simple gate from _init_admission.
+ *
+ * Without <grouped_runtimes/> the per-class nodes are inert with a
+ * warning — there are no class sandboxes to read, and silently opening
+ * their relays would be an unwanted capability. Without a node, the
+ * class keeps the explicit fail-open escape hatch and the delayed
+ * first-report behavior (AGENTS.md §1.1): each class fails open on its
+ * own, never by borrowing another class's budget. A denied ROM session
+ * is fatal under the base Env policy, which is exactly why each class's
+ * ROM is opened only by its own node.
+ */
+void Sponge::Pkgd::Main::_init_class_admission()
+{
+	struct Node { char const *name; unsigned slot; };
+	static Node const nodes[] {
+		{ "simple_admission",   SLOT_APP },
+		{ "terminal_admission", SLOT_TERMINAL },
+		{ "browser_admission",  SLOT_BROWSER },
+	};
+
+	try {
+		for (Node const &n : nodes) {
+			_config_rom.node().with_optional_sub_node(n.name,
+				[&] (Genode::Node const &) {
+					if (!_grouped_runtimes) {
+						Genode::warning("sponge_pkgd: <", n.name,
+						                "> requires <grouped_runtimes/> "
+						                "— ignored");
+						return;
+					}
+					_arm_class_admission(n.slot);
+				});
+		}
+	} catch (Genode::Xml_node::Invalid_syntax) {
+		Genode::warning("sponge_pkgd: malformed <config> — per-class "
+		                "resource admission disabled");
+	}
+}
+
+
+bool Sponge::Pkgd::Main::_arm_class_admission(unsigned slot)
+{
+	if (slot >= NUM_APP_CLASSES)
+		return false;
+
+	/* Idempotent: <admission/> (the grouped simple alias) and
+	 * <simple_admission/> may both name the simple gate. */
+	if (_class_state_rom[slot].constructed())
+		return true;
+
+	Genode::String<64> const rom_label(_slot_state_label(slot), "_state");
+	_class_state_rom[slot].construct(_env, rom_label.string());
+	_class_admission_armed[slot] = true;
+	Genode::log("sponge_pkgd: ", _slot_name(slot),
+	            " class admission armed (", rom_label, " report)");
+	return true;
 }
 
 

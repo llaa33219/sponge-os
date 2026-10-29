@@ -64,16 +64,24 @@ void Sponge::Pkgd::Main::_do_install(Genode::String<128> const &pkg)
 	 * _plan is install-ordered (deps before dependents) and the budget is
 	 * decremented per admitted package, so a chain of autostart deps is
 	 * checked against what each leaves the next one.
+	 *
+	 * Budgets are selected by emission slot (P2.4 commit 2): one memo
+	 * per sandbox a plan can spawn into, so each package is admitted
+	 * against the grant of the sandbox it will actually be spawned in —
+	 * not against a merged pool, and never against another class's
+	 * budget. Grouped mode additionally parses and refuses malformed
+	 * quotas of every autostart newcomer — app-class and driver alike —
+	 * regardless of admission arming: an unparsable <quota ram="...">
+	 * must be refused here rather than flow into the emitted <resource
+	 * quantum="..."> and wedge every later publication. The scope is
+	 * exactly this pre-flight (newly-installed <autostart/> packages):
+	 * bootstrap restore and metadata mutation do not re-parse quotas
+	 * here. Legacy keeps its arm-gated behavior unchanged.
 	 */
-	if (_admission_armed || _driver_admission_armed) {
-		/* One budget per sandbox. A plan may legitimately mix kinds (a
-		 * driver with an app dependency, or the reverse), and each kind
-		 * is admitted against the grant of the sandbox it will actually
-		 * be spawned in — not against a merged pool that neither sandbox
-		 * would ever refuse. */
-		Genode::size_t free_ram  [2] { 0, 0 };
-		unsigned       free_caps[2] { 0, 0 };
-		bool           known    [2] { false, false };
+	if (_grouped_runtimes || _admission_armed || _driver_admission_armed) {
+		Genode::size_t free_ram  [NUM_SLOTS] { };
+		unsigned       free_caps[NUM_SLOTS] { };
+		bool           known    [NUM_SLOTS] { };
 		Genode::size_t avail_ram  { 0 };
 		unsigned       avail_caps { 0 };
 
@@ -82,53 +90,67 @@ void Sponge::Pkgd::Main::_do_install(Genode::String<128> const &pkg)
 			if (!c.has_autostart || _is_running(c.name.string()))
 				continue;
 
-			/*
-			 * Grouped mode: app-class admission is deliberately
-			 * UNARMED in this unit — the legacy runtime_state budget
-			 * is pkg_runtime's single-app pool and checking a
-			 * terminal/browser class against it would be checking the
-			 * wrong sandbox. Per-class budgets land with the next
-			 * unit; until then app-class packages are admitted
-			 * (fail-open, logged) and driver packages below are still
-			 * checked against driver_runtime. Legacy mode keeps the
-			 * <admission/> behavior unchanged.
-			 */
-			if (_grouped_runtimes && !c.is_driver()) {
-				Genode::log("sponge_pkgd: grouped runtimes: per-class "
-				            "admission not armed — admitting ", c.name);
-				continue;
-			}
+			unsigned const slot   = _emission_slot(c);
+			bool   const driver  = (slot == SLOT_DRIVER);
 
 			Genode::size_t need_ram { 0 };
 			if (!Sponge::Pkg_admission::quota_bytes(c.ram, need_ram)) {
 				Genode::warning("sponge_pkgd: package '", c.name,
 				                "' has an unparsable <quota ram=\"", c.ram,
 				                "\"> — refusing the install");
-				_report_insufficient("install", pkg, 0, 0, 0, 0);
+				/* The refusal names the offending package (c.name),
+				 * not the request root: in a mixed plan the malformed
+				 * quota may belong to a dependency. */
+				_report_insufficient("install", c.name, 0, 0, 0, 0);
 				return;
 			}
 
-			unsigned const k = c.is_driver() ? 1u : 0u;
-			if (!known[k]) {
-				bool ok = (k == 1)
+			/* Grouped driver budget examination keeps its arm-gated
+			 * rule (unchanged): when <driver_admission/> is absent only
+			 * the budget check below is skipped — the quota sanity
+			 * above has already run for every autostart newcomer,
+			 * regardless of arming. */
+			if (_grouped_runtimes && driver && !_driver_admission_armed)
+				continue;
+
+			/* Grouped per-class escape hatch: an unarmed class admits
+			 * without a budget check, on its own (never borrowing
+			 * another class's budget). */
+			if (_grouped_runtimes && !driver && !_class_admission_armed[slot]) {
+				Genode::log("sponge_pkgd: ", _slot_name(slot),
+				            " admission not armed — admitting ", c.name);
+				continue;
+			}
+
+			if (!known[slot]) {
+				bool ok = driver
 					? (_driver_admission_armed &&
 					   _driver_state_rom.constructed() &&
 					   _read_budget(*_driver_state_rom,
-					                free_ram[k], free_caps[k]))
-					: (_admission_armed && _state_rom.constructed() &&
-					   _read_budget(*_state_rom,
-					                free_ram[k], free_caps[k]));
+					                free_ram[slot], free_caps[slot]))
+					: (_grouped_runtimes
+					   ? (_class_state_rom[slot].constructed() &&
+					      _read_budget(*_class_state_rom[slot],
+					                   free_ram[slot], free_caps[slot]))
+					   : (_admission_armed && _state_rom.constructed() &&
+					      _read_budget(*_state_rom,
+					                   free_ram[slot], free_caps[slot])));
 				if (!ok) {
 					Genode::log("sponge_pkgd: no ",
-					            k ? "driver_runtime" : "pkg_runtime",
+					            _slot_state_label(slot),
 					            " state report yet — admitting ", c.name);
-					break;
+					/* Legacy keeps the pre-existing walk-stopping
+					 * quirk byte for byte; grouped fails open per
+					 * class and keeps checking the other classes. */
+					if (!_grouped_runtimes)
+						break;
+					continue;
 				}
-				known[k] = true;
+				known[slot] = true;
 			}
 
-			avail_ram  = free_ram[k];
-			avail_caps = free_caps[k];
+			avail_ram  = free_ram[slot];
+			avail_caps = free_caps[slot];
 
 			if (!_admits(c, need_ram, avail_ram, c.caps, avail_caps)) {
 				_report_insufficient("install", c.name, need_ram,
@@ -136,7 +158,7 @@ void Sponge::Pkgd::Main::_do_install(Genode::String<128> const &pkg)
 				return;
 			}
 
-			Sponge::Pkg_admission::consume(free_ram[k], free_caps[k],
+			Sponge::Pkg_admission::consume(free_ram[slot], free_caps[slot],
 			                               need_ram, c.caps);
 		}
 	}

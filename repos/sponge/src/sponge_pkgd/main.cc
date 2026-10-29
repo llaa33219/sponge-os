@@ -1525,13 +1525,15 @@ void Sponge::Pkgd::Main::_bootstrap()
 _init_binary_manifest();
 
 	/*
-	 * Resource admission control (opt-in via <admission/>). Armed before
-	 * the first request so a launch never reaches _admits unarmed while
-	 * the report is merely late — and never arms itself in a scenario
-	 * that does not relay the state report (a denied ROM session is
-	 * fatal under the base Env policy).
+	 * Resource admission control (opt-in via <admission/> and, in
+	 * grouped mode, <simple_admission/>/<terminal_admission/>/
+	 * <browser_admission/>). Armed before the first request so a launch
+	 * never reaches _admits unarmed while a report is merely late — and
+	 * never arms itself in a scenario that does not relay the state
+	 * report (a denied ROM session is fatal under the base Env policy).
 	 */
-_init_admission();
+	_init_admission();
+	_init_class_admission();
 	_init_driver_admission();
 
 	/* Rebuild the full installed set from whatever roots we now have
