@@ -351,6 +351,7 @@ void Sponge::Pkgd::Main::_generate_runtime_config()
 	bool repro_pad = false;
 	bool repro_pad_grow = false;
 	Genode::uint64_t repro_empty_from = 0;
+	Genode::uint64_t repro_malformed_from = 0;
 	{
 		_config_rom.update();
 		if (_config_rom.valid()) {
@@ -380,6 +381,29 @@ void Sponge::Pkgd::Main::_generate_runtime_config()
 						Genode::log("sponge_pkgd: repro_empty_from=",
 						            repro_empty_from);
 				}
+				/* <repro_malformed_from: N> — negative control for the
+				 * emission-validation gate (run/sponge-config-emission-
+				 * invalid.run): from write N on, the RENDERED app config
+				 * is corrupted at the reporter write site with a raw tag
+				 * truncated mid-attribute. The knob corrupts the
+				 * rendering only — it never disables or bypasses
+				 * validation and never touches the pure emission library.
+				 * Same value requirement as the knobs above ("repro_
+				 * malformed_from: 2"; a bare token is dropped by the HID
+				 * parser). The 20-byte compare is guarded because the
+				 * loop bound above only guarantees 16 bytes in range. */
+				if (i + 20 <= sz &&
+				    Genode::strcmp(base + i, "repro_malformed_from", 20) == 0) {
+					Genode::size_t j = i + 20;
+					while (j < sz && (base[j] == ' ' || base[j] == ':'
+					                  || base[j] == '"' || base[j] == '=')) ++j;
+					while (j < sz && base[j] >= '0' && base[j] <= '9')
+						repro_malformed_from = repro_malformed_from * 10
+						                     + (Genode::uint64_t)(base[j++] - '0');
+					if (repro_malformed_from)
+						Genode::log("sponge_pkgd: repro_malformed_from=",
+						            repro_malformed_from);
+				}
 			}
 		}
 	}
@@ -393,6 +417,18 @@ void Sponge::Pkgd::Main::_generate_runtime_config()
 	bool const emit_driver = _driver_config_dirty;
 	_app_config_dirty    = false;
 	_driver_config_dirty = false;
+
+	/* test-only (repro harness): <repro_malformed_from: N> marks the
+	 * current write; _emit_runtime_config corrupts the rendered app
+	 * config accordingly. The audit line is mandatory (the repro-family
+	 * rule): without it a run cannot distinguish "the knob fired" from
+	 * "the knob silently never matched". repro-only. */
+	_malform_this_write = (repro_malformed_from != 0 &&
+	                       _runtime_config_writes >= repro_malformed_from);
+	if (_malform_this_write)
+		Genode::log("sponge_pkgd: repro_malformed write=",
+		            _runtime_config_writes,
+		            " injecting truncated app config (negative control)");
 
 	if (repro_empty_from && _runtime_config_writes >= repro_empty_from) {
 		Genode::log("sponge_pkgd: publishing EMPTY config (write ",
@@ -499,6 +535,17 @@ void Sponge::Pkgd::Main::_emit_runtime_config(Genode::Expanding_reporter &report
 	reporter.generate_xml([&] (Genode::Xml_generator &g) {
 		Sponge::Pkg_config::emit_target(g, target, _config_views,
 		                                _num_config_views, options);
+		/* test-only (repro harness): <repro_malformed_from: N> corrupts
+		 * the RENDERED document (never the pure library) with a raw tag
+		 * truncated mid-attribute — the "malformed raw <config> append"
+		 * the emission validator's threat model names. App config only,
+		 * the same scope as pad_bytes. The append lands after the
+		 * renderer, so the document that reaches the report session is
+		 * not well-formed XML; run/sponge-config-emission-invalid.run
+		 * uses it to prove the emission is rejected instead of
+		 * published. Inert unless the knob is armed. */
+		if (!drivers && _malform_this_write)
+			g.append("<start name=\"repro_malformed_tail");
 	});
 }
 

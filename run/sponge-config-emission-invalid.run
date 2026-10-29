@@ -1,0 +1,288 @@
+#
+# \brief  Sponge OS runtime-config emission negative scenario (P1.5 red)
+# \author Sponge OS contributors
+# \date   2026-10-29
+#
+# Phase 16 runtime-overhaul P1.5 (docs/plans/phase16-runtime-overhaul.md).
+#
+# Claim under test: sponge_pkgd must NEVER publish a malformed runtime
+# config. When the rendered pkg_runtime config is not well-formed, the
+# emission must be REJECTED loudly and nothing may reach the report
+# session; the operation that triggered the write must answer a
+# structured error. Today there is no emission-validation seam at all
+# (the pure validator landed in f310022558 but is not wired into the
+# emitter), so this scenario is RED BY CONSTRUCTION against the current
+# tree: the corrupted document is published to pkg_runtime's config ROM
+# and the install answers a plain "ok". Do NOT weaken the gates below to
+# make current code pass - the RED receipt is the deliverable. The next
+# unit wires render -> validate -> publish and flips this scenario green.
+#
+# Malformed-emission injection (test-only, repos/sponge/src/sponge_pkgd):
+#
+#   <repro_malformed_from: N> in pkgd's <config> corrupts the RENDERED
+#   pkg_runtime (app) config from write N on: a raw tag truncated
+#   mid-attribute (<start name="repro_malformed_tail) is appended to the
+#   document at the reporter write site - the "malformed raw <config>
+#   append" the validator's threat model names. The knob corrupts the
+#   rendering only: it never disables or bypasses validation (there is
+#   none yet to bypass), never touches the pure emission library, and is
+#   inert unless a scenario writes it WITH A VALUE (a valueless HID tag
+#   is silently dropped). Write numbering: one write per
+#   _generate_runtime_config call - the bootstrap publish is write 1,
+#   the probe's install below is write 2. Every firing write logs an
+#   audit line (`sponge_pkgd: repro_malformed write=N ...`), the
+#   repro-family rule that distinguishes "the knob fired" from "the
+#   knob silently never matched".
+#
+# Structured-rejection contract (what the P1.5 seam must emit):
+#
+#   the operation that triggered the corrupted write answers
+#     <result status="error" op="install" pkg="hello"
+#             error="<bounded reason naming the runtime-config rejection>"/>
+#   on the result channel (the existing _report_error shape), and the
+#   truncated document NEVER appears as a `report 'sponge_pkgd ->
+#   runtime'` publication. A missing error, a plain "ok", or any
+#   publication of the truncated document is RED.
+#
+# Topology: the sponge-config-authority.run topology minus the driver
+# runtime and the launcher channel - timer, report_rom with
+# verbose: yes (the publication detector: each submission logs
+# `report '<module name>'` plus the content, independent of ROM
+# readers), sponge_pkgd carrying the knob, pkg_runtime (binary init) as
+# the real config consumer, and pkg_lifecycle_probe driving exactly one
+# `install hello` step with expect_status="error". The probe is used
+# UNMODIFIED: its status assertion is the structured-error gate, and
+# `test/pkg_hello` + `pkg/hello/metadata.xml` are staged as in the
+# authority scenario.
+#
+# Gate order (ONE QEMU boot; the first gate spawns QEMU and every later
+# gate chains on the same spawn - the sponge-config-authority.run
+# idiom):
+#
+#   1. write 1 must publish (report 'sponge_pkgd -> runtime', then the
+#      bootstrap's report 'sponge_pkgd -> driver_runtime'): the
+#      positive control - the publication detector works and the knob
+#      has not fired yet.
+#   2. the knob must fire on write 2 (the audit line): if this gate
+#      times out the knob silently never matched and the run is a
+#      harness failure, not a claim verdict.
+#   3. outcome window, closed by whichever comes first:
+#        the truncated document published -> RED (silent publication),
+#        a structured error result       -> the rejection is claimed,
+#        `lifecycle-probe: FAIL`         -> RED (no structured error).
+#   4. post window after the claimed rejection, closed by
+#      `lifecycle-probe: PASS`: the truncated document must not appear
+#      here either (a publish-after-reject is RED).
+#
+# The probe's own step line is deliberately NOT a landmark: init starts
+# children concurrently and the probe can log its step before pkgd's
+# bootstrap publication, so a sequential gate anchored on it could
+# consume-and-drop it (the lesson the authority gates encode).
+#
+# Why current code must be RED: write 2's rendering is corrupted, pkgd
+# publishes it verbatim (the tail token is in the publication log), and
+# _report_install_ok answers status="ok" - both gates fail.
+#
+# Build:
+#   make -C genode/build/x86_64 run/sponge-config-emission-invalid \
+#       KERNEL=sel4 BOARD=pc
+#
+
+assert {[have_spec sel4]} \
+	"sponge-config-emission-invalid requires KERNEL=sel4 (BOARD=pc)."
+
+build { core lib/ld init timer server/report_rom lib/vfs sponge_pkgd \
+        pkg_hello test/pkg_lifecycle_probe }
+
+create_boot_directory
+
+set staged_pkgs { hello }
+foreach pkg $staged_pkgs {
+	set src "${genode_dir}/../pkg/$pkg/metadata.xml"
+	if {![file exists $src]} {
+		error "package metadata not found: $src"
+	}
+	exec cp -L $src "[run_dir]/genode/pkg_$pkg.xml"
+}
+
+set index_fh [open "[run_dir]/genode/pkg_index.xml" w]
+puts $index_fh "<packages>"
+foreach pkg $staged_pkgs {
+	puts $index_fh "  <pkg name=\"$pkg\"/>"
+}
+puts $index_fh "</packages>"
+close $index_fh
+
+install_config [subst {
+config
++ parent-provides
+  + service LOG
+  + service PD
+  + service CPU
+  + service ROM
+  + service IRQ
+  + service IO_MEM
+  + service IO_PORT
+
++ default-route
+  + any-service
+    + parent
+    + any-child
++ default | caps: 200 | ram: 8M
+
++ start timer
+  + provides | + service Timer
+
++ start report_rom | ram: 8M
+  + provides
+    + service Report
+    + service ROM
+  + config | verbose: yes
+    + policy | label: sponge_pkgd -> request           | report: pkg_lifecycle_probe -> request
+    + policy | label: pkg_lifecycle_probe -> result    | report: sponge_pkgd -> result
+    + policy | label: pkg_lifecycle_probe -> installed | report: sponge_pkgd -> installed
+    + policy | label: pkg_runtime -> config            | report: sponge_pkgd -> runtime
+
++ start sponge_pkgd | caps: 400 | ram: 32M
+  + config | repro_malformed_from: 2
+  + route
+    + service ROM | label_last: request | + child report_rom
+    + service Report | + child report_rom
+    + any-service
+      + parent
+      + any-child
+
++ start pkg_runtime | caps: 400 | ram: 32M
+  + binary init
+  + route
+    + service ROM | label: config | + child report_rom
+    + any-service
+      + parent
+      + any-child
+
++ start pkg_lifecycle_probe | caps: 200 | ram: 8M
+  + config
+    + step | op: install | pkg: hello | expect_status: error
+  + route
+    + service Timer | + child timer
+    + service ROM | label_last: result | + child report_rom
+    + service ROM | label_last: installed | + child report_rom
+    + service Report | + child report_rom
+    + any-service
+      + parent
+      + any-child
+- }]
+
+build_boot_image [build_artifacts]
+
+append qemu_args " -nographic -m 1G "
+
+#
+# Required gate: a publication must occur or the harness is broken.
+# The first call spawns QEMU via the run tool; every later call chains
+# on the same boot (a two-argument run_genode_until would respawn).
+#
+proc gate { pattern timeout_s } {
+	global qemu_spawn_id
+	if {$qemu_spawn_id eq ""} {
+		if {[catch { run_genode_until $pattern $timeout_s } err]} {
+			puts "config-emission-invalid-probe: FAIL harness ($err)"
+			exit 1
+		}
+		match_max -i $qemu_spawn_id 200000
+		return
+	}
+	match_max -i $qemu_spawn_id 200000
+	set timeout $timeout_s
+	expect {
+		-i $qemu_spawn_id -re $pattern { }
+		-i $qemu_spawn_id eof {
+			puts "config-emission-invalid-probe: FAIL harness (QEMU died)"
+			exit 1
+		}
+		timeout {
+			puts "config-emission-invalid-probe: FAIL harness (no match for '$pattern' within ${timeout_s}s)"
+			exit 1
+		}
+	}
+}
+
+#
+# Outcome window after the knob fired. Returns one of:
+#   published - the truncated document reached the report session,
+#   rejected  - a structured error result was emitted first,
+#   probefail - the probe saw a non-error answer (no structured error).
+# A silent timeout is a FAIL, not a clean verdict. Written as a direct
+# expect because run_genode_until's timeout path calls exit
+# (uncatchable), which would kill the scenario instead of a verdict.
+#
+proc outcome_gate { timeout_s } {
+	global qemu_spawn_id
+	match_max -i $qemu_spawn_id 200000
+	set timeout $timeout_s
+	expect {
+		-i $qemu_spawn_id -re {repro_malformed_tail} { return published }
+		-i $qemu_spawn_id -re {status="error".*error="[^"]+} { return rejected }
+		-i $qemu_spawn_id -re {lifecycle-probe: FAIL} { return probefail }
+		-i $qemu_spawn_id eof {
+			puts "config-emission-invalid-probe: FAIL harness (QEMU died)"
+			exit 1
+		}
+		timeout {
+			puts "config-emission-invalid-probe: FAIL harness (neither defect nor structured rejection within ${timeout_s}s)"
+			exit 1
+		}
+	}
+}
+
+#
+# Post window: after a claimed rejection, no truncated publication may
+# appear before the probe's final verdict closes the window. Returns 1
+# when the defect is observed, 0 when the verdict closes it.
+#
+proc post_gate { timeout_s } {
+	global qemu_spawn_id
+	match_max -i $qemu_spawn_id 200000
+	set timeout $timeout_s
+	expect {
+		-i $qemu_spawn_id -re {repro_malformed_tail} { return 1 }
+		-i $qemu_spawn_id -re {lifecycle-probe: PASS} { return 0 }
+		-i $qemu_spawn_id eof {
+			puts "config-emission-invalid-probe: FAIL harness (QEMU died)"
+			exit 1
+		}
+		timeout {
+			puts "config-emission-invalid-probe: FAIL harness (no verdict within ${timeout_s}s)"
+			exit 1
+		}
+	}
+}
+
+# Write 1 (bootstrap): the clean publications, both targets, in order.
+# Positive control: the detector sees normal writes when the knob has
+# not fired.
+gate {report 'sponge_pkgd -> runtime'} 120
+gate {report 'sponge_pkgd -> driver_runtime'} 60
+
+# Write 2 (the probe's install): the knob must fire before any verdict
+# is meaningful.
+gate {repro_malformed write=2} 120
+
+set outcome [outcome_gate 60]
+
+if {$outcome eq "published"} {
+	puts "config-emission-invalid-probe: RED (malformed runtime config published without structured rejection)"
+	exit 1
+}
+if {$outcome eq "probefail"} {
+	puts "config-emission-invalid-probe: RED (operation answered without a structured error)"
+	exit 1
+}
+
+if {[post_gate 60]} {
+	puts "config-emission-invalid-probe: RED (malformed runtime config published after the structured rejection)"
+	exit 1
+}
+
+puts "config-emission-invalid-probe: PASS (structured rejection, nothing published)"
+exit 0

@@ -468,6 +468,20 @@ class Sponge::Pkgd::Main
 		unsigned pad_bytes { 0 };
 
 		/*
+		 * test-only (repro harness): <repro_malformed_from: N> marks the
+		 * CURRENT write for malformed emission. _generate_runtime_config
+		 * sets it per write (fire audit alongside), and
+		 * _emit_runtime_config consumes it to corrupt the RENDERED
+		 * pkg_runtime (app) config with a raw tag truncated mid-attribute
+		 * - the negative control for the emission-validation gate
+		 * (run/sponge-config-emission-invalid.run). Same scope as
+		 * pad_bytes: the app config only, never the driver emission.
+		 * Inert unless a scenario writes the knob WITH A VALUE
+		 * ("repro_malformed_from: 2"); see the scan site for why.
+		 */
+		bool _malform_this_write { false };
+
+		/*
 		 * Dirty-scoped emission invariant (D16R.4): a package
 		 * operation marks exactly the runtime targets its RESOLVED
 		 * plan kinds touch — never just the request string — and
