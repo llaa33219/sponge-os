@@ -221,6 +221,13 @@ with `<runtime_class>` (Phase 16 P2.4):
 <runtime_class>terminal</runtime_class>
 ```
 
+Class placement is enabled by an explicit `<grouped_runtimes/>` marker in
+`sponge_pkgd`'s own config. Without that marker, the current legacy mode keeps
+one `pkg_runtime` for every app package and ignores the class for placement
+(with a diagnostic); this preserves older headless topologies during the
+migration. Grouped mode is the product direction and becomes the default only
+after its consumers have migrated.
+
 | Kind | Sandbox that hosts the `<start>` node | Generated `<parent-provides>` carries |
 |---|---|---|
 | `app` (default) | `pkg_runtime_simple`, `pkg_runtime_terminal`, or `pkg_runtime_browser`, per `<runtime_class>` | the fixed application service set (§7.2) plus the sessions the packages **in that class** declared |
