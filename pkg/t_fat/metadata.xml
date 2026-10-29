@@ -1,0 +1,28 @@
+<!--
+  t_fat — grouped-runtime probe fixture: the over-budget TERMINAL package.
+
+  Same shape as t_hog (40M / 800 caps, terminal class). Registered by
+  g_terminal's install (as its dependency) and kept installed-but-
+  stopped: launched while t_hog is running it must be REFUSED against
+  terminal's remaining budget; after t_hog is removed the very same
+  launch must succeed (the positive control proving the gate is a live
+  per-class budget check). g_terminal's root keeps it in the installed
+  closure across t_hog's removal.
+
+  It also doubles as the recovery sentinel of the later phases: its
+  <start> node must appear in the runtime_terminal config after the
+  successful retry.
+
+  Probe-only: never enabled by any bake profile.
+-->
+<package>
+  <name>t_fat</name>
+  <version>1.0</version>
+  <description>Grouped-runtime probe: the over-budget terminal package (40M / 800 caps).</description>
+
+  <binary>config_witness</binary>
+  <quota ram="40M" caps="800"/>
+  <runtime_class>terminal</runtime_class>
+
+  <dependencies/>
+</package>

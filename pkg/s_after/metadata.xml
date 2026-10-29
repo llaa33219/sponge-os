@@ -1,0 +1,23 @@
+<!--
+  s_after — grouped-runtime probe fixture: the malformed-quota RECOVERY.
+
+  An ordinary simple-class package installed and launched AFTER the
+  badquota refusal: its <start> node must appear in the runtime_simple
+  config, proving the refusal left no emission wedge behind (the
+  publication gate still passes valid writes).
+
+  Not autostarted, so the recovery exercises install AND launch.
+
+  Probe-only: never enabled by any bake profile.
+-->
+<package>
+  <name>s_after</name>
+  <version>1.0</version>
+  <description>Grouped-runtime probe: post-refusal recovery fixture (simple class).</description>
+
+  <binary>config_witness</binary>
+  <quota ram="4M" caps="100"/>
+  <runtime_class>simple</runtime_class>
+
+  <dependencies/>
+</package>

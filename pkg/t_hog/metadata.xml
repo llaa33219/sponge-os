@@ -1,0 +1,28 @@
+<!--
+  t_hog — grouped-runtime probe fixture: the TERMINAL budget consumer.
+
+  Declares 40M / 800 caps against the scenario's small
+  pkg_runtime_terminal grant (80M / 1400). Launched first by
+  run/sponge-pkg-grouped.run, it leaves roughly 34M of terminal RAM,
+  so the NEXT terminal launch (t_fat, same quota) must be refused with
+  'insufficient-resources' — while the simple runtime still has ~200M
+  free. That contrast is the per-class budget pin: the refusal figures
+  must cite terminal's report, not simple's ample one.
+
+  Not autostarted: installed (registering it) and explicitly launched.
+  Quota values are pinned by run/sponge-pkg-grouped.run's probe config
+  (need_ram: 40M | need_caps: 800) and must not drift from it.
+
+  Probe-only: never enabled by any bake profile.
+-->
+<package>
+  <name>t_hog</name>
+  <version>1.0</version>
+  <description>Grouped-runtime probe: terminal-class budget consumer (40M / 800 caps).</description>
+
+  <binary>config_witness</binary>
+  <quota ram="40M" caps="800"/>
+  <runtime_class>terminal</runtime_class>
+
+  <dependencies/>
+</package>
