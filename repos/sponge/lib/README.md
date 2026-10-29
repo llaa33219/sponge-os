@@ -55,6 +55,14 @@ concurrent callers actually appear.
   `<sponge/pkg_config.h>`. Host-side golden self-test:
   `lib/src/sponge_pkg_config/self_test.cc` (build/run command in its
   header comment; deliberately not part of the Genode build).
+- `sponge_pkg_admission` — pure quota parsing, sandbox-budget decoding,
+  admission-margin comparison, and budget-consumption arithmetic (Phase 16
+  P1.2). ROM reads, fail-open logging, and package-state mutation remain in
+  `sponge_pkgd`; the library has no I/O or mutable global state. Sources:
+  `lib/src/sponge_pkg_admission/`. Header: `<sponge/pkg_admission.h>`.
+  Host-side equivalence and boundary self-test:
+  `lib/src/sponge_pkg_admission/self_test.cc` (153 checks; deliberately not
+  part of the Genode build).
 
 ## Planned libraries
 

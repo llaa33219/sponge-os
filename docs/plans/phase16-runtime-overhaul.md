@@ -1,9 +1,8 @@
 # Phase 16 Runtime Overhaul (Work Plan)
 
-> Status: in progress. P0 baseline/audits, P1.1, P1.3-P1.5, the
-> binary-prefix/launch/config-emission portions of P1.2, P2.1-P2.3, and
-> the P3.1 red scenario have landed. The P1.2 admission-math extraction,
-> P2.4-P2.6, and P3.2-P5 remain open. Created
+> Status: in progress. P0 baseline/audits and P1 are complete; P2.1-P2.3
+> and the P3.1 red scenario have landed. P2.4-P2.6 and P3.2-P5 remain open.
+> Created
 > 2026-10-28 on branch `refactor/phase16-runtime-overhaul` (pre-work HEAD
 > `3afb40c922`).
 > Relationship: this is the runtime-overhaul track of the reopened Phase 16
@@ -208,6 +207,12 @@ one commit per extracted library (3-4).
 Owns: `repos/sponge/lib/<new pure libs>/`, `repos/sponge/include/sponge/<lib headers>`,
 and the call-site rewiring inside `repos/sponge/src/sponge_pkgd/` files it
 touches per commit.
+Landed: `sponge_binary_prefix`, `sponge_pkg_launch`, `sponge_pkg_config`,
+and `sponge_pkg_admission` now cover all four pure extraction targets. The
+admission library's 153-check equivalence/boundary suite passes, and the
+seL4/QEMU admission and lifecycle scenarios retain their previous verdicts
+and refusal figures. Receipt: `docs/evidence/phase16-runtime-config-coupling.md`
+§14.
 
 **P1.3 pkgd module split.**
 Split `sponge_pkgd` into modules along the existing thread boundary:

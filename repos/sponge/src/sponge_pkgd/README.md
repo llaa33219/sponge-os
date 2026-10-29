@@ -16,7 +16,7 @@ identical report labels and bootstrap ordering):
 | `main.cc` | request/result channels (dedup/replay), runtime-config + installed-broadcast emission wiring, bootstrap thread and constructor |
 | `registry.cc` | installed/running state (roots, closure, running set, exclusive-group peer lookup) |
 | `metadata.cc` | `pkg_index.xml` / `pkg_<name>.xml` parsing, DFS dependency resolution |
-| `admission.cc` | resource admission math (`_admits`, budget reads, quota parsing) + config-gated ROM arming |
+| `admission.cc` | resource admission I/O shell (state reads, ROM arming) over the pure `sponge_pkg_admission` math |
 | `ops.cc` | install/remove/launch operations (`_do_*`) + launch pre-flight binary-manifest helpers |
 | `store.cc` | persistent installed-set store (opt-in `<vfs>`) + bake seeding |
 

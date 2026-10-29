@@ -418,11 +418,13 @@ current anchors:
   decision function over (installed set, running set, exclusive map,
   staged-binary set, budget) -> outcome; side effects (reports, mutation)
   stay in the shell.
-- [ ] **Admission math.** Surface: `_quota_bytes` (`:3189`),
-  `_read_budget` (`:3232-3268`, HID parse), `_admits` (`:3299`),
-  margins `:689-690`, the two-budget install loop `:1690-1737`. Pure
-  shape: `(quota_string, need, avail, margin) -> admit/refuse` + budget
-  decrement; the HID decode is pure over a byte range.
+- [x] **Admission math.** Landed as pure `sponge_pkg_admission` with
+  `quota_bytes`, `decode_budget`, `admits`, and `consume`. ROM updates,
+  fail-open logging, budget selection, and package-state mutation remain in
+  pkgd. The 153-check host suite compares every case with the pre-extraction
+  arithmetic and covers exact-fit/refusal boundaries, malformed budgets,
+  quota units, and two-budget consumption; the seL4/QEMU admission and
+  lifecycle scenarios pass unchanged. Receipt: §14.
 - [x] **Config-emission templating.** Surface: `_emit_runtime_config`
   Landed as pure `sponge_pkg_config` with host golden self-test.
   (`:2092-2356`) — name-sorted order (`:2096-2110`), `<report>` node
@@ -510,11 +512,12 @@ one `Main` class and one request backend. The landed responsibilities are:
 | `admission.cc` | quota parsing, budget reads and admission decisions |
 | `store.cc` | opt-in persistent root store and bake seeding |
 
-`sponge_pkg_config`, `sponge_binary_prefix`, and `sponge_pkg_launch` are
-the landed pure, host-testable libraries. The launch-model behavior gates
-also passed serially on QEMU: `sponge-pkg-lifecycle`, `sponge-pkg-admission`,
-and `sponge-launch`. Admission math remains the only P1.2 extraction named
-in §9 still open; P1.5 emission validation is the next task.
+`sponge_pkg_config`, `sponge_binary_prefix`, and `sponge_pkg_launch` were
+the landed pure libraries at the P1.4 checkpoint. The launch-model behavior
+gates also passed serially on QEMU: `sponge-pkg-lifecycle`,
+`sponge-pkg-admission`, and `sponge-launch`. P1.5 emission validation was the
+next task; `sponge_pkg_admission` later completed the P1.2 extraction set as
+recorded in §14.
 
 ### 12.2 Dirty-scoped emission
 
@@ -648,5 +651,62 @@ validator reason and never publishes the truncated document. The authority
 harness now uses unanchored substring gates and a 200000-byte expect buffer;
 its verbose publication flood no longer causes a false harness timeout.
 
-This receipt closes P1.5. The remaining P1.2 admission-math extraction and the
-DE/provider failure-isolation tasks remain separate gates.
+This receipt closes P1.5. The admission-math extraction that remained open
+at that checkpoint is recorded in §14; DE/provider failure isolation remains
+a separate gate.
+
+---
+
+## 14. P1.2 admission-math extraction receipt (2026-10-29)
+
+**Implementation:** `7ef02d5dbf` (pure library and tests) and `b0f0a96e1f`
+(pkgd rewiring). `sponge_pkg_admission` completes the four-library P1.2
+extraction set. Its
+pure API is `quota_bytes`, `decode_budget`, `admits`, and `consume`; pkgd
+retains ROM updates, budget selection, fail-open logging, and package-state
+mutation. The 8 MiB RAM and 64-cap margins, six-gate launch order, two-budget
+install walk, and all operation result figures are unchanged. Existing parser
+and unsigned-arithmetic quirks are deliberately preserved by this extraction,
+not newly endorsed as policy. In particular, the install walk's `consume`
+bookkeeping still does not feed `_admits`, which re-reads the fresh sandbox
+report; that pre-existing behavior is unchanged and requires a separately
+evidenced fix if desired.
+
+The host suite compares each case against verbatim pre-extraction reference
+implementations. It covers accepted quota units, malformed and unavailable
+budgets, real HID report shapes, exact-fit versus one-byte/one-cap refusal,
+and budget-consumption boundaries:
+
+```sh
+g++ -std=c++20 -O1 \
+  -I genode/repos/base/include \
+  -I genode/repos/base/include/spec/64bit \
+  -I genode/repos/base/include/spec/x86_64 \
+  -I genode/repos/base/include/spec/x86 \
+  -I genode/repos/base/src/include \
+  -I repos/sponge/include \
+  repos/sponge/lib/src/sponge_pkg_admission/self_test.cc \
+  repos/sponge/lib/src/sponge_pkg_admission/pkg_admission.cc \
+  genode/repos/base/src/lib/base/hid.cc \
+  genode/repos/base/src/lib/base/output.cc \
+  -o /tmp/opencode/sponge_pkg_admission_self_test \
+&& /tmp/opencode/sponge_pkg_admission_self_test
+# self-test: PASS (153 checks)
+```
+
+Both behavior gates ran serially on base-sel4/QEMU after the extraction:
+
+```sh
+make -j1 -C genode/build/x86_64 run/sponge-pkg-admission KERNEL=sel4 BOARD=pc
+# admission-probe: PASS
+# insufficient-resources figures unchanged:
+# need_ram=100663296 avail_ram=61696664 need_caps=2000 avail_caps=1030
+# Run script execution successful.
+
+make -j1 -C genode/build/x86_64 run/sponge-pkg-lifecycle KERNEL=sel4 BOARD=pc
+# lifecycle-probe: PASS
+# Run script execution successful.
+```
+
+These are QEMU results, not real-hardware claims. This receipt closes the
+P1.2 extraction prerequisite for P2.4 runtime grouping.
