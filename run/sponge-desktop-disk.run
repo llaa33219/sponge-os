@@ -32,7 +32,8 @@
 #             │  manifest — see "Display driver as a package" below
 #             └─ hosts: report_rom, wm, window_layouter, decorator,
 #                       sponge_configd, sponge_themed, sponge_pkgd,
-#                       pkg_runtime, sponge-de, alpha_probe
+#                       pkg_runtime_simple, pkg_runtime_terminal,
+#                       pkg_runtime_browser, sponge-de, alpha_probe
 #                  (ALL binaries+libs served from /system via rom_sys/rom_lib)
 #
 # === Display driver as a package (docs/17 §1) ===
@@ -195,14 +196,16 @@ source [file join [file dirname [file normalize [info script]]] \
 source [file join [file dirname [file normalize [info script]]] \
                     driver_runtime.inc]
 
-# Per-runtime-class targets (Phase 16 P2.2). run/runtime-simple.inc,
+# Per-runtime-class targets (Phase 16 P2.2/P2.4). run/runtime-simple.inc,
 # run/runtime-terminal.inc and run/runtime-browser.inc own the class
 # package maps, build targets, staging steps and the falkon/WebEngine
-# exclusion list; run/runtime-quota.inc owns the single pkg_runtime
-# grant derivation. Sourced alongside the shared includes so the build
-# block, the staging steps and the quota literal below cannot drift
-# apart. (runtime-terminal.inc sources run/terminal_runtime.inc for
-# the shared VeraMono producer; stage_vera_metadata is NOT called
+# exclusion list; run/runtime-quota.inc derives and drift-checks the
+# three per-class grant pairs; run/runtime-grouped.inc owns the grouped
+# config wiring (report_rom relays, pkgd markers/routes) and the
+# structural assertions. Sourced alongside the shared includes so the
+# build block, the staging steps and the quota literals below cannot
+# drift apart. (runtime-terminal.inc sources run/terminal_runtime.inc
+# for the shared VeraMono producer; stage_vera_metadata is NOT called
 # here, so the product's package set is unchanged.)
 source [file join [file dirname [file normalize [info script]]] \
                     runtime-simple.inc]
@@ -212,6 +215,8 @@ source [file join [file dirname [file normalize [info script]]] \
                     runtime-browser.inc]
 source [file join [file dirname [file normalize [info script]]] \
                     runtime-quota.inc]
+source [file join [file dirname [file normalize [info script]]] \
+                    runtime-grouped.inc]
 
 # Failure-channel selector: SPONGE_DISK_FAIL=1 corrupts system.config.
 #
@@ -579,13 +584,13 @@ if {$fail_mode} {
 	close $sysconfig_fh
 } else {
 	#
-	# Fail-loud drift check (Phase 16 P2.2): the `caps: 230000 |
-	# ram: 512G` literal in the config below must match what
+	# Fail-loud drift check (Phase 16 P2.4): the three grant pairs
+	# written into the config below must match what
 	# run/runtime-quota.inc derives from the class rows. A class
-	# quota row that moved aborts the run here — the literal is
+	# quota row that moved aborts the run here — the literals are
 	# kept, never substituted (docs/14 §4.4).
 	#
-	runtime_quota::verify 230000 512G
+	runtime_quota::verify 6000 1488M 2000 247M 220000 512G
 
 	#
 	# Write system.config in HID format to a temp file, then convert
@@ -603,7 +608,8 @@ config
 # installable drivers is open-ended.
 #
 # The boundary that protects applications is NOT this list — it is the
-# parent-provides pkgd GENERATES for pkg_runtime, which carries the
+# parent-provides pkgd GENERATES for each package runtime (the three
+# P2.4 class configs), which carries the
 # application service set only. A package's route is emitted from its
 # declared <sessions>, so no application package can name Platform / Irq
 # / Io_mem / Io_port and obtain one even though this sandbox would route
@@ -692,18 +698,18 @@ config
     + policy | label: alpha_probe -> theme             | report: sponge_themed -> theme
     + policy | label: sponge_pkgd -> request     | report: alpha_probe -> request
     + policy | label: alpha_probe -> result       | report: sponge_pkgd -> result
-    + policy | label: pkg_runtime -> config       | report: sponge_pkgd -> runtime
-    + policy | label: sponge_pkgd -> runtime_state | report: pkg_runtime -> state
-    + policy | label: cfg_probe -> config          | report: sponge_pkgd -> runtime
+    #
+    # P2.4 grouped runtimes (run/runtime-grouped.inc): the three
+    # per-class config relays + three per-class state relays + the
+    # simple-class debug feeds + the sponge-de/cfg_probe consumers
+    # (their ROM names — runtime_state / runtime_mirror / config — are
+    # stable; only the `report:` sources point at the simple class).
+    #
+    @GROUPED_RELAY_POLICIES@
     + policy | label: sponge-de -> cfg_probe_state | report: cfg_probe -> cfg_probe
     + policy | label: sponge-de -> installed      | report: sponge_pkgd -> installed
     + policy | label: sponge_pkgd -> launcher_request | report: sponge-de -> launcher_request
     + policy | label: sponge-de -> launcher_result   | report: sponge_pkgd -> launcher_result
-    + policy | label: pkg_runtime -> debug -> installed      | report: sponge_pkgd -> installed
-    + policy | label: pkg_runtime -> debug -> window_list    | report: wm -> window_list
-    + policy | label: pkg_runtime -> debug -> launcher_result | report: sponge_pkgd -> launcher_result
-    + policy | label: sponge-de -> runtime_state | report: pkg_runtime -> state
-    + policy | label: sponge-de -> runtime_mirror | report: sponge_pkgd -> runtime
     + policy | label: sponge-de -> window_list   | report: wm -> window_list
     + policy | label: sponge-de -> window_layout | report: layouter -> window_layout
     + policy | label: alpha_probe -> sponge_de_launcher | report: sponge-de -> launcher
@@ -742,8 +748,8 @@ config
       # Launched GUI packages need a floating placement so they don't
       # maximize over the desktop. See run/sponge-alpha.run for the
       # full rationale (Phase 10 W3 pkg_runtime Gui-route fix). The
-      # matching Gui route through the wm is added to pkg_runtime
-      # below; this rule covers the layouter side. label_prefix is
+      # matching Gui route through the wm is added to the class
+      # runtimes below; this rule covers the layouter side. label_prefix is
       # supported on <assign> per the window_layouter README.
       + assign | label_prefix: pkg_runtime | target: screen
                | xpos: 50 | ypos: 300 | width: 320 | height: 240 | maximized: no
@@ -827,14 +833,18 @@ config
   + heartbeat | restart_after_skipped: 3 | restart_budget: 3 | startup_grace_ms: 120000
   + config | binary_prefix: bin/
     + launcher_request
-    + admission
+    #
+    # P2.4 grouped runtimes (run/runtime-grouped.inc): grouped
+    # emission + the three EXPLICIT per-class admission gates.
+    #
+    @GROUPED_ADMISSION_NODES@
     + driver_admission
     + bake
   + route
     + service ROM | label_last: ld.lib.so | + parent
     + service ROM | label_last: request | + child report_rom
     + service ROM | label_last: launcher_request | + child report_rom
-    + service ROM | label: runtime_state | + child report_rom
+    @GROUPED_PKGD_STATE_ROUTES@
     + service ROM | label: driver_runtime_state | + child report_rom
     + service ROM | label: bake_manifest | + parent | label: bake_manifest.json
     + service Report | + child report_rom
@@ -914,28 +924,42 @@ config
       + any-child
 
 #
-# pkg_runtime sizing (Phase 16 P2.2): the `caps: 230000 | ram: 512G`
-# pair below is derived and drift-checked in run/runtime-quota.inc —
-# the class rows (simple 4512 / terminal 1100 / browser 200000), the
-# editor closure, the documented headroom/round-up, and the RAM
-# remainder-clamp rationale all live there (docs/17 §6/§6.1). The
-# literal is kept on purpose (docs/14 §4.4 "init config is data, not
-# image") and is checked against the derivation by the
-# runtime_quota::verify call above this section — a class row that
-# moves aborts the run here instead of drifting.
+# P2.4 grouped runtime sizing: the three grant pairs below are
+# derived and drift-checked in run/runtime-quota.inc — the class rows,
+# the editor closure, the documented headroom/round-up and the
+# admission-margin arithmetic all live there (docs/17 §6/§6.1). The
+# literals are kept on purpose (docs/14 §4.4 "init config is data,
+# not image") and are checked against the derivation twice: the
+# runtime_quota::verify call above this section, and
+# runtime_grouped::assert_wiring on the staged HID (which also
+# re-asserts the node set and the ordering below).
 #
-# HARD ORDERING INVARIANT: pkg_runtime MUST remain the LAST `+ start`
-# node of THIS config. `ram: 512G` only means "everything left" if
-# nothing is created afterwards — a node appended below takes its RAM
-# out of this pool silently. The SPONGE_FB_SWITCH probe node and the
-# supervisor's SPONGE_SUPERVISOR_TEST fault child (run/supervisor.inc)
-# both land above this node. Caps stay EXPLICIT (never a clamp): caps
-# exhaustion on seL4 HANGS (docs/09-roadmap.md §11.1), and a
-# remainder-sized cap grant would starve any future sibling
-# (docs/17 §5).
+#   pkg_runtime_simple    caps 6000,   ram 1488M  (explicit)
+#   pkg_runtime_terminal  caps 2000,   ram 247M   (explicit)
+#   pkg_runtime_browser   caps 220000, ram 512G   (remainder clamp)
+#
+# HARD ORDERING INVARIANT: pkg_runtime_browser MUST remain the LAST
+# `+ start` node of THIS config. `ram: 512G` only means "everything
+# left" if nothing is created afterwards — a node appended below takes
+# its RAM out of this pool silently. The driver start-node expansion
+# (the placeholder line below), the SPONGE_FB_SWITCH probe node and
+# the supervisor's SPONGE_SUPERVISOR_TEST fault child
+# (run/supervisor.inc) all land above this node. Caps stay EXPLICIT
+# (never a clamp): caps exhaustion on seL4 HANGS
+# (docs/09-roadmap.md §11.1), and a remainder-sized cap grant would
+# starve any future sibling (docs/17 §5).
+#
+# Route split per class: the debug feeds (installed / window_list /
+# launcher_result) go with the SIMPLE runtime, where the debug
+# package lives; this media carries no vct_tty, so the terminal class
+# has no Terminal route here (the uefi-usb flagship keeps it). Each
+# runtime's `label: config` serves its own generated config from
+# report_rom (the grouped relay fragment) and `label_last: state`
+# publishes its sandbox state report, which its pkgd admission gate
+# reads.
 #
 @DRIVER_START_NODE@
-+ start pkg_runtime | caps: 230000 | ram: 512G
++ start pkg_runtime_simple | caps: 6000 | ram: 1488M
   + binary | name: bin/init
   + heartbeat | restart_after_skipped: 3 | restart_budget: 3 | startup_grace_ms: 120000
   + route
@@ -946,10 +970,37 @@ config
     + service ROM | label_last: window_list    | + child report_rom
     + service ROM | label_last: launcher_result | + child report_rom
     #
-    # Route pkg_runtime's Gui sessions through the wm so launched GUI
-    # packages get decorated, movable frames. Phase 10 W3 fix — see
-    # run/sponge-alpha.run for full rationale. Inert when no GUI
-    # package is running (hello is a non-GUI binary).
+    # Route the class runtimes' Gui sessions through the wm so
+    # launched GUI packages get decorated, movable frames. Phase 10
+    # W3 fix — see run/sponge-alpha.run for full rationale. Inert when
+    # no GUI package is running (hello is a non-GUI binary).
+    + service Gui | + child wm
+    + service Report | label_last: shape | + child wm
+    + service Report | label_last: state | + child report_rom
+    + any-service
+      + parent
+      + any-child
+
++ start pkg_runtime_terminal | caps: 2000 | ram: 247M
+  + binary | name: bin/init
+  + heartbeat | restart_after_skipped: 3 | restart_budget: 3 | startup_grace_ms: 120000
+  + route
+    + service ROM | label_last: ld.lib.so | + parent
+    + service ROM | label: config | + child report_rom
+    + service Gui | + child wm
+    + service Report | label_last: shape | + child wm
+    + service Report | label_last: state | + child report_rom
+    + any-service
+      + parent
+      + any-child
+
++ start pkg_runtime_browser | caps: 220000 | ram: 512G
+  + binary | name: bin/init
+  + heartbeat | restart_after_skipped: 3 | restart_budget: 3 | startup_grace_ms: 120000
+  + route
+    + service ROM | label_last: ld.lib.so | + parent
+    + service ROM | label_last: mesa_gpu.lib.so | + parent | label: mesa_gpu-softpipe.lib.so
+    + service ROM | label: config | + child report_rom
     + service Gui | + child wm
     + service Report | label_last: shape | + child wm
     + service Report | label_last: state | + child report_rom
@@ -1036,12 +1087,26 @@ if {[info exists ::env(SPONGE_FB_SWITCH)] && $::env(SPONGE_FB_SWITCH) eq "on"} {
 }
 
 	#
-	# Expand the driver_runtime placeholders (run/driver_runtime.inc).
+	# Expand the grouped-runtime placeholders (run/runtime-grouped.inc)
+	# and then the driver_runtime placeholders (run/driver_runtime.inc).
 	# They are @-delimited rather than written as Tcl [command] calls
 	# because this block is emitted inside a braced Tcl literal, where no
 	# substitution happens at all — an unexpanded bracket would reach the
-	# HID parser as a policy node and fail schema validation.
+	# HID parser as a policy node and fail schema validation. The
+	# grouped expand runs FIRST so the driver expand's leftover-token
+	# check sees the whole picture; the required lists fail loudly if
+	# any placeholder survived.
 	#
+	set grp_fh [open $sysconfig_hid r]
+	set grp_hid [runtime_grouped::expand [read $grp_fh] \
+	                       [list @GROUPED_RELAY_POLICIES@ \
+	                             @GROUPED_ADMISSION_NODES@ \
+	                             @GROUPED_PKGD_STATE_ROUTES@]]
+	close $grp_fh
+	set grp_fh [open $sysconfig_hid w]
+	puts -nonewline $grp_fh $grp_hid
+	close $grp_fh
+
 	set drv_fh [open $sysconfig_hid r]
 	set drv_hid [driver_runtime::expand [read $drv_fh] \
 	                       [list @DRIVER_RELAY_POLICIES@ @DRIVER_START_NODE@ @SYSTEM_CAPS@]]
@@ -1060,6 +1125,17 @@ if {[info exists ::env(SPONGE_FB_SWITCH)] && $::env(SPONGE_FB_SWITCH) eq "on"} {
 	# composition).
 	#
 	supervisor::prepare $sys_dir $sysconfig_hid
+
+	#
+	# P2.4 structural assertions (run/runtime-grouped.inc): the three
+	# runtime nodes with their derived grant literals, the class
+	# config/state policies, the quota ordering (driver first,
+	# pkg_runtime_browser last), and the absence of every legacy
+	# single-runtime line. Fail-loud before QEMU starts.
+	#
+	set asr_fh [open $sysconfig_hid r]
+	runtime_grouped::assert_wiring [read $asr_fh]
+	close $asr_fh
 
 	set xml_content [exec [genode_dir]/tool/hid format --output-xml "$sysconfig_hid"]
 	set sysconfig_final [open "$sys_dir/init/system.config" w]
@@ -1162,7 +1238,7 @@ config
   + provides
     + service Uplink
     + service Nic
-  + config | verbose: yes
+  + config | verbose: no
     |        | verbose_domain_state: yes
     |        | dhcp_discover_timeout_sec: 10
     |        | dhcp_request_timeout_sec:  6
@@ -1347,25 +1423,29 @@ config
 
 # caps carry ~10% headroom per docs/17 §5 (adding a child must not be
 # a cliff-edge operation on a grant sized exactly to fit).
-# Children caps-sum of THIS sandbox: 238650 caps
+# Children caps-sum of THIS sandbox: 236650 caps
 #   report_rom 300 + wm 2000 + layouter 1000 + decorator 350 +
 #   sponge_configd 200 + sponge_themed 200 + sponge_pkgd 200 +
-#   sponge-de 4000 + alpha_probe 200 + cfg_probe 200 + pkg_runtime 230000
-# Grant 263000 caps => +10.2% caps headroom.
+#   sponge-de 4000 + alpha_probe 200 + cfg_probe 200 +
+#   pkg_runtime_simple 6000 + pkg_runtime_terminal 2000 +
+#   pkg_runtime_browser 220000
+# Grant 263000 caps => +11.1% caps headroom.
 #
-# RAM: `512G` IS THE SAME DELIBERATELY-HUGE QUANTUM as pkg_runtime's,
-# one level up — same clamp mechanism, genode/repos/os/src/lib/sandbox/
+# RAM: `512G` IS THE SAME DELIBERATELY-HUGE QUANTUM as
+# pkg_runtime_browser's, one level up — same clamp mechanism,
+# genode/repos/os/src/lib/sandbox/
 # child.cc:481-486. `system` is the LAST `+ start` node in THIS
 # top-level config, so it absorbs every MiB the Tier-0 children did not
-# claim; inside it, pkg_runtime (also last) absorbs whatever the fixed
-# system services did not. That is what makes the whole stack
+# claim; inside it, pkg_runtime_browser (also last) absorbs whatever
+# the fixed system services and the two explicit class runtimes did
+# not. That is what makes the whole stack
 # physical-RAM-size agnostic. The declared 3420M it replaces (+10.3%
 # over the 3100M fixed-child sum) was a hand-derived constant that only
 # happened to fit -m 6G/8G and had to be recomputed whenever -m or a
 # package profile changed.
-# Caps for `system` stay explicit at 263000 for the reason pkg_runtime's
-# do — the caps clamp hangs on seL4; see the caps rationale at the
-# pkg_runtime node below.
+# Caps for `system` stay explicit at 263000 for the reason the class
+# runtimes' do — the caps clamp hangs on seL4; see the caps rationale
+# at the runtime node block below.
 #
 + start system | caps: @SYSTEM_CAPS@ | ram: 512G
   + binary | name: bin/init
@@ -1483,12 +1563,12 @@ if {[file exists $ld_check]} {
 
 #
 # QEMU: -m 6G now only sets the CEILING on guest RAM. It no longer has to
-# match any declared grant, because `system` and `pkg_runtime` are
-# remainder clamps (child.cc:481-486) and track whatever init actually
+# match any declared grant, because `system` and `pkg_runtime_browser`
+# are remainder clamps (child.cc:481-486) and track whatever init actually
 # has. 6G is kept unchanged deliberately: every receipt in
 # docs/evidence/ was earned at 6G, and changing the value would
 # invalidate that evidence for no functional gain. A SMALLER -m also
-# works — pkg_runtime just receives a proportionally smaller remainder,
+# works — pkg_runtime_browser just receives a proportionally smaller remainder,
 # and `sponge_pkgd`'s admission control refuses a package that no longer
 # fits instead of letting init clamp it into a hang.
 # Historical arithmetic, kept for provenance: -m 6G => "5686 MiB RAM and
