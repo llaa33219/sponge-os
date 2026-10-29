@@ -167,8 +167,10 @@ proc gate { pattern timeout_s } {
 			puts "config-authority-probe: FAIL harness ($err)"
 			exit 1
 		}
+		match_max -i $qemu_spawn_id 200000
 		return
 	}
+	match_max -i $qemu_spawn_id 200000
 	set timeout $timeout_s
 	expect {
 		-i $qemu_spawn_id -re $pattern { }
@@ -195,6 +197,7 @@ proc gate { pattern timeout_s } {
 #
 proc maybe { pattern close_pattern timeout_s } {
 	global qemu_spawn_id
+	match_max -i $qemu_spawn_id 200000
 	set timeout $timeout_s
 	expect {
 		-i $qemu_spawn_id -re $pattern       { return 1 }
@@ -211,35 +214,37 @@ proc maybe { pattern close_pattern timeout_s } {
 }
 
 # Startup publications: the detector must see both modules before any op.
-gate {.*report 'sponge_pkgd -> runtime'.*} 90
-gate {.*report 'sponge_pkgd -> driver_runtime'.*} 90
+# Expect patterns are unanchored substrings; leading/trailing greedy `.*`
+# wildcards are unnecessary and unreliable with the verbose serial stream.
+gate {report 'sponge_pkgd -> runtime'} 90
+gate {report 'sponge_pkgd -> driver_runtime'} 90
 
 # App operation: runtime is the positive control.
-gate {.*report 'sponge_pkgd -> runtime'.*} 120
+gate {report 'sponge_pkgd -> runtime'} 120
 
 # The hello start block is present and complete in the app config the
 # app operation published (byte-stability of the untouched block: it is
 # published intact, and the driver -> app gate below proves the driver
 # operation never republishes - and so never rewrites - it).
-gate {.*<start name="hello".*} 60
-gate {.*</start>.*} 60
+gate {<start name="hello"} 60
+gate {</start>} 60
 
 # App -> driver defect window, closed by the next operation's request:
 # a driver_runtime publication before the usb_net request can only be
 # the app operation republishing the driver config.
-set app_to_driver [maybe {.*report 'sponge_pkgd -> driver_runtime'.*} \
-                         {.*lifecycle-probe: \[2\] install usb_net.*} 60]
+set app_to_driver [maybe {report 'sponge_pkgd -> driver_runtime'} \
+                         {lifecycle-probe: \[2\] install usb_net} 60]
 
 # Driver operation: a runtime publication ahead of the driver_runtime
 # control is the driver -> app defect; driver_runtime closing the window
 # is the positive control.
-set driver_to_app [maybe {.*report 'sponge_pkgd -> runtime'.*} \
-                         {.*report 'sponge_pkgd -> driver_runtime'.*} 120]
+set driver_to_app [maybe {report 'sponge_pkgd -> runtime'} \
+                         {report 'sponge_pkgd -> driver_runtime'} 120]
 
 # When the defect fired, the positive control must still follow before
 # the verdict (the closing landmark above already proved it otherwise).
 if {$driver_to_app} {
-	gate {.*report 'sponge_pkgd -> driver_runtime'.*} 60
+	gate {report 'sponge_pkgd -> driver_runtime'} 60
 }
 
 if {$app_to_driver || $driver_to_app} {
