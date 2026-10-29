@@ -82,6 +82,23 @@ void Sponge::Pkgd::Main::_do_install(Genode::String<128> const &pkg)
 			if (!c.has_autostart || _is_running(c.name.string()))
 				continue;
 
+			/*
+			 * Grouped mode: app-class admission is deliberately
+			 * UNARMED in this unit — the legacy runtime_state budget
+			 * is pkg_runtime's single-app pool and checking a
+			 * terminal/browser class against it would be checking the
+			 * wrong sandbox. Per-class budgets land with the next
+			 * unit; until then app-class packages are admitted
+			 * (fail-open, logged) and driver packages below are still
+			 * checked against driver_runtime. Legacy mode keeps the
+			 * <admission/> behavior unchanged.
+			 */
+			if (_grouped_runtimes && !c.is_driver()) {
+				Genode::log("sponge_pkgd: grouped runtimes: per-class "
+				            "admission not armed — admitting ", c.name);
+				continue;
+			}
+
 			Genode::size_t need_ram { 0 };
 			if (!Sponge::Pkg_admission::quota_bytes(c.ram, need_ram)) {
 				Genode::warning("sponge_pkgd: package '", c.name,
@@ -124,18 +141,15 @@ void Sponge::Pkgd::Main::_do_install(Genode::String<128> const &pkg)
 		}
 	}
 
-	/* Dirty-scoped emission: mark the targets this install's RESOLVED
-	 * plan touches — plan kinds, not the request string. A plan can
-	 * legitimately mix kinds (a driver with an app dependency, or the
-	 * reverse), and each kind dirties only its own runtime config.
-	 * Marked before _sync_installed_from_roots() because that call
-	 * re-resolves every root and clobbers _plan. */
-	for (unsigned i = 0; i < _num_plan; ++i) {
-		if (_plan[i].is_driver())
-			_driver_config_dirty = true;
-		else
-			_app_config_dirty = true;
-	}
+	/* Dirty-scoped emission: mark the emission slots this install's
+	 * RESOLVED plan touches — plan kinds/classes, not the request
+	 * string. A plan can legitimately mix kinds (a driver with an app
+	 * dependency, or the reverse), and each one dirties only its own
+	 * runtime target (_emission_slot: legacy app/driver pair, grouped
+	 * per-class). Marked before _sync_installed_from_roots() because
+	 * that call re-resolves every root and clobbers _plan. */
+	for (unsigned i = 0; i < _num_plan; ++i)
+		_slot_dirty[_emission_slot(_plan[i])] = true;
 
 	/* Snapshot the installed names before the change, to report exactly
 	 * what this install added. */
@@ -187,15 +201,17 @@ void Sponge::Pkgd::Main::_do_remove(Genode::String<128> const &pkg)
 	}
 
 	/* Snapshot before, to report what removal dropped — names and
-	 * kinds: the kind snapshot feeds the dirty marks below, which must
-	 * be derived before _sync_installed_from_roots() erases the
-	 * dropped entries. */
+	 * emission slots: the slot snapshot feeds the dirty marks below,
+	 * which must be derived before _sync_installed_from_roots() erases
+	 * the dropped entries. _emission_slot is snapshotted (not just
+	 * is_driver) so a grouped-mode removal dirties exactly the class
+	 * target(s) of the dropped packages. */
 	Genode::String<64> before[MAX_PACKAGES] { };
-	bool before_driver[MAX_PACKAGES] { };
+	unsigned before_slot[MAX_PACKAGES] { };
 	unsigned num_before { 0 };
 	for (unsigned i = 0; i < _num_installed && i < MAX_PACKAGES; ++i) {
-		before[num_before]        = _installed[i].name;
-		before_driver[num_before] = _installed[i].is_driver();
+		before[num_before]      = _installed[i].name;
+		before_slot[num_before] = _emission_slot(_installed[i]);
 		++num_before;
 	}
 
@@ -211,16 +227,13 @@ void Sponge::Pkgd::Main::_do_remove(Genode::String<128> const &pkg)
 	_sync_running_state();   /* drops the removed name from _running too */
 
 	/* Dirty-scoped emission: the removed closure — the root plus any
-	 * dependency the GC drops — can span both kinds, so the targets
-	 * come from the kinds of the packages actually dropped, not from
-	 * the request string. */
+	 * dependency the GC drops — can span multiple targets, so the
+	 * slots come from the snapshotted placement of the packages
+	 * actually dropped, not from the request string. */
 	for (unsigned b = 0; b < num_before; ++b) {
 		if (_installed_contains(before[b].string()))
 			continue;
-		if (before_driver[b])
-			_driver_config_dirty = true;
-		else
-			_app_config_dirty = true;
+		_slot_dirty[before_slot[b]] = true;
 	}
 
 	_save_store();   /* flush before broadcast so the change survives a reboot */
@@ -378,16 +391,13 @@ void Sponge::Pkgd::Main::_do_launch(Genode::String<128> const &pkg)
 
 	_add_running(name);
 
-	/* Dirty-scoped emission: a launch dirties only the runtime that
-	 * hosts the package (its resolved <kind>), never both. Marked here
-	 * — after every refusal path has returned — so a refused launch
-	 * never leaves a stale mark behind. */
-	if (found) {
-		if (found->is_driver())
-			_driver_config_dirty = true;
-		else
-			_app_config_dirty = true;
-	}
+	/* Dirty-scoped emission: a launch dirties only the runtime target
+	 * that hosts the package (its resolved placement — kind, plus
+	 * class in grouped mode), never more. Marked here — after every
+	 * refusal path has returned — so a refused launch never leaves a
+	 * stale mark behind. */
+	if (found)
+		_slot_dirty[_emission_slot(*found)] = true;
 
 	/*
 	 * _save_store() persists only the installed root set; _running is

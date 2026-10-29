@@ -261,7 +261,7 @@ void Sponge::Pkgd::Main::_handle_request_impl(Genode::Xml_node const &req)
 /*
  * Emit the sandbox configs dirtied by the current operation from
  * _installed (dirty-scoped emission, D16R.4 — see the dirty invariant
- * on _app_config_dirty/_driver_config_dirty in pkgd.h).
+ * on _slot_dirty in pkgd.h).
  *
  * Determinism contract (the highest-risk constraint of Phase 4b):
  * the output for a given installed set is byte-identical every run.
@@ -274,18 +274,20 @@ void Sponge::Pkgd::Main::_handle_request_impl(Genode::Xml_node const &req)
  * children keep running across an unrelated install.
  */
 /*
- * One request may produce two deterministic configs: the pkg_runtime
- * one for <kind>app</kind> packages and the driver_runtime one for
- * <kind>driver</kind> packages (docs/12 §4.5). Which of the two are
- * published is decided by the per-target dirty marks the operation
- * set from its resolved plan kinds — an app-only operation publishes
- * only the pkg_runtime config, a driver-only operation only the
- * driver_runtime one, and a plan that mixes kinds both. Bootstrap
- * marks both. A target that is not dirty is never published: its
- * content is a function of its own kind's packages alone (the
- * generator's membership filter), so an unmarked target is
- * byte-unchanged and republishing it would be pure config churn
- * against the other runtime (the failure domain D16R.4 closes).
+ * One request may produce up to NUM_SLOTS deterministic configs: the
+ * app-class one(s) for <kind>app</kind> packages (the single
+ * pkg_runtime config in legacy mode; the simple/terminal/browser
+ * class configs in grouped mode, per <runtime_class>, docs/12 §4.5)
+ * and the driver_runtime one for <kind>driver</kind> packages. Which
+ * of the active targets are published is decided by the per-slot dirty
+ * marks the operation set from its resolved plan — an app-only
+ * operation publishes only its app-class config(s), a driver-only
+ * operation only the driver_runtime one, and a plan that mixes kinds
+ * both. Bootstrap marks every active target. A target that is not
+ * dirty is never published: its content is a function of its own
+ * members alone (the generator's membership filter), so an unmarked
+ * target is byte-unchanged and republishing it would be pure config
+ * churn against the other runtime (the failure domain D16R.4 closes).
  */
 bool Sponge::Pkgd::Main::_generate_runtime_config()
 {
@@ -409,16 +411,18 @@ bool Sponge::Pkgd::Main::_generate_runtime_config()
 		}
 	}
 	/*
-	 * Consume the per-target dirty marks set by the operation from its
-	 * resolved plan kinds (or both, at bootstrap). Clearing here means
+	 * Consume the per-slot dirty marks set by the operation from its
+	 * resolved plan (or every ACTIVE slot at bootstrap — see the
+	 * dirty invariant on _slot_dirty in pkgd.h). Clearing here means
 	 * every later generation is driven purely by what the next
 	 * operation dirties — unless this write fails below, which restores
 	 * the marks (abort_write) so the unpublished delta stays queued.
 	 */
-	bool const emit_app    = _app_config_dirty;
-	bool const emit_driver = _driver_config_dirty;
-	_app_config_dirty    = false;
-	_driver_config_dirty = false;
+	bool emit[NUM_SLOTS] { };
+	for (unsigned s = 0; s < NUM_SLOTS; ++s) {
+		emit[s] = _slot_dirty[s];
+		_slot_dirty[s] = false;
+	}
 
 	/* test-only (repro harness): <repro_malformed_from: N> marks the
 	 * current write; _render_runtime_config corrupts the rendered app
@@ -439,38 +443,48 @@ bool Sponge::Pkgd::Main::_generate_runtime_config()
 	 * let the caller answer with the bounded reason in _emit_failure.
 	 * The loud structured log is emitted at the rejection site itself
 	 * (render or validate), where the target and cause are known.
+	 * The restore spans the FULL dirty set including driver — no
+	 * partial publication and no lost delta on any failure.
 	 */
 	auto abort_write = [&] () -> bool {
-		_app_config_dirty    |= emit_app;
-		_driver_config_dirty |= emit_driver;
+		for (unsigned s = 0; s < NUM_SLOTS; ++s)
+			_slot_dirty[s] |= emit[s];
 		return false;
 	};
 
 	if (repro_empty_from && _runtime_config_writes >= repro_empty_from) {
 		/*
 		 * test-only (repro harness) control channel: from write N on,
-		 * publish an EMPTY <config> — what pkg_runtime's init would see
+		 * publish an EMPTY <config> — what the runtime's init would see
 		 * if the transient no-writer window were visible to it. This
 		 * is the ONLY validation bypass in the seam: an empty <config>
 		 * is deliberately outside the validated subset (it would be
 		 * MISSING_REQUIRED), and publishing it is the whole point of
-		 * the control, so the bypass is scoped exactly to this knob and
-		 * can never leak into a production write. The driver half of
-		 * the write is still rendered and validated before anything is
-		 * published.
+		 * the control, so the bypass is scoped exactly to this knob
+		 * (and to the simple/legacy-app target it always corrupts)
+		 * and can never leak into a production write. Every other
+		 * dirty slot of the write is still rendered and validated
+		 * before anything is published.
 		 */
-		if (emit_driver &&
-		    (!_render_runtime_config(true) || !_validate_runtime_config(true)))
-			return abort_write();
+		for (unsigned s = 0; s < NUM_SLOTS; ++s) {
+			if (s == SLOT_APP || !emit[s])
+				continue;
+			if (!_render_runtime_config(s) || !_validate_runtime_config(s))
+				return abort_write();
+		}
 
-		if (emit_app) {
+		if (emit[SLOT_APP]) {
 			Genode::log("sponge_pkgd: publishing EMPTY config (write ",
 			            _runtime_config_writes, ") — control channel "
 			            "(test-only validation bypass)");
-			_runtime_reporter.generate_xml([&](Genode::Xml_generator &) { });
+			_slot_reporter(SLOT_APP).generate_xml(
+				[&](Genode::Xml_generator &) { });
 		}
-		if (emit_driver)
-			_publish_runtime_config(_driver_runtime_reporter, true);
+		for (unsigned s = 0; s < NUM_SLOTS; ++s) {
+			if (s == SLOT_APP || !emit[s])
+				continue;
+			_publish_runtime_config(s);
+		}
 		return true;
 	}
 	if (repro_pad)
@@ -490,40 +504,46 @@ bool Sponge::Pkgd::Main::_generate_runtime_config()
 	}
 
 	/*
-	 * P1.5 render -> validate -> publish. Render EVERY dirty target to
-	 * its scratch and validate ALL of them BEFORE publishing EITHER:
-	 * a write that mixes targets must not publish one sandbox's config
-	 * once the other sandbox's document has been disproved. Only after
+	 * P1.5 render -> validate -> publish. Render EVERY dirty slot to
+	 * its scratch and validate ALL of them BEFORE publishing ANY:
+	 * a write that mixes slots must not publish one sandbox's config
+	 * once another sandbox's document has been disproved. Only after
 	 * every document passed the gate are the validated bytes published
-	 * through the existing Expanding_reporters (app first, then driver
-	 * — the publication order the pre-seam emitter had).
+	 * through the slot's Expanding_reporter, in slot order (app/simple
+	 * first, then terminal, browser, driver — the legacy pair keeps
+	 * the pre-seam publication order app-then-driver).
 	 */
-	if (emit_app && !_render_runtime_config(false))
-		return abort_write();
-	if (emit_driver && !_render_runtime_config(true))
-		return abort_write();
+	for (unsigned s = 0; s < NUM_SLOTS; ++s)
+		if (emit[s] && !_render_runtime_config(s))
+			return abort_write();
 
-	if (emit_app && !_validate_runtime_config(false))
-		return abort_write();
-	if (emit_driver && !_validate_runtime_config(true))
-		return abort_write();
+	for (unsigned s = 0; s < NUM_SLOTS; ++s)
+		if (emit[s] && !_validate_runtime_config(s))
+			return abort_write();
 
-	if (emit_app)
-		_publish_runtime_config(_runtime_reporter,     false);
-	if (emit_driver)
-		_publish_runtime_config(_driver_runtime_reporter, true);
+	for (unsigned s = 0; s < NUM_SLOTS; ++s)
+		if (emit[s])
+			_publish_runtime_config(s);
 	return true;
 }
 
 
 /*
  * Snapshot the state _render_runtime_config has always read (_installed
- * in array order, the Phase 7 running gate, the is_driver() split) as
- * explicit view values for the pure sponge_pkg_config library. The
- * runtime_class token reproduces the pre-extraction membership filter
- * (`is_driver() != drivers`) exactly: "driver" versus "app". Member
- * storage keeps the snapshot off the requesting thread's small stack
- * (the pre-extraction code's lesson for its emit scratch buffers).
+ * in array order, the Phase 7 running gate, the kind split) as explicit
+ * view values for the pure sponge_pkg_config library. The
+ * runtime_class token is mode-dependent and IS the membership filter
+ * (a pure string match against the target's token):
+ *
+ *   - legacy mode reproduces the pre-extraction is_driver() split
+ *     byte for byte: "driver" versus "app" for EVERY non-driver,
+ *     whatever its parsed class;
+ *   - grouped mode carries the actual class token ("simple",
+ *     "terminal", "browser") for apps and "driver" for drivers
+ *     (kind outranks class, docs/12 §4.5).
+ *
+ * Member storage keeps the snapshot off the requesting thread's small
+ * stack (the pre-extraction code's lesson for its emit scratch buffers).
  */
 void Sponge::Pkgd::Main::_refresh_config_views()
 {
@@ -537,7 +557,26 @@ void Sponge::Pkgd::Main::_refresh_config_views()
 		v.ram           = c.ram.string();
 		v.caps          = c.caps;
 		v.config_xml    = c.config_xml.string();
-		v.runtime_class = c.is_driver() ? "driver" : "app";
+		if (c.is_driver())
+			v.runtime_class = "driver";
+		else if (_grouped_runtimes)
+			v.runtime_class = c.runtime_class.string();
+		else {
+			v.runtime_class = "app";
+			/*
+			 * The class is ignored for placement in legacy mode;
+			 * log once that it requires grouped mode (the optional
+			 * log-once of the P2.4 commit-1 contract).
+			 */
+			if (!_class_log_done &&
+			    Genode::strcmp(c.runtime_class.string(), "simple") != 0) {
+				_class_log_done = true;
+				Genode::log("sponge_pkgd: <runtime_class>'",
+				            c.runtime_class, "' of ", c.name,
+				            " requires <grouped_runtimes/> — placing "
+				            "it in the legacy app runtime");
+			}
+		}
 		v.running       = _is_running(c.name.string());
 		v.num_sessions  = 0;
 		for (unsigned s = 0; s < c.num_sessions &&
@@ -549,6 +588,68 @@ void Sponge::Pkgd::Main::_refresh_config_views()
 			sv.readonly = c.sessions[s].readonly;
 			sv.label    = c.sessions[s].label.string();
 		}
+	}
+}
+
+
+/*
+ * Slot routing (the active target list — see the SLOT_* constants in
+ * pkgd.h). Driver packages always land in SLOT_DRIVER: <kind> is the
+ * security boundary and outranks <runtime_class> (docs/12 §4.5). In
+ * grouped mode an app package routes by its parsed class token; in
+ * legacy mode every app package lands in SLOT_APP regardless of the
+ * class — the exact pre-P2.4 app/driver placement.
+ */
+unsigned Sponge::Pkgd::Main::_emission_slot(Package const &p) const
+{
+	if (p.is_driver())
+		return SLOT_DRIVER;
+
+	if (_grouped_runtimes) {
+		if (Genode::strcmp(p.runtime_class.string(), "terminal") == 0)
+			return SLOT_TERMINAL;
+		if (Genode::strcmp(p.runtime_class.string(), "browser") == 0)
+			return SLOT_BROWSER;
+	}
+	return SLOT_APP;
+}
+
+
+Sponge::Pkg_config::Target Sponge::Pkgd::Main::_slot_target(unsigned slot) const
+{
+	switch (slot) {
+	case SLOT_APP:
+		/* grouped: the simple class target; legacy: the single app
+		 * runtime target (byte-identical pre-P2.4 emission). */
+		return _grouped_runtimes ? Sponge::Pkg_config::simple_target()
+		                         : Sponge::Pkg_config::app_target();
+	case SLOT_TERMINAL: return Sponge::Pkg_config::terminal_target();
+	case SLOT_BROWSER:  return Sponge::Pkg_config::browser_target();
+	default:            return Sponge::Pkg_config::driver_target();
+	}
+}
+
+
+char const *Sponge::Pkgd::Main::_slot_name(unsigned slot) const
+{
+	switch (slot) {
+	case SLOT_APP:      return _grouped_runtimes ? "simple" : "app";
+	case SLOT_TERMINAL: return "terminal";
+	case SLOT_BROWSER:  return "browser";
+	default:            return "driver";
+	}
+}
+
+
+Genode::Expanding_reporter &Sponge::Pkgd::Main::_slot_reporter(unsigned slot)
+{
+	switch (slot) {
+	case SLOT_APP:
+		return _grouped_runtimes ? *_runtime_simple_reporter
+		                         : *_runtime_reporter;
+	case SLOT_TERMINAL: return *_runtime_terminal_reporter;
+	case SLOT_BROWSER:  return *_runtime_browser_reporter;
+	default:            return _driver_runtime_reporter;
 	}
 }
 
@@ -588,18 +689,19 @@ static void scrub_reason(char *dst, Genode::size_t cap, char const *src)
 
 
 /*
- * P1.5 render step: render one sandbox config through the pure
+ * P1.5 render step: render one slot's sandbox config through the pure
  * sponge_pkg_config library (Phase 16 P1.2 extraction) into the
- * target's growable member scratch — the complete
+ * slot's growable member scratch — the complete
  * "<config>...</config>" document the validate step reads and the
- * publish step republishes. `drivers` selects which half of the
- * installed set lands in it: false = the pkg_runtime config (app
- * packages), true = the driver_runtime config (driver packages).
- * The library shares every other part of the generator between
- * targets — the sorted <start> order, the fixed attribute order, the
- * absence of volatile fields — so both configs carry the same
- * determinism contract (the reason unchanged children survive an
- * unrelated install).
+ * publish step republishes. `slot` selects both the library target
+ * and the membership filter (via the runtime_class view token): the
+ * legacy app target (or the simple class target in grouped mode), the
+ * terminal/browser class targets, or the driver target. The library
+ * shares every other part of the generator between targets — the
+ * sorted <start> order, the fixed attribute order, the absence of
+ * volatile fields — so every config carries the same determinism
+ * contract (the reason unchanged children survive an unrelated
+ * install).
  *
  * Buffer_error is covered, never swallowed: the scratch grows and the
  * render is retried (the Expanding_reporter growth idiom), and a
@@ -607,9 +709,9 @@ static void scrub_reason(char *dst, Genode::size_t cap, char const *src)
  * loudly as a render failure — nothing is ever silently dropped or
  * truncated.
  */
-bool Sponge::Pkgd::Main::_render_runtime_config(bool drivers)
+bool Sponge::Pkgd::Main::_render_runtime_config(unsigned slot)
 {
-	Render_scratch &scratch = drivers ? _driver_render : _app_render;
+	Render_scratch &scratch = _slot_render[slot];
 
 	_refresh_config_views();
 
@@ -618,22 +720,21 @@ bool Sponge::Pkgd::Main::_render_runtime_config(bool drivers)
 
 	/*
 	 * test-only (repro harness): the pad budget lands only in the
-	 * pkg_runtime (app) config, exactly as the pre-extraction code had
-	 * it (`if (!drivers && pad_bytes)`). The driver emission always
-	 * passes 0.
+	 * simple/legacy-app target (SLOT_APP), exactly as the
+	 * pre-extraction code had it (`if (!drivers && pad_bytes)`). Every
+	 * other slot's emission always passes 0.
 	 */
-	options.pad_bytes = drivers ? 0 : pad_bytes;
+	options.pad_bytes = (slot == SLOT_APP) ? pad_bytes : 0;
 
-	Sponge::Pkg_config::Target const target =
-		drivers ? Sponge::Pkg_config::driver_target()
-		        : Sponge::Pkg_config::app_target();
+	Sponge::Pkg_config::Target const target = _slot_target(slot);
 
-	char const *const target_name = drivers ? "driver" : "app";
+	char const *const target_name = _slot_name(slot);
 
 	for (;;) {
 		if (!scratch.buf) {
 			Genode::size_t const initial =
-				drivers ? DRIVER_CONFIG_BUFFER : RUNTIME_CONFIG_BUFFER;
+				(slot == SLOT_DRIVER) ? DRIVER_CONFIG_BUFFER
+				                      : RUNTIME_CONFIG_BUFFER;
 
 			void *p = _heap.try_alloc(initial).convert<void *>(
 				[&] (Genode::Allocator::Allocation &a) {
@@ -664,13 +765,14 @@ bool Sponge::Pkgd::Main::_render_runtime_config(bool drivers)
 					 * corrupts the RENDERED document (never the pure
 					 * library) with a raw tag truncated mid-attribute —
 					 * the "malformed raw <config> append" the emission
-					 * validator's threat model names. App config only,
-					 * the same scope as pad_bytes. The append lands after
-					 * the renderer, so the document that reaches the gate
-					 * is not well-formed XML and the write is rejected
+					 * validator's threat model names. Simple/legacy-app
+					 * target only (SLOT_APP), the same scope as
+					 * pad_bytes. The append lands after the renderer, so
+					 * the document that reaches the gate is not
+					 * well-formed XML and the write is rejected
 					 * (run/sponge-config-emission-invalid.run). Inert
 					 * unless the knob is armed. */
-					if (!drivers && _malform_this_write)
+					if (slot == SLOT_APP && _malform_this_write)
 						g.append("<start name=\"repro_malformed_tail");
 				}).convert<Genode::size_t>(
 					[] (Genode::size_t n) { return n; },
@@ -748,10 +850,10 @@ bool Sponge::Pkgd::Main::_render_runtime_config(bool drivers)
  * bounded into _emit_failure (attribute-safe) and logged loudly. The
  * document checked is exactly the bytes the publish step republishes.
  */
-bool Sponge::Pkgd::Main::_validate_runtime_config(bool drivers)
+bool Sponge::Pkgd::Main::_validate_runtime_config(unsigned slot)
 {
-	Render_scratch const &scratch = drivers ? _driver_render : _app_render;
-	char const *const target_name = drivers ? "driver" : "app";
+	Render_scratch const &scratch = _slot_render[slot];
+	char const *const target_name = _slot_name(slot);
 
 	Sponge::Runtime_config_validate::Result const r =
 		Sponge::Runtime_config_validate::validate(
@@ -790,16 +892,15 @@ bool Sponge::Pkgd::Main::_validate_runtime_config(bool drivers)
  * the same Buffer_error -> grow loop every other generate_xml write
  * takes (the repro-pad knobs still force it on purpose).
  */
-void Sponge::Pkgd::Main::_publish_runtime_config(
-	Genode::Expanding_reporter &reporter, bool drivers)
+void Sponge::Pkgd::Main::_publish_runtime_config(unsigned slot)
 {
-	Render_scratch const &scratch = drivers ? _driver_render : _app_render;
+	Render_scratch const &scratch = _slot_render[slot];
 
 	/* "<config>" (8) ... "</config>" (9) — see _render_runtime_config. */
 	char const *const body        = scratch.buf + 8;
 	Genode::size_t const body_len = scratch.used - 8 - 9;
 
-	reporter.generate_xml([&] (Genode::Xml_generator &g) {
+	_slot_reporter(slot).generate_xml([&] (Genode::Xml_generator &g) {
 		g.append(body, body_len);
 	});
 }
@@ -1205,6 +1306,58 @@ Package const &root = _plan[_num_plan > 0 ? _num_plan - 1 : 0];
 
 
 /*
+ * Grouped-runtime opt-in (P2.4, explicit <grouped_runtimes/> marker in
+ * this component's <config> — the same config-marker pattern as
+ * <admission/>, <binaries/>, <launcher_request/>). Without it pkgd stays
+ * in legacy mode byte-for-byte: one app target published on the
+ * "runtime" report plus the "driver_runtime" one. With it the app
+ * target splits into the simple/terminal/browser class targets,
+ * published as "runtime_simple"/"runtime_terminal"/"runtime_browser"
+ * while the driver target is unchanged.
+ *
+ * The runtime-config report channels are CONSTRUCTED here — exactly
+ * the active set of the mode — so no mode opens a report channel it
+ * never publishes (explicit initialization, consistent with the
+ * Constructible opt-in channels above): grouped mode never creates
+ * "runtime", legacy mode never creates the three class channels.
+ */
+void Sponge::Pkgd::Main::_init_grouped_runtimes()
+{
+	using Buffer = Genode::Expanding_reporter::Initial_buffer_size;
+
+	try {
+		_config_rom.node().with_optional_sub_node("grouped_runtimes",
+			[&] (Genode::Node const &) {
+				_grouped_runtimes = true;
+			});
+	} catch (Genode::Xml_node::Invalid_syntax) {
+		Genode::warning("sponge_pkgd: malformed <config> — grouped "
+		                "runtimes disabled (legacy mode)");
+	}
+
+	if (_grouped_runtimes) {
+		_runtime_simple_reporter.construct(
+			_env, "config", "runtime_simple",
+			Buffer { .value = RUNTIME_CONFIG_BUFFER });
+		_runtime_terminal_reporter.construct(
+			_env, "config", "runtime_terminal",
+			Buffer { .value = RUNTIME_CONFIG_BUFFER });
+		_runtime_browser_reporter.construct(
+			_env, "config", "runtime_browser",
+			Buffer { .value = RUNTIME_CONFIG_BUFFER });
+		Genode::log("sponge_pkgd: grouped runtimes enabled — app "
+		            "packages route by <runtime_class> into "
+		            "runtime_simple/runtime_terminal/runtime_browser "
+		            "(driver unchanged)");
+	} else {
+		_runtime_reporter.construct(
+			_env, "config", "runtime",
+			Buffer { .value = RUNTIME_CONFIG_BUFFER });
+	}
+}
+
+
+/*
  * Launcher channel opt-in (Phase 7 todo 10). The launcher_request ROM
  * is opened ONLY when <config> carries <launcher_request/>. Genode
  * 26.05's session-denial path calls sleep_forever() (not a throw), so
@@ -1338,6 +1491,15 @@ void Sponge::Pkgd::Main::_report_conflict(char const *op,
 void Sponge::Pkgd::Main::_bootstrap()
 {
 	Genode::log("sponge_pkgd: bootstrap thread started");
+
+	/*
+	 * Grouped-runtime opt-in (P2.4) FIRST: it decides the active
+	 * target list — which runtime-config report channels this daemon
+	 * constructs and how every dirty mark below routes — and it arms
+	 * nothing itself, so nothing else can observe a half-decided mode.
+	 */
+	_init_grouped_runtimes();
+
 	_load_index();
 
 	/* Optional persistent store: activate it if <config> declares a
@@ -1389,16 +1551,17 @@ _init_admission();
 	 */
 	_sync_running_state();
 
-	/* Emit the initial pkg_runtime config before anything can request
-	 * it. On a restored boot this already contains the previously-
-	 * installed components, so pkg_runtime starts them without any
+	/* Emit the initial runtime configs before anything can request
+	 * them. On a restored boot these already contain the previously-
+	 * installed components, so the runtimes start them without any
 	 * user action. (Published here so init — which constructs children
-	 * in config order — sees it before it constructs pkg_runtime.)
-	 * Bootstrap dirties BOTH targets (the dirty invariant in pkgd.h):
-	 * both sandboxes need their initial config whether or not the
-	 * restored set happens to span both kinds. */
-	_app_config_dirty    = true;
-	_driver_config_dirty = true;
+	 * in config order — sees them before it constructs the runtimes.)
+	 * Bootstrap dirties EVERY ACTIVE target (the dirty invariant in
+	 * pkgd.h): every sandbox needs its initial config whether or not
+	 * the restored set happens to span its members. */
+	for (unsigned s = 0; s < NUM_SLOTS; ++s)
+		if (_slot_active(s))
+			_slot_dirty[s] = true;
 	if (!_generate_runtime_config()) {
 		/*
 		 * Bootstrap has no request context: fail loudly and publish

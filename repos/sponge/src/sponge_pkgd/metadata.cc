@@ -149,6 +149,7 @@ void Sponge::Pkgd::Main::_parse_package(Genode::Xml_node const &pkg,
 	bool has_name { false };
 	bool has_version { false };
 	bool has_description { false };
+	bool has_runtime_class { false };
 
 	pkg.for_each_sub_node([&](Genode::Xml_node const &child) {
 		if (child.has_type("name")) {
@@ -288,6 +289,27 @@ void Sponge::Pkgd::Main::_parse_package(Genode::Xml_node const &pkg,
 				out.kind = Genode::String<16>("app");
 			}
 		}
+		else if (child.has_type("runtime_class")) {
+			/* Closed-form set (docs/12 §4.5): simple|terminal|browser,
+			 * default simple. Mirrors <kind>'s typo handling exactly —
+			 * an unknown value warns and falls back to simple, so a
+			 * typo can never silently land a package in a heavier
+			 * runtime. Placement consumes the token only in grouped
+			 * mode (<grouped_runtimes/>); see Package::runtime_class. */
+			Genode::String<16> const v =
+				child.decoded_content<Genode::String<16>>();
+			if (v == Genode::String<16>("simple") ||
+			    v == Genode::String<16>("terminal") ||
+			    v == Genode::String<16>("browser"))
+				out.runtime_class = v;
+			else {
+				Genode::warning("pkg: <runtime_class> in ", name,
+				                " must be simple, terminal or browser "
+				                "(got '", v, "'); defaulting to simple");
+				out.runtime_class = Genode::String<16>("simple");
+			}
+			has_runtime_class = true;
+		}
 		else if (child.has_type("resizeable")) {
 			/*
 			 * Phase 16 W9 (D16.10). Closed-form `yes` / `no`. Default-yes
@@ -349,6 +371,20 @@ void Sponge::Pkgd::Main::_parse_package(Genode::Xml_node const &pkg,
 	/* binary defaults to name (docs/12 §4.1). */
 	if (Genode::strcmp(out.binary.string(), "") == 0)
 		out.binary = Genode::String<64>(name);
+
+	/*
+	 * docs/12 §4.5: <kind> is the security and capability boundary and
+	 * outranks <runtime_class>. Document order cannot be relied on
+	 * (the element may precede <kind>), so this check runs after the
+	 * full parse: a <runtime_class> element on a driver package is
+	 * ignored with a warning — placement stays driver_runtime, never
+	 * an app runtime.
+	 */
+	if (out.is_driver() && has_runtime_class) {
+		Genode::warning("pkg: <runtime_class> in ", name,
+		                " is ignored for a driver package");
+		out.runtime_class = Genode::String<16>("simple");
+	}
 
 	if (Genode::strcmp(out.ram.string(), "") == 0)
 		out.ram = Genode::String<16>("32M");

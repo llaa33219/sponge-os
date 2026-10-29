@@ -90,6 +90,24 @@ struct Sponge::Pkgd::Package
 	{ return Genode::strcmp(kind.string(), "driver") == 0; }
 
 	/*
+	 * App runtime class (docs/12-package-format.md §4.5,
+	 * <runtime_class>): "simple" (the default), "terminal", or
+	 * "browser" — closed-form at parse time exactly like <kind>
+	 * (metadata.cc): an unknown value warns and falls back to
+	 * "simple", and on a <kind>driver</kind> package the element is
+	 * ignored with a warning because <kind> is the security boundary
+	 * and outranks the class.
+	 *
+	 * The token is consumed only in grouped mode (<grouped_runtimes/>
+	 * in this component's <config>): each app package is emitted into
+	 * the simple/terminal/browser target whose class token matches.
+	 * In legacy mode the class is ignored for placement and every
+	 * non-driver package stays in the single app runtime ("app" view,
+	 * app_target), byte-identical to the pre-P2.4 emission.
+	 */
+	Genode::String<16>  runtime_class   { "simple" };
+
+	/*
 	 * Exclusive group (docs/12-package-format.md §4.6). Empty means the
 	 * package claims no exclusive hardware; a non-empty value means at
 	 * most one RUNNING package may carry the same group at a time. The
@@ -265,6 +283,10 @@ class Sponge::Pkgd::Main
 		 *
 		 * Both repro knobs are inert unless written WITH A VALUE
 		 * ("repro_pad: yes"); see the scan site for why.
+		 *
+		 * Scope: the simple/legacy-app target only (slot SLOT_APP) —
+		 * never the terminal/browser class targets and never the
+		 * driver emission.
 		 */
 		static constexpr unsigned REPRO_PAD_BYTES = 32000;
 
@@ -291,9 +313,81 @@ class Sponge::Pkgd::Main
 		 */
 		static constexpr unsigned REPRO_PAD_GROW_BYTES = 32768;
 
-		Genode::Expanding_reporter _runtime_reporter {
-			_env, "config", "runtime",
-			{ .value = RUNTIME_CONFIG_BUFFER } };
+		/*
+		 * Emission slots — the ACTIVE TARGET LIST of the single
+		 * config producer. Legacy mode (no <grouped_runtimes/> marker)
+		 * activates SLOT_APP + SLOT_DRIVER, exactly the app_target/
+		 * driver_target pair of the pre-P2.4 daemon ("runtime" and
+		 * "driver_runtime" reports). Grouped mode activates all four:
+		 * the app runtime splits into the simple/terminal/browser
+		 * class targets (docs/12-package-format.md §4.5), emitted as
+		 * the "runtime_simple"/"runtime_terminal"/"runtime_browser"
+		 * reports, while the driver target is unchanged. SLOT_APP is
+		 * the single legacy app runtime in legacy mode and the simple
+		 * class in grouped mode — the slot the repro knobs stay scoped
+		 * to either way.
+		 */
+		static constexpr unsigned SLOT_APP      = 0;
+		static constexpr unsigned SLOT_TERMINAL = 1;
+		static constexpr unsigned SLOT_BROWSER  = 2;
+		static constexpr unsigned SLOT_DRIVER   = 3;
+		static constexpr unsigned NUM_SLOTS     = 4;
+
+		bool _slot_active(unsigned slot) const
+		{
+			return slot == SLOT_APP || slot == SLOT_DRIVER || _grouped_runtimes;
+		}
+
+		/*
+		 * Explicit <grouped_runtimes/> opt-in in this component's
+		 * <config> (the same config-marker pattern as <admission/> /
+		 * <binaries/> / <launcher_request/>). Without it pkgd stays in
+		 * legacy mode byte-for-byte: one app runtime + one driver
+		 * runtime. With it, app packages route by their parsed
+		 * <runtime_class> into the three class targets. Parsed by
+		 * _init_grouped_runtimes() on the bootstrap thread, before any
+		 * emission or admission arming consults it.
+		 */
+		bool _grouped_runtimes { false };
+
+		/*
+		 * Runtime config reports. One per ACTIVE target (see the slot
+		 * constants above), so a mode never opens a report channel it
+		 * does not publish: the grouped class reporters are explicit
+		 * Constructible values constructed only in grouped mode, and
+		 * the legacy "runtime" one only in legacy mode — no
+		 * unintended report channel in either direction. The
+		 * driver_runtime report is the one channel both modes share,
+		 * so it keeps its eager construction (unchanged behavior).
+		 *
+		 * The report buffer MUST be pre-sized so growth never happens
+		 * in production. Expanding_reporter's growth path
+		 * (_increase_report_buffer(), os/reporter.h) destructs and
+		 * reconstructs the Report session; while that window is open the
+		 * report carries no payload, so report_rom relays an empty
+		 * "config" ROM to the runtime and the runtime's own init
+		 * applies an EMPTY config — tearing down every <start> node it
+		 * holds. A single launch of one big package must not be able to
+		 * kill all running apps. Every app-class reporter (legacy
+		 * "runtime" and the three grouped ones) carries the same
+		 * RUNTIME_CONFIG_BUFFER derivation:
+		 *   - all 11 shipped packages (desktop profile 8 + ncurses +
+		 *     nano + pkg_gui_demo), binary_prefix="bin/": 22797 bytes
+		 *   - the desktop bake profile alone (8 packages):   20639 bytes
+		 * The dominant term is the verbatim per-package <config> block
+		 * (falkon 3386, terminal 4117, pdf_view 2975 bytes); the fixed
+		 * scaffolding (start/binary/resource/route + the parent-provides
+		 * header) is ~460 bytes per package. A single class target
+		 * holds a subset of the same packages, so 32768 keeps its
+		 * ~44% headroom.
+		 *
+		 * The <repro_pad> knob (test-only, above) still forces growth
+		 * on purpose; see REPRO_PAD_BYTES for its sizing.
+		 */
+		Genode::Constructible<Genode::Expanding_reporter> _runtime_reporter         { };
+		Genode::Constructible<Genode::Expanding_reporter> _runtime_simple_reporter  { };
+		Genode::Constructible<Genode::Expanding_reporter> _runtime_terminal_reporter{ };
+		Genode::Constructible<Genode::Expanding_reporter> _runtime_browser_reporter { };
 
 		/*
 		 * driver_runtime config report: the second sandbox. A driver
@@ -477,28 +571,40 @@ class Sponge::Pkgd::Main
 		 * pkg_runtime (app) config with a raw tag truncated mid-attribute
 		 * - the negative control for the emission-validation gate
 		 * (run/sponge-config-emission-invalid.run). Same scope as
-		 * pad_bytes: the app config only, never the driver emission.
-		 * Inert unless a scenario writes the knob WITH A VALUE
-		 * ("repro_malformed_from: 2"); see the scan site for why.
+		 * pad_bytes: the simple/legacy-app target (SLOT_APP) only,
+		 * never the terminal/browser class targets and never the
+		 * driver emission. Inert unless a scenario writes the knob WITH
+		 * A VALUE ("repro_malformed_from: 2"); see the scan site for
+		 * why.
 		 */
 		bool _malform_this_write { false };
 
 		/*
 		 * Dirty-scoped emission invariant (D16R.4): a package
 		 * operation marks exactly the runtime targets its RESOLVED
-		 * plan kinds touch — never just the request string — and
+		 * plan touches — never just the request string — and
 		 * _generate_runtime_config() publishes a target only when its
 		 * mark is set, clearing the mark on emission. Bootstrap marks
-		 * BOTH targets so the initial publish reaches both sandboxes.
-		 * The marks are exact rather than approximate because the
-		 * generator's per-target membership filter makes each config a
-		 * function of its own kind's packages alone; an unmarked target
-		 * therefore really is byte-unchanged and is not republished.
+		 * every ACTIVE target so the initial publish reaches every
+		 * sandbox. The marks are exact rather than approximate because
+		 * the generator's per-target membership filter makes each
+		 * config a function of its own members alone; an unmarked
+		 * target therefore really is byte-unchanged and is not
+		 * republished. The mark granularity follows the emission mode:
+		 * legacy mode marks exactly the old app/driver pair (SLOT_APP /
+		 * SLOT_DRIVER), grouped mode marks only the touched classes
+		 * (_emission_slot routes a package by kind + runtime_class).
 		 * Emitted reports stay byte-identical to the pre-split
 		 * generator for the same package state.
 		 */
-		bool _app_config_dirty    { false };
-		bool _driver_config_dirty { false };
+		bool _slot_dirty[NUM_SLOTS] { };
+
+		/*
+		 * Legacy-mode log-once guard: the first emission that places a
+		 * non-simple <runtime_class> package into the single legacy app
+		 * runtime logs that the class requires <grouped_runtimes/>.
+		 */
+		bool _class_log_done { false };
 
 		unsigned           _num_roots               { 0 };
 
@@ -743,14 +849,18 @@ class Sponge::Pkgd::Main
 		/* ---- launcher channel (optional, config-gated) ---- */
 		void _init_launcher_channel();
 
+		/* ---- grouped-runtime opt-in (optional, config-gated) ---- */
+		void _init_grouped_runtimes();
+
 		/* ---- runtime-config generation (deterministic) ---- */
 
 		/*
 		 * P1.5 publication seam (render -> validate -> publish).
-		 * _generate_runtime_config renders EVERY dirty target to its
-		 * scratch and validates ALL of them BEFORE publishing EITHER,
+		 * _generate_runtime_config renders EVERY dirty slot to its
+		 * scratch and validates ALL of them BEFORE publishing ANY,
 		 * so a mixed write can never publish one sandbox's config after
-		 * the other sandbox's document has already been disproved.
+		 * another sandbox's document has already been disproved — the
+		 * all-or-nothing span is the full dirty set including driver.
 		 * Returns false when a render (Buffer_error beyond the growth
 		 * ceiling) or the validation gate rejected the write: nothing
 		 * is published then, the consumed dirty marks are restored so
@@ -761,37 +871,64 @@ class Sponge::Pkgd::Main
 		 * answering.
 		 */
 		bool _generate_runtime_config();
-		bool _render_runtime_config(bool drivers);
-		bool _validate_runtime_config(bool drivers);
-		void _publish_runtime_config(Genode::Expanding_reporter &reporter,
-		                             bool drivers);
+		bool _render_runtime_config(unsigned slot);
+		bool _validate_runtime_config(unsigned slot);
+		void _publish_runtime_config(unsigned slot);
+
+		/*
+		 * Slot routing (the active target list, see the SLOT_*
+		 * constants): which emission slot hosts a package. Driver
+		 * packages always land in SLOT_DRIVER (kind outranks class,
+		 * docs/12 §4.5). In grouped mode an app package routes by its
+		 * parsed runtime_class; in legacy mode every app package lands
+		 * in SLOT_APP regardless of the class — the pre-P2.4 placement.
+		 */
+		unsigned _emission_slot(Package const &p) const;
+
+		/* The library target + diagnostic name of one slot. */
+		Sponge::Pkg_config::Target _slot_target(unsigned slot) const;
+		char const *_slot_name(unsigned slot) const;
+
+		/*
+		 * The report channel of one slot. Only valid for ACTIVE slots:
+		 * the grouped reporters and the legacy "runtime" one are
+		 * Constructible and constructed only for the active mode
+		 * (_init_grouped_runtimes), so an inactive slot has no channel
+		 * to hand out and is never marked dirty in the first place.
+		 */
+		Genode::Expanding_reporter &_slot_reporter(unsigned slot);
 
 		/*
 		 * Emission snapshot: the pure sponge_pkg_config library takes
 		 * explicit view values, so each emission first snapshots
-		 * _installed/_running into _config_views (the runtime_class
-		 * token reproduces the pre-extraction is_driver() split).
-		 * Member storage — never static, never on the small ep stack.
+		 * _installed/_running into _config_views. The runtime_class
+		 * token is mode-dependent ("app"/"driver" in legacy mode,
+		 * reproducing the pre-extraction is_driver() split byte for
+		 * byte; the actual class token per class plus "driver" in
+		 * grouped mode — membership is the library's pure string
+		 * match).
 		 */
 		void _refresh_config_views();
 		Sponge::Pkg_config::Package_view _config_views[MAX_PACKAGES] { };
 		unsigned                       _num_config_views  { 0 };
 
 		/*
-		 * P1.5 render scratch: one growable buffer per runtime target,
-		 * holding the complete "<config>...</config>" document that the
-		 * validation gate reads and the publish step then republishes
-		 * byte for byte (render -> validate -> publish). Member
-		 * storage, heap-backed and grown on demand — never on the
-		 * small requesting thread's stack, and never a big static
-		 * allocation. Production documents fit the same pre-sized
-		 * budget as the corresponding report buffer
-		 * (RUNTIME_CONFIG_BUFFER / DRIVER_CONFIG_BUFFER, see the
-		 * derivations above), so the allocation happens once and never
-		 * grows in production; only the repro-pad knobs render beyond
-		 * it (their budget is intentionally unbounded) and a document
-		 * that outlives RENDER_SCRATCH_CEILING fails loudly as a
-		 * render failure instead of being truncated or dropped.
+		 * P1.5 render scratch: one growable buffer PER EMISSION SLOT
+		 * (per-class scratch), holding the complete
+		 * "<config>...</config>" document that the validation gate
+		 * reads and the publish step then republishes byte for byte
+		 * (render -> validate -> publish). Member storage, heap-backed
+		 * and grown on demand — never on the small requesting thread's
+		 * stack, and never a big static allocation. Production
+		 * documents fit the same pre-sized budget as the corresponding
+		 * report buffer (RUNTIME_CONFIG_BUFFER per app class /
+		 * DRIVER_CONFIG_BUFFER for the driver, see the derivations
+		 * above), so the allocation happens once and never grows in
+		 * production; only the repro-pad knobs render beyond it (their
+		 * budget is intentionally unbounded, SLOT_APP scope) and a
+		 * document that outlives RENDER_SCRATCH_CEILING fails loudly as
+		 * a render failure instead of being truncated or dropped.
+		 * Lazy: an inactive or never-dirtied slot allocates nothing.
 		 */
 		struct Render_scratch
 		{
@@ -806,8 +943,7 @@ class Sponge::Pkgd::Main
 
 		static constexpr Genode::size_t RENDER_SCRATCH_CEILING = 4u * 1024 * 1024;
 
-		Render_scratch _app_render    { };
-		Render_scratch _driver_render { };
+		Render_scratch _slot_render[NUM_SLOTS] { };
 
 		/*
 		 * Validator workspace (bounded uniqueness scratch). The

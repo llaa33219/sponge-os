@@ -93,6 +93,17 @@ bool Sponge::Pkgd::Main::_admits(Package const &p,
 			            p.name);
 			return true;
 		}
+	} else if (_grouped_runtimes) {
+		/*
+		 * Grouped mode: app-class admission is unarmed in this unit
+		 * (see _init_admission) — the legacy runtime_state budget
+		 * must not be read for a terminal/browser class (wrong
+		 * sandbox). Fail-open with a clear log until the per-class
+		 * budgets land.
+		 */
+		Genode::log("sponge_pkgd: grouped runtimes: per-class admission "
+		            "not armed — admitting ", p.name);
+		return true;
 	} else if (!_admission_armed || !_state_rom.constructed()) {
 		Genode::log("sponge_pkgd: admission not armed — admitting ", p.name);
 		return true;
@@ -141,12 +152,32 @@ bool Sponge::Pkgd::Main::_admits(Package const &p,
  * <launcher_request/> use: the "runtime_state" ROM route must be wired
  * by the scenario, and a denied ROM session is fatal under Genode's base
  * Env policy (sleep_forever, not a catchable throw).
+ *
+ * Grouped mode (<grouped_runtimes/>) deliberately does NOT arm this:
+ * the legacy runtime_state report is pkg_runtime's single-app budget,
+ * and per-class budgets (runtime_simple/runtime_terminal/
+ * runtime_browser state reports) are the next unit's work. Reading the
+ * single-app budget for a terminal/browser class would be checking the
+ * wrong sandbox, so grouped mode leaves app-class admission UNARMED
+ * (fail-open with this warning) until then. Legacy <admission/>
+ * behavior is unchanged, and driver admission is unaffected either way
+ * (driver_runtime is the same sandbox in both modes).
  */
 void Sponge::Pkgd::Main::_init_admission()
 {
 	try {
 		_config_rom.node().with_optional_sub_node("admission",
 			[&] (Genode::Node const &) {
+				if (_grouped_runtimes) {
+					Genode::warning(
+						"sponge_pkgd: grouped runtimes: <admission/> "
+						"cannot be armed yet — per-class budgets "
+						"(runtime_simple/terminal/browser state "
+						"reports) land in the next unit; app-class "
+						"installs/launches are admitted without a "
+						"budget check");
+					return;
+				}
 				_state_rom.construct(_env, "runtime_state");
 				_admission_armed = true;
 				Genode::log("sponge_pkgd: resource admission armed "
