@@ -75,8 +75,8 @@ namespace eval runtime_terminal {
     #
     # Class quota row (docs/17 §6 "terminal"). Consumed by
     # runtime-quota.inc; the RAM figure is documentation for the
-    # pkg_runtime admission math — the grant itself is the remainder
-    # clamp (run/runtime-quota.inc).
+    # per-class admission math. This class has an explicit RAM grant;
+    # only the browser runtime takes the remainder clamp.
     #
     variable QUOTA_CAPS 1100
     variable QUOTA_RAM  224M

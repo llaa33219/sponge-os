@@ -97,9 +97,9 @@ namespace eval runtime_simple {
 
     #
     # Class quota row (docs/17 §6 "simple"). Sum of the six packages'
-    # <quota> elements; consumed by runtime-quota.inc. The RAM figure
-    # is documentation for the pkg_runtime admission math — the grant
-    # itself is the remainder clamp (run/runtime-quota.inc).
+    # <quota> elements; consumed by runtime-quota.inc. The grouped
+    # topology grants this class an explicit RAM budget; only the
+    # browser runtime takes the remainder clamp (run/runtime-quota.inc).
     #
     variable QUOTA_CAPS 4512
     variable QUOTA_RAM  1288M
