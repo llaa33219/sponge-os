@@ -1,0 +1,31 @@
+<!--
+  badriver_root — grouped-runtime probe fixture: the request vehicle
+  for the badriver refusal.
+
+  An ordinary simple-class package with a VALID quota whose dependency
+  is badriver (driver class, malformed quota). `install badriver_root`
+  resolves the plan [badriver, badriver_root]; the pre-flight must
+  refuse it naming 'badriver' — the actual offender — not this request
+  root, pinning the machine-readable offender-name contract.
+
+  Not autostarted and never registered (its install is refused before
+  any mutation), so it appears in no class config and is needed exactly
+  once. It exists as a separate package because a refusal can only be
+  attributed to a dependency when the request root differs from the
+  offender.
+
+  Probe-only: never enabled by any bake profile.
+-->
+<package>
+  <name>badriver_root</name>
+  <version>1.0</version>
+  <description>Grouped-runtime probe: request vehicle for the badriver refusal.</description>
+
+  <binary>config_witness</binary>
+  <quota ram="4M" caps="100"/>
+  <runtime_class>simple</runtime_class>
+
+  <dependencies>
+    <pkg>badriver</pkg>
+  </dependencies>
+</package>

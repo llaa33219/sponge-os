@@ -1,0 +1,31 @@
+<!--
+  badriver — grouped-runtime probe fixture: the malformed DRIVER quota.
+
+  <kind>driver</kind> with an unparsable <quota ram="garbage"/> and
+  <autostart/>. This is the Oracle-review blocker fixture: the grouped
+  install pre-flight must parse and REFUSE it ('insufficient-resources'
+  with zero figures) BEFORE any mutation even though no <driver_admission/>
+  is armed in run/sponge-pkg-grouped.run — the arm gate covers only the
+  budget examination. Without that refusal the garbage quantum would
+  reach the emitted <resource quantum="garbage"/> of driver_runtime and
+  the P1.5 publication gate would wedge every later write.
+
+  It is reached as a DEPENDENCY of badriver_root, never as a request
+  root: that way the refusal's machine-readable pkg attribute must name
+  THIS package (the offender), not the request root — pinning the
+  offender-name correction.
+
+  Probe-only: never enabled by any bake profile.
+-->
+<package>
+  <name>badriver</name>
+  <version>1.0</version>
+  <description>Grouped-runtime probe: malformed driver quota (refused fixture).</description>
+
+  <binary>config_witness</binary>
+  <quota ram="garbage" caps="100"/>
+  <kind>driver</kind>
+
+  <autostart/>
+  <dependencies/>
+</package>

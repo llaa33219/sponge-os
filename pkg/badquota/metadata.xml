@@ -1,0 +1,28 @@
+<!--
+  badquota — grouped-runtime probe fixture: the MALFORMED app quota.
+
+  <quota ram="garbage"/> is unparsable by sponge_pkg_admission's
+  quota parser. Autostart, so the grouped install pre-flight MUST parse
+  and refuse it ('insufficient-resources' with zero figures) BEFORE any
+  mutation — independently of whether the class's admission gate is
+  armed. Without that refusal the garbage quantum would reach the
+  emitted <resource quantum="garbage"/> and the P1.5 publication gate
+  would reject every later write (the emission-wedge defect
+  run/sponge-pkg-grouped.run exists to prevent).
+
+  Simple class (the default): its recovery twin s_after then proves the
+  simple emission channel is still healthy after the refusal.
+
+  Probe-only: never enabled by any bake profile.
+-->
+<package>
+  <name>badquota</name>
+  <version>1.0</version>
+  <description>Grouped-runtime probe: malformed-quota refusal fixture.</description>
+
+  <binary>config_witness</binary>
+  <quota ram="garbage" caps="100"/>
+
+  <autostart/>
+  <dependencies/>
+</package>
