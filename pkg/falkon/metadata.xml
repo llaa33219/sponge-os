@@ -25,6 +25,7 @@
   <description>Falkon web browser (Qt6 WebEngine). Browse the Alpha's QEMU-slirp network.</description>
 
    <binary>falkon</binary>
+   <runtime_class>browser</runtime_class>
    <!--
         caps/ram: WebEngine is the heaviest component in the Alpha.
         ram=1G (the WebEngine heap). caps=200000 for the disk-served

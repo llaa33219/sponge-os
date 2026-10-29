@@ -49,6 +49,7 @@
   <description>Terminal with bash, vim, and a UNIX CLI toolset (coreutils, grep, sed, tar, less, findutils, diffutils, which).</description>
 
   <binary>init</binary>
+  <runtime_class>terminal</runtime_class>
   <quota ram="224M" caps="1100"/>
   <resizeable>yes</resizeable>
 
