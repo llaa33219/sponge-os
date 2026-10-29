@@ -7,7 +7,9 @@
  * The validator answers one question: "is this document exactly a
  * well-formed instance of the runtime-config subset that
  * sponge_pkg_config renders?" It is the render -> validate -> publish
- * gate for the named runtime targets (app/driver today): a rendering
+ * gate for the named runtime targets (app/driver plus the
+ * simple/terminal/browser class presets of
+ * docs/12-package-format.md §4.5 <runtime_class>): a rendering
  * regression, a malformed raw <config> append, or a hostile metadata
  * fragment is rejected with a structured reason BEFORE anything is
  * published to a report session.

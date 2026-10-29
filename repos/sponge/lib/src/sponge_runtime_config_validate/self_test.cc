@@ -8,9 +8,11 @@
  * shared build run. It proves the render -> validate -> publish gate:
  *
  *   1. Positive: every configuration sponge_pkg_config renders for
- *      the app and driver targets (mixed app+driver fixture, empty
- *      installed set, boot-module and disk-served binary prefixes,
- *      the repro-padding knob) validates OK. Hand-written literals
+ *      the app and driver targets and for the simple/terminal/browser
+ *      runtime-class targets (mixed app+driver fixture, mixed-class
+ *      fixture, empty installed set, empty-class set, boot-module and
+ *      disk-served binary prefixes, the repro-padding knob) validates
+ *      OK. Hand-written literals
  *      additionally pin the accepted shapes independently of the
  *      emitter (including the documented <repro_padding> test-only
  *      exception).
@@ -175,6 +177,59 @@ Sponge::Pkg_config::Package_view const FIX_MALFORMED[] = {
 	  .num_sessions = 0 },
 };
 
+/*
+ * Runtime-class fixture (docs/12-package-format.md §4.5
+ * <runtime_class>): one member per simple/terminal/browser class plus
+ * a legacy "app"-token and a driver package. Exercises the class
+ * target presets end to end: the class-private session union, the
+ * <pkg>-ro label rule, a sibling <child> route, an explicit label,
+ * verbatim inline config, and a binary != name <binary> node.
+ */
+Sponge::Pkg_config::Package_view const FIX_CLASSES[] = {
+	{ .name = "sim_a", .binary = "sim_a", .ram = "4M", .caps = 64,
+	  .runtime_class = "simple", .running = true,
+	  .sessions = {
+		{ .name = "Gui", .route = "parent" },
+		{ .name = "SimpleOnly", .route = "" } },
+	  .num_sessions = 2 },
+
+	{ .name = "sim_b", .binary = "sim_b_bin", .ram = "2M", .caps = 32,
+	  .runtime_class = "simple", .running = false,
+	  .sessions = {
+		{ .name = "SimpleStopped", .route = "" } },
+	  .num_sessions = 1 },
+
+	{ .name = "ter_a", .binary = "ter_a", .ram = "8M", .caps = 128,
+	  .config_xml = "<config><libc/></config>",
+	  .runtime_class = "terminal", .running = true,
+	  .sessions = {
+		{ .name = "Terminal", .route = "term-bridge" },
+		{ .name = "TerminalOnly", .route = "wm", .label = "term-label" } },
+	  .num_sessions = 2 },
+
+	{ .name = "bro_a", .binary = "bro_a_bin", .ram = "32M", .caps = 512,
+	  .runtime_class = "browser", .running = true,
+	  .sessions = {
+		{ .name = "BrowserOnly", .route = "nitpicker" },
+		{ .name = "File_system", .route = "vfs", .readonly = true } },
+	  .num_sessions = 2 },
+
+	{ .name = "legacy_app", .binary = "legacy_app", .ram = "1M", .caps = 8,
+	  .runtime_class = "app", .running = true,
+	  .sessions = { { .name = "LegacyOnly", .route = "" } },
+	  .num_sessions = 1 },
+
+	{ .name = "drv_hw", .binary = "drv_hw", .ram = "16M", .caps = 256,
+	  .runtime_class = "driver", .running = true,
+	  .sessions = {
+		{ .name = "Platform", .route = "" },
+		{ .name = "Dma", .route = "" } },
+	  .num_sessions = 2 },
+};
+
+constexpr unsigned NUM_CLASS_PACKAGES =
+	sizeof(FIX_CLASSES) / sizeof(FIX_CLASSES[0]);
+
 char render_buf[65536];
 
 std::string render(Sponge::Pkg_config::Target const &target,
@@ -257,6 +312,9 @@ int main()
 	{
 		Target const app = Sponge::Pkg_config::app_target();
 		Target const drv = Sponge::Pkg_config::driver_target();
+		Target const simple   = Sponge::Pkg_config::simple_target();
+		Target const terminal = Sponge::Pkg_config::terminal_target();
+		Target const browser  = Sponge::Pkg_config::browser_target();
 
 		for (int pass = 0; pass < 2; ++pass) {
 			/* pass 0: disk-served ("bin/"), pass 1: boot modules */
@@ -271,6 +329,27 @@ int main()
 			          render(app, nullptr, 0, options));
 			expect_ok("rendered: empty/driver",
 			          render(drv, nullptr, 0, options));
+
+			/*
+			 * Class targets (P2.4 pure-emission presets): each
+			 * class renders and validates over the mixed-class
+			 * fixture; a class with no member (browser over the
+			 * simple-only slice) renders the empty-class shape
+			 * and must validate too.
+			 */
+			expect_ok("rendered: classes/simple",
+			          render(simple, FIX_CLASSES, NUM_CLASS_PACKAGES,
+			                 options));
+			expect_ok("rendered: classes/terminal",
+			          render(terminal, FIX_CLASSES, NUM_CLASS_PACKAGES,
+			                 options));
+			expect_ok("rendered: classes/browser",
+			          render(browser, FIX_CLASSES, NUM_CLASS_PACKAGES,
+			                 options));
+			expect_ok("rendered: classes/empty (browser, no member)",
+			          render(browser, FIX_CLASSES, 2, options));
+			expect_ok("rendered: classes/empty (terminal, no member)",
+			          render(terminal, FIX_CLASSES, 2, options));
 		}
 
 		/* the repro-padding knob (test-only) passes as documented */
