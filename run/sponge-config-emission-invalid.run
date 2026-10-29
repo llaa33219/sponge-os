@@ -1,5 +1,5 @@
 #
-# \brief  Sponge OS runtime-config emission negative scenario (P1.5 red)
+# \brief  Sponge OS runtime-config emission negative scenario (P1.5)
 # \author Sponge OS contributors
 # \date   2026-10-29
 #
@@ -9,13 +9,11 @@
 # config. When the rendered pkg_runtime config is not well-formed, the
 # emission must be REJECTED loudly and nothing may reach the report
 # session; the operation that triggered the write must answer a
-# structured error. Today there is no emission-validation seam at all
-# (the pure validator landed in f310022558 but is not wired into the
-# emitter), so this scenario is RED BY CONSTRUCTION against the current
-# tree: the corrupted document is published to pkg_runtime's config ROM
-# and the install answers a plain "ok". Do NOT weaken the gates below to
-# make current code pass - the RED receipt is the deliverable. The next
-# unit wires render -> validate -> publish and flips this scenario green.
+# structured error. The P1.5 render -> validate -> publish seam makes
+# this scenario green: the corrupted document is withheld from
+# pkg_runtime's config ROM and the install answers status="error".
+# Do NOT weaken the gates below; reverting the publication seam must
+# make this scenario RED again.
 #
 # Malformed-emission injection (test-only, repos/sponge/src/sponge_pkgd):
 #
@@ -24,8 +22,8 @@
 #   mid-attribute (<start name="repro_malformed_tail) is appended to the
 #   document at the reporter write site - the "malformed raw <config>
 #   append" the validator's threat model names. The knob corrupts the
-#   rendering only: it never disables or bypasses validation (there is
-#   none yet to bypass), never touches the pure emission library, and is
+#   rendering only: it never disables or bypasses the publication
+#   validator, never touches the pure emission library, and is
 #   inert unless a scenario writes it WITH A VALUE (a valueless HID tag
 #   is silently dropped). Write numbering: one write per
 #   _generate_runtime_config call - the bootstrap publish is write 1,
@@ -79,9 +77,10 @@
 # bootstrap publication, so a sequential gate anchored on it could
 # consume-and-drop it (the lesson the authority gates encode).
 #
-# Why current code must be RED: write 2's rendering is corrupted, pkgd
-# publishes it verbatim (the tail token is in the publication log), and
-# _report_install_ok answers status="ok" - both gates fail.
+# Expected green behavior: write 2's rendering is corrupted, the
+# publication validator rejects it before the reporter is called, and
+# the operation answers a structured status="error". Publishing the
+# tail token or answering status="ok" is a regression.
 #
 # Build:
 #   make -C genode/build/x86_64 run/sponge-config-emission-invalid \
