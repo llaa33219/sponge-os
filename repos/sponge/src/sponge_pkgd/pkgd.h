@@ -17,8 +17,14 @@
  *                 set, exclusive-group peer lookup)
  *   metadata.cc - pkg_index/pkg_<name>.xml parsing, DFS resolution
  *   admission.cc - resource admission math + ROM arming
- *   ops.cc      - install/remove/launch + binary-manifest pre-flight
+ *   ops.cc      - install/remove/launch + binary-manifest loading
  *   store.cc    - persistent installed-set store + bake seeding
+ *
+ * The launch DECISION (gate ordering, running-set rules, binary
+ * manifest query) lives in the pure sponge_pkg_launch library
+ * (<sponge/pkg_launch.h>); the emission templating in sponge_pkg_config
+ * and the parse-time binary_prefix rewriting in sponge_binary_prefix.
+ * This class remains the I/O and state shell around them.
  */
 
 #pragma once
@@ -573,7 +579,8 @@ class Sponge::Pkgd::Main
 		/*
 		 * Binary-manifest ROM (optional, config-gated by <binaries/>):
 		 * the set of package binaries actually staged in this image,
-		 * used by _do_launch's pre-flight check (see _binary_available).
+		 * consumed by the pure sponge_pkg_launch launch model's
+		 * binary gate (see _init_binary_manifest for the loading).
 		 *
 		 * Why a manifest instead of probing the binary ROM directly: a
 		 * missing boot module is a FATAL ROM-session denial under Genode's
@@ -715,7 +722,6 @@ class Sponge::Pkgd::Main
 
 		/* ---- binary manifest (optional, config-gated) ---- */
 		void _init_binary_manifest();
-		bool _binary_available(Package const &p);
 
 		/* ---- resource admission control (optional, config-gated) ---- */
 		void _init_admission();

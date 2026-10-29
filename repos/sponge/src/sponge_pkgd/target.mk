@@ -17,10 +17,13 @@
 #   registry.cc - installed/running state
 #   metadata.cc - metadata parsing + DFS resolution
 #   admission.cc - resource admission math + ROM arming
-#   ops.cc      - install/remove/launch + binary-manifest pre-flight
+#   ops.cc      - install/remove/launch + binary-manifest loading
 #   store.cc    - persistent installed-set store + bake seeding
+# Pure libraries: sponge_pkg_config (emission), sponge_binary_prefix
+# (parse-time rewriting), sponge_pkg_launch (launch decision +
+# running-set rules).
 TARGET   := sponge_pkgd
 SRC_CC   := main.cc registry.cc metadata.cc admission.cc ops.cc store.cc
-LIBS     := base vfs sponge_pkg_config sponge_binary_prefix
+LIBS     := base vfs sponge_pkg_config sponge_binary_prefix sponge_pkg_launch
 INC_DIR  := $(PRG_DIR)/include \
             $(REP_DIR)/include

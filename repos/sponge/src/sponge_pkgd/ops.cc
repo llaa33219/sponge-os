@@ -4,13 +4,13 @@
  *
  * Phase 16 P1.3 responsibility split (zero behavior change): verbatim
  * move of Main::_do_explain/_do_list/_do_install/_do_remove/_do_launch
- * from main.cc, plus the launch pre-flight binary-manifest pair
- * (_init_binary_manifest/_binary_available). The pair lands here
- * because _binary_available's only caller is _do_launch's pre-flight
- * check and _init_binary_manifest is its initializer - the same
- * init+query cohesion that puts _init_admission with the admission
- * math. _bootstrap still calls _init_binary_manifest (cross-TU, same
- * class).
+ * from main.cc, plus the launch pre-flight binary-manifest loader
+ * (_init_binary_manifest). The loader lands here because it is
+ * _do_launch's initializer and the only I/O of the pre-flight pair:
+ * the QUERY half (_binary_available) moved verbatim into the pure
+ * sponge_pkg_launch library (Phase 16 P1.2 extraction) along with the
+ * launch decision it feeds. _bootstrap still calls
+ * _init_binary_manifest (cross-TU, same class).
  *
  * _report_* and the duplicate-request replay recipe stay in main.cc
  * (channel); this module calls them like any other Main method.
@@ -19,6 +19,7 @@
 #include "pkgd.h"
 
 #include <base/log.h>
+#include <sponge/pkg_launch.h>
 
 void Sponge::Pkgd::Main::_do_explain(Genode::String<128> const &pkg)
 {
@@ -235,7 +236,14 @@ void Sponge::Pkgd::Main::_do_remove(Genode::String<128> const &pkg)
  *
  * Transitions an installed-but-stopped package to running by adding its
  * name to _running and regenerating the pkg_runtime config so init
- * starts the new <start> node. Five bounded outcomes:
+ * starts the new <start> node. The DECISION — the gate ordering and
+ * every gate rule — lives in the pure sponge_pkg_launch library (see
+ * <sponge/pkg_launch.h>); this method is the state shell: it snapshots
+ * Main's state into the library's views, computes the resource verdict
+ * through the existing admission code, maps the decision onto the
+ * existing result vocabulary, and performs the mutations
+ * (_add_running, dirty marks, config regeneration) only after the
+ * decision is ok. Five bounded outcomes:
  *   - not-installed: the package is not in the installed set
  *     (no implicit install — caller must install first);
  *   - already-running: the package already has a <start> node
@@ -258,84 +266,101 @@ void Sponge::Pkgd::Main::_do_launch(Genode::String<128> const &pkg)
 {
 	char const *const name = pkg.string();
 
-	if (!_installed_contains(name)) {
-		_report_launch_ok(pkg, "not-installed");
-		return;
-	}
+	/* Snapshot Main's state into the pure launch-model input. */
+	Pkg_launch::Launch_input in { };
+	Package const *found { nullptr };
 
-	if (_is_running(name)) {
-		_report_launch_ok(pkg, "already-running");
-		return;
-	}
-
-	/* Exclusive-group gate, same rule as the install path
-	 * (docs/12 §4.6). Defense in depth for the shipped framebuffer
-	 * drivers: today the install pre-flight already refuses the second
-	 * one, so this branch is unreachable through vct — but it is the
-	 * guard that keeps the invariant true for any future peer in the
-	 * group, and for a deployment that marks a package NOT autostart. */
+	in.name = name;
 	for (unsigned i = 0; i < _num_installed; ++i) {
-		if (Genode::strcmp(_installed[i].name.string(), name) != 0)
-			continue;
-		Genode::String<64> const peer = _exclusive_peer(_installed[i], name);
-		if (peer != Genode::String<64>()) {
-			_report_conflict("launch", pkg, peer,
-			                 _installed[i].exclusive_group);
-			return;
-		}
-		break;
+		Package const &c = _installed[i];
+		in.installed[i].name            = c.name.string();
+		in.installed[i].binary          = c.binary.string();
+		in.installed[i].exclusive_group = c.exclusive_group.string();
+		in.installed[i].has_autostart   = c.has_autostart;
+		if (!found && Genode::strcmp(c.name.string(), name) == 0)
+			found = &c;
 	}
+	in.num_installed = _num_installed;
+
+	for (unsigned i = 0; i < _num_running; ++i)
+		in.running[i] = _running[i].string();
+	in.num_running = _num_running;
+
+	/* The staged-binary manifest (optional, <binaries/>-gated). */
+	in.manifest.loaded        = _binary_manifest_loaded;
+	in.manifest.binary_prefix = _binary_prefix.string();
+	for (unsigned i = 0; i < _num_staged_binaries; ++i)
+		in.manifest.staged[i] = _staged_binaries[i].string();
+	in.manifest.num_staged = _num_staged_binaries;
 
 	/*
-	 * Pre-flight: a package can be fully installed (metadata staged,
-	 * resolvable, in the index) while its BINARY is absent from the
-	 * image. Reporting "ok" in that case is a lie the user never sees
-	 * corrected: pkg_runtime's init catches Rom_connection_failed,
-	 * Out_of_ram and Out_of_caps around child creation and merely
-	 * WARNING (sandbox/library.cc), so the launch silently evaporates.
-	 * Gate on the staged-binary manifest BEFORE touching _running.
+	 * Gates 1-4 first (not-installed -> already-running ->
+	 * exclusive-conflict -> binary-missing). The admission input is
+	 * computed ONLY when no earlier gate has already decided — the
+	 * pre-extraction control flow never consulted the budget for a
+	 * launch refused earlier, and _admits logs and reads the state
+	 * ROM, so laziness is observable behavior (the self-test pins the
+	 * property that the earlier gates dominate the resource input).
 	 */
-	Package const *found { nullptr };
-	for (unsigned i = 0; i < _num_installed; ++i)
-		if (Genode::strcmp(_installed[i].name.string(), name) == 0) {
-			found = &_installed[i];
-			break;
-		}
-	{
-		if (found && !_binary_available(*found)) {
-			Genode::log("sponge_pkgd: launch ", pkg,
-			            " -> binary-missing (", _binary_prefix,
-			            found->binary, " is not staged in this image)");
-			_report_launch_ok(pkg, "binary-missing");
-			return;
-		}
+	Pkg_launch::Decision d = Pkg_launch::decide_pre_resource(in);
+
+	if (d.outcome == Pkg_launch::Outcome::ok) {
 
 		/*
-		 * Admission control: the same pre-flight shape, one resource
-		 * dimension over. A package that does not fit into pkg_runtime's
-		 * remaining budget would be clamped by the sandbox and die
-		 * silently, so refuse BEFORE _running and BEFORE the config is
-		 * regenerated.
+		 * Gate 5: the resource verdict is computed by the existing
+		 * admission code (admission.cc — _quota_bytes, _admits, the
+		 * ADMISSION_MARGIN_* comparison); the launch model takes it
+		 * as an input and never re-derives it.
 		 */
+		Pkg_launch::Resource_verdict rv =
+			Pkg_launch::Resource_verdict::admitted();
+
 		if (found) {
 			Genode::size_t need_ram { 0 };
 			if (!_quota_bytes(found->ram, need_ram)) {
 				Genode::warning("sponge_pkgd: package '", name,
 				                "' has an unparsable <quota ram=\"",
 				                found->ram, "\"> — refusing the launch");
-				_report_insufficient("launch", pkg, 0, 0, 0, 0);
-				return;
-			}
-
-			Genode::size_t avail_ram { 0 };
-			unsigned avail_caps { 0 };
-			if (!_admits(*found, need_ram, avail_ram,
-			             found->caps, avail_caps)) {
-				_report_insufficient("launch", pkg, need_ram, avail_ram,
-				                     found->caps, avail_caps);
-				return;
+				rv = Pkg_launch::Resource_verdict::quota_unparsable();
+			} else {
+				Genode::size_t avail_ram { 0 };
+				unsigned avail_caps { 0 };
+				if (_admits(*found, need_ram, avail_ram,
+				            found->caps, avail_caps))
+					rv = Pkg_launch::Resource_verdict::admitted();
+				else
+					rv = Pkg_launch::Resource_verdict::refused(
+						need_ram, avail_ram, found->caps, avail_caps);
 			}
 		}
+		d = Pkg_launch::decide(in, rv);
+	}
+
+	/* Map the decision onto the existing result vocabulary. */
+	switch (d.outcome) {
+	case Pkg_launch::Outcome::not_installed:
+		_report_launch_ok(pkg, "not-installed");
+		return;
+	case Pkg_launch::Outcome::already_running:
+		_report_launch_ok(pkg, "already-running");
+		return;
+	case Pkg_launch::Outcome::exclusive_conflict:
+		_report_conflict("launch", pkg,
+		                 Genode::String<64>(d.peer),
+		                 Genode::String<16>(d.group));
+		return;
+	case Pkg_launch::Outcome::binary_missing:
+		Genode::log("sponge_pkgd: launch ", pkg,
+		            " -> binary-missing (", _binary_prefix,
+		            found->binary, " is not staged in this image)");
+		_report_launch_ok(pkg, "binary-missing");
+		return;
+	case Pkg_launch::Outcome::insufficient_resources:
+		_report_insufficient("launch", pkg, d.need_ram, d.avail_ram,
+		                     d.need_caps, d.avail_caps);
+		return;
+	case Pkg_launch::Outcome::ok:
+		break;
 	}
 
 	_add_running(name);
@@ -407,22 +432,4 @@ void Sponge::Pkgd::Main::_init_binary_manifest()
 				            " staged binary/binar(ies) — launch pre-flight active");
 			});
 	} catch (Genode::Xml_node::Invalid_syntax) { }
-}
-
-
-/*
- * True when the package's effective binary is staged in this image.
- * Inert (always true) unless <binaries/> opted a manifest in, so no
- * deployment changes behavior without opting in (AGENTS.md §1.1).
- */
-bool Sponge::Pkgd::Main::_binary_available(Package const &p)
-{
-	if (!_binary_manifest_loaded)
-		return true;
-
-	Genode::String<96> const path(_binary_prefix, p.binary);
-	for (unsigned i = 0; i < _num_staged_binaries; ++i)
-		if (Genode::strcmp(_staged_binaries[i].string(), path.string()) == 0)
-			return true;
-	return false;
 }

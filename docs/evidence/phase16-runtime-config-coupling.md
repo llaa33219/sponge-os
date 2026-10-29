@@ -391,15 +391,22 @@ Per D16R.5 / P1.2: extract each target into a pure library (no I/O, no
 `env()`) with tests **before** any topology change. Targets and their
 current anchors:
 
-- [ ] **`binary_prefix` rewriter.** Surface: the text rewrite at
+- [x] **`binary_prefix` rewriter.** Surface: the text rewrite at
   `main.cc:1103-1175` plus the path composition at `:2289` and `:3171`.
+  Landed as pure `sponge_binary_prefix` (`71b2c4359e`) with caller-owned
+  buffers and a host golden self-test (`self-test: PASS (equivalence +
+  golden snapshots)`).
   Pure shape: `(prefix, serialized_config_text) -> rewritten_text` and
   `(prefix, binary_name) -> effective_path`. Replace the static buffers
   (`:1050`, `:1113`) with caller-provided buffers in the library. Tests:
   slash-free name rewritten; `/bin/bash` untouched; `<start>` without
   `<binary>` gains one; `<start>` with `<binary>` does not; empty prefix
   is identity. This library is also the P2.3 extension point.
-- [ ] **Launch model.** Surface: `_is_running`/`_add_running`/
+- [x] **Launch model.** Surface: `_is_running`/`_add_running`/
+  Landed as pure `sponge_pkg_launch` with the exact six-gate order,
+  lazy resource evaluation, running-set helpers, and a host self-test
+  (`self-test: PASS (equivalence + outcomes + ordering +
+  exclusive/manifest/sync/identity invariants)`).
   `_sync_running_state` (`:1588-1634`) and the five-outcome decision
   order in `_do_launch` (`:1837-1932`: not-installed / already-running /
   exclusive-conflict / binary-missing / insufficient-resources / ok),
@@ -415,7 +422,8 @@ current anchors:
   margins `:689-690`, the two-budget install loop `:1690-1737`. Pure
   shape: `(quota_string, need, avail, margin) -> admit/refuse` + budget
   decrement; the HID decode is pure over a byte range.
-- [ ] **Config-emission templating.** Surface: `_emit_runtime_config`
+- [x] **Config-emission templating.** Surface: `_emit_runtime_config`
+  Landed as pure `sponge_pkg_config` with host golden self-test.
   (`:2092-2356`) — name-sorted order (`:2096-2110`), `<report>` node
   (`:2113-2128`), `<parent-provides>` union (`:2170-2231`),
   `<default-route>`/`<default>` (`:2233-2261`), `<start>` nodes
@@ -423,7 +431,7 @@ current anchors:
   route `:2312-2326`). Pure shape:
   `(installed[], running[], kind filter, binary_prefix) -> config_text`.
   Keep the determinism contract (`:1940-1948`) as a property test.
-- [ ] **P1.3 module split.** Along the existing thread boundary:
+- [x] **P1.3 module split.** Along the existing thread boundary:
   constructor + `_bootstrap()` + store + bake (all storage I/O) vs the
   pure core (decides, never blocks). No new threads. Update this file's
   §1.2/§8 line anchors in the same commit (gate of P1.3).
@@ -504,9 +512,11 @@ one `Main` class and one request backend. The landed responsibilities are:
 | `admission.cc` | quota parsing, budget reads and admission decisions |
 | `store.cc` | opt-in persistent root store and bake seeding |
 
-`sponge_pkg_config` is the landed pure, host-testable emission library. The
-other P1.2 extractions named in §9 remain open; this receipt does not mark
-them complete.
+`sponge_pkg_config`, `sponge_binary_prefix`, and `sponge_pkg_launch` are
+the landed pure, host-testable libraries. The launch-model behavior gates
+also passed serially on QEMU: `sponge-pkg-lifecycle`, `sponge-pkg-admission`,
+and `sponge-launch`. Admission math remains the only P1.2 extraction named
+in §9 still open; P1.5 emission validation is the next task.
 
 ### 12.2 Dirty-scoped emission
 
