@@ -23,11 +23,12 @@
  *   One call of 'emit_target' renders exactly one target's config.
  *   There is no two-report assumption anywhere in the library: the
  *   app and driver sandboxes of today are just two Target values
- *   (the 'app_target'/'driver_target' presets); later runtime classes
- *   (simple/terminal/browser, plan P2.4) add further Target values and
- *   additional emission calls without any library change. Membership
- *   is a pure string match between 'Package_view::runtime_class' and
- *   'Target::runtime_class'.
+ *   (the 'app_target'/'driver_target' presets), and the app runtime
+ *   classes add three more (the 'simple_target'/'terminal_target'/
+ *   'browser_target' presets) as further Target values and additional
+ *   emission calls without any change to the emission algorithm.
+ *   Membership is a pure string match between
+ *   'Package_view::runtime_class' and 'Target::runtime_class'.
  *
  * DETERMINISM CONTRACT (unchanged from the pre-extraction code):
  *
@@ -119,8 +120,11 @@ struct Package_view
 	 * Emission-class token, matched against 'Target::runtime_class'.
 	 * Today sponge_pkgd derives it from the metadata <kind>
 	 * ("driver" for <kind>driver</kind>, "app" for everything else —
-	 * exactly the pre-extraction is_driver() split); the later runtime
-	 * classes (plan P2.4) derive it from the pkg_runtime attribute.
+	 * exactly the pre-extraction is_driver() split). The runtime-class
+	 * targets consume the committed metadata spelling
+	 * <runtime_class>simple|terminal|browser</runtime_class>
+	 * (docs/12-package-format.md §4.5, default simple); the class
+	 * grouping in sponge_pkgd is a later unit.
 	 */
 	char const *runtime_class { "app" };
 
@@ -240,5 +244,19 @@ Genode::String<96> session_label(char const *pkg_name,
  */
 Target app_target();
 Target driver_target();
+
+/*
+ * Preset targets for the three app runtime classes
+ * (docs/12-package-format.md §4.5, <runtime_class>simple|terminal|
+ * browser</runtime_class>, default simple). Each carries the SAME
+ * APP_BASE_SERVICES capability set as 'app_target' — no hardware
+ * service in any of them, so the driver-only capabilities
+ * (Platform/Dma/Irq/Io_mem/Io_port) stay out of every app target. A
+ * package is emitted into exactly one of them via the runtime_class
+ * string match; 'emit_target' itself is unchanged.
+ */
+Target simple_target();
+Target terminal_target();
+Target browser_target();
 
 }  /* namespace Sponge::Pkg_config */

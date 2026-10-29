@@ -17,6 +17,13 @@
  *      implementation, so any future edit that changes the bytes
  *      fails loudly even if it changes both copies together.
  *
+ *   3. Class routing: the simple/terminal/browser target presets
+ *      (docs/12-package-format.md §4.5 <runtime_class>) get golden
+ *      snapshots plus routing pins over a mixed-class fixture —
+ *      each class package and its sessions appear only in its own
+ *      target, driver-only hardware capabilities appear in no app
+ *      class target, and the empty-class output is pinned.
+ *
  * BUILD & RUN (from the repository root; host g++ only — this never
  * touches the Genode build tree):
  *
@@ -396,6 +403,65 @@ Ref_package const FIX_PAD[] = {
 	  .num_sessions = 1 },
 };
 
+/*
+ * Mixed runtime-class fixture for the simple/terminal/browser target
+ * presets. Class routing is a pure string match on the
+ * <runtime_class> token (docs/12-package-format.md §4.5), so this
+ * fixture is built directly as Package_view values (the reference
+ * two-class model has no concept of the app runtime classes). It
+ * pins, per class: one running member, a class-private session name
+ * (provides isolation: only that class's target unions it), a stopped
+ * member whose sessions still shape <parent-provides> without a
+ * <start>, and sibling <child> routing. 'drv_hw' keeps the
+ * driver-only hardware sessions in the fixture to prove they leak
+ * into no app class target; 'legacy_app' holds the pre-class "app"
+ * token to prove it reaches none of the class targets either.
+ */
+Sponge::Pkg_config::Package_view const FIX_CLASSES[] = {
+	{ .name = "sim_a", .binary = "sim_a", .ram = "4M", .caps = 64,
+	  .runtime_class = "simple", .running = true,
+	  .sessions = {
+		{ .name = "Gui", .route = "parent" },
+		{ .name = "SimpleOnly", .route = "" } },
+	  .num_sessions = 2 },
+
+	{ .name = "sim_b", .binary = "sim_b_bin", .ram = "2M", .caps = 32,
+	  .runtime_class = "simple", .running = false,
+	  .sessions = {
+		{ .name = "SimpleStopped", .route = "" } },
+	  .num_sessions = 1 },
+
+	{ .name = "ter_a", .binary = "ter_a", .ram = "8M", .caps = 128,
+	  .config_xml = "<config><libc/></config>",
+	  .runtime_class = "terminal", .running = true,
+	  .sessions = {
+		{ .name = "Terminal", .route = "term-bridge" },
+		{ .name = "TerminalOnly", .route = "wm", .label = "term-label" } },
+	  .num_sessions = 2 },
+
+	{ .name = "bro_a", .binary = "bro_a_bin", .ram = "32M", .caps = 512,
+	  .runtime_class = "browser", .running = true,
+	  .sessions = {
+		{ .name = "BrowserOnly", .route = "nitpicker" },
+		{ .name = "File_system", .route = "vfs", .readonly = true } },
+	  .num_sessions = 2 },
+
+	{ .name = "legacy_app", .binary = "legacy_app", .ram = "1M", .caps = 8,
+	  .runtime_class = "app", .running = true,
+	  .sessions = { { .name = "LegacyOnly", .route = "" } },
+	  .num_sessions = 1 },
+
+	{ .name = "drv_hw", .binary = "drv_hw", .ram = "16M", .caps = 256,
+	  .runtime_class = "driver", .running = true,
+	  .sessions = {
+		{ .name = "Platform", .route = "" },
+		{ .name = "Dma", .route = "" } },
+	  .num_sessions = 2 },
+};
+
+constexpr unsigned NUM_CLASS_PACKAGES =
+	sizeof(FIX_CLASSES) / sizeof(FIX_CLASSES[0]);
+
 Fixture const FIXTURES[] = {
 	{ "mixed",  FIX_MIXED, 5, "bin/", 0 },
 	{ "pad",    FIX_PAD,   1, "bin/", 128 },
@@ -414,6 +480,17 @@ constexpr unsigned NUM_FIXTURES = sizeof(FIXTURES) / sizeof(FIXTURES[0]);
  * label, the 31-char session name, and the running gate (alpha is
  * installed but stopped: no <start>, but its sessions still shape
  * <parent-provides>).
+ *
+ * The GOLDEN_CLASS_* snapshots (fixture FIX_CLASSES, captured from
+ * the library via --dump — the class presets have no pre-extraction
+ * reference) pin, per target: class-only <start> membership, the
+ * class-private session union into <parent-provides>, the stopped
+ * member's provides-only contribution, and that no driver-only
+ * hardware service (Platform/Dma) and no foreign-class or legacy
+ * "app" token reaches the output. GOLDEN_CLASS_SIMPLE_BOOT pins the
+ * <binary> suppression in boot-module mode (binary == package name =>
+ * no <binary> node); GOLDEN_CLASS_EMPTY pins the empty-class shape
+ * (base services only, zero <start>).
  */
 char const *const GOLDEN_MIXED_APP =
 	"<config>\n"
@@ -570,6 +647,215 @@ char const *const GOLDEN_PAD_APP =
 	"	</start>\n"
 	"</config>\n";
 
+/* Captured via --dump (class presets have no pre-extraction reference). */
+char const *const GOLDEN_CLASS_SIMPLE =
+	"<config>\n"
+	"	<report delay_ms=\"2000\" init_ram=\"yes\" init_caps=\"yes\" child_ram=\"yes\"/>\n"
+	"	<parent-provides>\n"
+	"		<service name=\"ROM\"/>\n"
+	"		<service name=\"PD\"/>\n"
+	"		<service name=\"RM\"/>\n"
+	"		<service name=\"CPU\"/>\n"
+	"		<service name=\"LOG\"/>\n"
+	"		<service name=\"Timer\"/>\n"
+	"		<service name=\"Gui\"/>\n"
+	"		<service name=\"Input\"/>\n"
+	"		<service name=\"Report\"/>\n"
+	"		<service name=\"File_system\"/>\n"
+	"		<service name=\"Nic\"/>\n"
+	"		<service name=\"Rtc\"/>\n"
+	"		<service name=\"SimpleOnly\"/>\n"
+	"		<service name=\"SimpleStopped\"/>\n"
+	"	</parent-provides>\n"
+	"	<default-route>\n"
+	"		<any-service>\n"
+	"			<parent/>\n"
+	"			<any-child/>\n"
+	"		</any-service>\n"
+	"	</default-route>\n"
+	"	<default caps=\"1000\"/>\n"
+	"	<start name=\"sim_a\" caps=\"64\">\n"
+	"		<binary name=\"bin/sim_a\"/>\n"
+	"		<resource name=\"RAM\" quantum=\"4M\"/>\n"
+	"		<route>\n"
+	"			<service name=\"ROM\" label_last=\"ld.lib.so\">\n"
+	"				<parent/>\n"
+	"			</service>\n"
+	"			<service name=\"Gui\">\n"
+	"				<parent/>\n"
+	"			</service>\n"
+	"			<service name=\"SimpleOnly\">\n"
+	"				<parent/>\n"
+	"			</service>\n"
+	"			<any-service>\n"
+	"				<parent/>\n"
+	"			</any-service>\n"
+	"		</route>\n"
+	"	</start>\n"
+	"</config>\n";
+
+char const *const GOLDEN_CLASS_TERMINAL =
+	"<config>\n"
+	"	<report delay_ms=\"2000\" init_ram=\"yes\" init_caps=\"yes\" child_ram=\"yes\"/>\n"
+	"	<parent-provides>\n"
+	"		<service name=\"ROM\"/>\n"
+	"		<service name=\"PD\"/>\n"
+	"		<service name=\"RM\"/>\n"
+	"		<service name=\"CPU\"/>\n"
+	"		<service name=\"LOG\"/>\n"
+	"		<service name=\"Timer\"/>\n"
+	"		<service name=\"Gui\"/>\n"
+	"		<service name=\"Input\"/>\n"
+	"		<service name=\"Report\"/>\n"
+	"		<service name=\"File_system\"/>\n"
+	"		<service name=\"Nic\"/>\n"
+	"		<service name=\"Rtc\"/>\n"
+	"		<service name=\"Terminal\"/>\n"
+	"		<service name=\"TerminalOnly\"/>\n"
+	"	</parent-provides>\n"
+	"	<default-route>\n"
+	"		<any-service>\n"
+	"			<parent/>\n"
+	"			<any-child/>\n"
+	"		</any-service>\n"
+	"	</default-route>\n"
+	"	<default caps=\"1000\"/>\n"
+	"	<start name=\"ter_a\" caps=\"128\">\n"
+	"		<binary name=\"bin/ter_a\"/>\n"
+	"		<resource name=\"RAM\" quantum=\"8M\"/><config><libc/></config>\n"
+	"		<route>\n"
+	"			<service name=\"ROM\" label_last=\"ld.lib.so\">\n"
+	"				<parent/>\n"
+	"			</service>\n"
+	"			<service name=\"Terminal\">\n"
+	"				<child name=\"term-bridge\"/>\n"
+	"			</service>\n"
+	"			<service name=\"TerminalOnly\" label=\"term-label\">\n"
+	"				<parent/>\n"
+	"			</service>\n"
+	"			<any-service>\n"
+	"				<parent/>\n"
+	"			</any-service>\n"
+	"		</route>\n"
+	"	</start>\n"
+	"</config>\n";
+
+char const *const GOLDEN_CLASS_BROWSER =
+	"<config>\n"
+	"	<report delay_ms=\"2000\" init_ram=\"yes\" init_caps=\"yes\" child_ram=\"yes\"/>\n"
+	"	<parent-provides>\n"
+	"		<service name=\"ROM\"/>\n"
+	"		<service name=\"PD\"/>\n"
+	"		<service name=\"RM\"/>\n"
+	"		<service name=\"CPU\"/>\n"
+	"		<service name=\"LOG\"/>\n"
+	"		<service name=\"Timer\"/>\n"
+	"		<service name=\"Gui\"/>\n"
+	"		<service name=\"Input\"/>\n"
+	"		<service name=\"Report\"/>\n"
+	"		<service name=\"File_system\"/>\n"
+	"		<service name=\"Nic\"/>\n"
+	"		<service name=\"Rtc\"/>\n"
+	"		<service name=\"BrowserOnly\"/>\n"
+	"	</parent-provides>\n"
+	"	<default-route>\n"
+	"		<any-service>\n"
+	"			<parent/>\n"
+	"			<any-child/>\n"
+	"		</any-service>\n"
+	"	</default-route>\n"
+	"	<default caps=\"1000\"/>\n"
+	"	<start name=\"bro_a\" caps=\"512\">\n"
+	"		<binary name=\"bin/bro_a_bin\"/>\n"
+	"		<resource name=\"RAM\" quantum=\"32M\"/>\n"
+	"		<route>\n"
+	"			<service name=\"ROM\" label_last=\"ld.lib.so\">\n"
+	"				<parent/>\n"
+	"			</service>\n"
+	"			<service name=\"BrowserOnly\">\n"
+	"				<parent/>\n"
+	"			</service>\n"
+	"			<service name=\"File_system\" label=\"bro_a-ro\">\n"
+	"				<parent/>\n"
+	"			</service>\n"
+	"			<any-service>\n"
+	"				<parent/>\n"
+	"			</any-service>\n"
+	"		</route>\n"
+	"	</start>\n"
+	"</config>\n";
+
+char const *const GOLDEN_CLASS_SIMPLE_BOOT =
+	"<config>\n"
+	"	<report delay_ms=\"2000\" init_ram=\"yes\" init_caps=\"yes\" child_ram=\"yes\"/>\n"
+	"	<parent-provides>\n"
+	"		<service name=\"ROM\"/>\n"
+	"		<service name=\"PD\"/>\n"
+	"		<service name=\"RM\"/>\n"
+	"		<service name=\"CPU\"/>\n"
+	"		<service name=\"LOG\"/>\n"
+	"		<service name=\"Timer\"/>\n"
+	"		<service name=\"Gui\"/>\n"
+	"		<service name=\"Input\"/>\n"
+	"		<service name=\"Report\"/>\n"
+	"		<service name=\"File_system\"/>\n"
+	"		<service name=\"Nic\"/>\n"
+	"		<service name=\"Rtc\"/>\n"
+	"		<service name=\"SimpleOnly\"/>\n"
+	"		<service name=\"SimpleStopped\"/>\n"
+	"	</parent-provides>\n"
+	"	<default-route>\n"
+	"		<any-service>\n"
+	"			<parent/>\n"
+	"			<any-child/>\n"
+	"		</any-service>\n"
+	"	</default-route>\n"
+	"	<default caps=\"1000\"/>\n"
+	"	<start name=\"sim_a\" caps=\"64\">\n"
+	"		<resource name=\"RAM\" quantum=\"4M\"/>\n"
+	"		<route>\n"
+	"			<service name=\"ROM\" label_last=\"ld.lib.so\">\n"
+	"				<parent/>\n"
+	"			</service>\n"
+	"			<service name=\"Gui\">\n"
+	"				<parent/>\n"
+	"			</service>\n"
+	"			<service name=\"SimpleOnly\">\n"
+	"				<parent/>\n"
+	"			</service>\n"
+	"			<any-service>\n"
+	"				<parent/>\n"
+	"			</any-service>\n"
+	"		</route>\n"
+	"	</start>\n"
+	"</config>\n";
+
+char const *const GOLDEN_CLASS_EMPTY =
+	"<config>\n"
+	"	<report delay_ms=\"2000\" init_ram=\"yes\" init_caps=\"yes\" child_ram=\"yes\"/>\n"
+	"	<parent-provides>\n"
+	"		<service name=\"ROM\"/>\n"
+	"		<service name=\"PD\"/>\n"
+	"		<service name=\"RM\"/>\n"
+	"		<service name=\"CPU\"/>\n"
+	"		<service name=\"LOG\"/>\n"
+	"		<service name=\"Timer\"/>\n"
+	"		<service name=\"Gui\"/>\n"
+	"		<service name=\"Input\"/>\n"
+	"		<service name=\"Report\"/>\n"
+	"		<service name=\"File_system\"/>\n"
+	"		<service name=\"Nic\"/>\n"
+	"		<service name=\"Rtc\"/>\n"
+	"	</parent-provides>\n"
+	"	<default-route>\n"
+	"		<any-service>\n"
+	"			<parent/>\n"
+	"			<any-child/>\n"
+	"		</any-service>\n"
+	"	</default-route>\n"
+	"	<default caps=\"1000\"/>\n"
+	"</config>\n";
+
 
 /* ===================== comparison harness ===================== */
 
@@ -595,6 +881,28 @@ void expect_eq(char const *what, char const *a, char const *b)
 	printf("first divergence at line %u (offset %ld / %ld): "
 	       "expected \"%.40s\" vs actual \"%.40s\"\n",
 	       line, (long)(pa - a), (long)(pb - b), pa, pb);
+}
+
+/*
+ * Routing pins: "haystack contains needle" / "haystack lacks needle"
+ * with a labeled failure. Used to prove class membership and
+ * parent-provides isolation without a second full golden per
+ * assertion.
+ */
+void expect_has(char const *what, char const *haystack, char const *needle)
+{
+	if (strstr(haystack, needle) != nullptr)
+		return;
+	++failures;
+	printf("FAIL: %s\n  missing needle: %s\n", what, needle);
+}
+
+void expect_lacks(char const *what, char const *haystack, char const *needle)
+{
+	if (strstr(haystack, needle) == nullptr)
+		return;
+	++failures;
+	printf("FAIL: %s\n  forbidden needle present: %s\n", what, needle);
 }
 
 char ref_buf[64 * 1024];
@@ -683,10 +991,150 @@ int main(int argc, char **argv)
 		expect_eq("golden: pad/app", GOLDEN_PAD_APP, lib_buf);
 	}
 
+	/* Runtime-class targets (simple/terminal/browser): golden +
+	 * routing coverage over the mixed-class fixture. */
+	{
+		using Sponge::Pkg_config::Target;
+
+		Target const simple   = Sponge::Pkg_config::simple_target();
+		Target const terminal = Sponge::Pkg_config::terminal_target();
+		Target const browser  = Sponge::Pkg_config::browser_target();
+
+		Sponge::Pkg_config::Emit_options options { };
+		options.binary_prefix = "bin/";
+
+		unsigned const n = NUM_CLASS_PACKAGES;
+
+		Sponge::Pkg_config::emit_config(lib_buf, sizeof(lib_buf),
+		                                simple, FIX_CLASSES, n, options);
+		if (dump)
+			printf("=== classes / %s ===\n%s\n", simple.name, lib_buf);
+		expect_eq("golden: classes/simple", GOLDEN_CLASS_SIMPLE, lib_buf);
+		expect_has ("classes/simple: <start> sim_a",
+		            lib_buf, "<start name=\"sim_a\"");
+		expect_has ("classes/simple: sim_b stopped but provides",
+		            lib_buf, "<service name=\"SimpleStopped\"/>");
+		expect_lacks("classes/simple: no stopped <start> sim_b",
+		            lib_buf, "<start name=\"sim_b\"");
+		expect_has ("classes/simple: own session union",
+		            lib_buf, "<service name=\"SimpleOnly\"/>");
+		expect_lacks("classes/simple: no terminal session",
+		            lib_buf, "TerminalOnly");
+		expect_lacks("classes/simple: no browser session",
+		            lib_buf, "BrowserOnly");
+		expect_lacks("classes/simple: no legacy app session",
+		            lib_buf, "LegacyOnly");
+		expect_lacks("classes/simple: no hw capability (Platform)",
+		            lib_buf, "\"Platform\"");
+		expect_lacks("classes/simple: no hw capability (Dma)",
+		            lib_buf, "\"Dma\"");
+		expect_lacks("classes/simple: no foreign <start>",
+		            lib_buf, "<start name=\"ter_a\"");
+		expect_lacks("classes/simple: no foreign <start>",
+		            lib_buf, "<start name=\"bro_a\"");
+		expect_lacks("classes/simple: no driver <start>",
+		            lib_buf, "<start name=\"drv_hw\"");
+		expect_lacks("classes/simple: no legacy <start>",
+		            lib_buf, "<start name=\"legacy_app\"");
+		expect_lacks("classes/simple: no driver session union",
+		            lib_buf, "<service name=\"Platform\"/>");
+
+		Sponge::Pkg_config::emit_config(lib_buf, sizeof(lib_buf),
+		                                terminal, FIX_CLASSES, n, options);
+		if (dump)
+			printf("=== classes / %s ===\n%s\n", terminal.name, lib_buf);
+		expect_eq("golden: classes/terminal",
+		          GOLDEN_CLASS_TERMINAL, lib_buf);
+		expect_has ("classes/terminal: <start> ter_a",
+		            lib_buf, "<start name=\"ter_a\"");
+		expect_has ("classes/terminal: own session union",
+		            lib_buf, "<service name=\"TerminalOnly\"/>");
+		expect_has ("classes/terminal: sibling child route",
+		            lib_buf, "<child name=\"term-bridge\"/>");
+		expect_lacks("classes/terminal: no simple session",
+		            lib_buf, "SimpleOnly");
+		expect_lacks("classes/terminal: no simple stopped session",
+		            lib_buf, "SimpleStopped");
+		expect_lacks("classes/terminal: no browser session",
+		            lib_buf, "BrowserOnly");
+		expect_lacks("classes/terminal: no hw capability",
+		            lib_buf, "\"Platform\"");
+		expect_lacks("classes/terminal: no hw capability",
+		            lib_buf, "\"Dma\"");
+		expect_lacks("classes/terminal: no foreign <start>",
+		            lib_buf, "<start name=\"sim_a\"");
+		expect_lacks("classes/terminal: no foreign <start>",
+		            lib_buf, "<start name=\"bro_a\"");
+
+		Sponge::Pkg_config::emit_config(lib_buf, sizeof(lib_buf),
+		                                browser, FIX_CLASSES, n, options);
+		if (dump)
+			printf("=== classes / %s ===\n%s\n", browser.name, lib_buf);
+		expect_eq("golden: classes/browser", GOLDEN_CLASS_BROWSER, lib_buf);
+		expect_has ("classes/browser: <start> bro_a",
+		            lib_buf, "<start name=\"bro_a\"");
+		expect_has ("classes/browser: own session union",
+		            lib_buf, "<service name=\"BrowserOnly\"/>");
+		expect_has ("classes/browser: binary != name => <binary>",
+		            lib_buf, "<binary name=\"bin/bro_a_bin\"/>");
+		expect_lacks("classes/browser: no simple session",
+		            lib_buf, "SimpleOnly");
+		expect_lacks("classes/browser: no terminal session",
+		            lib_buf, "TerminalOnly");
+		expect_lacks("classes/browser: no hw capability",
+		            lib_buf, "\"Platform\"");
+		expect_lacks("classes/browser: no hw capability",
+		            lib_buf, "\"Dma\"");
+		expect_lacks("classes/browser: no foreign <start>",
+		            lib_buf, "<start name=\"sim_a\"");
+		expect_lacks("classes/browser: no foreign <start>",
+		            lib_buf, "<start name=\"ter_a\"");
+
+		/* boot-module mode: binary == name => no <binary> node */
+		Sponge::Pkg_config::Emit_options boot { };
+		boot.binary_prefix = "";
+		Sponge::Pkg_config::emit_config(lib_buf, sizeof(lib_buf),
+		                                simple, FIX_CLASSES, n, boot);
+		if (dump)
+			printf("=== classes / %s (boot) ===\n%s\n",
+			       simple.name, lib_buf);
+		expect_eq("golden: classes/simple (boot)",
+		          GOLDEN_CLASS_SIMPLE_BOOT, lib_buf);
+		expect_lacks("classes/simple boot: <binary> suppressed",
+		             lib_buf, "<binary");
+
+		/*
+		 * Empty-class output: a simple-only slice has no
+		 * terminal/browser member, so those targets render the
+		 * base services only — and the simple slice's sessions
+		 * must not leak into the union of a class that has no
+		 * members. Both empty-class renders are byte-identical.
+		 */
+		Sponge::Pkg_config::emit_config(lib_buf, sizeof(lib_buf),
+		                                terminal, FIX_CLASSES, 2, options);
+		if (dump)
+			printf("=== classes / %s (empty) ===\n%s\n",
+			       terminal.name, lib_buf);
+		expect_eq("golden: classes/empty",
+		          GOLDEN_CLASS_EMPTY, lib_buf);
+		expect_lacks("classes/empty: no simple session leak",
+		             lib_buf, "SimpleOnly");
+		expect_lacks("classes/empty: no stopped session leak",
+		             lib_buf, "SimpleStopped");
+		expect_lacks("classes/empty: no <start>",
+		             lib_buf, "<start ");
+
+		Sponge::Pkg_config::emit_config(lib_buf, sizeof(lib_buf),
+		                                browser, FIX_CLASSES, 2, options);
+		expect_eq("golden: classes/empty (browser matches terminal)",
+		          GOLDEN_CLASS_EMPTY, lib_buf);
+	}
+
 	if (failures) {
 		printf("self-test: FAIL (%u divergence(s))\n", failures);
 		return 1;
 	}
-	printf("self-test: PASS (equivalence + golden snapshots)\n");
+	printf("self-test: PASS (equivalence + golden snapshots + "
+	       "class routing)\n");
 	return 0;
 }

@@ -133,6 +133,52 @@ Target Sponge::Pkg_config::driver_target()
 
 
 /*
+ * The three app runtime-class presets (docs/12-package-format.md §4.5,
+ * <runtime_class>simple|terminal|browser</runtime_class>, default
+ * simple). All three carry the exact APP_BASE_SERVICES set of
+ * 'app_target': the capability boundary is identical per class, so a
+ * simple/terminal/browser package cannot obtain Platform/Dma/Irq/
+ * Io_mem/Io_port even by naming them. Only the membership token
+ * differs — 'emit_target' selects a package into exactly one target by
+ * the 'runtime_class' string match and needs no change for these.
+ */
+Target Sponge::Pkg_config::simple_target()
+{
+	Target t { };
+	t.name          = "simple";
+	t.runtime_class = "simple";
+	t.base_services.names = APP_BASE_SERVICES;
+	t.base_services.count = sizeof(APP_BASE_SERVICES)
+	                      / sizeof(APP_BASE_SERVICES[0]);
+	return t;
+}
+
+
+Target Sponge::Pkg_config::terminal_target()
+{
+	Target t { };
+	t.name          = "terminal";
+	t.runtime_class = "terminal";
+	t.base_services.names = APP_BASE_SERVICES;
+	t.base_services.count = sizeof(APP_BASE_SERVICES)
+	                      / sizeof(APP_BASE_SERVICES[0]);
+	return t;
+}
+
+
+Target Sponge::Pkg_config::browser_target()
+{
+	Target t { };
+	t.name          = "browser";
+	t.runtime_class = "browser";
+	t.base_services.names = APP_BASE_SERVICES;
+	t.base_services.count = sizeof(APP_BASE_SERVICES)
+	                      / sizeof(APP_BASE_SERVICES[0]);
+	return t;
+}
+
+
+/*
  * Emit one target's sandbox config.
  *
  * The generator is deterministic (sorted <start> nodes, fixed
