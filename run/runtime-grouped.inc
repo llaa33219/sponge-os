@@ -87,7 +87,7 @@
 # every runtime (caps exhaustion hangs on seL4, docs/09 §11.1).
 # assert_wiring checks the ordering.
 #
-# === PORT CHECKLIST (the four unported desktop-disk scenarios) ==========
+# === PORT CHECKLIST (completed for all five product scenarios) ==========
 #
 # Per scenario, once run/runtime-grouped.inc and the updated
 # run/runtime-quota.inc are sourced:

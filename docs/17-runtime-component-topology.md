@@ -49,15 +49,16 @@ seL4 kernel
          ├─ decorator    window chrome renderer
          ├─ sponge_configd   key/value config backend (persistent store)
          ├─ sponge_themed    theme server
-         ├─ sponge_pkgd      package backend; regenerates pkg_runtime
+         ├─ sponge_pkgd      package backend; regenerates the class
+         │                   runtime configs (and driver_runtime's)
          ├─ vct_tty          Terminal bridge for the in-terminal vct
          ├─ sponge-de        the desktop (panel, launcher, tasklist,
          │                   background, settings, shortcuts)
          ├─ alpha_probe / cfg_probe   boot-time verifiers
          ├─ driver_runtime  (nested init #2 — caps 36000, ram 448M, both
-         │                   EXPLICIT: it precedes pkg_runtime, so it
-         │                   cannot use the remainder clamp without
-         │                   taking its RAM out of pkg_runtime's pool.
+         │                   EXPLICIT: it precedes the class runtimes,
+         │                   so it cannot use the remainder clamp without
+         │                   taking its RAM out of their pool.
          │                   Hosts <kind>driver</kind> packages.
          │                   Exactly ONE of them is present from the
          │                   first boot: the media's bake manifest
@@ -69,22 +70,35 @@ seL4 kernel
          │                   them away again — including the display
          │                   driver: the runtime fb switch is a
          │                   package operation (test/fb_switch_probe).
-         └─ pkg_runtime  (nested init #3 — caps 230000, RAM = the remainder)
-            └─ hello, calculator, pdf_view, falkon, terminal, …
+         ├─ pkg_runtime_simple    (nested init #3a — caps 6000,
+         │                        ram 1488M, both EXPLICIT: the
+         │                        simple class — hello, textedit,
+         │                        files, calculator, pdf_view, debug)
+         ├─ pkg_runtime_terminal  (nested init #3b — caps 2000,
+         │                        ram 247M, both EXPLICIT: the
+         │                        terminal class)
+         └─ pkg_runtime_browser   (nested init #3c — caps 220000,
+                                  RAM = the remainder: the browser
+                                  class (falkon). LAST `+ start` node
+                                  of the config — the clamp holder.)
 ```
 
 `driver_runtime` exists so that the capability boundary is structural
 rather than conventional
 ([`12-package-format.md`](12-package-format.md) §4.5): `sponge_pkgd`
-generates two `<parent-provides>` lists from two package kinds, and
-only the driver list carries `Platform` / `Dma` / `Irq` / `Io_mem` /
-`Io_port`. An application package cannot name its way to a hardware
-session even though `system` would happily route one. See
+generates per-target `<parent-provides>` lists from the package kinds
+and runtime classes, and only the driver list carries `Platform` /
+`Dma` / `Irq` / `Io_mem` / `Io_port`. An application package cannot
+name its way to a hardware session even though `system` would happily
+route one. See
 [`04-components.md`](04-components.md) §1.2.1.
 
-Both RAM grants read "the remainder", not a fixed number — see §6.1.
-Caps stay fixed and hand-derived. The `caps` figures above are the
-**uefi-usb** values, which are the largest of the five desktop-disk
+Only the `system` and `pkg_runtime_browser` RAM grants read "the
+remainder", not a fixed number — see §6.1. The two explicit class
+runtimes carry fixed RAM; caps stay fixed and hand-derived everywhere.
+The class-runtime grants are media-independent (identical on all five
+desktop-disk variants). The `caps` figures above are the **uefi-usb**
+values for `system`, which are the largest of the five desktop-disk
 variants (they carry `vct_tty`). The two plain/ahci and nvme disk
 variants that omit `vct_tty` grant `system` 263000 caps. Per-scenario
 numbers are in §6.
@@ -140,10 +154,12 @@ What failed is **liveness of a shared broker**:
 2. **Resource pools are shared**: children of one init draw caps/RAM
    from a single grant (`system`: 280000 caps / the RAM remainder on
    the product media). Adding a child can starve siblings — quota
-   arithmetic, not fault isolation. The same arithmetic bit
-   `pkg_runtime`: as a nested init it draws its own 230000 caps plus
-   the RAM remainder, which must cover the SUM of every
-   simultaneously-enabled package (§6).
+   arithmetic, not fault isolation. The same arithmetic bit the
+   package runtimes: each class runtime (`pkg_runtime_simple`,
+   `pkg_runtime_terminal`, `pkg_runtime_browser`) draws its own caps
+   grant, and `pkg_runtime_browser` additionally the RAM remainder,
+   which must cover the SUM of every simultaneously-enabled package
+   of its class (§6).
 3. **report_rom is a shared nervous system**: one process relays every
    Report/ROM channel in its scope; a policy or evaluation problem
    there has system-wide blast radius.
@@ -617,19 +633,18 @@ component must never be able to freeze the desktop. Status after the
   (empty-but-valid config) confirms the detector fires when children
   really die. No init guard patch was added — the problem class does
   not exist. Evidence: `docs/evidence/config-regen-survival.md`.
-- [x] **Resource headroom policy**: every `system` and `pkg_runtime`
+- [x] **Resource headroom policy**: every `system` and class-runtime
   caps grant across the five desktop-disk product scenarios carries
   ~10% headroom over its own children sum (§6). The RAM side is no
-  longer a hand-derived figure at all: both grants are **remainder
+  longer a hand-derived figure at all: `system` and
+  `pkg_runtime_browser` are **remainder
   clamps** (see §6.1), so the headroom is whatever the machine has
-  left after the fixed services — 4521 MiB for `pkg_runtime` at
-  `-m 6G`, 2473 MiB at `-m 4G`, same unchanged file. Headroom is
-  therefore no longer constant, and on a small box it can be thin:
+  left after the fixed services and the two explicit class runtimes —
   the refusal path for a package that no longer fits is
   `sponge_pkgd`'s admission gate, not a silent clamp.
 - [x] **Remainder-clamp RAM grants — deployed, measured**
   (§6.1, `docs/evidence/remainder-clamp-ram.md`): `system` and
-  `pkg_runtime` declare `ram: 512G`, a deliberately huge quantum that
+  `pkg_runtime_browser` declare `ram: 512G`, a deliberately huge quantum that
   Genode's init clamps to the parent's remaining availability at
   creation time (`genode/repos/os/src/lib/sandbox/child.cc:481-486`).
   The run scripts are consequently physical-RAM-size agnostic — one
@@ -642,14 +657,20 @@ component must never be able to freeze the desktop. Status after the
 - [x] **Admission control — an over-budget package is refused, not
   clamped** (`sponge_pkgd`): `launch` (and `install`, for an
   `<autostart/>` package) compares the declared `<quota ram= caps=>`
-  against `pkg_runtime`'s own reported remaining budget and answers
+  against its class runtime's own reported remaining budget and answers
   `insufficient-resources` with the four figures, BEFORE the package
   enters the running set and BEFORE the config is regenerated. The
-  budget comes from the `pkg_runtime -> state` sandbox report, not from
+  budget comes from the class runtime's `-> state` sandbox report
+  (`runtime_simple_state` / `runtime_terminal_state` /
+  `runtime_browser_state` in the grouped topology), not from
   a configured copy of the grant, so it is always the real remaining
-  pool. Wired in all five desktop-disk product scenarios; runtime-
-  verified on `sponge-desktop-disk` (`resource admission armed` and
-  `alpha-probe: PASS` in the same boot). On
+  pool. Wired in all five desktop-disk product scenarios. The grouped
+  topology is runtime-verified on `sponge-desktop-disk-uefi-usb` (two
+  boots, `alpha-probe: PASS` and the terminal launch gate); the other
+  four are structurally asserted by `runtime_grouped::assert_wiring`
+  and the static harness, not yet booted. Legacy single-runtime
+  admission was verified on `sponge-desktop-disk` (`resource admission
+  armed` and `alpha-probe: PASS` in the same boot). On
   `sponge-desktop-disk-nvme` the gate is wired but NOT yet reachable:
   pkgd stops earlier on a pre-existing `bake_manifest` denial (§5 row
   below). Receipts: `run/sponge-pkg-admission.run`,
@@ -815,8 +836,8 @@ component must never be able to freeze the desktop. Status after the
 
 ## 6. Quota ledger (the five desktop-disk scenarios)
 
-`pkg_runtime` hosts every enabled package **simultaneously**, so its
-grant must cover the SUM of the package quotas declared in
+Each class runtime hosts its enabled packages **simultaneously**, so
+its grant must cover the SUM of its class's package quotas declared in
 `pkg/*/metadata.xml`, not one package's worth. The `desktop` bake
 profile (`pkg/bake/desktop.profile`) enables eight packages:
 
@@ -832,10 +853,12 @@ profile (`pkg/bake/desktop.profile`) enables eight packages:
 | debug | 1000 | 64M |
 | **enabled sum** | **205612** | **2536M** |
 
-Phase 16 P2.2 makes the class rows below the machine-checked source of
-truth. The current single `pkg_runtime` topology is unchanged; each
-scenario keeps its literal grant and calls `runtime_quota::verify` to
-reject drift.
+Phase 16 P2.4 splits `pkg_runtime` into three class runtimes
+(`pkg_runtime_simple`, `pkg_runtime_terminal`, `pkg_runtime_browser`,
+docs/12 §4.5 `<runtime_class>`), each hosting exactly the packages of
+its class **simultaneously**. The class rows below are the
+machine-checked source of truth (the RAW package-quota sums — they do
+**NOT** include admission margins):
 
 | runtime class | caps | RAM | owning include |
 |---|---:|---:|---|
@@ -843,18 +866,37 @@ reject drift.
 | terminal | 1100 | 224M | `run/runtime-terminal.inc` |
 | browser (falkon) | 200000 | 1024M | `run/runtime-browser.inc` |
 
-`run/runtime-quota.inc` derives the single grant from these rows and
-preserves the app/driver capability split: `Platform`, `Dma`, `Irq`,
-`Io_mem`, and `Io_port` remain driver-runtime-only. The validation receipt
-is `docs/evidence/phase16-runtime-targets.md`.
+The SHIPPED grants are the rows plus the measured headroom
+`run/runtime-quota.inc` derives — `(row + closure) x 1.10`, rounded
+up (caps to 1000, RAM to 1 MiB), the editor closure (`nano` 600 +
+`ncurses` 300 / 64M, installable into the simple class) charged to
+simple:
 
-(206512 caps counting the `nano` 600 + `ncurses` 300 pair reachable
-from the editor packages.) Hence the uniform
-`pkg_runtime | caps: 230000 | ram: 512G` on all five desktop-disk
-scenarios: **+11.9% caps** over the enabled sum, and **RAM by the
-remainder-clamp** described in §6.1 — a grant that tracks the machine
-instead of a constant that has to be re-derived per `-m` value and per
-package-profile change.
+| runtime node | caps | RAM | note |
+|---|---:|---:|---|
+| `pkg_runtime_simple` | 6000 | 1488M | explicit |
+| `pkg_runtime_terminal` | 2000 | 247M | explicit |
+| `pkg_runtime_browser` | 220000 | **512G** | RAM = the remainder clamp (§6.1), LAST `+ start` node |
+
+The raw rows cannot be the grants: `sponge_pkgd`'s admission gate
+admits a package only against `need + margin` (8 MiB / 64 caps,
+`docs/evidence/pkg-admission-control.md`) of the class's REPORTED
+availability, which is the grant minus the nested init's own live
+usage (~70 caps / ~1.1 MiB measured at idle). A single-package class
+granted exactly its row can never admit its own package — the
+terminal launch would be refused before the package ever starts. The
+derivation, the margin arithmetic and the fail-loud drift check live
+in `run/runtime-quota.inc`; each scenario writes the literals and
+calls `runtime_quota::verify 6000 1488M 2000 247M 220000 512G`.
+The class grants are uniform across all five desktop-disk scenarios
+(media-independent), while `system`'s grant is per media (280000 caps
+on the uefi/usb variants, 263000 on the plain/ahci and nvme ones).
+The app/driver capability split is preserved: `Platform`, `Dma`,
+`Irq`, `Io_mem`, and `Io_port` remain driver-runtime-only. The class-row
+receipt is `docs/evidence/phase16-runtime-targets.md` (P2.2, single
+`pkg_runtime`); the grouped-grant evidence is the static
+`runtime_grouped::assert_wiring` harness plus the two UEFI-USB grouped
+boots.
 
 ### 6.0 `driver_runtime`'s grant
 
@@ -906,7 +948,8 @@ explicit number.
 
 ### 6.1 The remainder clamp (RAM only)
 
-`system` and `pkg_runtime` declare `ram: 512G`. That is **not** a claim
+`system` and `pkg_runtime_browser` declare `ram: 512G` (the two
+explicit class runtimes carry fixed RAM instead). That is **not** a claim
 that the system needs 512 GiB — it is the mechanism. Genode's init
 silently clamps a child's RAM quantum to the parent's remaining
 availability at the moment the child is created:
@@ -931,7 +974,8 @@ Two conditions make it sound:
 
 1. **The clamped child must be the LAST `+ start` node in its config.**
    The remainder is only "everything left" if nothing is created
-   afterwards. `pkg_runtime`-last came from `248afa12d6` (real-hardware
+   afterwards. The runtime-last invariant (legacy `pkg_runtime`, now
+   `pkg_runtime_browser`) came from `248afa12d6` (real-hardware
    config-delivery timing); `system`-last is already true. A per-file
    scan confirms both in all five scenarios — no reordering was
    needed.
@@ -942,7 +986,10 @@ Two conditions make it sound:
    any future sibling added to the config. RAM has no such failure
    mode, which is exactly why only RAM uses the clamp.
 
-Measured on `run/sponge-desktop-disk`, same unchanged file, two boots:
+Measured on `run/sponge-desktop-disk`, same unchanged file, two boots
+(historical receipt — measured on the pre-P2.4 single-grant topology;
+the clamp mechanism and the arithmetic below are unchanged, but the
+`pkg_runtime` row is now the `pkg_runtime_browser` one):
 
 | | `-m 6G` | `-m 4G` |
 |---|---:|---:|
@@ -957,18 +1004,21 @@ nested init's own allocation. Tier-0 for this scenario totals 874 MiB,
 and 5686 − 874 ≈ 4807, the observed `system` grant. Full receipts:
 `docs/evidence/remainder-clamp-ram.md`.
 
-| scenario | `system` children (caps / fixed RAM) | `system` caps grant | `pkg_runtime` caps | QEMU `-m` (ceiling) |
+| scenario | `system` children (caps / fixed RAM) | `system` caps grant | class grants (simple / terminal / browser caps) | QEMU `-m` (ceiling) |
 |---|---|---:|---:|---:|
-| sponge-desktop-disk | 8650 / 284M | 263000 | 230000 | 6G |
-| sponge-desktop-disk-nvme | 8650 / 284M | 263000 | 230000 | 6G |
-| sponge-desktop-disk-uefi | 24100 / 284M | 280000 | 230000 | 8G |
-| sponge-desktop-disk-uefi-nvme | 24100 / 284M | 280000 | 230000 | 8G |
-| sponge-desktop-disk-uefi-usb | 24300 / 292M | 280000 | 230000 | 8G |
+| sponge-desktop-disk | 8650 / 284M | 263000 | 6000 / 2000 / 220000 | 6G |
+| sponge-desktop-disk-nvme | 8650 / 284M | 263000 | 6000 / 2000 / 220000 | 6G |
+| sponge-desktop-disk-uefi | 24100 / 284M | 280000 | 6000 / 2000 / 220000 | 8G |
+| sponge-desktop-disk-uefi-nvme | 24100 / 284M | 280000 | 6000 / 2000 / 220000 | 8G |
+| sponge-desktop-disk-uefi-usb | 24300 / 292M | 280000 | 6000 / 2000 / 220000 | 8G |
 
-(The `system` children columns exclude `pkg_runtime` itself, whose
-caps remain 230000 in every scenario; the uefi variants' larger sums
-come from the 6000-cap `decorator`, 8000-cap `sponge-de` and 6000-cap
-`alpha_probe`, plus uefi-usb's `vct_tty` at 200 caps / 8M.)
+(The `system` children columns exclude the class runtimes themselves,
+whose grants are media-independent — 6000 / 2000 / 220000 caps and
+1488M / 247M / the RAM remainder, §6. The uefi variants' larger fixed
+sums come from the 6000-cap `decorator`, 8000-cap `sponge-de` and
+6000-cap `alpha_probe`, plus uefi-usb's `vct_tty` at 200 caps / 8M.
+The three class runtimes replace the old single `pkg_runtime` at
+230000 caps everywhere.)
 
 The `-m` column is now a **ceiling only** — it bounds the boot and
 nothing has to agree with it, because the two RAM grants follow the

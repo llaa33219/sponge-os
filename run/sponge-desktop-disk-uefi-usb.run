@@ -1781,7 +1781,7 @@ $logdisk_input_log
 
 # caps carry ~10% headroom per docs/17 §5 (adding a child must not be
 # a cliff-edge operation on a grant sized exactly to fit).
-# Children caps-sum of THIS sandbox: 254500 caps
+# Children caps-sum of THIS sandbox: 252300 caps
 #   report_rom 300 + wm 2000 + layouter 1000 + decorator 6000 +
 #   sponge_configd 200 + sponge_themed 200 + sponge_pkgd 200 +
 #   vct_tty 200 + sponge-de 8000 + alpha_probe 6000 + cfg_probe 200 +
@@ -1789,7 +1789,7 @@ $logdisk_input_log
 #   pkg_runtime_browser 220000
 #   (prod_launch_probe +200 caps is injected only under
 #    SPONGE_LAUNCHTEST=on, still inside this grant.)
-# Grant 280000 caps => +10.0% caps headroom. (driver_runtime's 36000
+# Grant 280000 caps => +11.0% caps headroom. (driver_runtime's 36000
 # joins separately through driver_runtime::caps_for_system, with its
 # own headroom over the driver set.)
 #

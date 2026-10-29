@@ -17,8 +17,8 @@
 #   runtime_quota::verify 230000 512G
 #       Legacy single-grant check (Phase 16 P2.2, unchanged): the one
 #       `+ start pkg_runtime | caps: 230000 | ram: 512G` node of the
-#       unported scenarios. The four sponge-desktop-disk* scenarios
-#       still use this form until their P2.4 port.
+#       legacy headless scenarios. All five desktop-disk product
+#       scenarios now use the grouped six-argument form below.
 #
 #   runtime_quota::verify 6000 1488M 2000 247M 220000 512G
 #       P2.4 grouped check: the three class-runtime grants in
@@ -51,8 +51,8 @@
 #             RAM = the remainder clamp (512G), never a sum.
 #
 # The system-level closure confirms the family: the app-side children
-# sum becomes 24300 (fixed) + 6000 + 2000 + 220000 = 254500 caps
-# against the documented 280000 base grant — +10.0% headroom, exactly
+# sum becomes 24300 (fixed) + 6000 + 2000 + 220000 = 252300 caps
+# against the documented 280000 base grant — +11.0% headroom, exactly
 # the docs/17 §5 practice the P2.2 single grant followed.
 #
 # === WHY NOT THE RAW CLASS ROWS AS GRANTS ================================
@@ -114,7 +114,7 @@
 #   # grouped (P2.4):
 #   runtime_quota::verify 6000 1488M 2000 247M 220000 512G
 #
-#   # legacy single grant (the four unported scenarios):
+#   # legacy single grant (legacy headless scenarios):
 #   runtime_quota::verify 230000 512G
 #
 # The class includes must be sourced first: every derivation reads
@@ -271,8 +271,8 @@ namespace eval runtime_quota {
     #
     # The legacy single pkg_runtime caps grant (P2.2, unchanged):
     # (class-row sum + editor closure) x 1.10, rounded up to 10,000.
-    # Kept byte-identical so the four unported scenarios' literal
-    # `caps: 230000` keeps verifying:
+    # Kept byte-identical for legacy headless scenarios and the
+    # historical P2.2 receipts:
     #
     #   (205612 + 900) x 1.10 = 227163.2 -> 230000
     #
