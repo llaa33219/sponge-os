@@ -1,0 +1,33 @@
+<!--
+  g_driver — grouped-runtime probe fixture: the DRIVER placement fixture.
+
+  <kind>driver</kind> must land in the driver_runtime config and in no
+  app-class config even under <grouped_runtimes/> (docs/12 §4.5: kind
+  outranks runtime_class). No <runtime_class> element — the parse warns
+  on a driver carrying one.
+
+  Timer + Report are declared sessions (the config_witness payload
+  needs both): driver_runtime's generated <parent-provides> carries the
+  bare five core services plus exactly the sessions driver packages
+  declared, so the declarations are what let the witness run there.
+  No hardware service is requested or granted.
+
+  Probe-only: never enabled by any bake profile.
+-->
+<package>
+  <name>g_driver</name>
+  <version>1.0</version>
+  <description>Grouped-runtime probe: driver placement fixture (no hardware).</description>
+
+  <binary>config_witness</binary>
+  <quota ram="4M" caps="100"/>
+  <kind>driver</kind>
+
+  <autostart/>
+  <dependencies/>
+
+  <sessions>
+    <session name="Timer" default-route="parent"/>
+    <session name="Report" default-route="parent"/>
+  </sessions>
+</package>

@@ -1,0 +1,24 @@
+<!--
+  g_simple — grouped-runtime probe fixture: the default-SIMPLE class package.
+
+  Deliberately omits <runtime_class> (docs/12 §4.5 default "simple"), so
+  run/sponge-pkg-grouped.run pins the default-class path: with
+  <grouped_runtimes/> this package must land in the runtime_simple
+  config and in no other. Autostart so a single install both registers
+  it and emits its <start> node; the shared config_witness binary adds
+  no build cost and its beat report proves the simple runtime really
+  started the child.
+
+  Probe-only: never enabled by any bake profile.
+-->
+<package>
+  <name>g_simple</name>
+  <version>1.0</version>
+  <description>Grouped-runtime probe: default-class (simple) placement fixture.</description>
+
+  <binary>config_witness</binary>
+  <quota ram="4M" caps="100"/>
+
+  <autostart/>
+  <dependencies/>
+</package>

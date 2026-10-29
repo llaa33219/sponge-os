@@ -1,0 +1,23 @@
+<!--
+  g_browser — grouped-runtime probe fixture: the BROWSER class package.
+
+  <runtime_class>browser</runtime_class> (docs/12 §4.5) must route this
+  package into the runtime_browser config and in no other, under the
+  explicit <browser_admission/> gate of the scenario. Autostart so one
+  install emits its <start> node; the shared config_witness binary
+  proves the browser runtime really started it (beat report).
+
+  Probe-only: never enabled by any bake profile.
+-->
+<package>
+  <name>g_browser</name>
+  <version>1.0</version>
+  <description>Grouped-runtime probe: browser-class placement fixture.</description>
+
+  <binary>config_witness</binary>
+  <quota ram="4M" caps="100"/>
+  <runtime_class>browser</runtime_class>
+
+  <autostart/>
+  <dependencies/>
+</package>

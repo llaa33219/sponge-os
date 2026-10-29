@@ -1,0 +1,31 @@
+<!--
+  g_terminal — grouped-runtime probe fixture: the TERMINAL class package.
+
+  <runtime_class>terminal</runtime_class> (docs/12 §4.5) must route this
+  package into the runtime_terminal config and in no other, under the
+  explicit <terminal_admission/> gate of the scenario. Autostart so one
+  install emits its <start> node; the shared config_witness binary
+  proves the terminal runtime really started it (beat report).
+
+  It also registers its dependency t_fat (the over-budget fixture) in
+  the SAME install write: t_fat stays installed-but-stopped for the
+  budget phase to launch, without an extra install that would shift the
+  scenario's pinned repro_malformed_from write number. t_fat survives
+  t_hog's removal because this root keeps it in the installed closure.
+
+  Probe-only: never enabled by any bake profile.
+-->
+<package>
+  <name>g_terminal</name>
+  <version>1.0</version>
+  <description>Grouped-runtime probe: terminal-class placement fixture.</description>
+
+  <binary>config_witness</binary>
+  <quota ram="4M" caps="100"/>
+  <runtime_class>terminal</runtime_class>
+
+  <autostart/>
+  <dependencies>
+    <pkg>t_fat</pkg>
+  </dependencies>
+</package>
