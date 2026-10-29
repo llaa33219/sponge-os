@@ -287,7 +287,7 @@ void Sponge::Pkgd::Main::_handle_request_impl(Genode::Xml_node const &req)
  * byte-unchanged and republishing it would be pure config churn
  * against the other runtime (the failure domain D16R.4 closes).
  */
-void Sponge::Pkgd::Main::_generate_runtime_config()
+bool Sponge::Pkgd::Main::_generate_runtime_config()
 {
 	/* test-only (repro harness): delay the first generation to model the
 	 * real-hardware gap where pkg_runtime attaches to the empty module
@@ -324,6 +324,7 @@ void Sponge::Pkgd::Main::_generate_runtime_config()
 		}
 	}
 
+	_emit_failure = Genode::String<256>();
 	++_runtime_config_writes;
 	/* test-only (repro harness): pad the generated config past
 	 * RUNTIME_CONFIG_BUFFER to force the writer-session close+reopen on
@@ -411,7 +412,8 @@ void Sponge::Pkgd::Main::_generate_runtime_config()
 	 * Consume the per-target dirty marks set by the operation from its
 	 * resolved plan kinds (or both, at bootstrap). Clearing here means
 	 * every later generation is driven purely by what the next
-	 * operation dirties.
+	 * operation dirties — unless this write fails below, which restores
+	 * the marks (abort_write) so the unpublished delta stays queued.
 	 */
 	bool const emit_app    = _app_config_dirty;
 	bool const emit_driver = _driver_config_dirty;
@@ -419,7 +421,7 @@ void Sponge::Pkgd::Main::_generate_runtime_config()
 	_driver_config_dirty = false;
 
 	/* test-only (repro harness): <repro_malformed_from: N> marks the
-	 * current write; _emit_runtime_config corrupts the rendered app
+	 * current write; _render_runtime_config corrupts the rendered app
 	 * config accordingly. The audit line is mandatory (the repro-family
 	 * rule): without it a run cannot distinguish "the knob fired" from
 	 * "the knob silently never matched". repro-only. */
@@ -430,14 +432,46 @@ void Sponge::Pkgd::Main::_generate_runtime_config()
 		            _runtime_config_writes,
 		            " injecting truncated app config (negative control)");
 
+	/*
+	 * Failure seam shared by every rejection below: publish NOTHING for
+	 * this write, restore the consumed dirty marks so convergence is
+	 * not lost (the next generation re-attempts the whole delta), and
+	 * let the caller answer with the bounded reason in _emit_failure.
+	 * The loud structured log is emitted at the rejection site itself
+	 * (render or validate), where the target and cause are known.
+	 */
+	auto abort_write = [&] () -> bool {
+		_app_config_dirty    |= emit_app;
+		_driver_config_dirty |= emit_driver;
+		return false;
+	};
+
 	if (repro_empty_from && _runtime_config_writes >= repro_empty_from) {
-		Genode::log("sponge_pkgd: publishing EMPTY config (write ",
-		            _runtime_config_writes, ") — control channel");
-		if (emit_app)
+		/*
+		 * test-only (repro harness) control channel: from write N on,
+		 * publish an EMPTY <config> — what pkg_runtime's init would see
+		 * if the transient no-writer window were visible to it. This
+		 * is the ONLY validation bypass in the seam: an empty <config>
+		 * is deliberately outside the validated subset (it would be
+		 * MISSING_REQUIRED), and publishing it is the whole point of
+		 * the control, so the bypass is scoped exactly to this knob and
+		 * can never leak into a production write. The driver half of
+		 * the write is still rendered and validated before anything is
+		 * published.
+		 */
+		if (emit_driver &&
+		    (!_render_runtime_config(true) || !_validate_runtime_config(true)))
+			return abort_write();
+
+		if (emit_app) {
+			Genode::log("sponge_pkgd: publishing EMPTY config (write ",
+			            _runtime_config_writes, ") — control channel "
+			            "(test-only validation bypass)");
 			_runtime_reporter.generate_xml([&](Genode::Xml_generator &) { });
+		}
 		if (emit_driver)
-			_emit_runtime_config(_driver_runtime_reporter, true);
-		return;
+			_publish_runtime_config(_driver_runtime_reporter, true);
+		return true;
 	}
 	if (repro_pad)
 		pad_bytes = REPRO_PAD_BYTES;
@@ -455,15 +489,35 @@ void Sponge::Pkgd::Main::_generate_runtime_config()
 		            " buffer=", (Genode::size_t)RUNTIME_CONFIG_BUFFER);
 	}
 
+	/*
+	 * P1.5 render -> validate -> publish. Render EVERY dirty target to
+	 * its scratch and validate ALL of them BEFORE publishing EITHER:
+	 * a write that mixes targets must not publish one sandbox's config
+	 * once the other sandbox's document has been disproved. Only after
+	 * every document passed the gate are the validated bytes published
+	 * through the existing Expanding_reporters (app first, then driver
+	 * — the publication order the pre-seam emitter had).
+	 */
+	if (emit_app && !_render_runtime_config(false))
+		return abort_write();
+	if (emit_driver && !_render_runtime_config(true))
+		return abort_write();
+
+	if (emit_app && !_validate_runtime_config(false))
+		return abort_write();
+	if (emit_driver && !_validate_runtime_config(true))
+		return abort_write();
+
 	if (emit_app)
-		_emit_runtime_config(_runtime_reporter,     false);
+		_publish_runtime_config(_runtime_reporter,     false);
 	if (emit_driver)
-		_emit_runtime_config(_driver_runtime_reporter, true);
+		_publish_runtime_config(_driver_runtime_reporter, true);
+	return true;
 }
 
 
 /*
- * Snapshot the state _emit_runtime_config has always read (_installed
+ * Snapshot the state _render_runtime_config has always read (_installed
  * in array order, the Phase 7 running gate, the is_driver() split) as
  * explicit view values for the pure sponge_pkg_config library. The
  * runtime_class token reproduces the pre-extraction membership filter
@@ -500,21 +554,63 @@ void Sponge::Pkgd::Main::_refresh_config_views()
 
 
 /*
- * Emit one sandbox config through the pure sponge_pkg_config library
- * (Phase 16 P1.2 extraction; the pre-extraction generator lived here
- * and is preserved byte for byte by the library — see
- * <sponge/pkg_config.h> and lib/src/sponge_pkg_config/self_test.cc).
- * `drivers` selects which half of the installed set lands in it:
- * false = the pkg_runtime config (app packages), true = the
- * driver_runtime config (driver packages). The library shares every
- * other part of the generator between targets — the sorted <start>
- * order, the fixed attribute order, the absence of volatile fields —
- * so both configs carry the same determinism contract (the reason
- * unchanged children survive an unrelated install).
+ * Attribute-safe copy of a bounded reason. The rejection reason is
+ * emitted as an XML attribute (<result error="..."/>), so it must not
+ * carry '"', '<', '>', '&' or control bytes — a raw '<' would corrupt
+ * the result document the probes parse (the validator's own detail
+ * quotes the offending construct and does contain '<'). The text stays
+ * readable: the four structural characters fold to their look-alikes
+ * and control bytes to '?'.
  */
-void Sponge::Pkgd::Main::_emit_runtime_config(Genode::Expanding_reporter &reporter,
-                                              bool drivers)
+static void scrub_reason(char *dst, Genode::size_t cap, char const *src)
 {
+	if (cap == 0)
+		return;
+
+	Genode::size_t n = 0;
+	for (char const *s = src; *s && n + 1 < cap; ++s) {
+		char c = *s;
+		switch (c) {
+		case '<': c = '('; break;
+		case '>': c = ')'; break;
+		case '&': c = '+'; break;
+		case '"': c = '\''; break;
+		default:
+			unsigned char const u = (unsigned char)c;
+			if (u < 0x20 || u > 0x7e)
+				c = '?';
+			break;
+		}
+		dst[n++] = c;
+	}
+	dst[n] = '\0';
+}
+
+
+/*
+ * P1.5 render step: render one sandbox config through the pure
+ * sponge_pkg_config library (Phase 16 P1.2 extraction) into the
+ * target's growable member scratch — the complete
+ * "<config>...</config>" document the validate step reads and the
+ * publish step republishes. `drivers` selects which half of the
+ * installed set lands in it: false = the pkg_runtime config (app
+ * packages), true = the driver_runtime config (driver packages).
+ * The library shares every other part of the generator between
+ * targets — the sorted <start> order, the fixed attribute order, the
+ * absence of volatile fields — so both configs carry the same
+ * determinism contract (the reason unchanged children survive an
+ * unrelated install).
+ *
+ * Buffer_error is covered, never swallowed: the scratch grows and the
+ * render is retried (the Expanding_reporter growth idiom), and a
+ * document that outlives RENDER_SCRATCH_CEILING or the heap fails
+ * loudly as a render failure — nothing is ever silently dropped or
+ * truncated.
+ */
+bool Sponge::Pkgd::Main::_render_runtime_config(bool drivers)
+{
+	Render_scratch &scratch = drivers ? _driver_render : _app_render;
+
 	_refresh_config_views();
 
 	Sponge::Pkg_config::Emit_options options { };
@@ -532,20 +628,179 @@ void Sponge::Pkgd::Main::_emit_runtime_config(Genode::Expanding_reporter &report
 		drivers ? Sponge::Pkg_config::driver_target()
 		        : Sponge::Pkg_config::app_target();
 
+	char const *const target_name = drivers ? "driver" : "app";
+
+	for (;;) {
+		if (!scratch.buf) {
+			Genode::size_t const initial =
+				drivers ? DRIVER_CONFIG_BUFFER : RUNTIME_CONFIG_BUFFER;
+
+			void *p = _heap.try_alloc(initial).convert<void *>(
+				[&] (Genode::Allocator::Allocation &a) {
+					a.deallocate = false;
+					return a.ptr;
+				},
+				[&] (Genode::Alloc_error) -> void * { return nullptr; });
+
+			if (!p) {
+				_emit_failure = Genode::String<256>(
+					"runtime-config ", target_name,
+					" render failed: out of memory for the ", initial,
+					"-byte render scratch");
+				Genode::error("sponge_pkgd: ", _emit_failure);
+				return false;
+			}
+			scratch.buf = (char *)p;
+			scratch.cap = initial;
+		}
+
+		Genode::size_t const used =
+			Genode::Xml_generator::generate(
+				Genode::Byte_range_ptr(scratch.buf, scratch.cap), "config",
+				[&] (Genode::Xml_generator &g) {
+					Sponge::Pkg_config::emit_target(
+						g, target, _config_views, _num_config_views, options);
+					/* test-only (repro harness): <repro_malformed_from: N>
+					 * corrupts the RENDERED document (never the pure
+					 * library) with a raw tag truncated mid-attribute —
+					 * the "malformed raw <config> append" the emission
+					 * validator's threat model names. App config only,
+					 * the same scope as pad_bytes. The append lands after
+					 * the renderer, so the document that reaches the gate
+					 * is not well-formed XML and the write is rejected
+					 * (run/sponge-config-emission-invalid.run). Inert
+					 * unless the knob is armed. */
+					if (!drivers && _malform_this_write)
+						g.append("<start name=\"repro_malformed_tail");
+				}).convert<Genode::size_t>(
+					[] (Genode::size_t n) { return n; },
+					[] (Genode::Buffer_error) { return (Genode::size_t)0; });
+
+		if (used != 0) {
+			/*
+			 * Xml_generator::generate frames the document as
+			 * "<config>..." + "</config>" + "\n" + "\0"; 'used' counts
+			 * the framing. The publish step appends the BODY between a
+			 * fresh <config> root, so verify the fixed framing (the
+			 * root carries no attributes) before trusting its offsets.
+			 */
+			Genode::size_t const doc_len = used >= 2 ? used - 2 : 0;
+
+			if (doc_len >= 8 + 9 &&
+			    Genode::strcmp(scratch.buf, "<config>", 8) == 0 &&
+			    Genode::strcmp(scratch.buf + doc_len - 9,
+			                   "</config>", 9) == 0) {
+				scratch.used = doc_len;
+				return true;
+			}
+
+			/* Unreachable for emit_target output; fail loudly rather
+			 * than republish bytes whose framing was not verified. */
+			_emit_failure = Genode::String<256>(
+				"runtime-config ", target_name,
+				" render failed: unexpected document framing");
+			Genode::error("sponge_pkgd: ", _emit_failure);
+			return false;
+		}
+
+		/* Buffer_error: grow the scratch and retry, bounded. */
+		if (scratch.cap >= RENDER_SCRATCH_CEILING) {
+			_emit_failure = Genode::String<256>(
+				"runtime-config ", target_name,
+				" render failed: document exceeds the ",
+				(unsigned long)RENDER_SCRATCH_CEILING,
+				"-byte render ceiling (buffer exhausted)");
+			Genode::error("sponge_pkgd: ", _emit_failure);
+			return false;
+		}
+
+		Genode::size_t grown = scratch.cap * 2;
+		if (grown > RENDER_SCRATCH_CEILING)
+			grown = RENDER_SCRATCH_CEILING;
+
+		void *p = _heap.try_alloc(grown).convert<void *>(
+			[&] (Genode::Allocator::Allocation &a) {
+				a.deallocate = false;
+				return a.ptr;
+			},
+			[&] (Genode::Alloc_error) -> void * { return nullptr; });
+
+		if (!p) {
+			_emit_failure = Genode::String<256>(
+				"runtime-config ", target_name,
+				" render failed: out of memory growing the render scratch to ",
+				grown, " bytes");
+			Genode::error("sponge_pkgd: ", _emit_failure);
+			return false;
+		}
+
+		_heap.free(scratch.buf, scratch.cap);
+		scratch.buf = (char *)p;
+		scratch.cap = grown;
+	}
+}
+
+
+/*
+ * P1.5 validate step: the committed pure validator answers "is this
+ * document exactly a well-formed instance of the runtime-config subset
+ * sponge_pkg_config renders?" — on failure the structured reason is
+ * bounded into _emit_failure (attribute-safe) and logged loudly. The
+ * document checked is exactly the bytes the publish step republishes.
+ */
+bool Sponge::Pkgd::Main::_validate_runtime_config(bool drivers)
+{
+	Render_scratch const &scratch = drivers ? _driver_render : _app_render;
+	char const *const target_name = drivers ? "driver" : "app";
+
+	Sponge::Runtime_config_validate::Result const r =
+		Sponge::Runtime_config_validate::validate(
+			scratch.buf, (unsigned)scratch.used, _validate_ws);
+
+	if (r.ok)
+		return true;
+
+	char detail[Sponge::Runtime_config_validate::Result::DETAIL_CAPACITY] { };
+	scrub_reason(detail, sizeof(detail), r.detail);
+
+	/* 'char const *': Genode deletes print(Output&, char *) to guard
+	 * against accidentally printing mutable buffers. */
+	char const *const safe_detail = detail;
+
+	_emit_failure = Genode::String<256>(
+		"runtime-config ", target_name, " rejected by the publication "
+		"gate: ", safe_detail);
+
+	Genode::error("sponge_pkgd: ", _emit_failure,
+	              " (validation code=", (unsigned)r.code, ") — nothing "
+	              "published for this write");
+	return false;
+}
+
+
+/*
+ * P1.5 publish step: publish the VALIDATED bytes through the existing
+ * Expanding_reporter. generate_xml opens the <config> root itself, so
+ * append only the validated document BODY (everything the renderer
+ * wrote between the root open tag and </config>) — a nested <config>
+ * root would not be the document that passed the gate. The republished
+ * document is byte-identical to the validated one (the root carries no
+ * attributes, so the framing is fixed and was verified at render time),
+ * and the reporter's growth semantics are untouched: the append takes
+ * the same Buffer_error -> grow loop every other generate_xml write
+ * takes (the repro-pad knobs still force it on purpose).
+ */
+void Sponge::Pkgd::Main::_publish_runtime_config(
+	Genode::Expanding_reporter &reporter, bool drivers)
+{
+	Render_scratch const &scratch = drivers ? _driver_render : _app_render;
+
+	/* "<config>" (8) ... "</config>" (9) — see _render_runtime_config. */
+	char const *const body        = scratch.buf + 8;
+	Genode::size_t const body_len = scratch.used - 8 - 9;
+
 	reporter.generate_xml([&] (Genode::Xml_generator &g) {
-		Sponge::Pkg_config::emit_target(g, target, _config_views,
-		                                _num_config_views, options);
-		/* test-only (repro harness): <repro_malformed_from: N> corrupts
-		 * the RENDERED document (never the pure library) with a raw tag
-		 * truncated mid-attribute — the "malformed raw <config> append"
-		 * the emission validator's threat model names. App config only,
-		 * the same scope as pad_bytes. The append lands after the
-		 * renderer, so the document that reaches the report session is
-		 * not well-formed XML; run/sponge-config-emission-invalid.run
-		 * uses it to prove the emission is rejected instead of
-		 * published. Inert unless the knob is armed. */
-		if (!drivers && _malform_this_write)
-			g.append("<start name=\"repro_malformed_tail");
+		g.append(body, body_len);
 	});
 }
 
@@ -1144,7 +1399,18 @@ _init_admission();
 	 * restored set happens to span both kinds. */
 	_app_config_dirty    = true;
 	_driver_config_dirty = true;
-	_generate_runtime_config();
+	if (!_generate_runtime_config()) {
+		/*
+		 * Bootstrap has no request context: fail loudly and publish
+		 * nothing (the seam already restored the dirty marks), but
+		 * stay alive so the next operation re-attempts the whole delta
+		 * and converges. No <result> is fabricated here — there is no
+		 * caller to answer.
+		 */
+		Genode::error("sponge_pkgd: bootstrap runtime-config publication "
+		              "failed (", _emit_failure, ") — nothing published; "
+		              "dirty marks kept for convergence");
+	}
 
 	/* Publish the initial installed-set broadcast so watchers (e.g.
 	 * sponge-de's launcher) read a well-formed <installed .../> right

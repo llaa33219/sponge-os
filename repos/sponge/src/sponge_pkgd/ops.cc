@@ -147,7 +147,14 @@ void Sponge::Pkgd::Main::_do_install(Genode::String<128> const &pkg)
 	_sync_installed_from_roots();
 	_sync_running_state();   /* picks up <autostart/> roots (docs/12 §9.2.1) */
 	_save_store();   /* flush before broadcast so the change survives a reboot */
-	_generate_runtime_config();
+	if (!_generate_runtime_config()) {
+		/* P1.5 publication gate: nothing was published for this write
+		 * and the dirty marks were restored, but the state change is
+		 * committed (and stored) — answer the structured error and let
+		 * the next operation converge. Never answer plain ok here. */
+		_report_error("install", pkg, _emit_failure.string());
+		return;
+	}
 	_generate_installed_report();
 
 	Genode::String<64> added[MAX_PACKAGES] { };
@@ -216,7 +223,12 @@ void Sponge::Pkgd::Main::_do_remove(Genode::String<128> const &pkg)
 	}
 
 	_save_store();   /* flush before broadcast so the change survives a reboot */
-	_generate_runtime_config();
+	if (!_generate_runtime_config()) {
+		/* Same failure contract as _do_install: nothing published,
+		 * marks restored, structured error instead of a plain ok. */
+		_report_error("remove", pkg, _emit_failure.string());
+		return;
+	}
 	_generate_installed_report();
 
 	Genode::String<64> removed[MAX_PACKAGES] { };
@@ -382,7 +394,12 @@ void Sponge::Pkgd::Main::_do_launch(Genode::String<128> const &pkg)
 	 * autostart packages re-enter _running via _sync_running_state;
 	 * explicitly-launched packages re-enter only via a fresh launch.
 	 */
-	_generate_runtime_config();
+	if (!_generate_runtime_config()) {
+		/* Same failure contract as _do_install: nothing published,
+		 * marks restored, structured error instead of a plain ok. */
+		_report_error("launch", pkg, _emit_failure.string());
+		return;
+	}
 	_generate_installed_report();
 
 	_report_launch_ok(pkg, "ok");

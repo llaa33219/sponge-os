@@ -35,6 +35,7 @@
 #include <base/thread.h>
 #include <os/reporter.h>
 #include <sponge/pkg_config.h>
+#include <sponge/runtime_config_validate.h>
 #include <util/reconstructible.h>
 #include <util/string.h>
 #include <util/xml_node.h>
@@ -471,7 +472,7 @@ class Sponge::Pkgd::Main
 		 * test-only (repro harness): <repro_malformed_from: N> marks the
 		 * CURRENT write for malformed emission. _generate_runtime_config
 		 * sets it per write (fire audit alongside), and
-		 * _emit_runtime_config consumes it to corrupt the RENDERED
+		 * _render_runtime_config consumes it to corrupt the RENDERED
 		 * pkg_runtime (app) config with a raw tag truncated mid-attribute
 		 * - the negative control for the emission-validation gate
 		 * (run/sponge-config-emission-invalid.run). Same scope as
@@ -753,9 +754,27 @@ class Sponge::Pkgd::Main
 		void _init_launcher_channel();
 
 		/* ---- runtime-config generation (deterministic) ---- */
-		void _generate_runtime_config();
-		void _emit_runtime_config(Genode::Expanding_reporter &reporter,
-		                          bool drivers);
+
+		/*
+		 * P1.5 publication seam (render -> validate -> publish).
+		 * _generate_runtime_config renders EVERY dirty target to its
+		 * scratch and validates ALL of them BEFORE publishing EITHER,
+		 * so a mixed write can never publish one sandbox's config after
+		 * the other sandbox's document has already been disproved.
+		 * Returns false when a render (Buffer_error beyond the growth
+		 * ceiling) or the validation gate rejected the write: nothing
+		 * is published then, the consumed dirty marks are restored so
+		 * the unpublished delta stays queued for the next generation
+		 * (convergence), and _emit_failure carries the bounded,
+		 * attribute-safe reason the operation answers with. Bootstrap
+		 * (no request context) logs that reason loudly instead of
+		 * answering.
+		 */
+		bool _generate_runtime_config();
+		bool _render_runtime_config(bool drivers);
+		bool _validate_runtime_config(bool drivers);
+		void _publish_runtime_config(Genode::Expanding_reporter &reporter,
+		                             bool drivers);
 
 		/*
 		 * Emission snapshot: the pure sponge_pkg_config library takes
@@ -767,6 +786,54 @@ class Sponge::Pkgd::Main
 		void _refresh_config_views();
 		Sponge::Pkg_config::Package_view _config_views[MAX_PACKAGES] { };
 		unsigned                       _num_config_views  { 0 };
+
+		/*
+		 * P1.5 render scratch: one growable buffer per runtime target,
+		 * holding the complete "<config>...</config>" document that the
+		 * validation gate reads and the publish step then republishes
+		 * byte for byte (render -> validate -> publish). Member
+		 * storage, heap-backed and grown on demand — never on the
+		 * small requesting thread's stack, and never a big static
+		 * allocation. Production documents fit the same pre-sized
+		 * budget as the corresponding report buffer
+		 * (RUNTIME_CONFIG_BUFFER / DRIVER_CONFIG_BUFFER, see the
+		 * derivations above), so the allocation happens once and never
+		 * grows in production; only the repro-pad knobs render beyond
+		 * it (their budget is intentionally unbounded) and a document
+		 * that outlives RENDER_SCRATCH_CEILING fails loudly as a
+		 * render failure instead of being truncated or dropped.
+		 */
+		struct Render_scratch
+		{
+			char          *buf  { nullptr };
+			Genode::size_t cap  { 0 };
+
+			/* Document length WITHOUT the two serializer framing
+			 * bytes ("\n\0") that Xml_generator::generate appends
+			 * after </config>; this is what validate() receives. */
+			Genode::size_t used { 0 };
+		};
+
+		static constexpr Genode::size_t RENDER_SCRATCH_CEILING = 4u * 1024 * 1024;
+
+		Render_scratch _app_render    { };
+		Render_scratch _driver_render { };
+
+		/*
+		 * Validator workspace (bounded uniqueness scratch). The
+		 * validator's own contract keeps it off small component
+		 * stacks; validate() calls are serial (bootstrap and request
+		 * handling never overlap), so one member value is enough.
+		 */
+		Sponge::Runtime_config_validate::Workspace _validate_ws { };
+
+		/*
+		 * Bounded, attribute-safe reason for the last rejected write
+		 * (render failure or validation rejection). Consumed by the
+		 * operation's _report_error answer and the bootstrap's loud
+		 * failure log; meaningless whenever the last write published.
+		 */
+		Genode::String<256> _emit_failure { };
 
 		/* ---- installed-broadcast generation (Phase 5c) ---- */
 		void _generate_installed_report();

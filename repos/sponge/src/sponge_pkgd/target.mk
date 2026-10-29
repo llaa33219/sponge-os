@@ -21,9 +21,11 @@
 #   store.cc    - persistent installed-set store + bake seeding
 # Pure libraries: sponge_pkg_config (emission), sponge_binary_prefix
 # (parse-time rewriting), sponge_pkg_launch (launch decision +
-# running-set rules).
+# running-set rules), sponge_runtime_config_validate (P1.5 render ->
+# validate -> publish gate over the emitted runtime configs).
 TARGET   := sponge_pkgd
 SRC_CC   := main.cc registry.cc metadata.cc admission.cc ops.cc store.cc
-LIBS     := base vfs sponge_pkg_config sponge_binary_prefix sponge_pkg_launch
+LIBS     := base vfs sponge_pkg_config sponge_binary_prefix sponge_pkg_launch \
+            sponge_runtime_config_validate
 INC_DIR  := $(PRG_DIR)/include \
             $(REP_DIR)/include
