@@ -7,7 +7,9 @@
  * move of Main::_load_index/_load_package/_parse_package/_resolve/
  * _visit from main.cc, plus their sole-caller helpers _contains and
  * _cycle_message. The parse-time binary_prefix rewrite inside
- * _parse_package is moved untouched (P2.3 owns any semantic change).
+ * _parse_package now delegates to the pure sponge_binary_prefix
+ * library (Phase 16 P1.2 extraction, byte-identical to the former
+ * inline block; P2.3 owns any semantic change).
  *
  * Stack discipline is preserved exactly as it was: _parse_package
  * keeps its `static` cfg_buf/out_buf scratch (small ep stack).
@@ -16,6 +18,7 @@
 #include "pkgd.h"
 
 #include <base/log.h>
+#include <sponge/binary_prefix.h>
 #include <util/xml_generator.h>
 
 bool Sponge::Pkgd::Main::_contains(Genode::String<64> const *set, unsigned n,
@@ -229,13 +232,18 @@ void Sponge::Pkgd::Main::_parse_package(Genode::Xml_node const &pkg,
 			 * — served by the sub-init's vfs_rom child) are left
 			 * untouched. Boot-module (flat) topologies have an empty
 			 * prefix and skip this entirely.
+			 *
+			 * The rewrite itself is the pure sponge_binary_prefix
+			 * library (Phase 16 P1.2 extraction,
+			 * <sponge/binary_prefix.h>): byte-identical to the former
+			 * inline block; P2.3 owns any semantic change. The
+			 * buffers stay here — the caller owns them, the library
+			 * is pure.
 			 */
 			Genode::size_t const cfg_len = cfg_res.convert<Genode::size_t>(
 				[&] (Genode::size_t v) { return v; },
 				[&] (Genode::Buffer_error) { return Genode::size_t(0); });
 			if (_binary_prefix != "" && cfg_len > 0) {
-				char const *needle_start = "<start name=\"";
-				char const *needle_bin   = "<binary name=\"";
 				/*
 				 * Static char-buffer rewrite: this runs on the (small-
 				 * stack) ep thread, where per-character String<16384>
@@ -244,66 +252,9 @@ void Sponge::Pkgd::Main::_parse_package(Genode::Xml_node const &pkg,
 				 * thread parses serially — no reentrancy.
 				 */
 				static char out_buf[2*16384] { };
-				Genode::size_t o = 0;
-				auto emit = [&](char const *s, Genode::size_t len) {
-					while (len > 0 && o + 1 < sizeof(out_buf)) {
-						out_buf[o++] = *s++;
-						--len;
-					}
-				};
-				auto emit_cstr = [&](char const *s) {
-					emit(s, Genode::strlen(s)); };
-				for (Genode::size_t i = 0; i < cfg_len; ) {
-					Genode::size_t remain = cfg_len - i;
-					auto starts_with = [&](char const *n) {
-						Genode::size_t l = Genode::strlen(n);
-						return remain >= l
-						    && Genode::memcmp(cfg_buf + i, n, l) == 0; };
-					if (starts_with(needle_bin)) {
-						Genode::size_t v = i + Genode::strlen(needle_bin);
-						Genode::size_t e = v;
-						while (e < cfg_len && cfg_buf[e] != '"') e++;
-						bool const path_free =
-							(e > v) && cfg_buf[v] != '/';
-						emit_cstr(needle_bin);
-						if (path_free)
-							emit_cstr(_binary_prefix.string());
-						emit(cfg_buf + v, e - v);
-						emit_cstr("\"");
-						i = e + 1;
-						continue;
-					}
-					if (starts_with(needle_start)) {
-						Genode::size_t v = i + Genode::strlen(needle_start);
-						Genode::size_t e = v;
-						while (e < cfg_len && cfg_buf[e] != '"') e++;
-						bool const path_free =
-							(e > v) && cfg_buf[v] != '/';
-						Genode::size_t tag_end = e;
-						while (tag_end < cfg_len && cfg_buf[tag_end] != '>') tag_end++;
-						Genode::size_t next = tag_end + 1;
-						while (next < cfg_len
-						       && (cfg_buf[next] == ' ' || cfg_buf[next] == '\n'
-						           || cfg_buf[next] == '\t' || cfg_buf[next] == '\r'))
-							next++;
-						bool const has_own_binary =
-							next + 7 < cfg_len
-							&& cfg_buf[next] == '<'
-							&& cfg_buf[next+1] == 'b';
-						emit(cfg_buf + i, (tag_end + 1) - i);
-						if (path_free && !has_own_binary) {
-							emit_cstr("<binary name=\"");
-							emit_cstr(_binary_prefix.string());
-							emit(cfg_buf + v, e - v);
-							emit_cstr("\"/>");
-						}
-						i = tag_end + 1;
-						continue;
-					}
-					emit(cfg_buf + i, 1);
-					i++;
-				}
-				out_buf[o] = 0;
+				Sponge::Binary_prefix::rewrite(out_buf, sizeof(out_buf),
+				                               cfg_buf, cfg_len,
+				                               _binary_prefix.string());
 				out.config_xml = out_buf;
 			}
 		}

@@ -21,6 +21,6 @@
 #   store.cc    - persistent installed-set store + bake seeding
 TARGET   := sponge_pkgd
 SRC_CC   := main.cc registry.cc metadata.cc admission.cc ops.cc store.cc
-LIBS     := base vfs sponge_pkg_config
+LIBS     := base vfs sponge_pkg_config sponge_binary_prefix
 INC_DIR  := $(PRG_DIR)/include \
             $(REP_DIR)/include
