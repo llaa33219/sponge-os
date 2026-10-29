@@ -282,12 +282,20 @@ driver packages and nothing else (AGENTS.md §1.2).
 
 **Admission control applies to both.** A driver's declared quota is
 checked against `driver_runtime`'s **own** live budget (its sandbox
-state report), never against an app runtime's. Each sandbox has its
-own grant, so reading the wrong one would compare a quota against
-a pool it is never subtracted from. The gate is armed per sandbox with
-separate config markers (`<admission/>` for an app runtime,
-`<driver_admission/>` for `driver_runtime`) because the relay has to
-exist in the deployment and a denied `ROM` session is fatal.
+state report), never against an app runtime's; each app class is
+checked against its class runtime's **own** report, never another
+class's. Each sandbox has its own grant, so reading the wrong one
+would compare a quota against a pool it is never subtracted from. The
+gate is armed per sandbox with config markers — `<driver_admission/>`
+for `driver_runtime`, and per class in grouped mode
+(`<simple_admission/>`, `<terminal_admission/>`, `<browser_admission/>`
+for `runtime_simple_state`, `runtime_terminal_state`,
+`runtime_browser_state`) — because each relay has to exist in the
+deployment and a denied `ROM` session is fatal. In grouped mode
+(`<grouped_runtimes/>`) `<admission/>` is the **simple-class alias**,
+arming exactly what `<simple_admission/>` arms; in legacy mode it stays
+the single-app gate on `runtime_state`. The per-class nodes are inert
+(with a warning) when `<grouped_runtimes/>` is absent.
 
 **Autostart policy for drivers.** A driver package carries
 `<autostart/>` **only when it has been verified end to end** on some
@@ -808,16 +816,31 @@ that hosts the package's class (`pkg_runtime_simple`,
   before its first instruction. The budget is read from the hosting
   runtime's own sandbox state report (`<ram avail=/>`, `<caps avail=/>`) rather
   than from a configured copy of its grant, so it is always the real
-  remaining pool and needs no grant arithmetic. It is gated on an
-  `<admission/>` node in `sponge_pkgd`'s `<config>` plus a `runtime_state`
-  ROM route, and it is **fail-open**: a not-yet-published report admits
-  with a log line, because the report only appears ~2 s into boot when
-  the budget is largest, and because a deployment that has not wired the
-  relay must keep behaving exactly as before (AGENTS.md §1.1). Admission
+  remaining pool and needs no grant arithmetic. It is gated per sandbox
+  by a config marker in `sponge_pkgd`'s `<config>` plus that sandbox's
+  state-report ROM route: `<admission/>` (the `runtime_state` relay) in
+  legacy mode — and, in grouped mode, `<admission/>` as the
+  **simple-class alias** of `<simple_admission/>`, alongside
+  `<terminal_admission/>` and `<browser_admission/>` for their classes
+  (`runtime_simple_state`, `runtime_terminal_state`,
+  `runtime_browser_state`), with `<driver_admission/>` unchanged for
+  `driver_runtime`. Each class arms, and fails open, on its own — an
+  unarmed class or a not-yet-published report admits with a log line,
+  never by borrowing another class's budget: the report only appears
+  ~2 s into boot when the budget is largest, so failing closed would
+  refuse legitimate first launches, and failing open leaves un-wired
+  deployments byte-identical to before (AGENTS.md §1.1). Admission
   applies to `install` as well, since an `<autostart/>` package gets its
   `<start>` node the moment an install lands; that pre-flight runs over
   the install plan before any mutation, so a refused install leaves
-  nothing half-applied. Full receipts:
+  nothing half-applied. In grouped mode the install pre-flight also
+  refuses an unparsable `<quota>` outright (independent of arming) for
+  every newly-installed `<autostart/>` package — app-class and driver
+  alike — naming the offending package in the refusal, so an install
+  cannot push a malformed quota into the emitted config. That is
+  exactly the pre-flight's scope: quotas of packages arriving by other
+  paths (e.g. restored from the §13 store) are not re-parsed here.
+  Full receipts:
   `docs/evidence/pkg-admission-control.md`.
 
 - Every request produces exactly one `<result>`. Requests are

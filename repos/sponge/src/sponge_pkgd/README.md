@@ -160,6 +160,13 @@ donated to a child — exactly the pool a new `<start>` node comes out of.
 That is a fact about the running system: no grant arithmetic, and it
 already accounts for quota handed to other children.
 
+Every sandbox has its own report and is admitted against its own
+budget only: a driver against `driver_runtime_state`, and — in grouped
+mode (`<grouped_runtimes/>`) — each app class against its class
+runtime's `runtime_simple_state` / `runtime_terminal_state` /
+`runtime_browser_state`. Reading another class's report would compare a
+quota against a pool it is never subtracted from.
+
 Two parsing rules the report imposes, both already learned the hard way
 elsewhere in the tree:
 
@@ -181,14 +188,25 @@ silent failure deterministically. `ADMISSION_MARGIN_RAM` (8 MiB) and
 period of report staleness, while staying far below the ~11 % product
 headroom budgeted in `docs/17` §6.
 
-**Opt-in, and fail-open.** The gate is armed by an `<admission/>` node,
-because the `runtime_state` ROM session must be routed by the scenario
-and a denied one is fatal. Armed or not, a *not yet published* report
-**admits** with a log line: the report first appears ~2 s into boot,
-when the budget is at its largest, so failing closed would refuse
-legitimate first launches, and failing open leaves un-wired deployments
-byte-identical to before — the manual escape hatch AGENTS.md §1.1 asks
-for.
+**Opt-in, and fail-open.** The gate is armed per sandbox by config
+markers, because each state-report ROM session must be routed by the
+scenario and a denied one is fatal. Legacy mode uses the single
+`<admission/>` node (the `runtime_state` relay); `<driver_admission/>`
+arms the driver gate (`driver_runtime_state`) in both modes. In grouped
+mode (`<grouped_runtimes/>`) the app classes arm **independently** —
+`<simple_admission/>`, `<terminal_admission/>` and `<browser_admission/>`
+each open their class's own relay (`runtime_simple_state`,
+`runtime_terminal_state`, `runtime_browser_state`) — and `<admission/>`
+is the **simple-class alias** (it arms exactly the simple gate with one
+diagnostic, so a legacy deployment can flip the marker on without
+rewriting its admission node). The per-class nodes are inert with a
+warning when `<grouped_runtimes/>` is absent. Armed or not, a *not yet
+published* report **admits** with a log line, per class: the report
+first appears ~2 s into boot, when the budget is at its largest, so
+failing closed would refuse legitimate first launches, and failing open
+leaves un-wired deployments byte-identical to before — the manual
+escape hatch AGENTS.md §1.1 asks for. A class never borrows another
+class's budget; an unarmed or late class fails open on its own.
 
 ```xml
 <config | binary_prefix: bin/>
@@ -313,7 +331,11 @@ optional `File_system` session (via the Vfs library) only when its
 `<config>` carries a `<vfs>` node — i.e. only when the deployment has
 explicitly enabled persistence. Likewise, the `pkg_binaries` manifest
 ROM is opened only when `<config>` carries `<binaries/>`, and the
-`runtime_state` ROM only when it carries `<admission/>`, so no
+admission state-report ROMs only when their gate node is present
+(`<admission/>` for `runtime_state` in legacy mode, the per-class
+`<simple_admission/>`/`<terminal_admission/>`/`<browser_admission/>`
+for `runtime_simple_state`/`runtime_terminal_state`/`runtime_browser_state`
+in grouped mode, `<driver_admission/>` for `driver_runtime_state`), so no
 deployment pays for a capability it did not ask for. Everything it needs
 to read requests/metadata and write results, and nothing more
 (AGENTS.md §1.2). It is purely signal-driven and needs no Timer session.
