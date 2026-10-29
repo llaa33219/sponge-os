@@ -523,14 +523,64 @@ Mapped to `docs/plans/phase16-runtime-overhaul.md`:
   `repos/sponge/src/sponge_pkgd/main.cc`; during the audit a concurrent
   worktree held uncommitted edits to both (P1 extraction scaffolding) —
   neither working-tree state is part of this report.
-- The plan's P2.3 statement ("nested sub-init children still resolve
-  without the `bin/` prefix") is not reconciled with the baseline
-  observation that the nested `terminal` child ran, nor with the nested
-  rewrite pass at `main.cc:1103-1175` (landed `09da75ea43`, whose commit
-  message claims exactly that rewrite). Recorded as an open question
-  (AGENTS.md §6) for P2.3; this report needs only the observed fact that
-  terminal's binaries resolved and the FONT did not.
+- The plan's former P2.3 statement ("nested sub-init children still resolve
+  without the `bin/` prefix") was stale. The nested rewrite landed in
+  `09da75ea43`, and the baseline observation already showed terminal's
+  binaries resolving while only the FONT failed. Section 9 closes this
+  question with unchanged-library and product-runtime verification.
 - H-b1/H-b2/H-b3 are not ranked beyond "leading/open" — the §3.5 test is
   the prerequisite for any root-cause claim.
 
 ================================================================================
+
+## 9. P2.3 nested binary-prefix resolution (2026-10-29)
+
+**Verdict:** the planned rewrite already existed; no library change was
+needed. `09da75ea43` added the nested-start rewrite, and P1.2 commit
+`71b2c4359e` extracted it unchanged into `sponge_binary_prefix`. The flat
+scanner rewrites nested `<start>` and explicit `<binary>` nodes at any depth:
+terminal and VFS starts gain `bin/`-prefixed binaries, `vfs_rom`'s explicit
+`cached_fs_rom` binary becomes `bin/cached_fs_rom`, and `/bin/bash` remains
+untouched. Top-level path composition and empty-prefix identity are separate
+and unchanged.
+
+The unchanged host test passed:
+
+```sh
+g++ -std=c++20 -O1 \
+  -I genode/repos/base/include \
+  -I genode/repos/base/include/spec/64bit \
+  -I genode/repos/base/include/spec/x86_64 \
+  -I genode/repos/base/include/spec/x86 \
+  -I repos/sponge/include \
+  repos/sponge/lib/src/sponge_binary_prefix/self_test.cc \
+  repos/sponge/lib/src/sponge_binary_prefix/binary_prefix.cc \
+  -o /tmp/opencode/sponge_binary_prefix_self_test \
+&& /tmp/opencode/sponge_binary_prefix_self_test
+# self-test: PASS (equivalence + golden snapshots)
+```
+
+The product runtime gate then ran on base-sel4/QEMU/OVMF with the terminal
+sub-init binaries and all 12 payload files staged by `runtime-terminal.inc`:
+
+```sh
+SPONGE_LAUNCHTEST=on make -j1 -C genode/build/x86_64 \
+  run/sponge-desktop-disk-uefi-usb KERNEL=sel4 BOARD=pc
+# alpha-probe: PASS
+# launch-gate PASS — terminal request
+# launch-gate PASS — terminal package boots
+# PASS — launch path verified: a launcher request boots the
+#        terminal package end-to-end (files/falkon stages logged).
+```
+
+The run's required terminal markers were `prod-launch-probe: launch terminal
+-> ok` and the real nested `[init -> system -> pkg_runtime -> terminal -> vfs]`
+child. This is actual launcher-to-nested-child evidence, not merely a boot
+marker. The same run reached `alpha-probe: PASS` and compositor first paint.
+It is not a real-hardware result.
+
+Only the UEFI-USB product scenario currently stages the complete terminal
+binary/payload set, so this receipt does not claim nested terminal resolution
+on media that omit those files. P2.3 is closed by verification of the existing
+rewriter; the P1.2 golden suite remains the regression gate for its exact
+nested/path-like/top-level behavior.

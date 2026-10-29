@@ -178,12 +178,12 @@ sponge_pkgd start node):
   `run/README.md:640`). `run/sponge-pkg-driver.run:34,39` is boot-module
   style (empty prefix).
 
-Observed gap the overhaul targets (plan P2.3 statement, **not** root-caused
-here): site #1 rewrites only the *serialized* body of a package's own
-inline `<config>`; the plan records that a terminal package's nested
-sub-init children (`terminal`, `vfs`, `vfs_rom` → `cached_fs_rom`) still
-resolve binaries without the `bin/` prefix (criterion-14 blocker). No claim
-is made here about why the existing rewrite misses them.
+P2.3 resolution (2026-10-29): the plan's original symptom was stale. Site #1
+already rewrites nested starts and explicit binaries in the serialized inline
+`<config>`; the unchanged golden suite and the fully staged UEFI-USB terminal
+launch gate both pass. See `phase16-runtime-rom-failures.md` §9. The remaining
+boundary is staging, not rewriting: media without the terminal binary/payload
+set cannot make the same runtime claim.
 
 ---
 
@@ -401,7 +401,8 @@ current anchors:
   (`:1050`, `:1113`) with caller-provided buffers in the library. Tests:
   slash-free name rewritten; `/bin/bash` untouched; `<start>` without
   `<binary>` gains one; `<start>` with `<binary>` does not; empty prefix
-  is identity. This library is also the P2.3 extension point.
+  is identity. P2.3 verified these existing semantics; no extension was
+  needed (`phase16-runtime-rom-failures.md` §9).
 - [x] **Launch model.** Surface: `_is_running`/`_add_running`/
   Landed as pure `sponge_pkg_launch` with the exact six-gate order,
   lazy resource evaluation, running-set helpers, and a host self-test
@@ -480,9 +481,6 @@ points a P2.6 implementer edits:
 
 ## 11. Not established by this audit
 
-- Why the current nested-config rewrite (§3 site #1) misses terminal
-  sub-init children — P2.3 states the symptom; root cause is not claimed
-  here.
 - Whether the absence of `<vfs>` store nodes on product media (§5.1) is
   intentional — recorded, not judged.
 - The full forwarded-create / provider-chain I/O map and the NIC uplink

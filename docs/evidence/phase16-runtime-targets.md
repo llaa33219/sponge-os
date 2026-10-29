@@ -73,5 +73,7 @@ set, and themed-panel checks execute as before.
 
 P2.2 does not prove working terminal launch on media lacking the separate
 `vct_tty` topology. It proves payload parity and unchanged runtime
-structure. P2.3 owns nested `binary_prefix`; P2.4 owns actual runtime
-class grouping; P2.6 owns browser payload staging.
+structure. P2.3 subsequently verified the existing nested `binary_prefix`
+rewrite on the fully staged UEFI-USB topology
+(`docs/evidence/phase16-runtime-rom-failures.md` §9); P2.4 owns actual
+runtime class grouping; P2.6 owns browser payload staging.
