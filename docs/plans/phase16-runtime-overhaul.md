@@ -1,9 +1,9 @@
 # Phase 16 Runtime Overhaul (Work Plan)
 
 > Status: in progress. P0 baseline/audits, P1.1, P1.3-P1.5, the
-> binary-prefix/launch/config-emission portions of P1.2, P2.1-P2.2, and
+> binary-prefix/launch/config-emission portions of P1.2, P2.1-P2.3, and
 > the P3.1 red scenario have landed. The P1.2 admission-math extraction,
-> P2.3-P2.6, and P3.2-P5 remain open. Created
+> P2.4-P2.6, and P3.2-P5 remain open. Created
 > 2026-10-28 on branch `refactor/phase16-runtime-overhaul` (pre-work HEAD
 > `3afb40c922`).
 > Relationship: this is the runtime-overhaul track of the reopened Phase 16
@@ -287,6 +287,14 @@ product scenario proving the nested children resolve; no scenario regression.
 Commits: `fix(pkgd): rewrite binary_prefix for nested start nodes` (1).
 Owns: the `binary_prefix` pure library (transferred from P1.2 ownership)
 and its tests.
+Landed by verification; no additional rewrite was needed. The stated defect
+was stale: `09da75ea43` already added nested-start rewriting and P1.2
+preserved it in `sponge_binary_prefix`. The unchanged host golden suite
+passes, and `SPONGE_LAUNCHTEST=on run/sponge-desktop-disk-uefi-usb` passes
+`alpha-probe`, the terminal request, nested VFS boot, and the final launch
+gate. The historical open question and receipt are in
+`docs/evidence/phase16-runtime-rom-failures.md` §9. Other media still need
+the terminal binary/payload staging before making the same runtime claim.
 
 **P2.4 Grouped runtimes.**
 Place packages into the three runtime classes (D16R.6) per the new package
