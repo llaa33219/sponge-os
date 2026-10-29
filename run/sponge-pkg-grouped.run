@@ -1,0 +1,335 @@
+#
+# \brief  Sponge OS grouped-runtime + per-class admission probe scenario
+# \author Sponge OS contributors
+# \date   2026
+#
+# Question under test (empirically, on QEMU/seL4, headless):
+#
+#   With sponge_pkgd's explicit <grouped_runtimes/> opt-in, do app
+#   packages route into their <runtime_class> sandboxes with per-class
+#   admission — and does the P1.5 publication seam keep every class
+#   config all-or-nothing?
+#
+# Mechanisms under test (Phase 16 P2.4, commits 1-2):
+#
+#   - grouped emission: one config producer, four active targets
+#     (runtime_simple / runtime_terminal / runtime_browser from package
+#     <runtime_class> metadata, driver_runtime unchanged), each
+#     published on its own report channel;
+#   - per-class admission: <admission/> is the SIMPLE-class alias
+#     (one diagnostic, arms runtime_simple_state), <terminal_admission/>
+#     and <browser_admission/> arm their own state relays; each package
+#     is admitted against its OWN class budget and never another's;
+#   - grouped install quota sanity: a malformed <quota ram="garbage"/>
+#     is refused BEFORE any mutation even with admission unarmed, so a
+#     garbage quantum can never reach the emitted <resource> and wedge
+#     later writes at the publication gate;
+#   - all-or-nothing publication: with the simple render corrupted at a
+#     pinned write (the repro_malformed_from knob), a mixed-class write
+#     (one plan dirtying simple AND terminal) publishes NOTHING.
+#
+# Topology (kernel-agnostic, no Qt, no hardware drivers, no disk):
+#
+#   init
+#   + timer
+#   + report_rom
+#   + sponge_pkgd          (<grouped_runtimes/> + the three admission
+#                           markers + the pinned repro knob)
+#   + pkg_runtime_simple   (init; 256M / 2400 caps — the AMPLE class)
+#   + pkg_runtime_terminal (init;  80M / 1400 caps — the REFUSED class)
+#   + pkg_runtime_browser  (init;  96M / 1600 caps)
+#   + driver_runtime       (init;  32M /  400 caps, unchanged behavior)
+#   + grouped_probe        (drives every request, asserts every figure)
+#
+# Fixtures (pkg/, staged per scenario; all share the config_witness
+# payload whose beat counter proves each class runtime really started
+# its own child):
+#
+#   g_simple   simple (default class)  4M / 100  autostart
+#   g_terminal terminal                4M / 100  autostart (dep: t_fat)
+#   g_browser  browser                 4M / 100  autostart
+#   g_driver   driver (+Timer/Report)  4M / 100  autostart
+#   t_hog      terminal               40M / 800  (budget consumer)
+#   t_fat      terminal               40M / 800  (the over-budget one;
+#                                       registered via g_terminal's dep)
+#   badquota   simple                 garbage     autostart (refused)
+#   badriver   driver                 garbage     autostart (refused;
+#                                       offender under badriver_root)
+#   badriver_root simple              4M / 100  (request vehicle; its
+#                                       install is refused and must name
+#                                       'badriver', the offender)
+#   s_after    simple                  4M / 100  (recovery)
+#   mixroot    simple                  4M / 100  autostart (mixed plan)
+#   mixdep     terminal                4M / 100  autostart (mixed plan)
+#
+# report_rom policies: the request/result/installed channel pair, each
+# class config fanned out BOTH to its runtime and to the probe
+# (cfg_simple/cfg_terminal/cfg_browser/cfg_driver), each per-class state
+# report fanned out to pkgd's admission ROM and to the probe
+# (st_simple/st_terminal/st_browser), and one beat relay per class
+# runtime (b_simple/b_terminal/b_browser/b_driver).
+#
+# Gates (in order, all bounded, on ONE boot):
+#   1. "grouped runtimes enabled"                        — grouped mode,
+#   2. "<admission/> is the simple-class alias"          — the alias,
+#   3-5. "simple/terminal/browser class admission armed" — per-class
+#        arming (the alias must arm the SIMPLE gate),
+#   6. "repro_malformed write=<N>"                       — the knob fired
+#        at the pinned mixed write,
+#   7. verdict: "grouped-runtime-probe: FAIL" -> exit 1 (the guest's
+#        reason is in the serial log) | "grouped-runtime-probe: PASS"
+#        -> exit 0. The PASS marker carries no trailing greedy matcher.
+#
+# Build:
+#   make -C genode/build/x86_64 run/sponge-pkg-grouped \
+#       KERNEL=sel4 BOARD=pc
+#
+
+#
+# The pinned knob write: the mixed install below MUST be write
+# <malform_at>. The probe cross-checks the installed broadcast's
+# config_writes counter against it first (drift -> loud FAIL), and the
+# same number goes into the probe's config so both sides share one
+# source. Current accounting (one write per bootstrap + per MUTATING
+# request; every refusal writes nothing and never increments
+# config_writes):
+#
+#   1 bootstrap | 2-5 g_* installs (t_fat registers as g_terminal's
+#   dependency at write 3) | 6-7 t_hog install+launch | 8 remove t_hog |
+#   9 t_fat retry launch | 10-11 s_after install+launch |
+#   12 the mixed install  <- the corrupted write
+#
+# Refusals in between (launch t_fat, install badquota, install
+# badriver_root) are pre-mutation no-ops and cost no write.
+#
+set malform_at 12
+
+build { core lib/ld init timer server/report_rom lib/vfs sponge_pkgd \
+        test/config_witness test/grouped_probe }
+
+create_boot_directory
+
+install_config [subst {
+config
++ parent-provides
+  + service LOG
+  + service PD
+  + service CPU
+  + service ROM
+  + service IRQ
+  + service IO_MEM
+  + service IO_PORT
+
++ default-route
+  + any-service
+    + parent
+    + any-child
++ default | caps: 200 | ram: 8M
+
++ start timer
+  + provides | + service Timer
+
++ start report_rom | caps: 600 | ram: 12M
+  + provides
+    + service Report
+    + service ROM
+  + config | verbose: no
+    + policy | label: sponge_pkgd -> request       | report: grouped_probe -> request
+    + policy | label: grouped_probe -> result      | report: sponge_pkgd -> result
+    + policy | label: grouped_probe -> installed   | report: sponge_pkgd -> installed
+    + policy | label: pkg_runtime_simple -> config | report: sponge_pkgd -> runtime_simple
+    + policy | label: pkg_runtime_terminal -> config | report: sponge_pkgd -> runtime_terminal
+    + policy | label: pkg_runtime_browser -> config | report: sponge_pkgd -> runtime_browser
+    + policy | label: driver_runtime -> config     | report: sponge_pkgd -> driver_runtime
+    + policy | label: grouped_probe -> cfg_simple   | report: sponge_pkgd -> runtime_simple
+    + policy | label: grouped_probe -> cfg_terminal | report: sponge_pkgd -> runtime_terminal
+    + policy | label: grouped_probe -> cfg_browser  | report: sponge_pkgd -> runtime_browser
+    + policy | label: grouped_probe -> cfg_driver   | report: sponge_pkgd -> driver_runtime
+    + policy | label: sponge_pkgd -> runtime_simple_state   | report: pkg_runtime_simple -> state
+    + policy | label: sponge_pkgd -> runtime_terminal_state | report: pkg_runtime_terminal -> state
+    + policy | label: sponge_pkgd -> runtime_browser_state  | report: pkg_runtime_browser -> state
+    + policy | label: grouped_probe -> st_simple    | report: pkg_runtime_simple -> state
+    + policy | label: grouped_probe -> st_terminal  | report: pkg_runtime_terminal -> state
+    + policy | label: grouped_probe -> st_browser   | report: pkg_runtime_browser -> state
+    + policy | label: grouped_probe -> b_simple     | report: pkg_runtime_simple -> g_simple -> beat
+    + policy | label: grouped_probe -> b_terminal   | report: pkg_runtime_terminal -> g_terminal -> beat
+    + policy | label: grouped_probe -> b_browser    | report: pkg_runtime_browser -> g_browser -> beat
+    + policy | label: grouped_probe -> b_driver     | report: driver_runtime -> g_driver -> beat
+
++ start sponge_pkgd | caps: 600 | ram: 32M
+  + config | repro_malformed_from: $malform_at
+    + grouped_runtimes
+    + admission
+    + terminal_admission
+    + browser_admission
+  + route
+    + service ROM | label_last: request | + child report_rom
+    + service ROM | label: runtime_simple_state   | + child report_rom
+    + service ROM | label: runtime_terminal_state | + child report_rom
+    + service ROM | label: runtime_browser_state  | + child report_rom
+    + service Report | + child report_rom
+    + any-service
+      + parent
+      + any-child
+
++ start pkg_runtime_simple | caps: 2400 | ram: 256M
+  + binary init
+  + route
+    + service ROM | label: config | + child report_rom
+    + service Report | + child report_rom
+    + any-service
+      + parent
+      + any-child
+
++ start pkg_runtime_terminal | caps: 1400 | ram: 80M
+  + binary init
+  + route
+    + service ROM | label: config | + child report_rom
+    + service Report | + child report_rom
+    + any-service
+      + parent
+      + any-child
+
++ start pkg_runtime_browser | caps: 1600 | ram: 96M
+  + binary init
+  + route
+    + service ROM | label: config | + child report_rom
+    + service Report | + child report_rom
+    + any-service
+      + parent
+      + any-child
+
++ start driver_runtime | caps: 400 | ram: 32M
+  + binary init
+  + route
+    + service ROM | label: config | + child report_rom
+    + service Report | + child report_rom
+    + any-service
+      + parent
+      + any-child
+
++ start grouped_probe | caps: 400 | ram: 16M
+  + config | malform_from: $malform_at | need_ram: 40M | need_caps: 800
+  + route
+    + service ROM | label: result      | + child report_rom
+    + service ROM | label: installed   | + child report_rom
+    + service ROM | label: cfg_simple   | + child report_rom
+    + service ROM | label: cfg_terminal | + child report_rom
+    + service ROM | label: cfg_browser  | + child report_rom
+    + service ROM | label: cfg_driver   | + child report_rom
+    + service ROM | label: st_simple    | + child report_rom
+    + service ROM | label: st_terminal  | + child report_rom
+    + service ROM | label: st_browser   | + child report_rom
+    + service ROM | label: b_simple     | + child report_rom
+    + service ROM | label: b_terminal   | + child report_rom
+    + service ROM | label: b_browser    | + child report_rom
+    + service ROM | label: b_driver     | + child report_rom
+    + service Report | + child report_rom
+    + service Timer | + child timer
+    + any-service
+      + parent
+      + any-child
+- }]
+
+#
+# Stage package metadata + the derived index (same scheme as
+# run/sponge-pkg-admission.run).
+#
+set staged_pkgs { g_simple g_terminal g_browser g_driver t_hog t_fat \
+                  badquota badriver badriver_root s_after mixroot mixdep }
+foreach pkg $staged_pkgs {
+	set src "${genode_dir}/../pkg/$pkg/metadata.xml"
+	if {![file exists $src]} {
+		error "package metadata not found: $src"
+	}
+	exec cp -L $src "[run_dir]/genode/pkg_$pkg.xml"
+}
+
+set index_fh [open "[run_dir]/genode/pkg_index.xml" w]
+puts $index_fh "<packages>"
+foreach pkg $staged_pkgs {
+	puts $index_fh "  <pkg name=\"$pkg\"/>"
+}
+puts $index_fh "</packages>"
+close $index_fh
+
+build_boot_image [build_artifacts]
+
+append qemu_args " -nographic -m 1G "
+
+#
+# Bounded log gates, chained on ONE boot. The first call spawns QEMU
+# via the run tool; every later call chains on the same boot (a
+# two-argument run_genode_until would respawn). match_max widens the
+# expect buffer so the long boot + probe log cannot evict an earlier
+# landmark before its gate runs (lossless expect buffers).
+#
+proc gate { pattern timeout_s } {
+	global qemu_spawn_id
+	if {$qemu_spawn_id eq ""} {
+		if {[catch { run_genode_until $pattern $timeout_s } err]} {
+			puts "grouped-runtime-probe: FAIL harness ($err)"
+			exit 1
+		}
+		match_max -i $qemu_spawn_id 200000
+		return
+	}
+	match_max -i $qemu_spawn_id 200000
+	set timeout $timeout_s
+	expect {
+		-i $qemu_spawn_id -re $pattern { }
+		-i $qemu_spawn_id eof {
+			puts "grouped-runtime-probe: FAIL harness (QEMU died)"
+			exit 1
+		}
+		timeout {
+			puts "grouped-runtime-probe: FAIL harness (no match for '$pattern' within ${timeout_s}s)"
+			exit 1
+		}
+	}
+}
+
+#
+# Final verdict window: the guest probe either reports a failure with a
+# reason (in the serial log) or the real PASS. A silent timeout is a
+# FAIL, not a clean verdict.
+#
+proc verdict_gate { timeout_s } {
+	global qemu_spawn_id
+	match_max -i $qemu_spawn_id 200000
+	set timeout $timeout_s
+	expect {
+		-i $qemu_spawn_id -re {grouped-runtime-probe: FAIL} { 
+			puts "grouped-runtime-probe: RED (see the serial log for the reason)"
+			exit 1
+		}
+		-i $qemu_spawn_id -re {grouped-runtime-probe: PASS} { return }
+		-i $qemu_spawn_id eof {
+			puts "grouped-runtime-probe: FAIL harness (QEMU died)"
+			exit 1
+		}
+		timeout {
+			puts "grouped-runtime-probe: FAIL harness (no verdict within ${timeout_s}s)"
+			exit 1
+		}
+	}
+}
+
+# 1. Grouped mode is active and the report channels are the class ones.
+gate {grouped runtimes enabled} 120
+
+# 2-5. The <admission/> alias diagnostic, and all three class gates
+# armed (the alias must arm the SIMPLE gate on runtime_simple_state).
+gate {<admission/> is the simple-class alias} 30
+gate {simple class admission armed} 30
+gate {terminal class admission armed} 30
+gate {browser class admission armed} 30
+
+# 6. The knob fired at the pinned mixed write.
+gate "repro_malformed write=$malform_at" 420
+
+# 7. The probe's verdict closes the run.
+verdict_gate 120
+
+puts "grouped-runtime-probe: PASS (grouped emission + per-class admission)"
+exit 0
