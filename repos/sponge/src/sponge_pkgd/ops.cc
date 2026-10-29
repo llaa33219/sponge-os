@@ -19,6 +19,7 @@
 #include "pkgd.h"
 
 #include <base/log.h>
+#include <sponge/pkg_admission.h>
 #include <sponge/pkg_launch.h>
 
 void Sponge::Pkgd::Main::_do_explain(Genode::String<128> const &pkg)
@@ -82,7 +83,7 @@ void Sponge::Pkgd::Main::_do_install(Genode::String<128> const &pkg)
 				continue;
 
 			Genode::size_t need_ram { 0 };
-			if (!_quota_bytes(c.ram, need_ram)) {
+			if (!Sponge::Pkg_admission::quota_bytes(c.ram, need_ram)) {
 				Genode::warning("sponge_pkgd: package '", c.name,
 				                "' has an unparsable <quota ram=\"", c.ram,
 				                "\"> — refusing the install");
@@ -118,8 +119,8 @@ void Sponge::Pkgd::Main::_do_install(Genode::String<128> const &pkg)
 				return;
 			}
 
-			free_ram [k] -= need_ram;
-			free_caps[k] -= (c.caps > free_caps[k] ? 0u : c.caps);
+			Sponge::Pkg_admission::consume(free_ram[k], free_caps[k],
+			                               need_ram, c.caps);
 		}
 	}
 
@@ -320,16 +321,16 @@ void Sponge::Pkgd::Main::_do_launch(Genode::String<128> const &pkg)
 
 		/*
 		 * Gate 5: the resource verdict is computed by the existing
-		 * admission code (admission.cc — _quota_bytes, _admits, the
-		 * ADMISSION_MARGIN_* comparison); the launch model takes it
-		 * as an input and never re-derives it.
+		 * admission code (admission.cc's _admits over the pure
+		 * sponge_pkg_admission quota/margin math); the launch model
+		 * takes it as an input and never re-derives it.
 		 */
 		Pkg_launch::Resource_verdict rv =
 			Pkg_launch::Resource_verdict::admitted();
 
 		if (found) {
 			Genode::size_t need_ram { 0 };
-			if (!_quota_bytes(found->ram, need_ram)) {
+			if (!Sponge::Pkg_admission::quota_bytes(found->ram, need_ram)) {
 				Genode::warning("sponge_pkgd: package '", name,
 				                "' has an unparsable <quota ram=\"",
 				                found->ram, "\"> — refusing the launch");

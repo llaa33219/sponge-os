@@ -16,7 +16,8 @@
  *   registry.cc - installed/running state (roots, closure, running
  *                 set, exclusive-group peer lookup)
  *   metadata.cc - pkg_index/pkg_<name>.xml parsing, DFS resolution
- *   admission.cc - resource admission math + ROM arming
+ *   admission.cc - resource admission I/O shell (ROM arming + state
+ *                 reads) over the pure sponge_pkg_admission math
  *   ops.cc      - install/remove/launch + binary-manifest loading
  *   store.cc    - persistent installed-set store + bake seeding
  *
@@ -658,22 +659,12 @@ class Sponge::Pkgd::Main
 		bool               _driver_admission_armed { false };
 
 		/*
-		 * Admission safety margin. A refusal threshold of exactly
-		 * `avail >= need` would admit a razor-thin package that init then
-		 * has to clamp — recreating the very silent failure the gate
-		 * exists to prevent, and doing so non-deterministically. The
-		 * margin covers what a child costs on top of its declared quota:
-		 * init's own bookkeeping for it (PD session, CNode slab, child
-		 * object, the parsed <start> node) plus the report's own staleness
-		 * window — the state report is periodic with delay_ms=2000, so a
-		 * reading can be up to one period behind a just-started sibling.
-		 * 8M / 64 caps is ~8% of a typical package quota and two orders
-		 * of magnitude above the per-child overhead, while staying far
-		 * below the 11% product headroom documented in docs/17 §6 — the
-		 * gate must not eat the headroom the quota ledger budgets for.
+		 * Admission safety margin. The MATH lives in the pure
+		 * sponge_pkg_admission library (<sponge/pkg_admission.h>),
+		 * which owns the ADMISSION_MARGIN_RAM/CAPS values and the
+		 * rationale for them; this class only arms the ROMs and
+		 * applies the verdict (admission.cc).
 		 */
-		static constexpr Genode::size_t ADMISSION_MARGIN_RAM  = 8u * 1024 * 1024;
-		static constexpr unsigned       ADMISSION_MARGIN_CAPS = 64;
 
 		/*
 		 * Disk-served binary path prefix (Phase 8 P2, docs/14 §4.4/§4.6).
@@ -748,7 +739,6 @@ class Sponge::Pkgd::Main
 		bool _admits(Package const &p, Genode::size_t need_ram,
 		             Genode::size_t &avail_ram,
 		             unsigned need_caps, unsigned &avail_caps);
-		static bool _quota_bytes(Genode::String<16> const &q, Genode::size_t &out);
 
 		/* ---- launcher channel (optional, config-gated) ---- */
 		void _init_launcher_channel();

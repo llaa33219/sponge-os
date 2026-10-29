@@ -1,53 +1,27 @@
 /* SPDX-License-Identifier: Apache-2.0
  *
- * sponge_pkgd admission module - resource admission math.
+ * sponge_pkgd admission module - resource admission I/O shell.
  *
  * Phase 16 P1.3 responsibility split (zero behavior change): verbatim
  * move of Main::_quota_bytes/_read_budget/_admission_state/_admits and
- * Main::_init_admission/_init_driver_admission from main.cc: the quota
- * parser, the sandbox-budget readers, the admission decision with its
- * ADMISSION_MARGIN_* safety margins (declared in pkgd.h), and the
- * config-gated ROM arming. _report_insufficient/_report_conflict stay
- * in main.cc with the rest of the _report_* replay cluster.
+ * Main::_init_admission/_init_driver_admission from main.cc.
+ *
+ * Phase 16 P1.2 admission-math extraction (zero behavior change): the
+ * quota parser, the HID budget decode and the margin comparison moved
+ * into the pure sponge_pkg_admission library
+ * (<sponge/pkg_admission.h>); this module keeps only the I/O and state
+ * around them — the config-gated ROM arming, the state-report ROM
+ * reads, and the fail-open logging — and delegates every number to the
+ * library. _report_insufficient/_report_conflict stay in main.cc with
+ * the rest of the _report_* replay cluster.
  */
 
 #include "pkgd.h"
 
 #include <base/log.h>
+#include <sponge/pkg_admission.h>
 
 /* ===================== resource admission control ===================== */
-
-/*
- * Parse a package metadata quota string ("48M", "1024M", "1G", "512K",
- * or a plain byte count) into bytes. Package metadata is authored by
- * hand (docs/16-package-authoring.md §2), so the suffix set is closed
- * and small; anything else is a malformed quota and yields "no answer",
- * which callers treat as "cannot prove it fits" -> the launch is
- * refused rather than silently clamped.
- */
-bool Sponge::Pkgd::Main::_quota_bytes(Genode::String<16> const &q,
-                                      Genode::size_t &out)
-{
-	char const *p = q.string();
-	Genode::size_t v { 0 };
-	unsigned digits { 0 };
-	while (*p >= '0' && *p <= '9') {
-		v = v * 10 + Genode::size_t(*p - '0');
-		++p; ++digits;
-	}
-	if (!digits) return false;
-
-	switch (*p) {
-	case 'K': case 'k': v *= 1024; break;
-	case 'M': case 'm': v *= 1024 * 1024; break;
-	case 'G': case 'g': v *= 1024 * 1024 * 1024; break;
-	case '\0':            break;
-	default:               return false;
-	}
-	out = v;
-	return true;
-}
-
 
 /*
  * Read pkg_runtime's remaining budget from its sandbox state report.
@@ -63,7 +37,9 @@ bool Sponge::Pkgd::Main::_quota_bytes(Genode::String<16> const &q,
  * The numbers are read as strings and parsed by hand because the
  * Generator prints every round value through Number_of_bytes::print():
  * a plain numeric conversion would read "64M" as 64 BYTES and admit an
- * out-of-budget package.
+ * out-of-budget package. The HID walk and the parsing are the pure
+ * sponge_pkg_admission::decode_budget (see <sponge/pkg_admission.h>);
+ * this wrapper only does the ROM I/O.
  *
  * Returns false when no usable report is available yet; the caller then
  * admits (see _admits).
@@ -76,37 +52,8 @@ bool Sponge::Pkgd::Main::_read_budget(Genode::Attached_rom_dataspace &state,
 	if (!state.valid() || state.size() == 0)
 		return false;
 
-	bool ram_ok { false }, caps_ok { false };
-	Genode::size_t ram_bytes { 0 }, caps_value { 0 };
-
-	try {
-		Genode::Hid_node const root(Genode::Const_byte_range_ptr(
-			state.local_addr<char const>(), state.size()));
-
-		Genode::String<16> ram_avail  { }, caps_avail { };
-		root.for_each_sub_node([&] (Genode::Hid_node const &n) {
-			if (n.has_type("ram") && !ram_ok) {
-				ram_avail = n.attribute_value("avail", Genode::String<16>());
-				ram_ok = _quota_bytes(ram_avail, ram_bytes);
-			}
-			if (n.has_type("caps") && !caps_ok) {
-				caps_avail = n.attribute_value("avail", Genode::String<16>());
-				caps_ok = _quota_bytes(caps_avail, caps_value) &&
-				          caps_value > 0 && caps_value <= 0xffffffu;
-			}
-		});
-	}
-	catch (Genode::Xml_node::Invalid_syntax) {
-		/* Hid_node does not throw; defensive only. */
-		return false;
-	}
-
-	if (!ram_ok || !caps_ok)
-		return false;
-
-	avail_ram  = ram_bytes;
-	avail_caps = (unsigned)caps_value;
-	return true;
+	return Sponge::Pkg_admission::decode_budget(
+		state.local_addr<char const>(), state.size(), avail_ram, avail_caps);
 }
 
 
@@ -178,11 +125,13 @@ bool Sponge::Pkgd::Main::_admits(Package const &p,
 	avail_ram  = free_ram;
 	avail_caps = free_caps;
 
-	if (free_ram < need_ram + ADMISSION_MARGIN_RAM)
-		return false;
-	if (free_caps < need_caps + ADMISSION_MARGIN_CAPS)
-		return false;
-	return true;
+	/*
+	 * The margin comparison is the pure sponge_pkg_admission::admits
+	 * (values and arithmetic verbatim from the pre-extraction inline
+	 * comparison; see <sponge/pkg_admission.h>).
+	 */
+	return Sponge::Pkg_admission::admits(free_ram, free_caps,
+	                                     need_ram, need_caps);
 }
 
 
