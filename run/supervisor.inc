@@ -551,8 +551,13 @@ proc supervisor::boot_modules {} {
 #                     observe the fault - skipped_heartbeats reaches 3
 #                     at 8 s - which is the arm's point.
 #
-# The child goes in BEFORE pkg_runtime, which must stay the last <start>
-# of this config (RAM remainder clamp).
+# The child goes in BEFORE the package runtimes (`pkg_runtime` in the
+# legacy topology, `pkg_runtime_simple` first in the P2.4 grouped one),
+# because their clamp holder — `pkg_runtime`, or `pkg_runtime_browser`
+# after the P2.4 port — must stay the last <start> of this config (RAM
+# remainder clamp). The anchor is the `pkg_runtime` name PREFIX so both
+# topologies resolve to the same insertion point: directly above the
+# runtime block.
 #
 proc supervisor::_test_child_hid { mode } {
 	#
@@ -654,16 +659,24 @@ proc supervisor::_insert_test_child { hid_path mode } {
 	set at    -1
 
 	for {set i 0} {$i < [llength $lines]} {incr i} {
-		if {[regexp {^\+ start pkg_runtime(\s|$)} [lindex $lines $i]]} {
+		#
+		# Anchor on the pkg_runtime name PREFIX: it matches the
+		# legacy `+ start pkg_runtime | ...` node AND the grouped
+		# `+ start pkg_runtime_simple | ...` (the first runtime of
+		# the P2.4 block), so both topologies place the test child
+		# directly above the runtime block and keep the clamp
+		# holder last.
+		#
+		if {[regexp {^\+ start pkg_runtime} [lindex $lines $i]]} {
 			set at $i
 			break
 		}
 	}
 
 	if {$at < 0} {
-		error "supervisor::prepare: no top-level '+ start pkg_runtime' in \
-'$hid_path' - the test child cannot be placed without breaking the \
-pkg_runtime-last RAM clamp"
+		error "supervisor::prepare: no top-level '+ start pkg_runtime' \
+(family) in '$hid_path' - the test child cannot be placed without \
+breaking the runtime-last RAM clamp"
 	}
 
 	set head [lrange $lines 0 [expr {$at - 1}]]
