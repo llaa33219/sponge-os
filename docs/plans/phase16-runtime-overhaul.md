@@ -1,9 +1,9 @@
 # Phase 16 Runtime Overhaul (Work Plan)
 
-> Status: in progress. P0 baseline/audits, P1.1, P1.3, P1.4, the
-> config-emission portion of P1.2, and the P3.1 red scenario have landed
-> through `66509efd9c`; the remaining P1.2 extractions, P1.5, P2, and P3.2-P5
-> remain open. Created
+> Status: in progress. P0 baseline/audits, P1.1, P1.3-P1.5, the
+> binary-prefix/launch/config-emission portions of P1.2, P2.1-P2.2, and
+> the P3.1 red scenario have landed. The P1.2 admission-math extraction,
+> P2.3-P2.6, and P3.2-P5 remain open. Created
 > 2026-10-28 on branch `refactor/phase16-runtime-overhaul` (pre-work HEAD
 > `3afb40c922`).
 > Relationship: this is the runtime-overhaul track of the reopened Phase 16
@@ -238,6 +238,12 @@ sibling) proving a malformed emission is rejected loudly; all product
 scenarios green.
 Commits: `fix(pkgd): validate emitted runtime configs before install` (1).
 Owns: the pkgd emission module + its validation helper.
+Landed: all dirty targets are rendered and validated before any target is
+published; malformed emission returns a structured operation error and
+restores the dirty marks. The 80-case host self-test, malformed-emission
+scenario, config-authority scenario, regeneration-survival scenario, and
+its empty-config positive control are green. Receipt:
+`docs/evidence/phase16-runtime-config-coupling.md` §13.
 
 ### P2. DE survival and runtime grouping
 

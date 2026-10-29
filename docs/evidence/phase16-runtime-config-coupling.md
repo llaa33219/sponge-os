@@ -574,3 +574,81 @@ g++ -std=c++20 -O1 \
 
 This receipt closes P1.4 only. P1.5 emission validation and the DE/provider
 failure-isolation tasks remain separate gates.
+
+---
+
+## 13. P1.5 emission-validation implementation and green receipt (2026-10-29)
+
+**Implementation:** `a4d38119ea` (validator padding contract),
+`22de0ec855` (publication seam), `ef92b95b4e` (authority harness), and
+`374306cc74` (scenario contract). **Machine:** QEMU q35, `Skylake-Client`,
+KVM, base-sel4. These are not real-hardware results. The host's 8 MiB
+memlock limit required the temporary
+`/tmp/opencode/libclamp_io_uring.so` QEMU shim; it is not a repository or
+scenario dependency.
+
+### 13.1 Publication contract
+
+`sponge_pkgd` now renders and validates every dirty runtime target before
+publishing any of them. A render or validation failure restores the dirty
+marks, publishes neither target, and returns a bounded structured operation
+error. Valid mixed-runtime operations still publish both targets; valid
+single-runtime operations retain P1.4's dirty-scoped behavior. Genode's
+`Expanding_reporter` was not changed.
+
+Failure-path convergence is event-driven: only a later mutating operation
+that reaches emission retries the queued dirty targets; an idempotent retry
+that returns early (`already-running` or `package not installed`) does not.
+The installed broadcast likewise remains at its last successful publication
+until an end-to-end success. These are failure-path-only liveness limits,
+not permission to publish invalid configuration.
+
+The pure validator covers the runtime-config subset that pkgd emits. The
+shape-checked `repro_padding` element remains the sole test-only validation
+exception, with a deliberately unbounded `<p>` count because the reproduction
+budget grows per write. The separate `repro_empty_from` positive control keeps
+its explicitly scoped test-only bypass. Malformed XML and structural errors
+remain hard publication failures.
+
+The first survival run exposed an undocumented 1024-node padding cap at write
+3 (1536 nodes). Removing that cap—not weakening any shape check—fixed the
+regression. A host regression case now renders the exact write-3 document;
+the validator self-test passes **80/80 cases**.
+
+### 13.2 Commands and observed gates
+
+All scenarios ran serially with `make -j1` against the same build directory.
+
+```sh
+make -j1 -C genode/build/x86_64 run/sponge-config-emission-invalid KERNEL=sel4 BOARD=pc
+# config-emission-invalid-probe: PASS (structured rejection, nothing published)
+
+make -j1 -C genode/build/x86_64 run/sponge-config-authority KERNEL=sel4 BOARD=pc
+# config-authority-probe: PASS
+
+make -j1 -C genode/build/x86_64 run/sponge-pkg-lifecycle KERNEL=sel4 BOARD=pc
+# lifecycle-probe: PASS
+# Run script execution successful.
+
+make -j1 -C genode/build/x86_64 run/sponge-pkg-admission KERNEL=sel4 BOARD=pc
+# admission-probe: PASS
+# Run script execution successful.
+
+make -j1 -C genode/build/x86_64 run/sponge-config-regen-survival KERNEL=sel4 BOARD=pc
+# regen-probe: PASS
+# Run script execution successful.
+
+SPONGE_REPRO_CONTROL=1 make -j1 -C genode/build/x86_64 \
+  run/sponge-config-regen-survival KERNEL=sel4 BOARD=pc
+# regen-probe: FAIL witness was killed
+# sponge-config-regen-survival: POSITIVE CONTROL — detector fired as required
+# Run script execution successful.
+```
+
+The malformed scenario logs `status="error" op="install"` with the bounded
+validator reason and never publishes the truncated document. The authority
+harness now uses unanchored substring gates and a 200000-byte expect buffer;
+its verbose publication flood no longer causes a false harness timeout.
+
+This receipt closes P1.5. The remaining P1.2 admission-math extraction and the
+DE/provider failure-isolation tasks remain separate gates.
