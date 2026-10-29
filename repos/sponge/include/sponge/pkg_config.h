@@ -118,13 +118,12 @@ struct Package_view
 
 	/*
 	 * Emission-class token, matched against 'Target::runtime_class'.
-	 * Today sponge_pkgd derives it from the metadata <kind>
-	 * ("driver" for <kind>driver</kind>, "app" for everything else —
-	 * exactly the pre-extraction is_driver() split). The runtime-class
-	 * targets consume the committed metadata spelling
-	 * <runtime_class>simple|terminal|browser</runtime_class>
-	 * (docs/12-package-format.md §4.5, default simple); the class
-	 * grouping in sponge_pkgd is a later unit.
+	 * Legacy sponge_pkgd mode derives "driver" from <kind>driver</kind>
+	 * and "app" for every other package, exactly the pre-grouping split.
+	 * With <grouped_runtimes/>, app packages instead carry their metadata
+	 * <runtime_class>simple|terminal|browser</runtime_class> token
+	 * (docs/12-package-format.md §4.5, default simple); driver always
+	 * remains "driver".
 	 */
 	char const *runtime_class { "app" };
 

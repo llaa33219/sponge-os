@@ -208,16 +208,21 @@ Receipts: `run/sponge-pkg-admission.run` (`admission-probe: PASS`),
 
 ## Runtime config generation (Phase 4b / Phase 7 lifecycle)
 
-pkgd owns the entire `pkg_runtime` and `driver_runtime` `<config>`s and
-regenerates only the runtime targets dirtied by each install/remove/launch.
-The resolved package kinds determine those targets, so an app-only operation
-never republishes the driver config and a driver-only operation never
-republishes the app config; a mixed dependency plan dirties both. Bootstrap
-publishes both initial configs. The generator is deterministic — `<start>`
-nodes sorted by name, fixed attribute order, no volatile fields — so init's
+pkgd owns the runtime `<config>`s and regenerates only the targets dirtied
+by each install/remove/launch. Legacy mode (the default) keeps the original
+`pkg_runtime` / `driver_runtime` pair. The explicit `<grouped_runtimes/>`
+marker instead emits `runtime_simple`, `runtime_terminal`, and
+`runtime_browser` from package `<runtime_class>` metadata alongside the
+unchanged `driver_runtime`; no mode opens the other mode's report channels.
+The resolved package classes determine the dirty targets, so an operation in
+one class never republishes another class or the driver config. Bootstrap
+publishes every active initial config. All dirty configs are rendered and
+validated before any is published; a failure restores every consumed dirty
+mark and publishes nothing. The generator is deterministic — `<start>` nodes
+sorted by name, fixed attribute order, no volatile fields — so init's
 config-diff leaves already-running children untouched across an unrelated
-install. Empty-but-valid configs are emitted at startup so both runtimes boot
-clean before any install.
+install. Empty-but-valid configs are emitted at startup so every active
+runtime boots clean before any install.
 
 The report buffer is **pre-sized** (`RUNTIME_CONFIG_BUFFER`, 32 KiB)
 rather than grown on demand, for two independent reasons: one large
