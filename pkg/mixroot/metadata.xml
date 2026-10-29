@@ -1,0 +1,30 @@
+<!--
+  mixroot — grouped-runtime probe fixture: the mixed-plan SIMPLE half.
+
+  Depends on mixdep (terminal class), so `install mixroot` resolves the
+  plan [mixdep, mixroot] and dirties BOTH the terminal and simple
+  emission slots in one write. With pkgd's <repro_malformed_from> knob
+  armed at that write, the simple render is corrupted and the P1.5
+  publication seam must reject the WHOLE write: neither class config
+  may be published (all-or-nothing across the dirty set).
+
+  Autostart for the same reason as mixdep: a successful publication
+  would change both class configs, so the probe's byte-stability
+  assertions cannot pass vacuously.
+
+  Probe-only: never enabled by any bake profile.
+-->
+<package>
+  <name>mixroot</name>
+  <version>1.0</version>
+  <description>Grouped-runtime probe: mixed-plan simple root (deps: mixdep).</description>
+
+  <binary>config_witness</binary>
+  <quota ram="4M" caps="100"/>
+  <runtime_class>simple</runtime_class>
+
+  <autostart/>
+  <dependencies>
+    <pkg>mixdep</pkg>
+  </dependencies>
+</package>

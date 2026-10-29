@@ -1,0 +1,28 @@
+<!--
+  mixdep — grouped-runtime probe fixture: the mixed-plan TERMINAL half.
+
+  The dependency of mixroot (simple class): installing mixroot resolves
+  the plan [mixdep, mixroot], which dirties the terminal AND simple
+  emission slots in ONE write. That is the mixed-class write the
+  repro_malformed knob corrupts at the simple render: the P1.5 seam must
+  then publish NOTHING — the terminal config must keep its bytes even
+  though its own render was clean.
+
+  Autostart so a SUCCESSFUL publication would add its <start> node to
+  the runtime_terminal config (changing its bytes): the probe's
+  byte-stability assertion is therefore meaningful in both directions.
+
+  Probe-only: never enabled by any bake profile.
+-->
+<package>
+  <name>mixdep</name>
+  <version>1.0</version>
+  <description>Grouped-runtime probe: mixed-plan terminal dependency.</description>
+
+  <binary>config_witness</binary>
+  <quota ram="4M" caps="100"/>
+  <runtime_class>terminal</runtime_class>
+
+  <autostart/>
+  <dependencies/>
+</package>
