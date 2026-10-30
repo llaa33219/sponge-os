@@ -896,7 +896,13 @@ The app/driver capability split is preserved: `Platform`, `Dma`,
 receipt is `docs/evidence/phase16-runtime-targets.md` (P2.2, single
 `pkg_runtime`); the grouped-grant evidence is the static
 `runtime_grouped::assert_wiring` harness plus the two UEFI-USB grouped
-boots.
+boots. The P2.4 interactive receipt is
+`docs/evidence/phase16-grouped-runtime-ui.md`: two consecutive BIOS
+`SPONGE_GROUPED_UI=on` runs with real launcher first paint and typed
+input for both textedit and terminal, plus a default-BIOS
+`alpha-probe: PASS` regression run. The same document records the
+staging, placement, and host-QMP marker-preservation fixes required to
+make that evidence reliable.
 
 ### 6.0 `driver_runtime`'s grant
 
