@@ -557,7 +557,6 @@ foreach b { init report_rom wm window_layouter decorator \
 #   runtime_terminal — the terminal sub-init children terminal, vfs,
 #                      cached_fs_rom (all three were already staged by
 #                      the loops below — no addition).
-runtime_simple::stage_binaries $sys_dir
 runtime_terminal::stage_binaries $sys_dir
 
 # --- terminal sub-init children → /system/bin/ ---
@@ -669,6 +668,10 @@ source [file join [file dirname [file normalize [info script]]] \
 driver_runtime::fb_package fb_boot
 
 bake::stage $sys_dir img
+
+# After bake::stage: it re-stages pkg payload from the repo, so
+# runtime_simple's payload staging/transforms must run after it.
+runtime_simple::stage_binaries $sys_dir
 
 #
 # Driver packages (docs/12-package-format.md section 4.5). Opt-in: none
@@ -867,6 +870,8 @@ config
     + report | rules: yes
     + rules
       + screen screen
+      + assign | label_prefix: pkg_runtime_simple -> textedit | target: screen
+               | xpos: 50 | ypos: 80 | width: 512 | height: 493 | maximized: no
       + assign | label_prefix: pkg_runtime | target: screen
                | xpos: 50 | ypos: 300 | width: 320 | height: 240 | maximized: no
     + press   | key: BTN_LEFT  | action: drag
@@ -996,6 +1001,7 @@ config
     + demo | enabled: no
     + tasklist | source: wm
     + tasklist_static_rules
+      + assign | label_prefix: pkg_runtime_simple -> textedit | target: screen | xpos: 50 | ypos: 80 | width: 512 | height: 493 | maximized: no
       + assign | label_prefix: pkg_runtime | target: screen | xpos: 50 | ypos: 300 | width: 320 | height: 240 | maximized: no
     + vfs
       + dir dev
@@ -1703,7 +1709,7 @@ $vfs_log_policy  + route
     + domain pointer | layer: 0 | content: client | label: no | origin: pointer
     + domain panel | layer: 1 | content: client | label: no
                    | hover: always | focus: click | ypos: 0 | height: 28
-    + domain launcher | layer: 4 | content: client | label: no
+    + domain launcher | layer: 2 | content: client | label: no
                       | hover: always | focus: click
                       | xpos: 0 | ypos: 28 | width: 341 | height: 480
     + domain default | layer: 3 | content: client | label: no

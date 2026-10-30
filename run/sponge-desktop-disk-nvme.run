@@ -577,6 +577,8 @@ config
       # matching Gui route through the wm is added to the class
       # runtimes below; this rule covers the layouter side. label_prefix is
       # supported on <assign> per the window_layouter README.
+      + assign | label_prefix: pkg_runtime_simple -> textedit | target: screen
+               | xpos: 50 | ypos: 80 | width: 512 | height: 493 | maximized: no
       + assign | label_prefix: pkg_runtime | target: screen
                | xpos: 50 | ypos: 300 | width: 320 | height: 240 | maximized: no
     + press   | key: BTN_LEFT  | action: drag
@@ -693,6 +695,7 @@ config
     + demo | enabled: no
     + tasklist | source: wm
     + tasklist_static_rules
+      + assign | label_prefix: pkg_runtime_simple -> textedit | target: screen | xpos: 50 | ypos: 80 | width: 512 | height: 493 | maximized: no
       + assign | label_prefix: pkg_runtime | target: screen | xpos: 50 | ypos: 300 | width: 320 | height: 240 | maximized: no
     + vfs
       + dir dev
@@ -1139,7 +1142,7 @@ config
     + domain pointer | layer: 0 | content: client | label: no | origin: pointer
     + domain panel | layer: 1 | content: client | label: no
                    | hover: always | focus: click | ypos: 0 | height: 28
-    + domain launcher | layer: 4 | content: client | label: no
+    + domain launcher | layer: 2 | content: client | label: no
                       | hover: always | focus: click
                       | xpos: 0 | ypos: 28 | width: 341 | height: 480
     + domain default | layer: 3 | content: client | label: no
@@ -1334,6 +1337,35 @@ foreach m { vfs.lib.so vfs_rump.lib.so rump.lib.so rump_fs.lib.so \
 # check below is asserted against image.elf, not against a hope.
 #
 foreach m [supervisor::boot_modules] { lappend boot_modules $m }
+
+# Keep the kernel's early framebuffer console off the composited desktop.
+# SPONGE_FBCON=on restores the diagnostic on-panel log without changing
+# the serial channel. The override must precede run_image assembly.
+set fbcon_token "off"
+if {[info exists ::env(SPONGE_FBCON)]} {
+	if {$::env(SPONGE_FBCON) ni {on off}} {
+		error "SPONGE_FBCON must be 'on' or 'off'"
+	}
+	set fbcon_token $::env(SPONGE_FBCON)
+}
+rename run_image run_image_without_fbcon_override
+proc run_image {} {
+	global fbcon_token
+	set grub_cfg "[run_dir]/boot/grub/grub.cfg"
+	set grub_fh [open $grub_cfg r]
+	set grub_body [read $grub_fh]
+	close $grub_fh
+	set sel4_cmdline "module2 /boot/sel4 sel4 disable_iommu"
+	if {[string first $sel4_cmdline $grub_body] < 0} {
+		error "BIOS GRUB sel4 command line not found for fbcon configuration"
+	}
+	set grub_fh [open $grub_cfg w]
+	puts -nonewline $grub_fh [string map \
+		[list $sel4_cmdline "$sel4_cmdline fbcon=$fbcon_token"] $grub_body]
+	close $grub_fh
+	puts "sponge-desktop-disk-nvme: kernel fb console $fbcon_token (SPONGE_FBCON=on enables diagnostic output)"
+	run_image_without_fbcon_override
+}
 
 build_boot_image $boot_modules
 

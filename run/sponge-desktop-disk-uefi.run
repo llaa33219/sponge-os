@@ -567,7 +567,6 @@ foreach b { init report_rom wm window_layouter decorator \
 # staged file set, which P2.2 must not do. `terminal` therefore stays
 # in the inline loop above (the terminal payload gap is closed
 # separately by runtime_terminal::stage_payload below).
-runtime_simple::stage_binaries $sys_dir
 
 # --- terminal payload → /system/ (flat, ROM-served) ---
 #
@@ -648,6 +647,14 @@ source [file join [file dirname [file normalize [info script]]] \
 driver_runtime::fb_package fb_boot
 
 bake::stage $sys_dir img
+
+# After bake::stage: it re-stages pkg payload from the repo, so
+# runtime_simple's payload staging/transforms must run after it.
+runtime_simple::stage_binaries $sys_dir
+
+# No vct_tty on this media: strip the terminal package's optional vct
+# bridge so the nested vfs does not die on the unavailable session.
+runtime_terminal::strip_vct_bridge $sys_dir
 
 #
 # Driver packages (docs/12-package-format.md section 4.5). Opt-in: none
@@ -840,6 +847,8 @@ config
     + report | rules: yes
     + rules
       + screen screen
+      + assign | label_prefix: pkg_runtime_simple -> textedit | target: screen
+               | xpos: 50 | ypos: 80 | width: 512 | height: 493 | maximized: no
       + assign | label_prefix: pkg_runtime | target: screen
                | xpos: 50 | ypos: 300 | width: 320 | height: 240 | maximized: no
     + press   | key: BTN_LEFT  | action: drag
@@ -944,6 +953,7 @@ config
     + demo | enabled: no
     + tasklist | source: wm
     + tasklist_static_rules
+      + assign | label_prefix: pkg_runtime_simple -> textedit | target: screen | xpos: 50 | ypos: 80 | width: 512 | height: 493 | maximized: no
       + assign | label_prefix: pkg_runtime | target: screen | xpos: 50 | ypos: 300 | width: 320 | height: 240 | maximized: no
     + vfs
       + dir dev
@@ -1355,7 +1365,7 @@ config
     + domain pointer | layer: 0 | content: client | label: no | origin: pointer
     + domain panel | layer: 1 | content: client | label: no
                    | hover: always | focus: click | ypos: 0 | height: 28
-    + domain launcher | layer: 4 | content: client | label: no
+    + domain launcher | layer: 2 | content: client | label: no
                       | hover: always | focus: click
                       | xpos: 0 | ypos: 28 | width: 341 | height: 480
     + domain default | layer: 3 | content: client | label: no
@@ -1675,7 +1685,17 @@ exec cp -f $grub2_dir/boot/font.pf2           $esp_stage/boot/font.pf2
 # docs/evidence/phase15-uefi-boot-smoke.log + D15.13 verified
 # ground truth §B).
 #
-set grub_body {
+# Production keeps the kernel fb console off the desktop; SPONGE_FBCON=on
+# is the diagnostic escape hatch and leaves serial logging unchanged.
+set fbcon_token "off"
+if {[info exists ::env(SPONGE_FBCON)]} {
+	if {$::env(SPONGE_FBCON) ni {on off}} {
+		error "SPONGE_FBCON must be 'on' or 'off'"
+	}
+	set fbcon_token $::env(SPONGE_FBCON)
+}
+puts "sponge-desktop-disk-uefi: kernel fb console $fbcon_token (SPONGE_FBCON=on enables diagnostic output)"
+set grub_body [string map [list "@FBCON@" $fbcon_token] {
 set timeout=0
 set gfxpayload=2560x1600x32,1024x768x32,auto  # Phase 15: native 17ZD90N panel mode first (32bpp, boot_fb needs it), 1024x768x32 for OVMF, auto last
 insmod gfxterm
@@ -1686,10 +1706,10 @@ terminal_output gfxterm
 menuentry 'Genode on seL4 (UEFI)' {
   insmod multiboot2
 multiboot2 /boot/bender serial intel_hwp_performance phys_max=256M serial_fallback
-  module2 /boot/sel4 sel4 disable_iommu console_port=0x3f8 debug_port=0x3f8
+  module2 /boot/sel4 sel4 disable_iommu console_port=0x3f8 debug_port=0x3f8 fbcon=@FBCON@
   module2 /boot/image.elf image.elf
 }
-}
+}]
 
 set grub_fh [open $esp_stage/EFI/BOOT/grub.cfg "WRONLY CREAT TRUNC"]
 puts -nonewline $grub_fh $grub_body
