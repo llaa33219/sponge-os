@@ -242,6 +242,18 @@ set fb_switch 0
 if {[info exists ::env(SPONGE_FB_SWITCH)] && $::env(SPONGE_FB_SWITCH) eq "on"} {
 	set fb_switch 1
 }
+
+# SPONGE_GROUPED_UI=on adds the P2.4 D16R.11 grouped-runtime UI
+# acceptance probe (test/grouped_ui_probe) to the product topology:
+# real QMP mouse/keyboard through the Sponge DE launcher proves
+# simple-class and terminal-class first paint + typed-input delta on
+# the grouped runtimes (browser/falkon first paint stays P2.6 scope).
+# Off by default: the shipped media carries no probe and no QMP
+# socket.
+set grouped_ui 0
+if {[info exists ::env(SPONGE_GROUPED_UI)] && $::env(SPONGE_GROUPED_UI) eq "on"} {
+	set grouped_ui 1
+}
 if {$sup_mode ne "off"} {
 	puts "sponge-desktop-disk: supervisor fault-injection ARM '$sup_mode'"
 }
@@ -318,6 +330,16 @@ if {$fb_switch} {
 	supervisor::ignore_exited fb_switch_probe
 }
 
+#
+# The grouped-UI probe (SPONGE_GROUPED_UI) is built HERE for the same
+# reason as the switch probe: the /system/bin staging loop runs below,
+# so a binary built later never reaches the disk image.
+#
+if {$grouped_ui} {
+	build { test/grouped_ui_probe }
+	supervisor::ignore_exited grouped_ui_probe
+}
+
 create_boot_directory
 
 #
@@ -375,7 +397,8 @@ close $empty_cfg
 #
 foreach b { init report_rom wm window_layouter decorator \
             sponge_configd sponge_themed sponge_pkgd sponge-de \
-            alpha_probe terminal cfg_probe fb_switch_probe } {
+            alpha_probe terminal cfg_probe fb_switch_probe \
+            grouped_ui_probe } {
 	#
 	# Some packages (terminal) use a different binary name from
 	# their package name (pkg/terminal has <binary>init</binary> —
@@ -398,14 +421,11 @@ foreach b { init report_rom wm window_layouter decorator \
 #                    is where the old silent `if exists` skip left
 #                    it too — no /system/bin/textedit before or
 #                    after this migration).
-# runtime_terminal::stage_binaries is deliberately NOT adopted here:
-# it stages the terminal sub-init trio (terminal, vfs, cached_fs_rom)
-# and this scenario stages neither /system/bin/vfs nor
-# /system/bin/cached_fs_rom today — adopting it would add them to the
-# staged file set, which P2.2 must not do. `terminal` therefore stays
-# in the inline loop above (the terminal payload gap is closed
-# separately by runtime_terminal::stage_payload below).
-runtime_simple::stage_binaries $sys_dir
+# The terminal sub-init trio (terminal, vfs, cached_fs_rom) must be
+# disk-served in /system/bin: the terminal package's nested init
+# resolves /bin/vfs and /bin/cached_fs_rom at start — the same
+# staging the proven sponge-desktop-disk-uefi-usb scenario does.
+runtime_terminal::stage_binaries $sys_dir
 
 # The switch probe is staged by the loop above (it is a no-op entry when
 # the arm is off), so a missing or truncated binary must fail HERE with a
@@ -421,6 +441,19 @@ if {$fb_switch} {
  truncated staging"
 	}
 	puts "fb-switch: staged $fbsw ([file size $fbsw] bytes)"
+}
+
+if {$grouped_ui} {
+	set gui_p "$sys_dir/bin/grouped_ui_probe"
+	if {![file exists $gui_p]} {
+		error "grouped-ui: $gui_p was not staged — the build of\
+ test/grouped_ui_probe must run BEFORE this copy loop"
+	}
+	if {[file size $gui_p] < 4096} {
+		error "grouped-ui: $gui_p is only [file size $gui_p] bytes —\
+ truncated staging"
+	}
+	puts "grouped-ui: staged $gui_p ([file size $gui_p] bytes)"
 }
 
 # --- terminal payload → /system/ (flat, ROM-served) ---
@@ -527,6 +560,14 @@ source [file join [file dirname [file normalize [info script]]] \
 driver_runtime::fb_package fb_vesa
 
 bake::stage $sys_dir img
+
+# After bake::stage: it re-stages pkg payload from the repo, so
+# runtime_simple's payload staging/transforms must run after it.
+runtime_simple::stage_binaries $sys_dir
+
+# No vct_tty on this media: strip the terminal package's optional vct
+# bridge so the nested vfs does not die on the unavailable session.
+runtime_terminal::strip_vct_bridge $sys_dir
 
 #
 # Driver packages (docs/12 §4.5). Opt-in: none of these is listed in a
@@ -750,7 +791,12 @@ config
       # full rationale (Phase 10 W3 pkg_runtime Gui-route fix). The
       # matching Gui route through the wm is added to the class
       # runtimes below; this rule covers the layouter side. label_prefix is
-      # supported on <assign> per the window_layouter README.
+      # supported on <assign> per the window_layouter README. Textedit's
+      # minimum decorated frame is 512x493; give it an on-screen rule
+      # before the generic small-window fallback or its 300px origin
+      # pushes the bottom beyond the 768px display.
+      + assign | label_prefix: pkg_runtime_simple -> textedit | target: screen
+               | xpos: 50 | ypos: 80 | width: 512 | height: 493 | maximized: no
       + assign | label_prefix: pkg_runtime | target: screen
                | xpos: 50 | ypos: 300 | width: 320 | height: 240 | maximized: no
     + press   | key: BTN_LEFT  | action: drag
@@ -862,6 +908,7 @@ config
     + demo | enabled: no
     + tasklist | source: wm
     + tasklist_static_rules
+      + assign | label_prefix: pkg_runtime_simple -> textedit | target: screen | xpos: 50 | ypos: 80 | width: 512 | height: 493 | maximized: no
       + assign | label_prefix: pkg_runtime | target: screen | xpos: 50 | ypos: 300 | width: 320 | height: 240 | maximized: no
     + vfs
       + dir dev
@@ -1084,6 +1131,67 @@ if {[info exists ::env(SPONGE_FB_SWITCH)] && $::env(SPONGE_FB_SWITCH) eq "on"} {
 	set fs_fh [open $sysconfig_hid w]
 	puts -nonewline $fs_fh $fs_cfg
 	close $fs_fh
+}
+
+#
+# ===========================================================================
+# SPONGE_GROUPED_UI=on — the P2.4 D16R.11 grouped-runtime UI acceptance arm
+# ===========================================================================
+#
+# The claim under test: REAL launcher input reaches both grouped
+# runtime classes and produces the D16R.11 acceptance shape per class
+# (first paint + a real typed-input event with a measurable rendered
+# delta). The probe (test/grouped_ui_probe) drives nothing itself: it
+# emits the run/qmp.inc QMP-TARGET marker choreography (panel toggle +
+# launcher menu entry clicks over the usb-tablet path, send-key typing)
+# and verifies via Capture pixels + the wm window_list / layouter
+# window_layout / focus reports that the resulting windows belong to
+# pkg_runtime_simple / pkg_runtime_terminal. The window label prefix is
+# the class binding — the evidence cannot come from a different
+# runtime. Browser/falkon first paint is NOT asserted here: it is P2.6
+# scope (docs/plans/phase16-runtime-overhaul.md).
+#
+# Off by default, like every other product-media test arm: the shipped
+# media carries no probe and no extra relay policy. The arm uses the
+# same FBCON env-gate pattern as SPONGE_SUPERVISOR_TEST and
+# SPONGE_LAUNCHTEST.
+#
+if {$grouped_ui} {
+	puts "grouped-ui: SPONGE_GROUPED_UI=on — grouped_ui_probe wired into system.config"
+
+	set gu_fh [open $sysconfig_hid r]
+	set gu_cfg [read $gu_fh]
+	close $gu_fh
+
+	# The probe's observation ROMs on report_rom relays: the launcher
+	# feed, the wm window list, the layouter's placement/focus reports,
+	# and the two class state reports (the grouped-topology binding).
+	set gu_cfg [string map [list \
+		"    + policy | label: alpha_probe -> sponge_de_launcher | report: sponge-de -> launcher" \
+		"    + policy | label: alpha_probe -> sponge_de_launcher | report: sponge-de -> launcher\n    + policy | label: grouped_ui_probe -> launcher      | report: sponge-de -> launcher\n    + policy | label: grouped_ui_probe -> window_list   | report: wm -> window_list\n    + policy | label: grouped_ui_probe -> window_layout | report: layouter -> window_layout\n    + policy | label: grouped_ui_probe -> focus         | report: layouter -> focus\n    + policy | label: grouped_ui_probe -> st_simple     | report: pkg_runtime_simple -> state\n    + policy | label: grouped_ui_probe -> st_terminal   | report: pkg_runtime_terminal -> state"] \
+		$gu_cfg]
+
+	set gu_cfg [string map [list "+ start alpha_probe | caps: 200 | ram: 16M" {+ start grouped_ui_probe | caps: 200 | ram: 32M
+  + binary | name: bin/grouped_ui_probe
+  + route
+    + service ROM | label_last: ld.lib.so | + parent
+    + service Capture | + parent
+    + service Timer | + parent
+    + service ROM | label: launcher      | + child report_rom
+    + service ROM | label: window_list   | + child report_rom
+    + service ROM | label: window_layout | + child report_rom
+    + service ROM | label: focus         | + child report_rom
+    + service ROM | label: st_simple     | + child report_rom
+    + service ROM | label: st_terminal   | + child report_rom
+    + any-service
+      + parent
+      + any-child
+
++ start alpha_probe | caps: 200 | ram: 16M}] $gu_cfg]
+
+	set gu_fh [open $sysconfig_hid w]
+	puts -nonewline $gu_fh $gu_cfg
+	close $gu_fh
 }
 
 	#
@@ -1339,9 +1447,9 @@ config
     + domain pointer | layer: 0 | content: client | label: no | origin: pointer
     + domain panel | layer: 1 | content: client | label: no
                    | hover: always | focus: click | ypos: 0 | height: 28
-    + domain launcher | layer: 4 | content: client | label: no
+    + domain launcher | layer: 2 | content: client | label: no
                       | hover: always | focus: click
-                      | xpos: 0 | ypos: 28 | width: 341 | height: 480
+                      | xpos: 0 | ypos: 28 | width: 341 | height: 532
     + domain default | layer: 3 | content: client | label: no
                      | hover: always | focus: click | ypos: 28 | height: -28
     + policy | label_prefix: pointer                  | domain: pointer
@@ -1499,6 +1607,53 @@ foreach f { event_filter.config } {
 }
 
 #
+# SPONGE_GROUPED_UI: REWRITE the staged event_filter.config with the
+# W4 usb-tablet <transform> scale (the exact recipe proven by
+# run/sponge-terminal-qmp.run and run/sponge-wm-qmp.run). QEMU 11's
+# usb-tablet reports absolute positions in device units (0..32767 per
+# axis) and nitpicker treats Absolute_motion values as raw pixels, so
+# unscaled tablet events clamp to the screen corner. The scale maps
+# device units to the 1024x768 framebuffer (1024/32767, 768/32767) —
+# with it, `QMP-TARGET tablet <x> <y>` lands on the target pixel
+# (W4: ±0-1px). The rewrite happens ONLY inside this arm: the default
+# path stages the untouched recipe above. Everything else (chargen
+# includes, ps2 accelerate wrapper, mod/repeat blocks) is identical to
+# the proven scenario configs.
+#
+if {$grouped_ui} {
+	set ef [open "bin/event_filter.config" w]
+	puts $ef {<config>
+  <output>
+    <chargen>
+      <merge>
+        <accelerate max="50" sensitivity_percent="1000" curve="127">
+          <button-scroll>
+            <input name="ps2"/>
+            <vertical button="BTN_MIDDLE" speed_percent="-10"/>
+            <horizontal button="BTN_MIDDLE" speed_percent="-10"/>
+          </button-scroll>
+        </accelerate>
+        <transform>
+          <scale x="0.0312517" y="0.0234382"/>
+          <input name="usb"/>
+        </transform>
+      </merge>
+      <mod1><key name="KEY_LEFTSHIFT"/><key name="KEY_RIGHTSHIFT"/></mod1>
+      <mod2><key name="KEY_LEFTCTRL"/><key name="KEY_RIGHTCTRL"/></mod2>
+      <mod3><key name="KEY_RIGHTALT"/>AltGr</mod3>
+      <repeat delay_ms="230" rate_ms="90"/>
+      <include rom="en_us.chargen"/>
+      <include rom="special.chargen"/>
+    </chargen>
+  </output>
+  <policy label="ps2" input="ps2"/>
+  <policy label="usb" input="usb"/>
+</config>}
+	close $ef
+	puts "grouped-ui: event_filter.config rewritten with usb tablet scale"
+}
+
+#
 # Keyboard layouts consumed by event_filter.
 #
 set chargen_dir "${genode_dir}/repos/os/src/server/event_filter"
@@ -1535,6 +1690,37 @@ foreach m { vfs.lib.so vfs_rump.lib.so rump.lib.so rump_fs.lib.so \
 # check below is asserted against image.elf, not against a hope.
 #
 foreach m [supervisor::boot_modules] { lappend boot_modules $m }
+
+# The kernel's early framebuffer console mirrors debug output over the
+# composited desktop. Keep it off on product media; SPONGE_FBCON=on is the
+# diagnostic escape hatch and leaves the serial log unchanged. run_boot_dir
+# generates grub.cfg and then calls run_image, so the override must happen
+# inside image assembly rather than after build_boot_image returns.
+set fbcon_token "off"
+if {[info exists ::env(SPONGE_FBCON)]} {
+	if {$::env(SPONGE_FBCON) ni {on off}} {
+		error "SPONGE_FBCON must be 'on' or 'off'"
+	}
+	set fbcon_token $::env(SPONGE_FBCON)
+}
+rename run_image run_image_without_fbcon_override
+proc run_image {} {
+	global fbcon_token
+	set grub_cfg "[run_dir]/boot/grub/grub.cfg"
+	set grub_fh [open $grub_cfg r]
+	set grub_body [read $grub_fh]
+	close $grub_fh
+	set sel4_cmdline "module2 /boot/sel4 sel4 disable_iommu"
+	if {[string first $sel4_cmdline $grub_body] < 0} {
+		error "BIOS GRUB sel4 command line not found for fbcon configuration"
+	}
+	set grub_fh [open $grub_cfg w]
+	puts -nonewline $grub_fh [string map \
+		[list $sel4_cmdline "$sel4_cmdline fbcon=$fbcon_token"] $grub_body]
+	close $grub_fh
+	puts "sponge-desktop-disk: kernel fb console $fbcon_token (SPONGE_FBCON=on enables diagnostic output)"
+	run_image_without_fbcon_override
+}
 
 build_boot_image $boot_modules
 
@@ -1589,6 +1775,19 @@ if {[file exists $ld_check]} {
 append qemu_args " -machine q35 -cpu Skylake-Client "
 append qemu_args " -nographic -m 6G "
 append qemu_args " -device nec-usb-xhci,id=xhci -device usb-tablet "
+
+#
+# SPONGE_GROUPED_UI: open the QMP control socket and source the shared
+# run/qmp.inc helper (the Phase-10 QMP-TARGET dispatch contract). The
+# socket is added ONLY inside this arm — the shipped media boots with
+# no QMP socket. The port append must happen BEFORE the first
+# run_genode_until below (power_on consumes qemu_args at spawn).
+#
+if {$grouped_ui} {
+	source [file join [file dirname [file normalize [info script]]] qmp.inc]
+	set qmp_port [qmp_pick_port]
+	append qemu_args " -qmp tcp:127.0.0.1:${qmp_port},server=on,wait=off "
+}
 
 #
 # Verification gate.
@@ -1647,6 +1846,131 @@ if {$fail_mode} {
 		}
 	} else {
 		run_genode_until {.*alpha-probe: PASS.*} 900
+	}
+
+	#
+	# === SPONGE_GROUPED_UI — P2.4 D16R.11 grouped-runtime UI acceptance ===
+	#
+	# Explicit QMP-TARGET instructions (the probe emits one marker at a
+	# time; each qmp_exec_target call below dispatches exactly one real
+	# input event through run/qmp.inc):
+	#
+	#   QMP-TARGET tablet <x> <y>   panel launcher toggle (open popup)
+	#   QMP-TARGET tablet <x> <y>   simple-class launcher menu entry
+	#   QMP-TARGET tablet <x> <y>   focus click on the simple-class input widget
+	#   QMP-TARGET type <string>    typed input, simple class
+	#   QMP-TARGET tablet <x> <y>   panel launcher toggle (second open)
+	#   QMP-TARGET tablet <x> <y>   terminal-class launcher menu entry
+	#   QMP-TARGET tablet <x> <y>   focus click in the terminal window
+	#   QMP-TARGET type echo grouped-ok  typed input, terminal class
+	#   QMP-TARGET key ret          submit, then execution delta
+	#
+	# Every gate is an explicit alternation with the probe's FAIL
+	# marker (bounded, fail-loud — never a silent hang), and the single
+	# `grouped-ui-probe: PASS` is gated LAST, only after both classes
+	# passed first paint + typed input and the terminal produced output.
+	# Gate patterns carry no trailing
+	# `.*`: a QMP-TARGET line co-buffered after a gate line must remain
+	# for the next qmp_exec_target instead of being eaten by the gate.
+	#
+	if {$grouped_ui} {
+		global qemu_spawn_id
+		match_max -i $qemu_spawn_id 200000
+
+		# Verbatim probe FAIL line for the receipt (first match only,
+		# bounded); empty when the captured output carries none.
+		proc grouped_ui_fail_reason {output} {
+			foreach line [split $output "\n"] {
+				set t [string trim $line]
+				set i [string first "grouped-ui-probe: FAIL" $t]
+				if {$i >= 0} {
+					return [string range $t $i end]
+				}
+			}
+			return ""
+		}
+
+		run_genode_until {(grouped-ui-probe: ready|grouped-ui-probe: FAIL)} 300 $qemu_spawn_id
+		if {[string first "grouped-ui-probe: FAIL" $output] >= 0} {
+			set reason [grouped_ui_fail_reason $output]
+			if {$reason eq ""} {
+				set reason "probe failed before the QMP phase"
+			}
+			puts "\nsponge-desktop-disk: GROUPED UI FAIL — $reason\n"
+			exit 1
+		}
+
+		set qmp_chan [qmp_connect $qmp_port]
+
+		# QMP-TARGET tablet: panel toggle + simple-class menu entry
+		qmp_exec_target $qmp_chan 120
+		qmp_exec_target $qmp_chan 120
+		run_genode_until {(grouped-ui-probe: simple-class first paint|grouped-ui-probe: FAIL)} 420 $qemu_spawn_id
+		if {[string first "grouped-ui-probe: FAIL" $output] >= 0} {
+			set reason [grouped_ui_fail_reason $output]
+			if {$reason eq ""} {
+				set reason "simple-class first paint"
+			}
+			puts "\nsponge-desktop-disk: GROUPED UI FAIL — $reason\n"
+			exit 1
+		}
+
+		# QMP-TARGET tablet (input focus) + QMP-TARGET type
+		qmp_exec_target $qmp_chan 120
+		qmp_exec_target $qmp_chan 120
+		run_genode_until {(grouped-ui-probe: simple-class typed delta|grouped-ui-probe: FAIL)} 120 $qemu_spawn_id
+		if {[string first "grouped-ui-probe: FAIL" $output] >= 0} {
+			set reason [grouped_ui_fail_reason $output]
+			if {$reason eq ""} {
+				set reason "simple-class typed delta"
+			}
+			puts "\nsponge-desktop-disk: GROUPED UI FAIL — $reason\n"
+			exit 1
+		}
+
+		# QMP-TARGET tablet: panel toggle + terminal-class menu entry
+		qmp_exec_target $qmp_chan 120
+		qmp_exec_target $qmp_chan 120
+		run_genode_until {(grouped-ui-probe: terminal-class first paint|grouped-ui-probe: FAIL)} 420 $qemu_spawn_id
+		if {[string first "grouped-ui-probe: FAIL" $output] >= 0} {
+			set reason [grouped_ui_fail_reason $output]
+			if {$reason eq ""} {
+				set reason "terminal-class first paint"
+			}
+			puts "\nsponge-desktop-disk: GROUPED UI FAIL — $reason\n"
+			exit 1
+		}
+
+		# QMP-TARGET tablet (focus) + QMP-TARGET type
+		qmp_exec_target $qmp_chan 120
+		qmp_exec_target $qmp_chan 120
+		run_genode_until {(grouped-ui-probe: terminal-class typed delta|grouped-ui-probe: FAIL)} 120 $qemu_spawn_id
+		if {[string first "grouped-ui-probe: FAIL" $output] >= 0} {
+			set reason [grouped_ui_fail_reason $output]
+			if {$reason eq ""} {
+				set reason "terminal-class typed delta"
+			}
+			puts "\nsponge-desktop-disk: GROUPED UI FAIL — $reason\n"
+			exit 1
+		}
+
+		# QMP-TARGET key ret, then rendered command-output evidence
+		qmp_exec_target $qmp_chan 120
+		run_genode_until {(grouped-ui-probe: terminal-class execution delta|grouped-ui-probe: FAIL)} 120 $qemu_spawn_id
+		if {[string first "grouped-ui-probe: FAIL" $output] >= 0} {
+			set reason [grouped_ui_fail_reason $output]
+			if {$reason eq ""} {
+				set reason "terminal-class execution delta"
+			}
+			puts "\nsponge-desktop-disk: GROUPED UI FAIL — $reason\n"
+			exit 1
+		}
+
+		run_genode_until {grouped-ui-probe: PASS} 120 $qemu_spawn_id
+		puts "sponge-desktop-disk: GROUPED UI PASS — real launcher input reached\
+ the simple-class and terminal-class runtimes (first paint + typed input each,\
+ terminal command output verified)"
+		qmp_disconnect $qmp_chan
 	}
 
 	#
