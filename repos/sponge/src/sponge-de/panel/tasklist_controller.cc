@@ -395,7 +395,35 @@ void TasklistController::_recompute_tracked()
 		}
 	}
 
+	/*
+	 * Absent->present transition -> raise + focus that window once
+	 * (a launcher-started window would otherwise stay occluded and
+	 * never take input). Rules first, focus_request second: the
+	 * window's own <assign> must precede the raise, matching the
+	 * restore path in on_task_clicked. Exactly one pick per cycle
+	 * (the last/newest new label) — a request per label would be a
+	 * focus-stealing sequence. Minimized windows remain tracked and
+	 * so never re-trigger; an unchanged ROM refresh has no new label.
+	 */
+	QString new_label;
+	for (auto const &st : new_tracked) {
+		if (st.minimized) continue;
+		bool known = false;
+		for (auto const &prev : _tracked) {
+			if (prev.label == st.label) { known = true; break; }
+		}
+		if (!known) new_label = st.label;
+	}
+
 	_tracked = std::move(new_tracked);
+
+	if (!new_label.isEmpty()) {
+		_focused_label = new_label;
+		_publish_rules_for(new_label);
+		_publish_focus_request(new_label);
+		Genode::log("tasklist_controller: focus new window '",
+		            new_label.toUtf8().constData(), "'");
+	}
 }
 
 
@@ -445,6 +473,7 @@ void TasklistController::on_task_clicked(QString label)
 		/* Restore. */
 		st->minimized = false;
 		st->focused   = true;
+		_focused_label = label;
 		_publish_rules_for(label);
 		_publish_focus_request(label);
 		Genode::log("tasklist_controller: restore ", label.toUtf8().constData(),
@@ -598,9 +627,23 @@ void TasklistController::_compose_rules(Genode::Xml_generator &g, QString const 
 	/* Tracked windows before static rules: the layouter retains the
 	 * FIRST matching assignment per window, so the per-window exact
 	 * <assign> (which carries minimize/restore geometry) must precede
-	 * the broad label_prefix fallback. */
+	 * the broad label_prefix fallback.
+	 *
+	 * Stacking is defined by assign order: the EARLIEST assign is the
+	 * frontmost window (window_layouter README). The target window
+	 * therefore comes first — with _focused_label as fallback for the
+	 * empty-target republish — or a routine republication re-stacks
+	 * tracked order over the focused window. Each window is emitted
+	 * exactly once. */
+	QString const front = target_label.isEmpty() ? _focused_label
+	                                              : target_label;
 	for (auto const &w : _tracked) {
-		_append_assign_for(g, w);
+		if (w.label == front)
+			_append_assign_for(g, w);
+	}
+	for (auto const &w : _tracked) {
+		if (w.label != front)
+			_append_assign_for(g, w);
 	}
 
 	_emit_static_rules(g);
@@ -613,8 +656,6 @@ void TasklistController::_compose_rules(Genode::Xml_generator &g, QString const 
 		g.attribute("key",    "BTN_LEFT");
 		g.attribute("action", "drop");
 	});
-
-	(void)target_label;
 }
 
 
