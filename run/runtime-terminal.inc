@@ -173,6 +173,51 @@ namespace eval runtime_terminal {
     # (<tar name="..."/>), and the terminal server loads VeraMono.ttf
     # via the vfs_ttf rom plugin.
     #
+    # runtime_terminal::strip_vct_bridge <sys_dir>
+    #
+    # The terminal package's optional vct bridge: the nested vfs mounts
+    # <terminal name="vct" label="vct"/> and the nested init routes the
+    # label="vct" Terminal session to <parent/>. Scenarios with no
+    # vct_tty provider cannot serve that session — vfs dies on
+    # `no route to service "Terminal"` and takes bash with it. Strip
+    # both nodes from the STAGED pkg_terminal.xml (the source metadata
+    # keeps the bridge; the vct-bin payload is untouched). Fail loud
+    # unless each anchor occurs exactly once. Run after bake::stage.
+    #
+    proc strip_vct_bridge { sys_dir } {
+        set path "$sys_dir/pkg_terminal.xml"
+        if {![file exists $path]} {
+            error "runtime_terminal::strip_vct_bridge: $path missing — \
+                   run it after bake::stage"
+        }
+
+        set fh [open $path r]
+        set body [read $fh]
+        close $fh
+
+        foreach {what anchor} {
+            {vfs vct node}       {<terminal name="vct" label="vct"/>}
+            {Terminal vct route} {<service name="Terminal" label="vct"><parent/></service>}
+        } {
+            set n 0
+            set idx 0
+            while {[set idx [string first $anchor $body $idx]] >= 0} {
+                incr n
+                incr idx [string length $anchor]
+            }
+            if {$n != 1} {
+                error "runtime_terminal::strip_vct_bridge: expected exactly \
+                       one $what anchor in $path, found $n"
+            }
+            set body [string map [list $anchor ""] $body]
+        }
+
+        set fh [open $path w]
+        puts -nonewline $fh $body
+        close $fh
+    }
+
+    #
     # Order (identical to the product scenario today):
     #   1. vct-bin producer — script + .vct-stage scratch in the build
     #      dir, tar into bin/vct-bin.tar;
