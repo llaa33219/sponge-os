@@ -111,8 +111,14 @@ struct Watch
 		log("sponge_debug: report '", name, "' updated (",
 		    rom.valid() ? rom.size() : 0, " bytes)");
 
+		Genode::size_t text_len = 0;
+		if (rom.valid()) {
+			char const *data = rom.local_addr<char const>();
+			while (text_len < rom.size() && data[text_len] != '\0')
+				++text_len;
+		}
 		QString const text = rom.valid()
-			? QString::fromUtf8(rom.local_addr<char const>(), (int)rom.size())
+			? QString::fromUtf8(rom.local_addr<char const>(), (int)text_len)
 			: QStringLiteral("<invalid>");
 
 		QMetaObject::invokeMethod(&view, [this, text]() {
