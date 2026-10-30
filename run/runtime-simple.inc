@@ -39,15 +39,20 @@
 # pkg/<name>/payload/* -> <sys_dir>/pkg/<name>/payload/), which is also
 # where pkg/textedit/payload/textedit.config goes.
 #
-# Consequence for staging (and why stage_binaries deliberately does NOT
-# copy textedit into <sys_dir>/bin/): today's desktop-binaries loop
-# lists `textedit` under a silent `if {[file exists "bin/$b"]}` guard
-# that NEVER fires, because bin/textedit is never produced. The staged
-# file set therefore carries no /system/bin/textedit — the payload
-# directory is the binary's home. Reproducing that exactly is the
-# P2.2 equivalence requirement; making it fail-loud (asserting the
-# payload producer exists) replaces a silent skip with a real check
-# without moving a single staged file.
+# Consequence for staging: stage_binaries copies the producer into
+# <sys_dir>/bin/textedit (its filename) and textedit.config to the
+# <sys_dir>/ root. The generated launcher resolves the binary through
+# binary_prefix="bin/" (docs/12 §4), and the app requests
+# /textedit.config at the /system root. The dynamic linker uses the
+# scenario's freshly built shared libraries from <sys_dir>/lib/;
+# textedit's prebuilt payload libraries must NOT overwrite that shared
+# namespace, because sponge-de and the other simple-class Qt components
+# load the same bare names. A payload library is added only when the
+# already-staged shared set does not provide that name; presence in the
+# build directory alone is insufficient because scenario exclusions may
+# deliberately keep a library off the media. bake::stage separately
+# carries the payload tree under
+# pkg/textedit/payload/.
 #
 # === QUOTA DERIVATION =====================================================
 #
@@ -80,10 +85,11 @@ namespace eval runtime_simple {
     #                       the package name — files stages
     #                       bin/sponge_files, calculator stages
     #                       bin/calculatorform).
-    #   payload <path>    — a committed prebuilt payload file; the
-    #                       binary reaches the media through
-    #                       bake::stage's payload copy, NOT through
-    #                       <sys_dir>/bin/ (see the textedit note in
+    #   payload <path>    — a committed prebuilt payload file; its
+    #                       binary is copied into <sys_dir>/bin/ under
+    #                       its filename (binary_prefix="bin/"
+    #                       resolution); bake::stage also carries the
+    #                       payload tree (see the textedit note in
     #                       this header).
     #
     variable packages {
@@ -132,11 +138,19 @@ namespace eval runtime_simple {
     # missing destination is a broken staging step. No silent
     # file-exists skip: that is the §2 H-a1 anti-pattern.
     #
-    # payload-kind packages: the producer file is asserted to exist
-    # (fail-loud) but NOT copied here — bake::stage already places it
-    # under <sys_dir>/pkg/<name>/payload/, and that is the ONLY copy on
-    # the media today. Copying into <sys_dir>/bin/ would change the
-    # staged file set, which P2.2 must not do.
+    # payload-kind packages: the repository producer is copied into
+    # <sys_dir>/bin/ under its filename — the generated launcher
+    # resolves the binary through binary_prefix="bin/" (docs/12 §4) —
+    # and the root-level textedit.config into <sys_dir>/ — because the
+    # app requests it at the /system root (rom_sys /textedit.config).
+    # The optional clipboard attribute is removed from both that file
+    # and the staged package metadata, whose root config is what pkgd
+    # emits for the application. Payload libraries are added only when
+    # the already-staged shared set lacks the bare name; an existing
+    # shared library is never overwritten by a prebuilt payload copy.
+    # Both ends of every copy are loud: a missing producer is a repo
+    # error, a missing copy is a staging error. bake::stage separately
+    # carries the payload tree under pkg/<name>/payload/.
     #
     proc stage_binaries { sys_dir } {
         variable packages
@@ -152,6 +166,8 @@ namespace eval runtime_simple {
 
         set repo "${::genode_dir}/.."
         set staged 0
+        set staged_libs 0
+        set shared_libs 0
 
         foreach {name kind producer} $packages {
             if {$kind eq "payload"} {
@@ -161,9 +177,83 @@ namespace eval runtime_simple {
                            missing: ${src} (pkg/textedit is prebuilt — see \
                            pkg/textedit/SOURCE)"
                 }
+                set dst "${sys_dir}/bin/[file tail $producer]"
+                exec cp -fL $src $dst
+                if {![file exists $dst]} {
+                    error "runtime_simple: ${dst} missing \
+                           after staging from ${src}"
+                }
+                if {![file isdirectory "${sys_dir}/lib"]} {
+                    error "runtime_simple: ${sys_dir}/lib missing — \
+                           create the /system tree first"
+                }
+                set payload_dir "[file dirname $src]"
+                foreach lib [lsort [glob -nocomplain -directory $payload_dir *.lib.so]] {
+                    set libname "[file tail $lib]"
+                    set ldst "${sys_dir}/lib/${libname}"
+                    if {[file exists $ldst]} {
+                        incr shared_libs
+                        continue
+                    }
+                    exec cp -fL $lib $ldst
+                    if {![file exists $ldst]} {
+                        error "runtime_simple: ${ldst} missing \
+                               after staging from ${lib}"
+                    }
+                    incr staged_libs
+                }
+                set cfg "[file dirname $src]/textedit.config"
+                if {![file exists $cfg]} {
+                    error "runtime_simple: payload config for '${name}' \
+                           missing: ${cfg}"
+                }
+                set app_cfg "${sys_dir}/textedit.config"
+                set metadata_cfg "${sys_dir}/pkg_textedit.xml"
+                exec cp -fL $cfg $app_cfg
+                if {![file exists $app_cfg]} {
+                    error "runtime_simple: ${app_cfg} missing \
+                           after staging from ${cfg}"
+                }
+                #
+                # Remove the optional clipboard ATTRIBUTE from BOTH
+                # staged configs. The package metadata's root attribute
+                # is copied by sponge_pkgd into the generated application
+                # config and enables QGenodeClipboard; the payload config
+                # carries the same optional attribute. These scenarios
+                # offer no clipboard provider, so leaving either enabled
+                # can stop textedit on rom_sys: /clipboard not found.
+                # Only the root elements change; source metadata and
+                # clipboard-enabled scenarios are not modified.
+                #
+                foreach cfgdst [list $app_cfg $metadata_cfg] {
+                    if {![file exists $cfgdst]} {
+                        error "runtime_simple: clipboard transform input \
+                               missing: ${cfgdst} (run after bake::stage)"
+                    }
+                    set fh [open $cfgdst r]
+                    set cbody [read $fh]
+                    close $fh
+                    set clip_anchor {<config clipboard="yes">}
+                    set n 0
+                    set idx 0
+                    while {[set idx [string first $clip_anchor $cbody $idx]] >= 0} {
+                        incr n
+                        incr idx [string length $clip_anchor]
+                    }
+                    if {$n != 1} {
+                        error "runtime_simple: expected exactly one \
+                               clipboard=yes anchor in ${cfgdst}, found $n"
+                    }
+                    set cbody [string map \
+                        [list $clip_anchor {<config>}] $cbody]
+                    set fh [open $cfgdst w]
+                    puts -nonewline $fh $cbody
+                    close $fh
+                }
                 puts "runtime_simple: '${name}' binary is payload-supplied \
-                       (${producer}) — staged by bake::stage into \
-                       pkg/${name}/payload/, not into bin/"
+                       (${producer}) — copied to ${dst} and ${app_cfg}; \
+                       clipboard disabled in app and package configs"
+                incr staged
                 continue
             }
 
@@ -200,6 +290,7 @@ namespace eval runtime_simple {
         }
 
         puts "runtime_simple: staged ${staged} simple-class binaries \
-               into ${sys_dir}/bin (1 payload-supplied, see above)"
+               into ${sys_dir}/bin; added ${staged_libs} missing payload \
+               libs and reused ${shared_libs} shared libs"
     }
 }
