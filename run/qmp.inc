@@ -705,7 +705,11 @@ proc qmp_exec_target { chan timeout_s } {
 			after 100
 			qmp_ps2_button $chan false
 		}
-		-re {QMP-TARGET type (\S.*)\r*\n} {
+		-re {QMP-TARGET type (\S[^\r\n]*)\r*\n} {
+			# `.` matches CR and LF in this regex engine, so a `.*`
+			# capture runs across the following serial records and
+			# their interior CRs then fail qmp_type as unmapped.
+			# The capture class stops at the CR CR LF delimiter.
 			set s $expect_out(1,string)
 			puts "\nqmp: dispatching type '$s'"
 			qmp_type $chan $s
