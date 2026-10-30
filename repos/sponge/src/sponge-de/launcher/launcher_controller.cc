@@ -500,6 +500,8 @@ void LauncherController::_poll_launch_result()
 	if (_pending_launch_name.isEmpty())
 		return;
 
+	_launch_result->update();
+
 	if (!_launch_result.constructed() || !_launch_result->valid()) {
 		if (++_launch_poll_count >= LAUNCH_POLL_MAX) {
 			Genode::warning("sponge-de: launch result for '",
@@ -513,8 +515,6 @@ void LauncherController::_poll_launch_result()
 		QTimer::singleShot(100, this, [this]() { _poll_launch_result(); });
 		return;
 	}
-
-	_launch_result->update();
 
 	QByteArray const utf8 = _pending_launch_name.toUtf8();
 	char const *const pkg = utf8.constData();

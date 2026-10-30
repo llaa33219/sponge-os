@@ -153,8 +153,10 @@ void LauncherMenuView::repopulate()
 	/* Clear existing sections. */
 	QList<QObject *> children_copy = children();
 	for (QObject *c : children_copy) {
-		if (auto *w = qobject_cast<QWidget *>(c))
+		if (auto *w = qobject_cast<QWidget *>(c)) {
+			w->hide();
 			w->deleteLater();
+		}
 	}
 	_sections.clear();
 
@@ -203,10 +205,11 @@ void LauncherMenuView::repopulate()
 
 		Section &sec = _sections[a.category];
 		QString const label = a.running
-		    ? a.name + QStringLiteral(" \342\200\242")
+		    ? a.name + QStringLiteral(" \u2022")
 		    : a.name;
 		auto *entry = new QPushButton(label, this);
 		entry->setStyleSheet(_entry_stylesheet());
+		entry->setFixedHeight(50);
 		if (!a.description.isEmpty())
 			entry->setToolTip(a.description);
 
@@ -298,12 +301,12 @@ QString LauncherMenuView::_category_stylesheet() const
 
 QString LauncherMenuView::_entry_stylesheet() const
 {
-	/* Vertical padding 16 px + min-height 50 px: bigger hit target
-	 * (AGENTS.md §1.1 convenience — UX rationale in commit body). */
+	/* Zero vertical padding + 50 px min/max hit target (AGENTS.md
+	 * §1.1 convenience — UX rationale in commit body). */
 	return QStringLiteral(
 		"QPushButton { background-color: %1; color: %2; "
-		"border: none; border-radius: %3px; padding: 16px 12px; "
-		"min-height: 50px; text-align: left; }"
+		"border: none; border-radius: %3px; padding: 0 12px; "
+		"min-height: 50px; max-height: 50px; text-align: left; }"
 		"QPushButton:hover { background-color: %4; }"
 		"QPushButton:pressed { background-color: %4; }")
 		.arg(Theme::to_css(_theme.window_bg()),
