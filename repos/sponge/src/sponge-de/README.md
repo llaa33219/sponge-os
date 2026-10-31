@@ -57,6 +57,12 @@ window on nitpicker, and input reaches the widgets:
   carries its numbers into the label (`not enough free memory or
   capabilities (needs X RAM / Y caps, A RAM / B caps free)`) because
   "it did not start" alone gives the user nothing to act on.
+- ✅ **Persistent launch-error witness (Phase 16 P2.5).** Every
+  package-scoped launch failure also writes a single persistent
+  `de_op_error` report (`<op_error op="launch" pkg="..." reason="..."/>`),
+  enabled before `app.exec`. The record is not cleared by provider recovery
+  or later success; panel messages keep their 10 s TTL so they cannot mask
+  later health warnings. Empty-package channel failures are not recorded.
 - ✅ **Optional `system_state` ROM.** Only the five desktop-disk
   product scenarios route `system_state`, and base answers a denied
   session with "stop because parent denied" + `sleep_forever()` (not

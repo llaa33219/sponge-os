@@ -253,6 +253,31 @@ transitions through the existing upstream action pipeline. The
 deferred work is tracked in `docs/11-environment.md` §4.2 + the
 Wave-5 paper-cut sweep.
 
+### 4.6.1 Package-control failure surface (Phase 16 P2.5)
+
+Launch requests already use bounded, non-blocking result polling (100 ms ×
+60, about 6 s), so a dead or wedged `sponge_pkgd` cannot freeze the Qt event
+loop. Every package-scoped failure now also writes one persistent
+`de_op_error` report with the shape:
+
+```xml
+<op_error op="launch" pkg="hello" reason="no answer from the package manager"/>
+```
+
+The report is enabled in `LauncherController`'s constructor before
+`app.exec`, and is a single last-failure-wins slot. Recovery and later
+successes do not clear it; it remains until an explicit acknowledgement
+mechanism is added. Channel-level failures with no package identity are not
+recorded, so they cannot overwrite a package-specific error.
+
+Panel messages intentionally keep their 10 s TTL rather than becoming
+sticky: one label is shared with health warnings, and a permanent error
+message would mask later `unresponsive(N)` or `exited(N)` states. Health
+warnings remain derived from `system_state` and clear when the provider
+recovers. The persistent machine-readable error and the transient human
+message therefore have independent lifetimes. The DE has no install/remove
+writer; only `op="launch"` is emitted.
+
 ### 4.7 Background Module (Phase 16 W6 — Implemented)
 
 The desktop background surface is owned by the in-DE
@@ -628,6 +653,11 @@ How Sponge DE stays light under Genode's resource constraints:
   "Phase 17+" tooltip (honest disclosure; AGENTS.md §1.1).
   Detailed design:
   `docs/plans/phase16-daily-desktop-defaults.md` D16.2 + W5.
+- **`de_op_error` acknowledgement.** The persistent launch-error record is
+  currently last-failure-wins per boot and is never cleared by recovery or
+  later success. A future acknowledgement path (an explicit UI or report
+  control) must be deliberate; silently clearing it on the next successful
+  launch would violate the current persistence contract.
 - Window management is settled: Phase 14 ships the panel tasklist
   as the deterministic minimize+restore path (D14.3), with the
   decorator's `<closer/>` and `<maximizer/>` buttons covering the

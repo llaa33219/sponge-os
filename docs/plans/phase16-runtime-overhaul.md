@@ -323,6 +323,11 @@ Gate: `run/sponge-de-pkgd-failure.run` -> `de-survival-probe: PASS`.
 Commits: `fix(sponge-de): survive package-control failures with a labeled degraded state` (1-2)
 + green receipt.
 Owns: `repos/sponge/src/sponge-de/` (exclusive for this wave).
+Landed: `6d5378684a` adds the persistent `de_op_error` launch-error witness
+without changing the scenario or probe. The existing bounded launch path,
+health label, and transient panel messages are unchanged. The scenario now
+reports `de-survival-probe: PASS` and the design receipt is GREEN; targeted
+`sponge-de-test` and `sponge-launch` regressions also pass.
 
 **P2.6 Falkon / browser staging.**
 Stage the falkon + WebEngine closure into the browser runtime's payload
