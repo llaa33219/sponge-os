@@ -268,3 +268,28 @@ receipt; `de-survival-probe: PASS` was absent (N1).
   the restart budget was exhausted (about 16.7 s in the final run).
 - **Q3 remains open for P2.5:** `de_op_error` is still empty, which is the
   explicit C4/C5 RED witness the hardening change must flip.
+
+---
+
+## 8. P2.5 runtime GREEN receipt (2026-10-30)
+
+`run/sponge-de-pkgd-failure.run` now reaches `de-survival-probe: PASS` and
+`scenario GREEN (P2.5 mechanisms present)` on base-sel4/QEMU with no
+scenario or probe edit. Serial log: `/tmp/opencode/pkgd-failure-run2.log`.
+
+- **C4 machine witness:** the report_rom log contains
+  `<op_error op="launch" pkg="hello" reason="no answer from the package manager"/>`,
+  followed by `de-survival-probe: [c4] ok - operation-error machine witness
+  present (de_op_error populated)`.
+- **C5 persistence:** the record remains after provider recovery and the
+  post-recovery launch, producing `de-survival-probe: [c5] ok - operation
+  error still visible after recovery (persists until acknowledged)`.
+- **Health recovery:** the independently derived health warnings clear on
+  revival while the error record persists, satisfying both halves of C5.
+- **Regression:** `sponge-de-test` reports `sponge-de-probe: PASS` and
+  `sponge-launch` reports `launch-probe: PASS`, each with
+  `Run script execution successful.`
+- **Harness note:** an earlier attempt stopped at P1 when the pre-existing
+  USB-tablet enumeration gate consumed the entry marker before dispatch.
+  The following run completed without that harness race; no product or
+  scenario behavior was changed to bypass it.
