@@ -4,8 +4,8 @@
  *
  * Proves, on the PRODUCT grouped topology (sponge-desktop-disk with
  * pkg_runtime_simple / pkg_runtime_terminal / pkg_runtime_browser),
- * that REAL launcher input reaches both runtime classes and produces
- * the D16R.11 acceptance shape per class:
+ * that REAL launcher input reaches all three runtime classes and
+ * produces the D16R.11 acceptance shape per class:
  *
  *   first paint (Capture pixels) + a real typed-input event with a
  *   measurable rendered delta.
@@ -24,7 +24,7 @@
  *
  * Marker chain (guest -> host), in emission order:
  *
- *   grouped-ui-probe: ready simple-target=<app> terminal-target=terminal
+ *   grouped-ui-probe: ready simple-target=<app> terminal-target=terminal browser-target=falkon
  *   QMP-TARGET tablet <x> <y>                 panel launcher toggle
  *   QMP-TARGET tablet <x> <y>                 simple-class menu entry
  *   grouped-ui-probe: simple-class first paint (...)
@@ -39,6 +39,12 @@
  *   grouped-ui-probe: terminal-class typed delta (...)
  *   QMP-TARGET key ret                        submit
  *   grouped-ui-probe: terminal-class execution delta (...)
+ *   QMP-TARGET tablet <x> <y>                 panel launcher toggle
+ *   QMP-TARGET tablet <x> <y>                 browser-class menu entry
+ *   grouped-ui-probe: browser-class first paint (...)
+ *   QMP-TARGET tablet <x> <y>                 focus click (URL bar)
+ *   QMP-TARGET type sponge                    typed input, browser class
+ *   grouped-ui-probe: browser-class typed delta (...)
  *   grouped-ui-probe: PASS
  *
  * Any failure logs "grouped-ui-probe: FAIL <reason>" and exits
@@ -58,15 +64,25 @@
  * app ran: the window label is checked for the `pkg_runtime_simple`
  * prefix, so the pixels can only come from the simple-class runtime.
  *
- * Browser/falkon first paint is explicitly P2.6 scope and is NOT
- * asserted here (docs/plans/phase16-runtime-overhaul.md P2.6).
+ * Browser/falkon first paint + basic input is the P2.6 leg (Phase 16
+ * P2.6, docs/plans/phase16-runtime-overhaul.md "Falkon / browser
+ * staging"): the BROWSER class target is the `falkon` launcher entry
+ * (pkg_runtime_browser -> falkon), asserted with the same first-paint
+ * predicate and the same typed-delta thresholds as the other classes.
+ * Its first-paint poll carries a longer iteration budget (the WebEngine
+ * closure resolves from disk before the window appears) but every
+ * pixel threshold is shared and unchanged. Basic input is a typed
+ * string into the browser's URL bar, clicked and measured at the
+ * runtime-calibrated client-pixel geometry (URL_CLICK_* / URL_BAND_*);
+ * page load / DHCP / HTTP are NOT asserted (criterion 15 follow-up).
  *
  * Class placement checks (the evidence cannot come from a different
  * runtime):
- *   (a) the st_simple / st_terminal class state reports are live
- *       (the grouped runtimes exist and publish state),
+ *   (a) the st_simple / st_terminal / st_browser class state reports
+ *       are live (the grouped runtimes exist and publish state),
  *   (b) the target window's wm window_list label carries the
- *       "pkg_runtime_simple -> " / "pkg_runtime_terminal -> " prefix
+ *       "pkg_runtime_simple -> " / "pkg_runtime_terminal -> " /
+ *       "pkg_runtime_browser -> " prefix
  *       AND the target app token after it,
  *   (c) the layouter window_layout report places that window inside
  *       the pkg_runtime assign region.
@@ -171,6 +187,34 @@ unsigned const POPUP_CLOSED_MAX = 50;
 unsigned const PAINT_FLOOR      = 150;
 unsigned const TYPED_FLOOR      = 12;
 
+/*
+ * First-paint poll budgets (iterations of 200 ms). NOT thresholds —
+ * every pixel predicate above is shared and unchanged across classes.
+ * The browser class gets the longer budget because falkon's ~509 MiB
+ * WebEngine closure resolves from disk (rom_pkg) before its window can
+ * appear; the simple/terminal budget is the P2.4 value, untouched.
+ */
+unsigned const PAINT_ITERS_DEFAULT = 1500;
+unsigned const PAINT_ITERS_BROWSER = 3000;
+
+/*
+ * Browser URL-bar focus/typing geometry in CLIENT-relative pixels
+ * (P2.6 runtime calibration —
+ * docs/evidence/phase16-p26-browser-acceptance.md). Falkon's 787x569
+ * client lays out in FIXED pixels (tab bar rows 0..28, navigation bar
+ * rows 28..60 with the URL field around x=264..784, bookmarks bar
+ * rows 60..88, web view below), so unlike the calculatorform
+ * 400x300-normalized path these offsets must not scale with the
+ * window. URL_CLICK_* is the empirically proven focus point (the
+ * evidence run typed "sponge" there and produced the URL-bar
+ * completer delta); URL_BAND_* is that run's measured changed-sample
+ * bounding box of the typed input (the bar row plus the completer
+ * popup zone below it). Both are re-verified every acceptance run by
+ * the typed-delta predicate and the window-rect log lines.
+ */
+int const URL_CLICK_DX = 393, URL_CLICK_DY = 37;
+int const URL_BAND_DY = 28, URL_BAND_DH = 200;
+
 /* Max launcher apps the layout computation accepts. */
 enum { MAX_APPS = 32 };
 
@@ -230,6 +274,7 @@ struct Grouped_ui_probe
 	Genode::Attached_rom_dataspace _focus         { _env, "focus" };
 	Genode::Attached_rom_dataspace _st_simple     { _env, "st_simple" };
 	Genode::Attached_rom_dataspace _st_terminal   { _env, "st_terminal" };
+	Genode::Attached_rom_dataspace _st_browser    { _env, "st_browser" };
 
 	App_entry _apps[MAX_APPS] { };
 	unsigned  _num_apps { 0 };
@@ -575,6 +620,7 @@ struct Grouped_ui_probe
 		_log_window_list();
 		_log_class_children("st_simple", _st_simple);
 		_log_class_children("st_terminal", _st_terminal);
+		_log_class_children("st_browser", _st_browser);
 		unsigned const id = _find_window(class_prefix, app_token);
 		int rx = 0, ry = 0, rw = 0, rh = 0;
 		bool const have_rect = _window_rect(id, rx, ry, rw, rh);
@@ -746,11 +792,12 @@ struct Grouped_ui_probe
 	 * class placement check (c).
 	 */
 	bool _poll_first_paint(char const *class_prefix, char const *app_token,
-	                       int &rx, int &ry, int &rw, int &rh)
+	                       int &rx, int &ry, int &rw, int &rh,
+	                       unsigned max_iters = PAINT_ITERS_DEFAULT)
 	{
 		_snapshot(WIN_REG_X, WIN_REG_Y, WIN_REG_W, WIN_REG_H, _snap);
 		unsigned max_changed = 0;
-		for (unsigned i = 0; i < 1500; ++i) {
+		for (unsigned i = 0; i < max_iters; ++i) {
 			_timer.msleep(200);
 
 			unsigned const id = _find_window(class_prefix, app_token);
@@ -832,11 +879,23 @@ struct Grouped_ui_probe
 	 * (1,26) 46x25 -> center (34,48)) and scaled to the actual
 	 * window rect, so inputSpinBox1 stays targeted at any client
 	 * size (400x300 or 320x240).
+	 *
+	 * url_bar: the browser leg's runtime-calibrated path — the
+	 * focus/typing geometry is the fixed client-pixel calibration
+	 * (URL_CLICK_* / URL_BAND_*) applied to the observed rect, never
+	 * the 400x300 scaling (falkon's chrome does not scale with the
+	 * window). focus_dx/focus_dy are unused in this mode.
+	 *
+	 * paint_iters: first-paint poll budget (PAINT_ITERS_DEFAULT for
+	 * simple/terminal, PAINT_ITERS_BROWSER for falkon — see the
+	 * constant comment; pixel thresholds are shared and unchanged).
 	 */
 	void _run_class(char const *what, char const *class_prefix,
 	                char const *app_token, App_entry const &entry,
 	                char const *typed, int focus_dx, int focus_dy,
-	                char const *extra_key)
+	                char const *extra_key,
+	                unsigned paint_iters = PAINT_ITERS_DEFAULT,
+	                bool url_bar = false)
 	{
 		int rx = 0, ry = 0, rw = 0, rh = 0;
 
@@ -864,7 +923,8 @@ struct Grouped_ui_probe
 		}
 
 		/* (3) first paint + class placement */
-		if (!_poll_first_paint(class_prefix, app_token, rx, ry, rw, rh)) {
+		if (!_poll_first_paint(class_prefix, app_token, rx, ry, rw, rh,
+		                       paint_iters)) {
 			_fail("no first paint for ", app_token, " in ", class_prefix,
 			      " (", what, ")");
 			return;
@@ -880,9 +940,11 @@ struct Grouped_ui_probe
 			_fail("window vanished before focus (", what, ")");
 			return;
 		}
-		int const fcx = focus_dx >= 0 ? rx + focus_dx * rw / 400
+		int const fcx = url_bar ? rx + URL_CLICK_DX
+		              : focus_dx >= 0 ? rx + focus_dx * rw / 400
 		                              : rx + rw / 2;
-		int const fcy = focus_dy >= 0 ? ry + focus_dy * rh / 300
+		int const fcy = url_bar ? ry + URL_CLICK_DY
+		              : focus_dy >= 0 ? ry + focus_dy * rh / 300
 		                              : ry + rh / 2;
 		_snapshot(rx, ry, rw, rh, _snap);
 		_emit_click(fcx, fcy);
@@ -900,9 +962,17 @@ struct Grouped_ui_probe
 		            click_changed);
 
 		int const tx = extra_key ? rx + 8 : rx;
-		int const ty = extra_key ? ry + 28 : ry;
+		int const ty = extra_key ? ry + 28
+		            : url_bar    ? ry + URL_BAND_DY : ry;
 		int const tw = extra_key ? rw - 16 : rw;
-		int const th = extra_key ? 20 : rh;
+		int const th = extra_key ? 20
+		            : url_bar    ? URL_BAND_DH : rh;
+
+		if (url_bar)
+			Genode::log("grouped-ui-probe: ", what,
+			            " url-bar geometry (click=", fcx, ",", fcy,
+			            " client=(", URL_CLICK_DX, ",", URL_CLICK_DY,
+			            ") band=(", tx, ",", ty, " ", tw, "x", th, "))");
 
 		_snapshot(tx, ty, tw, th, _snap_b);
 		_timer.msleep(700);
@@ -959,25 +1029,28 @@ struct Grouped_ui_probe
 		 * Preconditions — grouped topology alive. The two class
 		 * state reports must publish; this is check (a).
 		 */
-		bool simple_live = false, terminal_live = false;
-		for (unsigned i = 0; i < 600 && !(simple_live && terminal_live); ++i) {
+		bool simple_live = false, terminal_live = false, browser_live = false;
+		for (unsigned i = 0; i < 600 && !(simple_live && terminal_live && browser_live); ++i) {
 			_timer.msleep(200);
 			_st_simple.update();
 			_st_terminal.update();
+			_st_browser.update();
 			simple_live   = _st_simple.valid()   && _st_simple.size()   > 0;
 			terminal_live = _st_terminal.valid() && _st_terminal.size() > 0;
+			browser_live  = _st_browser.valid()  && _st_browser.size()  > 0;
 			if (i % 50 == 0)
 				Genode::log("grouped-ui-probe: class-state poll ", i,
 				            " simple=", (int)simple_live,
-				            " terminal=", (int)terminal_live);
+				            " terminal=", (int)terminal_live,
+				            " browser=", (int)browser_live);
 		}
-		if (!simple_live || !terminal_live) {
+		if (!simple_live || !terminal_live || !browser_live) {
 			_fail("grouped class runtimes did not publish state "
-			      "(st_simple/st_terminal) - grouped topology not live");
+			      "(st_simple/st_terminal/st_browser) - grouped topology not live");
 			return;
 		}
 		Genode::log("grouped-ui-probe: class placement preconditions ok "
-		            "(st_simple + st_terminal live)");
+		            "(st_simple + st_terminal + st_browser live)");
 
 		/*
 		 * Launcher report: wait for the FULL desktop pair set — the
@@ -1032,6 +1105,19 @@ struct Grouped_ui_probe
 			return;
 		}
 
+		/*
+		 * Browser target (P2.6): the falkon entry, fully visible at
+		 * popup-local y=326 with the `desktop` profile (see the
+		 * layout log). Its class binding is the window label prefix
+		 * "pkg_runtime_browser -> " — the pixels can only come from
+		 * the browser-class runtime.
+		 */
+		App_entry const *browser = _find_app("falkon");
+		if (!browser || !_entry_visible(*browser)) {
+			_fail("falkon entry is clipped by the launcher domain");
+			return;
+		}
+
 		/* Simple target: textedit preferred (fully visible), the
 		 * calculator fallback otherwise (see the header note). */
 		char const *simple_name  = nullptr;
@@ -1070,13 +1156,28 @@ struct Grouped_ui_probe
 		_timer.msleep(60000);
 
 		Genode::log("grouped-ui-probe: ready simple-target=", simple_name,
-		            " terminal-target=terminal");
+		            " terminal-target=terminal browser-target=falkon");
 
 		_run_class("simple-class", "pkg_runtime_simple -> ",
 		           simple_name, *simple, simple_typed,
 		           simple_focus_dx, simple_focus_dy, simple_extra_key);
 		_run_class("terminal-class", "pkg_runtime_terminal -> ",
 		           "terminal", *term, "echo grouped-ok", -1, -1, "ret");
+
+		/*
+		 * Browser leg (P2.6), after terminal per the acceptance
+		 * order. First paint with the browser poll budget; basic
+		 * typed input "sponge" after a URL-bar focus click. The
+		 * focus/typing geometry is the runtime calibration
+		 * (URL_CLICK_* / URL_BAND_*, evidence run receipts in
+		 * docs/evidence/phase16-p26-browser-acceptance.md): a
+		 * client-pixel click on the URL field row, typed-delta
+		 * measured over the bar-row/popup band, shared thresholds.
+		 * No page-load assertion.
+		 */
+		_run_class("browser-class", "pkg_runtime_browser -> ",
+		           "falkon", *browser, "sponge", 0, 0, nullptr,
+		           PAINT_ITERS_BROWSER, true);
 
 		Genode::log("grouped-ui-probe: PASS");
 		_env.parent().exit(0);
