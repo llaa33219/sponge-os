@@ -1351,7 +1351,6 @@ set logdisk_on [expr {[info exists ::env(SPONGE_LOGDISK)] && $::env(SPONGE_LOGDI
 
 set logdisk_routes ""
 set logdisk_child  ""
-set vfs_log_policy ""
 
 #
 # Input-chain LOG route used by ps2, usb_hid and event_filter.
@@ -1393,24 +1392,11 @@ if {$logdisk_on} {
     + service ROM | label_last: vfs_rump.lib.so | + parent
     + service ROM | label_last: rump.lib.so   | + parent
     + service ROM | label_last: rump_fs.lib.so | + parent
-    + service File_system | + child vfs_var
+    + service File_system | + child vfs_log
     + service Timer | + child timer
     + any-service
       + parent
       + any-child
-"
-
-	#
-	# The label_prefix ends with " -> " on purpose. init prefixes a
-	# routed session label with the REQUESTING child's name, so the
-	# label the vfs server sees is "sponge_logdisk -> /" — the upstream
-	# idiom (genode/repos/dde_rump/run/rump_ext2.run:65,
-	# genode/repos/os/run/internet_checksum.run:50). The vfs server also
-	# requires the label's LAST element to start and end with '/', so
-	# a bare "vfs_log" label would be denied even when the policy
-	# matched. '/' it is, with the selection done by the prefix.
-	#
-	set vfs_log_policy "    + policy | label_prefix: sponge_logdisk -> | root: /log | writeable: yes
 "
 } else {
 	puts "sponge-desktop-disk-uefi-usb: persistent log sink OFF (default) — LOG stays on the serial line; SPONGE_LOGDISK=on enables it"
@@ -1579,7 +1565,24 @@ $logdisk_routes  + any-service
     # variant).
     #
     + policy | label_prefix: vfs_sys  | partition: 3 | writeable: no
-    + policy | label_prefix: vfs_var  | partition: 4 | writeable: yes
+    #
+    # P4 SPONGE-VAR serves TWO File_system providers since the P3.2
+    # provider split (D16R.8): vfs_pkg (the /pkgd package-store region)
+    # and vfs_log (the /log log-sink region). Same partition, two
+    # session paths — a stall on the log path can no longer stall the
+    # package-store path (run/sponge-provider-stall.run proves it).
+    #
+    # UPSTREAM CONSTRAINT (measured): part_block allows only ONE Block
+    # session per partition — the second create is refused with
+    # 'partition 4 already in use' (os/src/server/part_block/
+    # main.cc:286). So each P4 provider gets its OWN part_block
+    # instance below (same binary, same row semantics; usb_block serves
+    # both sessions — its Session_map allocates one index per session,
+    # os/src/driver/usb_block/main.cc). The vfs_log P4 row therefore
+    # lives in the part_block_log node further down; vfs_pkg's row is
+    # here. Both rows spell partition 4, writeable yes.
+    #
+    + policy | label_prefix: vfs_pkg  | partition: 4 | writeable: yes
     + policy | label_prefix: vfs_home | partition: 5 | writeable: yes
   + route
     + service ROM | label_last: ld.lib.so | + parent
@@ -1594,7 +1597,11 @@ $logdisk_routes  + any-service
 #     does at runtime can write it, so a hard power-off cannot corrupt
 #     the boot chain. Changes only by re-flashing the media.
 #   P4 SYSTEM-MUTABLE    /pkgd    — package state: pkgd's persistent
-#     installed-roots store lives here (see pkgd's <vfs> node).
+#     installed-roots store lives here (see pkgd's <vfs> node). The
+#     same partition also carries the /log log-sink region (the
+#     sponge_logdisk section above); since the P3.2 provider split the
+#     two regions are served by two File_system providers (vfs_pkg /
+#     vfs_log) instead of one shared instance.
 #   P5 USER              /user    — home area: user files + settings.
 + start vfs_sys | caps: 16000 | ram: 128M
   + binary | name: vfs
@@ -1616,20 +1623,92 @@ $logdisk_routes  + any-service
       + parent
       + any-child
 
-+ start vfs_var | caps: 2000 | ram: 32M
+#
+# vfs_pkg / vfs_log — the P3.2 provider split (D16R.8, the product half
+# of run/sponge-provider-stall.run's wiring under test): TWO vfs
+# instances on partition 4, one per session region. The pre-split
+# shared 'vfs_var' carried BOTH regions on one instance, so a stall or
+# denial on the log path took the package-store path down with it
+# (docs/evidence/logdisk-field-diagnosis.md §3, the FD4 shared-fate
+# property). Same binary, same lib routes, same partition (D16R.2).
+# Each provider's Block session goes through its OWN part_block
+# instance (part_block / part_block_log below) because upstream
+# part_block allows one Block session per partition — see the
+# constraint note at the part_block node.
+#
+#   vfs_pkg — /pkgd, the package-store region (pkgd's persistent
+#             installed-roots store, docs/12 §13). The catch-all is
+#             spelled 'default-policy' (the upstream catch-all idiom,
+#             genode/repos/os/run/vfs_xoroshiro.run): a bare '<policy>'
+#             without any label attribute never wins vfs's policy
+#             matching (os/include/os/session_policy.h scores only
+#             label-bearing policies; 'default-policy' serves the
+#             unmatched ones), so the previous bare
+#             '<policy root="/pkgd">' spelling could never match a
+#             session.
+#   vfs_log — /log, the log-sink region (sponge_logdisk's <vfs> mount).
+#             Its policy ends with " -> " on purpose: init prefixes a
+#             routed session label with the REQUESTING child's name, so
+#             the label the vfs server sees is "sponge_logdisk -> /" —
+#             the upstream idiom (genode/repos/dde_rump/run/
+#             rump_ext2.run:65, genode/repos/os/run/
+#             internet_checksum.run:50). The vfs server also requires
+#             the label's LAST element to start and end with '/', so a
+#             bare "vfs_log" label would be denied even when the policy
+#             matched ('/' it is, with the selection done by the prefix
+#             — docs/evidence/logdisk-field-diagnosis.md §3(c)).
+#
++ start vfs_pkg | caps: 2000 | ram: 32M
   + binary | name: vfs
   + provides | + service File_system
   + config
     + vfs
       + rump | fs: ext2fs | ram: 16M | writeable: yes
-    + policy | root: /pkgd | writeable: yes
-$vfs_log_policy  + route
+    + default-policy | root: /pkgd | writeable: yes
+  + route
     + service ROM | label_last: ld.lib.so     | + parent
     + service ROM | label_last: vfs.lib.so    | + parent
     + service ROM | label_last: vfs_rump.lib.so | + parent
     + service ROM | label_last: rump.lib.so   | + parent
     + service ROM | label_last: rump_fs.lib.so | + parent
     + service Block | + child part_block
+    + any-service
+      + parent
+      + any-child
+
+#
+# part_block_log — the log path's own part_block instance (the
+# upstream one-session-per-partition constraint documented at the
+# part_block node above): its vfs_log row pins partition 4, writeable
+# yes — exactly the row semantics of the other P4 row.
+#
++ start part_block_log | caps: 200 | ram: 8M
+  + binary | name: part_block
+  + provides | + service Block
+  + config
+    + report | partitions: no
+    + policy | label_prefix: vfs_log  | partition: 4 | writeable: yes
+  + route
+    + service ROM | label_last: ld.lib.so | + parent
+    + service Block | + child usb_block
+    + any-service
+      + parent
+      + any-child
+
++ start vfs_log | caps: 2000 | ram: 32M
+  + binary | name: vfs
+  + provides | + service File_system
+  + config
+    + vfs
+      + rump | fs: ext2fs | ram: 16M | writeable: yes
+    + policy | label_prefix: sponge_logdisk -> | root: /log | writeable: yes
+  + route
+    + service ROM | label_last: ld.lib.so     | + parent
+    + service ROM | label_last: vfs.lib.so    | + parent
+    + service ROM | label_last: vfs_rump.lib.so | + parent
+    + service ROM | label_last: rump.lib.so   | + parent
+    + service ROM | label_last: rump_fs.lib.so | + parent
+    + service Block | + child part_block_log
     + any-service
       + parent
       + any-child
@@ -2243,10 +2322,12 @@ append qemu_args " -machine q35 -cpu Skylake-Client "
 # and `sponge_pkgd`'s admission control refuses a package that no longer
 # fits instead of letting init clamp it into a hang. Keep the ceiling at
 # 8G regardless: this scenario has the HEAVIEST Tier-0 of the five
-# product scenarios — the three-area layout adds vfs_var (32M),
-# vfs_home (32M) and rom_pkg (768M for falkon's 509 MiB payload) on
-# top of the two 256M rom_* servers, bringing Tier-0 to ~1902M, so the
-# fixed system services alone need most of a 6G guest after the
+# product scenarios — the three-area layout adds vfs_pkg (32M),
+# vfs_log (32M), vfs_home (32M), part_block_log (8M) and rom_pkg (768M
+# for falkon's 509 MiB payload) on top of the two 256M rom_* servers,
+# bringing Tier-0 to ~1942M (the pre-P3.2 shared vfs_var was one 32M
+# instance on one part_block, ~1902M), so the fixed system services
+# alone need most of a 6G guest after the
 # ~2.4 GiB the OVMF/UEFI path reserves.
 # Historical arithmetic, kept for provenance: the fixed grants drew that
 # 1902M of Tier-0 plus the 3420M `system` grant = 5322M from init's pool,

@@ -5,16 +5,19 @@
 #
 # Phase 16 runtime-overhaul task P3.1 (docs/plans/phase16-runtime-overhaul.md),
 # failure domain FD4 / decision D16R.8. RED receipt first (D16R.16): on
-# today's shared vfs_var this scenario FAILS at its per-path gates; the
-# P3.2 vfs_pkg/vfs_log split flips it green.
+# the pre-P3.2 shared vfs_var this scenario FAILED at its per-path gates
+# (committed receipt: docs/evidence/phase16-runtime-provider-stall.md).
+# The P3.2 vfs_pkg/vfs_log split has landed and flips this scenario
+# green — it is now the isolation PROOF: a log-path stall stays on its
+# own provider path while the store round-trips.
 #
 # ========================================================================
 # What is under test
 # ========================================================================
 #
-# The product's P4 (SPONGE-VAR) File_system provider is ONE `vfs`
-# instance, `vfs_var`, carrying BOTH P4 session regions (the P0.5 audit,
-# docs/evidence/phase16-runtime-patch-io-audit.md §3.1):
+# Before P3.2 the product's P4 (SPONGE-VAR) File_system provider was
+# ONE `vfs` instance, `vfs_var`, carrying BOTH P4 session regions (the
+# P0.5 audit, docs/evidence/phase16-runtime-patch-io-audit.md §3.1):
 #
 #   policy region /pkgd — the package store (sponge_pkgd's <vfs> store
 #                         mount, the "other P4 consumer")
@@ -23,9 +26,10 @@
 #
 # One instance = one entrypoint, one rump ext2 mount, one Block session
 # to part_block/P4. Whatever stalls that instance stalls BOTH consumers
-# (the shared-fate property this scenario demonstrates). P3.2 splits the
+# (the shared-fate property this scenario demonstrated). P3.2 split the
 # wiring into two instances on the same partition (vfs_pkg / vfs_log);
-# then a log-path stall stays on vfs_log and the store survives.
+# the log-path stall now stays on vfs_log and the store survives — the
+# green receipt below.
 #
 # ========================================================================
 # The injected fault: a deterministic SOFTWARE provider stall
@@ -89,9 +93,10 @@
 #                               media-alive evidence).
 #   path=pkgd-store PASS/RED  — write + read back /pkgd/store/pstall.txt
 #                               through the P4 store region, BOUNDED.
-#                               Today (shared vfs_var) the create rides
-#                               the stalled instance and parks: RED,
-#                               'reason=create_parked_30000ms'. After
+#                               On the pre-P3.2 shared vfs_var the
+#                               create rode the stalled instance and
+#                               parked: RED, 'reason=create_parked_
+#                               30000ms' (the committed receipt). With
 #                               the split: PASS.
 #   path=log-sink   DEGRADED  — asserted host-side (see above). No probe
 #                               can reach that policy: only a child
@@ -105,7 +110,8 @@
 # bounds its workers at 30 s and always prints its verdict; every
 # run_genode_until below carries a finite timeout.
 #
-# Expected RED receipt (today, shared vfs_var):
+# Expected RED receipt (the pre-P3.2 shared vfs_var; committed in
+# docs/evidence/phase16-runtime-provider-stall.md):
 #   provider-stall-control: PASS
 #   provider-isolation-probe: PASS path=sys-rom
 #   provider-isolation-probe: RED path=pkgd-store reason=create_parked_30000ms
@@ -113,7 +119,7 @@
 #   -> error exit; 'provider-isolation-probe: PASS' absent.
 #
 # ========================================================================
-# P3.2 flip guide (the commit that turns this scenario green)
+# P3.2 flip guide (LANDED — the split that turned this scenario green)
 # ========================================================================
 #
 # Split the 'vfs_var' start node below into TWO instances on partition 4
@@ -132,7 +138,10 @@
 #
 #   Then re-aim the consumers: the probe's File_system route to
 #   '+ child vfs_pkg', sponge_logdisk's to '+ child vfs_log', and the
-#   part_block 'vfs_var' policy row to 'vfs_pkg'.
+#   part_block 'vfs_var' policy row to 'vfs_pkg'. The probe's <fs> node
+#   additionally carries 'label: /store/' — the client-preferred session
+#   root (logdisk-field-diagnosis §3(c)) that lands the round-trip file
+#   on the staged /pkgd/store region read back below.
 #
 #   Expected result: 'provider-isolation-probe: PASS' (store round-trip
 #   works AND is corroborated on media by e2cp read-back), while the log
@@ -362,7 +371,9 @@ config
 #
 # part_block: partitions pinned BY NUMBER (docs/14 §4.4, the W4
 # contract) — P3 GENODE (system ROM chain) and P4 SPONGE-VAR (the
-# shared provider under test). The partitions report is enabled for
+# vfs_pkg provider under test; the log path's Block source is the
+# blk_stall fault, see the split nodes below). The partitions report
+# is enabled for
 # test/partition_check (the media-alive witness). The Report route must
 # be explicit BEFORE any-service or the report cascades to parent and
 # part_block stops (sponge-desktop-disk-nvme.run's note).
@@ -372,7 +383,7 @@ config
   + config
     + report | partitions: yes
     + policy | label_prefix: vfs_sys | partition: 3 | writeable: no
-    + policy | label_prefix: vfs_var | partition: 4 | writeable: yes
+    + policy | label_prefix: vfs_pkg | partition: 4 | writeable: yes
   + route
     + service ROM | label_last: ld.lib.so | + parent
     + service Block | + child ahci
@@ -441,33 +452,58 @@ config
       + any-child
 
 #
-# vfs_var — THE WIRING UNDER TEST (today's shared P4 provider,
-# mirroring the product's run/sponge-desktop-disk-uefi-usb.run:1566 and
-# the P0.5 audit §3.1): ONE vfs instance over part_block/P4 carrying
-# BOTH session regions:
+# vfs_pkg / vfs_log — THE WIRING UNDER TEST (the P3.2 split, D16R.8).
+# Two vfs instances on the existing partition 4 (no new partitions):
 #
-#   default-policy root /pkgd   — the package-store region
-#   label_prefix: sponge_logdisk -> root /log — the log-sink region
+#   vfs_pkg — the package-store region. default-policy root /pkgd so
+#             the healthy-state store check can actually pass: vfs
+#             policy matching scores label-bearing policies over
+#             label-less ones (os/include/os/session_policy.h), and a
+#             'default-policy' node is the spelling that serves
+#             unmatched labels (the upstream catch-all idiom,
+#             genode/repos/os/run/vfs_xoroshiro.run). Block route ->
+#             part_block: the HEALTHY P4 path.
+#   vfs_log  — the log-sink region. label_prefix: sponge_logdisk ->
+#             root /log. Block route -> blk_stall: THE FAULT. The
+#             stall stays on the log path — that is the point of the
+#             split: stalling this instance can no longer stall the
+#             store (the isolated-fate property of D16R.8/FD4).
 #
-# The catch-all is spelled 'default-policy' (the upstream catch-all
-# idiom, genode/repos/os/run/vfs_xoroshiro.run) so the healthy-state
-# store check can actually pass: vfs policy matching scores
-# label-bearing policies over label-less ones (os/include/os/
-# session_policy.h), and a 'default-policy' node is the spelling that
-# serves unmatched labels.
+# The split replaces the pre-P3.2 shared 'vfs_var' (ONE vfs instance
+# carrying BOTH regions over part_block/P4 — the shared-fate property
+# the P3.1 red receipt demonstrates). Same binary, same lib routes,
+# same partition.
 #
-# Block route -> blk_stall: THE FAULT. With both regions on this one
-# instance, stalling it stalls the store path too — the shared fate
-# that makes this scenario RED today. P3.2 splits this node per the
-# header's flip guide and keeps blk_stall on vfs_log only.
-#
-+ start vfs_var | caps: 2000 | ram: 32M
++ start vfs_pkg | caps: 2000 | ram: 32M
   + binary vfs
   + provides | + service File_system
   + config
     + vfs
       + rump | fs: ext2fs | ram: 16M | writeable: yes
     + default-policy | root: /pkgd | writeable: yes
+  + route
+    + service ROM | label_last: ld.lib.so       | + parent
+    + service ROM | label_last: vfs.lib.so      | + parent
+    + service ROM | label_last: vfs_rump.lib.so | + parent
+    + service ROM | label_last: rump.lib.so     | + parent
+    + service ROM | label_last: rump_fs.lib.so  | + parent
+    + service Block | + child part_block
+    + any-service
+      + parent
+      + any-child
+
+#
+# vfs_log's Block route points at blk_stall: THE FAULT. Its rump ext2
+# mount opens the Block session at construct and parks there — this
+# provider never announces File_system, and sponge_logdisk's File_system
+# create queues at init indefinitely. Only the log path is affected.
+#
++ start vfs_log | caps: 2000 | ram: 32M
+  + binary vfs
+  + provides | + service File_system
+  + config
+    + vfs
+      + rump | fs: ext2fs | ram: 16M | writeable: yes
     + policy | label_prefix: sponge_logdisk -> | root: /log | writeable: yes
   + route
     + service ROM | label_last: ld.lib.so       | + parent
@@ -503,7 +539,7 @@ config
     + service ROM | label_last: vfs_rump.lib.so | + parent
     + service ROM | label_last: rump.lib.so   | + parent
     + service ROM | label_last: rump_fs.lib.so | + parent
-    + service File_system | + child vfs_var
+    + service File_system | + child vfs_log
     + service Timer | + child timer
     + any-service
       + parent
@@ -515,14 +551,22 @@ config
 # node is the pkgd-store consumer shape (run/sponge-pkg-persist.run:
 # <vfs><dir store><fs/></vfs> mounts the P4 store region at /store).
 #
+# The fs label '/store/' names the client-preferred session root within
+# vfs_pkg's default-policy root /pkgd (the File_system session label's
+# last element is appended to the policy root —
+# docs/evidence/logdisk-field-diagnosis.md §3(c), os/src/server/vfs/
+# main.cc). So the session roots at the P4 store region /pkgd/store
+# (pre-created by the staging below) and STORE_PATH '/store/pstall.txt'
+# lands at /pkgd/store/pstall.txt — the media path read back below.
+#
 + start provider_isolation_probe | caps: 200 | ram: 16M
   + config
     + vfs
-      + dir store | + fs
+      + dir store | + fs | label: /store/
   + route
     + service ROM | label_last: ld.lib.so | + parent
     + service ROM | label_last: sys_marker | + child rom_sys
-    + service File_system | + child vfs_var
+    + service File_system | + child vfs_pkg
     + service Timer | + child timer
     + any-service
       + parent
@@ -748,6 +792,19 @@ run_genode_until {.*partition-check: PASS.*} 120 $qemu_spawn_id
 run_genode_until {.*provider-isolation-probe: DONE.*} 120 $qemu_spawn_id
 
 sleep 2
+#
+# Capture fix (ADDITIVE — no gate, marker, timeout, payload or staging
+# path below/above is changed): a plain Tcl 'sleep' does not READ the
+# spawn, so serial bytes emitted after the DONE match sit unread in
+# the PTY and never reach the log. On the healthy (post-P3.2) path the
+# probe verdict lands within the first two bystander ticks, so the
+# container-alive control below would see fewer than its two
+# 'bystander: alive' lines although the witness keeps printing. This
+# bounded drain reads the post-verdict tail into the log so the
+# control observes the witness it was written for (on the RED path the
+# ticks were already captured during the 30 s probe bound).
+#
+expect -timeout 1 -i $qemu_spawn_id -re {.+} { }
 log_file
 
 set fh [open $ps_log r]
