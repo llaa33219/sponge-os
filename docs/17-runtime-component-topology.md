@@ -1038,11 +1038,13 @@ amounts of guest RAM, which is why the ceilings differ:
   assigned to init"; `-m 4G` ⇒ 3638 MiB.
 - **OVMF/UEFI path** — ~2.4 GiB, not ~458 MiB. Measured on
   `sponge-desktop-disk-uefi-usb`: `-m 8G` ⇒ 5826 MiB assigned to init.
-  The UEFI ceiling stays at 8G: uefi-usb alone carries ~1902 MiB of
-  Tier-0 (the three-area layout adds `vfs_var` 32M, `vfs_home` 32M and
-  `rom_pkg` 768M for falkon's 509 MiB payload on top of the two 256M
-  `rom_*` servers), so after the OVMF reservation a 6G guest would leave
-  the fixed system services with almost nothing.
+  The UEFI ceiling stays at 8G: uefi-usb alone carries ~1942 MiB of
+  Tier-0 (the three-area layout adds `vfs_pkg` 32M, `vfs_log` 32M,
+  `vfs_home` 32M, `part_block_log` 8M and `rom_pkg` 768M for falkon's
+  509 MiB payload on top of the two 256M `rom_*` servers — the pre-P3.2
+  shared `vfs_var` was one 32M instance on one `part_block`, ~1902 MiB),
+  so after the OVMF reservation a 6G guest would leave the fixed system
+  services with almost nothing.
 
 **Residual gap**: `run/sponge-alpha.run` still grants `pkg_runtime`
 400 caps / 32M — sized for the hello-only Phase-7 topology, not for
