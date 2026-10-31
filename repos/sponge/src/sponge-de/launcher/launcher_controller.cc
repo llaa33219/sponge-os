@@ -119,6 +119,7 @@ LauncherController::LauncherController(Genode::Env &env, QObject *parent)
 	_env(env)
 {
 	_launcher_report.enabled(true);
+	_op_error_report.enabled(true);
 
 	/* Always publish an initial empty launcher report so the probe
 	 * (and any watcher) reads a well-formed <launcher count="0"/>
@@ -495,6 +496,26 @@ void LauncherController::toggle_launcher()
 }
 
 
+/*
+ * Persistent launch-error witness (Phase 16 P2.5). Single slot,
+ * last-failure-wins: each call replaces the record, and nothing
+ * clears it - not recovery, not success. An empty pkg marks a
+ * channel-level failure (no operation to name), which is not
+ * recorded.
+ */
+void LauncherController::_record_op_error(QString const &pkg, QString const &reason)
+{
+	if (pkg.isEmpty())
+		return;
+
+	(void)_op_error_report.generate_xml([&](Genode::Xml_generator &g) {
+		g.attribute("op",     "launch");
+		g.attribute("pkg",    pkg.toUtf8().constData());
+		g.attribute("reason", reason.toUtf8().constData());
+	});
+}
+
+
 void LauncherController::_poll_launch_result()
 {
 	if (_pending_launch_name.isEmpty())
@@ -507,6 +528,8 @@ void LauncherController::_poll_launch_result()
 			Genode::warning("sponge-de: launch result for '",
 			                _pending_launch_name.toUtf8().constData(),
 			                "' timed out (launcher_result unavailable)");
+			_record_op_error(_pending_launch_name,
+			                 QStringLiteral("no answer from the package manager"));
 			emit launch_problem(_pending_launch_name,
 			                    QStringLiteral("no answer from the package manager"));
 			_pending_launch_name.clear();
@@ -537,6 +560,8 @@ void LauncherController::_poll_launch_result()
 			Genode::warning("sponge-de: launch result for '",
 			                _pending_launch_name.toUtf8().constData(),
 			                "' timed out");
+			_record_op_error(_pending_launch_name,
+			                 QStringLiteral("no answer from the package manager"));
 			emit launch_problem(_pending_launch_name,
 			                    QStringLiteral("no answer from the package manager"));
 			_pending_launch_name.clear();
@@ -559,16 +584,22 @@ void LauncherController::_poll_launch_result()
 	} else if (Genode::strcmp(st, "not-installed") == 0) {
 		Genode::warning("sponge-de: launch '", pkg,
 		                "' failed: not installed");
+		_record_op_error(_pending_launch_name,
+		                 QStringLiteral("not installed"));
 		emit launch_problem(_pending_launch_name,
 		                    QStringLiteral("not installed"));
 	} else if (Genode::strcmp(st, "binary-missing") == 0) {
 		Genode::warning("sponge-de: launch '", pkg,
 		                "' failed: binary missing from the package");
+		_record_op_error(_pending_launch_name,
+		                 QStringLiteral("no runnable binary in the package"));
 		emit launch_problem(_pending_launch_name,
 		                    QStringLiteral("no runnable binary in the package"));
 	} else if (Genode::strcmp(st, "already-running") == 0) {
 		Genode::log("sponge-de: launch '", pkg,
 		            "': already running");
+		_record_op_error(_pending_launch_name,
+		                 QStringLiteral("already running"));
 		emit launch_problem(_pending_launch_name,
 		                    QStringLiteral("already running"));
 	} else if (Genode::strcmp(st, "insufficient-resources") == 0) {
@@ -592,17 +623,21 @@ void LauncherController::_poll_launch_result()
 		                "' failed: insufficient resources (need ", need_ram,
 		                "/", need_caps, ", avail ", avail_ram, "/", avail_caps,
 		                ")");
-		emit launch_problem(_pending_launch_name,
-		                    QStringLiteral("not enough free memory or "
-		                                   "capabilities (needs %1 RAM / %2 "
-		                                   "caps, %3 RAM / %4 caps free)")
-		                        .arg(QString::fromUtf8(need_ram.string()),
-		                             QString::fromUtf8(need_caps.string()),
-		                             QString::fromUtf8(avail_ram.string()),
-		                             QString::fromUtf8(avail_caps.string())));
+		QString const reason =
+			QStringLiteral("not enough free memory or "
+			               "capabilities (needs %1 RAM / %2 "
+			               "caps, %3 RAM / %4 caps free)")
+				.arg(QString::fromUtf8(need_ram.string()),
+				     QString::fromUtf8(need_caps.string()),
+				     QString::fromUtf8(avail_ram.string()),
+				     QString::fromUtf8(avail_caps.string()));
+		_record_op_error(_pending_launch_name, reason);
+		emit launch_problem(_pending_launch_name, reason);
 	} else {
 		Genode::warning("sponge-de: launch '", pkg,
 		                "' returned status='", st, "'");
+		_record_op_error(_pending_launch_name,
+		                 QString::fromUtf8(st));
 		emit launch_problem(_pending_launch_name,
 		                    QString::fromUtf8(st));
 	}

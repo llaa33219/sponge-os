@@ -224,6 +224,23 @@ class LauncherController : public QObject
 		/* Headless-verifiability: published app list. */
 		Genode::Reporter _launcher_report { _env, "launcher" };
 
+		/*
+		 * Phase 16 P2.5 persistent launch-error witness (the
+		 * degraded-state contract section 4 C4/C5 machine-readable
+		 * half). Single slot, last-failure-wins: every package-
+		 * scoped launch failure overwrites the record and NOTHING
+		 * ever clears it (no clear on recovery or success), so the
+		 * error stays visible "until acknowledged". Shape:
+		 *
+		 *   <op_error op="launch" pkg="hello" reason="..."/>
+		 *
+		 * Empty-pkg (channel-level) failures are not recorded -
+		 * they name no operation. Written by _record_op_error(),
+		 * read by de_survival_probe via the `de_op_error` ROM
+		 * (report_rom policy `report: sponge-de -> de_op_error`).
+		 */
+		Genode::Reporter _op_error_report { _env, "op_error", "de_op_error" };
+
 		QTimer  *_poll_timer { nullptr };
 		LauncherMenuView *_view { nullptr };
 		NotifyPoster    *_notify { nullptr };
@@ -244,6 +261,7 @@ class LauncherController : public QObject
 		bool _read_and_parse();
 		bool _try_parse(Genode::Xml_node const &root);
 		void _publish_report();
+		void _record_op_error(QString const &pkg, QString const &reason);
 		QString _signature_of(QVector<App> const &apps) const;
 };
 
