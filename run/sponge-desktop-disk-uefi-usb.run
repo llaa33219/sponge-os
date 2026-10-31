@@ -872,6 +872,10 @@ config
       + screen screen
       + assign | label_prefix: pkg_runtime_simple -> textedit | target: screen
                | xpos: 50 | ypos: 80 | width: 512 | height: 493 | maximized: no
+      # Falkon P2.6 placement: sized to its observed 787x569 client
+      # (docs/evidence/phase16-p26-browser-acceptance.md).
+      + assign | label_prefix: pkg_runtime_browser -> falkon | target: screen
+               | xpos: 5 | ypos: 80 | width: 787 | height: 569 | maximized: no
       + assign | label_prefix: pkg_runtime | target: screen
                | xpos: 50 | ypos: 300 | width: 320 | height: 240 | maximized: no
     + press   | key: BTN_LEFT  | action: drag
@@ -1002,6 +1006,7 @@ config
     + tasklist | source: wm
     + tasklist_static_rules
       + assign | label_prefix: pkg_runtime_simple -> textedit | target: screen | xpos: 50 | ypos: 80 | width: 512 | height: 493 | maximized: no
+      + assign | label_prefix: pkg_runtime_browser -> falkon | target: screen | xpos: 5 | ypos: 80 | width: 787 | height: 569 | maximized: no
       + assign | label_prefix: pkg_runtime | target: screen | xpos: 50 | ypos: 300 | width: 320 | height: 240 | maximized: no
     + vfs
       + dir dev
@@ -1599,7 +1604,7 @@ $logdisk_routes  + any-service
       + rump | fs: ext2fs | ram: 48M | writeable: no
     + policy | label_prefix: rom_sys | root: /system     | writeable: no
     + policy | label_prefix: rom_lib | root: /system/lib | writeable: no
-    + policy | label_prefix: rom_pkg | root: /system/pkg/falkon/payload | writeable: no
+    [runtime_browser::vfs_policy]
   + route
     + service ROM | label_last: ld.lib.so     | + parent
     + service ROM | label_last: vfs.lib.so    | + parent
@@ -1680,15 +1685,7 @@ $vfs_log_policy  + route
 # steered here by the label_prefix rule on the `system` node
 # (runtime_grouped::falkon_rom_rules), BEFORE the generic
 # .lib.so->rom_lib rule (the WebEngine libs exist ONLY in the payload).
-+ start rom_pkg | caps: 20000 | ram: 768M
-  + binary cached_fs_rom
-  + provides | + service ROM
-  + route
-    + service File_system | + child vfs_sys
-    + service ROM | label_last: ld.lib.so | + parent
-    + any-service
-      + parent
-      + any-child
+[runtime_browser::rom_pkg_node vfs_sys]
 
 + start nitpicker | caps: 20000 | ram: 256M
   + provides
@@ -1876,6 +1873,7 @@ $logdisk_input_log
 # install.
 #
 runtime_grouped::assert_tier0 $tier0_config
+runtime_browser::assert_tier0 $tier0_config vfs_sys
 install_config $tier0_config
 
 #

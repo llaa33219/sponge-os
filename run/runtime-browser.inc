@@ -24,6 +24,12 @@
 #   2. exclude_lib  — the fail-loud membership test for that list.
 #   3. the class quota row (QUOTA_CAPS / QUOTA_RAM) consumed by
 #      run/runtime-quota.inc's pkg_runtime_caps() derivation.
+#   4. the shared rom_pkg serving fragment (P2.6): the vfs_sys policy
+#      line and the rom_pkg cached_fs_rom start node that serve the
+#      payload area as ROM. Wired into ALL FIVE desktop-disk variants;
+#      the fragment output is byte-for-byte the former uefi-usb literal
+#      (root /system/pkg/falkon/payload, writeable: no, caps 20000 /
+#      ram 768M) and is drift-checked by assert_tier0.
 #
 # It is PURE run-script Tcl: no C++, no package metadata, no topology
 # change, and NO staging behavior change — the list below is byte-for-
@@ -125,5 +131,89 @@ namespace eval runtime_browser {
     proc payload_lib_count { } {
         variable payload_libs
         return [llength $payload_libs]
+    }
+
+    #
+    # === P2.6 rom_pkg payload serving ================================
+    #
+    # The payload area is served as ROM by a dedicated cached_fs_rom
+    # instance (rom_pkg) whose File_system session is rooted at
+    # PAYLOAD_ROOT by the vfs policy below. The two fragments are wired
+    # into all five desktop-disk variants; the uefi-usb scenario's
+    # former inline literals are the reference spelling (P2.6 keeps
+    # their bytes: root .../payload, writeable: no, caps 20000 /
+    # ram 768M).
+    #
+    # HID fragment: the File_system policy line. Insert at the
+    # scenario's vfs node config, after the rom_lib policy, as
+    # `    [runtime_browser::vfs_policy]` (braced-literal + subst
+    # idiom). No leading indentation on the first line — the call site
+    # supplies it (the driver_runtime.inc fragment convention).
+    #
+    variable PAYLOAD_ROOT "/system/pkg/falkon/payload"
+    variable ROM_PKG_CAPS 20000
+    variable ROM_PKG_RAM  768M
+
+    proc vfs_policy {} {
+        variable PAYLOAD_ROOT
+        return "+ policy | label_prefix: rom_pkg | root: ${PAYLOAD_ROOT} | writeable: no"
+    }
+
+    #
+    # HID fragment: the rom_pkg start node. Insert at the Tier-0
+    # config between the rom_lib node and nitpicker (the uefi-usb
+    # slot), as `[runtime_browser::rom_pkg_node <fs-child>]`. The
+    # File_system child is the scenario's vfs node name (`vfs_sys` on
+    # uefi-usb media, `vfs` on the AHCI/UEFI variants) — the only
+    # per-scenario element of the fragment.
+    #
+    proc rom_pkg_node {fs_child} {
+        variable ROM_PKG_CAPS
+        variable ROM_PKG_RAM
+        return "+ start rom_pkg | caps: ${ROM_PKG_CAPS} | ram: ${ROM_PKG_RAM}
+  + binary cached_fs_rom
+  + provides | + service ROM
+  + route
+    + service File_system | + child ${fs_child}
+    + service ROM | label_last: ld.lib.so | + parent
+    + any-service
+      + parent
+      + any-child"
+    }
+
+    #
+    # runtime_browser::assert_tier0 <tier0_config_text> <fs_child>
+    #
+    # Fail-loud structural check for the rom_pkg wiring: the vfs policy
+    # line and every rom_pkg node line must be present verbatim, and
+    # the node must sit after rom_lib (same slot as the uefi-usb
+    # reference). Called by every desktop-disk scenario alongside
+    # runtime_grouped::assert_tier0.
+    #
+    proc assert_tier0 { config_text fs_child } {
+        variable PAYLOAD_ROOT
+
+        set policy [vfs_policy]
+        if {[string first $policy $config_text] < 0} {
+            error "runtime_browser: structural assertion failed — the rom_pkg \
+                   vfs policy is missing (expected '${policy}')"
+        }
+        foreach line [split [rom_pkg_node $fs_child] "\n"] {
+            if {[string first $line $config_text] < 0} {
+                error "runtime_browser: structural assertion failed — rom_pkg \
+                       node line is missing (expected '${line}')"
+            }
+        }
+
+        set rom_pkg_pos [string first "+ start rom_pkg |" $config_text]
+        set rom_lib_pos [string first "+ start rom_lib |" $config_text]
+        if {$rom_lib_pos < 0 || $rom_pkg_pos < 0 || $rom_pkg_pos < $rom_lib_pos} {
+            error "runtime_browser: structural assertion failed — the rom_pkg \
+                   node must follow the rom_lib node"
+        }
+
+        puts "runtime_browser: rom_pkg payload serving verified \
+               (root ${PAYLOAD_ROOT}, File_system child '${fs_child}')"
+        return
     }
 }

@@ -246,8 +246,8 @@ if {[info exists ::env(SPONGE_FB_SWITCH)] && $::env(SPONGE_FB_SWITCH) eq "on"} {
 # SPONGE_GROUPED_UI=on adds the P2.4 D16R.11 grouped-runtime UI
 # acceptance probe (test/grouped_ui_probe) to the product topology:
 # real QMP mouse/keyboard through the Sponge DE launcher proves
-# simple-class and terminal-class first paint + typed-input delta on
-# the grouped runtimes (browser/falkon first paint stays P2.6 scope).
+# simple-class, terminal-class and browser-class (P2.6 falkon) first
+# paint + typed-input delta on the grouped runtimes.
 # Off by default: the shipped media carries no probe and no QMP
 # socket.
 set grouped_ui 0
@@ -284,7 +284,13 @@ set build_components {
 	driver/ahci
 	server/nic_router driver/nic/pc driver/usb_net driver/wifi \
 	driver/gpu/intel driver/framebuffer/intel/pc/spec/x86_64
+	driver/nic server/nic_uplink driver/rtc/spec/x86 server/system_rtc
 }
+# The last four build targets above are the P2.6 falkon-startup
+# network/RTC stack (see the Tier-0 nodes): dde_ipxe e1000 driver +
+# the Uplink<->Nic bridge + the gems system_clock pair. `driver/nic`
+# resolves to TARGET=ipxe_nic. No comments may live INSIDE the build
+# brace above — the braced words become make goals verbatim.
 #
 # Per-runtime-class build targets (Phase 16 P2.2): the simple-class
 # package targets and the terminal toolset closure are composed from
@@ -485,8 +491,10 @@ runtime_terminal::stage_payload $sys_dir
 #
 # The Falkon/WebEngine payload closure is runtime_browser::payload_libs
 # (run/runtime-browser.inc — the exact former inline list);
-# exclude_lib is the same membership test. P2.2 is exclusion-only:
-# falkon's payload is NOT staged here (P2.6). The Tier-0 exceptions
+# exclude_lib is the same membership test. This loop stays
+# exclusion-only: falkon's payload is staged by bake::stage (img mode)
+# into pkg/falkon/payload and served via rom_pkg, never here. The
+# Tier-0 exceptions
 # below (ld*, rump*, vfs_rump) stay inline — they are storage-chain
 # properties of the media, not browser properties.
 #
@@ -797,6 +805,20 @@ config
       # pushes the bottom beyond the 768px display.
       + assign | label_prefix: pkg_runtime_simple -> textedit | target: screen
                | xpos: 50 | ypos: 80 | width: 512 | height: 493 | maximized: no
+      #
+      # Falkon (P2.6): window_list/window_layout runtime evidence
+      # (docs/evidence/phase16-p26-browser-acceptance.md) shows its
+      # QtWebEngine main window keeps a 787x569 client — a smaller
+      # resize request is clamped up to that size — so the generic
+      # fallback left its frame center right of/below the pkg_runtime
+      # assign region and its bottom past the 768px display. Size the
+      # rule to the observed client so the assign request equals it,
+      # and place it so the client center (393,284) lands inside the
+      # region (report rect (5,108) -> center (398,392)) while the
+      # decorated frame (stock decorator margins 20/4/4/4) stays fully
+      # on screen.
+      + assign | label_prefix: pkg_runtime_browser -> falkon | target: screen
+               | xpos: 5 | ypos: 80 | width: 787 | height: 569 | maximized: no
       + assign | label_prefix: pkg_runtime | target: screen
                | xpos: 50 | ypos: 300 | width: 320 | height: 240 | maximized: no
     + press   | key: BTN_LEFT  | action: drag
@@ -909,6 +931,7 @@ config
     + tasklist | source: wm
     + tasklist_static_rules
       + assign | label_prefix: pkg_runtime_simple -> textedit | target: screen | xpos: 50 | ypos: 80 | width: 512 | height: 493 | maximized: no
+      + assign | label_prefix: pkg_runtime_browser -> falkon | target: screen | xpos: 5 | ypos: 80 | width: 787 | height: 569 | maximized: no
       + assign | label_prefix: pkg_runtime | target: screen | xpos: 50 | ypos: 300 | width: 320 | height: 240 | maximized: no
     + vfs
       + dir dev
@@ -1138,7 +1161,7 @@ if {[info exists ::env(SPONGE_FB_SWITCH)] && $::env(SPONGE_FB_SWITCH) eq "on"} {
 # SPONGE_GROUPED_UI=on — the P2.4 D16R.11 grouped-runtime UI acceptance arm
 # ===========================================================================
 #
-# The claim under test: REAL launcher input reaches both grouped
+# The claim under test: REAL launcher input reaches all three grouped
 # runtime classes and produces the D16R.11 acceptance shape per class
 # (first paint + a real typed-input event with a measurable rendered
 # delta). The probe (test/grouped_ui_probe) drives nothing itself: it
@@ -1146,10 +1169,11 @@ if {[info exists ::env(SPONGE_FB_SWITCH)] && $::env(SPONGE_FB_SWITCH) eq "on"} {
 # launcher menu entry clicks over the usb-tablet path, send-key typing)
 # and verifies via Capture pixels + the wm window_list / layouter
 # window_layout / focus reports that the resulting windows belong to
-# pkg_runtime_simple / pkg_runtime_terminal. The window label prefix is
-# the class binding — the evidence cannot come from a different
-# runtime. Browser/falkon first paint is NOT asserted here: it is P2.6
-# scope (docs/plans/phase16-runtime-overhaul.md).
+# pkg_runtime_simple / pkg_runtime_terminal / pkg_runtime_browser. The
+# window label prefix is the class binding — the evidence cannot come
+# from a different runtime. The browser/falkon leg (P2.6) asserts first
+# paint + basic typed input only; page load / DHCP / HTTP stay follow-up
+# (criterion 15).
 #
 # Off by default, like every other product-media test arm: the shipped
 # media carries no probe and no extra relay policy. The arm uses the
@@ -1165,10 +1189,10 @@ if {$grouped_ui} {
 
 	# The probe's observation ROMs on report_rom relays: the launcher
 	# feed, the wm window list, the layouter's placement/focus reports,
-	# and the two class state reports (the grouped-topology binding).
+	# and the three class state reports (the grouped-topology binding).
 	set gu_cfg [string map [list \
 		"    + policy | label: alpha_probe -> sponge_de_launcher | report: sponge-de -> launcher" \
-		"    + policy | label: alpha_probe -> sponge_de_launcher | report: sponge-de -> launcher\n    + policy | label: grouped_ui_probe -> launcher      | report: sponge-de -> launcher\n    + policy | label: grouped_ui_probe -> window_list   | report: wm -> window_list\n    + policy | label: grouped_ui_probe -> window_layout | report: layouter -> window_layout\n    + policy | label: grouped_ui_probe -> focus         | report: layouter -> focus\n    + policy | label: grouped_ui_probe -> st_simple     | report: pkg_runtime_simple -> state\n    + policy | label: grouped_ui_probe -> st_terminal   | report: pkg_runtime_terminal -> state"] \
+		"    + policy | label: alpha_probe -> sponge_de_launcher | report: sponge-de -> launcher\n    + policy | label: grouped_ui_probe -> launcher      | report: sponge-de -> launcher\n    + policy | label: grouped_ui_probe -> window_list   | report: wm -> window_list\n    + policy | label: grouped_ui_probe -> window_layout | report: layouter -> window_layout\n    + policy | label: grouped_ui_probe -> focus         | report: layouter -> focus\n    + policy | label: grouped_ui_probe -> st_simple     | report: pkg_runtime_simple -> state\n    + policy | label: grouped_ui_probe -> st_terminal   | report: pkg_runtime_terminal -> state\n    + policy | label: grouped_ui_probe -> st_browser    | report: pkg_runtime_browser -> state"] \
 		$gu_cfg]
 
 	set gu_cfg [string map [list "+ start alpha_probe | caps: 200 | ram: 16M" {+ start grouped_ui_probe | caps: 200 | ram: 32M
@@ -1183,6 +1207,7 @@ if {$grouped_ui} {
     + service ROM | label: focus         | + child report_rom
     + service ROM | label: st_simple     | + child report_rom
     + service ROM | label: st_terminal   | + child report_rom
+    + service ROM | label: st_browser    | + child report_rom
     + any-service
       + parent
       + any-child
@@ -1256,7 +1281,7 @@ if {$grouped_ui} {
 # Tier-0 init configuration
 # ========================================================================
 
-set tier0_config [supervisor::tier0 {
+set tier0_config [subst [supervisor::tier0 {
 config
 + parent-provides
   + service ROM
@@ -1335,6 +1360,7 @@ config
     + policy | label_prefix: ps2  | + device ps2
     + policy | label_prefix: fb   | info: yes | + pci | class: VGA
     + policy | label_prefix: usb  | info: yes | + pci | class: USB
+    + policy | label_prefix: nic  | info: yes | + pci | class: ETHERNET
     @DRIVER_PLATFORM_POLICIES@
 
 # The Uplink<->Nic bridge. A SYSTEM SERVICE, not part of any driver
@@ -1357,6 +1383,56 @@ config
   + route
     + service Timer | + child timer
     + any-service   | + parent | + any-child
+
+#
+# P2.6 falkon-startup network/RTC stack (the run/sponge-falkon-disk.run
+# proven pair, shared with run/sponge-net-probe.run): ipxe_nic is an
+# Uplink CLIENT (dde_ipxe e1000) bridged by nic_uplink to a Nic
+# session; falkon's lwip vfs plugin DHCPs over it at startup (the
+# plugin's config blocks until the interface is configured — no Nic,
+# no falkon window). pc_rtc + system_rtc are the gems system_clock
+# pair: falkon's vfs <rtc/> opens an Rtc session at mount ("denied
+# Rtc-session" stops falkon at construction, docs/evidence
+# phase16-runtime-rom-failures.md lineage). The system node routes
+# Nic/Rtc/Uplink to these children EXPLICITLY: nic_router also
+# provides Nic+Uplink, so an any-child query would be ambiguous
+# (sandbox/child.cc "ambiguous routes to service").
+#
++ start nic_uplink | caps: 200 | ram: 8M
+  + provides
+    + service Uplink
+    + service Nic
+  + config | verbose: yes
+  + route
+    + service Timer | + child timer
+    + any-service | + parent
+
++ start nic | caps: 250 | ram: 10M
+  + binary ipxe_nic
+  + route
+    + service ROM | label_last: ld.lib.so | + parent
+    + service Dma | + child platform
+    + service Platform | + child platform
+    + service ROM | + parent
+    + service PD | + parent
+    + service RM | + parent
+    + service CPU | + parent
+    + service LOG | + parent
+    + service Timer | + child timer
+    + service Uplink | + child nic_uplink
+
++ start pc_rtc | caps: 100 | ram: 2M
+  + provides | + service Rtc
+  + route
+    + service Timer | + child timer
+    + any-service | + parent
+
++ start system_rtc | caps: 100 | ram: 2M
+  + provides | + service Rtc
+  + route
+    + service Rtc | + child pc_rtc
+    + service Timer | + child timer
+    + any-service | + parent
 
 + start ahci | caps: 5000 | ram: 128M
   + provides | + service Block
@@ -1393,6 +1469,7 @@ config
       + rump | fs: ext2fs | ram: 48M | writeable: yes
     + policy | label_prefix: rom_sys | root: /system     | writeable: no
     + policy | label_prefix: rom_lib | root: /system/lib | writeable: no
+    [runtime_browser::vfs_policy]
   + route
     + service ROM | label_last: ld.lib.so     | + parent
     + service ROM | label_last: vfs.lib.so    | + parent
@@ -1423,6 +1500,12 @@ config
     + any-service
       + parent
       + any-child
+
+# P2.6 browser payload serving: falkon's ~509 MiB closure (binary +
+# WebEngine libs + Qt tars, staged at /system/pkg/falkon/payload by
+# bake::stage) served as ROM — the shared fragment of
+# run/runtime-browser.inc, byte-identical on every product media.
+[runtime_browser::rom_pkg_node vfs]
 
 + start nitpicker | ram: 16M
   + provides
@@ -1560,6 +1643,13 @@ config
   + route
     + service ROM | label: config | + child rom_sys | label: init/system.config
     + service ROM | label_last: ld.lib.so | + parent
+    #
+    # falkon's payload ROMs (P2.4: the BROWSER class owns them, so the
+    # rules are pkg_runtime_browser-scoped — run/runtime-grouped.inc;
+    # P2.6: served from disk via rom_pkg below). BEFORE the generic
+    # .lib.so rule: the WebEngine closure exists only in the payload.
+    #
+    [runtime_grouped::falkon_rom_rules]
     + service ROM | label_suffix: .lib.so | + child rom_lib
     + service ROM | label_last: focus | + child report_rom
     + service ROM | label_last: hover | + child report_rom
@@ -1577,6 +1667,17 @@ config
     # the SeaBIOS/GRUB2 media actually carries a framebuffer tag is a
     # separate, measured question (docs/15 §8).
     + service ROM | label_last: platform_info | + parent
+    #
+    # P2.6: falkon's startup sessions, pinned explicitly. Nic goes to
+    # the ipxe_nic/nic_uplink falkon stack and Rtc to the system_clock
+    # pair (both above); Uplink stays pinned to nic_router so a future
+    # driver package (vct install pc_nic) keeps the product bridge and
+    # the two Nic/Uplink providers can never make an any-child query
+    # ambiguous (sandbox/child.cc "ambiguous routes to service").
+    #
+    + service Nic   | + child nic_uplink
+    + service Rtc   | + child system_rtc
+    + service Uplink | + child nic_router
     + service ROM | + child rom_sys
     + service Gui | + child nitpicker
     + service Capture | + child nitpicker
@@ -1586,9 +1687,11 @@ config
     + any-service
       + parent
       + any-child
-- }]
+- }]]
 set tier0_config [driver_runtime::expand $tier0_config \
                        [list @DRIVER_PLATFORM_POLICIES@]]
+runtime_grouped::assert_tier0 $tier0_config
+runtime_browser::assert_tier0 $tier0_config vfs
 install_config $tier0_config
 
 #
@@ -1675,6 +1778,7 @@ set boot_modules { }
 # seeds the manifest and starts it inside driver_runtime.
 foreach m { core-sel4.a ld-sel4.lib.so init timer report_rom nitpicker platform acpi pci_decode \
             ahci part_block vfs cached_fs_rom nic_router \
+            ipxe_nic nic_uplink pc_rtc system_rtc \
             ps2 pc_usb_host usb_hid event_filter pointer } {
 	lappend boot_modules $m
 }
@@ -1775,6 +1879,8 @@ if {[file exists $ld_check]} {
 append qemu_args " -machine q35 -cpu Skylake-Client "
 append qemu_args " -nographic -m 6G "
 append qemu_args " -device nec-usb-xhci,id=xhci -device usb-tablet "
+# P2.6: the falkon-startup NIC (bound by ipxe_nic inside the guest).
+append qemu_args " -device e1000 "
 
 #
 # SPONGE_GROUPED_UI: open the QMP control socket and source the shared
@@ -1864,10 +1970,14 @@ if {$fail_mode} {
 	#   QMP-TARGET tablet <x> <y>   focus click in the terminal window
 	#   QMP-TARGET type echo grouped-ok  typed input, terminal class
 	#   QMP-TARGET key ret          submit, then execution delta
+	#   QMP-TARGET tablet <x> <y>   panel launcher toggle (third open)
+	#   QMP-TARGET tablet <x> <y>   browser-class launcher menu entry
+	#   QMP-TARGET tablet <x> <y>   focus click (browser URL bar)
+	#   QMP-TARGET type sponge      typed input, browser class
 	#
 	# Every gate is an explicit alternation with the probe's FAIL
 	# marker (bounded, fail-loud — never a silent hang), and the single
-	# `grouped-ui-probe: PASS` is gated LAST, only after both classes
+	# `grouped-ui-probe: PASS` is gated LAST, only after all classes
 	# passed first paint + typed input and the terminal produced output.
 	# Gate patterns carry no trailing
 	# `.*`: a QMP-TARGET line co-buffered after a gate line must remain
@@ -1966,10 +2076,39 @@ if {$fail_mode} {
 			exit 1
 		}
 
+		# QMP-TARGET tablet: panel toggle + browser-class menu entry
+		# (falkon). The first-paint gate carries the longer browser
+		# budget: falkon's WebEngine closure resolves from disk before
+		# its window can appear. No page-load gate.
+		qmp_exec_target $qmp_chan 120
+		qmp_exec_target $qmp_chan 120
+		run_genode_until {(grouped-ui-probe: browser-class first paint|grouped-ui-probe: FAIL)} 600 $qemu_spawn_id
+		if {[string first "grouped-ui-probe: FAIL" $output] >= 0} {
+			set reason [grouped_ui_fail_reason $output]
+			if {$reason eq ""} {
+				set reason "browser-class first paint"
+			}
+			puts "\nsponge-desktop-disk: GROUPED UI FAIL — $reason\n"
+			exit 1
+		}
+
+		# QMP-TARGET tablet (URL-bar focus) + QMP-TARGET type
+		qmp_exec_target $qmp_chan 120
+		qmp_exec_target $qmp_chan 120
+		run_genode_until {(grouped-ui-probe: browser-class typed delta|grouped-ui-probe: FAIL)} 180 $qemu_spawn_id
+		if {[string first "grouped-ui-probe: FAIL" $output] >= 0} {
+			set reason [grouped_ui_fail_reason $output]
+			if {$reason eq ""} {
+				set reason "browser-class typed delta"
+			}
+			puts "\nsponge-desktop-disk: GROUPED UI FAIL — $reason\n"
+			exit 1
+		}
+
 		run_genode_until {grouped-ui-probe: PASS} 120 $qemu_spawn_id
 		puts "sponge-desktop-disk: GROUPED UI PASS — real launcher input reached\
- the simple-class and terminal-class runtimes (first paint + typed input each,\
- terminal command output verified)"
+ the simple-class, terminal-class and browser-class runtimes (first paint +\
+ typed input each, terminal command output verified)"
 		qmp_disconnect $qmp_chan
 	}
 

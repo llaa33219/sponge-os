@@ -397,7 +397,13 @@ namespace eval runtime_grouped {
     # runtime_grouped::assert_tier0 <tier0_config_text>
     #
     # The falkon rom_pkg rules live in the Tier-0 `system`-child route,
-    # not in system.config — assert them where they are written.
+    # not in system.config — assert them where they are written. Also
+    # asserts the ORDERING the payload serving depends on: the rules
+    # must sit BEFORE the generic `label_suffix: .lib.so -> rom_lib`
+    # rule, because the WebEngine closure exists only in the payload
+    # root — a falkon .lib.so request that reached the generic rule
+    # first would resolve against /system/lib and fail before rom_pkg
+    # ever saw it.
     #
     proc assert_tier0 { config_text } {
         variable browser_node
@@ -411,8 +417,22 @@ namespace eval runtime_grouped {
         _forbid_line $config_text "label_prefix: pkg_runtime -> falkon" \
             "the legacy falkon payload rule"
 
+        set first_rule [string trimleft [lindex [split [falkon_rom_rules] "\n"] 0]]
+        set rules_pos  [string first $first_rule $config_text]
+        set libso_pos  [string first \
+            "+ service ROM | label_suffix: .lib.so | + child rom_lib" $config_text]
+        if {$libso_pos < 0} {
+            error "runtime_grouped: structural assertion failed — the generic \
+                   .lib.so -> rom_lib rule is missing from the Tier-0 config"
+        }
+        if {$rules_pos > $libso_pos} {
+            error "runtime_grouped: structural assertion failed — the falkon \
+                   rom_pkg rules must precede the .lib.so -> rom_lib rule \
+                   (payload libs exist only in the payload root)"
+        }
+
         puts "runtime_grouped: falkon rom_pkg routing verified \
-               (${browser_node} scoped)"
+               (${browser_node} scoped, before .lib.so resolution)"
         return
     }
 }
