@@ -24,3 +24,30 @@ imported_by: tool/pkg_import
 # Total bin closure: ~540MB. See PAYLIST for the full staged inventory.
 transitive_bin_closure_size: ~540MB
 transitive_bin_archives: 25
+#
+# --- local rebuild addendum (2026-10-31, uncommitted) ---
+# The 2026-04-22 depot closure's libc/vfs libs referenced the pre-26.08
+# Genode::Timeout API and the pre-26.08 VFS factory interface. Ten
+# payload libraries were replaced by builds of the vendored Genode
+# 26.08 tree (make -C genode/build/x86_64 lib/libc lib/vfs lib/vfs_lwip
+# lib/vfs_oss lib/vfs_pipe lib/vfs_capture lib/vfs_gpu
+# lib/vfs_jitterentropy lib/vfs_xoroshiro KERNEL=sel4 BOARD=pc), copied
+# from bin/<name>.lib.so (stripped install artifacts). All remaining
+# payload files are still the depot bytes above.
+# vfs_qtwebengine_shm.lib.so was removed (not rebuildable: no published
+# source matches the 26.08 vfs API); see PAYLIST 'missing' and
+# docs/evidence/phase16-p26-payload-rebuild.md for the exact evidence.
+#
+# --- qtwebengine_shm source port (2026-10-31, uncommitted) ---
+# vfs_qtwebengine_shm.lib.so is now staged again, built from a
+# deliberate source port in repos/sponge/lib/src/vfs_qtwebengine_shm/
+# (make -C genode/build/x86_64 lib/vfs_qtwebengine_shm KERNEL=sel4
+# BOARD=pc, staged from bin/vfs_qtwebengine_shm.lib.so stripped).
+# Base recipe: cproc/src/vfs_qtwebengine_shm 2026-10-23
+#   URL: https://depot.genode.org/cproc/src/vfs_qtwebengine_shm/2026-10-23.tar.xz
+#   SHA-256: 795045d08967dd26cfca313c2869fc531f391d5cc68182d07c33b05e299e04dd
+# adapted from the post-2026-10-16 master VFS API (File_channel/
+# Open_attr/Follow_error) to the vendored 26.08 Vfs_handle model
+# (open(path, unsigned, Vfs_handle **, Allocator &)). The removed
+# depot binary is NOT reused. See
+# docs/evidence/phase16-p27-qtwebengine-shm-port.md.
