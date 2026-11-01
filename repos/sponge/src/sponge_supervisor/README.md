@@ -43,6 +43,41 @@ Every `<start>` node in the supervisor's templates carries
 every rewrite. It is the only restart lever a config owner has, and it
 is deliberately total.
 
+**P3.4 — the lever is also targeted.** The runtime subtrees (every
+`pkg_runtime*` sandbox and `driver_runtime`, all direct children of
+`system`) are stamped with a PER-NAME marker `version="@KILL:<name>@"`
+by `run/supervisor.inc`, and this component keeps a fixed
+name->version table discovered from those markers. A CONTAIN action on
+a fault attributed to one of those children bumps **only that child's**
+table entry: the sibling runtimes and the DE render byte-identical
+bytes and are never rebuilt. Everything else — boot publish, console
+takeover, nominal restore, faults in non-runtime children, faults with
+no attribution — stays a global bump of every slot. Plain `@KILL@`
+templates (the standalone acceptance scenario) keep working against
+the shared global counter, and the first publish renders `1` on every
+node so the boot config matches. Per-node versions are committed only
+after `generate()` succeeded, so a refused publish consumes no
+version.
+
+## Publish and construction witnesses (P3.4)
+
+The publish receipt names the target and the bump size:
+
+```
+published <system> kill=2 target=pkg_runtime_fault bumped=1 (18200 bytes)
+published <system> kill=2 target=global bumped=15 (18200 bytes)
+```
+
+`kill=` is a monotonic publish counter; `target=` is the contained
+child's name or `global`; `bumped=` counts the `<start>` nodes whose
+version this publish actually changed (a targeted containment reads
+`bumped=1`). Separately, the state scan logs **construction-version
+changes**: each child carries its `<start>` version in the sandbox
+state report (`genode/repos/os/src/lib/sandbox/child.cc:378`), so a
+`version-change <name> <old> -> <new>` line is a rebuild receipt. The
+log is capped at 16 lines per scan (`version-change-suppressed N`
+beyond that) — a global rebuild cannot flood the serial line.
+
 ## Phases
 
 | Phase | What it does |
@@ -159,6 +194,20 @@ Own policy (`config` ROM) — all optional:
 | `boot_grace_ms` | 30000 | how long the sandbox may publish nothing at all before that counts as a fault |
 | `ignore_starting` | `yes` | whether a child the sandbox reports as `heartbeat_state="starting"` (never answered a heartbeat) is exempt from the `skipped_heartbeats` fault detection |
 | `ignore_exited` | *(empty)* | comma-separated child names whose `exited` is not a fault (product media: `alpha_probe,cfg_probe`) |
+
+**Per-subtree gates (P3.4).** The policy may carry
+`grace_ms.<name>` / `settle_ms.<name>` overrides, spelled as
+`+ gate | key: grace_ms.<name>=<ms>` rows (a dotted attribute name does
+not survive the HID parser; a dotted key inside a value does, and the
+text scan reads it back). The attributed fault's escalation, re-fault
+grace and CONTAIN settle use the attributed values when present and
+the globals otherwise; the console phase and RELEASE keep the globals —
+a console takeover destroys the whole subtree and is not a per-child
+event. Product defaults are unchanged until a policy opts a name in;
+the `SPONGE_SUPERVISOR_TEST=contain` arm is the exercised example
+(`grace_ms.pkg_runtime_fault=3000`, `settle_ms.pkg_runtime_fault=1000`
+— the grace must outlast the ~1250 ms state-report lag after a kill,
+measured in `docs/evidence/phase16-runtime-p34.md`).
 
 `templates` ROM — one document containing a `<system>` and a
 `<system_console>` element, each wrapping the `<config>` element that is
