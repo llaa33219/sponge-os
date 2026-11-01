@@ -1,0 +1,30 @@
+<!--
+  excl_a — test-only fixture for the exclusive-group placement
+  regression (run/sponge-pkg-exclusive.run).
+
+  The INCUMBENT of the test pair: autostarted, so a single install both
+  registers it and puts it into the running set, where it holds the
+  harmless "testfb" exclusive group. excl_b then attempts to claim the
+  same group and must be refused on FIRST execution — the regression
+  under test is the placement of the pre-flight (docs/12 §4.6): the
+  check must run in _do_install before admission and mutation, not in
+  the duplicate-replay path.
+
+  Payload is the existing `hello` binary (repos/sponge/src/pkg_hello):
+  harmless, GUI-free, never actually spawned here (the scenario runs no
+  runtime). No shipped package declares the "testfb" group, so this
+  fixture cannot perturb product topologies.
+-->
+<package>
+  <name>excl_a</name>
+  <version>1.0</version>
+  <description>Exclusivity regression fixture: running holder of the testfb group.</description>
+
+  <binary>hello</binary>
+  <quota ram="8M" caps="256"/>
+
+  <exclusive group="testfb"/>
+  <autostart/>
+
+  <dependencies/>
+</package>

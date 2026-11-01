@@ -1,0 +1,27 @@
+<!--
+  excl_b — test-only fixture for the exclusive-group placement
+  regression (run/sponge-pkg-exclusive.run).
+
+  The CHALLENGER of the test pair: autostarted (so the install
+  pre-flight inspects it) and claiming the same "testfb" exclusive
+  group as excl_a. Installing it while excl_a runs must be REFUSED with
+  `exclusive-conflict` naming excl_a, leaving no root, no installed
+  entry and no config write behind.
+
+  Payload is the existing `config_witness` binary
+  (repos/sponge/src/test/config_witness): harmless and never actually
+  spawned here (the scenario runs no runtime).
+-->
+<package>
+  <name>excl_b</name>
+  <version>1.0</version>
+  <description>Exclusivity regression fixture: refused claimant of the testfb group.</description>
+
+  <binary>config_witness</binary>
+  <quota ram="4M" caps="100"/>
+
+  <exclusive group="testfb"/>
+  <autostart/>
+
+  <dependencies/>
+</package>

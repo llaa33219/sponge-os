@@ -1,0 +1,219 @@
+#
+# \brief  Sponge OS exclusive-group placement regression (Phase 16 P3.3)
+# \author Sponge OS contributors
+# \date   2026
+#
+# Pins the placement of the install pre-flight for exclusive groups
+# (docs/12-package-format.md §4.6): the check must run in _do_install on
+# FIRST execution — before admission and before any state mutation — and
+# a byte-identical duplicate request must replay the cached refusal
+# WITHOUT re-running policy.
+#
+# The regression this catches: the pre-flight used to live in the
+# duplicate-REPLAY path (_replay_last_result), so the FIRST execution
+# installed a conflicting <autostart/> package without any check (two
+# claimants of one hardware group — the dark-screen race) and only a
+# byte-identical re-send reported the conflict, after the damage.
+#
+# Test-only fixtures (pkg/excl_a, pkg/excl_b): both autostarted, both
+# claiming the harmless "testfb" exclusive group, payloads are the
+# existing hello / config_witness binaries. NOT real fb packages: the
+# pair must never reach hardware to prove the refusal.
+#
+# Single boot, driven by test/exclusivity_probe:
+#   1. install excl_a            -> ok; broadcast shows excl_a/
+#                                  running="yes" (autostart rule puts
+#                                  it into the running set = the peer).
+#   2. install excl_b            -> FIRST-EXECUTION REFUSAL:
+#                                  status="exclusive-conflict" naming
+#                                  peer=excl_a group=testfb, and the
+#                                  broadcast never shows excl_b (no
+#                                  root, no installed entry).
+#   3. duplicate install excl_b  -> the byte-identical request (same
+#                                  op|pkg|seq) re-sent on the launcher
+#                                  channel is answered on
+#                                  launcher_result with a result
+#                                  BYTE-IDENTICAL to the refusal.
+#
+# Gates (one boot; the two-argument run_genode_until respawns QEMU per
+# call, so later gates chain on $qemu_spawn_id — the sponge-config-
+# authority idiom):
+#   A. 'exclusive-group check on 'excl_b''  — the policy RAN on the
+#      first execution (its log line is the observable).
+#   B. 'exclusivity-probe: first-refusal ok'.
+#   C. REPLAY WINDOW (maybe): a second 'exclusive-group check on
+#      'excl_b'' line before 'exclusivity-replay: DONE byte-identical'
+#      means policy RE-RAN on the replay -> RED. The window closes on
+#      the probe's DONE landmark, so silence is a harness failure, not
+#      a verdict.
+#
+# Build:
+#   make -C genode/build/x86_64 run/sponge-pkg-exclusive \
+#       KERNEL=sel4 BOARD=pc
+#
+
+build { core lib/ld init timer server/report_rom lib/vfs sponge_pkgd \
+        pkg_hello test/config_witness test/exclusivity_probe }
+
+create_boot_directory
+
+install_config {
+config
++ parent-provides
+  + service ROM
+  + service PD
+  + service CPU
+  + service LOG
+  + service IRQ
+  + service IO_MEM
+  + service IO_PORT
+
++ default | caps: 200 | ram: 4M
++ default-route
+  + any-service
+    + parent
+    + any-child
+
++ start timer
+  + provides | + service Timer
+
++ start report_rom | ram: 4M
+  + provides
+    + service Report
+    + service ROM
+  + config | verbose: no
+    + policy | label: sponge_pkgd -> request              | report: exclusivity_probe -> request
+    + policy | label: exclusivity_probe -> result         | report: sponge_pkgd -> result
+    + policy | label: exclusivity_probe -> installed      | report: sponge_pkgd -> installed
+    + policy | label: sponge_pkgd -> launcher_request     | report: exclusivity_probe -> launcher_request
+    + policy | label: exclusivity_probe -> launcher_result | report: sponge_pkgd -> launcher_result
+    + policy | label: pkg_runtime -> config               | report: sponge_pkgd -> runtime
+
++ start sponge_pkgd | caps: 200 | ram: 16M
+  + config
+    + launcher_request
+  + route
+    + service ROM | label_last: request | + child report_rom
+    + service ROM | label_last: launcher_request | + child report_rom
+    + service Report | + child report_rom
+    + any-service
+      + parent
+      + any-child
+
++ start exclusivity_probe | caps: 200 | ram: 16M
+  + config | first: excl_a | second: excl_b | group: testfb
+  + route
+    + service Timer | + child timer
+    + service ROM | label_last: result | + child report_rom
+    + service ROM | label_last: installed | + child report_rom
+    + service ROM | label_last: launcher_result | + child report_rom
+    + service Report | + child report_rom
+    + any-service
+      + parent
+      + any-child
+- }
+
+#
+# Test-only metadata staging: the excl_a/excl_b fixture pair (backed by
+# the existing hello / config_witness binaries, never spawned — the
+# scenario runs no runtime) plus the derived index.
+#
+set staged_pkgs { excl_a excl_b }
+foreach pkg $staged_pkgs {
+	set src "${genode_dir}/../pkg/$pkg/metadata.xml"
+	if {![file exists $src]} {
+		error "package metadata not found: $src"
+	}
+	exec cp -L $src "bin/pkg_$pkg.xml"
+}
+
+set index_fh [open "bin/pkg_index.xml" w]
+puts $index_fh "<packages>"
+foreach pkg $staged_pkgs {
+	puts $index_fh "  <pkg name=\"$pkg\"/>"
+}
+puts $index_fh "</packages>"
+close $index_fh
+
+set boot_modules [build_artifacts]
+foreach m { pkg_excl_a.xml pkg_excl_b.xml pkg_index.xml } {
+	lappend boot_modules $m
+}
+
+build_boot_image $boot_modules
+
+append qemu_args " -nographic -m 1G "
+
+#
+# All gates observe ONE QEMU boot. The first call spawns the boot; every
+# later gate chains on the same spawn ($qemu_spawn_id). The replay
+# window is closed by the probe's DONE landmark, so a silent timeout is
+# a harness failure, not a clean verdict.
+#
+proc gate { pattern timeout_s } {
+	global qemu_spawn_id
+	if {$qemu_spawn_id eq ""} {
+		if {[catch { run_genode_until $pattern $timeout_s } err]} {
+			puts "sponge-pkg-exclusive: FAIL harness ($err)"
+			exit 1
+		}
+		match_max -i $qemu_spawn_id 200000
+		return
+	}
+	match_max -i $qemu_spawn_id 200000
+	set timeout $timeout_s
+	expect {
+		-i $qemu_spawn_id -re $pattern { }
+		-i $qemu_spawn_id eof {
+			puts "sponge-pkg-exclusive: FAIL harness (QEMU died)"
+			exit 1
+		}
+		timeout {
+			puts "sponge-pkg-exclusive: FAIL harness (no match for '$pattern' within ${timeout_s}s)"
+			exit 1
+		}
+	}
+}
+
+proc maybe { pattern close_pattern timeout_s } {
+	global qemu_spawn_id
+	match_max -i $qemu_spawn_id 200000
+	set timeout $timeout_s
+	expect {
+		-i $qemu_spawn_id -re $pattern       { return 1 }
+		-i $qemu_spawn_id -re $close_pattern { return 0 }
+		-i $qemu_spawn_id eof {
+			puts "sponge-pkg-exclusive: FAIL harness (QEMU died)"
+			exit 1
+		}
+		timeout {
+			puts "sponge-pkg-exclusive: FAIL harness (neither pattern nor closing landmark within ${timeout_s}s)"
+			exit 1
+		}
+	}
+}
+
+# Gate A: the exclusive policy ran on the FIRST execution of the
+# conflicting install (the pre-fix code ran it only on the replay path).
+gate {exclusive-group check on 'excl_b'} 120
+
+# Gate B: first-execution refusal confirmed in-band (status, peer,
+# group, and no state mutation).
+gate {exclusivity-probe: first-refusal ok} 60
+
+# Gate C: the replay window. A second policy line here means the
+# duplicate RE-RAN policy instead of replaying the cached recipe.
+set reran [maybe {exclusive-group check on 'excl_b'} \
+                 {exclusivity-replay: DONE byte-identical} 30]
+
+if {$reran} {
+	puts "sponge-pkg-exclusive: RED (policy re-ran on the duplicate replay)"
+	exit 1
+}
+
+# The DONE landmark above already proved the byte-identical replay (the
+# probe prints it only after the comparison). Its own PASS follows.
+gate {exclusivity-probe: PASS} 10
+
+puts "sponge-pkg-exclusive: PASS"
+exit 0
