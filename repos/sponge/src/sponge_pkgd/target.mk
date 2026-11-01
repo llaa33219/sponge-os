@@ -8,8 +8,10 @@
 #
 # Sessions: Report + ROM always; an optional File_system session (via the
 # Vfs library) is opened only when <config> carries a <vfs> node, to back
-# the persistent installed-set store (docs/12-package-format.md §13).
-# Purely signal-driven — no Timer, no libc, no Qt, no exceptions.
+# the persistent installed-set store (docs/12-package-format.md §13); the
+# store's bounded poll waits then open one optional Timer session (whose
+# sleep blocks on the connection's private signal receiver — safe from
+# the Bootstrap worker). Signal-driven — no libc, no Qt, no exceptions.
 
 # Module map (Phase 16 P1.3 responsibility split, zero behavior change):
 #   main.cc     - channels (request/result, dedup/replay), emission
