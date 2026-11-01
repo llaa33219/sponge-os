@@ -577,6 +577,28 @@ component must never be able to freeze the desktop. Status after the
   that tears down a healthy desktop on a timer is worse than one that
   does nothing.
 
+  4. **P3.4 — the gates and the containment are scoped per runtime
+     subtree.** The runtime subtrees (`pkg_runtime*`,
+     `driver_runtime`, all direct children of `system`) carry per-name
+     restart markers (`@KILL:<name>@`) in the templates, and a fault
+     attributed to one of them is contained BY NAME: only that child's
+     `<start>` version is bumped, so the sibling runtimes and the DE
+     are never rebuilt (their rendered bytes are unchanged and
+     `Start_model::matches()` keeps them). Global bumps — boot,
+     console, nominal restore, non-runtime faults — are unchanged, as
+     is plain `@KILL@` for the standalone acceptance template. The
+     publish receipt names the target (`target=<name|global>
+     bumped=<n>`) and the state report's per-child construction
+     versions are logged when they change (bounded), which is the
+     rebuild witness. `grace_ms.<name>`/`settle_ms.<name>` policy rows
+     override the escalation and CONTAIN settle per subtree (console
+     and RELEASE stay global). The `contain` arm proves the property on
+     the product topology: a persistent fault in `pkg_runtime_fault` is
+     contained repeatedly with `target=pkg_runtime_fault bumped=1`,
+     sibling and DE construction versions stable, panel shown once, a
+     post-wedge `alpha-probe: PASS`, and no console takeover
+     (`docs/evidence/phase16-runtime-p34.md`).
+
   One structural limitation, recorded honestly: a *persistent* fault
   plus a full-subtree restart lever are mutually exclusive with a fully
   booted desktop, because the supervisor keeps killing a subtree that
@@ -584,8 +606,16 @@ component must never be able to freeze the desktop. Status after the
   therefore the display handover (console disarmed, `phase=1 desktop
   restored`, pixels back to the desktop background), not a second
   `alpha-probe: PASS`; the healthy path is what the five scenario
-  regressions and the control arm prove. Same root as the respawn
-  budget row below.
+  regressions and the control arm prove. P3.4 lifts the limitation for
+  runtime-subtree faults (the `contain` arm reaches its post-wedge
+  `alpha-probe: PASS` because the DE is never rebuilt), but the
+  **revived child's process cannot start in this environment**: config-
+  driven child recreation after a teardown fails at the base layer
+  (`create_thread: invalid PD argument`), which also breaks the
+  pre-existing takeover arm's kill receipt — see
+  `docs/evidence/phase16-runtime-p34.md` §5 for the exact blocker and
+  its pre-P3.3 comparison receipts. Same root as the respawn budget
+  row below.
 - [~] **Broker fault containment — `run/sponge-alpha.run`: evaluated
   2026-10-17, NOT APPLICABLE (deliberately unchanged)**: the supervisor
   was evaluated against alpha as part of the product rollout and does not
