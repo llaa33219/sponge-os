@@ -1,8 +1,7 @@
 # Phase 16 Runtime Overhaul (Work Plan)
 
-> Status: in progress. P0 baseline/audits, P1, and P2 are complete; the
-> P3.1 red scenario and P3.2 provider split have landed. P3.3-P5 remain open.
-> Created
+> Status: in progress. P0 baseline/audits, P1, P2, and P3.1-P3.3 are
+> complete; P3.4-P5 remain open. Created
 > 2026-10-28 on branch `refactor/phase16-runtime-overhaul` (pre-work HEAD
 > `3afb40c922`).
 > Relationship: this is the runtime-overhaul track of the reopened Phase 16
@@ -378,6 +377,20 @@ re-measured (captured either way for P4.2; no requirement that it passes
 here); product scenarios green.
 Commits: `fix(pkgd): remove storage I/O from session create paths` (1-2).
 Owns: the pkgd create-path modules (P1.3 module map).
+Landed: `2c12922a7e` (bootstrap metadata cache — dispatch parses from
+bounded owned memory, no ROM session at dispatch), `013a4a262f` (store
+flush on the Bootstrap worker — Semaphore/Signal_transmitter handoff,
+strict global FIFO with dequeue de-dup, recipe-free busy error, inline
+idle drain, synchronous fallback), `513d64e658` (store wait discipline —
+the entrypoint-affine `commit_and_wait` replaced by timer-paced polls
+plus the non-blocking `commit()` wakeup), plus the exclusive-group
+placement fix `d80ff8d4c3` and the two red-first regressions
+(`0509bba660`/`947f288c47` exclusivity, `1af54a29ff` dispatch-liveness).
+The dispatch-liveness scenario flipped red -> green at the worker
+handoff; `run/sponge-persist-disk` (real disk storage, two boots) is
+green end to end; `run/sponge-pkg-driver` reached its DHCP gate
+(leased 10.0.2.15) in the re-measurement — captured for P4.2, not
+dispositioned here. Receipt: `docs/evidence/phase16-runtime-p33.md`.
 
 **P3.4 Supervisor gates.**
 Scope the existing supervisor gate vocabulary (`startup_grace_ms`,
