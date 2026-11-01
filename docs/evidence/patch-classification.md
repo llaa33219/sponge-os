@@ -6,6 +6,9 @@ analysis; AGENTS.md §5.6)
 P4.1 (`docs/plans/phase16-runtime-overhaul.md`): all **33** ledger rows now
 classified **keep / remove / replace**, with rows #32/#33 (the P3.4
 lifecycle repairs), the P3.3/P3.4 receipts, and the D16R.17 P4.2 gate.
+**updated 2026-11-02 (P4.2)** for the uplink disposition: **fixed in
+place** at `48a946ba15` by rows #32/#33 — see `forwarded-create-starvation.md`
+§9; the class census is unchanged and no row is pruned here.
 **Scope:** every Sponge-local change on top of the pinned Genode 26.08 fork
 (`genode/` submodule, `sponge-os-genode`): the **33 patch-ledger rows** of
 `docs/11-environment.md` §4 and the **unledgered fork-local commits** in the
@@ -108,15 +111,18 @@ Drop-When cell names no scenario, the removal-verification entry below says
   **not** pre-approved removals. They may be revisited only after the
   architecture refactor's topology gates are green (Part E); until then the
   verdict stands as KEEP.
-- **The P4.2 gate (D16R.17) binds every create-chain row.** The NIC uplink
-  regression (`run/sponge-pkg-driver` DHCP gate) is a regression of the
-  create chain around row #31 and its disposition is **still open** — P3.3's
-  re-measurement reached the DHCP gate once (`gate-pkg-driver-remeasure.log`,
-  `docs/evidence/phase16-runtime-p33.md` §8.4) but that single data point is
-  an input to P4.2, not a disposition (fixed / host-dependent / flaky is
-  P4.2's call). Until the P4.2 disposition exists, **no create-chain row is
-  pruned**: rows #25 and #28–#33, unledgered `73e5859da8`. Their Drop-When
-  cells in `docs/11-environment.md` now say so.
+- **The P4.2 gate (D16R.17) binds every create-chain row — DISPOSITIONED
+  2026-11-02.** The NIC uplink regression (`run/sponge-pkg-driver` DHCP
+  gate) was a regression of the create chain around row #31; P4.2
+  root-caused it (the rows #32/#33 session-lifecycle corruption class,
+  exposed by the non-blocking chain's churn —
+  `docs/evidence/forwarded-create-starvation.md` §9) and classified it
+  **fixed in place** at `48a946ba15`. D16R.17's sequencing (capture →
+  classify → dispose) is complete, so the gate no longer *blocks* pruning
+  by its absence — but **P4.3 owns every pruning decision and has not run**;
+  until it does, rows #25 and #28–#33, unledgered `73e5859da8`, are simply
+  unpruned **keep** rows as classified below. This document still
+  pre-approves no removal.
 - **Pairs retire together (D16R.10).** Rows #19/#20 (one commit), rows
   #21/#25 (supersession — #21 is not independently revertable), rows
   #28/#29 (the vtable-ABI repair), and rows #32/#33 (the P3.4 lifecycle
@@ -136,7 +142,7 @@ Drop-When cell names no scenario, the removal-verification entry below says
 | Class | Meaning |
 |-------|---------|
 | **keep** | The patch stays. Its Drop-When condition is unmet; it is load-bearing, uncertain, or both. A future conditional removal requires: (1) the Drop-When met, (2) the row's removal-verification evidence green at the post-drop tree, (3) the Part C cluster rules, (4) a solo commit that removes the row and says so (AGENTS.md §5.2). |
-| **remove** | Ready for pruning now. **No row carries this class today** — no Drop-When condition is met and the D16R.17 gate is open (Part D2). |
+| **remove** | Ready for pruning now. **No row carries this class today** — no Drop-When condition is met, and although the D16R.17 gate has produced its disposition (fixed in place, 2026-11-02), pruning itself is P4.3's task and has not run (Part D2). |
 | **replace** | The mechanism is replaced (or already has been) by a different, evidence-backed disposition; the class names what replaces it and what remains to do. Only row #21 carries this class (already superseded in code by #25; ledger consolidation remains, documentation-only). |
 
 ### 4b. Verdict codes (refine the class)
@@ -163,7 +169,13 @@ constraints** (pairs, shared commits, cluster order, open gates).
 **Class census (rows 1–33): keep 32 · remove 0 · replace 1 (row #21,
 already superseded in code by #25 — ledger consolidation only).**
 Unledgered entries: keep 7 · record-only 1. No row's Drop-When is met;
-`remove` is empty by evidence, not by omission.
+`remove` is empty by evidence, not by omission. The **P4.2-gated**
+markers in the Sequencing constraints column record the D16R.17
+sequencing gate; it was **satisfied on 2026-11-02** (the pkg-driver
+uplink regression is dispositioned **fixed in place** —
+`docs/evidence/forwarded-create-starvation.md` §9) and now reads as
+sequencing history. That discharge authorizes no removal: P4.3 has not
+run.
 
 | # | Commit | Class (verdict) | Rationale | Evidence pointer | Drop when | Evidence required before a conditional removal | Sequencing constraints |
 |---|--------|-----------------|-----------|------------------|-----------|-----------------------------------------------|------------------------|
@@ -669,13 +681,19 @@ remains the authoritative wording.
 - **Removal verification (named):** `run/sponge-supervisor-takeover` (two
   PASS runs with real revivals), `SPONGE_SUPERVISOR_TEST=contain` (full
   PASS with second and third victim incarnations), containment-churn,
-  product default; the unpatched control must fail again — i.e. the
-  removal must not silently regress config-driven recreation.
+  product default, **and `run/sponge-pkg-driver` (the DHCP gate — the
+  D16R.17 surface this row with #33 fixes)**; the unpatched control must
+  fail again — i.e. the removal must not silently regress config-driven
+  recreation.
 - **Sequencing constraints:** **paired with row #33 — retire together**
   (P3.4 pair). This row alone re-opens the pending-op `illegal READ` that
   #33 fixes (the failure was deterministic *after* the key-reuse fix).
   Extends the row-#28–#31 create-chain machinery: **P4.2-gated** for any
-  pruning (D16R.17). The ledger Drop-When cell carries the gate.
+  pruning (D16R.17). The ledger Drop-When cell carries the gate. **P4.2
+  disposition (2026-11-02): fixed in place — this row (with #33) is the
+  verified fix of the pkg-driver uplink regression**
+  (`docs/evidence/forwarded-create-starvation.md` §9); the gate is
+  satisfied and reads as sequencing history.
 
 ### Row 33 — `48a946ba15` — base: preserve pending sessions across reissue and destruction
 - **Class:** **keep** (K-U, proven P3.4 lifecycle repair — kept unless
@@ -704,13 +722,18 @@ remains the authoritative wording.
 - **Removal verification (named):** product takeover (`SUPERVISOR TAKEOVER
   PASS`), P3.4 contain (full PASS with real second/third incarnations),
   lean takeover, containment-churn, product default,
-  `sponge-de-pkgd-failure` — zero illegal reads and zero `requested
-  conflicting session ID`.
+  `sponge-de-pkgd-failure`, **and `run/sponge-pkg-driver` (the DHCP gate —
+  the D16R.17 surface this row with #32 fixes)** — zero illegal reads and
+  zero `requested conflicting session ID`.
 - **Sequencing constraints:** **paired with row #32 — retire together**
   (P3.4 pair). Reverting #33 while #32 stands deterministically re-derives
   the `illegal READ`; never ship that intermediate state. Extends the
   row-#28–#31 create-chain machinery: **P4.2-gated** for any pruning
-  (D16R.17). In a wider cluster revert this row goes before the row-#28
+  (D16R.17). **P4.2 disposition (2026-11-02): fixed in place — this row
+  (with #32) is the verified fix of the pkg-driver uplink regression**
+  (`docs/evidence/forwarded-create-starvation.md` §9); the gate is
+  satisfied and reads as sequencing history. In a wider cluster revert this
+  row goes before the row-#28
   commits (it extends `Session_state`/`Pending_op` they introduce). The
   ledger Drop-When cell carries the gate.
 
@@ -917,14 +940,19 @@ Further order rules for this cluster:
   `forwarded-create-starvation.md`, `sponge-upgrade-wedge.md`) is the
   measurement basis for any future drop — the five named scenarios in
   rows #28–#31 are the acceptance set.
-- **P4.2 gate (D16R.17):** the open NIC uplink regression is a regression
-  of this create chain (the fork-commit chain under capture is
-  `74c84f9f0a` → `e0c2706225` → `205b84fcad` → `82f0143d1f`,
-  `docs/evidence/phase16-runtime-patch-io-audit.md` §7). **No pruning of
-  any row of this cluster (nor of rows #32/#33 that extend it) before the
-  P4.2 disposition exists** — and P3.3's single DHCP-gate re-measurement
-  (`docs/evidence/phase16-runtime-p33.md` §8.4) is P4.2 *input*, not a
-  disposition.
+- **P4.2 gate (D16R.17) — DISPOSITIONED 2026-11-02: fixed in place.** The
+  NIC uplink regression was a regression of this create chain (the
+  fork-commit chain under capture is `74c84f9f0a` → `e0c2706225` →
+  `205b84fcad` → `82f0143d1f`, `docs/evidence/phase16-runtime-patch-io-audit.md`
+  §7), root-caused as the rows #32/#33 session-lifecycle corruption class
+  that the chain's churn window exposed (creates complete in every capture;
+  the corruption silently stalls the just-attached uplink and loses teardown
+  close completions) and fixed by the pinned pair `489f977822` +
+  `48a946ba15` — 6/6 current-pin `run/sponge-pkg-driver` runs reach the
+  DHCP gate with zero close co-symptoms
+  (`docs/evidence/forwarded-create-starvation.md` §9). D16R.17's sequencing
+  is complete; no pruning of any row of this cluster (nor of rows #32/#33)
+  happens outside P4.3, which remains unexecuted.
 - **Rows #32/#33 extend this cluster's machinery** (`Session_state`,
   `Pending_op`, `child.{h,cc}`) and were proven against the same
   config-driven recreation path. A future cluster drop that touches the
@@ -1018,7 +1046,12 @@ Application order in the fork (after row #31):
   (then #32) before the row-#28 commits.
 - Both rows carry the D16R.17 **P4.2 gate** in their ledger Drop-When
   cells: they are create-chain machinery; no pruning before the pkg-driver
-  uplink disposition exists.
+  uplink disposition exists. **The disposition landed 2026-11-02: fixed
+  in place, and these two rows are the verified fix**
+  (`docs/evidence/forwarded-create-starvation.md` §9 — 6/6 current-pin
+  `run/sponge-pkg-driver` runs green, zero close co-symptoms). That
+  strengthens their **keep** verdict; it does not pre-approve their
+  removal — their Drop-When (upstream absorption) and the P4.3 gate stand.
 
 ### C6. Generic removal protocol (control escape hatch)
 
@@ -1076,10 +1109,9 @@ landed; row #5 is "Never"; the R-T set is gated on the topology
 reassessment). The single **replace** (row #21) is already carried out in
 code by row #25 — only documentation-only consolidation remains. Per the
 zero-removals policy (§3), the correct and expected outcome of this
-classification is **remove nothing**. Additionally, the create-chain rows
-(#25, #28–#33, `73e5859da8`) are **P4.2-gated**: their conditional removal
-is blocked on the uplink disposition regardless of upstream state
-(D16R.17).
+classification is **remove nothing**. The create-chain rows (#25, #28–#33,
+`73e5859da8`) additionally rode the D16R.17 P4.2 gate, which is now
+satisfied (disposition: fixed in place, 2026-11-02) — see below.
 
 Every future code removal must satisfy, in order:
 1. the row's drop-when condition is **met** (upstream absorption or the
@@ -1091,19 +1123,28 @@ Every future code removal must satisfy, in order:
 4. the drop is its own commit on `main` that removes the ledger row and
    says so (AGENTS.md §5.2).
 
+The create-chain rows (#25, #28–#33, `73e5859da8`) additionally rode the
+D16R.17 P4.2 gate; that gate is now **satisfied** (disposition: fixed in
+place, 2026-11-02), so their remaining blocker is the ordinary one — no
+Drop-When is met — plus P4.3's own execution, which has not run.
+
 ---
 
 ## 10. Part E — reassessment gates and open items
 
-- **The P4.2 uplink disposition is OPEN — create-chain rows are not
-  prunable (D16R.17).** `run/sponge-pkg-driver`'s DHCP gate is a known red
-  on the create chain around row #31. P3.3's re-measurement reached the
-  gate once (`docs/evidence/phase16-runtime-p33.md` §8.4) but the
-  disposition (fixed / host-dependent / flaky / revert / replace) is
-  P4.2's alone. Until it exists: rows #25, #28–#33 and unledgered
-  `73e5859da8` are **not ready for pruning** — their Drop-When cells say
-  so, and the trap stands: never ship a variant that breaks the e1000
-  path (`docs/evidence/sponge-upgrade-wedge.md`, net-zero pair).
+- **The P4.2 uplink disposition is RESOLVED (2026-11-02): fixed in place.**
+  `run/sponge-pkg-driver`'s DHCP gate regressed on the create chain around
+  row #31 and is green again at `48a946ba15` (6/6 serial runs, DHCP offer
+  reached every time, e1000 bound every time, zero `close of ... failed`
+  co-symptoms). Root cause: the rows #32/#33 session-lifecycle corruption
+  class (stale RPC-object-key alias + pending-op lifetime over
+  replaced/freed `Session_state`) exposed by the chain's churn window —
+  full evidence in `docs/evidence/forwarded-create-starvation.md` §9. The
+  create-chain rows' classification is unchanged (**keep**); D16R.17's
+  sequencing is complete. The trap stands forever: never ship a variant
+  that breaks the e1000 path (`docs/evidence/sponge-upgrade-wedge.md`,
+  net-zero pair `500cb2cc8a`+`3df26cf22b`). Pruning of any row remains
+  **P4.3's** decision and has not run.
 - **Rows #32/#33 verdict: KEEP (K-U).** Proven lifecycle repairs with
   red-to-green receipts and unpatched controls
   (`docs/evidence/phase16-runtime-capability-key-reuse.md`,
@@ -1143,7 +1184,8 @@ Every future code removal must satisfy, in order:
   **replace** is row #21, superseded in code by row #25 — the remaining
   action is documentation-only ledger consolidation, never an independent
   revert (pair #21/#25). **remove** is empty because no Drop-When is met
-  and the D16R.17 gate is open — not by omission.
+  — and while the D16R.17 gate has produced its disposition (fixed in
+  place, 2026-11-02), P4.3's pruning has not run — not by omission.
 - **Preserved first:** every seL4 fix (rows #6/#7/#11–#15/#22/#27 and
   `d60ebb3f92`/`aaa279e1cc`/`e16699624d`/`57075c4d26`), every Qt6 fix
   (rows #2/#3/#4/#23 and `87c8ebf33f`), every upstream defect fix
@@ -1156,9 +1198,13 @@ Every future code removal must satisfy, in order:
   the revert order of C1 (now also named in the rows #30/#31 Drop-When
   cells).
 - **Rows #19/#20/#28–#31 are reassess-after-topology**, not pre-approved
-  removals. **Rows #25/#28–#33 + `73e5859da8` are P4.2-gated**: no pruning
-  of any create-chain row before the pkg-driver uplink disposition exists
-  (D16R.17).
+  removals. **Rows #25/#28–#33 + `73e5859da8` rode the D16R.17 P4.2 gate,
+  which is now satisfied** (2026-11-02: the pkg-driver uplink regression is
+  dispositioned **fixed in place** at `48a946ba15` by rows #32/#33 —
+  `docs/evidence/forwarded-create-starvation.md` §9; 6/6 current-pin runs
+  reach the DHCP gate, zero close co-symptoms, e1000 bound every time).
+  Pruning of any create-chain row remains a P4.3 decision that has not run;
+  the e1000 trap is preserved (never ship an upgrade-wedge-style variant).
 - **Documentation-only corrections (Part D1) are distinct from code
   removal candidates (Part D2).** The code-removal candidate set is
   currently **empty**: zero removals is the valid outcome. This table
