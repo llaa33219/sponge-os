@@ -439,6 +439,15 @@ then per executed removal/replacement: `docs(11): retire ledger row #N` +
 `vendor(genode): ...` + `chore(genode): bump the submodule pin` (solo each).
 Owns: `docs/11-environment.md` (serial point), the classification evidence
 file, solo `genode/` pin commits.
+Landed (2026-11-02): `aae9e4b8dc` commits
+`docs/evidence/patch-classification.md` covering **all 33** ledger rows
+with keep/remove/replace classes, evidence pointers, rationale, and
+sequencing constraints (class census: keep 32 · remove 0 · replace 1 =
+row #21, a documentation-only consolidation; rows #32/#33 kept as the
+proven P3.4 pair). `b0b2d63ad2` adds the D16R.17 sequencing gate to the
+Drop When cells of rows #25 and #28–#33 (create-chain rows not prunable
+before the P4.2 uplink disposition). `tool/patches verify` green on all
+33 rows. No pruning performed — P4.2 and P4.3 untouched.
 
 **P4.2 Uplink disposition.**
 Root-cause the NIC uplink regression against the refactored create path
