@@ -1,7 +1,9 @@
 # Phase 16 Runtime Overhaul (Work Plan)
 
-> Status: in progress. P0 baseline/audits, P1, P2, and P3.1-P3.3 are
-> complete; P3.4-P5 remain open. Created
+> Status: in progress. P0 baseline/audits, P1, P2, P3.1-P3.3, and P3.4
+> are complete; P3.4's victim-revival gate is blocked by a pre-existing
+> base-layer child-recreation failure (see
+> `docs/evidence/phase16-runtime-p34.md` §5); P4-P5 remain open. Created
 > 2026-10-28 on branch `refactor/phase16-runtime-overhaul` (pre-work HEAD
 > `3afb40c922`).
 > Relationship: this is the runtime-overhaul track of the reopened Phase 16
@@ -403,6 +405,25 @@ DE alive in the same scenario family; product scenarios green.
 Commits: `feat(supervisor): scope lifecycle gates per runtime subtree` (1).
 Owns: `repos/sponge/src/sponge_supervisor/`, the gate values in the runtime
 includes.
+
+Landed: `6d41b05937` (per-name `@KILL:<name>@` markers + the fixed
+name->version table + the `target=/bumped=` publish receipt + bounded
+construction-version-change logging + attribution + per-subtree
+`grace_ms.<name>`/`settle_ms.<name>` lookups), `70e57cd384` (run-side
+stamping/policy/arm machinery in the shared includes), `105f5fed9e`
+(per-child heartbeat exposure in the five product scenarios +
+`driver_runtime.inc`, byte-identical defaults, and the red-first
+`SPONGE_SUPERVISOR_TEST=contain` arm), `c280ed1aad` (the flip: CONTAIN
+bumps only the attributed runtime child). The contain arm fails red on
+the old global behaviour (target=global, 13 sibling construction
+versions rebuilt) and proves containment-by-name green
+(`target=pkg_runtime_fault bumped=1`, siblings and DE stable, panel
+shown once, post-wedge `alpha-probe: PASS`, no console). The victim's
+process revival is blocked by a pre-existing base-layer
+create-after-teardown failure that also breaks the pre-existing product
+takeover arm's kill receipt; exact blocker and follow-up in
+`docs/evidence/phase16-runtime-p34.md` §5. Receipt:
+`docs/evidence/phase16-runtime-p34.md`.
 
 ### P4. Classification and disposition (prune only after classify)
 
