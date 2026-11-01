@@ -51,24 +51,43 @@ char const         Sponge::Pkgd::Main::STORE_PATH[]   = "/store/installed.xml";
 unsigned const     Sponge::Pkgd::Main::STORE_VERSION  = 1;
 
 /*
- * Bounded poll-retry instead of Vfs::Env::Io::commit_and_wait.
+ * Wait primitive for one RETRY step of the store I/O loops.
  *
- * commit_and_wait parks in Entrypoint::wait_and_dispatch_one_io_signal,
- * which is only sound on the entrypoint thread: from any other thread
- * (the Bootstrap worker, and the bootstrap drain since the P1.3 split)
- * it defers pending APPLICATION-level signals to the entrypoint and
- * then blocks waiting for another signal — the deferred signal is
- * never drained there and the call never returns (observed as
- * "_wait_and_dispatch_one_io_signal called from non-entrypoint
- * thread" followed by a hung flush, docs/evidence/phase16-runtime-
- * p33.md). The VFS RETRY contract is poll-based ("try again once
- * external I/O has progressed"): each re-entered read/write drains
- * completed packets itself, the entrypoint's normal dispatch completes
- * the rest, and the polls are paced by the store timer (whose sleep
- * blocks on its own signal receiver — safe from any thread). The bound
- * keeps the store-failure contract: a stalled provider degrades to the
- * loud "store write incomplete" warning, never a parked daemon.
+ * On the entrypoint (the no-thread fallback, `_single_threaded`):
+ * Vfs::Env::Io::commit_and_wait is the sound primitive — its
+ * Entrypoint::wait_and_dispatch_one_io_signal call dispatches the VFS
+ * plugin's I/O-level ack signals inline, which is exactly what the
+ * fs-plugin read/sync state machines need to make progress there (they
+ * do not drain acks themselves on re-entry).
+ *
+ * Off the entrypoint (the Bootstrap worker and the bootstrap drains):
+ * commit_and_wait parks in the same function, which defers pending
+ * APPLICATION-level signals to the entrypoint and then blocks forever
+ * — observed as "_wait_and_dispatch_one_io_signal called from
+ * non-entrypoint thread" followed by a dead flush
+ * (docs/evidence/phase16-runtime-p33.md §6). There the poll path runs
+ * instead: commit() (the non-blocking half — it notifies the remote
+ * peer, which try_submit_packet only marks as needed) plus a
+ * timer-paced sleep (Timer::Connection blocks on its private signal
+ * receiver — safe from any thread).
+ *
+ * Both paths share RETRY_BOUND: the bound keeps the store-failure
+ * contract (a stalled provider degrades to the loud "store write
+ * incomplete", never a silently lost write). On the entrypoint an
+ * individual commit_and_wait can still block on the provider exactly
+ * as the pre-P3.3 code did.
  */
+void Sponge::Pkgd::Main::_store_io_wait()
+{
+	if (_single_threaded) {
+		_vfs_env->io().commit_and_wait();
+		return;
+	}
+	_vfs_env->io().commit();
+	_store_timer->msleep(1);
+}
+
+
 unsigned const Sponge::Pkgd::Main::RETRY_BOUND = 60000;
 
 
@@ -91,7 +110,8 @@ void Sponge::Pkgd::Main::_init_store()
 		_config_rom.node().with_optional_sub_node("vfs",
 			[&](Genode::Node const &vfs_node) {
 				_vfs_env.construct(_env, _heap, vfs_node);
-				_store_timer.construct(_env);
+				if (!_single_threaded)
+					_store_timer.construct(_env);
 				Genode::log("sponge_pkgd: persistent store enabled at ", STORE_PATH);
 			});
 	} catch (Genode::Xml_node::Invalid_syntax) {
@@ -145,8 +165,7 @@ void Sponge::Pkgd::Main::_load_store()
 			                                        stat.size - total));
 			if (r != Genode::Vfs::Vfs_handle::Read_error::RETRY)
 				break;
-			_vfs_env->io().commit();
-			_store_timer->msleep(1);
+			_store_io_wait();
 		}
 		Genode::size_t const n = r.convert<Genode::size_t>(
 			[](Genode::size_t bytes) { return bytes; },
@@ -288,8 +307,7 @@ void Sponge::Pkgd::Main::_write_store_payload(char const *buf,
 			                                               len - off));
 			if (w != Genode::Vfs::Vfs_handle::Write_error::RETRY)
 				break;
-			_vfs_env->io().commit();
-			_store_timer->msleep(1);
+			_store_io_wait();
 		}
 		Genode::size_t const n = w.convert<Genode::size_t>(
 			[](Genode::size_t bytes) { return bytes; },
@@ -302,8 +320,7 @@ void Sponge::Pkgd::Main::_write_store_payload(char const *buf,
 	for (unsigned retry = 0; retry < RETRY_BOUND; ++retry) {
 		if (handle->sync() != Genode::Vfs::Sync_result::RETRY)
 			break;
-		_vfs_env->io().commit();
-		_store_timer->msleep(1);
+		_store_io_wait();
 		if (retry + 1 == RETRY_BOUND)
 			ok = false;
 	}

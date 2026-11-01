@@ -1760,7 +1760,9 @@ Sponge::Pkgd::Main::Main(Genode::Env &env) : _env(env)
 	if (!_bootstrap_thread->start_or_log()) {
 		/* No thread: a single-threaded daemon is the old behaviour, and
 		 * is strictly better than a daemon whose storage work has not
-		 * happened at all. */
+		 * happened at all. The flag switches the store I/O waits to
+		 * the entrypoint-sound primitive (_store_io_wait). */
+		_single_threaded = true;
 		_bootstrap_thread.destruct();
 		_bootstrap();
 	}

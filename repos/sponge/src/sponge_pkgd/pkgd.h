@@ -801,6 +801,17 @@ class Sponge::Pkgd::Main
 		bool _worker_live { false };
 
 		/*
+		 * No-thread fallback flag (set at the Bootstrap start failure
+		 * path in Main's constructor). When set, every store read/write
+		 * executes ON the entrypoint and must wait with
+		 * Vfs::Env::Io::commit_and_wait, which dispatches the VFS
+		 * plugin's I/O-level ack signals inline there. Off the
+		 * entrypoint the same call deadlocks (see _store_io_wait), so
+		 * the Bootstrap thread's I/O polls instead.
+		 */
+		bool _single_threaded { false };
+
+		/*
 		 * Bake-manifest ROM (optional, config-gated by <bake/>): the
 		 * first-boot package seed source (see _seed_roots_from_bake).
 		 */
@@ -980,6 +991,7 @@ class Sponge::Pkgd::Main
 		void _save_store();
 		void _build_store_payload(char *buf, Genode::size_t &len);
 		void _write_store_payload(char const *buf, Genode::size_t len);
+		void _store_io_wait();
 
 		/*
 		 * Poll pacing for the store's bounded RETRY loops. Constructed
