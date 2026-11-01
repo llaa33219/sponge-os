@@ -1,0 +1,229 @@
+#
+# \brief  Sponge OS pkgd dispatch-liveness scenario (Phase 16 P3.3)
+# \author Sponge OS contributors
+# \date   2026
+#
+# Red-first characterization of the storage I/O that used to sit on
+# sponge_pkgd's REQUEST DISPATCH path (the create-session I/O offenders
+# of docs/plans/phase16-runtime-overhaul.md P3.3 / FD1):
+#
+#   (A) METADATA ROM I/O at dispatch — every resolve opened
+#       pkg_<name>.xml ROM sessions from the request path
+#       (metadata.cc _load_package). A create is I/O: a denied create
+#       kills the daemon, a stalled create parks the entrypoint.
+#   (B) STORE WRITE on the entrypoint — install/remove flushed
+#       /store/installed.xml synchronously on env.ep() (store.cc
+#       _save_store via ops.cc), parking dispatch for the duration of
+#       the write.
+#
+# Instrumentation (both test-only, both observability — pkgd is
+# unmodified in the red run):
+#   - test/counting_rom: ROM proxy that logs every session create.
+#   - lib/vfs_store_probe: single-file VFS plugin backing the store,
+#     logging the CALLING THREAD of each write ("thread=<name>") and
+#     delaying writes by 1.5 s so the flush window is deterministic.
+#
+# Single boot, driven by test/dispatch_probe:
+#   0. warm-up `list` + settle — its answer proves the bootstrap
+#      request drain has finished and the armed handlers own dispatch,
+#      so the windows below cannot misattribute drain-time work.
+#   1. explain hello  -> WINDOW 1: no 'counting-rom: create' between
+#                        the probe's sent/got markers.
+#   2. install hello  -> WINDOW 2: the store write must be attributed
+#                        to the 'pkgd-store' Bootstrap worker thread.
+#   3. pipeline install witness + `list` during its flush ->
+#      no-overtaking guard (FIFO): the mutation's result must be
+#      emitted before the query's.
+#
+# Verdicts (the run script prints one line and exits):
+#   dispatch-liveness: RED (rom_at_dispatch=<0|1> worker_flush=<0|1>)
+#   dispatch-liveness: PASS
+#
+# Flip history (red-before-green, one gate per offender):
+#   red                      : rom_at_dispatch=1 (A) and worker_flush=0 (B)
+#   after the metadata cache : rom_at_dispatch=0; still red on B
+#   after the worker handoff : both gates green -> PASS
+#
+# Build:
+#   make -C genode/build/x86_64 run/sponge-pkg-dispatch-liveness \
+#       KERNEL=sel4 BOARD=pc
+#
+
+build { core lib/ld init timer server/report_rom lib/vfs sponge_pkgd \
+        pkg_hello test/config_witness test/counting_rom \
+        test/dispatch_probe lib/vfs_store_probe }
+
+create_boot_directory
+
+install_config {
+config
++ parent-provides
+  + service ROM
+  + service PD
+  + service CPU
+  + service LOG
+  + service IRQ
+  + service IO_MEM
+  + service IO_PORT
+
++ default | caps: 200 | ram: 4M
++ default-route
+  + any-service
+    + parent
+    + any-child
+
++ start timer
+  + provides | + service Timer
+
++ start report_rom | ram: 4M
+  + provides
+    + service Report
+    + service ROM
+  + config | verbose: no
+    + policy | label: sponge_pkgd -> request              | report: dispatch_probe -> request
+    + policy | label: dispatch_probe -> result            | report: sponge_pkgd -> result
+    + policy | label: dispatch_probe -> installed         | report: sponge_pkgd -> installed
+    + policy | label: sponge_pkgd -> probe_request        | report: dispatch_probe -> probe_request
+    + policy | label: dispatch_probe -> probe_result      | report: sponge_pkgd -> probe_result
+    + policy | label: pkg_runtime -> config               | report: sponge_pkgd -> runtime
+
++ start counting_rom | caps: 200 | ram: 8M
+  + provides | + service ROM
+  + route
+    + service ROM | + parent
+    + any-service
+      + parent
+      + any-child
+
++ start sponge_pkgd | caps: 200 | ram: 16M
+  + config
+    + vfs
+      + dir store | + store_probe | name: installed.xml | delay_ms: 1500
+    + probe_request
+  + route
+    + service ROM | label_last: request | + child report_rom
+    + service ROM | label_last: probe_request | + child report_rom
+    + service ROM | label_last: pkg_index.xml | + child counting_rom
+    + service ROM | label_last: pkg_hello.xml | + child counting_rom
+    + service ROM | label_last: pkg_witness.xml | + child counting_rom
+    + service Report | + child report_rom
+    + service Timer | + child timer
+    + any-service
+      + parent
+      + any-child
+
++ start dispatch_probe | caps: 200 | ram: 16M
+  + config | first: hello | second: witness
+  + route
+    + service Timer | + child timer
+    + service ROM | label_last: result | + child report_rom
+    + service ROM | label_last: probe_result | + child report_rom
+    + service Report | + child report_rom
+    + any-service
+      + parent
+      + any-child
+- }
+
+#
+# Metadata staging (hello / witness fixtures, backed by the existing
+# hello / config_witness binaries — both harmless; no runtime is
+# started, so nothing is spawned) plus the derived index.
+#
+set staged_pkgs { hello witness }
+foreach pkg $staged_pkgs {
+	set src "${genode_dir}/../pkg/$pkg/metadata.xml"
+	if {![file exists $src]} {
+		error "package metadata not found: $src"
+	}
+	exec cp -L $src "bin/pkg_$pkg.xml"
+}
+
+set index_fh [open "bin/pkg_index.xml" w]
+puts $index_fh "<packages>"
+foreach pkg $staged_pkgs {
+	puts $index_fh "  <pkg name=\"$pkg\"/>"
+}
+puts $index_fh "</packages>"
+close $index_fh
+
+set boot_modules [build_artifacts]
+foreach m { pkg_hello.xml pkg_witness.xml pkg_index.xml \
+            vfs_store_probe.lib.so } {
+	lappend boot_modules $m
+}
+
+build_boot_image $boot_modules
+
+append qemu_args " -nographic -m 1G "
+
+#
+# All gates observe ONE QEMU boot (the sponge-config-authority idiom:
+# the first call spawns, later calls chain on $qemu_spawn_id). `window`
+# returns 1 when `pattern` matches before `close_pattern` and 0 when the
+# landmark closes the window first; a silent timeout is a harness
+# failure, not a verdict.
+#
+proc gate { pattern timeout_s } {
+	global qemu_spawn_id
+	if {$qemu_spawn_id eq ""} {
+		if {[catch { run_genode_until $pattern $timeout_s } err]} {
+			puts "dispatch-liveness: FAIL harness ($err)"
+			exit 1
+		}
+		match_max -i $qemu_spawn_id 200000
+		return
+	}
+	match_max -i $qemu_spawn_id 200000
+	set timeout $timeout_s
+	expect {
+		-i $qemu_spawn_id -re $pattern { }
+		-i $qemu_spawn_id eof {
+			puts "dispatch-liveness: FAIL harness (QEMU died)"
+			exit 1
+		}
+		timeout {
+			puts "dispatch-liveness: FAIL harness (no match for '$pattern' within ${timeout_s}s)"
+			exit 1
+		}
+	}
+}
+
+proc window { pattern close_pattern timeout_s } {
+	global qemu_spawn_id
+	match_max -i $qemu_spawn_id 200000
+	set timeout $timeout_s
+	expect {
+		-i $qemu_spawn_id -re $pattern       { return 1 }
+		-i $qemu_spawn_id -re $close_pattern { return 0 }
+		-i $qemu_spawn_id eof {
+			puts "dispatch-liveness: FAIL harness (QEMU died)"
+			exit 1
+		}
+		timeout {
+			puts "dispatch-liveness: FAIL harness (neither pattern nor closing landmark within ${timeout_s}s)"
+			exit 1
+		}
+	}
+}
+
+# Window 1: metadata ROM creates during the explain dispatch.
+gate {dispatch-probe: sent explain hello} 120
+set rom_at_dispatch [window {counting-rom: create} \
+                           {dispatch-probe: got explain hello} 60]
+
+# Window 2: store-flush attribution during the install dispatch.
+gate {dispatch-probe: sent install hello} 60
+set worker_flush [window {store-probe: write .*thread=pkgd-store} \
+                         {dispatch-probe: got install hello} 60]
+
+# FIFO no-overtaking guard (checked live by the probe) + its verdict.
+gate {dispatch-probe: pipeline ok} 120
+gate {dispatch-probe: PASS} 30
+
+if {$rom_at_dispatch || !$worker_flush} {
+	puts "dispatch-liveness: RED (rom_at_dispatch=$rom_at_dispatch worker_flush=$worker_flush)"
+	exit 1
+}
+
+puts "dispatch-liveness: PASS"
+exit 0
