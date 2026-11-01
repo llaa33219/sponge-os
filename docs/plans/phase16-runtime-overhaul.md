@@ -5,7 +5,9 @@
 > `docs/evidence/phase16-runtime-p34.md`); P4.1 (patch classification) and
 > P4.2 (uplink disposition — **fixed in place**, see
 > `docs/evidence/forwarded-create-starvation.md` §9) are landed;
-> P4.3-P5 remain open. Created
+> P4.3 is landed as a **no-pruning closeout** (the P4.1 census left
+> nothing to prune — no code path, patch, or ledger row removed);
+> P5 remains open. Created
 > 2026-10-28 on branch `refactor/phase16-runtime-overhaul` (pre-work HEAD
 > `3afb40c922`).
 > Relationship: this is the runtime-overhaul track of the reopened Phase 16
@@ -490,6 +492,19 @@ Gate: `./tool/build verify` green (`tool/patches verify && tool/hw_compat assert
 each removal has a before/after scenario receipt.
 Commits: one solo commit per removal (`revert`/`refactor`/`vendor` as fits).
 Owns: per-removal files as listed in the P4.1 table.
+Landed (2026-11-02): **no-op closeout — nothing to prune.** The P4.1
+class census (keep 32 · remove 0 · replace 1) left the conditional
+removal/replacement set empty: no row's Drop-When is met, and the single
+**replace** (row #21) was already carried out in code by row #25, with
+only documentation-only ledger consolidation remaining — rechecked at
+`17045beee7` as superseded and not independently revertable (pair
+#21/#25) with that consolidation already landed (Part D1 item 1). No
+other row is ready for pruning. P4.3 therefore removed **no** code path,
+**no** patch, and **no** ledger row, and no before/after scenario
+receipts are due (zero removals). Gate receipt: `./tool/build verify`
+green (`tool/patches verify` — all 33 rows at pin `48a946ba15` — then
+`tool/hw_compat assert`). Recorded in
+`docs/evidence/patch-classification.md` (Part D2 closeout).
 
 ### P5. Acceptance, docs, full sweep
 
