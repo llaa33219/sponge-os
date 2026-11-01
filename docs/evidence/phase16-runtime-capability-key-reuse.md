@@ -86,11 +86,12 @@ where needed. Logs are under `/tmp/opencode/`.
 | Default `run/sponge-desktop-disk` | `alpha-probe: PASS` |
 | Conflicting-ID leak check | Zero `requested conflicting session ID` in all final logs |
 
-## 5. Remaining boundary
+## 5. Follow-up boundary and resolution
 
-Product takeover now gets past the key-alias failure and rebuilds all 15
-children, but reaches a separate deterministic `illegal READ` in the rebuild
-wave (`debug-p34-keyfix-product-takeover-*.log`). Addresses vary at a fixed
-instruction pointer, consistent with a stale-pointer dereference rather than
-key-space collision. That previously masked defect is **not** fixed by this
-commit and must not be hidden behind a partial-green claim.
+The key fix initially exposed a separate pending-session lifetime defect in
+the rebuild wave (`debug-p34-keyfix-product-takeover-*.log`). It was not
+hidden behind a partial-green claim. Fork commit `48a946ba15` adds the
+complementary incarnation and destruction-lifetime guards; product takeover
+now reaches **`SUPERVISOR TAKEOVER PASS`** with real revivals
+(`debug-p34-rawfree-prod-takeover.log`). The follow-up mechanism and final
+matrix are in `docs/evidence/phase16-runtime-pending-session-lifetime.md`.
