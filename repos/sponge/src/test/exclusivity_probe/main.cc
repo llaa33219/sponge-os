@@ -214,17 +214,31 @@ struct Exclusivity_probe
 
 	/* ---- raw result bytes (the replay comparison) ---- */
 
+	/*
+	 * Content length of a report_rom module. The ROM dataspace capacity
+	 * is page-granular and may exceed the content (stale bytes beyond
+	 * it), but report_rom NUL-terminates every report (rom_module.h
+	 * write_content), so the content ends at the first NUL.
+	 */
+	static Genode::size_t _content_len(Genode::Attached_rom_dataspace const &rom)
+	{
+		if (!rom.valid()) return 0;
+		char const *p = rom.local_addr<char const>();
+		Genode::size_t n { 0 };
+		while (n < rom.size() && p[n] != 0) ++n;
+		return n;
+	}
+
 	void _cache_first_result()
 	{
 		_result.update();
-		if (!_result.valid() || _result.size() == 0 ||
-		    _result.size() > MAX_RESULT) {
-			_fail("result ROM invalid or oversized after the refusal");
+		_first_len = _content_len(_result);
+		if (_first_len == 0 || _first_len > MAX_RESULT) {
+			_fail("result ROM has no content (or oversized) after the refusal");
 			return;
 		}
-		char const *src = _result.local_addr<char>();
-		_first_len = _result.size();
-		for (Genode::size_t i = 0; i < _first_len; ++i)
+		char const *src = _result.local_addr<char const>();
+		for (Genode::size_t i = 0; i <= _first_len; ++i)
 			_first_bytes[i] = src[i];
 		Genode::log("exclusivity-probe: cached ", _first_len,
 		            " result bytes for the replay comparison");
@@ -235,10 +249,10 @@ struct Exclusivity_probe
 		_launch_result.update();
 		if (!_launch_result.valid())
 			return false;
-		if (_launch_result.size() != _first_len)
+		if (_content_len(_launch_result) != _first_len)
 			return false;
-		char const *got = _launch_result.local_addr<char>();
-		for (Genode::size_t i = 0; i < _first_len; ++i)
+		char const *got = _launch_result.local_addr<char const>();
+		for (Genode::size_t i = 0; i <= _first_len; ++i)
 			if (got[i] != _first_bytes[i])
 				return false;
 		return true;
