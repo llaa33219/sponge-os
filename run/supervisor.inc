@@ -62,6 +62,30 @@
 # spurious containment event, and the product media already spends
 # minutes on the desktop's first boot.
 #
+# P3.4 per-name markers: the runtime SUBTREES - every `pkg_runtime*`
+# sandbox and `driver_runtime`, all direct children of `system` - are
+# stamped with a PER-NAME sentinel (`SPONGE_KILLVER_<name>`) that
+# becomes `@KILL:<name>@` in the templates. The supervisor keeps a
+# fixed name->version table for those markers, so a containment action
+# can bump ONE runtime child's version while every sibling node renders
+# byte-identical bytes and is never rebuilt. Every other node keeps the
+# plain sentinel (global counter). The synthetic fault child
+# `pkg_runtime_fault` (the SPONGE_SUPERVISOR_TEST=contain arm) is named
+# to match the runtime pattern on purpose: that is what makes it
+# containable-by-name.
+#
+# === Per-child heartbeat gate values =====================================
+#
+# Each contained child's `<heartbeat>` node carries the gate triplet
+# (restart_after_skipped / restart_budget / startup_grace_ms). The five
+# desktop-disk scenarios declare their per-child values with
+# `supervisor::heartbeat_values` and mark the nodes in their staged HID
+# with `@HB:<name>@` placeholders, which prepare() renders. The default
+# triplet is the product deployment (3 / 3 / 120000) and renders
+# byte-identical to the previous inline literals - a scenario that does
+# not declare a name still gets the defaults, and a name that cannot be
+# resolved aborts staging loudly.
+#
 # === The console variant =================================================
 #
 # `<system_console>` is the same config with the desktop CLIENTS removed
@@ -83,9 +107,34 @@ namespace eval supervisor {
 	#
 	# Sentinel written into the staged config's <start> version. A bare
 	# HID token (never quoted: the `hid` tool double-quotes a quoted
-	# value on XML conversion).
+	# value on XML conversion). The runtime subtrees get
+	# `<killver>_<name>` instead - see the stamping note above.
 	#
 	variable killver "SPONGE_KILLVER"
+
+	#
+	# Names stamped with the PER-NAME sentinel (the runtime subtrees).
+	# Filled by stamp(), consumed by prepare() for the @KILL:<name>@
+	# template markers and the boot-version mapping.
+	#
+	variable stamped_names {}
+
+	#
+	# Per-child heartbeat gate values (P3.4), set by the scenarios via
+	# supervisor::heartbeat_values. The product defaults are the triplet
+	# (restart_after_skipped 3, restart_budget 3, startup_grace_ms
+	# 120000) and render byte-identical to the previous inline literals.
+	#
+	variable hb_values {}
+
+	#
+	# Per-subtree supervisor gate overrides (P3.4), a dict
+	# `name -> {grace_ms settle_ms}` written into the supervisor policy
+	# as `+ gate | key: grace_ms.<name>=<ms>` rows. Empty by default:
+	# every subtree uses the global grace_ms/settle_ms until a scenario
+	# opts a name in.
+	#
+	variable per_name_gates {}
 
 	#
 	# The version the media boots with. Must equal the supervisor's first
@@ -169,6 +218,11 @@ namespace eval supervisor {
 #   SPONGE_SUPERVISOR_TEST control           a bounded wedge the
 #                                            supervised sandbox must
 #                                            survive without any kill
+#   SPONGE_SUPERVISOR_TEST contain           a persistent wedge in one
+#                                            runtime subtree that the
+#                                            supervisor must contain BY
+#                                            NAME - only that child's
+#                                            node is rebuilt
 #
 proc supervisor::test_mode {} {
 	if {![info exists ::env(SPONGE_SUPERVISOR_TEST)]} { return "off" }
@@ -177,10 +231,72 @@ proc supervisor::test_mode {} {
 
 	if {$v eq "" || $v eq "0" || $v eq "off"} { return "off" }
 	if {$v eq "1" || $v eq "on"}               { return "takeover" }
-	if {$v eq "takeover" || $v eq "control"}  { return $v }
+	if {$v eq "takeover" || $v eq "control" ||
+	    $v eq "contain"}                       { return $v }
 
 	error "SPONGE_SUPERVISOR_TEST='$v' is not a valid arm (expected: off, \
-on/takeover, control)"
+on/takeover, control, contain)"
+}
+
+#
+# Per-child heartbeat gate values (P3.4). 'values' is a dict
+# `name -> {restart_after_skipped restart_budget startup_grace_ms}`;
+# each name must own a `@HB:<name>@` placeholder in the staged HID and
+# vice versa - both directions are staging anchors, the same fail-loud
+# rule as every other anchor in this file.
+#
+proc supervisor::heartbeat_values { values } {
+	variable hb_values
+	set hb_values $values
+}
+
+proc supervisor::_heartbeat_line { name } {
+	variable hb_values
+
+	set vals {}
+	foreach {n v} $hb_values {
+		if {$n eq $name} { set vals $v }
+	}
+
+	if {[llength $vals] != 3} {
+		error "supervisor: heartbeat values for '$name' must be \
+{restart_after_skipped restart_budget startup_grace_ms} - got '$vals'"
+	}
+
+	lassign $vals ras rb sg
+
+	# no leading indent: the @HB:<name>@ placeholder line carries it
+	return "+ heartbeat | restart_after_skipped: $ras | restart_budget: $rb | startup_grace_ms: $sg"
+}
+
+#
+# Render every `@HB:<name>@` placeholder in the staged HID from the
+# per-child values. The rendered line is byte-identical to the previous
+# inline literal when the values are the product defaults
+# (3 / 3 / 120000).
+#
+proc supervisor::substitute_heartbeats { text } {
+	variable hb_values
+
+	set used {}
+
+	foreach {n v} $hb_values {
+		set ph "@HB:${n}@"
+		if {[string first $ph $text] < 0} {
+			error "supervisor: heartbeat values declared for '$n' but no \
+@HB:${n}@ placeholder exists in the staged config - the per-child gate \
+exposure drifted"
+		}
+		set text [string map [list $ph [supervisor::_heartbeat_line $n]] $text]
+		lappend used $n
+	}
+
+	if {[regexp {@HB:([A-Za-z0-9_-]+)@} $text -> leftover]} {
+		error "supervisor: heartbeat placeholder for '$leftover' has no \
+supervisor::heartbeat_values entry - the per-child gate exposure drifted"
+	}
+
+	return $text
 }
 
 proc supervisor::_read { path } {
@@ -250,8 +366,17 @@ proc supervisor::_rejoin { lines had_newline } {
 # some child's own config would be a different (and wrong) restart
 # target, and the product configs have none.
 #
+# The runtime SUBTREES (`pkg_runtime*`, `driver_runtime`) get the
+# PER-NAME sentinel `<killver>_<name>` so the supervisor can bump one
+# runtime child's version without touching its siblings (P3.4); every
+# other node keeps the plain sentinel (global counter). The stamped
+# per-name set is recorded in `stamped_names`.
+#
 proc supervisor::stamp { hid_path } {
 	variable killver
+	variable stamped_names
+
+	set stamped_names {}
 
 	set text [supervisor::_read $hid_path]
 	set nl [expr {[string index $text end] eq "\n"}]
@@ -263,9 +388,14 @@ proc supervisor::stamp { hid_path } {
 	# NOTE: the loop variable is never rebound - expect's `foreach` does
 	# not write back to it, so a modified copy would be silently lost.
 	foreach line $lines {
-		if {[regexp {^\+ start [A-Za-z0-9_-]+(\s|$)} $line] &&
+		if {[regexp {^\+ start ([A-Za-z0-9_-]+)(\s|$)} $line -> n] &&
 		    ![regexp {\|\s*version:} $line]} {
-			lappend out "$line | version: $killver"
+			if {[string match "pkg_runtime*" $n] || $n eq "driver_runtime"} {
+				lappend out "$line | version: ${killver}_${n}"
+				lappend stamped_names $n
+			} else {
+				lappend out "$line | version: $killver"
+			}
 			incr stamped
 		} else {
 			lappend out $line
@@ -550,6 +680,15 @@ proc supervisor::boot_modules {} {
 #                     and nothing may be killed. The supervisor does
 #                     observe the fault - skipped_heartbeats reaches 3
 #                     at 8 s - which is the arm's point.
+#   contain   3000 - the fault RECURS (persistent) but must be
+#                     contained BY NAME on every round: only
+#                     pkg_runtime_fault's node is rebuilt. 3000 ms
+#                     exceeds the victim's own settle (1000 ms) plus
+#                     the detection margin (the state report's 1000 ms
+#                     delay + the 250 ms poll ≈ 1250 ms), so the
+#                     "contained" verdict always lands on genuine
+#                     health, and the recurrence is long enough for the
+#                     DE's functional PASS to be a POST-wedge receipt.
 #
 # The child goes in BEFORE the package runtimes (`pkg_runtime` in the
 # legacy topology, `pkg_runtime_simple` first in the P2.4 grouped one),
@@ -567,7 +706,7 @@ proc supervisor::_test_child_hid { mode } {
 	# supervisor can escalate to the console (a fault that heals inside a
 	# kill window is contained, by design - that is the control arm).
 	#
-	# The two arms differ ONLY in the child's own containment:
+	# The arms differ in the child's own containment and in its NAME:
 	#
 	#   takeover  bare <heartbeat/> = monitoring on, restart_after_skipped
 	#             0, so nothing below the supervisor restarts it and the
@@ -576,6 +715,11 @@ proc supervisor::_test_child_hid { mode } {
 	#             product media's own containment deployment, so the
 	#             sandbox abandons and respawns the wedged child itself,
 	#             forever, and the supervisor must NOT kill anything
+	#   contain   bare <heartbeat/> again (NOT restart_budget-driven:
+	#             restart_budget would stop the sandbox restarting it
+	#             after three tries and leave a dead node behind), named
+	#             `pkg_runtime_fault` so the per-name stamp marks it as
+	#             a containable runtime subtree
 	#
 	# The control arm is therefore not a smaller proof: it is the proof of
 	# the escalation rule, and its negative assertion (no kill, no
@@ -586,13 +730,18 @@ proc supervisor::_test_child_hid { mode } {
 	# would make the supervisor kill the desktop minutes later.
 	#
 	set hb "  + heartbeat"
+	set name "wedge"
 	set wedge_after 6000
 	if {$mode eq "control"} {
 		set hb "  + heartbeat | restart_after_skipped: 3"
 		set wedge_after 9000
 	}
+	if {$mode eq "contain"} {
+		set name "pkg_runtime_fault"
+		set wedge_after 3000
+	}
 
-	set h "+ start wedge | caps: 200 | ram: 4M\n"
+	set h "+ start $name | caps: 200 | ram: 4M\n"
 	append h "  + binary | name: bin/ep_wedge\n"
 	append h "$hb\n"
 	append h "  + config | wedge_after_ms: $wedge_after\n"
@@ -702,6 +851,8 @@ proc supervisor::prepare { sys_dir hid_path } {
 	variable console_hold_ms
 	variable settle_ms
 	variable boot_grace_ms
+	variable stamped_names
+	variable per_name_gates
 
 	if {$boot_version ne "1"} {
 		error "supervisor::prepare: boot_version must be 1 - it is what the \
@@ -718,6 +869,23 @@ rebuild the whole subtree at boot"
 (SPONGE_SUPERVISOR_TEST) - a test gate, never shipped media"
 	}
 
+	if {$mode eq "contain"} {
+		#
+		# The victim's own supervisor gates (P3.4 per-subtree
+		# lookups). The recurrence (wedge_after_ms 3000) exceeds
+		# settle (1000) + the detection margin (the state report's
+		# 1000 ms delay + the 250 ms poll), so "contained" is always
+		# declared on genuine health and the console phase is never
+		# reached - the arm's whole point.
+		#
+		set per_name_gates [dict create pkg_runtime_fault { 1000 1000 }]
+	}
+
+	# per-child heartbeat gate values (P3.4) before anything reads the HID
+	set hb_text [supervisor::substitute_heartbeats \
+	             [supervisor::_read $hid_path]]
+	supervisor::_write $hid_path $hb_text
+
 	set stamped [supervisor::stamp $hid_path]
 	set full_text [supervisor::_read $hid_path]
 
@@ -731,6 +899,17 @@ config - the desktop clients were not found"
 	set hid_tool [file join [genode_dir] tool hid]
 	set templates "<!-- derived from the staged /system/init/system.config by \
 run/supervisor.inc; do not hand-edit -->\n"
+
+	#
+	# Per-name sentinels map to `@KILL:<name>@` BEFORE the plain one:
+	# string map matches in list order at each position, and the bare
+	# sentinel is a prefix of every per-name one.
+	#
+	set marker_map {}
+	foreach n $stamped_names {
+		lappend marker_map "${killver}_${n}" "@KILL:${n}@"
+	}
+	lappend marker_map $killver {@KILL@}
 
 	foreach {tag text} [list "system" $full_text \
 	                     "system_console" $console_text] {
@@ -754,7 +933,7 @@ unrestartable"
 		}
 
 		append templates "<$tag>\n"
-		append templates [string map [list $killver {@KILL@}] $xml]
+		append templates [string map $marker_map $xml]
 		append templates "</$tag>\n\n"
 	}
 
@@ -766,13 +945,24 @@ unrestartable"
 	# same dance the acceptance scenario performs). Both files land in
 	# bin/, which is where build_boot_image expects a boot module to be.
 	#
+	# The per-subtree gate overrides (P3.4) ride as `key: <lookup>=<ms>`
+	# rows: a dotted ATTRIBUTE name does not survive the HID parser, but
+	# the dotted key inside a value does, and the supervisor's text scan
+	# reads it back verbatim (grace_ms.<name> / settle_ms.<name>).
+	#
 	set pol "[run_dir]/supervisor.config.hid"
 	set pol_lines [list "config" \
 		"+ policy | poll_ms: $poll_ms | fault_skipped: $fault_skipped" \
 		"         | grace_ms: $grace_ms | console_hold_ms: $console_hold_ms" \
 		"         | settle_ms: $settle_ms | boot_grace_ms: $boot_grace_ms" \
-		"         | ignore_exited: $ignore_exited" \
-		"-"]
+		"         | ignore_exited: $ignore_exited"]
+
+	foreach {name vals} $per_name_gates {
+		lassign $vals g s
+		lappend pol_lines "  + gate | key: grace_ms.${name}=${g}"
+		lappend pol_lines "  + gate | key: settle_ms.${name}=${s}"
+	}
+	lappend pol_lines "-"
 
 	supervisor::_write $pol [supervisor::_rejoin $pol_lines 0]
 
@@ -780,10 +970,16 @@ unrestartable"
 	file delete $pol
 
 	#
-	# Hand the staged HID back with the boot version in place of the
+	# Hand the staged HID back with the boot version in place of every
 	# sentinel, so the scenario's own conversion writes the config init
-	# boots with - and that config matches the supervisor's first publish.
+	# boots with - and that config matches the supervisor's first publish
+	# ("1" on every node, named or plain).
 	#
-	supervisor::_write $hid_path [string map [list $killver $boot_version] \
-		$full_text]
+	set boot_map {}
+	foreach n $stamped_names {
+		lappend boot_map "${killver}_${n}" $boot_version
+	}
+	lappend boot_map $killver $boot_version
+
+	supervisor::_write $hid_path [string map $boot_map $full_text]
 }
