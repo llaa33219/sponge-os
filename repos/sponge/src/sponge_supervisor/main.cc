@@ -40,6 +40,25 @@
  * owner has, and it is deliberately total: a wedged GUI stack is not
  * partially salvageable from up here.
  *
+ * P3.4 extends the lever from total to TARGETED. The product templates
+ * (run/supervisor.inc) stamp the runtime subtrees - the `pkg_runtime*`
+ * sandboxes and `driver_runtime`, all direct children of `system` -
+ * with a PER-NAME marker `version="@KILL:<name>@"`, and this component
+ * keeps a fixed name->version table for them. A CONTAIN action on a
+ * fault attributed to one of those children bumps ONLY that child's
+ * table entry: the sibling runtimes and the DE keep their exact
+ * rendered bytes and are never rebuilt (Start_model::matches() sees
+ * name+version unchanged). Global bumps - boot publish, console
+ * takeover, nominal restore, and faults NOT attributable to a runtime
+ * subtree - bump every slot as before. Plain `@KILL@` markers (the
+ * standalone acceptance templates of run/sponge-supervisor-takeover.run)
+ * keep working against the shared global counter, and the first
+ * publish renders "1" everywhere so the boot config matches.
+ *
+ * Per-node version updates are recorded only after generate() has
+ * succeeded: a refused publish consumes no version, so a retry renders
+ * the same bytes instead of skipping numbers.
+ *
  * Detection signal. Three candidates were available:
  *
  *   1. state-report staleness - REJECTED, and not even as a secondary
@@ -112,6 +131,16 @@
  * A fault that the sandbox's own restart genuinely fixed therefore costs
  * exactly one log line and nothing else. The escalation window is a
  * TIMING rule, not a threshold: no detection threshold is changed by it.
+ *
+ * The escalation window and the CONTAIN settle are PER-SUBTREE when the
+ * fault is attributed to a named child: the policy may carry
+ * `grace_ms.<name>` / `settle_ms.<name>` (see _read_policy), and the
+ * attributed values govern the attributed fault's whole containment
+ * cycle (escalation, the re-fault grace, the CONTAIN settle). The
+ * console phase and RELEASE keep the GLOBAL values: a console takeover
+ * destroys the whole subtree and is therefore not a per-child event.
+ * Unset per-name keys fall back to the globals, so product behaviour is
+ * unchanged until a policy opts in.
  *
  * CLEAN EXITS. A boot probe is expected to exit - `alpha_probe` prints
  * its PASS marker and exits, `cfg_probe` likewise - and Genode keeps an
@@ -227,6 +256,39 @@ struct Sponge::Supervisor::Main
 	unsigned _console_ticks    { 0 };
 	unsigned _settle_ticks     { 0 };
 
+	/*
+	 * Per-node restart versions (P3.4). The slots are discovered from
+	 * the templates' per-name markers (`@KILL:<name>@`), so the table
+	 * is exactly the set of children a CONTAIN action may target - the
+	 * runtime subtrees the staging stamped. Fixed size, no allocation:
+	 * the product templates name five, the standalone ones none.
+	 *
+	 * `pending` is what the NEXT publish renders; it is folded into
+	 * `committed` only after generate() succeeded, so a refused publish
+	 * consumes no version.
+	 */
+	static unsigned const MAX_KILL_SLOTS = 12;
+
+	struct Kill_slot {
+		char     name[32]      { };
+		unsigned committed     { 0 };
+		unsigned pending       { 0 };
+		unsigned grace_ticks   { 0 };
+		unsigned settle_ticks  { 0 };
+	};
+
+	Kill_slot _kill_slots[MAX_KILL_SLOTS] { };
+	unsigned  _kill_slot_count { 0 };
+
+	unsigned _global_committed { 0 };
+	unsigned _global_pending   { 0 };
+	bool     _plain_marker     { false };
+
+	/*
+	 * Monotonic PUBLISH counter (the log's `kill=`): one per publish,
+	 * targeted or not. Deliberately separate from the rendered global
+	 * version, which only moves on a global bump.
+	 */
 	unsigned _kill_version { 0 };
 	unsigned _ticks        { 0 };
 	unsigned _last_idle    { 0 };
@@ -261,6 +323,40 @@ struct Sponge::Supervisor::Main
 	unsigned _max_skipped { 0 };
 	unsigned _exited      { 0 };
 	unsigned _starting    { 0 };
+
+	/*
+	 * Per-child state-report snapshot (P3.4): the `version` attribute
+	 * each child carries is its CONSTRUCTION version (child.cc:378) -
+	 * it changes only when a config rewrite rebuilt the child. Logging
+	 * those changes is the witness that a targeted containment rebuilt
+	 * exactly one child while every sibling kept its bytes. The table
+	 * is fixed-size and its log is capped per scan: a global rebuild
+	 * would otherwise emit one line per child on every kill.
+	 */
+	static unsigned const MAX_STATE_CHILDREN = 32;
+	static unsigned const MAX_VERSION_LOG    = 16;
+
+	struct State_child {
+		char     name[48]           { };
+		unsigned version            { 0 };
+		bool     version_known      { false };
+		bool     exited             { false };
+		bool     exited_at_baseline { false };
+	};
+
+	State_child _state_children[MAX_STATE_CHILDREN] { };
+	unsigned    _state_child_count { 0 };
+	bool        _state_table_full  { false };
+
+	/*
+	 * Fault attribution (P3.4): the name of the child the current scan
+	 * blames - the worst skipped-heartbeat offender at or above the
+	 * threshold, else a child whose `exited` is above the healthy
+	 * baseline - latched when a fault run starts so a single-fault run
+	 * keeps one target even if the report's worst offender moves.
+	 */
+	char _scan_offender[48] { };
+	char _fault_name[48]    { };
 
 	/*
 	 * Whether a child the sandbox reports as "starting" is exempt from
@@ -317,6 +413,12 @@ struct Sponge::Supervisor::Main
 		return dflt;
 	}
 
+	unsigned _to_ticks(unsigned ms) const
+	{
+		unsigned const poll = _poll_ms ? _poll_ms : 250;
+		return (ms + poll - 1) / poll;
+	}
+
 	void _read_policy()
 	{
 		_config.update();
@@ -343,14 +445,141 @@ struct Sponge::Supervisor::Main
 			Sponge::copy_value(_ignore_exited, ign, ign_len,
 			                   sizeof(_ignore_exited));
 
-		unsigned const poll = _poll_ms ? _poll_ms : 250;
+		_boot_grace_ticks = _to_ticks(_boot_grace_ms);
+		_grace_ticks      = _to_ticks(_grace_ms);
+		_console_ticks    = _to_ticks(_console_hold_ms);
+		_settle_ticks     = _to_ticks(_settle_ms);
 
-		auto to_ticks = [poll] (unsigned ms) { return (ms + poll - 1) / poll; };
+		/*
+		 * Per-subtree gate lookups (P3.4): `grace_ms.<name>` and
+		 * `settle_ms.<name>` override the globals for faults attributed
+		 * to '<name>'. The spelling has to survive the HID -> XML
+		 * conversion, which mangles dotted ATTRIBUTE names, so the
+		 * staging writes them as `key: grace_ms.<name>=<ms>` rows whose
+		 * text scan_attr() reads back verbatim
+		 * (run/supervisor.inc::prepare). Absent keys keep the globals:
+		 * every slot starts at the global ticks computed above.
+		 */
+		for (unsigned s = 0; s < _kill_slot_count; s++) {
 
-			_boot_grace_ticks = to_ticks(_boot_grace_ms);
-		_grace_ticks      = to_ticks(_grace_ms);
-		_console_ticks    = to_ticks(_console_hold_ms);
-		_settle_ticks     = to_ticks(_settle_ms);
+			char key[64];
+			size_t n = 0;
+
+			_kill_slots[s].grace_ticks  = _grace_ticks;
+			_kill_slots[s].settle_ticks = _settle_ticks;
+
+			auto build_key = [&] (char const *prefix) {
+				n = 0;
+				while (prefix[n] && n + 1 < sizeof(key)) {
+					key[n] = prefix[n];
+					n++;
+				}
+				char const *name = _kill_slots[s].name;
+				for (size_t k = 0; name[k] && n + 1 < sizeof(key); k++)
+					key[n++] = name[k];
+				key[n] = '\0';
+			};
+
+			char const *v = nullptr;
+			size_t      v_len = 0;
+
+			build_key("grace_ms.");
+			if (Sponge::scan_attr(cfg, sz, key, v, v_len) && v_len > 0) {
+				unsigned r = 0;
+				for (size_t i = 0; i < v_len; i++) {
+					if (v[i] < '0' || v[i] > '9') break;
+					r = r * 10 + unsigned(v[i] - '0');
+				}
+				_kill_slots[s].grace_ticks = _to_ticks(r);
+			}
+
+			build_key("settle_ms.");
+			if (Sponge::scan_attr(cfg, sz, key, v, v_len) && v_len > 0) {
+				unsigned r = 0;
+				for (size_t i = 0; i < v_len; i++) {
+					if (v[i] < '0' || v[i] > '9') break;
+					r = r * 10 + unsigned(v[i] - '0');
+				}
+				_kill_slots[s].settle_ticks = _to_ticks(r);
+			}
+		}
+	}
+
+	/*
+	 * Discover the per-name restart markers in the templates module and
+	 * open a kill slot for each. The module carries both templates
+	 * (<system> and <system_console>), and the console variant keeps
+	 * every runtime subtree, so the two spell the same slot set; the
+	 * scan de-duplicates. A plain `@KILL@` anywhere arms the global
+	 * counter (the standalone acceptance templates use only that).
+	 */
+	void _scan_template_markers()
+	{
+		if (!_templates.valid())
+			return;
+
+		char const *text = _templates.local_addr<char const>();
+		size_t      const sz = _templates.size();
+
+		for (size_t i = 0; i + 6 <= sz; i++) {
+
+			if (text[i] != '@' || text[i + 1] != 'K' || text[i + 2] != 'I' ||
+			    text[i + 3] != 'L' || text[i + 4] != 'L')
+				continue;
+
+			if (text[i + 5] == '@') {
+				_plain_marker = true;
+				continue;
+			}
+
+			if (text[i + 5] != ':')
+				continue;
+
+			size_t j = i + 6;
+			while (j < sz && text[j] != '@')
+				j++;
+
+			if (j >= sz)
+				break;
+
+			size_t const name_len = j - (i + 6);
+
+			if (name_len == 0 || name_len >= sizeof(_kill_slots[0].name)) {
+				warning("sponge_supervisor: restart marker with empty or "
+				        "over-long name ignored");
+				i = j;
+				continue;
+			}
+
+			bool known = false;
+			for (unsigned s = 0; s < _kill_slot_count; s++) {
+				if (Genode::strlen(_kill_slots[s].name) != name_len)
+					continue;
+				bool same = true;
+				for (size_t k = 0; k < name_len; k++)
+					if (_kill_slots[s].name[k] != text[i + 6 + k]) {
+						same = false;
+						break;
+					}
+				if (same) { known = true; break; }
+			}
+
+			if (!known) {
+				if (_kill_slot_count >= MAX_KILL_SLOTS) {
+					warning("sponge_supervisor: more than ", (int)MAX_KILL_SLOTS,
+					        " named restart markers - the extra ones cannot "
+					        "be contained by name");
+					i = j;
+					continue;
+				}
+				Kill_slot &slot = _kill_slots[_kill_slot_count++];
+				for (size_t k = 0; k < name_len; k++)
+					slot.name[k] = text[i + 6 + k];
+				slot.name[name_len] = '\0';
+			}
+
+			i = j;
+		}
 	}
 
 	/* ---- templates ----------------------------------------------- */
@@ -414,7 +643,8 @@ struct Sponge::Supervisor::Main
 			warning("sponge_supervisor: console_state report overflow");
 	}
 
-	bool _publish(Reporter &reporter, char const *template_name)
+	bool _publish(Reporter &reporter, char const *template_name,
+	              char const *target_name)
 	{
 		char const *text = nullptr;
 		size_t      len  = 0;
@@ -439,16 +669,72 @@ struct Sponge::Supervisor::Main
 			return false;
 		}
 
+		/*
+		 * P3.4: a TARGETED publish bumps only the named slot's pending
+		 * version; a global one bumps the shared counter and every
+		 * slot. The pending values are folded into the committed table
+		 * only after generate() succeeded (below), so a refused publish
+		 * consumes no version and a retry renders the same bytes.
+		 */
+		bool targeted = (target_name != nullptr) && (_kill_slot_count > 0);
+
+		if (targeted) {
+			bool known = false;
+			for (unsigned s = 0; s < _kill_slot_count; s++)
+				if (Genode::strcmp(_kill_slots[s].name, target_name) == 0)
+					known = true;
+
+			if (!known) {
+				warning("sponge_supervisor: containment target '", target_name,
+				        "' has no named restart marker - falling back to a "
+				        "global rebuild");
+				targeted = false;
+			}
+		}
+
+		if (targeted) {
+			_global_pending = _global_committed;
+			for (unsigned s = 0; s < _kill_slot_count; s++) {
+				bool const mine =
+					Genode::strcmp(_kill_slots[s].name, target_name) == 0;
+				_kill_slots[s].pending =
+					_kill_slots[s].committed + (mine ? 1u : 0u);
+			}
+		} else {
+			_global_pending = _global_committed + 1;
+			for (unsigned s = 0; s < _kill_slot_count; s++)
+				_kill_slots[s].pending = _kill_slots[s].committed + 1;
+		}
+
+		/*
+		 * Render against the pending values. A slotless marker or an
+		 * unknown name aborts the publish: a template whose restart
+		 * lever is half-rendered is worse than no publish at all.
+		 */
+		Sponge::Version_slot slots[MAX_KILL_SLOTS + 1];
+		unsigned const num_slots = _kill_slot_count + 1;
+
+		slots[0].name     = nullptr;
+		slots[0].value    = _global_pending;
+		slots[0].previous = _global_committed;
+
+		for (unsigned s = 0; s < _kill_slot_count; s++) {
+			slots[s + 1].name     = _kill_slots[s].name;
+			slots[s + 1].value    = _kill_slots[s].pending;
+			slots[s + 1].previous = _kill_slots[s].committed;
+		}
+
 		static char buf[160*1024];
+		unsigned bumped = 0;
 
-		size_t const out = Sponge::substitute_decimal(text, len, "@KILL@",
-		                                               ++_kill_version,
-		                                               buf, sizeof(buf));
+		size_t const out = Sponge::substitute_versions(
+			text, len, slots, num_slots, bumped, buf, sizeof(buf));
 
-		if (out + 1 >= sizeof(buf)) {
+		if (out == 0 || out + 1 >= sizeof(buf)) {
 			warning("sponge_supervisor: template <", template_name,
-			        "> truncated at ", sizeof(buf) - 1,
-			        " bytes - not publishing");
+			        "> has an unrenderable restart marker or does not fit "
+			        "the render buffer - NOT publishing (previous config "
+			        "stays in effect)");
 			return false;
 		}
 
@@ -463,14 +749,29 @@ struct Sponge::Supervisor::Main
 			return false;
 		}
 
+		/* committed only now: the versions above really reached init */
+		_global_committed = _global_pending;
+		for (unsigned s = 0; s < _kill_slot_count; s++)
+			_kill_slots[s].committed = _kill_slots[s].pending;
+
+		_kill_version++;
+
+		/*
+		 * The publish receipt is the containment witness: `target=`
+		 * says WHOSE node was rebuilt and `bumped=` how many. A
+		 * targeted containment reads `target=<name> bumped=1`; anything
+		 * global reads `target=global bumped=<all>`.
+		 */
 		log("sponge_supervisor: published <", template_name, "> kill=",
-		    _kill_version, " (", out, " bytes)");
+		    _kill_version, " target=",
+		    targeted ? target_name : "global",
+		    " bumped=", bumped, " (", out, " bytes)");
 		return true;
 	}
 
 	void _publish_nominal()
 	{
-		_publish(*_system_reporter, "system");
+		_publish(*_system_reporter, "system", nullptr);
 	}
 
 	/* ---- observation ---------------------------------------------- */
@@ -482,7 +783,7 @@ struct Sponge::Supervisor::Main
 	 * the list is fixed-length, and a linear scan keeps the supervisor
 	 * free of any dynamic allocation.
 	 */
-	bool _excluded(Genode::String<64> const &name) const
+	bool _excluded(char const *name) const
 	{
 		char const *p = _ignore_exited;
 
@@ -502,13 +803,13 @@ struct Sponge::Supervisor::Main
 			 * not from String::size(), which is a static capacity and
 			 * compiles into a silent always-false comparison.
 			 */
-			size_t const n = Genode::strlen(name.string());
+			size_t const n = Genode::strlen(name);
 
 			if ((size_t)(e - p) == n) {
 
 				bool same = true;
 				for (size_t i = 0; i < n; i++)
-					if (p[i] != name.string()[i]) { same = false; break; }
+					if (p[i] != name[i]) { same = false; break; }
 
 				if (same)
 					return true;
@@ -532,6 +833,14 @@ struct Sponge::Supervisor::Main
 		_exited      = 0;
 		_starting    = 0;
 
+		_scan_offender[0] = '\0';
+
+		unsigned worst_skipped  = 0;
+		char     worst_name[48] { };
+		char     exit_name[48]  { };
+		unsigned version_logged = 0;
+		unsigned version_suppressed = 0;
+
 		/*
 		 * The 26.08 state report is HID-serialised - the same lesson
 		 * sponge_pkgd (runtime_state) and sponge-de (C: readout)
@@ -547,6 +856,7 @@ struct Sponge::Supervisor::Main
 
 			unsigned const skipped = n.attribute_value("skipped_heartbeats", 0u);
 			bool     const gone    = n.has_attribute("exited");
+			String<48> const name  = n.attribute_value("name", String<48>());
 
 			/*
 			 * A child the supervised sandbox marks as "starting" has not
@@ -564,12 +874,96 @@ struct Sponge::Supervisor::Main
 			if (starting)
 				_starting++;
 
-			if (skipped > _max_skipped && !(starting && _ignore_starting))
+			bool const skip_fault =
+				(skipped > _max_skipped) && !(starting && _ignore_starting);
+
+			if (skip_fault)
 				_max_skipped = skipped;
 
-			if (gone && !_excluded(n.attribute_value("name", String<64>())))
+			if (skip_fault && skipped >= _fault_skipped && skipped > worst_skipped) {
+				worst_skipped = skipped;
+				for (size_t i = 0; i + 1 < sizeof(worst_name); i++) {
+					worst_name[i] = name.string()[i];
+					if (!name.string()[i]) break;
+				}
+				worst_name[sizeof(worst_name) - 1] = '\0';
+			}
+
+			if (gone && !_excluded(name.string()))
 				_exited++;
+
+			/*
+			 * Per-child snapshot: the construction version (P3.4
+			 * witness) and the exited edge for attribution.
+			 */
+			State_child *slot = nullptr;
+
+			for (unsigned s = 0; s < _state_child_count; s++) {
+				if (Genode::strcmp(_state_children[s].name, name.string()) == 0) {
+					slot = &_state_children[s];
+					break;
+				}
+			}
+
+			if (!slot) {
+				if (_state_child_count >= MAX_STATE_CHILDREN) {
+					if (!_state_table_full) {
+						_state_table_full = true;
+						warning("sponge_supervisor: state snapshot table full - "
+						        "version-change witness degraded");
+					}
+				} else {
+					slot = &_state_children[_state_child_count++];
+					for (size_t i = 0; i + 1 < sizeof(slot->name); i++) {
+						slot->name[i] = name.string()[i];
+						if (!name.string()[i]) break;
+					}
+					slot->name[sizeof(slot->name) - 1] = '\0';
+				}
+			}
+
+			if (slot) {
+				unsigned const v = n.attribute_value("version", 0u);
+
+				if (slot->version_known && v != slot->version) {
+					if (version_logged < MAX_VERSION_LOG) {
+						log("sponge_supervisor: version-change ",
+						    (char const *)slot->name, " ", slot->version, " -> ", v);
+						version_logged++;
+					} else {
+						version_suppressed++;
+					}
+				}
+
+				slot->version       = v;
+				slot->version_known = true;
+
+				if (gone && !slot->exited && !slot->exited_at_baseline &&
+				    !_excluded(name.string()) && !exit_name[0]) {
+					for (size_t i = 0; i + 1 < sizeof(exit_name); i++) {
+						exit_name[i] = name.string()[i];
+						if (!name.string()[i]) break;
+					}
+					exit_name[sizeof(exit_name) - 1] = '\0';
+				}
+
+				slot->exited = gone;
+			}
 		});
+
+		if (version_suppressed > 0)
+			log("sponge_supervisor: version-change-suppressed ",
+			    version_suppressed);
+
+		/*
+		 * Attribution: the worst threshold-crossing skipper wins; a
+		 * fresh non-baseline exit is the fallback; a boot-staleness
+		 * fault has no child at all.
+		 */
+		if (worst_skipped >= _fault_skipped)
+			Genode::memcpy(_scan_offender, worst_name, sizeof(worst_name));
+		else if (exit_name[0])
+			Genode::memcpy(_scan_offender, exit_name, sizeof(exit_name));
 	}
 
 	void _handle_state()
@@ -616,7 +1010,40 @@ struct Sponge::Supervisor::Main
 		    " starting=",   _starting,
 		    " state_seen=",  _state_seen,
 		    " state_age_ms=",
-		    _state_seen ? (_ticks - _state_at) * _poll_ms : 0);
+		    _state_seen ? (_ticks - _state_at) * _poll_ms : 0,
+		    _fault_name[0] ? " child=" : "",
+		    _fault_name[0] ? (char const *)_fault_name : "");
+	}
+
+	/*
+	 * The attributed fault's gate values (P3.4): the per-subtree
+	 * overrides when the fault names a kill slot, the globals
+	 * otherwise. Only the fault's own lifecycle (escalation, the
+	 * re-fault grace, the CONTAIN settle) uses these; the console
+	 * phase and RELEASE keep the globals.
+	 */
+	Kill_slot const *_fault_slot() const
+	{
+		if (!_fault_name[0])
+			return nullptr;
+
+		for (unsigned s = 0; s < _kill_slot_count; s++)
+			if (Genode::strcmp(_kill_slots[s].name, _fault_name) == 0)
+				return &_kill_slots[s];
+
+		return nullptr;
+	}
+
+	unsigned _grace_ticks_for() const
+	{
+		Kill_slot const *slot = _fault_slot();
+		return (slot && slot->grace_ticks) ? slot->grace_ticks : _grace_ticks;
+	}
+
+	unsigned _settle_ticks_for() const
+	{
+		Kill_slot const *slot = _fault_slot();
+		return (slot && slot->settle_ticks) ? slot->settle_ticks : _settle_ticks;
 	}
 
 	unsigned to_idle_ticks() const
@@ -630,8 +1057,10 @@ struct Sponge::Supervisor::Main
 		_phase       = phase;
 		_phase_since = _ticks;
 
-		if (phase == Phase::NOMINAL)
+		if (phase == Phase::NOMINAL) {
 			_fault_since = 0;
+			_fault_name[0] = '\0';
+		}
 
 		log("sponge_supervisor: phase=", (int)phase, " (", why, ")");
 	}
@@ -706,22 +1135,40 @@ struct Sponge::Supervisor::Main
 			 */
 			if (_fault_since == 0) {
 				_fault_since = _ticks;
+
+				/*
+				 * Latch the attribution for the whole fault run (the
+				 * single-fault machine): the child named here is the
+				 * one the escalation, the CONTAIN settle and the
+				 * containment target are computed for, even if a later
+				 * scan blames somebody else mid-run.
+				 */
+				_fault_name[0] = '\0';
+				if (_scan_offender[0]) {
+					for (size_t i = 0; i + 1 < sizeof(_fault_name); i++) {
+						_fault_name[i] = _scan_offender[i];
+						if (!_scan_offender[i]) break;
+					}
+					_fault_name[sizeof(_fault_name) - 1] = '\0';
+				}
+
 				_log_fault();
 				log("sponge_supervisor: escalation - fault held for ",
-				    _grace_ms, "ms before any action "
+				    _grace_ticks_for() * _poll_ms, "ms before any action "
 				    "(the supervised sandbox has its own containment)");
 				break;
 			}
 
-			if ((_ticks - _fault_since) < _grace_ticks)
+			if ((_ticks - _fault_since) < _grace_ticks_for())
 				break;
 
 			_log_fault();
 
 			/* Kill: bump @KILL@ on every <start> node of the supervised
 			 * config. The wedged children are abandoned and respawned
-			 * from the same template. */
-			_publish(*_system_reporter, "system");
+			 * from the same template. (P3.4 flips this to the attributed
+			 * child's slot; until then it stays global.) */
+			_publish(*_system_reporter, "system", nullptr);
 			_fault_since = 0;
 			_ever_healthy = false;
 			_enter(Phase::CONTAIN, "fault survived the escalation window, subtree killed");
@@ -748,15 +1195,20 @@ struct Sponge::Supervisor::Main
 					_healthy_since = _ticks;
 				}
 
-				if ((_ticks - _healthy_since) < _settle_ticks)
+				if ((_ticks - _healthy_since) < _settle_ticks_for())
 					break;
 
 				/* healthy for a whole settle window: re-baseline the
 				 * exited count, so the deaths that were part of THIS
 				 * fault do not count against the next one */
 				_exited_baseline = _exited;
+				for (unsigned s = 0; s < _state_child_count; s++)
+					_state_children[s].exited_at_baseline =
+						_state_children[s].exited;
 
-				log("sponge_supervisor: contained - subtree healthy for ",
+				log("sponge_supervisor: contained - child=",
+				    _fault_name[0] ? (char const *)_fault_name : "global",
+				    " subtree healthy for ",
 				    (_ticks - _healthy_since) * _poll_ms,
 				    "ms after the kill, no console needed");
 				_enter(Phase::NOMINAL, "contained");
@@ -765,7 +1217,7 @@ struct Sponge::Supervisor::Main
 
 			_ever_healthy = false;
 
-			if ((_ticks - _phase_since) < _grace_ticks)
+			if ((_ticks - _phase_since) < _grace_ticks_for())
 				break;
 
 			_log_fault();
@@ -778,7 +1230,7 @@ struct Sponge::Supervisor::Main
 			 * console is the only Gui client. Two reports, one
 			 * direction: the console starts, the desktop stops.
 			 */
-			_publish(*_system_reporter, "system_console");
+			_publish(*_system_reporter, "system_console", nullptr);
 
 			/* The wedged stack is already gone at this point (the CONTAIN
 			 * rewrite above destroyed it); arming the console is the
@@ -843,6 +1295,11 @@ struct Sponge::Supervisor::Main
 
 	Main(Env &env) : _env(env)
 	{
+		/*
+		 * Marker scan BEFORE the policy: the per-subtree gate lookups
+		 * walk the name->version table, so it must exist first.
+		 */
+		_scan_template_markers();
 		_read_policy();
 
 		/* prime the report and arm the change signal */
@@ -869,6 +1326,11 @@ struct Sponge::Supervisor::Main
 		    "ms settle=",       _settle_ms,
 		    "ms boot_grace=",   _boot_grace_ms, "ms",
 		    " ignore_starting=", _ignore_starting ? "yes" : "no");
+
+		for (unsigned s = 0; s < _kill_slot_count; s++)
+			log("sponge_supervisor: named restart slot ", (char const *)_kill_slots[s].name,
+			    " grace=", _kill_slots[s].grace_ticks * _poll_ms,
+			    "ms settle=", _kill_slots[s].settle_ticks * _poll_ms, "ms");
 	}
 };
 

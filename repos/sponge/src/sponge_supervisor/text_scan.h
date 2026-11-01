@@ -267,52 +267,161 @@ namespace Sponge {
 	}
 
 	/**
-	 * Replace every occurrence of 'marker' in 'text' with the decimal
-	 * rendering of 'value'. Writes at most 'cap'-1 bytes plus a NUL and
-	 * returns the number of bytes written.
+	 * One restart-version slot: a marker name and the decimal values it
+	 * renders to.
+	 *
+	 * 'name' is the marker's name part - nullptr is the GLOBAL slot,
+	 * which renders the plain "@KILL@" marker. 'value' is what the
+	 * marker renders to in THIS substitution; 'previous' is the value
+	 * the node carried before, so the caller can count how many nodes a
+	 * publish actually bumped (the publish log's 'bumped=' witness).
 	 */
-	inline Genode::size_t substitute_decimal(char const *text, Genode::size_t len,
-	                                         char const *marker,
-	                                         unsigned value,
-	                                         char *dst, Genode::size_t cap)
-	{
-		Genode::size_t const marker_len = Genode::strlen(marker);
+	struct Version_slot {
+		char const *name;
+		unsigned    value;
+		unsigned    previous;
+	};
 
-		char digits[16];
-		Genode::size_t digits_len = 0;
+	namespace Detail {
+
+		inline void render_decimal(unsigned value, char *digits,
+		                           Genode::size_t &digits_len)
 		{
-			unsigned v = value;
 			char tmp[16];
 			Genode::size_t t = 0;
-			do { tmp[t++] = char('0' + (v % 10)); v /= 10; } while (v);
+
+			digits_len = 0;
+			do { tmp[t++] = char('0' + (value % 10)); value /= 10; } while (value);
 			while (t) digits[digits_len++] = tmp[--t];
 		}
+	}
+
+	/**
+	 * Replace every restart marker in 'text' with its rendered version.
+	 *
+	 * Marker grammar (P3.4):
+	 *
+	 *   "@KILL@"         the GLOBAL slot - every node carrying it
+	 *                    shares one version counter
+	 *   "@KILL:<name>@"  the named slot '<name>' - a per-node counter,
+	 *                    so a containment action can bump ONE child
+	 *                    while every other node stays byte-identical
+	 *
+	 * (Start_model::matches() compares only name+version
+	 * (genode/repos/os/src/lib/sandbox/config_model.h:171), so a node
+	 * whose rendered version does not change is never rebuilt.)
+	 *
+	 * 'bumped' accumulates the number of marker sites whose rendered
+	 * value DIFFERS from 'previous' - the witness that distinguishes a
+	 * targeted containment (bumped=1) from a global one (bumped=all).
+	 *
+	 * Returns the number of bytes written (at most 'cap'-1 plus a NUL),
+	 * or 0 when a marker names a slot the caller did not provide - the
+	 * caller must then refuse to publish rather than forward a template
+	 * whose restart lever is half-rendered.
+	 */
+	inline Genode::size_t substitute_versions(char const *text, Genode::size_t len,
+	                                          Version_slot const *slots,
+	                                          Genode::size_t num_slots,
+	                                          unsigned &bumped,
+	                                          char *dst, Genode::size_t cap)
+	{
+		static char const PREFIX[] = "@KILL";
+
+		Genode::size_t const prefix_len = 5;
 
 		Genode::size_t o = 0;
 		Genode::size_t i = 0;
 
+		bumped = 0;
+
 		while (i < len) {
 
-			bool const hit = (i + marker_len <= len) &&
-			                 Detail::tag_at(text, len, i, marker);
+			bool const at_marker =
+				(i + prefix_len <= len) &&
+				Detail::tag_at(text, len, i, PREFIX);
 
-			if (hit) {
+			if (!at_marker) {
 
-				if (o + digits_len + 1 >= cap)
-					break;
+				if (o + 2 >= cap)
+					return 0;
 
-				for (Genode::size_t k = 0; k < digits_len; k++)
-					dst[o + k] = digits[k];
-
-				o += digits_len;
-				i += marker_len;
+				dst[o++] = text[i++];
 				continue;
 			}
 
-			if (o + 2 >= cap)
-				break;
+			/* the marker tail: "@KILL@" or "@KILL:<name>@" */
+			Genode::size_t const tail = i + prefix_len;
 
-			dst[o++] = text[i++];
+			if (tail >= len)
+				return 0;
+
+			char const kind = text[tail];
+
+			if (kind != '@' && kind != ':')
+				return 0;
+
+			char const *name = nullptr;
+			Genode::size_t name_len = 0;
+			Genode::size_t consumed = 0;
+
+			if (kind == '@') {
+				consumed = prefix_len + 1;
+			} else {
+				name     = text + tail + 1;
+				name_len = 0;
+				while (tail + 1 + name_len < len &&
+				       text[tail + 1 + name_len] != '@')
+					name_len++;
+
+				if (tail + 1 + name_len >= len)
+					return 0;
+
+				consumed = prefix_len + 1 + name_len + 1;
+			}
+
+			Version_slot const *slot = nullptr;
+
+			for (Genode::size_t s = 0; s < num_slots; s++) {
+
+				bool const global = (slots[s].name == nullptr);
+
+				if (global != (kind == '@'))
+					continue;
+
+				if (global) { slot = &slots[s]; break; }
+
+				Genode::size_t const n = Genode::strlen(slots[s].name);
+
+				if (n != name_len)
+					continue;
+
+				bool same = true;
+				for (Genode::size_t k = 0; k < n; k++)
+					if (slots[s].name[k] != name[k]) { same = false; break; }
+
+				if (same) { slot = &slots[s]; break; }
+			}
+
+			if (!slot)
+				return 0;
+
+			char digits[16];
+			Genode::size_t digits_len = 0;
+
+			Detail::render_decimal(slot->value, digits, digits_len);
+
+			if (o + digits_len + 1 >= cap)
+				return 0;
+
+			for (Genode::size_t k = 0; k < digits_len; k++)
+				dst[o + k] = digits[k];
+
+			o += digits_len;
+			i += consumed;
+
+			if (slot->value != slot->previous)
+				bumped++;
 		}
 
 		dst[o] = '\0';
