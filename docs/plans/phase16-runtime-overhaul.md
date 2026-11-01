@@ -2,7 +2,10 @@
 
 > Status: in progress. P0 baseline/audits, P1, P2, and P3 are complete;
 > P3.4's containment and victim-revival gates are green (see
-> `docs/evidence/phase16-runtime-p34.md`); P4-P5 remain open. Created
+> `docs/evidence/phase16-runtime-p34.md`); P4.1 (patch classification) and
+> P4.2 (uplink disposition — **fixed in place**, see
+> `docs/evidence/forwarded-create-starvation.md` §9) are landed;
+> P4.3-P5 remain open. Created
 > 2026-10-28 on branch `refactor/phase16-runtime-overhaul` (pre-work HEAD
 > `3afb40c922`).
 > Relationship: this is the runtime-overhaul track of the reopened Phase 16
@@ -463,6 +466,20 @@ target phase (honest disclosure, no silent drop).
 Commits: `docs(evidence): dispose of the pkg-driver uplink regression` (1)
 + any follow-up `fix(genode): ...` solo fork commit + pin bump (0-2).
 Owns: the uplink evidence file (serial point with P0.2), solo fork commits.
+Landed (2026-11-02): the disposition is **fixed in place (keep)** at pin
+`48a946ba15` — the regression was the rows #32/#33 session-lifecycle
+corruption class (stale RPC-object-key alias + pending-op lifetime over
+replaced/freed `Session_state`) that the create chain's churn window
+exposed; the pinned pair `489f977822` + `48a946ba15` is the verified fix
+(creates complete in every capture — the chain's logic is not the defect).
+Evidence: `docs/evidence/forwarded-create-starvation.md` §9 (six serial
+current-pin runs, **6/6 reach `dhcp offer from 10.0.2.2`** with zero
+`close of ... failed` co-symptoms and no e1000 regression; the failing
+window is 0/5 and every lost close pairs 1:1 with a core
+`invalid signal-context capability` dispatch) + the P4.1-table updates in
+`docs/evidence/patch-classification.md`. D16R.17 and the e1000 trap are
+preserved; **no code change** (0 fork commits) and **no P4.3 pruning**
+accompany this disposition.
 
 **P4.3 Conditional removals.**
 Execute the removals/replacements that P4.1/P4.2 made conditional: delete
@@ -662,9 +679,13 @@ Fixing a root cause here never closes the item.
    is rooted today. The staging rule is already fixed (P2.6 stages the
    measured closure and grows P3 only on newly generated media when
    required), so the answer changes only where P2.6 points, not what it may do.
-2. **Uplink root cause location.** P4.2 must decide whether the regression
-   lives in the row #28-#31 machinery or in scenario-side wiring. Until
-   then, no create-chain row is pruned (D16R.17).
+2. **Uplink root cause location.** RESOLVED (P4.2, 2026-11-02): the
+   regression lives in the base session-lifecycle machinery the create
+   chain exposed (the rows #32/#33 corruption class), **not** in
+   scenario-side wiring and **not** in the non-blocking create logic
+   (creates complete in every capture) — dispositioned **fixed in place**;
+   evidence `docs/evidence/forwarded-create-starvation.md` §9. No
+   create-chain row was pruned to reach this answer (D16R.17).
 3. **Validation mechanism (P1.5).** Whether emitted-config validation
    reuses the run-tool's `install_config`/init.xsd path or needs a small
    test component is a P1.5 implementation choice; the gate (loud failure
