@@ -54,6 +54,39 @@ void Sponge::Pkgd::Main::_do_install(Genode::String<128> const &pkg)
 	Package const &root = _plan[_num_plan > 0 ? _num_plan - 1 : 0];
 
 	/*
+	 * Exclusive-group pre-flight (docs/12 §4.6). An <autostart/>
+	 * package enters the running set the moment the install lands, so an
+	 * install IS a spawn: `vct install fb_boot` on a medium where
+	 * fb_vesa is already driving the display must be REFUSED rather than
+	 * quietly produce two claimants of the PCI VGA class — the visible
+	 * result of that race is a dark screen with no diagnosis anywhere.
+	 *
+	 * Refusing (rather than auto-stopping the incumbent) keeps the rule
+	 * one-directional and auditable: a package is never taken away by
+	 * an operation the user did not name. The remedy is in the message
+	 * and in docs/15 §8.2 — `vct remove <old>` then install again.
+	 *
+	 * Checked BEFORE admission and BEFORE any state mutation, so a
+	 * refusal leaves no root, no installed entry and no config write
+	 * behind. The same rule on the launch path is the
+	 * `Pkg_launch::Outcome::exclusive_conflict` gate in _do_launch.
+	 */
+	for (unsigned i = 0; i < _num_plan; ++i) {
+		Package const &c = _plan[i];
+		if (!c.has_autostart || _is_running(c.name.string()))
+			continue;
+		Genode::String<64> const peer = _exclusive_peer(c, c.name);
+		if (c.exclusive())
+			Genode::log("sponge_pkgd: exclusive-group check on '", c.name,
+			            "' group='", c.exclusive_group, "' peer='", peer, "'");
+		if (peer != Genode::String<64>()) {
+			_report_conflict("install", c.name, peer,
+			                 c.exclusive_group);
+			return;
+		}
+	}
+
+	/*
 	 * Admission pre-flight for the packages this install would newly put
 	 * into the running set. An <autostart/> package gets its <start>
 	 * node the moment the install lands, so it is a spawn exactly like a
