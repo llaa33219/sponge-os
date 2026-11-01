@@ -1046,6 +1046,17 @@ struct Sponge::Supervisor::Main
 		return (slot && slot->settle_ticks) ? slot->settle_ticks : _settle_ticks;
 	}
 
+	/*
+	 * The containment target: the attributed child's name when it owns
+	 * a named restart marker (a runtime subtree), nullptr otherwise -
+	 * which keeps non-runtime faults and unattributable ones on the
+	 * global rebuild.
+	 */
+	char const *_contain_target() const
+	{
+		return _fault_slot() ? _fault_name : nullptr;
+	}
+
 	unsigned to_idle_ticks() const
 	{
 		unsigned const poll = _poll_ms ? _poll_ms : 250;
@@ -1164,11 +1175,15 @@ struct Sponge::Supervisor::Main
 
 			_log_fault();
 
-			/* Kill: bump @KILL@ on every <start> node of the supervised
-			 * config. The wedged children are abandoned and respawned
-			 * from the same template. (P3.4 flips this to the attributed
-			 * child's slot; until then it stays global.) */
-			_publish(*_system_reporter, "system", nullptr);
+			/*
+			 * Kill (P3.4): a fault attributed to a runtime subtree
+			 * bumps ONLY that child's `<start>` version - the sibling
+			 * runtimes and the DE keep their exact rendered bytes and
+			 * are never rebuilt. Anything else (a non-runtime child, or
+			 * a fault with no attribution at all) stays a global bump:
+			 * the whole subtree is abandoned and respawned as before.
+			 */
+			_publish(*_system_reporter, "system", _contain_target());
 			_fault_since = 0;
 			_ever_healthy = false;
 			_enter(Phase::CONTAIN, "fault survived the escalation window, subtree killed");
