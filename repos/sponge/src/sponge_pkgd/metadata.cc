@@ -151,6 +151,22 @@ void Sponge::Pkgd::Main::_load_metadata_cache()
 			 * "package not found: <name>" error. */
 			Genode::warning("sponge_pkgd: metadata ROM missing for ", name);
 		}
+		catch (Genode::Attached_dataspace::Region_conflict) {
+			/*
+			 * Present but zero-length: the module exists (the session
+			 * opened) but the empty dataspace cannot be attached. The
+			 * pre-cache _load_package construction threw this out of
+			 * the dispatch path; record a zero-length entry instead so
+			 * dispatch answers the empty-document error
+			 * ("malformed metadata for package: <name>", Invalid_syntax
+			 * on an empty range) rather than "package not found".
+			 */
+			Genode::warning("sponge_pkgd: empty metadata for ", name);
+			Cached_metadata &entry = _meta_cache[_num_meta_cache];
+			entry.name = Genode::String<64>(name);
+			entry.len  = 0;
+			++_num_meta_cache;
+		}
 	}
 
 	Genode::log("sponge_pkgd: cached ", _num_meta_cache,
