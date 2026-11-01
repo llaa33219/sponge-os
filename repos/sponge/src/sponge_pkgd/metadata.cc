@@ -80,6 +80,75 @@ void Sponge::Pkgd::Main::_load_index()
 }
 
 
+/*
+ * Copy every indexed pkg_<name>.xml into the bounded metadata cache.
+ * Runs ONCE on the Bootstrap thread, before any request handler is
+ * armed, with one transient ROM session per document (constructed and
+ * destructed here — the same pattern _load_package used per resolve
+ * before P3.3). From here on the dispatch path parses from the cache
+ * and opens no ROM session at all: a create is storage I/O on the
+ * request path and a denied or stalled create parks the entrypoint.
+ *
+ * Bounds: METADATA_MAX bytes per document (the shipped inventory tops
+ * out around 10 KiB, pkg/terminal). An oversized document is copied
+ * truncated and will parse as "malformed metadata" at dispatch — the
+ * loud failure beats a silent cut.
+ */
+void Sponge::Pkgd::Main::_load_metadata_cache()
+{
+	_num_meta_cache = 0;
+
+	for (unsigned i = 0; i < _num_known && _num_meta_cache < MAX_PACKAGES; ++i) {
+		char const *const name = _known[i].string();
+		Genode::String<96> const rom_label("pkg_", name, ".xml");
+
+		try {
+			Genode::Attached_rom_dataspace rom(_env, rom_label.string());
+			rom.update();
+
+			if (!rom.valid() || rom.size() == 0) {
+				Genode::warning("sponge_pkgd: no metadata for ", name);
+				continue;
+			}
+
+			Cached_metadata &entry = _meta_cache[_num_meta_cache];
+			entry.name = Genode::String<64>(name);
+
+			char const *src = rom.local_addr<char const>();
+
+			/*
+			 * Content length: the module dataspace is page-granular
+			 * and may trail past the document, but its content is
+			 * NUL-terminated in practice (fresh backing store); the
+			 * end of the text is the first NUL.
+			 */
+			Genode::size_t n { 0 };
+			while (n < rom.size() && src[n] != 0) ++n;
+
+			if (n > METADATA_MAX) {
+				Genode::warning("sponge_pkgd: metadata for ", name,
+				                " exceeds ", (Genode::size_t)METADATA_MAX,
+				                " bytes — truncating");
+				n = METADATA_MAX;
+			}
+			for (Genode::size_t j = 0; j < n; ++j)
+				entry.xml[j] = src[j];
+			entry.len = n;
+			++_num_meta_cache;
+		}
+		catch (Genode::Rom_connection::Rom_connection_failed) {
+			/* Defensive: the index guarantees the module exists. A
+			 * miss here surfaces at dispatch as the preserved
+			 * "package not found: <name>" error. */
+			Genode::warning("sponge_pkgd: metadata ROM missing for ", name);
+		}
+	}
+
+	Genode::log("sponge_pkgd: cached ", _num_meta_cache,
+	            " metadata document(s) at bootstrap");
+}
+
+
 bool Sponge::Pkgd::Main::_load_package(char const *name, Package &out)
 {
 	/* Never request a metadata ROM for a package that has no staged
@@ -97,28 +166,21 @@ bool Sponge::Pkgd::Main::_load_package(char const *name, Package &out)
 		return false;
 	}
 
-	Genode::String<96> const rom_label("pkg_", name, ".xml");
+	Cached_metadata const *entry { nullptr };
+	for (unsigned i = 0; i < _num_meta_cache; ++i)
+		if (Genode::strcmp(_meta_cache[i].name.string(), name) == 0) {
+			entry = &_meta_cache[i];
+			break;
+		}
 
-	try {
-		_meta_rom.construct(_env, rom_label.string());
-		_meta_rom->update();
-	} catch (Genode::Rom_connection::Rom_connection_failed) {
-		/* Should not happen: the index guarantees the module exists.
-		 * Treat defensively as a malformed repository. */
-		_error = Genode::String<256>("package not found: ", name);
-		_ok = false;
-		return false;
-	}
-
-	if (!_meta_rom->valid()) {
+	if (!entry || entry->len == 0) {
 		_error = Genode::String<256>("package not found: ", name);
 		_ok = false;
 		return false;
 	}
 
 	try {
-		Genode::Xml_node const root(_meta_rom->local_addr<char>(),
-		                            _meta_rom->size());
+		Genode::Xml_node const root(entry->xml, entry->len);
 		if (!root.has_type("package")) {
 			_error = Genode::String<256>("malformed metadata for package: ", name,
 			                            " (root is not <package>)");

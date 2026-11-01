@@ -1512,6 +1512,10 @@ void Sponge::Pkgd::Main::_bootstrap()
 
 	_load_index();
 
+	/* P3.3: the metadata cache is the dispatch path's only metadata
+	 * source — copy it here, before any handler is armed. */
+	_load_metadata_cache();
+
 	/* Optional persistent store: activate it if <config> declares a
 	 * <vfs>, then reload the previously-installed root set (if any). In
 	 * the non-persistent scenarios both calls are no-ops. */

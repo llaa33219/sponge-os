@@ -515,10 +515,32 @@ class Sponge::Pkgd::Main
 		unsigned           _num_known            { 0 };
 		bool               _index_loaded         { false };
 
-		/* Constructed per package during resolution (sequential DFS,
-		 * so a single slot is enough). Starts deconstructed so that a
-		 * missing ROM surfaces only when we actually look it up. */
-		Genode::Constructible<Genode::Attached_rom_dataspace> _meta_rom { };
+		/*
+		 * Bootstrap metadata cache (Phase 16 P3.3): one bounded copy of
+		 * each indexed pkg_<name>.xml, taken on the Bootstrap thread
+		 * with one transient ROM session per document
+		 * (_load_metadata_cache). Dispatch parses from these bytes and
+		 * opens NO ROM session: a session create is storage I/O on the
+		 * request path, and a denied or stalled create parks the
+		 * entrypoint (FD1, docs/evidence/forwarded-create-starvation.md).
+		 *
+		 * FIXME(download path): the cache treats pkg_<name>.xml as
+		 * IMAGE-IMMUTABLE (docs/14: the image is the naming authority).
+		 * A future download path that adds or replaces metadata at
+		 * runtime must refresh this cache and re-validate the bound
+		 * instead of assuming a bootstrap constant.
+		 */
+		static constexpr Genode::size_t METADATA_MAX = 16384;
+
+		struct Cached_metadata
+		{
+			Genode::String<64> name { };
+			Genode::size_t     len  { 0 };
+			char               xml[METADATA_MAX] { };
+		};
+
+		Cached_metadata _meta_cache[MAX_PACKAGES] { };
+		unsigned        _num_meta_cache { 0 };
 
 		/* resolution state */
 		Package          _plan[MAX_PACKAGES] { };
@@ -842,6 +864,7 @@ class Sponge::Pkgd::Main
 		void _visit(char const *name);
 
 		void _load_index();
+		void _load_metadata_cache();
 
 		/* Runs on the Bootstrap thread, never on env.ep(). */
 		void _bootstrap();
