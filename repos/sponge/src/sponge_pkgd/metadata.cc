@@ -106,7 +106,15 @@ void Sponge::Pkgd::Main::_load_metadata_cache()
 			Genode::Attached_rom_dataspace rom(_env, rom_label.string());
 			rom.update();
 
-			if (!rom.valid() || rom.size() == 0) {
+			/*
+			 * Presence parity with the pre-cache _load_package: only a
+			 * ROM that cannot be opened (or yields no dataspace) is
+			 * ABSENT - a present-but-empty module is copied as a
+			 * zero-length entry so dispatch answers the pre-change
+			 * "malformed metadata" (Invalid_syntax on an empty
+			 * document), never "package not found".
+			 */
+			if (!rom.valid()) {
 				Genode::warning("sponge_pkgd: no metadata for ", name);
 				continue;
 			}
@@ -120,7 +128,8 @@ void Sponge::Pkgd::Main::_load_metadata_cache()
 			 * Content length: the module dataspace is page-granular
 			 * and may trail past the document, but its content is
 			 * NUL-terminated in practice (fresh backing store); the
-			 * end of the text is the first NUL.
+			 * end of the text is the first NUL. A zero-length module
+			 * scans to 0 and stays a present, empty entry.
 			 */
 			Genode::size_t n { 0 };
 			while (n < rom.size() && src[n] != 0) ++n;
@@ -173,7 +182,10 @@ bool Sponge::Pkgd::Main::_load_package(char const *name, Package &out)
 			break;
 		}
 
-	if (!entry || entry->len == 0) {
+	/* ABSENT entry only: a present zero-length entry falls through to
+	 * the parse below and fails as "malformed metadata" (empty document
+	 * -> Invalid_syntax), exactly like the pre-cache code path. */
+	if (!entry) {
 		_error = Genode::String<256>("package not found: ", name);
 		_ok = false;
 		return false;
