@@ -172,6 +172,19 @@ def run_argv_env(
     var py_args = builtins.list()
     for part in cmd:
         py_args.append(part)
+    # The Mojo runtime exports PYTHONEXECUTABLE for its embedded CPython
+    # (and a stale PYTHONHOME can ride along in os.environ). Both override
+    # the child interpreter's executable/home resolution, so a spawned
+    # venv python stops detecting the venv (pyvenv.cfg is looked up next
+    # to the runtime's python instead of argv[0]'s) and dies with
+    # `ModuleNotFoundError: No module named 'mojo'` plus CPython's
+    # "Could not find platform dependent libraries <exec_prefix>". Strip
+    # both from the child environment; the venv is activated through
+    # VIRTUAL_ENV + PYTHONPATH instead (see the docstring).
+    if "PYTHONEXECUTABLE" in env.keys():
+        env.pop("PYTHONEXECUTABLE")
+    if "PYTHONHOME" in env.keys():
+        env.pop("PYTHONHOME")
     var rc: PythonObject
     if cwd.byte_length() > 0:
         rc = subprocess.call(py_args, cwd=cwd, env=env)
