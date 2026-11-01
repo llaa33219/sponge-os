@@ -1035,6 +1035,7 @@ class Sponge::Pkgd::Main
 
 		/* ---- launcher channel (optional, config-gated) ---- */
 		void _init_launcher_channel();
+		void _arm_launcher_channel();
 
 		/* ---- grouped-runtime opt-in (optional, config-gated) ---- */
 		void _init_grouped_runtimes();

@@ -1435,23 +1435,31 @@ void Sponge::Pkgd::Main::_init_grouped_runtimes()
  * Strict two-phase sequence (the cross-channel arming window is closed
  * on purpose):
  *
- *   Phase 1 - construct every enabled optional ROM and drain it with
- *   the matching _handle_*_request(), with NO sigh armed anywhere. A
- *   request posted before the ROM session existed is never signalled
- *   on it (the session's signal context did not exist when the content
- *   was written), so without the drain it sits unconsumed until a
- *   LATER write changes the module and the handler then processes only
- *   the newer content - the first request is lost. Draining with no
- *   handler armed anywhere means no launcher/tty/probe handler can run
- *   while any other optional channel is draining: every drain is
- *   single-threaded on the bootstrap thread.
+ *   Phase 1 (_init_launcher_channel) - construct every enabled
+ *   optional ROM and drain it with the matching _handle_*_request(),
+ *   with NO sigh armed anywhere. A request posted before the ROM
+ *   session existed is never signalled on it (the session's signal
+ *   context did not exist when the content was written), so without
+ *   the drain it sits unconsumed until a LATER write changes the
+ *   module and the handler then processes only the newer content - the
+ *   first request is lost. Draining with no handler armed anywhere
+ *   means no launcher/tty/probe handler can run while any other
+ *   optional channel is draining: every drain is single-threaded on
+ *   the bootstrap thread.
  *
- *   Phase 2 - only after ALL enabled optional channels have been
- *   drained, arm each constructed channel's sigh and perform the
- *   existing update/log. Anything that arrives afterwards signals the
- *   armed handler as before, and the request de-duplication
- *   (_last_request_sig) turns a re-delivery of the drained content
- *   into a cached replay rather than a repeated side effect.
+ *   Phase 2 (_arm_launcher_channel) - only after ALL drains are done
+ *   (the optional ones above AND the primary channel's _handle_request
+ *   drain), arm each constructed channel's sigh and perform the
+ *   existing update/log. Splitting the arm step out of this function
+ *   is what makes the invariant hold for the primary channel too: an
+ *   optional handler armed here would otherwise run on env.ep() while
+ *   the bootstrap thread is still draining the primary channel -
+ *   two threads inside _handle_request_impl against the same
+ *   unsynchronised _roots/_installed/_last_request_sig. Anything that
+ *   arrives after the arming signals the armed handler as before, and
+ *   the request de-duplication (_last_request_sig) turns a re-delivery
+ *   of the drained content into a cached replay rather than a repeated
+ *   side effect.
  */
 void Sponge::Pkgd::Main::_init_launcher_channel()
 {
@@ -1476,30 +1484,36 @@ void Sponge::Pkgd::Main::_init_launcher_channel()
 				_probe_request_rom.construct(_env, "probe_request");
 				_handle_probe_request();
 			});
-
-		/*
-		 * Phase 2: arm + update + log, for every channel phase 1
-		 * constructed (a ROM is constructed exactly when its config
-		 * gate was present). All drains are done; from here on the
-		 * armed handlers may run on env.ep().
-		 */
-		if (_launcher_request_rom.constructed()) {
-			_launcher_request_rom->sigh(_launcher_request_handler);
-			_launcher_request_rom->update();
-			Genode::log("sponge_pkgd: launcher_request channel enabled");
-		}
-		if (_tty_request_rom.constructed()) {
-			_tty_request_rom->sigh(_tty_request_handler);
-			_tty_request_rom->update();
-			Genode::log("sponge_pkgd: tty_request channel enabled");
-		}
-		if (_probe_request_rom.constructed()) {
-			_probe_request_rom->sigh(_probe_request_handler);
-			_probe_request_rom->update();
-			Genode::log("sponge_pkgd: probe_request channel enabled");
-		}
 	} catch (Genode::Xml_node::Invalid_syntax) {
 		Genode::warning("sponge_pkgd: malformed <config> — launcher channel disabled");
+	}
+}
+
+
+/*
+ * Phase 2 of the channel handoff (see _init_launcher_channel): arm +
+ * update + log every channel phase 1 constructed (a ROM is constructed
+ * exactly when its config gate was present). Called only once ALL
+ * drains - optional AND primary - have completed, so from here on the
+ * armed handlers may run on env.ep() and the bootstrap thread touches
+ * nothing the ep can reach.
+ */
+void Sponge::Pkgd::Main::_arm_launcher_channel()
+{
+	if (_launcher_request_rom.constructed()) {
+		_launcher_request_rom->sigh(_launcher_request_handler);
+		_launcher_request_rom->update();
+		Genode::log("sponge_pkgd: launcher_request channel enabled");
+	}
+	if (_tty_request_rom.constructed()) {
+		_tty_request_rom->sigh(_tty_request_handler);
+		_tty_request_rom->update();
+		Genode::log("sponge_pkgd: tty_request channel enabled");
+	}
+	if (_probe_request_rom.constructed()) {
+		_probe_request_rom->sigh(_probe_request_handler);
+		_probe_request_rom->update();
+		Genode::log("sponge_pkgd: probe_request channel enabled");
 	}
 }
 
@@ -1697,29 +1711,30 @@ _init_binary_manifest();
 	 *
 	 * Order matters and is the whole point of the split. ALL FOUR
 	 * request channels are drained HERE, on the bootstrap thread,
-	 * before the primary sigh is armed:
+	 * before ANY sigh is armed:
 	 *
 	 *   - _init_launcher_channel drains the three optional channels
 	 *     (launcher_request, tty_request, probe_request) in its phase
-	 *     1, with NO sigh armed anywhere, and arms their sighs only in
-	 *     phase 2 once every enabled channel has been drained. The
-	 *     exact invariant: no launcher/tty/probe handler can run while
-	 *     any other optional channel is draining. The drain exists
-	 *     because a request posted before the ROM session existed is
-	 *     never signalled on it (the session's signal context did not
-	 *     exist when the content was written) and would otherwise be
-	 *     lost while a LATER write's signal made the handler process
-	 *     only the newer content;
-	 *   - the primary channel is drained last (its sigh is still
-	 *     unarmed at that point), then its sigh is armed - the
-	 *     handoff point from which env.ep() owns request handling and
-	 *     the bootstrap thread touches nothing the ep can reach.
-	 *
-	 * Arming a sigh before draining its channel would let both threads
-	 * run _handle_request() concurrently against the same
-	 * unsynchronised _roots/_installed/_last_request_sig - the
-	 * de-duplication replay makes a REPLAY harmless, which is exactly
-	 * why a concurrent first execution must not be left to chance.
+	 *     1, with NO sigh armed anywhere. The drain exists because a
+	 *     request posted before the ROM session existed is never
+	 *     signalled on it (the session's signal context did not exist
+	 *     when the content was written) and would otherwise be lost
+	 *     while a LATER write's signal made the handler process only
+	 *     the newer content;
+	 *   - the primary channel is drained next (its sigh is still
+	 *     unarmed at that point);
+	 *   - only THEN _arm_launcher_channel arms the optional sighs and
+	 *     the primary sigh is armed - the handoff point from which
+	 *     env.ep() owns request handling and the bootstrap thread
+	 *     touches nothing the ep can reach. Arming the optional
+	 *     handlers before the primary drain (the pre-correction order)
+	 *     left a window where an optional handler ran on env.ep()
+	 *     while this thread was still inside the primary drain -
+	 *     two threads in _handle_request_impl against the same
+	 *     unsynchronised _roots/_installed/_last_request_sig. The
+	 *     de-duplication replay makes a REPLAY harmless, which is
+	 *     exactly why a concurrent first execution must not be left
+	 *     to chance.
 	 *
 	 * The optional channels stay opt-in: _init_launcher_channel
 	 * constructs a ROM ONLY when this component's <config> carries the
@@ -1731,6 +1746,7 @@ _init_binary_manifest();
 	 */
 	_init_launcher_channel();
 	_handle_request();
+	_arm_launcher_channel();
 	_request_rom.sigh(_request_handler);
 	_request_rom.update();
 
