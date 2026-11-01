@@ -2,27 +2,36 @@
 
 **Artifact type:** design-significant engineering evidence (capability/patch-set
 analysis; AGENTS.md §5.6)
-**Date:** 2026-10-28
+**Date:** 2026-10-28 (first edition, rows 1–31); **updated 2026-11-02** for
+P4.1 (`docs/plans/phase16-runtime-overhaul.md`): all **33** ledger rows now
+classified **keep / remove / replace**, with rows #32/#33 (the P3.4
+lifecycle repairs), the P3.3/P3.4 receipts, and the D16R.17 P4.2 gate.
 **Scope:** every Sponge-local change on top of the pinned Genode 26.08 fork
-(`genode/` submodule, `sponge-os-genode`): the **31 patch-ledger rows** of
+(`genode/` submodule, `sponge-os-genode`): the **33 patch-ledger rows** of
 `docs/11-environment.md` §4 and the **unledgered fork-local commits** in the
 fork history, including the net-zero revert pair.
-**Status:** classification record only. This document pre-approves **no**
+**Status:** P4.1 classification record. This document pre-approves **no**
 removal, runs no scenario, and changes no code. It is the durable
-keep/remove/replace matrix the next patch-set audit builds on.
+keep/remove/replace matrix the next patch-set audit (and P4.3) builds on;
+per D16R.10 no row is pruned before the classification exists.
 
 ---
 
 ## 1. Purpose and how to read this document
 
 The patch ledger (`docs/11-environment.md` §4) answers *"what did we change
-and why."* This document answers the operational follow-up for each entry:
+and why."* This document answers the operational follow-up for each entry
+(P4.1, D16R.10):
 
-1. **Verdict** — keep, replace-when, superseded, or reassess-later.
-2. **Drop-when** — the exact precondition that would make removal legitimate.
-3. **Dependencies** — what else rides on this entry (and what this rides on).
-4. **Removal verification** — the exact scenario(s) that must pass after a
-   removal before it may be committed.
+1. **Class** — the P4.1 disposition: **keep**, **remove**, or **replace**.
+   Every ledger row of §5 carries exactly one class; sub-verdicts refine it.
+2. **Verdict** — keep, replace-when, superseded, or reassess-later.
+3. **Drop-when** — the exact precondition that would make removal legitimate
+   (the ledger cell is authoritative; §5 paraphrases).
+4. **Dependencies** — what else rides on this entry (and what this rides on).
+5. **Removal verification** — the exact scenario(s)/evidence that must exist
+   and pass **before** a conditional removal may be executed (this is the
+   "evidence required before each conditional removal" column of §5).
 
 Two distinctions are load-bearing throughout:
 
@@ -36,17 +45,21 @@ Two distinctions are load-bearing throughout:
 ## 2. Sources and method
 
 Claims in this document come from the following, as of fork `HEAD` =
-`82f0143d1f` (ledger row #31):
+`48a946ba15` (ledger row #33; the first edition's state was `82f0143d1f`,
+row #31):
 
-- `docs/11-environment.md` §4 patch ledger (rows 1–31, including each row's
-  Drop-When cell), §4.1 (`tool/patches` semantics), §4.2 (candidate intents —
-  out of scope here: those are intents, not patches).
+- `docs/11-environment.md` §4 patch ledger (rows 1–33, including each row's
+  Drop-When cell — rows #25 and #28–#33 now also carry the D16R.17
+  sequencing gate this classification called for), §4.1 (`tool/patches`
+  semantics), §4.2 (candidate intents — out of scope here: those are
+  intents, not patches).
 - `tool/patches.mojo` — read-only ledger tool. `verify` checks per row that
   the commit exists and is an ancestor of `HEAD`, resolving each SHA in
   `genode/` first and falling back to the main repository
-  (`git_capture_both`). Recorded audit result: **`tool/patches verify` passes
-  all 31 rows**. `drop <n>` prints manual revert instructions only; per
-  AGENTS.md §5.2 a drop is a deliberate human commit.
+  (`git_capture_both`). Recorded audit result (2026-11-02, at
+  `48a946ba15`): **`tool/patches verify` passes all 33 rows** ("verify: OK
+  (all 33 ledger rows match git reality)"). `drop <n>` prints manual revert
+  instructions only; per AGENTS.md §5.2 a drop is a deliberate human commit.
 - `docs/patches/` — 7 files: 3 durable patch records
   (`bender-uefi-memmap.patch`, `qt6-qpa-frame-sync.patch`,
   `themed-decorator-resize-minimize.patch`) and 4 **forwarding notices**
@@ -65,7 +78,14 @@ Claims in this document come from the following, as of fork `HEAD` =
   mechanism), `docs/evidence/xhci-high-bar-mapping.md` (row #27),
   `docs/evidence/sponge-quota-deadlock.md` (rows #21/#25),
   `docs/evidence/startup-grace.md` (row #26),
-  `docs/evidence/sponge-debug-scrollstorm.md` (row #23).
+  `docs/evidence/sponge-debug-scrollstorm.md` (row #23),
+  `docs/evidence/phase16-runtime-capability-key-reuse.md` (row #32),
+  `docs/evidence/phase16-runtime-pending-session-lifetime.md` (row #33),
+  `docs/evidence/phase16-runtime-patch-io-audit.md` (P0.5 inventory — the
+  raw input this classification consumes), `docs/evidence/phase16-runtime-p33.md`
+  (P3.3 receipt, incl. §8.4 the pkg-driver uplink re-measurement input for
+  P4.2), and `docs/evidence/phase16-runtime-p34.md` (P3.4 receipt — the
+  rows #32/#33 red-to-green pair and the product takeover).
 
 Scenario names are `run/` scripts in this repository. Where a row's
 Drop-When cell names no scenario, the removal-verification entry below says
@@ -88,11 +108,38 @@ Drop-When cell names no scenario, the removal-verification entry below says
   **not** pre-approved removals. They may be revisited only after the
   architecture refactor's topology gates are green (Part E); until then the
   verdict stands as KEEP.
+- **The P4.2 gate (D16R.17) binds every create-chain row.** The NIC uplink
+  regression (`run/sponge-pkg-driver` DHCP gate) is a regression of the
+  create chain around row #31 and its disposition is **still open** — P3.3's
+  re-measurement reached the DHCP gate once (`gate-pkg-driver-remeasure.log`,
+  `docs/evidence/phase16-runtime-p33.md` §8.4) but that single data point is
+  an input to P4.2, not a disposition (fixed / host-dependent / flaky is
+  P4.2's call). Until the P4.2 disposition exists, **no create-chain row is
+  pruned**: rows #25 and #28–#33, unledgered `73e5859da8`. Their Drop-When
+  cells in `docs/11-environment.md` now say so.
+- **Pairs retire together (D16R.10).** Rows #19/#20 (one commit), rows
+  #21/#25 (supersession — #21 is not independently revertable), rows
+  #28/#29 (the vtable-ABI repair), and rows #32/#33 (the P3.4 lifecycle
+  pair — reverting #33 with #32 standing deterministically re-derives the
+  `illegal READ`) are never pruned one-sided.
 - **Scope discipline.** This document records decisions and their support.
   It proposes no new base patches (§4.2 candidates stay where they are) and
-  edits neither the ledger nor the code.
+  runs no scenario. Its only ledger action was the P4.1 deliverable itself:
+  the D16R.17 sequencing-gate sentences added to the Drop-When cells of
+  rows #25 and #28–#33 (Part D1 item 7). No code and no ledger row was
+  removed.
 
 ## 4. Verdict legend
+
+### 4a. P4.1 class (keep / remove / replace) — the authoritative disposition
+
+| Class | Meaning |
+|-------|---------|
+| **keep** | The patch stays. Its Drop-When condition is unmet; it is load-bearing, uncertain, or both. A future conditional removal requires: (1) the Drop-When met, (2) the row's removal-verification evidence green at the post-drop tree, (3) the Part C cluster rules, (4) a solo commit that removes the row and says so (AGENTS.md §5.2). |
+| **remove** | Ready for pruning now. **No row carries this class today** — no Drop-When condition is met and the D16R.17 gate is open (Part D2). |
+| **replace** | The mechanism is replaced (or already has been) by a different, evidence-backed disposition; the class names what replaces it and what remains to do. Only row #21 carries this class (already superseded in code by #25; ledger consolidation remains, documentation-only). |
+
+### 4b. Verdict codes (refine the class)
 
 | Code | Meaning |
 |------|---------|
@@ -105,56 +152,72 @@ Drop-When cell names no scenario, the removal-verification entry below says
 
 ---
 
-## 5. Summary matrix
+## 5. Classification table (P4.1) — all 33 ledger rows + unledgered commits
 
-| # | Commit | Verdict | One-line drop-when |
-|---|--------|---------|--------------------|
-| 1 | `252a6aa4b7` | K-U | upstream fixes the `stdcxx.port` URL itself |
-| 2 | `55adeec3f0` | K-U | Sponge grows a Qt-tools dependency |
-| 3 | `dd6465e014` | K-U | upstream parameterizes `QT_TOOLS_DIR` |
-| 4 | `d8604ff9bf` | K-U | upstream fixes the qt6 cmake host-header leak |
-| 5 | `935941ad68` | K-A | never (Sponge-owned artifacts) |
-| 6 | `847483031a` | K-U | upstream resolves `platform.cc:108` XXX with dynamic CNode allocation |
-| 7 | `847483031a` | K-U | upstream resolves `platform.cc:108` XXX / dynamic vm_space growth |
-| 8 | `59e50cdba4` | K-U | upstream switches bash/ncurses ports to a working mirror |
-| 9 | `010ad9ea0b` | K-U | upstream initializes `_pointer` for relative-only input |
-| 10 | `ec3a711f7c` | K-U | upstream bender understands UEFI-reclaimable memmap, or bender leaves the chain |
-| 11 | `4904d06c4b` | K-U | upstream seL4 exports the reserved extent natively |
-| 12 | `ed354a4bd3` | K-U | serial-on-PCI vendor, or upstream mirrors the kernel log to the FB |
-| 13 | `1bd88ee53d` | K-U | upstream grows `seL4_BootInfoFrameBits` or a `get_high_mmio_untyped_cap` API |
-| 14 | `847483031a` | K-U | upstream grows a proper high-MMIO IO_MEM path |
-| 15 | `847483031a` | K-U | upstream re-wires `phys_alloc_16k` metadata growth |
-| 16 | `731c931373` | K-U | upstream rewrites the DMAR walkers per the VT-d spec |
-| 17 | `3449ef9cbb` | K-U | upstream themed_decorator gains sizers + `<minimizer/>` |
-| 18 | `46da4e43b9` | K-U | upstream fixes #5338 (robust queue wakeup) |
-| 19 | `391272b3e3` | R-T | upstream makes a Blockade wake session-guaranteed (with row #20) |
-| 20 | `391272b3e3` | R-T | upstream restructures `Root_proxy::_handle_session_requests` (with row #19) |
-| 21 | `10d172b3dd` | S | superseded by #25 — ledger consolidation, not a code removal |
-| 22 | `f16ad10cba` | K-U | upstream restores the `CONFIG_DEBUG_BUILD` gen_config append |
-| 23 | `1c2dd297aa` | K-U | upstream qt6 QPA registers the framebuffer sync |
-| 24 | `f44bc47ee5` | K-U | upstream adds a restart budget/backoff to the heartbeat restart path |
-| 25 | `342900343b` | K-U | upstream refuses/bounds `Parent::upgrade` retries (absorbs #21's intent) |
-| 26 | `dda40f3a87` | K-U | upstream distinguishes a first construct from a wedge |
-| 27 | `20d0ff31d8` | K-U | upstream keeps a device untyped's free index (builds on #13) |
-| 28 | `1672f3649a` | R-T | upstream grows non-blocking upgrade/close + a per-op deadline (`ea04b06868` + `1672f3649a`) |
-| 29 | `0a329d4fff` | R-T | upstream stabilizes `Genode::Env`'s layout / async Parent protocol |
-| 30 | `74c84f9f0a` | R-T | upstream notifies a container when a forwarded close completes |
-| 31 | `82f0143d1f` | R-T | upstream notifies a container when a forwarded create completes (`e0c2706225` + `205b84fcad` + `82f0143d1f`) |
-| — | `d60ebb3f92` | K-I | unledgered: seL4 13.0.0 → 16.0.0 pin override (replace when upstream pins 16+) |
-| — | `aaa279e1cc` | K-I | unledgered: vm-leaf 16K-pool budget for 26.08 mapping sets (same family as #6/#7) |
-| — | `a9ee2bcde3` | K-I | unledgered: 26.08 build-compat for boot_fb (not independently removable) |
-| — | `e16699624d` | K-I | unledgered: seL4 port-patch auto-apply (rides with rows #11/#12/#13/#27) |
-| — | `57075c4d26` | K-I | unledgered: `sel4.hash` re-stamp for the new patch set (bookkeeping) |
-| — | `73e5859da8` | R-T | unledgered: forwarded-session cluster member — **missing from all revert lists** |
-| — | `87c8ebf33f` | K-I | unledgered: qt6 `target.mk` auto-apply wiring for row #23 (ledger gap) |
-| — | `500cb2cc8a` + `3df26cf22b` | R-ONLY | net-zero revert pair (first row-#28 attempt, reverted) |
+Every row carries exactly one **class** (keep / remove / replace), its
+**evidence pointer**, a one-line **rationale**, the **Drop-When** condition
+(paraphrase; the ledger cell is authoritative), the **evidence required
+before a conditional removal** may be executed at all, and any **sequencing
+constraints** (pairs, shared commits, cluster order, open gates).
+
+**Class census (rows 1–33): keep 32 · remove 0 · replace 1 (row #21,
+already superseded in code by #25 — ledger consolidation only).**
+Unledgered entries: keep 7 · record-only 1. No row's Drop-When is met;
+`remove` is empty by evidence, not by omission.
+
+| # | Commit | Class (verdict) | Rationale | Evidence pointer | Drop when | Evidence required before a conditional removal | Sequencing constraints |
+|---|--------|-----------------|-----------|------------------|-----------|-----------------------------------------------|------------------------|
+| 1 | `252a6aa4b7` | keep (K-U) | dead gcc mirror broke `prepare_port stdcxx` on fresh machines | ledger #1 (port/hash delta) | upstream fixes the `stdcxx.port` URL itself | derived: `prepare_port stdcxx` re-fetch; stdcxx consumers build | none |
+| 2 | `55adeec3f0` | keep (K-U) | qttools was the failing, unneeded piece of the host-tools build | ledger #2 | Sponge gains a Qt tools dependency | derived: clean host-tools build with `BUILD_qttools=ON` | pairs with #3 (host-tools area) |
+| 3 | `dd6465e014` | keep (K-U) | upstream `QT_TOOLS_DIR` hardcodes a path that does not exist here | ledger #3 | upstream parameterizes `QT_TOOLS_DIR` | derived: Qt6 rebuild against the upstream default | #2 family |
+| 4 | `d8604ff9bf` | keep (K-U) | qt6 cmake saw host headers; the wrappers hide them | ledger #4 | upstream fixes the cmake invocation (or Qt6 leaves the tree) | derived: qt6 base rebuild without wrappers on an upstream-fixed cmake; `sponge-de-test` | needs #5 while it stands (C3) |
+| 5 | `935941ad68` | keep (K-A) | Sponge-owned compiler wrappers + `repos/sponge` wiring | ledger #5 (tmpfiles-wipe incident) | never (Sponge-owned artifacts) | n/a — excluded from removal planning by its own drop-when | consumed by #4; load-bearing for the whole build |
+| 6 | `847483031a` | keep (K-U) | static 32768-entry mapping tree exhausted by falkon/rom_pkg | `docs/evidence/c1-dma-safe-backing.log` (c1–c4 cluster) | upstream resolves `platform.cc:108` XXX with dynamic CNode allocation | c1–c4 cluster regression + `sponge-desktop-disk` family, once for the whole commit | ONE commit with #7/#14/#15 — one revert drops four rows (C4) |
+| 7 | `847483031a` | keep (K-U) | lazy lower-level CNode growth to 131072 mappings/PD | `docs/evidence/c2-lazy-vmspace.log` | upstream resolves `platform.cc:108` XXX / dynamic vm_space growth | same single-commit check as #6 | same commit as #6/#14/#15 |
+| 8 | `59e50cdba4` | keep (K-U) | 502-ing mirror broke bash/ncurses fetches | ledger #8 | upstream switches the ports to a working mirror | derived: `prepare_port bash` + `prepare_port ncurses` re-fetch | none |
+| 9 | `010ad9ea0b` | keep (K-U) | relative-only input dropped all motion (pointer stayed `Nowhere`) | ledger #9 | upstream initializes `_pointer` for relative-only paths | derived: product-USB input gates / relative-motion cold start | none |
+| 10 | `ec3a711f7c` | keep (K-U) | bender rejected UEFI-reclaimable memmap overlaps | ledger #10; `docs/patches/bender-uefi-memmap.patch` | upstream bender understands UEFI-reclaimable memmap, or bender leaves the chain | derived: UEFI boots still place the seL4 kernel (`sponge-boot-uefi`, `sponge-desktop-disk-uefi*`) | none |
+| 11 | `4904d06c4b` | keep (K-U) | reserved boot artifacts leaked into the untyped pool (seL4) | `docs/evidence/2026-10-19-sel4-patch-autoapply.md`; `docs/evidence/row11-core-side-migration-attempt.md` | upstream seL4 exports the reserved extent natively | named: fresh `prepare_port sel4` + kernel rebuild; `sponge-desktop-disk-uefi-usb` 3/3 gates; `sponge-minimal`; `sponge-configd-persist` | rides `e16699624d`/`57075c4d26`; already replaced the older `init_freemem` fix |
+| 12 | `ed354a4bd3` | keep (K-U) | UEFI/no-serial machines had zero boot visibility | ledger #12 (W3–W7 receipts); forwarding notice `docs/patches/sel4-early-fb-console.patch` | serial-on-PCI vendor, or upstream mirrors the kernel log to the FB | named: `sponge-desktop-disk-uefi` (screendump), `-uefi-usb` (production `fbcon=off` line), `sponge-minimal` (BIOS control) | needs #22 (never drop #22 first); rides the port-patch mechanism |
+| 13 | `1bd88ee53d` | keep (K-U) | high GOP FB / 64-bit BARs sat above device-untyped coverage | ledger #13 (Phase 15 W4 problem 15-3) | upstream grows `seL4_BootInfoFrameBits` or a `get_high_mmio_untyped_cap` API | named: `sponge-desktop-disk-uefi-usb` (high FB maps; alpha-probe PASS) + `sponge-minimal` control | #27 builds on it — drop #27 before #13; #14 consumes it |
+| 14 | `847483031a` | keep (K-U) | core's flat phys CNode could not hold ≥ 8 GiB frame caps | ledger #14 (17ZD90N v1 failures) | upstream grows a proper high-MMIO IO_MEM path | named: `sponge-high-phys-probe` + the single-commit cluster check | ONE commit with #6/#7/#15 |
+| 15 | `847483031a` | keep (K-U) | 16K-pool AVL metadata growth re-entered the guarded pool (deadlock) | ledger #15 (deadlock signature) | upstream re-wires `phys_alloc_16k` metadata growth | c1–c4 cluster regression incl. the 16K-pool growth path | ONE commit with #6/#7/#14 |
+| 16 | `731c931373` | keep (K-U) | firmware DMAR layouts killed the acpi child (usb chain stalled) | ledger #16; `run/fixtures/dmar-rmrr.aml` | upstream rewrites the DMAR walkers per the VT-d spec | derived: the acpi child survives on the product boots with full parsing restored | none |
+| 17 | `3449ef9cbb` | keep (K-U) | themed_decorator lacked sizers + `<minimizer/>` for the W9 acceptance | `docs/evidence/phase16-w9-resize.md`; ledger #17 | upstream adds both the resize affordance and `<minimizer/>` | named: `sponge-de-themed-chrome-resize` on the upstream path | release-media resize headline does NOT depend on it |
+| 18 | `46da4e43b9` | keep (K-U) | lost tx wakeup froze USB-mouse input (upstream issue #5338) | ledger #18 (#5338 trace) | upstream fixes #5338 | named: the mouse soak (product-USB input chain) | none |
+| 19 | `391272b3e3` | keep (R-T) | spurious Blockade wake → invalid cap → "conflicting session ID" death | ledger #19 (6/6 click-to-launch) | upstream makes a Blockade wake session-guaranteed | named (post-gate): doubly-nested click-to-launch (BIOS + UEFI); `sponge-desktop-disk`, `sponge-desktop-defaults-firstboot`, `sponge-launch`, `sponge-alpha` | paired with #20 — one commit, retire together |
+| 20 | `391272b3e3` | keep (R-T) | create pass iterated a stale `session_requests` snapshot → silent hang | ledger #20 (same 6/6 runs) | upstream restructures `Root_proxy::_handle_session_requests` | same set as #19 | paired with #19 |
+| 21 | `10d172b3dd` | **replace** (superseded by #25) | the immediate-grant shortcut mis-accounted quota and reported false success | `docs/evidence/sponge-quota-deadlock.md`; ledger #25's cells | combined #21+#25 drop under #25's drop-when | #25's set **plus** `run/sponge-launch-order-regression` | NOT independently revertable — #25 rewrote the same function in place; remaining action is ledger consolidation (Part D1), documentation-only; pair #21/#25 |
+| 22 | `f16ad10cba` | keep (K-U) | the 26.08 re-import dropped the `CONFIG_DEBUG_BUILD` append | ledger #22 (libcache-regeneration incident) | upstream restores the debug `gen_config` append for seL4 16 | named: from-scratch kernel configure compiles base-sel4 | load-bearing for #12 and every serial diagnostic |
+| 23 | `1c2dd297aa` | keep (K-U) | QPA never registered the compositor sync → unbounded damage backlog | `docs/evidence/sponge-debug-scrollstorm.md` | upstream registers the framebuffer sync (or a vsync-paced submit) | named: `sponge-debug-scrollstorm` A/B (the rejected wait's 2657 ms gap absent) + non-regression quartet + `nm … libqgenode.lib.so` check | drop together with fork wiring `87c8ebf33f`; never reintroduce the blocking wait |
+| 24 | `f44bc47ee5` | keep (K-U) | upstream heartbeat restart had no budget → unbounded respawn loop | `docs/evidence/containment-churn.md` | upstream adds a restart budget/backoff | named: `sponge-containment-churn` still bounds the loop; 6 regressions | pairs with #26; the drop also removes `restart_budget` from the six run/ files |
+| 25 | `342900343b` | keep (K-U) | quota requests answered falsely + four unbounded upgrade retry loops | `docs/evidence/sponge-quota-deadlock.md` (+ `…-regressions.md`) | upstream refuses/bounds `Parent::upgrade` **and** `resource_request` raises the assigned quota | named: `sponge-quota-deadlock` refuses truthfully+boundedly; `sponge-minimal`, `sponge-desktop-disk`, `sponge-pkg-driver`, `sponge-supervisor-takeover` | supersedes #21 (pair #21/#25); **P4.2-gated** — `resource_request` sits on every forwarded quota upgrade of the create chain (P0.5 audit §2) |
+| 26 | `dda40f3a87` | keep (K-U) | a first construct misread as a wedge → kill/respawn on slow storage | `docs/evidence/startup-grace.md` | upstream distinguishes a first construct from a wedge | named: `sponge-startup-grace` with `SPONGE_STARTUP_GRACE_MS=0` still reproduces the churn | pairs with #24 (same `<heartbeat>` surface) |
+| 27 | `20d0ff31d8` | keep (K-U) | a mid-untyped BAR mapped wrong (xHCI halt failures on the gram) | `docs/evidence/xhci-high-bar-mapping.md` | upstream keeps a device untyped's free index | named: `tool/hwrepro --case midwindow`; `sponge-minimal`, `sponge-desktop-disk`, `sponge-desktop-disk-uefi-usb`, `sponge-high-phys-probe` | builds on #13 — drop #27 before #13 |
+| 28 | `1672f3649a` (`ea04b06868`+`1672f3649a`) | keep (R-T) | a never-answered upgrade parked the container entrypoint; teardown freed held sessions | `docs/evidence/sponge-upgrade-wedge.md` | upstream grows non-blocking upgrade/close + a per-op deadline | named (post-gate): `sponge-upgrade-wedge`, `sponge-pkg-driver`, `sponge-supervisor-takeover` | cluster root (C1) — revert BOTH commits; **P4.2-gated** (D16R.17) |
+| 29 | `0a329d4fff` | keep (R-T) | the row-28 vtable shift broke prebuilt `Env` dispatch | ledger #29 (the D16R.15 lesson) | upstream stabilizes the `Genode::Env` layout / async Parent protocol | named (post-gate): `sponge-desktop-disk`, `sponge-supervisor-takeover`, `sponge-pkg-driver` | hard pair with #28 (never drop one alone); **P4.2-gated** |
+| 30 | `74c84f9f0a` | keep (R-T) | a forwarded close never completed → client-ID-conflict deaths | `docs/evidence/forwarded-close-starvation.md` | upstream notifies a container when a forwarded close completes | named (post-gate): `sponge-desktop-disk`, `sponge-upgrade-wedge`, `sponge-supervisor-takeover`, `sponge-pkg-driver`, `sponge-desktop-disk-uefi-usb` | reverts together with unledgered `73e5859da8`; **P4.2-gated** |
+| 31 | `82f0143d1f` (`e0c2706225`+`205b84fcad`+`82f0143d1f`) | keep (R-T) | a refused create stayed pending forever; env sessions lost quota recovery | `docs/evidence/forwarded-create-starvation.md` | upstream notifies a container when a forwarded create completes | named (post-gate): same five as #30 | three commits + `73e5859da8`; the P4.2 capture chain is `74c84f9f0a` → `e0c2706225` → `205b84fcad` → `82f0143d1f`; **P4.2-gated** |
+| 32 | `489f977822` | keep (K-U) | a recycled `Rpc_obj_key` aliased a stale client `Data` (wrong handle on cap receive) | `docs/evidence/phase16-runtime-capability-key-reuse.md`; `docs/evidence/phase16-runtime-p34.md` | upstream never re-issues RPC object keys while a client may retain a mapping (pager-key disjointness preserved) | named: `sponge-supervisor-takeover` (two PASS runs, real revivals), `SPONGE_SUPERVISOR_TEST=contain`, containment-churn, product default; unpatched control red | paired with #33 — retire together; extends the #28–#31 machinery — **P4.2-gated** |
+| 33 | `48a946ba15` | keep (K-U) | a pending op dereferenced a replaced/freed `Session_state` (deterministic `illegal READ`) | `docs/evidence/phase16-runtime-pending-session-lifetime.md`; `docs/evidence/phase16-runtime-p34.md` | upstream makes pending-session incarnation/destruction lifetimes explicit | named: product takeover, P3.4 contain (real 2nd/3rd incarnations), lean takeover, containment-churn, product default, `sponge-de-pkgd-failure` | paired with #32 — reverting #33 with #32 standing re-derives the `illegal READ`; **P4.2-gated** |
+| — | `d60ebb3f92` | keep (K-I) | seL4 13→16 pin override the kernel patches are written against | Part B | upstream pins seL4 16+ (then keep the rebased `intel_vmx_*` patches while needed) | derived: `prepare_port sel4` applies the set; `sponge-minimal` boots; the #11/#12/#13/#27 scenarios stay green | foundational for #11/#12/#13/#27 |
+| — | `aaa279e1cc` | keep (K-I) | vm-leaf 16K-pool budget sized for the 26.08 mapping sets | Part B | same family as #6/#7 (dynamic growth) | c1–c4 cluster regression + `sponge-desktop-disk` | rides the #6/#7/#14/#15 cluster |
+| — | `a9ee2bcde3` | keep (K-I) | boot_fb 26.08 build-compat (config read at startup) | Part B | none independent (required by the 26.08 vendoring) | derived: boot_fb builds; UEFI first-paint path shows the boot log | not independently removable |
+| — | `e16699624d` | keep (K-I) | port-patch auto-apply made `contrib/` re-fetch loss impossible | `docs/evidence/2026-10-19-sel4-patch-autoapply.md` | when the last seL4 kernel patch drops | named: fresh `prepare_port sel4` round-trip + `sponge-desktop-disk-uefi-usb`, `sponge-minimal` | rides with #11/#12/#13/#27 |
+| — | `57075c4d26` | keep (K-I) | `sel4.hash` re-stamp bookkeeping | Part B | none (the hash tracks the patch set) | derived: `prepare_port sel4` hash check passes | rides the patch-set changes it measures |
+| — | `73e5859da8` | keep (R-T) | a forwarded session request must not park the container either | `docs/evidence/forwarded-close-starvation.md`; `docs/evidence/sponge-upgrade-wedge.md` | same upstream condition as #28/#30/#31 | named (post-gate): the #28–#31 set + the close/create measurements re-run | **missing from all revert lists** — any cluster drop must include it (C1); **P4.2-gated** |
+| — | `87c8ebf33f` | keep (K-I) | the `target.mk` wiring that applies row #23's patch at build time | Part B (`tool/patches verify` resolves #23's SHA in the main repo) | exactly row #23's | row #23's set | drop together with `1c2dd297aa` |
+| — | `500cb2cc8a` + `3df26cf22b` | keep (R-ONLY) | net-zero revert pair — the rejected first row-#28 attempt | `docs/evidence/sponge-upgrade-wedge.md` §3 | none (nothing exists to remove) | n/a | do not squash or drop: the negative result that protects the e1000 path |
 
 ---
 
-## 6. Part A — ledger rows 1–31
+## 6. Part A — ledger rows 1–33
 
-Each entry gives the four required fields. Drop-when paraphrases the ledger
-cell; the ledger cell remains the authoritative wording.
+Each entry gives the required fields (P4.1 class, evidence pointer,
+rationale, drop-when, dependencies, removal verification, sequencing).
+The class for every row is in the §5 table (authoritative); each entry
+below restates it. Drop-when paraphrases the ledger cell; the ledger cell
+remains the authoritative wording.
 
 ### Row 1 — `252a6aa4b7` — stdcxx port: replace dead gcc mirror with ftp.gnu.org
 - **Verdict:** K-U (preserve-first, upstream defect/port fix).
@@ -394,6 +457,10 @@ cell; the ledger cell remains the authoritative wording.
   regressions).
 
 ### Row 21 — `10d172b3dd` — sandbox: answer child resource requests immediately from available slack
+- **Class:** **replace** — the only non-keep class in the ledger. The
+  replacement already happened in code (row #25); what remains is
+  documentation-only ledger consolidation (Part D1 item 1, landed). Never
+  an independent revert (pair #21/#25).
 - **Verdict:** **S — SUPERSEDED by row #25.** A ledger consolidation
   candidate, **not** an independently revertable code-removal candidate.
 - **Drop-when (historical):** upstream grants resource requests from slack
@@ -574,7 +641,78 @@ cell; the ledger cell remains the authoritative wording.
   `run/sponge-upgrade-wedge`, `run/sponge-supervisor-takeover`,
   `run/sponge-pkg-driver`, `run/sponge-desktop-disk-uefi-usb`.
   **Cluster warning:** the row's revert list omits `73e5859da8`; include it
-  (Part C).
+  (Part C). (2026-11-02: the ledger Drop-When cell now names `73e5859da8`
+  and the `complete_create()` attribution — Part D1 items 2–3 landed.)
+
+### Row 32 — `489f977822` — base-sel4: keep RPC object keys unique across incarnations
+- **Class:** **keep** (K-U, proven P3.4 lifecycle repair — kept unless
+  upstream absorbs an equivalent guarantee).
+- **Verdict:** K-U (upstream defect fix; preserve-first).
+- **Rationale:** a recycled `Rpc_obj_key` let a new server incarnation
+  alias a still-referenced stale client `Data`; the delegated-cap receive
+  path discarded the fresh selector and returned the old handle, which
+  then failed as a null/invalid PD, ROM, or ld dataspace during
+  config-driven child recreation. The fix draws keys from a shared
+  monotonic counter outside the pager `cap_sel` range (upstream issue
+  #5779 disjointness preserved) instead of recycling `core_sel_alloc`
+  values.
+- **Evidence:** `docs/evidence/phase16-runtime-capability-key-reuse.md`
+  (runtime bisect + slot traces; red-to-green with an unpatched control);
+  `docs/evidence/phase16-runtime-p34.md` (units 5/6, product takeover).
+- **Drop-when:** upstream guarantees that RPC object keys are never
+  re-issued while any client may retain a mapping, with pager-key
+  disjointness preserved; drop this row and re-verify config-driven
+  recreation.
+- **Dependencies:** row #33 (see the pair rule below); the session-
+  machinery family of rows #28–#31 (this repairs identity aliasing in the
+  same recreation path those rows make asynchronous).
+- **Removal verification (named):** `run/sponge-supervisor-takeover` (two
+  PASS runs with real revivals), `SPONGE_SUPERVISOR_TEST=contain` (full
+  PASS with second and third victim incarnations), containment-churn,
+  product default; the unpatched control must fail again — i.e. the
+  removal must not silently regress config-driven recreation.
+- **Sequencing constraints:** **paired with row #33 — retire together**
+  (P3.4 pair). This row alone re-opens the pending-op `illegal READ` that
+  #33 fixes (the failure was deterministic *after* the key-reuse fix).
+  Extends the row-#28–#31 create-chain machinery: **P4.2-gated** for any
+  pruning (D16R.17). The ledger Drop-When cell carries the gate.
+
+### Row 33 — `48a946ba15` — base: preserve pending sessions across reissue and destruction
+- **Class:** **keep** (K-U, proven P3.4 lifecycle repair — kept unless
+  upstream absorbs an equivalent guarantee).
+- **Verdict:** K-U (upstream defect fix; preserve-first).
+- **Rationale:** a pending operation could dereference a replaced or freed
+  `Session_state` during config-driven recreation (deterministic
+  `illegal READ` after the key-reuse fix). The repair adds a monotonic
+  `Session_state::generation` and a `pending_op_owner` back-reference:
+  every `Pending_op` records the generation, operations for replaced
+  incarnations are rejected, `Session_state::destroy()` clears the
+  requester's pending operations before releasing the state, and only the
+  owning `Child` clears the back-reference (provider purges must not sever
+  the requester's link).
+- **Evidence:** `docs/evidence/phase16-runtime-pending-session-lifetime.md`;
+  `docs/evidence/phase16-runtime-p34.md` (product takeover, P3.4 contain
+  with real second/third incarnations, zero illegal reads and zero
+  `requested conflicting session ID`).
+- **Drop-when:** upstream makes pending-session incarnation and
+  destruction lifetimes explicit so a late operation cannot act on a
+  replaced/freed state and every destroy clears the requester's registry;
+  drop this row and re-verify both takeover arms.
+- **Dependencies:** row #32 (the key-reuse fix this complements); rows
+  #28/#30's `Session_state` / `Pending_op` machinery (this extends the
+  same files — `session_state.{h,cc}`, `child.{h,cc}`).
+- **Removal verification (named):** product takeover (`SUPERVISOR TAKEOVER
+  PASS`), P3.4 contain (full PASS with real second/third incarnations),
+  lean takeover, containment-churn, product default,
+  `sponge-de-pkgd-failure` — zero illegal reads and zero `requested
+  conflicting session ID`.
+- **Sequencing constraints:** **paired with row #32 — retire together**
+  (P3.4 pair). Reverting #33 while #32 stands deterministically re-derives
+  the `illegal READ`; never ship that intermediate state. Extends the
+  row-#28–#31 create-chain machinery: **P4.2-gated** for any pruning
+  (D16R.17). In a wider cluster revert this row goes before the row-#28
+  commits (it extends `Session_state`/`Pending_op` they introduce). The
+  ledger Drop-When cell carries the gate.
 
 ---
 
@@ -763,19 +901,35 @@ The union of the revert lists written in rows #28, #30 and #31 names
 `82f0143d1f` and `0a329d4fff` (implicitly, as its own row) — **but not
 `73e5859da8`**. Omitting it leaves a half-reverted non-blocking session
 path in `service.h`/`component.cc` with no supporting registry semantics.
-This gap is the reason Part D lists a revert-list correction as a pending
-documentation-only fix.
+**Resolved 2026-11-02:** rows #30/#31's Drop-When cells now name
+`73e5859da8` explicitly (Part D1 item 2 landed); the reverse-order list
+above remains the cluster's canonical drop order.
 
 Further order rules for this cluster:
 - Row #29 exists only to repair the vtable break row #28 introduced. Drop
   #28 only together with #29, and never leave #29 standing alone.
 - Rows #30 and #31 both state a dependency on row #28's non-blocking
   machinery; row #31's drop-when additionally names the `complete_create()`
-  hook (attribution note in Part D).
+  hook — introduced by `e0c2706225` (row #31's own part-1 commit), a
+  wording correction that landed in the ledger on 2026-11-02 (Part D1
+  item 3).
 - The cluster's runtime evidence (`forwarded-close-starvation.md`,
   `forwarded-create-starvation.md`, `sponge-upgrade-wedge.md`) is the
   measurement basis for any future drop — the five named scenarios in
   rows #28–#31 are the acceptance set.
+- **P4.2 gate (D16R.17):** the open NIC uplink regression is a regression
+  of this create chain (the fork-commit chain under capture is
+  `74c84f9f0a` → `e0c2706225` → `205b84fcad` → `82f0143d1f`,
+  `docs/evidence/phase16-runtime-patch-io-audit.md` §7). **No pruning of
+  any row of this cluster (nor of rows #32/#33 that extend it) before the
+  P4.2 disposition exists** — and P3.3's single DHCP-gate re-measurement
+  (`docs/evidence/phase16-runtime-p33.md` §8.4) is P4.2 *input*, not a
+  disposition.
+- **Rows #32/#33 extend this cluster's machinery** (`Session_state`,
+  `Pending_op`, `child.{h,cc}`) and were proven against the same
+  config-driven recreation path. A future cluster drop that touches the
+  session-state/pending-op surface must sequence rows #33 then #32 before
+  the row-#28 commits (or retire the pair together) — see C7.
 
 ### C2. The seL4 kernel-patch cluster (rows #11, #12, #13, #27 + unledgered `d60ebb3f92`, `e16699624d`, `57075c4d26`)
 
@@ -831,8 +985,40 @@ Further order rules for this cluster:
   files that set it.
 - **Row #28:** two commits (`ea04b06868`, `1672f3649a`) — the row says so
   explicitly: reverting the row means reverting both.
+- **Rows #28/#29:** hard pair (D16R.15) — #29 exists only to repair the
+  vtable break #28 introduced. Never drop #28 while #29 stands, never
+  drop #29 before #28 goes.
 - **Row #31:** three commits (`e0c2706225`, `205b84fcad`, `82f0143d1f`) —
   the row says so explicitly.
+- **Rows #32/#33:** the P3.4 lifecycle pair (separate commits, one logical
+  repair) — retire together (C7). Reverting #33 alone re-derives the
+  deterministic `illegal READ`; reverting #32 alone re-opens the key
+  aliasing.
+
+### C7. The lifecycle pair (rows #32/#33) and its place in the machinery
+
+Application order in the fork (after row #31):
+
+```
+77b075fa19  pin (main repo) → 489f977822  row 32 (RPC object key uniqueness)
+7e9302740b  pin (main repo) → 48a946ba15  row 33 (pending-session lifetime)
+```
+
+- Both are **keep** (proven red-to-green in P3.4 with an unpatched
+  control); their drop-when is upstream absorption of the equivalent
+  guarantee.
+- **Retire as a pair.** The intermediate state "row #32 applied, row #33
+  absent" is the state whose deterministic `illegal READ` row #33 was
+  written for (`docs/evidence/phase16-runtime-pending-session-lifetime.md`)
+  — it must never be shipped. If a sequenced revert is unavoidable, revert
+  `48a946ba15` and `489f977822` back-to-back with no intermediate
+  verification claims, then run the pair's joint verification set (§5).
+- Row #33 extends the `Session_state`/`Pending_op` surface rows
+  #28/#30 introduce; in any wider session-machinery drop, revert #33
+  (then #32) before the row-#28 commits.
+- Both rows carry the D16R.17 **P4.2 gate** in their ledger Drop-When
+  cells: they are create-chain machinery; no pruning before the pkg-driver
+  uplink disposition exists.
 
 ### C6. Generic removal protocol (control escape hatch)
 
@@ -849,44 +1035,51 @@ change that.
 
 ### D1. Documentation-only corrections (no runtime effect)
 
-Each item below is ledger/doc bookkeeping. None removes code. They are the
-only "removal-adjacent" actions currently justified, and each is a normal
-docs commit when someone chooses to make it.
+Each item below is ledger/doc bookkeeping. None removes code. Status as of
+2026-11-02 (P4.1): items 1–4 and 6 have **landed** in the ledger; item 5 is
+standing policy; item 7 is the P4.1 deliverable itself.
 
-1. **Row #21 consolidation.** Mark row #21 superseded by row #25 in the
-   ledger (or merge its history into #25's cells). Ledger edit only; the
-   code was already rewritten by `342900343b`.
-2. **Revert-list gap: `73e5859da8`.** Rows #30 and #31 name their own
-   commits but the cluster's revert lists omit `73e5859da8`. Correct the
-   drop-when cells (or add a cluster note) so a future drop cannot miss it.
-   Ledger edit only.
-3. **Row #31 `complete_create()` attribution.** Row #31's drop-when
-   attributes the `complete_create()` hook to row #30; git inspection shows
-   the hook introduced by `e0c2706225` (row #31's own part-1 commit — the
-   symbol appears in that commit's `service.h` diff and in none of
-   `74c84f9f0a`'s). Wording correction only; the dependency direction
-   (rows #30/#31 both sit on row #28's machinery) is unaffected.
-4. **Row #23 commit-column coverage.** Row #23's Commit column names the
-   main-repo commit `1c2dd297aa`; the fork-side wiring `87c8ebf33f` is
-   unnamed in the ledger. Either add it to the row's cells or note the
-   two-repo scope. Ledger edit only.
-5. **`docs/patches/` forwarding notices.** The four `sel4-*.patch` files
-   are already forwarding notices pointing at the fork's port patches; they
-   exist so the pre-2026-10-19 locations remain findable. Keeping their
+1. **Row #21 consolidation — LANDED.** Row #21's cell now reads "Superseded
+   by row #25" and carries the combined #21+#25 drop condition. The code
+   was already rewritten by `342900343b`; no further edit is required
+   unless the rows are later merged outright.
+2. **Revert-list gap: `73e5859da8` — LANDED.** Rows #30 and #31's Drop-When
+   cells now name `73e5859da8` explicitly ("any cluster drop must also
+   revert `73e5859da8`") and point at the Part C1 reverse-order list.
+3. **Row #31 `complete_create()` attribution — LANDED.** Row #31's cell now
+   states the hook is introduced by `e0c2706225` (this row's part-1 commit),
+   not by row #30.
+4. **Row #23 commit-column coverage — LANDED.** Row #23's cell records the
+   two-repo scope: the fork-side wiring `87c8ebf33f` drops together with
+   the content commit `1c2dd297aa`.
+5. **`docs/patches/` forwarding notices — STANDING.** The four `sel4-*.patch`
+   files are already forwarding notices pointing at the fork's port patches;
+   they exist so the pre-2026-10-19 locations remain findable. Keeping their
    text accurate is doc-only; deleting them would also be doc-only but is
    not recommended while the history they forward from is referenced.
-6. **§4 preamble wording.** The "dropped by re-running `git subtree pull`"
-   phrase predates the 2026-10-17 submodule split (AGENTS.md §5.2 history
-   note). A future ledger edit can modernize it to the submodule/pin-bump
-   flow. Doc-only.
+6. **§4 preamble wording — LANDED.** The preamble carries the "Restructure
+   (2026-10-17): subtree -> submodule fork" note and the submodule/pin-bump
+   flow; the pre-split SHAs are documented as resolving on
+   `legacy/main-pre-genode-split`.
+7. **D16R.17 sequencing gates — LANDED (this P4.1 change).** The Drop-When
+   cells of rows #25 and #28–#33 now carry the explicit gate: no pruning of
+   a create-chain row before the P4.2 pkg-driver uplink disposition exists,
+   with the #32/#33 pair-retirement rule spelled out. This is the "updated
+   Drop When conditions where needed" deliverable of P4.1.
 
 ### D2. Actual code removal candidates
 
-**None.** No entry's drop-when condition is met by current upstream state
-(the ledger's drop-when cells are all conditional on upstream absorptions
-that have not landed; row #5 is "Never"; the R-T set is gated on the
-topology reassessment). Per the zero-removals policy (Part 3), the correct
-and expected outcome of this classification is **remove nothing**.
+**None (class census: keep 32 · remove 0 · replace 1).** No entry's
+drop-when condition is met by current upstream state (the ledger's
+drop-when cells are all conditional on upstream absorptions that have not
+landed; row #5 is "Never"; the R-T set is gated on the topology
+reassessment). The single **replace** (row #21) is already carried out in
+code by row #25 — only documentation-only consolidation remains. Per the
+zero-removals policy (§3), the correct and expected outcome of this
+classification is **remove nothing**. Additionally, the create-chain rows
+(#25, #28–#33, `73e5859da8`) are **P4.2-gated**: their conditional removal
+is blocked on the uplink disposition regardless of upstream state
+(D16R.17).
 
 Every future code removal must satisfy, in order:
 1. the row's drop-when condition is **met** (upstream absorption or the
@@ -902,6 +1095,22 @@ Every future code removal must satisfy, in order:
 
 ## 10. Part E — reassessment gates and open items
 
+- **The P4.2 uplink disposition is OPEN — create-chain rows are not
+  prunable (D16R.17).** `run/sponge-pkg-driver`'s DHCP gate is a known red
+  on the create chain around row #31. P3.3's re-measurement reached the
+  gate once (`docs/evidence/phase16-runtime-p33.md` §8.4) but the
+  disposition (fixed / host-dependent / flaky / revert / replace) is
+  P4.2's alone. Until it exists: rows #25, #28–#33 and unledgered
+  `73e5859da8` are **not ready for pruning** — their Drop-When cells say
+  so, and the trap stands: never ship a variant that breaks the e1000
+  path (`docs/evidence/sponge-upgrade-wedge.md`, net-zero pair).
+- **Rows #32/#33 verdict: KEEP (K-U).** Proven lifecycle repairs with
+  red-to-green receipts and unpatched controls
+  (`docs/evidence/phase16-runtime-capability-key-reuse.md`,
+  `docs/evidence/phase16-runtime-pending-session-lifetime.md`,
+  `docs/evidence/phase16-runtime-p34.md`). They are kept unless upstream
+  absorbs equivalent guarantees (their Drop-When); they retire as a pair
+  (C7) and carry the P4.2 gate.
 - **Nested/forwarded-session rows #19, #20, #28, #29, #30, #31 and
   unledgered `73e5859da8` are R-T.** The architecture refactor will
   reassess the nested-session patches **only after the topology gates are
@@ -924,22 +1133,34 @@ Every future code removal must satisfy, in order:
 
 ---
 
-## 11. Bottom line
+## 11. Bottom line (P4.1, 2026-11-02)
 
-- 31 ledger rows and 8 unledgered fork-local history entries (7 commits +
-  the net-zero revert pair) are classified above with verdict, drop-when,
-  dependencies, and exact removal verification.
+- **33 ledger rows** and 8 unledgered fork-local history entries (7 commits
+  + the net-zero revert pair) are classified above with class (keep /
+  remove / replace), evidence pointer, rationale, drop-when, dependencies,
+  exact removal verification, and sequencing constraints.
+- **Class census (rows 1–33): keep 32 · remove 0 · replace 1.** The one
+  **replace** is row #21, superseded in code by row #25 — the remaining
+  action is documentation-only ledger consolidation, never an independent
+  revert (pair #21/#25). **remove** is empty because no Drop-When is met
+  and the D16R.17 gate is open — not by omission.
 - **Preserved first:** every seL4 fix (rows #6/#7/#11–#15/#22/#27 and
   `d60ebb3f92`/`aaa279e1cc`/`e16699624d`/`57075c4d26`), every Qt6 fix
-  (rows #2/#3/#4/#23 and `87c8ebf33f`), and every upstream defect fix
-  (rows #1/#8/#9/#10/#16/#18/#24/#25/#26) remain KEEP until their stated
-  upstream drop-when is met.
-- **Row #21 is superseded by #25** — a ledger consolidation candidate, not
-  a code-removal candidate. **Row #27 builds on #13** — drop order matters.
-  **`73e5859da8` is in the cluster accounting** and in the revert order of
-  C1, even though no ledger row names it.
+  (rows #2/#3/#4/#23 and `87c8ebf33f`), every upstream defect fix
+  (rows #1/#8/#9/#10/#16/#18/#24/#25/#26), and the P3.4 lifecycle repairs
+  (rows #32/#33) remain KEEP until their stated upstream drop-when is met.
+- **Pairs preserved explicitly:** #19/#20 (one commit), #21/#25
+  (supersession), #28/#29 (vtable-ABI repair), #24/#26 (heartbeat
+  surface), #32/#33 (P3.4 lifecycle pair, C7). **Row #27 builds on #13** —
+  drop order matters. **`73e5859da8` is in the cluster accounting** and in
+  the revert order of C1 (now also named in the rows #30/#31 Drop-When
+  cells).
 - **Rows #19/#20/#28–#31 are reassess-after-topology**, not pre-approved
-  removals.
+  removals. **Rows #25/#28–#33 + `73e5859da8` are P4.2-gated**: no pruning
+  of any create-chain row before the pkg-driver uplink disposition exists
+  (D16R.17).
 - **Documentation-only corrections (Part D1) are distinct from code
   removal candidates (Part D2).** The code-removal candidate set is
-  currently **empty**: zero removals is the valid outcome.
+  currently **empty**: zero removals is the valid outcome. This table
+  lands **before** any pruning (D16R.10); every conditional removal names
+  the evidence that must exist before it may run.
