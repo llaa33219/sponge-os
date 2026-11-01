@@ -53,7 +53,7 @@ config
     + any-child
 + default | caps: 200 | ram: 8M
 
-+ start timer
++ start timer | ram: 2M
   + provides | + service Timer
 
 + start lx_fs | ld: no
@@ -78,6 +78,7 @@ config
     + service File_system | + child lx_fs
     + service ROM | label_last: request | + child report_rom
     + service Report | + child report_rom
+    + service Timer | + child timer
     + any-service
       + parent
       + any-child

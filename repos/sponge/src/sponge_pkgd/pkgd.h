@@ -37,6 +37,7 @@
 #include <os/reporter.h>
 #include <sponge/pkg_config.h>
 #include <sponge/runtime_config_validate.h>
+#include <timer_session/connection.h>
 #include <util/reconstructible.h>
 #include <util/string.h>
 #include <util/xml_node.h>
@@ -705,6 +706,7 @@ class Sponge::Pkgd::Main
 		static char        const STORE_PATH[];
 		static unsigned    const STORE_VERSION;
 		static constexpr Genode::size_t STORE_BUF = 4096;
+		static unsigned    const RETRY_BOUND;
 
 		Genode::Attached_rom_dataspace         _config_rom { _env, "config" };
 		Genode::Heap                           _heap       { _env.ram(), _env.rm() };
@@ -978,6 +980,16 @@ class Sponge::Pkgd::Main
 		void _save_store();
 		void _build_store_payload(char *buf, Genode::size_t &len);
 		void _write_store_payload(char const *buf, Genode::size_t len);
+
+		/*
+		 * Poll pacing for the store's bounded RETRY loops. Constructed
+		 * only with the store (<vfs>); Timer::Connection::msleep blocks
+		 * on the connection's PRIVATE signal receiver, so it is safe
+		 * from the Bootstrap worker (unlike Vfs::Env::Io::
+		 * commit_and_wait, which parks in the entrypoint's I/O wait —
+		 * see the RETRY_BOUND note in store.cc).
+		 */
+		Genode::Constructible<Timer::Connection> _store_timer { };
 
 		/* ---- bake manifest seeding (optional, config-gated) ---- */
 		void _init_bake();

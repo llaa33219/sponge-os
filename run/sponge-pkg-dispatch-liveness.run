@@ -72,7 +72,7 @@ config
     + parent
     + any-child
 
-+ start timer
++ start timer | ram: 8M
   + provides | + service Timer
 
 + start report_rom | ram: 4M
