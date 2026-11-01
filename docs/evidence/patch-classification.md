@@ -9,13 +9,18 @@ lifecycle repairs), the P3.3/P3.4 receipts, and the D16R.17 P4.2 gate.
 **updated 2026-11-02 (P4.2)** for the uplink disposition: **fixed in
 place** at `48a946ba15` by rows #32/#33 — see `forwarded-create-starvation.md`
 §9; the class census is unchanged and no row is pruned here.
+**updated 2026-11-02 (P4.3)** for the pruning closeout: the conditional
+removal/replacement set was empty (keep 32 · remove 0 · replace 1), so
+P4.3 executed as a **no-pruning closeout** — no code path deleted, no
+patch dropped, no ledger row removed (Part D2).
 **Scope:** every Sponge-local change on top of the pinned Genode 26.08 fork
 (`genode/` submodule, `sponge-os-genode`): the **33 patch-ledger rows** of
 `docs/11-environment.md` §4 and the **unledgered fork-local commits** in the
 fork history, including the net-zero revert pair.
-**Status:** P4.1 classification record. This document pre-approves **no**
-removal, runs no scenario, and changes no code. It is the durable
-keep/remove/replace matrix the next patch-set audit (and P4.3) builds on;
+**Status:** P4.1 classification record (P4.3 closeout appended). This
+document pre-approves **no** removal, runs no scenario, and changes no
+code. It is the durable keep/remove/replace matrix the next patch-set
+audit builds on;
 per D16R.10 no row is pruned before the classification exists.
 
 ---
@@ -119,8 +124,9 @@ Drop-When cell names no scenario, the removal-verification entry below says
   `docs/evidence/forwarded-create-starvation.md` §9) and classified it
   **fixed in place** at `48a946ba15`. D16R.17's sequencing (capture →
   classify → dispose) is complete, so the gate no longer *blocks* pruning
-  by its absence — but **P4.3 owns every pruning decision and has not run**;
-  until it does, rows #25 and #28–#33, unledgered `73e5859da8`, are simply
+  by its absence — and **P4.3 owns every pruning decision: it ran
+  2026-11-02 as a no-pruning closeout and removed nothing** (Part D2);
+  rows #25 and #28–#33, unledgered `73e5859da8`, remain
   unpruned **keep** rows as classified below. This document still
   pre-approves no removal.
 - **Pairs retire together (D16R.10).** Rows #19/#20 (one commit), rows
@@ -142,8 +148,8 @@ Drop-When cell names no scenario, the removal-verification entry below says
 | Class | Meaning |
 |-------|---------|
 | **keep** | The patch stays. Its Drop-When condition is unmet; it is load-bearing, uncertain, or both. A future conditional removal requires: (1) the Drop-When met, (2) the row's removal-verification evidence green at the post-drop tree, (3) the Part C cluster rules, (4) a solo commit that removes the row and says so (AGENTS.md §5.2). |
-| **remove** | Ready for pruning now. **No row carries this class today** — no Drop-When condition is met, and although the D16R.17 gate has produced its disposition (fixed in place, 2026-11-02), pruning itself is P4.3's task and has not run (Part D2). |
-| **replace** | The mechanism is replaced (or already has been) by a different, evidence-backed disposition; the class names what replaces it and what remains to do. Only row #21 carries this class (already superseded in code by #25; ledger consolidation remains, documentation-only). |
+| **remove** | Ready for pruning now. **No row carries this class today** — no Drop-When condition is met, and although the D16R.17 gate has produced its disposition (fixed in place, 2026-11-02), P4.3 executed 2026-11-02 as a no-pruning closeout and removed nothing (Part D2). |
+| **replace** | The mechanism is replaced (or already has been) by a different, evidence-backed disposition; the class names what replaces it and what remains to do. Only row #21 carries this class (already superseded in code by #25; the documentation-only ledger consolidation landed — Part D1 item 1). |
 
 ### 4b. Verdict codes (refine the class)
 
@@ -174,8 +180,8 @@ markers in the Sequencing constraints column record the D16R.17
 sequencing gate; it was **satisfied on 2026-11-02** (the pkg-driver
 uplink regression is dispositioned **fixed in place** —
 `docs/evidence/forwarded-create-starvation.md` §9) and now reads as
-sequencing history. That discharge authorizes no removal: P4.3 has not
-run.
+sequencing history. That discharge authorizes no removal. P4.3 ran
+2026-11-02 as a no-pruning closeout (Part D2): zero rows pruned.
 
 | # | Commit | Class (verdict) | Rationale | Evidence pointer | Drop when | Evidence required before a conditional removal | Sequencing constraints |
 |---|--------|-----------------|-----------|------------------|-----------|-----------------------------------------------|------------------------|
@@ -199,7 +205,7 @@ run.
 | 18 | `46da4e43b9` | keep (K-U) | lost tx wakeup froze USB-mouse input (upstream issue #5338) | ledger #18 (#5338 trace) | upstream fixes #5338 | named: the mouse soak (product-USB input chain) | none |
 | 19 | `391272b3e3` | keep (R-T) | spurious Blockade wake → invalid cap → "conflicting session ID" death | ledger #19 (6/6 click-to-launch) | upstream makes a Blockade wake session-guaranteed | named (post-gate): doubly-nested click-to-launch (BIOS + UEFI); `sponge-desktop-disk`, `sponge-desktop-defaults-firstboot`, `sponge-launch`, `sponge-alpha` | paired with #20 — one commit, retire together |
 | 20 | `391272b3e3` | keep (R-T) | create pass iterated a stale `session_requests` snapshot → silent hang | ledger #20 (same 6/6 runs) | upstream restructures `Root_proxy::_handle_session_requests` | same set as #19 | paired with #19 |
-| 21 | `10d172b3dd` | **replace** (superseded by #25) | the immediate-grant shortcut mis-accounted quota and reported false success | `docs/evidence/sponge-quota-deadlock.md`; ledger #25's cells | combined #21+#25 drop under #25's drop-when | #25's set **plus** `run/sponge-launch-order-regression` | NOT independently revertable — #25 rewrote the same function in place; remaining action is ledger consolidation (Part D1), documentation-only; pair #21/#25 |
+| 21 | `10d172b3dd` | **replace** (superseded by #25) | the immediate-grant shortcut mis-accounted quota and reported false success | `docs/evidence/sponge-quota-deadlock.md`; ledger #25's cells | combined #21+#25 drop under #25's drop-when | #25's set **plus** `run/sponge-launch-order-regression` | NOT independently revertable — #25 rewrote the same function in place; the ledger consolidation landed (Part D1 item 1, documentation-only); pair #21/#25 |
 | 22 | `f16ad10cba` | keep (K-U) | the 26.08 re-import dropped the `CONFIG_DEBUG_BUILD` append | ledger #22 (libcache-regeneration incident) | upstream restores the debug `gen_config` append for seL4 16 | named: from-scratch kernel configure compiles base-sel4 | load-bearing for #12 and every serial diagnostic |
 | 23 | `1c2dd297aa` | keep (K-U) | QPA never registered the compositor sync → unbounded damage backlog | `docs/evidence/sponge-debug-scrollstorm.md` | upstream registers the framebuffer sync (or a vsync-paced submit) | named: `sponge-debug-scrollstorm` A/B (the rejected wait's 2657 ms gap absent) + non-regression quartet + `nm … libqgenode.lib.so` check | drop together with fork wiring `87c8ebf33f`; never reintroduce the blocking wait |
 | 24 | `f44bc47ee5` | keep (K-U) | upstream heartbeat restart had no budget → unbounded respawn loop | `docs/evidence/containment-churn.md` | upstream adds a restart budget/backoff | named: `sponge-containment-churn` still bounds the loop; 6 regressions | pairs with #26; the drop also removes `restart_budget` from the six run/ files |
@@ -952,7 +958,8 @@ Further order rules for this cluster:
   DHCP gate with zero close co-symptoms
   (`docs/evidence/forwarded-create-starvation.md` §9). D16R.17's sequencing
   is complete; no pruning of any row of this cluster (nor of rows #32/#33)
-  happens outside P4.3, which remains unexecuted.
+  happens outside P4.3, which executed 2026-11-02 as a no-pruning
+  closeout (nothing pruned).
 - **Rows #32/#33 extend this cluster's machinery** (`Session_state`,
   `Pending_op`, `child.{h,cc}`) and were proven against the same
   config-driven recreation path. A future cluster drop that touches the
@@ -1051,7 +1058,8 @@ Application order in the fork (after row #31):
   (`docs/evidence/forwarded-create-starvation.md` §9 — 6/6 current-pin
   `run/sponge-pkg-driver` runs green, zero close co-symptoms). That
   strengthens their **keep** verdict; it does not pre-approve their
-  removal — their Drop-When (upstream absorption) and the P4.3 gate stand.
+  removal — their Drop-When (upstream absorption) is unmet, and P4.3
+  (2026-11-02) pruned nothing.
 
 ### C6. Generic removal protocol (control escape hatch)
 
@@ -1126,7 +1134,21 @@ Every future code removal must satisfy, in order:
 The create-chain rows (#25, #28–#33, `73e5859da8`) additionally rode the
 D16R.17 P4.2 gate; that gate is now **satisfied** (disposition: fixed in
 place, 2026-11-02), so their remaining blocker is the ordinary one — no
-Drop-When is met — plus P4.3's own execution, which has not run.
+Drop-When is met. P4.3's own execution ran 2026-11-02 as a no-pruning
+closeout and removed nothing.
+
+**P4.3 closeout (2026-11-02) — executed, zero removals.** The P4.3
+conditional-work set was empty by this census: `remove` is empty (no
+Drop-When met) and the single **replace** (row #21) was already carried
+out in code by row #25, with only documentation-only ledger
+consolidation remaining — and that consolidation had already landed
+(Part D1 item 1). Row #21 was rechecked at `17045beee7`: it reads
+"Superseded by row #25", is not independently revertable (pair #21/#25),
+and no other row is ready for pruning. P4.3 therefore deleted no code
+path, dropped no patch, and removed no ledger row. Gate receipt:
+`./tool/build verify` green (`tool/patches verify` — all 33 rows OK at
+pin `48a946ba15` — then `tool/hw_compat assert`); zero before/after
+scenario receipts are due because zero removals executed.
 
 ---
 
@@ -1144,7 +1166,7 @@ Drop-When is met — plus P4.3's own execution, which has not run.
   sequencing is complete. The trap stands forever: never ship a variant
   that breaks the e1000 path (`docs/evidence/sponge-upgrade-wedge.md`,
   net-zero pair `500cb2cc8a`+`3df26cf22b`). Pruning of any row remains
-  **P4.3's** decision and has not run.
+  **P4.3's** decision; P4.3 closed 2026-11-02 with zero removals.
 - **Rows #32/#33 verdict: KEEP (K-U).** Proven lifecycle repairs with
   red-to-green receipts and unpatched controls
   (`docs/evidence/phase16-runtime-capability-key-reuse.md`,
@@ -1181,11 +1203,13 @@ Drop-When is met — plus P4.3's own execution, which has not run.
   remove / replace), evidence pointer, rationale, drop-when, dependencies,
   exact removal verification, and sequencing constraints.
 - **Class census (rows 1–33): keep 32 · remove 0 · replace 1.** The one
-  **replace** is row #21, superseded in code by row #25 — the remaining
-  action is documentation-only ledger consolidation, never an independent
+  **replace** is row #21, superseded in code by row #25 — the
+  documentation-only ledger consolidation landed (Part D1 item 1), never
+  an independent
   revert (pair #21/#25). **remove** is empty because no Drop-When is met
   — and while the D16R.17 gate has produced its disposition (fixed in
-  place, 2026-11-02), P4.3's pruning has not run — not by omission.
+  place, 2026-11-02), P4.3 executed 2026-11-02 as a no-pruning closeout
+  — zero removals, not by omission.
 - **Preserved first:** every seL4 fix (rows #6/#7/#11–#15/#22/#27 and
   `d60ebb3f92`/`aaa279e1cc`/`e16699624d`/`57075c4d26`), every Qt6 fix
   (rows #2/#3/#4/#23 and `87c8ebf33f`), every upstream defect fix
@@ -1203,7 +1227,8 @@ Drop-When is met — plus P4.3's own execution, which has not run.
   dispositioned **fixed in place** at `48a946ba15` by rows #32/#33 —
   `docs/evidence/forwarded-create-starvation.md` §9; 6/6 current-pin runs
   reach the DHCP gate, zero close co-symptoms, e1000 bound every time).
-  Pruning of any create-chain row remains a P4.3 decision that has not run;
+  Pruning of any create-chain row is a P4.3 decision; P4.3 closed
+  2026-11-02 with no pruning;
   the e1000 trap is preserved (never ship an upgrade-wedge-style variant).
 - **Documentation-only corrections (Part D1) are distinct from code
   removal candidates (Part D2).** The code-removal candidate set is
