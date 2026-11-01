@@ -1,9 +1,8 @@
 # Phase 16 Runtime Overhaul (Work Plan)
 
-> Status: in progress. P0 baseline/audits, P1, P2, P3.1-P3.3, and P3.4
-> are complete; P3.4's victim-revival gate is blocked by a pre-existing
-> base-layer child-recreation failure (see
-> `docs/evidence/phase16-runtime-p34.md` §5); P4-P5 remain open. Created
+> Status: in progress. P0 baseline/audits, P1, P2, and P3 are complete;
+> P3.4's containment and victim-revival gates are green (see
+> `docs/evidence/phase16-runtime-p34.md`); P4-P5 remain open. Created
 > 2026-10-28 on branch `refactor/phase16-runtime-overhaul` (pre-work HEAD
 > `3afb40c922`).
 > Relationship: this is the runtime-overhaul track of the reopened Phase 16
@@ -416,13 +415,12 @@ stamping/policy/arm machinery in the shared includes), `105f5fed9e`
 `SPONGE_SUPERVISOR_TEST=contain` arm), `c280ed1aad` (the flip: CONTAIN
 bumps only the attributed runtime child). The contain arm fails red on
 the old global behaviour (target=global, 13 sibling construction
-versions rebuilt) and proves containment-by-name green
-(`target=pkg_runtime_fault bumped=1`, siblings and DE stable, panel
-shown once, post-wedge `alpha-probe: PASS`, no console). The victim's
-process revival is blocked by a pre-existing base-layer
-create-after-teardown failure that also breaks the pre-existing product
-takeover arm's kill receipt; exact blocker and follow-up in
-`docs/evidence/phase16-runtime-p34.md` §5. Receipt:
+versions rebuilt) and reaches full green after the lifecycle repairs
+`489f977822` and `48a946ba15`: `target=pkg_runtime_fault bumped=1`,
+siblings and DE stable, panel shown once, post-wedge `alpha-probe: PASS`,
+no console, and real second/third victim incarnations. Product takeover
+also reaches `SUPERVISOR TAKEOVER PASS` with real revivals; the P2.5
+DE-survival regression is green. Receipt:
 `docs/evidence/phase16-runtime-p34.md`.
 
 ### P4. Classification and disposition (prune only after classify)

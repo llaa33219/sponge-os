@@ -15,6 +15,8 @@
 | 2 | `70e57cd384` | `feat(run): scope the supervisor lifecycle gates per runtime subtree` |
 | 3 | `105f5fed9e` | `feat(run): expose per-child heartbeat values and gate the contain arm` |
 | 4 | `c280ed1aad` | `fix(supervisor): contain a runtime fault by name` (the flip) |
+| 5 | `489f977822` | `fix(base-sel4): keep RPC object keys unique across incarnations` |
+| 6 | `48a946ba15` | `fix(base): preserve pending sessions across reissue and destruction` |
 
 ## 2. What P3.4 changed (and what it deliberately did not)
 
@@ -102,91 +104,68 @@ because they are the per-subtree gates' own receipt):
    precedes `alpha-probe: PASS` by ~4-6 s), so the gate order itself is
    the post-wedge receipt.
 
-## 4. Green flip — containment by name is proven; process revival is blocked by base
+## 4. Green flip — containment by name and process revival are proven
 
-Receipt: `phase16-runtime-p34-contain-green.log` (after `c280ed1aad`).
-The flip's whole effect is the CONTAIN publish target:
+Final receipt: `/tmp/opencode/debug-p34-rawfree-contain.log` (after
+`c280ed1aad` plus the two lifecycle repairs below). The CONTAIN publish
+target remains the only behavior change:
 
 ```
 sponge_supervisor: published <system> kill=2 target=pkg_runtime_fault bumped=1 (18200 bytes)
 sponge_supervisor: version-change pkg_runtime_fault 1 -> 2
-sponge_supervisor: contained - child=pkg_runtime_fault subtree healthy for 1000ms
+ep_wedge: incarnation alive — wedging in 3000 ms   <- real second incarnation
+ep_wedge: incarnation alive — wedging in 3000 ms   <- real third incarnation
+sponge-desktop-disk: SUPERVISOR CONTAIN PASS
 ```
 
-Proven by this run (witness walk findings green on all of them):
+Proven by the final witness walk:
 
 * **no global publish after the fault** — `target=pkg_runtime_fault
-  bumped=1`, and the render leaves every sibling byte-identical;
-* **sibling and DE state-report construction versions stable** — the
-  only `version-change` line names `pkg_runtime_fault`;
+  bumped=1`, and every sibling renders byte-identical;
+* **sibling and DE construction versions stable** — only the victim's
+  version changes;
 * **sponge-de panel shown exactly once**, `alpha-probe: starting` once;
-* **post-wedge DE functional PASS** (wedge fires before the DE's
-  functional gate by construction);
+* **post-wedge DE functional PASS**;
+* **victim revived by name twice** — real second and third process
+  incarnations, not just construction-version changes;
 * **no console takeover**;
-* **contained by name** (`contained - child=pkg_runtime_fault`).
+* **contained by name across two cycles**.
 
-Not proven in this environment (the arm stays red on it):
+## 5. Base recreation defects isolated and repaired
 
-* **victim revived by name** — the node is rebuilt (construction
-  version `1 -> 2` is the state-report receipt) but the new **process**
-  cannot start. `Error: CPU (init -> system -> pkg_runtime_fault)
-  create_thread: invalid PD argument` → `failed to create initial
-  thread for new PD` → `dynamic linker is an invalid dataspace` →
-  `pkg_runtime_fault: attempt to load an invalid executable`. The
-  failed-to-load child reports no heartbeat skips, so the supervisor
-  sees "healthy" and the recurrence never comes back.
+The initial green named only the configuration half: the victim's node
+was rebuilt, but its process could not start. The unchanged product
+takeover arm failed on the same path, proving that the new per-name
+supervisor logic was not the cause. Two base lifecycle defects were
+isolated and fixed without changing protocol or asynchronous semantics:
 
-## 5. The blocker is pre-existing base behaviour (out of P3.4 scope)
+1. `489f977822` stops `Rpc_obj_key` recycling, so cap-receive lookup can
+   no longer alias a new server incarnation to a stale client handle
+   (`docs/evidence/phase16-runtime-capability-key-reuse.md`).
+2. `48a946ba15` stamps `Session_state` incarnations and links pending
+   operations to their requester, so reissue cannot complete against a
+   replacement and real destruction clears the requester's operation
+   before freeing the state (`docs/evidence/
+   phase16-runtime-pending-session-lifetime.md`).
 
-The same create failure hits the **pre-existing product takeover arm**
-at this base commit, with no P3.4 behaviour involved — receipt:
-`phase16-runtime-p34-product-takeover.log` (`SPONGE_SUPERVISOR_TEST=
-takeover`, unchanged mechanics):
-
-```
-published <system> kill=2 target=global bumped=15 (18188 bytes)
-Error: pkg_runtime_browser: attempt to load an invalid executable
-Error: cfg_probe: attempt to load an invalid executable
-Error: alpha_probe: attempt to load an invalid executable
-Error: CPU (init -> system -> wm) create_thread: invalid PD argument
-Error: Test execution timed out          <- its kill-receipt gate
-```
-
-The arm's documented kill receipt (`ep_wedge: incarnation alive` —
-`docs/evidence/product-supervision.md` §5.2) can no longer complete:
-config-driven child recreation after a teardown fails at the base
-layer. The lean `run/sponge-supervisor-takeover` topology shows the
-degradation one step later: its first recreation works (`kill=2` →
-`incarnation alive`), the next one fails with `attempt to attach
-invalid segment dataspace` / `failed to create initial thread for new
-PD` / `Trying to invoke an invalid capability, stop.`, and its final
-desktop-restore pixel gate times out (`phase16-runtime-p34`-external
-run log, this session). The pre-P3.3 receipts show recreation working
-repeatedly (`docs/evidence/product-supervision-prod-disk-takeover.log`
-2026-10-17, `docs/evidence/churn-regression-sponge-supervisor-
-takeover.log` 2026-10-19), i.e. the degradation arrived with the P3.3
-base series (fork commits `1672f3649a`, `e0c2706225`, `205b84fcad`,
-`74c84f9f0a`, `73e5859da8` — teardown/forwarded-create semantics) that
-predates this task's base `770fbeccc7`.
-
-P3.4 deliberately does not touch that: D16 forbids base changes and
-the task forbids adding base semantics. **Follow-up (exact):** root-
-cause the create-after-teardown path in the fork's base series and
-re-run `SPONGE_SUPERVISOR_TEST={takeover,contain}` — both arms' revival
-gates unlock together, because they share the one recreate mechanism.
+The combined result is not a partial green. Product takeover now reaches
+**`SUPERVISOR TAKEOVER PASS`** with real revivals and console-to-desktop
+handback (`/tmp/opencode/debug-p34-rawfree-prod-takeover.log`), and the
+P3.4 contain arm reaches full **`SUPERVISOR CONTAIN PASS`**. Lean takeover, heartbeat respawn, and product default remain green with zero
+`requested conflicting session ID`.
 
 ## 6. Regression matrix (serial, one runner)
 
 | Scenario | Result | Receipt |
 |---|---|---|
 | `SPONGE_SUPERVISOR_TEST=contain` (red, global behaviour) | **FAIL as designed** — witness walk names the global publish + 13 sibling rebuilds | `phase16-runtime-p34-contain-red.log` |
-| `SPONGE_SUPERVISOR_TEST=contain` (green, flip) | **partial green** — containment-by-name all proven; revival blocked by §5 | `phase16-runtime-p34-contain-green.log` |
-| `SPONGE_SUPERVISOR_TEST=takeover` (product) | **FAIL, pre-existing** (§5) — kill receipt unreachable | `phase16-runtime-p34-product-takeover.log` |
+| `SPONGE_SUPERVISOR_TEST=contain` (green, flip + lifecycle fixes) | **PASS** — full containment-by-name plus real second/third victim incarnations | `/tmp/opencode/debug-p34-rawfree-contain.log` |
+| `SPONGE_SUPERVISOR_TEST=takeover` (product) | **PASS** — `SUPERVISOR TAKEOVER PASS` with real revivals and display handback | `/tmp/opencode/debug-p34-rawfree-prod-takeover.log` |
 | `SPONGE_SUPERVISOR_TEST=control` (product) | **PASS** — `SUPERVISOR CONTROL PASS`, `alpha-probe: PASS`, no kill, no console | `phase16-runtime-p34-control.log` |
 | `run/sponge-startup-grace` (green arm) | **PASS** — 20 s construct survived as STARTING, no kill | session log |
 | `run/sponge-containment-churn` | **PASS** — `churn-probe: VERDICT PASS`, budget-bounded respawn | session log |
-| `run/sponge-de-pkgd-failure` | **inconclusive** — its first-paint gate timed out at `de-survival-probe: [boot] ok`; the run tool's retry hit the image write-lock (known run-tool retry hazard) | session log |
-| `run/sponge-supervisor-takeover` (lean) | **partial** — kill receipts + named revivals + console takeover fire (3 cycles), final desktop-restore pixel gate times out (§5 degradation) | session log |
+| `run/sponge-de-pkgd-failure` | **PASS** — `de-survival-probe: scenario GREEN (P2.5 mechanisms present)` | `/tmp/opencode/p34-final-de-pkgd-failure.log` |
+| `run/sponge-supervisor-takeover` (lean) | **PASS** — `supervisor-takeover: PASS` with real revivals and desktop restore | `/tmp/opencode/debug-p34-rawfree-lean.log` |
 | `run/sponge-desktop-disk` (default arm) | **PASS** — `alpha-probe: PASS`, `kill=1 target=global bumped=14`, zero version changes (first-publish-all-1) | `phase16-runtime-p34-product-default.log` |
 | `run/sponge-desktop-disk-nvme` | **PASS** — `alpha-probe: PASS` | session log |
 | `run/sponge-desktop-disk-uefi` | **PASS (structure gate)** — QEMU UEFI boot is the D15.16 documented gap | session log |
@@ -208,14 +187,8 @@ staging anchors.
 
 ## 8. Residual limits
 
-1. **Victim process revival** (the §5 base blocker) — the containment
-   is proven at the config/state-report level; the restarted process's
-   execution needs the base create-after-teardown fix first.
-2. **de-pkgd-failure regression inconclusive** this session (Qt6
-   first-paint gate timeout + run-tool image-lock retry); re-run with a
-   quieter host before citing it either way.
-3. **The lean takeover's final restore gate** is timing-flaky under the
-   §5 degradation (the desktop window does not repaint inside the gate
-   window while the fault churns).
-4. `sponge-desktop-disk-{uefi,uefi-nvme}` are structure-only gates in
+1. `sponge-desktop-disk-{uefi,uefi-nvme}` are structure-only gates in
    QEMU (D15.16); the UEFI boot claim stays real-hardware (15-3).
+2. All other claims here are QEMU/base-sel4 receipts, not real-hardware
+   certification. Host io_uring and timing flakes are recorded per log;
+   no failing gate is silently converted into a pass.
