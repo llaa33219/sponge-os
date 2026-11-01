@@ -502,6 +502,53 @@ class Sponge::Pkgd::Main
 		Result_channel _active_channel { Result_channel::primary };
 
 		/*
+		 * Request queue (Phase 16 P3.3 strict global FIFO). While a
+		 * store flush is in flight every request — all types, all
+		 * channels — queues here in ARRIVAL order; the drain pops the
+		 * head, applies the de-duplication AT DEQUEUE (the replay
+		 * recipe of the previous request is complete by then: its tail
+		 * ran before the drain continued), and answers in order. A
+		 * query can therefore never overtake a queued mutation. The
+		 * queue is bounded; overflow answers a loud, RECIPE-FREE busy
+		 * error immediately (the overload valve — it must not enter the
+		 * replay recipe, or a retry would replay "busy" instead of
+		 * being processed fresh). Malformed ROM content is answered at
+		 * arrival exactly as before (it forms no request).
+		 */
+		static constexpr unsigned REQUEST_QUEUE_MAX = 8;
+
+		struct Queued_request
+		{
+			Genode::String<32>  op      { };
+			Genode::String<128> pkg     { };
+			Genode::String<16>  seq     { };
+			Genode::String<160> sig     { };
+			Result_channel      channel { Result_channel::primary };
+		};
+
+		Queued_request _request_queue[REQUEST_QUEUE_MAX] { };
+		unsigned       _queue_head  { 0 };
+		unsigned       _queue_count { 0 };
+
+		/*
+		 * The deferred mutation tail, resumed by the flush-completion
+		 * signal: exactly the unchanged "config -> installed broadcast
+		 * -> result" sequence of _do_install/_do_remove. Holds the
+		 * pre-mutation name snapshot the added/removed report needs.
+		 * At most one is ever pending (the drain stops while a flush
+		 * is in flight).
+		 */
+		struct Pending_tail
+		{
+			bool               active { false };
+			Genode::String<32>  op      { };
+			Genode::String<128> pkg     { };
+			Result_channel      channel { Result_channel::primary };
+			Genode::String<64>  before[MAX_PACKAGES] { };
+			unsigned            num_before { 0 };
+		} _pending_tail { };
+
+		/*
 		 * Known-package set, loaded once from the pkg_index.xml boot
 		 * module. Genode boot modules are not enumerable, and a request
 		 * for a missing module is a fatal ROM-session denial under the
@@ -657,7 +704,7 @@ class Sponge::Pkgd::Main
 		 */
 		static char        const STORE_PATH[];
 		static unsigned    const STORE_VERSION;
-		static Genode::size_t const STORE_BUF;
+		static constexpr Genode::size_t STORE_BUF = 4096;
 
 		Genode::Attached_rom_dataspace         _config_rom { _env, "config" };
 		Genode::Heap                           _heap       { _env.ram(), _env.rm() };
@@ -686,7 +733,12 @@ class Sponge::Pkgd::Main
 		 * chain's completion signals - only the blocking calls move.
 		 *
 		 * The two never run concurrently: the bootstrap completes before
-		 * the request handlers are armed.
+		 * the request handlers are armed. After the bootstrap this same
+		 * thread becomes the P3.3 storage I/O WORKER: it executes one
+		 * store-flush job per semaphore wake and reports completion to
+		 * env.ep() with a signal, so the request path decides and hands
+		 * off I/O instead of performing it (the job payload is the only
+		 * state that crosses the threads).
 		 */
 		struct Bootstrap : Genode::Thread
 		{
@@ -698,7 +750,17 @@ class Sponge::Pkgd::Main
 			void entry() override
 			{
 				_main._bootstrap();
-				Genode::sleep_forever();
+
+				/* From here on: the storage worker loop. */
+				_main._worker_live = true;
+
+				for (;;) {
+					_main._flush_sem.down();
+					_main._write_store_payload(_main._store_job.buf,
+					                           _main._store_job.len);
+					Genode::Signal_transmitter(
+						_main._flush_done_handler).submit();
+				}
 			}
 
 			bool start_or_log()
@@ -713,6 +775,28 @@ class Sponge::Pkgd::Main
 		};
 
 		Genode::Constructible<Bootstrap> _bootstrap_thread { };
+
+		/*
+		 * Store-flush job handoff (Phase 16 P3.3). The entrypoint
+		 * BUILDS the payload from the post-mutation _roots (pure
+		 * serialization, _build_store_payload) and the Bootstrap worker
+		 * writes ONLY that payload (_write_store_payload) — the job
+		 * payload is the sole shared state between the threads, and at
+		 * most one job is in flight (the request drain stops until the
+		 * completion signal), so the writes are strictly FIFO.
+		 */
+		struct Store_job
+		{
+			char            buf[4096] { };
+			Genode::size_t  len       { 0 };
+		} _store_job { };
+
+		Genode::Semaphore _flush_sem { 0 };
+
+		Genode::Signal_handler<Main> _flush_done_handler {
+			_env.ep(), *this, &Main::_on_flush_done };
+
+		bool _worker_live { false };
 
 		/*
 		 * Bake-manifest ROM (optional, config-gated by <bake/>): the
@@ -853,6 +937,12 @@ class Sponge::Pkgd::Main
 		 * reports cannot be merged (see _launcher_request_rom above).
 		 */
 		void _handle_request_impl(Genode::Xml_node const &req);
+		void _submit_request(Queued_request const &req);
+		void _dispatch_request(Queued_request const &req);
+		void _drain_queue();
+		void _on_flush_done();
+		void _flush_then_tail();
+		void _finish_tail();
 		void _do_explain(Genode::String<128> const &pkg);
 		void _do_install(Genode::String<128> const &pkg);
 		void _do_remove(Genode::String<128> const &pkg);
@@ -886,6 +976,8 @@ class Sponge::Pkgd::Main
 		void _init_store();
 		void _load_store();
 		void _save_store();
+		void _build_store_payload(char *buf, Genode::size_t &len);
+		void _write_store_payload(char const *buf, Genode::size_t len);
 
 		/* ---- bake manifest seeding (optional, config-gated) ---- */
 		void _init_bake();
@@ -1047,6 +1139,11 @@ class Sponge::Pkgd::Main
 		void _report_list_ok();
 		void _report_error(char const *op, Genode::String<128> const &pkg,
 		                   char const *message);
+
+		/* Loud overload refusal: emitted WITHOUT touching the replay
+		 * recipe, so a retried request is processed fresh instead of
+		 * replaying "busy". */
+		void _report_busy(char const *op, Genode::String<128> const &pkg);
 		void _report_insufficient(char const *op, Genode::String<128> const &pkg,
 		                          Genode::size_t need_ram, Genode::size_t avail_ram,
 		                          unsigned need_caps, unsigned avail_caps);

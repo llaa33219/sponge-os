@@ -51,8 +51,6 @@ void Sponge::Pkgd::Main::_do_install(Genode::String<128> const &pkg)
 		return;
 	}
 
-	Package const &root = _plan[_num_plan > 0 ? _num_plan - 1 : 0];
-
 	/*
 	 * Exclusive-group pre-flight (docs/12 §4.6). An <autostart/>
 	 * package enters the running set the moment the install lands, so an
@@ -216,32 +214,22 @@ void Sponge::Pkgd::Main::_do_install(Genode::String<128> const &pkg)
 	_add_root(name);
 	_sync_installed_from_roots();
 	_sync_running_state();   /* picks up <autostart/> roots (docs/12 §9.2.1) */
-	_save_store();   /* flush before broadcast so the change survives a reboot */
-	if (!_generate_runtime_config()) {
-		/* P1.5 publication gate: nothing was published for this write
-		 * and the dirty marks were restored, but the state change is
-		 * committed (and stored) — answer the structured error and let
-		 * the next operation converge. Never answer plain ok here. */
-		_report_error("install", pkg, _emit_failure.string());
-		return;
-	}
-	_generate_installed_report();
 
-	Genode::String<64> added[MAX_PACKAGES] { };
-	unsigned num_added { 0 };
-	for (unsigned i = 0; i < _num_installed && i < MAX_PACKAGES; ++i) {
-		Genode::String<64> const &n = _installed[i].name;
-		bool was { false };
-		for (unsigned b = 0; b < num_before; ++b)
-			if (Genode::strcmp(before[b].string(), n.string()) == 0) {
-				was = true;
-				break;
-			}
-		if (!was && num_added < MAX_PACKAGES)
-			added[num_added++] = n;
-	}
-
-	_report_install_ok(pkg, root, added, num_added);
+	/*
+	 * P3.3: the tail (config -> installed broadcast -> result) runs
+	 * AFTER the store flush completes — flush-before-broadcast is
+	 * preserved by handing the payload to the Bootstrap worker and
+	 * resuming the tail from its completion signal, instead of
+	 * performing the write on the entrypoint.
+	 */
+	_pending_tail.active = true;
+	_pending_tail.op      = Genode::String<32>("install");
+	_pending_tail.pkg     = pkg;
+	_pending_tail.channel = _active_channel;
+	_pending_tail.num_before = num_before;
+	for (unsigned i = 0; i < num_before; ++i)
+		_pending_tail.before[i] = before[i];
+	_flush_then_tail();
 }
 
 
@@ -291,24 +279,101 @@ void Sponge::Pkgd::Main::_do_remove(Genode::String<128> const &pkg)
 		_slot_dirty[before_slot[b]] = true;
 	}
 
-	_save_store();   /* flush before broadcast so the change survives a reboot */
+	_pending_tail.active = true;
+	_pending_tail.op      = Genode::String<32>("remove");
+	_pending_tail.pkg     = pkg;
+	_pending_tail.channel = _active_channel;
+	_pending_tail.num_before = num_before;
+	for (unsigned i = 0; i < num_before; ++i)
+		_pending_tail.before[i] = before[i];
+	_flush_then_tail();
+}
+
+
+/*
+ * Hand the store flush to the Bootstrap worker and defer the tail to
+ * its completion (P3.3), or — with no worker (thread start failed) and
+ * during the bootstrap drains — flush synchronously and run the tail
+ * inline: the old single-threaded behaviour, strictly better than a
+ * daemon whose storage work has not happened at all.
+ */
+void Sponge::Pkgd::Main::_flush_then_tail()
+{
+	if (!_store_enabled()) {
+		_finish_tail();
+		return;
+	}
+
+	if (_worker_live) {
+		_build_store_payload(_store_job.buf, _store_job.len);
+		_flush_sem.up();
+		return;
+	}
+
+	_save_store();
+	_finish_tail();
+}
+
+
+/*
+ * The unchanged "config -> installed broadcast -> result" tail of
+ * _do_install/_do_remove, resumed by the flush-completion signal (or
+ * inline in the synchronous fallback). The drain is stopped while a
+ * tail is pending, so _plan/_installed cannot change between the
+ * mutation and this tail — the same guarantee the duplicate-replay
+ * recipe relies on.
+ */
+void Sponge::Pkgd::Main::_finish_tail()
+{
+	if (!_pending_tail.active)
+		return;
+
+	_active_channel = _pending_tail.channel;
+
 	if (!_generate_runtime_config()) {
-		/* Same failure contract as _do_install: nothing published,
-		 * marks restored, structured error instead of a plain ok. */
-		_report_error("remove", pkg, _emit_failure.string());
+		/* P1.5 publication gate: nothing was published for this write
+		 * and the dirty marks were restored, but the state change is
+		 * committed (and stored) — answer the structured error and let
+		 * the next operation converge. Never answer plain ok here. */
+		_report_error(_pending_tail.op.string(), _pending_tail.pkg,
+		              _emit_failure.string());
+		_pending_tail.active = false;
 		return;
 	}
 	_generate_installed_report();
 
-	Genode::String<64> removed[MAX_PACKAGES] { };
-	unsigned num_removed { 0 };
-	for (unsigned b = 0; b < num_before; ++b) {
-		if (!_installed_contains(before[b].string()) &&
-		    num_removed < MAX_PACKAGES)
-			removed[num_removed++] = before[b];
+	if (_pending_tail.op == Genode::String<32>("install")) {
+		Package const &root = _plan[_num_plan > 0 ? _num_plan - 1 : 0];
+
+		Genode::String<64> added[MAX_PACKAGES] { };
+		unsigned num_added { 0 };
+		for (unsigned i = 0; i < _num_installed && i < MAX_PACKAGES; ++i) {
+			Genode::String<64> const &n = _installed[i].name;
+			bool was { false };
+			for (unsigned b = 0; b < _pending_tail.num_before; ++b)
+				if (Genode::strcmp(_pending_tail.before[b].string(),
+				                   n.string()) == 0) {
+					was = true;
+					break;
+				}
+			if (!was && num_added < MAX_PACKAGES)
+				added[num_added++] = n;
+		}
+
+		_report_install_ok(_pending_tail.pkg, root, added, num_added);
+	} else {
+		Genode::String<64> removed[MAX_PACKAGES] { };
+		unsigned num_removed { 0 };
+		for (unsigned b = 0; b < _pending_tail.num_before; ++b) {
+			if (!_installed_contains(_pending_tail.before[b].string()) &&
+			    num_removed < MAX_PACKAGES)
+				removed[num_removed++] = _pending_tail.before[b];
+		}
+
+		_report_remove_ok(_pending_tail.pkg, removed, num_removed);
 	}
 
-	_report_remove_ok(pkg, removed, num_removed);
+	_pending_tail.active = false;
 }
 
 

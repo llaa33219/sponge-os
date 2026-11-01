@@ -49,7 +49,6 @@
 
 char const         Sponge::Pkgd::Main::STORE_PATH[]   = "/store/installed.xml";
 unsigned const     Sponge::Pkgd::Main::STORE_VERSION  = 1;
-Genode::size_t const Sponge::Pkgd::Main::STORE_BUF    = 4096;
 
 
 /*
@@ -186,10 +185,18 @@ void Sponge::Pkgd::Main::_load_store()
  * The version attribute is emitted as the literal "1" so the on-disk
  * format is grep-stable; if STORE_VERSION is bumped, update it here too.
  */
-void Sponge::Pkgd::Main::_save_store()
+/*
+ * Serialize the root set into `buf` (P3.3 split: the PURE half of the
+ * flush). Output is name-sorted with a fixed attribute order so the
+ * file is byte-stable for a given root set (matching the determinism
+ * contract of the config generator). Runs on the entrypoint at job
+ * build time (post-mutation roots) or on the Bootstrap thread at boot.
+ *
+ * The version attribute is emitted as the literal "1" so the on-disk
+ * format is grep-stable; if STORE_VERSION is bumped, update it here too.
+ */
+void Sponge::Pkgd::Main::_build_store_payload(char *buf, Genode::size_t &len)
 {
-	if (!_store_enabled()) return;
-
 	unsigned order[MAX_PACKAGES] { };
 	for (unsigned i = 0; i < _num_roots; ++i) order[i] = i;
 	for (unsigned i = 0; i < _num_roots; ++i) {
@@ -203,10 +210,9 @@ void Sponge::Pkgd::Main::_save_store()
 		}
 	}
 
-	char buf[STORE_BUF] { };
 	Genode::size_t pos { 0 };
 	auto append = [&buf, &pos](char const *s) {
-		while (*s && pos + 1 < sizeof(buf)) buf[pos++] = *s++;
+		while (*s && pos + 1 < STORE_BUF) buf[pos++] = *s++;
 	};
 	append("<sponge-installed version=\"1\">");
 	for (unsigned i = 0; i < _num_roots; ++i) {
@@ -215,7 +221,24 @@ void Sponge::Pkgd::Main::_save_store()
 		append("\"/>");
 	}
 	append("</sponge-installed>");
-	Genode::size_t const len = pos;
+	len = pos;
+}
+
+
+/*
+ * Write a payload previously built by _build_store_payload (P3.3
+ * split: the I/O half of the flush). Executes on the Bootstrap worker
+ * for queued jobs (touching only the job payload) or synchronously on
+ * the calling thread in the no-thread fallback and at bootstrap. A
+ * failed write is logged but never blocks the install/remove: the
+ * in-memory state and the broadcast still reflect the requested
+ * change, only the across-reboot durability is lost for that one
+ * mutation.
+ */
+void Sponge::Pkgd::Main::_write_store_payload(char const *buf,
+                                              Genode::size_t len)
+{
+	if (!_store_enabled()) return;
 
 	Genode::Vfs::File_system &vfs = _vfs_env->fs();
 
@@ -257,6 +280,23 @@ void Sponge::Pkgd::Main::_save_store()
 
 	if (!ok)
 		Genode::warning("sponge_pkgd: store write incomplete");
+}
+
+
+/*
+ * Synchronous flush: build + write in one call. Used at bootstrap
+ * (_seed_roots_from_bake, on the Bootstrap thread) and by the
+ * no-thread fallback; the install/remove request path hands
+ * _build_store_payload output to the worker instead (P3.3).
+ */
+void Sponge::Pkgd::Main::_save_store()
+{
+	if (!_store_enabled()) return;
+
+	char buf[STORE_BUF] { };
+	Genode::size_t len { 0 };
+	_build_store_payload(buf, len);
+	_write_store_payload(buf, len);
 }
 
 

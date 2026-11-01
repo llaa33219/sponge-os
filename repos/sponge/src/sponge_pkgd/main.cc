@@ -209,20 +209,70 @@ void Sponge::Pkgd::Main::_handle_request_impl(Genode::Xml_node const &req)
 	Genode::String<16>  const seq = req.attribute_value("seq",
 	                                         Genode::String<16>());
 
-	Genode::String<160> const sig(op, "|", pkg, "|", seq);
-	if (sig == _last_request_sig) {
+	Queued_request entry { };
+	entry.op      = op;
+	entry.pkg     = pkg;
+	entry.seq     = seq;
+	entry.sig     = Genode::String<160>(op, "|", pkg, "|", seq);
+	entry.channel = _active_channel;
+
+	_submit_request(entry);
+}
+
+
+/*
+ * Strict global FIFO (P3.3): when the pipeline is idle the request
+ * drains inline (the common path — the pre-P3.3 synchronous
+ * behaviour); while a flush is in flight every request queues in
+ * arrival order. A full queue answers a loud recipe-free busy error.
+ */
+void Sponge::Pkgd::Main::_submit_request(Queued_request const &req)
+{
+	if (_queue_count == 0 && !_pending_tail.active) {
+		_dispatch_request(req);
+		return;
+	}
+
+	if (_queue_count >= REQUEST_QUEUE_MAX) {
+		_report_busy(req.op.string(), req.pkg);
+		return;
+	}
+
+	_request_queue[(_queue_head + _queue_count) % REQUEST_QUEUE_MAX] = req;
+	++_queue_count;
+
+	Genode::log("sponge_pkgd: queued ", req.op, " ", req.pkg,
+	            " (", _queue_count, " pending)");
+}
+
+
+/*
+ * Process one request (the "dequeue" of the FIFO). The de-duplication
+ * runs HERE so that the replay recipe of the previous request is
+ * complete — its tail ran before the drain continued — and so a
+ * duplicate that arrived while the pipeline was busy is replayed
+ * instead of re-processed.
+ */
+void Sponge::Pkgd::Main::_dispatch_request(Queued_request const &req)
+{
+	_active_channel = req.channel;
+
+	if (req.sig == _last_request_sig) {
 		/*
 		 * Duplicate: re-processing would re-run the side effects, but
 		 * answering nothing strands the caller until its timeout (the
 		 * launcher's double-click case). Replay the cached answer
 		 * instead — see _last_request_sig above.
 		 */
-		Genode::log("sponge_pkgd: duplicate request ", sig,
+		Genode::log("sponge_pkgd: duplicate request ", req.sig,
 		            " — replaying the cached result");
 		_replay_last_result();
 		return;
 	}
-	_last_request_sig = sig;
+	_last_request_sig = req.sig;
+
+	Genode::String<32>  const &op  = req.op;
+	Genode::String<128> const &pkg = req.pkg;
 
 	/* `list` takes no package; every other op requires one. */
 	if (Genode::strcmp(op.string(), "list") == 0) {
@@ -253,6 +303,52 @@ void Sponge::Pkgd::Main::_handle_request_impl(Genode::Xml_node const &req)
 	}
 
 	_report_error(op.string(), pkg, "unknown operation");
+}
+
+
+void Sponge::Pkgd::Main::_drain_queue()
+{
+	while (_queue_count > 0 && !_pending_tail.active) {
+		Queued_request const req =
+			_request_queue[_queue_head];
+		_queue_head = (_queue_head + 1) % REQUEST_QUEUE_MAX;
+		--_queue_count;
+		_dispatch_request(req);
+	}
+}
+
+
+/*
+ * Flush-completion signal, submitted by the Bootstrap worker after
+ * writing the job payload. Runs on env.ep(): the deferred tail first
+ * (flush-before-broadcast), then the FIFO drain continues — no later
+ * request can answer before the mutation whose flush just completed.
+ */
+void Sponge::Pkgd::Main::_on_flush_done()
+{
+	_finish_tail();
+	_drain_queue();
+}
+
+
+/*
+ * Loud overload refusal. RECIPE-FREE on purpose: the replay recipe and
+ * _last_request_sig must keep describing the last PROCESSED request,
+ * or a retried request would replay "busy" instead of being processed
+ * fresh.
+ */
+void Sponge::Pkgd::Main::_report_busy(char const *op,
+                                      Genode::String<128> const &pkg)
+{
+	Genode::warning("sponge_pkgd: request queue full — refusing ", op,
+	                " ", pkg, " (busy, retry)");
+
+	_result().generate_xml([&](Genode::Xml_generator &g) {
+		g.attribute("status", "error");
+		g.attribute("op",     op);
+		g.attribute("pkg",    pkg);
+		g.attribute("error",  "busy: request queue full — retry");
+	});
 }
 
 
