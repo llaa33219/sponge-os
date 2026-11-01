@@ -217,6 +217,24 @@ source [file join [file dirname [file normalize [info script]]] \
                     runtime-quota.inc]
 source [file join [file dirname [file normalize [info script]]] \
                     runtime-grouped.inc]
+#
+# Per-child heartbeat gate values (P3.4). Exposed so each
+# child's sandbox containment gates can be tuned individually;
+# the values below are the product defaults and render byte-
+# identical to the previous inline literals.
+#
+supervisor::heartbeat_values {
+	wm                    { 3 3 120000}
+	layouter              { 3 3 120000}
+	decorator             { 3 3 120000}
+	sponge_configd        { 3 3 120000}
+	sponge_themed         { 3 3 120000}
+	sponge_pkgd           { 3 3 120000}
+	sponge-de             { 3 3 120000}
+	pkg_runtime_simple    { 3 3 120000}
+	pkg_runtime_terminal  { 3 3 120000}
+	pkg_runtime_browser   { 3 3 120000}
+}
 
 # Failure-channel selector: SPONGE_DISK_FAIL=1 corrupts system.config.
 #
@@ -766,7 +784,7 @@ config
 
 + start wm | caps: 2000 | ram: 16M
   + binary | name: bin/wm
-  + heartbeat | restart_after_skipped: 3 | restart_budget: 3 | startup_grace_ms: 120000
+  @HB:wm@
   + provides
     + service Gui
     + service Report
@@ -788,7 +806,7 @@ config
 
 + start layouter | caps: 1000 | ram: 8M
   + binary | name: bin/window_layouter
-  + heartbeat | restart_after_skipped: 3 | restart_budget: 3 | startup_grace_ms: 120000
+  @HB:layouter@
   + config | rules: rom
     + report | rules: yes
     + rules
@@ -840,7 +858,7 @@ config
 
 + start decorator | caps: 350 | ram: 32M
   + binary | name: bin/decorator
-  + heartbeat | restart_after_skipped: 3 | restart_budget: 3 | startup_grace_ms: 120000
+  @HB:decorator@
   + config
     + controls
       + maximizer
@@ -858,7 +876,7 @@ config
 
 + start sponge_configd | caps: 200 | ram: 16M
   + binary | name: bin/sponge_configd
-  + heartbeat | restart_after_skipped: 3 | restart_budget: 3 | startup_grace_ms: 120000
+  @HB:sponge_configd@
   + config
     + bake
   + route
@@ -885,7 +903,7 @@ config
 
 + start sponge_themed | caps: 200 | ram: 8M
   + binary | name: bin/sponge_themed
-  + heartbeat | restart_after_skipped: 3 | restart_budget: 3 | startup_grace_ms: 120000
+  @HB:sponge_themed@
   + route
     + service ROM | label_last: ld.lib.so | + parent
     + service ROM | label_last: config       | + child report_rom
@@ -898,7 +916,7 @@ config
 
 + start sponge_pkgd | caps: 200 | ram: 16M
   + binary | name: bin/sponge_pkgd
-  + heartbeat | restart_after_skipped: 3 | restart_budget: 3 | startup_grace_ms: 120000
+  @HB:sponge_pkgd@
   + config | binary_prefix: bin/
     + launcher_request
     #
@@ -923,7 +941,7 @@ config
 
 + start sponge-de | caps: 4000 | ram: 160M
   + binary | name: bin/sponge-de
-  + heartbeat | restart_after_skipped: 3 | restart_budget: 3 | startup_grace_ms: 120000
+  @HB:sponge-de@
   + config
     + theme | source: themed
     + launcher | source: pkgd
@@ -1031,7 +1049,7 @@ config
 @DRIVER_START_NODE@
 + start pkg_runtime_simple | caps: 6000 | ram: 1488M
   + binary | name: bin/init
-  + heartbeat | restart_after_skipped: 3 | restart_budget: 3 | startup_grace_ms: 120000
+  @HB:pkg_runtime_simple@
   + route
     + service ROM | label_last: ld.lib.so | + parent
     + service ROM | label_last: mesa_gpu.lib.so | + parent | label: mesa_gpu-softpipe.lib.so
@@ -1053,7 +1071,7 @@ config
 
 + start pkg_runtime_terminal | caps: 2000 | ram: 247M
   + binary | name: bin/init
-  + heartbeat | restart_after_skipped: 3 | restart_budget: 3 | startup_grace_ms: 120000
+  @HB:pkg_runtime_terminal@
   + route
     + service ROM | label_last: ld.lib.so | + parent
     + service ROM | label: config | + child report_rom
@@ -1066,7 +1084,7 @@ config
 
 + start pkg_runtime_browser | caps: 220000 | ram: 512G
   + binary | name: bin/init
-  + heartbeat | restart_after_skipped: 3 | restart_budget: 3 | startup_grace_ms: 120000
+  @HB:pkg_runtime_browser@
   + route
     + service ROM | label_last: ld.lib.so | + parent
     + service ROM | label_last: mesa_gpu.lib.so | + parent | label: mesa_gpu-softpipe.lib.so
@@ -1927,8 +1945,22 @@ if {$fail_mode} {
 	# whichever lands first, and the two receipts are then asserted
 	# against the accumulated output, which is order-independent.
 	#
+	# SPONGE_SUPERVISOR_TEST=contain gates the fault child's WEDGE first
+	# (ep_wedge fires it `wedge_after_ms` into each incarnation, well
+	# before alpha-probe finishes its assertion sequence): the gate order
+	# is then itself the receipt that the DE functional PASS below is
+	# POST-wedge — the desktop proves itself while a runtime child is
+	# already wedged and being contained underneath it. The two-argument
+	# run_genode_until form POWERS ON the guest, so this pre-gate is the
+	# boot call and the alpha gates below must pass its spawn id.
+	#
+	set gate_spawn -1
+	if {$sup_mode eq "contain"} {
+		run_genode_until {.*ep_wedge: wedge fired - entrypoint parked.*} 300
+		set gate_spawn $qemu_spawn_id
+	}
 	if {$fb_switch} {
-		run_genode_until {.*(alpha-probe: PASS|fb-switch-probe: PASS).*} 1200
+		run_genode_until {.*(alpha-probe: PASS|fb-switch-probe: PASS).*} 1200 $gate_spawn
 		#
 		# Follow-up gates MUST pass $qemu_spawn_id: a call without it is
 		# a fresh BOOT (run_genode_until does run_power_cycle +
@@ -1951,7 +1983,7 @@ if {$fail_mode} {
 			exit 1
 		}
 	} else {
-		run_genode_until {.*alpha-probe: PASS.*} 900
+		run_genode_until {.*alpha-probe: PASS.*} 900 $gate_spawn
 	}
 
 	#
@@ -2210,6 +2242,145 @@ if {$fail_mode} {
 
 		puts "\nsponge-desktop-disk: SUPERVISOR CONTROL PASS - the sandbox's own\
   containment held, the supervisor killed nothing and armed no console\n"
+	} elseif {$sup_mode eq "contain"} {
+
+		#
+		# === Containment by name (SPONGE_SUPERVISOR_TEST=contain) ====
+		#
+		# The fault child (pkg_runtime_fault, ep_wedge, bare heartbeat)
+		# wedges EVERY incarnation: a persistent fault that only a
+		# restart can fix. The claim under test is that the supervisor
+		# contains it BY NAME — only that child's <start> version is
+		# bumped — so the sibling runtimes and the DE are never rebuilt.
+		# Two full containment cycles are gated: the persistent fault
+		# must recur and be re-contained, not merely absorbed once.
+		#
+		# The gates below follow the emission order of the green run and
+		# are NON-FATAL on purpose: under the current global-CONTAIN
+		# behaviour the red run's rebuild churns the whole subtree (and
+		# on seL4 several recreation attaches fail outright), so a
+		# missing revival must be REPORTED by the witness walk below
+		# rather than killing the run at a gate timeout before the
+		# behavioural findings can be printed. run_genode_until cannot
+		# express that (its timeout exits the process), hence the small
+		# bounded-expect helper.
+		#
+		proc contain_gate { re secs what } {
+			global output fail qemu_spawn_id
+			set timeout $secs
+			set rc 1
+			expect {
+				-i $qemu_spawn_id -re $re { }
+				-i $qemu_spawn_id eof {
+					lappend fail "$what: the guest died"
+					set rc 0
+				}
+				timeout {
+					lappend fail "$what: no match within ${secs}s"
+					set rc 0
+				}
+			}
+			# every consumed byte reaches $output on all paths: the
+			# witness walk below must see evidence that arrived inside
+			# a later gate's window
+			if {[info exists expect_out(buffer)]} {
+				append output $expect_out(buffer)
+			}
+			if {$rc} { puts "sponge-desktop-disk: contain gate ok - $what" }
+			return $rc
+		}
+
+		set fail {}
+
+		contain_gate {.*sponge_supervisor: FAULT max_skipped=.*child=pkg_runtime_fault.*} 300 \
+			"the fault is attributed to pkg_runtime_fault"
+		contain_gate {.*sponge_supervisor: published <system> kill=2 .*} 120 \
+			"the first containment publish"
+		contain_gate {.*ep_wedge: incarnation alive .*wedging in.*} 120 \
+			"the victim revived by name (2nd incarnation)"
+		contain_gate {.*sponge_supervisor: contained - child=pkg_runtime_fault.*} 120 \
+			"the victim contained by name"
+		contain_gate {.*sponge_supervisor: published <system> kill=3 .*} 120 \
+			"the second containment publish"
+		contain_gate {.*ep_wedge: incarnation alive .*wedging in.*} 120 \
+			"the victim revived again (3rd incarnation)"
+		contain_gate {.*sponge_supervisor: contained - child=pkg_runtime_fault.*} 120 \
+			"the victim contained again"
+		set after_fault 0
+		set panels 0
+		set alpha_starts 0
+		set revivals 0
+
+		foreach line [split $output \n] {
+
+			if {!$after_fault &&
+			    [string first "sponge_supervisor: FAULT max_skipped=" $line] >= 0} {
+				set after_fault 1
+			}
+
+			if {$after_fault &&
+			    [string first "sponge_supervisor: published " $line] >= 0 &&
+			    [string first "target=pkg_runtime_fault bumped=1" $line] < 0} {
+				lappend fail "a post-fault publish was NOT a targeted\
+ one-node containment: [string trim $line]"
+			}
+
+			#
+			# The version-change witness: the state report's per-child
+			# `version` is a CONSTRUCTION version, so any change is a
+			# rebuild. Only the contained child may ever change.
+			#
+			if {[string first "sponge_supervisor: version-change " $line] >= 0 &&
+			    [string first "sponge_supervisor: version-change pkg_runtime_fault " $line] < 0} {
+				lappend fail "a construction version changed OUTSIDE the\
+ contained child: [string trim $line]"
+			}
+
+			if {[string first "sponge-de: panel shown" $line] >= 0} {
+				incr panels
+			}
+			if {[string first "alpha-probe: starting" $line] >= 0} {
+				incr alpha_starts
+			}
+			if {[string first "ep_wedge: incarnation alive" $line] >= 0} {
+				incr revivals
+			}
+			if {[string first "sponge_console: ARMED" $line] >= 0} {
+				lappend fail "the fault console was armed on a contained fault"
+			}
+			if {[string first "published <system_console>" $line] >= 0} {
+				lappend fail "a console-takeover config was published"
+			}
+		}
+
+		if {$panels != 1} {
+			lappend fail "sponge-de: panel shown appeared $panels times\
+ (expected 1 - a global kill recreates the DE)"
+		}
+		if {$alpha_starts != 1} {
+			lappend fail "alpha-probe started $alpha_starts times (expected 1\
+ - a global kill recreates the boot probe)"
+		}
+		if {$revivals < 3} {
+			lappend fail "only $revivals victim incarnations seen (expected 3:\
+ the initial one plus two named restarts)"
+		}
+		if {[string first "alpha-probe: PASS" $output] < 0} {
+			lappend fail "the post-wedge DE functional PASS is missing"
+		}
+
+		if {[llength $fail]} {
+			puts "\nsponge-desktop-disk: SUPERVISOR CONTAIN FAIL:"
+			foreach f $fail { puts "  - $f" }
+			puts ""
+			exit 1
+		}
+
+		puts "\nsponge-desktop-disk: SUPERVISOR CONTAIN PASS - the persistent\
+ fault in pkg_runtime_fault was contained BY NAME across two cycles: one\
+ node bumped per publish (target=pkg_runtime_fault bumped=1), sibling and\
+ DE construction versions stable, panel shown once, post-wedge DE\
+ functional PASS, no console takeover\n"
 	} elseif {$fb_switch} {
 
 		#

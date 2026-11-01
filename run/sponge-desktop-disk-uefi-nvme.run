@@ -248,6 +248,24 @@ source [file join [file dirname [file normalize [info script]]] \
                     runtime-quota.inc]
 source [file join [file dirname [file normalize [info script]]] \
                     runtime-grouped.inc]
+#
+# Per-child heartbeat gate values (P3.4). Exposed so each
+# child's sandbox containment gates can be tuned individually;
+# the values below are the product defaults and render byte-
+# identical to the previous inline literals.
+#
+supervisor::heartbeat_values {
+	wm                    { 3 3 120000}
+	layouter              { 3 3 120000}
+	decorator             { 3 3 120000}
+	sponge_configd        { 3 3 120000}
+	sponge_themed         { 3 3 120000}
+	sponge_pkgd           { 3 3 120000}
+	sponge-de             { 3 3 120000}
+	pkg_runtime_simple    { 3 3 120000}
+	pkg_runtime_terminal  { 3 3 120000}
+	pkg_runtime_browser   { 3 3 120000}
+}
 
 # === Failure-channel selector ===
 #
@@ -609,7 +627,7 @@ config
 
 + start wm | caps: 2000 | ram: 16M
   + binary | name: bin/wm
-  + heartbeat | restart_after_skipped: 3 | restart_budget: 3 | startup_grace_ms: 120000
+  @HB:wm@
   + provides
     + service Gui
     + service Report
@@ -631,7 +649,7 @@ config
 
 + start layouter | caps: 1000 | ram: 8M
   + binary | name: bin/window_layouter
-  + heartbeat | restart_after_skipped: 3 | restart_budget: 3 | startup_grace_ms: 120000
+  @HB:layouter@
   + config | rules: rom
     + report | rules: yes
     + rules
@@ -663,7 +681,7 @@ config
 
 + start decorator | caps: 6000 | ram: 64M
   + binary | name: bin/decorator
-  + heartbeat | restart_after_skipped: 3 | restart_budget: 3 | startup_grace_ms: 120000
+  @HB:decorator@
   + config
     + controls
       + maximizer
@@ -681,7 +699,7 @@ config
 
 + start sponge_configd | caps: 200 | ram: 16M
   + binary | name: bin/sponge_configd
-  + heartbeat | restart_after_skipped: 3 | restart_budget: 3 | startup_grace_ms: 120000
+  @HB:sponge_configd@
   + config
     #
     # NOTE (Phase 16 W3 D16.7 honest disclosure): this scenario is a
@@ -705,7 +723,7 @@ config
 
 + start sponge_themed | caps: 200 | ram: 8M
   + binary | name: bin/sponge_themed
-  + heartbeat | restart_after_skipped: 3 | restart_budget: 3 | startup_grace_ms: 120000
+  @HB:sponge_themed@
   + route
     + service ROM | label_last: ld.lib.so | + parent
     + service ROM | label_last: config       | + child report_rom
@@ -718,7 +736,7 @@ config
 
 + start sponge_pkgd | caps: 200 | ram: 16M
   + binary | name: bin/sponge_pkgd
-  + heartbeat | restart_after_skipped: 3 | restart_budget: 3 | startup_grace_ms: 120000
+  @HB:sponge_pkgd@
   + config | binary_prefix: bin/
     + launcher_request
     #
@@ -743,7 +761,7 @@ config
 
 + start sponge-de | caps: 8000 | ram: 128M
   + binary | name: bin/sponge-de
-  + heartbeat | restart_after_skipped: 3 | restart_budget: 3 | startup_grace_ms: 120000
+  @HB:sponge-de@
   + config
     + theme | source: themed
     + launcher | source: pkgd
@@ -850,7 +868,7 @@ config
 @DRIVER_START_NODE@
 + start pkg_runtime_simple | caps: 6000 | ram: 1488M
   + binary | name: bin/init
-  + heartbeat | restart_after_skipped: 3 | restart_budget: 3 | startup_grace_ms: 120000
+  @HB:pkg_runtime_simple@
   + route
     + service ROM | label_last: ld.lib.so | + parent
     + service ROM | label_last: mesa_gpu.lib.so | + parent | label: mesa_gpu-softpipe.lib.so
@@ -867,7 +885,7 @@ config
 
 + start pkg_runtime_terminal | caps: 2000 | ram: 247M
   + binary | name: bin/init
-  + heartbeat | restart_after_skipped: 3 | restart_budget: 3 | startup_grace_ms: 120000
+  @HB:pkg_runtime_terminal@
   + route
     + service ROM | label_last: ld.lib.so | + parent
     + service ROM | label: config | + child report_rom
@@ -880,7 +898,7 @@ config
 
 + start pkg_runtime_browser | caps: 220000 | ram: 512G
   + binary | name: bin/init
-  + heartbeat | restart_after_skipped: 3 | restart_budget: 3 | startup_grace_ms: 120000
+  @HB:pkg_runtime_browser@
   + route
     + service ROM | label_last: ld.lib.so | + parent
     + service ROM | label_last: mesa_gpu.lib.so | + parent | label: mesa_gpu-softpipe.lib.so

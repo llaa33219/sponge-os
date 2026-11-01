@@ -878,7 +878,15 @@ rebuild the whole subtree at boot"
 		# declared on genuine health and the console phase is never
 		# reached - the arm's whole point.
 		#
-		set per_name_gates [dict create pkg_runtime_fault { 1000 1000 }]
+		# grace 3000 is measured, not chosen: the state report is
+		# event-driven and the one that clears the fault after a kill
+		# arrives ~1250 ms late, so a shorter per-name grace read the
+		# STALE pre-kill fault as "the kill did not work" and armed
+		# the console 1.25 s after every kill (first red run). 3000
+		# outlasts that lag with margin and is still shorter than the
+		# global 4000.
+		#
+		set per_name_gates [dict create pkg_runtime_fault { 3000 1000 }]
 	}
 
 	# per-child heartbeat gate values (P3.4) before anything reads the HID
