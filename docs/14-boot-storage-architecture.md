@@ -164,12 +164,55 @@ guarantee with the simplest mental model:
 
 ### 4.3 Partition layout
 
-The existing `image/disk` tool produces P1/P2/P3 and then packs the
-image as `header + P3 + backup-GPT-gap` with **no free sectors** (it
+**Naming authority (binding).** The data partitions are partition P3
+`GENODE`, partition P4 `SPONGE-VAR`, and partition P5 `SPONGE-HOME`,
+plus the firmware partitions; there is **no P6+**, no renames, and no
+re-purposing (D16R.2). These three names are THE naming authority
+(D16R.3) for every document, tool, and scenario. `SPONGE-DATA` is the
+**historical** name of the pre-P3.2 writable partition: it survives
+only as history (below and in the Phase-8 receipts) and is never
+current wording.
+
+| # | Name | FS | Content | Writable by | Served by |
+|---|---|---|---|---|---|
+| 3 | `GENODE` | ext2 | `/boot`, `/system` (Tier 1) | image build now; system-update path later | `vfs_sys` (read-only at policy AND mount) |
+| 4 | `SPONGE-VAR` (64M) | ext2 | `/pkgd` (package-store region), `/log` (log-sink region) | pkgd, the log sink | **two** providers: `vfs_pkg` + `vfs_log` |
+| 5 | `SPONGE-HOME` (1024M) | ext2 | `/user` (Tier 2) | apps (file manager, textedit, falkon downloads) | `vfs_home` |
+
+The firmware partitions precede them: BIOS media carries P1 BIOS-boot
++ P2 ESP; the UEFI media carries P1 ESP with P2 intentionally absent
+(§4.3.1). Re-imaging the media rewrites Tier 0+1 (and the firmware
+partitions) and leaves P4/P5 byte-identical — the Tier-2 persistence
+guarantee of §4.2 now spans the two data partitions.
+
+P4 deliberately backs **two** File_system providers — the three data
+partitions are three storage *roles*, not three mounts: `vfs_pkg` and
+`vfs_log` are independent vfs+rump instances on the same ext2
+partition, each through its own `part_block` (upstream `part_block`
+allows one Block session per partition — `partition 4 already in use`,
+`os/src/server/part_block/main.cc:286`), and their two independent
+rump caches carry a coherence caveat while both can write. The full
+provider story — the `vfs_pkg`/`vfs_log` split rationale, the
+`part_block_log` instance, and the caveat — is `docs/17` §2a.
+
+Default sizes on the shipped media: P4 = 64M, P5 = 1024M; P3 is
+content-sized by the image build (measured: the browser-staged
+new-media build lands a 701.0 MiB P3 with ≈15.5 MiB margin over the
+staged content — `docs/evidence/phase16-p26-browser-staging.md` §5;
+new media may grow P3 for the measured WebEngine closure, existing
+deployed media is never resized in place, D16R.2). The hybrid MBR
+holds at most 3 GPT entries, so P4/P5 exist in the GPT only — fine for
+GRUB and for Linux hosts (`sgdisk -l` sees them); document that
+MBR-only tools will not list them.
+
+**Naming history (preserved, not current).** The Phase-8 P3
+persistence work (§12.3) shipped the writable area as a single P4
+named `SPONGE-DATA` (`/store` + `/home`), added post-build by
+`tool/dist`/`tool/mkdata` because `image/disk` packs
+`header + P3 + backup-GPT-gap` with **no free sectors** (it
 `resize2fs -M`-shrinks P3, cats the parts, and `--move-second-header`s
-the backup GPT to the image end — `genode/tool/run/image/disk:94-126`).
-P4 therefore cannot be added with a bare `sgdisk --new=4`; there is no
-space. `tool/dist` grows and repartitions the image post-build
+the backup GPT to the image end — `genode/tool/run/image/disk:94-126`),
+so a bare `sgdisk --new=4` has no space. The grow/repartition sequence
 (~15 lines of Mojo, no vendored-tree patch):
 
 ```
@@ -182,33 +225,34 @@ mkfs.ext2 -E offset=<p4_byte_off> -L SPONGE-DATA <img> <p4_kib>
 sgdisk --hybrid <img>                    # rebuild hybrid MBR (P1-P3)
 ```
 
-Notes: the hybrid MBR holds at most 3 GPT entries, so P4 exists in the
-GPT only — fine for GRUB and for Linux hosts (`sgdisk -l` sees it);
-document that MBR-only tools will not list it. The default
-`--image-disk_size` computation must be told about `<data_bytes>` or
-`resize2fs -M` eats the gap. A cleaner long-term option is a small
-vendored patch adding `--image-disk_data_size` to `image/disk`; if ever
-taken it MUST be recorded in the docs/11 patch ledger (AGENTS.md §5.2).
-
-| # | Name | FS | Content | Writable by |
-|---|---|---|---|---|
-| 1 | (BIOS boot) | raw | GRUB core | image build |
-| 2 | (ESP) | FAT | `bootx64.efi`, `bootia32.efi` | image build |
-| 3 | `GENODE` | ext2 | `/boot`, `/system` (Tier 1) | image build now; system-update path later |
-| 4 | `SPONGE-DATA` | ext2 | `/store`, `/home` (Tier 2) | pkgd, configd, apps |
-
-Default sizes (QEMU/dev images): P3 = system content ×1.5
-(~1.5–2 GiB with Falkon staged), P4 = 1 GiB default, configurable via
-`tool/dist --data-size`.
+The three-area layout (user directive 2026-10-05) split that one
+partition's two roles: system-mutable state (`/pkgd`, `/log`) went to
+P4 `SPONGE-VAR` and the user area (`/user`) to P5 `SPONGE-HOME`. The
+shipped product media provisions both partitions in the scenario
+itself; `tool/mkdata` recognizes the three-area label set (`P4 already
+exists as SPONGE-VAR — three-area scenario layout, data areas already
+provisioned (P4/P5); idempotent no-op`) and `tool/dist`'s partition
+verifier accepts either label set. Legacy artifacts still carrying the
+two-area shape (the `-legacy` BIOS path through `tool/mkdata`, whose
+default writable size is 1 GiB via `tool/dist --data-size`, and any
+deployed pre-P3.2 medium) are never migrated or resized in place
+(D16R.2). Older Phase-8-era text in this document (the §4 tier
+diagram, §5–§7, §12) and older scenario headers/logs still spell
+`SPONGE-DATA`; read those as the historical name. The
+`--image-disk_size` note of that era stands: the default computation
+must be told about `<data_bytes>` or `resize2fs -M` eats the gap; a
+cleaner long-term option is a small vendored patch adding
+`--image-disk_data_size` to `image/disk`, which if ever taken MUST be
+recorded in the docs/11 patch ledger (AGENTS.md §5.2).
 
 #### 4.3.1 UEFI partition variant (Phase 15 W4, D15.13)
 
 The UEFI media path is the Sponge-side recipe
-(`run/sponge-desktop-disk-uefi.run` and `-nvme.run`); the vendored
+(`run/sponge-desktop-disk-uefi*.run` family); the vendored
 `genode/tool/run/image/uefi` is **unexercised and rejected** per
 D15.13 (it copies only top-level run_dir entries — the `/system`
 tree would silently not land — and hardcodes `/usr/share/ovmf/OVMF.fd`
-plus a single FAT partition with no docs/14 4-partition layout).
+plus a single FAT partition with no docs/14 partition layout).
 The Sponge-side variant uses the same handcrafted-image pattern
 proven in `run/sponge-boot-i440fx.run` and
 `run/sponge-boot-multidisk.run` (sgdisk + mkfs + e2cp + dd outside
@@ -218,12 +262,23 @@ qemu_args.
 | # | Name | FS | Content | Writable by |
 |---|---|---|---|---|
 | 1 | `ESP` (FAT32 EF00) | FAT | `EFI/BOOT/BOOTX64.EFI` (renamed `grub2_64.efi`), `/boot/grub/grub.cfg`, `/boot/font.pf2` | image build |
-| 2 | **(ABSENT)** | — | The P2 slot is intentionally not allocated so P3/P4 partition numbers are identical to the BIOS media; part_block's `<partition number="3"/>` pin and tool/mkdata's P4 grow sequence work **unchanged** | — |
+| 2 | **(ABSENT)** | — | The P2 slot is intentionally not allocated so the data-partition numbers (P3/P4/P5) are identical across the firmware variants; part_block's `<partition number="3"/>` pin and tool/mkdata's P4 grow sequence work **unchanged** | — |
 | 3 | `GENODE` (ext2 8300) | ext2 | `/boot/{bender,sel4,image.elf}` (bootloader modules read by GRUB2 EFI's multiboot2 menuentry) + `/system` (Tier 1) | image build now; system-update path later |
-| 4 | `SPONGE-DATA` | ext2 | `/store`, `/home` (Tier 2) | pkgd, configd, apps |
+| 4 | `SPONGE-VAR` (ext2 8300) | ext2 | `/pkgd`, `/log` (system-mutable) | pkgd, the log sink |
+| 5 | `SPONGE-HOME` (ext2 8300) | ext2 | `/user` (Tier 2) | apps |
+
+Rows 3–5 are the §4.3 naming authority. The canonical product media
+(`sponge-desktop-disk-uefi-usb.run`) provisions P4 `SPONGE-VAR` (64M)
+and P5 `SPONGE-HOME` (1024M) itself; the Phase-15 `uefi`/`uefi-nvme`
+scenarios and the `-legacy` BIOS artifacts still grow the historical
+single `SPONGE-DATA` P4 through `tool/mkdata` (§4.3 naming history —
+never migrated in place, D16R.2).
 
 The P2-absent choice is binding. The alternatives considered and
-rejected (recorded in the W4 run-script header):
+rejected (recorded in the W4 run-script header; this is a Phase-15
+decision record and spells the writable partition `SPONGE-DATA`, its
+name at decision time — the §4.3 naming authority supersedes the
+naming only, not the decision):
 
 * **A.** P1=BIOS-boot + P2=ESP + P3=GENODE + P4=SPONGE-DATA (the
   BIOS image/disk layout, two firmware-resident partitions) —
@@ -247,7 +302,8 @@ rejected (recorded in the W4 run-script header):
   never allocated, so the partition count after mkdata is 3
   (P1, P3, P4) instead of 4; the structural verifier
   (`verify_partitions` in `tool/dist.mojo`) handles both
-  layouts.
+  layouts (and accepts the three-area `SPONGE-VAR`/`SPONGE-HOME`
+  label set in place of `SPONGE-DATA`).
 
 Display chain under UEFI (R15.2 / D15.13):
 
