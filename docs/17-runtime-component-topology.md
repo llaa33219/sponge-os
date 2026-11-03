@@ -27,11 +27,19 @@ seL4 kernel
       ├─ ps2            PS/2 keyboard/mouse (Input svc)
       ├─ event_filter   consumes Input, applies rules, provides Event
       │                 → routes Event to nitpicker
-      ├─ part_block     GPT partitioning of the stick
-      ├─ vfs + rump     ext2 on P3 (GENODE partition) → File_system
+      ├─ part_block     GPT partitioning of the stick (rows for the
+      │                 P3 sys, P4 store and P5 home providers)
+      ├─ part_block_log a SECOND part_block instance for the P4 log
+      │                 row (one Block session per partition — §2a)
+      ├─ vfs_sys + rump ext2 on P3 (GENODE, read-only) → File_system
+      ├─ vfs_pkg + rump ext2 on P4 (SPONGE-VAR, /pkgd) → File_system
+      ├─ vfs_log + rump ext2 on P4 (SPONGE-VAR, /log) → File_system
+      ├─ vfs_home + rump ext2 on P5 (SPONGE-HOME, /user) → File_system
       ├─ rom_sys        cached_fs_rom chroot /system  → ROM (binaries,
       │                 configs of every system child)
       ├─ rom_lib        cached_fs_rom chroot /system/lib → ROM (.lib.so)
+      ├─ rom_pkg        cached_fs_rom chroot /system/pkg/falkon/
+      │                 payload → ROM (the browser payload area)
       ├─ nitpicker      the GUI server: domains, input focus,
       │                 compositing — a COMPONENT, not a driver
       ├─ pointer        draws the mouse cursor (Gui client of
@@ -106,10 +114,13 @@ numbers are in §6.
 ## 2. The three data chains
 
 **Storage** (how anything loads at all):
-`xHCI → pc_usb_host → usb_block → part_block → vfs/rump →
-cached_fs_rom (rom_sys, rom_lib) → every system child's binary/config`
+`xHCI → pc_usb_host → usb_block → part_block → vfs_sys/rump →
+cached_fs_rom (rom_sys, rom_lib, rom_pkg) → every system child's
+binary/config`
 One chain, shared by all of `system`. A stall here starves every
-system child — this is the boot-critical path.
+system child — this is the boot-critical path. The writable-area
+providers (`vfs_pkg`, `vfs_log`, `vfs_home`) sit **off** this chain on
+purpose — see §2a.
 
 **Input** (how the mouse reaches the screen):
 `USB mouse → pc_usb_host → usb_hid → event_filter → nitpicker →
@@ -131,6 +142,82 @@ node into `driver_runtime`, and the Tier-0 `platform` policy grants the
 PCI `VGA` class under that package's own label prefix. Switching is
 `vct remove <old> && vct install <new>` (docs/15 §8.2) and is refused
 while the incumbent runs (docs/12 §4.6).
+
+## 2a. The storage providers — three-area layout and the `vfs_pkg` / `vfs_log` split
+
+**Naming authority (binding).** The data partitions are partition P3
+`GENODE`, partition P4 `SPONGE-VAR`, partition P5 `SPONGE-HOME` (plus
+the firmware partitions); there is no P6+. This is the naming
+authority (plan D16R.3); `docs/14` §4.3 states it in full. Historical
+note: before the P3.2 provider split the writable area was a single
+P4 named `SPONGE-DATA` (the Phase-8 persistence lineage —
+`tool/mkdata`, `run/sponge-persist-disk`, and older scenario headers
+and logs still carry that name). `SPONGE-DATA` is history; no
+documentation reintroduces it as current.
+
+Roles on the shipped media (`run/sponge-desktop-disk-uefi-usb.run`):
+
+| partition | name | content | served by |
+|---|---|---|---|
+| P3 | `GENODE` | `/boot`, `/system` — system-immutable; read-only at **both** the part_block policy and the rump mount | `vfs_sys` (labels `rom_sys`, `rom_lib`, `rom_pkg`) |
+| P4 | `SPONGE-VAR` (64M) | `/pkgd` (package-store region) + `/log` (log-sink region) — system-mutable | **two** providers: `vfs_pkg` + `vfs_log` |
+| P5 | `SPONGE-HOME` (1024M) | `/user` — user files | `vfs_home` |
+
+**The provider split (P3.2, D16R.8, failure domain FD4).** Since P3.2
+the two P4 regions are served by two separate File_system providers —
+`vfs_pkg` (root `/pkgd`, the package-store region backing
+`sponge_pkgd`'s persistent installed-roots store, docs/12 §13) and
+`vfs_log` (root `/log`, the `sponge_logdisk` sink) — instead of the
+pre-split shared `vfs_var` instance. The pre-split instance carried
+both regions on one session path, so a stall or denial on the log path
+took the package-store path down with it. The product wiring is the
+one `run/sponge-provider-stall.run` proves:
+`provider-stall: PASS — the log-path stall stayed on its own provider
+path (the vfs_pkg/vfs_log split holds): system ROM and the package
+store kept working while the log sink degraded`. Session-create paths
+perform no storage I/O at all since P3.3 (dispatch parses package
+metadata from bounded memory cached at bootstrap — 16 KiB per document
+— store flushes run on the pkgd Bootstrap worker, and the store wait
+is timer-paced off the entrypoint; `docs/evidence/phase16-runtime-p33.md`).
+
+**Why `part_block_log` exists.** Upstream `part_block` allows only ONE
+Block session per partition — the second create is refused
+`partition 4 already in use` (`os/src/server/part_block/main.cc:286`).
+So each P4 provider gets its OWN `part_block` instance (same binary,
+same row semantics; `usb_block` serves both sessions — its
+`Session_map` allocates one index per session): `vfs_pkg`'s row lives
+in the Tier-0 `part_block`, `vfs_log`'s identical row (partition 4,
+writeable) lives in `part_block_log`. That is the whole rationale: a
+wiring constraint of the upstream partitioning server, not a storage-
+layout change — both rows pin the same partition.
+
+**The coherence caveat (honest).** Both P4 regions share one ext2
+partition behind **two independent rump mounts** (D16R.8's separation
+is wiring-level only). Concurrent metadata writes from the two mounts
+are a known ext2 coherence hazard; today only the log sink writes
+(pkgd's store is not yet wired to `vfs_pkg` in the product), so the
+hazard is not exercised. If both regions gain writers, revisit — the
+alternatives are one provider per partition-pair or a shared Block
+layer, both larger than the P3.2 wiring
+(`docs/evidence/phase16-runtime-provider-stall.md` §5.5).
+
+**Provider quotas (uefi-usb Tier-0, `run/sponge-desktop-disk-uefi-usb.run`).**
+The three-area layout adds these nodes on top of the two 256M `rom_*`
+servers; the figures are what the §6.1 uefi-usb Tier-0 accounting
+charges:
+
+| node | caps | RAM | note |
+|---|---:|---:|---|
+| `vfs_sys` | 16000 | 128M | P3 read-only; rump 48M |
+| `vfs_pkg` | 2000 | 32M | P4 `/pkgd`; rump 16M |
+| `vfs_log` | 2000 | 32M | P4 `/log`; rump 16M |
+| `vfs_home` | 2000 | 32M | P5 `/user`; rump 16M |
+| `part_block_log` | 200 | 8M | the log path's own part_block |
+| `rom_pkg` | 20000 | 768M | falkon's ~509 MiB payload (§6) |
+
+Scope: these are QEMU/base-sel4 receipts (D16R.12 labelling); the
+`{uefi,uefi-nvme}` disk variants remain structure-only gates in QEMU
+(D15.16).
 
 ## 3. Why a terminal component froze the desktop (the honest analysis)
 
@@ -592,12 +679,19 @@ component must never be able to freeze the desktop. Status after the
      versions are logged when they change (bounded), which is the
      rebuild witness. `grace_ms.<name>`/`settle_ms.<name>` policy rows
      override the escalation and CONTAIN settle per subtree (console
-     and RELEASE stay global). The `contain` arm proves the property on
+     and RELEASE stay global). The per-child heartbeat triplets
+     (`restart_after_skipped` / `restart_budget` / `startup_grace_ms`,
+     defaults 3 / 3 / 120000, byte-identical to the previous inline
+     literals) are exposed per runtime child in the five product
+     scenarios and `driver_runtime.inc`. The `contain` arm proves the property on
      the product topology: a persistent fault in `pkg_runtime_fault` is
      contained repeatedly with `target=pkg_runtime_fault bumped=1`,
      sibling and DE construction versions stable, panel shown once, a
      post-wedge `alpha-probe: PASS`, and no console takeover
-     (`docs/evidence/phase16-runtime-p34.md`).
+     (`docs/evidence/phase16-runtime-p34.md`). P5.1's acceptance suite
+     re-runs the containment leg green in three consecutive all-green
+     passes, with `wedge: no churn` asserting zero `version-change`
+     lines (`docs/evidence/phase16-runtime-acceptance.md`).
 
   One structural limitation, recorded honestly: a *persistent* fault
   plus a full-subtree restart lever are mutually exclusive with a fully
@@ -608,14 +702,22 @@ component must never be able to freeze the desktop. Status after the
   `alpha-probe: PASS`; the healthy path is what the five scenario
   regressions and the control arm prove. P3.4 lifts the limitation for
   runtime-subtree faults (the `contain` arm reaches its post-wedge
-  `alpha-probe: PASS` because the DE is never rebuilt), but the
-  **revived child's process cannot start in this environment**: config-
-  driven child recreation after a teardown fails at the base layer
-  (`create_thread: invalid PD argument`), which also breaks the
-  pre-existing takeover arm's kill receipt — see
-  `docs/evidence/phase16-runtime-p34.md` §5 for the exact blocker and
-  its pre-P3.3 comparison receipts. Same root as the respawn budget
-  row below.
+  `alpha-probe: PASS` because the DE is never rebuilt), and the
+  **revived child's process now really restarts**. The earlier
+  base-layer blocker — config-driven child recreation after a teardown
+  failing with `create_thread: invalid PD argument`, which also broke
+  the takeover arm's kill receipt (`docs/evidence/phase16-runtime-p34.md`
+  §5 keeps the pre-fix comparison receipts) — is **fixed in place** by
+  the proven P3.4 lifecycle pair at fork pin `48a946ba15`: ledger row
+  #32 (`489f977822`, RPC object keys unique across incarnations) and
+  row #33 (`48a946ba15`, pending sessions preserved across reissue and
+  destruction). With them, the `contain` arm reaches real second and
+  third victim incarnations and the product takeover reaches
+  `SUPERVISOR TAKEOVER PASS` with real revivals and the console-to-
+  desktop handback (receipts: `docs/evidence/phase16-runtime-capability-key-reuse.md`,
+  `docs/evidence/phase16-runtime-pending-session-lifetime.md`;
+  classification: `docs/evidence/patch-classification.md` — rows #32/#33
+  are **keep**, retired only as a pair).
 - [~] **Broker fault containment — `run/sponge-alpha.run`: evaluated
   2026-10-17, NOT APPLICABLE (deliberately unchanged)**: the supervisor
   was evaluated against alpha as part of the product rollout and does not
@@ -925,14 +1027,28 @@ The app/driver capability split is preserved: `Platform`, `Dma`,
 `Irq`, `Io_mem`, and `Io_port` remain driver-runtime-only. The class-row
 receipt is `docs/evidence/phase16-runtime-targets.md` (P2.2, single
 `pkg_runtime`); the grouped-grant evidence is the static
-`runtime_grouped::assert_wiring` harness plus the two UEFI-USB grouped
-boots. The P2.4 interactive receipt is
+`runtime_grouped::assert_wiring` harness plus the runtime boots. The
+grouped topology is runtime-verified on
+`sponge-desktop-disk-uefi-usb` (two boots, `alpha-probe: PASS` and
+the terminal launch gate) and acceptance-verified on
+`sponge-desktop-disk` (P5.1's three consecutive all-green suite
+passes, including the grouped app matrix with real launcher first
+paint + input for every built-in desktop package);
+`sponge-desktop-disk-uefi`/`-uefi-nvme` remain structurally asserted
+(D15.16 structure-only QEMU gates). The P2.4 interactive receipt is
 `docs/evidence/phase16-grouped-runtime-ui.md`: two consecutive BIOS
 `SPONGE_GROUPED_UI=on` runs with real launcher first paint and typed
 input for both textedit and terminal, plus a default-BIOS
-`alpha-probe: PASS` regression run. The same document records the
-staging, placement, and host-QMP marker-preservation fixes required to
-make that evidence reliable.
+`alpha-probe: PASS` regression run (the same document records the
+staging, placement, and host-QMP marker-preservation fixes required
+to make that evidence reliable). Legacy single-runtime
+admission was verified on `sponge-desktop-disk` (`resource admission
+armed` and `alpha-probe: PASS` in the same boot). On
+`sponge-desktop-disk-nvme` the gate is wired but NOT yet reachable:
+pkgd stops earlier on a pre-existing `bake_manifest` denial (§5 row
+below). Receipts: `run/sponge-pkg-admission.run`,
+`docs/evidence/pkg-admission-control.md`,
+`docs/evidence/phase16-runtime-acceptance.md`.
 
 ### 6.0 `driver_runtime`'s grant
 
@@ -1050,7 +1166,9 @@ and 5686 − 874 ≈ 4807, the observed `system` grant. Full receipts:
 
 (The `system` children columns exclude the class runtimes themselves,
 whose grants are media-independent — 6000 / 2000 / 220000 caps and
-1488M / 247M / the RAM remainder, §6. The uefi variants' larger fixed
+1488M / 247M / the RAM remainder, §6 — and likewise exclude
+`driver_runtime`, whose grant is media-independent at 36000 caps /
+448M (§6.0). The uefi variants' larger fixed
 sums come from the 6000-cap `decorator`, 8000-cap `sponge-de` and
 6000-cap `alpha_probe`, plus uefi-usb's `vct_tty` at 200 caps / 8M.
 The three class runtimes replace the old single `pkg_runtime` at
@@ -1069,7 +1187,7 @@ amounts of guest RAM, which is why the ceilings differ:
 - **OVMF/UEFI path** — ~2.4 GiB, not ~458 MiB. Measured on
   `sponge-desktop-disk-uefi-usb`: `-m 8G` ⇒ 5826 MiB assigned to init.
   The UEFI ceiling stays at 8G: uefi-usb alone carries ~1942 MiB of
-  Tier-0 (the three-area layout adds `vfs_pkg` 32M, `vfs_log` 32M,
+  Tier-0 (the three-area layout (§2a) adds `vfs_pkg` 32M, `vfs_log` 32M,
   `vfs_home` 32M, `part_block_log` 8M and `rom_pkg` 768M for falkon's
   509 MiB payload on top of the two 256M `rom_*` servers — the pre-P3.2
   shared `vfs_var` was one 32M instance on one `part_block`, ~1902 MiB),
