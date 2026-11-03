@@ -2515,6 +2515,7 @@ missing hello/Utilities\n"
 		# QMP-TARGET tablet: panel toggle + hello menu entry
 		qmp_exec_target $qmp_chan 120
 		qmp_exec_target $qmp_chan 120
+		qmp_exec_target $qmp_chan 120
 		run_genode_until {(grouped-ui-probe: hello launcher entry click|grouped-ui-probe: FAIL)} 120 $qemu_spawn_id
 		if {[string first "grouped-ui-probe: FAIL" $output] >= 0} {
 			set reason [grouped_ui_fail_reason $output]
@@ -2539,6 +2540,7 @@ result never answered already-running (channel=launcher)\n"
 		# app's own "sponge_debug: MARK" log.
 		#
 		# QMP-TARGET tablet: panel toggle + debug menu entry
+		qmp_exec_target $qmp_chan 120
 		qmp_exec_target $qmp_chan 120
 		qmp_exec_target $qmp_chan 120
 		run_genode_until {(grouped-ui-probe: debug launcher entry click|grouped-ui-probe: FAIL)} 120 $qemu_spawn_id
@@ -2595,6 +2597,7 @@ reached the debug Mark button (no sponge_debug: MARK log)\n"
 		# QMP-TARGET tablet: panel toggle + simple-class menu entry
 		qmp_exec_target $qmp_chan 120
 		qmp_exec_target $qmp_chan 120
+		qmp_exec_target $qmp_chan 120
 		run_genode_until {(grouped-ui-probe: simple-class first paint|grouped-ui-probe: FAIL)} 420 $qemu_spawn_id
 		if {[string first "grouped-ui-probe: FAIL" $output] >= 0} {
 			set reason [grouped_ui_fail_reason $output]
@@ -2619,6 +2622,7 @@ reached the debug Mark button (no sponge_debug: MARK log)\n"
 		}
 
 		# QMP-TARGET tablet: panel toggle + terminal-class menu entry
+		qmp_exec_target $qmp_chan 120
 		qmp_exec_target $qmp_chan 120
 		qmp_exec_target $qmp_chan 120
 		run_genode_until {(grouped-ui-probe: terminal-class first paint|grouped-ui-probe: FAIL)} 420 $qemu_spawn_id
@@ -2673,6 +2677,7 @@ reached the debug Mark button (no sponge_debug: MARK log)\n"
 		# (falkon). The first-paint gate carries the longer browser
 		# budget: falkon's WebEngine closure resolves from disk before
 		# its window can appear. No page-load gate.
+		qmp_exec_target $qmp_chan 120
 		qmp_exec_target $qmp_chan 120
 		qmp_exec_target $qmp_chan 120
 		run_genode_until {(grouped-ui-probe: browser-class first paint|grouped-ui-probe: FAIL)} 600 $qemu_spawn_id
@@ -2749,6 +2754,7 @@ reached the debug Mark button (no sponge_debug: MARK log)\n"
 		# construction) cannot recur here.
 		#
 		# QMP-TARGET tablet: panel toggle + files menu entry
+		qmp_exec_target $qmp_chan 120
 		qmp_exec_target $qmp_chan 120
 		qmp_exec_target $qmp_chan 120
 		run_genode_until {(grouped-ui-probe: files-class first paint|grouped-ui-probe: FAIL)} 420 $qemu_spawn_id
@@ -2841,6 +2847,7 @@ reached the debug Mark button (no sponge_debug: MARK log)\n"
 		# QMP-TARGET tablet: panel toggle + pdf_view menu entry
 		qmp_exec_target $qmp_chan 120
 		qmp_exec_target $qmp_chan 120
+		qmp_exec_target $qmp_chan 120
 		run_genode_until {(grouped-ui-probe: pdf-view-class first paint|grouped-ui-probe: FAIL)} 420 $qemu_spawn_id
 		if {[string first "grouped-ui-probe: FAIL" $output] >= 0} {
 			set reason [grouped_ui_fail_reason $output]
@@ -2899,6 +2906,7 @@ reached the debug Mark button (no sponge_debug: MARK log)\n"
 		# never a fallback).
 		#
 		# QMP-TARGET tablet: panel toggle + calculator menu entry
+		qmp_exec_target $qmp_chan 120
 		qmp_exec_target $qmp_chan 120
 		qmp_exec_target $qmp_chan 120
 		run_genode_until {(grouped-ui-probe: calculator-class first paint|grouped-ui-probe: FAIL)} 420 $qemu_spawn_id
@@ -3133,11 +3141,8 @@ receipt: $m\n"
 		qmp_exec_target $qmp_chan 120
 		app_iso_gate {(app-isolation-probe: wedge de-input ok|app-isolation-probe: FAIL)} "wedge de-input ok"
 
-		# W2b: tasklist minimize-textedit click + calculator strip
-		# click (the default-domain absorber) + K5 spin + typed
-		# digits — 4 slots
-		qmp_exec_target $qmp_chan 120
-		qmp_exec_target $qmp_chan 120
+		# W2b: sibling delta on the relaunched textedit (the K7
+		# clear-band shape — PS/2 focus click + typed digits) — 2 slots
 		qmp_exec_target $qmp_chan 120
 		qmp_exec_target $qmp_chan 120
 		app_iso_gate {(app-isolation-probe: wedge survivors|app-isolation-probe: FAIL)} "wedge survivors"

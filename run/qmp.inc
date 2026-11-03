@@ -817,14 +817,6 @@ proc qmp_tablet_click { chan tx ty } {
 	set ay [expr {($ty * 32767 + 384) / 768}]
 	qmp_cmd $chan [format {{"execute":"input-send-event","arguments":{"events":[{"type":"abs","data":{"axis":"x","value":%d}},{"type":"abs","data":{"axis":"y","value":%d}}]}}} $ax $ay]
 	after 15
-	# W4-style hover jiggle: without the +/-1px re-assert the abs-move
-	# is occasionally dropped and the button lands at the PREVIOUS
-	# pointer position (ai-cal21/cal23 receipts: a tasklist click
-	# re-fired from the prior slot and minimized the wrong window).
-	qmp_cmd $chan [format {{"execute":"input-send-event","arguments":{"events":[{"type":"abs","data":{"axis":"x","value":%d}},{"type":"abs","data":{"axis":"y","value":%d}}]}}} [expr {$ax - 1}] $ay]
-	after 15
-	qmp_cmd $chan [format {{"execute":"input-send-event","arguments":{"events":[{"type":"abs","data":{"axis":"x","value":%d}},{"type":"abs","data":{"axis":"y","value":%d}}]}}} $ax $ay]
-	after 15
 	qmp_hmp $chan "mouse_button 1"
 	after 15
 	qmp_hmp $chan "mouse_button 0"
