@@ -556,6 +556,27 @@ Commits: `docs(evidence): record the phase-16 runtime full sweep` (1) +
 close-out docs (1).
 Owns: `docs/evidence/phase16-runtime-sweep.md`, sweep logs.
 
+Landed (2026-11-04): the sweep matrix is committed at
+`docs/evidence/phase16-runtime-sweep.md` with 62 curated receipts
+(`phase16-runtime-sweep-*.log`). All seven phase-added scenarios and
+all four product arms (default, grouped-UI, app-isolation, supervisor
+contain) are green on fresh runs at `b19184958b` / pin `48a946ba15`.
+The 36-scenario envelope runs 26 rows green, 3 partial (rows 8/15/21),
+and 7 red rows (6 scenarios + 1 duplicate citation) — every red and
+partial carries a follow-up pointer (F1-F6) and no gate was deleted or
+weakened. Headline findings the sweep caught: two product run-config
+templates (`sponge-desktop-defaults-firstboot`, `sponge-alpha`) were
+not migrated to the P2.4 grouped-runtime + P3.4 heartbeat route model
+(F1, deterministic 2/2), `run/sponge-terminal.run` carries a braced
+`{*}` Tcl source error since `9cd888fd9e` (F6), and `sponge-de-
+shortcuts` reproducibly crashes report_rom at `0x1d6000` (F2). The
+base-linux `get_page_size` blocker is precisely re-scoped: the hazard
+is the `BOARD=pc` combo (verbatim compile error captured); the
+`BOARD=linux` axis is fresh-green. `./tool/build verify` is green
+(33 ledger rows at the pin). The `review-work` post-implementation
+review is deliberately not run in this step (task instruction) and
+remains the next step before handoff.
+
 ## 6. Dependency Graph
 
 | Task | Depends on | Reason |
