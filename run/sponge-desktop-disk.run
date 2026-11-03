@@ -272,6 +272,16 @@ set grouped_ui 0
 if {[info exists ::env(SPONGE_GROUPED_UI)] && $::env(SPONGE_GROUPED_UI) eq "on"} {
 	set grouped_ui 1
 }
+
+# report_rom is single-writer per label: SPONGE_FB_SWITCH and
+# SPONGE_GROUPED_UI both claim pkgd's `probe_request`/`probe_result`
+# channel (and both add `+ probe_request` to pkgd's config). Exactly
+# one arm may run per boot — fail loud instead of corrupting the relay.
+if {$fb_switch && $grouped_ui} {
+	error "sponge-desktop-disk: SPONGE_FB_SWITCH and SPONGE_GROUPED_UI \
+both claim pkgd's probe_request channel (report_rom single-writer per \
+label) - run one arm at a time"
+}
 if {$sup_mode ne "off"} {
 	puts "sponge-desktop-disk: supervisor fault-injection ARM '$sup_mode'"
 }
@@ -299,6 +309,7 @@ set build_components {
 	lib/qt6_component lib/vfs lib/vfs_pipe lib/vfs_gpu lib/rom_filter
 	lib/zlib lib/libpng lib/blit lib/vfs_ttf lib/vfs_import lib/posix
 	lib/ncurses lib/pcre
+	lib/openjpeg lib/freetype lib/jbig2dec lib/mupdf lib/jpeg
 	driver/ahci
 	server/nic_router driver/nic/pc driver/usb_net driver/wifi \
 	driver/gpu/intel driver/framebuffer/intel/pc/spec/x86_64
@@ -532,6 +543,75 @@ foreach lib [glob -nocomplain bin/*.lib.so] {
 	exec cp -fL $lib "$sys_dir/lib/$libname"
 }
 
+# mupdf closure: pdf_view's document-rendering library and its shared
+# closure (P5.1 R13: without them pdf_view stops with "parent denied
+# ROM-session: label=mupdf.lib.so", then label=freetype.lib.so, ...).
+# Built by the `lib/openjpeg lib/freetype lib/jbig2dec lib/mupdf
+# lib/jpeg` build targets (the lean run's sponge-pdf-view.run builds
+# the same set) and staged by the bin/*.lib.so glob. Do NOT stage the
+# `*.abi.so` stubs next to the app — those are the small ABI-stability
+# interfaces (compare var/libcache/zlib/: zlib.abi.so 17KB stub vs
+# zlib.lib.so 319KB real), and staging the mupdf stub crashed
+# pdf_view with a WRITE violation (R14 evidence). Assert the real
+# artifacts reached the staged set.
+foreach mupdf_dep { mupdf.lib.so freetype.lib.so jpeg.lib.so \
+                    jbig2dec.lib.so openjpeg.lib.so } {
+	if {![file exists "$sys_dir/lib/$mupdf_dep"]} {
+		error "mupdf closure lib missing from the staged lib set: \
+$mupdf_dep (are the lib/openjpeg lib/freetype lib/jbig2dec \
+lib/mupdf lib/jpeg build targets in the build list?)"
+	}
+}
+
+# sample.pdf: the pdf_view package's document ROM (metadata VFS
+# <rom name="sample.pdf"/>). The run scenario owns the staged bytes
+# (the metadata: "the boot module of that same name MUST be staged by
+# the run scenario"); this arm stages a TWO-PAGE document generated
+# here instead of copying pkg/pdf_view/payload/sample.pdf:
+#
+#   - pdfapp.c clamps pageno to pagecount and re-renders only on a
+#     real page change, so page-down is a dead input on a one-page
+#     document (R21: pgdn_changed=0);
+#   - the port blit (app/pdf_view main.cc Pdf_view::show) applies no
+#     panx/pany, so scroll alone never changes a pixel (R22).
+#
+# The P5.1 page-down/scroll input delta therefore needs a real page
+# flip. Page 1 keeps the payload's wording; page 2 paints a filled
+# block so the flip is a large unmistakable delta. Pure ASCII (no NUL
+# bytes) and a computed xref: the staged-metadata text-mode rom trim
+# (binary="no") then yields exactly the file bytes inside the padded
+# ROM dataspace and mupdf's startxref scan lands on the real table.
+set sp1 "BT\n/F1 24 Tf\n72 720 Td\n(Hello Sponge PDF) Tj\n0 -32 Td\n(Phase 13 W4 sample.) Tj\nET\n"
+set sp2 "0 0 0 rg\n36 600 540 120 re f\nBT\n/F1 24 Tf\n72 720 Td\n(Sample page two.) Tj\nET\n"
+set obj4 "<< /Length [string length $sp1] >>\nstream\n${sp1}endstream"
+set obj6 "<< /Length [string length $sp2] >>\nstream\n${sp2}endstream"
+set pdf_objs [list \
+	{<< /Type /Catalog /Pages 2 0 R >>} \
+	{<< /Type /Pages /Kids [3 0 R 5 0 R] /Count 2 >>} \
+	{<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R /Resources << /Font << /F1 7 0 R >> >> >>} \
+	$obj4 \
+	{<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 6 0 R /Resources << /Font << /F1 7 0 R >> >> >>} \
+	$obj6 \
+	{<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>}]
+set pdf "%PDF-1.4\n"
+set pdf_offs {}
+set pdf_num 1
+foreach pdf_b $pdf_objs {
+	lappend pdf_offs [string length $pdf]
+	append pdf "$pdf_num 0 obj\n$pdf_b\nendobj\n"
+	incr pdf_num
+}
+set pdf_xref [string length $pdf]
+append pdf "xref\n0 8\n0000000000 65535 f \n"
+foreach pdf_o $pdf_offs {
+	append pdf [format "%010d 00000 n \n" $pdf_o]
+}
+append pdf "trailer << /Size 8 /Root 1 0 R >>\nstartxref\n$pdf_xref\n%%EOF\n"
+set pdf_fh [open "$sys_dir/sample.pdf" w]
+fconfigure $pdf_fh -translation binary
+puts -nonewline $pdf_fh $pdf
+close $pdf_fh
+
 # --- themes (flat — served by bare name) ---
 foreach theme { default light } {
 	set theme_src "${genode_dir}/repos/sponge/src/sponge-de/themes/${theme}.theme"
@@ -555,6 +635,35 @@ if {[llength $dejavu_src] > 0} {
 if {[file exists "bin/qt6_libqgenode.tar"]} {
 	exec cp -fL "bin/qt6_libqgenode.tar" "$sys_dir/qt6_libqgenode.tar"
 }
+
+# files_demo.tar: the files package's read-only /demo fixture
+# (pkg/files/metadata.xml VFS mounts <tar name="files_demo.tar"/>).
+# Staged by the same recipe as run/sponge-files.run lines 216-235 —
+# without it the files child dies at startup with
+# "parent denied ROM-session: label=files_demo.tar" (P5.1 R6
+# evidence, docs/evidence/phase16-p51-grouped-app-matrix.md).
+set demo_src "${genode_dir}/../run/fixtures/files-demo"
+if {![file isdirectory $demo_src]} {
+	error "demo fixture directory not found: $demo_src"
+}
+set staging "[run_dir]/files-demo-staging"
+file delete -force $staging
+file mkdir "$staging/demo"
+foreach f [glob -directory $demo_src *] {
+	file copy -force -- $f "$staging/demo/"
+}
+exec tar -cf "$sys_dir/files_demo.tar" -C "$staging" demo
+file delete -force $staging
+
+# files_request: the files package's automation channel ROM (a
+# report_rom relay in run/sponge-files.run line 117, written by its
+# probe). On product media no writer exists, but the ROM itself must
+# RESOLVE or the child stops with "parent denied ROM-session:
+# label=files_request" (P5.1 R7 evidence). An empty file behind the
+# rom_sys catch-all serves an empty ROM, which the app tolerates
+# (files_window.cc _poll_request returns on empty/invalid XML). The
+# driven channel remains proven in run/sponge-files.run.
+exec touch "$sys_dir/files_request"
 
 # ----------------------------------------------------------------
 # Bake-driven pkg metadata + index + payloads (Phase 15 W2, D15.8)
@@ -586,6 +695,34 @@ source [file join [file dirname [file normalize [info script]]] \
 driver_runtime::fb_package fb_vesa
 
 bake::stage $sys_dir img
+
+#
+# pdf_view's document ROM needs `binary="no"` on the served media
+# (P5.1 evidence, docs/evidence/phase16-p51-grouped-app-matrix.md):
+# the disk-serving path reports the ext2 block-rounded size (632 ->
+# 4096) and the vfs rom plugin keeps the whole padded dataspace in
+# its default binary mode, so mupdf seeks to size-1024 inside the
+# zero padding and reports "cannot find startxref" (the lean
+# sponge-pdf-view.run serves the same file as an exact-size core ROM
+# module and is unaffected). The plugin's text mode trims the content
+# at the first NUL — the document is NUL-free and the block padding
+# is zeros, so the trim yields exactly the 632-byte file. Same
+# staged-metadata transform pattern as the P2.4 clipboard removal
+# (staged pkg_textedit.xml); the repo metadata stays untouched and
+# this media-only fix is recorded as the residual gap.
+#
+set pv_fh [open "$sys_dir/pkg_pdf_view.xml" r]
+set pv_xml [read $pv_fh]
+close $pv_fh
+if {[string first {<rom name="sample.pdf"/>} $pv_xml] < 0} {
+	error "pkg_pdf_view.xml: sample.pdf rom element missing or drifted"
+}
+set pv_xml [string map [list \
+	{<rom name="sample.pdf"/>} \
+	{<rom name="sample.pdf" binary="no"/>}] $pv_xml]
+set pv_fh [open "$sys_dir/pkg_pdf_view.xml" w]
+puts -nonewline $pv_fh $pv_xml
+close $pv_fh
 
 # After bake::stage: it re-stages pkg payload from the repo, so
 # runtime_simple's payload staging/transforms must run after it.
@@ -1207,10 +1344,72 @@ if {$grouped_ui} {
 
 	# The probe's observation ROMs on report_rom relays: the launcher
 	# feed, the wm window list, the layouter's placement/focus reports,
-	# and the three class state reports (the grouped-topology binding).
+	# the three class state reports (the grouped-topology binding), the
+	# pkgd launcher_result channel (the documented already-running
+	# receipt for the hello/debug autostart entry clicks) and the files
+	# app's `files` report (the structural navigation receipt).
 	set gu_cfg [string map [list \
 		"    + policy | label: alpha_probe -> sponge_de_launcher | report: sponge-de -> launcher" \
-		"    + policy | label: alpha_probe -> sponge_de_launcher | report: sponge-de -> launcher\n    + policy | label: grouped_ui_probe -> launcher      | report: sponge-de -> launcher\n    + policy | label: grouped_ui_probe -> window_list   | report: wm -> window_list\n    + policy | label: grouped_ui_probe -> window_layout | report: layouter -> window_layout\n    + policy | label: grouped_ui_probe -> focus         | report: layouter -> focus\n    + policy | label: grouped_ui_probe -> st_simple     | report: pkg_runtime_simple -> state\n    + policy | label: grouped_ui_probe -> st_terminal   | report: pkg_runtime_terminal -> state\n    + policy | label: grouped_ui_probe -> st_browser    | report: pkg_runtime_browser -> state"] \
+		"    + policy | label: alpha_probe -> sponge_de_launcher | report: sponge-de -> launcher\n    + policy | label: grouped_ui_probe -> launcher      | report: sponge-de -> launcher\n    + policy | label: grouped_ui_probe -> window_list   | report: wm -> window_list\n    + policy | label: grouped_ui_probe -> window_layout | report: layouter -> window_layout\n    + policy | label: grouped_ui_probe -> focus         | report: layouter -> focus\n    + policy | label: grouped_ui_probe -> st_simple     | report: pkg_runtime_simple -> state\n    + policy | label: grouped_ui_probe -> st_terminal   | report: pkg_runtime_terminal -> state\n    + policy | label: grouped_ui_probe -> st_browser    | report: pkg_runtime_browser -> state\n    + policy | label: grouped_ui_probe -> launcher_result | report: sponge_pkgd -> launcher_result\n    + policy | label: grouped_ui_probe -> files         | report: pkg_runtime_simple -> files -> files"] \
+		$gu_cfg]
+
+	# The probe's ONE sanctioned pkgd call (P5.1 falkon teardown
+	# `remove`, see _remove_falkon): pkgd's probe_request/probe_result
+	# channel, the same relay pair the fb_switch arm wires for
+	# fb_switch_probe (report_rom is single-writer per label — the
+	# two arms are mutually exclusive, guarded above).
+	set gu_cfg [string map [list \
+		"    + policy | label: alpha_probe -> result       | report: sponge_pkgd -> result" \
+		"    + policy | label: alpha_probe -> result       | report: sponge_pkgd -> result\n    + policy | label: sponge_pkgd -> probe_request | report: grouped_ui_probe -> probe_request\n    + policy | label: grouped_ui_probe -> probe_result | report: sponge_pkgd -> probe_result"] \
+		$gu_cfg]
+
+	set gu_cfg [string map [list "    + launcher_request\n" \
+		"    + launcher_request\n    + probe_request\n"] $gu_cfg]
+
+	set gu_cfg [string map [list \
+		"    + service ROM | label_last: launcher_request | + child report_rom" \
+		"    + service ROM | label_last: launcher_request | + child report_rom\n    + service ROM | label_last: probe_request | + child report_rom"] \
+		$gu_cfg]
+
+	#
+	# The files app's `files` Report ascends through the nested
+	# pkg_runtime_simple init; without an explicit route it reaches the
+	# Tier-0 report_rom and is refused there (run/sponge-files.run
+	# lines 163-173 carry the same explicit route in the lean
+	# topology). Route it to the system-level report_rom instead, only
+	# inside this arm — the shipped media is untouched.
+	#
+	set gu_cfg [string map [list \
+		"    + service ROM | label_last: launcher_result | + child report_rom" \
+		"    + service ROM | label_last: launcher_result | + child report_rom\n    + service Report | label_last: files | + child report_rom"] \
+		$gu_cfg]
+
+	#
+	# Debug window placement (P5.1 Mark leg, R2 evidence): the debug
+	# app self-resizes to 700x480 at the generic assign origin
+	# (50,328), which pushes its Mark button row below the 768px QEMU
+	# display. A debug-specific assign rule moves the window up to
+	# ypos 60 (screen y 88) so the whole 700x480 frame is on-screen
+	# and the Mark button is clickable. GROUPED-ARM ONLY: the shipped
+	# media keeps the generic placement (on real hardware panels the
+	# 700x480 frame is well within the display). Added at both rule
+	# sites (the layouter's <rules> and sponge-de's
+	# tasklist_static_rules) like the textedit/falkon precedents.
+	#
+	set gu_cfg [string map [list \
+		"      + assign | label_prefix: pkg_runtime_browser -> falkon | target: screen
+               | xpos: 5 | ypos: 80 | width: 787 | height: 569 | maximized: no
+      + assign | label_prefix: pkg_runtime | target: screen" \
+		"      + assign | label_prefix: pkg_runtime_browser -> falkon | target: screen
+               | xpos: 5 | ypos: 80 | width: 787 | height: 569 | maximized: no
+      + assign | label_prefix: pkg_runtime_simple -> debug | target: screen
+               | xpos: 50 | ypos: 60 | width: 700 | height: 480 | maximized: no
+      + assign | label_prefix: pkg_runtime | target: screen"] \
+		$gu_cfg]
+	set gu_cfg [string map [list \
+		"      + assign | label_prefix: pkg_runtime_browser -> falkon | target: screen | xpos: 5 | ypos: 80 | width: 787 | height: 569 | maximized: no" \
+		"      + assign | label_prefix: pkg_runtime_browser -> falkon | target: screen | xpos: 5 | ypos: 80 | width: 787 | height: 569 | maximized: no
+      + assign | label_prefix: pkg_runtime_simple -> debug | target: screen | xpos: 50 | ypos: 60 | width: 700 | height: 480 | maximized: no"] \
 		$gu_cfg]
 
 	set gu_cfg [string map [list "+ start alpha_probe | caps: 200 | ram: 16M" {+ start grouped_ui_probe | caps: 200 | ram: 32M
@@ -1226,6 +1425,10 @@ if {$grouped_ui} {
     + service ROM | label: st_simple     | + child report_rom
     + service ROM | label: st_terminal   | + child report_rom
     + service ROM | label: st_browser    | + child report_rom
+    + service ROM | label: launcher_result | + child report_rom
+    + service ROM | label: files         | + child report_rom
+    + service ROM | label: probe_result | + child report_rom
+    + service Report | label: probe_request | + child report_rom
     + any-service
       + parent
       + any-child
@@ -1959,6 +2162,24 @@ if {$fail_mode} {
 		run_genode_until {.*ep_wedge: wedge fired - entrypoint parked.*} 300
 		set gate_spawn $qemu_spawn_id
 	}
+	#
+	# SPONGE_GROUPED_UI: the hello autostart receipt (P5.1 app matrix).
+	# `hello from package: running` is the hello package's own
+	# self-report (pkg_hello, the <autostart/> claim) and lands during
+	# pkgd's boot-time install — stably BEFORE alpha-probe's PASS
+	# (alpha's criterion (b) itself waits for the hello feed entry), so
+	# gating it here cannot consume the alpha marker. The debug
+	# package's FIRSTPAINT self-report is NOT gated here on purpose:
+	# its Qt startup races alpha-probe's PASS in both directions (R1:
+	# FIRSTPAINT landed AFTER alpha's PASS and a fixed-order gate
+	# swallowed the alpha marker — docs/evidence/phase16-p51-grouped-
+	# app-matrix.md), so it is asserted from the ACCUMULATED output at
+	# the debug leg instead, where no gate can lose it.
+	#
+	if {$grouped_ui && !$fail_mode} {
+		run_genode_until {.*hello from package: running.*} 420 $gate_spawn
+		set gate_spawn $qemu_spawn_id
+	}
 	if {$fb_switch} {
 		run_genode_until {.*(alpha-probe: PASS|fb-switch-probe: PASS).*} 1200 $gate_spawn
 		#
@@ -1994,6 +2215,11 @@ if {$fail_mode} {
 	# input event through run/qmp.inc):
 	#
 	#   QMP-TARGET tablet <x> <y>   panel launcher toggle (open popup)
+	#   QMP-TARGET tablet <x> <y>   hello launcher menu entry (autostart)
+	#   QMP-TARGET tablet <x> <y>   panel launcher toggle
+	#   QMP-TARGET tablet <x> <y>   debug launcher menu entry (autostart)
+	#   QMP-TARGET tablet <x> <y>   debug Mark button click (6 candidates)
+	#   QMP-TARGET tablet <x> <y>   panel launcher toggle
 	#   QMP-TARGET tablet <x> <y>   simple-class launcher menu entry
 	#   QMP-TARGET tablet <x> <y>   focus click on the simple-class input widget
 	#   QMP-TARGET type <string>    typed input, simple class
@@ -2002,10 +2228,33 @@ if {$fail_mode} {
 	#   QMP-TARGET tablet <x> <y>   focus click in the terminal window
 	#   QMP-TARGET type echo grouped-ok  typed input, terminal class
 	#   QMP-TARGET key ret          submit, then execution delta
-	#   QMP-TARGET tablet <x> <y>   panel launcher toggle (third open)
+	#   QMP-TARGET tablet <x> <y>   panel launcher toggle
 	#   QMP-TARGET tablet <x> <y>   browser-class launcher menu entry
 	#   QMP-TARGET tablet <x> <y>   focus click (browser URL bar)
 	#   QMP-TARGET type sponge      typed input, browser class
+	#   (no QMP: browser settle — child-set stability gate)
+	#   (no QMP: falkon removed — pkgd remove teardown on the
+	#    probe_request channel; the falkon window + class child are
+	#    gone before any later spawn)
+	#   QMP-TARGET tablet <x> <y>   panel launcher toggle
+	#   QMP-TARGET tablet <x> <y>   files launcher menu entry
+	#   QMP-TARGET tablet <x> <y>   files list-row click (3 double-click candidates = 6 clicks)
+	#   QMP-TARGET tablet <x> <y>   panel launcher toggle
+	#   QMP-TARGET tablet <x> <y>   pdf_view launcher menu entry
+	#   QMP-TARGET tablet <x> <y>   focus click (pdf page)
+	#   QMP-TARGET key pgdn         page-down input (two-page sample: page flip)
+	#   QMP-TARGET key down         scroll input (port blit applies no pan)
+	#   (no QMP: debug removed — pkgd remove teardown before the
+	#    calculator spawn; calculator's entry sits ABOVE debug's in
+	#    the Utilities section, so the remaining entry click does
+	#    not shift)
+	#   QMP-TARGET tablet <x> <y>   panel launcher toggle
+	#   QMP-TARGET tablet <x> <y>   calculator launcher menu entry
+	#   QMP-TARGET tablet <x> <y>   focus click (inputSpinBox1)
+	#   QMP-TARGET type 17          digit input
+	#   QMP-TARGET key up           spin input
+	#   QMP-TARGET tablet <x> <y>   focus click (textedit, above the sibling stack)
+	#   QMP-TARGET type sponge      last typed delta (concurrent windows)
 	#
 	# Every gate is an explicit alternation with the probe's FAIL
 	# marker (bounded, fail-loud — never a silent hang), and the single
@@ -2043,6 +2292,100 @@ if {$fail_mode} {
 		}
 
 		set qmp_chan [qmp_connect $qmp_port]
+
+		#
+		# === P5.1 app matrix — hello (GUI-free autostart) ===
+		#
+		# The feed receipt (probe logged hello/Utilities in the ready
+		# window), then a REAL launcher entry click whose documented
+		# result is `already-running` (hello autostarts at install and
+		# carries no window — paint/input are N/A by design).
+		#
+		if {[string first "grouped-ui-probe: hello/Utilities" $output] < 0} {
+			puts "\nsponge-desktop-disk: GROUPED UI FAIL — launcher feed \
+missing hello/Utilities\n"
+			exit 1
+		}
+
+		# QMP-TARGET tablet: panel toggle + hello menu entry
+		qmp_exec_target $qmp_chan 120
+		qmp_exec_target $qmp_chan 120
+		run_genode_until {(grouped-ui-probe: hello launcher entry click|grouped-ui-probe: FAIL)} 120 $qemu_spawn_id
+		if {[string first "grouped-ui-probe: FAIL" $output] >= 0} {
+			set reason [grouped_ui_fail_reason $output]
+			if {$reason eq ""} {
+				set reason "hello launcher entry click"
+			}
+			puts "\nsponge-desktop-disk: GROUPED UI FAIL — $reason\n"
+			exit 1
+		}
+		if {[string first "sponge_pkgd: launch result hello -> already-running" $output] < 0} {
+			puts "\nsponge-desktop-disk: GROUPED UI FAIL — hello launch \
+result never answered already-running (channel=launcher)\n"
+			exit 1
+		}
+
+		#
+		# === P5.1 app matrix — debug (autostart monitor) ===
+		#
+		# Real launcher entry click (also documented already-running),
+		# the probe's Capture receipt on the boot-first-painted window,
+		# and a Mark-click rendered delta cross-checked against the
+		# app's own "sponge_debug: MARK" log.
+		#
+		# QMP-TARGET tablet: panel toggle + debug menu entry
+		qmp_exec_target $qmp_chan 120
+		qmp_exec_target $qmp_chan 120
+		run_genode_until {(grouped-ui-probe: debug launcher entry click|grouped-ui-probe: FAIL)} 120 $qemu_spawn_id
+		if {[string first "grouped-ui-probe: FAIL" $output] >= 0} {
+			set reason [grouped_ui_fail_reason $output]
+			if {$reason eq ""} {
+				set reason "debug launcher entry click"
+			}
+			puts "\nsponge-desktop-disk: GROUPED UI FAIL — $reason\n"
+			exit 1
+		}
+		if {[string first "sponge_pkgd: launch result debug -> already-running" $output] < 0} {
+			puts "\nsponge-desktop-disk: GROUPED UI FAIL — debug launch \
+result never answered already-running (channel=launcher)\n"
+			exit 1
+		}
+		#
+		# The debug package's FIRSTPAINT self-report
+		# (sponge_debug FirstPaintProbe, autostarted at boot). Asserted
+		# from the ACCUMULATED output: it races alpha-probe's PASS in
+		# either direction, so it can sit in any earlier gate window.
+		#
+		if {[string first "sponge_debug: FIRSTPAINT ms=" $output] < 0} {
+			puts "\nsponge-desktop-disk: GROUPED UI FAIL — debug FIRSTPAINT \
+self-report (sponge_debug: FIRSTPAINT ms=) not recorded\n"
+			exit 1
+		}
+
+		# QMP-TARGET tablet x6 (Mark-button candidate column — the
+		# probe stops targeting Mark after the first rendered delta
+		# and lands the rest on its status label), then the app's own
+		# MARK log
+		qmp_exec_target $qmp_chan 120
+		qmp_exec_target $qmp_chan 120
+		qmp_exec_target $qmp_chan 120
+		qmp_exec_target $qmp_chan 120
+		qmp_exec_target $qmp_chan 120
+		qmp_exec_target $qmp_chan 120
+		run_genode_until {(grouped-ui-probe: debug-class mark-click delta|grouped-ui-probe: FAIL)} 120 $qemu_spawn_id
+		if {[string first "grouped-ui-probe: FAIL" $output] >= 0} {
+			set reason [grouped_ui_fail_reason $output]
+			if {$reason eq ""} {
+				set reason "debug-class mark-click delta"
+			}
+			puts "\nsponge-desktop-disk: GROUPED UI FAIL — $reason\n"
+			exit 1
+		}
+		if {[string first "sponge_debug: MARK" $output] < 0} {
+			puts "\nsponge-desktop-disk: GROUPED UI FAIL — Mark click never \
+reached the debug Mark button (no sponge_debug: MARK log)\n"
+			exit 1
+		}
 
 		# QMP-TARGET tablet: panel toggle + simple-class menu entry
 		qmp_exec_target $qmp_chan 120
@@ -2108,6 +2451,19 @@ if {$fail_mode} {
 			exit 1
 		}
 
+		#
+		# === P5.1 browser leg (P2.6 shape, UNCHANGED) — position 5,
+		# after terminal and before files: R5's proven green slot
+		# (first paint + typed input with three Qt apps resident).
+		# R24 proved launching LAST dies in rom_pkg's closure load
+		# over six resident Qt/mupdf apps; R25/R26 proved launching
+		# THIRD misroutes the calibrated URL-bar click/type even on
+		# a quiet band (click_changed=11265/10018 vs R5's 990). The
+		# settle gate below keeps later child spawns out of the
+		# closure window (R5's collision class: files' child
+		# creation hit 226 seL4 "Source slot invalid or empty"
+		# errors while falkon's closure was still resolving).
+		#
 		# QMP-TARGET tablet: panel toggle + browser-class menu entry
 		# (falkon). The first-paint gate carries the longer browser
 		# budget: falkon's WebEngine closure resolves from disk before
@@ -2137,10 +2493,289 @@ if {$fail_mode} {
 			exit 1
 		}
 
+		# Browser settle (no input dispatch): the probe waits for
+		# pkg_runtime_browser's child set to stabilize before any
+		# later child spawn.
+		run_genode_until {(grouped-ui-probe: browser settle|grouped-ui-probe: FAIL)} 60 $qemu_spawn_id
+		if {[string first "grouped-ui-probe: FAIL" $output] >= 0} {
+			set reason [grouped_ui_fail_reason $output]
+			if {$reason eq ""} {
+				set reason "browser settle"
+			}
+			puts "\nsponge-desktop-disk: GROUPED UI FAIL — $reason\n"
+			exit 1
+		}
+
+		#
+		# === P5.1 falkon teardown (pkgd remove, probe_request
+		# channel — NO QMP dispatch) ===
+		#
+		# The probe destroys falkon via pkgd's `remove` (the one
+		# sanctioned pkgd call, teardown only) and waits for the
+		# falkon window to leave window_list AND pkg_runtime_browser's
+		# state report to lose its live child. R29 proved the
+		# counterfactual: with falkon resident, the files spawn died
+		# in core's CNode construction (228x "Cnode construction
+		# failed" + seL4 "Source slot invalid or empty"). Everything
+		# after this gate spawns into the freed budget.
+		#
+		run_genode_until {(grouped-ui-probe: falkon removed|grouped-ui-probe: FAIL)} 300 $qemu_spawn_id
+		if {[string first "grouped-ui-probe: FAIL" $output] >= 0} {
+			set reason [grouped_ui_fail_reason $output]
+			if {$reason eq ""} {
+				set reason "falkon removed"
+			}
+			puts "\nsponge-desktop-disk: GROUPED UI FAIL — $reason\n"
+			exit 1
+		}
+
+		#
+		# === P5.1 app matrix — files ===
+		#
+		# First paint + a REAL QMP double-click (two back-to-back
+		# QMP-TARGET tablet dispatches inside Qt's double-click
+		# interval) on the first list row, navigating into /demo. The
+		# navigation receipt is the app's own "sponge_files: navigate
+		# -> /demo" log + the probe's structural files-report check.
+		# NOTE: falkon is already torn down above, so this spawn (and
+		# the pdf_view/calculator spawns) run in the freed budget —
+		# the R5/R29 collision class (a child created while falkon's
+		# WebEngine closure was resident dies in core's CNode
+		# construction) cannot recur here.
+		#
+		# QMP-TARGET tablet: panel toggle + files menu entry
+		qmp_exec_target $qmp_chan 120
+		qmp_exec_target $qmp_chan 120
+		run_genode_until {(grouped-ui-probe: files-class first paint|grouped-ui-probe: FAIL)} 420 $qemu_spawn_id
+		if {[string first "grouped-ui-probe: FAIL" $output] >= 0} {
+			set reason [grouped_ui_fail_reason $output]
+			if {$reason eq ""} {
+				set reason "files-class first paint"
+			}
+			puts "\nsponge-desktop-disk: GROUPED UI FAIL — $reason\n"
+			exit 1
+		}
+
+		# QMP-TARGET tablet x6 — three double-click candidates on the
+		# list rows (post-win clicks land on the path label). Each pair
+		# is dispatched TIGHTLY: the generic one-marker-one-dispatch
+		# path leaves mouse_set/abs/after overhead between the presses
+		# and that races Qt's 400ms doubleClickInterval (R8/R11 missed
+		# the double-click, R9 hit it — 1/3). The tight form keeps the
+		# marker contract (one QMP-TARGET tablet = one click gesture)
+		# but realizes the second press immediately after the first
+		# release — the cursor is already on target, so only the button
+		# events are needed. The span print is the timing receipt.
+		proc grouped_ui_double_click {chan what} {
+			global qemu_spawn_id
+			set x 0
+			set y 0
+			expect {
+				-i $qemu_spawn_id
+				-re {QMP-TARGET tablet (-?\d+) (-?\d+)\r*\n} {
+					set x $expect_out(1,string)
+					set y $expect_out(2,string)
+				}
+				timeout 120 {
+					puts stderr "\ngrouped-ui: FAIL - no $what click marker"
+					exit 1
+				}
+			}
+			expect {
+				-i $qemu_spawn_id
+				-re {QMP-TARGET tablet (-?\d+) (-?\d+)\r*\n} { }
+				timeout 120 {
+					puts stderr "\ngrouped-ui: FAIL - no $what click marker (2nd)"
+					exit 1
+				}
+			}
+			set t0 [clock milliseconds]
+			qmp_tablet_click $chan $x $y
+			qmp_hmp $chan "mouse_button 1"
+			qmp_hmp $chan "mouse_button 0"
+			puts "\ngrouped-ui: $what double-click at ($x,$y) span: \
+[expr {[clock milliseconds] - $t0}]ms"
+		}
+		grouped_ui_double_click $qmp_chan "files pair 1"
+		grouped_ui_double_click $qmp_chan "files pair 2"
+		grouped_ui_double_click $qmp_chan "files pair 3"
+		run_genode_until {(grouped-ui-probe: files-class navigation delta|grouped-ui-probe: FAIL)} 120 $qemu_spawn_id
+		if {[string first "grouped-ui-probe: FAIL" $output] >= 0} {
+			set reason [grouped_ui_fail_reason $output]
+			if {$reason eq ""} {
+				set reason "files-class navigation delta"
+			}
+			puts "\nsponge-desktop-disk: GROUPED UI FAIL — $reason\n"
+			exit 1
+		}
+		#
+		# The navigation receipt is the probe's structural check (the
+		# files report path=/demo + the rendered delta, both in the
+		# marker above). The app's "sponge_files: navigate -> /demo"
+		# serial line corroborates in the raw log but CANNOT be gated
+		# here: it fires between the double-click dispatches and the
+		# marker-dispatch expects consume it out of the gate window
+		# (R9: the line is present in the log yet invisible to
+		# `string first` at this point).
+		#
+
+		#
+		# === P5.1 app matrix — pdf_view ===
+		#
+		# First paint + page-down/scroll input, delivered as the app's
+		# OWN physical-key bindings (app/pdf_view main.cc maps
+		# KEY_PAGEDOWN -> pdfapp '.' page flip and KEY_DOWN -> pdfapp
+		# 'j' scroll via ev.key_press). The staged sample.pdf is
+		# TWO pages (this file's staging block) because page-down is
+		# a no-op on a one-page document (pdfapp.c clamps pageno to
+		# pagecount); scroll alone renders nothing on this port
+		# (Pdf_view::show applies no pan), so both inputs are
+		# dispatched and measured, the delta is asserted over the
+		# pair, and each input's contribution is logged separately.
+		#
+		# QMP-TARGET tablet: panel toggle + pdf_view menu entry
+		qmp_exec_target $qmp_chan 120
+		qmp_exec_target $qmp_chan 120
+		run_genode_until {(grouped-ui-probe: pdf-view-class first paint|grouped-ui-probe: FAIL)} 420 $qemu_spawn_id
+		if {[string first "grouped-ui-probe: FAIL" $output] >= 0} {
+			set reason [grouped_ui_fail_reason $output]
+			if {$reason eq ""} {
+				set reason "pdf-view-class first paint"
+			}
+			puts "\nsponge-desktop-disk: GROUPED UI FAIL — $reason\n"
+			exit 1
+		}
+
+		# QMP-TARGET tablet (focus) + QMP-TARGET key pgdn + key down
+		qmp_exec_target $qmp_chan 120
+		qmp_exec_target $qmp_chan 120
+		qmp_exec_target $qmp_chan 120
+		run_genode_until {(grouped-ui-probe: pdf-view-class page-down/scroll input delta|grouped-ui-probe: FAIL)} 180 $qemu_spawn_id
+		if {[string first "grouped-ui-probe: FAIL" $output] >= 0} {
+			set reason [grouped_ui_fail_reason $output]
+			if {$reason eq ""} {
+				set reason "pdf-view-class page-down/scroll input delta"
+			}
+			puts "\nsponge-desktop-disk: GROUPED UI FAIL — $reason\n"
+			exit 1
+		}
+
+		#
+		# === P5.1 debug teardown (pkgd remove, probe_request
+		# channel — NO QMP dispatch) ===
+		#
+		# debug's receipt (first paint + Mark click) is banked; the
+		# probe now destroys it via pkgd `remove` and waits for its
+		# window + st_simple child to go away. R30 proved the
+		# counterfactual: with debug's Qt closure resident, the
+		# calculator's first mapping died in core's CNode
+		# construction ("Cnode construction failed" + "mapping
+		# failure for thread 'ep' in pd ... -> calculator").
+		# Layout safety: calculator's launcher entry sits ABOVE
+		# debug's in the Utilities section, so its click y is
+		# invariant to the removal; the files/pdf_view entry clicks
+		# are already banked.
+		#
+		run_genode_until {(grouped-ui-probe: debug removed|grouped-ui-probe: FAIL)} 300 $qemu_spawn_id
+		if {[string first "grouped-ui-probe: FAIL" $output] >= 0} {
+			set reason [grouped_ui_fail_reason $output]
+			if {$reason eq ""} {
+				set reason "debug removed"
+			}
+			puts "\nsponge-desktop-disk: GROUPED UI FAIL — $reason\n"
+			exit 1
+		}
+
+		#
+		# === P5.1 app matrix — calculator ===
+		#
+		# First paint + unconditional QMP digits/spin on inputSpinBox1
+		# with the result-band delta (the calculator is its own leg,
+		# never a fallback).
+		#
+		# QMP-TARGET tablet: panel toggle + calculator menu entry
+		qmp_exec_target $qmp_chan 120
+		qmp_exec_target $qmp_chan 120
+		run_genode_until {(grouped-ui-probe: calculator-class first paint|grouped-ui-probe: FAIL)} 420 $qemu_spawn_id
+		if {[string first "grouped-ui-probe: FAIL" $output] >= 0} {
+			set reason [grouped_ui_fail_reason $output]
+			if {$reason eq ""} {
+				set reason "calculator-class first paint"
+			}
+			puts "\nsponge-desktop-disk: GROUPED UI FAIL — $reason\n"
+			exit 1
+		}
+
+		# QMP-TARGET tablet (spinbox focus) + QMP-TARGET type 17
+		qmp_exec_target $qmp_chan 120
+		qmp_exec_target $qmp_chan 120
+		run_genode_until {(grouped-ui-probe: calculator-class digits result delta|grouped-ui-probe: FAIL)} 120 $qemu_spawn_id
+		if {[string first "grouped-ui-probe: FAIL" $output] >= 0} {
+			set reason [grouped_ui_fail_reason $output]
+			if {$reason eq ""} {
+				set reason "calculator-class digits result delta"
+			}
+			puts "\nsponge-desktop-disk: GROUPED UI FAIL — $reason\n"
+			exit 1
+		}
+
+		# QMP-TARGET key up (spin), then the spin result delta
+		qmp_exec_target $qmp_chan 120
+		run_genode_until {(grouped-ui-probe: calculator-class spin result delta|grouped-ui-probe: FAIL)} 120 $qemu_spawn_id
+		if {[string first "grouped-ui-probe: FAIL" $output] >= 0} {
+			set reason [grouped_ui_fail_reason $output]
+			if {$reason eq ""} {
+				set reason "calculator-class spin result delta"
+			}
+			puts "\nsponge-desktop-disk: GROUPED UI FAIL — $reason\n"
+			exit 1
+		}
+
+		#
+		# === P5.1 final assertion — concurrent windows ===
+		#
+		# >=5 NON-FALKON app windows from >=2 runtime classes mapped
+		# simultaneously, with the last typed delta delivered while
+		# the sibling windows remain mapped. The probe counts the
+		# class-prefixed window set minus the browser class (falkon
+		# and debug are both torn down above — keeping them mapped
+		# would re-poison the spawn budget and each keeps its own
+		# receipt), types into the textedit window ABOVE the sibling
+		# stack (every stacked sibling sits at y=328 and reaches past
+		# textedit's center column; the clear band above the stack
+		# is the only textedit-only region), and re-checks the
+		# sibling set. The surviving
+		# set is exactly five windows (textedit, terminal, files,
+		# pdf_view, calculator) from the simple + terminal classes.
+		#
+		# QMP-TARGET tablet (textedit focus) + QMP-TARGET type sponge
+		qmp_exec_target $qmp_chan 120
+		qmp_exec_target $qmp_chan 120
+		run_genode_until {(grouped-ui-probe: concurrent windows n=|grouped-ui-probe: FAIL)} 120 $qemu_spawn_id
+		if {[string first "grouped-ui-probe: FAIL" $output] >= 0} {
+			set reason [grouped_ui_fail_reason $output]
+			if {$reason eq ""} {
+				set reason "concurrent windows"
+			}
+			puts "\nsponge-desktop-disk: GROUPED UI FAIL — $reason\n"
+			exit 1
+		}
+		foreach m {"grouped-ui-probe: concurrent typed delta" \
+		           "grouped-ui-probe: concurrent siblings held"} {
+			if {[string first $m $output] < 0} {
+				puts "\nsponge-desktop-disk: GROUPED UI FAIL — missing \
+receipt: $m\n"
+				exit 1
+			}
+		}
+
 		run_genode_until {grouped-ui-probe: PASS} 120 $qemu_spawn_id
 		puts "sponge-desktop-disk: GROUPED UI PASS — real launcher input reached\
- the simple-class, terminal-class and browser-class runtimes (first paint +\
- typed input each, terminal command output verified)"
+ every built-in desktop package (hello entry+already-running, debug entry+capture+\
+ Mark click, textedit/terminal/falkon first paint + typed input, falkon+debug\
+ pkgd-remove teardowns, files double-click navigation, pdf_view page-down/scroll,\
+ calculator digits/spin result) and the five-window concurrent set (textedit,\
+ terminal, files, pdf_view, calculator) held while the last typed delta landed"
 		qmp_disconnect $qmp_chan
 	}
 
