@@ -19,12 +19,24 @@
  * -> nitpicker -> sponge-de's Qt widgets (panel toggle, launcher menu
  * entry) -> LauncherController -> sponge_pkgd launch request ->
  * class runtime <start> node. Never a synthetic nitpicker event, never
- * a backend/pkgd call from this probe: this probe only OBSERVES and
- * EMITS MARKERS.
+ * a backend/pkgd LAUNCH substitute: this probe only OBSERVES and
+ * EMITS MARKERS, with sanctioned pkgd `remove` teardowns only —
+ * P5.1 falkon (after its browser receipt) and debug (after its Mark
+ * receipt, before the calculator spawn) on the probe_request channel
+ * (_teardown_pkg), never an input or launch path.
  *
  * Marker chain (guest -> host), in emission order:
  *
  *   grouped-ui-probe: ready simple-target=<app> terminal-target=terminal browser-target=falkon
+ *   QMP-TARGET tablet <x> <y>                 panel launcher toggle
+ *   QMP-TARGET tablet <x> <y>                 hello menu entry (autostart)
+ *   grouped-ui-probe: hello launcher entry click -> already-running (...)
+ *   QMP-TARGET tablet <x> <y>                 panel launcher toggle
+ *   QMP-TARGET tablet <x> <y>                 debug menu entry (autostart)
+ *   grouped-ui-probe: debug launcher entry click -> already-running
+ *   grouped-ui-probe: debug-class capture (...)
+ *   QMP-TARGET tablet <x> <y>                 debug Mark button click
+ *   grouped-ui-probe: debug-class mark-click delta (...)
  *   QMP-TARGET tablet <x> <y>                 panel launcher toggle
  *   QMP-TARGET tablet <x> <y>                 simple-class menu entry
  *   grouped-ui-probe: simple-class first paint (...)
@@ -45,7 +57,53 @@
  *   QMP-TARGET tablet <x> <y>                 focus click (URL bar)
  *   QMP-TARGET type sponge                    typed input, browser class
  *   grouped-ui-probe: browser-class typed delta (...)
+ *   grouped-ui-probe: browser settle children=<n> polls=<k>
+ *   grouped-ui-probe: falkon removed (...)       pkgd remove teardown (no QMP)
+ *   QMP-TARGET tablet <x> <y>                 panel launcher toggle
+ *   QMP-TARGET tablet <x> <y>                 files menu entry
+ *   grouped-ui-probe: files-class first paint (...)
+ *   QMP-TARGET tablet <x> <y>                 list-row click (double-click candidates)
+ *   QMP-TARGET tablet <x> <y>                 list-row click (double-click candidates)
+ *   grouped-ui-probe: files-class navigation delta (...)
+ *   QMP-TARGET tablet <x> <y>                 panel launcher toggle
+ *   QMP-TARGET tablet <x> <y>                 pdf_view menu entry
+ *   grouped-ui-probe: pdf-view-class first paint (...)
+ *   QMP-TARGET tablet <x> <y>                 focus click (page)
+ *   QMP-TARGET key pgdn                       page-down input (KEY_PAGEDOWN)
+ *   QMP-TARGET key down                       scroll input (KEY_DOWN)
+ *   grouped-ui-probe: pdf-view-class page-down/scroll input delta (...)
+ *   grouped-ui-probe: debug removed (...)     pkgd remove teardown (no QMP)
+ *   QMP-TARGET tablet <x> <y>                 panel launcher toggle
+ *   QMP-TARGET tablet <x> <y>                 calculator menu entry
+ *   grouped-ui-probe: calculator-class first paint (...)
+ *   QMP-TARGET tablet <x> <y>                 focus click (inputSpinBox1)
+ *   QMP-TARGET type 17                        digit input
+ *   grouped-ui-probe: calculator-class digits result delta (...)
+ *   QMP-TARGET key up                         spin input
+ *   grouped-ui-probe: calculator-class spin result delta (...)
+ *   QMP-TARGET tablet <x> <y>                 focus click (textedit, above the sibling stack)
+ *   QMP-TARGET type sponge                    final typed delta (concurrent)
+ *   grouped-ui-probe: concurrent typed delta (...)
+ *   grouped-ui-probe: concurrent windows n=<N>
  *   grouped-ui-probe: PASS
+ *
+ * P5.1 grouped app matrix (docs/plans/phase16-runtime-overhaul.md
+ * "P5.1"): every built-in desktop package gets a real-launcher
+ * receipt. hello and debug are GUI-carrying/autostart packages whose
+ * launcher entry click is answered `already-running` (pkgd Gate 2);
+ * hello is GUI-free so paint/input are recorded N/A by design. The
+ * per-app input deltas are real QMP input only (usb-tablet abs +
+ * send-key over run/qmp.inc) — never a synthetic nitpicker event.
+ * The final assertion is the concurrent-window set: >=5 NON-FALKON
+ * app windows from >=2 runtime classes mapped SIMULTANEOUSLY, with
+ * the last typed delta delivered while the sibling windows remain
+ * mapped. falkon and debug are excluded from the concurrent set BY
+ * DESIGN: both are torn down before it (falkon's resident WebEngine
+ * closure starved core's CNode construction during the R29 spawn,
+ * debug's Qt closure the R30 calculator spawn), and each keeps its
+ * own first-paint + input receipt above. The surviving set is
+ * exactly five windows — textedit, terminal, files, pdf_view,
+ * calculator — from the simple + terminal classes.
  *
  * Any failure logs "grouped-ui-probe: FAIL <reason>" and exits
  * non-zero (fail-loud, bounded — never a silent hang).
@@ -105,6 +163,10 @@
 #include <base/log.h>
 #include <capture_session/connection.h>
 #include <os/pixel_rgb888.h>
+
+/* Sponge includes */
+#include <sponge/backend_client.h>
+
 #include <timer_session/connection.h>
 #include <util/construct_at.h>
 #include <util/string.h>
@@ -215,6 +277,92 @@ unsigned const PAINT_ITERS_BROWSER = 3000;
 int const URL_CLICK_DX = 393, URL_CLICK_DY = 37;
 int const URL_BAND_DY = 28, URL_BAND_DH = 200;
 
+/*
+ * P5.1 app-matrix geometry, window-rect-relative (the same
+ * empirically-pinned convention as URL_CLICK_*). The decorator metrics
+ * used for the derivations below are the motif-decorator values the
+ * terminal leg already proves on every run: 28 px title bar (the
+ * typed band sits at ry+28..48) and 4 px borders
+ * (decorator/window.h `_border_size`, referenced by run/qmp.inc's
+ * tablet-drag recipe). Every constant here is RE-VERIFIED on each
+ * acceptance run by its geometry marker line + the input-delta
+ * predicate; the red-first calibration receipts live in
+ * docs/evidence/phase16-p51-grouped-app-matrix.md.
+ *
+ * debug Mark button: the debug window self-resizes to 700x480 at the
+ *   assign origin (R2 evidence, docs/evidence/phase16-p51-grouped-
+ *   app-matrix.md), and the grouped arm's debug assign rule places it
+ *   at ypos 60 (screen y 88) so the bottom edge (88+480=568) is
+ *   on-screen. The Mark button hugs the client bottom-left, but the
+ *   exact row depends on style-resolved layout margins (9..20 px,
+ *   not derivable — R3 clicked the derived point and produced a zero
+ *   delta), so the leg CLICKS A CANDIDATE COLUMN (six y values 12 px
+ *   apart, x fixed on Mark's column) and the first candidate that
+ *   fires is the receipt; the marker logs the winning y. Candidate
+ *   clicks after the win land on the status label (harmless).
+ * files first list row ("demo/" — alphabetically first at the VFS
+ *   root): the middle row is list (left) + preview (right) with 380px
+ *   minimums (files_window.cc), and the app reserves a "generous left
+ *   strip" for the row click — the lean probe uses client (100, 54)
+ *   (files_probe DBL_X/DBL_Y). The product click is therefore
+ *   window-relative (104, 85): client origin (~4, ~28) + (100, 54).
+ *   Window-relative x=104 is inside the list at ANY window size (the
+ *   list is left-aligned), unlike the window center which at 800x600
+ *   lands on the preview/splitter (R12 evidence). Candidate y values
+ *   cover the row-band uncertainty.
+ */
+int const FILES_CLICK_DX = 104;
+int const FILES_ROW_DY[3]  = { 63, 85, 107 };
+
+/*
+ * calculator inputSpinBox1 + result band. The window_layout rect
+ *   origin sits at the DECORATED frame corner; the Qt widget (==
+ *   calculatorform.ui form) origin is rect + (4,28) — decorator
+ *   border + title. The chain: debug's Mark button (derived widget
+ *   row center ~451) won at rect y 479 = 451+28; the terminal's
+ *   proven text band is ry+28..48 = widget rows 0..20; the files
+ *   first row (widget y ~54, lean probe DBL_Y) won at rect y 85.
+ *   So form coordinates map to rect as form+(4,28): inputSpinBox1
+ *   center (33,47.5) -> (37,76), outputWidget (196,33,36,27) ->
+ *   (200,61,36,27). The result band covers the output label under
+ *   either rect-origin reading and no blinking widget (the spinbox
+ *   cursor stays left of it). Sampled at STRIDE 1: the label's
+ *   "0"->"17" glyph change measured only 3 samples at stride 4
+ *   (R23 red: changed=3 below TYPED_FLOOR=12) — fine sampling is
+ *   what makes the result delta a measurable signal at all.
+ */
+int const DEBUG_MARK_DY[6] = { 419, 431, 443, 455, 467, 479 };
+int const DEBUG_MARK_DX = 45;
+int const CALC_SPIN_DX = 37, CALC_SPIN_DY = 76;
+int const CALC_BAND_DX = 185, CALC_BAND_DY = 30;
+int const CALC_BAND_DW = 95,  CALC_BAND_DH = 85;
+int const CALC_BAND_STRIDE = 1;
+
+/*
+ * pdf_view page-down/scroll: mupdf 0.9 pdfapp maps KEY_PAGEDOWN to
+ * '.' (page flip) and KEY_DOWN to 'j' (scroll by image->h/10). Two
+ * port facts (R21/R22 red evidence, docs/evidence/phase16-p51-grouped-
+ * app-matrix.md) shape this leg:
+ *   - pdfapp.c clamps pageno to pagecount and re-renders only on a
+ *     real page change, so page-down is a no-op on a one-page
+ *     document — the product arm therefore stages a TWO-PAGE
+ *     sample.pdf (run/sponge-desktop-disk.run staging block) and the
+ *     pdf-doc receipt asserts pages>=2;
+ *   - Pdf_view::show (app/pdf_view main.cc) applies no panx/pany to
+ *     the blit, so scroll alone cannot change a pixel — its
+ *     contribution is still dispatched and measured, logged beside
+ *     page-down's, never hidden behind the pair's green label.
+ * The assertion is the page-down/scroll input delta over the pair.
+ */
+int const PDF_PGDN_POLL_ITERS = 25;
+
+/*
+ * Concurrent-window assertion floor: >=5 app windows from >=2
+ * runtime classes mapped simultaneously (P5.1 requirement).
+ */
+unsigned const CONCURRENT_MIN_WINDOWS = 5;
+unsigned const CONCURRENT_MIN_CLASSES = 2;
+
 /* Max launcher apps the layout computation accepts. */
 enum { MAX_APPS = 32 };
 
@@ -275,6 +423,12 @@ struct Grouped_ui_probe
 	Genode::Attached_rom_dataspace _st_simple     { _env, "st_simple" };
 	Genode::Attached_rom_dataspace _st_terminal   { _env, "st_terminal" };
 	Genode::Attached_rom_dataspace _st_browser    { _env, "st_browser" };
+	Genode::Attached_rom_dataspace _launch_result { _env, "launcher_result" };
+	Genode::Attached_rom_dataspace _files_report  { _env, "files" };
+	Genode::Attached_rom_dataspace _sample_pdf    { _env, "sample.pdf" };
+
+	Sponge::Backend::ReportRomClient _pkgd {
+		_env, "probe_request", "probe_result" };
 
 	App_entry _apps[MAX_APPS] { };
 	unsigned  _num_apps { 0 };
@@ -298,25 +452,44 @@ struct Grouped_ui_probe
 		     | ((unsigned)p.b() >> COLOR_BUCKET_SHIFT);
 	}
 
-	/* Snapshot a screen rect's stride-grid color buckets into `out'. */
-	void _snapshot(int x, int y, int w, int h, unsigned *out)
+	/* Snapshot a screen rect's stride-grid color buckets into `out'.
+	 * Clamped to the screen: app windows may extend past the 768px
+	 * display (self-resized Qt windows keep their requested size), so
+	 * the sampler must never index outside the capture buffer.
+	 * `stride' must match between a snapshot and every later _delta
+	 * over the same buffer (the bucket arrays must stay aligned). */
+	void _snapshot(int x, int y, int w, int h, unsigned *out,
+	               int stride = SAMPLE_STRIDE)
 	{
 		_capture.capture_at(Capture::Point(0, 0));
 		Pixel const *px = _cap_ds->local_addr<Pixel>();
 		unsigned i = 0;
-		for (int yy = y; yy < y + h && i < (unsigned)MAX_SAMPLES; yy += SAMPLE_STRIDE)
-			for (int xx = x; xx < x + w && i < (unsigned)MAX_SAMPLES; xx += SAMPLE_STRIDE)
+		for (int yy = y; yy < y + h && i < (unsigned)MAX_SAMPLES; yy += stride) {
+			if (yy < 0 || yy >= (int)SCREEN_H)
+				continue;
+			for (int xx = x; xx < x + w && i < (unsigned)MAX_SAMPLES; xx += stride) {
+				if (xx < 0 || xx >= (int)SCREEN_W)
+					continue;
 				out[i++] = _bucket(px[yy * SCREEN_W + xx]);
+			}
+		}
 	}
 
-	/* Count of stride-grid points changed vs a prior snapshot. */
-	unsigned _delta(int x, int y, int w, int h, unsigned const *base)
+	/* Count of stride-grid points changed vs a prior snapshot.
+	 * Same screen clamping and stride as _snapshot (the two MUST visit
+	 * the same sample sequence or the bucket arrays desynchronize). */
+	unsigned _delta(int x, int y, int w, int h, unsigned const *base,
+	                int stride = SAMPLE_STRIDE)
 	{
 		_capture.capture_at(Capture::Point(0, 0));
 		Pixel const *px = _cap_ds->local_addr<Pixel>();
 		unsigned i = 0, changed = 0;
-		for (int yy = y; yy < y + h && i < (unsigned)MAX_SAMPLES; yy += SAMPLE_STRIDE) {
-			for (int xx = x; xx < x + w && i < (unsigned)MAX_SAMPLES; xx += SAMPLE_STRIDE) {
+		for (int yy = y; yy < y + h && i < (unsigned)MAX_SAMPLES; yy += stride) {
+			if (yy < 0 || yy >= (int)SCREEN_H)
+				continue;
+			for (int xx = x; xx < x + w && i < (unsigned)MAX_SAMPLES; xx += stride) {
+				if (xx < 0 || xx >= (int)SCREEN_W)
+					continue;
 				if (_bucket(px[yy * SCREEN_W + xx]) != base[i])
 					++changed;
 				++i;
@@ -788,12 +961,17 @@ struct Grouped_ui_probe
 	 * prefix + app token in window_list) has painted pixels into the
 	 * pkg_runtime assign region — the region changed vs the
 	 * post-popup-close baseline (taken here, before the window can
-	 * paint). window_layout's rect must sit inside WIN_REG — the
-	 * class placement check (c).
+	 * paint). Placement check (c): with exp_ox/exp_oy at their
+	 * defaults the window_layout rect CENTER must sit inside WIN_REG
+	 * (the class placement check for the 320x240-scale windows); an
+	 * expected origin switches to an ORIGIN check, for self-resized
+	 * windows whose frames exceed WIN_REG but whose placement still
+	 * comes from the pkg_runtime assign rule.
 	 */
 	bool _poll_first_paint(char const *class_prefix, char const *app_token,
 	                       int &rx, int &ry, int &rw, int &rh,
-	                       unsigned max_iters = PAINT_ITERS_DEFAULT)
+	                       unsigned max_iters = PAINT_ITERS_DEFAULT,
+	                       int exp_ox = -1, int exp_oy = -1)
 	{
 		_snapshot(WIN_REG_X, WIN_REG_Y, WIN_REG_W, WIN_REG_H, _snap);
 		unsigned max_changed = 0;
@@ -815,14 +993,26 @@ struct Grouped_ui_probe
 				_diag_first_paint(class_prefix, app_token, max_changed);
 
 			if (id && have_rect && changed >= PAINT_FLOOR) {
-				int const cx = rx + rw / 2, cy = ry + rh / 2;
-				bool const placed =
-					cx >= WIN_REG_X && cx < WIN_REG_X + WIN_REG_W &&
-					cy >= WIN_REG_Y && cy < WIN_REG_Y + WIN_REG_H;
+				bool placed = false;
+				if (exp_ox >= 0) {
+					placed = rx >= exp_ox - 4 && rx <= exp_ox + 4 &&
+					         ry >= exp_oy - 4 && ry <= exp_oy + 4;
+				} else {
+					int const cx = rx + rw / 2, cy = ry + rh / 2;
+					placed =
+						cx >= WIN_REG_X && cx < WIN_REG_X + WIN_REG_W &&
+						cy >= WIN_REG_Y && cy < WIN_REG_Y + WIN_REG_H;
+				}
 				if (!placed) {
-					_fail("window placed outside the pkg_runtime assign "
-					      "region (x=", rx, " y=", ry, " w=", rw,
-					      " h=", rh, ")");
+					if (exp_ox >= 0)
+						_fail("window not placed at the pkg_runtime assign "
+						      "origin (x=", rx, " y=", ry, " w=", rw,
+						      " h=", rh, " expected origin ", exp_ox, ",",
+						      exp_oy, ")");
+					else
+						_fail("window placed outside the pkg_runtime assign "
+						      "region (x=", rx, " y=", ry, " w=", rw,
+						      " h=", rh, ")");
 					return false;
 				}
 				Genode::log("grouped-ui-probe: window id=", id,
@@ -855,11 +1045,13 @@ struct Grouped_ui_probe
 	 * baseline (textedit_probe's defense — a lone blink can never
 	 * pass). Returns the measured delta (0 on timeout).
 	 */
-	unsigned _poll_typed_delta(int x, int y, int w, int h, unsigned baseline)
+	unsigned _poll_typed_delta(int x, int y, int w, int h, unsigned baseline,
+	                           unsigned max_iters = 300,
+	                           int stride = SAMPLE_STRIDE)
 	{
-		for (unsigned i = 0; i < 300; ++i) {
+		for (unsigned i = 0; i < max_iters; ++i) {
 			_timer.msleep(200);
-			unsigned changed = _delta(x, y, w, h, _snap);
+			unsigned changed = _delta(x, y, w, h, _snap, stride);
 			if (i % 25 == 0)
 				Genode::log("grouped-ui-probe: typed-delta poll ", i,
 				            " changed=", changed, " baseline=", baseline);
@@ -867,6 +1059,865 @@ struct Grouped_ui_probe
 				return changed;
 		}
 		return 0;
+	}
+
+	/* ---- P5.1 app-matrix helpers ---- */
+
+	unsigned _nonbg_pct_rect(int x, int y, int w, int h)
+	{
+		_capture.capture_at(Capture::Point(0, 0));
+		Pixel const *px = _cap_ds->local_addr<Pixel>();
+		unsigned total = 0, nonbg = 0;
+		for (int yy = y; yy < y + h; yy += SAMPLE_STRIDE)
+			for (int xx = x; xx < x + w; xx += SAMPLE_STRIDE) {
+				if (xx < 0 || yy < 0 || xx >= (int)SCREEN_W || yy >= (int)SCREEN_H)
+					continue;
+				++total;
+				if (!_pixel_is_bg(px[yy * SCREEN_W + xx]))
+					++nonbg;
+			}
+		return total ? (100 * nonbg) / total : 0;
+	}
+
+	/*
+	 * Coarse render map of a rect — the red-first calibration
+	 * instrument: a missed interaction point is corrected from the
+	 * rendered layout it prints, not guessed at. The 8-level encoding
+	 * separates the Qt default-palette button gray (~0xd4) from the
+	 * window white (~0xff) and the dark title bar.
+	 */
+	void _diag_render(int x, int y, int w, int h)
+	{
+		_capture.capture_at(Capture::Point(0, 0));
+		Pixel const *px = _cap_ds->local_addr<Pixel>();
+		int const cols = 32, rows = 24;
+		Genode::log("grouped-ui-probe: diag render (", x, ",", y, " ", w,
+		            "x", h, ")");
+		for (int r = 0; r < rows; ++r) {
+			char line[40] { };
+			for (int c = 0; c < cols && c < (int)sizeof(line) - 1; ++c) {
+				int const sx = x + (c * w) / cols;
+				int const sy = y + (r * h) / rows;
+				if (sx < 0 || sy < 0 || sx >= (int)SCREEN_W || sy >= (int)SCREEN_H) {
+					line[c] = '?';
+					continue;
+				}
+				Pixel const &p = px[sy * SCREEN_W + sx];
+				unsigned const lum =
+					((unsigned)p.r() + p.g() + p.b()) / 3;
+				line[c] = lum < 0x20 ? '.' : lum < 0x50 ? ':'
+				      : lum < 0x80 ? '+' : lum < 0xa0 ? '*'
+				      : lum < 0xc0 ? '/' : lum < 0xe0 ? '=' : '#';
+			}
+			Genode::log("grouped-ui-probe: diag render |",
+			            (char const *)line, "|");
+		}
+	}
+
+	/* Changed-sample bounding box vs `base' — logged after every new
+	 * input interaction so each acceptance run re-verifies the pinned
+	 * geometry (the P2.6 url-bar band convention). */
+	void _log_delta_bbox(int x, int y, int w, int h, unsigned const *base,
+	                     char const *what, int stride = SAMPLE_STRIDE)
+	{
+		_capture.capture_at(Capture::Point(0, 0));
+		Pixel const *px = _cap_ds->local_addr<Pixel>();
+		int x0 = 1 << 30, y0 = 1 << 30, x1 = -1, y1 = -1;
+		unsigned i = 0, changed = 0;
+		for (int yy = y; yy < y + h && i < (unsigned)MAX_SAMPLES; yy += stride) {
+			if (yy < 0 || yy >= (int)SCREEN_H)
+				continue;
+			for (int xx = x; xx < x + w && i < (unsigned)MAX_SAMPLES; xx += stride) {
+				if (xx < 0 || xx >= (int)SCREEN_W)
+					continue;
+				if (_bucket(px[yy * SCREEN_W + xx]) != base[i]) {
+					++changed;
+					if (xx < x0) x0 = xx;
+					if (yy < y0) y0 = yy;
+					if (xx > x1) x1 = xx;
+					if (yy > y1) y1 = yy;
+				}
+				++i;
+			}
+		}
+		if (x1 < 0)
+			Genode::log("grouped-ui-probe: diag ", what, " bbox=<none>");
+		else
+			Genode::log("grouped-ui-probe: diag ", what, " bbox=(", x0, ",",
+			            y0, " ", x1 - x0 + SAMPLE_STRIDE, "x",
+			            y1 - y0 + SAMPLE_STRIDE, ") changed=", changed);
+	}
+
+	/*
+	 * The documented already-running receipt (pkgd Gate 2): the
+	 * launcher_result report is
+	 * <result status="..." op="launch" pkg="..."/> (sponge_pkgd
+	 * _report_launch_ok; launcher_controller.cc matches that root).
+	 */
+	bool _poll_launch_result(char const *pkg, char const *want_status,
+	                         unsigned iters)
+	{
+		for (unsigned i = 0; i < iters; ++i) {
+			_timer.msleep(200);
+			_launch_result.update();
+			if (_launch_result.valid() && _launch_result.size() > 0) {
+				Genode::Node const r = _launch_result.node();
+				if (r.has_type("result")) {
+					Genode::String<32> op =
+						r.attribute_value("op", Genode::String<32>());
+					Genode::String<40> p =
+						r.attribute_value("pkg", Genode::String<40>());
+					Genode::String<32> st =
+						r.attribute_value("status", Genode::String<32>());
+					if (i % 25 == 0)
+						Genode::log("grouped-ui-probe: launch-result poll ",
+						            i, " op=", op.string(), " pkg=",
+						            p.string(), " status=", st.string());
+					if (op == Genode::String<32>("launch") &&
+					    p == Genode::String<40>(pkg) &&
+					    st == Genode::String<32>(want_status))
+						return true;
+				}
+			}
+		}
+		return false;
+	}
+
+	/*
+	 * The document the product media SERVES to pdf_view (the same ROM
+	 * route the app's VFS <rom name="sample.pdf"/> takes). R17/R18
+	 * showed mupdf reporting "cannot find startxref" on product media
+	 * while the lean scenario parses the same file fine — this receipt
+	 * pins whether the served bytes are the document at all.
+	 */
+	void _check_sample_pdf()
+	{
+		_sample_pdf.update();
+		if (!_sample_pdf.valid() || _sample_pdf.size() == 0)
+			_fail("sample.pdf ROM did not resolve (empty/invalid)");
+		Genode::size_t const size = _sample_pdf.size();
+		char const *data = _sample_pdf.local_addr<char>();
+		bool head_ok = size >= 5
+		            && data[0] == '%' && data[1] == 'P'
+		            && data[2] == 'D' && data[3] == 'F';
+		bool xref_ok = false;
+		for (Genode::size_t i = 0; i + 9 <= size; ++i)
+			if (Genode::strcmp(data + i, "startxref", 9) == 0)
+				xref_ok = true;
+		/* "/Type /Page " (trailing space) matches the page objects but
+		 * not the "/Type /Pages" catalog node. */
+		unsigned pages = 0;
+		for (Genode::size_t i = 0; i + 12 <= size; ++i)
+			if (Genode::strcmp(data + i, "/Type /Page ", 12) == 0)
+				++pages;
+		Genode::log("grouped-ui-probe: pdf-doc (size=", size,
+		            " head=", head_ok ? "%PDF" : "??",
+		            " startxref=", xref_ok ? "yes" : "no",
+		            " pages=", pages, ")");
+		if (!head_ok || !xref_ok) {
+			Genode::log("grouped-ui-probe: pdf-doc head bytes: ",
+			            (unsigned)(unsigned char)data[0], " ",
+			            (unsigned)(unsigned char)data[1], " ",
+			            (unsigned)(unsigned char)data[2], " ",
+			            (unsigned)(unsigned char)data[3]);
+			_fail("served sample.pdf is not the document (head/startxref)");
+		}
+		if (pages < 2)
+			_fail("served sample.pdf has ", pages,
+			      " pages (page-down cannot produce an input delta)");
+	}
+
+	/* files structural navigation receipt: <files path="..."
+	 * entries="N"><last_action name="navigate" result="ok"/></files>. */
+	bool _poll_files_path(char const *want_path, unsigned iters)
+	{
+		for (unsigned i = 0; i < iters; ++i) {
+			_timer.msleep(200);
+			_files_report.update();
+			if (_files_report.valid() && _files_report.size() > 0) {
+				Genode::Node const r = _files_report.node();
+				if (r.has_type("files")) {
+					Genode::String<64> path =
+						r.attribute_value("path", Genode::String<64>());
+					bool ok = false;
+					r.with_optional_sub_node("last_action",
+						[&] (Genode::Node const &a) {
+							ok =
+								a.attribute_value("name",
+									Genode::String<32>()) ==
+										Genode::String<32>("navigate") &&
+								a.attribute_value("result",
+									Genode::String<32>()) ==
+										Genode::String<32>("ok");
+						});
+					if (i % 25 == 0)
+						Genode::log("grouped-ui-probe: files-report poll ",
+						            i, " path=", path.string());
+					if (ok && path == Genode::String<64>(want_path))
+						return true;
+				}
+			}
+		}
+		return false;
+	}
+
+	/*
+	 * App-window census over the class prefixes: how many package
+	 * windows are mapped right now, from how many runtime classes.
+	 * `skip_browser` drops pkg_runtime_browser labels (the P5.1
+	 * concurrent set excludes falkon BY DESIGN: it is torn down
+	 * before the census and its receipt is the browser leg; debug
+	 * is likewise torn down and simply absent). Labels are
+	 * collected so a failure names the exact set.
+	 */
+	unsigned _count_app_windows(unsigned &classes, unsigned *ids,
+	                            unsigned max_ids, bool skip_browser = false)
+	{
+		_window_list.update();
+		unsigned n = 0;
+		classes = 0;
+		bool simple = false, terminal = false, browser = false;
+		if (_window_list.valid() && _window_list.size() > 0) {
+			Genode::Node const root = _window_list.node();
+			root.for_each_sub_node("window", [&] (Genode::Node const &w) {
+				Genode::String<160> label =
+					w.attribute_value("label", Genode::String<160>());
+				char const *l = label.string();
+				bool const s = str_prefix(l, "pkg_runtime_simple -> ");
+				bool const t = str_prefix(l, "pkg_runtime_terminal -> ");
+				bool const b = str_prefix(l, "pkg_runtime_browser -> ");
+				if (!s && !t && !b)
+					return;
+				if (skip_browser && b)
+					return;
+				if (s) simple = true;
+				if (t) terminal = true;
+				if (b) browser = true;
+				if (ids && n < max_ids)
+					ids[n] = w.attribute_value("id", 0u);
+				++n;
+			});
+		}
+		classes = (unsigned)simple + (unsigned)terminal + (unsigned)browser;
+		return n;
+	}
+
+	/* Popup open + real Qt menu-entry click + popup close — the shared
+	 * launch half of the P5.1 legs (steps (1)+(2) of _run_class,
+	 * unchanged in the existing legs). */
+	bool _open_and_click_entry(char const *what, App_entry const &entry)
+	{
+		_snapshot(DOMAIN_X, DOMAIN_Y, DOMAIN_W, DOMAIN_H, _snap);
+		_emit_click(S_TOGGLE_X, S_TOGGLE_Y);
+		if (!_poll_popup_open()) {
+			_fail("launcher popup never opened (", what, ")");
+			return false;
+		}
+		if (!_wait_entry_bands()) {
+			_fail("launcher buttons never rendered for ",
+			      (char const *)entry.name);
+			return false;
+		}
+		if (!_diag_entry_bands(entry.name, _entry_click_y(entry)))
+			return false;
+		_emit_click(_entry_click_x(), _entry_click_y(entry));
+		if (!_poll_popup_closed()) {
+			_fail("launcher popup never closed (", what, ")");
+			return false;
+		}
+		return true;
+	}
+
+	/*
+	 * hello: GUI-free autostart (pkg/hello/metadata.xml <autostart/>).
+	 * The real launcher entry click is answered `already-running`
+	 * (pkgd Gate 2 — hello runs headless since install), which is the
+	 * documented result; paint/input are N/A BY DESIGN and recorded as
+	 * such so no green label hides an unmeasured input.
+	 */
+	void _run_hello_leg(App_entry const &entry)
+	{
+		if (!_open_and_click_entry("hello-class", entry))
+			return;
+		if (!_poll_launch_result("hello", "already-running", 150)) {
+			_log_window_list();
+			_fail("hello launcher entry click never answered "
+			      "already-running");
+			return;
+		}
+		Genode::log("grouped-ui-probe: hello launcher entry click -> "
+		            "already-running (paint/input N/A by design)");
+	}
+
+	/*
+	 * debug: the SPONGE DEBUG monitor autostarts at install (its
+	 * metadata documents the chicken-and-egg guard), so the window and
+	 * the FIRSTPAINT self-report exist since boot. The leg proves the
+	 * real launcher entry (also answered already-running), Capture
+	 * evidence that the window renders, and a Mark-click rendered
+	 * delta (plus the app's own "sponge_debug: MARK 1" log, gated by
+	 * the run script).
+	 */
+	void _run_debug_leg(App_entry const &entry)
+	{
+		if (!_open_and_click_entry("debug-class", entry))
+			return;
+		if (!_poll_launch_result("debug", "already-running", 150)) {
+			_log_window_list();
+			_fail("debug launcher entry click never answered "
+			      "already-running");
+			return;
+		}
+		Genode::log("grouped-ui-probe: debug launcher entry click -> "
+		            "already-running");
+
+		unsigned const id =
+			_find_window("pkg_runtime_simple -> ", "debug");
+		int rx = 0, ry = 0, rw = 0, rh = 0;
+		if (!id || !_window_rect(id, rx, ry, rw, rh)) {
+			_log_window_list();
+			_fail("debug window not registered/placed for capture");
+			return;
+		}
+		unsigned const nonbg = _nonbg_pct_rect(rx, ry, rw, rh);
+		Genode::log("grouped-ui-probe: debug-class capture "
+		            "(label=pkg_runtime_simple -> debug rect=(", rx, ",",
+		            ry, " ", rw, "x", rh, ") nonbg=", nonbg, "%)");
+		if (nonbg < 10) {
+			_diag_render(rx, ry, rw, rh);
+			_fail("debug window shows no rendered content (nonbg=",
+			      nonbg, "%)");
+			return;
+		}
+
+		/*
+		 * Mark click: a candidate column at x fixed on Mark's button.
+		 * The first candidate that renders a delta is the receipt.
+		 * Clicks after the win land on the status label (harmless),
+		 * except the FINAL click which re-hits the winning point:
+		 * its "sponge_debug: MARK" log is the only serial line that
+		 * lands after the last QMP-TARGET marker and therefore the
+		 * only one the run-script gate window can see (lines between
+		 * marker dispatches are consumed by the dispatch expects).
+		 * The dispatch count stays fixed at 6.
+		 */
+		int const mx = rx + DEBUG_MARK_DX;
+		Genode::log("grouped-ui-probe: debug-class mark geometry (click_x=",
+		            mx, " candidates=6)");
+		_diag_render(rx, ry, rw, rh);
+		unsigned best = 0, best_y = 0;
+		for (unsigned c = 0; c < 6; ++c) {
+			bool const last = (c == 5);
+			int my = ry + 45;
+			if (!best)
+				my = ry + DEBUG_MARK_DY[c];
+			else if (last)
+				my = (int)best_y;
+			_snapshot(rx, ry, rw, rh, _snap);
+			_emit_click(mx, my);
+			unsigned const changed =
+				_poll_typed_delta(rx, ry, rw, rh, 0, 15);
+			if (changed && !best) {
+				best = changed;
+				best_y = ry + DEBUG_MARK_DY[c];
+				_log_delta_bbox(rx, ry, rw, rh, _snap, "mark-click");
+				Genode::log("grouped-ui-probe: debug-class mark candidate ",
+				            c, " y=", best_y, " changed=", changed);
+			}
+		}
+		if (!best) {
+			_diag_render(rx, ry, rw, rh);
+			_fail("no Mark-click rendered delta (debug-class, 6 candidates)");
+			return;
+		}
+		Genode::log("grouped-ui-probe: debug-class mark-click delta "
+		            "(changed=", best, " click_y=", best_y, ")");
+	}
+
+	/*
+	 * files: first paint + a REAL QMP double-click on the first list
+	 * row ("demo/") navigating into it. Two QMP-TARGET tablet markers
+	 * back-to-back = one Qt double-click (the host dispatches them
+	 * consecutively inside Qt's double-click interval). Navigation is
+	 * asserted structurally (the files report path "/" -> "/demo", the
+	 * app's "sponge_files: navigate -> /demo" log is gated by the run
+	 * script) AND as the rendered navigation delta.
+	 */
+	void _run_files_leg(App_entry const &entry)
+	{
+		int rx = 0, ry = 0, rw = 0, rh = 0;
+		if (!_open_and_click_entry("files-class", entry))
+			return;
+		/*
+		 * Origin placement check: the files window self-resizes to its
+		 * 800x600 geometry (files_window.cc setGeometry), so the frame
+		 * exceeds WIN_REG — the class binding is the label prefix and
+		 * the assign-rule ORIGIN (50,328).
+		 */
+		if (!_poll_first_paint("pkg_runtime_simple -> ", "files",
+		                       rx, ry, rw, rh, PAINT_ITERS_DEFAULT,
+		                       50, 328)) {
+			_fail("no first paint for files in pkg_runtime_simple "
+			      "(files-class)");
+			return;
+		}
+		Genode::log("grouped-ui-probe: files-class first paint "
+		            "(label=pkg_runtime_simple -> files rect=(", rx, ",",
+		            ry, " ", rw, "x", rh, "))");
+
+		unsigned const id = _find_window("pkg_runtime_simple -> ", "files");
+		if (!id) {
+			_fail("window vanished before double-click (files-class)");
+			return;
+		}
+		/*
+		 * Double-click candidates: three rows at the list's reserved
+		 * left strip (FILES_CLICK_DX — the app guarantees the first
+		 * row is hit there at any window size). Two back-to-back
+		 * QMP-TARGET tablet markers = one Qt double-click. The first
+		 * candidate that navigates is the receipt; post-win
+		 * double-clicks land on the path label in the top bar
+		 * (harmless — never on Copy/Delete) so the run-script
+		 * dispatch count stays fixed at 6.
+		 */
+		int const dx = rx + FILES_CLICK_DX;
+		unsigned best = 0, best_c = 0;
+		/* Let the initial paint settle first: R8's candidate-0
+		 * baseline measured 1000 changed samples of still-settling
+		 * render noise and drowned the navigation delta. */
+		_timer.msleep(3000);
+		for (unsigned c = 0; c < 3; ++c) {
+			int const dy = best ? ry + 30 : ry + FILES_ROW_DY[c];
+			_snapshot(rx, ry, rw, rh, _snap);
+			_timer.msleep(200);
+			unsigned const baseline = _delta(rx, ry, rw, rh, _snap);
+			_snapshot(rx, ry, rw, rh, _snap);
+			_emit_click(dx, dy);
+			_emit_click(dx, dy);
+			unsigned const changed =
+				_poll_typed_delta(rx, ry, rw, rh, baseline, 30);
+			if (changed && !best) {
+				best = changed;
+				best_c = c;
+				_log_delta_bbox(rx, ry, rw, rh, _snap,
+				                "files-double-click");
+				Genode::log("grouped-ui-probe: files-class double-click "
+				            "candidate ", c, " y=", ry + FILES_ROW_DY[c],
+				            " changed=", changed);
+			}
+		}
+		if (!best) {
+			_diag_render(rx, ry, rw, rh);
+			_fail("no double-click navigation/render delta (files-class, "
+			      "3 candidates)");
+			return;
+		}
+		if (!_poll_files_path("/demo", 150)) {
+			_log_window_list();
+			_fail("files navigation never reached /demo (files report)");
+			return;
+		}
+		Genode::log("grouped-ui-probe: files-class navigation delta "
+		            "(changed=", best, " candidate=", best_c,
+		            " path=/demo)");
+	}
+
+	/*
+	 * pdf_view: first paint + page-down/scroll input. The input is the
+	 * app's OWN physical-key bindings: app/pdf_view main.cc maps
+	 * KEY_PAGEDOWN -> pdfapp '.' (page flip) and KEY_DOWN -> pdfapp
+	 * 'j' (scroll) via `ev.key_press`, so QMP-TARGET key pgdn/down
+	 * reach the handler as keycodes — unlike ASCII glyphs, whose
+	 * chargen path lands in the codepoint handler instead. The
+	 * product arm stages a two-page sample.pdf (the pdf-doc receipt
+	 * asserts pages>=2) because page-down is a no-op on a one-page
+	 * document (pdfapp.c clamps pageno to pagecount); scroll alone
+	 * renders no delta on this port (Pdf_view::show applies no pan),
+	 * so the assertion is the input delta over the pair with each
+	 * input's contribution logged separately.
+	 */
+	void _run_pdf_leg(App_entry const &entry)
+	{
+		_check_sample_pdf();
+		int rx = 0, ry = 0, rw = 0, rh = 0;
+		if (!_open_and_click_entry("pdf-view-class", entry))
+			return;
+		/*
+		 * Origin placement check: pdf_view (raw Gui) comes up at its
+		 * 512x512 default (main.cc _gui_window fallback) — the frame
+		 * exceeds WIN_REG and the center check cannot hold; the class
+		 * binding is the label prefix and the assign-rule ORIGIN.
+		 */
+		if (!_poll_first_paint("pkg_runtime_simple -> ", "pdf_view",
+		                       rx, ry, rw, rh, PAINT_ITERS_DEFAULT,
+		                       50, 328)) {
+			_fail("no first paint for pdf_view in pkg_runtime_simple "
+			      "(pdf-view-class)");
+			return;
+		}
+		Genode::log("grouped-ui-probe: pdf-view-class first paint "
+		            "(label=pkg_runtime_simple -> pdf_view rect=(", rx,
+		            ",", ry, " ", rw, "x", rh, "))");
+
+		unsigned const id =
+			_find_window("pkg_runtime_simple -> ", "pdf_view");
+		if (!id) {
+			_fail("window vanished before focus (pdf-view-class)");
+			return;
+		}
+		int const fcx = rx + rw / 2, fcy = ry + rh / 2;
+		_snapshot(rx, ry, rw, rh, _snap);
+		_emit_click(fcx, fcy);
+		if (!_poll_focus(id)) {
+			_fail("target window did not take focus (pdf-view-class)");
+			return;
+		}
+		_timer.msleep(1000);
+
+		/*
+		 * page-down/scroll input, delivered as the app's own
+		 * physical-key bindings (main.cc: KEY_PAGEDOWN -> pdfapp '.'
+		 * page flip, KEY_DOWN -> pdfapp 'j' scroll). Both inputs are
+		 * dispatched and MEASURED; the assertion is the input delta
+		 * over the pair, with each input's contribution logged
+		 * separately (never hidden).
+		 */
+		_snapshot(rx, ry, rw, rh, _snap_b);
+		_timer.msleep(700);
+		unsigned const baseline = _delta(rx, ry, rw, rh, _snap_b);
+
+		_snapshot(rx, ry, rw, rh, _snap);
+		_emit_key("pgdn");
+		unsigned pgdn_changed = 0;
+		for (unsigned i = 0; i < PDF_PGDN_POLL_ITERS; ++i) {
+			_timer.msleep(200);
+			pgdn_changed = _delta(rx, ry, rw, rh, _snap);
+			if (pgdn_changed >= TYPED_FLOOR && pgdn_changed > 2 * baseline)
+				break;
+		}
+
+		/* scroll contribution, measured against the post-page-down
+		 * state so it stays independently visible */
+		_snapshot(rx, ry, rw, rh, _snap_b);
+		_emit_key("down");
+		unsigned scroll_changed = 0;
+		for (unsigned i = 0; i < 25; ++i) {
+			_timer.msleep(200);
+			scroll_changed = _delta(rx, ry, rw, rh, _snap_b);
+			if (scroll_changed >= TYPED_FLOOR)
+				break;
+		}
+
+		unsigned const changed = _delta(rx, ry, rw, rh, _snap);
+		_log_delta_bbox(rx, ry, rw, rh, _snap, "pdf-input");
+		if (changed < TYPED_FLOOR || changed <= 2 * baseline) {
+			_diag_render(rx, ry, rw, rh);
+			_fail("no page-down/scroll input delta (pdf-view-class "
+			      "pgdn_changed=", pgdn_changed,
+			      " scroll_changed=", scroll_changed, ")");
+			return;
+		}
+		Genode::log("grouped-ui-probe: pdf-view-class page-down/scroll "
+		            "input delta (changed=", changed, " baseline=",
+		            baseline, " pgdn_changed=", pgdn_changed,
+		            " scroll_changed=", scroll_changed, ")");
+	}
+
+	/*
+	 * calculator: first paint + unconditional QMP digits/spin on
+	 * inputSpinBox1 with the RESULT delta (the outputWidget band).
+	 * Unconditional by contract — the calculator is its own leg, not
+	 * the simple-leg fallback.
+	 */
+	void _run_calc_leg(App_entry const &entry)
+	{
+		int rx = 0, ry = 0, rw = 0, rh = 0;
+		if (!_open_and_click_entry("calculator-class", entry))
+			return;
+		if (!_poll_first_paint("pkg_runtime_simple -> ", "calculator",
+		                       rx, ry, rw, rh)) {
+			_fail("no first paint for calculator in pkg_runtime_simple "
+			      "(calculator-class)");
+			return;
+		}
+		Genode::log("grouped-ui-probe: calculator-class first paint "
+		            "(label=pkg_runtime_simple -> calculator rect=(", rx,
+		            ",", ry, " ", rw, "x", rh, "))");
+
+		unsigned const id =
+			_find_window("pkg_runtime_simple -> ", "calculator");
+		if (!id) {
+			_fail("window vanished before focus (calculator-class)");
+			return;
+		}
+		int const fcx = rx + CALC_SPIN_DX, fcy = ry + CALC_SPIN_DY;
+		int const bx = rx + CALC_BAND_DX, by = ry + CALC_BAND_DY;
+		Genode::log("grouped-ui-probe: calculator-class spin geometry "
+		            "(click=", fcx, ",", fcy, " band=(", bx, ",", by, " ",
+		            CALC_BAND_DW, "x", CALC_BAND_DH, "))");
+		_snapshot(rx, ry, rw, rh, _snap);
+		_emit_click(fcx, fcy);
+		if (!_poll_focus(id)) {
+			_fail("target window did not take focus (calculator-class)");
+			return;
+		}
+		_timer.msleep(1000);
+
+		_snapshot(bx, by, CALC_BAND_DW, CALC_BAND_DH, _snap_b,
+		          CALC_BAND_STRIDE);
+		_timer.msleep(700);
+		unsigned const baseline =
+			_delta(bx, by, CALC_BAND_DW, CALC_BAND_DH, _snap_b,
+			       CALC_BAND_STRIDE);
+		_snapshot(bx, by, CALC_BAND_DW, CALC_BAND_DH, _snap,
+		          CALC_BAND_STRIDE);
+		_emit_type("17");
+		unsigned const digit_changed =
+			_poll_typed_delta(bx, by, CALC_BAND_DW, CALC_BAND_DH, baseline,
+			                  300, CALC_BAND_STRIDE);
+		_log_delta_bbox(bx, by, CALC_BAND_DW, CALC_BAND_DH, _snap,
+		                "calc-digits", CALC_BAND_STRIDE);
+		if (!digit_changed) {
+			_diag_render(rx, ry, rw, rh);
+			_fail("no digits result delta (calculator-class)");
+			return;
+		}
+		Genode::log("grouped-ui-probe: calculator-class digits result "
+		            "delta (changed=", digit_changed, " baseline=",
+		            baseline, " typed=\"17\")");
+
+		_snapshot(bx, by, CALC_BAND_DW, CALC_BAND_DH, _snap_b,
+		          CALC_BAND_STRIDE);
+		_timer.msleep(700);
+		unsigned const spin_baseline =
+			_delta(bx, by, CALC_BAND_DW, CALC_BAND_DH, _snap_b,
+			       CALC_BAND_STRIDE);
+		_snapshot(bx, by, CALC_BAND_DW, CALC_BAND_DH, _snap,
+		          CALC_BAND_STRIDE);
+		_emit_key("up");
+		unsigned const spin_changed =
+			_poll_typed_delta(bx, by, CALC_BAND_DW, CALC_BAND_DH,
+			                  spin_baseline, 300, CALC_BAND_STRIDE);
+		_log_delta_bbox(bx, by, CALC_BAND_DW, CALC_BAND_DH, _snap,
+		                "calc-spin", CALC_BAND_STRIDE);
+		if (!spin_changed) {
+			_diag_render(rx, ry, rw, rh);
+			_fail("no spin result delta (calculator-class)");
+			return;
+		}
+		Genode::log("grouped-ui-probe: calculator-class spin result "
+		            "delta (changed=", spin_changed, " baseline=",
+		            spin_baseline, ")");
+	}
+
+	/*
+	 * Browser closure settle (R5/R24): falkon's WebEngine closure
+	 * keeps resolving (lib attach + QtWebEngineProcess spawn) after
+	 * its typed delta, and R5 proved a child creation inside that
+	 * window dies in core's CNode construction. Smallest observable
+	 * settle: poll st_browser's child set and require it unchanged
+	 * for SETTLE_STABLE_POLLS consecutive polls, bounded by
+	 * SETTLE_MAX_POLLS. Logs one marker; never a fixed sleep (the
+	 * wait must SHRINK once the closure is done).
+	 */
+	void _run_browser_settle()
+	{
+		enum { SETTLE_POLL_MS = 1000, SETTLE_STABLE_POLLS = 3,
+		       SETTLE_MAX_POLLS = 30 };
+
+		unsigned stable = 0, polls = 0, last_count = 0;
+		bool first = true;
+
+		while (stable < SETTLE_STABLE_POLLS && polls < SETTLE_MAX_POLLS) {
+			_st_browser.update();
+			unsigned count = 0;
+			if (_st_browser.valid() && _st_browser.size() > 0) {
+				_st_browser.node().for_each_sub_node("child",
+					[&] (Genode::Node const &) { ++count; });
+			}
+			if (!first && count == last_count)
+				++stable;
+			else
+				stable = 0;
+			last_count = count;
+			first = false;
+			++polls;
+			_timer.msleep(SETTLE_POLL_MS);
+		}
+
+		Genode::log("grouped-ui-probe: browser settle children=",
+		            last_count, " polls=", polls, " stable=", stable);
+	}
+
+	/*
+	 * P5.1 package teardown — the sanctioned pkgd calls from this
+	 * probe (every launch above went through a real launcher entry
+	 * click; this is teardown, never a launch substitute). pkgd's
+	 * no-stop-until-remove contract drops the <start> node and frees
+	 * the PD + closure: falkon after the browser leg (its ~509 MiB
+	 * WebEngine closure starved core's CNode construction during the
+	 * R29 files spawn), debug before the calculator spawn (R30:
+	 * debug's Qt closure resident made the calculator's own mapping
+	 * die in core's CNode construction).
+	 *
+	 * Gates before the marker: pkgd answers status=ok; the package
+	 * window leaves window_list (window-gone); the class state report
+	 * loses its live child named <pkg> (child absent/exited).
+	 */
+	void _teardown_pkg(char const *pkg, char const *class_prefix,
+	                   Genode::Attached_rom_dataspace &state_rom,
+	                   char const *state_name)
+	{
+		Genode::String<32> status { };
+		bool answered = false;
+		for (unsigned attempt = 0; attempt < 3 && !answered; ++attempt) {
+			if (_pkgd.request("remove", pkg)) {
+				status = _pkgd.result_xml().attribute_value(
+					"status", Genode::String<32>());
+				answered = true;
+			} else {
+				Genode::log("grouped-ui-probe: remove ", pkg,
+				            " attempt ", attempt + 1, " unanswered");
+				_timer.msleep(500);
+			}
+		}
+		if (!answered) {
+			_fail("pkgd never answered remove ", pkg,
+			      " (probe_request channel)");
+			return;
+		}
+		if (status != Genode::String<32>("ok")) {
+			_fail("pkgd remove ", pkg, " status=", status);
+			return;
+		}
+
+		unsigned polls = 0;
+		bool window_gone = false, child_gone = false;
+		for (; polls < 120; ++polls) {
+			window_gone = _find_window(class_prefix, pkg) == 0;
+			state_rom.update();
+			unsigned live = 0;
+			if (state_rom.valid() && state_rom.size() > 0)
+				state_rom.node().for_each_sub_node("child",
+					[&] (Genode::Node const &c) {
+						Genode::String<48> const name =
+							c.attribute_value("name",
+							                  Genode::String<48>());
+						if (Genode::strcmp(name.string(), pkg) == 0 &&
+						    !c.has_attribute("exited"))
+							++live;
+					});
+			child_gone = live == 0;
+			if (window_gone && child_gone)
+				break;
+			_timer.msleep(500);
+		}
+		if (!window_gone || !child_gone) {
+			_log_class_children(state_name, state_rom);
+			_log_window_list();
+			_fail(pkg, " teardown incomplete (window-gone=",
+			      (int)window_gone, " child-gone=", (int)child_gone, ")");
+			return;
+		}
+		Genode::log("grouped-ui-probe: ", pkg,
+		            " removed (status=ok window-gone=1 child-gone=1 polls=",
+		            polls, ")");
+	}
+
+	/*
+	 * Final assertion (P5.1): >=5 non-falkon app windows from >=2
+	 * runtime classes mapped SIMULTANEOUSLY, with the last typed
+	 * delta delivered while the siblings remain mapped. falkon and
+	 * debug are excluded BY DESIGN: both were torn down above (their
+	 * PD/closure residency killed the R29/R30 spawns), and each
+	 * keeps its own first-paint + input receipt. The surviving set
+	 * is exactly five windows — textedit, terminal, files,
+	 * pdf_view, calculator. The typed delta goes to the textedit
+	 * window ABOVE the sibling stack (rx+rw/2, ry+100 — every
+	 * stacked sibling starts at y=328 and reaches wider than
+	 * textedit's center column, so the only textedit-only point is
+	 * above the stack), measured over the matching clear band
+	 * (y < 328: no sibling pixels, no sibling blink noise).
+	 */
+	void _run_concurrent()
+	{
+		unsigned classes = 0;
+		unsigned ids_before[MAX_APPS] { };
+		unsigned const n_before =
+			_count_app_windows(classes, ids_before, MAX_APPS, true);
+		Genode::log("grouped-ui-probe: concurrent-set poll n=", n_before,
+		            " classes=", classes);
+		if (n_before < CONCURRENT_MIN_WINDOWS ||
+		    classes < CONCURRENT_MIN_CLASSES) {
+			_log_window_list();
+			_fail("concurrent window set too small (n=", n_before,
+			      " classes=", classes, ")");
+			return;
+		}
+
+		unsigned const id =
+			_find_window("pkg_runtime_simple -> ", "textedit");
+		int rx = 0, ry = 0, rw = 0, rh = 0;
+		if (!id || !_window_rect(id, rx, ry, rw, rh)) {
+			_log_window_list();
+			_fail("textedit window lost before the concurrent typed delta");
+			return;
+		}
+
+		/*
+		 * Sibling-stack clear band: the stacked siblings all sit at
+		 * y=328 (the generic pkg_runtime assign origin + panel), so
+		 * the textedit rows above it are the only region no sibling
+		 * covers — click and measure there.
+		 */
+		int const cx = rx + rw / 2, cy = ry + 100;
+		int const bx = rx, by = ry, bw = rw, bh = 328 - ry;
+		_snapshot(bx, by, bw, bh, _snap);
+		_emit_click(cx, cy);
+		if (!_poll_focus(id)) {
+			_fail("textedit did not take focus before the concurrent typed delta");
+			return;
+		}
+		_timer.msleep(5000);
+		unsigned const click_changed = _delta(bx, by, bw, bh, _snap);
+		Genode::log("grouped-ui-probe: concurrent click_changed=",
+		            click_changed);
+
+		_snapshot(bx, by, bw, bh, _snap_b);
+		_timer.msleep(700);
+		unsigned const baseline = _delta(bx, by, bw, bh, _snap_b);
+		_snapshot(bx, by, bw, bh, _snap);
+		_emit_type("sponge");
+		unsigned const changed =
+			_poll_typed_delta(bx, by, bw, bh, baseline);
+		if (!changed) {
+			_diag_render(rx, ry, rw, rh);
+			_fail("no concurrent typed delta (textedit, click_changed=",
+			      click_changed, ")");
+			return;
+		}
+		Genode::log("grouped-ui-probe: concurrent typed delta (changed=",
+		            changed, " baseline=", baseline, ")");
+
+		unsigned classes_after = 0;
+		unsigned ids_after[MAX_APPS] { };
+		unsigned const n_after =
+			_count_app_windows(classes_after, ids_after, MAX_APPS, true);
+		for (unsigned i = 0; i < n_before && i < MAX_APPS; ++i) {
+			bool held = false;
+			for (unsigned j = 0; j < n_after && j < MAX_APPS; ++j)
+				if (ids_before[i] == ids_after[j])
+					held = true;
+			if (!held) {
+				_log_window_list();
+				_fail("sibling window id=", ids_before[i],
+				      " vanished during the final typed delta");
+				return;
+			}
+		}
+		Genode::log("grouped-ui-probe: concurrent siblings held n=",
+		            n_after);
+		Genode::log("grouped-ui-probe: concurrent windows n=", n_before);
 	}
 
 	/* ---- one class's full acceptance shape ---- */
@@ -953,9 +2004,43 @@ struct Grouped_ui_probe
 			return;
 		}
 		/* (5) typed input -> measurable rendered delta. The pre-type
-
-		 *     snapshot MUST be taken before the type marker leaves. */
-		_timer.msleep(2000);
+		 *     snapshot MUST be taken before the type marker leaves.
+		 *     The post-click settle runs long enough to exhaust the
+		 *     decorator/Qt repaint tail: R10 flaked when a ~17-sample
+		 *     settling transient landed inside the baseline noise
+		 *     window and pushed the 2x rule past the typed signal
+		 *     (changed=30 baseline=17). */
+		if (url_bar) {
+			/*
+			 * Browser leg: a FIXED 5 s settle puts the type
+			 * dispatch inside falkon's WebEngine init storm (the
+			 * 512MB->1GB AllocPages + completer-model teardowns
+			 * land ~2-7 s after the click) and the keystrokes are
+			 * lost — R25/26/27/28 all red this way (typed polls at
+			 * band-noise level 3..9), while R5's type beat the
+			 * storm and rendered changed=9845. Same intent as R10
+			 * (exhaust the click repaint tail BEFORE the baseline
+			 * window) but quiet-gated and short so the type lands
+			 * first. Bounded: 6x500 ms, exit on first quiet poll;
+			 * on cap the leg proceeds and the UNCHANGED typed-delta
+			 * assertion remains the arbiter.
+			 */
+			int const sx = rx, sy = ry + URL_BAND_DY,
+			          sw = rw, sh = URL_BAND_DH;
+			unsigned noise = 0, polls = 0;
+			_snapshot(sx, sy, sw, sh, _snap_b);
+			do {
+				_timer.msleep(500);
+				noise = _delta(sx, sy, sw, sh, _snap_b);
+				_snapshot(sx, sy, sw, sh, _snap_b);
+				++polls;
+			} while (noise > 2 && polls < 6);
+			Genode::log("grouped-ui-probe: ", what,
+			            " click-settle (noise=", noise, " polls=",
+			            polls, ")");
+		} else {
+			_timer.msleep(5000);
+		}
 
 		unsigned const click_changed = _delta(rx, ry, rw, rh, _snap);
 		Genode::log("grouped-ui-probe: ", what, " click_changed=",
@@ -1106,6 +2191,47 @@ struct Grouped_ui_probe
 		}
 
 		/*
+		 * P5.1 feed receipts: hello/Utilities (the launcher feed pair
+		 * alpha_probe's criterion (b) asserts on product media) and
+		 * the debug entry the Mark leg clicks.
+		 */
+		App_entry const *hello = _find_app("hello");
+		if (!hello) {
+			_fail("hello missing from the launcher report");
+			return;
+		}
+		if (Genode::strcmp(hello->category, "Utilities") != 0) {
+			_fail("hello launcher category is not Utilities (",
+			      (char const *)hello->category, ")");
+			return;
+		}
+		Genode::log("grouped-ui-probe: hello/Utilities");
+		if (!_entry_visible(*hello)) {
+			_fail("hello entry is clipped by the launcher domain");
+			return;
+		}
+		App_entry const *dbg = _find_app("debug");
+		if (!dbg || !_entry_visible(*dbg)) {
+			_fail("debug entry is clipped by the launcher domain");
+			return;
+		}
+		App_entry const *files = _find_app("files");
+		if (!files || !_entry_visible(*files)) {
+			_fail("files entry is clipped by the launcher domain");
+			return;
+		}
+		App_entry const *pdf = _find_app("pdf_view");
+		if (!pdf || !_entry_visible(*pdf)) {
+			_fail("pdf_view entry is clipped by the launcher domain");
+			return;
+		}
+		App_entry const *calc = _find_app("calculator");
+		if (!calc || !_entry_visible(*calc)) {
+			_fail("calculator entry is clipped by the launcher domain");
+			return;
+		}
+
+		/*
 		 * Browser target (P2.6): the falkon entry, fully visible at
 		 * popup-local y=326 with the `desktop` profile (see the
 		 * layout log). Its class binding is the window label prefix
@@ -1158,6 +2284,44 @@ struct Grouped_ui_probe
 		Genode::log("grouped-ui-probe: ready simple-target=", simple_name,
 		            " terminal-target=terminal browser-target=falkon");
 
+		/*
+		 * P5.1 app matrix, in front-most / child-creation order: the
+		 * two autostart packages first (their windows are the only
+		 * ones up, so the debug Mark click lands on debug's window),
+		 * then the simple/terminal class legs, then the browser leg
+		 * at position 5 (after terminal, before files — R5's proven
+		 * green shape), then a browser-settle gate + falkon teardown,
+		 * then the launched simple-app legs. R24 proved the browser-LAST order is
+		 * fatal: with six Qt/mupdf apps resident, falkon's own
+		 * WebEngine closure load dies in rom_pkg (core CNode
+		 * construction failure; the ROM create for
+		 * libQt6WebEngineCore.lib.so never answers — docs/evidence/
+		 * phase16-p51-grouped-app-matrix.md). R25/R26 proved the
+		 * browser-THIRD order misroutes the calibrated URL-bar
+		 * click/type even on a quiet band (click_changed=11265 /
+		 * 10018 vs R5's 990, typed delta at noise level). The
+		 * settle waits for the browser runtime's child set to
+		 * stabilize before any later child spawn (R5's collision
+		 * class: creating a files child while falkon's closure is
+		 * still resolving dies in core's CNode construction). Then
+		 * falkon is TORN DOWN (pkgd remove — R29 proved even a
+		 * settled falkon starves the files spawn's CNode budget),
+		 * and the remaining legs spawn into the freed budget. debug
+		 * is torn down too, right before the calculator spawn (R30:
+		 * the calculator's first mapping died in core's CNode
+		 * construction with debug's Qt closure still resident).
+		 * Layout safety: debug's entry sits BETWEEN calculator and
+		 * files in the Utilities section, so its removal re-lays-out
+		 * everything below it — but the files/pdf_view entry clicks
+		 * are already banked by then, and the only remaining entry
+		 * click (calculator) sits ABOVE debug and does not shift.
+		 * The concurrent assertion is last: its typed delta is
+		 * delivered into textedit while every surviving sibling
+		 * stays mapped.
+		 */
+		_run_hello_leg(*hello);
+		_run_debug_leg(*dbg);
+
 		_run_class("simple-class", "pkg_runtime_simple -> ",
 		           simple_name, *simple, simple_typed,
 		           simple_focus_dx, simple_focus_dy, simple_extra_key);
@@ -1165,11 +2329,12 @@ struct Grouped_ui_probe
 		           "terminal", *term, "echo grouped-ok", -1, -1, "ret");
 
 		/*
-		 * Browser leg (P2.6), after terminal per the acceptance
-		 * order. First paint with the browser poll budget; basic
-		 * typed input "sponge" after a URL-bar focus click. The
-		 * focus/typing geometry is the runtime calibration
-		 * (URL_CLICK_* / URL_BAND_*, evidence run receipts in
+		 * Browser class (P2.6 leg shape, UNCHANGED) — position 5,
+		 * R5's proven slot. First paint with the browser poll
+		 * budget; basic typed input "sponge" after a URL-bar focus
+		 * click. The focus/typing geometry is the runtime
+		 * calibration (URL_CLICK_* / URL_BAND_*, evidence run
+		 * receipts in
 		 * docs/evidence/phase16-p26-browser-acceptance.md): a
 		 * client-pixel click on the URL field row, typed-delta
 		 * measured over the bar-row/popup band, shared thresholds.
@@ -1178,6 +2343,45 @@ struct Grouped_ui_probe
 		_run_class("browser-class", "pkg_runtime_browser -> ",
 		           "falkon", *browser, "sponge", 0, 0, nullptr,
 		           PAINT_ITERS_BROWSER, true);
+
+		/*
+		 * Browser settle (R5/R24): observable child-set stability
+		 * gate before the next child spawn.
+		 */
+		_run_browser_settle();
+
+		/*
+		 * P5.1 teardown: destroy falkon (pkgd remove, probe_request
+		 * channel) and wait for its window + class child to go away
+		 * BEFORE the remaining spawns — its WebEngine closure
+		 * residency is what killed the R29 files spawn. The
+		 * concurrent set below is non-falkon by design.
+		 */
+		_teardown_pkg("falkon", "pkg_runtime_browser -> ",
+		              _st_browser, "st_browser");
+
+		_run_files_leg(*files);
+		_run_pdf_leg(*pdf);
+
+		/*
+		 * P5.1 teardown (2): destroy debug before the calculator
+		 * spawn — R30 died in core's CNode construction at the
+		 * calculator's first mapping with debug's Qt closure still
+		 * resident. debug's receipt (first paint + Mark click) is
+		 * already banked above. The concurrent set below is then
+		 * exactly the five non-falkon windows (textedit, terminal,
+		 * files, pdf_view, calculator).
+		 */
+		_teardown_pkg("debug", "pkg_runtime_simple -> ",
+		              _st_simple, "st_simple");
+
+		_run_calc_leg(*calc);
+
+		/*
+		 * Final assertion: the concurrent-window set with the last
+		 * typed delta delivered while the siblings stay mapped.
+		 */
+		_run_concurrent();
 
 		Genode::log("grouped-ui-probe: PASS");
 		_env.parent().exit(0);

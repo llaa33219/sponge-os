@@ -9,7 +9,12 @@
 # pkg_runtime_simple / pkg_runtime_terminal. Logs exactly
 # "grouped-ui-probe: PASS" after both classes pass; any failure logs
 # "grouped-ui-probe: FAIL <reason>" and exits non-zero (fail-loud).
+#
+# sponge_backend_client: the shared Report/ROM client for the ONE
+# sanctioned pkgd call this probe makes (P5.1 falkon teardown `remove`
+# on the probe_request channel — see _remove_falkon).
 
 TARGET   := grouped_ui_probe
 SRC_CC   := main.cc
-LIBS     := base
+LIBS     := base sponge_backend_client
+INC_DIR += $(REP_DIR)/include
