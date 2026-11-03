@@ -1,0 +1,35 @@
+<!--
+  ep_wedge — P5.1 app-isolation wedge fixture (Phase 16).
+
+  The runtime fault-injection component test/ep_wedge, packaged as an
+  ordinary simple-class application so the P5.1 app-isolation arm
+  (run/sponge-desktop-disk.run with SPONGE_APP_ISOLATION=on) can launch
+  it from the REAL launcher like any desktop app. The metadata <config>
+  block is emitted verbatim into the generated <start> node
+  (sponge_pkgd metadata.cc), so the child receives
+  <config wedge_after_ms="..."/> and behaves as the product's field
+  failure: construct returns, the entrypoint answers, then it parks
+  forever N milliseconds later ("ep_wedge: wedge fired - entrypoint
+  parked").
+
+  Probe-only: enabled by no bake profile; the app-isolation arm injects
+  it on top of the isolation profile via bake::add_package. Deliberately
+  omits <autostart/> — the wedge must start from a real launcher entry
+  click, never at install. GUI-free (no window): its acceptance receipt
+  is the wedge marker plus the sibling/DE survival evidence, not a
+  first paint.
+-->
+<package>
+  <name>ep_wedge</name>
+  <version>1.0</version>
+  <description>App-isolation fixture: entrypoint wedges after a bounded delay.</description>
+
+  <binary>ep_wedge</binary>
+  <quota ram="4M" caps="100"/>
+
+  <config wedge_after_ms="6000"/>
+
+  <launcher category="System"/>
+
+  <dependencies/>
+</package>
