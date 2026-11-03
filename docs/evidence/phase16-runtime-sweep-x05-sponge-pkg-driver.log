@@ -1,0 +1,58 @@
+P5.3 sweep receipt — x05 / run/sponge-pkg-driver (variant: -)
+Date: 2026-11-04 (Phase 16 runtime overhaul P5.3 full sweep)
+Tree: HEAD b19184958b, genode pin 48a946ba15
+Command: env LD_PRELOAD=/tmp/opencode/libclamp_io_uring.so timeout 900s make -j1 -C /home/luke/sponge-os/genode/build/x86_64 run/sponge-pkg-driver KERNEL=sel4 BOARD=pc
+Exit: 0  Elapsed: 50s  marker1_hit: 1  marker2_hit: 1
+Raw log (session scratch): /tmp/opencode/sweep/x05-sponge-pkg-driver.log
+--- guest/run-tool verdict lines (verbatim) ---
+[init -> system -> driver_probe] driver-probe: driver_runtime lists child 'pc_nic'
+error: can't find command `loadfont'.
+[init -> system -> fb_lock_probe] [31mError: stop because parent denied ROM-session: label="result", , ram_quota=6K, cap_quota=3[0m
+[init -> system -> driver_probe] driver-probe: installing driver package 'pc_nic'
+[init -> system -> driver_probe] driver-probe: sending install request
+[init -> system -> fb_conflict_probe] [31mError: stop because parent denied ROM-session: label="result", , ram_quota=6K, cap_quota=3[0m
+[init -> system -> driver_probe] driver-probe: pkgd broadcast seen
+[init -> system -> driver_probe] driver-probe: install answered status=ok
+[init -> system -> driver_probe] driver-probe: driver_runtime lists child 'pc_nic'
+[init -> system -> driver_probe] driver-probe: PASS
+error: can't find command `loadfont'.
+[init -> system -> fb_conflict_probe] [31mError: stop because parent denied ROM-session: label="result", , ram_quota=6K, cap_quota=3[0m
+[init -> system -> fb_lock_probe] [31mError: stop because parent denied ROM-session: label="result", , ram_quota=6K, cap_quota=3[0m
+[init -> system -> driver_probe] driver-probe: installing driver package 'pc_nic'
+[init -> system -> driver_probe] driver-probe: sending install request
+[init -> system -> driver_probe] driver-probe: pkgd broadcast seen
+[init -> system -> driver_probe] driver-probe: install answered status=ok
+[init -> system -> driver_probe] driver-probe: driver_runtime lists child 'pc_nic'
+[init -> system -> driver_probe] driver-probe: PASS
+error: can't find command `loadfont'.
+[init -> system -> fb_conflict_probe] [31mError: stop because parent denied ROM-session: label="result", , ram_quota=6K, cap_quota=3[0m
+[init -> system -> fb_lock_probe] [31mError: stop because parent denied ROM-session: label="result", , ram_quota=6K, cap_quota=3[0m
+[init -> system -> driver_probe] driver-probe: installing driver package 'pc_nic'
+[init -> system -> driver_probe] driver-probe: sending install request
+[init -> system -> driver_probe] driver-probe: pkgd broadcast seen
+[init -> system -> driver_probe] driver-probe: install answered status=ok
+[init -> system -> driver_probe] driver-probe: driver_runtime lists child 'pc_nic'
+[init -> system -> driver_probe] driver-probe: PASS
+sponge-pkg-driver: PASS (pc_nic installed as a package into driver_runtime, bound the e1000, leased 10.0.2.15; a second fb driver was REFUSED as exclusive-conflict)
+Run script execution successful.
+--- tail 20 (verbatim) ---
+[init -> system -> report_rom]   state
+[init -> system -> report_rom]   + ram  | quota: 301756849 | used: 956K | avail: 300777905
+[init -> system -> report_rom]   + caps | quota: 7973      | used: 45   | avail: 7928
+[init -> system -> report_rom]   + child pc_nic | binary: pc_nic
+[init -> system -> report_rom]     + ram | assigned: 32M | quota: 33366726 | used: 500K | avail: 32854726
+[init -> system -> report_rom]   -
+[init -> system -> report_rom] report 'driver_runtime -> state'
+[init -> system -> report_rom]   state
+[init -> system -> report_rom]   + ram  | quota: 301756849 | used: 956K | avail: 300777905
+[init -> system -> report_rom]   + caps | quota: 7973      | used: 45   | avail: 7928
+[init -> system -> report_rom]   + child pc_nic | binary: pc_nic
+[init -> system -> report_rom]     + ram | assigned: 32M | quota: 33366726 | used: 700K | avail: 32649926
+[init -> system -> report_rom]   -
+[init -> system -> driver_probe] driver-probe: install answered status=ok
+[init -> system -> driver_probe] driver-probe: driver_runtime lists child 'pc_nic'
+[init -> system -> driver_probe] driver-probe: PASS
+sponge-pkg-driver: PASS (pc_nic installed as a package into driver_runtime, bound the e1000, leased 10.0.2.15; a second fb driver was REFUSED as exclusive-conflict)
+
+Run script execution successful.
+make: ディレクトリ '/home/luke/sponge-os/genode/build/x86_64' から出ます

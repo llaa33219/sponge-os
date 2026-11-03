@@ -1,0 +1,33 @@
+P5.3 sweep receipt — e19 / run/sponge-de-sel4-interactive (variant: -)
+Date: 2026-11-04 (Phase 16 runtime overhaul P5.3 full sweep)
+Tree: HEAD b19184958b, genode pin 48a946ba15
+Command: env LD_PRELOAD=/tmp/opencode/libclamp_io_uring.so timeout 900s make -j1 -C /home/luke/sponge-os/genode/build/x86_64 run/sponge-de-sel4-interactive KERNEL=sel4 BOARD=pc
+Exit: 2  Elapsed: 125s  marker1_hit: 0  marker2_hit: 0
+Raw log (session scratch): /tmp/opencode/sweep/e19-sponge-de-sel4-interactive.log
+--- guest/run-tool verdict lines (verbatim) ---
+error: can't find command `loadfont'.
+error: can't find command `loadfont'.
+error: can't find command `loadfont'.
+Error: Test execution timed out
+make: *** [Makefile:446: run/sponge-de-sel4-interactive] エラー 254
+--- tail 20 (verbatim) ---
+qmp:   press
+qmp:   release
+
+qmp: qmp_exec_target_launch_click waiting for marker (timeout=120s)
+
+qmp: dispatching launch click at marker (340,170) -> tablet target (170,120) via usb-tablet abs + HMP mouse_button
+
+qmp: absolute tablet mouse index: '3'
+[34mWarning: flush page table entries - mapping cache full - PD: init -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> drivers -> fb out of CAP[0m
+[init -> sponge-de] sponge-de: launcher click-outside on Sponge::Sponge_DE::PanelWidget cursor=170,120 — hiding popup
+[init -> sponge_de_probe] sponge-de-probe: launch green poll 50 frac_per_mille=0
+[init -> sponge_de_probe] sponge-de-probe: launch green poll 100 frac_per_mille=0
+[init -> sponge_de_probe] sponge-de-probe: launch green poll 150 frac_per_mille=0
+[init -> sponge_de_probe] sponge-de-probe: launch green poll 200 frac_per_mille=0
+[init -> sponge_de_probe] sponge-de-probe: launch green poll 250 frac_per_mille=0
+Error: Test execution timed out
+make: *** [Makefile:446: run/sponge-de-sel4-interactive] エラー 254
+make: ディレクトリ '/home/luke/sponge-os/genode/build/x86_64' から出ます

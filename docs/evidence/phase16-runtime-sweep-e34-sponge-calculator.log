@@ -1,0 +1,31 @@
+P5.3 sweep receipt — e34 / run/sponge-calculator (variant: -)
+Date: 2026-11-04 (Phase 16 runtime overhaul P5.3 full sweep)
+Tree: HEAD b19184958b, genode pin 48a946ba15
+Command: env LD_PRELOAD=/tmp/opencode/libclamp_io_uring.so timeout 900s make -j1 -C /home/luke/sponge-os/genode/build/x86_64 run/sponge-calculator KERNEL=sel4 BOARD=pc
+Exit: 0  Elapsed: 44s  marker1_hit: 1  marker2_hit: 1
+Raw log (session scratch): /tmp/opencode/sweep/e34-sponge-calculator.log
+--- guest/run-tool verdict lines (verbatim) ---
+error: can't find command `loadfont'.
+[init -> calculator_probe] calculator-probe: PASS
+Run script execution successful.
+--- tail 20 (verbatim) ---
+[init -> pkg_runtime -> calculator] 
+[init -> pkg_runtime -> calculator] libEGL warning: failed to get driver name for fd 0
+[init -> pkg_runtime -> calculator] 
+[init -> pkg_runtime -> calculator] [34mWarning: attempt to re-acquire file descriptor for /qt/lib/fonts/DejaVuSans.ttf (lseek)[0m
+[init -> pkg_runtime -> calculator] [34mWarning: attempt to re-acquire file descriptor for /qt/lib/fonts/DejaVuSans.ttf (lseek)[0m
+[init -> calculator_probe] calculator-probe: capture poll 0 rendered_frac=0% color_buckets=1
+[init -> pkg_runtime -> calculator] qt.core.qobject.connect: QObject::connect: No such slot QGenodePlatformWindow::_frame_sync()
+[init -> calculator_probe] calculator-probe: calculator window detected (79% non-bg, 14 distinct color buckets)
+[init -> pkg_runtime -> calculator] [34mWarning: attempt to re-acquire file descriptor for /pipe/0/in (fcntl)[0m
+[init -> pkg_runtime -> calculator] QGenodePlatformWindow: frame coalesced deferred= 1 submitted= 1 coalesced= 0 stale= 0
+[init -> calculator_probe] calculator-probe: [6] launch nosuchpkg-13 -> not-installed
+[init -> sponge_pkgd] sponge_pkgd: launch result nosuchpkg-13 -> not-installed (channel=primary)
+[init -> calculator_probe] calculator-probe: [6] not-installed reported
+[init -> calculator_probe] calculator-probe: [7] double-launch calculator -> already-running
+[init -> sponge_pkgd] sponge_pkgd: launch result calculator -> already-running (channel=primary)
+[init -> calculator_probe] calculator-probe: [7] already-running reported
+[init -> calculator_probe] calculator-probe: PASS
+
+Run script execution successful.
+make: ディレクトリ '/home/luke/sponge-os/genode/build/x86_64' から出ます

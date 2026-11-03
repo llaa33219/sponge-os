@@ -1,0 +1,31 @@
+P5.3 sweep receipt — e18 / run/sponge-de-test (variant: -)
+Date: 2026-11-04 (Phase 16 runtime overhaul P5.3 full sweep)
+Tree: HEAD b19184958b, genode pin 48a946ba15
+Command: env LD_PRELOAD=/tmp/opencode/libclamp_io_uring.so timeout 420s make -j1 -C /home/luke/sponge-os/genode/build/x86_64 run/sponge-de-test KERNEL=sel4 BOARD=pc
+Exit: 0  Elapsed: 34s  marker1_hit: 1  marker2_hit: 1
+Raw log (session scratch): /tmp/opencode/sweep/e18-sponge-de-test.log
+--- guest/run-tool verdict lines (verbatim) ---
+error: can't find command `loadfont'.
+[init -> sponge_de_probe] sponge-de-probe: PASS
+Run script execution successful.
+--- tail 20 (verbatim) ---
+[init -> sponge-de] [34mWarning: system_state ROM unavailable; health watcher disabled[0m
+[init -> sponge-de] qt.core.qobject.connect: QObject::connect: No such slot QGenodePlatformWindow::_frame_sync()
+[init -> sponge-de] sponge-de: panel shown
+[init -> sponge-de] Sponge DE window created (Sponge OS 0.2.0 / Archaeocyte)
+[init -> sponge-de] qt.core.qobject.connect: QObject::connect: No such slot QGenodePlatformWindow::_frame_sync()
+[init -> sponge-de] sponge-de: demo window shown
+[init -> sponge-de] sponge-de: after attach_notify_poster
+[init -> sponge-de] sponge-de: panel and window shown
+[init -> sponge_de_probe] sponge-de-probe: capture poll 0 bg=0x1e1e2e demo=0xff313244
+[init -> sponge_de_probe] sponge-de-probe: window detected in demo domain
+[init -> sponge_de_probe] sponge-de-probe: panel pixel at (512,14) = 0xff1e1e2e (informational; theme panel_bg == nitpicker bg)
+[init -> sponge-de] [34mWarning: attempt to re-acquire file descriptor for /pipe/0/in (fcntl)[0m
+[init -> sponge_de_probe] sponge-de-probe: injecting click at (512,460)
+[init -> sponge-de] QGenodePlatformWindow: frame coalesced deferred= 1 submitted= 1 coalesced= 0 stale= 0
+[init -> sponge-de] sponge-de: input event received (button clicked)
+[init -> sponge_de_probe] sponge-de-probe: input report confirms press press=82,23
+[init -> sponge_de_probe] sponge-de-probe: PASS
+
+Run script execution successful.
+make: ディレクトリ '/home/luke/sponge-os/genode/build/x86_64' から出ます

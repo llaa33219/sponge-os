@@ -1,0 +1,38 @@
+P5.3 sweep receipt — p07 / run/sponge-de-pkgd-failure (variant: -)
+Date: 2026-11-04 (Phase 16 runtime overhaul P5.3 full sweep)
+Tree: HEAD b19184958b, genode pin 48a946ba15
+Command: timeout 900s make -j1 -C /home/luke/sponge-os/genode/build/x86_64 run/sponge-de-pkgd-failure KERNEL=sel4 BOARD=pc
+Exit: 0  Elapsed: 161s  marker1_hit: 1  marker2_hit: 0
+Raw log (session scratch): /tmp/opencode/sweep/p07-sponge-de-pkgd-failure.log
+--- guest/run-tool verdict lines (verbatim) ---
+error: can't find command `loadfont'.
+error: can't find command `loadfont'.
+error: can't find command `loadfont'.
+[init -> system -> sponge_pkgd] [31mError: stop because parent denied ROM-session: label="request", , ram_quota=10K, cap_quota=3[0m
+[init -> system -> sponge_pkgd] [31mError: stop because parent denied ROM-session: label="request", , ram_quota=10K, cap_quota=3[0m
+[init -> system -> sponge_pkgd] [31mError: stop because parent denied ROM-session: label="request", , ram_quota=10K, cap_quota=3[0m
+[init -> system -> sponge_pkgd] [31mError: stop because parent denied ROM-session: label="request", , ram_quota=10K, cap_quota=3[0m
+[init -> de_survival_probe] de-survival-probe: PASS
+de-survival-probe: n1 green marker ................ present (scenario GREEN)
+de-survival-probe: scenario GREEN (P2.5 mechanisms present)
+--- tail 20 (verbatim) ---
+[init -> report_rom]   -
+[init -> de_survival_probe] de-survival-probe: [p4] ok - popup closed (entry handler)
+[init -> de_survival_probe] de-survival-probe: [p4] QMP-TARGET done
+
+qmp: sequence done
+[init -> de_survival_probe] de-survival-probe: [c5] ok - operation error still visible after recovery (persists until acknowledged)
+[init -> de_survival_probe] de-survival-probe: PASS
+[init -> de_survival_probe] de-survival-probe: verdict 
+de-survival-probe: ---- P2.1 contract receipt (QEMU-labeled, D16R.12) ----
+de-survival-probe: c1 panel/demo first paint ....... witnessed (probe pixels)
+de-survival-probe: c2 QMP input in degraded window  witnessed (press flip + popup)
+de-survival-probe: c3 health label substrate ....... witnessed (substring)
+de-survival-probe: c4 bounded structured error .... witnessed (launch problem log)
+de-survival-probe: c4 machine-readable witness .... ok
+de-survival-probe: c5 feed recovery window ......... measured probe-side (see [c5] markers)
+de-survival-probe: c5 error persistence / state .... ok
+de-survival-probe: p1/p4 launch clicks .............. launched x2, windows x2 (expect 2 each), feed updates x5 (expect >= 3)
+de-survival-probe: n1 green marker ................ present (scenario GREEN)
+de-survival-probe: scenario GREEN (P2.5 mechanisms present)
+make: ディレクトリ '/home/luke/sponge-os/genode/build/x86_64' から出ます

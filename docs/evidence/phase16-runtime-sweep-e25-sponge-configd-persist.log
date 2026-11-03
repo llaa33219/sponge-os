@@ -1,0 +1,31 @@
+P5.3 sweep receipt — e25 / run/sponge-configd-persist (variant: -)
+Date: 2026-11-04 (Phase 16 runtime overhaul P5.3 full sweep)
+Tree: HEAD b19184958b, genode pin 48a946ba15
+Command: env LD_PRELOAD=/tmp/opencode/libclamp_io_uring.so timeout 360s make -j1 -C /home/luke/sponge-os/genode/build/x86_64 run/sponge-configd-persist KERNEL=sel4 BOARD=pc
+Exit: 0  Elapsed: 14s  marker1_hit: 1  marker2_hit: 1
+Raw log (session scratch): /tmp/opencode/sweep/e25-sponge-configd-persist.log
+--- guest/run-tool verdict lines (verbatim) ---
+error: can't find command `loadfont'.
+[init -> configd_persist_probe] configd-persist-probe: PASS
+Run script execution successful.
+--- tail 20 (verbatim) ---
+[init -> timer] timer0 GSI options 0xff0104, supports periodic
+[init -> timer] timer1 GSI options 0xff0104, supports periodic
+[init -> timer] timer2 GSI options 0xff0104, supports periodic
+[init -> timer] time wraps after 5849 years
+[init -> timer] irqs=off legacy=off
+[init -> timer] Using timer 2 -> using GSI 2 edge triggered
+[init -> sponge_configd] sponge_configd: ready
+[init -> sponge_configd] sponge_configd: persistent store enabled at /store.xml
+[init -> sponge_configd] sponge_configd: no store — starting with defaults
+[init -> configd_persist_probe] configd-persist-probe: read-vfs enabled
+[init -> configd_persist_probe] configd-persist-probe: starting 3-write sequence
+[init -> configd_persist_probe] configd-persist-probe: [1] panel.height=64 broadcast ok
+[init -> configd_persist_probe] configd-persist-probe: [2] panel.visible_widgets=clock broadcast ok
+[init -> configd_persist_probe] configd-persist-probe: [3] panel.height=28 broadcast ok
+[init -> configd_persist_probe] configd-persist-probe: store.xml root element present
+[init -> configd_persist_probe] configd-persist-probe: store.xml carries panel.height=28
+[init -> configd_persist_probe] configd-persist-probe: store.xml carries panel.visible_widgets=clock
+[init -> configd_persist_probe] configd-persist-probe: PASS
+Run script execution successful.
+make: ディレクトリ '/home/luke/sponge-os/genode/build/x86_64' から出ます

@@ -1,0 +1,40 @@
+P5.3 sweep receipt — e30 / run/sponge-alpha (variant: -)
+Date: 2026-11-04 (Phase 16 runtime overhaul P5.3 full sweep)
+Tree: HEAD b19184958b, genode pin 48a946ba15
+Command: env LD_PRELOAD=/tmp/opencode/libclamp_io_uring.so timeout 1200s make -j1 -C /home/luke/sponge-os/genode/build/x86_64 run/sponge-alpha KERNEL=sel4 BOARD=pc
+Exit: 2  Elapsed: 567s  marker1_hit: 0  marker2_hit: 0
+Raw log (session scratch): /tmp/opencode/sweep/e30-sponge-alpha.log
+--- guest/run-tool verdict lines (verbatim) ---
+error: can't find command `loadfont'.
+[init] [31mError: pkg_runtime: ambiguous routes to service "Report"[0m
+[init] [34mWarning: pkg_runtime: no route to service "Report" (label="pkg_runtime -> state")[0m
+[init -> pkg_runtime] [31mError: stop because parent denied Report-session: label="state", buffer_size=4096, ram_quota=14K, cap_quota=3[0m
+[init] [31mError: sponge-de: ambiguous routes to service "Report"[0m
+[init] [34mWarning: sponge-de: no route to service "Report" (label="sponge-de -> de_op_error")[0m
+[init -> sponge-de] [31mError: stop because parent denied Report-session: label="de_op_error", buffer_size=4096, ram_quota=14K, cap_quota=3[0m
+[init -> lz_runtime -> lz_probe] lz-probe: PASS
+[init -> lz_runtime -> leitzentrale -> lz_edit_probe] lz-edit-probe: PASS
+[init -> alpha_probe] [31mError: alpha-probe: FAIL themed panel never composited on nitpicker[0m
+[34mWarning: flush page table entries - mapping cache full - PD: iniError: Test execution timed out
+make: *** [Makefile:446: run/sponge-alpha] エラー 254
+--- tail 20 (verbatim) ---
+[34mWarning: flush page table entries - mapping cache full - PD: init -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: iniError: Test execution timed out
+make: *** [Makefile:446: run/sponge-alpha] エラー 254
+make: ディレクトリ '/home/luke/sponge-os/genode/build/x86_64' から出ます

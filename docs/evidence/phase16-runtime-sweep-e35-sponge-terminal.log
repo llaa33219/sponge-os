@@ -1,0 +1,29 @@
+P5.3 sweep receipt — e35 / run/sponge-terminal (variant: -)
+Date: 2026-11-04 (Phase 16 runtime overhaul P5.3 full sweep)
+Tree: HEAD b19184958b, genode pin 48a946ba15
+Command: env LD_PRELOAD=/tmp/opencode/libclamp_io_uring.so timeout 900s make -j1 -C /home/luke/sponge-os/genode/build/x86_64 run/sponge-terminal KERNEL=sel4 BOARD=pc
+Exit: 2  Elapsed: 0s  marker1_hit: 0  marker2_hit: 0
+Raw log (session scratch): /tmp/opencode/sweep/e35-sponge-terminal.log
+--- guest/run-tool verdict lines (verbatim) ---
+make: *** [Makefile:446: run/sponge-terminal] エラー 1
+--- tail 20 (verbatim) ---
+    while executing
+"llength $targets"
+    (procedure "build" line 5)
+    invoked from within
+"build { core lib/ld init timer server/report_rom server/nitpicker \
+        sponge_pkgd \
+        {*}$terminal_runtime::extra_packages \
+        {*}$t..."
+    (file "/home/luke/sponge-os/repos/sponge/run/sponge-terminal.run" line 55)
+    invoked from within
+"source $include_name"
+    ("foreach" body line 6)
+    invoked from within
+"foreach include_name [cmd_arg --include ""] {
+	# first check if the include name is absolute
+	if {[string first "/" $include_name] == 0} {
+		puts "inc..."
+    (file "/home/luke/sponge-os/genode/tool/run/run" line 1416)
+make: *** [Makefile:446: run/sponge-terminal] エラー 1
+make: ディレクトリ '/home/luke/sponge-os/genode/build/x86_64' から出ます

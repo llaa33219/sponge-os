@@ -1,0 +1,31 @@
+P5.3 sweep receipt — e21 / run/sponge-launch (variant: -)
+Date: 2026-11-04 (Phase 16 runtime overhaul P5.3 full sweep)
+Tree: HEAD b19184958b, genode pin 48a946ba15
+Command: env LD_PRELOAD=/tmp/opencode/libclamp_io_uring.so timeout 900s make -j1 -C /home/luke/sponge-os/genode/build/x86_64 run/sponge-launch KERNEL=sel4 BOARD=pc
+Exit: 0  Elapsed: 39s  marker1_hit: 1  marker2_hit: 1
+Raw log (session scratch): /tmp/opencode/sweep/e21-sponge-launch.log
+--- guest/run-tool verdict lines (verbatim) ---
+error: can't find command `loadfont'.
+[init -> launch_probe] launch-probe: PASS
+Run script execution successful.
+--- tail 20 (verbatim) ---
+[init -> pkg_runtime -> pkg_gui_demo] 
+[init -> pkg_runtime -> pkg_gui_demo] libEGL warning: failed to get driver name for fd 0
+[init -> pkg_runtime -> pkg_gui_demo] 
+[init -> launch_probe] launch-probe: capture poll 0 center(512,320)=0xff313244 bg?1 demo?0
+[init -> pkg_runtime -> pkg_gui_demo] pkg_gui_demo: window shown (color #00000000000000ff00000000)
+[init -> pkg_runtime -> pkg_gui_demo] qt.core.qobject.connect: QObject::connect: No such slot QGenodePlatformWindow::_frame_sync()
+[init -> pkg_runtime -> pkg_gui_demo] [34mWarning: attempt to re-acquire file descriptor for /pipe/0/in (fcntl)[0m
+[init -> pkg_runtime -> pkg_gui_demo] QGenodePlatformWindow: frame coalesced deferred= 1 submitted= 1 coalesced= 0 stale= 0
+[init -> launch_probe] launch-probe: demo window detected at (512,320)
+[init -> launch_probe] launch-probe: [7] VCT launch nosuchpkg (expect not-installed)
+[init -> sponge_pkgd] sponge_pkgd: launch result nosuchpkg -> not-installed (channel=primary)
+[init -> sponge-de] sponge-de: launcher list updated (1 app)
+[init -> launch_probe] launch-probe: vct-launch-not-installed nosuchpkg
+[init -> launch_probe] launch-probe: vct-json {"command":"launch","package":"nosuchpkg","status":"error","error":"not-installed"}
+[init -> launch_probe] launch-probe: [7] VCT launch pkg_gui_demo (expect already-running)
+[init -> sponge_pkgd] sponge_pkgd: launch result pkg_gui_demo -> already-running (channel=primary)
+[init -> launch_probe] launch-probe: vct-launch-already-running pkg_gui_demo
+[init -> launch_probe] launch-probe: PASS
+Run script execution successful.
+make: ディレクトリ '/home/luke/sponge-os/genode/build/x86_64' から出ます

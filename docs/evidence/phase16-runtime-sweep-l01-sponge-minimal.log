@@ -1,0 +1,29 @@
+P5.3 sweep receipt — l01 / run/sponge-minimal (variant: -)
+Date: 2026-11-04 (Phase 16 runtime overhaul P5.3 full sweep)
+Tree: HEAD b19184958b, genode pin 48a946ba15
+Command: env LD_PRELOAD=/tmp/opencode/libclamp_io_uring.so timeout 300s make -j1 -C /home/luke/sponge-os/genode/build/x86_64 run/sponge-minimal KERNEL=linux BOARD=linux
+Exit: 0  Elapsed: 35s  marker1_hit: 0  marker2_hit: 1
+Raw log (session scratch): /tmp/opencode/sweep/l01-sponge-minimal.log
+--- guest/run-tool verdict lines (verbatim) ---
+Run script execution successful.
+--- tail 20 (verbatim) ---
+  [01;33mProgram[0m core/linux/core-linux
+    COMPILE  version.o
+    LINK     core-linux
+  [00;33mLibrary[0m base.lib.a
+  [01;33mProgram[0m init/init
+  [00;33mLibrary[0m sponge_backend_client.lib.a
+  [01;33mProgram[0m vct/vct
+make[1]: ディレクトリ '/home/luke/sponge-os/genode/build/x86_64' から出ます
+genode build completed
+spawn ./core
+Genode 26.08-38-g48a946ba15
+17592186044415 MiB RAM and 19000 caps assigned to init
+session request for service "Timer" (label="init -> ") denied
+[init] [34mWarning: no Timer service (session request failed: 0) - the deadline of the pending session operations is unbounded[0m
+[init -> vct] vct (0.2.0 / Archaeocyte) starting
+[init -> vct] vct 0.2.0
+[init -> vct] Sponge OS codename: Archaeocyte
+
+Run script execution successful.
+make: ディレクトリ '/home/luke/sponge-os/genode/build/x86_64' から出ます

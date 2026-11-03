@@ -1,0 +1,32 @@
+P5.3 sweep receipt — e15 / run/sponge-de-themed-chrome-resize (variant: -)
+Date: 2026-11-04 (Phase 16 runtime overhaul P5.3 full sweep)
+Tree: HEAD b19184958b, genode pin 48a946ba15
+Command: env LD_PRELOAD=/tmp/opencode/libclamp_io_uring.so timeout 900s make -j1 -C /home/luke/sponge-os/genode/build/x86_64 run/sponge-de-themed-chrome-resize KERNEL=sel4 BOARD=pc
+Exit: 0  Elapsed: 68s  marker1_hit: 1  marker2_hit: 1
+Raw log (session scratch): /tmp/opencode/sweep/e15-sponge-de-themed-chrome-resize.log
+--- guest/run-tool verdict lines (verbatim) ---
+error: can't find command `loadfont'.
+[init -> sponge-de] [31mError: stop because parent denied ROM-session: label="window_list", , ram_quota=6K, cap_quota=3[0m
+[init -> release_resize_probe] release-resize-probe: PASS
+Run script execution successful.
+--- tail 20 (verbatim) ---
+[34mWarning: flush page table entries - mapping cache full - PD: init -> drivers -> fb out of CAP[0m
+[init -> report_rom]   window_layout
+[init -> report_rom]   + boundary screen | xpos: 0 | ypos: 0 | width: 1024 | height: 768
+[init -> report_rom]     + window | id: 2 | title: pkg_runtime -> pkg_gui_demo -> Sponge Pkg GUI Demo Sponge Pkg GUI Demo | xpos: 80 | ypos: 380 | width: 290 | height: 180 | focused: yes | maximizer: yes | closer: yes
+[init -> report_rom]       + highlight
+[init -> report_rom]         + top_left | pressed: yes
+[init -> report_rom]     + window | id: 1 | title: sponge-de -> Sponge DE Demo Sponge DE Demo | xpos: 300 | ypos: 40 | width: 640 | height: 480 | maximizer: yes | closer: yes
+[init -> report_rom]   -
+[init -> report_rom] report 'wm -> pointer'
+[init -> report_rom]   pointer | seq_number: 4 | xpos: 339 | ypos: 332
+[init -> report_rom]   -
+[init -> report_rom] report 'layouter -> window_layout'
+[init -> report_rom]   window_layout
+[init -> report_rom]   + boundary screen | xpos: 0 | ypos: 0 | width: 1024 | height: 768
+[init -> report_rom]     + window | id: 2 | title: pkg_runtime -> pkg_gui_demo -> Sponge Pkg GUI Demo Sponge Pkg GUI Demo | xpos: 80 | ypos: 380 | width: 290 | height: 180 | focused: yes | maximizer: yes | closer: yes
+[init -> report_rom]       + highlight
+[init -> report_rom]         + top_left | pressed: yes
+[init -> report_rom]     + window | id: 1 | title: sponge-de -> Sponge DE Demo Sponge DE Demo | xpos:
+Run script execution successful.
+make: ディレクトリ '/home/luke/sponge-os/genode/build/x86_64' から出ます

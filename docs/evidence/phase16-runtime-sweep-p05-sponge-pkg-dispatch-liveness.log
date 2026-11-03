@@ -1,0 +1,30 @@
+P5.3 sweep receipt — p05 / run/sponge-pkg-dispatch-liveness (variant: -)
+Date: 2026-11-04 (Phase 16 runtime overhaul P5.3 full sweep)
+Tree: HEAD b19184958b, genode pin 48a946ba15
+Command: env LD_PRELOAD=/tmp/opencode/libclamp_io_uring.so timeout 900s make -j1 -C /home/luke/sponge-os/genode/build/x86_64 run/sponge-pkg-dispatch-liveness KERNEL=sel4 BOARD=pc
+Exit: 0  Elapsed: 13s  marker1_hit: 1  marker2_hit: 0
+Raw log (session scratch): /tmp/opencode/sweep/p05-sponge-pkg-dispatch-liveness.log
+--- guest/run-tool verdict lines (verbatim) ---
+error: can't find command `loadfont'.
+[init -> dispatch_probe] dispatch-probe: PASSdispatch-liveness: PASS
+--- tail 20 (verbatim) ---
+[init -> sponge_pkgd] sponge_pkgd: cached 2 metadata document(s) at bootstrap
+[init -> sponge_pkgd] sponge_pkgd: persistent store enabled at /store/installed.xml
+[init -> sponge_pkgd] sponge_pkgd: no installed-set store — starting empty
+[init -> sponge_pkgd] sponge_pkgd: probe_request channel enabled
+[init -> sponge_pkgd] sponge_pkgd: bootstrap complete
+[init -> dispatch_probe] dispatch-probe: got list (warm-up)
+[init -> dispatch_probe] dispatch-probe: sent explain hello
+[init -> dispatch_probe] dispatch-probe: got explain hello
+[init -> dispatch_probe] dispatch-probe: sent install hello
+[init -> sponge_pkgd] store-probe: write n=69 thread=pkgd-store
+[init -> sponge_pkgd] store-probe: sync thread=pkgd-store
+[init -> dispatch_probe] dispatch-probe: got install hello
+[init -> dispatch_probe] dispatch-probe: pipeline sent install witness
+[init -> sponge_pkgd] store-probe: write n=91 thread=pkgd-store
+[init -> dispatch_probe] dispatch-probe: pipeline sent list
+[init -> sponge_pkgd] sponge_pkgd: queued list  (1 pending)
+[init -> sponge_pkgd] store-probe: sync thread=pkgd-store
+[init -> dispatch_probe] dispatch-probe: pipeline ok (no query overtaking)
+[init -> dispatch_probe] dispatch-probe: PASSdispatch-liveness: PASS
+make: ディレクトリ '/home/luke/sponge-os/genode/build/x86_64' から出ます

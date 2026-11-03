@@ -1,0 +1,33 @@
+P5.3 sweep receipt — e32 / run/sponge-textedit (variant: -)
+Date: 2026-11-04 (Phase 16 runtime overhaul P5.3 full sweep)
+Tree: HEAD b19184958b, genode pin 48a946ba15
+Command: env LD_PRELOAD=/tmp/opencode/libclamp_io_uring.so timeout 900s make -j1 -C /home/luke/sponge-os/genode/build/x86_64 run/sponge-textedit KERNEL=sel4 BOARD=pc
+Exit: 2  Elapsed: 460s  marker1_hit: 0  marker2_hit: 0
+Raw log (session scratch): /tmp/opencode/sweep/e32-sponge-textedit.log
+--- guest/run-tool verdict lines (verbatim) ---
+error: can't find command `loadfont'.
+[init -> pkg_runtime -> textedit] [31mError: stop because parent denied ROM-session: label="clipboard", , ram_quota=10K, cap_quota=3[0m
+[init -> textedit_probe] [31mError: textedit-probe: FAIL textedit window never rendered into nitpicker[0m
+Error: Test execution timed out
+make: *** [Makefile:446: run/sponge-textedit] エラー 254
+--- tail 20 (verbatim) ---
+[init -> textedit_probe] textedit-probe: capture poll 1350 rendered_frac=0% color_buckets=1
+[init -> textedit_probe] textedit-probe: capture poll 1360 rendered_frac=0% color_buckets=1
+[init -> textedit_probe] textedit-probe: capture poll 1370 rendered_frac=0% color_buckets=1
+[init -> textedit_probe] textedit-probe: capture poll 1380 rendered_frac=0% color_buckets=1
+[init -> textedit_probe] textedit-probe: capture poll 1390 rendered_frac=0% color_buckets=1
+[init -> textedit_probe] textedit-probe: capture poll 1400 rendered_frac=0% color_buckets=1
+[init -> textedit_probe] textedit-probe: capture poll 1410 rendered_frac=0% color_buckets=1
+[init -> textedit_probe] textedit-probe: capture poll 1420 rendered_frac=0% color_buckets=1
+[init -> textedit_probe] textedit-probe: capture poll 1430 rendered_frac=0% color_buckets=1
+[init -> textedit_probe] textedit-probe: capture poll 1440 rendered_frac=0% color_buckets=1
+[init -> textedit_probe] textedit-probe: capture poll 1450 rendered_frac=0% color_buckets=1
+[init -> textedit_probe] textedit-probe: capture poll 1460 rendered_frac=0% color_buckets=1
+[init -> textedit_probe] textedit-probe: capture poll 1470 rendered_frac=0% color_buckets=1
+[init -> textedit_probe] textedit-probe: capture poll 1480 rendered_frac=0% color_buckets=1
+[init -> textedit_probe] textedit-probe: capture poll 1490 rendered_frac=0% color_buckets=1
+[init -> textedit_probe] [31mError: textedit-probe: FAIL textedit window never rendered into nitpicker[0m
+[init] child "textedit_probe" exited with exit value 1
+Error: Test execution timed out
+make: *** [Makefile:446: run/sponge-textedit] エラー 254
+make: ディレクトリ '/home/luke/sponge-os/genode/build/x86_64' から出ます

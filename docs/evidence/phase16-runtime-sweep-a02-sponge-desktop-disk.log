@@ -1,0 +1,31 @@
+P5.3 sweep receipt — a02 / run/sponge-desktop-disk (variant: SPONGE_SUPERVISOR_TEST=contain)
+Date: 2026-11-04 (Phase 16 runtime overhaul P5.3 full sweep)
+Tree: HEAD b19184958b, genode pin 48a946ba15
+Command: env SPONGE_SUPERVISOR_TEST=contain LD_PRELOAD=/tmp/opencode/libclamp_io_uring.so timeout 900s make -j1 -C /home/luke/sponge-os/genode/build/x86_64 run/sponge-desktop-disk KERNEL=sel4 BOARD=pc RUN_OPT=--include power_on/qemu --include log/qemu --include boot_dir/sel4 --include image/disk
+Exit: 0  Elapsed: 101s  marker1_hit: 1  marker2_hit: 1
+Raw log (session scratch): /tmp/opencode/sweep/a02-sponge-desktop-disk.log
+--- guest/run-tool verdict lines (verbatim) ---
+[init -> system -> alpha_probe] alpha-probe: PASS
+sponge-desktop-disk: SUPERVISOR CONTAIN PASS - the persistent fault in pkg_runtime_fault was contained BY NAME across two cycles: one node bumped per publish (target=pkg_runtime_fault bumped=1), sibling and DE construction versions stable, panel shown once, post-wedge DE functional PASS, no console takeover
+Run script execution successful.
+--- tail 20 (verbatim) ---
+[init -> sponge_supervisor] sponge_supervisor: nominal — subtree healthy, no action (20s)
+[init -> sponge_supervisor] sponge_supervisor: FAULT max_skipped=3 exited=0 starting=0 state_seen=1 state_age_ms=250 child=pkg_runtime_fault
+[init -> sponge_supervisor] sponge_supervisor: escalation - fault held for 3000ms before any action (the supervised sandbox has its own containment)
+[init -> sponge_supervisor] sponge_supervisor: FAULT max_skipped=4 exited=0 starting=0 state_seen=1 state_age_ms=1250 child=pkg_runtime_fault
+[init -> sponge_supervisor] sponge_supervisor: published <system> kill=3 sponge-desktop-disk: contain gate ok - the second containment publish
+target=pkg_runtime_fault bumped=1 (18214 bytes)
+[init -> sponge_supervisor] sponge_supervisor: phase=2 (fault survived the escalation window, subtree killed)
+[init -> sponge_supervisor] sponge_supervisor: version-change pkg_runtime_fault 2 -> 3
+<<seL4(CPU 0) [decodeInvocation/643 T0xffffff800f0d6400 "child of: 'child of: 'rootserver''" @8819b]: Attempted to invoke a null cap #680.>>
+<<seL4(CPU 0) [decodeInvocation/643 T0xffffff800f0d6400 "child of: 'child of: 'rootserver''" @8819b]: Attempted to invoke a null cap #680.>>
+[34mWarning: invalid signal-context capability[0m
+[init -> system -> pkg_runtime_fault] ep_wedge: incarnation alive — wedging insponge-desktop-disk: contain gate ok - the victim revived again (3rd incarnation)
+ 3000 ms
+[init -> sponge_supervisor] sponge_supervisor: contained - child=pkg_runtime_faultsponge-desktop-disk: contain gate ok - the victim contained again
+
+sponge-desktop-disk: SUPERVISOR CONTAIN PASS - the persistent fault in pkg_runtime_fault was contained BY NAME across two cycles: one node bumped per publish (target=pkg_runtime_fault bumped=1), sibling and DE construction versions stable, panel shown once, post-wedge DE functional PASS, no console takeover
+
+
+Run script execution successful.
+make: ディレクトリ '/home/luke/sponge-os/genode/build/x86_64' から出ます

@@ -1,0 +1,30 @@
+P5.3 sweep receipt — p01 / run/sponge-config-authority (variant: -)
+Date: 2026-11-04 (Phase 16 runtime overhaul P5.3 full sweep)
+Tree: HEAD b19184958b, genode pin 48a946ba15
+Command: env LD_PRELOAD=/tmp/opencode/libclamp_io_uring.so timeout 900s make -j1 -C /home/luke/sponge-os/genode/build/x86_64 run/sponge-config-authority KERNEL=sel4 BOARD=pc
+Exit: 0  Elapsed: 9s  marker1_hit: 1  marker2_hit: 0
+Raw log (session scratch): /tmp/opencode/sweep/p01-sponge-config-authority.log
+--- guest/run-tool verdict lines (verbatim) ---
+error: can't find command `loadfont'.
+[init -> report_rom] report 'sponge_pkgd -> driver_runtime'config-authority-probe: PASS
+--- tail 20 (verbatim) ---
+[init -> report_rom]   state
+[init -> report_rom]   + ram  | quota: 24941804 | used: 900K | avail: 24020204
+[init -> report_rom]   + caps | quota: 117      | used: 45   | avail: 72
+[init -> report_rom]   + child hello | binary: hello
+[init -> report_rom]     + ram | assigned: 8M | quota: 8201729 | used: 500K | avail: 7689729
+[init -> report_rom]   -
+[init -> report_rom] report 'pkg_runtime -> state'
+[init -> report_rom]   state
+[init -> report_rom]   + ram  | quota: 24941804 | used: 900K | avail: 24020204
+[init -> report_rom]   + caps | quota: 117      | used: 45   | avail: 72
+[init -> report_rom]   + child hello | binary: hello
+[init -> report_rom]     + ram | assigned: 8M | quota: 8201729 | used: 716K | avail: 7468545
+[init -> report_rom]   -
+[init -> pkg_runtime -> hello] hello from package: running
+[init -> pkg_lifecycle_probe] lifecycle-probe: [1] install hello -> ok
+[init -> pkg_lifecycle_probe] lifecycle-probe: [2] install usb_net
+[init -> report_rom] report 'pkg_lifecycle_probe -> request'
+[init -> report_rom]   <request op="install" pkg="usb_net" seq="2"/>
+[init -> report_rom] report 'sponge_pkgd -> driver_runtime'config-authority-probe: PASS
+make: ディレクトリ '/home/luke/sponge-os/genode/build/x86_64' から出ます

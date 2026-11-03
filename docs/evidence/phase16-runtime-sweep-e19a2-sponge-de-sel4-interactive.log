@@ -1,0 +1,33 @@
+P5.3 sweep receipt — e19a2 / run/sponge-de-sel4-interactive (variant: -)
+Date: 2026-11-04 (Phase 16 runtime overhaul P5.3 full sweep)
+Tree: HEAD b19184958b, genode pin 48a946ba15
+Command: env LD_PRELOAD=/tmp/opencode/libclamp_io_uring.so timeout 900s make -j1 -C /home/luke/sponge-os/genode/build/x86_64 run/sponge-de-sel4-interactive KERNEL=sel4 BOARD=pc
+Exit: 0  Elapsed: 67s  marker1_hit: 1  marker2_hit: 1
+Raw log (session scratch): /tmp/opencode/sweep/e19a2-sponge-de-sel4-interactive.log
+--- guest/run-tool verdict lines (verbatim) ---
+error: can't find command `loadfont'.
+error: can't find command `loadfont'.
+error: can't find command `loadfont'.
+[init -> sponge_de_probe] sponge-de-probe: PASS
+Run script execution successful.
+--- tail 20 (verbatim) ---
+[init -> sponge-de] sponge-de: launched 'pkg_gui_demo'
+[init -> pkg_runtime -> pkg_gui_demo] [34mWarning: Libc RNG not configured[0m
+[init -> pkg_runtime -> pkg_gui_demo] [34mWarning: ignoring unsupported RTLD_GLOBAL in dlopen()[0m
+[init -> pkg_runtime -> pkg_gui_demo] libEGL warning: MESA-LOADER: failed to retrieve device information
+[init -> pkg_runtime -> pkg_gui_demo] 
+[init -> pkg_runtime -> pkg_gui_demo] libEGL warning: failed to get driver name for fd 0
+[init -> pkg_runtime -> pkg_gui_demo] 
+[init -> pkg_runtime -> pkg_gui_demo] pkg_gui_demo: window shown (color #00000000000000ff00000000)
+[init -> pkg_runtime -> pkg_gui_demo] qt.core.qobject.connect: QObject::connect: No such slot QGenodePlatformWindow::_frame_sync()
+[init -> pkg_runtime -> pkg_gui_demo] [34mWarning: attempt to re-acquire file descriptor for /pipe/0/in (fcntl)[0m
+[init -> pkg_runtime -> pkg_gui_demo] QGenodePlatformWindow: frame coalesced deferred= 1 submitted= 1 coalesced= 0 stale= 0
+[34mWarning: flush page table entries - mapping cache full - PD: init -> drivers -> fb out of CAP[0m
+[init -> sponge_de_probe] sponge-de-probe: pkg_gui_demo green pixel detected
+[init -> sponge_de_probe] sponge-de-probe: phase launch PASS
+[init -> sponge_de_probe] sponge-de-probe: PASS
+[init] child "sponge_de_probe" exited with exit value 0
+[34mWarning: flush page table entries - mapping cache full - PD: init -> drivers -> fb out of CAP[0m
+
+Run script execution successful.
+make: ディレクトリ '/home/luke/sponge-os/genode/build/x86_64' から出ます

@@ -1,0 +1,31 @@
+P5.3 sweep receipt — e29 / run/sponge-bake-reset (variant: -)
+Date: 2026-11-04 (Phase 16 runtime overhaul P5.3 full sweep)
+Tree: HEAD b19184958b, genode pin 48a946ba15
+Command: env LD_PRELOAD=/tmp/opencode/libclamp_io_uring.so timeout 600s make -j1 -C /home/luke/sponge-os/genode/build/x86_64 run/sponge-bake-reset KERNEL=sel4 BOARD=pc
+Exit: 0  Elapsed: 9s  marker1_hit: 1  marker2_hit: 1
+Raw log (session scratch): /tmp/opencode/sweep/e29-sponge-bake-reset.log
+--- guest/run-tool verdict lines (verbatim) ---
+error: can't find command `loadfont'.
+[init -> bake_probe] bake-reset-probe: PASSsponge-bake-reset: PASS
+Run script execution successful.
+--- tail 20 (verbatim) ---
+[init -> timer] timer0 GSI options 0xff0104, supports periodic
+[init -> timer] timer1 GSI options 0xff0104, supports periodic
+[init -> timer] timer2 GSI options 0xff0104, supports periodic
+[init -> timer] time wraps after 5849 years
+[init -> timer] irqs=off legacy=off
+[init -> timer] Using timer 2 -> using GSI 2 edge triggered
+[init -> bake_vfs] [34mWarning: ram donation is 4246725 but used RAM is 4164KB, 'rom_bake -> /'[0m
+[init -> bake_vfs] [34mWarning: cap donation is 11 but used caps is 18, 'rom_bake -> /'[0m
+[init -> sponge_configd] sponge_configd: ready
+[init -> sponge_configd] sponge_configd: persistent store enabled at /store.xml
+[init -> sponge_configd] sponge_configd: no store — starting with defaults
+[init -> bake_probe] bake-probe: mode=
+[init -> sponge_configd] sponge_configd: baked defaults available
+[init -> sponge_configd] sponge_configd: applied 5 baked default(s) from profile 'minimal' @ v1
+[init -> sponge_configd] sponge_configd: applied 5 baked default(s) from profile 'minimal' @ v1
+[init -> bake_probe] bake-reset-probe: restored panel.height=28; preserved panel.position=top
+[init -> bake_probe] bake-reset-probe: PASSsponge-bake-reset: PASS
+
+Run script execution successful.
+make: ディレクトリ '/home/luke/sponge-os/genode/build/x86_64' から出ます

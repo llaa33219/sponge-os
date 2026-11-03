@@ -1,0 +1,33 @@
+P5.3 sweep receipt — e23 / run/sponge-clipboard-qtsettext (variant: -)
+Date: 2026-11-04 (Phase 16 runtime overhaul P5.3 full sweep)
+Tree: HEAD b19184958b, genode pin 48a946ba15
+Command: env LD_PRELOAD=/tmp/opencode/libclamp_io_uring.so timeout 600s make -j1 -C /home/luke/sponge-os/genode/build/x86_64 run/sponge-clipboard-qtsettext KERNEL=sel4 BOARD=pc
+Exit: 0  Elapsed: 57s  marker1_hit: 1  marker2_hit: 1
+Raw log (session scratch): /tmp/opencode/sweep/e23-sponge-clipboard-qtsettext.log
+--- guest/run-tool verdict lines (verbatim) ---
+error: can't find command `loadfont'.
+[init -> drivers -> platform] [31mError: stop because parent denied ROM-session: label="devices", , ram_quota=10K, cap_quota=3[0m
+[init -> sponge_pkgd] [31mError: stop because parent denied ROM-session: label="pkg_index.xml", , ram_quota=6K, cap_quota=3[0m
+[init -> clipboard_probe] clipboard-probe: PASS (
+Run script execution successful.
+--- tail 20 (verbatim) ---
+[init -> clipboard_probe] clipboard-probe: starting
+[init -> clipboard_probe] clipboard-probe: qt-watch mode (pure-read; waiting for 'sponge qt-settext sentinel phase 14')
+[init -> clipboard_probe] clipboard-probe: [qt-watch] pure read on the bus for the Qt-side writer's content; no priming
+[init -> clipboard_probe] clipboard-probe: [qt-watch] wait for sender's write to propagate
+[init -> clipboard_probe] clipboard-probe: clipboard ROM invalid at poll 0
+[init -> clipboard_qtsettext] [34mWarning: attempt to re-acquire file descriptor for /pipe/0/in (fcntl)[0m
+[init -> clipboard_qtsettext] [clipboard_qtsettext: BEFORE-setText ] QGenodeClipboard bridge ENABLED (<config clipboard="yes"/> attribute honored)
+[init -> clipboard] report 'clipboard'
+[init -> clipboard]   clipboard
+[init -> clipboard]   : sponge qt-settext sentinel phase 14
+[init -> clipboard]   -
+[init -> clipboard_qtsettext] [clipboard_qtsettext: AFTER-setText ] QGenodeClipboard bridge ENABLED (<config clipboard="yes"/> attribute honored)
+[init -> clipboard_qtsettext] clipboard_qtsettext: setText() returned, keeping Reporter session alive 30000 ms so the probe can read the bus before our exit cleans up the writer (the upstream server's read_content() returns 0 the moment the writer unregisters; 
+[init -> clipboard_qtsettext] the W8 workflow scenario sets a long value via <config keep_alive_ms="N"/>)
+[init -> clipboard_probe] clipboard-probe: qt-watch sentinel present in clipboard ROM (4096 bytes, poll 4)
+[init -> clipboard_probe] clipboard-probe: PASS (
+qtsettext: clipboard Qt -> server write harness PASSED
+
+Run script execution successful.
+make: ディレクトリ '/home/luke/sponge-os/genode/build/x86_64' から出ます

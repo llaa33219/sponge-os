@@ -1,0 +1,30 @@
+P5.3 sweep receipt — e17 / run/sponge-minimal (variant: -)
+Date: 2026-11-04 (Phase 16 runtime overhaul P5.3 full sweep)
+Tree: HEAD b19184958b, genode pin 48a946ba15
+Command: env LD_PRELOAD=/tmp/opencode/libclamp_io_uring.so timeout 360s make -j1 -C /home/luke/sponge-os/genode/build/x86_64 run/sponge-minimal KERNEL=sel4 BOARD=pc
+Exit: 0  Elapsed: 7s  marker1_hit: 1  marker2_hit: 0
+Raw log (session scratch): /tmp/opencode/sweep/e17-sponge-minimal.log
+--- guest/run-tool verdict lines (verbatim) ---
+error: can't find command `loadfont'.
+Run script execution successful.
+--- tail 20 (verbatim) ---
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+Physical memory per PD at most: 512M
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+boot module 'config' (241 bytes)
+boot module 'init' (525864 bytes)
+boot module 'init.hsd' (4237 bytes)
+boot module 'init.xsd' (8118 bytes)
+boot module 'ld.lib.so' (1125440 bytes)
+boot module 'vct' (388544 bytes)
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+Genode 26.08-38-g48a946ba15
+575 MiB RAM and 523288 caps assigned to init
+session request for service "Timer" (label="init -> ") denied
+[init] [34mWarning: no Timer service (session request failed: 0) - the deadline of the pending session operations is unbounded[0m
+[init -> vct] vct (0.2.0 / Archaeocyte) starting
+[init -> vct] vct 0.2.0
+[init -> vct] Sponge OS codename: Archaeocyte
+Run script execution successful.
+make: ディレクトリ '/home/luke/sponge-os/genode/build/x86_64' から出ます

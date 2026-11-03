@@ -1,0 +1,31 @@
+P5.3 sweep receipt — e14 / run/sponge-de-multipanel-idspace (variant: -)
+Date: 2026-11-04 (Phase 16 runtime overhaul P5.3 full sweep)
+Tree: HEAD b19184958b, genode pin 48a946ba15
+Command: env LD_PRELOAD=/tmp/opencode/libclamp_io_uring.so timeout 420s make -j1 -C /home/luke/sponge-os/genode/build/x86_64 run/sponge-de-multipanel-idspace KERNEL=sel4 BOARD=pc
+Exit: 0  Elapsed: 7s  marker1_hit: 1  marker2_hit: 1
+Raw log (session scratch): /tmp/opencode/sweep/e14-sponge-de-multipanel-idspace.log
+--- guest/run-tool verdict lines (verbatim) ---
+error: can't find command `loadfont'.
+[init -> configd_registry_probe] pattern-keys-probe: PASS
+Run script execution successful.
+--- tail 20 (verbatim) ---
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+Genode 26.08-38-g48a946ba15
+574 MiB RAM and 523288 caps assigned to init
+session request for service "Timer" (label="init -> ") denied
+[init] [34mWarning: no Timer service (session request failed: 0) - the deadline of the pending session operations is unbounded[0m
+[init -> timer] timers=3, clock 10000000fs , 64bit counter , legacy routing support vendor=0x8086
+[init -> timer] timer0 GSI options 0xff0104, supports periodic
+[init -> timer] timer1 GSI options 0xff0104, supports periodic
+[init -> timer] timer2 GSI options 0xff0104, supports periodic
+[init -> timer] time wraps after 5849 years
+[init -> timer] irqs=off legacy=off
+[init -> timer] Using timer 2 -> using GSI 2 edge triggered
+[init -> sponge_configd] sponge_configd: ready
+[init -> configd_registry_probe] pattern-keys-probe: panel.ids=alpha,beta broadcast ok
+[init -> configd_registry_probe] pattern-keys-probe: panel.alpha.height=40 broadcast ok
+[init -> configd_registry_probe] pattern-keys-probe: panel.bogus!!id.height charset error ok
+[init -> configd_registry_probe] pattern-keys-probe: PASS
+Run script execution successful.
+make: ディレクトリ '/home/luke/sponge-os/genode/build/x86_64' から出ます

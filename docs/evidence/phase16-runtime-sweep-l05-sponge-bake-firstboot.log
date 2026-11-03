@@ -1,0 +1,32 @@
+P5.3 sweep receipt — l05 / run/sponge-bake-firstboot (variant: -)
+Date: 2026-11-04 (Phase 16 runtime overhaul P5.3 full sweep)
+Tree: HEAD b19184958b, genode pin 48a946ba15
+Command: env LD_PRELOAD=/tmp/opencode/libclamp_io_uring.so timeout 300s make -j1 -C /home/luke/sponge-os/genode/build/x86_64 run/sponge-bake-firstboot KERNEL=linux BOARD=linux
+Exit: 0  Elapsed: 20s  marker1_hit: 0  marker2_hit: 1
+Raw log (session scratch): /tmp/opencode/sweep/l05-sponge-bake-firstboot.log
+--- guest/run-tool verdict lines (verbatim) ---
+[init -> bake_probe] bake-firstboot-probe: PASS boot1
+[init -> bake_probe] bake-firstboot-probe: PASS boot2
+sponge-bake-firstboot: PASS
+Run script execution successful.
+--- tail 20 (verbatim) ---
+[init -> bake_probe] bake-firstboot-probe: boot1 seeded profile=minimal theme=default; override panel.height=64
+[init -> bake_probe] bake-firstboot-probe: PASS boot1
+sponge-bake-firstboot: boot1 store has bake.applied=yes panel.height=64
+--- bake second boot: restored override must suppress re-seed ---
+spawn ./core
+Genode 26.08-38-g48a946ba15
+17592186044415 MiB RAM and 19000 caps assigned to init
+session request for service "Timer" (label="init -> ") denied
+[init] [34mWarning: no Timer service (session request failed: 0) - the deadline of the pending session operations is unbounded[0m
+[init -> sponge_configd] sponge_configd: ready
+[init -> bake_probe] bake-probe: mode=firstboot-read
+[init -> sponge_configd] sponge_configd: persistent store enabled at /store.xml
+[init -> sponge_configd] sponge_configd: restored 13 key(s) from store
+[init -> sponge_configd] sponge_configd: baked defaults available
+[init -> bake_probe] bake-firstboot-probe: boot2 preserved panel.height=64 bake.applied=yes
+[init -> bake_probe] bake-firstboot-probe: PASS boot2
+sponge-bake-firstboot: PASS
+
+Run script execution successful.
+make: ディレクトリ '/home/luke/sponge-os/genode/build/x86_64' から出ます

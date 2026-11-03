@@ -1,0 +1,35 @@
+P5.3 sweep receipt — p06 / run/sponge-provider-stall (variant: -)
+Date: 2026-11-04 (Phase 16 runtime overhaul P5.3 full sweep)
+Tree: HEAD b19184958b, genode pin 48a946ba15
+Command: env LD_PRELOAD=/tmp/opencode/libclamp_io_uring.so timeout 900s make -j1 -C /home/luke/sponge-os/genode/build/x86_64 run/sponge-provider-stall KERNEL=sel4 BOARD=pc RUN_OPT=--include power_on/qemu --include log/qemu --include boot_dir/sel4 --include image/disk
+Exit: 0  Elapsed: 28s  marker1_hit: 1  marker2_hit: 1
+Raw log (session scratch): /tmp/opencode/sweep/p06-sponge-provider-stall.log
+--- guest/run-tool verdict lines (verbatim) ---
+[init -> partition_check] partition-check: PASS (Number: 3)
+[init -> provider_isolation_probe] provider-isolation-probe: PASS path=sys-rom
+[init -> provider_isolation_probe] provider-isolation-probe: PASS path=pkgd-store
+[init -> provider_isolation_probe] provider-isolation-probe: PASS
+provider-stall-control: PASS — injection observed, log consumer  degraded as expected, container alive, media healthy (software provider  stall — NOT a physical media/USB failure)
+provider-stall: PASS - the log-path stall stayed on its own  provider path (the vfs_pkg/vfs_log split holds): system ROM and the  package store kept working while the log sink degraded
+Run script execution successful.
+--- tail 20 (verbatim) ---
+[init -> bystander] bystander: alive t=1000 ms
+[init -> provider_isolation_probe] provider-isolation-probe: PASS path=sys-rom
+[init -> provider_isolation_probe] provider-isolation-probe: PASS path=pkgd-store
+[init -> provider_isolation_probe] provider-isolation-probe: PASS
+[init -> provider_isolation_probe] provider-isolation-probe: DONE
+[init] child "provider_isolation_probe" exited with exit value 0
+[init -> bystander] bystander: alive t=2000 ms
+[init -> bystander] bystander: alive t=3000 ms
+
+provider-stall-control: PASS — injection observed, log consumer  degraded as expected, container alive, media healthy (software provider  stall — NOT a physical media/USB failure)
+
+provider-stall: path=sys-rom    PASS  (rom_sys served from the healthy disk during the stall)
+provider-stall: path=pkgd-store PASS  (store round-trip + media read-back)
+provider-stall: path=log-sink   DEGRADED (expected — the stall  stays on the log path, sponge_logdisk never reached its File_system)
+
+provider-stall: PASS - the log-path stall stayed on its own  provider path (the vfs_pkg/vfs_log split holds): system ROM and the  package store kept working while the log sink degraded
+
+
+Run script execution successful.
+make: ディレクトリ '/home/luke/sponge-os/genode/build/x86_64' から出ます

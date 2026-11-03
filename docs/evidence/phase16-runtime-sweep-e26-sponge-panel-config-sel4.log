@@ -1,0 +1,30 @@
+P5.3 sweep receipt — e26 / run/sponge-panel-config-sel4 (variant: -)
+Date: 2026-11-04 (Phase 16 runtime overhaul P5.3 full sweep)
+Tree: HEAD b19184958b, genode pin 48a946ba15
+Command: env LD_PRELOAD=/tmp/opencode/libclamp_io_uring.so timeout 900s make -j1 -C /home/luke/sponge-os/genode/build/x86_64 run/sponge-panel-config-sel4 KERNEL=sel4 BOARD=pc
+Exit: 0  Elapsed: 41s  marker1_hit: 1  marker2_hit: 1
+Raw log (session scratch): /tmp/opencode/sweep/e26-sponge-panel-config-sel4.log
+--- guest/run-tool verdict lines (verbatim) ---
+error: can't find command `loadfont'.
+Run script execution successful.
+--- tail 20 (verbatim) ---
+[init -> sponge_de_probe] sponge-de-probe: panel-config P3 PASS (panel.visible_widgets=launcher; clock hidden)
+[init -> sponge-de] sponge-de: config applied (height=28 visible=clock position=bottom clock=HH:mm sort=alpha bg.color=#1e1e2e bg.image=/system/background/default.png panel.ids= per_id=0)
+[init -> sponge_de_probe] sponge-de-probe: P4 visible_widgets broadcast contains panel.visible_widgets=clock
+[init -> sponge_de_probe] sponge-de-probe: panel-config P4 toggle fraction poll 0 v=306 target=20
+[init -> sponge_de_probe] sponge-de-probe: panel-config P4 PASS (panel.visible_widgets=clock; toggle hidden)
+[init -> sponge-de] sponge-de: config applied (height=28 visible=clock,launcher position=bottom clock=HH:mm sort=alpha bg.color=#1e1e2e bg.image=/system/background/default.png panel.ids= per_id=0)
+[init -> sponge_de_probe] sponge-de-probe: P5 visible_widgets broadcast contains panel.visible_widgets=clock,launcher
+[init -> sponge_de_probe] sponge-de-probe: panel-config P5 toggle fraction poll 0 v=0 target=200
+[init -> sponge_de_probe] sponge-de-probe: panel-config P5 clock fraction poll 0 v=2 target=1
+[init -> sponge_de_probe] sponge-de-probe: panel-config P5 PASS (both visible again)
+[init -> sponge-de] sponge-de: config applied (height=28 visible=clock,launcher position=bottom clock=HH:mm:ss sort=alpha bg.color=#1e1e2e bg.image=/system/background/default.png panel.ids= per_id=0)
+[init -> sponge_de_probe] sponge-de-probe: P6 clock.format broadcast contains clock.format=HH:mm:ss
+[init -> sponge_de_probe] sponge-de-probe: panel-config P6 clock-glyph poll 0 cols=10 target=9 pre=7
+[init -> sponge_de_probe] sponge-de-probe: panel-config P6 PASS (clock.format HH:mm -> HH:mm:ss; glyphs grew)
+[init -> sponge_de_probe] sponge-de-probe: P7 visible_widgets unchanged broadcast contains panel.visible_widgets=clock,launcher
+[init -> sponge_de_probe] sponge-de-probe: panel-config P7 PASS (validator rejected empty list; broadcast unchanged)
+[init -> sponge_de_probe] sponge-de-probe: phase panel-config PASS
+[i
+Run script execution successful.
+make: ディレクトリ '/home/luke/sponge-os/genode/build/x86_64' から出ます

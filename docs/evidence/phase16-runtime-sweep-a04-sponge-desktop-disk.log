@@ -1,0 +1,32 @@
+P5.3 sweep receipt — a04 / run/sponge-desktop-disk (variant: SPONGE_APP_ISOLATION=on)
+Date: 2026-11-04 (Phase 16 runtime overhaul P5.3 full sweep)
+Tree: HEAD b19184958b, genode pin 48a946ba15
+Command: env SPONGE_APP_ISOLATION=on LD_PRELOAD=/tmp/opencode/libclamp_io_uring.so timeout 1500s make -j1 -C /home/luke/sponge-os/genode/build/x86_64 run/sponge-desktop-disk KERNEL=sel4 BOARD=pc RUN_OPT=--include power_on/qemu --include log/qemu --include boot_dir/sel4 --include image/disk
+Exit: 0  Elapsed: 252s  marker1_hit: 1  marker2_hit: 1
+Raw log (session scratch): /tmp/opencode/sweep/a04-sponge-desktop-disk.log
+--- guest/run-tool verdict lines (verbatim) ---
+[init -> rom_pkg] [31mError: stop because parent denied File_system-session: label="/", writeable=0, tx_buf_size=4194304, ram_quota=4160K, cap_quota=12[0m
+[init -> system -> alpha_probe] alpha-probe: PASS
+[init -> system -> app_isolation_probe] app-isolation-probe: PASSsponge-desktop-disk: APP ISOLATION PASS — closer-kill of  textedit left the DE input-live (QMP launcher toggle -> sponge-de press  change) and the sibling calculator typed-input-live (real QMP digits ->  result-band delta), the victim left window_list, the real launcher  relaunch answered ok + first paint + typed delta; the ep_wedge package  wedged its entrypoint from a real launcher entry and the DE + siblings  (textedit, calculator) stayed functional with windows retained, class  state live and no construction-version churn
+Run script execution successful.
+--- tail 20 (verbatim) ---
+qmp:   release
+
+qmp: qmp_exec_target waiting for marker (timeout=120s)
+[init -> system -> app_isolation_probe] QMP-TARGET type 45
+
+qmp: dispatching type '45'
+[init -> system -> app_isolation_probe] app-isolation-probe: typed-delta poll 0 changed=0 baseline=0
+[init -> system -> app_isolation_probe] app-isolation-probe: diag wedge-sibling-type bbox=(302,200 100x8) changed=41
+[init -> system -> app_isolation_probe] app-isolation-probe: wedge survivors (delta=41 baseline=0 windows-held=2 typed="45")
+[init -> system -> app_isolation_probe] app-isolation-probe: launch-result poll 0 op=launch pkg=textedit status=ok
+[init -> system -> app_isolation_probe] app-isolation-probe: wedge launch-result overwritten (see the run-script receipt)
+[init -> system -> app_isolation_probe] app-isolation-probe: diag st_simple t1 child textedit bin=bin/textedit
+[init -> system -> app_isolation_probe] app-isolation-probe: diag st_simple t1 child ep_wedge bin=bin/ep_wedge
+[init -> system -> app_isolation_probe] app-isolation-probe: diag st_simple t1 child calculator bin=bin/calculatorform
+[init -> system -> app_isolation_probe] app-isolation-probe: diag st_simple t1 child hello bin=bin/hello
+[init -> system -> app_isolation_probe] app-isolation-probe: wedge state ok (children=1 -> 4 live=4 wedge-child=live siblings-live=2 launch-result=ok)
+[init -> system -> app_isolation_probe] app-isolation-probe: PASSsponge-desktop-disk: APP ISOLATION PASS — closer-kill of  textedit left the DE input-live (QMP launcher toggle -> sponge-de press  change) and the sibling calculator typed-input-live (real QMP digits ->  result-band delta), the victim left window_list, the real launcher  relaunch answered ok + first paint + typed delta; the ep_wedge package  wedged its entrypoint from a real launcher entry and the DE + siblings  (textedit, calculator) stayed functional with windows retained, class  state live and no construction-version churn
+
+Run script execution successful.
+make: ディレクトリ '/home/luke/sponge-os/genode/build/x86_64' から出ます

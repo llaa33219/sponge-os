@@ -1,0 +1,32 @@
+P5.3 sweep receipt — e36 / run/sponge-hw-matrix (variant: -)
+Date: 2026-11-04 (Phase 16 runtime overhaul P5.3 full sweep)
+Tree: HEAD b19184958b, genode pin 48a946ba15
+Command: env LD_PRELOAD=/tmp/opencode/libclamp_io_uring.so timeout 900s make -j1 -C /home/luke/sponge-os/genode/build/x86_64 run/sponge-hw-matrix KERNEL=sel4 BOARD=pc
+Exit: 0  Elapsed: 16s  marker1_hit: 1  marker2_hit: 1
+Raw log (session scratch): /tmp/opencode/sweep/e36-sponge-hw-matrix.log
+--- guest/run-tool verdict lines (verbatim) ---
+error: can't find command `loadfont'.
+[init -> drivers -> usb_hid] Disconnected device: input0sponge-hw-matrix: PASS (variant=baseline cpu=Skylake-Client smp=1 mem=2G machine=q35 vga=std usb=xhci input=tablet iommu=off extra='')
+Run script execution successful.
+Run script execution successful.
+--- tail 20 (verbatim) ---
+[init -> drivers -> usb_hid] clocksource: dde_counter: mask: 0xffffffffffffff max_cycles: 0x1d854df40, max_idle_ns: 3526361616960 ns
+[init -> drivers -> usb_hid] clocksource: jiffies: mask: 0xffffffff max_cycles: 0xffffffff, max_idle_ns: 7645041785100000 ns
+[init -> drivers -> usb_hid] usbcore: registered new interface driver usbfs
+[init -> drivers -> usb_hid] usbcore: registered new interface driver hub
+[init -> drivers -> usb_hid] usbcore: registered new device driver usb
+[init -> drivers -> usb_hid] clocksource: Switched to clocksource dde_counter
+[init -> drivers -> usb_hid] usbcore: registered new interface driver usbhid
+[init -> drivers -> usb_hid] hid_core: USB HID core driver
+[init -> drivers -> usb_hid] sched_clock: Marking stable (0, 520603000)->(523736000, -3133000)
+[init -> drivers -> usb] usb 1-1: new high-speed USB device number 2 using xhci_hcd
+[init -> drivers -> usb_hid] input: QEMU QEMU USB Tablet as /devices/usb-1-2/0-0:1.0/0003:0627:0001.0001/input/input0
+[init -> drivers -> usb_hid] Connected device: input0 (QEMU QEMU USB Tablet at usb-usbbus-0/input0) POINTER
+[init -> drivers -> usb_hid] hid-generic 0003:0627:0001.0001: input: USB HID v0.01 Mouse [QEMU QEMU USB Tablet] on usb-usbbus-0/input0
+[init -> drivers -> usb] usb 1-1: USB disconnect, device number 2
+[init -> drivers -> usb_hid] usb usb-1-2: USB disconnect, device number 1
+[init -> drivers -> usb_hid] Disconnected device: input0sponge-hw-matrix: PASS (variant=baseline cpu=Skylake-Client smp=1 mem=2G machine=q35 vga=std usb=xhci input=tablet iommu=off extra='')
+Run script execution successful.
+
+Run script execution successful.
+make: ディレクトリ '/home/luke/sponge-os/genode/build/x86_64' から出ます

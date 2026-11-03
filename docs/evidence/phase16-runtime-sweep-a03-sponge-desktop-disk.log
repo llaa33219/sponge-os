@@ -1,0 +1,33 @@
+P5.3 sweep receipt — a03 / run/sponge-desktop-disk (variant: SPONGE_GROUPED_UI=on)
+Date: 2026-11-04 (Phase 16 runtime overhaul P5.3 full sweep)
+Tree: HEAD b19184958b, genode pin 48a946ba15
+Command: env SPONGE_GROUPED_UI=on LD_PRELOAD=/tmp/opencode/libclamp_io_uring.so timeout 1500s make -j1 -C /home/luke/sponge-os/genode/build/x86_64 run/sponge-desktop-disk KERNEL=sel4 BOARD=pc RUN_OPT=--include power_on/qemu --include log/qemu --include boot_dir/sel4 --include image/disk
+Exit: 0  Elapsed: 291s  marker1_hit: 1  marker2_hit: 1
+Raw log (session scratch): /tmp/opencode/sweep/a03-sponge-desktop-disk.log
+--- guest/run-tool verdict lines (verbatim) ---
+[init -> system -> alpha_probe] alpha-probe: PASS
+[init -> system -> pkg_runtime_browser -> falkon] Fontconfig error: Cannot load default config file: No such file: (null)
+[init -> system -> pkg_runtime_browser -> falkon] Fontconfig error: No writable cache directories
+[init -> system -> grouped_ui_probe] grouped-ui-probe: PASSsponge-desktop-disk: GROUPED UI PASS — real launcher input reached every built-in desktop package (hello entry+already-running, debug entry+capture+ Mark click, textedit/terminal/falkon first paint + typed input, falkon+debug pkgd-remove teardowns, files double-click navigation, pdf_view page-down/scroll, calculator digits/spin result) and the five-window concurrent set (textedit, terminal, files, pdf_view, calculator) held while the last typed delta landed
+Run script execution successful.
+--- tail 20 (verbatim) ---
+[init -> system -> grouped_ui_probe] QMP-TARGET tablet 306 208
+
+qmp: dispatching tablet at guest (306,208) via usb-tablet abs + HMP mouse_button
+
+qmp: qmp_exec_target waiting for marker (timeout=120s)
+[init -> system -> grouped_ui_probe] grouped-ui-probe: focus poll 0 id=2 want=2
+[init -> system -> pkg_runtime_simple -> textedit] QGenodePlatformWindow: frame coalesced deferred= 224 submitted= 215 coalesced= 214 stale= 0
+[init -> sponge_supervisor] sponge_supervisor: nominal — subtree healthy, no action (210s)
+[init -> system -> grouped_ui_probe] grouped-ui-probe: concurrent click_changed=690
+[init -> system -> grouped_ui_probe] QMP-TARGET type sponge
+
+qmp: dispatching type 'sponge'
+[init -> system -> grouped_ui_probe] grouped-ui-probe: typed-delta poll 0 changed=0 baseline=0
+[init -> system -> grouped_ui_probe] grouped-ui-probe: concurrent typed delta (changed=40 baseline=0)
+[init -> system -> grouped_ui_probe] grouped-ui-probe: concurrent siblings held n=5
+[init -> system -> grouped_ui_probe] grouped-ui-probe: concurrent windows n=5
+[init -> system -> grouped_ui_probe] grouped-ui-probe: PASSsponge-desktop-disk: GROUPED UI PASS — real launcher input reached every built-in desktop package (hello entry+already-running, debug entry+capture+ Mark click, textedit/terminal/falkon first paint + typed input, falkon+debug pkgd-remove teardowns, files double-click navigation, pdf_view page-down/scroll, calculator digits/spin result) and the five-window concurrent set (textedit, terminal, files, pdf_view, calculator) held while the last typed delta landed
+
+Run script execution successful.
+make: ディレクトリ '/home/luke/sponge-os/genode/build/x86_64' から出ます

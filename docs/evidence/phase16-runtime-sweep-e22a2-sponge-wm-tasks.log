@@ -1,0 +1,32 @@
+P5.3 sweep receipt — e22a2 / run/sponge-wm-tasks (variant: -)
+Date: 2026-11-04 (Phase 16 runtime overhaul P5.3 full sweep)
+Tree: HEAD b19184958b, genode pin 48a946ba15
+Command: env LD_PRELOAD=/tmp/opencode/libclamp_io_uring.so timeout 900s make -j1 -C /home/luke/sponge-os/genode/build/x86_64 run/sponge-wm-tasks KERNEL=sel4 BOARD=pc
+Exit: 2  Elapsed: 341s  marker1_hit: 0  marker2_hit: 0
+Raw log (session scratch): /tmp/opencode/sweep/e22a2-sponge-wm-tasks.log
+--- guest/run-tool verdict lines (verbatim) ---
+error: can't find command `loadfont'.
+[init -> wm_tasks_probe] [31mError: wm-tasks-probe: FAIL minimize transition: pkg_gui_demo did not reach off-screen position within 60s[0m
+Error: Test execution timed out
+make: *** [Makefile:446: run/sponge-wm-tasks] エラー 254
+--- tail 20 (verbatim) ---
+[34mWarning: flush page table entries - mapping cache full - PD: init -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> drivers -> fb out of CAP[0m
+[init -> report_rom] report 'pkg_runtime -> state'
+[init -> report_rom]   state
+[init -> report_rom]   + ram  | quota: 201133881 | used: 936K | avail: 200175417
+[init -> report_rom]   + caps | quota: 479       | used: 49   | avail: 430
+[init -> report_rom]   + child pkg_gui_demo | binary: pkg_gui_demo
+[init -> report_rom]     + ram | assigned: 64M | quota: 66134445 | used: 9344K | avail: 56566189
+[init -> report_rom]   -
+[34mWarning: flush page table entries - mapping cache full - PD: init -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> drivers -> fb out of CAP[0m
+[init -> drivers -> usb_hid] input: QEMU QEMU USB Tablet as /devices/usb-1-2/0-0:1.0/0003:0627:0001.0001/input/input0
+[init -> wm_tasks_probe] wm-tasks-probe: [step 3] pkg_gui_demo in window_list (tasklist entry live)
+[34mWarning: flush page table entries - mapping cache full - PD: init -> drivers -> fb out of CAP[0m
+[init -> wm_tasks_probe] [31mError: wm-tasks-probe: FAIL minimize transition: pkg_gui_demo did not reach off-screen position within 60s[0m
+[init] child "wm_tasks_probe" exited with exit value 1
+Error: Test execution timed out
+make: *** [Makefile:446: run/sponge-wm-tasks] エラー 254
+make: ディレクトリ '/home/luke/sponge-os/genode/build/x86_64' から出ます

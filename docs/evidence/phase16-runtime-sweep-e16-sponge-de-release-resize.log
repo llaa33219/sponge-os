@@ -1,0 +1,32 @@
+P5.3 sweep receipt — e16 / run/sponge-de-release-resize (variant: -)
+Date: 2026-11-04 (Phase 16 runtime overhaul P5.3 full sweep)
+Tree: HEAD b19184958b, genode pin 48a946ba15
+Command: env LD_PRELOAD=/tmp/opencode/libclamp_io_uring.so timeout 900s make -j1 -C /home/luke/sponge-os/genode/build/x86_64 run/sponge-de-release-resize KERNEL=sel4 BOARD=pc
+Exit: 0  Elapsed: 58s  marker1_hit: 1  marker2_hit: 1
+Raw log (session scratch): /tmp/opencode/sweep/e16-sponge-de-release-resize.log
+--- guest/run-tool verdict lines (verbatim) ---
+error: can't find command `loadfont'.
+[init -> sponge-de] [31mError: stop because parent denied ROM-session: label="window_list", , ram_quota=6K, cap_quota=3[0m
+[init -> release_resize_probe] release-resize-probe: PASS
+Run script execution successful.
+--- tail 20 (verbatim) ---
+[init -> release_resize_probe] release-resize-probe: QMP-TARGET post-resize-title-drag 223 310 253 340
+[34mWarning: flush page table entries - mapping cache full - PD: init -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> drivers -> fb out of CAP[0m
+[init -> release_resize_probe] release-resize-probe: [observe 9] post-resize title drag ok — (76,320) -> (80,320)
+[init -> release_resize_probe] QMP-TARGET done
+[init -> release_resize_probe] release-resize-probe: PASS
+[init] child "release_resize_probe" exited with exit value 0
+[34mWarning: flush page table entries - mapping cache full - PD: init -> drivers -> fb out of CAP[0m
+
+qmp: dispatching zone-6 drag (372,302) -> (342,332) via usb-tablet abs + HMP mouse_button
+
+qmp: dispatching zone-7 drag (59,532) -> (89,502) via usb-tablet abs + HMP mouse_button
+
+qmp: dispatching zone-8 drag (372,532) -> (342,502) via usb-tablet abs + HMP mouse_button
+
+qmp: dispatching post-resize title drag (223,310) -> (253,340) via usb-tablet abs + HMP mouse_button
+
+Run script execution successful.
+make: ディレクトリ '/home/luke/sponge-os/genode/build/x86_64' から出ます

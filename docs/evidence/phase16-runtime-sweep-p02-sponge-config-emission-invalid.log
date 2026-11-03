@@ -1,0 +1,30 @@
+P5.3 sweep receipt — p02 / run/sponge-config-emission-invalid (variant: -)
+Date: 2026-11-04 (Phase 16 runtime overhaul P5.3 full sweep)
+Tree: HEAD b19184958b, genode pin 48a946ba15
+Command: env LD_PRELOAD=/tmp/opencode/libclamp_io_uring.so timeout 900s make -j1 -C /home/luke/sponge-os/genode/build/x86_64 run/sponge-config-emission-invalid KERNEL=sel4 BOARD=pc
+Exit: 0  Elapsed: 9s  marker1_hit: 1  marker2_hit: 0
+Raw log (session scratch): /tmp/opencode/sweep/p02-sponge-config-emission-invalid.log
+--- guest/run-tool verdict lines (verbatim) ---
+error: can't find command `loadfont'.
+[init -> pkg_lifecycle_probe] lifecycle-probe: PASSconfig-emission-invalid-probe: PASS (structured rejection, nothing published)
+--- tail 20 (verbatim) ---
+[init -> report_rom]   		<any-service>
+[init -> report_rom]   			<parent/>
+[init -> report_rom]   			<any-child/>
+[init -> report_rom]   		</any-service>
+[init -> report_rom]   	</default-route>
+[init -> report_rom]   	<default caps="1000"/>
+[init -> report_rom]   </config>
+[init -> report_rom] report 'sponge_pkgd -> installed'
+[init -> report_rom]   <installed count="0" config_writes="1">
+[init -> report_rom]   	<packages/>
+[init -> report_rom]   </installed>
+[init -> sponge_pkgd] sponge_pkgd: repro_malformed_from=2
+[init -> sponge_pkgd] sponge_pkgd: repro_malformed write=2 injecting truncated app config (negative control)
+[init -> sponge_pkgd] [31mError: sponge_pkgd: runtime-config app rejected by the publication gate: line 34: malformed XML: '(' inside attribute value (validation code=1) — nothing published for this write[0m
+[init -> report_rom] report 'sponge_pkgd -> result'
+[init -> report_rom]   <result status="error" op="install" pkg="hello" error="runtime-config app rejected by the publication gate: line 34: malformed XML: '(' inside attribute value"/>
+[init -> sponge_pkgd] sponge_pkgd: bootstrap complete
+[init -> pkg_lifecycle_probe] lifecycle-probe: [1] install hello -> error
+[init -> pkg_lifecycle_probe] lifecycle-probe: PASSconfig-emission-invalid-probe: PASS (structured rejection, nothing published)
+make: ディレクトリ '/home/luke/sponge-os/genode/build/x86_64' から出ます

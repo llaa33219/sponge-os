@@ -1,0 +1,31 @@
+P5.3 sweep receipt — e33 / run/sponge-files (variant: -)
+Date: 2026-11-04 (Phase 16 runtime overhaul P5.3 full sweep)
+Tree: HEAD b19184958b, genode pin 48a946ba15
+Command: env LD_PRELOAD=/tmp/opencode/libclamp_io_uring.so timeout 900s make -j1 -C /home/luke/sponge-os/genode/build/x86_64 run/sponge-files KERNEL=sel4 BOARD=pc
+Exit: 0  Elapsed: 44s  marker1_hit: 1  marker2_hit: 1
+Raw log (session scratch): /tmp/opencode/sweep/e33-sponge-files.log
+--- guest/run-tool verdict lines (verbatim) ---
+error: can't find command `loadfont'.
+[init -> files_probe] files-probe: PASS
+Run script execution successful.
+--- tail 20 (verbatim) ---
+[init -> pkg_runtime -> files] [34mWarning: attempt to re-acquire file descriptor for /pipe/0/in (fcntl)[0m
+[init -> pkg_runtime -> files] QGenodePlatformWindow: frame coalesced deferred= 1 submitted= 1 coalesced= 0 stale= 0
+[init -> pkg_runtime -> files] sponge_files: navigate -> /demo
+[init -> files_probe] files-probe: [b] navigated to /demo entries=4 action=navigate/ok
+[init -> files_probe] files-probe: [c1] copy /demo/notes.txt -> /writable/notes.txt
+[init -> files_probe] files-probe: send op='copy' arg1='/demo/notes.txt' arg2='/writable/notes.txt' seq=1
+[init -> pkg_runtime -> files] sponge_files: copied /demo/notes.txt -> /writable/notes.txt (146 bytes)
+[init -> files_probe] files-probe: [c1] copy ok (path=/demo)
+[init -> files_probe] files-probe: [c2] delete /writable/notes.txt
+[init -> files_probe] files-probe: send op='delete' arg1='/writable/notes.txt' arg2='' seq=2
+[init -> pkg_runtime -> files] sponge_files: deleted /writable/notes.txt
+[init -> files_probe] files-probe: [c2] delete ok
+[init -> files_probe] files-probe: [d] delete /demo/notes.txt (expect refused)
+[init -> files_probe] files-probe: send op='delete' arg1='/demo/notes.txt' arg2='' seq=3
+[init -> pkg_runtime -> files] sponge_files: delete refused: /demo/notes.txt not in /writable
+[init -> files_probe] files-probe: [d] refused (action=delete result=refused)
+[init -> files_probe] files-probe: PASS
+
+Run script execution successful.
+make: ディレクトリ '/home/luke/sponge-os/genode/build/x86_64' から出ます

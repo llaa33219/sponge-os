@@ -1,0 +1,35 @@
+P5.3 sweep receipt — e08 / run/sponge-de-bgmenu (variant: -)
+Date: 2026-11-04 (Phase 16 runtime overhaul P5.3 full sweep)
+Tree: HEAD b19184958b, genode pin 48a946ba15
+Command: env LD_PRELOAD=/tmp/opencode/libclamp_io_uring.so timeout 600s make -j1 -C /home/luke/sponge-os/genode/build/x86_64 run/sponge-de-bgmenu KERNEL=sel4 BOARD=pc
+Exit: 0  Elapsed: 46s  marker1_hit: 1  marker2_hit: 1
+Raw log (session scratch): /tmp/opencode/sweep/e08-sponge-de-bgmenu.log
+--- guest/run-tool verdict lines (verbatim) ---
+error: can't find command `loadfont'.
+[init] [34mWarning: drivers: no route to service "Event" (label="drivers -> event_filter -> ")[0m
+[init -> drivers -> event_filter] [31mError: stop because parent denied Event-session: label="", , ram_quota=18K, cap_quota=3[0m
+[init -> drivers -> platform] [31mError: stop because parent denied ROM-session: label="devices", , ram_quota=6K, cap_quota=3[0m
+[init -> drivers -> pci_decode] [31mError: stop because parent denied ROM-session: label="system", , ram_quota=6K, cap_quota=3[0m
+[init -> bg_probe] bgmenu-probe: PASS
+Run script execution successful.
+--- tail 20 (verbatim) ---
+[init -> sponge-de] sponge-de: panel and window shown
+[init -> sponge-de] sponge-de: background.color=#1e1e2e
+[init -> sponge-de] sponge-de: background.image=/system/background/default.png
+[init -> sponge-de] sponge-de: config applied (height=28 visible=clock,launcher position=bottom clock=HH:mm sort=alpha bg.color=#1e1e2e bg.image=/system/background/default.png panel.ids= per_id=0)
+[init -> bg_probe] bgmenu-probe: broadcast carries the background defaults
+[init -> bg_probe] QMP-TARGET rightclick 1000 500
+
+qmp: dispatching right-click at guest (1000,500) via PS/2 relative BTN_RIGHT
+
+qmp: PS/2 right-click -> (1000,500) - clamp to (0,0) + nav + press/release
+qmp:   coarse rel-50: cx=10 cy=5
+qmp:   fine rel-1: fx=0 fy=0
+qmp:   right-press
+qmp:   right-release
+[init -> bg_probe] bgmenu-probe: bgmenu.open=yes observed
+[init -> bg_probe] bgmenu-probe: PASS
+[init] child "bg_probe" exited with exit value 0
+
+Run script execution successful.
+make: ディレクトリ '/home/luke/sponge-os/genode/build/x86_64' から出ます

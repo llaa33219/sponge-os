@@ -1,0 +1,31 @@
+P5.3 sweep receipt — e13 / run/sponge-de-multipanel (variant: -)
+Date: 2026-11-04 (Phase 16 runtime overhaul P5.3 full sweep)
+Tree: HEAD b19184958b, genode pin 48a946ba15
+Command: env LD_PRELOAD=/tmp/opencode/libclamp_io_uring.so timeout 600s make -j1 -C /home/luke/sponge-os/genode/build/x86_64 run/sponge-de-multipanel KERNEL=sel4 BOARD=pc
+Exit: 0  Elapsed: 53s  marker1_hit: 1  marker2_hit: 1
+Raw log (session scratch): /tmp/opencode/sweep/e13-sponge-de-multipanel.log
+--- guest/run-tool verdict lines (verbatim) ---
+error: can't find command `loadfont'.
+[init -> multipanel_probe] multipanel-probe: PASS
+Run script execution successful.
+--- tail 20 (verbatim) ---
+[init -> multipanel_probe] multipanel-probe: panel_alpha reporter present (click_count=0)
+[init -> multipanel_probe] multipanel-probe: panel_beta reporter present (click_count=0)
+[init -> multipanel_probe] QMP-TARGET click 100 14
+
+qmp: multipanel click at (100,14) via usb-tablet abs (PS/2 recipe is off-range for the W8 panel_beta band y=740..768)
+
+qmp: absolute tablet mouse index: '3'
+
+qmp: qmp_exec_target_multipanel waiting for marker (timeout=60s)
+[34mWarning: flush page table entries - mapping cache full - PD: init -> drivers -> fb out of CAP[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> drivers -> fb out of CAP[0m
+[init -> multipanel_probe] multipanel-probe: qmp_click 100 14 -> panel_alpha.click_count=1, panel_beta.click_count=0 (F5 trap avoided)
+[init -> multipanel_probe] QMP-TARGET click 800 740
+
+qmp: multipanel click at (800,740) via usb-tablet abs (PS/2 recipe is off-range for the W8 panel_beta band y=740..768)
+[init -> sponge-de] sponge-de: config applied (height=28 visible=clock,launcher position=bottom clock=HH:mm sort=alpha bg.color=#1e1e2e bg.image=/system/background/default.png panel.ids=alpha,beta per_id=4)
+[init -> multipanel_probe] multipanel-probe: qmp_click 800 740 -> panel_beta.click_count=1, panel_alpha.click_count=1 (F5 trap avoided)
+[init -> multipanel_probe] multipanel-probe: PASS
+Run script execution successful.
+make: ディレクトリ '/home/luke/sponge-os/genode/build/x86_64' から出ます

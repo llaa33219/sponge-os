@@ -1,0 +1,36 @@
+P5.3 sweep receipt — e10 / run/sponge-de-bgimage-badpath (variant: -)
+Date: 2026-11-04 (Phase 16 runtime overhaul P5.3 full sweep)
+Tree: HEAD b19184958b, genode pin 48a946ba15
+Command: env LD_PRELOAD=/tmp/opencode/libclamp_io_uring.so timeout 420s make -j1 -C /home/luke/sponge-os/genode/build/x86_64 run/sponge-de-bgimage-badpath KERNEL=sel4 BOARD=pc
+Exit: 0  Elapsed: 45s  marker1_hit: 1  marker2_hit: 1
+Raw log (session scratch): /tmp/opencode/sweep/e10-sponge-de-bgimage-badpath.log
+--- guest/run-tool verdict lines (verbatim) ---
+error: can't find command `loadfont'.
+[init] [34mWarning: drivers: no route to service "Event" (label="drivers -> event_filter -> ")[0m
+[init -> drivers -> event_filter] [31mError: stop because parent denied Event-session: label="", , ram_quota=18K, cap_quota=3[0m
+[init -> drivers -> platform] [31mError: stop because parent denied ROM-session: label="devices", , ram_quota=6K, cap_quota=3[0m
+[init -> drivers -> pci_decode] [31mError: stop because parent denied ROM-session: label="system", , ram_quota=6K, cap_quota=3[0m
+[init -> bg_probe] bgimage-badpath-probe: bad-path rejected with error: invalid value '../../etc/passwd' for key 'background.image' (allowed: /system/background/default.png)
+[init -> bg_probe] bgimage-badpath-probe: PASS
+Run script execution successful.
+--- tail 20 (verbatim) ---
+[init -> sponge-de] optional ROM "system_state" session not granted (error 0)
+[init -> sponge-de] [34mWarning: system_state ROM unavailable; health watcher disabled[0m
+[init -> sponge-de] qt.core.qobject.connect: QObject::connect: No such slot QGenodePlatformWindow::_frame_sync()
+[init -> sponge-de] sponge-de: panel shown
+[init -> sponge-de] qt.core.qobject.connect: QObject::connect: No such slot QGenodePlatformWindow::_frame_sync()
+[init -> sponge-de] sponge-de: background widget shown
+[init -> sponge-de] Sponge DE window created (Sponge OS 0.2.0 / Archaeocyte)
+[init -> sponge-de] qt.core.qobject.connect: QObject::connect: No such slot QGenodePlatformWindow::_frame_sync()
+[init -> sponge-de] sponge-de: demo window shown
+[init -> sponge-de] sponge-de: after attach_notify_poster
+[init -> sponge-de] sponge-de: panel and window shown
+[init -> sponge-de] sponge-de: background.color=#1e1e2e
+[init -> sponge-de] sponge-de: background.image=/system/background/default.png
+[init -> sponge-de] sponge-de: config applied (height=28 visible=clock,launcher position=bottom clock=HH:mm sort=alpha bg.color=#1e1e2e bg.image=/system/background/default.png panel.ids= per_id=0)
+[init -> bg_probe] bgimage-badpath-probe: pre-write background.image = /system/background/default.png
+[init -> bg_probe] bgimage-badpath-probe: bad-path rejected with error: invalid value '../../etc/passwd' for key 'background.image' (allowed: /system/background/default.png)
+[init -> bg_probe] bgimage-badpath-probe: broadcast still carries default after bad-path reject
+[init -> bg_probe] bgimage-badpath-probe: PASS
+Run script execution successful.
+make: ディレクトリ '/home/luke/sponge-os/genode/build/x86_64' から出ます

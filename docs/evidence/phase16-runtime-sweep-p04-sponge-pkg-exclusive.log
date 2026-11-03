@@ -1,0 +1,30 @@
+P5.3 sweep receipt — p04 / run/sponge-pkg-exclusive (variant: -)
+Date: 2026-11-04 (Phase 16 runtime overhaul P5.3 full sweep)
+Tree: HEAD b19184958b, genode pin 48a946ba15
+Command: env LD_PRELOAD=/tmp/opencode/libclamp_io_uring.so timeout 900s make -j1 -C /home/luke/sponge-os/genode/build/x86_64 run/sponge-pkg-exclusive KERNEL=sel4 BOARD=pc
+Exit: 0  Elapsed: 9s  marker1_hit: 1  marker2_hit: 0
+Raw log (session scratch): /tmp/opencode/sweep/p04-sponge-pkg-exclusive.log
+--- guest/run-tool verdict lines (verbatim) ---
+error: can't find command `loadfont'.
+[init -> exclusivity_probe] exclusivity-probe: PASSsponge-pkg-exclusive: PASS
+--- tail 20 (verbatim) ---
+[init -> sponge_pkgd] sponge_pkgd: binary_prefix=''
+[init -> sponge_pkgd] sponge_pkgd: bootstrap thread started
+[init -> sponge_pkgd] sponge_pkgd: cached 2 metadata document(s) at bootstrap
+[init -> sponge_pkgd] sponge_pkgd: exclusive-group check on 'excl_a' group='testfb' peer=''
+[init -> sponge_pkgd] sponge_pkgd: launcher_request channel enabled
+[init -> sponge_pkgd] sponge_pkgd: bootstrap complete
+[init -> exclusivity_probe] exclusivity-probe: got install excl_a status=ok
+[init -> exclusivity_probe] exclusivity-probe: excl_a running=yes
+[init -> exclusivity_probe] exclusivity-probe: sent install excl_b
+[init -> sponge_pkgd] sponge_pkgd: exclusive-group check on 'excl_b' group='testfb' peer='excl_a'
+[init -> sponge_pkgd] sponge_pkgd: install excl_b -> exclusive-conflict (testfb is held by the running package excl_a)
+[init -> exclusivity_probe] exclusivity-probe: first-refusal ok (excl_b refused, peer=excl_a)
+[init -> exclusivity_probe] exclusivity-probe: refusal left no state
+[init -> exclusivity_probe] exclusivity-probe: cached 225 result bytes for the replay comparison
+[init -> exclusivity_probe] exclusivity-replay: SENT install excl_b seq=2 on launcher_request
+[init -> sponge_pkgd] sponge_pkgd: duplicate request install|excl_b|2 — replaying the cached result
+[init -> sponge_pkgd] sponge_pkgd: install excl_b -> exclusive-conflict (testfb is held by the running package excl_a)
+[init -> exclusivity_probe] exclusivity-replay: DONE byte-identical (225 bytes)
+[init -> exclusivity_probe] exclusivity-probe: PASSsponge-pkg-exclusive: PASS
+make: ディレクトリ '/home/luke/sponge-os/genode/build/x86_64' から出ます

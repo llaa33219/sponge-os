@@ -1,0 +1,32 @@
+P5.3 sweep receipt — e24 / run/sponge-notify (variant: -)
+Date: 2026-11-04 (Phase 16 runtime overhaul P5.3 full sweep)
+Tree: HEAD b19184958b, genode pin 48a946ba15
+Command: env LD_PRELOAD=/tmp/opencode/libclamp_io_uring.so timeout 600s make -j1 -C /home/luke/sponge-os/genode/build/x86_64 run/sponge-notify KERNEL=sel4 BOARD=pc
+Exit: 0  Elapsed: 58s  marker1_hit: 1  marker2_hit: 1
+Raw log (session scratch): /tmp/opencode/sweep/e24-sponge-notify.log
+--- guest/run-tool verdict lines (verbatim) ---
+error: can't find command `loadfont'.
+[init -> drivers -> platform] [31mError: stop because parent denied ROM-session: label="devices", , ram_quota=10K, cap_quota=3[0m
+[init -> notify_probe] notify-probe: PASS
+Run script execution successful.
+--- tail 20 (verbatim) ---
+[init -> notify_probe] notify-probe: posted sentinel (ttl_ms=3000)
+[init -> report_rom] report 'sponge_notifier -> notifications'
+[init -> report_rom]   <notifications count="1" max_live="8">
+[init -> report_rom]   	<notification id="1" ts="0" source="notify_probe" kind="info" ttl_ms="3000">
+[init -> report_rom]   		<title>Sponge Phase 14 notification sentinel</title>
+[init -> report_rom]   		<body>W4 probe</body>
+[init -> report_rom]   	</notification>
+[init -> report_rom]   </notifications>
+[init -> notify_probe] notify-probe: sentinel appears in notifications ROM (poll 1)
+[init -> notify_probe] notify-probe: popover visible (poll 0, frac=1000)
+[init -> notify_probe] notify-probe: waiting for TTL (3000 ms + slack)
+[init -> report_rom] report 'sponge_notifier -> notifications'
+[init -> report_rom]   <notifications count="0" max_live="8"/>
+[init -> notify_probe] notify-probe: sentinel expired from notifications ROM (poll 0)
+[init -> notify_probe] notify-probe: popover close check (best-effort)
+[init -> notify_probe] [34mWarning: notify-probe: popover not visually closed after TTL (functional check: notifications ROM is empty)[0m
+[init -> notify_probe] notify-probe: PASS
+
+Run script execution successful.
+make: ディレクトリ '/home/luke/sponge-os/genode/build/x86_64' から出ます

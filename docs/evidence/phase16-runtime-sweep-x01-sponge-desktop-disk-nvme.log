@@ -1,0 +1,32 @@
+P5.3 sweep receipt — x01 / run/sponge-desktop-disk-nvme (variant: -)
+Date: 2026-11-04 (Phase 16 runtime overhaul P5.3 full sweep)
+Tree: HEAD b19184958b, genode pin 48a946ba15
+Command: env LD_PRELOAD=/tmp/opencode/libclamp_io_uring.so timeout 900s make -j1 -C /home/luke/sponge-os/genode/build/x86_64 run/sponge-desktop-disk-nvme KERNEL=sel4 BOARD=pc RUN_OPT=--include power_on/qemu --include log/qemu --include boot_dir/sel4 --include image/disk
+Exit: 0  Elapsed: 79s  marker1_hit: 1  marker2_hit: 1
+Raw log (session scratch): /tmp/opencode/sweep/x01-sponge-desktop-disk-nvme.log
+--- guest/run-tool verdict lines (verbatim) ---
+[init -> partition_check] partition-check: PASS (Number: 3)
+[init -> rom_pkg] [31mError: stop because parent denied File_system-session: label="/", writeable=0, tx_buf_size=4194304, ram_quota=4160K, cap_quota=12[0m
+[init -> system -> alpha_probe] alpha-probe: PASS
+Run script execution successful.
+--- tail 20 (verbatim) ---
+[init -> system -> sponge-de] [34mWarning: attempt to re-acquire file descriptor for /qt/lib/fonts/DejaVuSans.ttf (lseek)[0m
+[init -> system -> sponge-de] sponge-de diag gates: sz=4096 runtime_state=0 system_state=0 cfg_probe=0 head=config
+[init -> system -> sponge-de] + theme | source: themed
+[init -> system -> sponge-de] + launcher | source: pkgd
+[init -> system -> sponge-de] + demo
+[init -> system -> sponge-de] qt.core.qobject.connect: QObject::connect: No such slot QGenodePlatformWindow::_frame_sync()
+[init -> system -> sponge-de] sponge-de: panel shown
+[init -> system -> sponge-de] sponge-de: demo window disabled by config
+[init -> system -> sponge-de] sponge-de: after attach_notify_poster
+[init -> system -> sponge-de] sponge-de: panel and window shown
+[init -> system -> sponge-de] sponge-de: applying theme 'light'
+[init -> system -> sponge-de] sponge-de: launcher list updated (1 app)
+[init -> system -> sponge-de] [34mWarning: attempt to re-acquire file descriptor for /pipe/0/in (fcntl)[0m
+[init -> system -> alpha_probe] alpha-probe: (a) panel band rendered at (512,4) = 0xffe6e9ef
+[init -> system -> alpha_probe] alpha-probe: [5] assert (b) launcher has hello (minimal mode)
+[init -> system -> alpha_probe] alpha-probe: (b) launcher report contains hello/Utilities
+[init -> system -> alpha_probe] alpha-probe: PASS
+
+Run script execution successful.
+make: ディレクトリ '/home/luke/sponge-os/genode/build/x86_64' から出ます

@@ -1,0 +1,37 @@
+P5.3 sweep receipt — e04 / run/sponge-desktop-defaults-firstboot (variant: -)
+Date: 2026-11-04 (Phase 16 runtime overhaul P5.3 full sweep)
+Tree: HEAD b19184958b, genode pin 48a946ba15
+Command: env LD_PRELOAD=/tmp/opencode/libclamp_io_uring.so timeout 1200s make -j1 -C /home/luke/sponge-os/genode/build/x86_64 run/sponge-desktop-defaults-firstboot KERNEL=sel4 BOARD=pc RUN_OPT=--include power_on/qemu --include log/qemu --include boot_dir/sel4 --include image/disk
+Exit: 2  Elapsed: 952s  marker1_hit: 0  marker2_hit: 0
+Raw log (session scratch): /tmp/opencode/sweep/e04-sponge-desktop-defaults-firstboot.log
+--- guest/run-tool verdict lines (verbatim) ---
+[init -> system] [31mError: pkg_runtime: ambiguous routes to service "Report"[0m
+[init -> system] [34mWarning: pkg_runtime: no route to service "Report" (label="pkg_runtime -> state")[0m
+[init -> system -> pkg_runtime] [31mError: stop because parent denied Report-session: label="state", buffer_size=4096, ram_quota=14K, cap_quota=3[0m
+[init -> system] [31mError: sponge-de: ambiguous routes to service "Report"[0m
+[init -> system] [34mWarning: sponge-de: no route to service "Report" (label="sponge-de -> de_op_error")[0m
+[init -> system -> sponge-de] [31mError: stop because parent denied Report-session: label="de_op_error", buffer_size=4096, ram_quota=14K, cap_quota=3[0m
+[init -> system -> alpha_probe] [31mError: alpha-probe: FAIL themed panel never composited on nitpicker[0m
+Error: Test execution timed out
+make: *** [Makefile:446: run/sponge-desktop-defaults-firstboot] エラー 254
+--- tail 20 (verbatim) ---
+[init -> system -> alpha_probe] alpha-probe: (a) panel poll 1040 pixel=0x1e1e2e
+[init -> system -> alpha_probe] alpha-probe: (a) panel poll 1060 pixel=0x1e1e2e
+[init -> system -> alpha_probe] alpha-probe: (a) panel poll 1080 pixel=0x1e1e2e
+[init -> system -> alpha_probe] alpha-probe: (a) panel poll 1100 pixel=0x1e1e2e
+[init -> system -> alpha_probe] alpha-probe: (a) panel poll 1120 pixel=0x1e1e2e
+[init -> system -> alpha_probe] alpha-probe: (a) panel poll 1140 pixel=0x1e1e2e
+[init -> system -> alpha_probe] alpha-probe: (a) panel poll 1160 pixel=0x1e1e2e
+[init -> system -> alpha_probe] alpha-probe: (a) panel poll 1180 pixel=0x1e1e2e
+[init -> system -> alpha_probe] [31mError: alpha-probe: FAIL themed panel never composited on nitpicker[0m
+[init -> system] child "alpha_probe" exited with exit value 1
+<<seL4(CPU 0) [decodeInvocation/643 T0xffffff807dff8400 "child of: 'child of: 'rootserver''" @8819b]: Attempted to invoke a null cap #362.>>
+<<seL4(CPU 0) [decodeInvocation/643 T0xffffff807dff8400 "child of: 'child of: 'rootserver''" @8819b]: Attempted to invoke a null cap #362.>>
+[34mWarning: invalid signal-context capability[0m
+<<seL4(CPU 0) [decodeInvocation/643 T0xffffff807dff8400 "child of: 'child of: 'rootserver''" @8819b]: Attempted to invoke a null cap #362.>>
+<<seL4(CPU 0) [decodeInvocation/643 T0xffffff807dff8400 "child of: 'child of: 'rootserver''" @8819b]: Attempted to invoke a null cap #362.>>
+[34mWarning: invalid signal-context capability[0m
+[34mWarning: flush page table entries - mapping cache full - PD: init -> fb out of CAP[0m
+Error: Test execution timed out
+make: *** [Makefile:446: run/sponge-desktop-defaults-firstboot] エラー 254
+make: ディレクトリ '/home/luke/sponge-os/genode/build/x86_64' から出ます

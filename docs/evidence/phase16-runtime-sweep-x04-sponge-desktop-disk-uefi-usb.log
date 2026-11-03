@@ -1,0 +1,29 @@
+P5.3 sweep receipt — x04 / run/sponge-desktop-disk-uefi-usb (variant: -)
+Date: 2026-11-04 (Phase 16 runtime overhaul P5.3 full sweep)
+Tree: HEAD b19184958b, genode pin 48a946ba15
+Command: env LD_PRELOAD=/tmp/opencode/libclamp_io_uring.so timeout 1500s make -j1 -C /home/luke/sponge-os/genode/build/x86_64 run/sponge-desktop-disk-uefi-usb KERNEL=sel4 BOARD=pc RUN_OPT=--include power_on/qemu --include log/qemu --include boot_dir/sel4 --include image/disk
+Exit: 0  Elapsed: 115s  marker1_hit: 1  marker2_hit: 0
+Raw log (session scratch): /tmp/opencode/sweep/x04-sponge-desktop-disk-uefi-usb.log
+--- guest/run-tool verdict lines (verbatim) ---
+[init -> system -> alpha_probe] alpha-probe: PASS
+--- tail 20 (verbatim) ---
+[init -> system -> alpha_probe] alpha-probe: (b) launcher report contains hello/Utilities
+[init -> system -> alpha_probe] alpha-probe: (b) launcher report contains terminal/System
+[init -> system -> alpha_probe] alpha-probe: (b) launcher report contains textedit/Editors
+[init -> system -> alpha_probe] alpha-probe: (b) launcher report contains files/Utilities
+[init -> system -> alpha_probe] alpha-probe: (b) launcher report contains calculator/Utilities
+[init -> system -> alpha_probe] alpha-probe: (b) launcher report contains pdf_view/Utilities
+[init -> system -> alpha_probe] alpha-probe: (b) launcher report contains falkon/Internet
+[init -> system -> alpha_probe] alpha-probe: (b) launcher report contains all 7 desktop packages
+[init -> system -> alpha_probe] alpha-probe: PASS
+[sponge-desktop-disk-uefi-usb] serial log captured: var/run/sponge-desktop-disk-uefi-usb/uefi-boot.log (21632 bytes)
+
+  ================================================================
+  PASS — UEFI USB-stick media boots on OVMF and the usb_block
+  storage chain serves /system from the stick (DE started).
+  ================================================================
+  compositor health: 1 (first paint observed)
+  wedge lines       : 0
+  starvation lines  : 0
+  launch-gate skipped (SPONGE_LAUNCHTEST=on to enable the launch-path test)
+make: ディレクトリ '/home/luke/sponge-os/genode/build/x86_64' から出ます

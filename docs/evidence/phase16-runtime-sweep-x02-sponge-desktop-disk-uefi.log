@@ -1,0 +1,29 @@
+P5.3 sweep receipt — x02 / run/sponge-desktop-disk-uefi (variant: -)
+Date: 2026-11-04 (Phase 16 runtime overhaul P5.3 full sweep)
+Tree: HEAD b19184958b, genode pin 48a946ba15
+Command: env LD_PRELOAD=/tmp/opencode/libclamp_io_uring.so timeout 1200s make -j1 -C /home/luke/sponge-os/genode/build/x86_64 run/sponge-desktop-disk-uefi KERNEL=sel4 BOARD=pc RUN_OPT=--include power_on/qemu --include log/qemu --include boot_dir/sel4 --include image/disk
+Exit: 0  Elapsed: 79s  marker1_hit: 1  marker2_hit: 0
+Raw log (session scratch): /tmp/opencode/sweep/x02-sponge-desktop-disk-uefi.log
+--- guest/run-tool verdict lines (verbatim) ---
+  UEFI product media structure verified; QEMU boot blocked by the
+--- tail 20 (verbatim) ---
+[34mWarning: need physical memory, but Platform object not constructed yet[0m
+Genode 26.08-38-g48a94[sponge-desktop-disk-uefi] UNEXPECTED — QEMU reached the Genode v... banner
+[sponge-desktop-disk-uefi] serial log captured: var/run/sponge-desktop-disk-uefi/uefi-boot.log (8496 bytes)
+
+[sponge-desktop-disk-uefi] QEMU boot did NOT reach Genode core (banner absent)
+  (with the stock bender — no NOP patch — OVMF stops at the
+   bender/GRUB2 stage. The W1 evidence required a bender
+   NOP to get past this stage; per the W4 plan, the bender
+   stays STOCK and the 15-3 protocol documents the rebuild
+   fallback for real-hardware. The structural-gate acceptance
+   is unchanged.)
+
+  ================================================================
+  UEFI product media structure verified; QEMU boot blocked by the
+  known UEFI/QEMU W^X + bender NOP gap (see W1 evidence log:
+  docs/evidence/phase15-uefi-boot-smoke.log; D15.16 pivot: the
+  QEMU UEFI cell stays a documented gap; real-hardware
+  verification is 15-3 on the 17ZD90N-VX7BK).
+  ================================================================
+make: ディレクトリ '/home/luke/sponge-os/genode/build/x86_64' から出ます

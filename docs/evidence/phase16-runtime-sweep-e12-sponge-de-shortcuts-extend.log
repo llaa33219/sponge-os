@@ -1,0 +1,31 @@
+P5.3 sweep receipt — e12 / run/sponge-de-shortcuts-extend (variant: -)
+Date: 2026-11-04 (Phase 16 runtime overhaul P5.3 full sweep)
+Tree: HEAD b19184958b, genode pin 48a946ba15
+Command: env LD_PRELOAD=/tmp/opencode/libclamp_io_uring.so timeout 600s make -j1 -C /home/luke/sponge-os/genode/build/x86_64 run/sponge-de-shortcuts-extend KERNEL=sel4 BOARD=pc
+Exit: 0  Elapsed: 51s  marker1_hit: 1  marker2_hit: 1
+Raw log (session scratch): /tmp/opencode/sweep/e12-sponge-de-shortcuts-extend.log
+--- guest/run-tool verdict lines (verbatim) ---
+error: can't find command `loadfont'.
+[init -> shortcuts_probe] shortcuts-extend-probe: PASS
+Run script execution successful.
+--- tail 20 (verbatim) ---
+[init -> shortcuts_probe] shortcuts-probe: shortcut_hit action=launcher hit=yes observed (W7 live keypress path)
+[init -> shortcuts_probe] shortcuts-probe: launcher popup open observed via launcher_state
+[init -> shortcuts_probe] QMP-TARGET key escape
+
+qmp: dispatching key 'escape'
+
+qmp: qmp_exec_target waiting for marker (timeout=120s)
+[init -> sponge-de] sponge-de: shortcut hit: dismiss (serial=2)
+[init -> sponge-de] sponge-de: dismisser: closing launcher popup
+[init -> shortcuts_probe] shortcuts-probe: shortcut_hit action=dismiss hit=yes observed (W7 live keypress path)
+[init -> shortcuts_probe] shortcuts-probe: launcher popup close observed via launcher_state
+[init -> shortcuts_probe] QMP-TARGET key alt-tab
+
+qmp: dispatching key 'alt-tab'
+[init -> sponge-de] sponge-de: shortcut hit: focus_next (serial=3)
+[init -> sponge-de] QMetaObject::invokeMethod: No such method TasklistController::cycle_focus()
+[init -> shortcuts_probe] shortcuts-probe: shortcut_hit action=focus_next hit=yes observed (W7 live keypress path)
+[init -> shortcuts_probe] shortcuts-extend-probe: PASS
+Run script execution successful.
+make: ディレクトリ '/home/luke/sponge-os/genode/build/x86_64' から出ます

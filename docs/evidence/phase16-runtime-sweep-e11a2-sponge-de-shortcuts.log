@@ -1,0 +1,32 @@
+P5.3 sweep receipt — e11a2 / run/sponge-de-shortcuts (variant: -)
+Date: 2026-11-04 (Phase 16 runtime overhaul P5.3 full sweep)
+Tree: HEAD b19184958b, genode pin 48a946ba15
+Command: env LD_PRELOAD=/tmp/opencode/libclamp_io_uring.so timeout 600s make -j1 -C /home/luke/sponge-os/genode/build/x86_64 run/sponge-de-shortcuts KERNEL=sel4 BOARD=pc
+Exit: 2  Elapsed: 167s  marker1_hit: 0  marker2_hit: 0
+Raw log (session scratch): /tmp/opencode/sweep/e11a2-sponge-de-shortcuts.log
+--- guest/run-tool verdict lines (verbatim) ---
+error: can't find command `loadfont'.
+[31mError: illegal READ at address 0x1d6000 by pager_object: pd='init -> report_rom' thread='ep' ip=0x100b7d1[0m
+qmp: FAIL - no QMP-TARGET marker within 120s (probe did not emit one - boot/render race or probe died?)
+make: *** [Makefile:446: run/sponge-de-shortcuts] エラー 1
+--- tail 20 (verbatim) ---
+[init -> report_rom]   
+[init -> report_rom]   
+[init -> report_rom]   
+[init -> report_rom]   
+[init -> report_rom]   
+[init -> report_rom]   
+[init -> report_rom]   
+[init -> report_rom]   
+[init -> report_rom]   
+[init -> report_rom]   
+[init -> report_rom]   
+[init -> report_rom]   
+[init -> report_rom]   
+[init -> report_rom]   
+[init -> report_rom]   
+[31mError: illegal READ at address 0x1d6000 by pager_object: pd='init -> report_rom' thread='ep' ip=0x100b7d1[0m
+
+qmp: FAIL - no QMP-TARGET marker within 120s (probe did not emit one - boot/render race or probe died?)
+make: *** [Makefile:446: run/sponge-de-shortcuts] エラー 1
+make: ディレクトリ '/home/luke/sponge-os/genode/build/x86_64' から出ます

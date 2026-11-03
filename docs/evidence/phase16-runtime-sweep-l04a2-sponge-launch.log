@@ -1,0 +1,30 @@
+P5.3 sweep receipt — l04a2 / run/sponge-launch (variant: -)
+Date: 2026-11-04 (Phase 16 runtime overhaul P5.3 full sweep)
+Tree: HEAD b19184958b, genode pin 48a946ba15
+Command: env LD_PRELOAD=/tmp/opencode/libclamp_io_uring.so timeout 600s make -j1 -C /home/luke/sponge-os/genode/build/x86_64 run/sponge-launch KERNEL=linux BOARD=linux
+Exit: 124  Elapsed: 600s  marker1_hit: 0  marker2_hit: 0
+Raw log (session scratch): /tmp/opencode/sweep/l04a2-sponge-launch.log
+--- guest/run-tool verdict lines (verbatim) ---
+[init -> launch_probe] [31mError: launch-probe: FAIL demo window green pixel never appeared after click launch[0m
+make: *** [Makefile:446: run/sponge-launch] エラー 143
+--- tail 20 (verbatim) ---
+[init -> launch_probe] launch-probe: capture poll 1030 center(512,320)=0xff313244 bg?1 demo?0
+[init -> launch_probe] launch-probe: capture poll 1040 center(512,320)=0xff313244 bg?1 demo?0
+[init -> launch_probe] launch-probe: capture poll 1050 center(512,320)=0xff313244 bg?1 demo?0
+[init -> launch_probe] launch-probe: capture poll 1060 center(512,320)=0xff313244 bg?1 demo?0
+[init -> launch_probe] launch-probe: capture poll 1070 center(512,320)=0xff313244 bg?1 demo?0
+[init -> launch_probe] launch-probe: capture poll 1080 center(512,320)=0xff313244 bg?1 demo?0
+[init -> launch_probe] launch-probe: capture poll 1090 center(512,320)=0xff313244 bg?1 demo?0
+[init -> launch_probe] launch-probe: capture poll 1100 center(512,320)=0xff313244 bg?1 demo?0
+[init -> launch_probe] launch-probe: capture poll 1110 center(512,320)=0xff313244 bg?1 demo?0
+[init -> launch_probe] launch-probe: capture poll 1120 center(512,320)=0xff313244 bg?1 demo?0
+[init -> launch_probe] launch-probe: capture poll 1130 center(512,320)=0xff313244 bg?1 demo?0
+[init -> launch_probe] launch-probe: capture poll 1140 center(512,320)=0xff313244 bg?1 demo?0
+[init -> launch_probe] launch-probe: capture poll 1150 center(512,320)=0xff313244 bg?1 demo?0
+[init -> launch_probe] launch-probe: capture poll 1160 center(512,320)=0xff313244 bg?1 demo?0
+[init -> launch_probe] launch-probe: capture poll 1170 center(512,320)=0xff313244 bg?1 demo?0
+[init -> launch_probe] launch-probe: capture poll 1180 center(512,320)=0xff313244 bg?1 demo?0
+[init -> launch_probe] launch-probe: capture poll 1190 center(512,320)=0xff313244 bg?1 demo?0
+[init -> launch_probe] [31mError: launch-probe: FAIL demo window green pixel never appeared after click launch[0m
+[init] child "launch_probe" exited with exit value 1
+make: *** [Makefile:446: run/sponge-launch] エラー 143

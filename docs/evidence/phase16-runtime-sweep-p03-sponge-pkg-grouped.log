@@ -1,0 +1,30 @@
+P5.3 sweep receipt — p03 / run/sponge-pkg-grouped (variant: -)
+Date: 2026-11-04 (Phase 16 runtime overhaul P5.3 full sweep)
+Tree: HEAD b19184958b, genode pin 48a946ba15
+Command: env LD_PRELOAD=/tmp/opencode/libclamp_io_uring.so timeout 900s make -j1 -C /home/luke/sponge-os/genode/build/x86_64 run/sponge-pkg-grouped KERNEL=sel4 BOARD=pc
+Exit: 0  Elapsed: 29s  marker1_hit: 1  marker2_hit: 0
+Raw log (session scratch): /tmp/opencode/sweep/p03-sponge-pkg-grouped.log
+--- guest/run-tool verdict lines (verbatim) ---
+error: can't find command `loadfont'.
+[init -> grouped_probe] grouped-runtime-probe: PASSgrouped-runtime-probe: PASS (grouped emission + per-class admission)
+--- tail 20 (verbatim) ---
+[init -> sponge_pkgd] sponge_pkgd: install badquota -> insufficient-resources (need_ram=0 avail_ram=0 need_caps=0 avail_caps=0)
+[init -> grouped_probe] grouped-runtime-probe: install badquota -> insufficient-resources
+[init -> sponge_pkgd] [34mWarning: sponge_pkgd: package 'badriver' has an unparsable <quota ram="garbage"> — refusing the install[0m
+[init -> sponge_pkgd] sponge_pkgd: install badriver -> insufficient-resources (need_ram=0 avail_ram=0 need_caps=0 avail_caps=0)
+[init -> grouped_probe] grouped-runtime-probe: driver malformed-quota refusal (offender-named) ok
+[init -> sponge_pkgd] sponge_pkgd: repro_malformed_from=12
+[init -> grouped_probe] grouped-runtime-probe: install s_after -> ok
+[init -> sponge_pkgd] sponge_pkgd: repro_malformed_from=12
+[init -> sponge_pkgd] sponge_pkgd: launch result s_after -> ok (channel=primary)
+[init -> pkg_runtime_simple -> s_after] config-witness: start
+[init -> grouped_probe] grouped-runtime-probe: launch s_after -> ok
+[init -> grouped_probe] grouped-runtime-probe: malformed-quota refusal + recovery ok
+[init -> grouped_probe] grouped-runtime-probe: firing the mixed write (write 12)
+[init -> sponge_pkgd] sponge_pkgd: repro_malformed_from=12
+[init -> sponge_pkgd] sponge_pkgd: repro_malformed write=12 injecting truncated app config (negative control)
+[init -> sponge_pkgd] [31mError: sponge_pkgd: runtime-config simple rejected by the publication gate: line 59: malformed XML: '(' inside attribute value (validation code=1) — nothing published for this write[0m
+[init -> grouped_probe] grouped-runtime-probe: install mixroot -> error
+[init -> grouped_probe] grouped-runtime-probe: mixed-class all-or-nothing ok
+[init -> grouped_probe] grouped-runtime-probe: PASSgrouped-runtime-probe: PASS (grouped emission + per-class admission)
+make: ディレクトリ '/home/luke/sponge-os/genode/build/x86_64' から出ます

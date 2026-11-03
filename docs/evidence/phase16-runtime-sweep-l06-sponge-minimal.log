@@ -1,0 +1,29 @@
+P5.3 sweep receipt — l06 / run/sponge-minimal (variant: -)
+Date: 2026-11-04 (Phase 16 runtime overhaul P5.3 full sweep)
+Tree: HEAD b19184958b, genode pin 48a946ba15
+Command: env LD_PRELOAD=/tmp/opencode/libclamp_io_uring.so timeout 300s make -j1 -C /home/luke/sponge-os/genode/build/x86_64 run/sponge-minimal KERNEL=linux BOARD=pc
+Exit: 2  Elapsed: 1s  marker1_hit: 0  marker2_hit: 0
+Raw log (session scratch): /tmp/opencode/sweep/l06-sponge-minimal.log
+--- guest/run-tool verdict lines (verbatim) ---
+make: *** [Makefile:446: run/sponge-minimal] エラー 1
+--- tail 20 (verbatim) ---
+    invoked from within
+"build_initrd $binaries"
+    (procedure "run_boot_dir" line 35)
+    invoked from within
+"run_boot_dir $binaries"
+    (procedure "build_boot_image" line 6)
+    invoked from within
+"build_boot_image [build_artifacts]"
+    (file "/home/luke/sponge-os/repos/sponge/run/sponge-minimal.run" line 45)
+    invoked from within
+"source $include_name"
+    ("foreach" body line 6)
+    invoked from within
+"foreach include_name [cmd_arg --include ""] {
+	# first check if the include name is absolute
+	if {[string first "/" $include_name] == 0} {
+		puts "inc..."
+    (file "/home/luke/sponge-os/genode/tool/run/run" line 1416)
+make: *** [Makefile:446: run/sponge-minimal] エラー 1
+make: ディレクトリ '/home/luke/sponge-os/genode/build/x86_64' から出ます
