@@ -222,11 +222,16 @@ with `<runtime_class>` (Phase 16 P2.4):
 ```
 
 Class placement is enabled by an explicit `<grouped_runtimes/>` marker in
-`sponge_pkgd`'s own config. Without that marker, the current legacy mode keeps
+`sponge_pkgd`'s own config. Without that marker, the legacy mode keeps
 one `pkg_runtime` for every app package and ignores the class for placement
-(with a diagnostic); this preserves older headless topologies during the
-migration. Grouped mode is the product direction and becomes the default only
-after its consumers have migrated.
+(with a diagnostic); this preserves older headless topologies.
+Grouped mode is the shipped product topology: all five desktop-disk
+product scenarios emit the three per-class configs, and the grouped
+runtimes are acceptance-verified on the product disk media (P5.1:
+three consecutive all-green suite passes with real launcher first
+paint + input for every built-in desktop package —
+`docs/evidence/phase16-runtime-acceptance.md`,
+`docs/evidence/phase16-p51-grouped-app-matrix.md`).
 
 | Kind | Sandbox that hosts the `<start>` node | Generated `<parent-provides>` carries |
 |---|---|---|
@@ -361,11 +366,22 @@ the structured `group` / `peer` fields.
 packages are staged on every product medium so the switch is one
 `remove` + `install` away; only the active one holds the group.
 
-**Proof.** `run/sponge-pkg-driver.run` installs `fb_vesa` and asserts
-that the following `fb_boot` install answers `exclusive-conflict`. The
-runtime handover itself — remove, install, and the composited screen
-coming back — is `run/sponge-desktop-disk.run` with
-`SPONGE_FB_SWITCH=on` (`test/fb_switch_probe`).
+**Proof.** The refusal mechanism is proven red-first + green by
+`run/sponge-pkg-exclusive.run` on a synthetic pair (`pkg/excl_a`,
+`pkg/excl_b`, group `testfb`): the first-execution refusal
+(`status="exclusive-conflict"` naming `peer=excl_a group=testfb`, no
+broadcast entry, no state mutation) and a byte-identical replay window
+(`docs/evidence/phase16-runtime-p33.md` §2). The runtime handover of
+the real `fb` pair — remove, install, and the composited screen coming
+back — is `run/sponge-desktop-disk.run` with `SPONGE_FB_SWITCH=on`
+(`test/fb_switch_probe`). **Honest scope note:** `run/sponge-pkg-driver.run`
+stages both fb packages and carries the two fb exclusivity probes
+(`fb_lock_probe` / `fb_conflict_probe`), but on current trees those
+probes stop earlier on a pre-existing `report_rom` policy gap
+(`stop because parent denied ROM-session`) and the scenario's final
+PASS string is unconditional — **no fb or exclusivity claim is taken
+from that scenario** (`docs/evidence/phase16-runtime-p33.md` §8.4,
+`docs/evidence/forwarded-create-starvation.md` §7).
 
 ---
 
