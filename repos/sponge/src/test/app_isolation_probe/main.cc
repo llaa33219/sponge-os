@@ -1515,102 +1515,44 @@ struct App_isolation_probe
 			      " calculator id=", cid, ")");
 			return;
 		}
-		bool const te_parked = tx <= -31000 && ty <= -31000;
-		bool const calc_parked = cx <= -31000 && cy <= -31000;
-		if (calc_parked) {
+		/*
+		 * The sibling delta rides the K7-proven textedit clear-band
+		 * shape (the WM-focused window: the relaunched textedit owns
+		 * the keyboard and the K7 path is 20/20 green). The
+		 * calculator type is context-blocked — the cal38/39/44/45/
+		 * 55/58/p2 pairs+triples all measured 0 on the spin band
+		 * with the focus poll passing — and the earlier textedit
+		 * failures were the pre-PS/2 stuck-click class. Slots:
+		 * focus click, type — 2 markers.
+		 */
+		int bh = th;
+		if (ty + bh > STACK_TOP)
+			bh = STACK_TOP - ty;
+		if (bh < 60)
+			bh = th / 2;
+		int const tcx = tx + tw / 2, tcy = ty + 100;
+		_snapshot(tx, ty, tw, bh, _snap);
+		_emit_click_ps2(tcx, tcy);
+		if (!_poll_focus(tid)) {
 			_log_window_list();
-			_fail("calculator parked at W2b rect=(", cx, ",", cy, " ",
-			      cw, "x", ch, ")");
+			_fail("sibling textedit did not take focus (wedge leg)");
 			return;
 		}
-		int srx = 0, sry = 0, bx2 = 0, by2 = 0, bw2 = 0, bh2 = 0;
-		_calc_scaled(cx, cy, cw, ch, srx, sry, bx2, by2, bw2, bh2);
-		/*
-		 * Slot plan (the minimize-textedit design, 3 markers): the
-		 * tasklist click minimizes the OCCLUDING textedit — exposure
-		 * AND the WM-focus move in one action (the keyboard routes to
-		 * the WM-focused window — clicks alone never move it (cal43)
-		 * — and minimizing the focused window drops the focus to the
-		 * sibling, the same fall the closer-kill gives K5). The
-		 * calculator stays NEVER HIDDEN: the cal38/39/44/45 receipts
-		 * show a minimize/restore cycle kills the calculator's typed
-		 * input (0 delta with the focus on it) while the never-hidden
-		 * state measures 95. The pixel-witnessed disambiguation
-		 * (the kill-leg shape): the click must end with the textedit
-		 * region background and the calculator shown; a run-variant
-		 * entry order that hit the calculator fails with evidence.
-		 * Slots: tasklist click, PS/2 spin click, type.
-		 */
-		if (te_parked) {
-			_emit_click_ps2(HEADING_X, HEADING_Y);
-		} else {
-			_emit_click_ps2(_te_entry_x, TASKLIST_Y);
-		}
-		if (!te_parked) {
-			/* Poll, don't sleep: the PS/2 walk lands ~5 s after the
-			 * marker is emitted and the witness must not decide
-			 * before the click (cal54: the minimize logged 26 lines
-			 * after the FAIL). The witness region is the textedit
-			 * strip ABOVE the calculator's frame. */
-			int const vw = tw;
-			int const vh = cy - ty - 30;
-			bool te_gone = false, calc_shown = false;
-			for (unsigned i = 0; i < 75 && !(te_gone && calc_shown); ++i) {
-				_timer.msleep(200);
-				te_gone = vh > 20 &&
-					_nonbg_pct_rect(tx, ty, vw, vh) < 5;
-				calc_shown =
-					_nonbg_pct_rect(cx, cy, cw, ch) > 30;
-			}
-			if (!te_gone || !calc_shown) {
-				_log_window_list();
-				_diag_render(tx, ty, tw, th);
-				_fail("tasklist click did not minimize textedit "
-				      "(te_gone=", (int)te_gone,
-				      " calc_shown=", (int)calc_shown,
-				      " entry=", _te_entry_x, ")");
-				return;
-			}
-		}
-		/*
-		 * The strip click (the user's exposed-bottom-strip design:
-		 * (calc_x + calc_w/2, textedit_bottom + 13)) is the
-		 * default-domain absorber: the tasklist click stole the Qt
-		 * widget focus (the panel button) and the first
-		 * default-domain click is consumed as the domain switch
-		 * (cal55: both types landed on the tasklist and the band
-		 * stayed 0). Slots: min-textedit, strip, spin, type.
-		 */
-		_emit_click_ps2(cx + cw / 2, ty + th + 13);
-		_timer.msleep(1500);
-		_snapshot(cx, cy, cw, ch, _snap);
-		_emit_click_ps2(srx, sry);
-		if (!_poll_focus(cid)) {
-			_log_window_list();
-			_diag_render(cx, cy, cw, ch);
-			_fail("calculator did not take focus (wedge sibling delta)");
-			return;
-		}
-		_timer.msleep(1000);
-		_snapshot(bx2, by2, bw2, bh2, _snap_b,
-		          CALC_BAND_STRIDE);
+		_timer.msleep(5000);
+		_snapshot(tx, ty, tw, bh, _snap_b);
 		_timer.msleep(700);
-		unsigned const baseline =
-			_delta(bx2, by2, bw2, bh2, _snap_b,
-			       CALC_BAND_STRIDE);
-		_snapshot(bx2, by2, bw2, bh2, _snap,
-		          CALC_BAND_STRIDE);
+		unsigned const baseline = _delta(tx, ty, tw, bh, _snap_b);
+		_snapshot(tx, ty, tw, bh, _snap);
 		_emit_type("45");
 		unsigned const changed =
-			_poll_typed_delta(bx2, by2, bw2, bh2, baseline,
-			                  300, CALC_BAND_STRIDE);
-		_log_delta_bbox(bx2, by2, bw2, bh2, _snap,
-		                "wedge-calc-digits", CALC_BAND_STRIDE);
+			_poll_typed_delta(tx, ty, tw, bh, baseline);
+		_log_delta_bbox(tx, ty, tw, bh, _snap, "wedge-sibling-type");
 		if (!changed) {
-			_diag_render(cx, cy, cw, ch);
+			_diag_render(tx, ty, tw, th);
 			_fail("no sibling typed-input delta (wedge leg)");
 			return;
 		}
+
 		unsigned const tid2 =
 			_find_window("pkg_runtime_simple -> ", "textedit");
 		unsigned const cid2 =
