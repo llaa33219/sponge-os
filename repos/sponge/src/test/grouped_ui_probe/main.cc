@@ -1320,7 +1320,13 @@ struct Grouped_ui_probe
 		}
 		if (!_diag_entry_bands(entry.name, _entry_click_y(entry)))
 			return false;
-		_emit_click(_entry_click_x(), _entry_click_y(entry));
+		/* Consumed-click pad + PS/2 entry (the P5.1 app-isolation
+		 * receipts: the first popup-domain click can be dropped and
+		 * the entry never fires; the pad absorbs it and the PS/2
+		 * verb is the reliable-delivery class). */
+		_emit_click(170, 44);
+		Genode::log("QMP-TARGET click ", _entry_click_x(), " ",
+		            _entry_click_y(entry));
 		if (!_poll_popup_closed()) {
 			_fail("launcher popup never closed (", what, ")");
 			return false;
@@ -1967,7 +1973,10 @@ struct Grouped_ui_probe
 		}
 		if (!_diag_entry_bands(app_token, _entry_click_y(entry)))
 			return;
-		_emit_click(_entry_click_x(), _entry_click_y(entry));
+		/* Consumed-click pad + PS/2 entry (the P5.1 receipts). */
+		_emit_click(170, 44);
+		Genode::log("QMP-TARGET click ", _entry_click_x(), " ",
+		            _entry_click_y(entry));
 		if (!_poll_popup_closed()) {
 			_fail("launcher popup never closed (", what, ")");
 			return;

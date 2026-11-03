@@ -1385,12 +1385,21 @@ struct De_survival_probe
 			_click(POPUP_HEADING_PT, phase);
 			_timer.msleep(200);
 		} else {
-			_click(S_TOGGLE, phase);
+			/*
+			 * The S toggle click drops its release intermittently
+			 * on this host (the run's own run14 note) so the click
+			 * never completes and the popup stays shut; the probe
+			 * retries the marker (the dispatch loop is
+			 * stream-driven) until the entry buttons render.
+			 */
 			bool opened = false;
-			for (unsigned i = 0; i < 500 && !opened; ++i) {
-				_timer.msleep(10);
-				if (_popup_is_open())
-					opened = true;
+			for (unsigned attempt = 0; attempt < 3 && !opened; ++attempt) {
+				_click(S_TOGGLE, phase);
+				for (unsigned i = 0; i < 500 && !opened; ++i) {
+					_timer.msleep(10);
+					if (_popup_is_open())
+						opened = true;
+				}
 			}
 			if (!opened)
 				_fail("popup did not open after the S click "
