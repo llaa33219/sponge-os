@@ -273,14 +273,43 @@ if {[info exists ::env(SPONGE_GROUPED_UI)] && $::env(SPONGE_GROUPED_UI) eq "on"}
 	set grouped_ui 1
 }
 
-# report_rom is single-writer per label: SPONGE_FB_SWITCH and
-# SPONGE_GROUPED_UI both claim pkgd's `probe_request`/`probe_result`
-# channel (and both add `+ probe_request` to pkgd's config). Exactly
-# one arm may run per boot — fail loud instead of corrupting the relay.
-if {$fb_switch && $grouped_ui} {
-	error "sponge-desktop-disk: SPONGE_FB_SWITCH and SPONGE_GROUPED_UI \
-both claim pkgd's probe_request channel (report_rom single-writer per \
-label) - run one arm at a time"
+# SPONGE_APP_ISOLATION=on adds the P5.1 app-isolation acceptance arm
+# (test/app_isolation_probe) to the product topology: real QMP input
+# through the Sponge DE launcher kills one app via the decorator closer
+# and wedges another via the ep_wedge package, while the DE and the
+# sibling app are proven still functional (kill + wedge + relaunch
+# legs). The arm also stages the focused `isolation` bake profile and
+# injects the ep_wedge fixture package (see the bake block below).
+# Off by default: the shipped media carries no probe, no fixture
+# package and no QMP socket.
+set app_isolation 0
+if {[info exists ::env(SPONGE_APP_ISOLATION)] && $::env(SPONGE_APP_ISOLATION) eq "on"} {
+	set app_isolation 1
+}
+
+# report_rom is single-writer per label: SPONGE_FB_SWITCH,
+# SPONGE_GROUPED_UI and SPONGE_APP_ISOLATION all claim pkgd's
+# `probe_request`/`probe_result` channel (and all add `+ probe_request`
+# to pkgd's config); the QMP-TARGET dispatch stream is single-consumer
+# too. Exactly one arm may run per boot - fail loud instead of
+# corrupting the relay.
+set claimed_arms {}
+foreach {flag name} [list $fb_switch fb_switch $grouped_ui grouped_ui \
+                          $app_isolation app_isolation] {
+	if {$flag} { lappend claimed_arms $name }
+}
+if {[llength $claimed_arms] > 1} {
+	error "sponge-desktop-disk: [join $claimed_arms { and }] each claim \
+pkgd's probe_request channel (report_rom single-writer per label) - run \
+one arm at a time"
+}
+# The supervisor fault arm stages its own ep_wedge fault child and gates
+# the same `ep_wedge: wedge fired` marker; it cannot coexist with the
+# app-isolation wedge leg.
+if {$app_isolation && $sup_mode ne "off"} {
+	error "sponge-desktop-disk: SPONGE_APP_ISOLATION and \
+SPONGE_SUPERVISOR_TEST both stage ep_wedge fault children - run one at \
+a time"
 }
 if {$sup_mode ne "off"} {
 	puts "sponge-desktop-disk: supervisor fault-injection ARM '$sup_mode'"
@@ -375,6 +404,17 @@ if {$grouped_ui} {
 	supervisor::ignore_exited grouped_ui_probe
 }
 
+#
+# The app-isolation probe (SPONGE_APP_ISOLATION) plus its ep_wedge
+# fixture binary are built HERE for the same reason as the probes
+# above: the /system/bin staging loop runs below, so a binary built
+# later never reaches the disk image.
+#
+if {$app_isolation} {
+	build { test/app_isolation_probe test/ep_wedge }
+	supervisor::ignore_exited app_isolation_probe
+}
+
 create_boot_directory
 
 #
@@ -433,7 +473,7 @@ close $empty_cfg
 foreach b { init report_rom wm window_layouter decorator \
             sponge_configd sponge_themed sponge_pkgd sponge-de \
             alpha_probe terminal cfg_probe fb_switch_probe \
-            grouped_ui_probe } {
+            grouped_ui_probe app_isolation_probe ep_wedge } {
 	#
 	# Some packages (terminal) use a different binary name from
 	# their package name (pkg/terminal has <binary>init</binary> —
@@ -694,6 +734,23 @@ source [file join [file dirname [file normalize [info script]]] \
 #
 driver_runtime::fb_package fb_vesa
 
+#
+# SPONGE_APP_ISOLATION: the FOCUSED media set. The isolation profile
+# stages hello + textedit + calculator (the launcher popup domain fits
+# at most 8 entries and the desktop set already fills it exactly - a
+# ninth entry would clip textedit out of the clickable domain, and
+# textedit must stay launcher-reachable for the kill + relaunch legs).
+# The ep_wedge wedge fixture is injected ON TOP of the profile via
+# bake::add_package so it reaches the bake manifest (the first-boot
+# seed - there is no other way into the installed set) and gets a real
+# launcher entry. The env override is set HERE so the whole arm
+# contract stays one env var (SPONGE_APP_ISOLATION=on).
+#
+if {$app_isolation} {
+	set ::env(SPONGE_BAKE_PROFILE) isolation
+	bake::add_package ep_wedge
+}
+
 bake::stage $sys_dir img
 
 #
@@ -711,18 +768,24 @@ bake::stage $sys_dir img
 # (staged pkg_textedit.xml); the repo metadata stays untouched and
 # this media-only fix is recorded as the residual gap.
 #
-set pv_fh [open "$sys_dir/pkg_pdf_view.xml" r]
-set pv_xml [read $pv_fh]
-close $pv_fh
-if {[string first {<rom name="sample.pdf"/>} $pv_xml] < 0} {
-	error "pkg_pdf_view.xml: sample.pdf rom element missing or drifted"
+# The transform applies to whatever pdf_view metadata the active bake
+# profile stages; a focused profile (SPONGE_APP_ISOLATION's
+# `isolation`) carries no pdf_view and skips it — skip-don't-error,
+# same discipline as the /system/bin copy loop above.
+if {[file exists "$sys_dir/pkg_pdf_view.xml"]} {
+	set pv_fh [open "$sys_dir/pkg_pdf_view.xml" r]
+	set pv_xml [read $pv_fh]
+	close $pv_fh
+	if {[string first {<rom name="sample.pdf"/>} $pv_xml] < 0} {
+		error "pkg_pdf_view.xml: sample.pdf rom element missing or drifted"
+	}
+	set pv_xml [string map [list \
+		{<rom name="sample.pdf"/>} \
+		{<rom name="sample.pdf" binary="no"/>}] $pv_xml]
+	set pv_fh [open "$sys_dir/pkg_pdf_view.xml" w]
+	puts -nonewline $pv_fh $pv_xml
+	close $pv_fh
 }
-set pv_xml [string map [list \
-	{<rom name="sample.pdf"/>} \
-	{<rom name="sample.pdf" binary="no"/>}] $pv_xml]
-set pv_fh [open "$sys_dir/pkg_pdf_view.xml" w]
-puts -nonewline $pv_fh $pv_xml
-close $pv_fh
 
 # After bake::stage: it re-stages pkg payload from the repo, so
 # runtime_simple's payload staging/transforms must run after it.
@@ -730,7 +793,10 @@ runtime_simple::stage_binaries $sys_dir
 
 # No vct_tty on this media: strip the terminal package's optional vct
 # bridge so the nested vfs does not die on the unavailable session.
-runtime_terminal::strip_vct_bridge $sys_dir
+# Profile-scoped: only when the terminal package is staged.
+if {[file exists "$sys_dir/pkg_terminal.xml"]} {
+	runtime_terminal::strip_vct_bridge $sys_dir
+}
 
 #
 # Driver packages (docs/12 §4.5). Opt-in: none of these is listed in a
@@ -1000,6 +1066,17 @@ config
     + controls
       + maximizer
       + title
+      #
+      # The closer (P5.1): the stock motif decorator ships a closer
+      # control (decorator/window.h TYPE_CLOSER) that was never
+      # enabled in the product config. Windows are now closable from
+      # the title bar - the app-isolation kill leg's closer click and
+      # the user-facing close door (AGENTS.md 1.1 control). The
+      # closer is the LAST control = the rightmost title-bar control
+      # (decorator/window.cc draws right-side controls right-to-left
+      # from the end of the list), hit-tested at content
+      # (x+w-16, y-16)..(x+w, y).
+      + closer
     + default-policy
   + route
     + service ROM | label_last: ld.lib.so | + parent
@@ -1438,6 +1515,108 @@ if {$grouped_ui} {
 	set gu_fh [open $sysconfig_hid w]
 	puts -nonewline $gu_fh $gu_cfg
 	close $gu_fh
+}
+
+#
+# ===========================================================================
+# SPONGE_APP_ISOLATION=on — the P5.1 app-isolation acceptance arm
+# ===========================================================================
+#
+# The claim under test: one application's failure cannot take the
+# desktop or a sibling app down, and the desktop recovers. The probe
+# (test/app_isolation_probe) emits the run/qmp.inc QMP-TARGET marker
+# choreography and verifies via Capture pixels + the wm window_list /
+# layouter window_layout reports + the class state report + sponge-de's
+# `input` report. The kill leg closes the textedit window with the
+# decorator CLOSER (the product decorator gains `+ closer` above); the
+# wedge leg launches the run-script-staged ep_wedge package whose
+# entrypoint parks `wedge_after_ms` in. The pkgd probe_request channel
+# carries the sanctioned remove+install RESET before the relaunch
+# (wm_tasks_probe step-8 shape) — never a launch substitute: every
+# launch is a real launcher entry click.
+#
+# Off by default, like every other product-media test arm.
+#
+if {$app_isolation} {
+	puts "app-isolation: SPONGE_APP_ISOLATION=on — app_isolation_probe wired into system.config"
+
+	set ai_fh [open $sysconfig_hid r]
+	set ai_cfg [read $ai_fh]
+	close $ai_fh
+
+	# The probe's observation ROMs on report_rom relays: the launcher
+	# feed, the wm window list, the layouter's placement/focus reports,
+	# the simple class state report, the pkgd launcher_result channel
+	# and sponge-de's `input` report (the C2 DE-input witness).
+	set ai_cfg [string map [list \
+		"    + policy | label: alpha_probe -> sponge_de_launcher | report: sponge-de -> launcher" \
+		"    + policy | label: alpha_probe -> sponge_de_launcher | report: sponge-de -> launcher\n    + policy | label: app_isolation_probe -> launcher      | report: sponge-de -> launcher\n    + policy | label: app_isolation_probe -> window_list   | report: wm -> window_list\n    + policy | label: app_isolation_probe -> window_layout | report: layouter -> window_layout\n    + policy | label: app_isolation_probe -> focus         | report: layouter -> focus\n    + policy | label: app_isolation_probe -> st_simple     | report: pkg_runtime_simple -> state\n    + policy | label: app_isolation_probe -> launcher_result | report: sponge_pkgd -> launcher_result\n    + policy | label: app_isolation_probe -> sponge_de_input | report: sponge-de -> input"] \
+		$ai_cfg]
+
+	# pkgd's probe_request/probe_result channel: the sanctioned
+	# remove+install RESET before the relaunch (never a launch
+	# substitute). report_rom is single-writer per label — the arms
+	# are mutually exclusive, guarded above.
+	set ai_cfg [string map [list \
+		"    + policy | label: alpha_probe -> result       | report: sponge_pkgd -> result" \
+		"    + policy | label: alpha_probe -> result       | report: sponge_pkgd -> result\n    + policy | label: sponge_pkgd -> probe_request | report: app_isolation_probe -> probe_request\n    + policy | label: app_isolation_probe -> probe_result | report: sponge_pkgd -> probe_result"] \
+		$ai_cfg]
+
+	set ai_cfg [string map [list "    + launcher_request\n" \
+		"    + launcher_request\n    + probe_request\n"] $ai_cfg]
+
+	set ai_cfg [string map [list \
+		"    + service ROM | label_last: launcher_request | + child report_rom" \
+		"    + service ROM | label_last: launcher_request | + child report_rom\n    + service ROM | label_last: probe_request | + child report_rom"] \
+		$ai_cfg]
+
+	# alpha_probe runs the minimal hello-only smoke contract (D16.7)
+	# on this focused media: the isolation profile stages 3 of the 7
+	# launcher pairs and `bake.profile` is `isolation`, so the full W3
+	# pair/baked-key table cannot hold. The panel-pixel criterion (a)
+	# is unchanged. The per-app acceptance receipts for the FULL set
+	# come from the grouped-UI arm (docs/evidence/
+	# phase16-runtime-acceptance.md).
+	set ai_cfg [string map [list "  + config | skip_lz: yes" \
+		"  + config | skip_lz: yes | minimal: yes"] $ai_cfg]
+
+	# The C2 DE-input press witness (sponge-de -> input) is served by
+	# Main::eventFilter, which is installed by the DEMO window's
+	# constructor and absent on shipped media. Enable the demo in
+	# this arm and route its Gui session straight to nitpicker (the
+	# proven de-pkgd-failure topology shape); the tier-0 rewrite below
+	# pins it in a corner domain clear of every measurement region.
+	set ai_cfg [string map [list "    + demo | enabled: no" \
+		"    + demo | enabled: yes"] $ai_cfg]
+
+	set ai_cfg [string map [list \
+		"    + service Gui | label_last: Sponge Launcher | + parent\n    + service Gui | + child wm" \
+		"    + service Gui | label_last: Sponge Launcher | + parent\n    + service Gui | label_last: Sponge DE Demo | + parent\n    + service Gui | + child wm"] $ai_cfg]
+
+	set ai_cfg [string map [list "+ start alpha_probe | caps: 200 | ram: 16M" {+ start app_isolation_probe | caps: 200 | ram: 32M
+  + binary | name: bin/app_isolation_probe
+  + route
+    + service ROM | label_last: ld.lib.so | + parent
+    + service Capture | + parent
+    + service Timer | + parent
+    + service ROM | label: launcher      | + child report_rom
+    + service ROM | label: window_list   | + child report_rom
+    + service ROM | label: window_layout | + child report_rom
+    + service ROM | label: focus         | + child report_rom
+    + service ROM | label: st_simple     | + child report_rom
+    + service ROM | label: launcher_result | + child report_rom
+    + service ROM | label: sponge_de_input | + child report_rom
+    + service ROM | label: probe_result | + child report_rom
+    + service Report | label: probe_request | + child report_rom
+    + any-service
+      + parent
+      + any-child
+
++ start alpha_probe | caps: 200 | ram: 16M}] $ai_cfg]
+
+	set ai_fh [open $sysconfig_hid w]
+	puts -nonewline $ai_fh $ai_cfg
+	close $ai_fh
 }
 
 	#
@@ -1913,6 +2092,26 @@ set tier0_config [driver_runtime::expand $tier0_config \
                        [list @DRIVER_PLATFORM_POLICIES@]]
 runtime_grouped::assert_tier0 $tier0_config
 runtime_browser::assert_tier0 $tier0_config vfs
+
+#
+# SPONGE_APP_ISOLATION: pin the demo window (the C2 press observer's
+# host) in a corner domain clear of every measurement region —
+# x 600..1000 vs the textedit frame (46..566), the popup (0..341),
+# the closer points (554..558) and every click column. The de-pkgd-
+# failure topology's domain + direct-Gui shape, arm-gated only.
+#
+if {$app_isolation} {
+	set ai_t0 [string map [list \
+		"    + domain default | layer: 3 | content: client | label: no\n                     | hover: always | focus: click | ypos: 28 | height: -28" \
+		"    + domain demo | layer: 2 | content: client | label: no\n                  | hover: always | focus: click\n                  | xpos: 600 | ypos: 30 | width: 400 | height: 300\n    + domain default | layer: 3 | content: client | label: no\n                     | hover: always | focus: click | ypos: 28 | height: -28"] \
+		$tier0_config]
+	set ai_t0 [string map [list \
+		"    + policy | label_prefix: system -> sponge-de -> Sponge Launcher | domain: launcher" \
+		"    + policy | label_prefix: system -> sponge-de -> Sponge Launcher | domain: launcher\n    + policy | label_prefix: system -> sponge-de -> Sponge DE Demo | domain: demo"] \
+		$ai_t0]
+	set tier0_config $ai_t0
+}
+
 install_config $tier0_config
 
 #
@@ -1931,7 +2130,8 @@ foreach f { event_filter.config } {
 }
 
 #
-# SPONGE_GROUPED_UI: REWRITE the staged event_filter.config with the
+# SPONGE_GROUPED_UI / SPONGE_APP_ISOLATION: REWRITE the staged
+# event_filter.config with the
 # W4 usb-tablet <transform> scale (the exact recipe proven by
 # run/sponge-terminal-qmp.run and run/sponge-wm-qmp.run). QEMU 11's
 # usb-tablet reports absolute positions in device units (0..32767 per
@@ -1939,12 +2139,12 @@ foreach f { event_filter.config } {
 # unscaled tablet events clamp to the screen corner. The scale maps
 # device units to the 1024x768 framebuffer (1024/32767, 768/32767) —
 # with it, `QMP-TARGET tablet <x> <y>` lands on the target pixel
-# (W4: ±0-1px). The rewrite happens ONLY inside this arm: the default
+# (W4: ±0-1px). The rewrite happens ONLY inside these arms: the default
 # path stages the untouched recipe above. Everything else (chargen
 # includes, ps2 accelerate wrapper, mod/repeat blocks) is identical to
 # the proven scenario configs.
 #
-if {$grouped_ui} {
+if {$grouped_ui || $app_isolation} {
 	set ef [open "bin/event_filter.config" w]
 	puts $ef {<config>
   <output>
@@ -1974,7 +2174,11 @@ if {$grouped_ui} {
   <policy label="usb" input="usb"/>
 </config>}
 	close $ef
-	puts "grouped-ui: event_filter.config rewritten with usb tablet scale"
+	if {$grouped_ui} {
+		puts "grouped-ui: event_filter.config rewritten with usb tablet scale"
+	} else {
+		puts "app-isolation: event_filter.config rewritten with usb tablet scale"
+	}
 }
 
 #
@@ -2104,13 +2308,14 @@ append qemu_args " -device nec-usb-xhci,id=xhci -device usb-tablet "
 append qemu_args " -device e1000 "
 
 #
-# SPONGE_GROUPED_UI: open the QMP control socket and source the shared
-# run/qmp.inc helper (the Phase-10 QMP-TARGET dispatch contract). The
-# socket is added ONLY inside this arm — the shipped media boots with
-# no QMP socket. The port append must happen BEFORE the first
-# run_genode_until below (power_on consumes qemu_args at spawn).
+# SPONGE_GROUPED_UI / SPONGE_APP_ISOLATION: open the QMP control socket
+# and source the shared run/qmp.inc helper (the Phase-10 QMP-TARGET
+# dispatch contract). The socket is added ONLY inside these arms - the
+# shipped media boots with no QMP socket. The port append must happen
+# BEFORE the first run_genode_until below (power_on consumes qemu_args
+# at spawn).
 #
-if {$grouped_ui} {
+if {$grouped_ui || $app_isolation} {
 	source [file join [file dirname [file normalize [info script]]] qmp.inc]
 	set qmp_port [qmp_pick_port]
 	append qemu_args " -qmp tcp:127.0.0.1:${qmp_port},server=on,wait=off "
@@ -2776,6 +2981,212 @@ receipt: $m\n"
  pkgd-remove teardowns, files double-click navigation, pdf_view page-down/scroll,\
  calculator digits/spin result) and the five-window concurrent set (textedit,\
  terminal, files, pdf_view, calculator) held while the last typed delta landed"
+		qmp_disconnect $qmp_chan
+	}
+
+	#
+	# === SPONGE_APP_ISOLATION — P5.1 app-isolation acceptance ===
+	#
+	# QMP-TARGET instruction batches (fixed dispatch count per gate):
+	#
+	#   t0 (0) state baseline                 -> wedge state t0
+	#   K1+K2+W1 x6 open slots + 3-row salvo   -> wedge launched + wedge fired + kill apps first paint
+	#   (0) closer geometry derivation       -> kill closer geometry
+	#   K3 x2 closer candidate A + B         -> kill victim-gone
+	#   K4 x2 toggle x2 (DE-input witness)   -> kill de-input ok
+	#   K5 x2 calculator spin click + type   -> kill sibling typed delta
+	#   (0) pkgd remove+install reset        -> kill reset ok
+	#   K6 x6 open slots + solo salvo (band rows) -> kill relaunch first paint
+	#   K7 x2 textedit focus click + type    -> kill relaunch typed delta
+	#   (0) ep_wedge wedge marker (early gate) -> wedge fired
+	#   W2a x2 toggle x2 (DE-input witness)  -> wedge de-input ok
+	#   W2b x3 raise click + spin click + type -> wedge survivors
+	#   (0) class state t1                   -> wedge state ok
+	#   (0) probe verdict                    -> app-isolation-probe: PASS
+	#
+	# Every gate is an alternation with the probe's FAIL marker
+	# (bounded, fail-loud) and the single `app-isolation-probe: PASS`
+	# is gated LAST, only after both legs. Gate patterns carry no
+	# trailing `.*` (a QMP-TARGET line co-buffered after a gate line
+	# must remain for the next qmp_exec_target). The no-churn receipt
+	# (zero `sponge_supervisor: version-change` lines) is asserted from
+	# the accumulated output, because no log-line gate can express an
+	# absence.
+	#
+	if {$app_isolation} {
+		global qemu_spawn_id
+		match_max -i $qemu_spawn_id 200000
+
+		proc app_iso_fail_reason {output} {
+			foreach line [split $output "\n"] {
+				set t [string trim $line]
+				set i [string first "app-isolation-probe: FAIL" $t]
+				if {$i >= 0} {
+					return [string range $t $i end]
+				}
+			}
+			return ""
+		}
+
+		proc app_iso_gate {pat what} {
+			global qemu_spawn_id output
+			run_genode_until $pat 300 $qemu_spawn_id
+			if {[string first "app-isolation-probe: FAIL" $output] >= 0} {
+				set reason [app_iso_fail_reason $output]
+				if {$reason eq ""} {
+					set reason $what
+				}
+				puts "\nsponge-desktop-disk: APP ISOLATION FAIL — $reason\n"
+				exit 1
+			}
+		}
+
+		run_genode_until {(app-isolation-probe: ready|app-isolation-probe: FAIL)} 300 $qemu_spawn_id
+		if {[string first "app-isolation-probe: FAIL" $output] >= 0} {
+			set reason [app_iso_fail_reason $output]
+			if {$reason eq ""} {
+				set reason "probe failed before the QMP phase"
+			}
+			puts "\nsponge-desktop-disk: APP ISOLATION FAIL — $reason\n"
+			exit 1
+		}
+
+		set qmp_chan [qmp_connect $qmp_port]
+
+		# class state t0 (no QMP) — the launch session below carries
+		# ALL three launches, so the state baseline precedes it
+		app_iso_gate {(app-isolation-probe: wedge state t0|app-isolation-probe: FAIL)} "wedge state t0"
+
+		# K1+K2+W1 (one first-show popup session): 3 open slots (see-
+		# then toggle / heading pads) + the 4-click entry SALVO (pad +
+		# textedit row + calculator row + ep_wedge row) — the fixed
+		# dispatch count of the probe's _open_popup + _salvo_clicks
+		# contract. All later popup sessions cannot deliver entry
+		# clicks (stale-view receipts ai-cal2..10), so every launch in
+		# the run rides this session.
+		qmp_exec_target $qmp_chan 120
+		qmp_exec_target $qmp_chan 120
+		qmp_exec_target $qmp_chan 120
+		qmp_exec_target $qmp_chan 120
+		qmp_exec_target $qmp_chan 120
+		qmp_exec_target $qmp_chan 120
+		qmp_exec_target $qmp_chan 120
+		app_iso_gate {(app-isolation-probe: wedge launched|app-isolation-probe: FAIL)} "wedge launched"
+
+		# The wedge marker (ep_wedge's entrypoint parks wedge_after_ms
+		# into the incarnation) — gated HERE so the gate order is the
+		# receipt that every survival assertion below is POST-wedge.
+		run_genode_until {.*ep_wedge: wedge fired - entrypoint parked.*} 120 $qemu_spawn_id
+
+		app_iso_gate {(app-isolation-probe: kill apps first paint|app-isolation-probe: FAIL)} "kill apps first paint"
+
+		# closer geometry derivation (no QMP)
+		app_iso_gate {(app-isolation-probe: kill closer geometry|app-isolation-probe: FAIL)} "kill closer geometry"
+
+		# K3: closer candidate A + candidate B / re-hit winner
+		qmp_exec_target $qmp_chan 120
+		qmp_exec_target $qmp_chan 120
+		app_iso_gate {(app-isolation-probe: kill victim-gone|app-isolation-probe: FAIL)} "kill victim-gone"
+
+		# K4: DE-input witness (launcher toggle open + close)
+		qmp_exec_target $qmp_chan 120
+		qmp_exec_target $qmp_chan 120
+		qmp_exec_target $qmp_chan 120
+		app_iso_gate {(app-isolation-probe: kill de-input ok|app-isolation-probe: FAIL)} "kill de-input ok"
+
+		# K5: spin/type pairs (spin, type, spin, type) — the type is
+		# a per-type flake and the second spin re-establishes the
+		# focus layers — 4 slots
+		qmp_exec_target $qmp_chan 120
+		qmp_exec_target $qmp_chan 120
+		qmp_exec_target $qmp_chan 120
+		qmp_exec_target $qmp_chan 120
+		app_iso_gate {(app-isolation-probe: kill sibling typed delta|app-isolation-probe: FAIL)} "kill sibling typed delta"
+
+		# pkgd remove+install reset (no QMP)
+		app_iso_gate {(app-isolation-probe: kill reset ok|app-isolation-probe: FAIL)} "kill reset ok"
+
+
+
+		# K6: relaunch — 3 open slots + the 4-click solo SALVO (pad +
+		# textedit cand_a + cand_b + pad; the calculator is minimized
+		# so the popup clicks deliver)
+		qmp_exec_target $qmp_chan 120
+		qmp_exec_target $qmp_chan 120
+		qmp_exec_target $qmp_chan 120
+		qmp_exec_target $qmp_chan 120
+		qmp_exec_target $qmp_chan 120
+		qmp_exec_target $qmp_chan 120
+		qmp_exec_target $qmp_chan 120
+		app_iso_gate {(app-isolation-probe: kill relaunch first paint|app-isolation-probe: FAIL)} "kill relaunch first paint"
+
+		# K7: relaunch typed input — focus click + type
+		qmp_exec_target $qmp_chan 120
+		qmp_exec_target $qmp_chan 120
+		app_iso_gate {(app-isolation-probe: kill relaunch typed delta|app-isolation-probe: FAIL)} "kill relaunch typed delta"
+
+
+
+		# W2a: DE-input witness (launcher toggle open + close)
+		qmp_exec_target $qmp_chan 120
+		qmp_exec_target $qmp_chan 120
+		qmp_exec_target $qmp_chan 120
+		app_iso_gate {(app-isolation-probe: wedge de-input ok|app-isolation-probe: FAIL)} "wedge de-input ok"
+
+		# W2b: tasklist minimize-textedit click + calculator strip
+		# click (the default-domain absorber) + K5 spin + typed
+		# digits — 4 slots
+		qmp_exec_target $qmp_chan 120
+		qmp_exec_target $qmp_chan 120
+		qmp_exec_target $qmp_chan 120
+		qmp_exec_target $qmp_chan 120
+		app_iso_gate {(app-isolation-probe: wedge survivors|app-isolation-probe: FAIL)} "wedge survivors"
+
+		# class state t1 + launch receipt (no QMP)
+		app_iso_gate {(app-isolation-probe: wedge state ok|app-isolation-probe: FAIL)} "wedge state ok"
+
+		run_genode_until {app-isolation-probe: PASS} 120 $qemu_spawn_id
+
+		# Receipt completeness + no sibling construction-version churn
+		# (the supervisor's version-change lines are a rebuild receipt;
+		# the wedge child lives INSIDE pkg_runtime_simple and must not
+		# bump any top-level construction version).
+		set _missing ""
+		foreach m {"app-isolation-probe: kill victim-gone" \
+		           "app-isolation-probe: kill de-input ok" \
+		           "app-isolation-probe: kill sibling typed delta" \
+		           "app-isolation-probe: kill relaunch typed delta" \
+		           "ep_wedge: wedge fired - entrypoint parked" \
+		           "sponge_pkgd: launch result ep_wedge -> ok" \
+		           "app-isolation-probe: wedge de-input ok" \
+		           "app-isolation-probe: wedge survivors" \
+		           "app-isolation-probe: wedge state ok"} {
+			if {[string first $m $output] < 0} { append _missing " $m" }
+		}
+		if {$_missing ne ""} {
+			puts "\nsponge-desktop-disk: APP ISOLATION FAIL - missing \
+receipt(s):$_missing\n"
+			exit 1
+		}
+		set _churn {}
+		foreach line [split $output "\n"] {
+			if {[string first "sponge_supervisor: version-change " $line] >= 0} {
+				lappend _churn [string trim $line]
+			}
+		}
+		if {[llength $_churn] > 0} {
+			puts "\nsponge-desktop-disk: APP ISOLATION FAIL - \
+construction-version churn (no sibling churn allowed):\n[join $_churn \n]\n"
+			exit 1
+		}
+		puts "sponge-desktop-disk: APP ISOLATION PASS — closer-kill of \
+textedit left the DE input-live (QMP launcher toggle -> sponge-de press \
+change) and the sibling calculator typed-input-live (real QMP digits -> \
+result-band delta), the victim left window_list, the real launcher \
+relaunch answered ok + first paint + typed delta; the ep_wedge package \
+wedged its entrypoint from a real launcher entry and the DE + siblings \
+(textedit, calculator) stayed functional with windows retained, class \
+state live and no construction-version churn"
 		qmp_disconnect $qmp_chan
 	}
 

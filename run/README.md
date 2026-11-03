@@ -1174,6 +1174,39 @@ A scenario defines:
   so the supervisor's own lines would be dropped before a late gate
   could see them. Receipts: `docs/evidence/product-supervision.md`.
 
+- **`SPONGE_APP_ISOLATION=on`** (env-gated, **off by default**) — the
+  **P5.1 app-isolation acceptance arm** of `run/sponge-desktop-disk.run`
+  (docs/evidence/phase16-runtime-acceptance.md). The product decorator
+  now ships a `+ closer` control (it exists in the stock motif
+  decorator but was never enabled), so windows are closable from the
+  title bar. The arm stages the focused `isolation` bake profile
+  (`pkg/bake/isolation.profile`: hello + textedit + calculator — the
+  launcher popup domain fits at most 8 entries and the desktop set
+  already fills it exactly) and injects the `ep_wedge` wedge-fixture
+  package (`pkg/ep_wedge/`, `<config wedge_after_ms="6000"/>`) via
+  `bake::add_package`, then runs `test/app_isolation_probe`:
+  1. **kill** — launch textedit + calculator from the REAL launcher,
+     kill textedit with the decorator closer (geometry derived from
+     the live `window_layout` report), require the victim gone from
+     `window_list`, witness DE input via a QMP launcher-toggle press
+     change on sponge-de's `input` report (de_survival C2 shape),
+     prove the sibling calculator still takes typed input (the
+     grouped_ui typed-delta shape), reset via pkgd remove+install
+     (wm_tasks step-8 shape — never a launch substitute), relaunch
+     textedit from the real launcher and require `launcher_result ok`
+     + first paint + typed delta.
+  2. **wedge** — launch ep_wedge from the real launcher, let its
+     entrypoint park (gated `ep_wedge: wedge fired - entrypoint
+     parked`), then require DE input + sibling typed delta + sibling
+     windows retained + the class state live and updating, with zero
+     `sponge_supervisor: version-change` lines (no sibling
+     construction-version churn).
+  The single marker `app-isolation-probe: PASS` is emitted only after
+  both legs. `alpha_probe` runs its `minimal="yes"` hello-only smoke
+  contract on this focused media (D16.7). Mutually exclusive with the
+  other probe arms and with `SPONGE_SUPERVISOR_TEST` (they share the
+  probe_request channel and the ep_wedge marker).
+
 - **`SPONGE_SLOW_STORAGE_KBPS`** (env-gated, **off by default**;
   measurement only) — a slow-storage emulation on the boot medium of
   `run/sponge-desktop-disk-uefi-usb.run`, the field's own media. It
