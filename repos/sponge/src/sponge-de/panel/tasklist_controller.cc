@@ -354,7 +354,19 @@ void TasklistController::_recompute_tracked()
 					st.hidden         = match->hidden;
 					st.resizeable     = match->resizeable;
 
-					if (st.x <= -32000 && st.y <= -32000) {
+					/*
+					 * The parked sentinel is written in rules space
+					 * (-32000,-32000, see _append_assign_for) but
+					 * window_layout reports it shifted by the
+					 * boundary origin, so the comparison must shift
+					 * with it — with a nonzero origin (the product
+					 * topology's (0,28)) a plain -32000 test never
+					 * matches and the restore toggle becomes
+					 * unreachable (cal37 receipt: clicking the
+					 * parked window's entry logged "minimize").
+					 */
+					if (st.x <= _layout_origin_x - 32000 &&
+					    st.y <= _layout_origin_y - 32000) {
 						st.minimized = true;
 
 						/* A parked window's layout position is the
