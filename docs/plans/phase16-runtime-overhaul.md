@@ -7,7 +7,9 @@
 > `docs/evidence/forwarded-create-starvation.md` §9) are landed;
 > P4.3 is landed as a **no-pruning closeout** (the P4.1 census left
 > nothing to prune — no code path, patch, or ledger row removed);
-> P5 remains open. Created
+> P5.1 is **landed** (the acceptance checklist + three consecutive
+> all-green suite passes, docs/evidence/phase16-runtime-acceptance.md);
+> P5.2-P5.3 remain open. Created
 > 2026-10-28 on branch `refactor/phase16-runtime-overhaul` (pre-work HEAD
 > `3afb40c922`).
 > Relationship: this is the runtime-overhaul track of the reopened Phase 16
@@ -519,6 +521,17 @@ Gate: an acceptance checklist committed with one receipt per app and per
 failure-isolation property, green three consecutive times.
 Commits: `docs(evidence): record the phase-16 runtime acceptance receipts` (1).
 Owns: `docs/evidence/phase16-runtime-acceptance.md`.
+Landed (2026-11-04): the checklist in
+`docs/evidence/phase16-runtime-acceptance.md` carries one receipt per
+built-in desktop package (the grouped-UI leg) and per failure-isolation
+property (the kill/wedge/relaunch arms of `SPONGE_APP_ISOLATION=on` on
+the product disk media, plus the P2.5/P3.2/P3.4/P3.3 legs), and the
+six-leg acceptance suite passed three consecutive all-green passes
+(the matrix in the evidence file; flaked attempts recorded honestly).
+The arm delivered with the registered limits: the focused `isolation`
+profile + demo-enable for the C2 press witness + the first-show launcher
+salvo class + the tasklist parked-sentinel product bug (reverted fix,
+open).
 
 **P5.2 Docs sync.**
 Sync docs with the delivered behavior (one docs commit per file):
