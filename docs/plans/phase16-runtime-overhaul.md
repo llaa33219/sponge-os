@@ -577,6 +577,18 @@ is the `BOARD=pc` combo (verbatim compile error captured); the
 review is deliberately not run in this step (task instruction) and
 remains the next step before handoff.
 
+Fix wave (2026-11-04, same day): F1 and F6 landed and the affected
+rows were re-gated (sweep §7 + register). Rows 4/31 and 30 are green
+on fresh runs — the two templates now carry the grouped-runtime +
+state/channel route model per `run/runtime-grouped.inc`, with both
+QEMU envelopes grown 2G -> 4G in lockstep with the class grants (the
+product's own 4G -> 6G move, `docs/evidence/remainder-clamp-ram.md`;
+at 2G row 30 could not boot at all). Row 35's braced-expansion defect
+is fixed (plus the vct staging the scenario needed), but the row is
+re-gated RED one gate deeper: the toolset step's first bash fork
+wedges the terminal (new follow-up F7, product-side). Receipts:
+`docs/evidence/phase16-runtime-f{1,6}-*.log`. Other rows unchanged.
+
 ## 6. Dependency Graph
 
 | Task | Depends on | Reason |
