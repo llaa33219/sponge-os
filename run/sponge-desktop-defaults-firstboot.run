@@ -26,7 +26,8 @@
 #         `- system  (nested init from disk)
 #             `- hosts: report_rom, wm, window_layouter, decorator,
 #                       sponge_configd, sponge_themed, sponge_pkgd,
-#                       pkg_runtime, sponge-de, alpha_probe
+#                       pkg_runtime_simple, pkg_runtime_terminal,
+#                       pkg_runtime_browser, sponge-de, alpha_probe
 #
 # === Bake wiring under test (plan W3 #2 + D15.9) ===
 #
@@ -54,7 +55,17 @@
 # pre-implementation gate matched against (it was removed when the
 # gate was flipped to PASS as part of the W3 implementation commit).
 #
-# QEMU: -m 2G (the sponge-desktop-disk default per plan W3 #4).
+# QEMU: -m 4G (plan W3 #4 asked 2G; the P2.4 class-grant migration
+# bumps it in lockstep — the same move the product media made from 4G
+# to 6G, run/sponge-desktop-disk.run +
+# docs/evidence/remainder-clamp-ram.md). At 2G the three pkg_runtime_*
+# grants oversubscribed the system pool: init clamped pkg_runtime_
+# simple to what was left, terminal/browser died at "out of RAM during
+# ELF loading", and the run logged a bounded "RAM/Capability
+# preservation exceeds" burst (receipt f1-e04-...-firstboot at 2G in
+# session scratch). At 4G the asks (Tier-0 + system children + simple
+# 1488M + terminal 247M) fit and pkg_runtime_browser takes the
+# documented remainder.
 # base-sel4 only.
 #
 
@@ -215,6 +226,22 @@ source [file join [file dirname [file normalize [info script]]] \
 
 bake::stage $sys_dir img
 
+# ----------------------------------------------------------------
+# P2.4 grouped-runtime wiring (run/runtime-grouped.inc port
+# checklist): the per-class quota rows live in the runtime-*.inc
+# class includes and are drift-checked against the grant literals
+# used by the three pkg_runtime_* nodes below (docs/17 §6). The
+# @GROUPED_*@ placeholders in the staged system.config are expanded
+# right after the template is written (the braced literal performs no
+# substitution).
+# ----------------------------------------------------------------
+foreach inc { runtime-simple.inc runtime-terminal.inc runtime-browser.inc \
+              runtime-quota.inc runtime-grouped.inc } {
+	source [file join [file dirname [file normalize [info script]]] $inc]
+}
+
+runtime_quota::verify 6000 1488M 2000 247M 220000 512G
+
 # ========================================================================
 # Write /system/init/system.config — the nested system init config
 # ========================================================================
@@ -251,8 +278,8 @@ config
     + policy | label: wm -> resize_request           | report: layouter -> resize_request
     + policy | label: layouter -> hover              | report: decorator -> hover
     + policy | label: layouter -> decorator_margins  | report: decorator -> decorator_margins
-    + policy | label: layouter -> rules              | report: layout_rules
-    + policy | label: layouter -> focus_request      | report: wm -> focus_request
+    + policy | label: layouter -> rules              | report: sponge-de -> rules
+    + policy | label: layouter -> focus_request      | report: sponge-de -> focus_request
     + policy | label: sponge_configd -> config_request | report: alpha_probe -> config_request
     + policy | label: alpha_probe -> config_result     | report: sponge_configd -> config_result
     + policy | label: sponge_themed -> config          | report: sponge_configd -> config
@@ -262,8 +289,12 @@ config
     + policy | label: alpha_probe -> theme             | report: sponge_themed -> theme
     + policy | label: sponge_pkgd -> request     | report: alpha_probe -> request
     + policy | label: alpha_probe -> result       | report: sponge_pkgd -> result
-    + policy | label: pkg_runtime -> config       | report: sponge_pkgd -> runtime
+    @GROUPED_RELAY_POLICIES@
     + policy | label: sponge-de -> installed      | report: sponge_pkgd -> installed
+    + policy | label: sponge_pkgd -> launcher_request | report: sponge-de -> launcher_request
+    + policy | label: sponge-de -> launcher_result   | report: sponge_pkgd -> launcher_result
+    + policy | label: sponge-de -> window_list   | report: wm -> window_list
+    + policy | label: sponge-de -> window_layout | report: layouter -> window_layout
     + policy | label: alpha_probe -> sponge_de_launcher | report: sponge-de -> launcher
 
 + start wm | caps: 250 | ram: 8M
@@ -372,22 +403,20 @@ config
 + start sponge_pkgd | caps: 200 | ram: 16M
   + binary | name: bin/sponge_pkgd
   + config | binary_prefix: bin/
+    + launcher_request
+    #
+    # P2.4 grouped runtimes (run/runtime-grouped.inc): grouped
+    # emission + the three EXPLICIT per-class admission gates.
+    #
+    @GROUPED_ADMISSION_NODES@
     + bake
   + route
     + service ROM | label_last: ld.lib.so | + parent
     + service ROM | label_last: request | + child report_rom
+    + service ROM | label_last: launcher_request | + child report_rom
+    @GROUPED_PKGD_STATE_ROUTES@
     + service ROM | label: bake_manifest | + parent | label: bake/bake_manifest.json
     + service Report | + child report_rom
-    + any-service
-      + parent
-      + any-child
-
-+ start pkg_runtime | caps: 400 | ram: 32M
-  + binary | name: bin/init
-  + route
-    + service ROM | label_last: ld.lib.so | + parent
-    + service ROM | label: config | + child report_rom
-    + service Gui | + child wm
     + any-service
       + parent
       + any-child
@@ -414,6 +443,15 @@ config
     + service Report | label: input | + child report_rom
     + service Report | label: applied_theme | + child report_rom
     + service Report | label: launcher | + child report_rom
+    + service Report | label: launcher_request | + child report_rom
+    + service ROM | label: window_list   | + child report_rom
+    + service ROM | label: window_layout | + child report_rom
+    + service Report | label: focus_request | + child report_rom
+    + service Report | label: rules        | + child report_rom
+    + service ROM | label: launcher_result | + child report_rom
+    + service ROM | label_last: runtime_state | + child report_rom
+    + service ROM | label_last: runtime_mirror | + child report_rom
+    + service Report | label: de_op_error | + child report_rom
     + service ROM | label: installed | + child report_rom
     + service ROM | label: theme | + child report_rom
     + service ROM | label: mesa_gpu.lib.so | + parent | label: mesa_gpu-softpipe.lib.so
@@ -437,8 +475,80 @@ config
     + any-service
       + parent
       + any-child
+
+#
+# P2.4 grouped runtime classes (run/runtime-grouped.inc port
+# checklist): the single legacy `pkg_runtime` node is replaced by the
+# three class runtimes below, with the class-row-derived grant
+# literals (run/runtime-quota.inc, checked by the runtime_quota::
+# verify call above). Each runtime's `label: config` serves its own
+# pkgd-generated class config and `label_last: state` publishes its
+# sandbox state report, which its pkgd admission gate reads. Gui goes
+# through the wm so launched GUI packages get decorated frames (Phase
+# 10 W3). This media carries no vct_tty and no falkon payload, so the
+# terminal class has no Terminal route and the browser class stays an
+# empty admission target until the browser package ships here.
+#
+# HARD ORDERING INVARIANT (docs/17 §6.1): pkg_runtime_browser must be
+# the LAST + start node — `ram: 512G` is the remainder clamp and a
+# node appended below would silently starve.
+#
++ start pkg_runtime_simple | caps: 6000 | ram: 1488M
+  + binary | name: bin/init
+  + route
+    + service ROM | label_last: ld.lib.so | + parent
+    + service ROM | label_last: mesa_gpu.lib.so | + parent | label: mesa_gpu-softpipe.lib.so
+    + service ROM | label: config | + child report_rom
+    + service ROM | label_last: installed      | + child report_rom
+    + service ROM | label_last: window_list    | + child report_rom
+    + service ROM | label_last: launcher_result | + child report_rom
+    + service Gui | + child wm
+    + service Report | label_last: shape | + child wm
+    + service Report | label_last: state | + child report_rom
+    + any-service
+      + parent
+      + any-child
+
++ start pkg_runtime_terminal | caps: 2000 | ram: 247M
+  + binary | name: bin/init
+  + route
+    + service ROM | label_last: ld.lib.so | + parent
+    + service ROM | label: config | + child report_rom
+    + service Gui | + child wm
+    + service Report | label_last: shape | + child wm
+    + service Report | label_last: state | + child report_rom
+    + any-service
+      + parent
+      + any-child
+
++ start pkg_runtime_browser | caps: 220000 | ram: 512G
+  + binary | name: bin/init
+  + route
+    + service ROM | label_last: ld.lib.so | + parent
+    + service ROM | label_last: mesa_gpu.lib.so | + parent | label: mesa_gpu-softpipe.lib.so
+    + service ROM | label: config | + child report_rom
+    + service Gui | + child wm
+    + service Report | label_last: shape | + child wm
+    + service Report | label_last: state | + child report_rom
+    + any-service
+      + parent
+      + any-child
 - }
 	close $sysconfig_fh
+
+	#
+	# Expand the runtime-grouped.inc @GROUPED_*@ placeholders (the
+	# system.config block above is a braced Tcl literal in which no
+	# substitution happens) and fail loudly if one survives.
+	#
+	set grp_fh [open $sysconfig_hid r]
+	set grp_hid [runtime_grouped::expand [read $grp_fh] \
+		[list @GROUPED_RELAY_POLICIES@ @GROUPED_ADMISSION_NODES@ \
+		      @GROUPED_PKGD_STATE_ROUTES@]]
+	close $grp_fh
+	set grp_fh [open $sysconfig_hid w]
+	puts -nonewline $grp_fh $grp_hid
+	close $grp_fh
 
 	set xml_content [exec [genode_dir]/tool/hid format --output-xml "$sysconfig_hid"]
 	set sysconfig_final [open "$sys_dir/init/system.config" w]
@@ -709,7 +819,17 @@ config
     + service LOG | + parent
     + service Timer | + child timer
 
-+ start system | caps: 8000 | ram: 1500M
+#
+# The system sandbox carries the P2.4 class grants: caps 263000 is
+# driver_runtime.inc's BASE_CAPS (the app-side base figure the product
+# @SYSTEM_CAPS@ derives from — this media hosts no driver_runtime, so
+# the base is the whole grant) and `ram: 512G` is the product's
+# remainder-clamp shape (docs/17 §6.1; system is the LAST + start
+# node of this config, so the clamp is safe). The old
+# `caps: 8000 | ram: 1500M` predated the class grants and silently
+# starved pkg_runtime_terminal to "proceed with 0".
+#
++ start system | caps: 263000 | ram: 512G
   + binary | name: bin/init
   + route
     + service ROM | label: config | + child rom_sys | label: init/system.config
@@ -766,10 +886,11 @@ foreach m { vfs.lib.so vfs_rump.lib.so rump.lib.so rump_fs.lib.so \
 build_boot_image $boot_modules
 
 #
-# QEMU: -m 2G (plan W3 #4) + q35 + Skylake-Client + xHCI + usb-tablet.
+# QEMU: -m 4G (plan W3 #4 + the P2.4 class-grant lockstep bump, see
+# the header) + q35 + Skylake-Client + xHCI + usb-tablet.
 #
 append qemu_args " -machine q35 -cpu Skylake-Client "
-append qemu_args " -nographic -m 2G "
+append qemu_args " -nographic -m 4G "
 append qemu_args " -device nec-usb-xhci,id=xhci -device usb-tablet "
 
 #
