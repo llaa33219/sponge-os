@@ -222,6 +222,32 @@ heartbeat `state` policies + the `de_op_error` / `launcher_request` /
 set), then re-gate rows 4/31 and 30. Run-config change — needs
 discussion before landing.
 
+**F1 RESOLVED (2026-11-04 fix wave; re-gated green).** The recipe
+above was applied verbatim via the `run/runtime-grouped.inc` port
+checklist: the three `pkg_runtime_{simple,terminal,browser}` nodes
+with the `run/runtime-quota.inc` class-row grant literals
+(`runtime_quota::verify 6000 1488M 2000 247M 220000 512G`), the
+`@GROUPED_RELAY_POLICIES@` / `@GROUPED_ADMISSION_NODES@` /
+`@GROUPED_PKGD_STATE_ROUTES@` fragments, the six-channel set on
+sponge-de's route and the report_rom relays, and `layouter -> rules |
+report: sponge-de -> rules` + `layouter -> focus_request | report:
+sponge-de -> focus_request` re-pointing. One derived change rode
+along and is disclosed in the run headers: both QEMU envelopes grew
+2G -> 4G in lockstep with the class grants (the same move the product
+media made from 4G to 6G, `docs/evidence/remainder-clamp-ram.md`) —
+at 2G the grants oversubscribed the pool, `pkg_runtime_terminal` /
+`pkg_runtime_browser` died at "out of RAM during ELF loading", and on
+alpha the top-level init (no clock on base-sel4) wedged its start
+pass entirely (no child booted; row 30 could not be greened at 2G at
+all). Re-gate receipts (this fix wave, clamped, serial): row 4/31
+**PASS** — `alpha-probe: PASS` +
+`sponge-desktop-defaults-firstboot: PASS — first boot landed the 8
+baked keys + 7 launcher pairs + themed panel`,
+`docs/evidence/phase16-runtime-f1-e04-sponge-desktop-defaults-
+firstboot.log`; row 30 **PASS** (all four criteria incl. the
+Leitzentrale window) — `alpha-probe: PASS`,
+`docs/evidence/phase16-runtime-f1-e30-sponge-alpha.log`.
+
 **F2 — `sponge-de-shortcuts` (row 11; 0/2, identical crashes).**
 Attempt 1 and attempt 2 fail identically: the probe waits pre-
 choreography (no `QMP-TARGET` marker within 120 s) while report_rom
@@ -291,6 +317,29 @@ applied — run-script change, needs discussion): `build [concat {core
 lib/ld init timer server/report_rom server/nitpicker sponge_pkgd}
 $terminal_runtime::extra_packages $terminal_runtime::extra_libs]`.
 
+**F6 FIX APPLIED (2026-11-04 fix wave; row 35 re-gated red one gate
+deeper).** The concat recipe landed together with the vct staging the
+scenario also needed to run at all: the emitted vfs config mounts
+`<tar name="vct-bin.tar"/>` (pkg/terminal/metadata.xml), so the run
+now calls the shared `runtime_terminal::produce_vct_bin` producer
+(`run/runtime-terminal.inc`, extracted from `stage_payload` so the
+product media and the terminal scenarios keep ONE producer), stages
+the tar as a boot module, and calls `runtime_terminal::
+strip_vct_bridge` (no vct_tty provider in this topology — same as the
+product media). Re-gate receipt
+(`docs/evidence/phase16-runtime-f6-e35-sponge-terminal.log`): the
+source error is gone (the guest boots; the pre-fix state was exit 2
+in 0 s), probe steps [1]-[5] are green (install / installed
+broadcast / launch / window detect 302 glyphs / keystroke echo
+302 -> 584), and the row stays **RED** one gate deeper: step (6) —
+the Phase-13 CLI-toolset assertion that types `ls -l /bin` — wedges
+at the FIRST bash fork (the terminal stops rendering mid-step and
+`terminal-probe: FAIL ls -l /bin did not render a listing` fires
+deterministically). Class: the libc fork child's startup on the
+sandboxed topology (product-side; recorded as follow-up **F7**). The
+braced-expansion defect this row named is resolved; the row is NOT
+greened (gate intact).
+
 ## 8. Known pre-existing blockers and honest disclosures (recorded, not greened)
 
 1. **B1 — base-linux `get_page_size`**: §6 above (precise record +
@@ -358,12 +407,13 @@ Recorded honestly rather than copied forward:
 
 | # | Item | Target | Pointer |
 |---|---|---|---|
-| F1 | Migrate `sponge-desktop-defaults-firstboot.run` + `sponge-alpha.run` config templates to the grouped-runtime + heartbeat-route model (rows 4/31, 30 red) | needs discussion, then re-gate | §7 F1 |
+| F1 | Migrate `sponge-desktop-defaults-firstboot.run` + `sponge-alpha.run` config templates to the grouped-runtime + heartbeat-route model (rows 4/31, 30 red) | **RESOLVED 2026-11-04** (re-gated green, both rows PASS; envelopes grew 2G->4G in lockstep) | §7 F1 |
 | F2 | report_rom empty-report flood + `illegal READ 0x1d6000` on `sponge-de-shortcuts` (row 11 red) | Phase 17+ input-frame (pairs W7 findings 1/2) | §7 F2 |
 | F3 | `sponge-launch` linux-axis post-click paint (row 21 axis split) | next sweep / Phase 17+ | §7 F3 |
 | F4 | `sponge-wm-tasks` minimize-click path + fb-PD caps sizing (row 22 red) | next sweep / Phase 17+ | §7 F4 |
 | F5 | `sponge-textedit` standalone first-paint (row 32 red) | next sweep / Phase 17+ | §7 F5 |
-| F6 | `run/sponge-terminal.run` braced `{*}` build call (row 35 red) | needs discussion (one-line fix) | §7 F6 |
+| F6 | `run/sponge-terminal.run` braced `{*}` build call (row 35 red) | **FIX APPLIED 2026-11-04** (row re-gated red one gate deeper; see F7) | §7 F6 |
+| F7 | libc fork child startup wedge on the sandboxed topology: `sponge-terminal` probe step (6) (`ls -l /bin` via the first bash fork) wedges the terminal mid-step — terminal i/o freezes (no echo, frozen glyph bbox), deterministic. Data on file: the fork's child construction completes through its File_system session then stalls before the clone destruct (`fork.cc`/`kernel.cc` path); bash blocks in `fork()` and stops reading the vfs terminal ring. NOT a quota cliff at the bash node (caps+ram bump 450/64M -> 1200/192M reproduced identically; the terminal sub-init clamps bash to 459 caps / 98M — `configured RAM/caps exceed available, proceed with ...`); not the upgrade-wedge (the `sponge-upgrade-wedge` receipt is ALIVE at this pin). Product-side (base/libc fork + session machinery); run-side unblock not found in this wave. | Phase 17+ (pairs the D16R.17 session-machinery family) | §7 F6 re-gate; receipts `phase16-runtime-f6-e35-sponge-terminal.log` + session scratch `f6-diag*.log` |
 | B1 | base-linux spec/pc `get_page_size` hazard (latent) | vendored-tree follow-up (ledger process) | §6/§8 |
 | B3 | `sponge-pkg-driver` fb-probe report_rom policy gap | policy fix + re-gate exclusivity probes | §8 B3 |
 
@@ -378,3 +428,9 @@ re-run attempts e11a2/e22a2/e19a2/e32a2/e30a2/l04a2). Raw transcripts
 (`/tmp/opencode/sweep/*.log`) are session scratch and are not promoted
 (AGENTS.md §5.6); every fact in this document is reproducible from the
 committed receipts' verbatim excerpts.
+
+Fix-wave receipts (2026-11-04, the F1/F6 re-gate) follow the same
+curation rules under a `phase16-runtime-f<id>-<scenario>.log` infix:
+`phase16-runtime-f1-e04-sponge-desktop-defaults-firstboot.log`,
+`phase16-runtime-f1-e30-sponge-alpha.log`, and
+`phase16-runtime-f6-e35-sponge-terminal.log`.
