@@ -1,0 +1,40 @@
+Fix-wave re-gate receipt — F1 / e30 / run/sponge-alpha (variant: -)
+Date: 2026-11-04 (the F1/F6 fix wave on top of the P5.3 sweep, HEAD a86c76eff5)
+Tree: fix wave (run/sponge-alpha.run committed with this receipt), genode pin
+      48a946ba15 (clean)
+Command: env LD_PRELOAD=/tmp/opencode/libclamp_io_uring.so timeout 1200s make -j1 -C /home/luke/sponge-os/genode/build/x86_64 run/sponge-alpha KERNEL=sel4 BOARD=pc
+Exit: 0  marker1_hit: 1  marker2_hit: 1
+Raw log (session scratch): /tmp/opencode/sweep/f1-e30b-sponge-alpha-4g.log
+
+Verdict: row 30 PASS — all four criteria green on the migrated
+grouped-runtime + state/channel route model. The three
+pkg_runtime_* classes boot; the only clamp warning is the DESIGNED
+browser remainder (`configured RAM exceeds available RAM, proceed
+with 450868752`, docs/17 §6.1). The simple class demonstrably hosts
+a launch (`hello from package: running`). The 2G pre-fix envelope
+cannot boot this scenario at all (the class grants oversubscribed
+lz_runtime's 1G + the pool; the top-level init wedged its start pass
+— see the run header's QEMU note); the envelope grew to 4G in
+lockstep with the grants, same move as the product media 4G -> 6G
+(docs/evidence/remainder-clamp-ram.md).
+
+--- guest/run-tool verdict lines (verbatim) ---
+[init] Warning: pkg_runtime_browser: configured RAM exceeds available RAM, proceed with 450868752
+[init -> pkg_runtime_simple -> hello] hello from package: running
+[init -> alpha_probe] alpha-probe: starting
+[init -> alpha_probe] alpha-probe: [1] install the 7 desktop packages via sponge_pkgd
+[init -> alpha_probe] alpha-probe: [2] set leitzentrale.enabled=true
+[init -> alpha_probe] alpha-probe: [2] leitzentrale.enabled=true ack
+[init -> alpha_probe] alpha-probe: (c) configd broadcast carries all 8 baked keys
+[init -> alpha_probe] alpha-probe: (a) panel band rendered at (512,4) = 0xff1e1e2e
+[init -> alpha_probe] alpha-probe: (b) launcher report contains all 7 desktop packages
+[init -> alpha_probe] alpha-probe: [6] assert (d) lz_viewer window visible
+[init -> alpha_probe] alpha-probe: (d) lz_viewer poll 0 marker pixels=660
+[init -> alpha_probe] alpha-probe: (d) Leitzentrale window live (660 marker pixels at (122,94))
+[init -> alpha_probe] alpha-probe: PASS
+--- tail 5 (verbatim) ---
+[init -> alpha_probe] alpha-probe: (d) Leitzentrale window live (660 marker pixels at (122,94))
+[init -> alpha_probe] alpha-probe: PASS
+
+Run script execution successful.
+make: ディレクトリ '/home/luke/sponge-os/genode/build/x86_64' から出ます

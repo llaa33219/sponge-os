@@ -1,0 +1,40 @@
+Fix-wave re-gate receipt — F6 / e35 / run/sponge-terminal (variant: -)
+Date: 2026-11-04 (the F1/F6 fix wave on top of the P5.3 sweep, HEAD a86c76eff5)
+Tree: fix wave (run/sponge-terminal.run + run/runtime-terminal.inc committed
+      with this receipt), genode pin 48a946ba15 (clean)
+Command: env LD_PRELOAD=/tmp/opencode/libclamp_io_uring.so timeout 900s make -j1 -C /home/luke/sponge-os/genode/build/x86_64 run/sponge-terminal KERNEL=sel4 BOARD=pc
+Exit: 254 (make; the run tool timed out after the probe's FAIL)  marker1_hit: 0  marker2_hit: 0
+Raw log (session scratch): /tmp/opencode/sweep/f6-final-sponge-terminal.log
+
+Verdict: row 35 re-gated RED one gate deeper (follow-up F7). The F6
+braced-expansion defect is gone — the guest boots (pre-fix: exit 2 in
+0 s at `build`'s `llength` parse) — and the vct staging the scenario
+also needed is in (`boot module 'vct-bin.tar' (10240 bytes)`,
+`runtime_terminal::produce_vct_bin` + `strip_vct_bridge`). Probe steps
+[1]-[5] are green; step (6) (Phase-13 CLI toolset `ls -l /bin`, the
+first bash fork) wedges the terminal deterministically.
+The gate `terminal-probe: PASS` was NOT reached and is NOT weakened.
+
+--- guest/run-tool verdict lines (verbatim) ---
+boot module 'vct-bin.tar' (10240 bytes)
+[init -> terminal_probe] terminal-probe: [1] install terminal via sponge_pkgd
+[init -> terminal_probe] terminal-probe: [1] install ok
+[init -> terminal_probe] terminal-probe: [2] verify installed broadcast lists terminal
+[init -> terminal_probe] terminal-probe: [2] installed broadcast lists terminal
+[init -> terminal_probe] terminal-probe: [3] launch terminal via sponge_pkgd
+[init -> terminal_probe] terminal-probe: [3] launch ok
+[init -> terminal_probe] terminal-probe: [4] wait for terminal window + bash prompt
+[init -> terminal_probe] terminal-probe: [4] terminal window detected (302 glyph pixels)
+[init -> terminal_probe] terminal-probe: [5] focus terminal at (184,72) and inject 8 keystrokes
+[init -> terminal_probe] terminal-probe: keystroke echo confirmed (glyphs 302 -> 584)
+[init -> terminal_probe] terminal-probe: toolset poll 0 glyphs=535 (need > 2791)
+[init -> terminal_probe] terminal-probe: toolset poll 90 glyphs=535 (need > 2791)
+[init -> terminal_probe] Error: terminal-probe: FAIL ls -l /bin did not render a listing (CLI toolset tars missing?)
+[init] child "terminal_probe" exited with exit value 1
+Error: Test execution timed out
+--- tail 5 (verbatim) ---
+[init -> terminal_probe] terminal-probe: toolset poll 90 glyphs=535 (need > 2791)
+[init -> terminal_probe] Error: terminal-probe: FAIL ls -l /bin did not render a listing (CLI toolset tars missing?)
+[init] child "terminal_probe" exited with exit value 1
+Error: Test execution timed out
+make: *** [Makefile:446: run/sponge-terminal] エラー 254

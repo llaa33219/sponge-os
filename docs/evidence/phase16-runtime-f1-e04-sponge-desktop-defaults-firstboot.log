@@ -1,0 +1,35 @@
+Fix-wave re-gate receipt — F1 / e04 (row 4, duplicate row 31) /
+run/sponge-desktop-defaults-firstboot (variant: -)
+Date: 2026-11-04 (the F1/F6 fix wave on top of the P5.3 sweep, HEAD a86c76eff5)
+Tree: fix wave (run/sponge-desktop-defaults-firstboot.run committed with this
+      receipt), genode pin 48a946ba15 (clean)
+Command: env LD_PRELOAD=/tmp/opencode/libclamp_io_uring.so timeout 1200s make -j1 -C /home/luke/sponge-os/genode/build/x86_64 run/sponge-desktop-defaults-firstboot KERNEL=sel4 BOARD=pc RUN_OPT="--include power_on/qemu --include log/qemu --include boot_dir/sel4 --include image/disk"
+Exit: 0  marker1_hit: 1  marker2_hit: 1
+Raw log (session scratch): /tmp/opencode/sweep/f1-e04c-sponge-desktop-defaults-firstboot-final.log
+
+Verdict: rows 4/31 PASS — the baked-keys + 7-package launcher set +
+themed panel gate is green on the migrated grouped-runtime +
+state/channel route model. The three pkg_runtime_* classes fit the
+system pool at the 4G envelope (system takes the documented remainder
+clamp, pkg_runtime_browser takes the inner one: `proceed with
+904064044`); the simple class demonstrably hosts a launch
+(`hello from package: running`). Two clamp warnings only, both the
+designed remainder shape (docs/17 §6.1) — no preservation errors, no
+ELF-load failures. The run's own marker line is the row's gate.
+
+--- guest/run-tool verdict lines (verbatim) ---
+runtime_quota: grouped runtime grants verified  (simple 6000/1488M,  terminal 2000/247M,  browser 220000/512G;  class-row sum 205612)
+[init] Warning: system: configured RAM exceeds available RAM, proceed with 2972761776
+[init -> system] Warning: pkg_runtime_browser: configured RAM exceeds available RAM, proceed with 904064044
+[init -> system -> pkg_runtime_simple -> hello] hello from package: running
+[init -> system -> alpha_probe] alpha-probe: (c) configd broadcast carries all 8 baked keys
+[init -> system -> alpha_probe] alpha-probe: (a) panel band rendered ...
+[init -> system -> alpha_probe] alpha-probe: (b) launcher report contains all 7 desktop packages
+[init -> system -> alpha_probe] alpha-probe: PASS
+sponge-desktop-defaults-firstboot: PASS — first boot landed the 8 baked keys + 7 launcher pairs + themed panel
+--- tail 5 (verbatim) ---
+[init -> system -> alpha_probe] alpha-probe: PASS
+sponge-desktop-defaults-firstboot: PASS — first boot landed the 8 baked keys + 7 launcher pairs + themed panel
+
+Run script execution successful.
+make: ディレクトリ '/home/luke/sponge-os/genode/build/x86_64' から出ます
