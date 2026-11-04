@@ -218,6 +218,42 @@ namespace eval runtime_terminal {
     }
 
     #
+    # runtime_terminal::produce_vct_bin
+    #
+    # THE vct-bin.tar producer (bin/vct-bin.tar in the build dir): the
+    # /bin/vct in-terminal front-end script tarred as the payload the
+    # emitted vfs config mounts (`<tar name="vct-bin.tar"/>`,
+    # pkg/terminal/metadata.xml). Shared by stage_payload (product
+    # media) and the standalone terminal scenarios' boot-module lists
+    # (run/sponge-terminal.run and siblings), kept in the repository/
+    # build dir per the header contract.
+    #
+    proc produce_vct_bin { } {
+        exec mkdir -p .vct-stage/bin
+        set vct_fd [open .vct-stage/bin/vct w]
+        puts $vct_fd {#!/bin/bash
+# vct - in-terminal front-end; the vct_tty component answers on /dev/vct
+if [ $# -eq 0 ]; then
+	echo "usage: vct <explain|install|remove|list> [package]"
+	exit 0
+fi
+printf '%s\n' "$*" > /dev/vct
+while IFS= read -r line; do
+	printf '%s\n' "$line"
+	case "$line" in
+		"=== vct: done ===") break ;;
+	esac
+done < /dev/vct}
+        close $vct_fd
+        exec chmod +x .vct-stage/bin/vct
+        exec tar -cf bin/vct-bin.tar -C .vct-stage bin
+        if {![file exists "bin/vct-bin.tar"]} {
+            error "runtime_terminal::produce_vct_bin: bin/vct-bin.tar missing \
+                   after the vct-bin producer ran"
+        }
+    }
+
+    #
     # Order (identical to the product scenario today):
     #   1. vct-bin producer — script + .vct-stage scratch in the build
     #      dir, tar into bin/vct-bin.tar;
@@ -240,28 +276,7 @@ namespace eval runtime_terminal {
         # 1. vct-bin.tar producer (kept inside the repository/build
         #    dir — see the header).
         #
-        exec mkdir -p .vct-stage/bin
-        set vct_fd [open .vct-stage/bin/vct w]
-        puts $vct_fd {#!/bin/bash
-# vct - in-terminal front-end; the vct_tty component answers on /dev/vct
-if [ $# -eq 0 ]; then
-	echo "usage: vct <explain|install|remove|list> [package]"
-	exit 0
-fi
-printf '%s\n' "$*" > /dev/vct
-while IFS= read -r line; do
-	printf '%s\n' "$line"
-	case "$line" in
-		"=== vct: done ===") break ;;
-	esac
-done < /dev/vct}
-        close $vct_fd
-        exec chmod +x .vct-stage/bin/vct
-        exec tar -cf bin/vct-bin.tar -C .vct-stage bin
-        if {![file exists "bin/vct-bin.tar"]} {
-            error "runtime_terminal::stage_payload: bin/vct-bin.tar missing \
-                   after the vct-bin producer ran"
-        }
+        produce_vct_bin
 
         #
         # 2. VeraMono.ttf — the shared producer (run/terminal_runtime.inc
