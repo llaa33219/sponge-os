@@ -521,7 +521,12 @@ void LauncherController::_poll_launch_result()
 	if (_pending_launch_name.isEmpty())
 		return;
 
-	_launch_result->update();
+	/* Guard the refresh on construction: _launch_result may still be
+	 * deconstructed here (the optional launcher_result ROM), and
+	 * calling update() through the unconstructed slot is undefined
+	 * behaviour even though the check below would catch it. */
+	if (_launch_result.constructed())
+		_launch_result->update();
 
 	if (!_launch_result.constructed() || !_launch_result->valid()) {
 		if (++_launch_poll_count >= LAUNCH_POLL_MAX) {
