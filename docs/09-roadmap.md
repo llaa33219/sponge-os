@@ -1011,7 +1011,7 @@ Four additions reopen the Phase 16 completion criteria:
 
 **Runtime-overhaul track status (2026-11-04) — follow-ups register
 pointer.** The runtime-overhaul track of this Extension
-(`docs/plans/phase16-runtime-overhaul.md`) has landed through P5.1:
+(`docs/plans/phase16-runtime-overhaul.md`) has landed through P5.3:
 P3.3 removed storage I/O from session-create paths (dispatch parses
 from bootstrap-cached metadata, store flushes on the worker thread),
 P3.4 scopes the supervisor gates per runtime subtree with **real
@@ -1031,12 +1031,22 @@ registered, never silently closed** (plan D16R.18): the
 ISO ceiling, and the Phase-17 UI rows — and the criteria checkboxes
 above stay **open**: fixing a root cause never closes an item, and
 criterion 13 additionally requires real hardware, which no QEMU
-receipt can claim. P5.2 (this docs sync) is landed, and P5.3's full
-regression sweep is landed too
-(`docs/evidence/phase16-runtime-sweep.md` — 32 green / 4 documented
-partials / 0 red after the two fix waves); the outstanding half of
-P5.3 is the `review-work` post-implementation review, which stays
-open until its verdict is recorded.
+receipt can claim. P5.2 (this docs sync) is landed, and P5.3 is complete (2026-11-06):
+the full regression sweep landed
+(`docs/evidence/phase16-runtime-sweep.md`: 32 green / 4 documented
+partials / 0 red after the two fix waves) and the `review-work`
+post-implementation review passed all five lanes (goal/constraint
+14/14, security with the app hardware-capability boundary confirmed,
+context-mining with its date/pending reservations resolved by
+`9552f9318b`, code quality after the M1 create-expiry fix at fork
+`9088c7227c` / parent `fcae2cbf4b`, QA 7/7 at `36f3e1e9d6` plus
+focused 4/4 at `9552f9318b`), with that matrix unchanged. The
+review's nonblocking follow-ups (security MEDIUM metadata attribute
+injection into non-gated report/broadcast documents, security LOW
+fail-closed publication wedge recoverable by remove, code-quality
+minor F2 `_close` SERVICE_DENIED teardown hardening) are registered
+in `docs/evidence/phase16-runtime-sweep.md` §13; they are not
+blockers and none is claimed fixed.
 
 ### Phase 17: Sponge IME — Multi-Language / CJK Input
 

@@ -533,3 +533,44 @@ re-gate) add four more of the same shape:
 `phase16-runtime-f5-e32-sponge-textedit.log`, and
 `phase16-runtime-f7-e35-sponge-terminal.log` (the F7 wedge
 reproduction; row 35 PARTIAL, not green).
+
+## 13. P5.3 review-work closeout (2026-11-06)
+
+The `review-work` post-implementation review ran on the post-fix tree
+and passed **all five lanes**. P5.3 is complete. This section records
+the verdict only and rewrites no sweep evidence above: the §3 matrix
+remains **32 green / 4 documented partials (rows 8, 15, 21, 35) / 0
+red**.
+
+| Lane | Verdict | Record |
+|---|---|---|
+| Goal/constraint | **PASS** | 14/14 |
+| Security | **PASS** | the app hardware-capability boundary is confirmed |
+| Context-mining | **PASS** | its date/pending reservations were documentation-only and are resolved by `9552f9318b` (the documentation reconciliation of the 15-3 first-boot and 0.2.0 interaction dates) |
+| Code quality | **PASS** | after the M1 create-expiry fix: fork `9088c7227c` (ledger row #34), parent `fcae2cbf4b` (`fix(genode): preserve the pending close across create expiry`); the prior FAIL is overturned on inspection of `child.cc` and the red/green `child_pending_op` regression |
+| QA | **PASS** | 7/7 at `36f3e1e9d6` plus focused 4/4 at `9552f9318b`, exit 0 on every leg |
+
+Post-fix QA legs (focused 4/4 at `9552f9318b`, the tree carrying the
+create-expiry fix and the documentation reconciliation):
+
+1. `./tool/build verify`: green (34 ledger rows + hardware assertions).
+2. base-linux `make -j1 KERNEL=linux BOARD=linux run/child_pending_op`:
+   `child-pending-op: VERDICT PASS`, with no live/dangling parent-ID
+   errors.
+3. `run/sponge-provider-stall`: PASS.
+4. `SPONGE_SUPERVISOR_TEST=contain run/sponge-desktop-disk`: PASS with
+   two named containment cycles.
+
+Nonblocking follow-ups (recorded 2026-11-06; not blockers, and none of
+them is claimed fixed):
+
+- Security MEDIUM: metadata attribute injection into non-gated
+  report/broadcast documents (no sandbox impact; remediation is
+  parse-time lexeme validation + emission sanitization).
+- Security LOW: fail-closed publication wedge, recoverable by remove
+  (same remediation).
+- Code-quality minor F2: `_close` SERVICE_DENIED teardown hardening
+  (mirror the `_pending_close_op` guard; unchanged and optional).
+
+The four matrix partials and the QEMU-only labeling limits (D16R.12)
+above stand unchanged.

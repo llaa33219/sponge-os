@@ -1,6 +1,6 @@
 # Phase 16 Runtime Overhaul (Work Plan)
 
-> Status: in progress. P0 baseline/audits, P1, P2, and P3 are complete;
+> Status: complete (2026-11-06). P0 baseline/audits, P1, P2, and P3 are complete;
 > P3.4's containment and victim-revival gates are green (see
 > `docs/evidence/phase16-runtime-p34.md`); P4.1 (patch classification) and
 > P4.2 (uplink disposition — **fixed in place**, see
@@ -10,10 +10,11 @@
 > P5.1 is **landed** (the acceptance checklist + three consecutive
 > all-green suite passes, docs/evidence/phase16-runtime-acceptance.md);
 > P5.2 is **landed** (the docs sync, `42053e74b0`..`b19184958b`);
-> P5.3's sweep half is **landed** (the full sweep matrix + both fix
-> waves: 32 green / 4 documented partials / 0 red, §5) and only the
-> `review-work` post-implementation review remains outstanding until
-> its verdict is recorded. Created
+> P5.3 is **complete** (the full sweep matrix + both fix waves: 32
+> green / 4 documented partials / 0 red, §5, unchanged by the review;
+> the `review-work` post-implementation review passed all five lanes
+> on 2026-11-06 and its verdict is recorded in
+> `docs/evidence/phase16-runtime-sweep.md` §13). Created
 > 2026-10-28 on branch `refactor/phase16-runtime-overhaul` (pre-work HEAD
 > `3afb40c922`).
 > Relationship: this is the runtime-overhaul track of the reopened Phase 16
@@ -588,7 +589,8 @@ is the `BOARD=pc` combo (verbatim compile error captured); the
 `BOARD=linux` axis is fresh-green. `./tool/build verify` is green
 (33 ledger rows at the pin). The `review-work` post-implementation
 review is deliberately not run in this step (task instruction) and
-remains the next step before handoff.
+was the next step before handoff (verdict recorded 2026-11-06,
+below).
 
 Fix wave (2026-11-04, same day): F1 and F6 landed and the affected
 rows were re-gated (sweep §7 + register). Rows 4/31 and 30 are green
@@ -624,8 +626,43 @@ only once the partial is explicitly documented with its pointer. Row
 §11 register F7) with its follow-up pointer to the **D16R.17
 session-machinery/fork family**, so the sweep-half gate ("all green or
 each partial documented with a follow-up pointer") holds and row 35 is
-recorded PARTIAL, never green. The `review-work` post-implementation
-review remains the outstanding half of P5.3.
+recorded PARTIAL, never green.
+
+Review closeout (2026-11-06): the `review-work` post-implementation
+review passed **all five lanes**, so P5.3 is complete, and the
+regression matrix is unchanged at 32 green / 4 documented partials
+(rows 8, 15, 21, 35) / 0 red.
+
+- **Goal/constraint: PASS** (14/14).
+- **Security: PASS**, with the app hardware-capability boundary
+  confirmed.
+- **Context-mining: PASS**; its date/pending reservations were
+  documentation-only and are resolved by `9552f9318b` (the
+  documentation reconciliation of the 15-3 first-boot and 0.2.0
+  interaction dates).
+- **Code quality: PASS** after the M1 create-expiry fix (fork
+  `9088c7227c` (ledger row #34), parent `fcae2cbf4b`,
+  `fix(genode): preserve the pending close across create expiry`),
+  the prior FAIL overturned on inspection of `child.cc` and the
+  red/green `child_pending_op` regression.
+- **QA: PASS** with 7/7 at `36f3e1e9d6` plus focused 4/4 at
+  `9552f9318b` (exit 0 on every leg): `./tool/build verify` (34
+  ledger rows + hardware assertions), base-linux `make -j1
+  KERNEL=linux BOARD=linux run/child_pending_op` (`child-pending-op:
+  VERDICT PASS`, no live/dangling parent-ID errors),
+  `run/sponge-provider-stall` PASS, and
+  `SPONGE_SUPERVISOR_TEST=contain run/sponge-desktop-disk` PASS with
+  two named containment cycles.
+
+Nonblocking follow-ups from the review (recorded, not blockers, and
+none claimed fixed): security MEDIUM, metadata attribute injection
+into non-gated report/broadcast documents (no sandbox impact;
+remediation is parse-time lexeme validation + emission sanitization);
+security LOW, fail-closed publication wedge, recoverable by remove
+(same remediation); code-quality minor F2, `_close` SERVICE_DENIED
+teardown hardening (mirror the `_pending_close_op` guard; unchanged
+and optional). Full verdict record:
+`docs/evidence/phase16-runtime-sweep.md` §13.
 
 ## 6. Dependency Graph
 
