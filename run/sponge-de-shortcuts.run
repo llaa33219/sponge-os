@@ -94,7 +94,7 @@ config
   + provides
     + service Report
     + service ROM
-  + config | verbose: yes
+  + config | verbose: no
     #
     # configd <-> DE wire contract (D16.1 + W7 channel pair).
     #
