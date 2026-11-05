@@ -434,15 +434,23 @@ A scenario defines:
   that is substituted into a HID text free of leading indentation on
   its first line, or it lands one level deeper than intended.
 
-- `sponge-pkg-driver.run` also carries the **framebuffer exclusivity
-  gate** (docs/12-package-format.md §4.6): two extra `driver_probe`
-  instances install `fb_vesa` and then assert that installing `fb_boot`
-  is refused with `exclusive-conflict` naming the incumbent. Both pass
-  `expect_child: no` because this topology has no compositor — what is
-  under test is `sponge_pkgd`'s running set, not the hardware. The
-  runtime *handover* itself (remove, install, the screen coming back)
-  is `run/sponge-desktop-disk.run` with `SPONGE_FB_SWITCH=on`, via
-  `test/fb_switch_probe`.
+- `sponge-pkg-driver.run` also carries two **framebuffer exclusivity
+  probes** (docs/12-package-format.md §4.6): extra `driver_probe`
+  instances (`fb_lock_probe` / `fb_conflict_probe`) meant to install
+  `fb_vesa` and then assert that installing `fb_boot` is refused with
+  `exclusive-conflict` naming the incumbent. **They do not prove that
+  today:** both probes stop at start on a pre-existing `report_rom`
+  policy gap — verbatim `Error: stop because parent denied ROM-session:
+  label="result"` (no report_rom policy serves a `result` ROM to either
+  probe) — and the scenario's final PASS string is unconditional, so
+  **no fb or exclusivity claim is taken from this scenario** (the
+  docs/12 §4.6 honest scope note;
+  `docs/evidence/phase16-runtime-sweep.md` §8 B3). The exclusivity
+  refusal is proven by `run/sponge-pkg-exclusive` (synthetic pair,
+  red-first + green, with the byte-identical duplicate-replay receipt).
+  The runtime *handover* itself (remove, install, the screen coming
+  back) is `run/sponge-desktop-disk.run` with `SPONGE_FB_SWITCH=on`,
+  via `test/fb_switch_probe`.
 
 - `sponge-desktop-disk.run` with `SPONGE_FB_SWITCH=on` — the
   **runtime framebuffer-driver switch** proof in the product topology
