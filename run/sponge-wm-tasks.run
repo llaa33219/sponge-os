@@ -196,7 +196,7 @@ config
     + default-policy | domain: default
     + background | color: #1e1e2e
 
-+ start drivers | caps: 1500 | ram: 96M | managing_system: yes
++ start drivers | caps: 1800 | ram: 96M | managing_system: yes
   + binary init
   + route
     + service ROM | label: config | + parent | label: drivers.config
