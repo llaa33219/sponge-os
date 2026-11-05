@@ -78,3 +78,54 @@ protocol, or asynchronous model. They establish three local invariants:
 
 Product takeover, per-name containment, heartbeat respawn, and the default
 product path are all green with those invariants active.
+
+## 6. Follow-up: the create-expiry close ordering (ledger row #34)
+
+A post-merge review of the row-#31 create expiry (`Child::_expire_pending_op`,
+`Op::Create`) found one remaining lifetime hole. The expiry registered the
+protective `Op::Close` at the parent and then released the client with the
+`SERVICE_DENIED` notification — but `Child::session_ready` and
+`Env_service::session_ready` both clear the pending operations of the
+session, so the notification silently dropped the close that had just been
+registered. `_pending_close_op` then reported no close in flight and
+`Child::session_cap` destroyed the session state while the parent-side ID
+was still live: the RED run re-derives exactly the `destroying session with
+a live parent-side id` / `dangling session in parent-side ID space` pair
+that the coherent expiry of row #31 was supposed to eliminate.
+
+The ordering fix (fork commit `9088c7227c`, ledger row #34): capture
+`close_in_flight` first, deliver the `SERVICE_DENIED` notification first,
+and register `Op::Close` afterwards. The close then replaces the expired
+create in the one-operation-per-session registry and survives the clear,
+so the session state and the parent-side ID stay protected until the
+parent's answer destroys the session.
+
+The close is registered with `entry.id` — the ID under which the create
+was registered — not `session.id_at_client()`: the denial callback may
+already have discarded the session's client-side ID (the RED run reports
+`cid=<unconstructed>` in its dangling-ID error), and the registry keys and
+the `_pending_close_op`/`session_cap` lookups all use the registered ID.
+
+Red-to-green on base-linux, exact command:
+
+    make -j1 KERNEL=linux BOARD=linux run/child_pending_op
+
+- **RED** (`/tmp/opencode/child-pending-op-red.log`, unpatched): `FAIL close
+  op survives create expiry (pending_parent_ops)` and `FAIL session state
+  not destroyed by session_cap while close is in flight`, with
+  `Error: destroying session with a live parent-side id: service=Pending
+  cid=42 ... state=DENIED` and `Error: dangling session in parent-side ID
+  space: service=Pending cid=<unconstructed> ... state=CLOSED` in the log;
+  `child-pending-op: VERDICT FAIL`, `make` exits 255.
+- **GREEN** (`/tmp/opencode/child-pending-op-green.log`, patched): all four
+  checks PASS and `child-pending-op: VERDICT PASS`; `Run script execution
+  successful`, exit 0 (independently rerun).
+- **Related base-linux non-regression**
+  (`/tmp/opencode/child-pending-op-related.log`): `run/log` (`Test done.`),
+  `run/sub_rm` (`--- end of sub-rm test ---`) and `run/thread` (`test
+  completed successfully`) all end in `Run script execution successful`.
+
+The new harness `repos/base/src/test/child_pending_op/` +
+`repos/base/run/child_pending_op.run` locks the invariant: an expired
+create leaves a pending close, and `session_cap` never destroys a session
+state whose close is in flight.
