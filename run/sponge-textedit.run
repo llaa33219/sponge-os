@@ -208,6 +208,35 @@ foreach f { textedit textedit.config } {
 }
 
 #
+# This standalone topology has no clipboard provider. Disable the optional
+# clipboard attribute in both the application config and the package metadata
+# that pkgd consumes, mirroring run/runtime-simple.inc's guarded transform.
+#
+foreach cfgdst { bin/textedit.config bin/pkg_textedit.xml } {
+	if {![file exists $cfgdst]} {
+		error "textedit: clipboard transform input missing: $cfgdst"
+	}
+	set fh [open $cfgdst r]
+	set cbody [read $fh]
+	close $fh
+	set clip_anchor {<config clipboard="yes">}
+	set n 0
+	set idx 0
+	while {[set idx [string first $clip_anchor $cbody $idx]] >= 0} {
+		incr n
+		incr idx [string length $clip_anchor]
+	}
+	if {$n != 1} {
+		error "textedit: expected one clipboard=yes anchor in $cfgdst, found $n"
+	}
+	set cbody [string map [list $clip_anchor {<config>}] $cbody]
+	set fh [open $cfgdst w]
+	puts -nonewline $fh $cbody
+	close $fh
+}
+puts "textedit: clipboard disabled in app and package configs"
+
+#
 # qt6_dejavusans.tar raw recipe is depot-only; mirror its content into
 # bin/ from the qt6_base port sources (same as run/sponge-pkg-gui.run /
 # run/sponge-alpha.run). The qt6_dejavusans.tar already in
