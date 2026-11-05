@@ -217,7 +217,10 @@ charges:
 
 Scope: these are QEMU/base-sel4 receipts (D16R.12 labelling); the
 `{uefi,uefi-nvme}` disk variants remain structure-only gates in QEMU
-(D15.16).
+(D15.16) — runs that do not exercise the desktop gate (`alpha-probe`),
+which is the D15.16 limitation, not a boot block (QEMU/OVMF boots
+reach Genode; `docs/11-environment.md` §4 ledger rows 10 + 11 retired
+the old W^X/bender-NOP cause).
 
 ## 3. Why a terminal component froze the desktop (the honest analysis)
 
@@ -1033,9 +1036,13 @@ grouped topology is runtime-verified on
 the terminal launch gate) and acceptance-verified on
 `sponge-desktop-disk` (P5.1's three consecutive all-green suite
 passes, including the grouped app matrix with real launcher first
-paint + input for every built-in desktop package);
+paint + input per-app witnesses — hello is GUI-free autostart
+(paint/input N/A by design) and the calculator relaunch-era
+typed-delta witness is context-blocked);
 `sponge-desktop-disk-uefi`/`-uefi-nvme` remain structurally asserted
-(D15.16 structure-only QEMU gates). The P2.4 interactive receipt is
+(D15.16 structure-only QEMU gates — runs that do not exercise the
+desktop gate, not a QEMU boot block; QEMU/OVMF boots reach Genode).
+The P2.4 interactive receipt is
 `docs/evidence/phase16-grouped-runtime-ui.md`: two consecutive BIOS
 `SPONGE_GROUPED_UI=on` runs with real launcher first paint and typed
 input for both textedit and terminal, plus a default-BIOS
