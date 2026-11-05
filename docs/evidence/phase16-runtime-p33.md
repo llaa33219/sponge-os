@@ -172,11 +172,20 @@ All logs above live in `/tmp/opencode/`.
 
 ## 8. Pre-existing blockers and environment notes (honest record)
 
-1. **base-linux is unbuildable in this environment** (vendored
+1. **base-linux: the broken combination is `BOARD=pc`, not base-linux
+   itself** (vendored
    `base-linux/src/core/spec/pc/io_mem_session_component.cc` calls
-   `get_page_size()` — the known compile failure). Therefore the
-   base-linux halves of `run/sponge-pkg-lifecycle` and
-   `run/sponge-pkg-persist` could not run; their seL4 equivalents (and
+   `get_page_size()` — the known compile failure — and the spec/pc
+   source set is pulled in exactly when `BOARD=pc` is active for the
+   base-linux core). Precisely recorded in
+   `docs/evidence/phase16-runtime-sweep.md` §6 B1, which supersedes
+   this wave's "base-linux is unbuildable" phrasing: at the current
+   pin base-linux is buildable and green on `BOARD=linux` (sweep
+   l01–l05), and row 21's linux launch axis is a separate partial
+   (sweep §7 F3), not part of the build story. The base-linux halves
+   of `run/sponge-pkg-lifecycle` and
+   `run/sponge-pkg-persist` could not run on the broken combination;
+   their seL4 equivalents (and
    `run/sponge-persist-disk`) cover the same behavior.
 2. **QEMU/disk host flakiness**: disk-backed scenarios intermittently
    stall in the host I/O layer even with the documented io_uring clamp.
