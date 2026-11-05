@@ -9,7 +9,11 @@
 > nothing to prune — no code path, patch, or ledger row removed);
 > P5.1 is **landed** (the acceptance checklist + three consecutive
 > all-green suite passes, docs/evidence/phase16-runtime-acceptance.md);
-> P5.2-P5.3 remain open. Created
+> P5.2 is **landed** (the docs sync, `42053e74b0`..`b19184958b`);
+> P5.3's sweep half is **landed** (the full sweep matrix + both fix
+> waves: 32 green / 4 documented partials / 0 red, §5) and only the
+> `review-work` post-implementation review remains outstanding until
+> its verdict is recorded. Created
 > 2026-10-28 on branch `refactor/phase16-runtime-overhaul` (pre-work HEAD
 > `3afb40c922`).
 > Relationship: this is the runtime-overhaul track of the reopened Phase 16
@@ -543,6 +547,15 @@ supervisor gates, quota table), `docs/14-boot-storage-architecture.md` §4.3
 disclosure). No behavior claim without its scenario receipt.
 Commits: `docs(17): record the grouped runtime topology` etc. (4-5).
 Owns: the listed doc files (serial).
+
+Landed (2026-11-04): the five docs commits, one per file —
+`docs(17): record the grouped runtime topology and provider split`
+(`42053e74b0`), `docs(14): make P3/P4/P5 the partition naming
+authority in 4.3` (`5914a510bd`), `docs(12): record the delivered
+grouped runtime behavior` (`7108a9a5d6`), `docs(09): point to the
+runtime follow-ups register` (`ba082d393d`), and `docs(13): record
+the browser media sizing and acceptance disclosures`
+(`b19184958b`).
 
 **P5.3 Full sweep + review-work.**
 Final regression sweep: the full 36-scenario envelope of
