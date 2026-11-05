@@ -168,8 +168,8 @@ P3.4 contain arm reaches full **`SUPERVISOR CONTAIN PASS`**. Lean takeover, hear
 | `run/sponge-supervisor-takeover` (lean) | **PASS** — `supervisor-takeover: PASS` with real revivals and desktop restore | `/tmp/opencode/debug-p34-rawfree-lean.log` |
 | `run/sponge-desktop-disk` (default arm) | **PASS** — `alpha-probe: PASS`, `kill=1 target=global bumped=14`, zero version changes (first-publish-all-1) | `phase16-runtime-p34-product-default.log` |
 | `run/sponge-desktop-disk-nvme` | **PASS** — `alpha-probe: PASS` | session log |
-| `run/sponge-desktop-disk-uefi` | **PASS (structure gate)** — QEMU UEFI boot is the D15.16 documented gap | session log |
-| `run/sponge-desktop-disk-uefi-nvme` | **PASS (structure gate)** — same gap | session log |
+| `run/sponge-desktop-disk-uefi` | **PASS (structure gate)** — D15.16: the run does not exercise the desktop gate, so no desktop PASS is claimed (not a boot block — QEMU/OVMF boots reach Genode; `docs/11-environment.md` §4 rows 10 + 11 retired the W^X/bender-NOP cause) | session log |
+| `run/sponge-desktop-disk-uefi-nvme` | **PASS (structure gate)** — same D15.16 scope | session log |
 | `run/sponge-desktop-disk-uefi-usb` | **PASS** — `alpha-probe: PASS` (11-child heartbeat roster incl. `vct_tty`) | session log |
 
 ## 7. The per-child heartbeat exposure
@@ -188,7 +188,12 @@ staging anchors.
 ## 8. Residual limits
 
 1. `sponge-desktop-disk-{uefi,uefi-nvme}` are structure-only gates in
-   QEMU (D15.16); the UEFI boot claim stays real-hardware (15-3).
+   QEMU (D15.16) — runs that do not exercise the desktop gate, not
+   boot blockers (QEMU/OVMF boots reach Genode; the W^X/bender-NOP
+   cause is retired by `docs/11-environment.md` §4 rows 10 + 11, and
+   the x02/x03 "QEMU boot blocked" banner is a classifier bug — sweep
+   §8 B2). The QEMU UEFI desktop claim is `sponge-desktop-disk-uefi-usb`
+   (`alpha-probe: PASS`); the real-hardware UEFI claim stays 15-3.
 2. All other claims here are QEMU/base-sel4 receipts, not real-hardware
    certification. Host io_uring and timing flakes are recorded per log;
    no failing gate is silently converted into a pass.
