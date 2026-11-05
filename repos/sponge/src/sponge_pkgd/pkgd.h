@@ -751,10 +751,15 @@ class Sponge::Pkgd::Main
 
 			void entry() override
 			{
+				/*
+				 * _bootstrap() ends by flipping _worker_live and
+				 * then arming the request handlers (see its
+				 * tail), so by the time this returns every
+				 * env.ep() request already hands its store flush
+				 * to the loop below. From here on: the storage
+				 * worker loop.
+				 */
 				_main._bootstrap();
-
-				/* From here on: the storage worker loop. */
-				_main._worker_live = true;
 
 				for (;;) {
 					_main._flush_sem.down();

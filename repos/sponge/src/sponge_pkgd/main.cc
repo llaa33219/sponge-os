@@ -1746,6 +1746,26 @@ _init_binary_manifest();
 	 */
 	_init_launcher_channel();
 	_handle_request();
+
+	/*
+	 * The storage worker goes live BEFORE the first handler is armed.
+	 * _worker_live is what steers _flush_then_tail: with it set, a
+	 * mutation hands the store write to the Bootstrap worker; with it
+	 * clear it flushes synchronously on the calling thread. That
+	 * synchronous fallback is entrypoint-sound ONLY when
+	 * _single_threaded is set (its _store_io_wait picks
+	 * commit_and_wait), so a request dispatched on env.ep() after the
+	 * arm must never observe _worker_live == false with a live worker
+	 * thread. The drains above already completed their mutations
+	 * synchronously (they run on this thread and pace their store I/O
+	 * with the off-entrypoint wait), so the drain order and the
+	 * bootstrap-drain synchronous behaviour are unchanged; on the
+	 * no-thread fallback _worker_live stays false and the constructor
+	 * keeps flushing on the entrypoint.
+	 */
+	if (!_single_threaded)
+		_worker_live = true;
+
 	_arm_launcher_channel();
 	_request_rom.sigh(_request_handler);
 	_request_rom.update();
