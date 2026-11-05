@@ -86,7 +86,7 @@ to runtime RAM and capability budgets, addressed in §11.
 | AHCI driver | `genode/repos/os/src/driver/ahci/` (target `ahci`) | in-tree; x86, no kernel restriction |
 | NVMe driver | `genode/repos/os/src/driver/nvme/` | in-tree; **seL4-proven** (`genode/repos/os/run/nvme.run:17`) |
 | USB mass storage | `genode/repos/os/src/driver/usb_block/` | in-tree |
-| ext2 via rump | `genode/repos/dde_rump/src/lib/vfs/rump/vfs_rump.cc` (fs types: ext2fs, ffs, msdos, cd9660, ntfs, udf) | **port NOT prepared** — needs `prepare_port dde_rump` |
+| ext2 via rump | `genode/repos/dde_rump/src/lib/vfs/rump/vfs_rump.cc` (fs types: ext2fs, ffs, msdos, cd9660, ntfs, udf) | **port prepared** (Phase 8 P1) — `tool/ports/prepare_port dde_rump`, hash recorded in docs/11 §5 (pins rump.git @ 28945d1a); the shipped ext2 path for the storage chain (§5) |
 | FAT via vfs | `genode/repos/libports/src/lib/vfs/fatfs/vfs_fatfs.cc` | in-tree, no port needed |
 | ROM-from-fs (cached) | `genode/repos/os/src/server/cached_fs_rom/` | in-tree |
 | ROM-from-fs (uncached) | `genode/repos/os/src/server/fs_rom/` | in-tree |
