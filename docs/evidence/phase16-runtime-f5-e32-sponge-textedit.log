@@ -1,0 +1,41 @@
+Fix-wave re-gate receipt — F5 / e32 / run/sponge-textedit (variant: -)
+Date: 2026-11-05 (the P5.3 fix wave: rows 22/11/32 fixes + row 35 re-gate, HEAD c65f2dcf7a)
+Tree: fix wave (run/sponge-textedit.run committed with this receipt), genode pin 48a946ba15 (clean)
+Command: env LD_PRELOAD=/tmp/opencode/libclamp_io_uring.so timeout <T>s make -j1 -C /home/luke/sponge-os/genode/build/x86_64 run/sponge-textedit KERNEL=sel4 BOARD=pc
+      (the §2 clamped serial template, D16R.13; the raw log does not echo the wrapper line, <T> is the §2 per-scenario timeout)
+Exit: 0  marker1_hit: 1  marker2_hit: 1
+Raw log (session scratch): /tmp/opencode/p53-fix-textedit.log
+
+Verdict: row 32 GREEN after the guarded clipboard strip in
+run/sponge-textedit.run. The standalone topology has no clipboard
+provider, so the run now strips the optional `clipboard="yes"`
+attribute from both the application config and the package metadata
+pkgd consumes (the same guarded transform run/runtime-simple.inc
+applies), failing loudly if the expected anchor is missing or
+duplicated, and prints `textedit: clipboard disabled in app and package
+configs` on success. The window now paints into nitpicker on the first
+capture (`textedit window detected (100% non-bg, 44 distinct color
+buckets)`), and the whole probe — install, launch, render, the
+not-installed path, and the double-launch already-running path —
+reaches `textedit-probe: PASS`. The sweep's F5 failure marker
+(`textedit-probe: FAIL textedit window never rendered into nitpicker`)
+did not reproduce.
+
+--- guest/run-tool verdict lines (verbatim) ---
+textedit: clipboard disabled in app and package configs
+[init -> textedit_probe] textedit-probe: [1] install ok
+[init -> textedit_probe] textedit-probe: [3] launch ok
+[init -> textedit_probe] textedit-probe: capture poll 0 rendered_frac=0% color_buckets=1
+[init -> textedit_probe] textedit-probe: textedit window detected (100% non-bg, 44 distinct color buckets)
+[init -> textedit_probe] textedit-probe: [6] not-installed reported
+[init -> textedit_probe] textedit-probe: [7] already-running reported
+[init -> textedit_probe] textedit-probe: PASS
+Run script execution successful.
+
+--- tail 5 (verbatim) ---
+[init -> pkg_runtime -> textedit] qt.core.qobject.connect: QObject::connect: No such slot QGenodePlatformWindow::_frame_sync()
+[init -> textedit_probe] textedit-probe: [7] already-running reported
+[init -> textedit_probe] textedit-probe: PASS
+
+Run script execution successful.
+make: ディレクトリ '/home/luke/sponge-os/genode/build/x86_64' から出ます

@@ -1,0 +1,37 @@
+Fix-wave re-gate receipt — F4 / e22 / run/sponge-wm-tasks (variant: -)
+Date: 2026-11-05 (the P5.3 fix wave: rows 22/11/32 fixes + row 35 re-gate, HEAD c65f2dcf7a)
+Tree: fix wave (run/sponge-wm-tasks.run committed with this receipt), genode pin 48a946ba15 (clean)
+Command: env LD_PRELOAD=/tmp/opencode/libclamp_io_uring.so timeout <T>s make -j1 -C /home/luke/sponge-os/genode/build/x86_64 run/sponge-wm-tasks KERNEL=sel4 BOARD=pc
+      (the §2 clamped serial template, D16R.13; the raw log does not echo the wrapper line, <T> is the §2 per-scenario timeout)
+Exit: 0  marker1_hit: 1  marker2_hit: 1
+Raw log (session scratch): /tmp/opencode/p53-fix-wm-tasks.log
+
+Verdict: row 22 GREEN after the drivers caps fix (1500 -> 1800 on the
+`start drivers` node). The full W7 acceptance sequence runs clean:
+minimize parks pkg_gui_demo at (-32000,-32000), restore + focus_request
+per U3, closer click destroys, remove/re-install/re-launch, and the
+maximize/unmaximize rule transitions all land within budget. The
+`wm-tasks-probe: PASS` gate is the unmodified sweep gate. The sweep's
+F4 failure marker (`wm-tasks-probe: FAIL minimize transition: pkg_gui_demo
+did not reach off-screen position within 60s`) did not reproduce.
+
+--- guest/run-tool verdict lines (verbatim) ---
+[init -> wm_tasks_probe] wm-tasks-probe: [step 3] window_layout: pkg_gui_demo at (50,320) 320x240 [row 1: (init) -> Normal-Visible]
+[init -> wm_tasks_probe] wm-tasks-probe: [step 4] window_layout: pkg_gui_demo parked at (-32000, -32000) [row 3: Normal-Visible-Focused -> Minimized]
+[init -> wm_tasks_probe] wm-tasks-probe: [step 5] window_layout: pkg_gui_demo restored at (50,320) 320x240 [row 5: Minimized -> Normal-Visible-Focused]
+[init -> wm_tasks_probe] wm-tasks-probe: [step 6] focus_request label='pkg_runtime -> pkg_gui_demo -> Sponge Pkg GUI Demo' [focus-after-restore per U3]
+[init -> wm_tasks_probe] wm-tasks-probe: [step 7] pkg_gui_demo removed from window_list [row 8/9/10/11: any state -> (destroyed)]
+[init -> wm_tasks_probe] wm-tasks-probe: [step 9] re-launched pkg_gui_demo at (50,320) 320x240
+[init -> wm_tasks_probe] wm-tasks-probe: [step 10] rules maximized="yes" for pkg_gui_demo [row 6: Normal-Visible-Focused -> Maximized]
+[init -> wm_tasks_probe] wm-tasks-probe: [step 11] rules maximized="no" for pkg_gui_demo [row 7: Maximized -> Normal-Visible]
+[init -> wm_tasks_probe] wm-tasks-probe: PASS
+[init] child "wm_tasks_probe" exited with exit value 0
+Run script execution successful.
+
+--- tail 5 (verbatim) ---
+[init -> report_rom] report 'nitpicker -> hover'
+[init -> report_rom]   hover | label: sponge-de -> Sponge Panel | color: #ffffff | domain: panel | xpos: 178 | ypos: 18
+[init -> report_rom]   -
+
+Run script execution successful.
+make: ディレクトリ '/home/luke/sponge-os/genode/build/x86_64' から出ます

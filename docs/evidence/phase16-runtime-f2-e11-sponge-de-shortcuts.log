@@ -1,0 +1,38 @@
+Fix-wave re-gate receipt — F2 / e11 / run/sponge-de-shortcuts (variant: -)
+Date: 2026-11-05 (the P5.3 fix wave: rows 22/11/32 fixes + row 35 re-gate, HEAD c65f2dcf7a)
+Tree: fix wave (run/sponge-de-shortcuts.run committed with this receipt), genode pin 48a946ba15 (clean)
+Command: env LD_PRELOAD=/tmp/opencode/libclamp_io_uring.so timeout <T>s make -j1 -C /home/luke/sponge-os/genode/build/x86_64 run/sponge-de-shortcuts KERNEL=sel4 BOARD=pc
+      (the §2 clamped serial template, D16R.13; the raw log does not echo the wrapper line, <T> is the §2 per-scenario timeout)
+Exit: 0  marker1_hit: 1  marker2_hit: 1
+Raw log (session scratch): /tmp/opencode/p53-fix-shortcuts.log
+
+Verdict: row 11 GREEN after the outer report_rom's `verbose: yes` was
+set to `verbose: no` in run/sponge-de-shortcuts.run. The probe now runs
+the full W7 live-keypress choreography (launcher open, dismiss close,
+alt-tab focus_next) and the sweep's F2 failure markers did not
+reproduce: no report_rom empty-report flood, no
+`Error: illegal READ at address 0x1d6000 ... ip=0x100b7d1`, and the
+probe reaches `shortcuts-probe: PASS` on the first attempt. The gate is
+the unmodified sweep gate. The deeper W7 findings 1/2 hardening pairing
+(event_filter empty-report emission + late-created report_rom sessions)
+stays registered for the Phase 17+ input-frame work even though this
+row is green.
+
+--- guest/run-tool verdict lines (verbatim) ---
+[init -> shortcuts_probe] shortcuts-probe: dynamic event_filter_config carries <shortcut name="launcher"/>
+[init -> shortcuts_probe] shortcuts-probe: dynamic event_filter_config carries <shortcut name="focus_next"/>
+[init -> shortcuts_probe] shortcuts-probe: dynamic event_filter_config carries <shortcut name="dismiss"/>
+[init -> shortcuts_probe] shortcuts-probe: shortcut_hit action=launcher hit=yes observed (W7 live keypress path)
+[init -> shortcuts_probe] shortcuts-probe: launcher popup open observed via launcher_state
+[init -> shortcuts_probe] shortcuts-probe: shortcut_hit action=dismiss hit=yes observed (W7 live keypress path)
+[init -> shortcuts_probe] shortcuts-probe: launcher popup close observed via launcher_state
+[init -> shortcuts_probe] shortcuts-probe: shortcut_hit action=focus_next hit=yes observed (W7 live keypress path)
+[init -> shortcuts_probe] shortcuts-probe: PASS
+Run script execution successful.
+
+--- tail 5 (verbatim) ---
+[init -> sponge-de] QMetaObject::invokeMethod: No such method TasklistController::cycle_focus()
+[init -> shortcuts_probe] shortcuts-probe: shortcut_hit action=focus_next hit=yes observed (W7 live keypress path)
+[init -> shortcuts_probe] shortcuts-probe: PASS
+Run script execution successful.
+make: ディレクトリ '/home/luke/sponge-os/genode/build/x86_64' から出ます

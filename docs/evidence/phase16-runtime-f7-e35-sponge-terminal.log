@@ -1,0 +1,41 @@
+Fix-wave re-gate receipt — F7 / e35 / run/sponge-terminal (variant: -)
+Date: 2026-11-05 (the P5.3 fix wave: rows 22/11/32 fixes + row 35 re-gate, HEAD c65f2dcf7a)
+Tree: same fixed tree as the F6 re-gate (run/sponge-terminal.run +
+      run/runtime-terminal.inc already landed 2026-11-04), genode pin 48a946ba15 (clean)
+Command: env LD_PRELOAD=/tmp/opencode/libclamp_io_uring.so timeout <T>s make -j1 -C /home/luke/sponge-os/genode/build/x86_64 run/sponge-terminal KERNEL=sel4 BOARD=pc
+      (the §2 clamped serial template, D16R.13; the raw log does not echo the wrapper line, <T> is the §2 per-scenario timeout)
+Exit: 254 (make; the run tool timed out after the probe's FAIL)  marker1_hit: 0  marker2_hit: 0
+Raw log (session scratch): /tmp/opencode/p53-fix-terminal.log
+
+Verdict: row 35 PARTIAL — NOT green. The F6 braced-expansion fix stands
+(the scenario builds and boots; probe steps [1]-[5] are green: install /
+installed broadcast / launch / window detect 302 glyphs / keystroke echo
+302 -> 584) and reproduces the 2026-11-04 re-gate exactly one gate
+deeper: step (6) — the Phase-13 CLI-toolset assertion that types
+`ls -l /bin` — wedges at the FIRST bash fork (the terminal stops
+rendering mid-step) and `terminal-probe: FAIL ls -l /bin did not render
+a listing` fires deterministically. The run still ends `Error: Test
+execution timed out` (make exit 254). The F7 libc-fork child startup
+wedge on the sandboxed topology therefore remains open with its
+follow-up pointer to the D16R.17 session-machinery/fork family
+(register §11 F7). The gate `terminal-probe: PASS` was NOT reached and
+is NOT weakened; this row must not be reported as green.
+
+--- guest/run-tool verdict lines (verbatim) ---
+[init -> terminal_probe] terminal-probe: [1] install ok
+[init -> terminal_probe] terminal-probe: [2] installed broadcast lists terminal
+[init -> terminal_probe] terminal-probe: [3] launch ok
+[init -> terminal_probe] terminal-probe: [4] terminal window detected (302 glyph pixels)
+[init -> terminal_probe] terminal-probe: keystroke echo confirmed (glyphs 302 -> 584)
+[init -> terminal_probe] terminal-probe: toolset poll 0 glyphs=535 (need > 2791)
+[init -> terminal_probe] terminal-probe: toolset poll 90 glyphs=535 (need > 2791)
+[init -> terminal_probe] Error: terminal-probe: FAIL ls -l /bin did not render a listing (CLI toolset tars missing?)
+[init] child "terminal_probe" exited with exit value 1
+Error: Test execution timed out
+
+--- tail 5 (verbatim) ---
+[init -> terminal_probe] Error: terminal-probe: FAIL ls -l /bin did not render a listing (CLI toolset tars missing?)
+[init] child "terminal_probe" exited with exit value 1
+Error: Test execution timed out
+make: *** [Makefile:446: run/sponge-terminal] エラー 254
+make: ディレクトリ '/home/luke/sponge-os/genode/build/x86_64' から出ます
