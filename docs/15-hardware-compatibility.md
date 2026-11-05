@@ -28,7 +28,9 @@
 > scenario; no other `target: real-hardware` form is accepted.** The
 > single real-hardware row (LG gram 17ZD90N-VX7BK, status gap, qemu-
 > envelope `run/sponge-desktop-disk-uefi-usb.run`) is the only row of
-> this kind; its 15-3 physical-boot evidence LANDED 2026-09-16
+> this kind; its 15-3 physical-boot evidence started 2026-08-23
+> (first boot; interactive USB-mouse confirmation still pending
+> then) and LANDED 2026-09-16
 > (0.2.0, full interaction on the 17ZD90N); the cell remains `gap`
 > per D15.11(b) (the gate admits real-hardware rows only as `gap`)
 > and D15.16's documented-gap discipline. The old "QEMU envelope
@@ -310,8 +312,10 @@ UEFI/OVMF is a Phase 15 surface addition that is structurally
 complete (D15.13) and stays `gap` for the uefi/uefi-nvme cells per
 D15.16 (structure-only QEMU gates that do not exercise the desktop
 gate — no desktop PASS is claimed from them), with real-hardware
-**verified 2026-09-16 (0.2.0, the 15-3 milestone: full boot +
-interaction on the 17ZD90N)**. The old W1 OVMF core-init hang / W^X
+**first achieved 2026-08-23 (the 15-3 first-boot milestone;
+interactive USB-mouse confirmation still pending then) and fully
+landed with 0.2.0 on 2026-09-16 (full boot + interaction on the
+17ZD90N)**. The old W1 OVMF core-init hang / W^X
 + bender-NOP boot-block cause is retired (acpi DMAR misparse fixed
 at ledger row 16; bender `check_mem` rebuilt at row 10; kernel
 reserved-extent export + core-side detection at row 11): QEMU/OVMF
@@ -320,12 +324,13 @@ boots reach Genode, and the uefi-usb QEMU envelope is a full
 
 | Surface | Phase 15 variant | Status | Reason | Scenario / evidence / QEMU / budget |
 |---|---|---|---|---|
-| Firmware | UEFI/OVMF + boot_fb (desktop) | gap | D15.16 documented gap: the Sponge-side UEFI recipe is structurally complete (D15.13, handcrafted GPT P1=ESP + P3=GENODE, GRUB2 EFI multiboot2 → bender → seL4) and this cell is a structure-only QEMU gate — the run does not exercise the desktop gate (`alpha-probe`), so no desktop PASS is claimed. Not a boot block: the W1 OVMF core-init hang / W^X + bender-NOP cause is retired (`docs/11-environment.md` §4 rows 10/11/16) and QEMU/OVMF boots reach Genode (row 12 verification: `run/sponge-desktop-disk-uefi` reaches the Genode log + init tree on OVMF). Real-hardware verified by 15-3 (2026-09-16, the 17ZD90N) | scenario `run/sponge-desktop-disk-uefi.run`; evidence `docs/evidence/phase15-w4-uefi-product-media.log` + `docs/evidence/phase15-index.md` §8 + §9; QEMU-verified = boot reaches Genode, no desktop gate claimed from this cell (D15.16); 15-3 = LANDED 2026-09-16 (the user-executed 17ZD90N protocol); budget n/a (host-side boot timeout 180 s per the W4 acceptance contract; the scenario's structural-gate PASS is host-side sgdisk + mdir + e2ls only, NOT a QEMU boot PASS) |
-| Firmware | UEFI/OVMF + NVMe (desktop) | gap | D15.16 documented gap: the Sponge-side UEFI NVMe envelope (D15.1, the target-machine's controller class) is structurally complete (D15.13, handcrafted NVMe disk + UEFI image) and this cell is a structure-only QEMU gate — the run does not exercise the desktop gate, so no desktop PASS is claimed. Not a boot block (the W1 hang / W^X + bender-NOP cause is retired; see the boot_fb cell). The 17ZD90N's PM981a/PM991 NVMe is in the QEMU-verified `nvme` driver path per Phase 12 W2; 15-3 (LANDED 2026-09-16) verified the UEFI USB-stick boot on that machine, and this NVMe envelope has no separate real-hardware receipt | scenario `run/sponge-desktop-disk-uefi-nvme.run`; evidence `docs/evidence/phase15-w4-uefi-product-media.log` + `docs/evidence/phase15-index.md` §8; QEMU-verified = boot reaches Genode, no desktop gate claimed from this cell (D15.16); 15-3 = LANDED 2026-09-16 (via the uefi-usb media; no separate NVMe real-hardware receipt); budget n/a |
-| Firmware | UEFI/OVMF + USB-stick (Tier-0 xHCI + usb_block) | gap | D15.16 documented gap (the `gap` status stands; the desktop gate is proven on this envelope below): the Sponge-side UEFI USB-stick envelope (D15.1 15-3 deliverable) is structurally complete (D15.13, handcrafted USB-stick image with one `pc_usb_host` serving both usb_hid class 0x3 and usb_block class 0x8). Note: BIOS-side USB-stick boot is a Phase 12 verified row (`sponge-usb-boot.run` SeaBIOS → GRUB2 → Bender via `-device usb-storage`); the Phase 15 cell is the UEFI-side xHCI + `usb_block` envelope, NOT a new product image. Real-hardware 17ZD90N uses xHCI on Insyde H2O; **15-3 LANDED
-2026-09-16 (0.2.0): the physical 17ZD90N boots this UEFI USB-stick
-media and is fully interactive (panel, pointer/click, in-window
-interaction, mouse movement, native 2560x1600).** The QEMU envelope
+| Firmware | UEFI/OVMF + boot_fb (desktop) | gap | D15.16 documented gap: the Sponge-side UEFI recipe is structurally complete (D15.13, handcrafted GPT P1=ESP + P3=GENODE, GRUB2 EFI multiboot2 → bender → seL4) and this cell is a structure-only QEMU gate — the run does not exercise the desktop gate (`alpha-probe`), so no desktop PASS is claimed. Not a boot block: the W1 OVMF core-init hang / W^X + bender-NOP cause is retired (`docs/11-environment.md` §4 rows 10/11/16) and QEMU/OVMF boots reach Genode (row 12 verification: `run/sponge-desktop-disk-uefi` reaches the Genode log + init tree on OVMF). Real-hardware verified by 15-3 (first boot 2026-08-23, full interaction accepted 2026-09-16, the 17ZD90N) | scenario `run/sponge-desktop-disk-uefi.run`; evidence `docs/evidence/phase15-w4-uefi-product-media.log` + `docs/evidence/phase15-index.md` §8 + §9; QEMU-verified = boot reaches Genode, no desktop gate claimed from this cell (D15.16); 15-3 = first boot 2026-08-23 (the user-executed 17ZD90N protocol), LANDED 2026-09-16 (full interaction accepted with 0.2.0); budget n/a (host-side boot timeout 180 s per the W4 acceptance contract; the scenario's structural-gate PASS is host-side sgdisk + mdir + e2ls only, NOT a QEMU boot PASS) |
+| Firmware | UEFI/OVMF + NVMe (desktop) | gap | D15.16 documented gap: the Sponge-side UEFI NVMe envelope (D15.1, the target-machine's controller class) is structurally complete (D15.13, handcrafted NVMe disk + UEFI image) and this cell is a structure-only QEMU gate — the run does not exercise the desktop gate, so no desktop PASS is claimed. Not a boot block (the W1 hang / W^X + bender-NOP cause is retired; see the boot_fb cell). The 17ZD90N's PM981a/PM991 NVMe is in the QEMU-verified `nvme` driver path per Phase 12 W2; 15-3 (first boot 2026-08-23, LANDED 2026-09-16) verified the UEFI USB-stick boot on that machine, and this NVMe envelope has no separate real-hardware receipt | scenario `run/sponge-desktop-disk-uefi-nvme.run`; evidence `docs/evidence/phase15-w4-uefi-product-media.log` + `docs/evidence/phase15-index.md` §8; QEMU-verified = boot reaches Genode, no desktop gate claimed from this cell (D15.16); 15-3 = first boot 2026-08-23, LANDED 2026-09-16 (via the uefi-usb media; no separate NVMe real-hardware receipt); budget n/a |
+| Firmware | UEFI/OVMF + USB-stick (Tier-0 xHCI + usb_block) | gap | D15.16 documented gap (the `gap` status stands; the desktop gate is proven on this envelope below): the Sponge-side UEFI USB-stick envelope (D15.1 15-3 deliverable) is structurally complete (D15.13, handcrafted USB-stick image with one `pc_usb_host` serving both usb_hid class 0x3 and usb_block class 0x8). Note: BIOS-side USB-stick boot is a Phase 12 verified row (`sponge-usb-boot.run` SeaBIOS → GRUB2 → Bender via `-device usb-storage`); the Phase 15 cell is the UEFI-side xHCI + `usb_block` envelope, NOT a new product image. Real-hardware 17ZD90N uses xHCI on Insyde H2O; **15-3 first booted
+this UEFI USB-stick media 2026-08-23 (interactive USB-mouse
+confirmation still pending then) and LANDED with 0.2.0 on 2026-09-16:
+the physical 17ZD90N is fully interactive (panel, pointer/click,
+in-window interaction, mouse movement, native 2560x1600).** The QEMU envelope
 is no longer boot-blocked: the host-OVMF core-init hang was
 root-caused to the acpi DMAR misparse (ledger row 16, fixed) and the
 W^X/bender-NOP cause is retired (`docs/11-environment.md` §4 ledger
@@ -339,7 +344,7 @@ address instead of the BAR's, the driver read zeroes and the whole
 storage chain died ("Host halt failed, -110"). The QEMU twin of that
 exact class is now a gate: `tool/hwrepro --case midwindow` (the xHCI
 BAR inside a device untyped) is CLEAN after the fix; see
-`docs/evidence/xhci-high-bar-mapping.md` | scenario `run/sponge-desktop-disk-uefi-usb.run`; evidence `docs/evidence/phase15-w4-uefi-product-media.log` + `docs/evidence/phase15-index.md` §10; QEMU-verified = YES (`alpha-probe: PASS` — the QEMU-verified UEFI product path); 15-3 = LANDED 2026-09-16; budget n/a |
+`docs/evidence/xhci-high-bar-mapping.md` | scenario `run/sponge-desktop-disk-uefi-usb.run`; evidence `docs/evidence/phase15-w4-uefi-product-media.log` + `docs/evidence/phase15-index.md` §10; QEMU-verified = YES (`alpha-probe: PASS` — the QEMU-verified UEFI product path); 15-3 = first boot 2026-08-23, LANDED 2026-09-16 (full interaction accepted with 0.2.0); budget n/a |
 | Input | usb-mouse HID (relative motion) | verified | the QPA → `usb-tablet` absolute-input path is a Phase 11/12 baseline; the new usb-mouse HID path uses pc_usb_host class 0x3 + usb_hid (Linux hid-core hid-generic) + event_filter REL forwarding. The audit chain (QMP `device_add usb-mouse` → `usb_hid: MOUSE detected` → REL motion + BTN_LEFT via `qmp_move_rel` + `qmp_ps2_button` → QMP `device_del` → `usb_hid: MOUSE removed`) passes end-to-end. The Phase 14 row #2 nitpicker pointer-ROM gap ("nitpicker pointer ROM only updates on absolute_motion") and row #12 cursor-invisible-under-PS/2-only-input are cross-referenced as honest gap-row evidence from the scenario's secondary observation; the usb-mouse cell is precisely their Phase 15 envelope. The QPA → usb-mouse relative-motion patch candidate from `docs/15-hardware-compatibility.md` §4.1 row 4 (Phase 12+ gap) remains open as a Phase 17+ item | scenario `run/sponge-usb-hid-mouse.run`; evidence `docs/evidence/phase15-usb-hid-mouse.log`; QEMU 11.0.3; boot_time 175 s; budget 600 s; target qemu |
 
 **UEFI cells honesty note:** all three UEFI surface cells are
@@ -356,7 +361,8 @@ QEMU/OVMF boots reach Genode, and the uefi-usb envelope is a
 full `alpha-probe: PASS`. Per the W4 binding decisions, the real
 acceptance gate is host-side structural verification + honest gap
 recording, NOT a fabricated QEMU boot PASS. 15-3 has LANDED
-(2026-09-16); the cells stay honest `gap` and no UEFI cell is
+(first boot 2026-08-23; full interaction accepted 2026-09-16); the
+cells stay honest `gap` and no UEFI cell is
 marked `verified` here (plan MUST NOT HAVE, verbatim: "No
 fabricated scenario PASS. Do not mark any UEFI cell verified
 (all are gap per the W1 outcome)." — the W1-outcome cause inside
@@ -426,7 +432,8 @@ Phase 15 D15.11 addition (single row, OUTSIDE the combo):
   is **gap** with a `qemu-envelope: run/sponge-desktop-disk-uefi-usb.run`
   link. D15.11 + R15.7 admit the row only as `gap` (the
   `tool/hw_compat` gate rejects a stronger status outright), and it
-  keeps that status: 15-3 LANDED 2026-09-16 and the row was not
+  keeps that status: 15-3 LANDED 2026-09-16 (first boot 2026-08-23)
+  and the row was not
   flipped to `verified` — the D15.16 documented-gap discipline
   stands.
 
@@ -457,7 +464,7 @@ enforces both rules (no fabricated `qemu-envelope`, no
 | 14 | i440fx | Skylake-Client | NVMe | ipxe/e1000 | usb-kbd | gap |  |  |  |  |  |  | phase-15+ | no i440fx + NVMe + usb-kbd combo exists; Phase 12 only verifies i440fx IDE and q35 NVMe as disjoint single-concern smokes |  |
 | 15 | i440fx | Skylake-Client | NVMe | pc_nic/e1000 | PS/2+tablet | gap |  |  |  |  |  |  | phase-15+ | no i440fx + NVMe + pc_nic combo exists; pc_nic requires q35 enumeration and i440fx lacks NVMe auto-attach |  |
 | 16 | i440fx | Skylake-Client | NVMe | pc_nic/e1000 | usb-kbd | gap |  |  |  |  |  |  | phase-15+ | no i440fx + NVMe + pc_nic + usb-kbd combo exists; all three Phase-12 driver chains are disjoint from the i440fx PIIX4 IDE topology |  |
-| 17 | LG gram 17ZD90N-VX7BK (i7-1065G7 / Iris Plus G7 / 8 GiB / NVMe SSD / xHCI / Insyde H2O UEFI-only) | Skylake-Client (x86_64) | NVMe (PM981a/PM991 — single-namespace expected) | none functional (no Ethernet; Wi-Fi AX201 CNVio2 = unsupported Genode wifi) | PS/2 keyboard (i8042) + USB HID mouse (15-3 protocol — trackpad dead, USB mouse required; R15.10) | gap |  |  |  |  |  |  | real-hardware | **15-3 LANDED 2026-09-16 (0.2.0): physical boot + full interaction (panel, pointer/click, in-window, mouse movement, native 2560x1600) verified on the 17ZD90N.** The cell stays `gap` per D15.11(b) (the gate admits real-hardware rows only as `gap`) and D15.16's documented-gap discipline. Its QEMU envelope (`run/sponge-desktop-disk-uefi-usb.run`) is no longer boot-blocked: the host-OVMF core-init hang was root-caused to the acpi DMAR misparse (ledger row 16, fixed) and the W^X/bender-NOP cause is retired (`docs/11-environment.md` §4 rows 10 + 11) — QEMU/OVMF boots reach Genode and the envelope is a full `alpha-probe: PASS` (the QEMU-verified UEFI product path). **2026-10-21 (ledger row 27):** a SECOND real-hardware defect on this board is named, fixed and gated in QEMU — the board's xHCI BAR (0x601d140000, 384.9 GiB) was mapped to the wrong physical address (the kernel reset a device untyped's free index to its base, so the frame landed on the GOP framebuffer's address; the driver read zeroes → "Host halt failed, -110" → the storage chain died → the supervisor kill-looped). The QEMU twin of that class is `tool/hwrepro --case midwindow` (the xHCI BAR inside a device untyped): it REPRODUCED the field signature before the fix and is CLEAN after it. The panel itself still needs one reflash-and-eyeball run (the laptop has no serial). | run/sponge-desktop-disk-uefi-usb.run |
+| 17 | LG gram 17ZD90N-VX7BK (i7-1065G7 / Iris Plus G7 / 8 GiB / NVMe SSD / xHCI / Insyde H2O UEFI-only) | Skylake-Client (x86_64) | NVMe (PM981a/PM991 — single-namespace expected) | none functional (no Ethernet; Wi-Fi AX201 CNVio2 = unsupported Genode wifi) | PS/2 keyboard (i8042) + USB HID mouse (15-3 protocol — trackpad dead, USB mouse required; R15.10) | gap |  |  |  |  |  |  | real-hardware | **15-3 first achieved 2026-08-23 (physical boot; interactive USB-mouse confirmation still pending then) and LANDED with 0.2.0 on 2026-09-16: physical boot + full interaction (panel, pointer/click, in-window, mouse movement, native 2560x1600) verified on the 17ZD90N.** The cell stays `gap` per D15.11(b) (the gate admits real-hardware rows only as `gap`) and D15.16's documented-gap discipline. Its QEMU envelope (`run/sponge-desktop-disk-uefi-usb.run`) is no longer boot-blocked: the host-OVMF core-init hang was root-caused to the acpi DMAR misparse (ledger row 16, fixed) and the W^X/bender-NOP cause is retired (`docs/11-environment.md` §4 rows 10 + 11) — QEMU/OVMF boots reach Genode and the envelope is a full `alpha-probe: PASS` (the QEMU-verified UEFI product path). **2026-10-21 (ledger row 27):** a SECOND real-hardware defect on this board is named, fixed and gated in QEMU — the board's xHCI BAR (0x601d140000, 384.9 GiB) was mapped to the wrong physical address (the kernel reset a device untyped's free index to its base, so the frame landed on the GOP framebuffer's address; the driver read zeroes → "Host halt failed, -110" → the storage chain died → the supervisor kill-looped). The QEMU twin of that class is `tool/hwrepro --case midwindow` (the xHCI BAR inside a device untyped): it REPRODUCED the field signature before the fix and is CLEAN after it. The panel itself still needs one reflash-and-eyeball run (the laptop has no serial). | run/sponge-desktop-disk-uefi-usb.run |
 
 **Cell counts:** 4 verified (cells 1, 2, 3, 5) + 1 smoke-only (cell 9) + 12 gap (cells 4, 6, 7, 8, 10, 11, 12, 13, 14, 15, 16, 17) = 17 cells (matches Phase 12 plan step 2 + risk 24 + Phase 15 D15.11). The Phase 15 single real-hardware row is row 17.
 
@@ -528,7 +535,7 @@ Rules the validator enforces on gap cells (plan step 7 + Phase 15 D15.11):
   (b) `status:` is exactly `gap` (any stronger status — `verified`
   or `smoke-only` — is rejected with exit 2; the gate enforces this
   unconditionally, so the row keeps `gap` even though 15-3 LANDED
-  2026-09-16; D15.11 + R15.7).
+  2026-09-16 (first boot 2026-08-23); D15.11 + R15.7).
 - A `target: real-hardware` row WITHOUT a `qemu-envelope:` is
   rejected with exit 2 and the exact message
   `real hardware is a Phase 15 deliverable; not a Phase 12 cell`
@@ -563,7 +570,7 @@ discovered, NOT Phase-11 copy-paste).
 
 | # | Gap | Reason | Target phase |
 |---|---|---|---|
-| 1 | physical USB boot | SeaBIOS -> GRUB2 -> Bender handoff is QEMU-verified via `-device usb-storage`; physical-stick boot is unverified. **Physical USB boot: NOT YET VERIFIED (Phase 15 target).** Closed by 15-3 on the UEFI side (LANDED 2026-09-16: the desktop `.img` boots the 17ZD90N from a physical USB stick); the SeaBIOS-side physical-stick path has no real-hardware target machine (the 17ZD90N is UEFI-only) and stays QEMU-verified only. | Phase 15 |
+| 1 | physical USB boot | SeaBIOS -> GRUB2 -> Bender handoff is QEMU-verified via `-device usb-storage`; physical-stick boot was unverified at Phase 12. **Physical USB boot: NOT YET VERIFIED (Phase 15 target)** (historical Phase-12 verdict, quoted verbatim). Closed by 15-3 on the UEFI side (physical-stick boot first achieved 2026-08-23, LANDED with 0.2.0 on 2026-09-16: the desktop `.img` boots the 17ZD90N from a physical USB stick); the SeaBIOS-side physical-stick path has no real-hardware target machine (the 17ZD90N is UEFI-only) and stays QEMU-verified only. | Phase 15 |
 | 2 | multi-namespace NVMe | W2 exercises one namespace on a `pcie-root-port` with explicit root-port + raw drive + `-device nvme`. `part_block` pins by partition number and never auto-probes additional namespaces. | Phase 12+ |
 | 3 | `virtio_pci_nic` | Explicitly excluded by plan §"Must NOT Have" and §"Scope Guards". The pc_nic driver stack does not enumerate virtio NIC devices. | Phase 12+ |
 | 4 | usb-mouse relative motion | The QPA path (Qt Platform Abstraction) currently only consumes absolute input from `usb-tablet`. A usb-mouse would require a QPA patch candidate; see `docs/11-environment.md` §4.2 (Phase-12 patch-candidate ledger). | Phase 12+ |

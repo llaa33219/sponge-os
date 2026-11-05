@@ -90,13 +90,16 @@ design; see
 `tool/dist --firmware uefi`) and 15-2 (usb-mouse envelope,
 hardware-matrix update with the D15.11 real-hardware admission
 policy, 9-scenario regression sweep all-PASS) are done; 15-3 reached
-its milestone on 2026-08-23 — the full desktop boots from USB on the
-LG gram 17ZD90N (`alpha_probe` exited 0 on the panel: compositor
-pixel checks passed on real hardware), after a four-defect bring-up
+its first-boot milestone on 2026-08-23 — the full desktop boots from
+USB on the LG gram 17ZD90N (`alpha_probe` exited 0 on the panel:
+compositor pixel checks passed on real hardware; interactive USB-mouse
+confirmation was still pending then), after a four-defect bring-up
 chain (kernel untyped coverage, core high-phys CNode, retype
 watermark, per-PD cap capacity) each layer found from the kernel
 early-FB console's on-panel boot log. Final interactive input
-confirmation (USB mouse) pending; trackpad/Wi-Fi remain pre-registered
+confirmation (USB mouse) completed 2026-09-16 with the 0.2.0
+interaction acceptance (pointer/click, in-window interaction, mouse
+movement); trackpad/Wi-Fi remain pre-registered
 gaps — see
 [`docs/plans/phase15-real-hardware-boot.md`](docs/plans/phase15-real-hardware-boot.md)
 and [`docs/plans/phase15-hardware-boot-protocol.md`](docs/plans/phase15-hardware-boot-protocol.md).
