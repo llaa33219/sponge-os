@@ -1031,8 +1031,12 @@ registered, never silently closed** (plan D16R.18): the
 ISO ceiling, and the Phase-17 UI rows — and the criteria checkboxes
 above stay **open**: fixing a root cause never closes an item, and
 criterion 13 additionally requires real hardware, which no QEMU
-receipt can claim. P5.2 is this docs sync; P5.3 (the full regression
-sweep) remains.
+receipt can claim. P5.2 (this docs sync) is landed, and P5.3's full
+regression sweep is landed too
+(`docs/evidence/phase16-runtime-sweep.md` — 32 green / 4 documented
+partials / 0 red after the two fix waves); the outstanding half of
+P5.3 is the `review-work` post-implementation review, which stays
+open until its verdict is recorded.
 
 ### Phase 17: Sponge IME — Multi-Language / CJK Input
 
