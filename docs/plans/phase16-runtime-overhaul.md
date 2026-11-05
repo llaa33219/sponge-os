@@ -589,6 +589,31 @@ re-gated RED one gate deeper: the toolset step's first bash fork
 wedges the terminal (new follow-up F7, product-side). Receipts:
 `docs/evidence/phase16-runtime-f{1,6}-*.log`. Other rows unchanged.
 
+Fix wave 2 (2026-11-05): rows 22, 11, and 32 re-gate green on fresh
+runs after three run-side fixes — `run/sponge-wm-tasks.run` drivers
+caps 1500 -> 1800 (the fb-PD mapping-cache CAP class; `wm-tasks-probe:
+PASS` + `Run script execution successful.`),
+`run/sponge-de-shortcuts.run` outer report_rom `verbose: yes -> no`
+(`shortcuts-probe: PASS`), and a guarded clipboard strip in
+`run/sponge-textedit.run` (the standalone topology has no clipboard
+provider; the run prints `textedit: clipboard disabled in app and
+package configs`, `textedit-probe: PASS`). Row 35 is **PARTIAL, not
+green**: the F6 braced fix stands, but the F7 first-bash-fork
+`ls -l /bin` wedge reproduces and the fresh run still ends `Error: Test
+execution timed out` — do not claim green for row 35. Receipts:
+`docs/evidence/phase16-runtime-f{2,4,5,7}-*.log`. The envelope now
+stands at 32 green / 4 documented partials (rows 8, 15, 21, 35) / 0
+red.
+
+P5.3 acceptance condition (recorded 2026-11-05): P5.3 is acceptable
+only once the partial is explicitly documented with its pointer. Row
+35's partial is documented in the sweep matrix (§3 row 35 + §7 F6/F7 +
+§11 register F7) with its follow-up pointer to the **D16R.17
+session-machinery/fork family**, so the sweep-half gate ("all green or
+each partial documented with a follow-up pointer") holds and row 35 is
+recorded PARTIAL, never green. The `review-work` post-implementation
+review remains the outstanding half of P5.3.
+
 ## 6. Dependency Graph
 
 | Task | Depends on | Reason |
