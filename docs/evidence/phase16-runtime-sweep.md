@@ -165,13 +165,17 @@ closes on the verdict line.
 | a03 | + `SPONGE_GROUPED_UI=on` | **PASS** (1/1) | `grouped-ui-probe: PASS` | `...-a03-...` |
 | a04 | + `SPONGE_APP_ISOLATION=on` | **PASS** (1/1) | `app-isolation-probe: PASS` | `...-a04-...` |
 | x01 | sponge-desktop-disk-nvme | **PASS** (1/1) | `alpha-probe: PASS` | `...-x01-...` |
-| x02 | sponge-desktop-disk-uefi | **structure-only gate** (exit 0) | `UEFI product media structure verified; QEMU boot blocked by the known UEFI/QEMU W^X + bender NOP gap` | `...-x02-...` |
-| x03 | sponge-desktop-disk-uefi-nvme | **structure-only gate** (exit 0) | same banner | `...-x03-...` |
+| x02 | sponge-desktop-disk-uefi | **structure-only gate** (exit 0) | `UEFI product media structure verified; QEMU boot blocked by the known UEFI/QEMU W^X + bender NOP gap` (verbatim run banner — stale text from a banner-classifier bug, B2; not a boot-block claim) | `...-x02-...` |
+| x03 | sponge-desktop-disk-uefi-nvme | **structure-only gate** (exit 0) | same banner (same classifier bug, B2) | `...-x03-...` |
 | x04 | sponge-desktop-disk-uefi-usb | **PASS** (1/1) | `alpha-probe: PASS` (the QEMU-verified UEFI product path) | `...-x04-...` |
 | x05 | sponge-pkg-driver | **PASS on install/DHCP only** (see B3) | `driver-probe: install answered status=ok`, `driver_runtime lists child 'pc_nic'`, `driver-probe: PASS` | `...-x05-sponge-pkg-driver.log` |
 
 x02/x03 are NOT green boot claims — they are the D15.16 structure-only
-QEMU gates (B2). x05's final `sponge-pkg-driver: PASS (...)` string
+QEMU gates (B2): runs that do not exercise the desktop gate
+(`alpha-probe`), not boot blockers. Their printed gap banner is stale
+and is itself the banner-classifier bug recorded in B2 (both receipts
+record `UNEXPECTED — QEMU reached the Genode v... banner` before the
+fallback misfires). x05's final `sponge-pkg-driver: PASS (...)` string
 claims fb exclusivity; that half is unproven at HEAD (B3) and no
 exclusivity or real-hardware claim is taken from it.
 
@@ -420,15 +424,30 @@ row is recorded **PARTIAL** and must not be reported as green (the
    the working axis is refreshed green.
 2. **B2 — UEFI structure-only variants (D15.16)**: `sponge-desktop-
    disk-uefi` and `-uefi-nvme` exit 0 on the structural assertions and
-   print the documented gap banner; they are NOT boot claims. The QEMU
-   UEFI boot claim is `sponge-desktop-disk-uefi-usb` (x04, fresh
-   green). Real-hardware UEFI is Phase 15 15-3 territory and is never
-   claimed here (D16R.12).
-3. **B3 — pkg-driver fb-probe policy gap**: x05's fresh log shows
-   `report_rom: Warning: no valid policy for ROM request 'fb_conflict_
-   probe -> result'` and `'fb_lock_probe -> result'` — both fb probes
-   die at start (`stop because parent denied ROM-session`), while the
-   install/DHCP gate is green. The scenario's final PASS string still
+   print their gap banner; they are structure gates that do not
+   exercise the desktop gate (`alpha-probe`), so no desktop PASS is
+   claimed from them — that gate-scope limit is the D15.16 limitation,
+   not a boot block. The banner's stated cause ("QEMU boot blocked by
+   the known UEFI/QEMU W^X + bender NOP gap") is retired: the W^X/
+   bender-NOP cause is superseded by `docs/11-environment.md` §4
+   ledger row 10 (principled bender `check_mem` rebuild, replacing the
+   W1 NOP) + row 11 (seL4 kernel reserved-extent export + core-side
+   artifact detection), and QEMU/OVMF boots reach Genode at the
+   current pin. The banner text is itself a **banner-classifier bug**,
+   not proof of a boot blocker: the run's `Genode v` regexp cannot
+   match the current `Genode 26.08-38-…` banner, so the fallback
+   prints the stale gap line even though both receipts record
+   `UNEXPECTED — QEMU reached the Genode v... banner` from the expect
+   arm. The QEMU UEFI desktop claim is `sponge-desktop-disk-uefi-usb`
+   (x04, fresh green, `alpha-probe: PASS`). Real-hardware UEFI is
+   Phase 15 15-3 territory and is never claimed here (D16R.12).
+3. **B3 — pkg-driver fb-probe policy gap**: x05's fresh log shows both
+   fb probes dying at start on a report_rom policy denial — verbatim
+   `Error: stop because parent denied ROM-session: label="result"` from
+   `[init -> system -> fb_conflict_probe]` and
+   `[init -> system -> fb_lock_probe]` (no report_rom policy serves a
+   `result` ROM to either probe) — while the install/DHCP gate is
+   green. The scenario's final PASS string still
    claims "a second fb driver was REFUSED as exclusive-conflict"; that
    half is unconditional and unproven. **No fb-exclusivity and no
    real-hardware claim is taken from `run/sponge-pkg-driver`.**
