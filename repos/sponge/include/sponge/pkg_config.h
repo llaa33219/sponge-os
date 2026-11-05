@@ -9,7 +9,9 @@
  * (Phase 16 P1.2, docs/plans/phase16-runtime-overhaul.md) so the
  * emission templating becomes testable and reusable without touching
  * pkgd's I/O. The pre-extraction behavior is preserved byte for byte
- * for identical package state.
+ * for identical package state, with one deliberate exception: the
+ * hardware capability boundary (docs/12-package-format.md §4.5), see
+ * the SESSION ROUTING RULES below.
  *
  * PURITY CONTRACT (hard):
  *
@@ -69,6 +71,13 @@
  *     package sandbox — never as a <child name="nitpicker"/> (rule 1).
  *   - 'session_label': materialize the label attribute per rule 2
  *     (explicit label wins; read-only File_system gets "<pkg>-ro").
+ *   - hardware capability boundary (docs/12 §4.5, AGENTS.md §1.2):
+ *     on every non-driver target, 'emit_target' drops the hardware
+ *     service names (Platform/Dma/Irq/Io_mem/Io_port, in either
+ *     casing the tree uses) from the <parent-provides> union and from
+ *     the matching <parent/> routes, so an application package cannot
+ *     obtain one even by naming it. The driver target keeps them
+ *     verbatim, as do all other service names everywhere.
  */
 
 #pragma once
@@ -238,8 +247,9 @@ Genode::String<96> session_label(char const *pkg_name,
  * base-services lists ARE the capability boundary (AGENTS.md §1.2):
  * 'app_target' carries no hardware service at all, so an application
  * package cannot obtain Platform/Irq/Io_mem/Io_port even by naming
- * them; 'driver_target' grants only the bare core services plus what
- * the installed driver packages declared.
+ * them (emit_target drops those names from its output, see the
+ * SESSION ROUTING RULES); 'driver_target' grants only the bare core
+ * services plus what the installed driver packages declared.
  */
 Target app_target();
 Target driver_target();

@@ -11,7 +11,11 @@
  * attribute order, and the buffer bounds are preserved exactly — see
  * <sponge/pkg_config.h> for the contracts and
  * lib/src/sponge_pkg_config/self_test.cc for the byte-identity proof
- * against a verbatim reference copy of the old algorithm.
+ * against a verbatim reference copy of the old algorithm. The one
+ * deliberate deviation from the reference is the hardware capability
+ * boundary (docs/12-package-format.md §4.5): non-driver targets drop
+ * the hardware service names from <parent-provides> and the matching
+ * <parent/> routes, which the pre-extraction generator emitted.
  *
  * Purity: no Env, no Report/ROM sessions, no File_system, no hardware
  * access, no exceptions, no mutable global state. Every output buffer
@@ -64,6 +68,33 @@ bool Sponge::Pkg_config::is_parent_route(char const *route)
 	};
 	for (char const *o : OUTER)
 		if (Genode::strcmp(route, o) == 0)
+			return true;
+	return false;
+}
+
+
+/*
+ * Hardware capability service names (docs/12-package-format.md §4.5,
+ * AGENTS.md §1.2): the sessions only a driver package may obtain.
+ * Both casings that occur in the tree are listed - the shipped driver
+ * metadata and Genode's service_name() spell them Platform/Dma/IRQ/
+ * IO_MEM/IO_PORT, while docs/12 and the target presets use the
+ * API-type casing Platform/Dma/Irq/Io_mem/Io_port. Matching is exact
+ * so every other service name keeps its current casing and behaviour.
+ */
+static bool is_hardware_service(char const *name)
+{
+	if (name == nullptr || name[0] == '\0') return false;
+
+	static char const *const HW[] = {
+		"IO_MEM", "Io_mem",
+		"IO_PORT", "Io_port",
+		"IRQ",    "Irq",
+		"Platform",
+		"Dma"
+	};
+	for (char const *h : HW)
+		if (Genode::strcmp(name, h) == 0)
 			return true;
 	return false;
 }
@@ -201,6 +232,17 @@ void Sponge::Pkg_config::emit_target(Genode::Xml_generator &g,
 	if (num_packages > MAX_PACKAGES)
 		num_packages = MAX_PACKAGES;
 
+	/*
+	 * Hardware capability boundary (docs/12-package-format.md §4.5):
+	 * an application package cannot obtain Platform/Dma/Irq/Io_mem/
+	 * Io_port no matter what it declares. Every non-driver target
+	 * therefore drops those service names from the <parent-provides>
+	 * union and from the matching <parent/> routes below; the driver
+	 * target keeps them verbatim.
+	 */
+	bool const hw_filter =
+		Genode::strcmp(target.runtime_class, "driver") != 0;
+
 	/* Selection-sort the installed set by name into a stable index order. */
 	unsigned order[MAX_PACKAGES] { };
 	for (unsigned i = 0; i < num_packages; ++i) order[i] = i;
@@ -290,6 +332,8 @@ void Sponge::Pkg_config::emit_target(Genode::Xml_generator &g,
 					continue;
 				char const *n = packages[i].sessions[s].name;
 				if (n == nullptr || n[0] == '\0' || num_emitted >= MAX_PROVIDES)
+					continue;
+				if (hw_filter && is_hardware_service(n))
 					continue;
 				bool dup { false };
 				for (unsigned k = 0; k < num_emitted; ++k)
@@ -406,6 +450,10 @@ void Sponge::Pkg_config::emit_target(Genode::Xml_generator &g,
 
 					bool const parent_route =
 						is_parent_route(session.route);
+
+					if (hw_filter && parent_route &&
+					    is_hardware_service(session.name))
+						continue;
 
 					Genode::String<96> const label =
 						session_label(c.name, session);

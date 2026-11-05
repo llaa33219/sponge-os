@@ -24,6 +24,14 @@
  *      target, driver-only hardware capabilities appear in no app
  *      class target, and the empty-class output is pinned.
  *
+ *   4. Hardware capability boundary (docs/12 §4.5): a fixture whose
+ *      APP package declares the hardware services emits neither a
+ *      <parent-provides> entry nor a <parent/> route for any of them,
+ *      while the DRIVER package keeps both. This boundary filter is
+ *      the one deliberate deviation from the reference generator; the
+ *      equivalence fixtures carry no app-side hardware declarations,
+ *      so the byte-identity checks above stay exact.
+ *
  * BUILD & RUN (from the repository root; host g++ only — this never
  * touches the Genode build tree):
  *
@@ -461,6 +469,45 @@ Sponge::Pkg_config::Package_view const FIX_CLASSES[] = {
 
 constexpr unsigned NUM_CLASS_PACKAGES =
 	sizeof(FIX_CLASSES) / sizeof(FIX_CLASSES[0]);
+
+/*
+ * Hardware capability boundary fixture (docs/12-package-format.md
+ * §4.5, AGENTS.md §1.2): the APP package declares the hardware
+ * services in every spelling the tree uses (the shipped driver
+ * metadata and Genode's service_name() casing, plus the docs'
+ * API-type casing) and must produce NO <parent-provides> entry and NO
+ * <parent/> route for any of them; the DRIVER package keeps them
+ * verbatim, and the app package's legitimate sibling session is
+ * untouched. Not an equivalence fixture: the reference generator
+ * predates the boundary filter and would emit the names.
+ */
+Sponge::Pkg_config::Package_view const FIX_HW_BOUNDARY[] = {
+	{ .name = "app_hw", .binary = "app_hw", .ram = "4M", .caps = 64,
+	  .runtime_class = "app", .running = true,
+	  .sessions = {
+		{ .name = "IO_MEM",   .route = "" },
+		{ .name = "IRQ",      .route = "" },
+		{ .name = "Platform", .route = "" },
+		{ .name = "Dma",      .route = "" },
+		{ .name = "IO_PORT",  .route = "" },
+		{ .name = "Io_port",  .route = "" },
+		{ .name = "Terminal", .route = "term-bridge" } },
+	  .num_sessions = 7 },
+
+	{ .name = "drv_hw_keep", .binary = "drv_hw_keep", .ram = "16M",
+	  .caps = 256,
+	  .runtime_class = "driver", .running = true,
+	  .sessions = {
+		{ .name = "IO_MEM",   .route = "" },
+		{ .name = "IRQ",      .route = "" },
+		{ .name = "Platform", .route = "" },
+		{ .name = "Dma",      .route = "" },
+		{ .name = "IO_PORT",  .route = "" } },
+	  .num_sessions = 5 },
+};
+
+constexpr unsigned NUM_HW_BOUNDARY_PACKAGES =
+	sizeof(FIX_HW_BOUNDARY) / sizeof(FIX_HW_BOUNDARY[0]);
 
 Fixture const FIXTURES[] = {
 	{ "mixed",  FIX_MIXED, 5, "bin/", 0 },
@@ -1130,11 +1177,82 @@ int main(int argc, char **argv)
 		          GOLDEN_CLASS_EMPTY, lib_buf);
 	}
 
+	/*
+	 * Hardware capability boundary (docs/12-package-format.md §4.5):
+	 * the app fixture's declared hardware services emit neither a
+	 * <parent-provides> entry nor a <parent/> route, the driver
+	 * fixture retains both, and the app package's legitimate session
+	 * still provides and routes.
+	 */
+	{
+		using Sponge::Pkg_config::Target;
+
+		Target const app    = Sponge::Pkg_config::app_target();
+		Target const driver = Sponge::Pkg_config::driver_target();
+
+		Sponge::Pkg_config::Emit_options options { };
+		options.binary_prefix = "bin/";
+
+		unsigned const n = NUM_HW_BOUNDARY_PACKAGES;
+
+		Sponge::Pkg_config::emit_config(lib_buf, sizeof(lib_buf),
+		                                app, FIX_HW_BOUNDARY, n, options);
+		if (dump)
+			printf("=== hw-boundary / %s ===\n%s\n", app.name, lib_buf);
+
+		expect_lacks("hw/app: no IO_MEM provide or route",
+		            lib_buf, "name=\"IO_MEM\"");
+		expect_lacks("hw/app: no IRQ provide or route",
+		            lib_buf, "name=\"IRQ\"");
+		expect_lacks("hw/app: no Platform provide or route",
+		            lib_buf, "name=\"Platform\"");
+		expect_lacks("hw/app: no Dma provide or route",
+		            lib_buf, "name=\"Dma\"");
+		expect_lacks("hw/app: no IO_PORT provide or route",
+		            lib_buf, "name=\"IO_PORT\"");
+		expect_lacks("hw/app: no Io_port provide or route",
+		            lib_buf, "name=\"Io_port\"");
+		expect_has ("hw/app: legitimate service still provides",
+		            lib_buf, "<service name=\"Terminal\"/>");
+		expect_has ("hw/app: legitimate service still routes",
+		            lib_buf, "<child name=\"term-bridge\"/>");
+		expect_lacks("hw/app: no driver <start>",
+		            lib_buf, "<start name=\"drv_hw_keep\"");
+
+		Sponge::Pkg_config::emit_config(lib_buf, sizeof(lib_buf),
+		                                driver, FIX_HW_BOUNDARY, n,
+		                                options);
+		if (dump)
+			printf("=== hw-boundary / %s ===\n%s\n",
+			       driver.name, lib_buf);
+
+		expect_has ("hw/driver: IO_MEM provide kept",
+		            lib_buf, "<service name=\"IO_MEM\"/>");
+		expect_has ("hw/driver: IO_MEM parent route kept",
+		            lib_buf, "<service name=\"IO_MEM\">");
+		expect_has ("hw/driver: IRQ provide kept",
+		            lib_buf, "<service name=\"IRQ\"/>");
+		expect_has ("hw/driver: IRQ parent route kept",
+		            lib_buf, "<service name=\"IRQ\">");
+		expect_has ("hw/driver: Platform provide kept",
+		            lib_buf, "<service name=\"Platform\"/>");
+		expect_has ("hw/driver: Platform parent route kept",
+		            lib_buf, "<service name=\"Platform\">");
+		expect_has ("hw/driver: Dma provide kept",
+		            lib_buf, "<service name=\"Dma\"/>");
+		expect_has ("hw/driver: IO_PORT provide kept",
+		            lib_buf, "<service name=\"IO_PORT\"/>");
+		expect_has ("hw/driver: <start> emitted",
+		            lib_buf, "<start name=\"drv_hw_keep\"");
+		expect_lacks("hw/driver: no app <start>",
+		            lib_buf, "<start name=\"app_hw\"");
+	}
+
 	if (failures) {
 		printf("self-test: FAIL (%u divergence(s))\n", failures);
 		return 1;
 	}
 	printf("self-test: PASS (equivalence + golden snapshots + "
-	       "class routing)\n");
+	       "class routing + hw boundary)\n");
 	return 0;
 }
