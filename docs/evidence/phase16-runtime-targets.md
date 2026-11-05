@@ -61,9 +61,9 @@ for QEMU 11.1.2; that host workaround is not part of the scenarios.
 |---|---|
 | `sponge-desktop-disk-uefi-usb` | 3/3 structural gates; `alpha-probe: PASS`; compositor first paint observed. |
 | `sponge-desktop-disk` | `alpha-probe: PASS`; `Run script execution successful.` |
-| `sponge-desktop-disk-uefi` | 3/3 structural gates. Desktop QEMU remains the documented UEFI/QEMU W^X/bender gap; no desktop PASS is claimed. A pre-existing double-quoted banner regex was braced so the accepted gate executes. |
+| `sponge-desktop-disk-uefi` | 3/3 structural gates. The run is a structure gate that does not exercise the desktop gate (D15.16), so no desktop PASS is claimed — not a QEMU boot block: the W^X/bender-NOP cause is retired (`docs/11-environment.md` §4 ledger rows 10 + 11; QEMU/OVMF boots reach Genode; the sibling `sponge-desktop-disk-uefi-usb` is a full `alpha-probe: PASS`) and the run's "QEMU boot blocked" banner is a classifier bug (sweep §8 B2). A pre-existing double-quoted banner regex was braced so the accepted gate executes. |
 | `sponge-desktop-disk-nvme` | `partition-check: PASS (Number: 3)` and `alpha-probe: PASS` using the opt-in hello-only contract: install hello, live configd broadcast, launcher hello/Utilities, and themed-panel pixel. |
-| `sponge-desktop-disk-uefi-nvme` | 3/3 structural gates. The same documented UEFI/QEMU limitation applies; the equivalent pre-existing regex defect was braced. |
+| `sponge-desktop-disk-uefi-nvme` | 3/3 structural gates. The same D15.16 structure-gate scope applies (no desktop gate exercised; not a boot block); the equivalent pre-existing regex defect was braced. |
 
 The hello-only probe defaults are unchanged: without `minimal="yes"`, the
 existing seven-package install, eight-key configd assertion, full launcher
