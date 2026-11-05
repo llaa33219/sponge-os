@@ -36,6 +36,12 @@ honest deviations + one axis split), and **26 fully green rows**.
 | §5 adjacent family (5) | 3 (+2 structure-only, not counted green) | 0 | 0 |
 | §6 linux-axis extras | 4 green + 1 blocker receipt | 1 (launch axis) | — |
 
+Post-fix-wave status (2026-11-05): the §3 envelope now stands at 32
+green / 4 PARTIAL / 0 red — the two fix waves greened rows 4/31/30 and
+11/22/32 on fresh receipts, and row 35 is PARTIAL with the F7 pointer.
+The table above remains the sweep-at-`b19184958b` verdict (§3 totals,
+§7, §11 carry the re-gate state).
+
 No gate was deleted or weakened; every red row carries a follow-up
 pointer (§7). No product or run-script code was modified during the
 sweep (the §7 fix recipes are recorded, not applied).
@@ -86,14 +92,14 @@ KERNEL column = the axis run in this sweep. "Attempts" = green/total.
 | 1 | sponge-configd-pattern-keys | sel4 | 1/1 | **PASS** | `pattern-keys-probe: PASS` | `phase16-runtime-sweep-e01-sponge-configd-pattern-keys.log` |
 | 2 | sponge-configd-shortcuts | sel4 | 1/1 | **PASS** | `shortcuts-probe: PASS` | `...-e02-sponge-configd-shortcuts.log` |
 | 3 | sponge-configd-badkey | sel4 | 1/1 | **PASS** | `badkey-probe: PASS` | `...-e03-sponge-configd-badkey.log` |
-| 4 | sponge-desktop-defaults-firstboot | sel4 | 0/2 | **FAIL (red, F1)** | `alpha-probe: FAIL themed panel never composited on nitpicker` | `...-e04-sponge-desktop-defaults-firstboot.log` + `...-e30a2-...` sibling receipt |
+| 4 | sponge-desktop-defaults-firstboot | sel4 | 0/2 sweep, 1/1 fix re-gate | **GREEN** (fix wave 2026-11-04, §7 F1; was FAIL red F1: `alpha-probe: FAIL themed panel never composited on nitpicker`) | `alpha-probe: PASS` + `sponge-desktop-defaults-firstboot: PASS — first boot landed the 8 baked keys + 7 launcher pairs + themed panel` | `...-e04-sponge-desktop-defaults-firstboot.log` + `...-e30a2-...` sibling receipt + `phase16-runtime-f1-e04-sponge-desktop-defaults-firstboot.log` |
 | 5 | sponge-de-settings | sel4 + linux | 1/1 + 1/1 | **PASS** (both axes) | `settings-probe: PASS` | `...-e05-sponge-de-settings.log`, `...-l03-sponge-de-settings.log` |
 | 6 | sponge-de-settings-regression | sel4 | 1/1 | **PASS** | `settings-regression-probe: PASS` | `...-e06-...` |
 | 7 | sponge-panel-menu | sel4 | 1/1 | **PASS** | `panel-menu-probe: PASS` | `...-e07-sponge-panel-menu.log` |
 | 8 | sponge-de-bgmenu | sel4 | 1/1 (gate) | **PARTIAL (carried)** | `bgmenu-probe: PASS` (structural `open="ready"`) | `...-e08-sponge-de-bgmenu.log` |
 | 9 | sponge-de-bgimage | sel4 | 1/1 | **PASS** | `bgimage-probe: PASS` | `...-e09-...` |
 | 10 | sponge-de-bgimage-badpath | sel4 | 1/1 | **PASS** | `bgimage-badpath-probe: PASS` | `...-e10-...` |
-| 11 | sponge-de-shortcuts | sel4 | 0/2 | **FAIL (red, F2)** | none — probe stuck pre-choreography; report_rom `illegal READ at address 0x1d6000 ... ip=0x100b7d1` | `...-e11-sponge-de-shortcuts.log`, `...-e11a2-...` |
+| 11 | sponge-de-shortcuts | sel4 | 0/2 sweep, 1/1 fix re-gate | **GREEN** (fix wave 2026-11-05 after the outer report_rom `verbose: yes -> no`, §7 F2; was FAIL red F2: probe stuck pre-choreography + report_rom `illegal READ at address 0x1d6000 ... ip=0x100b7d1`) | `shortcuts-probe: PASS` | `...-e11-sponge-de-shortcuts.log`, `...-e11a2-...` + `phase16-runtime-f2-e11-sponge-de-shortcuts.log` |
 | 12 | sponge-de-shortcuts-extend | sel4 | 1/1 | **PASS** | `shortcuts-extend-probe: PASS` | `...-e12-...` |
 | 13 | sponge-de-multipanel | sel4 | 1/1 | **PASS** | `multipanel-probe: PASS` | `...-e13-...` |
 | 14 | sponge-de-multipanel-idspace | sel4 | 1/1 | **PASS** | `pattern-keys-probe: PASS` (gate at HEAD; see §8 errata) | `...-e14-...` |
@@ -104,7 +110,7 @@ KERNEL column = the axis run in this sweep. "Attempts" = green/total.
 | 19 | sponge-de-sel4-interactive | sel4 | 1/2 | **PASS (flake recorded)** | `sponge-de-probe: PASS` (3 phases) | `...-e19-...` (attempt 1 red), `...-e19a2-...` (attempt 2 green) |
 | 20 | sponge-wm-qmp | sel4 | 1/1 | **PASS** | `wm-probe: PASS` | `...-e20-...` |
 | 21 | sponge-launch | sel4 + linux | 1/1 + 0/2 | **PARTIAL (axis split, F3)** | sel4 `launch-probe: PASS`; linux `launch-probe: FAIL demo window green pixel never appeared after click launch` | `...-e21-...`, `...-l04-...`, `...-l04a2-...` |
-| 22 | sponge-wm-tasks | sel4 | 0/2 | **FAIL (red, F4)** | `wm-tasks-probe: FAIL minimize transition: pkg_gui_demo did not reach off-screen position within 60s` | `...-e22-...`, `...-e22a2-...` |
+| 22 | sponge-wm-tasks | sel4 | 0/2 sweep, 1/1 fix re-gate | **GREEN** (fix wave 2026-11-05 after drivers caps 1500 -> 1800 in `run/sponge-wm-tasks.run`, §7 F4; was FAIL red F4: `wm-tasks-probe: FAIL minimize transition: pkg_gui_demo did not reach off-screen position within 60s`) | `wm-tasks-probe: PASS`, `Run script execution successful.` | `...-e22-...`, `...-e22a2-...` + `phase16-runtime-f4-e22-sponge-wm-tasks.log` |
 | 23 | sponge-clipboard-qtsettext | sel4 | 1/1 | **PASS** | `clipboard-probe: PASS` | `...-e23-...` |
 | 24 | sponge-notify | sel4 | 1/1 | **PASS** | `notify-probe: PASS` | `...-e24-...` |
 | 25 | sponge-configd-persist | sel4 | 1/1 | **PASS** | `configd-persist-probe: PASS` | `...-e25-...` |
@@ -112,17 +118,27 @@ KERNEL column = the axis run in this sweep. "Attempts" = green/total.
 | 27 | sponge-de-themed-chrome | sel4 | 1/1 | **PASS** | `wm-probe: PASS` | `...-e27-...` |
 | 28 | sponge-bake-firstboot | linux | 1/1 | **PASS** | `bake-firstboot-probe: PASS boot1/boot2` + `sponge-bake-firstboot: PASS` | `...-l05-sponge-bake-firstboot.log` |
 | 29 | sponge-bake-reset | sel4 | 1/1 | **PASS** | `bake-reset-probe: PASS` (see §8 errata on the W12 kernel column) | `...-e29-sponge-bake-reset.log` |
-| 30 | sponge-alpha | sel4 | 0/2 | **FAIL (red, F1)** | `alpha-probe: FAIL themed panel never composited on nitpicker` | `...-e30-sponge-alpha.log`, `...-e30a2-...` |
-| 31 | sponge-desktop-defaults-firstboot (duplicate of row 4) | sel4 | — | **FAIL (same as row 4)** | same receipt | `...-e04-...` |
-| 32 | sponge-textedit | sel4 | 0/2 | **FAIL (red, F5)** | `textedit-probe: FAIL textedit window never rendered into nitpicker` | `...-e32-...`, `...-e32a2-...` |
+| 30 | sponge-alpha | sel4 | 0/2 sweep, 1/1 fix re-gate | **GREEN** (fix wave 2026-11-04, §7 F1; was FAIL red F1: `alpha-probe: FAIL themed panel never composited on nitpicker`) | `alpha-probe: PASS` (all four criteria incl. the Leitzentrale window) | `...-e30-sponge-alpha.log`, `...-e30a2-...` + `phase16-runtime-f1-e30-sponge-alpha.log` |
+| 31 | sponge-desktop-defaults-firstboot (duplicate of row 4) | sel4 | — | **GREEN** (same as row 4) | same as row 4 | same receipt |
+| 32 | sponge-textedit | sel4 | 0/2 sweep, 1/1 fix re-gate | **GREEN** (fix wave 2026-11-05 after the guarded clipboard strip in `run/sponge-textedit.run`, §7 F5; was FAIL red F5: `textedit-probe: FAIL textedit window never rendered into nitpicker`) | `textedit-probe: PASS`, `textedit: clipboard disabled in app and package configs` | `...-e32-...`, `...-e32a2-...` + `phase16-runtime-f5-e32-sponge-textedit.log` |
 | 33 | sponge-files | sel4 | 1/1 | **PASS** | `files-probe: PASS` | `...-e33-...` |
 | 34 | sponge-calculator | sel4 | 1/1 | **PASS** | `calculator-probe: PASS` | `...-e34-...` |
-| 35 | sponge-terminal | sel4 | n/a (source error) | **FAIL (red, F6)** | Tcl: `list element in braces followed by "$terminal_runtime::e" instead of space` | `...-e35-sponge-terminal.log` |
+| 35 | sponge-terminal | sel4 | n/a sweep (source error), 0/1 fix re-gate | **PARTIAL — not green** (the F6 braced fix landed 2026-11-04; the F7 first-bash-fork `ls -l /bin` wedge stands and the run still ends `Error: Test execution timed out`) | probe steps [1]-[5] green; step (6) `terminal-probe: FAIL ls -l /bin did not render a listing` | `...-e35-sponge-terminal.log` + `phase16-runtime-f6-e35-sponge-terminal.log`, `phase16-runtime-f7-e35-sponge-terminal.log` |
 | 36 | sponge-hw-matrix | sel4 | 1/1 | **PASS** | `sponge-hw-matrix: PASS (variant=q35 ...)` | `...-e36-sponge-hw-matrix.log` |
 
-Envelope totals: **26 rows PASS, 3 rows PARTIAL (8, 15, 21), 7 rows
-FAIL (4, 11, 22, 30, 31, 32, 35)** — 31 is a duplicate citation of 4.
-0 rows were greened by weakening; every red keeps its gate intact.
+Envelope totals (the sweep at `b19184958b`): **26 rows PASS, 3 rows
+PARTIAL (8, 15, 21), 7 rows FAIL (4, 11, 22, 30, 31, 32, 35)** — 31 is
+a duplicate citation of 4. 0 rows were greened by weakening; every red
+keeps its gate intact.
+
+Envelope totals (post-fix-wave re-gates, 2026-11-05; the row cells
+above carry the re-gate outcomes): **32 rows GREEN, 4 rows PARTIAL
+(8, 15, 21, 35), 0 rows red.** Rows 4/31/30 were greened by the
+2026-11-04 fix wave and rows 11/22/32 by the 2026-11-05 fix wave, all
+on fresh receipts with the gates unmodified; row 35 is **PARTIAL, not
+green** (the F6 braced fix landed; the F7 first-bash-fork `ls -l /bin`
+wedge stands, the run ends `Error: Test execution timed out`). Every
+partial is documented with its follow-up pointer (§7 / §11).
 
 ## 4. Phase-added scenarios (runtime overhaul)
 
@@ -194,8 +210,9 @@ blocker is the pc-board combo and the latent spec/pc compile hazard.
 
 ## 7. Red rows — diagnosis and follow-ups
 
-None of the following was touched product-side; each fix recipe awaits
-discussion per the sweep rules.
+None of the following was touched product-side **at sweep time**; each
+fix recipe was recorded, not applied (the fix-wave notes under F1, F2,
+F4, F5, and F6 record what has since landed and re-gated).
 
 **F1 — `sponge-desktop-defaults-firstboot` + `sponge-alpha` (rows 4/31,
 30; 0/2 each, deterministic).** Both scenarios still stage the
@@ -265,6 +282,20 @@ logging widened, harden report_rom's empty-report path and/or
 event_filter's empty-report emission, and pair it with the Phase 17+
 input-frame work (`docs/evidence/phase16-w7-shortcuts.md`).
 
+**F2 RESOLVED for row 11 (2026-11-05 fix wave; re-gated green).** The
+trigger class was the outer report_rom's `verbose: yes` in
+`run/sponge-de-shortcuts.run`: with verbose printing off (`verbose:
+no`) the empty-report traffic no longer reaches the crashing print
+path, and neither F2 marker (the empty-report flood nor the
+`illegal READ at address 0x1d6000 ... ip=0x100b7d1` pager crash)
+reproduced. The row re-gates green on the first attempt —
+`shortcuts-probe: PASS` + `Run script execution successful.` — receipt
+`docs/evidence/phase16-runtime-f2-e11-sponge-de-shortcuts.log`. The
+deeper W7 findings 1/2 hardening (event_filter's empty-report emission
+and the late-created report_rom sessions) stays registered for the
+Phase 17+ input-frame work: the row is green, the hardening pairing is
+not closed.
+
 **F3 — `sponge-launch` linux axis (row 21; 0/2 on linux, sel4 green).**
 `launch-probe: FAIL demo window green pixel never appeared after click
 launch` (`center(512,320)=0xff313244 bg?1 demo?0` through the full
@@ -291,6 +322,20 @@ W2b pixel-witness method), add a controller-side rules-publish marker,
 and revisit per-PD caps sizing for the vesa_fb Tier-0 topologies.
 This is beyond the documented Phase 14 W12 one-retry cluster — 2/2 red.
 
+**F4 RESOLVED (2026-11-05 fix wave; re-gated green).** The recipe's
+per-PD caps sizing item landed: the `start drivers` node in
+`run/sponge-wm-tasks.run` grew caps 1500 -> 1800. The fb-PD
+`flush page table entries - mapping cache full ... out of CAP` warnings
+no longer starve the click window, the minimize transition completes
+(`window_layout: pkg_gui_demo parked at (-32000, -32000)`), and the
+full W7 acceptance sequence re-gates green — `wm-tasks-probe: PASS` +
+`Run script execution successful.` — receipt
+`docs/evidence/phase16-runtime-f4-e22-sponge-wm-tasks.log`. The
+sweep's failure marker (`wm-tasks-probe: FAIL minimize transition:
+pkg_gui_demo did not reach off-screen position within 60s`) did not
+reproduce; the W2b pixel-witness method stays available if the class
+recurs.
+
 **F5 — `sponge-textedit` (row 32; 0/2, deterministic).** The launch
 chain is fully green in-run (`install ok`, `launch result textedit ->
 ok`, the Qt child boots) but the window never renders into nitpicker
@@ -303,6 +348,21 @@ arm (a03). Follow-up: compare the standalone topology's Gui-session /
 window-lifecycle wiring against the grouped topology for textedit;
 the QGenodeScreen 1×1 race (Phase 14 W11 row #46, re-scoped Phase 17+)
 is the standing candidate.
+
+**F5 RESOLVED (2026-11-05 fix wave; re-gated green).** The standalone
+topology has no clipboard provider: the staged configs advertised
+`clipboard="yes"` anyway, and the window never rendered. The fix is a
+guarded clipboard strip in `run/sponge-textedit.run` (mirroring
+`run/runtime-simple.inc`'s transform: require exactly one anchor per
+file, then strip — loud error on zero or duplicate anchors), applied
+to both the application config and the package metadata `sponge_pkgd`
+consumes, printing `textedit: clipboard disabled in app and package
+configs`. Re-gate green: `textedit-probe: PASS` (window detected at
+100% non-bg / 44 color buckets; the not-installed and already-running
+legs included) + `Run script execution successful.` — receipt
+`docs/evidence/phase16-runtime-f5-e32-sponge-textedit.log`. The
+standing candidates (the QGenodeScreen 1×1 race, the Gui-session
+wiring comparison) were not the cause on this topology.
 
 **F6 — `sponge-terminal` (row 35; deterministic source-time error).**
 `run/sponge-terminal.run:55-58` passes `{*}$terminal_runtime::
@@ -339,6 +399,18 @@ deterministically). Class: the libc fork child's startup on the
 sandboxed topology (product-side; recorded as follow-up **F7**). The
 braced-expansion defect this row named is resolved; the row is NOT
 greened (gate intact).
+
+**F6/F7 RE-GATE (2026-11-05 fix wave; row 35 PARTIAL — not green).**
+A fresh run on the same fixed tree reproduces the 2026-11-04 re-gate
+exactly: probe steps [1]-[5] green, step (6) (`ls -l /bin`, the first
+bash fork) wedges the terminal mid-step, `terminal-probe: FAIL ls -l
+/bin did not render a listing` fires deterministically, and the run
+ends `Error: Test execution timed out` (make exit 254). The F6
+braced-expansion fix stands; the F7 fork-wedge stands with its
+follow-up pointer to the D16R.17 session-machinery/fork family. The
+row is recorded **PARTIAL** and must not be reported as green (the
+`terminal-probe: PASS` gate is unweakened and unreached). Receipt
+`docs/evidence/phase16-runtime-f7-e35-sponge-terminal.log`.
 
 ## 8. Known pre-existing blockers and honest disclosures (recorded, not greened)
 
@@ -408,12 +480,12 @@ Recorded honestly rather than copied forward:
 | # | Item | Target | Pointer |
 |---|---|---|---|
 | F1 | Migrate `sponge-desktop-defaults-firstboot.run` + `sponge-alpha.run` config templates to the grouped-runtime + heartbeat-route model (rows 4/31, 30 red) | **RESOLVED 2026-11-04** (re-gated green, both rows PASS; envelopes grew 2G->4G in lockstep) | §7 F1 |
-| F2 | report_rom empty-report flood + `illegal READ 0x1d6000` on `sponge-de-shortcuts` (row 11 red) | Phase 17+ input-frame (pairs W7 findings 1/2) | §7 F2 |
+| F2 | report_rom empty-report flood + `illegal READ 0x1d6000` on `sponge-de-shortcuts` (row 11 red) | **RESOLVED for row 11 (2026-11-05)** (re-gated green after the outer report_rom `verbose: yes -> no`; the W7 findings 1/2 hardening pairing stays for Phase 17+ input-frame) | §7 F2 |
 | F3 | `sponge-launch` linux-axis post-click paint (row 21 axis split) | next sweep / Phase 17+ | §7 F3 |
-| F4 | `sponge-wm-tasks` minimize-click path + fb-PD caps sizing (row 22 red) | next sweep / Phase 17+ | §7 F4 |
-| F5 | `sponge-textedit` standalone first-paint (row 32 red) | next sweep / Phase 17+ | §7 F5 |
-| F6 | `run/sponge-terminal.run` braced `{*}` build call (row 35 red) | **FIX APPLIED 2026-11-04** (row re-gated red one gate deeper; see F7) | §7 F6 |
-| F7 | libc fork child startup wedge on the sandboxed topology: `sponge-terminal` probe step (6) (`ls -l /bin` via the first bash fork) wedges the terminal mid-step — terminal i/o freezes (no echo, frozen glyph bbox), deterministic. Data on file: the fork's child construction completes through its File_system session then stalls before the clone destruct (`fork.cc`/`kernel.cc` path); bash blocks in `fork()` and stops reading the vfs terminal ring. NOT a quota cliff at the bash node (caps+ram bump 450/64M -> 1200/192M reproduced identically; the terminal sub-init clamps bash to 459 caps / 98M — `configured RAM/caps exceed available, proceed with ...`); not the upgrade-wedge (the `sponge-upgrade-wedge` receipt is ALIVE at this pin). Product-side (base/libc fork + session machinery); run-side unblock not found in this wave. | Phase 17+ (pairs the D16R.17 session-machinery family) | §7 F6 re-gate; receipts `phase16-runtime-f6-e35-sponge-terminal.log` + session scratch `f6-diag*.log` |
+| F4 | `sponge-wm-tasks` minimize-click path + fb-PD caps sizing (row 22 red) | **RESOLVED 2026-11-05** (drivers caps 1500 -> 1800 in `run/sponge-wm-tasks.run`; re-gated green) | §7 F4 |
+| F5 | `sponge-textedit` standalone first-paint (row 32 red) | **RESOLVED 2026-11-05** (guarded clipboard strip in `run/sponge-textedit.run`; re-gated green) | §7 F5 |
+| F6 | `run/sponge-terminal.run` braced `{*}` build call (row 35 red) | **FIX APPLIED 2026-11-04** (row 35 PARTIAL on the 2026-11-05 re-gate, not green; see F7) | §7 F6 |
+| F7 | libc fork child startup wedge on the sandboxed topology: `sponge-terminal` probe step (6) (`ls -l /bin` via the first bash fork) wedges the terminal mid-step — terminal i/o freezes (no echo, frozen glyph bbox), deterministic. Data on file: the fork's child construction completes through its File_system session then stalls before the clone destruct (`fork.cc`/`kernel.cc` path); bash blocks in `fork()` and stops reading the vfs terminal ring. NOT a quota cliff at the bash node (caps+ram bump 450/64M -> 1200/192M reproduced identically; the terminal sub-init clamps bash to 459 caps / 98M — `configured RAM/caps exceed available, proceed with ...`); not the upgrade-wedge (the `sponge-upgrade-wedge` receipt is ALIVE at this pin). Product-side (base/libc fork + session machinery); run-side unblock not found in this wave; reproduced identically on the 2026-11-05 re-gate. | Phase 17+ (pairs the D16R.17 session-machinery/fork family) | §7 F6 re-gate + §7 F6/F7 2026-11-05 re-gate; receipts `phase16-runtime-f6-e35-sponge-terminal.log`, `phase16-runtime-f7-e35-sponge-terminal.log` + session scratch `f6-diag*.log` |
 | B1 | base-linux spec/pc `get_page_size` hazard (latent) | vendored-tree follow-up (ledger process) | §6/§8 |
 | B3 | `sponge-pkg-driver` fb-probe report_rom policy gap | policy fix + re-gate exclusivity probes | §8 B3 |
 
@@ -434,3 +506,11 @@ curation rules under a `phase16-runtime-f<id>-<scenario>.log` infix:
 `phase16-runtime-f1-e04-sponge-desktop-defaults-firstboot.log`,
 `phase16-runtime-f1-e30-sponge-alpha.log`, and
 `phase16-runtime-f6-e35-sponge-terminal.log`.
+
+Fix-wave receipts (2026-11-05, the rows 22/11/32 fixes + the row 35
+re-gate) add four more of the same shape:
+`phase16-runtime-f4-e22-sponge-wm-tasks.log`,
+`phase16-runtime-f2-e11-sponge-de-shortcuts.log`,
+`phase16-runtime-f5-e32-sponge-textedit.log`, and
+`phase16-runtime-f7-e35-sponge-terminal.log` (the F7 wedge
+reproduction; row 35 PARTIAL, not green).
