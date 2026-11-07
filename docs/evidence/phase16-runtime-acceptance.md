@@ -1,8 +1,12 @@
 # Phase 16 Runtime Acceptance (P5.1)
 
-Date: 2026-11-04
-Machine: QEMU/seL4 (`KERNEL=sel4 BOARD=pc`) receipts only — real-hardware
-PASS is out of scope for this phase and never claimed (D16R.12).
+Date: 2026-11-04 (the automated acceptance in sections 1-6; the §7
+field report was appended 2026-11-07)
+Machine: QEMU/seL4 (`KERNEL=sel4 BOARD=pc`) receipts only. Real-hardware
+PASS is out of scope for this automated acceptance and never claimed
+(D16R.12). The §7 real-hardware field report is a separate, user-attested
+record appended afterward: it is not an agent receipt, it upgrades no
+receipt below, and sections 1-6 remain QEMU-only.
 Media: IMG product disk (`RUN_OPT="--include power_on/qemu --include log/qemu
 --include boot_dir/sel4 --include image/disk"`, D16R.1). Serial `make -j1`,
 one runner at a time (D16R.13).
@@ -152,3 +156,31 @@ are `ai-cal1..59` logs; the arm reached its first full PASS at `ai-cal59`.
 - `revert(sponge-de): drop the tasklist parked-sentinel shift`
 - the delivery-hardening + W2b finalization commits
 - this evidence file + the plan status commit
+
+## 7. Real-hardware field report (user-attested, 2026-11-07)
+
+Separate from the QEMU-only automated acceptance in sections 1-6, a
+field result is on file as of 2026-11-07. It is recorded in substance
+exactly as reported, as a **USER-ATTESTED real-hardware field report**
+and **not an independently reproduced agent test**: no agent and no
+automated scenario observed this machine.
+
+What the user reports: on a physical machine the system ran,
+memory-pressure freezing was prevented, an error was actually
+displayed on the panel, and normal operation continued afterward.
+
+Provenance (as attested): parent HEAD `79d70902f5`, Genode pin
+`9088c7227c`, the canonical UEFI/USB desktop image
+`var/dist/sponge-os-0.2.0-x86_64-sel4.img`, SHA-256
+`a907d733f726a7789f6f54944aba3b552579e6ee3c798878e1b4e3636b17fcfa`.
+That image independently passed the OVMF/QEMU alpha-probe before
+staging.
+
+Honest limits: the report arrived without a serial log, a machine
+model, a repeat count, timing, or memory measurements. The four
+observations above therefore support the observed
+degradation/recovery behavior and nothing beyond it: this is **not a
+blanket hardware certification**. It changes no QEMU matrix row and no
+documented partial. Sections 1-6 stay QEMU-only (D16R.12), and the
+sweep matrix in `docs/evidence/phase16-runtime-sweep.md` §3 keeps its
+32 green / 4 documented partials (rows 8, 15, 21, 35) / 0 red status.

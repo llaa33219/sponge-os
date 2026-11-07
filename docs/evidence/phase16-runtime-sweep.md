@@ -574,3 +574,28 @@ them is claimed fixed):
 
 The four matrix partials and the QEMU-only labeling limits (D16R.12)
 above stand unchanged.
+
+## 14. Real-hardware field report (user-attested, 2026-11-07)
+
+Appended record only; nothing above is rewritten or re-gated. The §3
+envelope matrix stays **32 green / 4 documented partials (rows 8, 15,
+21, 35) / 0 red**, and the QEMU-only labeling limits (D16R.12) stand.
+
+As of 2026-11-07 the user reports a **USER-ATTESTED real-hardware
+field report**, **not an independently reproduced agent test**: on a
+physical machine the system ran, memory-pressure freezing was
+prevented, an error was actually displayed on the panel, and normal
+operation continued afterward.
+
+Provenance (as attested): parent HEAD `79d70902f5`, Genode pin
+`9088c7227c`, the canonical UEFI/USB desktop image
+`var/dist/sponge-os-0.2.0-x86_64-sel4.img`, SHA-256
+`a907d733f726a7789f6f54944aba3b552579e6ee3c798878e1b4e3636b17fcfa`.
+The image independently passed the OVMF/QEMU alpha-probe before
+staging.
+
+Honest limits: no serial log, machine model, repeat count, timing, or
+memory measurements came with the report. It supports the observed
+degradation/recovery behavior but is not a blanket hardware
+certification. No QEMU matrix row and no documented partial changes
+as a result: §3, §7, §8, and §11 stand exactly as recorded.
