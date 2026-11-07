@@ -896,3 +896,34 @@ can; and every `<service>` node sets `_specific_service`, so a denial
 inside the `rom_sys` catch-all STOPS the rule search instead of
 falling through to `any-service -> parent`. The failure mode is a
 silent `parent denied ROM-session` with no "no route to service" line.
+
+---
+
+## 9. Phase 16 runtime field note (user-attested, 2026-11-07)
+
+A standalone note, deliberately outside the §2 17-cell
+cross-product: it is not a cross-product cell, it is not assigned to
+the row-17 LG gram entry, and no cell status moves. The counts stay
+exactly **4 verified, 1 smoke-only, 12 gap = 17 cells**.
+
+Recorded as a **USER-ATTESTED real-hardware field report**, **not an
+independently reproduced agent test**: as of 2026-11-07 the user
+reports that, on a physical machine, the system ran, memory-pressure
+freezing was prevented, an error was actually displayed on the panel,
+and normal operation continued afterward.
+
+Provenance (as attested): parent HEAD `79d70902f5`, Genode pin
+`9088c7227c`, the canonical UEFI/USB desktop image
+`var/dist/sponge-os-0.2.0-x86_64-sel4.img`, SHA-256
+`a907d733f726a7789f6f54944aba3b552579e6ee3c798878e1b4e3636b17fcfa`.
+That image independently passed the OVMF/QEMU alpha-probe before
+staging.
+
+Honest limits: the report includes no serial log, machine model,
+repeat count, timing, or memory measurements, so it supports the
+observed degradation/recovery behavior but is not a blanket hardware
+certification. Nothing here changes a QEMU matrix row or a documented
+partial: the §1 surface cells, the §2 ledger (4/1/12), and the
+`docs/evidence/phase16-runtime-sweep.md` §3 sweep matrix all stand
+unchanged. Full record: `docs/evidence/phase16-runtime-acceptance.md`
+§7 + `docs/evidence/phase16-runtime-sweep.md` §14.
