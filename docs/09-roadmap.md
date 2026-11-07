@@ -1048,6 +1048,25 @@ minor F2 `_close` SERVICE_DENIED teardown hardening) are registered
 in `docs/evidence/phase16-runtime-sweep.md` §13; they are not
 blockers and none is claimed fixed.
 
+**Real-hardware runtime field report (2026-11-07): registered,
+closing nothing.** A USER-ATTESTED real-hardware field report, **not
+an independently reproduced agent test**, records that on a physical
+machine the system ran, memory-pressure freezing was prevented, an
+error was actually displayed on the panel, and normal operation
+continued afterward (provenance as attested: parent `79d70902f5`,
+Genode pin `9088c7227c`, the canonical UEFI/USB desktop image
+`var/dist/sponge-os-0.2.0-x86_64-sel4.img`, SHA-256
+`a907d733f726a7789f6f54944aba3b552579e6ee3c798878e1b4e3636b17fcfa`;
+the image independently passed the OVMF/QEMU alpha-probe before
+staging; no serial log, machine model, repeat count, timing, or
+memory measurements came with it, so it supports the observed
+degradation/recovery behavior but is not a blanket hardware
+certification). Full record:
+`docs/evidence/phase16-runtime-acceptance.md` §7 +
+`docs/evidence/phase16-runtime-sweep.md` §14. It closes no criterion
+(13/14/15 and every other checkbox above stay open) and changes no
+QEMU matrix row or documented partial.
+
 ### Phase 17: Sponge IME — Multi-Language / CJK Input
 
 #### Goal
