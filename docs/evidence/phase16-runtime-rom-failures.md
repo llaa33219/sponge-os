@@ -584,3 +584,145 @@ binary/payload set, so this receipt does not claim nested terminal resolution
 on media that omit those files. P2.3 is closed by verification of the existing
 rewriter; the P1.2 golden suite remains the regression gate for its exact
 nested/path-like/top-level behavior.
+
+## 10. Runtime resolution: read-only SYNC and product launch wiring (2026-11-08)
+
+**Root cause and fixes.** The remaining no-window failures were not one
+mechanism. On UEFI/USB, `Backend::sync()` issued a SYNC operation even on a
+read-only Block session. The refusal/completion path could leave `vfs_sys`
+unable to answer later opens, so every runtime's ROM create expired after
+60 s and pkgd had already answered `ok`. `Backend::sync()` now returns
+immediately when the session is not writeable. This does not weaken write
+durability: writeable sessions still perform SYNC; the upstream
+`rump_ext2` write/read gate passes.
+
+`Cached_fs_rom::Transfer` also leaked its `File_handle` after every completed
+transfer and left `_cached_rom.transfer` dangling on the constructor-failure
+path. Its destructor now closes the handle and clears the pointer; the catch
+path resets it too. This is an independent lifecycle fix, not the explanation
+for the UEFI stall.
+
+The product-only launch gaps found immediately after the storage fix are
+also closed:
+
+- `runtime_simple::stage_binaries` stages `files_demo.tar` and an empty
+  `files_request` on every grouped product scenario instead of only BIOS.
+- UEFI/USB builds and starts `pc_rtc` + `system_rtc`, and the system routes
+  `Rtc` to `system_rtc`.
+- `pc_nic` is seeded in the bake manifest and autostarts in `driver_runtime`.
+  Its Uplink is bridged by `nic_uplink`, the same proven shape used by BIOS;
+  falkon's lwip client consequently receives `10.0.2.15`.
+
+**Regression gate.** `SPONGE_LAUNCH_CASE=terminal|files|falkon` is an explicit
+per-app fresh-boot matrix, not a claim that the heavy multi-app CNode envelope
+is solved. Each case requires the selected request to answer `ok` and wm's
+`window_list` to contain the corresponding label. All three serial runs pass:
+
+```sh
+SPONGE_LAUNCHTEST=on SPONGE_LAUNCH_CASE=terminal make -j1 \
+  -C genode/build/x86_64 run/sponge-desktop-disk-uefi-usb KERNEL=sel4 BOARD=pc
+# prod-launch-probe: window terminal -> registered
+# prod-launch-probe: windows PASS
+
+SPONGE_LAUNCHTEST=on SPONGE_LAUNCH_CASE=files make -j1 \
+  -C genode/build/x86_64 run/sponge-desktop-disk-uefi-usb KERNEL=sel4 BOARD=pc
+# prod-launch-probe: window files -> registered
+# prod-launch-probe: windows PASS
+
+SPONGE_LAUNCHTEST=on SPONGE_LAUNCH_CASE=falkon make -j1 \
+  -C genode/build/x86_64 run/sponge-desktop-disk-uefi-usb KERNEL=sel4 BOARD=pc
+# prod-launch-probe: window falkon -> registered
+# prod-launch-probe: windows PASS
+```
+
+Falkon also reaches `lwIP Nic interface up address=10.0.2.15` before its
+window. A manual QMP screendump shows the actual browser window on the
+2560x1600 framebuffer. The tests run on QEMU/OVMF only and do not constitute
+real-hardware certification.
+
+**Residual limitation, deliberately not hidden.** Concurrent or repeated
+construction of the heavy Qt/WebEngine closure can still fail with CNode
+errors. The earlier sequential experiments are not evidence that this class
+is fixed. The new matrix proves each user-facing application independently;
+it does not assert simultaneous multi-app operation. That separate resource
+lifecycle problem remains outside this fix's scope.
+
+## 11. Simultaneous-window CNode exhaustion (2026-11-08)
+
+**Regression gate.** `SPONGE_LAUNCH_CASE=multi` now launches terminal, files,
+and falkon in one fresh boot. A passing run must observe all three label
+prefixes in the same wm `window_list` snapshot, emit
+`prod-launch-probe: multi simultaneous n=3`, retain all three in a second scan
+about five seconds later (`multi siblings held n=3`), and report no vanished
+window before `windows PASS`. The run script enforces the terminal VFS marker,
+the simultaneous witness, and the final verdict. Removing an application or
+merging scans cannot satisfy this gate.
+
+**RED evidence.** The first run was captured as a transient raw log and
+removed after this curated record was written. Terminal and files registered,
+but falkon did not. The probe ended with
+`prod-launch-probe: missing label prefix: pkg_runtime_browser -> falkon` and
+`windows FAIL`. The serial log contained 152 `Cnode construction failed`
+lines, 147 `Source slot invalid or empty` lines, three `mapping failure for
+thread` lines, and two `failed to create initial thread` lines. It contained no
+`insufficient-resources`, `out of caps`, or `Insufficient memory` admission
+failure. The CNode failures begin immediately after pkgd acknowledges falkon.
+
+**Root cause.** On x86_64 each PD constructor eagerly attempted all 128
+second-level CNodes. At 16 KiB of backing per node this consumes 2 MiB per PD
+from the dedicated 16 KiB untyped pool, although the pool reservation assumes
+only 64 nodes per PD. Construction therefore exhausted the backing pool before
+retype. A second defect checked element zero instead of element `i` before
+copying each second-level CNode into the first-level CNode, so failed nodes
+were still copied and produced the empty-source-slot errors.
+
+**Minimal fix, preserving receive semantics.** The component-local capability
+space contains 6144 selectors and each second-level CNode covers 512 slots, so
+only 12 nodes are addressable. Core now eagerly constructs exactly those 12
+nodes (192 KiB per PD), checks the constructed state of element `i`, skips
+unmaterialized entries when removing first-level slots during teardown, and
+bounds the user receive-selector allocator to the same 6144 selectors. This
+keeps every legal kernel receive path backed by an existing CNode.
+
+Two superficially smaller alternatives were rejected. Lazy construction alone
+is incomplete because `Capability_space::alloc_rcv_sel()` selects a receive
+slot in the component and the seL4 kernel writes the received capability there
+without a core allocation hook. Routing large CNodes to the ordinary RAM
+allocator is also invalid: general RAM is minted as 4 KiB untyped objects,
+while these CNodes require 16 KiB untyped objects, and seL4 cannot merge
+untypeds. Increasing the pool quota would hide rather than remove the mismatch.
+
+**Validation status.** The automated UEFI/USB `multi` gate now passes: the log
+contains `multi simultaneous n=3`, `multi siblings held n=3`, and `windows
+PASS`, with zero occurrences of `Cnode construction failed`, `Source slot
+invalid or empty`, `mapping failure for thread`, or `failed to create initial
+thread`. The QMP visual, BIOS grouped-UI, and `rump_ext2` checks remain
+separate and must not be inferred from this serial gate.
+
+**QMP and independent visual review.** Two fresh 2560×1600 QMP captures record
+the initial Falkon-focused desktop and the state after dragging Falkon right.
+The second shows Sponge Files and Falkon rendered side by side with independent
+chrome and live file-manager content; terminal remains represented in the panel
+tasklist while occluded. Two independent read-only reviewers returned PASS.
+They also verified from `_scan_multi`, `_wait_multi`, and the run gate that one
+application cannot satisfy two prefixes and that sequential registrations
+cannot replace the one-snapshot witness. The visual run contains one transient
+mapping-cache flush warning and a deferred falkon RAM upgrade, but no CNode
+construction or empty-source failure; all three windows remained registered.
+This is not a claim that every future memory-pressure condition is removed.
+
+**Other regressions.** The first BIOS `SPONGE_GROUPED_UI=on` attempt stopped at
+a late launcher-popup close wait, the previously observed timing flake, with no
+CNode construction failure. The single documented retry passed
+`grouped-ui-probe: PASS` and `Run script execution successful.`, including its
+five-window concurrent set and typed-input checks. `run/rump_ext2` also passed,
+including four 4 MiB write/read rounds. These are QEMU results, not real-
+hardware certification.
+
+**Final media.** `./tool/dist` rebuilt the canonical UEFI/USB image from the
+tracked run configuration (overwriting the temporary capture-only layout), and
+its boot gate reached `alpha-probe: PASS` with zero wedge or starvation lines.
+The staged image is `var/dist/sponge-os-0.2.0-x86_64-sel4.img`; its verified
+SHA-256 is
+`8dfc11a1bfb285afdfbe3420e04d4910d0267535ef3a7e042e7c32a665ace485`.
+The matching `.sha256` sidecar passes `sha256sum -c`.
