@@ -195,8 +195,15 @@
 # `alpha-probe: PASS` (panel pixels; the debug app's FIRSTPAINT is a
 # client-side self-report and is deliberately NOT accepted, E2). With
 # SPONGE_LAUNCHTEST=on the launch-path gate follows (the user's real
-# flow, automated). The run script does NOT fabricate a QEMU boot
-# PASS.
+# flow, automated) as a PER-APP FRESH-BOOT MATRIX:
+# SPONGE_LAUNCH_CASE=terminal|files|falkon selects exactly ONE
+# package per boot — the three cases are three serial fresh boots
+# proving the three windows independently (no cross-app CNode
+# pressure by construction) — plus the RED simultaneous-residence
+# regression SPONGE_LAUNCH_CASE=multi (terminal, files and falkon
+# launched in ONE boot, required to co-reside in ONE wm window_list
+# snapshot). The run script does NOT fabricate a
+# QEMU boot PASS.
 #
 # The structural gate 3 additionally checks that `usb_block` is
 # present in P3's /system/bin (the build-list assertion; the binary
@@ -448,11 +455,19 @@ if {$fail_mode} { supervisor::enabled 0 }
 # === Build — Tier-0 chain + desktop components ===
 #
 # Mirrors the AHCI UEFI scenario's build list (lines 406-430 of
-# run/sponge-desktop-disk-uefi.run) with TWO swaps:
+# run/sponge-desktop-disk-uefi.run) with THREE swaps plus one addition:
 #
 #   vesa_fb → boot_fb             (already in AHCI UEFI variant)
 #   driver/ahci → driver/usb_block    (THIS scenario — AHCI removed,
 #                                      usb_block added)
+#   server/nic_router → server/nic_uplink (the BIOS-proven
+#     Uplink-to-Nic bridge of run/sponge-desktop-disk.run's P2.6
+#     stack replaces the domain-policy router — see the nic_uplink
+#     node below; no downlink DHCP server or NAT needed)
+#   + driver/rtc/spec/x86 server/system_rtc   (the P2.6 gems
+#     system_clock pair — see the pc_rtc/system_rtc nodes below;
+#     falkon's vfs <rtc/> opens an Rtc session at construction and
+#     stops at "parent denied Rtc-session" without a provider)
 #
 # The pc_usb_host binary (`driver/usb_host/pc`) is already in the
 # build list (it was used for HID input); the new class: 0x8 policy
@@ -470,7 +485,8 @@ set build_components {
 	driver/usb_host/pc driver/usb_hid server/event_filter
 	server/part_block server/vfs server/cached_fs_rom
 	driver/usb_block
-	server/nic_router driver/nic/pc driver/usb_net driver/wifi \
+	server/nic_uplink driver/nic/pc driver/usb_net driver/wifi \
+	driver/rtc/spec/x86 server/system_rtc \
 	driver/gpu/intel driver/framebuffer/intel/pc/spec/x86_64
 	lib/vfs lib/vfs_rump lib/rump lib/rump_fs
 	server/wm app/window_layouter app/decorator app/pointer
@@ -510,6 +526,36 @@ build $build_components
 # Default (non-launchtest) runs build nothing extra here.
 #
 if {[info exists ::env(SPONGE_LAUNCHTEST)] && $::env(SPONGE_LAUNCHTEST) eq "on"} {
+	#
+	# Per-app fresh-boot matrix: SPONGE_LAUNCH_CASE selects the ONE
+	# package this boot proves (terminal|files|falkon), or the RED
+	# simultaneous-residence regression (multi: terminal+files+falkon
+	# launched in ONE boot). The three single cases are three serial
+	# fresh boots — one app per boot, no cross-app CNode pressure by
+	# construction (the sequential multi-app experiments all failed
+	# for different CNode reasons; each window is proven
+	# individually instead; multi deliberately reproduces that
+	# pressure). No default: a missing or invalid case is a loud
+	# error, never a silent fallback.
+	#
+	if {![info exists ::env(SPONGE_LAUNCH_CASE)] || $::env(SPONGE_LAUNCH_CASE) eq ""} {
+		puts "sponge-desktop-disk-uefi-usb: ERROR — SPONGE_LAUNCH_CASE is required with SPONGE_LAUNCHTEST=on"
+		puts "  (per-app fresh-boot matrix: SPONGE_LAUNCH_CASE=terminal|files|falkon;"
+		puts "   multi = the three packages in one boot (RED simultaneous regression);"
+		puts "   the single cases run as three serial boots)"
+		exit 1
+	}
+	set launch_case $::env(SPONGE_LAUNCH_CASE)
+	if {[lsearch -exact {terminal files falkon multi} $launch_case] < 0} {
+		puts "sponge-desktop-disk-uefi-usb: ERROR — invalid SPONGE_LAUNCH_CASE '$launch_case'"
+		puts "  (expected one of: terminal, files, falkon, multi)"
+		exit 1
+	}
+	if {$launch_case eq "multi"} {
+		puts "launch-test: multi simultaneous regression — SPONGE_LAUNCH_CASE=multi (terminal+files+falkon in ONE boot)"
+	} else {
+		puts "launch-test: per-app fresh-boot matrix — SPONGE_LAUNCH_CASE=$launch_case (one app per boot)"
+	}
 	build { test/prod_launch_probe }
 }
 
@@ -686,6 +732,22 @@ source [file join [file dirname [file normalize [info script]]] \
 #
 driver_runtime::fb_package fb_boot
 
+#
+# NIC driver: seed the pc_nic PACKAGE into the bake manifest the same
+# way (bake::add_package), so the first-boot seed starts it inside
+# driver_runtime through its <autostart/> — falkon's lwip vfs plugin
+# blocks until its Nic interface is configured (pkg/falkon/metadata.xml
+# declares Nic; no Nic, no falkon window), and the manifest is the
+# only way into the installed set of a freshly installed medium. The
+# UEFI topology keeps its hardware least privilege: the driver stays a
+# driver_runtime package (Platform/Dma/IRQ/IO_MEM/IO_PORT granted
+# there only, AGENTS.md 1.2), its Uplink bridged by the Tier-0
+# nic_uplink node (the BIOS-proven bridge) — no static NIC child is
+# added at Tier-0.
+# Must run BEFORE bake::stage (bake.inc errors loudly after staging).
+#
+bake::add_package pc_nic
+
 bake::stage $sys_dir img
 
 # After bake::stage: it re-stages pkg payload from the repo, so
@@ -693,9 +755,12 @@ bake::stage $sys_dir img
 runtime_simple::stage_binaries $sys_dir
 
 #
-# Driver packages (docs/12-package-format.md section 4.5). Opt-in: none
-# of these is listed in a bake profile, so none of them becomes a
-# first-boot root - `vct install pc_nic` is what brings a driver up.
+# Driver packages (docs/12-package-format.md section 4.5). Opt-in per
+# default: none of these is listed in a bake profile, so `vct install
+# <name>` is what brings a driver up. TWO exceptions are seeded into
+# the bake manifest above and are therefore first-boot roots that
+# autostart inside driver_runtime: fb_boot (the display — a dark
+# medium is unusable) and pc_nic (falkon's declared Nic dependency).
 # Called after bake::stage, which owns pkg_index.xml.
 #
 driver_runtime::stage $sys_dir
@@ -855,6 +920,7 @@ config
     + policy | label: vct_tty -> tty_result      | report: sponge_pkgd -> tty_result
     + policy | label: sponge_pkgd -> probe_request | report: prod_launch_probe -> probe_request
     + policy | label: prod_launch_probe -> probe_result | report: sponge_pkgd -> probe_result
+    + policy | label: prod_launch_probe -> window_list | report: wm -> window_list
     + policy | label: sponge-de -> window_list   | report: wm -> window_list
     + policy | label: sponge-de -> window_layout | report: layouter -> window_layout
     + policy | label: alpha_probe -> sponge_de_launcher | report: sponge-de -> launcher
@@ -1177,30 +1243,42 @@ config
 	#
 	# Launch-path TEST wiring (SPONGE_LAUNCHTEST=on only — the FBCON
 	# env-gate pattern): prod_launch_probe replays the launcher's
-	# click-to-launch backend for terminal/files/falkon. The shipped
-	# (dist) media carries none of this — it is a test, not a product
-	# feature.
+	# click-to-launch backend for the ONE selected case of the
+	# per-app fresh-boot matrix (SPONGE_LAUNCH_CASE, validated at
+	# build time above and delivered to the probe through its config
+	# as `+ config | case: <value>`; the probe parses it with
+	# Attached_rom_dataspace::node and launches exactly that
+	# package — or, for case multi, terminal+files+falkon in one
+	# boot). The shipped (dist) media carries none of this — it
+	# is a test, not a product feature.
 	#
 	if {[info exists ::env(SPONGE_LAUNCHTEST)] && $::env(SPONGE_LAUNCHTEST) eq "on"} {
-		puts "launch-test: SPONGE_LAUNCHTEST=on — prod_launch_probe wired into system.config"
+		puts "launch-test: SPONGE_LAUNCHTEST=on — prod_launch_probe wired into system.config (case: $launch_case)"
 		set lt_fh [open $sysconfig_hid r]
 		set lt_cfg [read $lt_fh]
 		close $lt_fh
 		set lt_cfg [string map [list "    + tty_request\n" "    + tty_request\n    + probe_request\n"] $lt_cfg]
-		set lt_cfg [string map [list "+ start sponge-de | caps: 8000 | ram: 128M" {
-+ start prod_launch_probe | caps: 200 | ram: 8M
+		# The probe start node carries the case in its config node
+		# (`+ config | case: <value>`). The fragment is built as a
+		# double-quoted string (not a braced literal) so
+		# $launch_case substitutes, and its first line stays at
+		# column 0 so the HID nesting is unchanged (the driver_
+		# runtime.inc HID gotcha).
+		set lt_probe_start "+ start prod_launch_probe | caps: 200 | ram: 8M
   + binary | name: bin/prod_launch_probe
-  + config
+  + config | case: $launch_case
   + route
     + service ROM | label_last: ld.lib.so | + parent
     + service ROM | label_last: probe_result | + child report_rom
     + service Report | label: probe_request | + child report_rom
+    + service ROM | label: window_list   | + child report_rom
     + service Timer | + parent
     + any-service
       + parent
       + any-child
 
-+ start sponge-de | caps: 8000 | ram: 128M}] $lt_cfg]
+"
+		set lt_cfg [string map [list "+ start sponge-de | caps: 8000 | ram: 128M" "${lt_probe_start}+ start sponge-de | caps: 8000 | ram: 128M"] $lt_cfg]
 		set lt_fh [open $sysconfig_hid w]
 		puts -nonewline $lt_fh $lt_cfg
 		close $lt_fh
@@ -1542,26 +1620,32 @@ $logdisk_routes  + any-service
     + service LOG | + parent
     + service Timer | + child timer
 
-# The Uplink<->Nic bridge. A SYSTEM SERVICE, not part of any driver
-# package: the driver produces raw frames, the router gives the rest of
-# the system a Nic session. Its policy matches the sandbox path rather
-# than a per-driver name, so installing a second Uplink-providing driver
-# needs no change here.
-+ start nic_router | caps: 300 | ram: 16M
+#
+# P2.6 falkon-startup network stack — the run/sponge-falkon-disk.run
+# proven Uplink-to-Nic bridge, shared with run/sponge-net-probe.run
+# and the BIOS product media (run/sponge-desktop-disk.run's P2.6
+# block). nic_uplink bridges ONE Uplink client to Nic sessions; here
+# the Uplink client is the packaged pc_nic driver (autostarted inside
+# driver_runtime via the bake manifest above) instead of the BIOS
+# media's ipxe_nic Tier-0 child. falkon's lwip vfs plugin DHCPs over
+# the bridged Nic session at startup (the plugin's config blocks until
+# the interface is configured — no Nic, no falkon window), the same
+# slirp DHCP round-trip the BIOS media proves. A SYSTEM SERVICE, not
+# part of any driver package: the driver produces raw frames, the
+# bridge hands the rest of the system a Nic session. The bridge — not
+# a domain-policy router — is deliberate: a router downlink would need
+# its own DHCP server plus NAT machinery the bridge makes unnecessary.
+#
+# Node copied verbatim from run/sponge-desktop-disk.run's P2.6 block.
+#
++ start nic_uplink | caps: 200 | ram: 8M
   + provides
     + service Uplink
     + service Nic
   + config | verbose: yes
-    |        | verbose_domain_state: yes
-    |        | dhcp_discover_timeout_sec: 10
-    |        | dhcp_request_timeout_sec:  6
-    + policy | label_prefix: system -> driver_runtime | domain: uplink
-    + domain uplink
-    +   | verbose_packets:  no
-    +   | icmp_echo_server: yes
   + route
     + service Timer | + child timer
-    + any-service   | + parent | + any-child
+    + any-service | + parent
 
 + start usb_block | caps: 200 | ram: 16M
   + provides | + service Block
@@ -1880,6 +1964,38 @@ $logdisk_input_log
 $logdisk_input_log
     + service Timer | + child timer
 
+#
+# P2.6 falkon-startup RTC stack (the run/sponge-falkon-disk.run
+# proven pair, shared with run/sponge-net-probe.run and the BIOS
+# product media run/sponge-desktop-disk.run): pc_rtc + system_rtc are
+# the gems system_clock pair — falkon's vfs <rtc/> opens an Rtc
+# session at mount ("parent denied Rtc-session" stops falkon at
+# construction, docs/evidence/phase16-runtime-rom-failures.md
+# lineage). The `system` node below routes Rtc to system_rtc
+# EXPLICITLY, before its any-service catch-all. The NIC half of the
+# P2.6 stack is packaged on this media instead of Tier-0 nodes: pc_nic
+# is seeded into the bake manifest (bake::add_package above) and
+# autostarts inside driver_runtime, whose Uplink the Tier-0 nic_uplink
+# node bridges into Nic sessions — hardware capabilities stay inside
+# driver_runtime (least privilege, AGENTS.md 1.2), and no static NIC
+# child exists at Tier-0.
+#
+# Node recipes copied verbatim from run/sponge-desktop-disk.run's
+# P2.6 block (the comments there carry the full route rationale).
+#
++ start pc_rtc | caps: 100 | ram: 2M
+  + provides | + service Rtc
+  + route
+    + service Timer | + child timer
+    + any-service | + parent
+
++ start system_rtc | caps: 100 | ram: 2M
+  + provides | + service Rtc
+  + route
+    + service Rtc | + child pc_rtc
+    + service Timer | + child timer
+    + any-service | + parent
+
 # caps carry ~10% headroom per docs/17 §5 (adding a child must not be
 # a cliff-edge operation on a grant sized exactly to fit).
 # Children caps-sum of THIS sandbox: 252300 caps
@@ -1960,6 +2076,18 @@ $logdisk_input_log
     + service Event | + child nitpicker
     + service Timer | + child timer
     + service Report | + child report_rom
+    #
+    # P2.6: falkon's startup Rtc session, pinned explicitly to the
+    # gems system_clock pair (system_rtc above — the BIOS media's
+    # proven route, run/sponge-desktop-disk.run): falkon's vfs <rtc/>
+    # opens an Rtc session at construction, so a denial stops the
+    # browser before its first window. Nic is deliberately NOT pinned
+    # here: nic_uplink is the sole Nic/Uplink provider at Tier-0 on
+    # this media (the pc_nic driver package requests Uplink inside
+    # driver_runtime and is bridged by the same nic_uplink node), so
+    # the catch-all below is unambiguous for it.
+    #
+    + service Rtc | + child system_rtc
     + any-service
       + parent
       + any-child
@@ -2003,11 +2131,18 @@ foreach f { en_us.chargen special.chargen } {
 # Mirrors the AHCI UEFI scenario's Tier-0 list with these swaps:
 #   ahci      → usb_block       (storage driver swap)
 #   + usb_block in the list
+#   nic_router → nic_uplink     (the BIOS-proven Uplink-to-Nic
+#                                bridge — see the nic_uplink node)
+# and the P2.6 falkon RTC pair (+ pc_rtc, system_rtc — the
+# system_clock nodes above resolve their binaries from these core
+# boot ROMs via the any-service-to-parent route, same as the BIOS
+# media's list).
 # ld.lib.so is auto-injected by boot_dir/sel4 (docs/11 §10.4).
 #
 set boot_modules { }
 foreach m { core-sel4.a ld-sel4.lib.so init timer report_rom nitpicker platform acpi pci_decode \
-            pc_usb_host usb_block part_block vfs cached_fs_rom nic_router \
+            pc_usb_host usb_block part_block vfs cached_fs_rom nic_uplink \
+            pc_rtc system_rtc \
             ps2 usb_hid event_filter pointer \
             sponge_logdisk } {
 	lappend boot_modules $m
@@ -2551,8 +2686,8 @@ log_file -a $uefi_log
 # MECHANISM (docs/evidence/phase16-runtime-baseline.md E6, measured 2/2):
 # a plain sequential `expect` consumes EVERY byte that arrives while it
 # waits — a marker that does not match the current gate is scanned and
-# DISCARDED, never kept for a later gate. The probe posts its three
-# launch requests 3 s after boot (+6 s settles), so its first ack lands
+# DISCARDED, never kept for a later gate. The probe posts its single
+# launch request 3 s after boot (+6 s settles), so its ack lands
 # while the storage/compositor gates are still expecting (run 1: eaten
 # while matching 'sponge-de diag gates:'; run 2: while matching
 # 'sponge_debug: FIRSTPAINT'). By the time the launch gate looks for
@@ -2576,12 +2711,19 @@ log_file -a $uefi_log
 # All capture patterns are full literals (no open-ended quantifiers), so
 # a partially received line can never be matched and split across
 # captures; the probe logs its ack as one complete '-> ok' / '-> FAIL'
-# line and init's child-path labels are substrings of complete lines.
+# line, the window verdict as one complete 'windows PASS' / 'windows
+# FAIL' line, and init's child-path labels are substrings of complete
+# lines. The probe's per-app registration and 'missing label prefix'
+# detail lines carry variable text, so they stay serial-log evidence
+# only — deliberately not capture patterns. The multi simultaneous
+# witness ('prod-launch-probe: multi simultaneous n=3') is a full
+# literal and IS captured (the gate enforces it for case=multi); the
+# siblings-held line stays evidence-only like the registration lines.
 #
 set launchtest_arm [expr {[info exists ::env(SPONGE_LAUNCHTEST)] && $::env(SPONGE_LAUNCHTEST) eq "on"}]
 set launch_stash ""
 set launch_cursor 0
-set launch_marker_re {prod-launch-probe: launch terminal -> ok|prod-launch-probe: launch terminal -> FAIL|prod-launch-probe: launch files -> ok|prod-launch-probe: launch files -> FAIL|prod-launch-probe: launch falkon -> ok|prod-launch-probe: launch falkon -> FAIL|pkg_runtime_terminal -> terminal -> vfs}
+set launch_marker_re {prod-launch-probe: launch terminal -> ok|prod-launch-probe: launch terminal -> FAIL|prod-launch-probe: launch files -> ok|prod-launch-probe: launch files -> FAIL|prod-launch-probe: launch falkon -> ok|prod-launch-probe: launch falkon -> FAIL|pkg_runtime_terminal -> terminal -> vfs|prod-launch-probe: multi simultaneous n=3|prod-launch-probe: windows PASS|prod-launch-probe: windows FAIL}
 
 # Consume the earliest stash occurrence of $marker at/after the shared
 # cursor. Returns 1 and advances the cursor past it (each marker is
@@ -2737,11 +2879,28 @@ if {$storage_chain_proven && $compositor_healthy && !$has_wedge && !$has_starvin
     # === Launch-path gate (the user's actual flow, automated) ===
     #
     # prod_launch_probe replays the launcher's click-to-launch backend
-    # (same <request op="launch"/> shape) for the three user-facing
-    # packages. Each package must reach its real boot markers — this
-    # is the regression net for "clicked the launcher, no window".
+    # (same <request op="launch"/> shape) for the ONE selected case of
+    # the per-app fresh-boot matrix (SPONGE_LAUNCH_CASE=terminal|
+    # files|falkon|multi, validated at build time and delivered to the
+    # probe via its `+ config | case: <value>` config). Each single
+    # case is a fresh boot proving exactly one package end to end —
+    # the selected request ack, the package's real boot marker where
+    # one exists (terminal's vfs child start), and the
+    # window-registration verdict below. The three single cases, run
+    # serially as three fresh boots, are the regression net for
+    # "clicked the launcher, no window"; no cross-app CNode pressure
+    # remains because no boot ever runs more than one package (the
+    # sequential multi-app experiments all failed for different CNode
+    # reasons). Case multi is the RED simultaneous-residence
+    # regression: all three packages in ONE boot, ENFORCED on
+    # terminal's vfs boot marker, the simultaneous witness
+    # ('prod-launch-probe: multi simultaneous n=3' — one wm
+    # window_list snapshot carrying all three windows), and the
+    # window-registration verdict below (which the probe only emits
+    # as PASS when every request answered status ok, the siblings
+    # held in a stable second scan, and no window vanished).
     #
-    # Race-proofing (baseline E6): the probe posts its acks seconds
+    # Race-proofing (baseline E6): the probe posts its ack seconds
     # after boot — long before this gate runs — so every stage FIRST
     # drains the launch_stash the early gates captured (shared cursor:
     # each marker replays exactly once, in arrival order), and only
@@ -2752,12 +2911,26 @@ if {$storage_chain_proven && $compositor_healthy && !$has_wedge && !$has_starvin
     #
     set timeout 240
     set launch_ok 1
-    # ENFORCED: the terminal end-to-end (green in three consecutive
-    # runs) — the launcher request path boots a real package.
-    foreach stage {
-        {"prod-launch-probe: launch terminal -> ok" "terminal request"}
-        {"pkg_runtime_terminal -> terminal -> vfs"            "terminal package boots"}
-    } {
+    # ENFORCED: the selected case's end-to-end — its request ack, plus
+    # the terminal package's own vfs boot marker when case=terminal
+    # (the one per-package boot marker init logs on this topology).
+    # For case multi the enforced set is the terminal vfs boot marker
+    # and the simultaneous witness (the three request acks are
+    # enforced THROUGH the verdict: the probe only emits windows PASS
+    # when every request answered status ok). The stage order matches
+    # causal arrival order (vfs < simultaneous < verdict), which the
+    # shared-cursor stash drain below requires.
+    set launch_stages [list]
+    if {$launch_case eq "multi"} {
+        lappend launch_stages [list "pkg_runtime_terminal -> terminal -> vfs" "terminal package boots"]
+        lappend launch_stages [list "prod-launch-probe: multi simultaneous n=3" "multi simultaneous witness"]
+    } else {
+        lappend launch_stages [list "prod-launch-probe: launch $launch_case -> ok" "$launch_case request"]
+        if {$launch_case eq "terminal"} {
+            lappend launch_stages [list "pkg_runtime_terminal -> terminal -> vfs" "terminal package boots"]
+        }
+    }
+    foreach stage $launch_stages {
         set marker  [lindex $stage 0]
         set meaning [lindex $stage 1]
         set outcome ""
@@ -2796,62 +2969,98 @@ if {$storage_chain_proven && $compositor_healthy && !$has_wedge && !$has_starvin
         if {!$launch_ok} { break }
     }
 
-    # WARNING-ONLY: kept warning-only ON PURPOSE because their product
-    # boot is known RED on this topology (baseline F3/F4 — files and
-    # falkon stall at a ROM create); promoting them would only restate
-    # a known product failure as a harness verdict. Their request
-    # markers are still REPORTED even when an enforced stage failed —
-    # the verdict is decided after this loop, so the run shows their
-    # real markers instead of exiting before ever looking:
-    foreach stage {
-        {"prod-launch-probe: launch files -> ok"     "files request"}
-        {"prod-launch-probe: launch falkon -> ok"    "falkon request"}
-    } {
-        set marker  [lindex $stage 0]
-        set meaning [lindex $stage 1]
-        set outcome ""
-        if {[launch_drain $marker]} {
-            set outcome "ok"
-            puts "  launch-gate note — '$marker' replayed from the marker stash"
-        } else {
-            expect {
-                -i $qemu_spawn_id -re "($marker)|($launch_marker_re)" {
-                    set m $expect_out(0,string)
-                    if {[string first $marker $m] < 0} {
-                        puts "  launch-gate note — stashed concurrent marker '[string trim $m]'"
-                        append launch_stash $m "\n"
-                        exp_continue
-                    }
-                    set outcome "ok"
-                }
-                timeout {
-                    set outcome "timeout"
-                }
-                eof {
-                    set outcome "eof"
+    # === Window-registration gate (the wm's window_list truth) ===
+    #
+    # A pkgd launch acknowledgement is not a window. prod_launch_probe
+    # reads wm's window_list report (report_rom relay `wm ->
+    # window_list`; HID-format content, parsed with the Node API) and
+    # matches the SELECTED package's window by label prefix
+    # (pkg_runtime_terminal -> terminal / pkg_runtime_simple -> files /
+    # pkg_runtime_browser -> falkon, per case; case multi matches all
+    # three in the SAME snapshot per scan), logging one bounded
+    # per-app registration marker plus one final verdict:
+    # 'prod-launch-probe: windows PASS' or 'prod-launch-probe: windows
+    # FAIL' (on FAIL the preceding 'missing label prefix' line names
+    # the absent window). ENFORCED — the verdict flips the run: a
+    # window that never registers must FAIL this gate even when the
+    # request ack was 'ok'.
+    #
+    # Race-proofing: the verdict can land long before this stage (the
+    # probe's 300 s window budget is a worst-case bound) — drain the
+    # shared stash first (each marker replays exactly once, in
+    # arrival order), then wait live with the same leftmost-
+    # alternation capture as the earlier stages.
+    set timeout 480
+    if {[launch_drain "prod-launch-probe: windows PASS"]} {
+        puts "  launch-gate note — 'prod-launch-probe: windows PASS' replayed from the marker stash"
+        puts "  launch-gate PASS — wm window registration ($launch_case)"
+    } elseif {[launch_drain "prod-launch-probe: windows FAIL"]} {
+        puts "  launch-gate FAIL — window registration (probe verdict: windows FAIL;"
+        puts "    the 'missing label prefix' line in the serial log names the absent window)"
+        set launch_ok 0
+    } else {
+        expect {
+            -i $qemu_spawn_id -re "(prod-launch-probe: windows PASS)|(prod-launch-probe: windows FAIL)|($launch_marker_re)" {
+                set m $expect_out(0,string)
+                if {[string first "prod-launch-probe: windows PASS" $m] >= 0} {
+                    puts "  launch-gate PASS — wm window registration ($launch_case)"
+                } elseif {[string first "prod-launch-probe: windows FAIL" $m] >= 0} {
+                    puts "  launch-gate FAIL — window registration (probe verdict: windows FAIL;"
+                    puts "    the 'missing label prefix' line in the serial log names the absent window)"
+                    set launch_ok 0
+                } else {
+                    puts "  launch-gate note — stashed concurrent marker '[string trim $m]'"
+                    append launch_stash $m "\n"
+                    exp_continue
                 }
             }
-        }
-        if {$outcome eq "ok"} {
-            puts "  launch-gate PASS — $meaning (warning-level)"
-        } elseif {$outcome eq "eof"} {
-            puts "  launch-gate WARN — QEMU exited during '$meaning'"
-        } else {
-            puts "  launch-gate WARN — $meaning not observed (warning-only — never flips the verdict; see the comment above)"
+            timeout {
+                puts "  launch-gate FAIL — window registration (no 'windows PASS'/'windows FAIL' verdict within 480 s)"
+                set launch_ok 0
+            }
+            eof {
+                puts "  launch-gate FAIL — QEMU exited before the window-registration verdict"
+                set launch_ok 0
+            }
         }
     }
     puts "  ================================================================"
     if {!$launch_ok} {
         puts "  FAIL — launch-path gate: an ENFORCED stage failed (see the"
         puts "  launch-gate FAIL line above for the first unmet marker)."
-        puts "  files/falkon stages are warning-only and never flip the"
-        puts "  verdict (their product boot is known RED —"
-        puts "  docs/evidence/phase16-runtime-baseline.md F3/F4)."
+        if {$launch_case eq "multi"} {
+            puts "  ENFORCED (multi simultaneous regression, case multi):"
+            puts "  the terminal vfs boot marker, the simultaneous witness"
+            puts "  (prod-launch-probe: multi simultaneous n=3), and the wm"
+            puts "  window-registration verdict (prod-launch-probe: windows"
+            puts "  PASS — emitted only when all three launch requests"
+            puts "  answered status ok, all three windows co-resided in ONE"
+            puts "  window_list snapshot, the siblings held in a stable"
+            puts "  second scan, and no window vanished)."
+        } else {
+            puts "  ENFORCED (per-app fresh-boot matrix, case $launch_case):"
+            puts "  the selected launch ack, the terminal vfs boot marker"
+            puts "  (case=terminal only), and the wm window-registration"
+            puts "  verdict (prod-launch-probe: windows PASS). One app per"
+            puts "  fresh boot — run the three cases (terminal, files, falkon)"
+            puts "  as three serial boots for the full matrix."
+        }
         puts "  ================================================================"
         exit 1
     }
-    puts "  PASS — launch path verified: a launcher request boots the"
-    puts "  terminal package end-to-end (files/falkon stages logged)."
+    if {$launch_case eq "multi"} {
+        puts "  PASS — launch path verified (multi simultaneous regression,"
+        puts "  case multi): terminal, files and falkon launched from one"
+        puts "  boot, co-resided in one wm window_list snapshot"
+        puts "  (prod-launch-probe: multi simultaneous n=3), held in a"
+        puts "  stable second scan (prod-launch-probe: multi siblings held"
+        puts "  n=3), and the verdict is"
+        puts "  prod-launch-probe: windows PASS."
+    } else {
+        puts "  PASS — launch path verified (per-app fresh-boot matrix, case"
+        puts "  $launch_case): the launcher request boots the selected package"
+        puts "  and wm registers its window (prod-launch-probe: windows PASS)."
+    }
     puts "  ================================================================"
     exit 0
 }
