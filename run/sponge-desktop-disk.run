@@ -676,34 +676,12 @@ if {[file exists "bin/qt6_libqgenode.tar"]} {
 	exec cp -fL "bin/qt6_libqgenode.tar" "$sys_dir/qt6_libqgenode.tar"
 }
 
-# files_demo.tar: the files package's read-only /demo fixture
-# (pkg/files/metadata.xml VFS mounts <tar name="files_demo.tar"/>).
-# Staged by the same recipe as run/sponge-files.run lines 216-235 —
-# without it the files child dies at startup with
-# "parent denied ROM-session: label=files_demo.tar" (P5.1 R6
-# evidence, docs/evidence/phase16-p51-grouped-app-matrix.md).
-set demo_src "${genode_dir}/../run/fixtures/files-demo"
-if {![file isdirectory $demo_src]} {
-	error "demo fixture directory not found: $demo_src"
-}
-set staging "[run_dir]/files-demo-staging"
-file delete -force $staging
-file mkdir "$staging/demo"
-foreach f [glob -directory $demo_src *] {
-	file copy -force -- $f "$staging/demo/"
-}
-exec tar -cf "$sys_dir/files_demo.tar" -C "$staging" demo
-file delete -force $staging
-
-# files_request: the files package's automation channel ROM (a
-# report_rom relay in run/sponge-files.run line 117, written by its
-# probe). On product media no writer exists, but the ROM itself must
-# RESOLVE or the child stops with "parent denied ROM-session:
-# label=files_request" (P5.1 R7 evidence). An empty file behind the
-# rom_sys catch-all serves an empty ROM, which the app tolerates
-# (files_window.cc _poll_request returns on empty/invalid XML). The
-# driven channel remains proven in run/sponge-files.run.
-exec touch "$sys_dir/files_request"
+# files_demo.tar + files_request (the files package's support ROMs)
+# are staged single-sourced by runtime_simple::stage_binaries below
+# (run/runtime-simple.inc), which every grouped product-media variant
+# calls — the former local recipe that lived here was moved there to
+# keep BIOS/UEFI/NVMe/USB behavior identical (P5.1 R6/R7 evidence,
+# docs/evidence/phase16-p51-grouped-app-matrix.md).
 
 # ----------------------------------------------------------------
 # Bake-driven pkg metadata + index + payloads (Phase 15 W2, D15.8)

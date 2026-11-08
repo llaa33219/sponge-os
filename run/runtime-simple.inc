@@ -152,6 +152,13 @@ namespace eval runtime_simple {
     # error, a missing copy is a staging error. bake::stage separately
     # carries the payload tree under pkg/<name>/payload/.
     #
+    # files package support ROMs: every product /system also receives
+    # files_demo.tar (packed from run/fixtures/files-demo/) and an
+    # empty files_request, so the files package resolves both ROMs on
+    # UEFI/NVMe/USB media too (not just the BIOS disk scenario that
+    # used to carry its own copy of this recipe). Fail-loud on a
+    # missing fixture directory.
+    #
     proc stage_binaries { sys_dir } {
         variable packages
 
@@ -287,6 +294,54 @@ namespace eval runtime_simple {
                        after staging from bin/${binary}"
             }
             incr staged
+        }
+
+        #
+        # files package support ROMs (moved here from
+        # run/sponge-desktop-disk.run so every grouped product-media
+        # scenario — BIOS, UEFI, NVMe, USB — stages them, single-
+        # sourced; the standalone recipes in run/sponge-files.run and
+        # run/sponge-de-workflow.run stay where they are).
+        #
+        # files_demo.tar: the files package's read-only /demo fixture
+        # (pkg/files/metadata.xml VFS mounts <tar name="files_demo.tar"/>).
+        # Staged by the same recipe as run/sponge-files.run lines 216-235 —
+        # without it the files child dies at startup with
+        # "parent denied ROM-session: label=files_demo.tar" (P5.1 R6
+        # evidence, docs/evidence/phase16-p51-grouped-app-matrix.md).
+        #
+        set demo_src "${repo}/run/fixtures/files-demo"
+        if {![file isdirectory $demo_src]} {
+            error "runtime_simple: demo fixture directory not found: \
+                   $demo_src"
+        }
+        set staging "[run_dir]/files-demo-staging"
+        file delete -force $staging
+        file mkdir "$staging/demo"
+        foreach f [glob -directory $demo_src *] {
+            file copy -force -- $f "$staging/demo/"
+        }
+        exec tar -cf "$sys_dir/files_demo.tar" -C "$staging" demo
+        file delete -force $staging
+        if {![file exists "$sys_dir/files_demo.tar"]} {
+            error "runtime_simple: ${sys_dir}/files_demo.tar missing \
+                   after staging from ${demo_src}"
+        }
+
+        #
+        # files_request: the files package's automation channel ROM (a
+        # report_rom relay in run/sponge-files.run line 117, written by its
+        # probe). On product media no writer exists, but the ROM itself must
+        # RESOLVE or the child stops with "parent denied ROM-session:
+        # label=files_request" (P5.1 R7 evidence). An empty file behind the
+        # rom_sys catch-all serves an empty ROM, which the app tolerates
+        # (files_window.cc _poll_request returns on empty/invalid XML). The
+        # driven channel remains proven in run/sponge-files.run.
+        #
+        exec touch "$sys_dir/files_request"
+        if {![file exists "$sys_dir/files_request"]} {
+            error "runtime_simple: ${sys_dir}/files_request missing \
+                   after touch"
         }
 
         puts "runtime_simple: staged ${staged} simple-class binaries \
