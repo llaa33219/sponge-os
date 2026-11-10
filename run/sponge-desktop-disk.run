@@ -583,74 +583,14 @@ foreach lib [glob -nocomplain bin/*.lib.so] {
 	exec cp -fL $lib "$sys_dir/lib/$libname"
 }
 
-# mupdf closure: pdf_view's document-rendering library and its shared
-# closure (P5.1 R13: without them pdf_view stops with "parent denied
-# ROM-session: label=mupdf.lib.so", then label=freetype.lib.so, ...).
-# Built by the `lib/openjpeg lib/freetype lib/jbig2dec lib/mupdf
-# lib/jpeg` build targets (the lean run's sponge-pdf-view.run builds
-# the same set) and staged by the bin/*.lib.so glob. Do NOT stage the
-# `*.abi.so` stubs next to the app — those are the small ABI-stability
-# interfaces (compare var/libcache/zlib/: zlib.abi.so 17KB stub vs
-# zlib.lib.so 319KB real), and staging the mupdf stub crashed
-# pdf_view with a WRITE violation (R14 evidence). Assert the real
-# artifacts reached the staged set.
-foreach mupdf_dep { mupdf.lib.so freetype.lib.so jpeg.lib.so \
-                    jbig2dec.lib.so openjpeg.lib.so } {
-	if {![file exists "$sys_dir/lib/$mupdf_dep"]} {
-		error "mupdf closure lib missing from the staged lib set: \
-$mupdf_dep (are the lib/openjpeg lib/freetype lib/jbig2dec \
-lib/mupdf lib/jpeg build targets in the build list?)"
-	}
-}
-
-# sample.pdf: the pdf_view package's document ROM (metadata VFS
-# <rom name="sample.pdf"/>). The run scenario owns the staged bytes
-# (the metadata: "the boot module of that same name MUST be staged by
-# the run scenario"); this arm stages a TWO-PAGE document generated
-# here instead of copying pkg/pdf_view/payload/sample.pdf:
-#
-#   - pdfapp.c clamps pageno to pagecount and re-renders only on a
-#     real page change, so page-down is a dead input on a one-page
-#     document (R21: pgdn_changed=0);
-#   - the port blit (app/pdf_view main.cc Pdf_view::show) applies no
-#     panx/pany, so scroll alone never changes a pixel (R22).
-#
-# The P5.1 page-down/scroll input delta therefore needs a real page
-# flip. Page 1 keeps the payload's wording; page 2 paints a filled
-# block so the flip is a large unmistakable delta. Pure ASCII (no NUL
-# bytes) and a computed xref: the staged-metadata text-mode rom trim
-# (binary="no") then yields exactly the file bytes inside the padded
-# ROM dataspace and mupdf's startxref scan lands on the real table.
-set sp1 "BT\n/F1 24 Tf\n72 720 Td\n(Hello Sponge PDF) Tj\n0 -32 Td\n(Phase 13 W4 sample.) Tj\nET\n"
-set sp2 "0 0 0 rg\n36 600 540 120 re f\nBT\n/F1 24 Tf\n72 720 Td\n(Sample page two.) Tj\nET\n"
-set obj4 "<< /Length [string length $sp1] >>\nstream\n${sp1}endstream"
-set obj6 "<< /Length [string length $sp2] >>\nstream\n${sp2}endstream"
-set pdf_objs [list \
-	{<< /Type /Catalog /Pages 2 0 R >>} \
-	{<< /Type /Pages /Kids [3 0 R 5 0 R] /Count 2 >>} \
-	{<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R /Resources << /Font << /F1 7 0 R >> >> >>} \
-	$obj4 \
-	{<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 6 0 R /Resources << /Font << /F1 7 0 R >> >> >>} \
-	$obj6 \
-	{<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>}]
-set pdf "%PDF-1.4\n"
-set pdf_offs {}
-set pdf_num 1
-foreach pdf_b $pdf_objs {
-	lappend pdf_offs [string length $pdf]
-	append pdf "$pdf_num 0 obj\n$pdf_b\nendobj\n"
-	incr pdf_num
-}
-set pdf_xref [string length $pdf]
-append pdf "xref\n0 8\n0000000000 65535 f \n"
-foreach pdf_o $pdf_offs {
-	append pdf [format "%010d 00000 n \n" $pdf_o]
-}
-append pdf "trailer << /Size 8 /Root 1 0 R >>\nstartxref\n$pdf_xref\n%%EOF\n"
-set pdf_fh [open "$sys_dir/sample.pdf" w]
-fconfigure $pdf_fh -translation binary
-puts -nonewline $pdf_fh $pdf
-close $pdf_fh
+# mupdf closure + sample.pdf (pdf_view's document ROM) are staged
+# single-sourced by runtime_simple::stage_binaries below
+# (run/runtime-simple.inc), which every grouped product-media variant
+# calls after bake::stage — the former local recipe that lived here
+# (P5.1 R13/R14/R21/R22 evidence,
+# docs/evidence/phase16-p51-grouped-app-matrix.md) was moved there to
+# keep BIOS/UEFI/NVMe/USB behavior identical (same migration shape as
+# the files_demo.tar note below).
 
 # --- themes (flat — served by bare name) ---
 foreach theme { default light } {
@@ -732,38 +672,12 @@ if {$app_isolation} {
 bake::stage $sys_dir img
 
 #
-# pdf_view's document ROM needs `binary="no"` on the served media
-# (P5.1 evidence, docs/evidence/phase16-p51-grouped-app-matrix.md):
-# the disk-serving path reports the ext2 block-rounded size (632 ->
-# 4096) and the vfs rom plugin keeps the whole padded dataspace in
-# its default binary mode, so mupdf seeks to size-1024 inside the
-# zero padding and reports "cannot find startxref" (the lean
-# sponge-pdf-view.run serves the same file as an exact-size core ROM
-# module and is unaffected). The plugin's text mode trims the content
-# at the first NUL — the document is NUL-free and the block padding
-# is zeros, so the trim yields exactly the 632-byte file. Same
-# staged-metadata transform pattern as the P2.4 clipboard removal
-# (staged pkg_textedit.xml); the repo metadata stays untouched and
-# this media-only fix is recorded as the residual gap.
-#
-# The transform applies to whatever pdf_view metadata the active bake
-# profile stages; a focused profile (SPONGE_APP_ISOLATION's
-# `isolation`) carries no pdf_view and skips it — skip-don't-error,
-# same discipline as the /system/bin copy loop above.
-if {[file exists "$sys_dir/pkg_pdf_view.xml"]} {
-	set pv_fh [open "$sys_dir/pkg_pdf_view.xml" r]
-	set pv_xml [read $pv_fh]
-	close $pv_fh
-	if {[string first {<rom name="sample.pdf"/>} $pv_xml] < 0} {
-		error "pkg_pdf_view.xml: sample.pdf rom element missing or drifted"
-	}
-	set pv_xml [string map [list \
-		{<rom name="sample.pdf"/>} \
-		{<rom name="sample.pdf" binary="no"/>}] $pv_xml]
-	set pv_fh [open "$sys_dir/pkg_pdf_view.xml" w]
-	puts -nonewline $pv_fh $pv_xml
-	close $pv_fh
-}
+# pdf_view's document ROM binary="no" transform (the staged
+# pkg_pdf_view.xml) is applied single-sourced by
+# runtime_simple::stage_binaries below — the former local recipe that
+# lived here (P5.1 R17-R20 evidence,
+# docs/evidence/phase16-p51-grouped-app-matrix.md) was moved there to
+# keep BIOS/UEFI/NVMe/USB behavior identical.
 
 # After bake::stage: it re-stages pkg payload from the repo, so
 # runtime_simple's payload staging/transforms must run after it.

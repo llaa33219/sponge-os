@@ -18,9 +18,14 @@
 #      file), so the build block, the staging step and the quota row
 #      cannot drift apart — the same single-source discipline
 #      driver_runtime.inc applies to the driver packages;
-#   2. runtime_simple::build_targets   — the Genode build targets;
+#   2. runtime_simple::build_targets   — the Genode build targets,
+#      including pdf_view's MuPDF shared-library closure (the class
+#      map produces only the app binary; the closure is payload);
 #   3. runtime_simple::stage_binaries  — fail-loud staging of the
-#      class binaries into <sys_dir>/bin/;
+#      class binaries into <sys_dir>/bin/ and of pdf_view's complete
+#      payload: the MuPDF closure into <sys_dir>/lib/, the two-page
+#      sample.pdf document ROM at <sys_dir>/, and the staged
+#      pkg_pdf_view.xml binary="no" transform;
 #   4. the class quota row (QUOTA_CAPS / QUOTA_RAM) consumed by
 #      runtime-quota.inc's pkg_runtime_caps() derivation.
 #
@@ -53,6 +58,37 @@
 # deliberately keep a library off the media. bake::stage separately
 # carries the payload tree under
 # pkg/textedit/payload/.
+#
+# === PDF_VIEW'S REAL PAYLOAD (mupdf closure + sample.pdf) =================
+#
+# pdf_view's binary is an ordinary build producer (app/pdf_view), but
+# the binary alone cannot start. The document-rendering closure and
+# the document ROM are RUN-SCENARIO payload (P5.1 evidence,
+# docs/evidence/phase16-p51-grouped-app-matrix.md):
+#
+#   - the MuPDF shared-library closure (mupdf.lib.so + freetype,
+#     jpeg, jbig2dec, openjpeg) is built by the closure build
+#     targets (build_targets below) and staged into <sys_dir>/lib/.
+#     Without it the child stops with "parent denied ROM-session:
+#     label=mupdf.lib.so", then label=freetype.lib.so, ... (R13).
+#     Stage ONLY the real *.lib.so artifacts — the var/libcache
+#     *.abi.so ABI-stability stubs must NEVER reach the media
+#     (zlib.abi.so is a 17KB stub vs zlib.lib.so 319KB real; staging
+#     the mupdf stub crashed pdf_view with a WRITE violation, R14).
+#   - sample.pdf, the metadata VFS <rom name="sample.pdf"/>, is a
+#     TWO-PAGE document generated at staging time ("the boot module
+#     of that same name MUST be staged by the run scenario" — the
+#     metadata's own words): page-down and scroll need a real page
+#     flip (R21 pgdn_changed=0, R22 the port blit applies no
+#     panx/pany), so the second page paints a filled block.
+#   - the staged pkg_pdf_view.xml gains binary="no" on that ROM so
+#     the disk-serving path's block-rounded size (632 -> 4096) is
+#     trimmed at the first NUL (R17-R20 "cannot find startxref").
+#
+# All three moved here from run/sponge-desktop-disk.run's local
+# recipe so every grouped product-media scenario (BIOS, UEFI, NVMe,
+# USB) inherits them single-sourced — same migration shape as the
+# files package support ROMs below.
 #
 # === QUOTA DERIVATION =====================================================
 #
@@ -111,16 +147,31 @@ namespace eval runtime_simple {
     variable QUOTA_RAM  1288M
 
     #
-    # The Genode build targets of this class, in map order. The
-    # payload-produced package contributes no target (there is nothing
-    # to build) — that absence is exactly the fact this map pins.
+    # pdf_view's MuPDF shared-library closure build targets. The
+    # class map above produces only the app binary (app/pdf_view);
+    # without these five lib targets there is nothing REAL to stage
+    # for the document-rendering closure (P5.1 R13 — the lean
+    # run/sponge-pdf-view.run builds the same set). Keep this list
+    # in sync with the mupdf closure staging list in stage_binaries.
+    #
+    variable mupdf_closure {
+        lib/mupdf lib/openjpeg lib/freetype lib/jbig2dec lib/jpeg
+    }
+
+    #
+    # The Genode build targets of this class, in map order, plus
+    # pdf_view's MuPDF closure. The payload-produced package
+    # contributes no target (there is nothing to build) — that
+    # absence is exactly the fact this map pins.
     #
     proc build_targets { } {
         variable packages
+        variable mupdf_closure
         set targets {}
         foreach {name kind producer} $packages {
             if {$kind eq "build"} { lappend targets $producer }
         }
+        lappend targets {*}$mupdf_closure
         return $targets
     }
 
@@ -129,7 +180,9 @@ namespace eval runtime_simple {
     #
     # Stage the class's binaries into <sys_dir>/bin/ (the directory the
     # scenario stages /system from). MUST run after the scenario's
-    # `build {}` block and its `exec mkdir -p <sys_dir>/bin`.
+    # `build {}` block and its `exec mkdir -p <sys_dir>/bin`, and
+    # after bake::stage — the pdf_view payload below stages the
+    # document ROM and transforms the BAKED pkg_pdf_view.xml.
     #
     # build-kind packages: the binary name comes from the package's
     # metadata <binary> element (the path pkgd's config generator
@@ -294,6 +347,150 @@ namespace eval runtime_simple {
                        after staging from bin/${binary}"
             }
             incr staged
+        }
+
+        #
+        # --- pdf_view payload: MuPDF closure + document ROM ---
+        # (moved here from run/sponge-desktop-disk.run's local recipe
+        # so every grouped product-media scenario stages it
+        # single-sourced; P5.1 R13/R14/R17-R22 evidence,
+        # docs/evidence/phase16-p51-grouped-app-matrix.md.)
+        #
+        # MuPDF shared-library closure: pdf_view's document-rendering
+        # library and its shared closure. Without them pdf_view stops
+        # with "parent denied ROM-session: label=mupdf.lib.so", then
+        # label=freetype.lib.so, ... (R13). The five real *.lib.so
+        # artifacts below are copied from bin/ — the build targets are
+        # runtime_simple::build_targets (the lean run's
+        # sponge-pdf-view.run builds the same set). Do NOT stage the
+        # `*.abi.so` stubs next to the app — those are the small
+        # ABI-stability interfaces (compare var/libcache/zlib/:
+        # zlib.abi.so 17KB stub vs zlib.lib.so 319KB real), and
+        # staging the mupdf stub crashed pdf_view with a WRITE
+        # violation (R14 evidence). Both ends of every copy are loud:
+        # a missing bin/<lib> is a build-block omission, a missing
+        # destination copy is a staging error.
+        #
+        if {![file isdirectory "${sys_dir}/lib"]} {
+            error "runtime_simple: ${sys_dir}/lib missing — \
+                   create the /system tree first"
+        }
+        foreach mupdf_dep { mupdf.lib.so freetype.lib.so jpeg.lib.so \
+                            jbig2dec.lib.so openjpeg.lib.so } {
+            if {![file exists "bin/${mupdf_dep}"]} {
+                error "runtime_simple: mupdf closure lib missing from \
+                       the build: bin/${mupdf_dep} (are the \
+                       lib/openjpeg lib/freetype lib/jbig2dec \
+                       lib/mupdf lib/jpeg build targets in the build \
+                       list? runtime_simple::build_targets provides \
+                       them)"
+            }
+            exec cp -fL "bin/${mupdf_dep}" "${sys_dir}/lib/${mupdf_dep}"
+            if {![file exists "${sys_dir}/lib/${mupdf_dep}"]} {
+                error "runtime_simple: ${sys_dir}/lib/${mupdf_dep} \
+                       missing after staging from bin/${mupdf_dep}"
+            }
+        }
+
+        #
+        # sample.pdf: the pdf_view package's document ROM (metadata
+        # VFS <rom name="sample.pdf"/>). The run scenario owns the
+        # staged bytes (the metadata: "the boot module of that same
+        # name MUST be staged by the run scenario"); this generates a
+        # TWO-PAGE document instead of copying
+        # pkg/pdf_view/payload/sample.pdf:
+        #
+        #   - pdfapp.c clamps pageno to pagecount and re-renders only
+        #     on a real page change, so page-down is a dead input on
+        #     a one-page document (R21: pgdn_changed=0);
+        #   - the port blit (app/pdf_view main.cc Pdf_view::show)
+        #     applies no panx/pany, so scroll alone never changes a
+        #     pixel (R22).
+        #
+        # The P5.1 page-down/scroll input delta therefore needs a
+        # real page flip. Page 1 keeps the payload's wording; page 2
+        # paints a filled block so the flip is a large unmistakable
+        # delta. Pure ASCII (no NUL bytes) and a computed xref: the
+        # staged-metadata text-mode rom trim (binary="no") then yields
+        # exactly the file bytes inside the padded ROM dataspace and
+        # mupdf's startxref scan lands on the real table.
+        #
+        set sp1 "BT\n/F1 24 Tf\n72 720 Td\n(Hello Sponge PDF) Tj\n0 -32 Td\n(Phase 13 W4 sample.) Tj\nET\n"
+        set sp2 "0 0 0 rg\n36 600 540 120 re f\nBT\n/F1 24 Tf\n72 720 Td\n(Sample page two.) Tj\nET\n"
+        set obj4 "<< /Length [string length $sp1] >>\nstream\n${sp1}endstream"
+        set obj6 "<< /Length [string length $sp2] >>\nstream\n${sp2}endstream"
+        set pdf_objs [list \
+            {<< /Type /Catalog /Pages 2 0 R >>} \
+            {<< /Type /Pages /Kids [3 0 R 5 0 R] /Count 2 >>} \
+            {<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R /Resources << /Font << /F1 7 0 R >> >> >>} \
+            $obj4 \
+            {<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 6 0 R /Resources << /Font << /F1 7 0 R >> >> >>} \
+            $obj6 \
+            {<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>}]
+        set pdf "%PDF-1.4\n"
+        set pdf_offs {}
+        set pdf_num 1
+        foreach pdf_b $pdf_objs {
+            lappend pdf_offs [string length $pdf]
+            append pdf "$pdf_num 0 obj\n$pdf_b\nendobj\n"
+            incr pdf_num
+        }
+        set pdf_xref [string length $pdf]
+        append pdf "xref\n0 8\n0000000000 65535 f \n"
+        foreach pdf_o $pdf_offs {
+            append pdf [format "%010d 00000 n \n" $pdf_o]
+        }
+        append pdf "trailer << /Size 8 /Root 1 0 R >>\nstartxref\n$pdf_xref\n%%EOF\n"
+        set pdf_fh [open "$sys_dir/sample.pdf" w]
+        fconfigure $pdf_fh -translation binary
+        puts -nonewline $pdf_fh $pdf
+        close $pdf_fh
+        if {![file exists "$sys_dir/sample.pdf"]} {
+            error "runtime_simple: ${sys_dir}/sample.pdf missing \
+                   after staging"
+        }
+
+        #
+        # pdf_view's document ROM needs `binary="no"` on the served
+        # media (P5.1 evidence): the disk-serving path reports the
+        # ext2 block-rounded size (632 -> 4096) and the vfs rom plugin
+        # keeps the whole padded dataspace in its default binary mode,
+        # so mupdf seeks to size-1024 inside the zero padding and
+        # reports "cannot find startxref" (the lean
+        # run/sponge-pdf-view.run serves the same file as an
+        # exact-size core ROM module and is unaffected). The plugin's
+        # text mode trims the content at the first NUL — the document
+        # is NUL-free and the block padding is zeros, so the trim
+        # yields exactly the 632-byte file. Same staged-metadata
+        # transform pattern as the P2.4 clipboard removal above; the
+        # repo metadata stays untouched and this media-only fix is
+        # recorded as the residual gap.
+        #
+        # The transform applies to whatever pdf_view metadata the
+        # active bake profile stages; a focused profile
+        # (SPONGE_APP_ISOLATION's `isolation`) carries no pdf_view
+        # and skips it — skip-don't-error.
+        #
+        if {[file exists "$sys_dir/pkg_pdf_view.xml"]} {
+            set pv_fh [open "$sys_dir/pkg_pdf_view.xml" r]
+            set pv_xml [read $pv_fh]
+            close $pv_fh
+            if {[string first {<rom name="sample.pdf"/>} $pv_xml] < 0} {
+                error "runtime_simple: pkg_pdf_view.xml: sample.pdf \
+                       rom element missing or drifted"
+            }
+            set pv_xml [string map [list \
+                {<rom name="sample.pdf"/>} \
+                {<rom name="sample.pdf" binary="no"/>}] $pv_xml]
+            set pv_fh [open "$sys_dir/pkg_pdf_view.xml" w]
+            puts -nonewline $pv_fh $pv_xml
+            close $pv_fh
+            puts "runtime_simple: staged pkg_pdf_view.xml — sample.pdf \
+                   rom gained binary=\"no\""
+        } else {
+            puts "runtime_simple: no staged pkg_pdf_view.xml — the \
+                   sample.pdf binary=\"no\" transform is skipped \
+                   (focused profile without pdf_view)"
         }
 
         #

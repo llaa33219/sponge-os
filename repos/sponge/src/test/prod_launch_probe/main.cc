@@ -13,7 +13,9 @@
  * request shape, pkgd's shared handle body, over the dedicated
  * probe_request transport because report_rom is single-writer per
  * label and sponge-de owns launcher_request here) for the
- * user-reported packages: terminal, files, falkon.
+ * user-reported packages: terminal, files, falkon — plus pdf_view,
+ * the mupdf-closure/sample.pdf staging regression (its window must
+ * register like any other grouped simple-class app).
  *
  * PER-APP FRESH-BOOT MATRIX (why exactly one app per boot): every
  * sequential multi-app experiment in ONE boot fails for a different
@@ -29,22 +31,26 @@
  * "clicked the launcher, no window" bug is therefore ONE selected
  * package per boot — the case matrix
  *
- *   SPONGE_LAUNCH_CASE=terminal|files|falkon|multi
+ *   SPONGE_LAUNCH_CASE=terminal|files|falkon|pdf_view|multi
  *
  * delivered through this probe's config (`+ config | case: <value>`,
  * validated and injected by
- * run/sponge-desktop-disk-uefi-usb.run). The three single cases are
- * run as three serial fresh boots by the harness (parent runs the
- * three cases in sequence); cross-app CNode pressure is GONE BY
+ * run/sponge-desktop-disk-uefi-usb.run). The four single cases are
+ * run as four serial fresh boots by the harness (parent runs the
+ * four cases in sequence); cross-app CNode pressure is GONE BY
  * CONSTRUCTION there — only one package runtime is ever created per
- * boot. The fourth case `multi` deliberately BREAKS that
+ * boot. The fifth case `multi` deliberately BREAKS that
  * construction: it launches terminal, files and falkon in one boot
  * and requires their windows to co-reside in ONE wm window_list
  * snapshot — the RED-first regression for concurrent-window
  * validation. Every sequential multi-app experiment so far failed
  * with CNode errors (the R29/R30 failure class above), so `multi` is
  * expected to reproduce that RED for diagnosis; it is NOT a claim
- * that multi-app residence works.
+ * that multi-app residence works. pdf_view is a SINGLE-ONLY case
+ * (never part of multi): multi's RED scope is the fixed
+ * terminal+files+falkon triple and its n=3 witnesses, while pdf_view
+ * joins the per-app fresh-boot matrix to prove the real grouped
+ * pdf_view launch end to end (the staging regression net).
  *
  * SEQUENCE (every wait bounded):
  *   1. parse the case from the probe config with the Node API
@@ -57,8 +63,8 @@
  *      requires an ANSWERED request whose status is ok; unanswered
  *      or an error status is a request failure). Single cases launch
  *      the one selected package; multi launches terminal, files and
- *      falkon in that order (the _apps table order), 6 s pacing
- *      between the requests.
+ *      falkon in that order (the first MULTI_N table rows), 6 s
+ *      pacing between the requests.
  *   3. bounded window wait — single: the app's exact label prefix
  *      → the per-app marker `prod-launch-probe: window <case> ->
  *      registered` exactly once (plus a label/id evidence line).
@@ -92,6 +98,7 @@
  *   pkg_runtime_terminal -> terminal  (case=terminal, case=multi)
  *   pkg_runtime_simple   -> files     (case=files,    case=multi)
  *   pkg_runtime_browser  -> falkon    (case=falkon,   case=multi)
+ *   pkg_runtime_simple   -> pdf_view  (case=pdf_view)
  *
  * case=multi matches all three in the SAME snapshot per scan (a
  * single Node traversal checks every window node against all three
@@ -170,9 +177,14 @@ struct Prod_launch_probe::Main
 	 * The case table — the matrix definition. Exactly one entry is
 	 * selected per boot for the single cases; the others are never
 	 * launched, so no cross-app CNode pressure can arise. `multi`
-	 * launches ALL THREE (this table's order is the mandated launch
-	 * order: terminal, files, falkon) and is the deliberate
-	 * exception — the RED simultaneous-residence regression.
+	 * launches the first MULTI_N entries (this table's order is the
+	 * mandated launch order: terminal, files, falkon) and is the
+	 * deliberate exception — the RED simultaneous-residence
+	 * regression. pdf_view is a SINGLE-ONLY case (the last row):
+	 * multi's RED scope is the fixed terminal+files+falkon triple
+	 * and its n=3 witnesses, while pdf_view rides the per-app
+	 * fresh-boot matrix (the grouped pdf_view launch / staging
+	 * regression).
 	 */
 	struct App_window {
 		char const *name;          /* marker token + case value */
@@ -181,10 +193,16 @@ struct Prod_launch_probe::Main
 		bool        vanished;      /* registered, then absent later */
 	};
 
-	App_window _apps[3] {
+	/* multi = the first MULTI_N rows only (pinned at 3 by the
+	 * n=3 simultaneous/siblings markers and the run-script gate). */
+	static constexpr unsigned MULTI_N { 3 };
+	static constexpr unsigned APP_N   { 4 };
+
+	App_window _apps[APP_N] {
 		{ "terminal", "pkg_runtime_terminal -> terminal", false, false },
 		{ "files",    "pkg_runtime_simple -> files",      false, false },
 		{ "falkon",   "pkg_runtime_browser -> falkon",    false, false },
+		{ "pdf_view", "pkg_runtime_simple -> pdf_view",   false, false },
 	};
 
 	/* The one selected case — never more than one app per single boot. */
@@ -222,15 +240,16 @@ struct Prod_launch_probe::Main
 		if (_multi) {
 			/*
 			 * 1. multi: launch terminal, files, falkon in that
-			 * order — the retained ack markers (`prod-launch-
+			 * order (the first MULTI_N table rows) — the
+			 * retained ack markers (`prod-launch-
 			 * probe: launch <pkg> -> ok` / `-> FAIL`) with the
 			 * single-case 6 s pacing between requests. This
 			 * deliberately recreates sequential multi-app
 			 * residence in ONE boot (the RED CNode-pressure
 			 * regression).
 			 */
-			for (App_window const &app : _apps) {
-				_launch(app.name);
+			for (unsigned i = 0; i < MULTI_N; i++) {
+				_launch(_apps[i].name);
 				_settle(6000);
 			}
 
@@ -243,7 +262,7 @@ struct Prod_launch_probe::Main
 		} else {
 			/*
 			 * 1. Launch ONLY the selected package — the matrix
-			 * proves the three user-reported packages as three
+			 * proves the four single-case packages as four
 			 * serial fresh boots, so nothing else is ever
 			 * launched in this boot. The request marker is
 			 * retained unchanged in shape:
@@ -301,7 +320,7 @@ struct Prod_launch_probe::Main
 
 		Genode::error("prod-launch-probe: missing or invalid case: '",
 		              case_value, "' — expected one of "
-		              "terminal, files, falkon, multi");
+		              "terminal, files, falkon, pdf_view, multi");
 		return false;
 	}
 
@@ -414,7 +433,7 @@ struct Prod_launch_probe::Main
 	{
 		_window_list.update();
 
-		bool present[3] { false, false, false };
+		bool present[MULTI_N] { false, false, false };
 
 		bool const have_snapshot {
 			_window_list.valid() && _window_list.size() > 0 };
@@ -424,7 +443,7 @@ struct Prod_launch_probe::Main
 			root.for_each_sub_node("window", [&] (Genode::Node const &w) {
 				Genode::String<160> label =
 					w.attribute_value("label", Genode::String<160>());
-				for (unsigned i = 0; i < 3; i++) {
+				for (unsigned i = 0; i < MULTI_N; i++) {
 					if (!_label_has_prefix(label.string(),
 					                       _apps[i].label_prefix))
 						continue;
@@ -441,7 +460,7 @@ struct Prod_launch_probe::Main
 				}
 			});
 
-			for (unsigned i = 0; i < 3; i++) {
+			for (unsigned i = 0; i < MULTI_N; i++) {
 				if (_apps[i].registered && !present[i]
 				 && !_apps[i].vanished) {
 					_apps[i].vanished = true;
@@ -451,8 +470,9 @@ struct Prod_launch_probe::Main
 			}
 		}
 
-		bool const all_present {
-			present[0] && present[1] && present[2] };
+		bool all_present { true };
+		for (unsigned i = 0; i < MULTI_N; i++)
+			all_present = all_present && present[i];
 
 		if (all_present && !_simultaneous) {
 			_simultaneous = true;
@@ -506,13 +526,13 @@ struct Prod_launch_probe::Main
 	void _verdict()
 	{
 		if (_multi) {
-			for (App_window const &app : _apps)
-				if (!app.registered)
+			for (unsigned i = 0; i < MULTI_N; i++)
+				if (!_apps[i].registered)
 					Genode::log("prod-launch-probe: missing label prefix: ",
-					            app.label_prefix);
+					            _apps[i].label_prefix);
 			bool ok { _steps_ok && _simultaneous && _siblings_held };
-			for (App_window const &app : _apps)
-				if (!app.registered || app.vanished)
+			for (unsigned i = 0; i < MULTI_N; i++)
+				if (!_apps[i].registered || _apps[i].vanished)
 					ok = false;
 			if (ok)
 				Genode::log("prod-launch-probe: windows PASS");

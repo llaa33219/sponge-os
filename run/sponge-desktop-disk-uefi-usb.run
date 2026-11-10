@@ -196,10 +196,12 @@
 # client-side self-report and is deliberately NOT accepted, E2). With
 # SPONGE_LAUNCHTEST=on the launch-path gate follows (the user's real
 # flow, automated) as a PER-APP FRESH-BOOT MATRIX:
-# SPONGE_LAUNCH_CASE=terminal|files|falkon selects exactly ONE
-# package per boot — the three cases are three serial fresh boots
-# proving the three windows independently (no cross-app CNode
-# pressure by construction) — plus the RED simultaneous-residence
+# SPONGE_LAUNCH_CASE=terminal|files|falkon|pdf_view selects exactly
+# ONE package per boot — the four cases are four serial fresh boots
+# proving the four windows independently (no cross-app CNode
+# pressure by construction; pdf_view exercises the real grouped
+# pdf_view launch — the mupdf-closure/sample.pdf staging regression)
+# — plus the RED simultaneous-residence
 # regression SPONGE_LAUNCH_CASE=multi (terminal, files and falkon
 # launched in ONE boot, required to co-reside in ONE wm window_list
 # snapshot). The run script does NOT fabricate a
@@ -528,9 +530,10 @@ build $build_components
 if {[info exists ::env(SPONGE_LAUNCHTEST)] && $::env(SPONGE_LAUNCHTEST) eq "on"} {
 	#
 	# Per-app fresh-boot matrix: SPONGE_LAUNCH_CASE selects the ONE
-	# package this boot proves (terminal|files|falkon), or the RED
-	# simultaneous-residence regression (multi: terminal+files+falkon
-	# launched in ONE boot). The three single cases are three serial
+	# package this boot proves (terminal|files|falkon|pdf_view), or
+	# the RED simultaneous-residence regression (multi:
+	# terminal+files+falkon launched in ONE boot). The four single
+	# cases are four serial
 	# fresh boots — one app per boot, no cross-app CNode pressure by
 	# construction (the sequential multi-app experiments all failed
 	# for different CNode reasons; each window is proven
@@ -540,15 +543,15 @@ if {[info exists ::env(SPONGE_LAUNCHTEST)] && $::env(SPONGE_LAUNCHTEST) eq "on"}
 	#
 	if {![info exists ::env(SPONGE_LAUNCH_CASE)] || $::env(SPONGE_LAUNCH_CASE) eq ""} {
 		puts "sponge-desktop-disk-uefi-usb: ERROR — SPONGE_LAUNCH_CASE is required with SPONGE_LAUNCHTEST=on"
-		puts "  (per-app fresh-boot matrix: SPONGE_LAUNCH_CASE=terminal|files|falkon;"
+		puts "  (per-app fresh-boot matrix: SPONGE_LAUNCH_CASE=terminal|files|falkon|pdf_view;"
 		puts "   multi = the three packages in one boot (RED simultaneous regression);"
-		puts "   the single cases run as three serial boots)"
+		puts "   the single cases run as four serial boots)"
 		exit 1
 	}
 	set launch_case $::env(SPONGE_LAUNCH_CASE)
-	if {[lsearch -exact {terminal files falkon multi} $launch_case] < 0} {
+	if {[lsearch -exact {terminal files falkon pdf_view multi} $launch_case] < 0} {
 		puts "sponge-desktop-disk-uefi-usb: ERROR — invalid SPONGE_LAUNCH_CASE '$launch_case'"
-		puts "  (expected one of: terminal, files, falkon, multi)"
+		puts "  (expected one of: terminal, files, falkon, pdf_view, multi)"
 		exit 1
 	}
 	if {$launch_case eq "multi"} {
@@ -2723,7 +2726,7 @@ log_file -a $uefi_log
 set launchtest_arm [expr {[info exists ::env(SPONGE_LAUNCHTEST)] && $::env(SPONGE_LAUNCHTEST) eq "on"}]
 set launch_stash ""
 set launch_cursor 0
-set launch_marker_re {prod-launch-probe: launch terminal -> ok|prod-launch-probe: launch terminal -> FAIL|prod-launch-probe: launch files -> ok|prod-launch-probe: launch files -> FAIL|prod-launch-probe: launch falkon -> ok|prod-launch-probe: launch falkon -> FAIL|pkg_runtime_terminal -> terminal -> vfs|prod-launch-probe: multi simultaneous n=3|prod-launch-probe: windows PASS|prod-launch-probe: windows FAIL}
+set launch_marker_re {prod-launch-probe: launch terminal -> ok|prod-launch-probe: launch terminal -> FAIL|prod-launch-probe: launch files -> ok|prod-launch-probe: launch files -> FAIL|prod-launch-probe: launch falkon -> ok|prod-launch-probe: launch falkon -> FAIL|prod-launch-probe: launch pdf_view -> ok|prod-launch-probe: launch pdf_view -> FAIL|pkg_runtime_terminal -> terminal -> vfs|prod-launch-probe: multi simultaneous n=3|prod-launch-probe: windows PASS|prod-launch-probe: windows FAIL}
 
 # Consume the earliest stash occurrence of $marker at/after the shared
 # cursor. Returns 1 and advances the cursor past it (each marker is
@@ -2881,13 +2884,14 @@ if {$storage_chain_proven && $compositor_healthy && !$has_wedge && !$has_starvin
     # prod_launch_probe replays the launcher's click-to-launch backend
     # (same <request op="launch"/> shape) for the ONE selected case of
     # the per-app fresh-boot matrix (SPONGE_LAUNCH_CASE=terminal|
-    # files|falkon|multi, validated at build time and delivered to the
+    # files|falkon|pdf_view|multi, validated at build time and
+    # delivered to the
     # probe via its `+ config | case: <value>` config). Each single
     # case is a fresh boot proving exactly one package end to end —
     # the selected request ack, the package's real boot marker where
     # one exists (terminal's vfs child start), and the
-    # window-registration verdict below. The three single cases, run
-    # serially as three fresh boots, are the regression net for
+    # window-registration verdict below. The four single cases, run
+    # serially as four fresh boots, are the regression net for
     # "clicked the launcher, no window"; no cross-app CNode pressure
     # remains because no boot ever runs more than one package (the
     # sequential multi-app experiments all failed for different CNode
@@ -2976,8 +2980,9 @@ if {$storage_chain_proven && $compositor_healthy && !$has_wedge && !$has_starvin
     # window_list`; HID-format content, parsed with the Node API) and
     # matches the SELECTED package's window by label prefix
     # (pkg_runtime_terminal -> terminal / pkg_runtime_simple -> files /
-    # pkg_runtime_browser -> falkon, per case; case multi matches all
-    # three in the SAME snapshot per scan), logging one bounded
+    # pkg_runtime_browser -> falkon / pkg_runtime_simple -> pdf_view,
+    # per case; case multi matches the first three in the SAME
+    # snapshot per scan), logging one bounded
     # per-app registration marker plus one final verdict:
     # 'prod-launch-probe: windows PASS' or 'prod-launch-probe: windows
     # FAIL' (on FAIL the preceding 'missing label prefix' line names
@@ -3042,8 +3047,8 @@ if {$storage_chain_proven && $compositor_healthy && !$has_wedge && !$has_starvin
             puts "  the selected launch ack, the terminal vfs boot marker"
             puts "  (case=terminal only), and the wm window-registration"
             puts "  verdict (prod-launch-probe: windows PASS). One app per"
-            puts "  fresh boot — run the three cases (terminal, files, falkon)"
-            puts "  as three serial boots for the full matrix."
+            puts "  fresh boot — run the four cases (terminal, files, falkon,"
+            puts "  pdf_view) as four serial boots for the full matrix."
         }
         puts "  ================================================================"
         exit 1
