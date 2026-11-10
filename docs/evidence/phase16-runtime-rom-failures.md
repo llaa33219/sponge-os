@@ -726,3 +726,88 @@ The staged image is `var/dist/sponge-os-0.2.0-x86_64-sel4.img`; its verified
 SHA-256 is
 `8dfc11a1bfb285afdfbe3420e04d4910d0267535ef3a7e042e7c32a665ace485`.
 The matching `.sha256` sidecar passes `sha256sum -c`.
+
+## 12. Close-completion race and same-ID recreation (2026-11-09)
+
+**Field signature.** Real hardware logged `requested conflicting session ID 97`
+and `existing session: label="system -> wm -> bin/window_layouter"
+state=CLOSING`. No `create of ROM ... failed` or `requested session cap for
+unknown ID` appeared. This is a close/create race, not an `ld.lib.so`, quota, or
+GRUB problem: a create arriving under an ID whose close is still in flight is
+immediately denied, while the client is allowed to run ahead of a close it never
+confirmed.
+
+**Root cause.** `with_new_session` returns `Session_error::DENIED` as soon as an
+ID is occupied and has no queue/retry. `Component_env::close` blocked for only
+one wake of the shared Blockade, so an unrelated session or the close-deadline
+wake could return early without the parent releasing the ID. The parent-side
+`state=CLOSING` hold itself is correct and must remain until the close resolves.
+
+**Minimal fix.** `Component_env::close` now re-polls `session_cap(id)` after
+every wake and re-blocks while the answer is invalid-without-error
+(`CLOSE_REQUESTED`), returning only on an error (the parent no longer knows the
+session). It does not re-issue `_parent.close()` and leaves `try_close`
+unchanged. A create arriving under an ID whose old session is still closing is
+parked in a parent-side pending-create slot and answered pending, then completed
+when the late close frees the ID. `Root_proxy` close handling answers `CLOSED`
+for unknown IDs, so a close processed before its create cannot leave the old
+state permanently `CLOSING`. For a known session it now sends that answer before
+the potentially blocking provider `Root_client::close`; the provider close still
+runs to completion before the next request is dispatched. No unmapped create is
+accepted and no quota or GRUB setting changes.
+
+**RED → GREEN.** The focused `child_pending_op` regression drives
+`with_new_session` directly with a deferred close followed by immediate same-ID
+create. Before the fix it reproduces `requested conflicting session ID 55`,
+`state=CLOSING`, and `VERDICT FAIL`. After the fix, the parked create becomes
+pending, completes after the late close, all original checks plus the new
+collision checks pass, `VERDICT PASS`, and the conflict-line count is zero.
+A delayed-provider-close probe also proves that `CLOSED`, parent-state release,
+and same-ID recreation complete while the provider close is held, and that the
+provider close subsequently completes. The final base-linux run passes all 29
+checks and prints `Run script execution successful`. `run/log` also passes.
+`./tool/build verify` and the UEFI/USB `SPONGE_LAUNCH_CASE=multi` gate both pass
+(`multi simultaneous n=3`, `multi siblings held n=3`, `windows PASS`). On
+seL4/pc the six collision checks also pass; the separate older close-race phase
+still times out against the harness's pre-existing `caps: 100` ceiling, so this
+is not a full-suite seL4 green claim.
+
+**Final image.** The rebuilt normal desktop image is
+`var/dist/sponge-os-0.2.0-x86_64-sel4.img`, SHA-256
+`d241ccc370306a14cba68cb916d2dcc30d6877f0dc9a5db10b5aec744048fec4`.
+Its sidecar passes `sha256sum -c`. The close fix is Genode commit `36b50a6500`
+and is recorded in `docs/11-environment.md` §4 as ledger row 38.
+
+## 13. `pdf_view` product-media staging (2026-11-10)
+
+**Field signature.** On the real UEFI/USB machine the desktop and the other
+application windows appeared, but `pdf_view` alone never produced a window.
+This was not the close/create signature above and did not justify another quota
+or GRUB change.
+
+**Root cause.** The shared `runtime_simple` recipe built `app/pdf_view` but did
+not build or stage the MuPDF shared-library closure, did not stage `sample.pdf`,
+and did not apply the served-media `binary="no"` transform. The working recipe
+existed only as a local block in `run/sponge-desktop-disk.run`; the UEFI/USB
+product scenario inherited none of those three required pieces.
+
+**Fix.** `run/runtime-simple.inc` now owns the complete recipe for every grouped
+product-media variant: it builds and stages the real `mupdf`, `freetype`, `jpeg`,
+`jbig2dec`, and `openjpeg` `*.lib.so` artifacts (not ABI stubs), generates the
+NUL-free two-page `sample.pdf`, and transforms the staged `pkg_pdf_view.xml` to
+`<rom name="sample.pdf" binary="no"/>`. The former BIOS-local copy is removed.
+`prod_launch_probe` and the UEFI/USB run script gained a single-app `pdf_view`
+case without changing the existing three-app `multi` case or any quota.
+
+**Verification.** The focused OVMF/USB
+`SPONGE_LAUNCHTEST=on SPONGE_LAUNCH_CASE=pdf_view` run booted the grouped
+runtime, started MuPDF, registered `pkg_runtime_simple -> pdf_view` in wm, and
+passed both the launch-request and window-registration gates. The final
+`SPONGE_LAUNCH_CASE=multi` regression still reports `multi simultaneous n=3`,
+`multi siblings held n=3`, and `windows PASS`. The production dist boot reports
+`alpha-probe: PASS` with no wedge or starvation lines. Direct inspection of the
+final image's P3 confirms all five real libraries, the `binary="no"` metadata,
+and a 923-byte, two-page PDF identical to the staged source. The user then
+confirmed the successful `pdf_view` launch on the real UEFI/USB machine with this
+image, closing the field failure. No startup-latency improvement is claimed
+without timing evidence.
