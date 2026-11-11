@@ -938,6 +938,526 @@ void case_hid_encoding(Ctx &c)
 	        "hid: malformed HID payload rejected");
 }
 
+
+/* ============ 8. v1.1 focus_state / focus (steering) ============ */
+
+void case_v11_focus(Ctx &c)
+{
+	Focus_target t;
+	t.set = true;
+	t.wid = 5;
+
+	char buf[512];
+
+	c.check_xml("v1.1 gen: focus_state focused byte shape",
+	            "<focus_state>\n\t<window wid=\"5\"/>\n</focus_state>\n",
+	            gen_xml(buf, sizeof(buf), "focus_state", [&] (Genode::Xml_generator &g) {
+		            gen_focus_state(g, t);
+	            }));
+
+	Focus_target const none { };
+	c.check_xml("v1.1 gen: empty focus_state (no focus)",
+	            "<focus_state/>\n",
+	            gen_xml(buf, sizeof(buf), "focus_state", [&] (Genode::Xml_generator &g) {
+		            gen_focus_state(g, none);
+	            }));
+
+	c.check_xml("v1.1 gen: focus steering byte shape",
+	            "<focus>\n\t<window wid=\"5\"/>\n</focus>\n",
+	            gen_xml(buf, sizeof(buf), "focus", [&] (Genode::Xml_generator &g) {
+		            gen_focus(g, t);
+	            }));
+
+	Focus_target out;
+	bool ok = parse_focus_state(
+		node_of("<focus_state><window wid=\"5\"/></focus_state>"), out);
+	c.check(ok && out.set && out.wid == 5,
+	        "v1.1 parse: focus_state wid preserved (truth)");
+
+	ok = parse_focus_state(node_of("<focus_state/>"), out);
+	c.check(ok && !out.set && out.wid == 0,
+	        "v1.1 parse: empty focus_state = no focus");
+
+	ok = parse_focus(node_of("<focus><window wid=\"5\"/></focus>"), out);
+	c.check(ok && out.set && out.wid == 5,
+	        "v1.1 parse: focus steering wid preserved");
+
+	ok = parse_focus_state(node_of("<focus_state><window/></focus_state>"), out);
+	c.check(!ok, "v1.1 parse: focus_state window without wid is malformed");
+
+	ok = parse_focus_state(
+		node_of("<focus_state><window label=\"x\"/></focus_state>"), out);
+	c.check(!ok, "v1.1 parse: focus_state window without wid (other attrs) malformed");
+
+	out.set = true;
+	out.wid = 99;
+	ok = parse_focus_state(node_of("<fs/>"), out);
+	c.check(!ok && out.wid == 99,
+	        "v1.1 parse: focus_state wrong root rejected (out untouched)");
+
+	ok = parse_focus_state(node_of("<focus_state><window wid=\"5\""), out);
+	c.check(!ok, "v1.1 parse: focus_state malformed document rejected");
+
+	ok = parse_focus_state(
+		node_of("<focus_state><window wid=\"5\"/><window wid=\"6\"/></focus_state>"),
+		out);
+	c.check(ok && out.set && out.wid == 5,
+	        "v1.1 parse: focus_state first window wins (extras ignored)");
+
+	out = Focus_target { };
+	ok = parse_focus_state(
+		node_of(gen_xml(buf, sizeof(buf), "focus_state", [&] (Genode::Xml_generator &g) {
+			gen_focus_state(g, t);
+		})), out);
+	c.check(ok && out.set && out.wid == 5,
+	        "v1.1 round trip: focus_state");
+}
+
+
+/* ============ 9. v1.1 window_request (desired state) ============ */
+
+void case_v11_window_request(Ctx &c)
+{
+	Window_request geom;
+	geom.wid = 5;
+	geom.x = 192;
+	geom.y = 172;
+	geom.w = 640;
+	geom.h = 480;
+
+	Window_request close;
+	close.wid   = 6;
+	close.close = true;
+
+	char buf[512];
+
+	c.check_xml("v1.1 gen: window_request geometry byte shape",
+	            "<window_request>\n"
+	            "\t<window wid=\"5\" x=\"192\" y=\"172\" w=\"640\" h=\"480\"/>\n"
+	            "</window_request>\n",
+	            gen_xml(buf, sizeof(buf), "window_request", [&] (Genode::Xml_generator &g) {
+		            gen_window_request_entry(g, geom);
+	            }));
+
+	c.check_xml("v1.1 gen: window_request sticky-close byte shape",
+	            "<window_request>\n\t<window wid=\"6\" action=\"close\"/>\n</window_request>\n",
+	            gen_xml(buf, sizeof(buf), "window_request", [&] (Genode::Xml_generator &g) {
+		            gen_window_request_entry(g, close);
+	            }));
+
+	c.check_xml("v1.1 gen: window_request mixed snapshot",
+	            "<window_request>\n"
+	            "\t<window wid=\"5\" x=\"192\" y=\"172\" w=\"640\" h=\"480\"/>\n"
+	            "\t<window wid=\"6\" action=\"close\"/>\n"
+	            "</window_request>\n",
+	            gen_xml(buf, sizeof(buf), "window_request", [&] (Genode::Xml_generator &g) {
+		            gen_window_request_entry(g, geom);
+		            gen_window_request_entry(g, close);
+	            }));
+
+	Window_request got[4];
+	unsigned num = 0;
+	bool ok = parse_window_request(
+		node_of("<window_request>"
+		        "<window wid=\"5\" x=\"192\" y=\"172\" w=\"640\" h=\"480\"/>"
+		        "<window wid=\"6\" action=\"close\"/>"
+		        "</window_request>"),
+		[&] (Window_request const &r) {
+			if (num < 4)
+				got[num] = r;
+			num++;
+		});
+	c.check(ok && num == 2, "v1.1 parse: window_request entries in order");
+	c.check(!got[0].close && got[0].wid == 5
+	     && got[0].x == 192 && got[0].y == 172
+	     && got[0].w == 640 && got[0].h == 480,
+	        "v1.1 parse: geometry entry (inner screen-absolute)");
+	c.check(got[1].close && got[1].wid == 6,
+	        "v1.1 parse: sticky-close representation (action=\"close\")");
+
+	num = 0;
+	ok = parse_window_request(
+		node_of("<window_request>"
+		        "<window wid=\"7\" x=\"-32000\" y=\"-32000\" w=\"320\" h=\"240\"/>"
+		        "</window_request>"),
+		[&] (Window_request const &r) {
+			if (num < 4)
+				got[num] = r;
+			num++;
+		});
+	c.check(ok && num == 1 && got[0].x == -32000 && got[0].y == -32000
+	     && parked(got[0].x, got[0].y),
+	        "v1.1 parse: x=y=-32000 geometry parks");
+
+	num = 0;
+	ok = parse_window_request(
+		node_of("<window_request>"
+		        "<window wid=\"8\" action=\"close\" x=\"1\" y=\"2\" w=\"3\" h=\"4\"/>"
+		        "</window_request>"),
+		[&] (Window_request const &r) {
+			if (num < 4)
+				got[num] = r;
+			num++;
+		});
+	c.check(ok && got[0].close && got[0].wid == 8 && got[0].x == 0,
+	        "v1.1 parse: action=\"close\" wins over geometry attrs");
+
+	num = 0;
+	ok = parse_window_request(
+		node_of("<window_request><window wid=\"5\" x=\"1\" y=\"2\" w=\"3\"/></window_request>"),
+		[&] (Window_request const &) { num++; });
+	c.check(!ok, "v1.1 parse: geometry entry missing h is malformed");
+
+	ok = parse_window_request(
+		node_of("<window_request><window wid=\"5\" action=\"focus\"/></window_request>"),
+		[&] (Window_request const &) { num++; });
+	c.check(!ok, "v1.1 parse: unknown action value is malformed");
+
+	ok = parse_window_request(
+		node_of("<window_request><window x=\"1\" y=\"2\" w=\"3\" h=\"4\"/></window_request>"),
+		[&] (Window_request const &) { num++; });
+	c.check(!ok, "v1.1 parse: entry without wid is malformed");
+
+	ok = parse_window_request(
+		node_of("<window_request><window wid=\"5\""),
+		[&] (Window_request const &) { num++; });
+	c.check(!ok, "v1.1 parse: malformed window_request rejected");
+
+	ok = parse_window_request(
+		node_of("<requests/>"),
+		[&] (Window_request const &) { num++; });
+	c.check(!ok, "v1.1 parse: window_request wrong root rejected");
+
+	num = 0;
+	ok = parse_window_request(
+		node_of(gen_xml(buf, sizeof(buf), "window_request", [&] (Genode::Xml_generator &g) {
+			gen_window_request_entry(g, geom);
+			gen_window_request_entry(g, close);
+		})),
+		[&] (Window_request const &r) {
+			if (num < 4)
+				got[num] = r;
+			num++;
+		});
+	c.check(ok && num == 2 && !got[0].close && got[1].close && got[1].wid == 6,
+	        "v1.1 round trip: window_request geometry + sticky close");
+}
+
+
+/* ============ 10. v1.1 window_chrome (core -> decorator) ======== */
+
+void case_v11_window_chrome(Ctx &c)
+{
+	Window_chrome ch;
+	ch.wid        = 5;
+	ch.label      = "pkg_runtime -> pkg_gui_demo -> Sponge Pkg GUI Demo";
+	ch.title      = "Hello World";
+	ch.resizeable = true;
+	ch.fw         = 648;
+	ch.fh         = 488;
+
+	char buf[512];
+
+	c.check_xml("v1.1 gen: window_chrome byte shape (resizeable)",
+	            "<window_chrome>\n"
+	            "\t<window wid=\"5\""
+	            " label=\"pkg_runtime -> pkg_gui_demo -> Sponge Pkg GUI Demo\""
+	            " title=\"Hello World\" resizeable=\"yes\" fw=\"648\" fh=\"488\"/>\n"
+	            "</window_chrome>\n",
+	            gen_xml(buf, sizeof(buf), "window_chrome", [&] (Genode::Xml_generator &g) {
+		            gen_window_chrome_entry(g, ch);
+	            }));
+
+	Window_chrome fixed = ch;
+	fixed.resizeable = false;
+
+	c.check_xml("v1.1 gen: window_chrome omits resizeable when false",
+	            "<window_chrome>\n"
+	            "\t<window wid=\"5\""
+	            " label=\"pkg_runtime -> pkg_gui_demo -> Sponge Pkg GUI Demo\""
+	            " title=\"Hello World\" fw=\"648\" fh=\"488\"/>\n"
+	            "</window_chrome>\n",
+	            gen_xml(buf, sizeof(buf), "window_chrome", [&] (Genode::Xml_generator &g) {
+		            gen_window_chrome_entry(g, fixed);
+	            }));
+
+	Window_chrome got { };
+	unsigned num = 0;
+	bool ok = parse_window_chrome(
+		node_of("<window_chrome>"
+		        "<window wid=\"5\" label=\"a b\" title=\"t\""
+		        " resizeable=\"yes\" fw=\"648\" fh=\"488\"/>"
+		        "</window_chrome>"),
+		[&] (Window_chrome const &x) {
+			got = x;
+			num++;
+		});
+	c.check(ok && num == 1, "v1.1 parse: window_chrome accepted");
+	c.check(got.wid == 5 && got.fw == 648 && got.fh == 488,
+	        "v1.1 parse: wid + OUTER frame size consumed");
+	c.check(str_eq(got.label.string(), "a b")
+	     && str_eq(got.title.string(), "t") && got.resizeable,
+	        "v1.1 parse: label/title/resizeable consumed");
+
+	num = 0;
+	ok = parse_window_chrome(
+		node_of("<window_chrome>"
+		        "<window wid=\"5\" label=\"a\" title=\"\" fw=\"640\" fh=\"480\"/>"
+		        "</window_chrome>"),
+		[&] (Window_chrome const &x) {
+			got = x;
+			num++;
+		});
+	c.check(ok && num == 1 && !got.resizeable && str_eq(got.title.string(), ""),
+	        "v1.1 parse: missing resizeable defaults false, empty title ok");
+
+	num = 0;
+	ok = parse_window_chrome(
+		node_of("<window_chrome><window wid=\"5\" fw=\"640\"/></window_chrome>"),
+		[&] (Window_chrome const &) { num++; });
+	c.check(!ok, "v1.1 parse: window_chrome missing fh is malformed");
+
+	ok = parse_window_chrome(
+		node_of("<window_chrome><window label=\"a\" fw=\"1\" fh=\"1\"/></window_chrome>"),
+		[&] (Window_chrome const &) { num++; });
+	c.check(!ok, "v1.1 parse: window_chrome missing wid is malformed");
+
+	ok = parse_window_chrome(node_of("<chrome/>"),
+		[&] (Window_chrome const &) { num++; });
+	c.check(!ok, "v1.1 parse: window_chrome wrong root rejected");
+
+	ok = parse_window_chrome(node_of("<window_chrome><window wid=\"5\""),
+		[&] (Window_chrome const &) { num++; });
+	c.check(!ok, "v1.1 parse: window_chrome malformed rejected");
+
+	num = 0;
+	unsigned long first_wid = 0;
+	ok = parse_window_chrome(
+		node_of("<window_chrome>"
+		        "<window wid=\"5\" label=\"a\" title=\"t\" fw=\"648\" fh=\"488\"/>"
+		        "<window wid=\"6\" label=\"b\" title=\"u\" resizeable=\"yes\""
+		        " fw=\"320\" fh=\"240\"/>"
+		        "</window_chrome>"),
+		[&] (Window_chrome const &x) {
+			if (num == 0)
+				first_wid = x.wid;
+			num++;
+		});
+	c.check(ok && num == 2 && first_wid == 5,
+	        "v1.1 parse: window_chrome snapshot order (destroy = absence)");
+
+	num = 0;
+	ok = parse_window_chrome(
+		node_of(gen_xml(buf, sizeof(buf), "window_chrome", [&] (Genode::Xml_generator &g) {
+			gen_window_chrome_entry(g, ch);
+		})),
+		[&] (Window_chrome const &x) {
+			got = x;
+			num++;
+		});
+	c.check(ok && num == 1 && got.wid == 5 && got.resizeable
+	     && got.fw == 648 && got.fh == 488,
+	        "v1.1 round trip: window_chrome");
+}
+
+
+/* ============ 11. v1.1 decorator_margins ======================== */
+
+void case_v11_margins(Ctx &c)
+{
+	Margins m;
+	m.top    = 28;
+	m.bottom = 2;
+	m.left   = 2;
+	m.right  = 2;
+
+	char buf[256];
+
+	c.check_xml("v1.1 gen: decorator_margins byte shape",
+	            "<decorator_margins>\n"
+	            "\t<floating top=\"28\" bottom=\"2\" left=\"2\" right=\"2\"/>\n"
+	            "</decorator_margins>\n",
+	            gen_xml(buf, sizeof(buf), "decorator_margins", [&] (Genode::Xml_generator &g) {
+		            gen_decorator_margins(g, m);
+	            }));
+
+	Margins out;
+	bool ok = parse_decorator_margins(
+		node_of("<decorator_margins>"
+		        "<floating top=\"28\" bottom=\"2\" left=\"2\" right=\"2\"/>"
+		        "</decorator_margins>"), out);
+	c.check(ok && out.top == 28 && out.bottom == 2
+	     && out.left == 2 && out.right == 2,
+	        "v1.1 parse: decorator_margins values consumed");
+
+	ok = parse_decorator_margins(node_of("<decorator_margins/>"), out);
+	c.check(!ok, "v1.1 parse: decorator_margins without <floating> malformed");
+
+	ok = parse_decorator_margins(
+		node_of("<decorator_margins>"
+		        "<floating top=\"28\" bottom=\"2\" left=\"2\"/>"
+		        "</decorator_margins>"), out);
+	c.check(!ok, "v1.1 parse: decorator_margins missing right malformed");
+
+	ok = parse_decorator_margins(node_of("<margins/>"), out);
+	c.check(!ok, "v1.1 parse: decorator_margins wrong root rejected");
+
+	ok = parse_decorator_margins(node_of("<decorator_margins><floating"), out);
+	c.check(!ok, "v1.1 parse: decorator_margins malformed rejected");
+
+	out = Margins { };
+	ok = parse_decorator_margins(
+		node_of(gen_xml(buf, sizeof(buf), "decorator_margins", [&] (Genode::Xml_generator &g) {
+			gen_decorator_margins(g, m);
+		})), out);
+	c.check(ok && out.top == 28 && out.right == 2,
+	        "v1.1 round trip: decorator_margins");
+}
+
+
+/* ============ 12. v1.1 chrome geometry + buttons ================= */
+
+void case_chrome_geometry(Ctx &c)
+{
+	Margins const m { 28, 2, 2, 2 };
+
+	Rect const inner { 192, 172, 640, 480 };
+	Rect const outer = outer_from_inner(inner, m);
+
+	c.check(outer.x == 190 && outer.y == 144
+	     && outer.w == 644 && outer.h == 510,
+	        "v1.1 geometry: outer = inner expanded by margins");
+
+	Rect const back = inner_from_outer(outer, m);
+	c.check(back.x == 192 && back.y == 172 && back.w == 640 && back.h == 480,
+	        "v1.1 geometry: inner_from_outer(outer_from_inner(x)) == x");
+
+	Margins const zero { 0, 0, 0, 0 };
+	Rect const same = outer_from_inner(inner, zero);
+	c.check(same.x == 192 && same.y == 172 && same.w == 640 && same.h == 480,
+	        "v1.1 geometry: zero margins keep inner == outer");
+
+	Rect const band = title_band(outer, m);
+	c.check(band.x == 190 && band.y == 144 && band.w == 644 && band.h == 28,
+	        "v1.1 chrome: title band = top margin strip of outer frame");
+
+	Rect const close_r = button_rect(outer, m, Button::CLOSE, true);
+	Rect const full_r  = button_rect(outer, m, Button::FULLSCREEN, true);
+	Rect const min_r   = button_rect(outer, m, Button::MINIMIZE, true);
+
+	c.check(close_r.w == 24 && close_r.h == 16,
+	        "v1.1 chrome: button size 24x16");
+	c.check(close_r.x == 806 && close_r.y == 150,
+	        "v1.1 chrome: closer right-aligned (pad 4), vertically centered");
+	c.check(full_r.x == close_r.x - 28,
+	        "v1.1 chrome: fullscreen 4px pad left of closer");
+	c.check(min_r.x == full_r.x - 28,
+	        "v1.1 chrome: minimizer 4px pad left of fullscreen");
+	c.check(close_r.x > full_r.x && full_r.x > min_r.x,
+	        "v1.1 chrome: right-to-left order CLOSE, FULLSCREEN, MINIMIZE");
+
+	Rect const absent = button_rect(outer, m, Button::FULLSCREEN, false);
+	c.check(absent.w <= 0 && absent.h <= 0,
+	        "v1.1 chrome: fullscreen affordance absent when not resizeable");
+
+	Rect const min_fixed = button_rect(outer, m, Button::MINIMIZE, false);
+	c.check(min_fixed.x == close_r.x - 28 && min_fixed.x > close_r.x - 56,
+	        "v1.1 chrome: minimizer hugs the right group without fullscreen");
+}
+
+
+/* ============ 13. v1.1 chrome hit testing ======================== */
+
+void case_chrome_hit(Ctx &c)
+{
+	Margins const m { 28, 2, 2, 2 };
+	Rect const outer { 0, 0, 648, 510 };
+
+	c.check(chrome_hit(0, 0, outer, m, true) == Hit::SIZER_NW,
+	        "v1.1 hit: NW corner");
+	c.check(chrome_hit(15, 15, outer, m, true) == Hit::SIZER_NW,
+	        "v1.1 hit: NW corner reaches 16x16 (beyond the 8px grips)");
+	c.check(chrome_hit(647, 0, outer, m, true) == Hit::SIZER_NE,
+	        "v1.1 hit: NE corner");
+	c.check(chrome_hit(0, 509, outer, m, true) == Hit::SIZER_SW,
+	        "v1.1 hit: SW corner");
+	c.check(chrome_hit(647, 509, outer, m, true) == Hit::SIZER_SE,
+	        "v1.1 hit: SE corner");
+
+	c.check(chrome_hit(100, 7, outer, m, true) == Hit::SIZER_N,
+	        "v1.1 hit: N grip = outermost min(top 28, 8) px");
+	c.check(chrome_hit(100, 8, outer, m, true) == Hit::TITLE_MOVE,
+	        "v1.1 hit: below the N grip is the title band");
+	c.check(chrome_hit(100, 508, outer, m, true) == Hit::SIZER_S,
+	        "v1.1 hit: S grip = bottom margin 2 px");
+	c.check(chrome_hit(1, 100, outer, m, true) == Hit::SIZER_W,
+	        "v1.1 hit: W grip = left margin 2 px");
+	c.check(chrome_hit(647, 100, outer, m, true) == Hit::SIZER_E,
+	        "v1.1 hit: E grip = right margin 2 px");
+
+	c.check(chrome_hit(630, 14, outer, m, true) == Hit::BTN_CLOSE,
+	        "v1.1 hit: closer button");
+	c.check(chrome_hit(600, 14, outer, m, true) == Hit::BTN_FULLSCREEN,
+	        "v1.1 hit: fullscreen button (resizeable)");
+	c.check(chrome_hit(570, 14, outer, m, true) == Hit::BTN_MINIMIZE,
+	        "v1.1 hit: minimizer button");
+
+	c.check(chrome_hit(600, 14, outer, m, false) == Hit::BTN_MINIMIZE,
+	        "v1.1 hit: minimizer occupies the fullscreen slot when not resizeable");
+	c.check(chrome_hit(570, 14, outer, m, false) == Hit::TITLE_MOVE,
+	        "v1.1 hit: leftmost slot is title when not resizeable");
+
+	c.check(chrome_hit(2, 2, outer, m, true) == Hit::SIZER_NW,
+	        "v1.1 hit precedence: corner beats edge grip");
+	c.check(chrome_hit(630, 7, outer, m, true) == Hit::SIZER_N,
+	        "v1.1 hit precedence: edge grip beats button");
+	c.check(chrome_hit(630, 14, outer, m, true) == Hit::BTN_CLOSE,
+	        "v1.1 hit precedence: button beats title/move");
+
+	c.check(chrome_hit(100, 14, outer, m, true) == Hit::TITLE_MOVE,
+	        "v1.1 hit: title band is move");
+	c.check(chrome_hit(300, 300, outer, m, true) == Hit::NONE,
+	        "v1.1 hit: client area is NONE");
+	c.check(chrome_hit(-1, 300, outer, m, true) == Hit::NONE,
+	        "v1.1 hit: outside the frame is NONE");
+
+	c.check(sizer_zone(100, 7, outer, m) == Sizer_zone::N,
+	        "v1.1 sizer: N zone");
+	c.check(sizer_zone(647, 509, outer, m) == Sizer_zone::SE,
+	        "v1.1 sizer: SE zone");
+	c.check(sizer_zone(300, 300, outer, m) == Sizer_zone::NONE,
+	        "v1.1 sizer: NONE in client area");
+}
+
+
+/* ============ 14. v1.1 wid view-title conversion ================ */
+
+void case_view_title(Ctx &c)
+{
+	c.check(str_eq(view_title(5).string(), "5"),
+	        "v1.1 wid: view title is the decimal wid");
+	c.check(str_eq(view_title(0).string(), "0"),
+	        "v1.1 wid: view title of wid 0");
+
+	unsigned long wid = 0;
+	c.check(parse_view_title(view_title(5).string(), wid) && wid == 5,
+	        "v1.1 wid: round trip 5");
+	c.check(parse_view_title(view_title(4294967295UL).string(), wid)
+	     && wid == 4294967295UL,
+	        "v1.1 wid: round trip unsigned max");
+	c.check(parse_view_title("0", wid) && wid == 0,
+	        "v1.1 wid: round trip 0");
+
+	wid = 99;
+	c.check(!parse_view_title("007", wid) && wid == 99,
+	        "v1.1 wid: leading zeros rejected (canonical decimal only)");
+	c.check(!parse_view_title("5x", wid), "v1.1 wid: non-digit rejected");
+	c.check(!parse_view_title("-1", wid), "v1.1 wid: sign rejected");
+	c.check(!parse_view_title("", wid), "v1.1 wid: empty rejected");
+	c.check(!parse_view_title("99999999999999999999999", wid),
+	        "v1.1 wid: overflow rejected");
+}
+
 }  /* anonymous namespace */
 
 
@@ -953,6 +1473,13 @@ unsigned Sponge::Wm_protocol::run_contract_tests(Check_fn report)
 	case_rules(c);
 	case_identity(c);
 	case_hid_encoding(c);
+	case_v11_focus(c);
+	case_v11_window_request(c);
+	case_v11_window_chrome(c);
+	case_v11_margins(c);
+	case_chrome_geometry(c);
+	case_chrome_hit(c);
+	case_view_title(c);
 
 	return c.failures;
 }

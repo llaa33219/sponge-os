@@ -1,6 +1,8 @@
 /* SPDX-License-Identifier: Apache-2.0
  *
- * sponge_wm_protocol — Sponge-owned WM protocol v1 report/ROM shapes.
+ * sponge_wm_protocol — Sponge-owned WM protocol v1 report/ROM shapes
+ * and the binding internal protocol v1.1 (see the internal section
+ * below; registered in docs/plans/phase16-sponge-wm.md §11).
  *
  * Frozen contract: docs/05-sponge-de.md §4.6 "Protocol v1 report/ROM
  * contract (frozen 2026-11-12)" (Criterion 16, D16W.6). This library
@@ -445,6 +447,330 @@ bool parse_rules(Genode::Node const &root, Rules &info, FN const &fn)
 
 	return true;
 }
+
+
+/* ============= internal protocol v1.1 (binding) =================
+ *
+ * The Sponge-owned INTERNAL contract between sponge_wm (core),
+ * sponge_layouter, and sponge_decorator
+ * (docs/plans/phase16-sponge-wm.md §11). Distinct from the frozen
+ * Tasklist-facing protocol v1 above — v1 stays unchanged and frozen.
+ *
+ * Channels (every report is a COMPLETE last-state-wins snapshot):
+ *
+ *   focus_state      core      -> layouter   (focus truth)
+ *   window_request   layouter  -> core       (complete desired state)
+ *   focus            layouter  -> core       (steering)
+ *   window_chrome    core      -> decorator  (lifecycle/draw snapshot)
+ *   decorator_margins decorator -> layouter + core + probes
+ *
+ * There is NO hover report, NO event-style window_control channel,
+ * and NO seq_number in the v1.1 control path. Lossless gestures use
+ * core->layouter Input forwarding (component behavior). Input and
+ * exclusive grabs are component behavior, documented but not part of
+ * this protocol. 'focus' is steering only; 'focus_state' is the sole
+ * truth for window_layout's consumed focused="yes".
+ *
+ * Identity: the core assigns a monotonic 'wid' per window and emits
+ * it as the frozen window_list 'id'. The decorator names its chrome
+ * view with the decimal 'wid' ('view_title').
+ *
+ * Geometry: the OUTER frame is the INNER geometry expanded by the
+ * published decorator_margins ('outer_from_inner'/'inner_from_outer';
+ * the title band is the top margin). window_request geometry is
+ * INNER and screen-absolute; x=y=-32000 parks. Close is a STICKY
+ * action: the layouter keeps the <window ... action="close"/> node in
+ * every window_request snapshot until the wid disappears from
+ * window_list; the core applies the app-visible 0x0 close convention
+ * when processing it. window_chrome fw/fh are the OUTER frame size
+ * and the producer publishes only create/destroy/title/resizeable/
+ * size change — never move.
+ */
+
+/* wid <-> chrome-view-title (the decorator view name is the decimal
+ * wid). 'parse_view_title' accepts canonical decimal only. */
+Genode::String<32> view_title(unsigned long wid);
+bool parse_view_title(char const *title, unsigned long &wid);
+
+
+/* ---- focus_state (core -> layouter) / focus (layouter -> core) ---- */
+
+struct Focus_target
+{
+	bool          set { false };  /* false: empty root = no focus */
+	unsigned long wid { 0 };
+};
+
+void gen_focus_state(Genode::Xml_generator &g, Focus_target const &t);
+void gen_focus(Genode::Xml_generator &g, Focus_target const &t);
+
+/* Shared singleton <window wid="..."/> reader (used by the two root
+ * shapes below). Strict: a <window> without 'wid' is malformed; the
+ * first window wins when several are present. */
+inline bool parse_window_ref(Genode::Node const &root, char const *root_type,
+                             Focus_target &out)
+{
+	if (!root.has_type(root_type))
+		return false;
+
+	Focus_target t;
+	bool seen = false, malformed = false;
+
+	root.for_each_sub_node("window", [&] (Genode::Node const &n) {
+		if (malformed)
+			return;
+		if (!n.has_attribute("wid")) {
+			malformed = true;
+			return;
+		}
+		if (!seen) {
+			t.wid = n.attribute_value("wid", 0UL);
+			t.set = true;
+			seen = true;
+		}
+	});
+
+	if (malformed)
+		return false;
+
+	out = t;
+	return true;
+}
+
+/* Empty root = no focus ('out.set' false). */
+inline bool parse_focus_state(Genode::Node const &root, Focus_target &out)
+{
+	return parse_window_ref(root, "focus_state", out);
+}
+
+inline bool parse_focus(Genode::Node const &root, Focus_target &out)
+{
+	return parse_window_ref(root, "focus", out);
+}
+
+
+/* ---- window_request (layouter -> core, complete desired state) ---- */
+
+struct Window_request
+{
+	unsigned long wid { 0 };
+	bool          close { false };  /* action="close" (sticky) */
+	int           x { 0 }, y { 0 }; /* INNER screen-absolute; -32000/-32000 parks */
+	long          w { 0 }, h { 0 };
+};
+
+void gen_window_request_entry(Genode::Xml_generator &g,
+                              Window_request const &r);
+
+/*
+ * Visits every <window> of a '<window_request>' document in document
+ * order. A close entry is '<window wid=".." action="close"/>'
+ * (geometry attributes ignored when present); a geometry entry
+ * requires x/y/w/h. Returns false on root mismatch, unknown 'action'
+ * value, or a missing required attribute (treat the whole snapshot as
+ * malformed and drop it).
+ */
+template <typename FN>
+bool parse_window_request(Genode::Node const &root, FN const &fn)
+{
+	if (!root.has_type("window_request"))
+		return false;
+
+	bool malformed = false;
+
+	root.for_each_sub_node("window", [&] (Genode::Node const &n) {
+		if (malformed)
+			return;
+
+		Window_request r;
+		if (!n.has_attribute("wid")) {
+			malformed = true;
+			return;
+		}
+		r.wid = n.attribute_value("wid", 0UL);
+
+		if (n.has_attribute("action")) {
+			if (!(n.attribute_value("action", Genode::String<16>()) == "close")) {
+				malformed = true;
+				return;
+			}
+			r.close = true;
+		} else {
+			if (!n.has_attribute("x") || !n.has_attribute("y")
+			 || !n.has_attribute("w") || !n.has_attribute("h")) {
+				malformed = true;
+				return;
+			}
+			r.x = n.attribute_value("x", 0);
+			r.y = n.attribute_value("y", 0);
+			r.w = n.attribute_value("w", 0L);
+			r.h = n.attribute_value("h", 0L);
+		}
+
+		fn(r);
+	});
+
+	return !malformed;
+}
+
+
+/* ---- window_chrome (core -> decorator, lifecycle/draw snapshot) ---- */
+
+struct Window_chrome
+{
+	unsigned long       wid { 0 };
+	Genode::String<256> label { };       /* frozen external identity */
+	Genode::String<256> title { };
+	bool                resizeable { false };
+	long                fw { 0 }, fh { 0 };  /* OUTER frame size */
+};
+
+void gen_window_chrome_entry(Genode::Xml_generator &g,
+                             Window_chrome const &c);
+
+/*
+ * Visits every <window> of a '<window_chrome>' document in document
+ * order. 'wid', 'fw', and 'fh' are required; label/title default to
+ * empty, 'resizeable' to false. Destroy is the window's ABSENCE from
+ * the snapshot. Returns false on root mismatch or a missing required
+ * attribute.
+ */
+template <typename FN>
+bool parse_window_chrome(Genode::Node const &root, FN const &fn)
+{
+	if (!root.has_type("window_chrome"))
+		return false;
+
+	bool malformed = false;
+
+	root.for_each_sub_node("window", [&] (Genode::Node const &n) {
+		if (malformed)
+			return;
+
+		Window_chrome c;
+		if (!n.has_attribute("wid") || !n.has_attribute("fw")
+		 || !n.has_attribute("fh")) {
+			malformed = true;
+			return;
+		}
+		c.wid        = n.attribute_value("wid", 0UL);
+		c.label      = n.attribute_value("label", Genode::String<256>());
+		c.title      = n.attribute_value("title", Genode::String<256>());
+		c.resizeable = n.attribute_value("resizeable", false);
+		c.fw         = n.attribute_value("fw", 0L);
+		c.fh         = n.attribute_value("fh", 0L);
+
+		fn(c);
+	});
+
+	return !malformed;
+}
+
+
+/* ---- decorator_margins (decorator -> layouter + core + probes) ---- */
+
+struct Margins
+{
+	int top { 0 }, bottom { 0 }, left { 0 }, right { 0 };
+};
+
+/* Emits the single <floating top bottom left right/> child. */
+void gen_decorator_margins(Genode::Xml_generator &g, Margins const &m);
+
+/* Strict: the '<decorator_margins>' root must carry a <floating> node
+ * with all four attributes (first one wins). */
+inline bool parse_decorator_margins(Genode::Node const &root, Margins &out)
+{
+	if (!root.has_type("decorator_margins"))
+		return false;
+
+	Margins m;
+	bool seen = false, malformed = false;
+
+	root.for_each_sub_node("floating", [&] (Genode::Node const &n) {
+		if (seen || malformed)
+			return;
+		if (!n.has_attribute("top") || !n.has_attribute("bottom")
+		 || !n.has_attribute("left") || !n.has_attribute("right")) {
+			malformed = true;
+			return;
+		}
+		m.top    = n.attribute_value("top", 0);
+		m.bottom = n.attribute_value("bottom", 0);
+		m.left   = n.attribute_value("left", 0);
+		m.right  = n.attribute_value("right", 0);
+		seen     = true;
+	});
+
+	if (malformed || !seen)
+		return false;
+
+	out = m;
+	return true;
+}
+
+
+/* ================== inner/outer frame geometry ================== */
+
+struct Rect { int x { 0 }, y { 0 }; long w { 0 }, h { 0 }; };
+
+/* OUTER = INNER expanded by the margins (and back). */
+Rect outer_from_inner(Rect inner, Margins const &m);
+Rect inner_from_outer(Rect outer, Margins const &m);
+
+
+/* ============== frozen chrome layout + hit testing ===============
+ *
+ * Layouter hit-tests; the decorator is a pure renderer + margins
+ * publisher. These pure helpers are the single source of truth for
+ * the chrome metrics shared by both.
+ */
+
+enum : int {
+	CHROME_BUTTON_W   = 24,
+	CHROME_BUTTON_H   = 16,
+	CHROME_BUTTON_PAD = 4,
+	CHROME_CORNER_PX  = 16,
+	CHROME_GRIP_MAX   = 8
+};
+
+enum class Button { CLOSE, FULLSCREEN, MINIMIZE };
+
+enum class Sizer_zone { NONE, N, S, E, W, NE, NW, SE, SW };
+
+enum class Hit {
+	NONE, TITLE_MOVE,
+	BTN_CLOSE, BTN_FULLSCREEN, BTN_MINIMIZE,
+	SIZER_N, SIZER_S, SIZER_E, SIZER_W,
+	SIZER_NE, SIZER_NW, SIZER_SE, SIZER_SW
+};
+
+/* Title band: the top-margin strip of the outer frame. */
+Rect title_band(Rect outer, Margins const &m);
+
+/*
+ * Button rect, 24x16, vertically centered in the title band, the
+ * group right aligned with a 4 px pad, laid out right to left CLOSE,
+ * FULLSCREEN, MINIMIZE. Closer and minimizer are always present;
+ * fullscreen exists only when 'resizeable' (absent buttons are simply
+ * skipped, so the remaining buttons hug the right edge). Returns a
+ * zero-size rect when the affordance is absent.
+ */
+Rect button_rect(Rect outer, Margins const &m, Button b, bool resizeable);
+
+/*
+ * Resize zone of an outer-frame-local point: 16x16 corner squares
+ * override the edge grips (outermost min(margin, 8) px of each edge);
+ * NONE elsewhere.
+ */
+Sizer_zone sizer_zone(int px, int py, Rect outer, Margins const &m);
+
+/*
+ * Full chrome hit test, precedence corner > edge grip > button >
+ * title/move; NONE for the client area or outside the frame.
+ */
+Hit chrome_hit(int px, int py, Rect outer, Margins const &m,
+               bool resizeable);
 
 
 }  /* namespace Sponge::Wm_protocol */
