@@ -113,3 +113,9 @@ sponge-de (currently: single component)
   ├─ settings
   └─ theme
 ```
+
+Interim note (2026-11-11): the `settings/` module and the
+`SettingsController` above are interim; both are removed at the W4
+provider split (D16.9). The target is a separate `sponge_settings`
+shell component with provider-owned settings windows (roadmap
+Criterion 18), not implemented yet.
