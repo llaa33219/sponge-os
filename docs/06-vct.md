@@ -472,6 +472,100 @@ Manual escape hatch:
 - Identical to `vct shutdown`. The QEMU-monitor fallback for reset is
   `system_reset` (with the same `-qmp` / `Ctrl-A x` access pattern).
 
+### 4.8 Settings Entries (Planned: Phase 16 Extension Target)
+
+> **Status: planned, not implemented.** The two commands below are not
+> routed by the current parser and are excluded from the §8 command
+> counts. They specify the vct half of the provider-owned Settings
+> contract ([`docs/12-package-format.md`](12-package-format.md) §14);
+> the authoring half is
+> [`docs/16-package-authoring.md`](16-package-authoring.md) §9 and the
+> GUI half is the separate `sponge_settings` control center
+> ([`docs/05-sponge-de.md`](05-sponge-de.md)).
+
+Synopsis:
+
+```
+vct settings list [--json] [--help] [--lang ko]
+vct settings open <package> <settings-id> [--json] [--help] [--lang ko]
+```
+
+Flags: identical to `vct update`. Help follows the normal convention:
+a concise English summary first, detailed English help after, Korean
+with `--lang ko`.
+
+Automation-default behavior:
+
+- Both commands use the **same `sponge_pkgd` metadata and launch
+  backend** that `vct list` and `vct launch` use (AGENTS.md §3.3 rule
+  5: two interfaces, one backend, one state of truth). Requests
+  travel on vct's own single-writer request/result labels;
+  `sponge_settings` uses its own separate labels for the same backend
+  (`AGENTS.md` §1.2, one writer per label). vct never shares a writer
+  label with the control center and never bypasses `sponge_pkgd`.
+- `vct settings list` reads pkgd's installed metadata (the same
+  source `docs/12-package-format.md` §14.4 specifies for discovery)
+  and prints one line per entry:
+  `package  settings-id  title  category`. Entries are whatever the
+  installed packages declare; no discovery logic lives in vct. An
+  empty result is honest: prints `No settings entries.` and exits 0.
+- `vct settings open <package> <settings-id>` submits one launch
+  request carrying the `target="settings"` discriminator and the
+  named identity pair (`docs/12-package-format.md` §14.5). vct sends
+  an identity, never a command string, and holds no package
+  `File_system` capability. Audit line before acting:
+  `[vct] settings open: requesting <package> <settings-id>`.
+- **Already open:** a second open of a live entry raises and focuses
+  the existing window and reports success with `action="focused"`.
+  It never reports `already-running` and never spawns a second
+  window. That status stays exclusive to `vct launch` (§4.2), whose
+  semantics are unchanged.
+- Errors are reported explicitly, reusing the launch statuses behind
+  the discriminator:
+  - `not-installed`: the package is not installed, the `settings-id`
+    is unknown, or the entry went stale after a removal; exit
+    non-zero.
+  - `package-manager-unavailable`: the `sponge_pkgd` request channel
+    is not answering (pkgd down). vct fails fast, bounded wait then
+    report, and never polls; exit non-zero.
+  - `binary-missing` and `insufficient-resources`: same meaning and
+    same figures as `vct launch` (§4.2); exit non-zero.
+
+JSON result of `vct settings open sponge-de position --json`:
+
+```json
+{
+  "command": "settings open",
+  "package": "sponge-de",
+  "settings_id": "position",
+  "status": "ok",
+  "action": "focused"
+}
+```
+
+Human-readable output renders the `ok` status as `success`.
+
+`vct settings list --json` emits a `settings_list` command record
+with an `entries` array of `{package, settings_id, title, category}`
+objects, mirroring the `vct list` JSON style (§6.2).
+
+Manual escape hatch:
+
+- Like `vct launch`, both commands are single-step operations with no
+  `--manual` mode. The manual path to the same work is reading
+  `pkg/<name>/metadata.xml` directly (`docs/12-package-format.md`
+  §14.2) and starting the provider binary through
+  `vct component start`; `vct settings open` is the one-step
+  automation of exactly that, which is the AGENTS.md §3.3 pairing.
+- `vct settings` never writes configuration. `vct config <key>
+  [value]` (§4.4) remains the intentional admin-wide manual writer:
+  it is the deliberate escape hatch that writes keys directly through
+  `sponge_configd` for administrators who need to set anything
+  anywhere. Provider-owned writes stay inside each provider's own
+  configd key domain or package-private store
+  (`docs/12-package-format.md` §14.6), and no settings command turns
+  vct into a relay for those writes.
+
 ---
 
 ## 5. Automation vs Control: An Example
@@ -652,7 +746,10 @@ plan):
 
 With the Phase 7 additions the Alpha surface is **15 user-facing
 subcommands**. `vct snapshot` and `vct rollback` stay in §4.7 as
-future work; they are not part of the Alpha media.
+future work; they are not part of the Alpha media. The planned
+`vct settings list` and `vct settings open` (§4.8) are Phase 16
+Extension targets: not implemented, not routed by the parser, and
+excluded from this count.
 
 The implementation roadmap is defined under the milestones in
 `docs/09-roadmap.md`.
