@@ -326,3 +326,73 @@ No task requires Genode terminology from the user.
 - The `wm_settings` provider's WM settings UI (including how
   `wm.layout.mode` is presented) is Criterion 18 scope and is
   deliberately untouched here (D16W.11).
+
+---
+
+## 11. Protocol v1.1 addendum — internal Sponge-WM contract (binding)
+
+> Registered 2026-11-12 with the protocol foundation work. **Binding
+> internal protocol** for the native trio, distinct from — and
+> additive to — the frozen Tasklist-facing protocol v1
+> (docs/05-sponge-de.md §4.6, D16W.6), which stays frozen and
+> unchanged. Shapes, parsers/generators, and the frozen chrome
+> helpers live in `repos/sponge/include/sponge/wm_protocol.h`
+> (`Sponge::Wm_protocol`, internal section); deterministic contract
+> tests in `repos/sponge/src/test/wm_protocol_probe/`. This addendum
+> registers the contract only: it marks no milestone complete and
+> claims no component implementation.
+
+Channels (report/ROM labels; every report is a COMPLETE
+last-state-wins snapshot):
+
+| Label | Producer -> Consumer | Shape |
+|---|---|---|
+| `focus_state` | sponge_wm -> sponge_layouter | `<focus_state><window wid="5"/></focus_state>`; empty root = no focus |
+| `window_request` | sponge_layouter -> sponge_wm | `<window_request><window wid="5" x="192" y="172" w="640" h="480"/><window wid="6" action="close"/></window_request>` |
+| `focus` | sponge_layouter -> sponge_wm | `<focus><window wid="5"/></focus>` (steering only) |
+| `window_chrome` | sponge_wm -> sponge_decorator | `<window_chrome><window wid="5" label="..." title="..." resizeable="yes" fw="648" fh="488"/></window_chrome>` |
+| `decorator_margins` | sponge_decorator -> sponge_layouter + sponge_wm + probes | `<decorator_margins><floating top="28" bottom="2" left="2" right="2"/></decorator_margins>` (shape unchanged) |
+
+Semantics (binding):
+
+- **Snapshots, not events.** There is NO hover report, NO event-style
+  window_control channel, and NO seq_number in the v1.1 control path.
+  Lossless gestures travel as core->layouter Input forwarding
+  (component behavior). Input and exclusive grabs are component
+  behavior: documented here, deliberately not protocol.
+- **Identity.** The core assigns a monotonic `wid` per window and
+  emits it as the frozen `window_list` `id`; the decorator's chrome
+  view title is the decimal `wid`.
+- **window_request.** Geometry is INNER screen-absolute; `x=y=-32000`
+  parks. `action="close"` is a STICKY request: the layouter keeps the
+  close node in every snapshot until the wid disappears from
+  `window_list`; the core applies the app-visible 0x0 close
+  convention when processing it.
+- **window_chrome.** `fw`/`fh` are the OUTER frame size (outer = the
+  inner geometry expanded by `decorator_margins`). The producer
+  publishes only create/destroy/title/resizeable/size change — never
+  move; destroy is the window's absence from the snapshot.
+- **Focus.** `focus` is steering; `focus_state` is the sole truth for
+  `window_layout`'s consumed `focused="yes"`.
+
+Frozen chrome metrics (single source of truth: the shared pure
+helpers `title_band` / `button_rect` / `sizer_zone` / `chrome_hit` /
+`view_title` in `sponge_wm_protocol`; the layouter hit-tests, the
+decorator is a pure renderer + margins publisher):
+
+- Buttons 24x16, pad 4, vertically centered in the title band (the
+  top margin), right aligned; right-to-left CLOSE, FULLSCREEN,
+  MINIMIZE. Closer + minimizer always present; fullscreen iff
+  resizeable; absent buttons are skipped and the group stays right
+  aligned.
+- Grip zones: the outermost min(margin, 8) px of each edge; corners
+  16x16 override the edges.
+- Hit order: corner > edge grip > button > title/move.
+
+Run-side routing (all four `run/sponge-wm-native*.run`):
+`window_chrome` (core->decorator), `window_request`
+(layouter->core), `decorator_margins` (decorator->layouter+core+
+probes), `focus_state` (core->layouter), `focus` (layouter->core).
+There is no pointer channel and no core-side `focus_state` ROM route
+(the core produces it). The four frozen Tasklist-facing labels keep
+their routing unchanged (D16W.6).
