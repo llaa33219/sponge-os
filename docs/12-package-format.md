@@ -103,6 +103,7 @@ rely on order, but authors should write in this order for readability.
 | `<exclusive>` | 0..1 | Carries one attribute, `group`. At most one **running** package may carry the same group at a time; an install or launch that would create a second one is refused with `exclusive-conflict` naming the incumbent (§4.6). An absent or `group`-less element means "no exclusive claim". The framebuffer drivers use `group="fb"`. |
 | `<autostart>` | 0..1 | If present, the package is started automatically when it is installed and when its installed state is restored. Without it, installation registers the package but does not create a `<start>` node. |
 | `<launcher>` | 0..1 | If present, the package gets a launcher entry. Carries one attribute `category`. |
+| `<settings>` | 0..N | **Phase 16 Extension target (§14; not parsed by today's `sponge_pkgd`).** Provider-owned Settings entries, one per provider binary. A separate element family from `<launcher>`, which is never overloaded for settings. |
 | `<dependencies>` | 0..1 | Container of `<pkg>` children, each naming another package by `<name>`. Empty container means "no dependencies". |
 | `<sessions>` | 0..1 | Container of `<session>` children, each declaring a required session and its default route. Omit entirely for components that need only parent-provided services (`LOG`, `ROM`, `PD`, `CPU`, `Timer`). |
 
@@ -940,6 +941,7 @@ any door.
 | Mirrors and failover | Multiple roots with priority order. | Builds on the remote-repository support. |
 | Per-system overrides | A separate `<pkg-override>` ROM that pkgd consults before applying metadata. | Adds a precedence story that competes with `vct component route`; keep one source of override for now. |
 | Lockfiles | A `pkg/lock.xml` recording the resolved set for a run. | Useful for reproducible installs; not needed for single-image development. |
+| Provider-owned Settings entries | The `<settings>` element family: 0..N entries per package, each with a stable `id`, `title`, closed-enum `category`, optional `icon`/`keywords`, and a payload-relative `target` binary. | **Phase 16 Extension target.** Schema, discovery, lifecycle, privileges, and failure semantics are specified in §14 so the format closes no door. Older parsers warn-and-ignore the element (additive evolution) until the target parser lands. |
 
 When any of these land, the rule is to extend the schema
 additively: new child elements and new optional attributes are
@@ -992,6 +994,12 @@ document:
 - `docs/09-roadmap.md` §6: Phase 4 completion criteria.
 - `docs/10-theme-format.md`: sister format spec. INI for human-
   authored themes, XML for Genode-consumed metadata.
+- `docs/05-sponge-de.md`: the separate `sponge_settings` control
+  center design that consumes the §14 contract.
+- `docs/06-vct.md` §4.8: the planned `vct settings` command surface
+  on the same pkgd metadata/launch backend.
+- `docs/16-package-authoring.md` §9: the settings-provider authoring
+  workflow built on §14.
 - `docs/plans/phase16-runtime-overhaul.md`: D16R.6 and P2.4, the
   runtime-class decision that `<runtime_class>` implements.
 - `genode/repos/base/include/util/xml_node.h`: the parser this
@@ -1139,3 +1147,232 @@ The seeding is gated on the empty root set, so a persistent store
 (§13) keeps the user's own install/remove decisions authoritative
 across reboots. Scenarios without the `<bake/>` node or the
 `bake_manifest` ROM route behave exactly as before.
+
+---
+
+## 14. Provider-Owned Settings Entries (Phase 16 Extension Target)
+
+> **Status: target behavior, not implemented.** Sections 1 through 13
+> describe the format and the lifecycle as they exist today. This
+> section is the Phase 16 Extension contract for provider-owned
+> Settings entries: today's `sponge_pkgd` neither parses nor launches
+> them. The section exists so the package format, the authoring guide
+> ([`docs/16-package-authoring.md`](16-package-authoring.md) §9), and
+> the vct command surface ([`docs/06-vct.md`](06-vct.md) §4.8) share
+> one contract instead of three guesses. The companion UI is the
+> separate `sponge_settings` control center
+> ([`docs/05-sponge-de.md`](05-sponge-de.md)), which lists and opens
+> providers and carries no settings UI of its own.
+
+### 14.1 What a Settings Entry Is
+
+A package may declare **0..N `<settings>` entries**. Each entry names
+one settings *provider*: a separate component binary inside the
+package's staged payload that owns its window, its validation, its
+persistence, and its errors. Consumers (the control center, vct) only
+list entries and open them.
+
+Three rules shape everything below.
+
+1. **The stable identity is the pair `(package, settings-id)`.** A
+   bare `target="settings"` is deliberately not addressable. One
+   package can ship several entries (the §14.2 example ships two),
+   and each one is listed, focused, and removed on its own.
+2. **`sponge_pkgd` resolves and launches the provider binary.** The
+   control center and vct never send command strings, never hold a
+   package `File_system` capability, and never interpret target names
+   themselves.
+3. **`<launcher>` keeps its exact meaning.** The singular
+   `<launcher category>` element (§4.1) remains the app launcher
+   entry and is never overloaded for settings registration. A package
+   may carry a `<launcher>`, any number of `<settings>` entries, both,
+   or neither.
+
+### 14.2 Metadata Schema
+
+One `<settings>` element per provider entry, as a child of
+`<package>` alongside (never inside) `<launcher>`:
+
+| Attribute | Required | Meaning |
+|---|---|---|
+| `id` | yes | Stable entry identity inside the package. Bounded identifier, `[a-z0-9_-]{1,32}`. Unique among the package's entries and stable across reinstall: the id is authored metadata, so a remove/install cycle returns the same identity and never invents a new one. |
+| `title` | yes | Human-readable title, shown in the control center listing and used as the provider window's display title. |
+| `category` | no | Closed enum `desktop`, `hardware`, `system`, `applications`, `other`. Groups entries in the control center. An absent or unknown value warns and falls back to `other` (the `<kind>` typo rule, §4.5). |
+| `icon` | no | Name of a staged payload image used as the entry icon. Absent means the control center falls back to a default glyph. |
+| `target` | yes | The provider binary, named by the same convention as `<binary>` (§4.1) but validated harder (§14.3): exactly one bare name of a file in the package's staged payload. |
+
+Each entry may carry **0..N `<keyword>` children**, short free-form
+search terms used by `vct settings list` and control-center search.
+Keywords carry no semantics beyond search.
+
+Annotated example, one package with **two** entries that share one
+provider binary:
+
+```xml
+<package>
+  <name>sponge-de</name>
+  <version>1.0</version>
+  <description>Core Sponge DE settings-provider package.</description>
+
+  <!-- Phase 16 Extension target: two independent settings providers. -->
+  <settings id="panel"    title="Panel"          category="desktop"
+            icon="panel.png" target="panel_settings">
+    <keyword>height</keyword>
+    <keyword>widgets</keyword>
+  </settings>
+
+  <settings id="position" title="Panel Position" category="desktop"
+            target="panel_settings">
+    <keyword>edge</keyword>
+    <keyword>multi-panel</keyword>
+  </settings>
+
+  <sessions>
+    <session name="Gui"         default-route="nitpicker"/>
+    <session name="Report"      default-route="report_rom"/>
+    <session name="ROM"         default-route="parent"/>
+    <session name="File_system" default-route="vfs"
+             readonly="yes" subpath="/app/panel"/>
+  </sessions>
+</package>
+```
+
+The two entries deliberately share `target="panel_settings"`:
+sharing a binary is legal, and the lifecycle identity stays distinct
+per entry anyway (§14.5). `panel.png` is an ordinary staged payload
+file. The example carries zero app launcher entries and two settings
+entries: a settings-only package is first-class, the `<settings>`
+family stands on its own, and nothing here implies the DE is an
+ordinary launcher app.
+
+### 14.3 Parse and Validation Rules
+
+Two parser generations coexist by design (§10 additive evolution):
+
+- **Older parsers** do not know `<settings>`. They log
+  `Genode::warning("pkg: unknown element <settings>")` and ignore the
+  entry exactly as §4.4 prescribes for unknown children. Metadata
+  that carries `<settings>` therefore still installs on an older
+  parser, just without offering the entries.
+- **The new target parser** accepts old metadata unchanged (0 entries
+  is valid) and accepts the §14.2 schema closed. Unknown attributes
+  on a `<settings>` element warn and are ignored, keeping the door
+  open for additive extension, but the following forms are **hard
+  rejections**. A rejected entry invalidates its package: the package
+  is refused with a clear English error naming the offending entry,
+  the same treatment a missing `<name>` gets in §4.4.
+
+| Rejected form | Why |
+|---|---|
+| Duplicate `id` values in one package | The `(package, settings-id)` identity must be unique per package (§14.1). |
+| Missing `target`, or a `target` that is not one bare payload binary name | The target is data, never a command line. An absent or malformed target is refused at parse time; a valid-looking name whose binary is missing from the image is refused at open time as `binary-missing` (the §9.2.1 pre-flight). |
+| Absolute paths (`/bin/...`, backslash or drive forms) | The target resolves inside the package's staged payload only. Nothing outside that payload is addressable. |
+| Payload escapes (`..`, any path separator in the name) | The same boundary from the other side: a target can name the package's own payload files and nothing else. |
+| Shell or interpreter strings (`sh -c ...`, embedded whitespace, quotes, `;`, `\|`, `&`, `$`, backticks, any command-line shape) | There is no Exec-style field in this schema and there will not be one. The launch path starts exactly one binary; it never assembles or interprets a command string. |
+| An exclusive attribute or claim carried by the `<settings>` entry itself | `<exclusive>` (§4.6) stays a running-set concept for app and driver packages and remains valid on a package that also declares settings entries: it gates only that package's join of the running set at install or launch, so the §4.6 behavior is untouched (any package claiming a free group joins, a second claimant is refused). A settings launch has its own `(package, settings-id)` lifecycle identity and never joins the app's exclusive running-set check, so settings targets are never exclusive. A settings entry point must always be openable, because the focus contract (§14.7) promises exactly that; an entry that could answer `exclusive-conflict` would break the promise. |
+
+### 14.4 Identity and Discovery
+
+**Identity.** A settings entry is identified by `(package,
+settings-id)` and by nothing else. The `target` value is a pointer,
+not an identity: re-pointing an entry at a new binary keeps its
+identity, and two entries may share one binary without colliding.
+
+**Discovery.** `sponge_pkgd` publishes each installed package's
+`<settings>` entries as part of its installed metadata (the same
+`installed` broadcast and `list` results §9.2.1 defines, carrying the
+§14.2 fields per entry). Watchers, including the `sponge_settings`
+control center and `vct settings list`, refresh on that ROM's update
+signal. Consequences:
+
+- An install adds its entries to discovery immediately: no reboot and
+  no Settings or control-center code change, because consumers render
+  whatever `sponge_pkgd` publishes.
+- A removal deletes its entries immediately.
+- There is no polling requirement. The ROM update signal is the
+  change notification.
+
+### 14.5 Launch Path and Privileges
+
+`sponge_pkgd` resolves a `(package, settings-id)` request against the
+package's metadata, checks the staged payload, and launches the
+`target` binary by emitting the same kind of `<start>` node the app
+launch path emits. Requests and results reuse the existing launch
+machinery (§9.2.1) plus a `target="settings"` discriminator and the
+`settings-id`. There is no second package manager and no second
+result format.
+
+- **The settings target has a distinct `<start>` and lifecycle
+  identity from the app, even when both share one binary.** The
+  generated start name derives deterministically from
+  `(package, settings-id)`, so the app's installed/running state and
+  the provider's never alias each other.
+- **Callers hold nothing.** The control center and vct send an
+  identity, never a command string, and hold no package
+  `File_system` capability. Every payload lookup happens inside
+  `sponge_pkgd`.
+- **Providers are separate components and separate windows**, one
+  address space each (`AGENTS.md` §1.2), requesting only the sessions
+  the provider actually needs. Session declarations stay in the
+  package's existing `<sessions>` block (§4.1) and route through the
+  same three layers (§7); the settings schema deliberately adds no
+  second sessions vocabulary.
+- **No in-process plugins and no embedding.** A provider is never
+  loaded into the control center, into `sponge-de`, or into another
+  provider.
+
+### 14.6 Configuration Ownership
+
+Who may write configuration is decided by label and enforced by
+`sponge_configd`, not left to convention:
+
+- **First-party providers** (panel, background, display, WM,
+  terminal, and similar) write through a per-provider configd request
+  label, and configd enforces a key-domain ACL per label: the panel
+  provider's label writes `panel.*`, the background provider's writes
+  `background.*`, and so on. No provider writes another provider's
+  domain.
+- **Third-party providers cannot write shared DE keys at all.** They
+  persist through package-private stores scoped to their own package
+  and never touch the shared desktop configuration.
+- **The control center has no configuration write path.** It is
+  neither a direct writer nor an arbitrary relay: it lists entries
+  and opens providers, and that is all. A provider that wants a value
+  changed writes it on its own label.
+- **`sponge_pkgd` launches only.** It never relays configuration
+  writes.
+
+### 14.7 Lifecycle, Focus, Failure, and Removal
+
+**Singleton and focus.** A settings target is singleton per
+`(package, settings-id)`: at most one live instance. Opening an entry
+whose instance is already running raises and focuses the existing
+window. A second open is therefore a success (the entry is reachable),
+never an `already-running` error and never a second window. The window
+identity (its wm/nitpicker label) derives from the stable pair, and
+`title` supplies the display text. This rule is scoped to settings
+targets only. App launch semantics (`already-running`, and the
+separate same-program multi-instance follow-up) are unchanged.
+
+**Results and errors.** Every open produces exactly one result on the
+caller's own channel, reusing the §9.2.1 statuses behind the
+`target="settings"` discriminator. The named launch statuses below
+are §9.2.1 statuses reused as-is; `package-manager-unavailable` is
+the one exception, a settings-path-only result this contract adds:
+
+| Condition | Result |
+|---|---|
+| Open of a not-installed package, an unknown `settings-id`, or a stale entry after removal | `not-installed` |
+| The pkgd request channel is unavailable (`sponge_pkgd` down) | `package-manager-unavailable` (added by this contract for the settings path only, not a §9.2.1 status), reported fail-fast by the caller (bounded wait on the result, then report; no polling loop) |
+| Target binary absent from the image | `binary-missing` (same pre-flight as §9.2.1) |
+| Declared quota does not fit the hosting runtime's budget | `insufficient-resources` (same pre-flight) |
+| Open of an entry with no live instance | `ok`, `action="started"` |
+| Open of an entry with a live instance | `ok`, `action="focused"` (raise and focus the existing window) |
+
+**Removal and crash.** A removal deletes the entry from discovery at
+once, and a later open of that entry returns `not-installed` (the
+stale-open case). A crashed provider is contained in its own address
+space and takes nothing else with it; because the singleton claim
+covers a live instance only, the next open starts a fresh instance.
+This contract introduces no stop or kill operation, so the Alpha
+lifecycle of §9.2.1 stays untouched.
