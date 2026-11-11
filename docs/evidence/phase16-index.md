@@ -643,6 +643,13 @@ These items are preserved as-Phase-16 limitations (per
 `AGENTS.md` §1.1 / §1.4 honest disclosure). Each row carries the
 target phase + the precise evidence pointer.
 
+> Scope update (2026-11-10, user-directed): the Phase 16 Extension
+> gained twelve further completion criteria (`docs/09-roadmap.md`
+> §10, Criteria 16-27). Only rows 9 and 13 (left/right panel
+> support) are retargeted to Phase 16 Extension (criterion 22);
+> every evidence value, PASS/PARTIAL result, and other limitation
+> below is unchanged.
+
 | #  | Item                                                                                                          | Target phase | Evidence pointer                                                                                                                  |
 |----|---------------------------------------------------------------------------------------------------------------|--------------|-----------------------------------------------------------------------------------------------------------------------------------|
 | 1  | W6 deviation 1: BackgroundWidget right-click delivery does not produce `open="yes"` consistently                | Phase 17+    | `docs/evidence/phase16-w6-bgmenu-followup.md` (panel-vs-bg diff + 3 candidate root causes + minimal Qt-flag fix recipe)            |
@@ -653,11 +660,11 @@ target phase + the precise evidence pointer.
 | 6  | W11 row #4 (QGenodeScreen 1×1 race)                                                                            | Phase 17+    | Plan appendix row #4                                                                                                              |
 | 7  | W11 row #5 (Phase 14 W8 hover timing)                                                                          | Phase 17+    | Plan appendix row #5                                                                                                              |
 | 8  | W11 row #6 (Phase 14 W5 textedit Ctrl-C)                                                                       | Phase 17+    | Plan appendix row #6                                                                                                              |
-| 9  | Phase 11 panel-menu right + left (the disabled Phase-17+ entries in the Position radio group)                  | Phase 17+    | `docs/05-sponge-de.md` §5 panel context menu + plan D16.2                                                                          |
+| 9  | Phase 11 panel-menu right + left (the disabled Phase-17+ entries in the Position radio group)                  | Phase 16 Extension (criterion 22) | `docs/05-sponge-de.md` §5 panel context menu + plan D16.2                                                                          |
 | 10 | D16.7 ISO metadata-only honest disclosure (Falkon's 509 MiB vs boot-module ceiling)                            | Decision stands | `docs/13-installation.md` Known Limitations                                                                                    |
 | 11 | Real-hardware multi-panel regression (LG gram 17ZD90N at -m 8G vs QEMU at -m 4G)                              | Phase 17+    | Plan §"Non-Goals" + D16.7; QEMU proves the topology in W8 (-m 4G).                                                                |
 | 12 | User-supplied background image upload (writable allowlist + image picker UI)                                  | Phase 17+    | Plan ODQ #7                                                                                                                       |
-| 13 | `panel.position` `right` / `left` panel-domain support (Phase 17+ entries stay disabled in the radio group)   | Phase 17+    | Plan ODQ #3                                                                                                                       |
+| 13 | `panel.position` `right` / `left` panel-domain support (Phase 17+ entries stay disabled in the radio group)   | Phase 16 Extension (criterion 22) | Plan ODQ #3                                                                                                                       |
 | 14 | Phase 14 W9 stability probe (30-min wall-clock; W12 close-out respects the 20-min/scenario skip rule)         | Phase 17+    | `docs/evidence/phase14-index.md` §1 W9 + §2 criterion-1                                                                            |
 | 15 | `run/sponge-de-workflow.run` step 5 (layouter hover-state timing on the heavier workflow topology)           | Phase 17+    | `docs/evidence/phase14-w8-workflow-scenario.md`                                                                                    |
 | 16 | `run/sponge-falkon.run` / `sponge-falkon-disk.run` first paint on seL4 (caps ceiling + boot-module ceiling)    | Phase 17+    | `docs/plans/phase15-real-hardware-boot.md` Phase 15+ caps resolution path; falkon_rescue keeps the criterion-3 browser path green. |

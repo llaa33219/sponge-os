@@ -824,18 +824,32 @@ disclosure for ISO media; criterion 10 carries the W6 deviation
 per-criterion traceability in `docs/evidence/phase16-index.md`
 §2; the §6 honest-limitations register there carries every
 preserved Phase 17+ carry-over with evidence pointers.
+**Addendum (2026-11-10, scope expansion):** criterion 2 is
+reopened and redefined below (its final target is the
+provider-owned control center, Criterion 18); the "10 of 12"
+count above is the historical close-out state, and the
+monolithic five-tab design is no longer counted as the final
+Settings success.
 
 - [x] **Default activation in release media** — **delivered**.
   `run/sponge-alpha.run` → `alpha-probe: PASS` (with the W3
   extended launcher set + the 8 baked-key configd broadcast
   assertions) + `run/sponge-desktop-defaults-firstboot.run` →
   `defaults-firstboot-probe: PASS`.
-- [x] **Settings application (Sponge DE Settings)** —
-  **delivered**. `run/sponge-de-settings.run` →
+- [ ] **Settings application (Sponge DE Settings)** —
+  **reopened and redefined (2026-11-10 scope expansion).** The
+  earlier monolithic five-tab Settings was delivered and
+  scenario-verified (`run/sponge-de-settings.run` →
   `settings-probe: PASS` (per-tab configd-broadcast assertions) +
   `run/sponge-de-settings-regression.run` →
   `settings-regression-probe: PASS` (panel-menu → Settings →
-  Panel tab → height spin → configd carries `panel.height=40`).
+  Panel tab → height spin → configd carries `panel.height=40`)),
+  but those per-tab receipts are historical evidence of the
+  replaced implementation, not closure of the modular
+  control-center requirement. The final Settings target is the
+  provider-owned architecture in **Criterion 18**; the old
+  five-tab design is not counted as the final Settings target,
+  and this criterion stays open until Criterion 18 closes.
 - [x] **Panel context menu** — **delivered**.
   `run/sponge-panel-menu.run` → `panel-menu-probe: PASS` (Height
   spinbox, Visible widgets checkboxes, Position radio group with
@@ -922,13 +936,14 @@ asserting the observable state), consistent with the Phase 10/11
 verification style. Full per-criterion traceability in
 `docs/evidence/phase16-index.md` §2.
 
-### Phase 16 Extension (2026-10-04, user-directed): application completeness
+### Phase 16 Extension (2026-10-04, user-directed): desktop + application completeness
 
 User directive after the first real-hardware session where launched
 windows appear (the launch-stall root cause fixed,
 `docs/evidence/launch-stall-root-cause.md`): the desktop is now
 usable enough that the APPLICATION layer's gaps are the blocker.
-Four additions reopen the Phase 16 completion criteria:
+The initial Extension entries reopen the Phase 16 completion
+criteria:
 
 - [ ] **Criterion 13 — the browser opens.** Falkon launches from
   the release media and renders a window on real hardware and in
@@ -1067,7 +1082,211 @@ certification). Full record:
 (13/14/15 and every other checkbox above stay open) and changes no
 QEMU matrix row or documented partial.
 
+**Scope expansion (2026-11-10, user-directed): twelve further
+completion criteria.** The user directed a second expansion of this
+Extension: the deferred custom Sponge WM is pulled forward, ten
+further user-requested items join it, and a final patch-cleanup gate
+closes the phase, numbered **Criterion 16 through Criterion 27**,
+all unchecked. The new real-hardware gates **strengthen, not
+invalidate,** the prior QEMU/base-linux receipts for base criteria 3
+(panel context menu) and 11 (background image change): those
+receipts remain the recorded evidence of what they actually
+verified. Criterion 18 **reopens and replaces** base criterion 2's
+architecture instead: the old per-tab receipts are historical
+evidence of the replaced monolithic implementation and do **not**
+satisfy the modular provider-owned control-center target, so base
+criterion 2 no longer counts the old five-tab design as final
+success. **Physical-hardware closure for the physical-hardware rows
+(Criteria 17-22 and 24-26) needs a physical-machine receipt**
+carrying machine identity, parent commit, Genode pin, image/scenario,
+and observed interaction; QEMU runs and undocumented field reports
+cannot close those rows. Criterion 27 (final Genode/seL4 patch
+cleanup) is deliberately **not** labeled physical-hardware wholesale:
+it carries row-specific hardware gates (a hardware-anchored patch
+needs physical-hardware A/B before its removal). Existing
+limitations stay true until implementation lands.
+
+Twelve new completion criteria:
+
+- [ ] **Criterion 16: custom Sponge WM (pulled forward from the
+  former long-term deferral).** Deliver a Sponge-native window
+  manager built as a new component under `repos/sponge/` using
+  public Genode interfaces, without forking or patching Genode's
+  `server/wm`, preserving capability-based IPC, with the upstream
+  `wm` + `window_layouter` + `decorator` path staying the current
+  fallback until parity. Acceptance covers ordinary window move,
+  resize, focus, minimize/restore/close via the relevant product
+  scenarios; no separate physical-hardware gate is added. This is
+  distinct from the upstream `themed_decorator` drop-in (Phase 11
+  history) and from the existing `run/sponge-wm*.run` scenarios,
+  which drive the upstream stack.
+- [ ] **Criterion 17: real-hardware DE panel configuration edits.**
+  Change panel settings through the DE on a physical machine and
+  observe both the live result and the `sponge_configd` value.
+  Acceptance is on physical hardware.
+- [ ] **Criterion 18: provider-owned Settings control center
+  (reopens and replaces base criterion 2's architecture).** The
+  monolithic five-tab Settings is replaced by a modular,
+  provider-owned control center. Binding target decisions:
+  - **Shell component.** A separate, on-demand `sponge_settings`
+    Genode component is the control center shell. It carries **no
+    configd write channel, no package `File_system` session, no
+    provider code loading, and no GL-heavy requirement**, and its
+    resources are reclaimed when it closes.
+  - **Package-declared entries.** A package declares **0..N
+    settings entries**; each entry carries a stable
+    `(package, settings-id)` identity, a title, a closed category
+    enum (`desktop`, `hardware`, `system`, `applications`,
+    `other`; an absent or unknown category falls back to `other`),
+    an optional icon and keywords, and a
+    **package-payload binary** as its provider. No arbitrary
+    command strings, no absolute paths, no interpreter launches.
+    `sponge_pkgd` validates declarations, publishes the installed
+    metadata, and resolves provider launches.
+  - **Discovery and openness.** The Settings shell holds only the
+    installed metadata plus its own launch request/result labels.
+    Discovery is event-driven off the pkgd installed-set updates.
+    Any package can join the control center without changes to
+    Settings. No plugin loading and no embedded provider code.
+  - **Lifecycle.** Each settings entry gets its own start (a
+    distinct lifecycle per entry); opening an entry a second time
+    focuses the existing singleton window instead of spawning a
+    duplicate or refusing. The provider owns its UI, validation,
+    writes, lifecycle, and error reporting.
+  - **Configuration authority.** Shared DE keys stay typed in
+    `sponge_configd` behind per-provider request labels with
+    configd-enforced per-label key-domain ACLs. Third-party
+    packages never write shared DE keys and use package-private
+    stores instead. The universal `SettingsController` /
+    `de_config_request` channel is removed; `sponge_pkgd` never
+    relays configuration writes; `vct config` remains the admin
+    manual path.
+  - **Provider set and real-hardware acceptance matrix.**
+    First-party providers cover Panel, Background, Theme,
+    Shortcuts, Defaults, Display, WM, and Terminal settings;
+    arbitrary packages supply their own. Acceptance on physical
+    hardware: a third-party package with **two** entries is
+    discovered **without a reboot**; each provider reaches first
+    paint and open; a private setting persists across provider
+    restart **and** one reboot; a first-party shared-key change
+    has a live effect and an outside-domain write is rejected;
+    the second open focuses; a provider crash is contained and
+    relaunched; pkgd-down fails fast; package removal leaves
+    stale opens handled; direct `vct settings list` / `open`
+    works; a control-center crash leaves the DE alive. Physical
+    receipts record machine, parent commit, Genode pin,
+    image/scenario, first paint, and an input-driven change.
+- [ ] **Criterion 19: real-hardware panel context menu.** A
+  physical right-click opens the panel menu and the detailed panel
+  edits (height, visible widgets, position) take effect. Acceptance
+  is on physical hardware.
+- [ ] **Criterion 20: program icons.** Add per-program icon
+  assets/metadata and render them in the DE program/launcher
+  presentation, verified on physical hardware. The current
+  presentation is text-only; this criterion adds the icon layer
+  (the text-only state is the present truth, not a regression).
+- [ ] **Criterion 21: KDE Konsole package.** New port/package plus
+  DE integration, verified on physical hardware by launch, terminal
+  input, and command execution. Genode 26.08 has no existing
+  Konsole/KDE Frameworks port, so this is new porting work, not
+  enabling an existing package. The required KDE Frameworks
+  dependency work is part of this new porting effort.
+- [ ] **Criterion 22: panel top/bottom/left/right positions.**
+  Enable and verify all four panel positions on physical hardware.
+  Top/bottom already have QEMU receipts (Phase 16 W5); left/right
+  are pulled forward from Phase 17+ and currently remain disabled
+  until this criterion is implemented.
+- [ ] **Criterion 23: GPU-acceleration test package.** Add a test
+  package and scenario that reports the actual renderer/backend and
+  distinguishes hardware acceleration from Mesa softpipe, so a
+  fallback path can never be reported as GPU PASS. The package
+  integration scenario is required, but a physical GPU PASS is not
+  implied by this criterion. The existing `intel_gpu` driver
+  package is builds-only and proves nothing about acceleration;
+  this criterion supplies the test.
+- [ ] **Criterion 24: default background image plus DE-driven
+  change.** Ship a default background image and change it through
+  the owning background provider's settings UI (Criterion 18
+  architecture) on physical hardware, observing the repaint and
+  the `sponge_configd` value. This is a stronger
+  physical-hardware gate for existing base criterion 11; arbitrary
+  user-upload/file-picker scope stays Phase 17+.
+- [ ] **Criterion 25: basic touchpad support.** Implement and
+  verify pointer movement and primary click on a physical machine
+  without requiring a USB mouse; record the machine and driver
+  path. The current trackpad/i2c_hid gaps stay valid until this
+  criterion is delivered.
+- [ ] **Criterion 26: image-editor package.** Add an image editor
+  that opens an image, performs a basic edit, and saves/exports the
+  result, verified on physical hardware. The specific third-party
+  choice is left to implementation.
+- [ ] **Criterion 27: final Genode/seL4 patch cleanup (the
+  absolute final Phase 16 gate).** This criterion cannot start
+  until **every other Phase 16 criterion and feature is
+  complete**, including Criterion 16 (custom Sponge WM) and the
+  real-hardware rows (Criteria 17-22 and 24-26), and Phase 17
+  cannot start before it closes. It re-audits **all** Genode/seL4
+  patches present at that time plus every unledgered fork commit
+  and ends with an enforceable removed-with-receipts or
+  kept-with-positive-reason verdict per row. Gates:
+  - **Complete scope, fresh audit.** The audit covers every
+    ledger row existing at execution time and every unledgered
+    fork commit. The ledger stands at **38 rows** while the
+    existing classification (`docs/evidence/patch-classification.md`)
+    covers only rows **1-33**; rows **#34-#38 and every later row
+    or commit** must be classified before any pruning. The
+    existing 1-33 classification and its P4.3 no-pruning closeout
+    neither authorize nor replace this audit.
+  - **Grounds for removal.** A patch may be removed only when (a)
+    a replacement landed that makes it unnecessary, (b) a
+    completed A/B proves no performance, feature, or stability
+    impact when the patch is absent, or (c) evidence shows it
+    should never have existed. No current row is predeclared
+    removable.
+  - **Anti-paperwork disposition.** Every row must end
+    **removed-with-receipts** or **kept-with-a-positive-reason**.
+    "Not investigated", "probably unnecessary", or a generic
+    "keep" is **FAILURE**. Any row whose Drop-When is met or
+    plausibly met, or whose removal is claimed to have no impact,
+    requires an actual A/B attempt. Zero removals is a valid
+    outcome **only after this complete audit**; there is no
+    removal quota (a patch is never removed just to make the tree
+    look clean), and doc-only ledger consolidation is not a code
+    removal.
+  - **Cluster and pair discipline.** Classify with the
+    keep/remove/replace scheme, each row's Drop-When, and the
+    Part C cluster/pair ordering of
+    `docs/evidence/patch-classification.md`. Unledgered
+    dependencies such as `73e5859da8` are in scope; paired/shared
+    commits retire together; never remove one side of a required
+    pair.
+  - **A/B per candidate.** Each removal candidate gets a
+    same-kernel, same-board A/B on its named scenario, including
+    the original stress/load case and the measured performance
+    metric where applicable. Hardware-anchored patches require
+    physical-hardware A/B; QEMU evidence cannot authorize their
+    removal. The e1000 / `run/sponge-pkg-driver` DHCP gate is
+    preserved as a rejection gate.
+  - **seL4 port patches.** Removing a seL4 port patch requires a
+    fresh `prepare_port sel4`, the `sel4.hash` restamp, and a
+    kernel rebuild as applicable.
+  - **Removal protocol.** Every removal is ledger-first: update
+    the evidence and the ledger row, then a solo fork
+    revert/patch commit, then a solo submodule pin commit; each
+    removal builds, boots, and reverts independently.
+  - **Verification after each removal.** `./tool/build verify`
+    and the full serial regression run after **each** removal; a
+    final full product sweep runs after the last removal, **and
+    also once if the audit ends with zero removals**. Documented
+    partials stay documented and are never relabeled green.
+  - **Evidence at execution time.** The patch-classification and
+    environment ledger evidence is updated at execution time,
+    not by this criterion's registration here.
+
 ### Phase 17: Sponge IME — Multi-Language / CJK Input
+
+**Entry condition:** Phase 16 Criterion 27 (final Genode/seL4 patch
+cleanup) must be complete before this phase starts.
 
 #### Goal
 
@@ -1241,16 +1460,6 @@ Deferred follow-ups (not blockers):
    `run/sponge-pkg-persist.run` (two boots over the same lx_fs-backed
    host directory; boot 2 issues a `list`-only and finds the previously
    installed package, which can only have come from the restored store).
-3. **Custom Sponge WM / window decorator**: Sponge DE currently
-   adopts Genode's upstream `wm` + `window_layouter` + `decorator`
-   stack (reused, not re-implemented, per AGENTS.md §5.2). A
-   Sponge-native window manager — or, more likely first, a
-   Sponge-themed decorator producing Catppuccin-styled window chrome —
-   remains a long-term option once the DE's own semantics
-   (tiling rules, custom focus model, themed decorations) outgrow the
-    upstream stack's configurability. The `themed_decorator` drop-in
-   (theme tar via VFS) is the nearer-term step on this path and is now
-   tracked as a completion criterion of **Phase 11** (§10).
 
 ### 11.2 Phase-10-known-issue follow-ups
 
