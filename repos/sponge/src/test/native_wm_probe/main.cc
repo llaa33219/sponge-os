@@ -121,15 +121,19 @@ struct Native_wm_probe
 		Genode::log("native-wm-probe: starting native WM smoke sequence");
 
 		/* ---------- step 1: boot + window_list protocol v1 shape ---------- */
-		Genode::log("native-wm-probe: [step 1] waiting for window_list ROM");
+		Genode::log("native-wm-probe: [step 1] waiting for window_list ROM + demo window");
 		bool ready = false;
 		for (unsigned i = 0; i < 600; ++i) {
 			_window_list.update();
-			if (_window_list.valid()) { ready = true; break; }
+			if (_window_list.valid()
+			 && window_list_has(_window_list.node(), DEMO_LABEL)) {
+				ready = true;
+				break;
+			}
 			_timer.msleep(100);
 		}
 		if (!ready) {
-			_fail("window_list ROM never became valid (sponge_wm not up)");
+			_fail("demo window missing from window_list (waited ~60s)");
 			return;
 		}
 
@@ -137,10 +141,6 @@ struct Native_wm_probe
 		                                      "native-wm-probe");
 		if (n < 0) {
 			_fail("window_list does not match protocol v1 shape");
-			return;
-		}
-		if (!window_list_has(_window_list.node(), DEMO_LABEL)) {
-			_fail("demo window missing from window_list");
 			return;
 		}
 		Genode::log("native-wm-probe: [step 1] window_list matches protocol v1");
