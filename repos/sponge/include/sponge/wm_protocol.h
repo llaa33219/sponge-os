@@ -1,0 +1,450 @@
+/* SPDX-License-Identifier: Apache-2.0
+ *
+ * sponge_wm_protocol — Sponge-owned WM protocol v1 report/ROM shapes.
+ *
+ * Frozen contract: docs/05-sponge-de.md §4.6 "Protocol v1 report/ROM
+ * contract (frozen 2026-11-12)" (Criterion 16, D16W.6). This library
+ * holds the protocol-side types, parsing, and generation helpers shared
+ * by the native WM components:
+ *
+ *   generation (producer side):
+ *     'window_list'   — sponge_wm (wm core -> TasklistController)
+ *     'window_layout' — sponge_layouter (layouter -> TasklistController)
+ *
+ *   parsing (consumer side):
+ *     'window_list'   — sponge_layouter (identity source)
+ *     'focus_request' — sponge_layouter (sole writer: TasklistController)
+ *     'rules'         — sponge_layouter (sole writer: TasklistController)
+ *
+ *   'window_layout' parsing exists for contract verification (tests and
+ *   probes). The delivered TasklistController is NOT a user of this
+ *   library and is never modified by it.
+ *
+ * SINGLE-WRITER DISCIPLINE (AGENTS.md §1.2, D16W.6): 'focus_request'
+ * and 'rules' are written ONLY by the TasklistController. This library
+ * deliberately provides NO generation helpers for those two labels so
+ * no native component can accidentally become a second writer. The
+ * contract tests pin their shapes by parsing golden documents that
+ * byte-match the controller's emission format
+ * (src/sponge-de/panel/tasklist_controller.cc).
+ *
+ * WIRE ENCODING (contract clarification): the frozen §4.6 shapes are
+ * the Node-level model. Genode 26.08 serializes report/ROM payloads
+ * through two interchangeable encodings — XML (Xml_generator) and HID
+ * (Hid_generator, the sandbox default for the `Generator` facade, see
+ * base/src/lib/ldso/main.cc '_generate_xml'). Genode::Node reads both
+ * transparently, which is exactly how the delivered TasklistController
+ * consumes the upstream reports. Therefore:
+ *
+ *   - all parse entry points take 'Genode::Node const &' and work on
+ *     either encoding (and on either of the two syntaxes);
+ *   - all generation helpers write through 'Genode::Xml_generator' —
+ *     the Sponge report convention ('Expanding_reporter::generate_xml'
+ *     as used by every Sponge-owned report writer) — whose output is
+ *     the XML rendering of the frozen shape, with the upstream
+ *     attribute order preserved for byte-stable reports.
+ *
+ * PURITY CONTRACT (hard, same as <sponge/pkg_config.h>):
+ *
+ *   No Genode::Env, no Report/ROM sessions, no File_system, no
+ *   hardware access, no exceptions, no RTTI-dependent design, no
+ *   mutable global state, no dynamic allocation. The caller owns every
+ *   buffer. The only Genode headers used are the public <base/node.h>,
+ *   <util/string.h>, and <util/xml_generator.h>.
+ *
+ * SHAPE RULES (docs/05-sponge-de.md §4.6, mirrored from the delivered
+ * TasklistController consumption):
+ *
+ *   - window_list entries without a label identity (empty/missing
+ *     'label') are ignored — by the generator (never emitted) and by
+ *     the parser (never visited).
+ *   - window_list entries without a defined size (width/height not
+ *     both > 0) are omitted from the report ("omitted by the upstream
+ *     wm until first sized").
+ *   - window_layout windows without a title identity (empty/missing
+ *     'title') are ignored the same way. The 'title' attribute is the
+ *     concatenation 'label + " " + client title', or the bare 'label'
+ *     when the client title is empty — see 'layout_title'. Consumers
+ *     match identity pairs by that concatenation, never by splitting
+ *     on spaces.
+ *   - boolean attributes use the 'yes' lexeme when true and are
+ *     omitted when false ('has_alpha'/'hidden'/'resizeable' in
+ *     window_list, 'focused' in window_layout), matching the upstream
+ *     producers. 'rules' assigns always carry 'maximized="yes|no"'.
+ *   - pass-through fields of the frozen contract ('id'/'width'/
+ *     'height' of window_list; window_layout 'id', 'has_alpha',
+ *     'maximizer', 'closer', <highlight>) are ignored by the parsers
+ *     and the window_layout generator omits them (the contract allows
+ *     native producers to omit pass-through fields). The window_list
+ *     generator emits them in the upstream attribute order so the
+ *     native report is byte-identical to the upstream XML shape.
+ *   - 'focus_request' parsing is strict: the root must be
+ *     <focus_request> with BOTH a non-empty 'label' attribute and an
+ *     'id' attribute (the layouter deduplicates on 'id', so the exact
+ *     value must be preserved). Anything else is rejected as malformed.
+ *
+ * GEOMETRY SEMANTICS (docs/05-sponge-de.md §4.6):
+ *
+ *   - parking sentinel: a reported window whose 'xpos' AND 'ypos' are
+ *     both <= -32000 reads as parked/minimized (the established write
+ *     value is xpos=ypos=-32000). A single sentinel coordinate does
+ *     not park.
+ *   - window_layout coordinates are screen-absolute; rules <assign>
+ *     xpos/ypos are target-relative — subtract the boundary xpos/ypos
+ *     (see 'assign_position'). Feeding absolute values back drifts the
+ *     placement by the boundary origin on every republish.
+ *   - maximized is NOT reported (v1 adds no maximized attribute to
+ *     window_layout); consumers infer it from geometry and publish it
+ *     as <assign maximized="yes|no">.
+ */
+
+#pragma once
+
+#include <base/node.h>
+#include <util/string.h>
+#include <util/xml_generator.h>
+
+
+namespace Sponge::Wm_protocol {
+
+
+/* ====================== geometry semantics ====================== */
+
+/* Parking sentinel (docs/05-sponge-de.md §4.6). */
+enum : int { PARKED_COORD = -32000 };
+
+/*
+ * True when the reported position reads as parked/minimized: BOTH
+ * coordinates at or below the sentinel. A single sentinel coordinate
+ * does not park.
+ */
+bool parked(int xpos, int ypos);
+
+/* The established parking write value: xpos=ypos=-32000. */
+struct Position { int xpos, ypos; };
+
+Position parked_position();
+
+/*
+ * window_layout screen-absolute -> <assign> target-relative
+ * conversion: subtract the boundary origin. Returns
+ * { abs_xpos - boundary_xpos, abs_ypos - boundary_ypos }.
+ */
+Position assign_position(int abs_xpos, int abs_ypos,
+                         int boundary_xpos, int boundary_ypos);
+
+/*
+ * The window_layout 'title' identity: 'label + " " + client title',
+ * or the bare 'label' when the client title is empty (never a
+ * trailing or double space). Consumers match window_layout titles
+ * against this concatenation (or the bare label), never by splitting
+ * on spaces. Truncates at 255 characters like every Genode::String.
+ */
+Genode::String<256> layout_title(char const *label, char const *title);
+
+
+/* ========================= shape types ========================== */
+
+/* One <window> entry of the window_list report. */
+struct Window_list_entry
+{
+	unsigned long       id         { 0 };   /* pass-through, emitted */
+	Genode::String<256> label      { };    /* required identity */
+	Genode::String<256> title      { };    /* client title, may be empty */
+	long                width      { 0 };  /* pass-through, emitted */
+	long                height     { 0 };
+	bool                has_alpha  { false };
+	bool                hidden     { false };
+	bool                resizeable { false };
+};
+
+/* One <boundary> of the window_layout report (v1: one target, screen). */
+struct Boundary
+{
+	Genode::String<64> name   { };   /* pass-through target name */
+	int                xpos   { 0 }; /* consumed: origin + area */
+	int                ypos   { 0 };
+	long               width  { 0 };
+	long               height { 0 };
+};
+
+/* One <window> of the window_layout report. */
+struct Layout_window
+{
+	Genode::String<256> title    { };      /* concatenated identity */
+	int                 xpos     { 0 };    /* screen-absolute origin */
+	int                 ypos     { 0 };
+	long                width    { 0 };    /* inner-geometry size */
+	long                height   { 0 };
+	bool                focused  { false };
+};
+
+/* The focus_request report root (sole writer: TasklistController). */
+struct Focus_request
+{
+	unsigned long       id    { 0 };   /* monotonic counter, preserved */
+	Genode::String<256> label { };    /* the full window_list label */
+};
+
+/*
+ * One <assign> of the rules document (sole writer: TasklistController
+ * for the tracked assignments; static fragments may carry the wider
+ * upstream vocabulary: label_prefix/label_suffix, visible,
+ * xpos/ypos="any"). Mirrors the upstream window_layouter assign
+ * semantics (assign.h): 'has_position' requires BOTH xpos and ypos
+ * attributes, 'has_size' requires BOTH width and height; 'visible'
+ * defaults to true.
+ */
+struct Assign
+{
+	Genode::String<256> label        { };
+	Genode::String<256> label_prefix { };
+	Genode::String<256> label_suffix { };
+	Genode::String<64>  target       { };
+	bool  has_position { false };
+	bool  xpos_any     { false };   /* xpos="any" */
+	bool  ypos_any     { false };   /* ypos="any" */
+	int   xpos         { 0 };
+	int   ypos         { 0 };
+	bool  has_size     { false };
+	long  width        { 0 };
+	long  height       { 0 };
+	bool  maximized    { false };
+	bool  visible      { true };
+};
+
+/* One <press>/<release> key-sequence node of the rules document. */
+struct Key_action
+{
+	Genode::String<24> key    { };
+	Genode::String<32> action { };
+};
+
+/*
+ * The rules document meta data (sole writer: TasklistController).
+ * Assigns are visited separately, in document order (frontmost
+ * first — child order is semantic). 'press'/'release' hold the FIRST
+ * node of each kind; the counts expose repetitions.
+ */
+struct Rules
+{
+	Genode::String<64> screen_name { };      /* first <screen name> */
+	unsigned num_screens  { 0 };
+	unsigned num_assigns  { 0 };
+	unsigned num_press    { 0 };
+	unsigned num_release  { 0 };
+	bool     has_press    { false };
+	bool     has_release  { false };
+	Key_action press   { };
+	Key_action release { };
+};
+
+
+/* ======================= generation (XML) ======================= */
+
+/*
+ * Emit one <window> entry of a window_list document in the upstream
+ * attribute order (id, label, title, width, height, then the 'yes'
+ * form of has_alpha/hidden/resizeable when true).
+ *
+ * Returns false and emits nothing when the entry has no label
+ * identity or no defined size (the report-level omission rules above).
+ * Use inside 'Expanding_reporter::generate_xml' (the reporter wraps
+ * the <window_list> root) or 'Xml_generator::generate'.
+ */
+bool gen_window_list_entry(Genode::Xml_generator &g,
+                           Window_list_entry const &entry);
+
+/*
+ * Emit one <window> of a window_layout document (title, xpos, ypos,
+ * width, height, focused="yes" when true; pass-through attributes are
+ * omitted). Returns false and emits nothing when the window has no
+ * title identity.
+ */
+bool gen_window_layout_window(Genode::Xml_generator &g,
+                              Layout_window const &window);
+
+/*
+ * Emit one <boundary> of a window_layout document (name, xpos, ypos,
+ * width, height) with 'num_windows' windows nested inside. Windows
+ * without a title identity are skipped ('gen_window_layout_window').
+ */
+void gen_boundary(Genode::Xml_generator &g, Boundary const &boundary,
+                  Layout_window const *windows, Genode::size_t num_windows);
+
+
+/* ========================== parsing ============================= */
+
+/*
+ * Parse a window_list document ('<window_list>' root). Returns false
+ * if the root is not <window_list> (including malformed or empty
+ * input — Genode::Node degrades invalid syntax to an empty node).
+ * Calls 'fn(Window_list_entry const &)' for every entry with a
+ * non-empty 'label', in document order; missing optional attributes
+ * take the defaults of the shape types.
+ */
+template <typename FN>
+bool parse_window_list(Genode::Node const &root, FN const &fn)
+{
+	if (!root.has_type("window_list"))
+		return false;
+
+	root.for_each_sub_node("window", [&] (Genode::Node const &n) {
+		Window_list_entry e;
+		e.label = n.attribute_value("label", Genode::String<256>());
+
+		/* no label identity -> ignored (contract §window_list) */
+		if (e.label.string()[0] == '\0')
+			return;
+
+		e.title      = n.attribute_value("title", Genode::String<256>());
+		e.id         = n.attribute_value("id", 0UL);
+		e.width      = n.attribute_value("width", 0L);
+		e.height     = n.attribute_value("height", 0L);
+		e.has_alpha  = n.attribute_value("has_alpha",  false);
+		e.hidden     = n.attribute_value("hidden",     false);
+		e.resizeable = n.attribute_value("resizeable", false);
+
+		fn(e);
+	});
+
+	return true;
+}
+
+/*
+ * Parse a window_layout document ('<window_layout>' root). Returns
+ * false if the root is not <window_layout>. Calls
+ * 'fn(Boundary const &, Layout_window const &)' for every window with
+ * a non-empty 'title' of every <boundary>, in document order, paired
+ * with its owning boundary (boundary attributes default to 0/"").
+ */
+template <typename FN>
+bool parse_window_layout(Genode::Node const &root, FN const &fn)
+{
+	if (!root.has_type("window_layout"))
+		return false;
+
+	root.for_each_sub_node("boundary", [&] (Genode::Node const &b) {
+		Boundary boundary;
+		boundary.name   = b.attribute_value("name", Genode::String<64>());
+		boundary.xpos   = b.attribute_value("xpos", 0);
+		boundary.ypos   = b.attribute_value("ypos", 0);
+		boundary.width  = b.attribute_value("width", 0L);
+		boundary.height = b.attribute_value("height", 0L);
+
+		b.for_each_sub_node("window", [&] (Genode::Node const &n) {
+			Layout_window w;
+			w.title = n.attribute_value("title", Genode::String<256>());
+
+			/* no title identity -> ignored (contract §window_layout) */
+			if (w.title.string()[0] == '\0')
+				return;
+
+			w.xpos    = n.attribute_value("xpos", 0);
+			w.ypos    = n.attribute_value("ypos", 0);
+			w.width   = n.attribute_value("width", 0L);
+			w.height  = n.attribute_value("height", 0L);
+			w.focused = n.attribute_value("focused", false);
+
+			fn(boundary, w);
+		});
+	});
+
+	return true;
+}
+
+/*
+ * Parse a focus_request report ('<focus_request>' root with 'id' and
+ * 'label' attributes). Strict: returns false unless the root type
+ * matches and both attributes are present with a non-empty label.
+ * On success 'out' receives the exact 'id' value (the layouter's
+ * dedup key — preserved verbatim) and the exact label.
+ */
+inline bool parse_focus_request(Genode::Node const &root, Focus_request &out)
+{
+	if (!root.has_type("focus_request"))
+		return false;
+
+	/* strict: both root attributes are required by the contract */
+	if (!root.has_attribute("id") || !root.has_attribute("label"))
+		return false;
+
+	Focus_request req;
+	req.id    = root.attribute_value("id", 0UL);
+	req.label = root.attribute_value("label", Genode::String<256>());
+
+	/* no label identity -> nothing to focus */
+	if (req.label.string()[0] == '\0')
+		return false;
+
+	out = req;
+	return true;
+}
+
+/*
+ * Parse a rules document ('<rules>' root). Returns false if the root
+ * is not <rules>. Fills 'info' with the document meta data (screen
+ * nodes, press/release nodes) and calls 'fn(Assign const &)' for
+ * every <assign> in document order (frontmost first). Missing
+ * optional attributes take the defaults of 'Assign' ('visible'
+ * defaults to true).
+ */
+template <typename FN>
+bool parse_rules(Genode::Node const &root, Rules &info, FN const &fn)
+{
+	if (!root.has_type("rules"))
+		return false;
+
+	info = Rules { };
+
+	root.for_each_sub_node("screen", [&] (Genode::Node const &n) {
+		if (info.num_screens == 0)
+			info.screen_name = n.attribute_value("name", Genode::String<64>());
+		info.num_screens++;
+	});
+
+	root.for_each_sub_node("assign", [&] (Genode::Node const &n) {
+		Assign a;
+		a.label        = n.attribute_value("label", Genode::String<256>());
+		a.label_prefix = n.attribute_value("label_prefix", Genode::String<256>());
+		a.label_suffix = n.attribute_value("label_suffix", Genode::String<256>());
+		a.target       = n.attribute_value("target", Genode::String<64>());
+
+		a.has_position = n.has_attribute("xpos") && n.has_attribute("ypos");
+		a.has_size     = n.has_attribute("width") && n.has_attribute("height");
+		a.xpos_any     = n.attribute_value("xpos", Genode::String<20>()) == "any";
+		a.ypos_any     = n.attribute_value("ypos", Genode::String<20>()) == "any";
+		a.xpos         = n.attribute_value("xpos", 0);
+		a.ypos         = n.attribute_value("ypos", 0);
+		a.width        = n.attribute_value("width", 0L);
+		a.height       = n.attribute_value("height", 0L);
+		a.maximized    = n.attribute_value("maximized", false);
+		a.visible      = n.attribute_value("visible", true);
+
+		info.num_assigns++;
+		fn(a);
+	});
+
+	root.for_each_sub_node("press", [&] (Genode::Node const &n) {
+		if (!info.has_press) {
+			info.press.key    = n.attribute_value("key", Genode::String<24>());
+			info.press.action = n.attribute_value("action", Genode::String<32>());
+			info.has_press    = true;
+		}
+		info.num_press++;
+	});
+
+	root.for_each_sub_node("release", [&] (Genode::Node const &n) {
+		if (!info.has_release) {
+			info.release.key    = n.attribute_value("key", Genode::String<24>());
+			info.release.action = n.attribute_value("action", Genode::String<32>());
+			info.has_release    = true;
+		}
+		info.num_release++;
+	});
+
+	return true;
+}
+
+
+}  /* namespace Sponge::Wm_protocol */
