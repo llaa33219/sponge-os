@@ -81,9 +81,11 @@ see §11 for the full follow-ups register.
   (`docs/14-boot-storage-architecture.md` §2.1, `docs/11-environment.md`
   §7.2) are unchanged. ISO media stays metadata-only / live-eval (D16.7
   stands).
-- **Phase 17 UI work** (Sponge IME / CJK input, and the Phase 16 honest
-  limitations register rows: panel.position left/right, real-hardware
-  multi-panel, user background upload, and similar).
+- **UI work outside the runtime-overhaul track** (Sponge IME / CJK
+  input, and the Phase 16 honest limitations register rows:
+  panel.position left/right (its target moved to Phase 16 Extension
+  criterion 22 in the 2026-11-10 scope expansion),
+  real-hardware multi-panel, user background upload, and similar).
 - **Additional partitions, in-place media migration, or installed-media resizing** (see D16R.2). New-media P3 sizing for the measured browser closure is allowed.
 - **New Genode base async semantics** (see D16R.9).
 - **New vendored-tree patches outside the classification budget**
@@ -798,7 +800,11 @@ Total: ~35-40 commits, each independently revertable.
 ## 11. Follow-ups Register (NOT delivered by this phase)
 
 Per D16R.18, these remain open follow-ups with their roadmap identity.
-Fixing a root cause here never closes the item.
+Fixing a root cause here never closes the item. The 2026-11-10
+scope-expansion rows (now **twelve** completion criteria,
+**Criteria 16-27**) are registered for roadmap truthfulness only:
+the completed runtime-overhaul track (P0-P5.3) delivered **none** of
+them.
 
 | Follow-up | Roadmap identity | What this phase does instead |
 |---|---|---|
@@ -807,7 +813,10 @@ Fixing a root cause here never closes the item.
 | Additional shells (zsh, fish) | Phase 16 Extension feature | Terminal runtime accommodates future noux tars; no shell ports here |
 | Same-program multi-instance | Phase 16 Extension feature | pkgd keeps the `already-running` idempotent semantics; per-instance launch model is follow-up |
 | ISO ceiling / ISO payloads | D16.7 honest disclosure; `docs/14` §2.1 ceilings | ISO stays metadata-only; no ceiling work |
-| Phase 17 UI (Sponge IME, CJK) and the Phase 16 §6 register rows unrelated to browser launch (panel.position left/right, real-hardware multi-panel, user background upload) | `docs/09-roadmap.md` Phase 17; `docs/evidence/phase16-index.md` §6 | Untouched; not silently absorbed |
+| Custom Sponge WM | Phase 16 Extension criterion 16 (2026-11-10 scope expansion; pulled forward from the former §11 roadmap deferral) | Nothing; the upstream `wm` + `window_layouter` + `decorator` path stays the fallback |
+| Phase 16 Extension criteria 17-26 (2026-11-10 scope expansion: real-hardware DE panel config edits, provider-owned Settings control center (criterion 18, replaces base criterion 2's monolithic Settings), real-hardware panel context menu, program icons, KDE Konsole port, panel top/bottom/left/right, GPU-acceleration test package, default background image + DE-driven change, basic touchpad, image-editor package) | Phase 16 Extension criteria 17-26 (`docs/09-roadmap.md` §10) | Nothing; none of this scope was touched |
+| Final Genode/seL4 patch cleanup | Phase 16 Extension criterion 27 (2026-11-10 scope expansion; the absolute final Phase 16 gate) | Nothing. **P4.3's no-pruning closeout is not this audit.** P4.3 closed on the P4.1 census of ledger rows 1-33 (keep 32 · remove 0 · replace 1) and removed nothing; it did **not** perform the Criterion 27 final audit, which re-audits every ledger row present at execution time (the ledger now stands at 38 rows — #34-#38 and every later row/commit are unclassified) plus unledgered fork commits. The Criterion 27 audit runs only after all Phase 16 work is complete |
+| Phase 17 UI (Sponge IME, CJK) and the Phase 16 §6 register rows unrelated to browser launch (real-hardware multi-panel, user background upload) | `docs/09-roadmap.md` Phase 17; `docs/evidence/phase16-index.md` §6 | Untouched; not silently absorbed |
 
 ## 12. Open Questions (recorded, not blocking)
 
