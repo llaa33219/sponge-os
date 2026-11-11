@@ -131,7 +131,8 @@ class Sponge::Configd::Main
 
 		/*
 		 * MAX_KEYS is the flat-key ceiling (Phase 5a: 10 used;
-		 * Phase 16 W2 adds 4 → 14 used, ceiling bumped 16 → 32 as
+		 * Phase 16 W2 adds 4 → 14 used; Phase 16 W6 adds
+		 * wm.layout.mode → 15 used, ceiling bumped 16 → 32 as
 		 * the interim headroom). MAX_PATTERN_KEYS is a separate
 		 * fixed array of pattern-key templates AND of instantiated
 		 * per-id clones — the two share one slot pool because the
@@ -468,9 +469,21 @@ Sponge::Configd::Main::Key_def const Sponge::Configd::Main::_registry[MAX_KEYS] 
 	{ "theme.active",          false,
 	  { }, 0, "light", Sponge::Configd::Main::Key_def::Kind::String, 0, 0,
 	  { }, 0 },
+	/*
+	 * wm.layout.mode (Phase 16 W6, D16W.11): the window-manager
+	 * layout mode, a closed enum {floating, tiling} consumed by
+	 * sponge_layouter from the configd broadcast. The "floating"
+	 * default is applied like every other registry default (the
+	 * constructor fills it in when the key was never written), so
+	 * consumers always find a value and no synthetic default is
+	 * persisted beyond the established full-store save pattern.
+	 */
+	{ "wm.layout.mode",        true,
+	  { "floating", "tiling" }, 2, "floating",
+	  Sponge::Configd::Main::Key_def::Kind::Enum, 0, 0, { }, 0 },
 };
 
-unsigned const Sponge::Configd::Main::_num_keys = 14;
+unsigned const Sponge::Configd::Main::_num_keys = 15;
 
 
 /*

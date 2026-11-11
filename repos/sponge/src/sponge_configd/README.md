@@ -52,7 +52,7 @@ at startup with the registry defaults.
 - De-duplicates identical requests by an `op|key|value` signature.
 - Emits a structured `<result>` (ok/error) per request.
 
-## Key registry (Phase 11 + Phase 16 W2)
+## Key registry (Phase 11 + Phase 16 W2 + Phase 16 W6)
 
 The store is a closed registry — an unknown key is a structured error,
 never a silent write. Registry entries and list/broadcast output are
@@ -74,12 +74,25 @@ name-sorted:
 | `panel.visible_widgets`  | enum-list     | comma-separated `clock`, `launcher`, `tasklist` tokens | `clock,launcher` |
 | `shortcuts.bindings`     | structured    | one binding per line: `<action>\t<key_sequence>` (see below) | shipped initial binding list |
 | `theme.active`           | string        | any non-empty value                           | `light`         |
+| `wm.layout.mode`         | enum          | `floating`, `tiling`                          | `floating`      |
 
-All fourteen stored keys run on both kernel tags and are
+All fifteen stored keys run on both kernel tags and are
 live-reloadable from the configd broadcast. `panel.position` is
 documented as live in Phase 16 (U16.2 / D16.2) — the run script/domain
 owns the panel placement and updates it on the next broadcast poll
 without requiring a reboot.
+
+`wm.layout.mode` (Phase 16 W6, D16W.11) is the window-manager layout
+mode consumed by `sponge_layouter` from the configd broadcast. Its
+`floating` default is applied at startup like every registry default,
+so the key is always present in the broadcast even when it was never
+written — consumers (the native layouter) read `floating` in that case
+and never need a synthetic pre-write. Invalid values (unknown, empty,
+case variants, surrounding whitespace) are rejected by the closed-enum
+validator with the usual structured error and leave the stored value
+and the broadcast unchanged. The write path is `vct config` (the
+admin/manual escape hatch, D16.1); the `wm.*` key domain is reserved
+for the later `wm_settings` provider label (D16W.11 / Criterion 18).
 
 ### Pattern keys (Phase 16 W2, U16.5 / D16.5 / D16.10)
 
