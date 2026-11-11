@@ -174,12 +174,18 @@ upstream absorbs the fix.
 >   follow-up and Phase 16's criterion 9 mouse-window-resize in
 >   one atomic commit; **drop-when** "upstream Genode adds both
 >   resize affordance AND `<minimizer/>` to `themed_decorator`".
->   No other vendored-tree patches are absorbed in Phase 16; any
->   further candidate (e.g. `window_layouter`, `nitpicker`,
->   `qgenodeplatformintegration`) requires an explicit Phase-17+
->   budget and lands in §4.2 as a ledger candidate, NOT in §4.
->   The actual row #17 entry is committed in Phase 16 W9, not in
->   the W1 design-doc amendment that adds this preamble.
+>   This one-row base budget is **historical, not a cap** on
+>   Extension work (revised D16.8). No vendored-tree patch is
+>   absorbed silently: any further candidate (e.g.
+>   `window_layouter`, `nitpicker`, `qgenodeplatformintegration`)
+>   must be individually justified and entered in §4 BEFORE the
+>   patch is applied, one concern per independently revertable
+>   patch each with its own drop-when condition, and re-audited
+>   at the final Criterion 27 cleanup. Sponge-owned components
+>   and public interfaces are preferred over vendored changes.
+>   No specific new patch is approved now. The actual row #17
+>   entry is committed in Phase 16 W9, not in the W1 design-doc
+>   amendment that adds this preamble.
 
 > **Structural note (2026-10-11).** Rows #19 and #20 are two logical
 > halves of ONE vendored commit (`391272b3e3`); they stay separate rows
@@ -238,6 +244,20 @@ when upstream absorbs the fix, dropped by merging upstream in the
 `sponge-os-genode` fork and bumping the `genode/` submodule pin here)
 in its own commit on `main`, the patch ledger row is removed, and the
 commit message says so.
+
+> **Forward pointer — Phase 16 Criterion 27 (final Genode/seL4 patch
+> cleanup).** Before Phase 17 may start, roadmap Phase 16 Criterion 27
+> requires a fresh audit of **every** ledger row present at that time
+> plus unledgered fork commits, each ending removed-with-receipts or
+> kept-with-a-positive-reason. The existing
+> `docs/evidence/patch-classification.md` coverage (rows 1-33) and its
+> P4.3 no-pruning closeout are historical records of the runtime-
+> overhaul pass: they neither authorize nor replace the Criterion 27
+> audit, which must also classify rows #34-#38 and every later row or
+> commit before any pruning. The existing row and cluster retirement
+> rules in this section remain in force, but the base Phase 16
+> one-row cap is superseded as stated in the §4 preamble above (row
+> #17 is historical, not a cap).
 
 ### 4.1 Managing the ledger: tool/patches
 
