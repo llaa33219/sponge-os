@@ -346,6 +346,7 @@ config
 
 + start sponge_layouter | caps: 150 | ram: 4M
   + config | rules: rom
+    + work_area | x: 0 | y: 28 | width: 1024 | height: 740
     + rules
       + screen screen
       #
