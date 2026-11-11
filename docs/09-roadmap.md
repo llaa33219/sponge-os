@@ -1104,22 +1104,88 @@ cannot close those rows. Criterion 27 (final Genode/seL4 patch
 cleanup) is deliberately **not** labeled physical-hardware wholesale:
 it carries row-specific hardware gates (a hardware-anchored patch
 needs physical-hardware A/B before its removal). Existing
-limitations stay true until implementation lands.
+limitations stay true until implementation lands. Execution order
+(user-directed 2026-11-12): Criteria 16 and 18 are worked
+continuously to full delivery, Criterion 16 first and complete,
+then Criterion 18, each landing as logical commits.
 
 Twelve new completion criteria:
 
 - [ ] **Criterion 16: custom Sponge WM (pulled forward from the
-  former long-term deferral).** Deliver a Sponge-native window
-  manager built as a new component under `repos/sponge/` using
-  public Genode interfaces, without forking or patching Genode's
-  `server/wm`, preserving capability-based IPC, with the upstream
-  `wm` + `window_layouter` + `decorator` path staying the current
-  fallback until parity. Acceptance covers ordinary window move,
-  resize, focus, minimize/restore/close via the relevant product
-  scenarios; no separate physical-hardware gate is added. This is
-  distinct from the upstream `themed_decorator` drop-in (Phase 11
-  history) and from the existing `run/sponge-wm*.run` scenarios,
-  which drive the upstream stack.
+  former long-term deferral; scope registered 2026-11-12).** Deliver
+  a Sponge-native window manager under `repos/sponge/src/` using
+  public Genode interfaces only, without forking or patching Genode's
+  `server/wm`, preserving capability-based IPC. The delivered scope
+  is **user-directed floating plus Master-Stack tiling** and **native
+  modern window chrome**:
+  - **Layout modes.** One global key `wm.layout.mode`
+    (`floating` | `tiling`, default `floating`), typed in
+    `sponge_configd` with the `wm.*` key domain reserved for the
+    later `wm_settings` provider (Criterion 18); this criterion adds
+    no Settings UI of its own. Floating is user-directed placement
+    and 8-zone resize. Tiling is Master-Stack: the first
+    non-minimized, non-maximized window in creation order takes the
+    left half of the work area as master, the remaining windows
+    split the right half as stack in creation order, and the
+    arrangement reflows on open, close, minimize, restore, maximize,
+    and mode switch.
+  - **Window state rules.** Non-resizeable windows always float and
+    never enter the tiling arrangement. Maximized fills the work
+    area (screen minus panel) and the toggle restores the saved
+    previous geometry. Minimized parks off screen and is reported at
+    the existing <=-32000 convention, so the panel
+    `TasklistController` needs no change.
+  - **Native modern chrome in the first delivered WM version.** The
+    native path draws a native modern title bar with native
+    close/minimize/fullscreen buttons, supplied by the new
+    `sponge_decorator` and theme-driven (AGENTS.md §3.4);
+    upstream `themed_decorator` plays no role in the native path.
+    Honest v1 note: maximize and fullscreen both mean work-area
+    maximization in the initial version.
+  - **Three components, one vertical slice.**
+    `repos/sponge/src/sponge_wm` (Gui virtualization, window
+    registry, input, native content association),
+    `repos/sponge/src/sponge_layouter` (policy, state, layout), and
+    `repos/sponge/src/sponge_decorator` (lightweight modern
+    theme-driven chrome); public Genode interfaces only, no private
+    gems headers, no vendored patches, and no new
+    `docs/11-environment.md` §4 ledger row (AGENTS.md §1.4 rules out
+    a monolith here). The native core replaces `server/wm` in the
+    same delivered slice as the native chrome on purpose: a
+    decorator's association with windows belongs to upstream's
+    private decorator association semantics, so native chrome bolted
+    onto upstream `wm` would depend on exactly the private semantics
+    this criterion forbids.
+  - **Frozen compatibility surface.** The `TasklistController`
+    contract stays frozen at protocol v1: `window_list`,
+    `window_layout`, `focus_request`, and `rules` keep their current
+    shapes and meanings, and single-writer discipline holds (the
+    tasklist stays the sole writer of `focus_request` and `rules`;
+    the native components produce `window_list` and `window_layout`).
+    Protocol v1 is documented and frozen in `docs/05-sponge-de.md`
+    §4.6 before acceptance runs.
+  - **Fallback and parity.** The upstream `wm` + `window_layouter` +
+    `decorator` trio stays untouched and keeps running as the
+    fallback, with `run/sponge-wm{,-qmp,-tasks}.run` as its anchors,
+    until native parity. Parity means: the native product scenarios
+    pass with the upstream trio absent from the topology, and the
+    upstream anchors stay green. New scenarios use
+    `run/sponge-wm-native*.run` names; no existing `run/sponge-wm*.run`
+    name is renamed or repurposed.
+  - **Acceptance.** QMP-driven scenarios cover move, 8-zone resize,
+    focus, close, minimize/restore with focus, maximize/restore, and
+    tiling open/close/mode/reflow; plus a >=20-cycle rules-drift
+    soak, a no-new-ledger-row check, measured UX metrics per
+    AGENTS.md §5.1, and the plan's doc/evidence obligations. No
+    separate physical-hardware gate is added.
+  - **Non-goals.** Workspaces, window gaps, snap layouts, animations,
+    per-window rules, and master-ratio configuration stay out of
+    this criterion.
+  Decision-complete plan: `docs/plans/phase16-sponge-wm.md`; state
+  transitions: `docs/plans/wm-state-table.md`. This remains distinct
+  from the upstream `themed_decorator` drop-in (Phase 11 history) and
+  from the existing `run/sponge-wm*.run` scenarios, which drive the
+  upstream stack.
 - [ ] **Criterion 17: real-hardware DE panel configuration edits.**
   Change panel settings through the DE on a physical machine and
   observe both the live result and the `sponge_configd` value.
