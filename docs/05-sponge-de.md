@@ -228,6 +228,134 @@ The `TasklistWidget` (sources/sponge-de/panel/tasklist_widget.{h,cc}):
 - 2 px accent strip on the left edge for `has_alpha` windows.
 - Re-styles on every theme reload via the standard `restyle()` path.
 
+### Protocol v1 report/ROM contract (frozen 2026-11-12)
+
+The four labels in the Architecture diagram above form the frozen
+`TasklistController`-facing protocol (**protocol v1**, Criterion 16;
+`docs/plans/phase16-sponge-wm.md` D16W.6). Everything in this
+subsection is **current upstream truth** read from the delivered
+consumers and producers. "Frozen" means: the native producers must
+reproduce the consumed shapes exactly, and no consumed attribute
+changes meaning without a protocol version bump. Required means the
+delivered `TasklistController` reads it; pass-through means the field
+exists in the report but the controller ignores it (upstream-only
+detail). Nothing here is invented: every attribute below appears in
+the shipped code.
+
+Producers per topology (report label equals ROM label in every row;
+the run scenarios route `wm -> window_list`, `layouter -> window_layout`,
+`sponge-de -> focus_request`, `sponge-de -> rules` through `report_rom`,
+one writer per label per AGENTS.md §1.2):
+
+| Label | Root node | Upstream producer (current truth) | Native producer (target) | Writers |
+|---|---|---|---|---|
+| `window_list` | `<window_list>` | `server/wm` (`Window_registry`) | `sponge_wm` | exactly one |
+| `window_layout` | `<window_layout>` | `app/window_layouter` | `sponge_layouter` | exactly one |
+| `focus_request` | `<focus_request>` | `TasklistController` | `TasklistController` (unchanged) | sole writer: tasklist |
+| `rules` | `<rules>` | `TasklistController` | `TasklistController` (unchanged) | sole writer: tasklist |
+
+#### `window_list` (wm core -> TasklistController)
+
+`<window>` sub-nodes. Windows without a defined size are omitted by
+the upstream wm until first sized; an empty `label` is ignored.
+
+| Attribute | Status | Semantics |
+|---|---|---|
+| `label` | **required** | wm session label (contains spaces and `->`, e.g. `pkg_runtime -> pkg_gui_demo -> Sponge Pkg GUI Demo`); the window identity used in `rules` and `focus_request` |
+| `title` | **required** (identity) | client title; the controller matches `window_layout`'s `title` against `label + " " + title`, never by splitting on spaces |
+| `has_alpha` | consumed | boolean (`yes` form); drives the tasklist accent strip |
+| `hidden` | consumed | boolean; window hidden by the wm |
+| `resizeable` | consumed | boolean; window advertises a resize affordance |
+| `id`, `width`, `height` | pass-through | upstream registry id and client size; geometry comes from `window_layout` instead |
+
+#### `window_layout` (layouter -> TasklistController)
+
+`<boundary>` sub-nodes (one per target; the shipped topology has
+exactly one target, `screen`), each containing `<window>` sub-nodes.
+
+Boundary attributes: `name` is pass-through (target name); `xpos`,
+`ypos`, `width`, `height` are **consumed**: the target rect whose
+origin is the coordinate-origin reference (below) and whose size
+drives the maximize inference.
+
+| Window attribute | Status | Semantics |
+|---|---|---|
+| `title` | **required** | concatenation `label + " " + client title` (bare `label` when the title is empty); matched against `window_list` identity pairs |
+| `xpos`, `ypos` | **required** | screen-absolute inner-geometry origin |
+| `width`, `height` | **required** | inner-geometry size |
+| `focused` | consumed | `focused="yes"` when the window holds focus |
+| `id` | pass-through | upstream window id |
+| `has_alpha`, `maximizer`, `closer` | pass-through | upstream repeats `has_alpha` here and advertises decorator affordances (`maximizer`/`closer` on resizeable windows); these are affordances, not window state, and the controller reads `has_alpha`/`resizeable` from `window_list` |
+| `<highlight>` sub-node | pass-through | upstream hover/drag element state (`pressed="yes"` while dragging) |
+
+#### `focus_request` (TasklistController -> layouter)
+
+Root `<focus_request>` with attributes `id` (monotonic counter) and
+`label` (the full `window_list` label). The layouter deduplicates on
+`id`, raises/focuses the named window, and forwards the change
+through its own `focus` report to the wm's `focus` ROM.
+`TasklistController` is the **sole writer** of this report. A
+title-bar or content click in the upstream path focuses through the
+input/nitpicker chain and writes no report.
+
+#### `rules` (TasklistController -> layouter, `rules="rom"` mode)
+
+Root `<rules>`, replaced wholesale on every publication (last
+publication wins). Child order is semantic:
+
+1. `<screen name="screen"/>` (the layouter expects at least one
+   `<screen>` node per rules document).
+2. One `<assign>` per tracked window, frontmost first. The layouter
+   applies the first matching `assign` per window and stacks by
+   assign order (earliest assign is frontmost; window_layouter
+   README), so the target window is emitted first. Attributes:
+   `label` (exact wm label), `target="screen"`, `xpos`, `ypos`
+   (target-relative: the controller subtracts the boundary origin;
+   feeding absolute values back drifts placement by that origin on
+   every republish), `width`, `height`, `maximized` (`yes`/`no`).
+3. Static `<assign>` fragments copied verbatim from the
+   `tasklist_static_rules` property (the scenario-supplied original
+   layouter rules; may use `label_prefix` matching). They follow the
+   tracked assigns so the exact per-window assignment wins.
+4. `<press key="BTN_LEFT" action="drag"/>` and
+   `<release key="BTN_LEFT" action="drop"/>` (layouter
+   key-sequence-tracker nodes; kept in every publication).
+
+Parking and coordinate-origin rules: a reported window whose `xpos`
+and `ypos` are **both** <= -32000 reads as parked/minimized (the
+established write value is `xpos=ypos=-32000`); the controller then
+keeps the last on-screen geometry as the restore target and emits the
+parking sentinel in the assign. `window_layout` coordinates are
+screen-absolute; assign coordinates are target-relative (subtract the
+boundary `xpos`/`ypos`). The layouter's assign vocabulary also
+accepts `label_prefix`/`label_suffix`, `visible`, and
+`xpos`/`ypos="any"` (upstream capabilities the tasklist emits only
+through static fragments).
+
+#### Maximized is inferred, not reported
+
+Neither upstream report carries a `maximized` window state. The
+controller infers `Maximized` when a non-parked window's inner
+geometry fills the boundary area within a 64 px decorator-margin
+tolerance, preserves the flag across refreshes, and publishes it as
+`<assign maximized="yes">`. Native producers must keep this
+geometry-only truth working (v1 adds no maximized attribute; doing so
+would be a protocol bump).
+
+#### Native target versus current truth
+
+For the native topology (`docs/plans/phase16-sponge-wm.md`,
+`run/sponge-wm-native*.run`) only the producers change, per the table
+above. The `TasklistController` contract, the required attributes,
+the parking and origin rules, assign ordering, and the maximize
+inference stay binding. Pass-through fields are upstream-only detail:
+native producers may omit them (the controller ignores them) but must
+never alter a consumed attribute. The native `sponge_decorator` is
+associated through the Sponge-owned core contract (D16W.3) and is not
+a consumer of this upstream `window_layout` shape; in the upstream
+topology the decorator is a second, pass-through consumer of
+`window_layout`.
+
 ### Acceptance probe
 
 `run/sponge-wm-tasks.run` (base-sel4 + QMP) is the W7 acceptance
