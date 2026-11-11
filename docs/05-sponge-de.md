@@ -242,6 +242,15 @@ exists in the report but the controller ignores it (upstream-only
 detail). Nothing here is invented: every attribute below appears in
 the shipped code.
 
+The frozen shapes are Node-level contracts, not a mandated wire
+encoding. Upstream `Generator` reports may serialize them as HID,
+whereas Sponge's `Expanding_reporter::generate_xml` writes XML;
+`Genode::Node`, used by the delivered controller, reads both
+encodings transparently. Native Sponge producers publish the XML
+rendering through the same reporter convention. Compatibility means
+identical node and attribute semantics in either encoding, not identical
+payload bytes across different encodings.
+
 Producers per topology (report label equals ROM label in every row;
 the run scenarios route `wm -> window_list`, `layouter -> window_layout`,
 `sponge-de -> focus_request`, `sponge-de -> rules` through `report_rom`,
