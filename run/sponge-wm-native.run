@@ -67,14 +67,18 @@
 #   rules           : report "sponge-de -> rules"             -> ROM
 #                     read by sponge_layouter (sole writer: tasklist)
 #
-# Native internal contract (run-side expectation, TODO(native-wm)):
-# sponge_wm reports "pointer" + "focus_state" to sponge_layouter
-# (gesture + focus truth for window_layout's consumed `focused`
-# attribute); sponge_layouter reports "focus" + "resize_request" to
+# Native internal contract v1.1 (binding; docs/plans/phase16-sponge-wm.md
+# §11, shapes in repos/sponge/include/sponge/wm_protocol.h):
+# sponge_wm reports "focus_state" (the focus truth behind
+# window_layout's consumed `focused` attribute) and "window_chrome"
+# (lifecycle/draw snapshot) ; sponge_layouter reports "focus"
+# (steering) and "window_request" (complete desired state) to
 # sponge_wm; sponge_decorator reports "decorator_margins" in the
-# public <floating top bottom left right/> shape the two upstream
-# decorators publish. If the implementers reshape these channels, the
-# routes here move with them — the four protocol labels above are
+# public <floating top bottom left right/> shape and is otherwise a
+# pure renderer. Every internal report is a complete last-state-wins
+# snapshot: there is no hover report and no event-style
+# window_control channel; lossless gestures use core->layouter Input
+# forwarding (component behavior). The four protocol labels above are
 # frozen and must not move.
 #
 # Control escape hatch (AGENTS.md §1.1): headless by design.
@@ -127,13 +131,14 @@ config
     + policy | label: native_wm_probe -> window_layout | report: sponge_layouter -> window_layout
     + policy | label: native_wm_probe -> decorator_margins | report: sponge_decorator -> decorator_margins
     #
-    # Native internal contract (TODO(native-wm); see header).
+    # Internal contract v1.1 (binding; see header).
     #
-    + policy | label: sponge_layouter -> pointer          | report: sponge_wm -> pointer
     + policy | label: sponge_layouter -> focus_state      | report: sponge_wm -> focus_state
     + policy | label: sponge_layouter -> decorator_margins | report: sponge_decorator -> decorator_margins
     + policy | label: sponge_wm -> focus                  | report: sponge_layouter -> focus
-    + policy | label: sponge_wm -> resize_request         | report: sponge_layouter -> resize_request
+    + policy | label: sponge_wm -> window_request         | report: sponge_layouter -> window_request
+    + policy | label: sponge_wm -> decorator_margins      | report: sponge_decorator -> decorator_margins
+    + policy | label: sponge_decorator -> window_chrome   | report: sponge_wm -> window_chrome
 
 + start nitpicker | ram: 16M
   + provides
@@ -173,9 +178,9 @@ config
     + policy | label_prefix: sponge_layouter  | role: layouter
     + default-policy
   + route
-    + service ROM | label: focus          | + child report_rom
-    + service ROM | label: resize_request | + child report_rom
-    + service ROM | label: focus_state    | + child report_rom
+    + service ROM | label: focus            | + child report_rom
+    + service ROM | label: window_request   | + child report_rom
+    + service ROM | label: decorator_margins | + child report_rom
     + service Report | + child report_rom
     + service Gui | + child nitpicker
     + any-service
@@ -194,7 +199,6 @@ config
     + service ROM | label: window_list       | + child report_rom
     + service ROM | label: focus_request     | + child report_rom
     + service ROM | label: rules             | + child report_rom
-    + service ROM | label: pointer           | + child report_rom
     + service ROM | label: focus_state       | + child report_rom
     + service ROM | label: decorator_margins | + child report_rom
     + service Report | + child report_rom
@@ -217,6 +221,7 @@ config
   + route
     + service ROM | label: theme         | + parent
     + service ROM | label: default.theme | + parent
+    + service ROM | label: window_chrome | + child report_rom
     + service Report | + child report_rom
     + any-service
       + child sponge_wm

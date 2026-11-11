@@ -120,13 +120,14 @@ config
     + policy | label: native_wm_qmp_probe -> rules         | report: sponge-de -> rules
     + policy | label: native_wm_qmp_probe -> decorator_margins | report: sponge_decorator -> decorator_margins
     #
-    # Native internal contract (TODO(native-wm); see run/sponge-wm-native.run).
+    # Internal contract v1.1 (binding; see run/sponge-wm-native.run header).
     #
-    + policy | label: sponge_layouter -> pointer          | report: sponge_wm -> pointer
     + policy | label: sponge_layouter -> focus_state      | report: sponge_wm -> focus_state
     + policy | label: sponge_layouter -> decorator_margins | report: sponge_decorator -> decorator_margins
     + policy | label: sponge_wm -> focus                  | report: sponge_layouter -> focus
-    + policy | label: sponge_wm -> resize_request         | report: sponge_layouter -> resize_request
+    + policy | label: sponge_wm -> window_request         | report: sponge_layouter -> window_request
+    + policy | label: sponge_wm -> decorator_margins      | report: sponge_decorator -> decorator_margins
+    + policy | label: sponge_decorator -> window_chrome   | report: sponge_wm -> window_chrome
     #
     # sponge_pkgd relay.
     #
@@ -313,9 +314,9 @@ config
     + policy | label_prefix: sponge_layouter  | role: layouter
     + default-policy
   + route
-    + service ROM | label: focus          | + child report_rom
-    + service ROM | label: resize_request | + child report_rom
-    + service ROM | label: focus_state    | + child report_rom
+    + service ROM | label: focus            | + child report_rom
+    + service ROM | label: window_request   | + child report_rom
+    + service ROM | label: decorator_margins | + child report_rom
     + service Report | + child report_rom
     + service Gui | + child nitpicker
     + any-service
@@ -336,7 +337,6 @@ config
     + service ROM | label: window_list       | + child report_rom
     + service ROM | label: focus_request     | + child report_rom
     + service ROM | label: rules             | + child report_rom
-    + service ROM | label: pointer           | + child report_rom
     + service ROM | label: focus_state       | + child report_rom
     + service ROM | label: decorator_margins | + child report_rom
     + service Report | + child report_rom
@@ -351,6 +351,7 @@ config
   + route
     + service ROM | label: theme         | + parent
     + service ROM | label: default.theme | + parent
+    + service ROM | label: window_chrome | + child report_rom
     + service Report | + child report_rom
     + any-service
       + child sponge_wm
