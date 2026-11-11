@@ -1,0 +1,96 @@
+#
+# \brief  Sponge configd wm.layout.mode closed-enum acceptance scenario
+#        (Phase 16 W6, D16W.11)
+# \author Sponge OS contributors
+# \date   2026
+#
+# D16W.11 deliverable scenario: prove `wm.layout.mode` is a
+# sponge_configd closed-registry key with a typed enum validator
+# (`floating` | `tiling`) and default `floating`. The probe:
+#
+#   1. asserts the startup broadcast already carries the
+#      never-written default `floating` (consumer safety — the
+#      native layouter always finds a value)
+#   2. writes `tiling` then `floating` and asserts both round-trip
+#      through the broadcast
+#   3. writes unknown (`stacking`), empty, case-variant
+#      (`Floating`), and whitespace (` floating`, `tiling `)
+#      values and asserts each is rejected with the structured
+#      error naming the closed set
+#   4. asserts the store (get) and broadcast still hold the last
+#      valid value after the rejected writes — no-store-change
+#      on rejection
+#
+# Topology mirrors run/sponge-configd-badkey.run. base-linux for
+# fast iteration; the validator behavior is purely in-memory and
+# orthogonal to the kernel tag.
+#
+# AGENTS.md §4.2: builds lib/ld + core init and passes [build_artifacts]
+# to build_boot_image.
+#
+
+build { core lib/ld init timer server/report_rom lib/vfs sponge_configd \
+        test/configd_registry_probe }
+
+create_boot_directory
+
+install_config {
+config
++ parent-provides
+  + service LOG
+  + service PD
+  + service CPU
+  + service ROM
+  + service IO_MEM
+  + service IRQ
+
++ default-route
+  + any-service
+    + parent
+    + any-child
++ default | caps: 200 | ram: 8M
+
++ start timer
+  + provides | + service Timer
+
++ start report_rom | ram: 4M
+  + provides
+    + service Report
+    + service ROM
+  + config | verbose: no
+    + policy | label: sponge_configd -> config_request | report: configd_registry_probe -> config_request
+    + policy | label: configd_registry_probe -> config_result | report: sponge_configd -> config_result
+    + policy | label: configd_registry_probe -> broadcast | report: sponge_configd -> config
+
++ start sponge_configd | caps: 200 | ram: 16M
+  + route
+    + service ROM | label_last: config_request | + child report_rom
+    + service Report | + child report_rom
+    + any-service
+      + parent
+      + any-child
+
++ start configd_registry_probe | caps: 200 | ram: 8M
+  + config | phase: layout-mode
+  + route
+    + service Timer | + child timer
+    + service ROM | label_last: config_result | + child report_rom
+    + service ROM | label_last: broadcast     | + child report_rom
+    + service Report | + child report_rom
+    + any-service
+      + parent
+      + any-child
+- }
+
+build_boot_image [build_artifacts]
+
+append qemu_args " -nographic -m 1G "
+
+#
+# Verification: the probe exercises the D16W.11 contract end to end
+# (default live at startup, both enum values accepted, closed-set
+# rejections, no-store-change on rejection) and logs
+# "layout-mode-probe: PASS". Rejected values must never be stored or
+# broadcast; the last valid value must survive the rejection batch.
+#
+run_genode_until {.*layout-mode-probe: PASS.*} 30

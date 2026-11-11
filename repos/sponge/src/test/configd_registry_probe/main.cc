@@ -23,13 +23,21 @@
  *     reply suggests `panel.visible_widgets` (the established
  *     validator parity path).
  *
- * One probe serves all three scenarios (selected via
+ *   - Closed-enum key `wm.layout.mode` (D16W.11): the probe asserts
+ *     the never-written default `floating` is broadcast at startup,
+ *     both closed values (`floating`, `tiling`) round-trip, unknown /
+ *     empty / case-variant / whitespace values are rejected naming
+ *     the closed set, and rejected writes leave the store and
+ *     broadcast unchanged.
+ *
+ * One probe serves all scenarios (selected via
  * `<config phase="..."/>`). Each scenario gates on its specific PASS
  * marker:
  *
  *   run/sponge-configd-pattern-keys.run  -> "pattern-keys-probe: PASS"
  *   run/sponge-configd-shortcuts.run    -> "shortcuts-probe: PASS"
  *   run/sponge-configd-badkey.run        -> "badkey-probe: PASS"
+ *   run/sponge-configd-layout-mode.run   -> "layout-mode-probe: PASS"
  *
  * Capability surface: Report (config_request) + ROM (config_result,
  * broadcast) + Timer. No Capture, no GUI.
@@ -164,6 +172,40 @@ struct Probe
 									return true;
 						}
 					}
+				} catch (Genode::Xml_node::Invalid_syntax) { }
+			}
+			_timer.msleep(100);
+		}
+		return false;
+	}
+
+	/*
+	 * Send a <request op="get" key="K"/> and expect an ok reply
+	 * carrying value=`expect_value`. Used to prove the in-memory
+	 * store still holds the last valid value after rejected writes
+	 * (no-store-change on rejection).
+	 */
+	bool _send_get_expect(char const *key, char const *expect_value)
+	{
+		_request.generate_xml([&](Genode::Xml_generator &g) {
+			g.attribute("op",  "get");
+			g.attribute("key", key);
+		});
+
+		for (unsigned i = 0; i < 80; ++i) {
+			_result.update();
+			if (_result.valid()) {
+				try {
+					Genode::Xml_node const r = _result.xml();
+					if (r.attribute_value("status", Genode::String<32>()) ==
+					    Genode::String<32>("ok") &&
+					    r.attribute_value("op",    Genode::String<32>()) ==
+					    Genode::String<32>("get") &&
+					    r.attribute_value("key",   Genode::String<128>()) ==
+					    Genode::String<128>(key) &&
+					    r.attribute_value("value", Genode::String<128>()) ==
+					    Genode::String<128>(expect_value))
+						return true;
 				} catch (Genode::Xml_node::Invalid_syntax) { }
 			}
 			_timer.msleep(100);
@@ -377,6 +419,120 @@ struct Probe
 	}
 
 
+	/* ============== phase layout-mode ============== */
+
+	/*
+	 * wm.layout.mode closed-enum registry key (D16W.11):
+	 *   1. startup broadcast already carries the never-written
+	 *      default `floating` (consumer safety: the layouter always
+	 *      finds a value)
+	 *   2. `tiling` and `floating` are accepted and broadcast
+	 *   3. unknown (`stacking`), empty, case-variant (`Floating`),
+	 *      and whitespace (` floating`, `tiling `) values are
+	 *      rejected with the structured error naming the closed set
+	 *   4. after the rejected writes the store and broadcast still
+	 *      hold the last valid value (`tiling`) — no-store-change
+	 *      on rejection
+	 *
+	 * Final gate: "layout-mode-probe: PASS".
+	 */
+	void _run_phase_layout_mode()
+	{
+		char const *const PROBE = "layout-mode-probe";
+
+		if (!_wait_for_broadcast()) {
+			_fail(PROBE, "configd broadcast never arrived");
+			return;
+		}
+
+		/* step 1: default `floating` is live before any write */
+		if (!_broadcast_has("wm.layout.mode", "floating")) {
+			_fail(PROBE, "startup broadcast missing wm.layout.mode=floating "
+			              "(never-written default not applied)");
+			return;
+		}
+		Genode::log(PROBE, ": wm.layout.mode default floating broadcast ok");
+
+		/* step 2: both closed-enum values are accepted */
+		if (!_send_set("wm.layout.mode", "tiling")) {
+			_fail(PROBE, "set wm.layout.mode=tiling not answered");
+			return;
+		}
+		if (!_broadcast_has("wm.layout.mode", "tiling")) {
+			_fail(PROBE, "broadcast missing wm.layout.mode=tiling");
+			return;
+		}
+		if (!_send_set("wm.layout.mode", "floating")) {
+			_fail(PROBE, "set wm.layout.mode=floating not answered");
+			return;
+		}
+		if (!_broadcast_has("wm.layout.mode", "floating")) {
+			_fail(PROBE, "broadcast missing wm.layout.mode=floating");
+			return;
+		}
+
+		/*
+		 * Non-default baseline for the no-change proof below: if
+		 * the last valid value were the default, a buggy rejection
+		 * path that reset the key to its default would pass
+		 * unnoticed.
+		 */
+		if (!_send_set("wm.layout.mode", "tiling")) {
+			_fail(PROBE, "set wm.layout.mode=tiling (baseline) not answered");
+			return;
+		}
+		Genode::log(PROBE, ": wm.layout.mode valid values ok");
+
+		/* step 3: closed-set rejections, each naming the expected set */
+		if (!_send_set_expect_error("wm.layout.mode", "stacking",
+		                            "floating, tiling")) {
+			_fail(PROBE, "wm.layout.mode=stacking was accepted "
+			              "or error did not name the closed set");
+			return;
+		}
+		if (!_send_set_expect_error("wm.layout.mode", "",
+		                            "non-empty value")) {
+			_fail(PROBE, "wm.layout.mode='' was accepted "
+			              "or error did not mention non-empty value");
+			return;
+		}
+		if (!_send_set_expect_error("wm.layout.mode", "Floating",
+		                            "floating, tiling")) {
+			_fail(PROBE, "wm.layout.mode=Floating was accepted "
+			              "or error did not name the closed set");
+			return;
+		}
+		if (!_send_set_expect_error("wm.layout.mode", " floating",
+		                            "floating, tiling")) {
+			_fail(PROBE, "wm.layout.mode=' floating' was accepted "
+			              "or error did not name the closed set");
+			return;
+		}
+		if (!_send_set_expect_error("wm.layout.mode", "tiling ",
+		                            "floating, tiling")) {
+			_fail(PROBE, "wm.layout.mode='tiling ' was accepted "
+			              "or error did not name the closed set");
+			return;
+		}
+		Genode::log(PROBE, ": wm.layout.mode invalid values rejected ok");
+
+		/* step 4: no-store-change on rejection */
+		if (!_send_get_expect("wm.layout.mode", "tiling")) {
+			_fail(PROBE, "store changed after rejected writes "
+			              "(get wm.layout.mode != tiling)");
+			return;
+		}
+		if (!_broadcast_has("wm.layout.mode", "tiling")) {
+			_fail(PROBE, "broadcast changed after rejected writes");
+			return;
+		}
+		Genode::log(PROBE, ": wm.layout.mode store/broadcast unchanged ok");
+
+		Genode::log(PROBE, ": PASS");
+		_env.parent().exit(0);
+	}
+
+
 	/* ============== driver ============== */
 
 	void run()
@@ -393,6 +549,7 @@ struct Probe
 		if (_phase == "pattern-keys") { _run_phase_pattern_keys(); return; }
 		if (_phase == "shortcuts")   { _run_phase_shortcuts();   return; }
 		if (_phase == "badkey")      { _run_phase_badkey();      return; }
+		if (_phase == "layout-mode") { _run_phase_layout_mode(); return; }
 
 		_fail("configd-registry-probe",
 		      "unknown or absent <config phase=\"...\"> attribute");
