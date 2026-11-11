@@ -284,6 +284,13 @@ The repository currently contains:
   Background / Shortcuts / Defaults) via the `SettingsController`
   (a dedicated `de_config_request` / `de_config_result` Report
   channel per D16.1 + `AGENTS.md` §1.2 single-writer rule).
+  **Interim note (2026-11-11):** the shipped five-tab dialog is
+  the interim implementation, not the final Settings
+  architecture. Base criterion 2 was reopened on 2026-11-10; the
+  final target is the provider-owned `sponge_settings` control
+  center in roadmap Criterion 18 (not implemented or tested).
+  The legacy dialog and universal `SettingsController` are
+  removed at the W4 provider split (D16.9).
   Right-click on the panel opens a QMenu (Height spinbox 16..128,
   Visible widgets checkboxes, Position radio group; panel.position
   becomes live via dual nitpicker panel domains `panel_top` /
