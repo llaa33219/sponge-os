@@ -4,6 +4,13 @@
 > Authoritative source: decision D14.3 in
 > `docs/plans/phase14-daily-desktop.md`. This file gates W7 — it is
 > reviewed and checked in BEFORE W7 begins.
+>
+> Extended 2026-11-12: the native Sponge WM scope (Criterion 16,
+> `docs/plans/phase16-sponge-wm.md`) adopts this table as its state
+> reference and adds the "Native WM Extension" section below. The
+> D14.3 baseline rows are unchanged and remain the truth for the
+> upstream `wm` + `window_layouter` + `decorator` path and for the
+> `TasklistController` (protocol v1 freeze).
 
 ## Scope
 
@@ -68,6 +75,88 @@ focus grant is part of the same step. This is the deterministic
 restoration path required by U3 — a decorative minimize button
 with no restore is forbidden.
 
+## Native WM Extension (planned; `docs/plans/phase16-sponge-wm.md`)
+
+> Honest status: this section defines the target transitions for the
+> native Sponge WM (Criterion 16). No native code exists yet; the
+> rows below are the specification the implementation is checked
+> against. The baseline table above stays the delivered truth for the
+> upstream path and for the `TasklistController`, whose contract is
+> frozen at protocol v1 (`window_list`, `window_layout`,
+> `focus_request`, `rules`).
+
+Protocol note (2026-11-12): baseline row 2's "wm emits
+`focus_request`" wording predates the W7 sole-writer contract. Per
+the protocol v1 freeze in `docs/05-sponge-de.md` §4.6, the
+`focus_request` report's only writer is `TasklistController`;
+title-click focus in the upstream path runs through the
+input/nitpicker chain and writes no report. The delivered D14.3 rows
+are left as written; this note is the correction of record.
+
+### Mode, Placement, and State Rules
+
+- **Layout mode.** One global key `wm.layout.mode` (`floating` |
+  `tiling`, default `floating`). Floating is user-directed placement
+  and 8-zone resize. Tiling is the Master-Stack arrangement below.
+  The four baseline states stay the per-window state machine;
+  placement (master, stack, floating, parked, maximized) is derived
+  from the mode plus the state, never an extra state.
+- **Master-Stack placement.** Eligible windows are non-minimized,
+  non-maximized, and resizeable. The first eligible window in
+  creation order takes the left half of the work area as master; the
+  remaining eligible windows split the right half into equal stack
+  bands top to bottom in creation order. Non-resizeable windows
+  always float and never enter the arrangement.
+- **Reflow triggers (tiling mode).** The arrangement is recomputed on
+  every window open and close, on minimize and restore, on maximize
+  and maximize-restore, and on a mode switch. Leaving tiling mode
+  keeps each window's current geometry as its floating geometry (no
+  hidden pre-tile history is kept). A master that closes, minimizes,
+  or maximizes passes the master slot to the next eligible window in
+  creation order.
+- **Maximized fills the work area.** For the native path, `Maximized`
+  fills the work area (screen minus panel), not the raw screen, and
+  the toggle restores the saved pre-maximize `(x,y,w,h)`. The
+  baseline rows' "full-screen" wording describes the upstream
+  layouter; the native chrome's fullscreen button maps to this same
+  work-area `Maximized` state in the initial version (honest v1 note
+  in `docs/plans/phase16-sponge-wm.md`).
+- **Minimized reporting.** Minimized windows are parked and reported
+  at the existing off-screen convention: the established value is
+  `(x=-32000, y=-32000)` and a window whose reported x and y are
+  both at or below -32000 reads as parked (the delivered
+  `TasklistController` rule). The native layouter reports the same
+  convention so the `TasklistController` interprets reports without
+  change.
+
+### Native Transitions (superset of the baseline table)
+
+| From | Trigger | Side-effects | To |
+|---|---|---|---|
+| (init) | `window_created`, floating mode | Default placement (baseline row 1). | `Normal-Visible` |
+| (init) | `window_created`, tiling mode, resizeable | Inserted into the Master-Stack arrangement (master if first eligible, else stack band in creation order); reflow. | `Normal-Visible` |
+| (init) | `window_created`, non-resizeable | Floats at default placement in either mode (never enters the arrangement). | `Normal-Visible` |
+| `Normal-Visible(-Focused)` | Title drag / 8-zone resize, floating mode | Geometry update only (baseline out-of-scope note applies). | unchanged |
+| `Normal-Visible(-Focused)` | Title drag / 8-zone resize, tiling mode | None in v1: tiled geometry is layouter-owned. | unchanged |
+| `Normal-Visible(-Focused)` | Minimizer click, tiling mode | Parked at `(-32000,-32000)`; leaves the arrangement; reflow. | `Minimized` |
+| `Minimized` | Tasklist button click, tiling mode | Re-enters the arrangement in creation order; reflow; `focus_request`. | `Normal-Visible-Focused` |
+| `Normal-Visible(-Focused)` | Maximizer/fullscreen click, tiling mode | Fills the work area (leaves the arrangement); reflow; focus preserved. | `Maximized` |
+| `Maximized` | Maximizer toggle, tiling mode | Restores the saved geometry and its arrangement slot; reflow. | `Normal-Visible` |
+| any | `wm.layout.mode` `floating -> tiling` | Eligible windows ordered by creation become master + stack bands; non-resizeable windows stay floating; reflow. Per-window states unchanged. | unchanged |
+| any | `wm.layout.mode` `tiling -> floating` | Every window keeps its current geometry as floating geometry. Per-window states unchanged. | unchanged |
+| arrangement | Any window destroyed, tiling mode | Remaining eligible windows reflow (next in creation order takes master if needed). | (destroyed) |
+
+### Native Worked Examples
+
+9. **Tiling open.** With `wm.layout.mode=tiling` and one resizeable
+   window shown, a second resizeable window opens: the first stays
+   master on the left half, the second becomes the single stack band
+   on the right half; both report their tiled geometry in
+   `window_layout`.
+10. **Tiling close.** The master closes; the remaining window becomes
+    master and reflows to the left half; its state machine row is the
+    baseline destroy row.
+
 ## Out of Scope
 
 - Window drag (title-bar drag) updates `(x,y)` while staying in
@@ -75,3 +164,7 @@ with no restore is forbidden.
 - Alt-Tab focus lands at `Normal-Visible-Focused` (row 2).
 - Theme reload preserves the current state; tasklist colors update
   in place.
+- Native non-goals (per `docs/plans/phase16-sponge-wm.md`):
+  workspaces, window gaps, snap layouts, animations, per-window
+  rules, master-ratio configuration, and per-window float-out by
+  dragging (tiled geometry is layouter-owned in v1).
