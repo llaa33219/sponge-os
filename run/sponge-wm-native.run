@@ -1,0 +1,324 @@
+
+# \brief  Native Sponge WM boot / interaction smoke scenario (Criterion 16)
+# \author Sponge OS contributors
+# \date   2026
+#
+# M1 acceptance gate (docs/plans/phase16-sponge-wm.md): boots the
+# NATIVE window-management trio in place of the upstream
+# wm + window_layouter + decorator and proves, with native_wm_probe:
+#
+#   (a) window_list matches protocol v1 (docs/05-sponge-de.md §4.6),
+#   (b) sponge_layouter places sponge-de's "Sponge DE Demo" window at
+#       the configured content geometry and the window renders,
+#   (c) a synthetic title-bar drag (Event injection into nitpicker)
+#       moves the window by the exact drag delta (real WM behavior).
+#
+# Derived from run/sponge-wm.run (the proven upstream smoke topology).
+# The upstream anchors run/sponge-wm{,-qmp,-tasks}.run stay untouched
+# and green (D16W.7); this scenario is the native gate only.
+#
+# === EXPECTED FAILURE AT THIS STAGE (honest) ===
+#
+# The three native components (repos/sponge/src/sponge_wm,
+# repos/sponge/src/sponge_layouter, repos/sponge/src/sponge_decorator)
+# DO NOT EXIST YET. The `build` block below references them on
+# purpose: until M1-M3 land, `make run/sponge-wm-native` fails at
+# build-target resolution with a missing-target error naming one of
+# them. That failure is the ACCEPTANCE CAPTURE for this scaffolding
+# milestone — it must not be masked by stubs. Nothing prints PASS
+# before the native stack is real.
+#
+# Architecture (flat, base-linux or base-sel4, headless):
+#
+#   init
+#   + timer
+#   + report_rom        (protocol v1 matrix + the native internal
+#                        contract channels; child names are exactly
+#                        sponge_wm / sponge_layouter / sponge_decorator
+#                        so every report/ROM label is unambiguous)
+#   + nitpicker         (Gui/Capture/Event; builtin click focus on the
+#                        default domain; panel domain for the DE panel)
+#   + sponge_wm         (D16W.1 core: Gui virtualization, window
+#                        registry, input routing, native content
+#                        association; emits window_list per protocol v1)
+#   + sponge_layouter   (D16W.1 policy: placement, floating move/
+#                        resize, minimize parking, work-area maximize;
+#                        emits window_layout per protocol v1)
+#   + sponge_decorator  (D16W.1 native modern chrome: title bar +
+#                        close/minimize/fullscreen, theme-driven per
+#                        AGENTS.md §3.4; reports decorator_margins)
+#   + sponge-de         (Qt6 DE; panel Gui bypasses the WM to
+#                        nitpicker's panel domain, demo window goes
+#                        through sponge_wm; TasklistController consumes
+#                        window_list/window_layout and is the SOLE
+#                        writer of focus_request/rules, unchanged)
+#   + native_wm_probe   (protocol-v1 + lifecycle + synthetic drag)
+#
+# report_rom label matrix (TasklistController-facing labels preserved
+# byte-for-byte; only the PRODUCERS changed names — protocol v1,
+# docs/05-sponge-de.md §4.6 "Native target versus current truth"):
+#
+#   window_list     : report "sponge_wm -> window_list"       -> ROM
+#                     read by sponge-de + sponge_layouter + probe
+#   window_layout   : report "sponge_layouter -> window_layout" -> ROM
+#                     read by sponge-de + probe
+#   focus_request   : report "sponge-de -> focus_request"     -> ROM
+#                     read by sponge_layouter (sole writer: tasklist)
+#   rules           : report "sponge-de -> rules"             -> ROM
+#                     read by sponge_layouter (sole writer: tasklist)
+#
+# Native internal contract (run-side expectation, TODO(native-wm)):
+# sponge_wm reports "pointer" + "focus_state" to sponge_layouter
+# (gesture + focus truth for window_layout's consumed `focused`
+# attribute); sponge_layouter reports "focus" + "resize_request" to
+# sponge_wm; sponge_decorator reports "decorator_margins" in the
+# public <floating top bottom left right/> shape the two upstream
+# decorators publish. If the implementers reshape these channels, the
+# routes here move with them — the four protocol labels above are
+# frozen and must not move.
+#
+# Control escape hatch (AGENTS.md §1.1): headless by design.
+# run/sponge-de.run remains the interactive fb_sdl variant.
+
+build { core lib/ld init timer server/report_rom server/nitpicker \
+         sponge_wm sponge_layouter sponge_decorator \
+         sponge-de test/native_wm_probe \
+         qt6/base lib/libc lib/libm lib/stdcxx lib/mesa \
+         lib/mesa_gpu-softpipe lib/egl lib/softpipe lib/libdrm lib/expat \
+         lib/qt6_component lib/vfs lib/vfs_pipe lib/vfs_gpu lib/rom_filter \
+         lib/zlib lib/libpng }
+
+create_boot_directory
+
+install_config {
+config
++ parent-provides
+  + service ROM
+  + service PD
+  + service CPU
+  + service LOG
+  + service IRQ
+  + service IO_MEM
+  + service IO_PORT
+
++ default | caps: 200 | ram: 4M
++ default-route
+  + any-service
+    + parent
+    + any-child
+
++ start timer
+  + provides | + service Timer
+
++ start report_rom | caps: 300 | ram: 8M
+  + provides
+    + service Report
+    + service ROM
+  + config | verbose: no
+    #
+    # Protocol v1 (frozen) — TasklistController-facing labels.
+    #
+    + policy | label: sponge-de -> window_list         | report: sponge_wm -> window_list
+    + policy | label: sponge-de -> window_layout       | report: sponge_layouter -> window_layout
+    + policy | label: sponge_layouter -> window_list   | report: sponge_wm -> window_list
+    + policy | label: sponge_layouter -> focus_request | report: sponge-de -> focus_request
+    + policy | label: sponge_layouter -> rules         | report: sponge-de -> rules
+    + policy | label: native_wm_probe -> window_list   | report: sponge_wm -> window_list
+    + policy | label: native_wm_probe -> window_layout | report: sponge_layouter -> window_layout
+    + policy | label: native_wm_probe -> decorator_margins | report: sponge_decorator -> decorator_margins
+    #
+    # Native internal contract (TODO(native-wm); see header).
+    #
+    + policy | label: sponge_layouter -> pointer          | report: sponge_wm -> pointer
+    + policy | label: sponge_layouter -> focus_state      | report: sponge_wm -> focus_state
+    + policy | label: sponge_layouter -> decorator_margins | report: sponge_decorator -> decorator_margins
+    + policy | label: sponge_wm -> focus                  | report: sponge_layouter -> focus
+    + policy | label: sponge_wm -> resize_request         | report: sponge_layouter -> resize_request
+
++ start nitpicker | ram: 16M
+  + provides
+    + service Gui
+    + service Capture
+    + service Event
+  + route
+    + service Report | + child report_rom
+    + service Timer | + child timer
+    + any-service
+      + parent
+      + any-child
+  + config
+    + capture
+    + event
+    + report | focus: yes | hover: yes | xray: yes
+    + domain panel | layer: 1 | content: client | label: no
+                   | hover: always | ypos: 0 | height: 28
+    + domain default | layer: 2 | content: client | label: no
+                     | hover: always | focus: click
+    + policy | label_prefix: sponge-de -> Sponge Panel | domain: panel
+    + default-policy | domain: default
+    + background | color: #1e1e2e
+
++ start sponge_wm | caps: 250 | ram: 8M
+  + provides
+    + service Gui
+  + config
+    #
+    # TODO(native-wm): the session-policy schema is the Sponge-owned
+    # core contract (D16W.3). This stanza is the run-side expectation
+    # (chrome and layouter sessions are distinguished by label, as in
+    # the proven upstream topology); M1 may refine it, but the child
+    # names and the report labels stay as routed above.
+    #
+    + policy | label_prefix: sponge_decorator | role: decorator
+    + policy | label_prefix: sponge_layouter  | role: layouter
+    + default-policy
+  + route
+    + service ROM | label: focus          | + child report_rom
+    + service ROM | label: resize_request | + child report_rom
+    + service ROM | label: focus_state    | + child report_rom
+    + service Report | + child report_rom
+    + service Gui | + child nitpicker
+    + any-service
+      + parent
+      + any-child
+
++ start sponge_layouter | caps: 150 | ram: 4M
+  + config | rules: rom
+    + rules
+      + screen screen
+      + assign | label: sponge-de -> Sponge DE Demo | target: screen
+               | xpos: 192 | ypos: 172 | width: 640 | height: 480 | maximized: no
+    + press   | key: BTN_LEFT  | action: drag
+      + release | key: BTN_LEFT | action: drop
+  + route
+    + service ROM | label: window_list       | + child report_rom
+    + service ROM | label: focus_request     | + child report_rom
+    + service ROM | label: rules             | + child report_rom
+    + service ROM | label: pointer           | + child report_rom
+    + service ROM | label: focus_state       | + child report_rom
+    + service ROM | label: decorator_margins | + child report_rom
+    + service Report | + child report_rom
+    + any-service
+      + child sponge_wm
+      + parent
+      + any-child
+
++ start sponge_decorator | caps: 350 | ram: 32M
+  + config
+    #
+    # TODO(native-wm): native chrome config (theme source + the native
+    # close/minimize/fullscreen button set) is the Sponge-owned
+    # decorator contract (D16W.1/D16W.4). No themed_decorator and no
+    # upstream decorator is wired in this topology (D16W.4). Chrome
+    # association with client windows runs through sponge_wm's content
+    # association (D16W.3), not through a window_layout ROM.
+    #
+    + theme | source: default
+  + route
+    + service ROM | label: theme         | + parent
+    + service ROM | label: default.theme | + parent
+    + service Report | + child report_rom
+    + any-service
+      + child sponge_wm
+      + parent
+      + any-child
+
++ start sponge-de | caps: 300 | ram: 128M
+  + config
+    + tasklist | source: wm
+    + tasklist_static_rules
+      + assign | label: sponge-de -> Sponge DE Demo | target: screen
+               | xpos: 192 | ypos: 172 | width: 640 | height: 480 | maximized: no
+    + vfs
+      + dir dev
+        + log
+        + inline rtc | : 2018-01-01 00:01
+      + dir pipe | + pipe
+      + tar qt6_dejavusans.tar
+      + tar qt6_libqgenode.tar
+    + libc | stdout: /dev/log | stderr: /dev/log | pipe: /pipe | rtc: /dev/rtc
+  + route
+    + service Gui | label_last: Sponge Panel | + child nitpicker
+    + service Gui | + child sponge_wm
+    + service Report | + child report_rom
+    + service ROM | label: window_list   | + child report_rom
+    + service ROM | label: window_layout | + child report_rom
+    + service Report | label: focus_request | + child report_rom
+    + service Report | label: rules        | + child report_rom
+    + service ROM | label: default.theme | + parent
+    + service ROM | label: mesa_gpu.lib.so | + parent | label: mesa_gpu-softpipe.lib.so
+    + any-service
+      + parent
+      + any-child
+
++ start native_wm_probe | caps: 100 | ram: 16M
+  + route
+    + service Capture | + child nitpicker
+    + service Event   | + child nitpicker
+    + service Timer | + child timer
+    + service ROM | label: window_list       | + child report_rom
+    + service ROM | label: window_layout     | + child report_rom
+    + service ROM | label: decorator_margins | + child report_rom
+    + any-service
+      + parent
+      + any-child
+- }
+
+build_boot_image [build_artifacts]
+
+#
+# Qt6 shared libraries and runtime tars are built by separate cmake
+# targets. Copy them into the boot directory (same staging as
+# run/sponge-wm.run).
+#
+foreach lib { libQt6Core.lib.so libQt6Gui.lib.so libQt6Widgets.lib.so \
+              libqgenode.lib.so \
+              qt6_libqgenode.tar qt6_dejavusans.tar } {
+	set src "bin/$lib"
+	set dst "[run_dir]/genode/$lib"
+	if {[file exists $src] && ![file exists $dst]} {
+		exec cp -L $src $dst
+	}
+}
+
+#
+# The qt6_dejavusans.tar raw recipe is depot-only, so for a source build
+# we mirror its content here (same as run/sponge-wm.run).
+#
+set dejavu_dst "[run_dir]/genode/qt6_dejavusans.tar"
+if {![file exists $dejavu_dst]} {
+	set dejavu_src [glob -nocomplain "${genode_dir}/contrib/qt6_base-*/src/lib/qt6_base/src/3rdparty/wasm/DejaVuSans.ttf"]
+	if {[llength $dejavu_src] == 0} {
+		error "DejaVuSans.ttf not found in the qt6_base port sources"
+	}
+	set staging "[run_dir]/dejavusans-staging"
+	file mkdir "$staging/qt/lib/fonts"
+	file copy -force [lindex $dejavu_src 0] "$staging/qt/lib/fonts/DejaVuSans.ttf"
+	exec tar -cf $dejavu_dst -C $staging qt
+	file delete -force $staging
+}
+
+#
+# The default theme is staged as a ROM module (sponge-de and the
+# native sponge_decorator open it as "default.theme").
+#
+set theme_src "${genode_dir}/repos/sponge/src/sponge-de/themes/default.theme"
+set theme_dst "[run_dir]/genode/default.theme"
+if {[file exists $theme_src] && ![file exists $theme_dst]} {
+	exec cp -L $theme_src $theme_dst
+}
+
+#
+# Harmless on base-linux (core runs natively); required for base-sel4 /
+# QEMU to avoid opening a graphical QEMU window.
+#
+append qemu_args " -nographic "
+
+#
+# Automated verification: native_wm_probe logs PASS once the protocol
+# shape, placement, render and synthetic-drag checks all ran. On
+# timeout the run tool errors out — that is the FAIL path. The timeout
+# is generous because Qt's first paint under software (softpipe) Mesa
+# is slow.
+#
+run_genode_until {.*native-wm-probe: PASS.*} 300
