@@ -53,7 +53,8 @@ sponge-de (single component)
 ├── launcher/     # app-launch entry point (a simple menu at first)
 ├── notifications/# notification display
 ├── windows/      # window management helpers (nitpicker glue)
-├── settings/     # user settings (GUI version of vct config)
+├── settings/     # settings bridge: quick-menu change lifecycle
+│                 # (ensure-start + per-provider quick pairs)
 ├── background/   # desktop backdrop surface (paint + right-click menu)
 └── theme/        # theme loading and application
 ```
@@ -61,6 +62,17 @@ sponge-de (single component)
 > `sponge_launcher` has its own component directory ready, but it will
 > start out integrated into Sponge DE; splitting it off is considered
 > after Sponge DE stabilizes. See `AGENTS.md` §3.4.
+
+> **Settings are not a sponge-de module.** The Settings control
+> center is the separate on-demand `sponge_settings` component
+> (D16.3 in `docs/plans/phase16-daily-desktop-defaults.md`), and
+> the settings windows it launches are package-declared provider
+> components. The `settings/` entry above is only the bridge that
+> runs the panel/background quick-menu change lifecycle (§5.4,
+> "Quick-menu change lifecycle"): ensure-start of the owning
+> provider via pkgd, then a closed domain operation over the
+> per-provider quick-request / quick-result pair. sponge-de holds
+> no config write channel. See §5.4.
 
 ---
 
@@ -341,8 +353,10 @@ where applicable):
   menu; the bgmenu_open reporter publishes the structural
   acceptance).
 - `run/sponge-de-bgimage.run` — `bgimage-probe: PASS`
-  (configd `background.image` round-trip via
-  `de_config_request`).
+  (configd `background.image` round-trip over the interim
+  universal write path; the W4 provider split moves the write
+  to the Background provider's own label, which configd's
+  label-to-key-domain ACL limits to `background.*` — §5.4).
 - `run/sponge-de-bgimage-badpath.run` — `bgimage-badpath-probe:
   PASS` (allowlist rejection of `../../etc/passwd` is
   atomic — the broadcast still carries the default).
@@ -381,19 +395,34 @@ How Sponge DE should present itself to an everyday user:
 A right-click on the panel (anywhere outside the launcher's
 existing popover) opens a `QMenu` with the live controls that
 the everyday user actually touches. The menu is the
-discoverability path for panel configuration; the first-party
-Settings app (§5.4 below) is the same surface in dialog form.
+discoverability path for panel configuration; its *Settings*
+entry opens (or focuses, if already open) the Panel provider's
+settings window (§5.4) — the same provider that owns the
+`panel.*` keys. The quick controls themselves change settings
+live through the **quick-menu change lifecycle** (§5.4,
+"Quick-menu change lifecycle"; W4 in
+`docs/plans/phase16-daily-desktop-defaults.md`): each control's
+value-change signal first ensures the Panel provider is running
+via pkgd on the quick menu's own launch labels (the normal
+`(package, settings-id)` path), then sends a closed domain
+operation (for example `Panel height=40`, never an arbitrary
+config key/value) over the panel quick-request / quick-result
+pair. The provider validates the operation and performs the
+write on its own config request label, and configd's
+label-to-key-domain ACL limits that label to the `panel.*`
+domain (D16.1 / D16.10). sponge-de itself holds no config write
+channel, and the quick pair is not a config relay: its
+vocabulary is closed and owned by the provider.
 
 The menu is implemented in `PanelWidget::contextMenuEvent`
 (`repos/sponge/src/sponge-de/panel/panel_widget.cc`); the menu
 is anchored to the `QContextMenuEvent`'s global position (the
 Genode QPA returns `(0,0)` from `QCursor::pos()` — known
 Phase 10+ lesson — so the event-local position is the only
-valid anchor). Each control's value-change signal routes
-through `SettingsController::request_set` via
+valid anchor). The forwarding runs through
 `QMetaObject::invokeMethod(..., Qt::QueuedConnection)` (Phase 11
-risk #2 codification), which keeps the wire contract identical
-to vct's `vct config` path (D16.9 validator parity).
+risk #2 codification), so the GUI-thread marshal is enforced at
+compile time via the `QWidget::` setter signatures.
 
 The dual nitpicker panel-domain topology (U16.2 / D16.2) is the
 runtime backing for the Position item: two pre-built
@@ -420,10 +449,14 @@ regression scenarios remain byte-compatible.
 
 - **Height**, a spin box slider in 4 px steps, range `16..128`,
   default `28`. Sourced from the existing live
-  `panel.height` `sponge_configd` key (Phase 11); the menu
-  writes through `sponge-de`'s `SettingsController` on the
-  dedicated `de_config_request` label (decision D16.1 in
-  `docs/plans/phase16-daily-desktop-defaults.md`).
+  `panel.height` `sponge_configd` key (Phase 11); the menu sends
+  the change through the quick-menu change lifecycle (§5.4):
+  ensure-start of the Panel provider, then the closed
+  `Panel height=<n>` operation over the panel quick pair. The
+  provider writes the key on its own `panel_settings ->
+  config_request` label (per-label key ACL per D16.1 in
+  `docs/plans/phase16-daily-desktop-defaults.md`; sponge-de
+  holds no config write channel).
 - **Visible widgets**, three checkboxes for `clock`, `launcher`,
   and `tasklist`. Sourced from the `panel.visible_widgets` enum-
   list key; Phase 16 W2 extends the configd validator to accept
@@ -432,7 +465,10 @@ regression scenarios remain byte-compatible.
   included it; D16.10).
 - **Position**, a radio group with `Top` / `Bottom` enabled and
   `Left` / `Right` displayed-but-disabled with a "Phase 17+"
-  tooltip. The enabled pair maps to the live `panel.position`
+  tooltip (present implementation state; the 2026-11-10 scope
+  update moved their target to Phase 16 Extension criterion 22,
+  tooltip text and disabled state unchanged until then). The
+  enabled pair maps to the live `panel.position`
   configd key and materialises through the **dual nitpicker panel
   domains** topology (D16.2 / U16.2):
   `<domain name="panel_top">` and `<domain name="panel_bottom">`,
@@ -443,21 +479,143 @@ regression scenarios remain byte-compatible.
   pre-built `QWidget`s on the existing 250 ms configd poll (no
   new timer). The previously-Phase-14-W11-row-#6 paper-cut
   ("panel.position is boot-time-only") is closed in Phase 16 W5.
-- **Settings**, opens the §5.4 dialog (lazily constructed on
-  first click, cached afterward).
+- **Settings**, opens (or focuses, if already open) the Panel
+  provider's settings window over the quick menu's own launch
+  labels (the normal `(package, settings-id)` launch path via
+  pkgd; §5.4 quick-menu change lifecycle; window identity
+  `(sponge-de, panel)`).
 
 All menu actions route through `QMetaObject::invokeMethod(...,
 Qt::QueuedConnection)` (Phase 11 risk #2 codification), so the
 GUI-thread marshal is enforced at compile time via the
 `QWidget::` setter signatures.
 
-### 5.4 Changing Settings
+### 5.4 Changing Settings (Settings control center)
 
-- Settings can be changed from Sponge DE's settings GUI or from
-  `vct config` on the CLI. Both paths use the same
-  `sponge_configd` backend, so they stay consistent.
-- Changes apply immediately, or the user is told clearly when a restart
-  is required.
+Settings live in provider-owned windows, not in a universal
+dialog. The shell that lists and launches them is the separate
+on-demand `sponge_settings` component (decision D16.3 in
+`docs/plans/phase16-daily-desktop-defaults.md`); the window that
+changes a setting belongs to the provider that owns the key or
+store. `vct config` on the CLI stays the intentional admin /
+manual escape hatch (`AGENTS.md` §1.1 control door).
+
+**Discovery.** Packages declare `0..N` settings entries in their
+metadata (separate from the singular `<launcher>`; a package may
+ship a launcher, settings entries, both, or neither). Stable
+identity is `(package, settings-id)`, unique per package and
+stable across reinstall. Each entry declares a title, a category
+from a closed enum (`desktop`, `hardware`, `system`,
+`applications`, `other`; unknown/absent → `other`), optional
+icon/keywords, and a package-payload binary target. Entries must
+not contain absolute
+paths, shell commands, interpreters, or arbitrary Exec strings.
+`sponge_pkgd` validates and resolves every entry and republishes
+the installed set via installed metadata; `sponge_settings` holds
+that ROM and refreshes on the ROM update signal (never polling),
+grouping entries by category.
+
+**Launch.** Clicking an entry sends only `package` + `settings-id`
+over the shell's dedicated settings launch request/result labels;
+`sponge_pkgd` starts the declared binary target as its own
+component with its own start/lifecycle identity (settings targets
+are never exclusive, even when they share the main app's binary).
+Any package can join with no shell code changes and no central
+allowlist; there is no in-process plugin or embedding path.
+
+**Focus.** Window identity derives from `(package, settings-id)`.
+A second activation of an already-open target focuses and raises
+the existing singleton window; it is not an already-running
+refusal and creates no duplicate.
+
+**Provider-owned change.** The provider owns its UI, validation,
+writes, lifecycle, and errors. First-party shared DE keys stay in
+configd's closed typed registry, but every first-party provider
+has a distinct config request label, and configd enforces a
+label-to-key-domain allowlist on every set (the Panel provider
+cannot write `background.*`; the rejection is a structured error
+and the store is untouched). Required first-party providers:
+Panel, Background, Theme, Shortcuts, Defaults, Display, WM,
+Terminal. The historical tab surfaces split among their owners —
+panel settings to the Panel provider, theme to Theme, background
+to Background, shortcuts to Shortcuts, reset-to-defaults to
+Defaults. Terminal settings belong to the terminal package;
+Konsole or any other package ships its own provider the same way.
+Third-party providers never receive shared-DE configd write
+access; they validate and persist in a package-private store.
+`sponge_pkgd` never relays config writes. sponge-de consumes
+domain broadcasts but is not a settings writer: the universal
+`de_config_request` / `SettingsController` writer is removed when
+the W4 provider split lands and is not kept as a compatibility
+path (D16.9).
+
+**Quick-menu change lifecycle (cold start and change request).**
+The panel and background quick menus change live settings
+through their owning first-party providers, never through a
+configd write channel of their own. This lifecycle is binding
+for every quick-menu change, in the cold case (the provider is
+not running) exactly as in the warm case:
+
+1. **Ensure-start.** A quick-menu action first ensures the
+   owning first-party settings target is running via
+   `sponge_pkgd`, over the normal `(package, settings-id)`
+   launch path. The quick menu has its own single-writer launch
+   labels, separate from `sponge_settings`'s and `vct`'s. pkgd
+   only starts (or focuses) the provider; it never carries the
+   operation or its value.
+2. **Closed domain operation.** Once the provider is live,
+   sponge-de sends a closed domain operation (for example
+   `Panel height=40`, not an arbitrary config key/value) over a
+   dedicated per-provider quick-request / quick-result
+   Report/ROM pair. Each pair's vocabulary is closed and owned
+   by its provider. This is not a universal `SettingsController`
+   and not an arbitrary config relay.
+3. **Provider-side validation and write.** The provider
+   validates the operation and performs the configd write on its
+   own ACL-limited label (for example `panel_settings ->
+   config_request`); configd's label-to-key-domain ACL still
+   enforces the final write. The quick menu never gets a configd
+   write channel. The provider answers on the quick-result label
+   with a structured success or error. A start failure, a
+   provider that is unavailable, or a validation failure is
+   surfaced without hanging the DE and leaves the config store
+   unchanged.
+4. **Warm path and re-start.** If the provider is already
+   running, the operation goes directly over its quick pair. If
+   it has exited, step 1 repeats. Settings-target singleton /
+   focus semantics are unchanged. Third-party packages get no
+   quick-control channel: the quick pairs exist only for the
+   named first-party domains (Panel, Background, and the other
+   required providers).
+
+Providers are not kept persistent just to serve quick edits, and
+the menu never refuses a change because the provider is closed:
+ensure-start is the designed cold path (W4 in
+`docs/plans/phase16-daily-desktop-defaults.md`).
+
+**Direct launch.** `vct settings list` / `vct settings open` share
+the same backend (installed metadata + launch channel) with
+separate single-writer labels and `--json` output. The panel and
+background context-menu *Settings* entries open or raise their
+owning provider over the quick menu's own launch labels, the
+same normal `(package, settings-id)` launch path as the
+quick-menu change lifecycle above (the *Settings* entry is the
+ensure-start of that lifecycle with the window raised instead of
+an operation sent).
+
+**Privileges and failure containment.** `sponge_settings` holds
+only the installed-metadata ROM, its own launch request/result
+labels, and Gui/Timer sessions as needed. It has no configd
+write channel, no package File_system session, no provider code
+loading, and no GL-heavy requirement; closing it reclaims the
+resources. A provider crash leaves the control center and sibling
+providers alive, and the entry can be relaunched. With pkgd down,
+opening a target fails fast with `package-manager-unavailable`
+(a cached discovery list may still be shown; there is no hang or
+retry loop). Removing a package deletes its entries on the next
+metadata update; a stale open attempt returns `not-installed`.
+Changes apply immediately, or the provider says clearly when a
+restart is required.
 
 ### 5.5 Control for Advanced Users
 
@@ -479,18 +637,34 @@ flakiness) + 0 FAIL.
 
 The eight Phase 16 module / component changes:
 
-1. **`settings/` module (W4).** A lazy-loaded `QDialog` with five
-   tabs (Panel / Theme / Background / Shortcuts / Defaults) lives
-   INSIDE `sponge-de` per D16.3 — no separate `sponge_settings`
-   component (would double the Qt6 + Mesa footprint per §3.4).
-   Every write goes through `SettingsController` on the dedicated
-   `de_config_request` label per D16.1 + `AGENTS.md` §1.2
-   single-writer rule. Acceptance scenario:
-   `run/sponge-de-settings.run` →
-   `settings-probe: PASS` + the per-tab configd-broadcast
-   assertions; regression
-   `run/sponge-de-settings-regression.run` opens the dialog via
-   panel-menu *Settings* and asserts `panel.height=40` round-trips.
+1. **Settings control center + providers (W4 target; replaces the
+   interim dialog).** The settings surface is the separate
+   on-demand `sponge_settings` control-center component plus
+   package-declared provider windows (identity `(package,
+   settings-id)`), with `sponge_pkgd` validating and republishing
+   entries, discovery on the installed-metadata ROM update signal
+   (no polling), focus-on-second-open (window identity derives
+   from `(package, settings-id)`), per-label configd key ACLs for
+   shared DE keys, package-private stores for third-party
+   providers, direct `vct settings list` / `vct settings open`
+   (`--json`), the quick-menu change lifecycle of §5.4
+   (ensure-start via pkgd + closed per-provider quick
+   operations), and the failure/removal contract of §5.4. The
+   required first-party providers are Panel, Background, Theme,
+   Shortcuts, Defaults, Display, WM, and Terminal (Terminal
+   settings belong to the terminal package; Konsole or any
+   package provides its own). Acceptance (target, unchecked):
+   `run/sponge-settings-center.run`,
+   `run/sponge-settings-providers.run`,
+   `run/sponge-settings-thirdparty.run`,
+   `run/sponge-settings-failure.run`,
+   `run/sponge-settings-vct.run`, plus physical-hardware receipts
+   (machine, parent commit, Genode pin, image/scenario, first
+   paint + input-driven change). Interim status: the shipped tree
+   still contains the legacy dialog module
+   `repos/sponge/src/sponge-de/settings/` and the universal
+   writer `config/settings_controller.*`; they remain until the
+   W4 provider split lands and are then removed (D16.9).
 2. **`background/` module (W6).** A fullscreen frameless
    `QWidget` painted from `background.color` (hex-validated) or
    `background.image` (allowlist-validated; default
@@ -508,7 +682,10 @@ The eight Phase 16 module / component changes:
    on the panel opens the QMenu (Height spinbox 16..128 step 4;
    Visible widgets checkboxes clock/launcher/tasklist; Position
    radio group top/bottom enabled, left/right disabled with
-   "Phase 17+" tooltip per D16.2; Settings entry). Position
+   "Phase 17+" tooltip per D16.2 (unchanged; target moved to Phase
+   16 Extension criterion 22 per the 2026-11-10 scope update);
+   Settings entry). The height / widgets / position edits travel
+   the quick-menu change lifecycle (§5.4). Position
    becomes LIVE via dual nitpicker panel domains
    `panel_top` / `panel_bottom` per U16.2 + D16.2; closes the
    Phase 14 W11 row #6 / #14 paper-cut (`panel.position` was
@@ -569,11 +746,28 @@ The eight Phase 16 module / component changes:
    packages' `{name, category}` pairs and added the 8 baked-
    key configd-broadcast assertions.
 
-The Phase 16 vendored budget is **one new row #17** (themed
-decorator sizer + minimizer; `docs/11-environment.md` §4);
-no other vendored-tree patches are absorbed per D16.8. The
+The base Phase 16 vendored budget (**one new row #17**, themed
+decorator sizer + minimizer; `docs/11-environment.md` §4) is
+historical, not a cap on Extension work (D16.8). No vendored
+patch is absorbed silently: any additional patch required by
+Extension work must be individually justified, recorded in the
+ledger before application, independently revertable, and
+re-audited at the final Criterion 27 cleanup; Sponge-owned
+components and public interfaces (especially the custom WM) are
+preferred over vendored changes. No specific new patch is claimed
+required or approved. The
 honest limitations register (Phase 17+ carry-overs) lives in
 `docs/evidence/phase16-index.md` §6.
+
+> **Scope update (2026-11-10, user-directed; revised 2026-11-11).**
+> The Phase 16 Extension gained twelve further completion criteria
+> (`docs/09-roadmap.md` §10, Criteria 16-27). "Settled" statements
+> below describe the current upstream baseline: the custom Sponge
+> WM is now an unchecked Phase 16 Extension criterion (16), and the
+> left/right panel positions' target moved to Phase 16 Extension
+> (criterion 22). Nothing in the current UI has changed yet: the
+> left/right entries stay disabled with their "Phase 17+" tooltip
+> until that criterion is implemented.
 
 ---
 
@@ -582,8 +776,10 @@ honest limitations register (Phase 17+ carry-overs) lives in
 How Sponge DE stays light under Genode's resource constraints:
 
 1. **Minimal Qt module linking**: link only what is needed.
-2. **Lazy loading**: modules that are not in use (for example, the
-   settings screen) load on demand.
+2. **Lazy loading / on-demand components**: modules that are not
+   in use load on demand, and the settings control center
+   (`sponge_settings`) runs as an on-demand component whose
+   resources are reclaimed when it closes.
 3. **Minimal static assets**: the default theme ships only the bare
    minimum.
 4. **Simple rendering**: avoid complex shaders and animations at first.
@@ -596,19 +792,29 @@ How Sponge DE stays light under Genode's resource constraints:
 
 - Priority and timing of multi-monitor support. Remains open for
   Phase 15+.
-- **Settings GUI backend — settled by Phase 16 D16.3.** A first-party
-  settings dialog lives INSIDE `sponge-de` as a new `settings/`
-  module (a lazy-loaded `QDialog` with `Panel` / `Theme` /
-  `Background` / `Shortcuts` / `Defaults` tabs); all writes go
-  through a `SettingsController` on the dedicated
-  `de_config_request` label (D16.1). `AGENTS.md` §3.4 favors
-  minimising Qt module dependencies, so a separate `sponge_settings`
-  component (which would pull a second Qt6 + Mesa softpipe
-  instance at the `sponge-de` `128M` cap quoted in
-  `run/sponge-alpha.run:680`) is rejected; the in-DE dialog stays
-  the canonical implementation. Detailed design:
-  `docs/plans/phase16-daily-desktop-defaults.md` D16.3 + D16.9 +
-  W4. (Strikes the previous `Re-scoped → Phase 15+` disposition.)
+- **Settings GUI backend — settled by Phase 16 D16.3, revised to
+  the provider-owned control center.** The settings surface is a
+  separate on-demand `sponge_settings` control-center component
+  plus package-declared provider windows: discovery from installed
+  metadata (ROM update signal, no polling), launch by
+  `(package, settings-id)` over a dedicated launch channel,
+  focus-on-second-open (window identity `(package, settings-id)`),
+  provider-owned UI/validation/writes/errors (per-label configd
+  key ACLs for shared DE keys, package-private stores for
+  third-party providers), direct `vct settings list` / `open`
+  (`--json`), and the failure/removal contract of §5.4. The
+  control center holds no configd write channel, no package
+  File_system session, no provider code loading, and no GL-heavy
+  requirement; closing it reclaims its resources (resource quotas
+  are measured and declared per component — shell and provider
+  components do not inherit sponge-de's 128 MB Qt6 + Mesa quota
+  by default). The legacy `repos/sponge/src/sponge-de/settings/`
+  module and the universal writer (`config/settings_controller.*`
+  on `de_config_request`) are removed by the provider split
+  (D16.9) — they are not a second live design. Detailed design:
+  `docs/plans/phase16-daily-desktop-defaults.md` D16.1 + D16.3 +
+  D16.9 + D16.10 + W4. (Strikes the previous `Re-scoped → Phase
+  15+` disposition and the interim in-component dialog decision.)
 - **Background surface — settled by Phase 16 D16.4.** A new
   in-DE `background/` module owns the desktop surface: a
   fullscreen frameless `QWidget` painted via `paintEvent` with
@@ -650,7 +856,9 @@ How Sponge DE stays light under Genode's resource constraints:
   trap is avoided by the `PanelWidget::applyPosition()`
   explicit refresh slot. `Right` / `Left` are registered in the
   configd enum but the menu entries are disabled with a
-  "Phase 17+" tooltip (honest disclosure; AGENTS.md §1.1).
+  "Phase 17+" tooltip (honest disclosure; AGENTS.md §1.1; target
+  moved to Phase 16 Extension criterion 22 per the 2026-11-10
+  scope update, tooltip unchanged).
   Detailed design:
   `docs/plans/phase16-daily-desktop-defaults.md` D16.2 + W5.
 - **`de_op_error` acknowledgement.** The persistent launch-error record is
@@ -666,6 +874,10 @@ How Sponge DE stays light under Genode's resource constraints:
   that adds the resize sizers to `themed_decorator`; ledger row
   #17 lands in `docs/11-environment.md` §4). See
   `docs/plans/phase16-daily-desktop-defaults.md` D16.6.
+  (Scope update 2026-11-10: "settled" here describes the current
+  upstream baseline only. The custom Sponge WM is now an unchecked
+  Phase 16 Extension criterion 16; until it lands, this baseline
+  remains the operative window-management stack.)
 - Clipboard is settled: Phase 14 reuses the upstream Genode
   `os/src/server/clipboard` binary as-is, per decision D14.2 in
   `docs/plans/phase14-daily-desktop.md`. The Qt6 side is bridged by
