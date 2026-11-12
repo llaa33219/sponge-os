@@ -291,6 +291,136 @@ void case_window_request(Ctx &c)
 }
 
 
+/* ================ 4b. same-session top-level recreation ========= */
+
+void case_recreate(Ctx &c)
+{
+	Registry reg;
+
+	unsigned long const w = reg.create_window("pkg_runtime -> terminal");
+	reg.set_title(w, "Old Title");
+	reg.set_client_geometry(w, 10, 20, 640, 480);
+	reg.set_resizeable(w, true);
+	reg.set_focus(Focus_target { true, w });
+
+	c.check(reg.request_close(w),
+	        "recreate: close applies while the window is live");
+	c.check(!reg.request_close(w),
+	        "recreate: close is sticky while the window is live");
+
+	char buf[2048];
+	unsigned num = 0;
+	auto count_entries = [&] {
+		num = 0;
+		char const *xml = gen_xml(buf, sizeof(buf), "window_list",
+		                          [&] (Genode::Xml_generator &g) {
+			                          reg.gen_window_list(g); });
+		parse_window_list(node_of(xml),
+		                  [&] (Window_list_entry const &) { num++; });
+	};
+
+	/* the top-level view is destroyed: the window vanishes (absence) */
+	Dirty const d = reg.destroy_window(w);
+	c.check(dirty_any(d, Dirty::WINDOW_LIST) && dirty_any(d, Dirty::CHROME),
+	        "recreate: destroy dirties the presence reports");
+	count_entries();
+	c.check_eq(num, 0,
+	           "recreate: create->destroy leaves the window missing from window_list");
+
+	/*
+	 * Same-session top-level view recreation: the real creation path
+	 * re-registers the destroyed window under its SAME wid.
+	 */
+	Dirty const r = reg.recreate_window(w, "pkg_runtime -> terminal");
+	c.check(dirty_any(r, Dirty::WINDOW_LIST),
+	        "recreate: resurrection dirties window_list (presence)");
+	c.check(dirty_any(r, Dirty::CHROME),
+	        "recreate: resurrection dirties window_chrome (presence)");
+
+	Window const *win = reg.find(w);
+	c.check(win != nullptr,
+	        "recreate: recreated window reappears under the same wid");
+	c.check(win && win->wid == w,
+	        "recreate: identity pair keeps the wid");
+	c.check(win && Genode::strcmp(win->label.string(),
+	                              "pkg_runtime -> terminal") == 0,
+	        "recreate: identity pair keeps the session label");
+	c.check_eq(reg.count(), 1, "recreate: count reflects the resurrected window");
+	c.check(reg.by_label("pkg_runtime -> terminal") != nullptr
+	     && reg.by_label("pkg_runtime -> terminal")->wid == w,
+	        "recreate: by_label resolves the resurrected identity");
+
+	/* fresh per-window state: no stale title/geometry/close/focus */
+	c.check(win && Genode::strcmp(win->title.string(), "") == 0,
+	        "recreate: title reset (no stale title)");
+	c.check(win && !win->sized(),
+	        "recreate: client geometry reset (unsized until the new view feeds it)");
+	c.check(win && !win->placed,
+	        "recreate: placement reset (no stale window_request geometry)");
+	c.check(win && !win->close_requested && !win->close_applied,
+	        "recreate: sticky-close state reset (no stale close)");
+	c.check(win && !win->resizeable && !win->has_alpha && !win->chrome_present,
+	        "recreate: derived/chrome flags start fresh");
+	c.check(!reg.focus().set,
+	        "recreate: no stale focus state");
+
+	/* frozen omission rule: the unsized resurrection is not reported yet */
+	count_entries();
+	c.check_eq(num, 0,
+	           "recreate: resurrected window is omitted until sized");
+
+	/* the new top-level view feeds fresh title + geometry */
+	reg.set_title(w, "New Title");
+	Dirty const sized = reg.set_client_geometry(w, 0, 0, 800, 600);
+	c.check(dirty_any(sized, Dirty::WINDOW_LIST) && dirty_any(sized, Dirty::CHROME),
+	        "recreate: first sizing of the resurrection dirties both reports");
+
+	count_entries();
+	c.check_eq(num, 1,
+	           "recreate: create->destroy->recreate reappears in window_list");
+
+	char const *xml = gen_xml(buf, sizeof(buf), "window_list",
+	                          [&] (Genode::Xml_generator &g) {
+		                          reg.gen_window_list(g); });
+	Window_list_entry got { };
+	parse_window_list(node_of(xml),
+	                  [&] (Window_list_entry const &e) { got = e; });
+	c.check_eq(got.id, w, "recreate: window_list id is the same wid");
+	c.check(Genode::strcmp(got.title.string(), "New Title") == 0,
+	        "recreate: window_list carries the fresh title");
+	c.check_eq((unsigned long)got.width,  800, "recreate: fresh width reported");
+	c.check_eq((unsigned long)got.height, 600, "recreate: fresh height reported");
+
+	/* sticky close applies freshly for the recreated window */
+	c.check(reg.request_close(w),
+	        "recreate: close applies again after recreation");
+
+	/* focus steering targets the resurrected wid again */
+	c.check(dirty_any(reg.set_focus(Focus_target { true, w }), Dirty::FOCUS),
+	        "recreate: focus steering accepts the resurrected wid");
+
+	/* monotonic identity: new windows never reuse the resurrected wid */
+	unsigned long const w2 = reg.create_window("pkg_runtime -> editor");
+	c.check(w2 != w,
+	        "recreate: new windows get fresh wids (no reuse of the resurrected wid)");
+
+	/* the initial session-open path stays unchanged: recreating a
+	   LIVE window is a no-op that preserves its state */
+	reg.set_title(w2, "Keep Me");
+	c.check(reg.recreate_window(w2, "pkg_runtime -> editor") == Dirty::NONE,
+	        "recreate: live-window recreation is a no-op (session-open path)");
+	c.check(Genode::strcmp(reg.find(w2)->title.string(), "Keep Me") == 0,
+	        "recreate: live-window state preserved (session-open unchanged)");
+
+	/* the recreated window destroys like any window */
+	Dirty const d2 = reg.destroy_window(w);
+	c.check(dirty_any(d2, Dirty::WINDOW_LIST) && dirty_any(d2, Dirty::CHROME),
+	        "recreate: recreated window destroys normally");
+	c.check(reg.find(w) == nullptr && reg.count() == 1,
+	        "recreate: second destroy leaves only the peer window");
+}
+
+
 /* ====================== 5. focus truth ========================== */
 
 void case_focus(Ctx &c)
@@ -549,6 +679,7 @@ unsigned Sponge::Wm_registry::run_registry_tests(Check_fn report)
 	case_window_list(c);
 	case_dirty_flags(c);
 	case_window_request(c);
+	case_recreate(c);
 	case_focus(c);
 	case_chrome(c);
 	case_chrome_assoc(c);

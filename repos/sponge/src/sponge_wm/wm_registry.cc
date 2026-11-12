@@ -36,6 +36,27 @@ unsigned long Registry::create_window(Genode::String<256> const &label)
 }
 
 
+Dirty Registry::recreate_window(unsigned long wid, Genode::String<256> const &label)
+{
+	if (wid == 0 || _slot(wid) || _count >= MAX_WINDOWS)
+		return Dirty::NONE;
+
+	for (unsigned i = 0; i < MAX_WINDOWS; i++) {
+		if (_windows[i].used)
+			continue;
+
+		Window &w = _windows[i];
+		w = Window { };
+		w.used = true;
+		w.wid  = wid;
+		w.label = label;
+		_count++;
+		return Dirty::WINDOW_LIST | Dirty::CHROME;
+	}
+	return Dirty::NONE;
+}
+
+
 Dirty Registry::destroy_window(unsigned long wid)
 {
 	Window *w = _slot(wid);

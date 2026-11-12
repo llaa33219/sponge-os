@@ -163,6 +163,22 @@ class Registry
 		unsigned long create_window(Genode::String<256> const &label);
 
 		/*
+		 * Re-register a destroyed window under its SAME wid (same-
+		 * session top-level-view recreation). Only the identity pair
+		 * (wid, label) is retained; every per-window attribute starts
+		 * fresh (title, geometry, placement, sticky close, chrome
+		 * association, derived flags), so the resurrection carries no
+		 * stale state. The resurrected window is unsized and re-enters
+		 * the reports exactly like a fresh window (omission rules
+		 * unchanged). Returns the dirty flags on registration (the
+		 * presence counterpart of destroy_window's absence), or
+		 * Dirty::NONE when the wid is already registered (the initial
+		 * session-open path) or the table is full.
+		 */
+		Dirty recreate_window(unsigned long wid,
+		                      Genode::String<256> const &label);
+
+		/*
 		 * Remove a window. Returns the dirty flags: every removal
 		 * touches window_list and window_chrome (destroy = absence)
 		 * and focus_state when the removed window held focus.
