@@ -369,23 +369,31 @@ void TasklistController::_recompute_tracked()
 						}
 					}
 
+					bool was_maximized = false;
 					for (auto const &prev : _tracked) {
 						if (prev.label != st.label) continue;
 						st.maximized = prev.maximized;
+						was_maximized = prev.maximized
+						             && _layout_area_w > 0 && _layout_area_h > 0
+						             && prev.w >= (_layout_area_w - 64)
+						             && prev.h >= (_layout_area_h - 64);
 						break;
 					}
 
 					/*
-					 * Maximize inference: window_layout does not
-					 * report the flag, so a window whose inner
-					 * geometry fills the target area (within a
-					 * decorator-margin tolerance) is maximized.
+					 * Maximize inference is two-way once a maximized
+					 * geometry has been observed. Keeping the inherited
+					 * flag for other non-full geometry preserves a new
+					 * maximize request until the layouter applies it.
 					 */
-					if (!st.minimized
-					    && _layout_area_w > 0 && _layout_area_h > 0
-					    && st.w >= (_layout_area_w - 64)
-					    && st.h >= (_layout_area_h - 64))
+					bool const fills_area = !st.minimized
+					                     && _layout_area_w > 0 && _layout_area_h > 0
+					                     && st.w >= (_layout_area_w - 64)
+					                     && st.h >= (_layout_area_h - 64);
+					if (fills_area)
 						st.maximized = true;
+					else if (!st.minimized && was_maximized)
+						st.maximized = false;
 
 					new_tracked.append(st);
 				});

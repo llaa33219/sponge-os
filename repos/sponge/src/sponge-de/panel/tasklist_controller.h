@@ -150,16 +150,11 @@ class TasklistController : public QObject
 		QStringList _last_emitted_signed;
 
 		/*
-		 * Rules-republication state: the layouter repositions every
-		 * assigned window on each window_list change (dissolve +
-		 * re-assign + outer_geometry), so the rules ROM must carry
-		 * CURRENT window positions when the tracked SET changes (a
-		 * new window) or existing windows snap back to their rule
-		 * positions. Republish on set changes only (label added or
-		 * removed, minimized flipped), stable for one extra poll.
-		 * Geometry deltas deliberately do NOT trigger: window_layout
-		 * cannot report the maximized state, so geometry feedback
-		 * fights user manipulations.
+		 * Rules carry current geometry because the layouter re-evaluates
+		 * assigns on hover as well as set changes. A changed geometry or
+		 * state signature is published after one stable poll, avoiding
+		 * mid-manipulation feedback. Maximize inference clears only after
+		 * a previously full-area geometry leaves that state.
 		 */
 		QStringList _published_rules_sig  { };
 		QStringList _candidate_rules_sig  { };
