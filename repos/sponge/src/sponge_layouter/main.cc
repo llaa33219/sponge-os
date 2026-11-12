@@ -361,7 +361,6 @@ struct Sponge_layouter
 	void _handle_input()
 	{
 		_gui.input.for_each_event([&] (Input::Event const &ev) {
-
 			ev.handle_absolute_motion([&] (int x, int y) {
 				_px = x;
 				_py = y;
