@@ -213,7 +213,41 @@ parser understands, it logs a warning and falls back to the default theme.
 > is **not** a per-theme key. The `title_family` and `title_size`
 > keys that exist under `[fonts]` (§4.3) are the in-panel / in-app
 > title typography surface; the decorator chrome is intentionally out
-> of scope for the theme format. There are no `decor.*` keys.
+> of scope for the shared `[window]` keys. There are no dotted `decor.*`
+> keys; native chrome uses the dedicated `[decor]` section below.
+
+### 4.6 `[decor]` — Native Window Chrome
+
+`sponge_decorator` consumes this optional section for the native WM
+stack. Every field resolves as **`[decor]` key > `[colors]` alias >
+fallback**. Unknown keys inside `[decor]` and invalid values produce a
+warning and leave the previous value unchanged.
+
+| Key | Type | Default | `[colors]` alias / constraint |
+|-----|------|---------|-------------------------------|
+| `margin_top` | int | 28 | Title-band height; 16–255 |
+| `margin_bottom` | int | 8 | 0–255 |
+| `margin_left` | int | 8 | 0–255 |
+| `margin_right` | int | 8 | 0–255 |
+| `title_bg` | color | #313244 | `window_bg` |
+| `title_bg_unfocused` | color | #1e1e2e | `panel_bg` |
+| `title_text` | color | #cdd6f4 | `title_text` |
+| `title_text_unfocused` | color | #7f849c | — |
+| `frame_border` | color | #45475a | `window_border` |
+| `button_bg` | color | #45475a | `separator` |
+| `button_bg_unfocused` | color | #313244 | — |
+| `button_glyph` | color | #cdd6f4 | `title_text` |
+| `button_glyph_unfocused` | color | #7f849c | — |
+| `button_close_glyph` | color | #f38ba8 | `error_bg` |
+| `grip_bg` | color | transparent | Optional resize-grip tint |
+
+The margins are published through `decorator_margins` and are included
+in outer-window geometry. The four margins therefore affect hit-testing
+and placement, not only pixels. The fixed bundled TFF remains the title
+font; `[fonts]` does not restyle native chrome. Focused and unfocused
+palettes are implemented by the renderer, but protocol v1.1 currently
+delivers no focus signal to `sponge_decorator`, so runtime chrome uses
+the focused palette until that signal is wired.
 
 ---
 
@@ -257,6 +291,12 @@ launcher_width = 48
 border_radius = 6
 border_width  = 1
 shadow_radius = 8
+
+[decor]
+margin_top    = 28
+margin_bottom = 8
+margin_left   = 8
+margin_right  = 8
 ```
 
 ---
@@ -344,3 +384,5 @@ parts that were not understood.
 - `repos/sponge/src/sponge-de/theme/theme_loader.h` — C++ data model.
 - `repos/sponge/src/sponge-de/theme/theme_loader.cc` — Parser implementation.
 - `repos/sponge/src/sponge-de/themes/default.theme` — Default system theme.
+- `repos/sponge/src/sponge_decorator/theme.cc` — Native `[decor]` parser, aliases, validation, and fallback palette.
+- `repos/sponge/src/sponge_decorator/README.md` — Native chrome protocol, geometry, and runtime limitations.

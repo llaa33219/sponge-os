@@ -86,11 +86,10 @@ content and ignored silently.
 
 Notes:
 
-* The `[decor]` section is this component's documented key mechanism.
-  The canonical sponge-de loader treats it as unknown keys and logs
-  warnings (warn-only, values still apply) — accepted noise until a
-  docs/10-theme-format.md revision registers the section. This
-  component's README is the binding documentation for it.
+* The `[decor]` section is registered in `docs/10-theme-format.md` §4.6.
+  The canonical sponge-de loader does not consume it and logs unknown-key
+  warnings; `sponge_decorator` applies it with the alias/fallback rules
+  above.
 * Theme font keys (`[fonts]`) are **not applied** in v1: the title
   renders with the fixed bundled TFF at its native size (see "Font
   asset"). Runtime-scaled TrueType (`Ttf_font`) or the `font` VFS
@@ -205,12 +204,10 @@ placement math, title fit/origin math. The tests check drawing
 
 * **Builds clean** under the existing `genode/build/x86_64` tree with
   `LIBS = base sponge_wm_protocol`; the pure tests pass (119 checks).
-* **No native pixel acceptance is claimed**: `run/sponge-wm-native*.run`
-  scenarios need the parallel `sponge_wm`/`sponge_layouter` components
-  and a booted scenario; no run scripts were touched here. The run
-  configuration already routes everything this component needs
-  (`window_chrome`, `theme`/`default.theme`, `decorator_margins`, Gui
-  via sponge_wm) — no run-side integration work is required.
+* **Native acceptance**: the `run/sponge-wm-native*.run` scenarios
+  exercise the component with `sponge_wm` and `sponge_layouter`. The
+  deterministic tests in this directory remain geometry/parser tests;
+  real interaction and placement evidence belongs to those scenarios.
 * **Focus routing**: per-window focused/unfocused switching needs a
   focus signal in a future protocol revision (e.g. a `focused`
   attribute on `window_chrome` via a protocol bump, or a routed focus
@@ -220,5 +217,5 @@ placement math, title fit/origin math. The tests check drawing
   "Theme mechanism").
 * **Capacity**: at most 32 chrome views (`MAX_VIEWS` in `main.cc`);
   extra snapshot entries are dropped with a warning.
-* The `[decor]` theme section needs registration in
-  `docs/10-theme-format.md` when docs changes are in scope.
+* The `[decor]` theme section and its constraints are specified in
+  `docs/10-theme-format.md` §4.6.
