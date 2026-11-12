@@ -6,7 +6,8 @@
  * section; docs/plans/phase16-sponge-wm.md §11):
  *
  *   consumes   window_chrome (core -> decorator, complete snapshot;
- *              create/destroy/title/resizeable/size only, no moves)
+ *              create/destroy/title/resizeable/size/focus only,
+ *              no moves)
  *   consumes   the run-provided theme ROM ('default.theme' raw INI,
  *              or the 'theme' report ROM for <theme source="themed"/>)
  *   publishes  decorator_margins at startup and on every theme change
@@ -197,15 +198,15 @@ struct Main
 					continue;
 				}
 
-				for (auto &slot : _views) {
-					if (slot.constructed())
-						continue;
-					slot.construct(_env, snap[i], _theme, _font);
-					Genode::log("sponge_decorator: create chrome view ",
-					            snap[i].wid, " (", snap[i].fw, "x",
-					            snap[i].fh, ")");
-					break;
-				}
+			for (auto &slot : _views) {
+				if (slot.constructed())
+					continue;
+				Genode::log("sponge_decorator: create chrome view ",
+				            snap[i].wid, " (", snap[i].fw, "x",
+				            snap[i].fh, ")");
+				slot.construct(_env, snap[i], _theme, _font);
+				break;
+			}
 			}
 		}
 

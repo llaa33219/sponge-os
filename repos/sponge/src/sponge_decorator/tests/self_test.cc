@@ -1,8 +1,9 @@
 /* SPDX-License-Identifier: Apache-2.0
  *
  * Host-side self-test harness for the sponge_decorator pure cases
- * (theme parsing, margins validation, decorator_margins shape, chrome
- * view geometry, glyph/title geometry).
+ * (theme parsing, focus-state style selection, margins validation,
+ * decorator_margins shape, chrome view geometry, glyph/title
+ * geometry).
  *
  * NOT part of the Genode build (deliberately absent from the
  * component's target.mk). It executes the deterministic case list of
