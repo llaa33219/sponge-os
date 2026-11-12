@@ -2,9 +2,11 @@
 
 > Status: docs-first scope registration, checked in 2026-11-12 and
 > approved by the user the same day (verbatim approval: "승인한다.
-> 시작하라", "approved, begin"). No native WM code and no native
-> scenario exist yet; this plan is the decision-complete spec an
-> implementation executes without re-interview.
+> 시작하라", "approved, begin"). Delivered and verified at commit
+> `191222130e` (all M0-M6 gates green; receipts in
+> `docs/evidence/phase16-wm-index.md`). This plan was the
+> decision-complete spec the implementation executed without
+> re-interview.
 > Relationship: Extension Criterion 16 of the reopened Phase 16
 > (`docs/09-roadmap.md` §10, scope expansion 2026-11-10, criterion
 > text re-registered 2026-11-12), alongside the daily-desktop-defaults
@@ -27,8 +29,10 @@ modern window chrome**, built as Sponge components under
 `wm` + `window_layouter` + `decorator` trio stays untouched as the
 fallback until native parity. The delivered unit is one vertical
 slice: native core, native layout policy, native chrome. Criterion 16
-is worked to completion first, then Criterion 18 (D16W.9), and this
-plan marks nothing complete.
+is worked to completion first, then Criterion 18 (D16W.9). At
+registration this plan marked nothing complete; the delivered
+closeout (every M0-M6 gate verified) is recorded in
+`docs/evidence/phase16-wm-index.md`.
 
 ## 2. Recorded User Approvals (2026-11-12, binding)
 
@@ -67,12 +71,12 @@ choices, do not re-litigate:
     metrics, doc/evidence obligations, and the non-goals of §5 are the
     approved plan content.
 
-## 3. Baseline (2026-11-12, present truth)
+## 3. Baseline (2026-11-12, plan-time truth)
 
-- **Topology today.** Upstream `server/wm` + `window_layouter` +
+- **Topology at plan time.** Upstream `server/wm` + `window_layouter` +
   `decorator` (motif on release media; `themed_decorator` plus the
   Phase 11 `sponge_decorator_bridge` on the themed-chrome path). No
-  Sponge-owned WM code exists at plan time.
+  Sponge-owned WM code existed at plan time.
 - **TasklistController contract** (`docs/05-sponge-de.md` §4.6):
   subscribes to the wm `window_list` report and the layouter
   `window_layout` report; writes the layouter `rules` ROM
@@ -81,15 +85,18 @@ choices, do not re-litigate:
   (D16W.6).
 - **State machine.** `docs/plans/wm-state-table.md` (D14.3 baseline
   rows are delivered W7 truth; the native extension rows are the
-  target spec, honestly labeled).
+  delivered native truth, verified by the acceptance battery).
 - **Upstream anchor scenarios** (drive the upstream trio, never
   renamed): `run/sponge-wm.run`, `run/sponge-wm-qmp.run`,
   `run/sponge-wm-tasks.run`.
-- **Known honesty item.** Phase 16 W9 recorded the themed-chrome
-  full 8-zone resize sequence as flaky with each zone individually
-  green. The native path must prove the full 8-zone sequence in one
-  scenario run or record an honest partial. Partial is never
-  relabeled green.
+- **Known honesty item (resolved on the native path).** Phase 16 W9
+  recorded the themed-chrome full 8-zone resize sequence as flaky
+  with each zone individually green; that record stays a historical
+  themed-path (`themed_decorator`) item, outside the native path. The
+  native path proved the full 8-zone sequence in one scenario run
+  (`run/sponge-wm-native-qmp.run`; receipts
+  `docs/evidence/phase16-wm-index.md`), so there is
+  no native partial to record. Partial is never relabeled green.
 - **Config machinery.** `sponge_configd` closed typed registry
   (Phase 11/14/16 validator discipline) and the D16.1 label-to-key
   domain ACL model. The `wm_settings` first-party provider named in

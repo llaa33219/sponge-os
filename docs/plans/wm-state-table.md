@@ -75,13 +75,14 @@ focus grant is part of the same step. This is the deterministic
 restoration path required by U3 — a decorative minimize button
 with no restore is forbidden.
 
-## Native WM Extension (planned; `docs/plans/phase16-sponge-wm.md`)
+## Native WM Extension (delivered; `docs/plans/phase16-sponge-wm.md`)
 
-> Honest status: this section defines the target transitions for the
-> native Sponge WM (Criterion 16). No native code exists yet; the
-> rows below are the specification the implementation is checked
-> against. The baseline table above stays the delivered truth for the
-> upstream path and for the `TasklistController`, whose contract is
+> Honest status: this section defines the transitions for the native
+> Sponge WM (Criterion 16), delivered and verified at commit
+> `191222130e` (receipts: `docs/evidence/phase16-wm-index.md`). The
+> rows below are the delivered truth for the native path. The
+> baseline table above stays the delivered truth for the upstream
+> path and for the `TasklistController`, whose contract is
 > frozen at protocol v1 (`window_list`, `window_layout`,
 > `focus_request`, `rules`).
 

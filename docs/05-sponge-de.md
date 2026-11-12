@@ -896,15 +896,17 @@ required or approved. The
 honest limitations register (Phase 17+ carry-overs) lives in
 `docs/evidence/phase16-index.md` §6.
 
-> **Scope update (2026-11-10, user-directed; revised 2026-11-11).**
+> **Scope update (2026-11-10, user-directed; revised 2026-11-11; WM
+> status synced 2026-11-12).**
 > The Phase 16 Extension gained twelve further completion criteria
 > (`docs/09-roadmap.md` §10, Criteria 16-27). "Settled" statements
 > below describe the current upstream baseline: the custom Sponge
-> WM is now an unchecked Phase 16 Extension criterion (16), and the
-> left/right panel positions' target moved to Phase 16 Extension
-> (criterion 22). Nothing in the current UI has changed yet: the
-> left/right entries stay disabled with their "Phase 17+" tooltip
-> until that criterion is implemented.
+> WM (criterion 16) is delivered and verified (receipts:
+> `docs/evidence/phase16-wm-index.md`), and the left/right panel
+> positions' target moved to Phase 16 Extension (criterion 22).
+> Nothing in the current UI has changed yet: the left/right entries
+> stay disabled with their "Phase 17+" tooltip until that criterion
+> is implemented.
 
 ---
 
@@ -1011,10 +1013,12 @@ How Sponge DE stays light under Genode's resource constraints:
   that adds the resize sizers to `themed_decorator`; ledger row
   #17 lands in `docs/11-environment.md` §4). See
   `docs/plans/phase16-daily-desktop-defaults.md` D16.6.
-  (Scope update 2026-11-10: "settled" here describes the current
-  upstream baseline only. The custom Sponge WM is now an unchecked
-  Phase 16 Extension criterion 16; until it lands, this baseline
-  remains the operative window-management stack.)
+  (Scope update 2026-11-12: "settled" here describes the upstream
+  baseline, which stays the fallback path (D16W.7). The custom
+  Sponge WM (Phase 16 Extension criterion 16) is delivered and
+  verified at commit `191222130e` with the native product scenarios
+  passing with the upstream trio absent; receipts in
+  `docs/evidence/phase16-wm-index.md`.)
 - Clipboard is settled: Phase 14 reuses the upstream Genode
   `os/src/server/clipboard` binary as-is, per decision D14.2 in
   `docs/plans/phase14-daily-desktop.md`. The Qt6 side is bridged by
