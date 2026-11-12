@@ -293,6 +293,17 @@ proc qmp_move_rel { chan axis value } {
 }
 
 ##
+# Send both relative axes in one input-send-event call. Closed-loop
+# positioning uses rel-1 steps: the staged event_filter accelerate LUT is
+# the identity in this band, whereas larger requests receive a nonlinear
+# boost. Combining the axes avoids exposing single-axis intermediate
+# positions to the guest.
+#
+proc qmp_move_rel_2d { chan x y } {
+	qmp_cmd $chan [format {{"execute":"input-send-event","arguments":{"events":[{"type":"rel","data":{"axis":"x","value":%d}},{"type":"rel","data":{"axis":"y","value":%d}}]}}} $x $y]
+}
+
+##
 # PS/2 mouse press/release. value is the literal "true" (down) or
 # "false" (up).
 #
@@ -664,6 +675,7 @@ proc qmp_exec_target { chan timeout_s } {
 			set gy $expect_out(2,string)
 			puts "\nqmp: dispatching press at guest ($gx,$gy) (no clamp + walk; cursor already positioned by _drive_to)"
 			qmp_press $chan $gx $gy
+			return "press"
 		}
 		-re {QMP-TARGET rightclick (-?\d+) (-?\d+)\r*\n} {
 			set gx $expect_out(1,string)
@@ -719,24 +731,34 @@ proc qmp_exec_target { chan timeout_s } {
 			puts "\nqmp: dispatching key '$k'"
 			qmp_send_combination $chan $k
 		}
+		-re {QMP-TARGET sync\r*\n} {
+			return "sync"
+		}
+		-re {QMP-TARGET absmove (-?\d+) (-?\d+)\r*\n} {
+			set gx $expect_out(1,string)
+			set gy $expect_out(2,string)
+			puts "\nqmp: materializing pointer with absmove ($gx,$gy)"
+			qmp_pointer_move $chan $gx $gy
+			return "absmove"
+		}
 		-re {QMP-TARGET move (-?\d+) (-?\d+)\r*\n} {
 			set dx $expect_out(1,string)
 			set dy $expect_out(2,string)
 			puts "\nqmp: dispatching PS/2 rel move dx=$dx dy=$dy"
-			# Per-axis step cap ±100 to avoid swamping the input chain.
+			# Walk in the accelerator's identity band. Larger relative
+			# requests receive a nonlinear boost and cannot converge a
+			# pixel-residual feedback loop (the former ±49px limit cycle).
+			set sx [expr {$dx > 0 ? 1 : ($dx < 0 ? -1 : 0)}]
+			set sy [expr {$dy > 0 ? 1 : ($dy < 0 ? -1 : 0)}]
 			while {$dx != 0 || $dy != 0} {
-				set sx 0
-				set sy 0
-				if {$dx > 0}      { set sx [expr {$dx > 100 ? 100 : $dx}] }
-				elseif {$dx < 0}  { set sx [expr {$dx < -100 ? -100 : $dx}] }
-				if {$dy > 0}      { set sy [expr {$dy > 100 ? 100 : $dy}] }
-				elseif {$dy < 0}  { set sy [expr {$dy < -100 ? -100 : $dy}] }
-				if {$sx != 0} { qmp_move_rel $chan x $sx }
-				if {$sy != 0} { qmp_move_rel $chan y $sy }
-				incr dx [expr {-$sx}]
-				incr dy [expr {-$sy}]
-				after 10
+				set step_x [expr {$dx != 0 ? $sx : 0}]
+				set step_y [expr {$dy != 0 ? $sy : 0}]
+				qmp_move_rel_2d $chan $step_x $step_y
+				incr dx [expr {-$step_x}]
+				incr dy [expr {-$step_y}]
+				after 5
 			}
+			return "move"
 		}
 		timeout {
 			puts stderr "\nqmp: FAIL - no QMP-TARGET marker within ${timeout_s}s (probe did not emit one - boot/render race or probe died?)"

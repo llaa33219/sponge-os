@@ -570,8 +570,9 @@ qmp_disconnect $qmp_chan
 | `qmp_drag` | `chan x1 y1 x2 y2` | Move to start, hover jiggle, press, walk to end (50/1 split), release. |
 | `qmp_send_key` | `chan keyname` | Emit a single QEMU key down/up via `send-key` with the **qcode-object form** (NOT the rejected string form — see QEMU 11 lesson below). |
 | `qmp_type` | `chan string` | Char→keyname map (`a-z`, `0-9`, `space→spc`, `\n→ret`, `-→minus`, `.→dot`) + `qmp_send_key` per char; unmapped chars fail loud. |
-| `qmp_exec_target` | `chan timeout_s` | Bounded `expect` on global `qemu_spawn_id` for the `QMP-TARGET` marker, dispatches to the matching proc (click/drag/type/move), raises `match_max -i $qemu_spawn_id 200000` first. FAIL + exit 1 on timeout. |
-| `qmp_move_rel` | `chan dx dy` | Emit per-axis `REL_*` motion events (PS/2 PATH), with `after` pacing — see lesson (a) below. |
+| `qmp_exec_target` | `chan timeout_s` | Bounded `expect` on global `qemu_spawn_id` for the `QMP-TARGET` marker, dispatches to the matching proc (click/drag/type/absmove/move/press/sync), raises `match_max -i $qemu_spawn_id 200000` first. FAIL + exit 1 on timeout. Returns `move`, `press`, `absmove`, or `sync` for those marker types so variable-length choreography can stop at the required barrier. |
+| `qmp_move_rel` | `chan axis value` | Emit one per-axis relative motion event (PS/2 path). Used by the calibrated click/drag recipes. |
+| `qmp_move_rel_2d` | `chan x y` | Emit both relative axes in one `input-send-event`; closed-loop moves call this with rel-1 steps to remain in the event_filter accelerator's identity band. |
 | `qmp_disconnect` | `chan` | Close the QMP TCP channel. |
 
 #### `QMP-TARGET` marker contract (probe → host)
@@ -584,19 +585,28 @@ QMP-TARGET click <gx> <gy>           # PS/2 REL recipe by default
 QMP-TARGET tablet <gx> <gy>          # usb-tablet-abs recipe (W4 terminal scenario style)
 QMP-TARGET drag <x1> <y1> <x2> <y2>  # window drag (motion in two phases)
 QMP-TARGET type <string>             # keyboard input
-QMP-TARGET move <dx> <dy>            # closed-loop PS/2 REL move (W5)
+QMP-TARGET key <keyspec>             # QEMU key or combination
+QMP-TARGET absmove <gx> <gy>         # absolute materialization event
+QMP-TARGET move <dx> <dy>            # closed-loop, combined-axis rel-1 steps
+QMP-TARGET press <gx> <gy>           # press/release at the current pointer
+QMP-TARGET sync                      # drain barrier; no guest input
 ```
 
 Patterns anchor on `\r*\n` (NOT `\r?\n`) because QEMU's `-nographic`
 serial emits `CR CR LF` line endings (verified by `od -c` on a
-captured line). Marker ordering inside `qmp_exec_target`:
+captured line). The dispatch arms are ordered click, press/rightclick,
+tablet, drag, type/key, sync, absmove, then move. Probes serialize their
+markers; scenarios with a variable number of moves use the dispatcher's
+return value to stop at `sync` or `press` rather than guessing a count.
 
-1. `tablet` listed first (the `click` regex matches `-click` as a
-   suffix of some line names; listing `click` first would shadow it).
-   Order matters because expect dispatches the FIRST matching arm.
-2. `click` second — every other click (input/panel/launch) uses the
-   PS/2 recipe (`qmp_ps2_click`).
-3. `drag`, `type`, `move` follow in protocol order.
+Closed-loop movement must not send a raw pixel residual as one large
+relative event. The vendored event_filter accelerator is nonlinear
+outside its identity band, so such requests can oscillate or overshoot.
+`qmp_exec_target` therefore walks every `move` as combined-axis rel-1
+events with the existing 5 ms fine-walk cadence. A probe that consumes
+the pointer ROM must wait for five consecutive in-tolerance samples
+before emitting its next marker. `sync` is the explicit barrier between
+an earlier click sequence and pointer materialization.
 
 The dispatch contract is verified by
 `docs/evidence/task-2-phase10-interactive-dispatch-test.tcl`
