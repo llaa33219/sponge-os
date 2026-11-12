@@ -1087,7 +1087,8 @@ completion criteria.** The user directed a second expansion of this
 Extension: the deferred custom Sponge WM is pulled forward, ten
 further user-requested items join it, and a final patch-cleanup gate
 closes the phase, numbered **Criterion 16 through Criterion 27**,
-all unchecked. The new real-hardware gates **strengthen, not
+all unchecked at registration (Criterion 16 since delivered, see its
+receipts). The new real-hardware gates **strengthen, not
 invalidate,** the prior QEMU/base-linux receipts for base criteria 3
 (panel context menu) and 11 (background image change): those
 receipts remain the recorded evidence of what they actually
@@ -1111,8 +1112,9 @@ then Criterion 18, each landing as logical commits.
 
 Twelve new completion criteria:
 
-- [ ] **Criterion 16: custom Sponge WM (pulled forward from the
-  former long-term deferral; scope registered 2026-11-12).** Deliver
+- [x] **Criterion 16: custom Sponge WM (pulled forward from the
+  former long-term deferral; scope registered 2026-11-12; delivered
+  and verified 2026-11-12).** Deliver
   a Sponge-native window manager under `repos/sponge/src/` using
   public Genode interfaces only, without forking or patching Genode's
   `server/wm`, preserving capability-based IPC. The delivered scope
@@ -1186,6 +1188,33 @@ Twelve new completion criteria:
   from the upstream `themed_decorator` drop-in (Phase 11 history) and
   from the existing `run/sponge-wm*.run` scenarios, which drive the
   upstream stack.
+  - **Delivered and verified (2026-11-12, commit `191222130e`).**
+    Receipts: `docs/evidence/phase16-wm-index.md`. Host suites PASS
+    (protocol 209, core registry 123, layouter 144, decorator 142
+    checks); base-linux native smoke PASS (incl. the non-resizeable
+    fixture and same-wid destroy/recreate with a fresh close); seL4
+    native QMP PASS (full move/8-zone/focus/minimize-restore/
+    maximize-restore/close battery, plus decorator focus evidence
+    `chrome view <2,4> focus no (2 unfocused flip(s))`); native tasks
+    PASS; full 20-cycle tiling PASS with the non-resizeable fixture
+    floating at (850,560)160x160 and the remaining client at master
+    (8,56)496x704. Native product `SPONGE_WM=native` alpha and
+    desktop-disk PASS with the upstream trio absent; default upstream
+    alpha and desktop-disk PASS; upstream anchors base-linux
+    `sponge-wm`, seL4 `sponge-wm-qmp`, seL4 `sponge-wm-tasks` all
+    PASS. Rules soak exactly 20 cycles, no drift. UX metrics at
+    target: minimize/restore/close/maximize/restore-max/focus each
+    1 click, move/resize each 1 gesture, switch to tiling 1 command
+    via the configd backend (same as `vct config set wm.layout.mode
+    tiling`). `docs/11-environment.md` §4 remains 38 rows with no
+    `genode/` changes. No native partials (the W9 themed-path
+    flakiness is historical and outside the native path); the
+    physical-hardware gate is a non-goal. Receipt commits:
+    `3501970d83`/`2ec697239f` (product switch), `5a93452a22`/
+    `47f5b8d92c`/`f1c6ec0ea8` (focus metadata), `d0b2687976`/
+    `1fac8b46a6` (lifecycle), `22f62d52c9` (QMP runtime),
+    `191222130e` (recreation), `73e0874cd9` (non-resizeable tiling),
+    `4b2163d5f8` (upstream anchors).
 - [ ] **Criterion 17: real-hardware DE panel configuration edits.**
   Change panel settings through the DE on a physical machine and
   observe both the live result and the `sponge_configd` value.
