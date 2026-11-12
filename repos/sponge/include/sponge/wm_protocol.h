@@ -482,9 +482,12 @@ bool parse_rules(Genode::Node const &root, Rules &info, FN const &fn)
  * action: the layouter keeps the <window ... action="close"/> node in
  * every window_request snapshot until the wid disappears from
  * window_list; the core applies the app-visible 0x0 close convention
- * when processing it. window_chrome fw/fh are the OUTER frame size
- * and the producer publishes only create/destroy/title/resizeable/
- * size change — never move.
+ * when processing it. window_chrome fw/fh are the OUTER frame size;
+ * every entry carries the per-window focus state as focused="yes"/
+ * focused="no" (an absent 'focused' parses as false, backward
+ * compatible with pre-focus v1.1 snapshots), and the producer
+ * publishes only create/destroy/title/resizeable/focus/size change —
+ * never move.
  */
 
 /* wid <-> chrome-view-title (the decorator view name is the decimal
@@ -622,6 +625,7 @@ struct Window_chrome
 	Genode::String<256> label { };       /* frozen external identity */
 	Genode::String<256> title { };
 	bool                resizeable { false };
+	bool                focused    { false };  /* per-window focus truth */
 	long                fw { 0 }, fh { 0 };  /* OUTER frame size */
 };
 
@@ -631,9 +635,10 @@ void gen_window_chrome_entry(Genode::Xml_generator &g,
 /*
  * Visits every <window> of a '<window_chrome>' document in document
  * order. 'wid', 'fw', and 'fh' are required; label/title default to
- * empty, 'resizeable' to false. Destroy is the window's ABSENCE from
- * the snapshot. Returns false on root mismatch or a missing required
- * attribute.
+ * empty, 'resizeable' to false, and a missing 'focused' to false
+ * (backward compatible with pre-focus v1.1 snapshots). Destroy is
+ * the window's ABSENCE from the snapshot. Returns false on root
+ * mismatch or a missing required attribute.
  */
 template <typename FN>
 bool parse_window_chrome(Genode::Node const &root, FN const &fn)
@@ -657,6 +662,7 @@ bool parse_window_chrome(Genode::Node const &root, FN const &fn)
 		c.label      = n.attribute_value("label", Genode::String<256>());
 		c.title      = n.attribute_value("title", Genode::String<256>());
 		c.resizeable = n.attribute_value("resizeable", false);
+		c.focused    = n.attribute_value("focused", false);
 		c.fw         = n.attribute_value("fw", 0L);
 		c.fh         = n.attribute_value("fh", 0L);
 

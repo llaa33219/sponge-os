@@ -1153,6 +1153,7 @@ void case_v11_window_chrome(Ctx &c)
 	ch.label      = "pkg_runtime -> pkg_gui_demo -> Sponge Pkg GUI Demo";
 	ch.title      = "Hello World";
 	ch.resizeable = true;
+	ch.focused    = true;
 	ch.fw         = 648;
 	ch.fh         = 488;
 
@@ -1162,7 +1163,7 @@ void case_v11_window_chrome(Ctx &c)
 	            "<window_chrome>\n"
 	            "\t<window wid=\"5\""
 	            " label=\"pkg_runtime -> pkg_gui_demo -> Sponge Pkg GUI Demo\""
-	            " title=\"Hello World\" resizeable=\"yes\" fw=\"648\" fh=\"488\"/>\n"
+	            " title=\"Hello World\" resizeable=\"yes\" focused=\"yes\" fw=\"648\" fh=\"488\"/>\n"
 	            "</window_chrome>\n",
 	            gen_xml(buf, sizeof(buf), "window_chrome", [&] (Genode::Xml_generator &g) {
 		            gen_window_chrome_entry(g, ch);
@@ -1175,10 +1176,23 @@ void case_v11_window_chrome(Ctx &c)
 	            "<window_chrome>\n"
 	            "\t<window wid=\"5\""
 	            " label=\"pkg_runtime -> pkg_gui_demo -> Sponge Pkg GUI Demo\""
-	            " title=\"Hello World\" fw=\"648\" fh=\"488\"/>\n"
+	            " title=\"Hello World\" focused=\"yes\" fw=\"648\" fh=\"488\"/>\n"
 	            "</window_chrome>\n",
 	            gen_xml(buf, sizeof(buf), "window_chrome", [&] (Genode::Xml_generator &g) {
 		            gen_window_chrome_entry(g, fixed);
+	            }));
+
+	Window_chrome plain = ch;
+	plain.focused = false;
+
+	c.check_xml("v1.1 gen: window_chrome carries focused=\"no\" when unfocused",
+	            "<window_chrome>\n"
+	            "\t<window wid=\"5\""
+	            " label=\"pkg_runtime -> pkg_gui_demo -> Sponge Pkg GUI Demo\""
+	            " title=\"Hello World\" resizeable=\"yes\" focused=\"no\" fw=\"648\" fh=\"488\"/>\n"
+	            "</window_chrome>\n",
+	            gen_xml(buf, sizeof(buf), "window_chrome", [&] (Genode::Xml_generator &g) {
+		            gen_window_chrome_entry(g, plain);
 	            }));
 
 	Window_chrome got { };
@@ -1258,6 +1272,69 @@ void case_v11_window_chrome(Ctx &c)
 	c.check(ok && num == 1 && got.wid == 5 && got.resizeable
 	     && got.fw == 648 && got.fh == 488,
 	        "v1.1 round trip: window_chrome");
+
+	/* focused: explicit yes/no round trip, absent stays compatible */
+	num = 0;
+	ok = parse_window_chrome(
+		node_of("<window_chrome>"
+		        "<window wid=\"5\" label=\"a\" title=\"t\" focused=\"yes\""
+		        " fw=\"640\" fh=\"480\"/>"
+		        "</window_chrome>"),
+		[&] (Window_chrome const &x) {
+			got = x;
+			num++;
+		});
+	c.check(ok && num == 1 && got.focused,
+	        "v1.1 parse: focused=\"yes\" read as true");
+
+	num = 0;
+	ok = parse_window_chrome(
+		node_of("<window_chrome>"
+		        "<window wid=\"5\" label=\"a\" title=\"t\" focused=\"no\""
+		        " fw=\"640\" fh=\"480\"/>"
+		        "</window_chrome>"),
+		[&] (Window_chrome const &x) {
+			got = x;
+			num++;
+		});
+	c.check(ok && num == 1 && !got.focused,
+	        "v1.1 parse: focused=\"no\" read as false");
+
+	num = 0;
+	ok = parse_window_chrome(
+		node_of("<window_chrome>"
+		        "<window wid=\"5\" label=\"a\" title=\"t\" fw=\"640\" fh=\"480\"/>"
+		        "</window_chrome>"),
+		[&] (Window_chrome const &x) {
+			got = x;
+			num++;
+		});
+	c.check(ok && num == 1 && !got.focused,
+	        "v1.1 parse: absent focused defaults false (backward compatible)");
+
+	num = 0;
+	ok = parse_window_chrome(
+		node_of(gen_xml(buf, sizeof(buf), "window_chrome", [&] (Genode::Xml_generator &g) {
+			gen_window_chrome_entry(g, ch);
+		})),
+		[&] (Window_chrome const &x) {
+			got = x;
+			num++;
+		});
+	c.check(ok && num == 1 && got.focused,
+	        "v1.1 round trip: window_chrome focused=\"yes\"");
+
+	num = 0;
+	ok = parse_window_chrome(
+		node_of(gen_xml(buf, sizeof(buf), "window_chrome", [&] (Genode::Xml_generator &g) {
+			gen_window_chrome_entry(g, plain);
+		})),
+		[&] (Window_chrome const &x) {
+			got = x;
+			num++;
+		});
+	c.check(ok && num == 1 && !got.focused,
+	        "v1.1 round trip: window_chrome focused=\"no\"");
 }
 
 

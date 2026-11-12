@@ -214,6 +214,8 @@ void Sponge::Wm_protocol::gen_window_chrome_entry(Genode::Xml_generator &g,
 		if (c.resizeable)
 			g.attribute("resizeable", "yes");
 
+		g.attribute("focused", c.focused ? "yes" : "no");
+
 		g.attribute("fw", c.fw);
 		g.attribute("fh", c.fh);
 	});
