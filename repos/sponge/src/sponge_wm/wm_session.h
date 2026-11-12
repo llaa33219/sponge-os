@@ -117,6 +117,15 @@ struct Wm_ops : Genode::Interface
 
 	/* lifecycle */
 	virtual void register_session(Wm_session &session) = 0;
+
+	/*
+	 * The first top-level view of a content session (re)opens its
+	 * window entry: a previously destroyed window re-registers under
+	 * its SAME wid with fresh per-window state (same-session view
+	 * recreation). No-op while the entry is present.
+	 */
+	virtual void content_view_created(unsigned long wid,
+	                                  Genode::Session_label const &label) = 0;
 	virtual void content_view_destroyed(unsigned long wid) = 0;
 	virtual void session_destroyed(Wm_session &session) = 0;
 };
@@ -137,6 +146,14 @@ class Wm_session : public Genode::Session_object<Gui::Session>
 		 * session). Zero for non-content sessions.
 		 */
 		unsigned long const _wid;
+
+		/*
+		 * Session-derived window truth (buffer mode / info-ROM sigh),
+		 * remembered so a recreated top-level view can re-apply it
+		 * after same-wid resurrection.
+		 */
+		bool _buffer_alpha    { false };
+		bool _info_sigh_valid { false };
 
 		/* the real backing session at nitpicker */
 		Gui::Connection _real;

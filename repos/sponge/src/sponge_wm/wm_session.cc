@@ -57,8 +57,10 @@ void Wm_session::Info_rom::sigh(Genode::Signal_context_capability sigh)
 {
 	Genode::Dynamic_rom_session::sigh(sigh);
 
-	if (_session._role == Role::CONTENT)
+	if (_session._role == Role::CONTENT) {
+		_session._info_sigh_valid = sigh.valid();
 		_session._ops.resizeable_changed(_session._wid, sigh.valid());
+	}
 }
 
 
@@ -377,6 +379,21 @@ Wm_session::View_result Wm_session::view(Gui::View_id id, View_attr const &attr)
 
 		if (first_top_level) {
 			s->top_level = true;
+
+			/*
+			 * The window entry is (re)opened exactly here, through
+			 * the real first-top-level-view creation path: a window
+			 * destroyed by a previous destroy_view re-registers under
+			 * its SAME wid with fresh per-window state. No-op at
+			 * initial session open ('new_window' already registered
+			 * it).
+			 */
+			_ops.content_view_created(_wid, label());
+
+			/* session-derived truth survives the view lifecycle */
+			_ops.client_alpha(_wid, _buffer_alpha);
+			_ops.resizeable_changed(_wid, _info_sigh_valid);
+
 			_ops.client_title(_wid, attr.title.string());
 			_ops.client_geometry(_wid, attr.rect.x1(), attr.rect.y1(),
 			                     (long)attr.rect.w(), (long)attr.rect.h());
@@ -501,8 +518,10 @@ Wm_session::Buffer_result Wm_session::buffer(Framebuffer::Mode mode)
 {
 	_real.buffer(mode);
 
-	if (_role == Role::CONTENT)
+	if (_role == Role::CONTENT) {
+		_buffer_alpha = mode.alpha;
 		_ops.client_alpha(_wid, mode.alpha);
+	}
 
 	return Buffer_result::OK;
 }

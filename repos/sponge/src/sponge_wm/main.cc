@@ -501,6 +501,17 @@ struct Main : Wm_ops
 		Genode::warning("sponge_wm: session table full");
 	}
 
+	void content_view_created(unsigned long wid,
+	                          Genode::Session_label const &label) override
+	{
+		/*
+		 * Same-wid resurrection: a destroyed window re-registers
+		 * here with fresh per-window state (no-op when 'new_window'
+		 * already registered the entry at session open).
+		 */
+		publish(_registry.recreate_window(wid, label));
+	}
+
 	void content_view_destroyed(unsigned long wid) override
 	{
 		publish(_registry.destroy_window(wid));
