@@ -205,6 +205,9 @@ struct Sponge_layouter
 	bool _exclusive { false };
 	bool _rules_from_rom { false };
 
+	/* H1: rejected window_list snapshots (see _handle_roms) */
+	unsigned _window_list_rejects { 0 };
+
 	Sponge_layouter(Genode::Env &env)
 	:
 		_env(env)
@@ -307,12 +310,32 @@ struct Sponge_layouter
 			Layout_model::Window_list_entry
 				entries[Layout_model::MAX_WINDOWS] { };
 			Genode::size_t n = 0;
-			Wm_protocol::parse_window_list(_window_list.node(),
+			bool const parsed = Wm_protocol::parse_window_list(
+				_window_list.node(),
 				[&] (Wm_protocol::Window_list_entry const &e) {
 					if (n < Layout_model::MAX_WINDOWS)
 						entries[n++] = e;
 				});
-			_model.window_list(entries, n);
+
+			if (parsed) {
+				_window_list_rejects = 0;
+				_model.window_list(entries, n);
+			} else {
+				/*
+				 * H1 hardening: a malformed snapshot must not read as
+				 * an empty last-state-wins update (feeding n == 0 wiped
+				 * every tracked window). Keep the last good snapshot and
+				 * warn in a bounded way: once per failure streak, then
+				 * every 64th rejection.
+				 */
+				_window_list_rejects++;
+				if (_window_list_rejects == 1
+				 || (_window_list_rejects & 63) == 0)
+					Genode::warning(
+						"sponge_layouter: ignoring invalid window_list "
+						"snapshot (", _window_list_rejects,
+						" rejected); keeping last good snapshot");
+			}
 		}
 
 		/* focus_request: id-deduped steering (+restore-with-focus) */
