@@ -151,6 +151,8 @@ config
     + policy | label: layouter -> decorator_margins  | report: decorator -> decorator_margins
     + policy | label: layouter -> rules              | report: layout_rules
     + policy | label: layouter -> focus_request      | report: wm -> focus_request
+    + policy | label: sponge-de -> window_layout     | report: layouter -> window_layout
+    + policy | label: sponge-de -> window_list       | report: wm -> window_list
     + policy | label: wm_probe -> window_layout      | report: layouter -> window_layout
     + policy | label: wm_probe -> hover              | report: decorator -> hover
     + policy | label: sponge_pkgd -> request         | report: wm_probe -> request
@@ -438,6 +440,8 @@ config
     + service Gui | + child wm
     + service Report | + child report_rom
     + service ROM | label: default.theme | + parent
+    + service ROM | label: window_list   | + child report_rom
+    + service ROM | label: window_layout | + child report_rom
     + service ROM | label: mesa_gpu.lib.so | + parent | label: mesa_gpu-softpipe.lib.so
     + any-service
       + parent

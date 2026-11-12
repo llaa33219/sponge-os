@@ -306,9 +306,14 @@ struct Wm_probe
 	 * to report_rom with label "request"; pkgd reads it, processes,
 	 * and answers on label "result". Pattern lifted verbatim from
 	 * launch_probe (Phase 7 todo 10).
+	 *
+	 * Constructed lazily on entry to observe mode (_run_observe_mode):
+	 * the inject=yes path never touches them, so scenarios without a
+	 * pkgd request/result route for wm_probe (run/sponge-wm.run) never
+	 * see these sessions opened at all.
 	 */
-	Genode::Expanding_reporter     _request { _env, "request", "request" };
-	Genode::Attached_rom_dataspace _result  { _env, "result" };
+	Genode::Constructible<Genode::Expanding_reporter>     _request {};
+	Genode::Constructible<Genode::Attached_rom_dataspace> _result  {};
 
 	Genode::Constructible<Genode::Attached_dataspace> _cap_ds {};
 
@@ -611,7 +616,7 @@ struct Wm_probe
 
 	bool _send_request(char const *op, char const *pkg)
 	{
-		_request.generate_xml([&](Genode::Xml_generator &g) {
+		_request->generate_xml([&](Genode::Xml_generator &g) {
 			g.attribute("op",  op);
 			g.attribute("pkg", pkg);
 		});
@@ -626,9 +631,9 @@ struct Wm_probe
 
 	bool _request_answered(char const *op, char const *pkg)
 	{
-		_result.update();
-		if (!_result.valid()) return false;
-		Genode::Node const &r = _result.node();
+		_result->update();
+		if (!_result->valid()) return false;
+		Genode::Node const &r = _result->node();
 		if (!r.has_type("result")) return false;
 		if (r.attribute_value("op",  Genode::String<32>()) != Genode::String<32>(op)) return false;
 		if (r.attribute_value("pkg", Genode::String<128>()) != Genode::String<128>(pkg)) return false;
@@ -638,7 +643,7 @@ struct Wm_probe
 
 	Genode::String<32> _request_status()
 	{
-		Genode::Node const &r = _result.node();
+		Genode::Node const &r = _result->node();
 		if (!r.has_type("result")) return Genode::String<32>();
 		return r.attribute_value("status", Genode::String<32>());
 	}
@@ -647,6 +652,14 @@ struct Wm_probe
 	void _run_observe_mode()
 	{
 		Genode::log("wm-probe: observe mode (inject=no) -- will install pkg_gui_demo and await QMP-TARGET drag");
+
+		/*
+		 * Open the pkgd request/result channels now — only observe
+		 * mode uses them (see the member note above), and only this
+		 * mode's scenario routes them.
+		 */
+		_request.construct(_env, "request", "request");
+		_result.construct(_env, "result");
 
 		/*
 		 * Step 1: install pkg_gui_demo via sponge_pkgd's "request"
