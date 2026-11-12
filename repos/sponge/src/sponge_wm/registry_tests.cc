@@ -417,6 +417,52 @@ void case_chrome(Ctx &c)
 	parse_window_chrome(node_of(xml),
 		[&] (Window_chrome const &) { num++; });
 	c.check_eq(num, 0, "chrome: unsized windows are not published");
+
+	unsigned long const fa = reg.create_window("a -> focused demo");
+	unsigned long const fb = reg.create_window("a -> other demo");
+	reg.set_client_geometry(fa, 0, 0, 640, 480);
+	reg.set_client_geometry(fb, 700, 0, 320, 240);
+
+	c.check(dirty_any(reg.set_focus(Focus_target { true, fa }), Dirty::CHROME),
+	        "chrome: set_focus dirties window_chrome");
+
+	xml = gen_xml(buf, sizeof(buf), "window_chrome",
+	              [&] (Genode::Xml_generator &g) { reg.gen_window_chrome(g); });
+	Window_chrome got_a { }, got_b { };
+	c.check(parse_window_chrome(node_of(xml),
+		[&] (Window_chrome const &ch) {
+			if (ch.wid == fa) got_a = ch;
+			if (ch.wid == fb) got_b = ch;
+		}),
+	        "chrome: focused snapshot parses");
+	c.check(got_a.focused && !got_b.focused,
+	        "chrome: focused window carries focused=yes, peer focused=no");
+
+	reg.set_focus(Focus_target { true, fb });
+	xml = gen_xml(buf, sizeof(buf), "window_chrome",
+	              [&] (Genode::Xml_generator &g) { reg.gen_window_chrome(g); });
+	got_a = Window_chrome { };
+	got_b = Window_chrome { };
+	parse_window_chrome(node_of(xml),
+		[&] (Window_chrome const &ch) {
+			if (ch.wid == fa) got_a = ch;
+			if (ch.wid == fb) got_b = ch;
+		});
+	c.check(!got_a.focused && got_b.focused,
+	        "chrome: focus move flips the per-window focused flags");
+
+	reg.set_focus(Focus_target { });
+	xml = gen_xml(buf, sizeof(buf), "window_chrome",
+	              [&] (Genode::Xml_generator &g) { reg.gen_window_chrome(g); });
+	got_a = Window_chrome { };
+	got_b = Window_chrome { };
+	parse_window_chrome(node_of(xml),
+		[&] (Window_chrome const &ch) {
+			if (ch.wid == fa) got_a = ch;
+			if (ch.wid == fb) got_b = ch;
+		});
+	c.check(!got_a.focused && !got_b.focused,
+	        "chrome: cleared focus publishes focused=no on every entry");
 }
 
 

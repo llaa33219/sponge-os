@@ -235,7 +235,8 @@ class Registry
 
 		/*
 		 * Set the focus truth ('focus' steering or a real content
-		 * click). FOCUS on change. The empty target clears focus.
+		 * click). FOCUS + CHROME on change (window_chrome publishes
+		 * the per-window 'focused'). The empty target clears focus.
 		 */
 		Dirty set_focus(Focus_target target);
 

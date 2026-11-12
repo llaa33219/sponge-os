@@ -188,7 +188,7 @@ Dirty Registry::set_focus(Focus_target target)
 		return Dirty::NONE;
 
 	_focus = target;
-	return Dirty::FOCUS;
+	return Dirty::FOCUS | Dirty::CHROME;
 }
 
 
@@ -303,6 +303,7 @@ void Registry::gen_window_chrome(Genode::Xml_generator &g) const
 		c.label      = w.label;
 		c.title      = w.title;
 		c.resizeable = w.resizeable;
+		c.focused    = _focus.set && _focus.wid == w.wid;
 		c.fw         = outer.w;
 		c.fh         = outer.h;
 
