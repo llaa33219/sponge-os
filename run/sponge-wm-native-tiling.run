@@ -18,10 +18,21 @@
 #
 # === ACCEPTANCE STATUS ===
 #
-# The complete sequence passes on base-sel4/QEMU, including the default
-# 20-cycle soak and the real chrome close. Step 12 requires the remaining
-# client to be visible and exactly in the left-half master slot; a parked
-# sole client is not accepted as a reflow proof.
+# The two-client sequence passes on base-sel4/QEMU (pre-fixture
+# revision), including the default 20-cycle soak and the real chrome
+# close. Step 12 requires the remaining client to be visible and
+# exactly in the left-half master slot; a parked sole client is not
+# accepted as a reflow proof.
+#
+# The non-resizeable fixture (native_wm_fixture_client, static assign
+# 850,560,160x160) is a later addition: its window_list
+# resizeable="no" classification and exact floating geometry are
+# asserted by an INDEPENDENT probe helper at step 1 and inside every
+# arrangement check (fixture exclusion from Master-Stack is
+# continuously proven without touching the two-client classification,
+# the eligible count, or the step-12 min_clients logic). These
+# fixture gates are new and gate this scenario; the serial acceptance
+# run is the authority for their PASS status.
 #
 # Mode write path (D16W.11): the probe drives the sponge_configd
 # config_request/config_result channel — the SAME backend `vct config`
@@ -37,11 +48,16 @@
 # Topology (base-sel4, headless, one QEMU boot): the
 # run/sponge-wm-native-qmp.run topology (drivers sub-init +
 # sponge_pkgd + pkg_runtime + sponge-de tasklist) PLUS sponge_configd
-# (mode-key registry + broadcast) and test/native_wm_tiling_probe.
-# Two windows exist: sponge-de's demo window (420,60,560,220) and
-# pkg_gui_demo (50,320,320,240) — disjoint floating placements; the
-# tiling arrangement itself is computed by the probe from the work
-# area (screen minus the 28 px panel) and the decorator margins.
+# (mode-key registry + broadcast), test/native_wm_tiling_probe, and
+# the non-resizeable test/native_wm_fixture_client fixture. Three
+# windows exist: sponge-de's demo window (420,60,560,220),
+# pkg_gui_demo (50,320,320,240), and the fixture (850,560,160x160) —
+# disjoint floating placements. The fixture never opens the Gui info
+# ROM, so window_list reports resizeable="no" and D16W.5 keeps it
+# floating at exactly that static-assign geometry in every mode (it
+# is never eligible and never joins the Master-Stack arrangement);
+# the tiling arrangement itself is computed by the probe from the
+# work area (screen minus the 28 px panel) and the decorator margins.
 #
 # Master-Stack run-side contract (D16W.5 reading asserted exactly;
 # see native_wm_tiling_probe/main.cc header): outer-rect placement,
@@ -54,6 +70,8 @@
 # procs; probe-derived coordinates):
 #
 #   gate [step 1]  two clients live + eligibility (>= 2 resizeable)
+#                  + fixture exclusion (resizeable=no + exact floating
+#                  geometry 850,560,160x160; probe-side, no marker)
 #   gate [step 2]  mode floating -> tiling + arrangement (probe-driven
 #                  configd write)
 #   dispatch/gate [steps 3-8]  minimize/restore (tasklist clicks),
@@ -89,6 +107,7 @@ build { core lib/ld init timer server/report_rom server/nitpicker \
          driver/usb_host/pc driver/usb_hid server/event_filter \
          sponge_wm sponge_layouter sponge_decorator \
          sponge_configd sponge_pkgd test/pkg_gui_demo \
+         test/native_wm_fixture_client \
          test/native_wm_tiling_probe \
          sponge-de \
          qt6/base lib/libc lib/libm lib/stdcxx lib/mesa \
@@ -150,6 +169,13 @@ config
     + policy | label: native_wm_tiling_probe -> rules         | report: sponge-de -> rules
     + policy | label: native_wm_tiling_probe -> decorator_margins | report: sponge_decorator -> decorator_margins
     + policy | label: native_wm_tiling_probe -> pointer | report: nitpicker -> pointer
+    #
+    # Non-resizeable fixture command channel. No command is sent in
+    # this scenario: the fixture_cmd ROM serves empty content until a
+    # probe-side fixture_cmd report arrives (the probe would publish
+    # via Genode::Expanding_reporter only if a command were needed).
+    #
+    + policy | label: native_wm_fixture_client -> fixture_cmd | report: native_wm_tiling_probe -> fixture_cmd
     #
     # Internal contract v1.1 (binding; see run/sponge-wm-native.run header).
     #
@@ -370,6 +396,8 @@ config
                | xpos: 420 | ypos: 60 | width: 560 | height: 220 | maximized: no
       + assign | label_prefix: pkg_runtime | target: screen
                | xpos: 50 | ypos: 320 | width: 320 | height: 240 | maximized: no
+      + assign | label_prefix: native_wm_fixture_client | target: screen
+               | xpos: 850 | ypos: 560 | width: 160 | height: 160 | maximized: no
     + press   | key: BTN_LEFT  | action: drag
       + release | key: BTN_LEFT | action: drop
   + route
@@ -460,6 +488,14 @@ config
       + parent
       + any-child
 
++ start native_wm_fixture_client | caps: 200 | ram: 16M
+  + route
+    + service Gui | + child sponge_wm
+    + service ROM | label: fixture_cmd | + child report_rom
+    + any-service
+      + parent
+      + any-child
+
 + start native_wm_tiling_probe | caps: 150 | ram: 32M
   + config | panel_height: 28 | soak_cycles: @SOAK@
   + route
@@ -472,6 +508,7 @@ config
     + service ROM | label: config_result | + child report_rom
     + service ROM | label: pointer       | + child report_rom
     + service ROM | label_last: result   | + child report_rom
+    + service Report | label: fixture_cmd | + child report_rom
     + service Report | + child report_rom
     + any-service
       + parent

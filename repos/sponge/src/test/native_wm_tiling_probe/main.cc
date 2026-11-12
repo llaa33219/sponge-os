@@ -5,12 +5,14 @@
  * docs/plans/phase16-sponge-wm.md D16W.5 + docs/plans/wm-state-table.md
  * "Native WM Extension").
  *
- * Scenario: run/sponge-wm-native-tiling.run (base-sel4 + QMP). Two
- * windows exist from the start: sponge-de's demo window and the
- * pkg_gui_demo window launched by this probe. Arrangement assertions
- * are EXACT (computed geometry, no pointer tolerance — the plan's
- * gate: "window_layout reports match the expected arrangement after
- * every reflow").
+ * Scenario: run/sponge-wm-native-tiling.run (base-sel4 + QMP). Three
+ * windows exist from the start: sponge-de's demo window, the
+ * pkg_gui_demo window launched by this probe, and the non-resizeable
+ * native_wm_fixture_client fixture. The two resizeable clients carry
+ * the arrangement assertions, which are EXACT (computed geometry, no
+ * pointer tolerance — the plan's gate: "window_layout reports match
+ * the expected arrangement after every reflow"); the fixture is
+ * checked by an independent helper (see the fixture note below).
  *
  * Run-side reading of D16W.5 (recorded as the acceptance contract;
  * the implementers must match it or record the deviation):
@@ -57,6 +59,21 @@
  * If window_list reports the demo window non-resizeable it floats
  * (D16W.5) and this probe fails at step 1 naming the gap — the
  * fix is a resizeable second client (or a resizeable demo widget).
+ *
+ * Non-resizeable fixture (test/native_wm_fixture_client, commit
+ * 1013b48577): it never opens the Gui info ROM, so window_list must
+ * report resizeable="no" and D16W.5 makes it FLOAT at exactly
+ * (850,560) 160x160 (the sponge_layouter static assign) in every
+ * mode and through every reflow. _assert_fixture is deliberately
+ * INDEPENDENT of the two-client machinery: it never joins _classify,
+ * the slots[]/eligible counts, or the step-12 min_clients logic. It
+ * runs at step 1 and inside every arrangement check (plus the step-9
+ * mode-switch retention), so fixture exclusion from Master-Stack is
+ * continuously proven. The fixture normally needs no fixture_cmd
+ * command in this scenario (its fixture_cmd ROM is routed through
+ * report_rom and stays empty); a command would be published with a
+ * Genode::Expanding_reporter on "fixture_cmd" directly, without
+ * touching native_wm_common.
  */
 
 #include <base/attached_rom_dataspace.h>
@@ -73,6 +90,15 @@ using namespace Native_wm;
 
 char const *const GUI_PREFIX  = "pkg_runtime -> pkg_gui_demo";
 char const *const DEMO_PREFIX = "sponge-de -> Sponge DE Demo";
+
+/*
+ * The non-resizeable fixture client (test/native_wm_fixture_client).
+ * Label prefix matches its wm session label; the geometry is the
+ * sponge_layouter static assign and the fixture's own view rect.
+ */
+char const *const FIXTURE_PREFIX = "native_wm_fixture_client";
+int const FIXTURE_X = 850, FIXTURE_Y = 560;
+unsigned const FIXTURE_W = 160, FIXTURE_H = 160;
 
 unsigned const SCREEN_W = 1024, SCREEN_H = 768;
 
@@ -362,6 +388,11 @@ struct Native_wm_tiling_probe
 	bool _assert_arrangement(char const *what, unsigned min_clients = 2,
 	                         bool require_all_eligible = false)
 	{
+		/* fixture exclusion/floating must hold through every reflow;
+		 * it never joins the slots[]/eligible counts below */
+		if (!_assert_fixture(what))
+			return false;
+
 		Slot slots[2] { };
 		int const n = _classify(slots);
 		if (n < (int)min_clients) {
@@ -444,6 +475,62 @@ struct Native_wm_tiling_probe
 		for (unsigned i = 0; i < 300; ++i) {
 			if (_assert_arrangement(what, min_clients,
 			                        require_all_eligible)) return true;
+			_timer.msleep(100);
+		}
+		return false;
+	}
+
+	/*
+	 * Independent non-resizeable fixture check. It deliberately never
+	 * touches _classify, the slots[]/eligible counts, or the step-12
+	 * min_clients logic: the fixture is PROVEN excluded from the
+	 * Master-Stack arrangement by asserting it stays exactly at its
+	 * floating geometry (D16W.5: non-resizeable windows always float)
+	 * and that window_list reports resizeable=no. Returns false and
+	 * logs the mismatch otherwise.
+	 */
+	bool _assert_fixture(char const *what)
+	{
+		_window_list.update();
+		_window_layout.update();
+
+		Wl_entry const wl =
+			window_list_find_prefix(_window_list.node(), FIXTURE_PREFIX);
+		if (!wl.found) {
+			Genode::error("native-wm-tiling-probe: FAIL ", what,
+			              " - fixture missing from window_list");
+			return false;
+		}
+		if (wl.resizeable) {
+			Genode::error("native-wm-tiling-probe: FAIL ", what,
+			              " - fixture reported resizeable=yes; it must be "
+			              "resizeable=no (never opens the Gui info ROM)");
+			return false;
+		}
+
+		Geom want;
+		want.x = FIXTURE_X; want.y = FIXTURE_Y;
+		want.w = FIXTURE_W; want.h = FIXTURE_H;
+		want.valid = true;
+		Geom const g = _geom(FIXTURE_PREFIX);
+		if (!same_geom(g, want)) {
+			Genode::error("native-wm-tiling-probe: FAIL ", what,
+			              " - fixture must float at exactly (850,560) "
+			              "160x160 (non-resizeable floats, D16W.5)");
+			log_geom("native-wm-tiling-probe", "got ", g);
+			log_geom("native-wm-tiling-probe", "want", want);
+			return false;
+		}
+		Genode::log("native-wm-tiling-probe: fixture floats at (", g.x,
+		            ",", g.y, ") ", g.w, "x", g.h,
+		            " (resizeable=no, not tiled)");
+		return true;
+	}
+
+	bool _wait_fixture(char const *what)
+	{
+		for (unsigned i = 0; i < 600; ++i) {
+			if (_assert_fixture(what)) return true;
 			_timer.msleep(100);
 		}
 		return false;
@@ -551,6 +638,14 @@ struct Native_wm_tiling_probe
 				return;
 			}
 		}
+		if (!_wait_fixture("step 1 fixture")) {
+			_fail("fixture is not resizeable=no + floating at "
+			      "(850,560) 160x160");
+			return;
+		}
+		Genode::log("native-wm-tiling-probe: [step 1] fixture floats at "
+		            "(850,560) 160x160 (resizeable=no, excluded from "
+		            "Master-Stack)");
 		Genode::log("native-wm-tiling-probe: [step 1] two clients live: demo (",
 		            demo.x, ",", demo.y, ") ", demo.w, "x", demo.h,
 		            " / pkg (", pkg.x, ",", pkg.y, ") ", pkg.w, "x", pkg.h);
@@ -673,6 +768,10 @@ struct Native_wm_tiling_probe
 				{ _fail("wm.layout.mode=floating write refused"); return; }
 			if (!_wait_geometries_unchanged(d0, p0, "step 9 retention")) {
 				_fail("leaving tiling mode changed window geometry");
+				return;
+			}
+			if (!_wait_fixture("step 9 fixture retention")) {
+				_fail("leaving tiling mode moved the floating fixture");
 				return;
 			}
 			Genode::log("native-wm-tiling-probe: [step 9] floating mode keeps "
