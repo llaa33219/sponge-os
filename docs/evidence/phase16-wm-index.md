@@ -1,6 +1,6 @@
 # Phase 16 Criterion 16 (custom Sponge WM): Evidence Index
 
-> Status: Criterion 16 delivered and verified at commit `191222130e`.
+> Status: Criterion 16 delivered and verified at commit `66a01eee7a`.
 > Every acceptance gate of `docs/plans/phase16-sponge-wm.md` §6 (M0-M6)
 > and §7 has receipts below. Curated receipts only: raw per-run logs
 > are transient run artifacts and are not promoted here (AGENTS.md
@@ -15,9 +15,9 @@
 
 | Suite | Source of truth | Result |
 |---|---|---|
-| Protocol v1 contract | `repos/sponge/src/test/wm_protocol_probe/` (host self-test) | `self-test: PASS (209 checks)` |
+| Protocol v1 contract | `repos/sponge/src/test/wm_protocol_probe/` (host self-test) | `self-test: PASS (253 checks)` |
 | Core window registry | `repos/sponge/src/sponge_wm/` (host self-test) | `self-test: PASS (123 checks)` |
-| Layout policy model | `repos/sponge/src/sponge_layouter/` (host self-test) | `self-test: PASS (144 checks)` |
+| Layout policy model | `repos/sponge/src/sponge_layouter/` (host self-test) | `self-test: PASS (157 checks)` |
 | Decorator chrome geometry | `repos/sponge/src/sponge_decorator/tests/` (host self-test) | `self-test: PASS (142 checks)` |
 
 ## 2. Native scenario gates (measured, PASS)
@@ -115,8 +115,18 @@ new ledger rows).
   serializes destroy-then-recreate, so the measured gates do not
   exercise the unobserved-absence window. This bounds one freshness
   claim only; it does not make timing-dependent recovery impossible.
+- **Escaped-wire length bound (LOW, availability only).** XML escaping
+  can inflate an identity string to six times its semantic length. The
+  shared readers and the frozen TasklistController use `String<256>`
+  fields, so an adversarial title/label containing at least roughly 43
+  consecutive `&`, `"`, or `<` bytes can exceed that field and lose
+  tasklist identity through truncation. This cannot forge attributes or
+  nodes and cannot wipe layouter state; it desynchronizes the offending
+  window's own tasklist entry. The supported wire bound is 255 bytes per
+  attribute. Widening the shared parse reads is optional hardening, not
+  a security acceptance blocker.
 
-## 8. Commit receipts (all resolve at HEAD `191222130e`)
+## 8. Commit receipts (all resolve at HEAD `66a01eee7a`)
 
 | Area | Commits |
 |---|---|
@@ -129,6 +139,11 @@ new ledger rows).
 | Upstream anchor routing and startup | `4b2163d5f8` |
 | Load-bearing fix: two-way maximize inference (stale maximized state cleared) | `ccfef79cf1` |
 | Load-bearing fix: stale-frame cancel before resize (qt6 QPA, ledger row #23) | `afb9d50980` |
+| XML identity escaping and malformed-snapshot retention | `e06930b318`, `9696878556` |
+| External-focus steering adoption and regression coverage | `5b5158dd91` |
+| Native smoke injection and frozen button geometry | `de12e80f4a` |
+| Real pointer/hover content-click focus acceptance | `58e6966d96` |
+| Acceptance-record corrections | `66a01eee7a` |
 
 Protocol v1 stays frozen (`docs/05-sponge-de.md` §4.6); the internal
 v1.1 contract is `docs/plans/phase16-sponge-wm.md` §11. State machine:
