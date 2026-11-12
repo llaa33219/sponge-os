@@ -795,6 +795,15 @@ void case_close_sticky(Ctx &c)
 	c.check(model.num_windows() == 0, "close: destroyed window dropped");
 	r = read_request(model);
 	c.check(r.n == 0, "close: close node gone once the wid disappears");
+
+	Window_list_entry recreated[1] { wl_of(6, PKG_LABEL, PKG_TITLE, 320, 240) };
+	feed_window_list(model, recreated, 1);
+	c.check(!model.close_pending(6),
+	        "close: recreated window does not inherit close pending");
+	r = read_request(model);
+	Window_request const *e6 = find_req(r, 6);
+	c.check(r.n == 1 && e6 && !e6->close,
+	        "close: recreated window starts without action=close");
 }
 
 

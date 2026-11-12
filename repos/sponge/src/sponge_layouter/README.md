@@ -208,12 +208,13 @@ g++ -std=c++20 -O1 \
 && /tmp/sponge_layouter_self_test
 ```
 
-Current result: `self-test: PASS (142 checks)`.
+Current result: `self-test: PASS (144 checks)`.
 
 The case list covers window create/destroy, creation order, floating
 placement (static + cascade), title move, all 8 resize zones (exact
 deltas + 64x64 clamp), focus steering vs. focus truth, sticky close
-requests, minimize/restore+focus, work-area maximize/restore (outer ==
+requests and close/recreate slot reset, minimize/restore+focus,
+work-area maximize/restore (outer ==
 work area), tiling open/close/minimize/restore/maximize/mode-switch
 reflow, non-resizeable float, and >=20-cycle geometry stability (25
 rules republishes with the boundary-origin round trip + 20 mode-switch

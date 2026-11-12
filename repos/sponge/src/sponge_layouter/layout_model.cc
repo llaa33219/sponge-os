@@ -530,6 +530,7 @@ void Model::window_list(Window_list_entry const *entries, Genode::size_t n)
 
 			unsigned const idx = _num_windows++;
 			w = &_windows[idx];
+			*w = Window { };
 
 			w->wid        = entry.id;
 			w->create_seq = _next_create_seq++;
