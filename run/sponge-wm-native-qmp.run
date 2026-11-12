@@ -15,10 +15,11 @@
 #                   native path must prove the full sequence in one run
 #                   or record an honest partial of its own. Partial is
 #                   never relabeled green.)
-#   focus           title click on each window flips `focused` in
-#                   window_layout AND the window_chrome per-window
-#                   focus truth (focused=yes follows exactly the
-#                   clicked wid, the other client focused=no); the
+#   focus           title and content clicks on each window flip `focused`
+#                   in window_layout AND the window_chrome per-window focus
+#                   truth (focused=yes follows exactly the clicked wid, the
+#                   other client focused=no); content-click selections remain
+#                   stable for 12 consecutive layout/chrome observations; the
 #                   decorator's focus styling is corroborated from
 #                   'chrome view <wid> focus no' lines after the gate
 #   close           native chrome closer destroys the window
@@ -38,8 +39,9 @@
 #
 # Marker discipline (run/qmp.inc shared dispatch — this scenario
 # defines NO local Tcl QMP procs, unlike run/sponge-wm-qmp.run):
-# the probe emits exactly ONE QMP-TARGET marker per action and the run
-# script dispatches them in strict serialization (16 dispatches).
+# the probe emits markers in strict serialization. Title/chrome actions
+# use one marker; each content click uses absmove, at most 30 closed-loop
+# moves, and a terminal press dispatched by a bounded run-side loop.
 # Drag deltas stay <= 49 px per axis so the shared drag arm walks
 # exact rel-1 steps against the recipe's accelerate LUT. No probe-side
 # marker re-emission: a miss is an honest FAIL, never a silent retry.
@@ -121,6 +123,8 @@ config
     + policy | label: native_wm_qmp_probe -> rules         | report: sponge-de -> rules
     + policy | label: native_wm_qmp_probe -> decorator_margins | report: sponge_decorator -> decorator_margins
     + policy | label: native_wm_qmp_probe -> window_chrome | report: sponge_wm -> window_chrome
+    + policy | label: native_wm_qmp_probe -> pointer | report: nitpicker -> pointer
+    + policy | label: native_wm_qmp_probe -> hover | report: nitpicker -> hover
     #
     # Internal contract v1.1 (binding; see run/sponge-wm-native.run header).
     #
@@ -151,7 +155,7 @@ config
   + config
     + capture
     + event
-    + report | focus: yes | hover: yes | xray: yes
+    + report | focus: yes | hover: yes | pointer: yes | xray: yes
     + domain panel | layer: 1 | content: client | label: no
                    | hover: always | focus: click | ypos: 0 | height: 28
     + domain default | layer: 2 | content: client | label: no
@@ -425,6 +429,8 @@ config
     + service ROM | label: rules         | + child report_rom
     + service ROM | label: decorator_margins | + child report_rom
     + service ROM | label: window_chrome | + child report_rom
+    + service ROM | label: pointer       | + child report_rom
+    + service ROM | label: hover         | + child report_rom
     + service ROM | label_last: result   | + child report_rom
     + service Report | + child report_rom
     + any-service
@@ -550,9 +556,22 @@ for {set z 1} {$z <= 8} {incr z} {
 	qmp_exec_target $qmp_chan 120
 	}
 
-# step 11: focus (two title clicks)
+# step 11: two title clicks, then two pointer-verified content clicks.
+# Each content click emits absmove, at most 30 closed-loop moves, and press.
 qmp_exec_target $qmp_chan 120
 qmp_exec_target $qmp_chan 120
+for {set click 0} {$click < 2} {incr click} {
+	set content_pressed 0
+	for {set i 0} {$i < 32} {incr i} {
+		if {[qmp_exec_target $qmp_chan 120] eq "press"} {
+			set content_pressed 1
+			break
+		}
+	}
+	if {!$content_pressed} {
+		error "step 11: content press was not dispatched within 32 markers"
+	}
+}
 
 # step 12: chrome minimizer
 qmp_exec_target $qmp_chan 120

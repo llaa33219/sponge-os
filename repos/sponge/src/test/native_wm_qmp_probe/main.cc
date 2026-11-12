@@ -8,19 +8,21 @@
  * upstream wm/window_layouter/decorator; the delivered panel tasklist
  * (TasklistController, UNCHANGED) supplies the tasklist restore path.
  *
- * Battery (§7.1, one serialized QMP-TARGET marker per action, all
- * dispatched by run/qmp.inc's SHARED qmp_exec_target — this scenario
- * defines no local Tcl QMP procs):
+ * Battery (§7.1, serialized QMP-TARGET markers dispatched by
+ * run/qmp.inc's SHARED qmp_exec_target — this scenario defines no local
+ * Tcl QMP procs. Content clicks use pointer-ROM-verified closed-loop
+ * placement followed by a terminal press):
  *
  *   [step 2]   move — title-bar drag lands at the expected geometry
  *   [steps 3-10] 8-zone resize — all four edges and all four corners,
  *              full sequence in ONE run (the W9 honesty rule: a flaky
  *              zone is an honest partial, never relabeled green)
- *   [step 11]  focus — title click on each window flips
+ *   [step 11]  focus — title and content clicks on each window flip
  *              window_layout's consumed `focused` attribute AND the
  *              window_chrome per-window focus truth: focused=yes
  *              follows exactly the clicked wid while the other client
- *              reads focused=no
+ *              reads focused=no; content-click selections then remain
+ *              stable for 12 consecutive layout/chrome observations
  *   [step 12]  minimize — native chrome minimizer parks the window at
  *              (-32000,-32000) (frozen convention)
  *   [step 13]  restore — tasklist click restores the saved geometry
@@ -35,8 +37,7 @@
  *
  * Every click coordinate is derived from live data (window_layout
  * geometry + decorator_margins + the proven panel-layout constants);
- * only the native-chrome button layout is provisional
- * (TODO(native-wm), native_wm_probe_util.h).
+ * native-chrome buttons use the frozen Wm_protocol::button_rect layout.
  *
  * Marker discipline (run/qmp.inc): drag deltas stay <= 49 px per axis
  * so the shared drag arm walks exact rel-1 steps; the probe emits each
@@ -84,8 +85,11 @@ struct Native_wm_qmp_probe
 	Genode::Attached_rom_dataspace _window_chrome  { _env, "window_chrome" };
 	Genode::Attached_rom_dataspace _rules          { _env, "rules" };
 	Genode::Attached_rom_dataspace _margins_rom    { _env, "decorator_margins" };
+	Genode::Attached_rom_dataspace _pointer_rom    { _env, "pointer" };
+	Genode::Attached_rom_dataspace _hover_rom      { _env, "hover" };
 
 	unsigned const panel_h;
+	bool _pointer_materialized { false };
 
 	static constexpr unsigned GEOMETRY_QUIESCENT_POLLS = 5;
 
@@ -267,6 +271,153 @@ struct Native_wm_qmp_probe
 		            " focused=", s.no.focused ? "yes" : "no",
 		            ") focused_count=", s.focused_count);
 		return false;
+	}
+
+	bool _pointer_pos(long &x, long &y)
+	{
+		_pointer_rom.update();
+		if (!_pointer_rom.valid()) return false;
+		Genode::Node const n = _pointer_rom.node();
+		x = n.attribute_value("xpos", -1L);
+		y = n.attribute_value("ypos", -1L);
+		return x >= 0 && y >= 0;
+	}
+
+	bool _wait_pointer_expected(long tx, long ty)
+	{
+		long px = -1, py = -1;
+		unsigned settled = 0;
+		for (unsigned i = 0; i < 3000; ++i) {
+			if (_pointer_pos(px, py)
+			 && px >= tx - 3 && px <= tx + 3
+			 && py >= ty - 3 && py <= ty + 3) {
+				if (++settled == 5) return true;
+			} else {
+				settled = 0;
+			}
+			_timer.msleep(20);
+		}
+		Genode::error("native-wm-qmp-probe: pointer did not settle at (",
+		              tx, ",", ty, "); last position (", px, ",", py, ")");
+		return false;
+	}
+
+	bool _goto_pos(long tx, long ty)
+	{
+		if (!_pointer_materialized) {
+			emit_qmp_absmove(512, 384);
+			if (!_wait_pointer_expected((long)SCREEN_W - 1,
+			                            (long)SCREEN_H - 1))
+				return false;
+			_pointer_materialized = true;
+		}
+
+		long px = -1, py = -1;
+		for (unsigned i = 0; i < 30; ++i) {
+			if (!_pointer_pos(px, py)) return false;
+
+			long dx = tx - px, dy = ty - py;
+			if (dx >= -3 && dx <= 3 && dy >= -3 && dy <= 3) {
+				emit_qmp_move(1, 1);
+				if (!_wait_pointer_expected(px + 1, py + 1)) return false;
+				emit_qmp_move(-1, -1);
+				return _wait_pointer_expected(px, py);
+			}
+			dx = dx > 100 ? 100 : (dx < -100 ? -100 : dx);
+			dy = dy > 100 ? 100 : (dy < -100 ? -100 : dy);
+
+			long expected_x = px + dx, expected_y = py + dy;
+			expected_x = expected_x < 0 ? 0
+			           : (expected_x > (long)SCREEN_W - 1
+			              ? (long)SCREEN_W - 1 : expected_x);
+			expected_y = expected_y < 0 ? 0
+			           : (expected_y > (long)SCREEN_H - 1
+			              ? (long)SCREEN_H - 1 : expected_y);
+
+			emit_qmp_move((int)dx, (int)dy);
+			if (!_wait_pointer_expected(expected_x, expected_y))
+				return false;
+		}
+		return false;
+	}
+
+	void _log_hover(char const *what)
+	{
+		_hover_rom.update();
+		if (!_hover_rom.valid()) {
+			Genode::log("native-wm-qmp-probe: hover invalid before ", what);
+			return;
+		}
+		Genode::Node const n = _hover_rom.node();
+		Genode::String<256> const label =
+			n.attribute_value("label", Genode::String<256>(""));
+		Genode::log("native-wm-qmp-probe: hover before ", what,
+		            " label='", label, "' x=",
+		            n.attribute_value("xpos", -1L), " y=",
+		            n.attribute_value("ypos", -1L));
+	}
+
+	bool _wait_hover_owner(char const *prefix, char const *what)
+	{
+		Genode::size_t const n = Genode::strlen(prefix);
+		unsigned settled = 0;
+		for (unsigned i = 0; i < 3000; ++i) {
+			_hover_rom.update();
+			if (_hover_rom.valid()) {
+				Genode::String<256> const label = _hover_rom.node().attribute_value(
+					"label", Genode::String<256>(""));
+				bool match = false;
+				for (char const *p = label.string(); *p && !match; ++p)
+					match = Genode::strcmp(p, prefix, n) == 0;
+				if (match && ++settled == 5) {
+					_log_hover(what);
+					return true;
+				}
+				if (!match) settled = 0;
+			} else {
+				settled = 0;
+			}
+			_timer.msleep(20);
+		}
+		_log_hover(what);
+		Genode::error("native-wm-qmp-probe: hover owner did not reach '",
+		              prefix, "' before ", what);
+		return false;
+	}
+
+	bool _content_focus_stable(char const *yes_prefix, char const *no_prefix,
+	                           char const *what)
+	{
+		for (unsigned cycle = 0; cycle < 12; ++cycle) {
+			Geom yes_geom { }, no_geom { };
+			bool yes_focused = false, no_focused = false;
+			_window_layout.update();
+			bool const layout_valid = _window_layout.valid();
+			if (layout_valid) {
+				find_layout_window_by_prefix(_window_layout.node(), yes_prefix,
+				                             yes_geom, &yes_focused);
+				find_layout_window_by_prefix(_window_layout.node(), no_prefix,
+				                             no_geom, &no_focused);
+			}
+
+			Chrome_focus_state const chrome =
+				_chrome_focus_state(yes_prefix, no_prefix);
+			bool const stable =
+				layout_valid && yes_geom.valid && no_geom.valid
+			 && yes_focused && !no_focused
+			 && chrome.valid && chrome.yes.found && chrome.no.found
+			 && chrome.yes.focused && !chrome.no.focused
+			 && chrome.focused_count == 1;
+			if (!stable) {
+				Genode::error("native-wm-qmp-probe: FAIL ", what,
+				              " - focus reverted at stability cycle ", cycle);
+				return false;
+			}
+			_timer.msleep(100);
+		}
+		Genode::log("native-wm-qmp-probe: ", what,
+		            " stable for 12 layout/chrome observations");
+		return true;
 	}
 
 	bool _rules_maximized_is(bool want, char const *what)
@@ -481,7 +632,7 @@ struct Native_wm_qmp_probe
 				return;
 			}
 
-			Pt const pkg_title = title_center(cur, m);
+			Pt const pkg_title = title_hit_point(cur, m);
 			Genode::log("native-wm-qmp-probe: [step 11] focus: click pkg "
 			            "title (", pkg_title.x, ",", pkg_title.y, ")");
 			emit_qmp_click(pkg_title.x, pkg_title.y);
@@ -495,7 +646,51 @@ struct Native_wm_qmp_probe
 				      "to the pkg wid");
 				return;
 			}
-			Genode::log("native-wm-qmp-probe: [step 11] focus flip verified");
+			Pt const demo_content {
+				demo.x + (int)demo.w / 2, demo.y + (int)demo.h / 2 };
+			Genode::log("native-wm-qmp-probe: [step 11] content click demo (",
+			            demo_content.x, ",", demo_content.y, ")");
+			if (!_goto_pos(demo_content.x, demo_content.y)) {
+				_fail("demo content pointer did not reach the requested target");
+				return;
+			}
+			if (!_wait_hover_owner(DEMO_PREFIX, "demo content press")) {
+				_fail("demo content hover owner did not converge");
+				return;
+			}
+			emit_qmp_press(demo_content.x, demo_content.y);
+			if (!_wait_focused(DEMO_PREFIX, true, "demo content click focus")
+			 || !_wait_chrome_focus(DEMO_PREFIX, GUI_PREFIX,
+			                        "demo content click window_chrome focus")
+			 || !_content_focus_stable(DEMO_PREFIX, GUI_PREFIX,
+			                           "demo content click focus")) {
+				_fail("demo content click focus did not persist");
+				return;
+			}
+
+			Pt const pkg_content {
+				cur.x + (int)cur.w / 2, cur.y + (int)cur.h / 2 };
+			Genode::log("native-wm-qmp-probe: [step 11] content click pkg (",
+			            pkg_content.x, ",", pkg_content.y, ")");
+			if (!_goto_pos(pkg_content.x, pkg_content.y)) {
+				_fail("pkg content pointer did not reach the requested target");
+				return;
+			}
+			if (!_wait_hover_owner(GUI_PREFIX, "pkg content press")) {
+				_fail("pkg content hover owner did not converge");
+				return;
+			}
+			emit_qmp_press(pkg_content.x, pkg_content.y);
+			if (!_wait_focused(GUI_PREFIX, true, "pkg content click focus")
+			 || !_wait_chrome_focus(GUI_PREFIX, DEMO_PREFIX,
+			                        "pkg content click window_chrome focus")
+			 || !_content_focus_stable(GUI_PREFIX, DEMO_PREFIX,
+			                           "pkg content click focus")) {
+				_fail("pkg content click focus did not persist");
+				return;
+			}
+			Genode::log("native-wm-qmp-probe: [step 11] title/content focus "
+			            "flip and stability verified");
 		}
 
 		/* ---------- step 12: minimize via native chrome minimizer ---------- */
