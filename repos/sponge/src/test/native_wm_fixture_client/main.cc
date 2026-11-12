@@ -12,11 +12,48 @@
 #include <base/signal.h>
 #include <gui_session/connection.h>
 #include <os/pixel_rgb888.h>
+#include <util/string.h>
 #include <util/xml_node.h>
 
 namespace {
 
 using Genode::String;
+
+
+/*
+ * Inverse of Sponge::Wm_protocol::escape_attr for the fixture_cmd
+ * channel (run/sponge-wm-native.run fixture contract): the probe
+ * escapes attribute text, so a quote-bearing test title reaches the
+ * Gui title raw — the title-injection case of native_wm_probe. Text
+ * outside the five named entities passes through unchanged.
+ */
+String<64> decode_attr(char const *raw)
+{
+	char out[64];
+	unsigned n = 0;
+
+	for (char const *p = raw; *p != '\0' && n + 1 < sizeof(out); ) {
+
+		char const *suffix = nullptr;
+		char        plain  = '\0';
+
+		if      (Genode::strcmp(p, "&amp;",  5) == 0) { plain = '&';  suffix = p + 5; }
+		else if (Genode::strcmp(p, "&quot;", 6) == 0) { plain = '"';  suffix = p + 6; }
+		else if (Genode::strcmp(p, "&lt;",   4) == 0) { plain = '<';  suffix = p + 4; }
+		else if (Genode::strcmp(p, "&gt;",   4) == 0) { plain = '>';  suffix = p + 4; }
+		else if (Genode::strcmp(p, "&apos;", 6) == 0) { plain = '\''; suffix = p + 6; }
+
+		if (suffix) {
+			out[n++] = plain;
+			p = suffix;
+		} else {
+			out[n++] = *p++;
+		}
+	}
+
+	out[n] = '\0';
+	return String<64>(Genode::Cstring(out, n));
+}
 
 
 struct Fixture
@@ -91,7 +128,9 @@ struct Fixture
 
 		_cmd.node().for_each_sub_node([&](Genode::Node const &node) {
 			if (node.has_type("title")) {
-				_title = node.attribute_value("text", String<64>("WM Fixture"));
+				_title = decode_attr(
+					node.attribute_value("text", String<512>("WM Fixture"))
+						.string());
 				if (_view_live) {
 					_gui.enqueue<Gui::Session::Command::Title>(_view_id, _title);
 					_gui.execute();
@@ -100,7 +139,9 @@ struct Fixture
 			} else if (node.has_type("destroy_view")) {
 				_destroy_view();
 			} else if (node.has_type("create_view")) {
-				_title = node.attribute_value("title", _title);
+				_title = decode_attr(
+					node.attribute_value("title", String<512>(_title.string()))
+						.string());
 				_create_view();
 			}
 		});

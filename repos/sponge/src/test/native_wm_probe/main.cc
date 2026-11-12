@@ -62,6 +62,7 @@
 #include <input/event.h>
 #include <input/keycodes.h>
 #include <timer_session/connection.h>
+#include <sponge/wm_protocol.h>
 
 #include "native_wm_protocol.h"
 #include "native_wm_probe_util.h"
@@ -94,8 +95,61 @@ char const *const FIXTURE_TITLE_0 = "WM Fixture";
 char const *const FIXTURE_TITLE_1 = "WM Fixture Renamed";
 char const *const FIXTURE_TITLE_2 = "WM Fixture Reborn";
 
+/*
+ * H1 title-injection case (step 7b): the quote-bearing title travels
+ * the fixture_cmd channel escaped (escape_attr) and reaches the wm
+ * raw; window_list must hand it back as escaped wire text with no
+ * forged width attribute, no forged sibling entries, and no lost
+ * tracked state.
+ */
+char const *const FIXTURE_TITLE_INJECT      = "inject\" width=\"999";
+char const *const FIXTURE_TITLE_INJECT_WIRE = "inject&quot; width=&quot;999";
+
 int const FIXTURE_X = 850, FIXTURE_Y = 560;
 unsigned const FIXTURE_W = 160, FIXTURE_H = 160;
+
+
+/*
+ * Frozen chrome-button layout self-check (D16W.5,
+ * Wm_protocol::button_rect): chrome_button_center must hand out
+ * exactly the frozen button centers for BOTH resizeable states —
+ * 28 px pitch (CHROME_BUTTON_W + CHROME_BUTTON_PAD) from the outer
+ * right edge — and a non-resizeable window's minimizer must compact
+ * into the fullscreen slot (right - 56 + 12). Pure in-memory check,
+ * runs before any choreography so a frozen-layout drift fails the
+ * run loud on the host. Outer frame of the synthetic input:
+ * (92,76) 316x248 (content 100,100 300x200 + margins 24/24/8/8) —
+ * outer right = 408, title-band mid y = 88.
+ */
+bool chrome_button_layout_self_check()
+{
+	Chrome_margins const m { 24, 24, 8, 8, true };
+	Geom const c { 100, 100, 300, 200, true };
+	int const right = 408, mid_y = 88;
+
+	struct Case { Chrome_button b; bool resizeable; int want_x; };
+	Case const cases[] {
+		{ Chrome_button::CLOSE,      true,  right - 28 + 12 },
+		{ Chrome_button::FULLSCREEN, true,  right - 56 + 12 },
+		{ Chrome_button::MINIMIZE,   true,  right - 84 + 12 },
+		{ Chrome_button::CLOSE,      false, right - 28 + 12 },
+		{ Chrome_button::MINIMIZE,   false, right - 56 + 12 },
+	};
+
+	for (Case const &k : cases) {
+		Pt const got = chrome_button_center(c, m, k.b, k.resizeable);
+		if (got.x != k.want_x || got.y != mid_y) {
+			Genode::error("native-wm-probe: FAIL chrome layout self-check: "
+			              "center (", got.x, ",", got.y, ") want (",
+			              k.want_x, ",", mid_y,
+			              ") resizeable=", k.resizeable ? "yes" : "no");
+			return false;
+		}
+	}
+	Genode::log("native-wm-probe: chrome layout self-check ok "
+	            "(frozen button_rect centers, 28 px pitch)");
+	return true;
+}
 
 
 struct Native_wm_probe
@@ -201,7 +255,10 @@ struct Native_wm_probe
 	void _fixture_title_cmd(char const *text)
 	{
 		_fixture_cmd.generate_xml([&] (Genode::Xml_generator &g) {
-			g.node("title", [&] { g.attribute("text", text); });
+			g.node("title", [&] {
+				g.attribute("text",
+				            Sponge::Wm_protocol::escape_attr(text).string());
+			});
 		});
 	}
 
@@ -215,8 +272,21 @@ struct Native_wm_probe
 	void _fixture_create_cmd(char const *title)
 	{
 		_fixture_cmd.generate_xml([&] (Genode::Xml_generator &g) {
-			g.node("create_view", [&] { g.attribute("title", title); });
+			g.node("create_view", [&] {
+				g.attribute("title",
+				            Sponge::Wm_protocol::escape_attr(title).string());
+			});
 		});
+	}
+
+	unsigned _window_list_count()
+	{
+		_window_list.update();
+		if (!_window_list.valid()) return 0;
+		unsigned count = 0;
+		_window_list.node().for_each_sub_node("window",
+			[&] (Genode::Node const &) { count++; });
+		return count;
 	}
 
 	void _inject_motion(int x, int y)
@@ -229,6 +299,12 @@ struct Native_wm_probe
 	void run()
 	{
 		Genode::log("native-wm-probe: starting native WM smoke sequence");
+
+		if (!chrome_button_layout_self_check()) {
+			_fail("frozen chrome button layout self-check "
+			      "(Wm_protocol::button_rect)");
+			return;
+		}
 
 		/* ---------- step 1: boot + window_list protocol v1 shape ---------- */
 		Genode::log("native-wm-probe: [step 1] waiting for window_list ROM + demo window");
@@ -443,8 +519,49 @@ struct Native_wm_probe
 		}
 		Genode::log("native-wm-probe: [step 7] fixture title renamed");
 
+		/* ---------- step 7b: quote-bearing title cannot inject/wipe ---- */
+		Genode::log("native-wm-probe: [step 7b] sending quote-bearing title");
+		unsigned const count_before = _window_list_count();
+		_fixture_title_cmd(FIXTURE_TITLE_INJECT);
+		bool inject_ok = false;
+		for (unsigned i = 0; i < 100; ++i) {
+			fe = _fixture_entry();
+			if (fe.found
+			 && Genode::strcmp(fe.title.string(),
+			                   FIXTURE_TITLE_INJECT_WIRE) == 0) {
+				inject_ok = true;
+				break;
+			}
+			_timer.msleep(100);
+		}
+		if (!inject_ok) {
+			_fail("quote-bearing title not reflected as an escaped "
+			      "window_list attribute");
+			return;
+		}
+		if (fe.w != FIXTURE_W || fe.h != FIXTURE_H) {
+			_fail("quote-bearing title forged the fixture width/height");
+			return;
+		}
+		if (_window_list_count() != count_before) {
+			_fail("quote-bearing title changed the window_list entry count");
+			return;
+		}
+		fg = _fixture_geom();
+		if (!fg.valid) {
+			_fail("quote-bearing title cleared the tracked layout state");
+			return;
+		}
+		if (!_fixture_chrome_present(fwid)) {
+			_fail("quote-bearing title dropped the fixture chrome");
+			return;
+		}
+		Genode::log("native-wm-probe: [step 7b] quote-bearing title escaped, "
+		            "no forged attributes/entries, tracked state intact");
+
 		/* ---------- step 8: destroy_view removes window_list/chrome ----- */
-		Pt const close_pt = chrome_button_center(fg, m, Chrome_button::CLOSE);
+		Pt const close_pt =
+			chrome_button_center(fg, m, Chrome_button::CLOSE, false);
 		for (unsigned attempt = 1; attempt <= 3; ++attempt) {
 			_inject_motion(close_pt.x, close_pt.y);
 			_timer.msleep(300);
@@ -533,7 +650,8 @@ struct Native_wm_probe
 		 * landed, this second application (the run script's "close
 		 * requested" gate) proves the resurrection reset the latch.
 		 */
-		Pt const close2 = chrome_button_center(fg, m, Chrome_button::CLOSE);
+		Pt const close2 =
+			chrome_button_center(fg, m, Chrome_button::CLOSE, false);
 		Genode::log("native-wm-probe: [step 9] close dispatched at (",
 		            close2.x, ",", close2.y, ")");
 		for (unsigned attempt = 1; attempt <= 3; ++attempt) {

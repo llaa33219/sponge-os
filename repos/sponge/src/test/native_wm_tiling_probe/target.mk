@@ -15,8 +15,10 @@
 # broadcast ROM (wm.layout.mode source for sponge_layouter).
 #
 # Shared assertions live in ../native_wm_common (header-only).
+# sponge_wm_protocol supplies the frozen Wm_protocol::button_rect
+# click-target layout that the shared chrome helpers wrap.
 
 TARGET   := native_wm_tiling_probe
 SRC_CC   := main.cc
-LIBS     := base blit
+LIBS     := base blit sponge_wm_protocol
 INC_DIR  := $(PRG_DIR)/../native_wm_common

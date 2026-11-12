@@ -28,6 +28,12 @@
 #   <fixture_cmd><title text="..."/></fixture_cmd>
 #   <fixture_cmd><destroy_view/></fixture_cmd>
 #   <fixture_cmd><create_view title="..."/></fixture_cmd>
+# Attribute text is XML-escaped by the probe (Sponge::Wm_protocol::
+# escape_attr: & -> &amp;, " -> &quot;, < -> &lt;) and decoded by the
+# fixture client, so a quote-bearing title traverses the channel raw
+# and the step 7b title-injection gate proves it comes back from
+# window_list escaped — no forged width attribute, no forged sibling
+# entries, no lost tracked layout/chrome state.
 #
 # Derived from run/sponge-wm.run (the proven upstream smoke topology).
 # The upstream anchors run/sponge-wm{,-qmp,-tasks}.run stay untouched

@@ -13,8 +13,9 @@
  *   - sponge_configd config_request/config_result channel driver (the
  *     backend `vct config` uses; D16W.11),
  *   - panel-tasklist click geometry (proven panel layout derivation),
- *   - native chrome geometry (decorator_margins report + the PROVISIONAL
- *     button/zone layout, TODO(native-wm)),
+ *   - native chrome geometry (decorator_margins report + the frozen
+ *     Wm_protocol button/zone layout, docs/plans/phase16-sponge-wm.md
+ *     "Frozen chrome metrics"),
  *   - Capture pixel helpers (misleading_success_output defense).
  *
  * Header-only; see native_wm_protocol.h for the frozen protocol parsers.
@@ -32,6 +33,8 @@
 #include <timer_session/connection.h>
 #include <util/string.h>
 #include <util/xml_generator.h>
+
+#include <sponge/wm_protocol.h>
 
 #include "native_wm_protocol.h"
 
@@ -148,11 +151,9 @@ struct Pkg_channel
  * uses — AGENTS.md §3.3 rule 5; the user-facing spelling for these
  * writes is `vct config set <key> <value>`, D16W.11).
  *
- * TODO(native-wm/M4): `wm.layout.mode` must be registered as a
- * sponge_configd closed-registry key with a typed enum validator
- * (floating|tiling, default floating) per D16W.11 before these writes
- * answer status="ok". Until then configd refuses the unknown key and
- * the probes fail honestly at the mode-set step.
+ * `wm.layout.mode` is a registered sponge_configd closed-registry key
+ * with a typed enum validator (floating|tiling, default floating;
+ * Phase 16 W6, D16W.11), so these writes answer status="ok".
  */
 struct Config_channel
 {
@@ -283,27 +284,42 @@ inline Chrome_margins read_margins(Genode::Node root, char const *tag)
 
 
 /*
- * Native chrome geometry — PROVISIONAL run-side contract.
+ * Native chrome geometry — frozen run-side contract (D16W.5/D16W.10,
+ * docs/plans/phase16-sponge-wm.md "Frozen chrome metrics").
  *
- * TODO(native-wm): sponge_decorator ships a native title bar plus
- * native close/minimize/fullscreen buttons (D16W.1/M3). Until the
- * chrome implementation lands, the probes derive every chrome click
- * target from this layout:
+ * The single source of truth for the chrome metrics is the shared pure
+ * helpers of sponge_wm_protocol (repos/sponge/include/sponge/
+ * wm_protocol.h): the layouter hit-tests with them and the decorator
+ * renders from them. The probes therefore take every button click
+ * target from the frozen Wm_protocol::button_rect helper — this is
+ * geometry, not protocol parsing (the acceptance-oracle independence
+ * of native_wm_protocol.h applies to the XML parsers only):
  *
- *   - the title bar occupies the TOP margin band of the outer rect
- *     (height = margins.top, full outer width);
- *   - the buttons sit at the right end of the title bar, each
- *     BUTTON_W x BUTTON_H, vertically centered in the title band,
- *     BUTTON_PAD px from the outer right edge, in this left-to-right
- *     order: minimize, fullscreen, close (close is the rightmost,
- *     the common desktop convention).
+ *   - the title bar occupies the TOP margin band of the outer frame
+ *     (outer = the reported content geometry expanded by the
+ *     decorator_margins report);
+ *   - the buttons are Wm_protocol::CHROME_BUTTON_W x CHROME_BUTTON_H,
+ *     vertically centered in the title band, right aligned with a
+ *     CHROME_BUTTON_PAD px pad (pitch 28), left to right MINIMIZE,
+ *     FULLSCREEN, CLOSE (CLOSE is the rightmost, the common desktop
+ *     convention);
+ *   - a non-resizeable window has no FULLSCREEN affordance and its
+ *     buttons compact to the right edge (its MINIMIZE sits in the
+ *     FULLSCREEN slot).
  *
- * If the shipped chrome differs, update these constants in one place:
- * the resulting click-target failures are honest and localize here.
+ * chrome_button_center() is a thin wrapper around that frozen helper:
+ * it derives the outer frame from the content geometry and the
+ * decorator_margins report and returns the requested button's center.
+ * Asking it for an absent affordance yields the zero-rect sentinel
+ * (0,0) plus a warning — the probes must only click present buttons.
  */
-inline constexpr unsigned CHROME_BUTTON_W   = 24;
-inline constexpr unsigned CHROME_BUTTON_H   = 16;
-inline constexpr unsigned CHROME_BUTTON_PAD = 4;
+
+/* Frozen metrics pinned: changing these is a deliberate frozen-layout
+ * bump (button_rect contract, see wm_protocol.h). */
+static_assert(Sponge::Wm_protocol::CHROME_BUTTON_W   == 24
+           && Sponge::Wm_protocol::CHROME_BUTTON_H   == 16
+           && Sponge::Wm_protocol::CHROME_BUTTON_PAD == 4,
+              "frozen chrome button metrics changed (D16W.5)");
 
 enum class Chrome_button { MINIMIZE, FULLSCREEN, CLOSE };
 
@@ -316,20 +332,65 @@ inline Pt title_center(Geom const &content, Chrome_margins const &m)
 	            content.y - (int)m.top / 2 };
 }
 
-inline Pt chrome_button_center(Geom const &content, Chrome_margins const &m,
-                               Chrome_button which)
+inline Pt title_hit_point(Geom const &content, Chrome_margins const &m,
+                          bool resizeable = true)
 {
-	int const outer_right = content.x + (int)content.w + (int)m.right;
-	int const title_mid_y = content.y - (int)m.top / 2;
+	Sponge::Wm_protocol::Margins const margins {
+		(int)m.top, (int)m.bottom, (int)m.left, (int)m.right };
+	Sponge::Wm_protocol::Rect const outer =
+		Sponge::Wm_protocol::outer_from_inner(
+			Sponge::Wm_protocol::Rect {
+				content.x, content.y, (long)content.w, (long)content.h },
+			margins);
+	Sponge::Wm_protocol::Rect const band =
+		Sponge::Wm_protocol::title_band(outer, margins);
 
-	/* rightmost button center x, then walk left by BUTTON_W */
-	int x = outer_right - (int)CHROME_BUTTON_PAD - (int)CHROME_BUTTON_W / 2;
-	switch (which) {
-	case Chrome_button::CLOSE:      break;
-	case Chrome_button::FULLSCREEN: x -= (int)CHROME_BUTTON_W; break;
-	case Chrome_button::MINIMIZE:   x -= 2 * (int)CHROME_BUTTON_W; break;
+	int const left = band.x + Sponge::Wm_protocol::CHROME_GRIP_MAX;
+	int const right = band.x + (int)band.w
+	                - Sponge::Wm_protocol::CHROME_GRIP_MAX;
+	int const x = left + (right - left) / 4;
+	int const y = band.y + (int)band.h / 2;
+	if (Sponge::Wm_protocol::chrome_hit(x, y, outer, margins, resizeable)
+	    == Sponge::Wm_protocol::Hit::TITLE_MOVE)
+		return Pt { x, y };
+
+	Genode::warning("title_hit_point: no button-free title point; using left edge");
+	return Pt { left, y };
+}
+
+/*
+ * Center of a chrome button — the exact Wm_protocol::button_rect()
+ * slot for the window's resizeable state (the probes click the frozen
+ * layout, never a probe-side re-derivation). `resizeable` must be the
+ * window's window_list state (default true keeps the pre-flag callers
+ * on 3-button windows compiling); a non-resizeable window compacts
+ * MINIMIZE into the FULLSCREEN slot.
+ */
+inline Pt chrome_button_center(Geom const &content, Chrome_margins const &m,
+                               Chrome_button which, bool resizeable = true)
+{
+	using Sponge::Wm_protocol::Button;
+
+	Button const b = which == Chrome_button::CLOSE      ? Button::CLOSE :
+	                 which == Chrome_button::FULLSCREEN ? Button::FULLSCREEN :
+	                                                      Button::MINIMIZE;
+
+	Sponge::Wm_protocol::Margins const margins {
+		(int)m.top, (int)m.bottom, (int)m.left, (int)m.right };
+	Sponge::Wm_protocol::Rect const inner {
+		content.x, content.y, (long)content.w, (long)content.h };
+
+	Sponge::Wm_protocol::Rect const outer =
+		Sponge::Wm_protocol::outer_from_inner(inner, margins);
+	Sponge::Wm_protocol::Rect const r =
+		Sponge::Wm_protocol::button_rect(outer, margins, b, resizeable);
+
+	if (r.w == 0 || r.h == 0) {
+		Genode::warning("chrome_button_center: affordance absent (resizeable=",
+		                resizeable ? "yes" : "no", ")");
+		return Pt { 0, 0 };
 	}
-	return Pt { x, title_mid_y };
+	return Pt { r.x + (int)r.w / 2, r.y + (int)r.h / 2 };
 }
 
 

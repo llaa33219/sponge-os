@@ -15,9 +15,10 @@
 #
 # Shared assertions live in ../native_wm_common (header-only).
 # Capture (blit) is used for the per-step green-pixel corroboration
-# (misleading_success_output defense).
+# (misleading_success_output defense). sponge_wm_protocol supplies
+# the frozen Wm_protocol::button_rect click-target layout.
 
 TARGET   := native_wm_qmp_probe
 SRC_CC   := main.cc
-LIBS     := base blit
+LIBS     := base blit sponge_wm_protocol
 INC_DIR  := $(PRG_DIR)/../native_wm_common
