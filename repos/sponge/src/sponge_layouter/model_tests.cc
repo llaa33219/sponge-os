@@ -697,17 +697,21 @@ void case_focus_steering_truth(Ctx &c)
 	l = read_layout(model);
 	c.check(!find_layout(l, PKG_LT)->focused && find_layout(l, DEMO_LT)->focused,
 	        "focus: focus_state flips the focused attribute");
+	c.check(read_focus(model, t) && t.set && t.wid == 1,
+	        "focus: changed truth replaces stale steering");
 
 	truth.set = false;
 	model.focus_state(truth);
 	l = read_layout(model);
 	c.check(!find_layout(l, PKG_LT)->focused && !find_layout(l, DEMO_LT)->focused,
 	        "focus: empty focus_state clears focused=\"yes\"");
+	c.check(read_focus(model, t) && !t.set,
+	        "focus: changed empty truth clears stale steering");
 
 	req.id = 10;
 	req.label = DEMO_LABEL;
 	model.focus_request(req);
-	c.check(read_focus(model, t) && t.set && t.wid == 2,
+	c.check(read_focus(model, t) && !t.set,
 	        "focus: same-id focus_request is deduplicated (negative)");
 
 	req.id = 11;
@@ -740,6 +744,81 @@ void case_focus_steering_truth(Ctx &c)
 	             rect_of(p ? *p : Layout_win { }), Rect { 50, 320, 320, 240 });
 	c.check(read_focus(model, t) && t.set && t.wid == 2,
 	        "focus: restore-with-focus lands steered (U3)");
+}
+
+
+void case_content_click_focus(Ctx &c)
+{
+	Rule_assign assigns[2] {
+		assign_label(DEMO_LABEL, 192, 172, 640, 480),
+		assign_label(PKG_LABEL, 50, 320, 320, 240) };
+	Model model;
+	model.configure(WORK, M, Mode::FLOATING,
+	                doc_of(Rule_frame::ABSOLUTE, assigns, 2));
+
+	Window_list_entry entries[2] {
+		wl_of(1, DEMO_LABEL, DEMO_TITLE, 640, 480),
+		wl_of(2, PKG_LABEL, PKG_TITLE, 320, 240) };
+	feed_window_list(model, entries, 2);
+
+	Focus_target truth { };
+	Focus_target echo  { };
+	truth.set = true;
+	truth.wid = 2;
+	model.focus_state(truth);
+	c.check(read_focus(model, echo) && echo.set && echo.wid == 2,
+	        "content focus: external truth fills empty steering");
+
+	model.focus_state(truth);
+	c.check(read_focus(model, echo) && echo.set && echo.wid == 2,
+	        "content focus: first identical report is stable");
+	model.focus_state(truth);
+	c.check(read_focus(model, echo) && echo.set && echo.wid == 2,
+	        "content focus: second identical report is stable");
+
+	Focus_request req { };
+	req.id = 20;
+	req.label = DEMO_LABEL;
+	model.focus_request(req);
+	c.check(read_focus(model, echo) && echo.set && echo.wid == 1,
+	        "content focus: fresh request leads core truth");
+	model.focus_state(truth);
+	c.check(read_focus(model, echo) && echo.set && echo.wid == 1,
+	        "content focus: unchanged old truth preserves fresh request");
+
+	truth.wid = 1;
+	model.focus_state(truth);
+	c.check(read_focus(model, echo) && echo.set && echo.wid == 1,
+	        "content focus: requested target confirmation is adopted");
+	Layout_out const l = read_layout(model);
+	c.check(find_layout(l, DEMO_LT)->focused && !find_layout(l, PKG_LT)->focused,
+	        "content focus: layout truth follows requested confirmation");
+
+	truth.wid = 2;
+	model.focus_state(truth);
+	c.check(read_focus(model, echo) && echo.set && echo.wid == 2,
+	        "content focus: changed truth replaces a different stale target");
+
+	truth.set = false;
+	truth.wid = 77;
+	model.focus_state(truth);
+	c.check(read_focus(model, echo) && !echo.set,
+	        "content focus: no-focus truth clears steering regardless of wid");
+
+	req.id = 21;
+	req.label = PKG_LABEL;
+	model.focus_request(req);
+	truth.wid = 0;
+	model.focus_state(truth);
+	c.check(read_focus(model, echo) && echo.set && echo.wid == 2,
+	        "content focus: unchanged no-focus truth preserves fresh request");
+
+	truth.set = true;
+	truth.wid = 1;
+	model.focus_state(truth);
+	model.focus_state(truth);
+	c.check(read_focus(model, echo) && echo.set && echo.wid == 1,
+	        "content focus: re-adopted selection survives another repeat");
 }
 
 
@@ -1471,6 +1550,7 @@ unsigned run_all(Model_check_fn report)
 		{ "title_move",             case_title_move             },
 		{ "resize_zones",           case_resize_zones           },
 		{ "focus_steering_truth",   case_focus_steering_truth   },
+		{ "content_click_focus",    case_content_click_focus    },
 		{ "close_sticky",           case_close_sticky           },
 		{ "minimize_restore_focus", case_minimize_restore_focus },
 		{ "maximize_restore",       case_maximize_restore       },

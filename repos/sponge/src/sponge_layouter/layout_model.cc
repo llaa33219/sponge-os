@@ -675,6 +675,22 @@ void Model::rules_invalid()
 
 void Model::focus_state(Focus_target const &t)
 {
+	/*
+	 * A changed external truth is also the current steering target. Without
+	 * this adoption the next report would re-emit a stale target (or an
+	 * empty root) and undo a content-click focus at the core. An unchanged
+	 * re-report carries no new intent and must not clobber a focus_request
+	 * or chrome press that is still awaiting core confirmation.
+	 */
+	bool const changed =
+		t.set != _have_focus_truth
+	 || (t.set && t.wid != _focus_truth);
+
+	if (changed) {
+		_have_desired_focus = t.set;
+		_desired_focus      = t.set ? t.wid : 0;
+	}
+
 	/* the sole truth for window_layout's consumed focused="yes" */
 	_have_focus_truth = t.set;
 	_focus_truth      = t.wid;

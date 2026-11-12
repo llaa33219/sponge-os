@@ -24,10 +24,10 @@ Consumed (ROM sessions, all except `configd` routed through
 
 | Label | Producer | Semantics |
 |---|---|---|
-| `window_list` | sponge_wm | identity source (the `id` attribute is the internal `wid`); COMPLETE snapshots only — a vanished wid is destroyed |
+| `window_list` | sponge_wm | identity source (the `id` attribute is the internal `wid`); COMPLETE snapshots only — a vanished wid is destroyed; malformed documents are rejected without replacing the last good snapshot |
 | `focus_request` | TasklistController (sole writer) | deduplicated on `id`; raises + steers focus; restores a minimized window in the same step (U3) |
 | `rules` | TasklistController (sole writer) | last-wins per publication; assigns update existing windows (see Coordinate frames) |
-| `focus_state` | sponge_wm | the sole truth of `window_layout` `focused="yes"` |
+| `focus_state` | sponge_wm | the sole truth of `window_layout` `focused="yes"`; a changed truth is also adopted as the current steering target, while an unchanged re-report does not clobber pending tasklist/chrome steering |
 | `decorator_margins` | sponge_decorator | may be absent/zero initially and update later |
 | `configd` | sponge_configd broadcast (optional) | `wm.layout.mode` = `floating` \| `tiling`, default `floating` when absent |
 
@@ -37,7 +37,7 @@ Produced (Report sessions via `report_rom`):
 |---|---|---|
 | `window_layout` | protocol v1 | one `<boundary>` = the **work area**, windows with screen-absolute INNER geometry, parked windows at `(-32000,-32000)`, `focused` only per `focus_state` |
 | `window_request` | v1.1 | complete desired state: INNER screen-absolute geometry (`x=y=-32000` parks) and the **sticky** `<window wid action="close"/>` node kept in every snapshot until the wid disappears from `window_list` (the layouter never pretends a window closed early) |
-| `focus` | v1.1 | steering snapshot only (empty root = no focus) |
+| `focus` | v1.1 | steering snapshot (empty root = no focus); follows changed external focus truth so a stale snapshot cannot revert a content-click selection |
 
 The component also opens one **Gui session with role `layouter`** to
 `sponge_wm` (`+ policy | label_prefix: sponge_layouter | role: layouter`):
@@ -118,7 +118,9 @@ exactly as `docs/plans/wm-state-table.md`; placement (master, stack,
 floating, parked, maximized) is derived from mode + state, never an
 extra state. Creation order is first-appearance order in `window_list`
 snapshots. `focused="yes"` comes only from `focus_state`; `focus`
-steering and `focus_request` never set it directly.
+steering and `focus_request` never set it directly. A changed
+`focus_state` is adopted into the steering target (including empty
+truth), while an unchanged re-report leaves newer steering untouched.
 
 - **Floating placement**: the first matching static assign (exact
   `label`, then `label_prefix`/`label_suffix`); unmatched windows
@@ -208,11 +210,12 @@ g++ -std=c++20 -O1 \
 && /tmp/sponge_layouter_self_test
 ```
 
-Current result: `self-test: PASS (144 checks)`.
+Current result: `self-test: PASS (157 checks)`.
 
 The case list covers window create/destroy, creation order, floating
 placement (static + cascade), title move, all 8 resize zones (exact
-deltas + 64x64 clamp), focus steering vs. focus truth, sticky close
+deltas + 64x64 clamp), focus steering vs. focus truth, content-click
+focus adoption and identical-report stability, sticky close
 requests and close/recreate slot reset, minimize/restore+focus,
 work-area maximize/restore (outer ==
 work area), tiling open/close/minimize/restore/maximize/mode-switch
@@ -229,7 +232,7 @@ so a model/probe misunderstanding cannot self-certify.
 ## Status (delivered)
 
 The component builds and its policy model is proven host-side
-(`self-test: PASS (144 checks)`). The native runtime scenarios
+(`self-test: PASS (157 checks)`). The native runtime scenarios
 (`run/sponge-wm-native*.run`) are delivered and PASS with the full
 trio at commit `191222130e` (receipts: `docs/evidence/phase16-wm-index.md`).
 Integration contract for the core: role `layouter` Gui sessions
