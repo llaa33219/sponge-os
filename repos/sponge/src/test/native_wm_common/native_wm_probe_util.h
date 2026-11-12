@@ -63,6 +63,26 @@ inline void emit_qmp_drag(int x1, int y1, int x2, int y2)
 	Genode::log("QMP-TARGET drag ", x1, " ", y1, " ", x2, " ", y2);
 }
 
+inline void emit_qmp_move(int dx, int dy)
+{
+	Genode::log("QMP-TARGET move ", dx, " ", dy);
+}
+
+inline void emit_qmp_absmove(int x, int y)
+{
+	Genode::log("QMP-TARGET absmove ", x, " ", y);
+}
+
+inline void emit_qmp_sync()
+{
+	Genode::log("QMP-TARGET sync");
+}
+
+inline void emit_qmp_press(int x, int y)
+{
+	Genode::log("QMP-TARGET press ", x, " ", y);
+}
+
 
 /* ===================== sponge_pkgd request channel ===================== */
 
@@ -138,7 +158,7 @@ struct Config_channel
 {
 	Genode::Env &_env;
 
-	Genode::Expanding_reporter     _request { _env, "config_request",
+	Genode::Expanding_reporter     _request { _env, "request",
 	                                                 "config_request" };
 	Genode::Attached_rom_dataspace _result  { _env, "config_result" };
 	Genode::Attached_rom_dataspace _broadcast { _env, "configd" };
@@ -163,13 +183,18 @@ struct Config_channel
 				 && r.attribute_value("op",  Genode::String<32>())
 				  == Genode::String<32>("set")
 				 && r.attribute_value("key", Genode::String<128>())
-				  == Genode::String<128>(key)
-				 && r.attribute_value("value", Genode::String<128>())
-				  == Genode::String<128>(value)) {
-					bool const ok =
-						r.attribute_value("status", Genode::String<32>())
-						 == Genode::String<32>("ok");
-					return ok == want_ok;
+				  == Genode::String<128>(key)) {
+					Genode::String<32> const status =
+						r.attribute_value("status", Genode::String<32>());
+					if (status == Genode::String<32>("error")) {
+						Genode::error("native-wm-config: set ", key, "=", value,
+						              " failed: ",
+						              r.attribute_value("error", Genode::String<256>()));
+						return !want_ok;
+					}
+					if (r.attribute_value("value", Genode::String<128>())
+					 == Genode::String<128>(value))
+						return (status == Genode::String<32>("ok")) == want_ok;
 				}
 			}
 			_timer.msleep(100);

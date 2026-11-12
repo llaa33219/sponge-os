@@ -16,21 +16,12 @@
 # plus sponge_configd (the mode-key owner). The upstream anchors
 # run/sponge-wm{,-qmp,-tasks}.run stay untouched and green (D16W.7).
 #
-# === EXPECTED FAILURE AT THIS STAGE (honest) ===
+# === ACCEPTANCE STATUS ===
 #
-# Two layered failures, both expected and both honest:
-#
-#   1. build time: sponge_wm / sponge_layouter / sponge_decorator do
-#      not exist yet (M1-M3 pending) — `make run/sponge-wm-native-
-#      tiling` fails at build-target resolution with a missing-target
-#      error. Never masked by stubs.
-#   2. runtime (once M1-M3 land, before M4): the probe's first
-#      `wm.layout.mode` write is REFUSED by sponge_configd's closed
-#      registry (the key lands at M4 with a typed enum validator,
-#      D16W.11) and the probe fails at step 2 naming the gap.
-#
-# native_wm_tiling_probe compiles today and its assertions are
-# complete.
+# The complete sequence passes on base-sel4/QEMU, including the default
+# 20-cycle soak and the real chrome close. Step 12 requires the remaining
+# client to be visible and exactly in the left-half master slot; a parked
+# sole client is not accepted as a reflow proof.
 #
 # Mode write path (D16W.11): the probe drives the sponge_configd
 # config_request/config_result channel — the SAME backend `vct config`
@@ -71,8 +62,10 @@
 #   gate [steps 9-10]  mode retention + re-entry (probe-driven)
 #   soak loop: 2 dispatches per cycle x soak_cycles (tasklist
 #                  minimize+restore inside the cycle), then gate
-#                  [step 11] soak clean
-#   dispatch/gate [step 12]  close the master -> slot passes on
+#                  [step 11] soak clean and drain through QMP-TARGET sync
+#   dispatch/gate [step 12]  materialize the pointer, walk combined-axis
+#                  rel-1 steps to the closer, press, and require the
+#                  remaining client at the exact master slot
 #   gate PASS
 #
 # Soak length: >= 20 cycles (§7.2). SPONGE_TILING_SOAK overrides the
@@ -156,6 +149,7 @@ config
     + policy | label: native_wm_tiling_probe -> focus_request | report: sponge-de -> focus_request
     + policy | label: native_wm_tiling_probe -> rules         | report: sponge-de -> rules
     + policy | label: native_wm_tiling_probe -> decorator_margins | report: sponge_decorator -> decorator_margins
+    + policy | label: native_wm_tiling_probe -> pointer | report: nitpicker -> pointer
     #
     # Internal contract v1.1 (binding; see run/sponge-wm-native.run header).
     #
@@ -193,7 +187,7 @@ config
   + config
     + capture
     + event
-    + report | focus: yes | hover: yes | xray: yes
+    + report | focus: yes | hover: yes | pointer: yes | xray: yes
     + domain panel | layer: 1 | content: client | label: no
                    | hover: always | focus: click | ypos: 0 | height: 28
     + domain default | layer: 2 | content: client | label: no
@@ -476,6 +470,7 @@ config
     + service ROM | label: decorator_margins | + child report_rom
     + service ROM | label: configd       | + child report_rom
     + service ROM | label: config_result | + child report_rom
+    + service ROM | label: pointer       | + child report_rom
     + service ROM | label_last: result   | + child report_rom
     + service Report | + child report_rom
     + any-service
@@ -575,42 +570,20 @@ append qemu_args " -qmp tcp:127.0.0.1:${qmp_port},server=on,wait=off "
 run_genode_until {.*\[init -> drivers -> fb\] using 1024x768.*} 90
 global qemu_spawn_id
 
-run_genode_until {.*usb_hid\] Connected device.*POINTER.*} 300 $qemu_spawn_id
-
-run_genode_until {.*native-wm-tiling-probe: \[step 1\] two clients live.*} 600 $qemu_spawn_id
-
 set qmp_chan [qmp_connect $qmp_port]
 
-# step 2: mode floating -> tiling + arrangement (probe-driven configd write)
-run_genode_until {.*native-wm-tiling-probe: \[step 2\] Master-Stack.*} 300 $qemu_spawn_id
-
-# step 3: minimize pkg (tasklist click) + reflow
-qmp_exec_target $qmp_chan 120
-run_genode_until {.*native-wm-tiling-probe: \[step 3\] parked.*} 120 $qemu_spawn_id
-
-# step 4: restore pkg (tasklist click) + reflow
-qmp_exec_target $qmp_chan 120
-run_genode_until {.*native-wm-tiling-probe: \[step 4\] restored into.*} 120 $qemu_spawn_id
-
-# step 5: minimize the master (tasklist click) + slot passes on
-qmp_exec_target $qmp_chan 120
-run_genode_until {.*native-wm-tiling-probe: \[step 5\] master slot passed.*} 120 $qemu_spawn_id
-
-# step 6: restore the master + creation-order arrangement
-qmp_exec_target $qmp_chan 120
-run_genode_until {.*native-wm-tiling-probe: \[step 6\] creation-order.*} 120 $qemu_spawn_id
-
-# step 7: chrome fullscreen maximize (leaves the arrangement)
-qmp_exec_target $qmp_chan 120
-run_genode_until {.*native-wm-tiling-probe: \[step 7\] maximized.*} 120 $qemu_spawn_id
-
-# step 8: chrome fullscreen toggle (arrangement slot back)
-qmp_exec_target $qmp_chan 120
-run_genode_until {.*native-wm-tiling-probe: \[step 8\] back in.*} 120 $qemu_spawn_id
+# Steps 1-2 complete inside the probe before its first marker. Do not
+# gate on them separately: the probe's own failure is authoritative.
+#
+# steps 3-8: QMP-TARGET markers are the post-step gates. Competing
+# run_genode_until calls can consume a marker before qmp_exec_target sees it.
+for {set step 3} {$step <= 8} {incr step} {
+	qmp_exec_target $qmp_chan 120
+}
 
 # steps 9-10: mode retention + re-entry (probe-driven configd writes)
-run_genode_until {.*native-wm-tiling-probe: \[step 9\] floating mode.*} 300 $qemu_spawn_id
-run_genode_until {.*native-wm-tiling-probe: \[step 10\] tiling arrangement.*} 300 $qemu_spawn_id
+run_genode_until {native-wm-tiling-probe: \[step 9\] floating mode} 300 $qemu_spawn_id
+run_genode_until {native-wm-tiling-probe: \[step 10\] tiling arrangement} 300 $qemu_spawn_id
 
 # step 11: rules-drift soak — two tasklist clicks per cycle, dispatched
 # in lockstep with the probe's markers (same cycle count, both stamped
@@ -619,12 +592,36 @@ for {set c 0} {$c < $soak_cycles} {incr c} {
 	qmp_exec_target $qmp_chan 120
 	qmp_exec_target $qmp_chan 120
 }
-run_genode_until {.*native-wm-tiling-probe: \[step 11\] soak clean.*} 600 $qemu_spawn_id
+run_genode_until {native-wm-tiling-probe: \[step 11\] soak clean} 600 $qemu_spawn_id
 
-# step 12: chrome closer on the master -> slot passes on
-qmp_exec_target $qmp_chan 120
-run_genode_until {.*native-wm-tiling-probe: \[step 12\] master closed.*} 120 $qemu_spawn_id
+# Do not let queued tasklist clicks race step-12 pointer materialization.
+# The probe emits sync only after its final arrangement assertion, so
+# reaching it here proves every earlier real input action was dispatched.
+set step11_synced 0
+for {set i 0} {$i <= [expr {2 * $soak_cycles}]} {incr i} {
+	if {[qmp_exec_target $qmp_chan 120] eq "sync"} {
+		set step11_synced 1
+		break
+	}
+}
+if {!$step11_synced} {
+	error "step 11: sync marker was not dispatched after the soak"
+}
 
-run_genode_until {.*native-wm-tiling-probe: PASS.*} 120 $qemu_spawn_id
+# step 12: one pointer-materialization marker, at most 30 closed-loop
+# moves, then one press. qmp_exec_target identifies the terminal press;
+# all other callers retain its historical empty return value.
+set step12_pressed 0
+for {set i 0} {$i < 32} {incr i} {
+	if {[qmp_exec_target $qmp_chan 120] eq "press"} {
+		set step12_pressed 1
+		break
+	}
+}
+if {!$step12_pressed} {
+	error "step 12: chrome closer press was not dispatched within 32 markers"
+}
+
+run_genode_until {native-wm-tiling-probe: PASS} 120 $qemu_spawn_id
 
 qmp_disconnect $qmp_chan

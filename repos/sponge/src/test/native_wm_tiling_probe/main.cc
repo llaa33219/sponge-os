@@ -46,12 +46,12 @@
  *             example 10)
  *
  * Marker contract (run/qmp.inc shared dispatch): QMP-TARGET click for
- * every tasklist click and chrome button click; no local Tcl QMP procs.
+ * tasklist and maximizer actions, sync after the soak, then absmove +
+ * closed-loop rel-1 moves + press for the final chrome close. No local
+ * Tcl QMP procs.
  *
- * TODO(native-wm/M4): `wm.layout.mode` must be registered in
- * sponge_configd's closed registry (typed enum floating|tiling, default
- * floating, D16W.11). Until then the set() in step 2 is refused and
- * this probe fails honestly there.
+ * `wm.layout.mode` is a closed configd enum (floating|tiling, default
+ * floating, D16W.11); the probe drives the same request channel as vct.
  *
  * Fixture note: Master-Stack acceptance needs >= 2 RESIZEABLE windows.
  * If window_list reports the demo window non-resizeable it floats
@@ -90,6 +90,7 @@ struct Native_wm_tiling_probe
 	Genode::Attached_rom_dataspace _window_layout  { _env, "window_layout" };
 	Genode::Attached_rom_dataspace _rules          { _env, "rules" };
 	Genode::Attached_rom_dataspace _margins_rom    { _env, "decorator_margins" };
+	Genode::Attached_rom_dataspace _pointer_rom    { _env, "pointer" };
 
 	unsigned const panel_h;
 	unsigned const soak_cycles;
@@ -139,6 +140,101 @@ struct Native_wm_tiling_probe
 		}
 		Genode::error("native-wm-tiling-probe: FAIL ", what,
 		              " - window never parked");
+		return false;
+	}
+
+	bool _pointer_pos(long &x, long &y)
+	{
+		_pointer_rom.update();
+		if (!_pointer_rom.valid()) return false;
+		Genode::Node const n = _pointer_rom.node();
+		x = n.attribute_value("xpos", -1L);
+		y = n.attribute_value("ypos", -1L);
+		return x >= 0 && y >= 0;
+	}
+
+	bool _wait_pointer_expected(long tx, long ty)
+	{
+		long px = -1, py = -1;
+		unsigned settled = 0;
+		for (unsigned i = 0; i < 3000; ++i) {
+			if (_pointer_pos(px, py)
+			 && px >= tx - 3 && px <= tx + 3
+			 && py >= ty - 3 && py <= ty + 3) {
+				if (++settled == 5) return true;
+			} else {
+				settled = 0;
+			}
+			_timer.msleep(20);
+		}
+		Genode::error("native-wm-tiling-probe: pointer did not settle at (",
+		              tx, ",", ty, "); last position (", px, ",", py, ")");
+		return false;
+	}
+
+	/*
+	 * Emit at most one in-flight move. The host walks the requested delta
+	 * in rel-1 steps, so the expected position is known without modelling
+	 * event_filter acceleration. Waiting for that position replaces the
+	 * former blind 300 ms delay, which allowed stale requests to queue.
+	 */
+	bool _goto_pos(long tx, long ty)
+	{
+		/* Textedit's proven materialization lands in the bottom-right
+		 * corner on this host, synchronizing stale relay state to a known
+		 * real pointer position before relative positioning begins. */
+		emit_qmp_absmove(512, 384);
+		if (!_wait_pointer_expected((long)SCREEN_W - 1,
+		                            (long)SCREEN_H - 1))
+			return false;
+
+		long px = -1, py = -1;
+		for (unsigned i = 0; i < 30; ++i) {
+			if (!_pointer_pos(px, py)) return false;
+
+			long dx = tx - px, dy = ty - py;
+			if (dx >= -3 && dx <= 3 && dy >= -3 && dy <= 3)
+				return true;
+			dx = dx > 100 ? 100 : (dx < -100 ? -100 : dx);
+			dy = dy > 100 ? 100 : (dy < -100 ? -100 : dy);
+
+			long expected_x = px + dx, expected_y = py + dy;
+			expected_x = expected_x < 0 ? 0
+			           : (expected_x > (long)SCREEN_W - 1
+			              ? (long)SCREEN_W - 1 : expected_x);
+			expected_y = expected_y < 0 ? 0
+			           : (expected_y > (long)SCREEN_H - 1
+			              ? (long)SCREEN_H - 1 : expected_y);
+
+			emit_qmp_move((int)dx, (int)dy);
+			if (!_wait_pointer_expected(expected_x, expected_y))
+				return false;
+		}
+		return false;
+	}
+
+	bool _wait_visible(char const *prefix, char const *what)
+	{
+		for (unsigned i = 0; i < 600; ++i) {
+			Geom const g = _geom(prefix);
+			if (g.valid && !parked(g)) return true;
+			_timer.msleep(100);
+		}
+		Genode::error("native-wm-tiling-probe: FAIL ", what,
+		              " - window never became visible");
+		return false;
+	}
+
+	bool _wait_not_maximized(char const *prefix, char const *what)
+	{
+		for (unsigned i = 0; i < 600; ++i) {
+			if (!fills_boundary(_geom(prefix),
+			                    layout_boundary(_window_layout.node())))
+				return true;
+			_timer.msleep(100);
+		}
+		Genode::error("native-wm-tiling-probe: FAIL ", what,
+		              " - window never left the maximized state");
 		return false;
 	}
 
@@ -263,11 +359,12 @@ struct Native_wm_tiling_probe
 	 * maximized, or placed at its exact Master-Stack slot. Returns
 	 * false and logs the mismatch otherwise.
 	 */
-	bool _assert_arrangement(char const *what)
+	bool _assert_arrangement(char const *what, unsigned min_clients = 2,
+	                         bool require_all_eligible = false)
 	{
 		Slot slots[2] { };
 		int const n = _classify(slots);
-		if (n < 2) {
+		if (n < (int)min_clients) {
 			Genode::error("native-wm-tiling-probe: FAIL ", what,
 			              " - only ", n, " known client(s) in window_list");
 			return false;
@@ -277,6 +374,9 @@ struct Native_wm_tiling_probe
 		for (int i = 0; i < n; ++i)
 			if (slots[i].resizeable && !slots[i].parked && !slots[i].maximized)
 				++eligible_total;
+
+		if (require_all_eligible && eligible_total != n)
+			return false;
 
 		int slot = 0;
 		for (int i = 0; i < n; ++i) {
@@ -338,10 +438,12 @@ struct Native_wm_tiling_probe
 		return true;
 	}
 
-	bool _wait_arrangement(char const *what)
+	bool _wait_arrangement(char const *what, unsigned min_clients = 2,
+	                       bool require_all_eligible = false)
 	{
 		for (unsigned i = 0; i < 300; ++i) {
-			if (_assert_arrangement(what)) return true;
+			if (_assert_arrangement(what, min_clients,
+			                        require_all_eligible)) return true;
 			_timer.msleep(100);
 		}
 		return false;
@@ -477,6 +579,10 @@ struct Native_wm_tiling_probe
 
 		/* ---------- step 4: restore (tasklist) -> re-enters + reflow ---------- */
 		_click_tasklist(GUI_PREFIX, "step 4: pkg_gui_demo not tracked");
+		if (!_wait_visible(GUI_PREFIX, "step 4 restore")) {
+			_fail("restore did not make pkg_gui_demo visible");
+			return;
+		}
 		if (!_wait_arrangement("step 4 reflow")) {
 			_fail("restore in tiling mode did not re-enter the arrangement");
 			return;
@@ -498,6 +604,10 @@ struct Native_wm_tiling_probe
 
 		/* ---------- step 6: restore the master -> creation order ---------- */
 		_click_tasklist(DEMO_PREFIX, "step 6: demo not tracked");
+		if (!_wait_visible(DEMO_PREFIX, "step 6 restore master")) {
+			_fail("restored master never became visible");
+			return;
+		}
 		if (!_wait_arrangement("step 6 reflow")) {
 			_fail("restored master did not reclaim the master slot");
 			return;
@@ -543,6 +653,10 @@ struct Native_wm_tiling_probe
 			Genode::log("native-wm-tiling-probe: [step 8] chrome fullscreen "
 			            "toggle (", btn.x, ",", btn.y, ")");
 			emit_qmp_click(btn.x, btn.y);
+			if (!_wait_not_maximized(GUI_PREFIX, "step 8 maximize-restore")) {
+				_fail("maximize-restore left pkg_gui_demo maximized");
+				return;
+			}
 			if (!_wait_arrangement("step 8 reflow")) {
 				_fail("maximize-restore did not return the arrangement slot");
 				return;
@@ -610,6 +724,7 @@ struct Native_wm_tiling_probe
 		}
 		Genode::log("native-wm-tiling-probe: [step 11] soak clean (",
 		            soak_cycles, " cycles, no drift)");
+		emit_qmp_sync();
 
 		/* ---------- step 12: close the master -> slot passes on ---------- */
 		{
@@ -618,7 +733,11 @@ struct Native_wm_tiling_probe
 			                                   Chrome_button::CLOSE);
 			Genode::log("native-wm-tiling-probe: [step 12] chrome closer on "
 			            "the master (", btn.x, ",", btn.y, ")");
-			emit_qmp_click(btn.x, btn.y);
+			if (!_goto_pos(btn.x, btn.y)) {
+				_fail("could not position pointer on the chrome closer");
+				return;
+			}
+			emit_qmp_press(btn.x, btn.y);
 
 			bool gone = false;
 			for (unsigned i = 0; i < 600; ++i) {
@@ -635,7 +754,7 @@ struct Native_wm_tiling_probe
 				_fail("close of the master did not destroy its window");
 				return;
 			}
-			if (!_wait_arrangement("step 12 reflow")) {
+			if (!_wait_arrangement("step 12 reflow", 1, true)) {
 				_fail("remaining window did not become master after close");
 				return;
 			}
