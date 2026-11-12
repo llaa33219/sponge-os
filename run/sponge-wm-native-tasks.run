@@ -17,23 +17,14 @@
 #   rows 8-11  any state -> (destroyed)          [native chrome closer]
 #
 # Derived from run/sponge-wm-tasks.run (the proven upstream tasklist
-# topology). The upstream anchors run/sponge-wm{,-qmp,-tasks}.run stay
-# untouched and green (D16W.7); this scenario is the native gate only.
-# Rows 6/7 (maximize toggle) are deliberately NOT driven here — the
-# native acceptance for maximize/restore is the chrome fullscreen
-# button in run/sponge-wm-native-qmp.run (with the frozen rules
-# maximized-inference assertions).
+# topology). Upstream anchor files remain as the fallback; this scenario
+# is the native gate only. Rows 6/7 (maximize toggle) are deliberately
+# NOT driven here — the native acceptance for maximize/restore is the
+# chrome fullscreen button in run/sponge-wm-native-qmp.run (with the
+# frozen rules maximized-inference assertions).
 #
-# === EXPECTED FAILURE AT THIS STAGE (honest) ===
-#
-# sponge_wm / sponge_layouter / sponge_decorator do not exist yet
-# (docs/plans/phase16-sponge-wm.md M1-M3 pending). The `build` block
-# references them on purpose: `make run/sponge-wm-native-tasks` fails
-# at build-target resolution with a missing-target error until they
-# land. That failure is the acceptance capture for this scaffolding
-# milestone — never masked by stubs. native_wm_tasks_probe itself
-# compiles today and its assertions are complete (they execute once
-# the native stack boots).
+# Acceptance status (2026-11-12): all transitions pass, including close,
+# remove/reinstall/relaunch, and close/recreate slot reset.
 #
 # Topology (base-sel4, headless, one QEMU boot):
 #
@@ -575,23 +566,23 @@ global qemu_spawn_id
 
 run_genode_until {.*usb_hid\] Connected device.*POINTER.*} 300 $qemu_spawn_id
 
-run_genode_until {.*native-wm-tasks-probe: \[step 3\].*} 600 $qemu_spawn_id
+run_genode_until {native-wm-tasks-probe: \[step 3\]} 600 $qemu_spawn_id
 
 set qmp_chan [qmp_connect $qmp_port]
 
 # click 1: tasklist minimize [row 3]
 qmp_exec_target $qmp_chan 120
-run_genode_until {.*native-wm-tasks-probe: \[step 4\].*} 120 $qemu_spawn_id
+run_genode_until {native-wm-tasks-probe: \[step 4\]} 120 $qemu_spawn_id
 
 # click 2: tasklist restore + focus [row 5]
 qmp_exec_target $qmp_chan 120
-run_genode_until {.*native-wm-tasks-probe: \[step 6\].*} 120 $qemu_spawn_id
+run_genode_until {native-wm-tasks-probe: \[step 6\]} 120 $qemu_spawn_id
 
 # native chrome closer [rows 8-11]
 qmp_exec_target $qmp_chan 120
-run_genode_until {.*native-wm-tasks-probe: \[step 7\].*} 120 $qemu_spawn_id
+run_genode_until {native-wm-tasks-probe: \[step 7\]} 120 $qemu_spawn_id
 
-run_genode_until {.*native-wm-tasks-probe: \[step 9\].*} 600 $qemu_spawn_id
+run_genode_until {native-wm-tasks-probe: \[step 9\]} 600 $qemu_spawn_id
 run_genode_until {.*native-wm-tasks-probe: PASS.*} 120 $qemu_spawn_id
 
 qmp_disconnect $qmp_chan

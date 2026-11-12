@@ -386,8 +386,9 @@ inline int layout_tracked_index(Genode::Node root, MATCH_FN const &is_wanted)
  *   child order is semantic: >=1 <screen>, then one <assign> per
  *   tracked window frontmost-first, then static <assign> fragments,
  *   then <press>/<release> key-sequence nodes kept in every publication.
- * Each <assign> carries label, target, xpos, ypos, width, height and
- * optionally maximized. Assign coordinates are TARGET-RELATIVE (the
+ * Each <assign> carries one label identity (label, label_prefix, or
+ * label_suffix), target, xpos, ypos, width, height and optionally
+ * maximized. Assign coordinates are TARGET-RELATIVE (the
  * controller subtracts the boundary origin).
  */
 inline bool check_rules_shape(Genode::Node root, char const *tag)
@@ -412,11 +413,18 @@ inline bool check_rules_shape(Genode::Node root, char const *tag)
 		if (n.has_type("assign")) {
 			++assigns;
 			static char const *const required[] = {
-				"label", "target", "xpos", "ypos", "width", "height" };
+				"target", "xpos", "ypos", "width", "height" };
 			for (char const *attr : required) {
 				if (n.has_attribute(attr)) continue;
 				Genode::error(tag, ": rules <assign> missing '", attr,
 				              "' attribute");
+				ok = false;
+				return;
+			}
+			if (!n.has_attribute("label")
+			 && !n.has_attribute("label_prefix")
+			 && !n.has_attribute("label_suffix")) {
+				Genode::error(tag, ": rules <assign> has no label identity");
 				ok = false;
 				return;
 			}

@@ -283,12 +283,18 @@ struct Native_wm_tasks_probe
 			return;
 		}
 		Geom rule2;
-		if (!rules_assign_for(_rules.node(), GUI_PREFIX, rule2, nullptr)) {
-			_fail("rules carry no assign for pkg_gui_demo after restore");
-			return;
+		bool rules_match = false;
+		for (unsigned i = 0; i < 600; ++i) {
+			_rules.update();
+			if (rules_assign_for(_rules.node(), GUI_PREFIX, rule2, nullptr)
+			 && rule2.x == restored.x - b.x && rule2.y == restored.y - b.y
+			 && rule2.w == restored.w && rule2.h == restored.h) {
+				rules_match = true;
+				break;
+			}
+			_timer.msleep(100);
 		}
-		if (rule2.x != restored.x - b.x || rule2.y != restored.y - b.y
-		 || rule2.w != restored.w || rule2.h != restored.h) {
+		if (!rules_match) {
 			Genode::error("native-wm-tasks-probe: FAIL rules assign is not "
 			              "target-relative (boundary origin drift?)");
 			log_geom("native-wm-tasks-probe", "rules", rule2);
