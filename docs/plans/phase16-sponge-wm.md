@@ -350,7 +350,7 @@ last-state-wins snapshot):
 | `focus_state` | sponge_wm -> sponge_layouter | `<focus_state><window wid="5"/></focus_state>`; empty root = no focus |
 | `window_request` | sponge_layouter -> sponge_wm | `<window_request><window wid="5" x="192" y="172" w="640" h="480"/><window wid="6" action="close"/></window_request>` |
 | `focus` | sponge_layouter -> sponge_wm | `<focus><window wid="5"/></focus>` (steering only) |
-| `window_chrome` | sponge_wm -> sponge_decorator | `<window_chrome><window wid="5" label="..." title="..." resizeable="yes" fw="648" fh="488"/></window_chrome>` |
+| `window_chrome` | sponge_wm -> sponge_decorator | `<window_chrome><window wid="5" label="..." title="..." resizeable="yes" focused="yes" fw="648" fh="488"/></window_chrome>` |
 | `decorator_margins` | sponge_decorator -> sponge_layouter + sponge_wm + probes | `<decorator_margins><floating top="28" bottom="2" left="2" right="2"/></decorator_margins>` (shape unchanged) |
 
 Semantics (binding):
@@ -369,9 +369,12 @@ Semantics (binding):
   `window_list`; the core applies the app-visible 0x0 close
   convention when processing it.
 - **window_chrome.** `fw`/`fh` are the OUTER frame size (outer = the
-  inner geometry expanded by `decorator_margins`). The producer
-  publishes only create/destroy/title/resizeable/size change — never
-  move; destroy is the window's absence from the snapshot.
+  inner geometry expanded by `decorator_margins`). Every entry
+  carries the per-window `focused="yes"`/`focused="no"` draw state (a
+  missing `focused` parses as `no`, backward compatible with
+  pre-focus snapshots). The producer publishes only
+  create/destroy/title/resizeable/focus/size change — never move;
+  destroy is the window's absence from the snapshot.
 - **Focus.** `focus` is steering; `focus_state` is the sole truth for
   `window_layout`'s consumed `focused="yes"`.
 
