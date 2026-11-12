@@ -15,7 +15,12 @@
 #                   native path must prove the full sequence in one run
 #                   or record an honest partial of its own. Partial is
 #                   never relabeled green.)
-#   focus           title click on each window flips `focused`
+#   focus           title click on each window flips `focused` in
+#                   window_layout AND the window_chrome per-window
+#                   focus truth (focused=yes follows exactly the
+#                   clicked wid, the other client focused=no); the
+#                   decorator's focus styling is corroborated from
+#                   'chrome view <wid> focus no' lines after the gate
 #   close           native chrome closer destroys the window
 #   minimize/restore+focus  chrome minimizer parks, tasklist restore
 #                   lands focused (U3 focus-after-restore)
@@ -115,6 +120,7 @@ config
     + policy | label: native_wm_qmp_probe -> window_layout | report: sponge_layouter -> window_layout
     + policy | label: native_wm_qmp_probe -> rules         | report: sponge-de -> rules
     + policy | label: native_wm_qmp_probe -> decorator_margins | report: sponge_decorator -> decorator_margins
+    + policy | label: native_wm_qmp_probe -> window_chrome | report: sponge_wm -> window_chrome
     #
     # Internal contract v1.1 (binding; see run/sponge-wm-native.run header).
     #
@@ -418,6 +424,7 @@ config
     + service ROM | label: window_layout | + child report_rom
     + service ROM | label: rules         | + child report_rom
     + service ROM | label: decorator_margins | + child report_rom
+    + service ROM | label: window_chrome | + child report_rom
     + service ROM | label_last: result   | + child report_rom
     + service Report | + child report_rom
     + any-service
@@ -518,6 +525,12 @@ append qemu_args " -qmp tcp:127.0.0.1:${qmp_port},server=on,wait=off "
 run_genode_until {.*\[init -> drivers -> fb\] using 1024x768.*} 90
 global qemu_spawn_id
 
+# Record the complete serial stream independently of expect consumption;
+# the decorator evidence scan below must never eat a QMP-TARGET marker.
+set serial_log "[run_dir]/native-qmp-serial.log"
+file delete -force $serial_log
+log_file -a $serial_log
+
 # The framebuffer gate is early enough that QMP is listening, and far
 # enough before the probe's first marker that it cannot consume it.
 set qmp_chan [qmp_connect $qmp_port]
@@ -529,12 +542,13 @@ set qmp_chan [qmp_connect $qmp_port]
 #
 
 # step 2: move (title-bar drag)
+set serial_acc ""
 qmp_exec_target $qmp_chan 120
 
 # steps 3-10: 8-zone resize (full sequence in one run)
 for {set z 1} {$z <= 8} {incr z} {
 	qmp_exec_target $qmp_chan 120
-}
+	}
 
 # step 11: focus (two title clicks)
 qmp_exec_target $qmp_chan 120
@@ -556,5 +570,52 @@ qmp_exec_target $qmp_chan 120
 qmp_exec_target $qmp_chan 120
 
 run_genode_until {native-wm-qmp-probe: PASS} 120 $qemu_spawn_id
+log_file
+set serial_acc [read [open $serial_log r]]
+
+#
+# Decorator focus-styling evidence (non-consuming): log_file recorded
+# the serial stream independently of expect consumption; this is a plain
+# scan over that captured text, so no QMP marker can be eaten.
+# For every wid the probe asserted focused=no (via
+# window_chrome), the committed decorator focus log contract must show
+# its unfocused repaint 'sponge_decorator: chrome view <wid> focus no'.
+# At least one of those wids must show the line TRAILING its
+# 'focus yes' — a genuine focused->unfocused flip repaint, so a lone
+# Chrome_view construction-time initial-state line cannot carry the
+# 'real clicks update the styling' claim by itself.
+#
+set focus_no_wids {}
+foreach {full yw nw} [regexp -all -inline \
+	{chrome focus: wid (\d+) focused=yes, wid (\d+) focused=no} $serial_acc] {
+	lappend focus_no_wids $nw
+}
+set focus_no_wids [lsort -unique $focus_no_wids]
+if {[llength $focus_no_wids] == 0} {
+	puts stderr "\nsponge-wm-native-qmp: FAIL - probe reported no\
+ window_chrome focus assertion (chrome focus: ... focused=no)"
+	exit 1
+}
+set flip_evidence 0
+foreach w $focus_no_wids {
+	set needle_no  [format {chrome view %d focus no}  $w]
+	set needle_yes [format {chrome view %d focus yes} $w]
+	if {[string first $needle_no $serial_acc] < 0} {
+		puts stderr "\nsponge-wm-native-qmp: FAIL - decorator never logged\
+  '$needle_no' for the window the probe asserted focused=no"
+		exit 1
+	}
+	set p_yes [string first $needle_yes $serial_acc]
+	set p_no  [string last  $needle_no  $serial_acc]
+	if {$p_yes >= 0 && $p_no > $p_yes} { incr flip_evidence }
+}
+if {$flip_evidence == 0} {
+	puts stderr "\nsponge-wm-native-qmp: FAIL - decorator logged\
+  'chrome view <wid> focus no' only as construction-time initial state,\
+  never as a focused->unfocused flip repaint"
+	exit 1
+}
+puts "\nsponge-wm-native-qmp: decorator focus styling verified -\
+ chrome view <[join $focus_no_wids ,]> focus no ($flip_evidence unfocused flip(s))"
 
 qmp_disconnect $qmp_chan

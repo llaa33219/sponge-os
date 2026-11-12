@@ -17,11 +17,15 @@
  *              full sequence in ONE run (the W9 honesty rule: a flaky
  *              zone is an honest partial, never relabeled green)
  *   [step 11]  focus — title click on each window flips
- *              window_layout's consumed `focused` attribute
+ *              window_layout's consumed `focused` attribute AND the
+ *              window_chrome per-window focus truth: focused=yes
+ *              follows exactly the clicked wid while the other client
+ *              reads focused=no
  *   [step 12]  minimize — native chrome minimizer parks the window at
  *              (-32000,-32000) (frozen convention)
  *   [step 13]  restore — tasklist click restores the saved geometry
- *              AND lands focused (U3 focus-after-restore)
+ *              AND lands focused (U3 focus-after-restore), asserted on
+ *              window_layout and window_chrome alike
  *   [step 14]  maximize — native chrome fullscreen fills the work area
  *              (D16W.5/D16W.10) and the tasklist's maximize inference
  *              republishes rules with maximized="yes" (frozen)
@@ -45,6 +49,8 @@
 #include <base/component.h>
 #include <base/log.h>
 #include <timer_session/connection.h>
+
+#include <sponge/wm_protocol.h>
 
 #include "native_wm_protocol.h"
 #include "native_wm_probe_util.h"
@@ -75,6 +81,7 @@ struct Native_wm_qmp_probe
 
 	Genode::Attached_rom_dataspace _window_list    { _env, "window_list" };
 	Genode::Attached_rom_dataspace _window_layout  { _env, "window_layout" };
+	Genode::Attached_rom_dataspace _window_chrome  { _env, "window_chrome" };
 	Genode::Attached_rom_dataspace _rules          { _env, "rules" };
 	Genode::Attached_rom_dataspace _margins_rom    { _env, "decorator_margins" };
 
@@ -169,6 +176,96 @@ struct Native_wm_qmp_probe
 		}
 		Genode::error("native-wm-qmp-probe: FAIL ", what,
 		              " - focused=", want ? "yes" : "no", " never observed");
+		return false;
+	}
+
+	/*
+	 * window_chrome (v1.1) per-window focus truth — the decorator's
+	 * styling input. Parsed with the SHIPPED parser
+	 * (Sponge::Wm_protocol::parse_window_chrome) so the probe reads
+	 * exactly what sponge_decorator consumes. Entries are located by
+	 * the frozen label identity (prefix scan, the delivered
+	 * window_list_find_prefix idiom) with the concatenated title as
+	 * fallback (find_layout_window_by_prefix idiom).
+	 */
+	struct Chrome_focus {
+		bool          found    { false };
+		unsigned long wid      { 0 };
+		bool          focused  { false };
+	};
+
+	struct Chrome_focus_state {
+		bool         valid         { false };
+		Chrome_focus yes { }, no { };
+		unsigned     focused_count { 0 };
+	};
+
+	Chrome_focus_state _chrome_focus_state(char const *yes_prefix,
+	                                       char const *no_prefix)
+	{
+		Chrome_focus_state s;
+		_window_chrome.update();
+		if (!_window_chrome.valid()) return s;
+
+		Genode::size_t const ny = Genode::strlen(yes_prefix);
+		Genode::size_t const nn = Genode::strlen(no_prefix);
+		auto hit = [&] (Sponge::Wm_protocol::Window_chrome const &c,
+		                char const *prefix, Genode::size_t n) {
+			if (Genode::strcmp(c.label.string(), prefix, n) == 0) return true;
+			for (char const *p = c.title.string(); *p; ++p)
+				if (Genode::strcmp(p, prefix, n) == 0) return true;
+			return false;
+		};
+
+		s.valid = Sponge::Wm_protocol::parse_window_chrome(
+			_window_chrome.node(),
+			[&] (Sponge::Wm_protocol::Window_chrome const &c) {
+				if (c.focused) ++s.focused_count;
+				if (!s.yes.found && hit(c, yes_prefix, ny)) {
+					s.yes.found = true;
+					s.yes.wid = c.wid;
+					s.yes.focused = c.focused;
+				}
+				if (!s.no.found && hit(c, no_prefix, nn)) {
+					s.no.found = true;
+					s.no.wid = c.wid;
+					s.no.focused = c.focused;
+				}
+			});
+		return s;
+	}
+
+	/*
+	 * Bounded window_chrome focus assertion: focused=yes must follow
+	 * EXACTLY the clicked window (yes_prefix) while the other client
+	 * (no_prefix) reads focused=no — the whole snapshot must hold
+	 * exactly one focused=yes entry. Same bounded-poll discipline as
+	 * _wait_focused.
+	 */
+	bool _wait_chrome_focus(char const *yes_prefix, char const *no_prefix,
+	                        char const *what)
+	{
+		for (unsigned i = 0; i < 300; ++i) {
+			Chrome_focus_state const s =
+				_chrome_focus_state(yes_prefix, no_prefix);
+			if (s.valid && s.yes.found && s.no.found
+			 && s.yes.focused && !s.no.focused && s.focused_count == 1) {
+				Genode::log("native-wm-qmp-probe: chrome focus: wid ", s.yes.wid,
+				            " focused=yes, wid ", s.no.wid,
+				            " focused=no (", what, ")");
+				return true;
+			}
+			_timer.msleep(100);
+		}
+		Chrome_focus_state const s = _chrome_focus_state(yes_prefix, no_prefix);
+		Genode::error("native-wm-qmp-probe: FAIL ", what,
+		              " - window_chrome focused=yes did not follow exactly "
+		              "the clicked wid");
+		Genode::log("native-wm-qmp-probe: chrome focus observed: yes(wid=",
+		            s.yes.wid, " focused=", s.yes.focused ? "yes" : "no",
+		            ") no(wid=", s.no.wid,
+		            " focused=", s.no.focused ? "yes" : "no",
+		            ") focused_count=", s.focused_count);
 		return false;
 	}
 
@@ -377,6 +474,12 @@ struct Native_wm_qmp_probe
 				_fail("title click did not focus the demo window");
 				return;
 			}
+			if (!_wait_chrome_focus(DEMO_PREFIX, GUI_PREFIX,
+			                        "demo title click window_chrome focus")) {
+				_fail("title click did not move window_chrome focused=yes "
+				      "to the demo wid");
+				return;
+			}
 
 			Pt const pkg_title = title_center(cur, m);
 			Genode::log("native-wm-qmp-probe: [step 11] focus: click pkg "
@@ -384,6 +487,12 @@ struct Native_wm_qmp_probe
 			emit_qmp_click(pkg_title.x, pkg_title.y);
 			if (!_wait_focused(GUI_PREFIX, true, "pkg title click focus")) {
 				_fail("title click did not focus the pkg window");
+				return;
+			}
+			if (!_wait_chrome_focus(GUI_PREFIX, DEMO_PREFIX,
+			                        "pkg title click window_chrome focus")) {
+				_fail("title click did not move window_chrome focused=yes "
+				      "to the pkg wid");
 				return;
 			}
 			Genode::log("native-wm-qmp-probe: [step 11] focus flip verified");
@@ -426,6 +535,12 @@ struct Native_wm_qmp_probe
 			}
 			if (!_wait_focused(GUI_PREFIX, true, "focus-after-restore")) {
 				_fail("tasklist restore did not land focused (U3)");
+				return;
+			}
+			if (!_wait_chrome_focus(GUI_PREFIX, DEMO_PREFIX,
+			                        "tasklist focus window_chrome focus")) {
+				_fail("tasklist focus did not move window_chrome focused=yes "
+				      "to the pkg wid (U3)");
 				return;
 			}
 			cur = restored;
