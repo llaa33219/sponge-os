@@ -217,6 +217,8 @@ source [file join [file dirname [file normalize [info script]]] \
                     runtime-quota.inc]
 source [file join [file dirname [file normalize [info script]]] \
                     runtime-grouped.inc]
+source [file join [file dirname [file normalize [info script]]] \
+                    wm_trio.inc]
 #
 # Per-child heartbeat gate values (P3.4). Exposed so each
 # child's sandbox containment gates can be tuned individually;
@@ -366,6 +368,10 @@ lappend build_components {*}[runtime_terminal::build_targets]
 
 build $build_components
 
+if {[wm_trio::enabled]} {
+	build { sponge_wm sponge_layouter sponge_decorator }
+}
+
 #
 # Fault-injection gate (docs/17 §5, top-level supervision). OFF by
 # default: shipped media carries the supervisor and the console, never a
@@ -482,6 +488,12 @@ foreach b { init report_rom wm window_layouter decorator \
 	# NOT need this copy loop.
 	#
 	if {[file exists "bin/$b"]} {
+		exec cp -fL "bin/$b" "$sys_dir/bin/$b"
+	}
+}
+
+if {[wm_trio::enabled]} {
+	foreach b { sponge_wm sponge_layouter sponge_decorator } {
 		exec cp -fL "bin/$b" "$sys_dir/bin/$b"
 	}
 }
@@ -1536,6 +1548,10 @@ if {$app_isolation} {
 	set drv_hid [driver_runtime::expand [read $drv_fh] \
 	                       [list @DRIVER_RELAY_POLICIES@ @DRIVER_START_NODE@ @SYSTEM_CAPS@]]
 	close $drv_fh
+	# Validate the canonical grouped wiring before the optional native
+	# rename; supervisor templates must still be derived after the swap.
+	runtime_grouped::assert_wiring $drv_hid
+	set drv_hid [wm_trio::apply $drv_hid desktop]
 	set drv_fh [open $sysconfig_hid w]
 	puts -nonewline $drv_fh $drv_hid
 	close $drv_fh
@@ -1550,17 +1566,6 @@ if {$app_isolation} {
 	# composition).
 	#
 	supervisor::prepare $sys_dir $sysconfig_hid
-
-	#
-	# P2.4 structural assertions (run/runtime-grouped.inc): the three
-	# runtime nodes with their derived grant literals, the class
-	# config/state policies, the quota ordering (driver first,
-	# pkg_runtime_browser last), and the absence of every legacy
-	# single-runtime line. Fail-loud before QEMU starts.
-	#
-	set asr_fh [open $sysconfig_hid r]
-	runtime_grouped::assert_wiring [read $asr_fh]
-	close $asr_fh
 
 	set xml_content [exec [genode_dir]/tool/hid format --output-xml "$sysconfig_hid"]
 	set sysconfig_final [open "$sys_dir/init/system.config" w]

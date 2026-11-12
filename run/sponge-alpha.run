@@ -136,6 +136,8 @@ ensure_plugin_loaded boot_dir/sel4
 ensure_plugin_loaded power_on/qemu
 ensure_plugin_loaded log/qemu
 
+source [file join [file dirname [file normalize [info script]]] wm_trio.inc]
+
 build { core lib/ld init timer server/report_rom server/nitpicker \
          driver/acpi app/pci_decode driver/platform \
          driver/framebuffer/vesa driver/ps2 \
@@ -153,6 +155,10 @@ build { core lib/ld init timer server/report_rom server/nitpicker \
          lib/mesa_gpu-softpipe lib/egl lib/softpipe lib/libdrm lib/expat \
          lib/qt6_component lib/vfs lib/vfs_pipe lib/vfs_gpu lib/rom_filter \
          lib/zlib lib/libpng lib/blit lib/vfs_ttf lib/vfs_import lib/posix }
+
+if {[wm_trio::enabled]} {
+	build { sponge_wm sponge_layouter sponge_decorator }
+}
 
 create_boot_directory
 
@@ -947,6 +953,7 @@ config
 set alpha_cfg [runtime_grouped::expand $alpha_cfg \
 	[list @GROUPED_RELAY_POLICIES@ @GROUPED_ADMISSION_NODES@ \
 	      @GROUPED_PKGD_STATE_ROUTES@]]
+set alpha_cfg [wm_trio::apply $alpha_cfg alpha]
 install_config $alpha_cfg
 
 #
