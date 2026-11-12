@@ -80,6 +80,8 @@ struct Native_wm_qmp_probe
 
 	unsigned const panel_h;
 
+	static constexpr unsigned GEOMETRY_QUIESCENT_POLLS = 5;
+
 	Native_wm_qmp_probe(Genode::Env &env, unsigned panel_height)
 	: _env(env), _capture(env, SCREEN_W, SCREEN_H), panel_h(panel_height)
 	{ }
@@ -102,6 +104,8 @@ struct Native_wm_qmp_probe
 	bool _wait_geom(char const *prefix, Geom &out, int x, int y,
 	                unsigned w, unsigned h, int tol, char const *what)
 	{
+		Geom previous { };
+		unsigned quiescent = 0;
 		for (unsigned i = 0; i < 600; ++i) {
 			out = _geom(prefix);
 			bool const pos_ok =
@@ -109,7 +113,15 @@ struct Native_wm_qmp_probe
 			 && out.x >= x - tol && out.x <= x + tol
 			 && out.y >= y - tol && out.y <= y + tol
 			 && out.w == w && out.h == h;
-			if (pos_ok) return true;
+			if (pos_ok) {
+				quiescent = (quiescent && same_geom(out, previous))
+				          ? quiescent + 1 : 1;
+				previous = out;
+				if (quiescent >= GEOMETRY_QUIESCENT_POLLS) return true;
+			} else {
+				quiescent = 0;
+				previous = Geom { };
+			}
 			_timer.msleep(100);
 		}
 		Genode::error("native-wm-qmp-probe: FAIL ", what, " - window never "
@@ -179,6 +191,14 @@ struct Native_wm_qmp_probe
 		Genode::error("native-wm-qmp-probe: FAIL ", what,
 		              " - rules maximized=", want ? "yes" : "no",
 		              " never published");
+		Geom assigned;
+		bool maximized = false;
+		if (rules_assign_for(_rules.node(), GUI_PREFIX, assigned, &maximized))
+			log_geom("native-wm-qmp-probe", "rules assignment", assigned);
+		Genode::log("native-wm-qmp-probe: rules assignment maximized=",
+		            maximized ? "yes" : "no");
+		log_geom("native-wm-qmp-probe", "geometry at rules timeout",
+		         _geom(GUI_PREFIX));
 		return false;
 	}
 
@@ -284,6 +304,8 @@ struct Native_wm_qmp_probe
 			emit_qmp_drag(pts.px, pts.py, pts.rx, pts.ry);
 
 			bool ok = false;
+			Geom previous { };
+			unsigned quiescent = 0;
 			for (unsigned i = 0; i < 600; ++i) {
 				cur = _geom(GUI_PREFIX);
 				if (!cur.valid) { _timer.msleep(100); continue; }
@@ -305,7 +327,18 @@ struct Native_wm_qmp_probe
 					&& (dz.dw != 0 || got_dw == 0)
 					&& (dz.dh != 0 || got_dh == 0);
 
-				if (moved_ok && untouched_ok) { ok = true; break; }
+				if (moved_ok && untouched_ok) {
+					quiescent = (quiescent && same_geom(cur, previous))
+					          ? quiescent + 1 : 1;
+					previous = cur;
+					if (quiescent >= GEOMETRY_QUIESCENT_POLLS) {
+						ok = true;
+						break;
+					}
+				} else {
+					quiescent = 0;
+					previous = Geom { };
+				}
 				_timer.msleep(100);
 			}
 			if (!ok) {

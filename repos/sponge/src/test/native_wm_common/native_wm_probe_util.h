@@ -322,10 +322,21 @@ struct Zone_points { int px, py, rx, ry; };
 
 inline int grip_inset(unsigned margin)
 {
-	unsigned half = margin / 2;
+	/* Target the middle of the outermost grip band, not the content
+	 * boundary. The shared PS/2 walk undershoots by a few pixels; four
+	 * pixels leaves room on both sides of the native 8 px edge grip. */
+	unsigned const half = margin / 2;
 	if (half < 1) return 1;
-	if (half > 3) return 3;
+	if (half > 4) return 4;
 	return (int)half;
+}
+
+inline int far_grip_inset(unsigned margin)
+{
+	/* PS/2 navigation undershoots toward smaller screen coordinates.
+	 * The last pixel remains valid even without undershoot and gives
+	 * south/east drags the full grip band as their error budget. */
+	return margin ? 1 : 0;
 }
 
 inline Zone_points zone_points(int index /* 1=N .. 8=SE */,
@@ -337,9 +348,9 @@ inline Zone_points zone_points(int index /* 1=N .. 8=SE */,
 	int const oh = (int)content.h + (int)m.top + (int)m.bottom;
 
 	int const it = grip_inset(m.top);
-	int const ib = grip_inset(m.bottom);
+	int const ib = far_grip_inset(m.bottom);
 	int const il = grip_inset(m.left);
-	int const ir = grip_inset(m.right);
+	int const ir = far_grip_inset(m.right);
 
 	switch (index) {
 	case 1:  return { ox + ow / 2, oy + it,

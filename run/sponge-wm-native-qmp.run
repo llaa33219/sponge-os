@@ -24,16 +24,12 @@
 #
 # Derived from run/sponge-wm-qmp.run (the proven upstream QMP drag
 # topology) plus the 8-zone choreography shape of
-# run/sponge-de-release-resize.run. The upstream anchors
-# run/sponge-wm{,-qmp,-tasks}.run stay untouched and green (D16W.7).
+# run/sponge-de-release-resize.run. Upstream anchor files remain as the
+# fallback; this scenario is the native acceptance gate.
 #
-# === EXPECTED FAILURE AT THIS STAGE (honest) ===
-#
-# sponge_wm / sponge_layouter / sponge_decorator do not exist yet
-# (M1-M3 pending). The `build` block references them on purpose:
-# `make run/sponge-wm-native-qmp` fails at build-target resolution
-# with a missing-target error until they land. native_wm_qmp_probe
-# compiles today and its assertions are complete.
+# Acceptance status (2026-11-12): the complete battery passes repeatedly.
+# Geometry waits require five identical in-tolerance snapshots before the
+# next marker, preventing queued drag motion from producing stale targets.
 #
 # Marker discipline (run/qmp.inc shared dispatch — this scenario
 # defines NO local Tcl QMP procs, unlike run/sponge-wm-qmp.run):
@@ -522,49 +518,43 @@ append qemu_args " -qmp tcp:127.0.0.1:${qmp_port},server=on,wait=off "
 run_genode_until {.*\[init -> drivers -> fb\] using 1024x768.*} 90
 global qemu_spawn_id
 
-run_genode_until {.*usb_hid\] Connected device.*POINTER.*} 300 $qemu_spawn_id
-
-run_genode_until {.*native-wm-qmp-probe: \[step 1\].*} 600 $qemu_spawn_id
-
+# The framebuffer gate is early enough that QMP is listening, and far
+# enough before the probe's first marker that it cannot consume it.
 set qmp_chan [qmp_connect $qmp_port]
+
+#
+# The probe's QMP-TARGET markers are the post-step gates themselves.
+# Waiting for the next marker (rather than a separate run_genode_until
+# gate) keeps another expect from consuming the marker first.
+#
 
 # step 2: move (title-bar drag)
 qmp_exec_target $qmp_chan 120
-run_genode_until {.*native-wm-qmp-probe: \[step 2\] moved to.*} 120 $qemu_spawn_id
 
 # steps 3-10: 8-zone resize (full sequence in one run)
 for {set z 1} {$z <= 8} {incr z} {
 	qmp_exec_target $qmp_chan 120
-	set pat [format {.*native-wm-qmp-probe: \[step %d\] zone .* applied.*} \
-		         [expr {$z + 2}]]
-	run_genode_until $pat 120 $qemu_spawn_id
 }
 
 # step 11: focus (two title clicks)
 qmp_exec_target $qmp_chan 120
 qmp_exec_target $qmp_chan 120
-run_genode_until {.*native-wm-qmp-probe: \[step 11\] focus flip.*} 120 $qemu_spawn_id
 
 # step 12: chrome minimizer
 qmp_exec_target $qmp_chan 120
-run_genode_until {.*native-wm-qmp-probe: \[step 12\] parked.*} 120 $qemu_spawn_id
 
 # step 13: tasklist restore + focus (U3)
 qmp_exec_target $qmp_chan 120
-run_genode_until {.*native-wm-qmp-probe: \[step 13\] restored.*} 120 $qemu_spawn_id
 
 # step 14: chrome fullscreen (work-area maximize)
 qmp_exec_target $qmp_chan 120
-run_genode_until {.*native-wm-qmp-probe: \[step 14\] work area filled.*} 120 $qemu_spawn_id
 
 # step 15: fullscreen toggle (restore previous geometry)
 qmp_exec_target $qmp_chan 120
-run_genode_until {.*native-wm-qmp-probe: \[step 15\] previous geometry restored.*} 120 $qemu_spawn_id
 
 # step 16: chrome closer
 qmp_exec_target $qmp_chan 120
-run_genode_until {.*native-wm-qmp-probe: \[step 16\] window destroyed.*} 120 $qemu_spawn_id
 
-run_genode_until {.*native-wm-qmp-probe: PASS.*} 120 $qemu_spawn_id
+run_genode_until {native-wm-qmp-probe: PASS} 120 $qemu_spawn_id
 
 qmp_disconnect $qmp_chan
