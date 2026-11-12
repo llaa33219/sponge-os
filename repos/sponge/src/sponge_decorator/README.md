@@ -16,7 +16,7 @@ describes.
 
 | Channel | Direction | Use |
 |---|---|---|
-| `window_chrome` (ROM) | sponge_wm -> decorator | complete snapshot `<window_chrome><window wid label title resizeable fw fh/>...`; create/destroy/title/resizeable/size only, never moves. Destroy is absence. |
+| `window_chrome` (ROM) | sponge_wm -> decorator | complete snapshot `<window_chrome><window wid label title resizeable focused fw fh/>...`; create/destroy/title/resizeable/size/focus only, never moves. Destroy is absence. |
 | `theme` or `default.theme` (ROM) | run-provided | INI theme source (see below) |
 | `decorator_margins` (report) | decorator -> layouter + core + probes | `<decorator_margins><floating top bottom left right/></decorator_margins>`, published at startup and on every theme change |
 
@@ -99,14 +99,14 @@ Notes:
 
 ## Visual states
 
-* **Focused / unfocused**: the theme and renderer fully implement both
-  tints (band, title text, buttons — the close glyph dims with the
-  others when unfocused). `Chrome_view::focused(bool, ...)` switches
-  and repaints. **v1.1 delivers no focus signal to the decorator**
-  (`window_chrome` is frozen without a focus attribute and no focus
-  route reaches this component), so at runtime the chrome paints the
-  focused style. Wiring real per-window focus needs a protocol signal
-  (recorded below); no channel is invented here.
+* **Focused / unfocused**: per-window focus truth arrives on every
+  `window_chrome` entry as `focused="yes"/"no"` (a legacy entry
+  without the attribute parses false and selects the unfocused
+  palette). `Chrome_view::update()` routes each snapshot value to
+  `Chrome_view::focused(bool, ...)`, which switches the palette (band,
+  title text, buttons — the close glyph dims with the others when
+  unfocused) and repaints on change. Every newly established focus
+  state is logged (see "Focus log marker").
 * **Buttons**: the visual states available without input are the
   normal appearance and the fullscreen affordance's presence
   (`resizeable`). Hover/pressed states require pointer input, which
@@ -114,6 +114,21 @@ Notes:
   scope by contract.
 * Glyphs are flat 9x9 bitmaps (X, bar, square outline) drawn at the
   button centers — no animations, blur, or gradients.
+
+## Focus log marker
+
+Whenever a chrome view is painted under a newly established focus
+state — at construction and on every snapshot-driven flip — the
+decorator logs exactly one line:
+
+    sponge_decorator: chrome view <wid> focus yes
+    sponge_decorator: chrome view <wid> focus no
+
+Each marker line implies one repaint of that view's chrome with the
+matching palette. Native QMP scenarios assert on the exact substring
+`chrome view <wid> focus <yes|no>` (e.g. `chrome view 3 focus no`) as
+the runtime evidence that per-window focus reached the decorator and
+selected the unfocused style.
 
 ## Resize affordances (input mask)
 
@@ -194,25 +209,30 @@ Deterministic tests (host, no Genode runtime; full command in
     && /tmp/sponge_decorator_self_test
 
 Covered: theme parsing (INI semantics, alias chain, validation
-warnings, NUL-padded ROM content), margin validation, the published
-`decorator_margins` shape round-trip, view geometry (frozen button and
-zone placement against `button_rect`/`sizer_zone`), glyph bitmap and
-placement math, title fit/origin math. The tests check drawing
-**geometry** — there are no pixel/runtime claims.
+warnings, NUL-padded ROM content), focus-state style selection
+(`window_chrome.focused` parsed by the frozen `parse_window_chrome`
+selects the focused/unfocused palette via `chrome_style`; legacy
+absent `focused` selects the unfocused style), margin validation, the
+published `decorator_margins` shape round-trip, view geometry (frozen
+button and zone placement against `button_rect`/`sizer_zone`), glyph
+bitmap and placement math, title fit/origin math. The tests check
+drawing **geometry** — there are no pixel/runtime claims.
 
 ## Status and integration notes (honest)
 
 * **Builds clean** under the existing `genode/build/x86_64` tree with
-  `LIBS = base sponge_wm_protocol`; the pure tests pass (119 checks).
+  `LIBS = base sponge_wm_protocol`; the pure tests pass (142 checks).
 * **Native acceptance**: the `run/sponge-wm-native*.run` scenarios
   exercise the component with `sponge_wm` and `sponge_layouter`. The
   deterministic tests in this directory remain geometry/parser tests;
   real interaction and placement evidence belongs to those scenarios.
-* **Focus routing**: per-window focused/unfocused switching needs a
-  focus signal in a future protocol revision (e.g. a `focused`
-  attribute on `window_chrome` via a protocol bump, or a routed focus
-  channel). The renderer, theme keys, and `Chrome_view::focused()` are
-  ready; nothing is faked meanwhile.
+* **Focus routing**: delivered — every `window_chrome` entry carries
+  `focused="yes"/"no"` (legacy absent parses false) and the normal
+  snapshot update path (`Chrome_view::update()` ->
+  `Chrome_view::focused()`) repaints on change and emits the focus log
+  marker. The deterministic tests prove the unfocused style is
+  selected from the parsed attribute; native scenarios assert the
+  marker (see "Focus log marker").
 * **Theme font keys** (`[fonts]` sizes/families) are not applied (see
   "Theme mechanism").
 * **Capacity**: at most 32 chrome views (`MAX_VIEWS` in `main.cc`);

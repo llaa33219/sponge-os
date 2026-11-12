@@ -244,10 +244,11 @@ warning and leave the previous value unchanged.
 The margins are published through `decorator_margins` and are included
 in outer-window geometry. The four margins therefore affect hit-testing
 and placement, not only pixels. The fixed bundled TFF remains the title
-font; `[fonts]` does not restyle native chrome. Focused and unfocused
-palettes are implemented by the renderer, but protocol v1.1 currently
-delivers no focus signal to `sponge_decorator`, so runtime chrome uses
-the focused palette until that signal is wired.
+font; `[fonts]` does not restyle native chrome. The focused and
+unfocused palettes are selected per window from the
+`focused="yes"/"no"` truth on each `window_chrome` snapshot entry (a
+legacy entry without the attribute selects the unfocused palette), and
+`sponge_decorator` repaints a chrome view whenever that state changes.
 
 ---
 
