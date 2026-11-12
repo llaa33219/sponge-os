@@ -312,7 +312,7 @@ Theme finalize(Parse_state const &s)
 Theme Sponge::Decorator::default_theme()
 {
 	Theme t;
-	t.margins = Wm_protocol::Margins { 28, 2, 2, 2 };
+	t.margins = Wm_protocol::Margins { 28, 8, 8, 8 };
 
 	t.colors.title_bg               = Genode::Color::rgb(0x31, 0x32, 0x44);
 	t.colors.title_bg_unfocused     = Genode::Color::rgb(0x1e, 0x1e, 0x2e);

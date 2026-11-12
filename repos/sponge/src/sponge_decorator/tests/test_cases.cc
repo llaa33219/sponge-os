@@ -144,9 +144,9 @@ void test_theme(Checker &c)
 
 	c.check(parse_theme("", 0, t), "empty theme parses cleanly");
 	c.check_eq(t.margins.top, 28, "fallback margin top is 28");
-	c.check_eq(t.margins.bottom, 2, "fallback margin bottom is 2");
-	c.check_eq(t.margins.left, 2, "fallback margin left is 2");
-	c.check_eq(t.margins.right, 2, "fallback margin right is 2");
+c.check_eq(t.margins.bottom, 8, "fallback margin bottom is 8");
+c.check_eq(t.margins.left, 8, "fallback margin left is 8");
+c.check_eq(t.margins.right, 8, "fallback margin right is 8");
 	c.check_color(t.colors.title_bg, Genode::Color::rgb(0x31, 0x32, 0x44),
 	              "fallback title_bg is #313244");
 	c.check_color(t.colors.button_close_glyph,
@@ -169,8 +169,8 @@ void test_theme(Checker &c)
 		"margin_left = -1\nmargin_right = 6\n";
 	c.check(!parse_str(bad_margins, t), "invalid margins warn");
 	c.check_eq(t.margins.top, 28, "invalid margin_top keeps fallback");
-	c.check_eq(t.margins.bottom, 2, "invalid margin_bottom keeps fallback");
-	c.check_eq(t.margins.left, 2, "invalid margin_left keeps fallback");
+c.check_eq(t.margins.bottom, 8, "invalid margin_bottom keeps fallback");
+c.check_eq(t.margins.left, 8, "invalid margin_left keeps fallback");
 	c.check_eq(t.margins.right, 6, "valid margin_right still applied");
 
 	char const *colors =
@@ -280,7 +280,7 @@ void test_margins(Checker &c)
 				g, default_theme().margins);
 		});
 
-	c.check(str_contains(doc, "<floating top=\"28\" bottom=\"2\" left=\"2\" right=\"2\"/>"),
+	c.check(str_contains(doc, "<floating top=\"28\" bottom=\"8\" left=\"8\" right=\"8\"/>"),
 	        "decorator_margins publishes the v1.1 default shape");
 
 	Margins parsed { };
@@ -288,9 +288,9 @@ void test_margins(Checker &c)
 	c.check(Wm_protocol::parse_decorator_margins(root, parsed),
 	        "published shape parses via the frozen parser");
 	c.check_eq(parsed.top, 28, "published top round-trips");
-	c.check_eq(parsed.bottom, 2, "published bottom round-trips");
-	c.check_eq(parsed.left, 2, "published left round-trips");
-	c.check_eq(parsed.right, 2, "published right round-trips");
+c.check_eq(parsed.bottom, 8, "published bottom round-trips");
+c.check_eq(parsed.left, 8, "published left round-trips");
+c.check_eq(parsed.right, 8, "published right round-trips");
 }
 
 

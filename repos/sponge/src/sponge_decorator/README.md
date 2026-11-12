@@ -58,9 +58,9 @@ The decorator consumes a documented subset. Every field resolves as
 | Field | `[decor]` key | `[colors]` alias | fallback |
 |---|---|---|---|
 | margins.top | `margin_top` | — | `28` |
-| margins.bottom | `margin_bottom` | — | `2` |
-| margins.left | `margin_left` | — | `2` |
-| margins.right | `margin_right` | — | `2` |
+| margins.bottom | `margin_bottom` | — | `8` |
+| margins.left | `margin_left` | — | `8` |
+| margins.right | `margin_right` | — | `8` |
 | title_bg | `title_bg` | `window_bg` | `#313244` |
 | title_bg_unfocused | `title_bg_unfocused` | `panel_bg` | `#1e1e2e` |
 | title_text | `title_text` | `title_text` | `#cdd6f4` |

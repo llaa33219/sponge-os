@@ -81,7 +81,7 @@ Chrome_style chrome_style(Theme const &theme, bool focused);
 /*
  * Documented fallback palette and metrics:
  *
- *   margins      top=28 bottom=2 left=2 right=2
+ *   margins      top=28 bottom=8 left=8 right=8
  *   title_bg             = #313244 (= [colors] window_bg alias)
  *   title_bg_unfocused   = #1e1e2e (= [colors] panel_bg alias)
  *   title_text           = #cdd6f4 (= [colors] title_text alias)
