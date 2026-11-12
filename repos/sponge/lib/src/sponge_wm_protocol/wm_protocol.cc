@@ -71,6 +71,43 @@ bool empty(Genode::String<CAP> const &s)
 
 /* ======================= generation (XML) ======================= */
 
+Genode::String<1600> Sponge::Wm_protocol::escape_attr(char const *src)
+{
+	char buf[1600];
+	Genode::size_t n = 0;
+
+	if (!src)
+		src = "";
+
+	for (char const *p = src; *p != '\0'; p++) {
+
+		char const *rep = "";
+		switch (*p) {
+		case '&':  rep = "&amp;";  break;
+		case '"':  rep = "&quot;"; break;
+		case '<':  rep = "&lt;";   break;
+		default:   break;
+		}
+
+		Genode::size_t const len = (rep[0] != '\0') ? Genode::strlen(rep) : 1;
+
+		/* never truncate in the middle of an entity: drop the rest */
+		if (n + len + 1 > sizeof(buf))
+			break;
+
+		if (rep[0] != '\0') {
+			for (char const *r = rep; *r != '\0'; r++)
+				buf[n++] = *r;
+		} else {
+			buf[n++] = *p;
+		}
+	}
+
+	buf[n] = '\0';
+	return Genode::String<1600>(Genode::Cstring(buf, n));
+}
+
+
 bool Sponge::Wm_protocol::gen_window_list_entry(Genode::Xml_generator &g,
                                                 Window_list_entry const &e)
 {
@@ -80,8 +117,8 @@ bool Sponge::Wm_protocol::gen_window_list_entry(Genode::Xml_generator &g,
 
 	g.node("window", [&] {
 		g.attribute("id",     e.id);
-		g.attribute("label",  e.label.string());
-		g.attribute("title",  e.title.string());
+		g.attribute("label",  escape_attr(e.label.string()).string());
+		g.attribute("title",  escape_attr(e.title.string()).string());
 		g.attribute("width",  e.width);
 		g.attribute("height", e.height);
 
@@ -102,7 +139,7 @@ bool Sponge::Wm_protocol::gen_window_layout_window(Genode::Xml_generator &g,
 		return false;
 
 	g.node("window", [&] {
-		g.attribute("title",  w.title.string());
+		g.attribute("title",  escape_attr(w.title.string()).string());
 		g.attribute("xpos",   w.xpos);
 		g.attribute("ypos",   w.ypos);
 		g.attribute("width",  w.width);
@@ -122,7 +159,7 @@ void Sponge::Wm_protocol::gen_boundary(Genode::Xml_generator &g,
                                        Genode::size_t num_windows)
 {
 	g.node("boundary", [&] {
-		g.attribute("name",   b.name.string());
+		g.attribute("name",   escape_attr(b.name.string()).string());
 		g.attribute("xpos",   b.xpos);
 		g.attribute("ypos",   b.ypos);
 		g.attribute("width",  b.width);
@@ -208,8 +245,8 @@ void Sponge::Wm_protocol::gen_window_chrome_entry(Genode::Xml_generator &g,
 {
 	g.node("window", [&] {
 		g.attribute("wid",   c.wid);
-		g.attribute("label", c.label.string());
-		g.attribute("title", c.title.string());
+		g.attribute("label", escape_attr(c.label.string()).string());
+		g.attribute("title", escape_attr(c.title.string()).string());
 
 		if (c.resizeable)
 			g.attribute("resizeable", "yes");

@@ -277,6 +277,75 @@ void case_window_list(Ctx &c)
 			num++;
 		});
 	c.check(ok && num == 2, "window_list round trip: document order preserved");
+
+	/* H1 injection hardening: quote-bearing attribute values are
+	 * escaped (&, ", <) at generation — the title cannot close its
+	 * attribute early, forge sibling entries, or break the document
+	 * ('>' is inert inside an attribute value and stays raw) */
+	Window_list_entry inj;
+	inj.id     = 9;
+	inj.label  = "pkg_runtime -> app";
+	inj.title  = "a\"b&c<d>e";
+	inj.width  = 10;
+	inj.height = 10;
+
+	c.check_xml("window_list gen: quote-bearing title escaped (& \" <)",
+	            "<window_list>\n"
+	            "\t<window id=\"9\" label=\"pkg_runtime -> app\""
+	            " title=\"a&quot;b&amp;c&lt;d>e\""
+	            " width=\"10\" height=\"10\"/>\n"
+	            "</window_list>\n",
+	            gen_xml(buf, sizeof(buf), "window_list", [&] (Genode::Xml_generator &g) {
+		            gen_window_list_entry(g, inj);
+	            }));
+
+	Window_list_entry inj_label = inj;
+	inj_label.label = "l\"x&y";
+
+	c.check_xml("window_list gen: quote-bearing label escaped (& \" <)",
+	            "<window_list>\n"
+	            "\t<window id=\"9\" label=\"l&quot;x&amp;y\""
+	            " title=\"a&quot;b&amp;c&lt;d>e\""
+	            " width=\"10\" height=\"10\"/>\n"
+	            "</window_list>\n",
+	            gen_xml(buf, sizeof(buf), "window_list", [&] (Genode::Xml_generator &g) {
+		            gen_window_list_entry(g, inj_label);
+	            }));
+
+	num = 0;
+	ok = parse_window_list(
+		node_of(gen_xml(buf, sizeof(buf), "window_list", [&] (Genode::Xml_generator &g) {
+			gen_window_list_entry(g, inj);
+		})),
+		[&] (Window_list_entry const &e) {
+			got = e;
+			num++;
+		});
+
+	c.check(ok && num == 1,
+	        "window_list: quote-bearing title cannot inject entries (one entry parsed)");
+	c.check(str_eq(got.title.string(), "a\"b&c<d>e"),
+	        "window_list: quote-bearing title round-trips decoded (no wire bleed)");
+	c.check(str_eq(got.label.string(), "pkg_runtime -> app"),
+	        "window_list: '->' label round-trips byte-identical (no > escape)");
+
+	/* parse failure stays distinguishable from an empty snapshot: the
+	 * layouter keeps its last good snapshot when ok is false, so a
+	 * malformed document must return false with zero visits */
+	num = 0;
+	ok = parse_window_list(
+		node_of("<window_list><window label=\"a\" title=\"x\"/>"
+		        "<window label=\"forged\" title=\"y\" width=\"1\""),
+		[&] (Window_list_entry const &) { num++; });
+	c.check(!ok && num == 0,
+	        "window_list parse: truncated document (forged tail) rejected");
+
+	num = 0;
+	ok = parse_window_list(
+		node_of("<window_list><window label=\"a\" title=\"x\"/></window_list"),
+		[&] (Window_list_entry const &) { num++; });
+	c.check(!ok && num == 0,
+	        "window_list parse: unterminated root rejected");
 }
 
 
@@ -481,6 +550,49 @@ void case_window_layout(Ctx &c)
 			num++;
 		});
 	c.check(ok && num == 2, "window_layout round trip: two windows in order");
+
+	/* H1: the composed layout title (layout_title label + " " + title)
+	 * and the boundary name are escaped like every other attribute */
+	Layout_window comp;
+	comp.title  = layout_title("pkg app", "q\"x&y");
+	comp.width  = 5;
+	comp.height = 5;
+
+	Boundary binj;
+	binj.name   = "sc\"reen";
+	binj.width  = 1024;
+	binj.height = 768;
+
+	c.check_xml("window_layout gen: composed title + boundary name escaped",
+	            "<window_layout>\n"
+	            "\t<boundary name=\"sc&quot;reen\" xpos=\"0\" ypos=\"0\""
+	            " width=\"1024\" height=\"768\">\n"
+	            "\t\t<window title=\"pkg app q&quot;x&amp;y\""
+	            " xpos=\"0\" ypos=\"0\" width=\"5\" height=\"5\"/>\n"
+	            "\t</boundary>\n"
+	            "</window_layout>\n",
+	            gen_xml(buf, sizeof(buf), "window_layout", [&] (Genode::Xml_generator &g) {
+		            gen_boundary(g, binj, &comp, 1);
+	            }));
+
+	num = 0;
+	Boundary got_binj { };
+	ok = parse_window_layout(
+		node_of(gen_xml(buf, sizeof(buf), "window_layout", [&] (Genode::Xml_generator &g) {
+			gen_boundary(g, binj, &comp, 1);
+		})),
+		[&] (Boundary const &b, Layout_window const &win) {
+			got_binj = b;
+			got = win;
+			num++;
+		});
+
+	c.check(ok && num == 1,
+	        "window_layout: quote-bearing composed title cannot inject windows");
+	c.check(str_eq(got.title.string(), "pkg app q\"x&y"),
+	        "window_layout: composed title round-trips decoded (single escape)");
+	c.check(str_eq(got_binj.name.string(), "sc\"reen"),
+	        "window_layout: boundary name round-trips decoded");
 }
 
 
@@ -1195,6 +1307,20 @@ void case_v11_window_chrome(Ctx &c)
 		            gen_window_chrome_entry(g, plain);
 	            }));
 
+	Window_chrome inj = ch;
+	inj.label = "l\"x&y";
+	inj.title = "a\"b&c<d>e";
+
+	c.check_xml("v1.1 gen: window_chrome quote-bearing label/title escaped",
+	            "<window_chrome>\n"
+	            "\t<window wid=\"5\" label=\"l&quot;x&amp;y\""
+	            " title=\"a&quot;b&amp;c&lt;d>e\""
+	            " resizeable=\"yes\" focused=\"yes\" fw=\"648\" fh=\"488\"/>\n"
+	            "</window_chrome>\n",
+	            gen_xml(buf, sizeof(buf), "window_chrome", [&] (Genode::Xml_generator &g) {
+		            gen_window_chrome_entry(g, inj);
+	            }));
+
 	Window_chrome got { };
 	unsigned num = 0;
 	bool ok = parse_window_chrome(
@@ -1535,6 +1661,125 @@ void case_view_title(Ctx &c)
 	        "v1.1 wid: overflow rejected");
 }
 
+
+/* ===== 15. encode/decode identity (composition + matching) ====== */
+
+/*
+ * The '&' defect regression: a hostile title/label must survive
+ * generator -> parser -> generator AND the TasklistController's
+ * raw-wire 'label + " " + title' match without double escaping or
+ * loss of matching. The tasklist reads window_list/window_layout
+ * attributes RAW (wire form) and compares 'label_wire + " " +
+ * title_wire' against the window_layout 'title' wire; because
+ * escaping is per-character and the space separator is inert, that
+ * raw comparison equals the escaped composed title IFF the layouter
+ * decodes before composing (so it escapes exactly once).
+ */
+void case_wire_identity(Ctx &c)
+{
+	struct Case { char const *label; char const *title; char const *what; };
+	Case const cases[] {
+		{ "pkg -> app", "Tom & Jerry",        "ampersand title" },
+		{ "pkg -> app", "say \"hi\" there",   "quote title" },
+		{ "pkg -> app", "a < b > c",          "angle-bracket title" },
+		{ "A&B Co",     "x\"y&z<w>",          "hostile label+title" },
+		{ "pkg -> app", "",                   "empty title (bare label)" },
+	};
+
+	char buf[2048];
+
+	for (Case const &k : cases) {
+
+		/* encode: one window_list entry */
+		Window_list_entry in;
+		in.label  = k.label;
+		in.title  = k.title;
+		in.width  = 10;
+		in.height = 10;
+
+		char const *doc1 = gen_xml(buf, 1024, "window_list",
+			[&] (Genode::Xml_generator &g) { gen_window_list_entry(g, in); });
+
+		/* decode: parse round-trips the original text (no wire bleed) */
+		Window_list_entry out { };
+		unsigned n1 = 0;
+		bool const ok1 = parse_window_list(node_of(doc1),
+			[&] (Window_list_entry const &e) { out = e; n1++; });
+
+		c.check(ok1 && n1 == 1,
+		        "wire identity: hostile entry parses as one entry");
+		c.check(str_eq(out.label.string(), k.label)
+		     && str_eq(out.title.string(), k.title),
+		        "wire identity: label+title round-trip decoded (no double escape)");
+
+		/* stability: gen(parse(gen(x))) == gen(x) (escape is idempotent
+		 * once the wire is canonical) */
+		char doc1b[2048];
+		gen_xml(doc1b, sizeof(doc1b), "window_list",
+			[&] (Genode::Xml_generator &g) { gen_window_list_entry(g, out); });
+		c.check(str_eq(doc1, doc1b),
+		        "wire identity: re-generation is byte-stable");
+
+		/* composition: the layouter decodes, composes, escapes once */
+		Layout_window comp;
+		comp.title  = layout_title(out.label.string(), out.title.string());
+		comp.width  = 10;
+		comp.height = 10;
+
+		char const *doc2 = gen_xml(buf + 1024, 1024, "window_layout",
+			[&] (Genode::Xml_generator &g) {
+				Boundary b; b.name = "screen";
+				gen_boundary(g, b, &comp, 1);
+			});
+
+		Layout_window gotw { };
+		unsigned n2 = 0;
+		bool const ok2 = parse_window_layout(node_of(doc2),
+			[&] (Boundary const &, Layout_window const &w) { gotw = w; n2++; });
+
+		c.check(ok2 && n2 == 1
+		     && str_eq(gotw.title.string(), comp.title.string()),
+		        "wire identity: composed layout title round-trips decoded");
+
+		/* MATCHING INVARIANT (the tasklist simulation): the raw-wire
+		 * window_layout title must equal the raw-wire window_list
+		 * 'label + " " + title' concatenation. This is exactly what
+		 * tasklist_controller.cc compares; if the layouter double-
+		 * escaped, these diverge for every special-char title. */
+		Genode::String<256> raw_label { }, raw_title { };
+		node_of(doc1).for_each_sub_node("window", [&] (Genode::Node const &n) {
+			raw_label = n.attribute_value("label", Genode::String<256>());
+			raw_title = n.attribute_value("title", Genode::String<256>());
+		});
+
+		Genode::String<600> raw_layout_title { };
+		node_of(doc2).for_each_sub_node("boundary", [&] (Genode::Node const &b) {
+			b.for_each_sub_node("window", [&] (Genode::Node const &n) {
+				raw_layout_title =
+					n.attribute_value("title", Genode::String<600>());
+			});
+		});
+
+		bool const bare = (k.title[0] == '\0');
+		Genode::String<600> const composed_wire(
+			raw_label.string(), (bare ? "" : " "), (bare ? "" : raw_title.string()));
+
+		c.check(str_eq(raw_layout_title.string(), composed_wire.string()),
+		        "wire identity: tasklist raw-wire match holds (no double escape)");
+	}
+
+	/* direct inverse property: unescape_attr(escape_attr(x)) == x */
+	char const *hostile[] {
+		"a\"b&c<d>e", "&quot; literal", "AT&T", "x\"/><window label=\"forged",
+		"100% & <tag> \"q\"", "", "plain -> text",
+	};
+	for (char const *h : hostile) {
+		Genode::String<256> const rt = unescape_attr<256>(escape_attr(h).string());
+		c.check(str_eq(rt.string(), h),
+		        "wire identity: unescape_attr(escape_attr(x)) == x");
+	}
+}
+
 }  /* anonymous namespace */
 
 
@@ -1557,6 +1802,7 @@ unsigned Sponge::Wm_protocol::run_contract_tests(Check_fn report)
 	case_chrome_geometry(c);
 	case_chrome_hit(c);
 	case_view_title(c);
+	case_wire_identity(c);
 
 	return c.failures;
 }

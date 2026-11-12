@@ -84,6 +84,26 @@
  *     <focus_request> with BOTH a non-empty 'label' attribute and an
  *     'id' attribute (the layouter deduplicates on 'id', so the exact
  *     value must be preserved). Anything else is rejected as malformed.
+ *   - STRING ATTRIBUTE ENCODE/DECODE (H1 hardening): window titles and
+ *     labels are untrusted (client-controlled, up to 63/255 bytes,
+ *     may contain '"', '&', '<', '>'). Genode::Xml_generator writes
+ *     attribute values verbatim, so every generation helper escapes
+ *     the attribute-injection set ('&', '"', '<') through the one
+ *     shared 'escape_attr' helper before writing it, and every parse
+ *     helper reverses it with 'unescape_attr'. The wire therefore
+ *     carries escaped text while the library speaks decoded
+ *     (semantic) text: 'parse(gen(x)) == x' and
+ *     'gen(parse(gen(x))) == gen(x)' (no double escaping), and the
+ *     identity composition 'layout_title' plus the TasklistController's
+ *     'label + " " + title' raw-wire match stay aligned because
+ *     escaping is per-character and the space separator is inert.
+ *     '>' is left raw on purpose (XML 1.0 reserves only '<', '&', and
+ *     the quote character inside attribute values, so a raw '>' is
+ *     inert and cannot forge nodes) and because the canonical "->"
+ *     Genode session-label separator must stay byte-identical on the
+ *     wire for the frozen label-matching consumers; see 'escape_attr'.
+ *     Valid attribute text (no '&', '"', '<') is byte-identical on the
+ *     wire and round-trips unchanged.
  *
  * GEOMETRY SEMANTICS (docs/05-sponge-de.md §4.6):
  *
@@ -245,6 +265,86 @@ struct Rules
 /* ======================= generation (XML) ======================= */
 
 /*
+ * Escape one string for use as an XML attribute value (the single
+ * shared encoder; its exact inverse is 'unescape_attr' below):
+ *
+ *   '&' -> "&amp;"   '"' -> "&quot;"   '<' -> "&lt;"
+ *
+ * This is the full set XML 1.0 requires (and C14N escapes) inside a
+ * quoted attribute value: '&', the quote character, and '<'. '>'
+ * stays raw on purpose. Re-evaluated against the security
+ * requirement and the actual constraints: a raw '>' is explicitly
+ * allowed in an attribute value (XML 1.0 reserves only '<', '&', and
+ * the quote there) and cannot close the attribute or forge nodes, so
+ * escaping it buys no safety; but the canonical "->" separator of
+ * Genode session labels ("parent -> child") must stay byte-identical
+ * on the wire for the frozen byte-shape goldens and the label-prefix
+ * consumers (native_wm_common + native_wm_qmp_probe match raw '->'
+ * text and are out of scope to change). Escaping '>' would therefore
+ * be a cosmetic wire change that breaks legitimate label matching —
+ * the opposite of the stated goal. So the escaped set is exactly the
+ * injection-capable characters, and '>' remains raw.
+ *
+ * All other bytes pass through unchanged, so valid attribute text is
+ * byte-identical to its input. The capacity holds the worst case of
+ * the protocol's largest strings (Window_list_entry label/title,
+ * Genode::String<256>: 255 bytes * 6 = 1530 escaped bytes); the
+ * helper never truncates in the middle of an entity (oversized input
+ * is dropped at an entity boundary).
+ *
+ * Why this exists: titles/labels are untrusted window state. Written
+ * verbatim into an attribute, a quote-bearing title closes the
+ * attribute early and forges sibling nodes (or breaks the document so
+ * a parse failure reads as an empty snapshot). Escaping at generation
+ * keeps the document shape intact so the value cannot inject nodes.
+ */
+Genode::String<1600> escape_attr(char const *src);
+
+/*
+ * Exact inverse of 'escape_attr': decode one escaped attribute value
+ * back to its original text. Every parse helper below funnels string
+ * attribute reads through this so the library speaks decoded
+ * (semantic) text while the wire carries escaped text. The inverse
+ * covers the three entities 'escape_attr' emits plus '&gt;'/'&apos;'
+ * for foreign producers. A bare '&' or an incomplete entity passes
+ * through unchanged, so a raw/HID value decodes to itself and only
+ * well-formed entity text is translated — 'unescape_attr(escape_attr(x))
+ * == x' for every input, which is what keeps 'gen(parse(gen(x)))' from
+ * double-escaping and keeps the TasklistController's raw-wire
+ * 'label + " " + title' match aligned with the composed window_layout
+ * title. 'CAP' is the destination field width (decode only shrinks,
+ * so the escaped input may be read at the same width).
+ */
+template <Genode::size_t CAP>
+Genode::String<CAP> unescape_attr(char const *src)
+{
+	char buf[CAP];
+	Genode::size_t n = 0;
+
+	for (char const *p = (src ? src : ""); *p != '\0' && n + 1 < CAP; ) {
+
+		char const *suffix = nullptr;
+		char        plain  = '\0';
+
+		if      (Genode::strcmp(p, "&amp;",  5) == 0) { plain = '&';  suffix = p + 5; }
+		else if (Genode::strcmp(p, "&quot;", 6) == 0) { plain = '"';  suffix = p + 6; }
+		else if (Genode::strcmp(p, "&lt;",   4) == 0) { plain = '<';  suffix = p + 4; }
+		else if (Genode::strcmp(p, "&gt;",   4) == 0) { plain = '>';  suffix = p + 4; }
+		else if (Genode::strcmp(p, "&apos;", 6) == 0) { plain = '\''; suffix = p + 6; }
+
+		if (suffix) {
+			buf[n++] = plain;
+			p = suffix;
+		} else {
+			buf[n++] = *p++;
+		}
+	}
+
+	buf[n] = '\0';
+	return Genode::String<CAP>(Genode::Cstring(buf, n));
+}
+
+/*
  * Emit one <window> entry of a window_list document in the upstream
  * attribute order (id, label, title, width, height, then the 'yes'
  * form of has_alpha/hidden/resizeable when true).
@@ -293,13 +393,15 @@ bool parse_window_list(Genode::Node const &root, FN const &fn)
 
 	root.for_each_sub_node("window", [&] (Genode::Node const &n) {
 		Window_list_entry e;
-		e.label = n.attribute_value("label", Genode::String<256>());
+		e.label = unescape_attr<256>(
+			n.attribute_value("label", Genode::String<256>()).string());
 
 		/* no label identity -> ignored (contract §window_list) */
 		if (e.label.string()[0] == '\0')
 			return;
 
-		e.title      = n.attribute_value("title", Genode::String<256>());
+		e.title      = unescape_attr<256>(
+			n.attribute_value("title", Genode::String<256>()).string());
 		e.id         = n.attribute_value("id", 0UL);
 		e.width      = n.attribute_value("width", 0L);
 		e.height     = n.attribute_value("height", 0L);
@@ -328,7 +430,8 @@ bool parse_window_layout(Genode::Node const &root, FN const &fn)
 
 	root.for_each_sub_node("boundary", [&] (Genode::Node const &b) {
 		Boundary boundary;
-		boundary.name   = b.attribute_value("name", Genode::String<64>());
+		boundary.name   = unescape_attr<64>(
+			b.attribute_value("name", Genode::String<64>()).string());
 		boundary.xpos   = b.attribute_value("xpos", 0);
 		boundary.ypos   = b.attribute_value("ypos", 0);
 		boundary.width  = b.attribute_value("width", 0L);
@@ -336,7 +439,8 @@ bool parse_window_layout(Genode::Node const &root, FN const &fn)
 
 		b.for_each_sub_node("window", [&] (Genode::Node const &n) {
 			Layout_window w;
-			w.title = n.attribute_value("title", Genode::String<256>());
+			w.title = unescape_attr<256>(
+				n.attribute_value("title", Genode::String<256>()).string());
 
 			/* no title identity -> ignored (contract §window_layout) */
 			if (w.title.string()[0] == '\0')
@@ -373,7 +477,8 @@ inline bool parse_focus_request(Genode::Node const &root, Focus_request &out)
 
 	Focus_request req;
 	req.id    = root.attribute_value("id", 0UL);
-	req.label = root.attribute_value("label", Genode::String<256>());
+	req.label = unescape_attr<256>(
+		root.attribute_value("label", Genode::String<256>()).string());
 
 	/* no label identity -> nothing to focus */
 	if (req.label.string()[0] == '\0')
@@ -401,16 +506,21 @@ bool parse_rules(Genode::Node const &root, Rules &info, FN const &fn)
 
 	root.for_each_sub_node("screen", [&] (Genode::Node const &n) {
 		if (info.num_screens == 0)
-			info.screen_name = n.attribute_value("name", Genode::String<64>());
+			info.screen_name = unescape_attr<64>(
+				n.attribute_value("name", Genode::String<64>()).string());
 		info.num_screens++;
 	});
 
 	root.for_each_sub_node("assign", [&] (Genode::Node const &n) {
 		Assign a;
-		a.label        = n.attribute_value("label", Genode::String<256>());
-		a.label_prefix = n.attribute_value("label_prefix", Genode::String<256>());
-		a.label_suffix = n.attribute_value("label_suffix", Genode::String<256>());
-		a.target       = n.attribute_value("target", Genode::String<64>());
+		a.label        = unescape_attr<256>(
+			n.attribute_value("label", Genode::String<256>()).string());
+		a.label_prefix = unescape_attr<256>(
+			n.attribute_value("label_prefix", Genode::String<256>()).string());
+		a.label_suffix = unescape_attr<256>(
+			n.attribute_value("label_suffix", Genode::String<256>()).string());
+		a.target       = unescape_attr<64>(
+			n.attribute_value("target", Genode::String<64>()).string());
 
 		a.has_position = n.has_attribute("xpos") && n.has_attribute("ypos");
 		a.has_size     = n.has_attribute("width") && n.has_attribute("height");
@@ -429,8 +539,10 @@ bool parse_rules(Genode::Node const &root, Rules &info, FN const &fn)
 
 	root.for_each_sub_node("press", [&] (Genode::Node const &n) {
 		if (!info.has_press) {
-			info.press.key    = n.attribute_value("key", Genode::String<24>());
-			info.press.action = n.attribute_value("action", Genode::String<32>());
+			info.press.key    = unescape_attr<24>(
+				n.attribute_value("key", Genode::String<24>()).string());
+			info.press.action = unescape_attr<32>(
+				n.attribute_value("action", Genode::String<32>()).string());
 			info.has_press    = true;
 		}
 		info.num_press++;
@@ -438,8 +550,10 @@ bool parse_rules(Genode::Node const &root, Rules &info, FN const &fn)
 
 	root.for_each_sub_node("release", [&] (Genode::Node const &n) {
 		if (!info.has_release) {
-			info.release.key    = n.attribute_value("key", Genode::String<24>());
-			info.release.action = n.attribute_value("action", Genode::String<32>());
+			info.release.key    = unescape_attr<24>(
+				n.attribute_value("key", Genode::String<24>()).string());
+			info.release.action = unescape_attr<32>(
+				n.attribute_value("action", Genode::String<32>()).string());
 			info.has_release    = true;
 		}
 		info.num_release++;
@@ -659,8 +773,10 @@ bool parse_window_chrome(Genode::Node const &root, FN const &fn)
 			return;
 		}
 		c.wid        = n.attribute_value("wid", 0UL);
-		c.label      = n.attribute_value("label", Genode::String<256>());
-		c.title      = n.attribute_value("title", Genode::String<256>());
+		c.label      = unescape_attr<256>(
+			n.attribute_value("label", Genode::String<256>()).string());
+		c.title      = unescape_attr<256>(
+			n.attribute_value("title", Genode::String<256>()).string());
 		c.resizeable = n.attribute_value("resizeable", false);
 		c.focused    = n.attribute_value("focused", false);
 		c.fw         = n.attribute_value("fw", 0L);
