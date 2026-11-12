@@ -13,6 +13,22 @@
 #   (c) a synthetic title-bar drag (Event injection into nitpicker)
 #       moves the window by the exact drag delta (real WM behavior).
 #
+# The fixture follow-up (test/native_wm_fixture_client, steps 6-9 of
+# native_wm_probe) additionally proves same-session top-level-view
+# destroy/recreate at runtime (the d0b2687976/1fac8b46a6 same-wid
+# resurrection contract): the fixture window is non-resizeable
+# (it never signals the Gui info ROM), a fixture_cmd destroy_view
+# removes it from window_list AND window_chrome, and a create_view in
+# the SAME Gui session restores it under the SAME wid with fresh
+# title/geometry, chrome re-attach, and the session-derived
+# resizeable="no" state re-applied. A fresh chrome-close click after
+# recreation must apply again (sponge_wm's "close requested" audit
+# line — the sticky-close latch is reset by the resurrection).
+# Fixture contract (fixture_cmd ROM, written by the probe):
+#   <fixture_cmd><title text="..."/></fixture_cmd>
+#   <fixture_cmd><destroy_view/></fixture_cmd>
+#   <fixture_cmd><create_view title="..."/></fixture_cmd>
+#
 # Derived from run/sponge-wm.run (the proven upstream smoke topology).
 # The upstream anchors run/sponge-wm{,-qmp,-tasks}.run stay untouched
 # and green (D16W.7); this scenario is the native gate only.
@@ -86,7 +102,7 @@
 
 build { core lib/ld init timer server/report_rom server/nitpicker \
          sponge_wm sponge_layouter sponge_decorator \
-         sponge-de test/native_wm_probe \
+         sponge-de test/native_wm_probe test/native_wm_fixture_client \
          qt6/base lib/libc lib/libm lib/stdcxx lib/mesa \
          lib/mesa_gpu-softpipe lib/egl lib/softpipe lib/libdrm lib/expat \
          lib/qt6_component lib/vfs lib/vfs_pipe lib/vfs_gpu lib/rom_filter \
@@ -130,6 +146,8 @@ config
     + policy | label: native_wm_probe -> window_list   | report: sponge_wm -> window_list
     + policy | label: native_wm_probe -> window_layout | report: sponge_layouter -> window_layout
     + policy | label: native_wm_probe -> decorator_margins | report: sponge_decorator -> decorator_margins
+    + policy | label: native_wm_probe -> window_chrome | report: sponge_wm -> window_chrome
+    + policy | label: native_wm_fixture_client -> fixture_cmd | report: native_wm_probe -> fixture_cmd
     #
     # Internal contract v1.1 (binding; see header).
     #
@@ -194,6 +212,9 @@ config
       + screen screen
       + assign | label: sponge-de -> Sponge DE Demo | target: screen
                | xpos: 192 | ypos: 172 | width: 640 | height: 480 | maximized: no
+      + assign | label_prefix: native_wm_fixture_client | target: screen
+               | xpos: 850 | ypos: 560 | width: 160 | height: 160
+               | maximized: no
     + press   | key: BTN_LEFT  | action: drag
       + release | key: BTN_LEFT | action: drop
   + route
@@ -257,7 +278,15 @@ config
       + parent
       + any-child
 
-+ start native_wm_probe | caps: 100 | ram: 16M
++ start native_wm_fixture_client | caps: 100 | ram: 4M
+  + route
+    + service Gui | + child sponge_wm
+    + service ROM | label: fixture_cmd | + child report_rom
+    + any-service
+      + parent
+      + any-child
+
++ start native_wm_probe | caps: 150 | ram: 16M
   + route
     + service Capture | + child nitpicker
     + service Event   | + child nitpicker
@@ -265,6 +294,8 @@ config
     + service ROM | label: window_list       | + child report_rom
     + service ROM | label: window_layout     | + child report_rom
     + service ROM | label: decorator_margins | + child report_rom
+    + service ROM | label: window_chrome     | + child report_rom
+    + service Report | label: fixture_cmd    | + child report_rom
     + any-service
       + parent
       + any-child
@@ -322,9 +353,15 @@ append qemu_args " -nographic "
 
 #
 # Automated verification: native_wm_probe logs PASS once the protocol
-# shape, placement, render and synthetic-drag checks all ran. On
-# timeout the run tool errors out — that is the FAIL path. The timeout
-# is generous because Qt's first paint under software (softpipe) Mesa
-# is slow.
+# shape, placement, render, synthetic-drag AND the fixture
+# destroy/recreate checks all ran. The close-request gate chains
+# between the probe's [step 9] dispatch marker and PASS: sponge_wm's
+# "close requested" audit line proves a fresh close request APPLIED
+# after the same-wid resurrection (the sticky-close latch reset).
+# On timeout the run tool errors out — that is the FAIL path. The
+# first timeout is generous because Qt's first paint under software
+# (softpipe) Mesa is slow.
 #
-run_genode_until {.*native-wm-probe: PASS.*} 300
+run_genode_until {.*native-wm-probe: \[step 9\] close dispatched.*} 300
+run_genode_until {.*sponge_wm: close requested for window.*} 60
+run_genode_until {.*native-wm-probe: PASS.*} 60
