@@ -34,7 +34,7 @@ struct Chrome_view
 		Genode::Env &_env;
 
 		Window_chrome _chrome { };
-		bool          _focused { true };
+		bool          _focused { false };  /* seeded from chrome.focused */
 
 		Gui::Connection _gui;
 
@@ -59,7 +59,9 @@ struct Chrome_view
 		/*
 		 * Apply a window_chrome snapshot entry. Size changes rebuild
 		 * the buffer and the view (the core re-associates by title);
-		 * title/resizeable changes repaint in place.
+		 * title/resizeable changes repaint in place, and the entry's
+		 * per-window focus truth (focused="yes"/"no") is routed to
+		 * focused(), which repaints on change.
 		 */
 		void update(Window_chrome const &chrome, Theme const &theme,
 		            Text_painter::Font const &font);
@@ -67,10 +69,12 @@ struct Chrome_view
 		void repaint(Theme const &theme, Text_painter::Font const &font);
 
 		/*
-		 * Focused/unfocused visual state. v1.1 delivers no focus signal
-		 * to the decorator (see README); the state is renderable and
-		 * switchable here so a future protocol revision only has to
-		 * route it.
+		 * Focused/unfocused visual state, selected from the snapshot's
+		 * 'focused' attribute (a legacy entry without it parses false).
+		 * Switches the palette and repaints on change, emitting the
+		 * 'chrome view <wid> focus yes|no' log marker. update() routes
+		 * every snapshot value here; hover/pressed states need input
+		 * and stay out of scope by contract.
 		 */
 		void focused(bool value, Theme const &theme,
 		             Text_painter::Font const &font);

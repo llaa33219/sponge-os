@@ -4,6 +4,8 @@
  * chrome_view.h).
  */
 
+#include <base/log.h>
+
 #include "chrome_view.h"
 
 using namespace Sponge::Decorator;
@@ -24,6 +26,18 @@ Gui::Rect view_rect(Window_chrome const &chrome)
 	return Gui::Rect { Gui::Point { 0, 0 }, view_area(chrome) };
 }
 
+/*
+ * Focus-state log marker ('chrome view <wid> focus yes|no'), emitted
+ * whenever a chrome view is painted under a newly established focus
+ * state — at construction and on every flip. Native QMP scenarios
+ * assert on this line to prove per-window focus reached the chrome.
+ */
+void log_focus(unsigned long wid, bool focused)
+{
+	Genode::log("sponge_decorator: chrome view ", wid, " focus ",
+	            focused ? "yes" : "no");
+}
+
 }  /* anonymous namespace */
 
 
@@ -32,12 +46,14 @@ Chrome_view::Chrome_view(Genode::Env &env, Window_chrome const &chrome,
 :
 	_env(env),
 	_chrome(chrome),
+	_focused(chrome.focused),
 	_gui(env, Wm_protocol::view_title(chrome.wid).string())
 {
 	_allocate_buffer();
 	_create_view();
 	_draw(theme, font);
 	_gui.framebuffer.refresh(view_rect(_chrome));
+	log_focus(_chrome.wid, _focused);
 }
 
 
@@ -101,6 +117,8 @@ void Chrome_view::update(Window_chrome const &chrome, Theme const &theme,
 		_create_view();
 	}
 
+	focused(chrome.focused, theme, font);
+
 	_draw(theme, font);
 	_gui.framebuffer.refresh(view_rect(_chrome));
 }
@@ -120,5 +138,6 @@ void Chrome_view::focused(bool value, Theme const &theme,
 		return;
 
 	_focused = value;
+	log_focus(_chrome.wid, value);
 	repaint(theme, font);
 }

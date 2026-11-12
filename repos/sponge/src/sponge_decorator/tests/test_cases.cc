@@ -261,6 +261,107 @@ c.check_eq(t.margins.left, 8, "invalid margin_left keeps fallback");
 }
 
 
+/* =================== focus-state style selection =============== */
+
+void test_focus_style(Checker &c)
+{
+	Theme t;
+	char const *palette =
+		"[decor]\n"
+		"title_bg = #111111\ntitle_bg_unfocused = #222222\n"
+		"title_text = #333333\ntitle_text_unfocused = #444444\n"
+		"button_bg = #555555\nbutton_bg_unfocused = #666666\n"
+		"button_glyph = #777777\nbutton_glyph_unfocused = #888888\n"
+		"button_close_glyph = #999999\n";
+	c.check(parse_str(palette, t), "focus palette theme parses cleanly");
+
+	Chrome_style const on = chrome_style(t, true);
+	Chrome_style const off = chrome_style(t, false);
+
+	c.check_color(on.title_bg, Genode::Color::rgb(0x11, 0x11, 0x11),
+	              "focused style selects title_bg");
+	c.check_color(on.title_text, Genode::Color::rgb(0x33, 0x33, 0x33),
+	              "focused style selects title_text");
+	c.check_color(on.button_bg, Genode::Color::rgb(0x55, 0x55, 0x55),
+	              "focused style selects button_bg");
+	c.check_color(on.button_glyph, Genode::Color::rgb(0x77, 0x77, 0x77),
+	              "focused style selects button_glyph");
+	c.check_color(on.button_close_glyph, Genode::Color::rgb(0x99, 0x99, 0x99),
+	              "focused close glyph keeps button_close_glyph");
+	c.check_color(off.title_bg, Genode::Color::rgb(0x22, 0x22, 0x22),
+	              "unfocused style selects title_bg_unfocused");
+	c.check_color(off.title_text, Genode::Color::rgb(0x44, 0x44, 0x44),
+	              "unfocused style selects title_text_unfocused");
+	c.check_color(off.button_bg, Genode::Color::rgb(0x66, 0x66, 0x66),
+	              "unfocused style selects button_bg_unfocused");
+	c.check_color(off.button_glyph, Genode::Color::rgb(0x88, 0x88, 0x88),
+	              "unfocused style selects button_glyph_unfocused");
+	c.check_color(off.button_close_glyph, Genode::Color::rgb(0x88, 0x88, 0x88),
+	              "unfocused close glyph dims to button_glyph_unfocused");
+	c.check_color(off.frame_border, t.colors.frame_border,
+	              "frame_border is focus-invariant");
+	c.check(off.grip_bg.transparent(),
+	        "grip_bg is focus-invariant (not painted)");
+
+	char buf[1024];
+	char const *doc = gen_xml(buf, sizeof(buf), "window_chrome",
+		[&] (Genode::Xml_generator &g) {
+			Wm_protocol::Window_chrome a { };
+			a.wid = 1;
+			a.fw = 640;
+			a.fh = 480;
+			a.focused = true;
+			Wm_protocol::gen_window_chrome_entry(g, a);
+
+			Wm_protocol::Window_chrome b { };
+			b.wid = 2;
+			b.fw = 320;
+			b.fh = 240;
+			b.focused = false;
+			Wm_protocol::gen_window_chrome_entry(g, b);
+		});
+
+	Wm_protocol::Window_chrome got[2] { };
+	unsigned num = 0;
+
+	Genode::Node const root {
+		Genode::Const_byte_range_ptr(doc, Genode::strlen(doc)) };
+	c.check(Wm_protocol::parse_window_chrome(root,
+		[&] (Wm_protocol::Window_chrome const &e) {
+			if (num < 2) got[num++] = e;
+		}),
+	        "generated snapshot parses via the frozen parser");
+	c.check_eq(num, 2, "snapshot carries both entries");
+	c.check(got[0].focused, "focused=\"yes\" parses true");
+	c.check(!got[1].focused, "focused=\"no\" parses false");
+	c.check_color(chrome_style(t, got[0].focused).title_bg,
+	              Genode::Color::rgb(0x11, 0x11, 0x11),
+	              "snapshot focused='yes' selects title_bg");
+	c.check_color(chrome_style(t, got[1].focused).title_bg,
+	              Genode::Color::rgb(0x22, 0x22, 0x22),
+	              "snapshot focused='no' selects title_bg_unfocused");
+
+	char const *legacy =
+		"<window_chrome><window wid=\"3\" label=\"app\" title=\"Three\""
+		" fw=\"320\" fh=\"240\"/></window_chrome>";
+	Genode::Node const legacy_root {
+		Genode::Const_byte_range_ptr(legacy, Genode::strlen(legacy)) };
+	bool legacy_focused = true;
+	unsigned legacy_num = 0;
+	c.check(Wm_protocol::parse_window_chrome(legacy_root,
+		[&] (Wm_protocol::Window_chrome const &e) {
+			legacy_focused = e.focused;
+			legacy_num++;
+		}),
+	        "legacy snapshot without focused parses");
+	c.check_eq(legacy_num, 1, "legacy snapshot carries the entry");
+	c.check(!legacy_focused, "legacy absent focused parses false");
+	c.check_color(chrome_style(t, legacy_focused).title_bg,
+	              Genode::Color::rgb(0x22, 0x22, 0x22),
+	              "legacy snapshot selects the unfocused style");
+}
+
+
 /* ====================== margins validation ====================== */
 
 void test_margins(Checker &c)
@@ -468,6 +569,7 @@ unsigned Sponge::Decorator::run_test_cases(Check_fn report)
 	Checker c { 0, 0, report };
 
 	test_theme(c);
+	test_focus_style(c);
 	test_margins(c);
 	test_geometry(c);
 	test_glyphs(c);
