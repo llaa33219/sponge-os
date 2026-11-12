@@ -33,16 +33,17 @@
 # The upstream anchors run/sponge-wm{,-qmp,-tasks}.run stay untouched
 # and green (D16W.7); this scenario is the native gate only.
 #
-# === EXPECTED FAILURE AT THIS STAGE (honest) ===
+# === STATUS (delivered, 2026-11-12) ===
 #
 # The three native components (repos/sponge/src/sponge_wm,
 # repos/sponge/src/sponge_layouter, repos/sponge/src/sponge_decorator)
-# DO NOT EXIST YET. The `build` block below references them on
-# purpose: until M1-M3 land, `make run/sponge-wm-native` fails at
-# build-target resolution with a missing-target error naming one of
-# them. That failure is the ACCEPTANCE CAPTURE for this scaffolding
-# milestone — it must not be masked by stubs. Nothing prints PASS
-# before the native stack is real.
+# are delivered and this scenario is the M1 acceptance gate: PASS on
+# base-linux at commit 191222130e, including the non-resizeable
+# fixture and the same-wid destroy/recreate sequence with a fresh
+# close (steps 6-9 below). Receipts: docs/evidence/phase16-wm-index.md.
+# The `build` block references the native trio on purpose and nothing
+# prints PASS from stubs: every gate marker is emitted by the real
+# probes against the real components.
 #
 # Architecture (flat, base-linux or base-sel4, headless):
 #
@@ -186,11 +187,12 @@ config
     + service Gui
   + config
     #
-    # TODO(native-wm): the session-policy schema is the Sponge-owned
+    # Note: the session-policy schema is the Sponge-owned
     # core contract (D16W.3). This stanza is the run-side expectation
     # (chrome and layouter sessions are distinguished by label, as in
-    # the proven upstream topology); M1 may refine it, but the child
-    # names and the report labels stay as routed above.
+    # the proven upstream topology); the delivered core honours it as
+    # routed here, and the child names and the report labels stay as
+    # routed above.
     #
     + policy | label_prefix: sponge_decorator | role: decorator
     + policy | label_prefix: sponge_layouter  | role: layouter
@@ -232,12 +234,12 @@ config
 + start sponge_decorator | caps: 350 | ram: 32M
   + config
     #
-    # TODO(native-wm): native chrome config (theme source + the native
+    # Note: native chrome config (theme source + the native
     # close/minimize/fullscreen button set) is the Sponge-owned
-    # decorator contract (D16W.1/D16W.4). No themed_decorator and no
-    # upstream decorator is wired in this topology (D16W.4). Chrome
-    # association with client windows runs through sponge_wm's content
-    # association (D16W.3), not through a window_layout ROM.
+    # decorator contract (D16W.1/D16W.4), delivered. No themed_decorator
+    # and no upstream decorator is wired in this topology (D16W.4).
+    # Chrome association with client windows runs through sponge_wm's
+    # content association (D16W.3), not through a window_layout ROM.
     #
     + theme | source: default
   + route

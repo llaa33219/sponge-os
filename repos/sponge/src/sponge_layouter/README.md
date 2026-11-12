@@ -226,13 +226,13 @@ move). Expected tiling/chrome geometry is
 computed by independent copies of the committed acceptance probe math,
 so a model/probe misunderstanding cannot self-certify.
 
-## Honest status
+## Status (delivered)
 
-The component builds and its policy model is proven host-side. The
-native runtime scenarios (`run/sponge-wm-native*.run`) remain **blocked**
-on the sibling components `sponge_wm` (core) and `sponge_decorator`
-(chrome) and are deliberately not claimed PASS from this deliverable.
-Integration note for the core: role `layouter` Gui sessions must
+The component builds and its policy model is proven host-side
+(`self-test: PASS (144 checks)`). The native runtime scenarios
+(`run/sponge-wm-native*.run`) are delivered and PASS with the full
+trio at commit `191222130e` (receipts: `docs/evidence/phase16-wm-index.md`).
+Integration contract for the core: role `layouter` Gui sessions
 forward chrome input losslessly (screen-absolute pointer coordinates)
 and answer `Gui::Session::info()` with the screen/mode rect; the core
 applies `window_request` including the sticky `action="close"` 0x0
