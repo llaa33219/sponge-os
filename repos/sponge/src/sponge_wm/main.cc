@@ -269,7 +269,7 @@ struct Main : Wm_ops
 		}
 
 		Dirty dirty = Dirty::NONE;
-		bool  close_owed[Wm_registry::MAX_WINDOWS];
+		unsigned long close_owed[Wm_registry::MAX_WINDOWS];
 		unsigned num_close = 0;
 
 		for (unsigned i = 0; i < n; i++) {
