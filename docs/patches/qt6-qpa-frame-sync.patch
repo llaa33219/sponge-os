@@ -91,6 +91,10 @@ Properties that matter for safety:
     wakeup. Every state field that the Qt thread owns is touched only by
     the Qt thread.
 
+  * RESIZE SAFETY. Geometry changes cancel the deferred submit before
+    the framebuffer is replaced. A blit captured at the old size can
+    therefore never write into a smaller replacement dataspace.
+
 REJECTED: the blocking variant
 ------------------------------
 An earlier revision of this patch waited (bounded, 50 x 5 ms) for the
@@ -239,6 +243,11 @@ Sponge OS
  
 --- a/src/plugins/platforms/genode/qgenodeplatformwindow.cpp
 +++ b/src/plugins/platforms/genode/qgenodeplatformwindow.cpp
+@@ -559,2 +559,4 @@
+ void QGenodePlatformWindow::_adjust_and_set_geometry(const QRect &rect)
+ {
++	cancel_pending_frame();
++
 @@ -652,6 +652,8 @@
                          &QGenodePlatformWindow::_handle_input),
    _info_changed_signal_handler(_env.ep(), *this,

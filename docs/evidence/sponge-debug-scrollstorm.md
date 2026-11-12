@@ -406,6 +406,51 @@ SPONGE_ARM=grow     ./tool/build run sponge-debug-scrollstorm
 SPONGE_ARM=burst    ./tool/build run sponge-debug-scrollstorm
 ```
 
+---
+
+## 9. Resize/deferred-blit follow-up (2026-11-12)
+
+The frame-coalescing work above had a resize-specific lifetime defect.
+Two of three native-QMP runs failed at close after logging an earlier
+`illegal WRITE` in `pkg_gui_demo`; the run without that fault passed close.
+The fault was therefore not a close-protocol failure: core stopped the
+client thread before Qt could process the later close event.
+
+Source inspection isolated the race to the deferred raster blit:
+
+1. `QGenodeWindowSurface::flush()` captured the old window geometry in the
+   deferred callable.
+2. `_adjust_and_set_geometry()` replaced the framebuffer on resize but did
+   not invalidate that callable.
+3. A later frame acknowledgement or stale-flush timer invoked the callable,
+   which resolved the **new** framebuffer while still using the **old**
+   dimensions. On shrink, `drawImage` could write beyond the newly attached
+   dataspace. The backing `_image` is resized lazily too, so its clip did
+   not make the operation safe.
+
+The fix is one line in `_adjust_and_set_geometry()`:
+`cancel_pending_frame()` runs before the geometry-driven buffer swap.
+Every buffer swap passes through this function, and all deferred-submit
+state is Qt-thread-confined, so no old-size blit can survive the swap.
+The durable patch `docs/patches/qt6-qpa-frame-sync.patch` and ledger row
+#23 carry the change; no vendored-source edit is the source of truth.
+
+Red→green evidence:
+
+| Arm | Result |
+|---|---|
+| Pre-fix native QMP, run A | `illegal WRITE ... ip=0x16cf03c5`, then close timeout |
+| Pre-fix native QMP, run B | `illegal WRITE ... ip=0x16cf04a6`, then close timeout |
+| Pre-fix native QMP, control | no client fault; full PASS |
+| Post-fix native QMP, three consecutive runs | full PASS, no `illegal WRITE` |
+| `run/sponge-wm-native-tasks` after the fix | PASS, including close and recreate |
+| `run/sponge-wm-native` after the fix | PASS: placement, rendering, title drag, post-move pixels |
+
+The full battery exercises move, all eight resize zones, focus,
+minimize/restore, maximize/restore with `maximized="no"` convergence, and
+close. A reverse dry-run of the durable patch also passes, confirming that
+the fetched QPA source and the recorded patch are identical.
+
 (`tool/build` does not forward environment variables to the Genode
 `make`; the equivalent explicit invocation, which does, is
 `SPONGE_ARM=<arm> make -C genode/build/x86_64 run/sponge-debug-scrollstorm`.)
