@@ -1214,7 +1214,9 @@ Twelve new completion criteria:
     `47f5b8d92c`/`f1c6ec0ea8` (focus metadata), `d0b2687976`/
     `1fac8b46a6` (lifecycle), `22f62d52c9` (QMP runtime),
     `191222130e` (recreation), `73e0874cd9` (non-resizeable tiling),
-    `4b2163d5f8` (upstream anchors).
+    `4b2163d5f8` (upstream anchors), plus the load-bearing fixes
+    `ccfef79cf1` (two-way maximize inference) and `afb9d50980`
+    (qt6 stale-frame cancel before resize).
 - [ ] **Criterion 17: real-hardware DE panel configuration edits.**
   Change panel settings through the DE on a physical machine and
   observe both the live result and the `sponge_configd` value.

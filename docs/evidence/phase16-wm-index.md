@@ -33,9 +33,12 @@
   sequence (no partial on the native path). Decorator focus evidence,
   verbatim: `chrome view <2,4> focus no (2 unfocused flip(s))`.
 - **Native tasklist/protocol compat** (`run/sponge-wm-native-tasks.run`):
-  PASS with the delivered `TasklistController` unchanged (protocol v1
+  PASS with **no native-specific protocol changes** (protocol v1
   transitions rows 1/3/5/8-11 plus remove/reinstall/relaunch and
-  close/recreate slot reset).
+  close/recreate slot reset). The controller's wire shapes are
+  unchanged; the maximize inference on the shared path did change once
+  (`ccfef79cf1`, two-way clearing, correction of record in
+  `docs/05-sponge-de.md` §4.6), not for the native topology.
 - **Full 20-cycle tiling acceptance** (`run/sponge-wm-native-tiling.run`):
   PASS with the non-resizeable fixture floating at (850,560)160x160
   and the remaining client at master (8,56)496x704. Master-Stack
@@ -102,6 +105,16 @@ new ledger rows).
   full 8-zone sequence in one scenario run (§2).
 - **Physical hardware: non-goal.** Criterion 16 adds no
   physical-hardware gate; all receipts here are host or QEMU runs.
+- **Lifecycle observability limitation (not a partial).** Same-wid
+  resurrection freshness depends on the layouter observing the destroy
+  absence before the recreate: if a same-wid recreate is reported with
+  no observed absence between destroy and recreate, the layouter can
+  carry stale per-window state across the resurrection. Core/session
+  behavior is correct (`sponge_wm` re-registration and in-place
+  revival, `d0b2687976`/`1fac8b46a6`), and the acceptance scenario
+  serializes destroy-then-recreate, so the measured gates do not
+  exercise the unobserved-absence window. This bounds one freshness
+  claim only; it does not make timing-dependent recovery impossible.
 
 ## 8. Commit receipts (all resolve at HEAD `191222130e`)
 
@@ -114,6 +127,8 @@ new ledger rows).
 | Same-session view recreation (close-after-recreate) | `191222130e` |
 | Non-resizeable windows float in tiling | `73e0874cd9` |
 | Upstream anchor routing and startup | `4b2163d5f8` |
+| Load-bearing fix: two-way maximize inference (stale maximized state cleared) | `ccfef79cf1` |
+| Load-bearing fix: stale-frame cancel before resize (qt6 QPA, ledger row #23) | `afb9d50980` |
 
 Protocol v1 stays frozen (`docs/05-sponge-de.md` §4.6); the internal
 v1.1 contract is `docs/plans/phase16-sponge-wm.md` §11. State machine:

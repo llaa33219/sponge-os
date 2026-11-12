@@ -251,6 +251,17 @@ rendering through the same reporter convention. Compatibility means
 identical node and attribute semantics in either encoding, not identical
 payload bytes across different encodings.
 
+Native Sponge XML producers escape `&`, `"`, and `<` in string
+attributes; the shared protocol parser decodes those entities once into
+semantic text, and generators re-escape on output. `>` remains literal,
+preserving the canonical `->` session-label separator. This changes no
+node shape or attribute meaning. The layouter composes the decoded
+`label + " " + title` identity before escaping it once, so the
+TasklistController's raw-wire comparison remains aligned without a Qt
+change. A malformed `window_list` document is not a valid empty snapshot:
+the native layouter retains its last good state and warns at a bounded
+rate.
+
 Producers per topology (report label equals ROM label in every row;
 the run scenarios route `wm -> window_list`, `layouter -> window_layout`,
 `sponge-de -> focus_request`, `sponge-de -> rules` through `report_rom`,
@@ -350,6 +361,18 @@ tolerance, preserves the flag across refreshes, and publishes it as
 `<assign maximized="yes">`. Native producers must keep this
 geometry-only truth working (v1 adds no maximized attribute; doing so
 would be a protocol bump).
+
+> **Correction of record (2026-11-12, `ccfef79cf1`).** The clause
+> "preserves the flag across refreshes" is superseded. The delivered
+> inference is two-way once a maximized geometry has been observed: a
+> full-area geometry sets the flag, and a later non-full, non-parked
+> geometry clears it (published after one stable poll). Only a pending
+> maximize request that the layouter has not applied yet is carried
+> across refreshes, so the request is not lost to a geometry
+> intermediate. This corrects the behavioral note only: the frozen
+> wire shapes are unchanged (v1 still carries no `maximized`
+> attribute and the inference stays geometry-only), so no protocol
+> bump is involved.
 
 #### Native target versus current truth
 
