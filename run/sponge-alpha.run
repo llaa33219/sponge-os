@@ -144,6 +144,7 @@ build { core lib/ld init timer server/report_rom server/nitpicker \
          driver/usb_host/pc driver/usb_hid server/event_filter \
          server/wm app/window_layouter app/decorator app/pointer \
          sponge_configd sponge_themed sponge_pkgd pkg_hello sponge-de \
+         settings_providers/panel settings_providers/background \
          server/rom_filter app/themed_decorator \
          server/gui_fb server/gui_fader \
          server/fs_report server/fs_rom server/vfs \
@@ -392,10 +393,6 @@ config
     + policy | label: layouter -> focus_request      | report: sponge-de -> focus_request
     + policy | label: sponge_configd -> config_request | report: alpha_probe -> config_request
     + policy | label: alpha_probe -> config_result     | report: sponge_configd -> config_result
-    + policy | label: sponge_configd -> de_config_request | report: alpha_probe -> de_config_request
-    + policy | label: alpha_probe -> de_config_result   | report: sponge_configd -> de_config_result
-    + policy | label: sponge-de      -> de_config_result | report: sponge_configd -> de_config_result
-    + policy | label: sponge-de      -> de_config_request | report: sponge_configd -> de_config_request
     + policy | label: sponge-de      -> bgmenu_open | report: sponge-de -> bgmenu_open
     + policy | label: alpha_probe -> bgmenu_open | report: sponge-de -> bgmenu_open
     + policy | label: sponge_themed -> config          | report: sponge_configd -> config
@@ -718,11 +715,15 @@ config
 + start sponge_configd | caps: 200 | ram: 16M
   + config | lz_model: yes
     + bake
+    + writer | label: panel_settings | keys: panel.*
+    + writer | label: background_settings | keys: background.*
     + vfs
       + fs
   + route
     + service File_system | + child ram_vfs
     + service ROM | label_last: config_request | + child report_rom
+    + service ROM | label_last: panel_settings_config_request | + child report_rom
+    + service ROM | label_last: background_settings_config_request | + child report_rom
     + service ROM | label_last: lz_model | + child report_rom
     #
     # Phase 16 W3 — bake ROM routes. The bake defaults tree is staged
@@ -756,6 +757,7 @@ config
 + start sponge_pkgd | caps: 200 | ram: 16M
   + config
     + launcher_request
+    + settings_liveness
     #
     # P2.4 grouped runtimes (run/runtime-grouped.inc): grouped
     # emission + the three EXPLICIT per-class admission gates.
@@ -776,8 +778,16 @@ config
   + config | clipboard: yes
     + theme | source: themed
     + launcher | source: pkgd
-    # Phase 16 W6: opt the in-DE BackgroundWidget + SettingsController in.
-    + de_config | source: controller
+    # Criterion 18 (D16.9): the quick-settings actions run against
+    # the provider-owned quick channels, and the W4 ConfigController
+    # gate reads the configd broadcast (the panel-menu/bgmenu
+    # activation contract).
+    + quick_settings | source: providers
+    + config | source: configd
+    # Phase 16 W6: opt the in-DE BackgroundWidget in (the W4
+    # provider split removed the de_config gate and the legacy
+    # dialog with it; background Settings entries ensure-start
+    # the background_settings provider, never a dialog).
     + background | source: controller
     + vfs
       + dir dev
@@ -799,6 +809,10 @@ config
     + service Report | label: launcher | + child report_rom
     + service Report | label: launcher_request | + child report_rom
     + service ROM | label: launcher_result | + child report_rom
+    + service Report | label: panel_settings_quick_request | + child report_rom
+    + service ROM | label: panel_settings_quick_result | + child report_rom
+    + service Report | label: background_settings_quick_request | + child report_rom
+    + service ROM | label: background_settings_quick_result | + child report_rom
     + service ROM | label: window_list   | + child report_rom
     + service ROM | label: window_layout | + child report_rom
     + service Report | label: focus_request | + child report_rom
@@ -806,11 +820,9 @@ config
     + service ROM | label_last: runtime_state | + child report_rom
     + service ROM | label_last: runtime_mirror | + child report_rom
     + service Report | label: de_op_error | + child report_rom
-    + service Report | label: de_config_request | + child report_rom
     + service Report | label: bgmenu_open       | + child report_rom
     + service ROM | label: installed | + child report_rom
     + service ROM | label: theme | + child report_rom
-    + service ROM | label: de_config_result | + child report_rom
     + service ROM | label: configd | + child report_rom
     + service ROM | label: default.png | + parent
     + service ROM | label: mesa_gpu.lib.so | + parent | label: mesa_gpu-softpipe.lib.so
@@ -921,6 +933,22 @@ config
     + service Gui | + child wm
     + service Report | label_last: shape | + child wm
     + service Report | label_last: state | + child report_rom
+    #
+    # Criterion 18 provider channels (the simple-class settings
+    # providers, sponge-de.panel / sponge-de.background): explicit
+    # minimum-privilege routes for the quick request/result pair,
+    # the per-label configd request/result channels, and the configd
+    # broadcast.
+    #
+    + service ROM | label_last: panel_settings_quick_request | + child report_rom
+    + service ROM | label_last: background_settings_quick_request | + child report_rom
+    + service ROM | label_last: panel_settings_config_result | + child report_rom
+    + service ROM | label_last: background_settings_config_result | + child report_rom
+    + service ROM | label_last: configd | + child report_rom
+    + service Report | label_last: panel_settings_quick_result | + child report_rom
+    + service Report | label_last: background_settings_quick_result | + child report_rom
+    + service Report | label_last: panel_settings_config_request | + child report_rom
+    + service Report | label_last: background_settings_config_request | + child report_rom
     + any-service
       + parent
       + any-child
@@ -1053,8 +1081,9 @@ foreach f { bake_manifest.json config.defaults theme.defaults } {
 
 # Stage every pkg_<name>.xml + pkg_index.xml that bake::stage dropped
 # into bin/. For each profile they exactly mirror the [packages]
-# enabled set; this iteration picks up desktop's full list (8 incl.
-# hello) or minimal's two (hello + terminal) or none's one (hello).
+# enabled set; this iteration picks up desktop's full list (9 incl.
+# hello and the sponge-de provider package) or minimal's two
+# (hello + terminal) or none's one (hello).
 foreach f [lsort [glob -nocomplain bin/pkg_*.xml bin/pkg_index.xml]] {
 	lappend boot_modules [file tail $f]
 }
