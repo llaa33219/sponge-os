@@ -5,7 +5,8 @@ The default desktop environment of Sponge OS. Qt-based.
 ## Role
 
 - Panel, launcher, notifications, window-management helpers
-- User-settings GUI (shares the same backend as `vct config`)
+- Quick-settings menus (`QuickMenuController`) over provider-owned
+  settings windows; the DE itself writes no settings keys
 - Theme system application
 
 For the full design, see [`docs/05-sponge-de.md`](../../../../docs/05-sponge-de.md).
@@ -72,6 +73,30 @@ window on nitpicker, and input reaches the widgets:
   `event_filter` uses — so unrouted topologies log
   `system_state ROM unavailable; health watcher disabled` and run on,
   while the product media keeps the watcher.
+- ✅ **W4 provider split: the universal settings writer is retired.**
+  The Phase 16 `SettingsController`, its five-tab settings dialog,
+  and their shared `de_config` writer are deleted from sponge-de.
+  `settings/quick_menu_controller.{h,cc}` is the reusable
+  quick-settings bridge (`docs/05-sponge-de.md` §5.4,
+  `docs/12-package-format.md` §14.8): the panel context menu's
+  Height / Visible widgets / Position controls run its closed
+  `change_panel_*` operations over the owning provider's
+  quick-request/quick-result pair, and the panel / background
+  Settings entries open the provider-owned settings windows through
+  `LauncherController::request_settings_open()`: one ordinary
+  `(package, settings-id)` launch request on the launcher's own
+  labels. A quick change first ensures the provider is started
+  (`started` and `focused` are both success), then sends one closed
+  `<quick_request>` and polls the matching result on a non-blocking
+  bounded QTimer chain, so nothing hangs the GUI thread; every
+  refusal becomes a bounded `quick_change_failed()` message. Quick
+  channel sessions exist only when the DE config carries
+  `<quick_settings source="providers"/>`; without that opt-in the
+  controller is attached to no menu and no quick session is
+  attempted (an explicit capability/routing declaration, like the
+  `system_state` note above, so an unrouted topology never hits
+  base's fatal denied-session `sleep_forever` path). The
+  module builds as part of the DE (`sponge_de.pro`).
 
 The interactive escape hatch is `run/sponge-de.run` (fb_sdl window on
 the host display, base-linux).
@@ -95,6 +120,8 @@ src/sponge-de/
 │   ├── notifier_controller.{h,cc} # ROM bridge (Phase 14 W4)
 │   ├── notify_poster.{h,cc} # Report session writer (Phase 14 W4)
 │   └── README.md
+├── settings/
+│   └── quick_menu_controller.{h,cc} # quick-settings bridge (W4 provider split)
 └── README.md            # this file
 ```
 
@@ -114,8 +141,17 @@ sponge-de (currently: single component)
   └─ theme
 ```
 
-Interim note (2026-11-11): the `settings/` module and the
-`SettingsController` above are interim; both are removed at the W4
-provider split (D16.9). The target is a separate `sponge_settings`
-shell component with provider-owned settings windows (roadmap
-Criterion 18), not implemented yet.
+Note (W4 provider split, D16.9): the `settings/` module is no longer
+a settings GUI. The universal `SettingsController`, its five-tab
+dialog, and their `de_config` writer are retired (see Current
+status); `settings/` now holds only `quick_menu_controller.{h,cc}`,
+the quick-settings bridge. The settings windows themselves are
+provider-owned components in ordinary packages: `pkg/sponge-de/metadata.xml`
+declares the first-party entries (Panel, Background, Theme,
+Shortcuts, Defaults, Display, WM) and `pkg/terminal/metadata.xml`
+the Terminal entry. The Display and Terminal providers still carry
+no typed configd keys (the typed-key seam of
+[`docs/12-package-format.md`](../../../../docs/12-package-format.md)
+§14.6), and nothing here invents them. The separate `sponge_settings`
+shell lists and opens the entries and carries no settings UI of its
+own ([`docs/05-sponge-de.md`](../../../../docs/05-sponge-de.md) §5.4).
