@@ -163,6 +163,82 @@ void Sponge::Pkgd::Main::_sync_running_state()
 	for (unsigned i = 0; i < n; ++i)
 		_running[i] = Genode::String<64>(derived[i]);
 	_num_running = n;
+
+	/*
+	 * Same re-derivation point for the settings singleton claims: a
+	 * claim whose package left the installed set is stale (§14.7) and
+	 * must go, so its <start> node disappears from the next emission
+	 * and a later open of the removed entry answers not-installed.
+	 */
+	_sync_settings_claims();
+}
+
+
+/* ============ settings singleton claims (docs/12 §14.7) ============ */
+
+/*
+ * Claim lookup: the (package, settings-id) pair is the whole identity
+ * (docs/12 §14.1), decided by the host-tested settings_claim_in_set
+ * rule over snapshots of the claim arrays.
+ */
+bool Sponge::Pkgd::Main::_settings_claimed(char const *pkg,
+                                           char const *id) const
+{
+	char const *pkgs[MAX_SETTINGS_TOTAL] { };
+	char const *ids [MAX_SETTINGS_TOTAL] { };
+	for (unsigned i = 0; i < _num_settings_running; ++i) {
+		pkgs[i] = _settings_running[i].pkg.string();
+		ids[i]  = _settings_running[i].id.string();
+	}
+	return Sponge::Pkgd::settings_claim_in_set(
+		pkgs, ids, _num_settings_running, pkg, id);
+}
+
+
+/*
+ * Add-once (the §14.7 singleton): returns true iff the claim was
+ * newly added. The derived <start> name is precomputed here so the
+ * emission views hold stable pointers, and the host's emission slot
+ * is recorded so the crash/relaunch watch (§14.7) reads the correct
+ * per-slot state report and dirties the correct slot on release.
+ */
+bool Sponge::Pkgd::Main::_settings_claim_add(char const *pkg, char const *id,
+                                             unsigned slot)
+{
+	if (_settings_claimed(pkg, id))
+		return false;
+	if (_num_settings_running >= MAX_SETTINGS_TOTAL) {
+		Genode::warning("sponge_pkgd: settings claim set full (",
+		                (unsigned)MAX_SETTINGS_TOTAL, ") — cannot open ",
+		                pkg, " '", id, "'");
+		return false;
+	}
+	Settings_claim &c = _settings_running[_num_settings_running++];
+	c.pkg       = Genode::String<64>(pkg);
+	c.id        = Genode::String<33>(id);
+	c.start_name = Sponge::Pkgd::settings_start_name(pkg, id);
+	c.slot      = slot;
+	return true;
+}
+
+
+/*
+ * Prune claims whose package is no longer installed. Compaction is
+ * order-preserving and in-place (read index i, write index w <= i),
+ * so a surviving claim's fields are copied before their slot is
+ * reused and the precomputed start_name pointers stay valid.
+ */
+void Sponge::Pkgd::Main::_sync_settings_claims()
+{
+	unsigned w { 0 };
+	for (unsigned i = 0; i < _num_settings_running; ++i) {
+		if (!_installed_contains(_settings_running[i].pkg.string()))
+			continue;
+		if (w != i)
+			_settings_running[w] = _settings_running[i];
+		++w;
+	}
+	_num_settings_running = w;
 }
 
 
