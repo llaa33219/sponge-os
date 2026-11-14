@@ -26,13 +26,15 @@
  *      event->pos() from contextMenuEvent). The smoke test exists
  *      to prove the right-click handler does not crash.
  *
- *   2. de_config_request round-trip: write panel.position=top and
- *      panel.height=40 via the dedicated `sponge-de ->
- *      de_config_request` channel (the same write a QMenu
- *      action would produce when the user clicks the Position →
- *      Top or Height → 40 entry). The SettingsController path is
- *      verified end-to-end: de_config_request → configd
- *      validator → broadcast regeneration → readers.
+ *   2. panel_settings ACL round-trip: write panel.position=top and
+ *      panel.height=40 via the provider-owned
+ *      `panel_settings_config_request` channel (writer label
+ *      `panel_settings`, key domain `panel.*` — the same
+ *      configd-level write a QMenu action would produce when the
+ *      user clicks the Position → Top or Height → 40 entry). The
+ *      path is verified end-to-end:
+ *      panel_settings_config_request → configd validator
+ *      (key-domain ACL) → broadcast regeneration → readers.
  *
  * The two writes prove the underlying configd-write path that
  * the panel menu slots drive. Combined with the right-click
@@ -67,7 +69,9 @@ struct Probe
 	Genode::Attached_rom_dataspace _config        { _env, "config" };
 
 	/*
-	 * de_config_request / de_config_result channel (D16.1).
+	 * panel_settings_config_request / panel_settings_config_result
+	 * provider ACL channel (Criterion 18 writer label
+	 * `panel_settings`, key domain `panel.*`).
 	 * Constructed lazily on first use so scenarios that only
 	 * observe the broadcast (read-only mode) do not request
 	 * unwired ROM sessions.
@@ -106,15 +110,17 @@ struct Probe
 
 	/*
 	 * Send <request op="set" key="K" value="V"/> on the
-	 * de_config_request Report and poll de_config_result for a
-	 * matching status="ok" reply. Returns true on success.
+	 * panel_settings_config_request Report and poll
+	 * panel_settings_config_result for a matching status="ok"
+	 * reply. Returns true on success.
 	 */
 	bool _send_set(char const *key, char const *value)
 	{
 		if (!_de_request.constructed())
-			_de_request.construct(_env, "request", "de_config_request");
+			_de_request.construct(_env, "request",
+			                     "panel_settings_config_request");
 		if (!_de_result.constructed())
-			_de_result.construct(_env, "de_config_result");
+			_de_result.construct(_env, "panel_settings_config_result");
 
 		_de_request->generate_xml([&](Genode::Xml_generator &g) {
 			g.attribute("op",    "set");
@@ -242,13 +248,13 @@ struct Probe
 		Genode::log("QMP-TARGET rightclick 512 754");
 
 		/*
-		 * STEP 2: panel.position=top via de_config_request.
-		 * The SettingsController write path: this is the EXACT
-		 * write the QMenu's Position → Top action slot emits
+		 * STEP 2: panel.position=top via the panel_settings
+		 * provider ACL channel. This is the EXACT configd-level
+		 * write the QMenu's Position → Top action slot produces
 		 * when a user clicks it. configd validates the value
-		 * (enum top), regenerates the broadcast, and the
-		 * PanelWidget's applyPosition slot shows/hides the
-		 * top vs bottom widget.
+		 * (enum top) against the panel_settings key domain,
+		 * regenerates the broadcast, and the PanelWidget's
+		 * applyPosition slot shows/hides the top vs bottom widget.
 		 */
 		if (!_send_set("panel.position", "top")) {
 			_fail(PROBE, "set panel.position=top not answered");
@@ -258,12 +264,12 @@ struct Probe
 			_fail(PROBE, "broadcast missing panel.position=top");
 			return;
 		}
-		Genode::log(PROBE, ": panel.position=top round-tripped via de_config_request");
+		Genode::log(PROBE, ": panel.position=top round-tripped via panel_settings_config_request");
 
 		/*
-		 * STEP 3: panel.height=40 via de_config_request. Same
-		 * wire contract as Step 2 — proves the height spinbox
-		 * write path round-trips.
+		 * STEP 3: panel.height=40 via the panel_settings provider
+		 * ACL channel. Same wire contract as Step 2 — proves the
+		 * height spinbox write path round-trips.
 		 */
 		if (!_send_set("panel.height", "40")) {
 			_fail(PROBE, "set panel.height=40 not answered");
@@ -273,7 +279,7 @@ struct Probe
 			_fail(PROBE, "broadcast missing panel.height=40");
 			return;
 		}
-		Genode::log(PROBE, ": panel.height=40 round-tripped via de_config_request");
+		Genode::log(PROBE, ": panel.height=40 round-tripped via panel_settings_config_request");
 
 		/*
 		 * STEP 4: pixel verification (best-effort). The dual-domain
