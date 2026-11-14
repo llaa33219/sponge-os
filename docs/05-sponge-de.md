@@ -680,6 +680,10 @@ over the shell's dedicated settings launch request/result labels;
 `sponge_pkgd` starts the declared binary target as its own
 component with its own start/lifecycle identity (settings targets
 are never exclusive, even when they share the main app's binary).
+The shell opens those channels only when its component config
+carries `<settings_launch source="pkgd"/>`; without that opt-in the
+listing remains usable and activation fails boundedly as
+`package-manager-unavailable`.
 Any package can join with no shell code changes and no central
 allowlist; there is no in-process plugin or embedding path.
 
@@ -705,8 +709,8 @@ Third-party providers never receive shared-DE configd write
 access; they validate and persist in a package-private store.
 `sponge_pkgd` never relays config writes. sponge-de consumes
 domain broadcasts but is not a settings writer: the universal
-`de_config_request` / `SettingsController` writer is removed when
-the W4 provider split lands and is not kept as a compatibility
+`de_config_request` / `SettingsController` writer is removed by
+the landed W4 provider split and is not kept as a compatibility
 path (D16.9).
 
 **Quick-menu change lifecycle (cold start and change request).**
@@ -752,6 +756,28 @@ Providers are not kept persistent just to serve quick edits, and
 the menu never refuses a change because the provider is closed:
 ensure-start is the designed cold path (W4 in
 `docs/plans/phase16-daily-desktop-defaults.md`).
+
+**Session opt-in gates.** Three explicit config declarations decide
+which of these sessions exist at all. Each is a capability/routing
+declaration the deployment owns and inspects (`AGENTS.md` §1.2),
+not hidden global state: base answers a denied ROM or Report
+session with "stop because parent denied" + `sleep_forever()` (the
+`system_state` precedent, §3), so a component must never attempt a
+settings session its topology does not route.
+
+1. sponge-de's component config `<quick_settings source="providers"/>`
+   gates QuickMenuController/quick provider session construction
+   and attachment. Without the opt-in the controller is attached
+   to no menu and no quick session is attempted.
+2. `sponge_settings`'s component config
+   `<settings_launch source="pkgd"/>` gates `settings_request` /
+   `settings_result` channel opening. Without it the listing
+   remains usable and activation fails boundedly as
+   `package-manager-unavailable`.
+3. The first-party provider package config `<settings quick="yes"/>`,
+   supplied by `pkg/sponge-de/metadata.xml`, gates provider
+   quick-pair sessions. Without it the provider is window-only and
+   opens no quick session.
 
 **Direct launch.** `vct settings list` / `vct settings open` share
 the same backend (installed metadata + launch channel) with
@@ -813,18 +839,25 @@ The eight Phase 16 module / component changes:
    required first-party providers are Panel, Background, Theme,
    Shortcuts, Defaults, Display, WM, and Terminal (Terminal
    settings belong to the terminal package; Konsole or any
-   package provides its own). Acceptance (target, unchecked):
+   package provides its own). Status (2026-11-13): all six
+   acceptance scenarios pass on base-sel4 after the session
+   opt-in gate fixes (§5.4 "Session opt-in gates"):
    `run/sponge-settings-center.run`,
-   `run/sponge-settings-providers.run`,
+   `run/sponge-settings-providers.run` (including the per-ID
+   `.visible_widgets` quick operation and the label ACL),
    `run/sponge-settings-thirdparty.run`,
    `run/sponge-settings-failure.run`,
-   `run/sponge-settings-vct.run`, plus physical-hardware receipts
-   (machine, parent commit, Genode pin, image/scenario, first
-   paint + input-driven change). Interim status: the shipped tree
-   still contains the legacy dialog module
-   `repos/sponge/src/sponge-de/settings/` and the universal
-   writer `config/settings_controller.*`; they remain until the
-   W4 provider split lands and are then removed (D16.9).
+   `run/sponge-settings-vct.run`, plus
+   `run/sponge-settings-focus.run` (hint-driven second
+   `focus_request`). Receipts, host suites, and the changed-target
+   build results are in
+   `docs/evidence/criterion18-settings.md`. Physical-hardware
+   receipts (machine, parent commit, Genode pin, image/scenario,
+   first paint + input-driven change) are still outstanding, so
+   acceptance stays open (roadmap Criterion 18). The legacy dialog
+   module `repos/sponge/src/sponge-de/settings/` and the universal
+   writer `config/settings_controller.*` are removed in the landed
+   W4 provider split (D16.9).
 2. **`background/` module (W6).** A fullscreen frameless
    `QWidget` painted from `background.color` (hex-validated) or
    `background.image` (allowlist-validated; default
@@ -972,8 +1005,10 @@ How Sponge DE stays light under Genode's resource constraints:
   components do not inherit sponge-de's 128 MB Qt6 + Mesa quota
   by default). The legacy `repos/sponge/src/sponge-de/settings/`
   module and the universal writer (`config/settings_controller.*`
-  on `de_config_request`) are removed by the provider split
-  (D16.9) — they are not a second live design. Detailed design:
+  on `de_config_request`) are removed by the landed provider split
+  (D16.9); they are not a second live design. Implementation and
+  QEMU verification: `docs/evidence/criterion18-settings.md`
+  (physical-hardware acceptance still open). Detailed design:
   `docs/plans/phase16-daily-desktop-defaults.md` D16.1 + D16.3 +
   D16.9 + D16.10 + W4. (Strikes the previous `Re-scoped → Phase
   15+` disposition and the interim in-component dialog decision.)
