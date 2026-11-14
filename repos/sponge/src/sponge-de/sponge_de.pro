@@ -41,15 +41,9 @@ SOURCES  += main.cc \
             theme/theme_loader.cc \
             theme/theme_controller.cc \
             config/config_controller.cc \
-            config/settings_controller.cc \
             config/shortcut_controller.cc \
             config/dismisser.cc \
-            settings/settings_dialog.cc \
-            settings/panel_tab.cc \
-            settings/theme_tab.cc \
-            settings/background_tab.cc \
-            settings/shortcuts_tab.cc \
-            settings/defaults_tab.cc \
+            settings/quick_menu_controller.cc \
             background/background_widget.cc \
             background/background_controller.cc \
             background/show_desktop.cc \
@@ -71,15 +65,9 @@ HEADERS  += sponge_de_main.h \
             theme/theme_qt.h \
             theme/theme_controller.h \
             config/config_controller.h \
-            config/settings_controller.h \
             config/shortcut_controller.h \
             config/dismisser.h \
-            settings/settings_dialog.h \
-            settings/panel_tab.h \
-            settings/theme_tab.h \
-            settings/background_tab.h \
-            settings/shortcuts_tab.h \
-            settings/defaults_tab.h \
+            settings/quick_menu_controller.h \
             background/background_widget.h \
             background/background_controller.h \
             background/show_desktop.h
