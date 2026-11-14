@@ -224,6 +224,57 @@ arming it there would refuse every baked package. See
 Receipts: `run/sponge-pkg-admission.run` (`admission-probe: PASS`),
 `docs/evidence/pkg-admission-control.md`.
 
+## Settings provider liveness (opt-in `<settings_liveness/>`, §14.7)
+
+A settings singleton claim covers a **live** provider instance only
+(docs/12-package-format.md §14.7 "Removal and crash"): a crashed
+provider must not leave a claim behind that answers every later open
+with `focused` for a window that no longer exists. The liveness gate
+releases such claims automatically.
+
+```xml
+<config>
+  + settings_liveness
+</config>
+```
+
+Without the marker nothing changes and **no ROM session is opened**.
+With it, pkgd watches the sandbox state report of every runtime that
+can host a settings provider and, when a claim's `<child name="<pkg>.
+<id>">` node carries an **explicit** `exited` attribute (HID), drops
+the claim, dirties the host's emission slot and regenerates the
+runtime config (plus the installed broadcast, keeping `config_writes`
+truthful), logging one bounded line per release. The stale `<start>`
+node then disappears and the next open takes the `started` path again.
+Mere absence of the child node is never an exit — the report can
+predate the provider's first paint.
+
+Which report watches which claim (never another class's — a claim's
+provider only exists in its host's sandbox):
+
+| Claim host slot | State report | Opened by |
+|---|---|---|
+| legacy app (`SLOT_APP`, legacy mode) | `runtime_state` | `<settings_liveness/>` |
+| grouped `simple` | `runtime_simple_state` | `<settings_liveness/>` |
+| grouped `terminal` | `runtime_terminal_state` | `<settings_liveness/>` |
+| grouped `browser` | `runtime_browser_state` | `<settings_liveness/>` |
+| driver (`SLOT_DRIVER`, both modes) | `driver_runtime_state` | `<driver_admission/>` only |
+
+The gate opens the active mode's app-side reports itself (the marker
+is the routing declaration, the same contract `<admission/>` has —
+a denied ROM session is fatal), reusing the already-open session when
+the corresponding admission gate armed it and **never** arming
+admission itself. The driver report is deliberately not opened here:
+most deployments have no `driver_runtime`, and an unrouted ROM session
+kills the daemon.
+
+**Limitation (explicit).** A claim whose runtime state is not watched
+— in practice a driver-hosted claim in a deployment without
+`<driver_admission/>` — is left exactly as before: the claim survives
+the provider's exit until the package is removed. pkgd logs a bounded
+warning when such a claim is created, so the gap is visible rather
+than silent.
+
 ## Runtime config generation (Phase 4b / Phase 7 lifecycle)
 
 pkgd owns the runtime `<config>`s and regenerates only the targets dirtied
@@ -330,12 +381,15 @@ The component requests `Report` and `ROM` sessions always, and an
 optional `File_system` session (via the Vfs library) only when its
 `<config>` carries a `<vfs>` node — i.e. only when the deployment has
 explicitly enabled persistence. Likewise, the `pkg_binaries` manifest
-ROM is opened only when `<config>` carries `<binaries/>`, and the
+ROM is opened only when `<config>` carries `<binaries/>`, the
 admission state-report ROMs only when their gate node is present
 (`<admission/>` for `runtime_state` in legacy mode, the per-class
 `<simple_admission/>`/`<terminal_admission/>`/`<browser_admission/>`
 for `runtime_simple_state`/`runtime_terminal_state`/`runtime_browser_state`
-in grouped mode, `<driver_admission/>` for `driver_runtime_state`), so no
+in grouped mode, `<driver_admission/>` for `driver_runtime_state`),
+and the settings-liveness watch only under `<settings_liveness/>`
+(which opens the active mode's app-side state reports — see the
+liveness section above), so no
 deployment pays for a capability it did not ask for. Everything it needs
 to read requests/metadata and write results, and nothing more
 (AGENTS.md §1.2). It is purely signal-driven and needs no Timer session.
