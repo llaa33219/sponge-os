@@ -1,0 +1,565 @@
+
+#
+# \brief  Criterion 18 third-party settings acceptance (W4):
+#        settings_demo's two provider-owned entries — discovery, first
+#        paint, keystroke validation, package-private persistence,
+#        close/restart retention, removal/reinstall, never-aliased
+#        stores, and no shared-DE configd route or capability.
+# \author Sponge OS contributors
+# \date   2026
+#
+# WHAT THIS PROVES (fail-loud; every gate is bounded and named):
+#
+#   1. TWO INDEPENDENT ENTRIES: after `vct install`-equivalent install
+#      over the pkgd request channel, the `installed` broadcast carries
+#      exactly two <settings> entries (docs/12-package-format.md
+#      §14.4) with the exact §14.2 field sets — (settings_demo,
+#      greeting) and (settings_demo, about) — distinct targets
+#      (settings_demo_greeting / settings_demo_about) and distinct
+#      icons. Each open answers its own '<pkg>.<id>' start identity:
+#      sponge_pkgd: settings result settings_demo 'greeting' -> ok started
+#      sponge_pkgd: settings result settings_demo 'about'    -> ok started
+#   2. FIRST PAINT per provider: the probe captures the composited
+#      screen and requires the provider header band (#27273a, painted
+#      by settings_demo/common/paint.h) inside the window content
+#      rect reported by the layouter's window_layout — a pixel
+#      witness, not a log claim. The construction witness is each
+#      provider's 'package-private store enabled at ...' line.
+#   3. VALIDATION + PERSISTENCE: probe-injected keystrokes drive the
+#      REAL input chain (nitpicker Event -> wm -> provider Gui input):
+#      '@' is REJECTED with the provider's exact English error
+#      ('Greeting has an invalid character (allowed: ...)') and never
+#      becomes the value; "Hi there" + Enter persists; the probe then
+#      reads the package-private store files byte-for-byte:
+#        /greeting.xml = <settings-demo version="1"><entry
+#                        name="greeting" value="Hi there"/></settings-demo>
+#        /about.xml    = <settings-demo version="1"><entry
+#                        name="note" value="Note A"/></settings-demo>
+#      Distinct entry names and distinct values: the stores are
+#      per-provider and never alias (D16.10 tier (b), §14.6).
+#   4. CLOSE/RESTART RETENTION: a dirty append (no Enter) followed by
+#      the PRODUCTION close path — hover-gated decorator-closer click
+#      -> window_layouter close -> wm resize_request 0x0 -> the
+#      provider's Gui-info 'closed' channel -> close-COMMIT + exit
+#      (docs/05 §4.6). Evidence chain per provider:
+#        settings_demo_greeting: persisted greeting   (commit AT close)
+#        settings_demo_greeting: window closed, exiting
+#        sponge_pkgd: settings provider settings_demo.greeting exited
+#                     (0) -> claim released; next open starts fresh
+#        settings_demo_greeting: restored greeting from store
+#      and the store carries the dirty value afterwards ("Hi there!",
+#      "Note A ok"). State is retained across a provider close/restart.
+#   5. REMOVAL/REINSTALL: `remove settings_demo` deletes the entries
+#      from discovery at once and prunes both claims; later opens of
+#      either entry answer not-installed (§14.7 stale-open). A
+#      reinstall plus later opens answer started as appropriate, and
+#      each provider restores ITS OWN store value — the two stores
+#      stay un-aliased across the whole remove/install cycle.
+#   6. NO SHARED-DE CONFIGD: the staged metadata carries only the Gui
+#      and File_system <sessions> (audited below before boot), no
+#      configd component exists in this topology, and the post-gate
+#      regexp requires ZERO 'configd' occurrences in the whole boot.
+#      The package-private File_system path is proved writable by the
+#      provider persists AND by the probe's own sentinel
+#      write/read-back/unlink on the same <fs/> route.
+#
+# DRIVER: settings_thirdparty_probe (repos/sponge/src/test/
+# settings_thirdparty_probe/) drives everything itself — install/
+# remove over the pkgd request channel, settings opens over the
+# settings_request channel, input via nitpicker's Event service
+# (the sponge_de_probe inject path), pixel witnesses via Capture,
+# and exact store XML via its own File_system session on the
+# package-private vfs_store route. Every probe step logs a
+# 'settings-thirdparty-probe: ...' marker; the run script gates each
+# one (bounded) and interleaves the provider/pkgd log gates, then
+# post-gates exact line counts and prints the explicit PASS verdict.
+#
+# TOPOLOGY (the sponge-settings-center.run report_rom/pkgd/
+# pkg_runtime/vfs_store skeleton with the sponge-wm.run wm trio
+# substituted for bare nitpicker hosting, because the close-to-commit
+# contract needs the v1.1 app-visible close channel — only wm writes
+# the Gui-info 'capture closed' flag):
+#
+#   settings_thirdparty_probe -> request          -> sponge_pkgd `request`
+#   settings_thirdparty_probe -> settings_request -> sponge_pkgd `settings_request`  [<settings_request/>]
+#   sponge_pkgd `result` / `settings_result` / `installed` -> probe
+#   sponge_pkgd `runtime`          -> pkg_runtime `config`
+#   pkg_runtime `state`            -> sponge_pkgd `runtime_state`   [<settings_liveness/>]
+#   wm/layouter/decorator report matrix (window_list, window_layout,
+#     hover, focus, resize_request, rules, decorator_margins, pointer)
+#   providers (settings_demo.greeting / settings_demo.about inside
+#     pkg_runtime) -> Gui -> wm -> nitpicker; File_system -> vfs_store
+#     (the metadata subpath "/app/settings_demo" materialized as the
+#     session label; policy root / writeable yes)
+#
+# There is deliberately NO sponge_configd, NO sponge-de, NO shared-DE
+# route of any kind in this topology (§14.6: third-party providers
+# cannot write shared DE keys at all).
+#
+# base-sel4 only: the acceptance target is the production kernel on
+# QEMU (the center scenario's assertion, kept).
+#
+
+assert {[have_spec sel4]} \
+	"sponge-settings-thirdparty requires KERNEL=sel4 (BOARD=pc) in build.conf."
+
+build { core lib/ld init timer server/report_rom server/nitpicker \
+        server/wm app/window_layouter app/decorator \
+        server/vfs lib/vfs \
+        sponge_pkgd settings_demo/greeting settings_demo/about \
+        test/settings_thirdparty_probe }
+
+create_boot_directory
+
+install_config {
+config
++ parent-provides
+  + service ROM
+  + service PD
+  + service RM
+  + service CPU
+  + service LOG
+  + service IRQ
+  + service IO_MEM
+  + service IO_PORT
+
++ default | caps: 200 | ram: 4M
++ default-route
+  + any-service
+    + parent
+    + any-child
+
++ start timer
+  + provides | + service Timer
+
+#
+# report_rom - the single relay. Full label chains, one writer per
+# label (AGENTS.md 1.2). The wm trio matrix is the sponge-wm.run
+# matrix with the probe fan-outs added; the pkgd matrix is the
+# sponge-settings-center.run matrix with the probe as the request
+# writer. No policy names any configd label.
+#
++ start report_rom | caps: 400 | ram: 8M
+  + provides
+    + service Report
+    + service ROM
+  + config | verbose: no
+    + policy | label: layouter -> window_list       | report: wm -> window_list
+    + policy | label: decorator -> pointer          | report: wm -> pointer
+    + policy | label: decorator -> window_layout    | report: layouter -> window_layout
+    + policy | label: wm -> focus                   | report: layouter -> focus
+    + policy | label: wm -> resize_request          | report: layouter -> resize_request
+    + policy | label: layouter -> hover             | report: decorator -> hover
+    + policy | label: layouter -> decorator_margins | report: decorator -> decorator_margins
+    + policy | label: layouter -> rules             | report: layout_rules
+    + policy | label: layouter -> focus_request     | report: wm -> focus_request
+    + policy | label: pointer -> hover              | report: nitpicker -> hover
+    + policy | label: pointer -> xray               | report: nitpicker -> xray
+    + policy | label: settings_thirdparty_probe -> window_list     | report: wm -> window_list
+    + policy | label: settings_thirdparty_probe -> window_layout   | report: layouter -> window_layout
+    + policy | label: settings_thirdparty_probe -> hover           | report: decorator -> hover
+    + policy | label: settings_thirdparty_probe -> focus           | report: layouter -> focus
+    + policy | label: sponge_pkgd -> request          | report: settings_thirdparty_probe -> request
+    + policy | label: sponge_pkgd -> settings_request | report: settings_thirdparty_probe -> settings_request
+    + policy | label: sponge_pkgd -> runtime_state    | report: pkg_runtime -> state
+    + policy | label: settings_thirdparty_probe -> result          | report: sponge_pkgd -> result
+    + policy | label: settings_thirdparty_probe -> settings_result | report: sponge_pkgd -> settings_result
+    + policy | label: settings_thirdparty_probe -> installed       | report: sponge_pkgd -> installed
+    + policy | label: pkg_runtime -> config           | report: sponge_pkgd -> runtime
+
+#
+# nitpicker - headless compositing (Capture defines the panorama; no
+# framebuffer driver is needed for these claims). One domain: the wm
+# owns every window on screen.
+#
++ start nitpicker | caps: 400 | ram: 32M
+  + provides
+    + service Gui
+    + service Capture
+    + service Event
+  + route
+    + service Report | + child report_rom
+    + service Timer | + child timer
+    + any-service
+      + parent
+      + any-child
+  + config
+    + capture
+    + event
+    + report | focus: yes | hover: yes | xray: yes
+    + domain apps | layer: 1 | content: client | label: no
+                  | hover: always | focus: click
+    + default-policy | domain: apps
+    + background | color: #1e1e2e
+
+#
+# wm - upstream window manager (the only writer of the app-visible
+# close channel the providers commit on, docs/05 4.6).
+#
++ start wm | caps: 250 | ram: 8M
+  + provides
+    + service Gui
+    + service Report
+    + service ROM
+  + config
+    + policy | label_prefix: decorator | role: decorator
+    + policy | label_prefix: layouter  | role: layouter
+    + default-policy
+  + route
+    + service ROM | label: focus          | + child report_rom
+    + service ROM | label: resize_request | + child report_rom
+    + service Report | label_last: shape  | + child report_rom
+    + service Report | + child report_rom
+    + service Gui | + child nitpicker
+    + any-service
+      + parent
+      + any-child
+
+#
+# layouter - window_layouter with static per-entry assigns, so the
+# two provider windows never overlap and their content rects are
+# known exactly (the probe clicks and pixel-samples by position).
+# The assign label prefixes are the wm window_list labels of the two
+# generated settings start identities.
+#
++ start layouter | caps: 150 | ram: 4M
+  + binary window_layouter
+  + config | rules: rom
+    + report | rules: yes
+    + rules
+      + screen screen
+      + assign | label_prefix: pkg_runtime -> settings_demo.greeting | target: screen
+               | xpos: 40 | ypos: 40 | width: 440 | height: 240 | maximized: no
+      + assign | label_prefix: pkg_runtime -> settings_demo.about | target: screen
+               | xpos: 40 | ypos: 380 | width: 440 | height: 240 | maximized: no
+    + press   | key: BTN_LEFT  | action: drag
+      + release | key: BTN_LEFT | action: drop
+  + route
+    + service ROM | label: window_list       | + child report_rom
+    + service ROM | label: focus_request     | + child report_rom
+    + service ROM | label: hover             | + child report_rom
+    + service ROM | label: decorator_margins | + child report_rom
+    + service ROM | label: rules             | + child report_rom
+    + service Report | label: rules          | + child report_rom | label: layout_rules
+    + service Report | + child report_rom
+    + any-service
+      + child wm
+      + parent
+      + any-child
+
+#
+# decorator - the stock motif decorator with the title bar and the
+# closer control (the providers' own window chrome, docs/05 4.6).
+#
++ start decorator | caps: 350 | ram: 32M
+  + config
+    + controls
+      + title
+      + closer
+  + route
+    + service ROM | label: window_layout | + child report_rom
+    + service ROM | label: pointer       | + child report_rom
+    + service Report | + child report_rom
+    + any-service
+      + child wm
+      + parent
+      + any-child
+
+#
+# vfs_store - the provider package-private store backend (docs/12 13
+# and 14.6). Ram-backed; the persistence-restart claim is the
+# provider close/restart leg above, and the File_system path is
+# proved writable by the provider persists plus the probe sentinel.
+#
++ start vfs_store | caps: 150 | ram: 16M
+  + binary vfs
+  + provides | + service File_system
+  + config
+    + vfs
+      + dir app
+        + dir settings_demo
+          + ram
+    + policy | label_prefix: /app/settings_demo | root: / | writeable: yes
+  + route
+    + service ROM | label_last: ld.lib.so | + parent
+    + service ROM | label_last: vfs.lib.so | + parent
+    + any-service
+      + parent
+      + any-child
+
+#
+# sponge_pkgd - the settings metadata/open transport. The two opt-in
+# gates below are the component-config opt-ins the wiring contract
+# requires: settings_request arms the open channel and
+# settings_liveness arms claim release on provider exit (watching
+# pkg_runtime state via runtime_state). No vfs node: no pkgd store.
+#
++ start sponge_pkgd | caps: 300 | ram: 32M
+  + config
+    + settings_request
+    + settings_liveness
+  + route
+    + service ROM | label_last: request          | + child report_rom
+    + service ROM | label_last: settings_request | + child report_rom
+    + service ROM | label_last: runtime_state    | + child report_rom
+    + service Report | + child report_rom
+    + any-service
+      + parent
+      + any-child
+
+#
+# pkg_runtime - nested init hosting the launched providers. Its
+# config is the pkgd runtime report. Gui resolves to wm (decorated
+# windows with the production closer); File_system resolves to the
+# package-private vfs_store with the metadata subpath materialized
+# as the session label.
+#
++ start pkg_runtime | caps: 2000 | ram: 256M
+  + binary init
+  + route
+    + service ROM | label: config | + child report_rom
+    + service Gui | + child wm
+    + service File_system | + child vfs_store | label: /app/settings_demo/
+    + service Report | + child report_rom
+    + any-service
+      + parent
+      + any-child
+
+#
+# settings_thirdparty_probe - the whole scenario driver (see the
+# header comment). Capability surface: Capture + Event + Timer, the
+# pkgd request/result report channels, the wm window_list/
+# window_layout/hover/focus ROMs, and one File_system session on the
+# package-private store route. No Gui, no configd, no ROM beyond
+# those.
+#
++ start settings_thirdparty_probe | caps: 500 | ram: 32M
+  + config
+    + vfs
+      + fs
+  + route
+    + service Timer   | + child timer
+    + service Capture | + child nitpicker
+    + service Event   | + child nitpicker
+    + service File_system | + child vfs_store | label: /app/settings_demo/
+    + service ROM | label_last: result          | + child report_rom
+    + service ROM | label_last: settings_result | + child report_rom
+    + service ROM | label_last: installed       | + child report_rom
+    + service ROM | label_last: window_list     | + child report_rom
+    + service ROM | label_last: window_layout   | + child report_rom
+    + service ROM | label_last: hover           | + child report_rom
+    + service ROM | label_last: focus           | + child report_rom
+    + service Report | + child report_rom
+    + any-service
+      + parent
+      + any-child
+- }
+
+#
+# Stage the settings_demo package metadata, the derived index and the
+# two entry icons (docs/12 14.2: icons are ordinary staged payload
+# images) as boot modules.
+#
+set staged_pkgs { settings_demo }
+foreach pkg $staged_pkgs {
+	set src "${genode_dir}/../pkg/$pkg/metadata.xml"
+	if {![file exists $src]} {
+		error "package metadata not found: $src"
+	}
+	exec cp -L $src "bin/pkg_$pkg.xml"
+}
+
+set index_fh [open "bin/pkg_index.xml" w]
+puts $index_fh "<packages>"
+foreach pkg $staged_pkgs {
+	puts $index_fh "  <pkg name=\"$pkg\"/>"
+}
+puts $index_fh "</packages>"
+close $index_fh
+
+foreach f { greeting.png about.png } {
+	set src "${genode_dir}/../pkg/settings_demo/$f"
+	if {![file exists $src]} {
+		error "settings_demo icon not found: $src"
+	}
+	exec cp -L $src "bin/$f"
+}
+
+#
+# Metadata audit BEFORE boot (the configd-absence claim is asserted,
+# not assumed): the shipped metadata must declare exactly the Gui and
+# File_system sessions, must name the package-private subpath, must
+# carry both settings entries, and must contain no configd label.
+#
+set meta_fh [open "bin/pkg_settings_demo.xml" r]
+set meta_txt [read $meta_fh]
+close $meta_fh
+
+# strip XML comments first: the shipped comment block names "configd"
+# to say there is none, which must not satisfy the absence check
+regsub -all {(?s)<!--.*?-->} $meta_txt {} meta_txt
+
+foreach claim {
+	{<settings id="greeting"}
+	{<settings id="about"}
+	{subpath="/app/settings_demo"}
+	{name="Gui"}
+	{name="File_system"}
+} {
+	if {[string first $claim $meta_txt] < 0} {
+		error "metadata audit FAILED: missing $claim"
+	}
+}
+if {[string first "configd" $meta_txt] >= 0} {
+	error "metadata audit FAILED: settings_demo metadata names a configd label"
+}
+if {[regexp -all {<session name=} $meta_txt] != 2} {
+	error "metadata audit FAILED: settings_demo must declare exactly two sessions (Gui, File_system)"
+}
+puts "metadata audit ok: 2 settings entries, sessions=Gui+File_system, no configd label"
+
+set boot_modules [build_artifacts]
+foreach m { pkg_settings_demo.xml pkg_index.xml greeting.png about.png } {
+	lappend boot_modules $m
+}
+
+build_boot_image $boot_modules
+
+#
+# QEMU: seL4 needs >= 1 GiB; no interactive PC drivers and no QMP are
+# staged - the probe injects input through nitpicker's Event service
+# headlessly (the sponge_de_probe precedent).
+#
+match_max -d 200000
+
+append qemu_args " -nographic -m 2G "
+
+#
+# Gate sequence. run_genode_until gates ONLY the probe markers (the
+# probe is the single sequencing actor - its markers are strictly
+# ordered in the log, so no gate can race an asynchronous provider or
+# pkgd line). The provider/pkgd log evidence is verified below by
+# exact counts and causal-order regexps over the accumulated output
+# (the supervisor-control precedent: counts, absences and ordering
+# cannot be expressed as forward-only log-line gates). Every gate is
+# bounded; a probe-side failure exits non-zero with
+# 'settings-thirdparty-probe: FAIL' and is rejected by the verdict
+# gates below.
+#
+run_genode_until {.*settings-thirdparty-probe: install settings_demo -> ok.*} 300
+
+global qemu_spawn_id
+
+# The probe sequences every step itself. Wait only for its terminal
+# verdict, then validate the accumulated evidence below.
+run_genode_until {.*settings-thirdparty-probe: PASS.*} 120 $qemu_spawn_id
+
+#
+# Post-gates over the accumulated run output: exact counts, exact
+# store XML documents, the causal close-commit order, and the
+# configd absence.
+#
+global output
+
+proc require_count { pattern n what } {
+	global output
+	set c [regexp -all -- $pattern $output]
+	if {$c != $n} {
+		puts stderr "FAIL: expected $n x $what, saw $c"
+		exit 1
+	}
+}
+
+proc require_order { pattern what } {
+	global output
+	if {![regexp -- $pattern $output]} {
+		puts stderr "FAIL: causal-order evidence missing: $what"
+		exit 1
+	}
+}
+
+# the two entries opened exactly 3x each (initial, restart-reopen,
+# reinstall) and never aliased each other's identity
+require_count {settings result settings_demo 'greeting' -> ok started} 3 \
+	"greeting '-> ok started' (open, restart-reopen, reinstall)"
+require_count {settings result settings_demo 'about' -> ok started} 3 \
+	"about '-> ok started' (open, restart-reopen, reinstall)"
+
+# removal: stale opens answer not-installed (14.7), exactly one each
+require_count {settings open settings_demo 'greeting' -> not-installed} 1 \
+	"greeting stale-open not-installed"
+require_count {settings open settings_demo 'about' -> not-installed} 1 \
+	"about stale-open not-installed"
+
+# close/restart: close-commit + exit + claim release, one per provider
+require_count {persisted greeting} 2 \
+	"greeting persists (Enter commit + close commit)"
+require_count {persisted note} 2 \
+	"about persists (Enter commit + close commit)"
+require_count {window closed, exiting} 2 \
+	"provider close-to-exit (greeting + about)"
+require_count {claim released; next open starts fresh} 2 \
+	"claim release on provider close (greeting + about)"
+
+# first start defaults and later restores (retention across restart)
+require_count {no store [^\n]+ starting with default} 2 \
+	"first-start defaults (greeting + about)"
+require_count {restored greeting from store} 2 \
+	"greeting restore-from-store (restart + reinstall)"
+require_count {restored note from store} 2 \
+	"about restore-from-store (restart + reinstall)"
+require_count {package-private store enabled at /greeting.xml} 3 \
+	"greeting instantiations (open, restart, reinstall)"
+require_count {package-private store enabled at /about.xml} 3 \
+	"about instantiations (open, restart, reinstall)"
+
+# keystroke validation: exactly one rejection with the exact text
+require_count {invalid character \(allowed: A-Z a-z 0-9 space \. , ! \? -\)} 1 \
+	"keystroke validation rejection with exact English error"
+
+# exact store documents in the receipt log (the probe validated the
+# bytes; these pins make the evidence reviewable from the log alone).
+# Readback sequence: S8 G1+A1, S9 G2+A1, S10 G2+A2, S12 G2+A2, S13 G2+A2.
+require_count {name=.greeting. value=.Hi there./></settings-demo>} 1 \
+	"greeting pre-close store document (value Hi there)"
+require_count {name=.note. value=.Note A./></settings-demo>} 2 \
+	"about pre-close store document (value Note A)"
+require_count {name=.greeting. value=.Hi there!.} 4 \
+	"greeting close-committed store document (value Hi there!)"
+require_count {name=.note. value=.Note A ok.} 3 \
+	"about close-committed store document (value Note A ok)"
+
+# the close chain is causal: dirty type -> close-commit -> exit ->
+# claim release -> probe close-done, for BOTH providers
+require_order {(?s)typed-dirty greeting.*persisted greeting.*window closed, exiting.*claim released; next open starts fresh.*close-greeting done} \
+	"greeting close-commit chain"
+require_order {(?s)typed-dirty about.*persisted note.*window closed, exiting.*claim released; next open starts fresh.*close-about done} \
+	"about close-commit chain"
+
+# the rejection really was rejected: the '@' typed before the value
+# never appears in any store document
+if {[regexp {value=[^>]*@} $output]} {
+	puts stderr "FAIL: rejected character '@' leaked into a store value"
+	exit 1
+}
+
+# no shared-DE configuration route or capability in this topology
+require_count {configd} 0 \
+	"configd mentions in the whole boot (must be absent)"
+
+# the probe verdict
+require_count {settings-thirdparty-probe: PASS} 1 \
+	"the probe PASS verdict"
+require_count {settings-thirdparty-probe: FAIL} 0 \
+	"the probe FAIL marker (must be absent)"
+
+if {![regexp {settings-thirdparty-probe: PASS} $output]} {
+	puts stderr "FAIL: probe did not reach its PASS verdict"
+	exit 1
+}
+
+#
+# Final explicit PASS marker (verdict, emitted only after every gate
+# and count above succeeded).
+#
+puts "sponge-settings-thirdparty: PASS - two independent entries (greeting/about) discovered and first-painted, keystroke validation rejected the bad char, values persisted as exact per-provider store XML (name=greeting vs name=note, distinct values), retained across provider close/restart with close-commit, remove answered not-installed and reinstall answered started with un-aliased stores, package-private File_system writable, zero shared-DE configd routes or capabilities"
