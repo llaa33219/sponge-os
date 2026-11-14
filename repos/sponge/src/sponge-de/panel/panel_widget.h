@@ -22,7 +22,7 @@
  * Phase 16 W5 (U16.2 / D16.2) — adds the panel context menu (right-
  * click → QMenu with Height spinbox, Visible widgets checkboxes,
  * Position radio group, Settings entry). Position radio group is
- * driven through SettingsController::request_set("panel.position",
+ * driven through QuickMenuController::change_panel_position(id,
  * "top|bottom"); the closed enum accepts left|right too but those
  * entries are disabled with a "Phase 17+" tooltip (honest disclosure
  * per AGENTS.md §1.1).
@@ -48,8 +48,8 @@
  *
  * The role is set via set_role() called immediately after construction
  * (before show()). set_sibling() links the two widgets in dual mode
- * for menu coordination (the Settings entry writes through a single
- * SettingsController; both widgets share the same pointer).
+ * for menu coordination (the menu operations route through a single
+ * QuickMenuController; both widgets share the same pointer).
  *
  * Phase 16 W8 (U16.5 / D16.5) — multi-panel generalization. Each
  * PanelWidget instance carries:
@@ -97,7 +97,7 @@ namespace Sponge::Sponge_DE {
 
 namespace Theme { struct Theme; }
 class LauncherMenuView;
-class SettingsController;
+class QuickMenuController;
 class TasklistWidget;
 
 class PanelWidget : public QWidget
@@ -186,18 +186,22 @@ class PanelWidget : public QWidget
 		/*
 		 * Set the sibling pointer (the other PanelWidget instance
 		 * in dual mode). Used by the Settings menu entry to
-		 * coordinate writes through a single SettingsController,
+		 * coordinate writes through a single QuickMenuController,
 		 * and by applyPosition to determine visibility. nullptr in
 		 * singleton mode (default).
 		 */
 		void set_sibling(PanelWidget *s) { _sibling = s; }
 
 		/*
-		 * Inject the SettingsController pointer. The Settings menu
-		 * entry calls SettingsController::open_settings_dialog().
-		 * nullptr disables the entry (a no-op warning).
+		 * Inject the QuickMenuController. The menu's Height /
+		 * Visible widgets / Position controls call its closed
+		 * change_panel_* operations and the Settings entry calls
+		 * open_panel_settings() (ensure-start only). The
+		 * controller's quick_change_failed is routed to
+		 * set_user_message() so a refused change reaches the
+		 * user. nullptr disables the menu (a no-op warning).
 		 */
-		void set_settings_controller(SettingsController *s) { _settings = s; }
+		void set_quick_menu_controller(QuickMenuController *q);
 
 		/*
 		 * Re-apply colors/geometry/layout/visibility/clock-format from
@@ -363,16 +367,14 @@ protected:
 		 * QPA returns (0,0) from QCursor::pos() — known Phase 10+
 		 * lesson — so the event-local position is the only valid
 		 * anchor). Each control's value-change signal routes
-		 * through SettingsController::request_set, which keeps
-		 * validator parity with vct's `vct config` path (D16.9).
+		 * through QuickMenuController's closed operations (the
+		 * provider's quick table is the sole validator).
 		 *
 		 * Phase 16 W8 (U16.5 / D16.5): the per-panel context menu
-		 * ALSO emits per-id keys (panel.<id>.height, etc.) so a
-		 * right-click on panel alpha edits alpha's keys, not the
-		 * default panel's keys. The Add/Remove panel entries are
-		 * added at the bottom of every per-panel menu (the
-		 * SettingsController writes `panel.ids` to add / remove
-		 * the corresponding id from the comma-list).
+		 * targets the per-id operations (the non-empty quick id)
+		 * so a right-click on panel alpha edits alpha's keys, not
+		 * the default panel's keys; the default panel keeps the
+		 * provider's flat panel.* operations (the empty quick id).
 		 */
 		void contextMenuEvent(QContextMenuEvent *e) override;
 
@@ -422,7 +424,7 @@ protected:
 
 		LauncherMenuView *_launcher_view   { nullptr };
 		TasklistWidget   *_tasklist_widget { nullptr };
-		SettingsController *_settings      { nullptr };
+		QuickMenuController *_quick       { nullptr };
 
 		PanelWidget *_sibling { nullptr };
 

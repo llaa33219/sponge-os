@@ -22,9 +22,9 @@
  * Phase 16 W5 (U16.2 / D16.2): the panel context menu (right-click
  * → QMenu with Height spinbox, Visible widgets checkboxes, Position
  * radio group, Settings entry) lives in contextMenuEvent below. Each
- * control's value-change signal routes through SettingsController::
- * request_set, which keeps the wire contract identical to vct's
- * `vct config` path (D16.9 validator parity).
+ * control's value-change signal routes through QuickMenuController's
+ * closed operations (panel height / position / widgets); the
+ * Settings entry is ensure-start only (open_panel_settings).
  *
  * The dual nitpicker panel-domain topology (panel_top + panel_bottom)
  * is driven by the ConfigController::panel_position_changed signal
@@ -36,8 +36,8 @@
  * PanelWidget carries a per-instance id, a distinct Gui session
  * label suffix (the F5 nitpicker label_prefix trap defense), and
  * a unique per-panel click_count Expanding_reporter. The
- * contextMenuEvent emits per-id keys (panel.<id>.height, etc.)
- * when the controller is wired to a SettingsController.
+ * contextMenuEvent targets the per-id quick operations (non-empty
+ * quick id) when the controller is wired to a QuickMenuController.
  */
 
 #include "panel_widget.h"
@@ -64,8 +64,8 @@
 #include <QTimer>
 #include <QWidgetAction>
 
-#include "config/settings_controller.h"
 #include "launcher/launcher_menu_view.h"
+#include "settings/quick_menu_controller.h"
 #include "tasklist_widget.h"
 #include "theme/theme_loader.h"
 #include "theme/theme_qt.h"
@@ -222,6 +222,30 @@ PanelWidget::~PanelWidget()
 		_message_timer->deleteLater();
 		_message_timer = nullptr;
 	}
+}
+
+
+void PanelWidget::set_quick_menu_controller(QuickMenuController *q)
+{
+	if (_quick)
+		disconnect(_quick, nullptr, this, nullptr);
+
+	_quick = q;
+	if (!_quick)
+		return;
+
+	/*
+	 * Quick errors reach the panel's transient user-warning
+	 * surface (AGENTS.md §1.1 — a refused change must not be
+	 * silently dropped into the log). quick_change_ok stays
+	 * log-only: the configd broadcast is the visible feedback for
+	 * an applied change and the provider window is the feedback
+	 * for an ensured settings open.
+	 */
+	connect(_quick, &QuickMenuController::quick_change_failed,
+	        this, [this](QString const &message) {
+		set_user_message(message);
+	});
 }
 
 
@@ -763,16 +787,16 @@ void PanelWidget::applyPosition(QString position)
 
 void PanelWidget::contextMenuEvent(QContextMenuEvent *e)
 {
-	if (!_settings) {
+	if (!_quick) {
 		/*
-		 * Settings menu entry is gated on SettingsController
-		 * (the de_config_request label must be wired in the run
-		 * topology). Without it, fall back to the default menu
-		 * (none today — the panel has no other context menu).
+		 * The menu is gated on QuickMenuController (the provider
+		 * quick channels + the launcher pair must be usable in
+		 * the run topology). Without it, fall back to the default
+		 * menu (none today — the panel has no other context menu).
 		 */
 		Genode::warning("sponge-de: panel context menu requested but "
-		                "SettingsController is not attached; the menu "
-		                "is unavailable in this topology");
+		                "the quick menu controller is not attached; the "
+		                "menu is unavailable in this topology");
 		QWidget::contextMenuEvent(e);
 		return;
 	}
@@ -796,37 +820,20 @@ void PanelWidget::contextMenuEvent(QContextMenuEvent *e)
 	menu.setTitle(QStringLiteral("Sponge Panel ") + _id);
 
 	/*
-	 * W8: per-id key prefix. The legacy flat panel.* keys still
-	 * work for the default panel (the W2 validator only accepted
-	 * them on the default id; the W2 instantiates pattern keys on
-	 * first write of a per-id name). For the default panel we keep
-	 * the flat key path; for explicit ids we emit per-id keys.
-	 *
-	 * Backward-compat note: the W2 `panel.ids` key bootstraps the
-	 * pattern-key set; when `panel.ids=""` (the regression-
-	 * scenario default), the only valid instance is the implicit
-	 * "default" panel whose writes go through the flat panel.* keys.
-	 * The W2 pattern-key scan instantiates a per-id entry on first
-	 * write of `panel.<id>.height` (and similarly for the other
-	 * suffixes), but the default id is special — its flat writes
-	 * are mirrored to the per-id namespace for the broadcast fan-out.
-	 *
-	 * For multi-panel (panel.ids != ""), every menu emits per-id
-	 * keys. The SettingsController::request_set is unaware of the
-	 * id; it writes whatever key it gets.
+	 * Quick-id mapping (Criterion 18 default-panel semantics):
+	 * the default panel's operations use the provider's flat
+	 * panel.* rows (the EMPTY quick id); explicit ids send the
+	 * non-empty quick id and land on the panel.<id>.* rows. The
+	 * menu never builds key names — the provider's closed quick
+	 * vocabulary (op + optional id + value) is the only wire.
 	 */
-	QString const k_height   = (QStringLiteral("panel.") + _id +
-	                            QStringLiteral(".height"));
-	QString const k_visible  = (QStringLiteral("panel.") + _id +
-	                            QStringLiteral(".visible_widgets"));
-	QString const k_position = (QStringLiteral("panel.") + _id +
-	                            QStringLiteral(".position"));
+	QString const quick_id = (_id == default_id()) ? QString() : _id;
 
 	/*
 	 * Section 1: Height spinbox (range 16..128, 4 px steps).
 	 * QWidgetAction embeds a custom widget inside the menu; the
 	 * spinbox emits valueChanged → we read the integer and forward
-	 * to SettingsController via QMetaObject::invokeMethod with
+	 * to QuickMenuController via QMetaObject::invokeMethod with
 	 * QueuedConnection (Phase 11 risk #2 — GUI-thread invariant).
 	 */
 	{
@@ -836,12 +843,16 @@ void PanelWidget::contextMenuEvent(QContextMenuEvent *e)
 		spin->setValue((int)(_height > 0 ? _height : 28));
 		spin->setSuffix(QStringLiteral(" px"));
 		QObject::connect(spin, qOverload<int>(&QSpinBox::valueChanged),
-		                 this, [this, k_height, spin](int v) {
-			if (_settings) {
-				QMetaObject::invokeMethod(_settings, "request_set",
+		                 this, [this, quick_id, spin](int v) {
+			if (_quick) {
+				QMetaObject::invokeMethod(_quick, "change_panel_height",
 				                          Qt::QueuedConnection,
-				                          Q_ARG(QString, k_height),
-				                          Q_ARG(QString, QString::number(v)));
+				                          Q_ARG(QString, quick_id),
+				                          Q_ARG(int, v));
+			} else {
+				Genode::warning("sponge-de: panel height change ignored: "
+				                "the quick menu controller is not attached; "
+				                "provider-backed quick settings are unavailable");
 			}
 			(void)spin;
 		});
@@ -856,15 +867,20 @@ void PanelWidget::contextMenuEvent(QContextMenuEvent *e)
 	/*
 	 * Section 2: Visible widgets checkboxes (clock / launcher /
 	 * tasklist). Each toggle rebuilds the canonical comma-list and
-	 * writes it through SettingsController. Validator parity:
-	 * panel.<id>.visible_widgets accepts the same shape the panel
-	 * has always parsed (enum-list of {clock, launcher, tasklist}).
+	 * writes it through QuickMenuController. Validator parity:
+	 * the widgets op accepts the same shape the panel has always
+	 * parsed (enum-list of {clock, launcher, tasklist}).
 	 */
-	auto write_visible = [this, k_visible](QString list) {
-		if (!_settings) return;
-		QMetaObject::invokeMethod(_settings, "request_set",
+	auto write_visible = [this, quick_id](QString list) {
+		if (!_quick) {
+			Genode::warning("sponge-de: panel visible-widgets change ignored: "
+			                "the quick menu controller is not attached; "
+			                "provider-backed quick settings are unavailable");
+			return;
+		}
+		QMetaObject::invokeMethod(_quick, "change_panel_widgets",
 		                          Qt::QueuedConnection,
-		                          Q_ARG(QString, k_visible),
+		                          Q_ARG(QString, quick_id),
 		                          Q_ARG(QString, list));
 	};
 
@@ -889,7 +905,7 @@ void PanelWidget::contextMenuEvent(QContextMenuEvent *e)
 	/*
 	 * Single-shot writer: after every toggle we rebuild the canonical
 	 * comma-list from the three checkboxes' current state and write
-	 * it through SettingsController. This avoids the per-action lambda
+	 * it through QuickMenuController. This avoids the per-action lambda
 	 * state-drift hazard (a per-action lambda would need to read
 	 * sibling state, which is harder to keep consistent).
 	 *
@@ -930,12 +946,17 @@ void PanelWidget::contextMenuEvent(QContextMenuEvent *e)
 			a->setToolTip(QStringLiteral("Phase 17+"));
 		}
 		QObject::connect(a, &QAction::triggered, this,
-		                 [this, k_position, token, a]() {
+		                 [this, quick_id, token, a]() {
 			if (!a->isChecked()) return;
-			if (!_settings) return;
-			QMetaObject::invokeMethod(_settings, "request_set",
+			if (!_quick) {
+				Genode::warning("sponge-de: panel position change ignored: "
+				                "the quick menu controller is not attached; "
+				                "provider-backed quick settings are unavailable");
+				return;
+			}
+			QMetaObject::invokeMethod(_quick, "change_panel_position",
 			                          Qt::QueuedConnection,
-			                          Q_ARG(QString, k_position),
+			                          Q_ARG(QString, quick_id),
 			                          Q_ARG(QString, token));
 		});
 		return a;
@@ -949,14 +970,20 @@ void PanelWidget::contextMenuEvent(QContextMenuEvent *e)
 	menu.addSeparator();
 
 	/*
-	 * Section 4: Settings entry — opens the §5.4 dialog via
-	 * SettingsController. The dialog is lazily constructed on the
-	 * first click and cached afterward.
+	 * Section 4: Settings entry — ensure-start the owning panel
+	 * settings provider (open_panel_settings: start-or-focus over
+	 * the launcher pair, no change travels with this entry). The
+	 * provider-owned settings window is the destination.
 	 */
 	auto *settings_action = menu.addAction(QStringLiteral("Settings..."));
 	QObject::connect(settings_action, &QAction::triggered, this, [this]() {
-		if (!_settings) return;
-		QMetaObject::invokeMethod(_settings, "open_settings_dialog",
+		if (!_quick) {
+			Genode::warning("sponge-de: panel Settings action ignored: "
+			                "the quick menu controller is not attached; "
+			                "provider-backed quick settings are unavailable");
+			return;
+		}
+		QMetaObject::invokeMethod(_quick, "open_panel_settings",
 		                          Qt::QueuedConnection);
 	});
 
