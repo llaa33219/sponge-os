@@ -14,12 +14,16 @@
  *                 config and installed-broadcast emission wiring,
  *                 bootstrap thread + constructor
  *   registry.cc - installed/running state (roots, closure, running
- *                 set, exclusive-group peer lookup)
+ *                 set, exclusive-group peer lookup, settings claims)
  *   metadata.cc - pkg_index/pkg_<name>.xml parsing, DFS resolution
  *   admission.cc - resource admission I/O shell (ROM arming + state
  *                 reads) over the pure sponge_pkg_admission math
- *   ops.cc      - install/remove/launch + binary-manifest loading
+ *   ops.cc      - install/remove/launch + binary-manifest loading,
+ *                 settings open lifecycle (_do_launch_settings)
  *   store.cc    - persistent installed-set store + bake seeding
+ *   settings_rules.{h,cc} - pure <settings> parse/validation rules
+ *                 and the §14.7 singleton open decision (host-tested
+ *                 by self_test.cc, docs/12-package-format.md §14)
  *
  * The launch DECISION (gate ordering, running-set rules, binary
  * manifest query) lives in the pure sponge_pkg_launch library
@@ -29,6 +33,8 @@
  */
 
 #pragma once
+
+#include "settings_rules.h"
 
 #include <base/attached_rom_dataspace.h>
 #include <base/heap.h>
@@ -60,6 +66,16 @@ struct Sponge::Pkgd::Package
 	static constexpr unsigned MAX_DEPS     = 16;
 	static constexpr unsigned MAX_SESSIONS = 16;
 
+	/*
+	 * <settings> entries (docs/12-package-format.md §14). 0..N per
+	 * package; each entry is one settings provider with the stable
+	 * identity (package, settings-id). Overflowing entries beyond
+	 * this bound are warned about and ignored (the MAX_DEPS/
+	 * MAX_SESSIONS convention). The parse/validation rules live in
+	 * settings_rules.h (host-tested).
+	 */
+	static constexpr unsigned MAX_SETTINGS = 8;
+
 	Genode::String<64>  name;
 	Genode::String<32>  version;
 	Genode::String<256> description;
@@ -80,6 +96,16 @@ struct Sponge::Pkgd::Package
 
 	bool                has_autostart  { false };
 	bool                has_launcher   { false };
+
+	/*
+	 * Provider-owned Settings entries (docs/12-package-format.md
+	 * §14.2), parsed and hard-validated at parse time
+	 * (settings_rules.h). The identity of one entry is the pair
+	 * (package name, settings[].id); the `target` value is a pointer
+	 * to a payload binary, never an identity.
+	 */
+	Settings_entry      settings[MAX_SETTINGS] { };
+	unsigned            num_settings     { 0 };
 
 	/* Which sandbox owns this package's <start> node: pkg_runtime ("app")
 	 * or driver_runtime ("driver"). The split is what keeps hardware
@@ -235,6 +261,27 @@ class Sponge::Pkgd::Main
 		 */
 		Genode::Constructible<Genode::Attached_rom_dataspace> _probe_request_rom { };
 		Genode::Expanding_reporter     _probe_result_reporter { _env, "result", "probe_result" };
+
+		/*
+		 * Settings channel pair: the separate sponge_settings shell
+		 * (the §14 control center) sends <request op="launch"
+		 * target="settings" pkg="..." id="..."/> here and reads its
+		 * <result ... target="settings" .../> from "settings_result".
+		 * report_rom is single-writer per label, so the shell cannot
+		 * share any existing pair — a FIFTH transport, same shared
+		 * _handle_request_impl body and same _do_launch_settings
+		 * backend (AGENTS.md §3.3 rule 5).
+		 *
+		 * _settings_request_rom is Constructible and opt-in via
+		 * <settings_request/> in this component's <config>, exactly
+		 * like _launcher_request_rom (a denied ROM session is fatal
+		 * under the base Env policy, so an unrouted scenario must not
+		 * open it). The result side mirrors the launcher/tty/probe
+		 * reporters; settings opens themselves bypass the dedup/
+		 * replay machinery (settings_rules.h "SECOND-OPEN SEMANTICS").
+		 */
+		Genode::Constructible<Genode::Attached_rom_dataspace> _settings_request_rom { };
+		Genode::Expanding_reporter     _settings_result_reporter { _env, "result", "settings_result" };
 
 		/*
 		 * Runtime config report: report_rom relays this to the nested
@@ -442,6 +489,9 @@ class Sponge::Pkgd::Main
 		Genode::Signal_handler<Main> _probe_request_handler {
 			_env.ep(), *this, &Main::_handle_probe_request };
 
+		Genode::Signal_handler<Main> _settings_request_handler {
+			_env.ep(), *this, &Main::_handle_settings_request };
+
 		/*
 		 * De-duplication of the request ROM. ROM signals can be
 		 * delivered more than once for the same content (e.g. once on
@@ -499,7 +549,7 @@ class Sponge::Pkgd::Main
 		 * during an in-flight request. Set at the top of each handler
 		 * entry point. Signals dispatch serially, so no concurrency.
 		 */
-		enum class Result_channel { primary, launcher, tty, probe };
+		enum class Result_channel { primary, launcher, tty, probe, settings };
 		Result_channel _active_channel { Result_channel::primary };
 
 		/*
@@ -525,6 +575,15 @@ class Sponge::Pkgd::Main
 			Genode::String<16>  seq     { };
 			Genode::String<160> sig     { };
 			Result_channel      channel { Result_channel::primary };
+
+			/* Settings-open discriminator (docs/12-package-format.md
+			 * §14.5): op="launch" plus target="settings" and the
+			 * settings-id. Such requests are processed FRESH on every
+			 * delivery (no dedup/replay — the §14.7 singleton answer
+			 * is a function of current state, see settings_rules.h
+			 * "SECOND-OPEN SEMANTICS"). */
+			bool                settings { false };
+			Genode::String<33>  id       { };
 		};
 
 		Queued_request _request_queue[REQUEST_QUEUE_MAX] { };
@@ -693,6 +752,83 @@ class Sponge::Pkgd::Main
 		 */
 		Genode::String<64> _running[MAX_PACKAGES]   { };
 		unsigned           _num_running             { 0 };
+
+		/*
+		 * Settings singleton claims (docs/12-package-format.md §14.7).
+		 * One entry per OPEN settings target: the (package,
+		 * settings-id) pair whose <start> node is asserted in the
+		 * hosting runtime. The claim is what makes a second open
+		 * answer "ok action=focused" instead of "started", and what
+		 * keeps the emitted <start> nodes one-per-identity (the
+		 * emitted views derive from this set). Claims are add-once
+		 * and pruned when their package leaves the installed set
+		 * (registry.cc _sync_settings_claims) — the §14.7 stale-open
+		 * case then answers not-installed and a reinstalled entry
+		 * starts clean.
+		 *
+		 * FOCUS-HINT INTEGRATION SEAM (Criterion 18 follow-up): the
+		 * "raise and focus the existing window" half of a focused
+		 * open is deliberately NOT implemented here — pkgd must not
+		 * write the focus_request report, which sponge-de's
+		 * TasklistController owns as sole writer (docs/05 §4.6,
+		 * TasklistController sole-writer contract). The follow-up
+		 * focus-hint bridge consumes the action="focused" result (or
+		 * a future claim-transition signal) and routes the hint
+		 * through the TasklistController; this class only tracks the
+		 * lifecycle and answers the §14.7 result semantics.
+		 */
+		static constexpr unsigned MAX_SETTINGS_TOTAL = 32;
+
+		struct Settings_claim
+		{
+			Genode::String<64> pkg { };
+			Genode::String<33> id  { };
+			/* "<pkg>.<id>" (settings_start_name), precomputed so the
+			 * emission views hold stable pointers. */
+			Genode::String<64> start_name { };
+			/* The host package's emission slot: the runtime whose
+			 * sandbox hosts this provider, hence the slot's state
+			 * report that watches it (§14.7 crash/relaunch) and the
+			 * slot to dirty when the claim is released. Precomputed
+			 * at claim time — the host's kind/class is static
+			 * metadata, and _grouped_runtimes is fixed before any
+			 * claim can exist. */
+			unsigned slot { 0 };
+		};
+
+		Settings_claim _settings_running[MAX_SETTINGS_TOTAL] { };
+		unsigned       _num_settings_running       { 0 };
+
+		/* Log-once guard for the config-view bound warning (see
+		 * _refresh_config_views). */
+		bool           _settings_views_warned { false };
+
+		/*
+		 * Criterion 18 second-open focus handoff (docs/12-package-format.md
+		 * §14.7). The focused-open path answers "ok action=focused" on the
+		 * caller's channel, but the "raise and focus the existing window"
+		 * half cannot be done from here: pkgd must never write the
+		 * `focus_request` report (sole writer: sponge-de's TasklistController,
+		 * docs/05 §4.6). This opt-in channel emits a `settings_focus_hint`
+		 * report instead — constructed ONLY when this component's <config>
+		 * carries <settings_focus_hint/> (a denied Report session is fatal
+		 * under the base Env policy, so an unmarked deployment must never
+		 * open one — the same opt-in rule as <binaries/>). sponge-de's
+		 * TasklistController consumes the relayed ROM and performs the
+		 * raise. One document per focused open:
+		 *
+		 *   <settings_focus_hint pkg="..." id="..." start_name="<pkg>.<id>"
+		 *                        seq="N"/>
+		 *
+		 * 'start_name' is the settings <start> identity
+		 * (settings_start_name); 'seq' is a monotonic emission counter
+		 * that makes every document distinct so a repeated focused open
+		 * of the same entry re-raises (the identity alone would repeat
+		 * byte-identically). RECIPE-FREE like the settings result helpers:
+		 * never touches the _last_* replay state.
+		 */
+		Genode::Constructible<Genode::Expanding_reporter> _settings_focus_hint { };
+		unsigned _settings_focus_hint_seq { 0 };
 
 		/*
 		 * Optional persistent installed-set store (Phase 4 follow-up
@@ -946,13 +1082,15 @@ class Sponge::Pkgd::Main
 		void _handle_launcher_request();
 		void _handle_tty_request();
 		void _handle_probe_request();
+		void _handle_settings_request();
 
 		/*
-		 * Core request-processing body shared by both input channels.
+		 * Core request-processing body shared by every input channel.
 		 * `result` selects which reporter receives the <result/> so the
-		 * launcher reads "launcher_result" and vct/probes read "result"
-		 * — report_rom is single-writer per label, so the two output
-		 * reports cannot be merged (see _launcher_request_rom above).
+		 * launcher reads "launcher_result", the settings shell reads
+		 * "settings_result", and vct/tty/probes read "result" —
+		 * report_rom is single-writer per label, so the output reports
+		 * cannot be merged (see _launcher_request_rom above).
 		 */
 		void _handle_request_impl(Genode::Xml_node const &req);
 		void _submit_request(Queued_request const &req);
@@ -965,6 +1103,8 @@ class Sponge::Pkgd::Main
 		void _do_install(Genode::String<128> const &pkg);
 		void _do_remove(Genode::String<128> const &pkg);
 		void _do_launch(Genode::String<128> const &pkg);
+		void _do_launch_settings(Genode::String<128> const &pkg,
+		                         Genode::String<33> const &id);
 		void _do_list();
 
 		/* ---- resolution ---- */
@@ -988,6 +1128,12 @@ class Sponge::Pkgd::Main
 		bool _is_running(char const *name) const;
 		bool _add_running(char const *name);
 		void _sync_running_state();
+
+		/* ---- settings singleton claims (§14.7) ---- */
+		bool _settings_claimed(char const *pkg, char const *id) const;
+		bool _settings_claim_add(char const *pkg, char const *id,
+		                         unsigned slot);
+		void _sync_settings_claims();
 
 		/* ---- persistent store (optional) ---- */
 		bool _store_enabled() const { return _vfs_env.constructed(); }
@@ -1037,6 +1183,66 @@ class Sponge::Pkgd::Main
 		 * cannot drift.
 		 */
 		char const *_slot_state_label(unsigned slot) const;
+
+		/*
+		 * Settings provider liveness (§14.7 "Removal and crash",
+		 * Criterion 18 crash/relaunch). Opt-in via a bare
+		 * <settings_liveness/> marker in this component's <config>;
+		 * absent it, nothing here arms and the daemon is
+		 * byte-identical to before (no ROM session, no sigh, no
+		 * scan). With it, pkgd watches the state reports of the
+		 * hosting runtimes for provider exits and releases the
+		 * singleton claim of an exited provider — so the stale
+		 * <start> node disappears on the next regeneration and the
+		 * NEXT open takes the started path again (the claim covers a
+		 * live instance only).
+		 *
+		 * Which report watches which claim (never another class's):
+		 * the claim records its host's emission slot (Settings_claim::
+		 * slot), and the report per slot is runtime_state in legacy
+		 * mode (SLOT_APP), runtime_simple_state / runtime_terminal_
+		 * state / runtime_browser_state per class in grouped mode,
+		 * and driver_runtime_state for SLOT_DRIVER. The gate opens
+		 * the ACTIVE MODE's app-side reports itself (same labels and
+		 * same shared Constructible values the admission arming
+		 * uses, constructed only when admission did not already open
+		 * them — never setting _admission_armed / _class_admission_
+		 * armed, so admission behavior is unchanged). The driver
+		 * report is NOT opened here: a deployment without a
+		 * driver_runtime must not pay a denied (fatal) ROM session,
+		 * so driver-hosted claims are watched only when
+		 * <driver_admission/> opened driver_runtime_state (the
+		 * existing admission routing).
+		 *
+		 * LIMITATION (explicit, §14.7 "if a claim's runtime state is
+		 * not watched"): a claim whose slot has no watched state
+		 * report — a driver-hosted claim without <driver_admission/>
+		 * is the shipped case — is left EXACTLY as before: the claim
+		 * survives its provider's exit until the package is removed
+		 * (ops.cc logs a bounded warning when such a claim is
+		 * created). The report rule is one-way: only an explicit
+		 * `exited` attribute releases a claim, never mere absence of
+		 * the child node (reports can predate first paint) — see
+		 * settings_rules.h CRASH/RELAUNCH LIVENESS.
+		 */
+		bool _settings_liveness_armed { false };
+
+		Genode::Signal_handler<Main> _settings_liveness_handler {
+			_env.ep(), *this, &Main::_handle_settings_liveness };
+
+		void _init_settings_liveness();
+		void _arm_settings_liveness();
+		void _handle_settings_liveness();
+
+		/*
+		 * The state report that watches a claim hosted in 'slot', or
+		 * nullptr when that report is not watched (the limitation
+		 * above). Legacy mode maps SLOT_APP to runtime_state and
+		 * grouped mode maps the app classes to their own
+		 * runtime_<class>_state; SLOT_DRIVER maps to
+		 * driver_runtime_state in both modes.
+		 */
+		Genode::Attached_rom_dataspace *_settings_state_report(unsigned slot);
 
 		/* ---- launcher channel (optional, config-gated) ---- */
 		void _init_launcher_channel();
@@ -1166,6 +1372,45 @@ class Sponge::Pkgd::Main
 		                       Genode::String<64> const *removed, unsigned num_removed);
 		void _report_launch_ok(Genode::String<128> const &pkg,
 		                       char const *outcome);
+
+		/*
+		 * Settings-open results (docs/12-package-format.md §14.7).
+		 * Same §9.2.1 result shapes behind the target="settings"
+		 * discriminator plus the settings-id and — for "ok" — the
+		 * action="started"|"focused" attribute. These helpers are
+		 * RECIPE-FREE like _report_busy: settings opens bypass the
+		 * dedup/replay machinery (settings_rules.h "SECOND-OPEN
+		 * SEMANTICS"), so they must never write the _last_* recipe
+		 * state or they would corrupt the replay of the surrounding
+		 * operations.
+		 */
+		void _report_settings_open(Genode::String<128> const &pkg,
+		                           Genode::String<33> const &id,
+		                           char const *status,
+		                           char const *action);
+		void _report_settings_insufficient(Genode::String<128> const &pkg,
+		                                   Genode::String<33> const &id,
+		                                   Genode::size_t need_ram,
+		                                   Genode::size_t avail_ram,
+		                                   unsigned need_caps,
+		                                   unsigned avail_caps);
+		void _report_settings_error(Genode::String<128> const &pkg,
+		                            Genode::String<33> const &id,
+		                            char const *message);
+
+		/*
+		 * Criterion 18 second-open focus handoff (see the
+		 * _settings_focus_hint member): _init_settings_focus_hint arms the
+		 * report from the <settings_focus_hint/> config marker (bootstrap,
+		 * before any request can reach the focused-open path — a Report
+		 * session MUST NOT be opened in deployments that do not route the
+		 * label), and _emit_settings_focus_hint writes one hint document
+		 * per focused open. The emitter is a no-op when the channel was
+		 * not armed.
+		 */
+		void _init_settings_focus_hint();
+		void _emit_settings_focus_hint(Genode::String<128> const &pkg,
+		                               Genode::String<33> const &id);
 		void _report_list_ok();
 		void _report_error(char const *op, Genode::String<128> const &pkg,
 		                   char const *message);
