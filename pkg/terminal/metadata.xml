@@ -55,6 +55,20 @@
 
   <launcher category="System"/>
 
+  <!--
+       Criterion 18 settings entry: the Terminal provider
+       (repos/sponge/src/settings_providers/terminal) ships in this
+       package's payload. Terminal is not core DE, so its entry lives
+       here and not in pkg/sponge-de (docs/16-package-authoring.md
+       §9.3). Stable identity: (terminal, terminal).
+  -->
+  <settings id="terminal" title="Terminal" category="applications"
+            target="terminal_settings">
+    <keyword>shell</keyword>
+    <keyword>console</keyword>
+    <keyword>font</keyword>
+  </settings>
+
   <dependencies/>
 
   <sessions>
