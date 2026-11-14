@@ -39,10 +39,12 @@
 #     The host's qmp_right_click (run/qmp.inc, W4 helper) dispatches a
 #     real BTN_RIGHT press at that pixel — proves contextMenuEvent does
 #     not crash.
-#   - Writes `panel.position=top` via the dedicated de_config_request
-#     channel — the same write a menu's Position → Top slot emits.
-#   - Writes `panel.height=40` via de_config_request — the same write a
-#     menu's Height → 40 slot emits.
+#   - Writes `panel.position=top` via the panel_settings provider
+#     ACL channel (`panel_settings_config_request`, writer label
+#     `panel_settings`, key domain `panel.*`) — the same write a
+#     menu's Position → Top slot emits.
+#   - Writes `panel.height=40` via the same panel_settings channel
+#     — the same write a menu's Height → 40 slot emits.
 #   - Pixel check: top y=14 non-background AND bottom y=754 background.
 #
 # Final gate: "panel-menu-probe: PASS".
@@ -97,24 +99,20 @@ config
     + service ROM
   + config | verbose: no
     #
-    # D16.1 channel for SettingsController (DE-side writer).
-    # In this scenario the panel_menu_probe acts as the DE-side
-    # writer (simulating what a QMenu Position/Height slot would
-    # produce when a user clicks it). The real Phase 16 product
-    # scenarios swap the probe for sponge-de (SettingsController).
+    # Criterion 18 panel_settings provider ACL channel (D16.9: no
+    # universal de_config writer exists — panel.* is owned by the
+    # `panel_settings` writer label). The panel_menu_probe acts as
+    # the DE-side writer on that label (it simulates what a QMenu
+    # Position/Height slot would produce when a user clicks it).
     #
-    + policy | label: sponge_configd -> de_config_request | report: panel_menu_probe -> de_config_request
-    + policy | label: panel_menu_probe -> de_config_result   | report: sponge_configd -> de_config_result
-    + policy | label: sponge-de      -> de_config_result   | report: sponge_configd -> de_config_result
-    + policy | label: sponge-de      -> de_config_request  | report: sponge_configd -> de_config_request
+    + policy | label: sponge_configd -> panel_settings_config_request | report: panel_menu_probe -> panel_settings_config_request
+    + policy | label: panel_menu_probe -> panel_settings_config_result | report: sponge_configd -> panel_settings_config_result
     #
-    # vct-equivalent config_request writer: sponge_configd opens
-    # `config_request` at construct time unconditionally
-    # (sponge_configd/main.cc:184). The SettingsController writes
-    # through the DE-side `de_config_request` channel (D16.1),
-    # but a stub vct-equivalent must own the vct-side
-    # `config_request` slot so sponge_configd's constructor
-    # succeeds. The panel_menu_probe is that publisher here.
+    # vct-slot stub: sponge_configd opens `config_request` at
+    # construct time unconditionally (sponge_configd/main.cc:184).
+    # This policy only routes that admin slot (report_rom serves an
+    # empty module — the probe never writes it; no compatibility
+    # writer is kept).
     #
     + policy | label: sponge_configd -> config_request | report: panel_menu_probe -> config_request
     + policy | label: panel_menu_probe -> config_result  | report: sponge_configd -> config_result
@@ -306,26 +304,31 @@ config
   + route
     + service ROM | label_last: config_request      | + child report_rom
     + service ROM | label_last: config_result       | + child report_rom
-    + service ROM | label_last: de_config_request   | + child report_rom
-    + service ROM | label_last: de_config_result    | + child report_rom
+    + service ROM | label_last: panel_settings_config_request | + child report_rom
     + service Report | + child report_rom
     + any-service
       + parent
       + any-child
   + config
-    + de_config
+    #
+    # Criterion 18 writer declaration: enable the panel_settings
+    # provider request channel with its key domain. No de_config
+    # marker — there is deliberately no universal writer here.
+    #
+    + writer | label: panel_settings | keys: panel.*
 
 #
 # sponge-de: dual Gui session (label_last "Sponge Panel" + "Sponge Panel
 # Bottom") routes to the dual panel domains. ConfigController reads the
 # configd broadcast (panel.position, panel.height, panel.visible_widgets).
-# SettingsController writes through de_config_request (used by the panel
-# context menu's Height spinbox + Position radio group).
+# The panel context menu's Height spinbox + Position radio group write
+# through the provider-owned panel_settings quick channel in product
+# scenarios; here the panel_menu_probe drives the panel_settings configd
+# label directly (see the report_rom block above).
 #
 + start sponge-de | caps: 1000 | ram: 256M
   + config
     + config | source: configd
-    + de_config | source: controller
     + panel_bottom | source: dual
     + vfs
       + dir dev
@@ -340,8 +343,6 @@ config
     + service Gui | label_last: Sponge Panel Bottom  | + child nitpicker
     + service Gui | + child nitpicker
     + service Report | label: input              | + child report_rom
-    + service Report | label: de_config_request  | + child report_rom
-    + service ROM | label: de_config_result      | + child report_rom
     + service ROM | label: configd              | + child report_rom
     + service ROM | label: mesa_gpu.lib.so | + parent | label: mesa_gpu-softpipe.lib.so
     + any-service
@@ -354,8 +355,7 @@ config
     + service Timer | + child timer
     + service Report | + child report_rom
     + service ROM | label_last: broadcast          | + child report_rom
-    + service ROM | label_last: de_config_result   | + child report_rom
-    + service ROM | label_last: de_config_request  | + child report_rom
+    + service ROM | label_last: panel_settings_config_result | + child report_rom
     + service ROM | label_last: config_result      | + child report_rom
     + service ROM | label_last: config_request     | + child report_rom
     + service Capture | + child nitpicker

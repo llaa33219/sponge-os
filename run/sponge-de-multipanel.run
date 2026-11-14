@@ -6,7 +6,7 @@
 #
 # TDD-first failing stub for W8. On the current tree (W1-W7 landed,
 # no W8): the PanelWidget is a singleton (no PanelCollection exists),
-# the de_config_request channel exists but no `panel.<id>.height`
+# the configd write channel exists but no `panel.<id>.height`
 # pattern-key parse runs in sponge-de (ConfigController only knows
 # the four flat panel.* keys), no `panel.<id>.*` per-panel apply
 # slot, no per-panel click_count reporters. The probe's sentry (it
@@ -34,9 +34,13 @@
 #      probe observes per-panel click counts.
 #
 # Probe (multipanel_probe) drive:
-#   - writes `panel.ids=alpha,beta` via de_config_request (the
-#     pattern-key bootstrap step).
-#   - writes per-id keys via de_config_request:
+#   - writes `panel.ids=alpha,beta` through the panel_settings
+#     provider ACL channel (Criterion 18: writer label
+#     `panel_settings`, key domain `panel.*`; request ROM
+#     `panel_settings_config_request`, result ROM
+#     `panel_settings_config_result`) — the pattern-key bootstrap
+#     step. There is NO universal de_config writer in this topology.
+#   - writes per-id keys through the same panel_settings channel:
 #       panel.alpha.position=top, panel.alpha.height=40
 #       panel.beta.position=bottom, panel.beta.height=28
 #   - QMP clicks at (100, 14) → asserts panel_alpha.click_count=1
@@ -102,20 +106,22 @@ config
     + service ROM
   + config | verbose: no
     #
-    # D16.1 channel for SettingsController (DE-side writer). The
-    # multipanel_probe acts as the DE-side writer (it simulates
-    # what the panel context menu + Settings dialog would produce
-    # when a user clicks them).
+    # Criterion 18 panel_settings provider ACL channel (D16.9: no
+    # universal de_config writer exists — panel.* is owned by the
+    # `panel_settings` writer label). The multipanel_probe acts as
+    # the DE-side writer on that label (it simulates what the panel
+    # context menu + Settings dialog would produce when a user
+    # clicks them). Per-id pattern keys (panel.<id>.*) ride the same
+    # channel: the panel.* key domain covers them in one prefix.
     #
-    + policy | label: sponge_configd -> de_config_request | report: multipanel_probe -> de_config_request
-    + policy | label: multipanel_probe -> de_config_result   | report: sponge_configd -> de_config_result
-    + policy | label: sponge-de      -> de_config_result   | report: sponge_configd -> de_config_result
-    + policy | label: sponge-de      -> de_config_request  | report: sponge_configd -> de_config_request
+    + policy | label: sponge_configd -> panel_settings_config_request | report: multipanel_probe -> panel_settings_config_request
+    + policy | label: multipanel_probe -> panel_settings_config_result | report: sponge_configd -> panel_settings_config_result
     #
-    # vct-equivalent config_request writer: sponge_configd opens
-    # `config_request` at construct time unconditionally
-    # (sponge_configd/main.cc:184). The multipanel_probe also owns
-    # this label so the daemon's construct succeeds.
+    # vct-slot stub: sponge_configd opens `config_request` at
+    # construct time unconditionally (sponge_configd/main.cc:184).
+    # This policy only routes that admin slot (report_rom serves an
+    # empty module — the probe never writes it; no compatibility
+    # writer is kept).
     #
     + policy | label: sponge_configd -> config_request | report: multipanel_probe -> config_request
     + policy | label: multipanel_probe -> config_result  | report: sponge_configd -> config_result
@@ -346,26 +352,30 @@ config
   + route
     + service ROM | label_last: config_request      | + child report_rom
     + service ROM | label_last: config_result       | + child report_rom
-    + service ROM | label_last: de_config_request   | + child report_rom
-    + service ROM | label_last: de_config_result    | + child report_rom
+    + service ROM | label_last: panel_settings_config_request | + child report_rom
     + service Report | + child report_rom
     + any-service
       + parent
       + any-child
   + config
-    + de_config
+    #
+    # Criterion 18 writer declaration: enable the panel_settings
+    # provider request channel with its key domain. No de_config
+    # marker — there is deliberately no universal writer here.
+    #
+    + writer | label: panel_settings | keys: panel.*
 
 #
 # sponge-de: TWO Gui session routes for "Sponge Panel Alpha" + "Sponge
 # Panel Beta". ConfigController reads the configd broadcast (panel.ids,
 # panel.<id>.{height,position,visible_widgets}). The PanelCollection
 # (W8) instantiates two PanelWidget instances from panel.ids.
-# SettingsController writes through de_config_request.
+# Panel writes come in through the panel_settings provider ACL
+# channel (the probe is the DE-side writer).
 #
 + start sponge-de | caps: 1000 | ram: 384M
   + config
     + config | source: configd
-    + de_config | source: controller
     #
     # W8: opt the PanelCollection in. Absent this gate, the
     # collection stays in singleton mode (regression scenarios
@@ -389,8 +399,6 @@ config
     + service Report | label: panel_alpha        | + child report_rom
     + service Report | label: panel_beta         | + child report_rom
     + service Report | label: panel_default      | + child report_rom
-    + service Report | label: de_config_request  | + child report_rom
-    + service ROM | label: de_config_result      | + child report_rom
     + service ROM | label: configd              | + child report_rom
     + service ROM | label: mesa_gpu.lib.so | + parent | label: mesa_gpu-softpipe.lib.so
     + any-service
@@ -403,8 +411,7 @@ config
     + service Timer | + child timer
     + service Report | + child report_rom
     + service ROM | label_last: broadcast          | + child report_rom
-    + service ROM | label_last: de_config_result   | + child report_rom
-    + service ROM | label_last: de_config_request  | + child report_rom
+    + service ROM | label_last: panel_settings_config_result | + child report_rom
     + service ROM | label_last: config_result      | + child report_rom
     + service ROM | label_last: config_request     | + child report_rom
     + service ROM | label_last: panel_alpha        | + child report_rom
@@ -612,3 +619,27 @@ qmp_exec_target_multipanel $qmp_chan 60
 qmp_exec_target_multipanel $qmp_chan 60
 run_genode_until {.*multipanel-probe: PASS.*} 300 $qemu_spawn_id
 qmp_disconnect $qmp_chan
+
+#
+# Post-output checks (the supervisor-control precedent: channel
+# liveness and ACL refusals cannot be expressed as a single
+# log-line gate). The panel_settings provider channel must have
+# come up — proving the <writer label="panel_settings"
+# keys="panel.*"/> declaration took effect — and no write may have
+# been refused by the key-domain ACL or dropped for a missing
+# result channel.
+#
+global output
+
+if {![regexp {1 provider request channel\(s\) live} $output]} {
+	puts stderr "FAIL: sponge_configd did not bring exactly one provider request channel live (the panel_settings <writer> declaration did not take effect)"
+	exit 1
+}
+if {[regexp {key-outside-domain} $output]} {
+	puts stderr "FAIL: a panel.* write was refused by the panel_settings key-domain ACL"
+	exit 1
+}
+if {[regexp {no result channel for writer label} $output]} {
+	puts stderr "FAIL: configd dropped a result - the panel_settings result channel is not wired"
+	exit 1
+}
