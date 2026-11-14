@@ -402,8 +402,15 @@ void LauncherController::request_launch(QString const &name)
 	 * still pending, the new request supersedes it (the user clicked
 	 * again — acceptable for the Alpha single-writer model).
 	 */
+	if (_pending_kind == Pending_kind::SETTINGS)
+		emit settings_open_failed(_pending_settings_pkg, _pending_settings_id,
+		                          QStringLiteral("superseded by an app launch"));
+	if (_pending_kind == Pending_kind::APP)
+		emit launch_problem(_pending_launch_name,
+		                    QStringLiteral("superseded by another app launch"));
+	_clear_pending();
+	_pending_kind = Pending_kind::APP;
 	_pending_launch_name = name;
-	_launch_poll_count = 0;
 
 	QByteArray const utf8 = name.toUtf8();
 	char const *const pkg = utf8.constData();
@@ -422,6 +429,53 @@ void LauncherController::request_launch(QString const &name)
 	 */
 	QMetaObject::invokeMethod(this, [this]() { _poll_launch_result(); },
 	                          Qt::QueuedConnection);
+}
+
+
+void LauncherController::request_settings_open(QString const &pkg, QString const &id)
+{
+	if (!_open_launch_channels()) {
+		emit settings_open_failed(pkg, id,
+		                          QStringLiteral("package manager unreachable"));
+		return;
+	}
+
+	if (_pending_kind == Pending_kind::SETTINGS)
+		emit settings_open_failed(_pending_settings_pkg, _pending_settings_id,
+		                          QStringLiteral("superseded by a settings open"));
+	if (_pending_kind == Pending_kind::APP)
+		emit launch_problem(_pending_launch_name,
+		                    QStringLiteral("superseded by a settings open"));
+	_clear_pending();
+	_pending_kind = Pending_kind::SETTINGS;
+	_pending_settings_pkg = pkg;
+	_pending_settings_id = id;
+
+	QByteArray const utf8_pkg = pkg.toUtf8();
+	QByteArray const utf8_id  = id.toUtf8();
+
+	Genode::log("sponge-de: settings ensure-start '", utf8_pkg.constData(),
+	            "' '", utf8_id.constData(), "'");
+
+	_launch_request->generate_xml([&](Genode::Xml_generator &g) {
+		g.attribute("op",     "launch");
+		g.attribute("target", "settings");
+		g.attribute("pkg",    utf8_pkg.constData());
+		g.attribute("id",     utf8_id.constData());
+	});
+
+	QMetaObject::invokeMethod(this, [this]() { _poll_launch_result(); },
+	                          Qt::QueuedConnection);
+}
+
+
+void LauncherController::_clear_pending()
+{
+	_pending_kind = Pending_kind::NONE;
+	_pending_launch_name.clear();
+	_pending_settings_pkg.clear();
+	_pending_settings_id.clear();
+	_launch_poll_count = 0;
 }
 
 
@@ -518,8 +572,13 @@ void LauncherController::_record_op_error(QString const &pkg, QString const &rea
 
 void LauncherController::_poll_launch_result()
 {
-	if (_pending_launch_name.isEmpty())
+	if (_pending_kind == Pending_kind::NONE)
 		return;
+
+	if (_pending_kind == Pending_kind::SETTINGS) {
+		_poll_settings_result();
+		return;
+	}
 
 	/* Guard the refresh on construction: _launch_result may still be
 	 * deconstructed here (the optional launcher_result ROM), and
@@ -537,7 +596,7 @@ void LauncherController::_poll_launch_result()
 			                 QStringLiteral("no answer from the package manager"));
 			emit launch_problem(_pending_launch_name,
 			                    QStringLiteral("no answer from the package manager"));
-			_pending_launch_name.clear();
+			_clear_pending();
 			return;
 		}
 		QTimer::singleShot(100, this, [this]() { _poll_launch_result(); });
@@ -552,7 +611,19 @@ void LauncherController::_poll_launch_result()
 
 	try {
 		Genode::Xml_node const r = _launch_result->xml();
-		if (r.has_type("result") &&
+		/*
+		 * target="settings" marks a settings-open result (every
+		 * settings reply carries it; app results never do). It must
+		 * never complete an app launch, even when pkg happens to
+		 * match — strict both-direction matching (see
+		 * request_settings_open).
+		 */
+		bool const settings_reply =
+			r.has_attribute("target") &&
+			r.attribute_value("target", Genode::String<16>()) ==
+				Genode::String<16>("settings");
+		if (!settings_reply &&
+		    r.has_type("result") &&
 		    r.attribute_value("op", Genode::String<32>()) == Genode::String<32>("launch") &&
 		    r.attribute_value("pkg", Genode::String<128>()) == Genode::String<128>(pkg)) {
 			matched = true;
@@ -569,7 +640,7 @@ void LauncherController::_poll_launch_result()
 			                 QStringLiteral("no answer from the package manager"));
 			emit launch_problem(_pending_launch_name,
 			                    QStringLiteral("no answer from the package manager"));
-			_pending_launch_name.clear();
+			_clear_pending();
 			return;
 		}
 		QTimer::singleShot(100, this, [this]() { _poll_launch_result(); });
@@ -647,6 +718,145 @@ void LauncherController::_poll_launch_result()
 		                    QString::fromUtf8(st));
 	}
 
-	_pending_launch_name.clear();
-	_launch_poll_count = 0;
+	_clear_pending();
+}
+
+
+/*
+ * Settings ensure-start result poll (Criterion 18). Mirror of the app
+ * poll above with the strict settings matcher: target="settings" AND
+ * pkg AND id must all match before a reply is read as the answer to
+ * the pending open; anything else keeps polling (bounded) so a stale
+ * app answer can never complete a settings request. 'id' is the
+ * primary identity attribute; 'settings-id' is accepted as the
+ * docs-prose alias. Timeout and channel-unavailable both surface as
+ * bounded English on settings_open_failed — never a silent drop.
+ */
+void LauncherController::_poll_settings_result()
+{
+	if (_launch_result.constructed())
+		_launch_result->update();
+
+	QByteArray const utf8_pkg = _pending_settings_pkg.toUtf8();
+	QByteArray const utf8_id  = _pending_settings_id.toUtf8();
+	char const *const pkg = utf8_pkg.constData();
+	char const *const id  = utf8_id.constData();
+
+	if (!_launch_result.constructed() || !_launch_result->valid()) {
+		if (++_launch_poll_count >= LAUNCH_POLL_MAX) {
+			Genode::warning("sponge-de: settings result for '", pkg,
+			                "' '", id,
+			                "' timed out (launcher_result unavailable)");
+			emit settings_open_failed(_pending_settings_pkg, _pending_settings_id,
+			                          QStringLiteral("no answer from the package manager"));
+			_clear_pending();
+			return;
+		}
+		QTimer::singleShot(100, this, [this]() { _poll_launch_result(); });
+		return;
+	}
+
+	bool matched = false;
+	Genode::String<32> status { };
+	Genode::String<32> action { };
+
+	try {
+		Genode::Xml_node const r = _launch_result->xml();
+		if (r.has_type("result") &&
+		    r.attribute_value("op", Genode::String<32>()) == Genode::String<32>("launch") &&
+		    r.has_attribute("target") &&
+		    r.attribute_value("target", Genode::String<16>()) ==
+		        Genode::String<16>("settings") &&
+		    r.attribute_value("pkg", Genode::String<128>()) == Genode::String<128>(pkg)) {
+			Genode::String<33> res_id =
+				r.attribute_value("id", Genode::String<33>());
+			if (res_id == Genode::String<33>())
+				res_id = r.attribute_value("settings-id", Genode::String<33>());
+			if (res_id == Genode::String<33>(id)) {
+				matched = true;
+				status = r.attribute_value("status", Genode::String<32>());
+				action = r.attribute_value("action", Genode::String<32>());
+			}
+		}
+	} catch (Genode::Xml_node::Invalid_syntax) { }
+
+	if (!matched) {
+		if (++_launch_poll_count >= LAUNCH_POLL_MAX) {
+			Genode::warning("sponge-de: settings result for '", pkg,
+			                "' '", id, "' timed out");
+			emit settings_open_failed(_pending_settings_pkg, _pending_settings_id,
+			                          QStringLiteral("no answer from the package manager"));
+			_clear_pending();
+			return;
+		}
+		QTimer::singleShot(100, this, [this]() { _poll_launch_result(); });
+		return;
+	}
+
+	char const *const st = status.string();
+	if (Genode::strcmp(st, "ok") == 0 &&
+	    (action == Genode::String<32>("started") ||
+	     action == Genode::String<32>("focused"))) {
+		Genode::log("sponge-de: settings open '", pkg, "' '", id,
+		            "' -> ", action.string());
+		emit settings_open_ok(_pending_settings_pkg, _pending_settings_id,
+		                      QString::fromUtf8(action.string()));
+	} else if (Genode::strcmp(st, "ok") == 0) {
+		Genode::warning("sponge-de: settings open '", pkg, "' '", id,
+		                "' returned an invalid action");
+		emit settings_open_failed(_pending_settings_pkg, _pending_settings_id,
+		                          QStringLiteral("invalid settings-open action"));
+	} else if (Genode::strcmp(st, "not-installed") == 0) {
+		Genode::warning("sponge-de: settings open '", pkg, "' '", id,
+		                "' failed: not installed");
+		emit settings_open_failed(_pending_settings_pkg, _pending_settings_id,
+		                          QStringLiteral("not installed"));
+	} else if (Genode::strcmp(st, "binary-missing") == 0) {
+		Genode::warning("sponge-de: settings open '", pkg, "' '", id,
+		                "' failed: binary missing from the package");
+		emit settings_open_failed(_pending_settings_pkg, _pending_settings_id,
+		                          QStringLiteral("no runnable binary in the package"));
+	} else if (Genode::strcmp(st, "insufficient-resources") == 0) {
+		Genode::String<32> need_ram  { "?" }, avail_ram  { "?" };
+		Genode::String<32> need_caps { "?" }, avail_caps { "?" };
+		try {
+			Genode::Xml_node const r = _launch_result->xml();
+			need_ram   = r.attribute_value("need_ram",   Genode::String<32>("?"));
+			avail_ram  = r.attribute_value("avail_ram",  Genode::String<32>("?"));
+			need_caps  = r.attribute_value("need_caps",  Genode::String<32>("?"));
+			avail_caps = r.attribute_value("avail_caps", Genode::String<32>("?"));
+		} catch (Genode::Xml_node::Invalid_syntax) { }
+
+		Genode::warning("sponge-de: settings open '", pkg, "' '", id,
+		                "' failed: insufficient resources (need ", need_ram,
+		                "/", need_caps, ", avail ", avail_ram, "/", avail_caps,
+		                ")");
+		QString const reason =
+			QStringLiteral("not enough free memory or "
+			               "capabilities (needs %1 RAM / %2 "
+			               "caps, %3 RAM / %4 caps free)")
+				.arg(QString::fromUtf8(need_ram.string()),
+				     QString::fromUtf8(need_caps.string()),
+				     QString::fromUtf8(avail_ram.string()),
+				     QString::fromUtf8(avail_caps.string()));
+		emit settings_open_failed(_pending_settings_pkg, _pending_settings_id, reason);
+	} else if (Genode::strcmp(st, "error") == 0) {
+		Genode::String<192> error { "settings open refused" };
+		try {
+			Genode::Xml_node const r = _launch_result->xml();
+			error = r.attribute_value("error",
+			        Genode::String<192>("settings open refused"));
+		} catch (Genode::Xml_node::Invalid_syntax) { }
+		Genode::warning("sponge-de: settings open '", pkg, "' '", id,
+		                "' failed: ", error.string());
+		emit settings_open_failed(_pending_settings_pkg, _pending_settings_id,
+		                          QString::fromUtf8(error.string()));
+	} else {
+		Genode::warning("sponge-de: settings open '", pkg, "' '", id,
+		                "' returned status='", st, "'");
+		emit settings_open_failed(_pending_settings_pkg, _pending_settings_id,
+		                          QString::fromUtf8(st));
+	}
+
+	_clear_pending();
 }

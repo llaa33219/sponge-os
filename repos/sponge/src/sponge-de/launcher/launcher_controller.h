@@ -125,6 +125,42 @@ class LauncherController : public QObject
 		 */
 		void request_launch(QString const &name);
 
+		/*
+		 * Settings ensure-start (Criterion 18 quick-menu change
+		 * lifecycle, docs/05-sponge-de.md §5.4). Sends
+		 *
+		 *   <request op="launch" target="settings"
+		 *            pkg="sponge-de" id="panel"/>
+		 *
+		 * over the SAME launcher_request reporter (sponge-de stays
+		 * the single writer on that label — report_rom is
+		 * single-writer per label) and polls launcher_result with
+		 * the same non-blocking QTimer cadence as request_launch.
+		 * pkgd's target="settings" discriminator is routed through
+		 * every existing request channel, so no new transport label
+		 * is introduced.
+		 *
+		 * Reply matching is strict in BOTH directions so a stale
+		 * answer can never complete the wrong request:
+		 *
+		 *   - a settings reply must carry target="settings" AND the
+		 *     pending pkg AND the pending id (the 'id' attribute,
+		 *     'settings-id' accepted as the docs-prose alias);
+		 *   - an ordinary app result (no target="settings") can
+		 *     therefore never be read as a settings answer, and a
+		 *     settings result never completes an app launch.
+		 *
+		 * Exactly one request (app or settings) is pending at a
+		 * time. A settings open superseded before its answer
+		 * arrives is reported through settings_open_failed with a
+		 * bounded "superseded by ..." reason so the caller's wait
+		 * always terminates — never a silent drop (AGENTS.md §1.1).
+		 * Both `started` and `focused` arrive on settings_open_ok
+		 * (the §14.7 singleton semantics); every refusal arrives on
+		 * settings_open_failed with bounded English text.
+		 */
+		void request_settings_open(QString const &pkg, QString const &id);
+
 	public slots:
 
 		/*
@@ -158,6 +194,24 @@ class LauncherController : public QObject
 		 * warning label — a launch must never fail silently.
 		 */
 		void launch_problem(QString const &pkg, QString const &reason);
+
+		/*
+		 * Settings ensure-start outcome (Criterion 18). settings_open_ok
+		 * carries the pkgd §14.7 action — "started" (fresh singleton
+		 * claim) or "focused" (existing singleton raised); BOTH are
+		 * success for the quick-menu lifecycle. settings_open_failed
+		 * carries bounded English text for every refusal: pkgd
+		 * statuses ("not installed", "no runnable binary in the
+		 * package", the insufficient-resources figures), a result
+		 * timeout ("no answer from the package manager"), an
+		 * unopenable channel ("package manager unreachable"), or a
+		 * supersede ("superseded by an app launch"). Emitted on the
+		 * GUI thread like every other signal here.
+		 */
+		void settings_open_ok(QString const &pkg, QString const &id,
+		                      QString const &action);
+		void settings_open_failed(QString const &pkg, QString const &id,
+		                          QString const &reason);
 
 	private slots:
 
@@ -253,10 +307,25 @@ class LauncherController : public QObject
 
 		QString _last_result_signature;
 
-		/* Pending launch (non-blocking result poll). */
+		/*
+		 * Pending request (non-blocking result poll). Exactly one of
+		 * APP or SETTINGS is in flight; the kind decides which reply
+		 * matcher runs, so a stale answer of the other kind can
+		 * never complete this request. `_pending_launch_name` is the
+		 * app pkg for APP; _pending_settings_pkg/_id hold the
+		 * (package, settings-id) pair for SETTINGS.
+		 */
+		enum class Pending_kind { NONE, APP, SETTINGS };
+
+		Pending_kind _pending_kind { Pending_kind::NONE };
 		QString _pending_launch_name;
+		QString _pending_settings_pkg;
+		QString _pending_settings_id;
 		unsigned _launch_poll_count { 0 };
 		static constexpr unsigned LAUNCH_POLL_MAX { 60 };
+
+		void _clear_pending();
+		void _poll_settings_result();
 
 		bool _read_and_parse();
 		bool _try_parse(Genode::Xml_node const &root);
