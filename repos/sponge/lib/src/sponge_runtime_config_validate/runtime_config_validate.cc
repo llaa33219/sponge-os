@@ -670,7 +670,13 @@ bool lex_charset(char const *s, unsigned n, unsigned min, unsigned max,
 /* docs/12 §4.1 package identifier */
 bool lex_package_name(char const *s, unsigned n)
 {
-	return lex_charset(s, n, 1, 63, "abcdefghijklmnopqrstuvwxyz0123456789_");
+	return lex_charset(s, n, 1, 63, "abcdefghijklmnopqrstuvwxyz0123456789_-");
+}
+
+/* component start identity, including settings "<pkg>.<id>" names */
+bool lex_start_name(char const *s, unsigned n)
+{
+	return lex_charset(s, n, 1, 63, "abcdefghijklmnopqrstuvwxyz0123456789_.+-");
 }
 
 /* Genode session-type name at the parse width (String<32>) */
@@ -713,7 +719,7 @@ bool lex_label(char const *s, unsigned n)
 
 enum Lex {
 	LEX_NONE, LEX_POSITIVE, LEX_NATURAL, LEX_NUM_BYTES, LEX_BOOL,
-	LEX_PACKAGE_NAME, LEX_SERVICE_NAME, LEX_BINARY_PATH, LEX_CHILD_NAME,
+	LEX_PACKAGE_NAME, LEX_START_NAME, LEX_SERVICE_NAME, LEX_BINARY_PATH, LEX_CHILD_NAME,
 	LEX_LABEL, LEX_RAM_QUANTUM
 };
 
@@ -725,7 +731,8 @@ char const *lex_name(Lex lex)
 	case LEX_NUM_BYTES:    return "number of bytes";
 	case LEX_RAM_QUANTUM:  return "number of bytes";
 	case LEX_BOOL:         return "yes|no|true|false|on|off";
-	case LEX_PACKAGE_NAME: return "package name [a-z0-9_]";
+	case LEX_PACKAGE_NAME: return "package name [a-z0-9_-]";
+	case LEX_START_NAME:   return "component start name [a-z0-9_.+-]";
 	case LEX_SERVICE_NAME: return "service name [A-Za-z0-9_]";
 	case LEX_BINARY_PATH:  return "binary path";
 	case LEX_CHILD_NAME:   return "component name";
@@ -743,6 +750,7 @@ bool lex_ok(Lex lex, char const *s, unsigned n)
 	case LEX_RAM_QUANTUM:  return lex_num_bytes(s, n);
 	case LEX_BOOL:         return lex_bool(s, n);
 	case LEX_PACKAGE_NAME: return lex_package_name(s, n);
+	case LEX_START_NAME:   return lex_start_name(s, n);
 	case LEX_SERVICE_NAME: return lex_service_name(s, n);
 	case LEX_BINARY_PATH:  return lex_binary_path(s, n);
 	case LEX_CHILD_NAME:   return lex_child_name(s, n);
@@ -1522,7 +1530,7 @@ Result validate_start(Cursor &c, Elem const &e, Workspace &ws)
 	ctx.add(">");
 
 	static Attr_rule const RULES[] = {
-		{ "name", true, LEX_PACKAGE_NAME },
+		{ "name", true, LEX_START_NAME },
 		{ "caps", true, LEX_NATURAL },
 	};
 	Result r = check_attrs(e, ctx, RULES, 2);

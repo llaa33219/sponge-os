@@ -399,6 +399,12 @@ int main()
 	expect_ok("literal: minimal document",
 	          doc(valid_start("alpha", "64")));
 
+	expect_ok("literal: settings start identity with dot",
+	          doc(valid_start("settings_demo.greeting", "64")));
+
+	expect_ok("literal: settings start identity with hyphen and dot",
+	          doc(valid_start("sponge-de.panel", "64")));
+
 	expect_ok("literal: no <start> at all",
 	          doc(""));
 

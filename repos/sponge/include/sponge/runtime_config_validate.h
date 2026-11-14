@@ -83,7 +83,7 @@
  *   - natural      \d+           (at most 10 digits)  — <start caps>
  *   - num_bytes    \d+[GMK]?     (digits > 0, <= 15 chars) — quantum
  *   - Boolean      true|yes|on|false|no|off            — report flags
- *   - package name [a-z0-9_]{1,63}   (docs/12 §4.1)    — start name
+ *   - start name   [a-z0-9_.+-]{1,63}                  — component identity
  *   - service name [A-Za-z0-9_]{1,31}                  — service name
  *   - binary path  [A-Za-z0-9_.+/-]{1,95}              — binary name
  *   - child name   [A-Za-z0-9_.+-]{1,63}               — child target
