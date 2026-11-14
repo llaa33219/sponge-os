@@ -1,0 +1,95 @@
+<!--
+  sponge-de — the core first-party settings-provider package
+  (Criterion 18, docs/12-package-format.md §14).
+
+  A settings-only package: it declares the seven core Sponge DE
+  settings entries (Panel, Background, Theme, Shortcuts, Defaults,
+  Display, WM) and stages their provider binaries
+  (repos/sponge/src/settings_providers/...) as package payloads. The
+  seven providers remain SEPARATE components despite being declared
+  by this one package — declaration grouping is a packaging
+  convenience, not process merging (docs/plans/phase16-daily-desktop-
+  defaults.md W4).
+
+  Stable entry identity is (sponge-de, <settings-id>); the Terminal
+  provider is not core DE and stays in pkg/terminal. Each entry's
+  target names ONE bare payload binary — no command strings, no
+  paths (docs/12 §14.3 hard rejections). Categories are the closed
+  enum of docs/12 §14.2 (desktop / hardware / system / applications /
+  other).
+
+  Persistence wiring: the providers write shared DE keys through
+  their own configd labels (docs/12 §14.6 — per-label key-domain
+  ACLs in sponge_configd). Sessions below cover exactly what the
+  providers need: Gui (their own windows), Timer (bounded configd
+  result polls), Report + ROM (the configd request/result channels,
+  the quick-menu quick pairs, and the configd broadcast).
+-->
+<package>
+  <name>sponge-de</name>
+  <version>1.0</version>
+  <description>Core Sponge DE settings-provider package (first-party settings providers).</description>
+
+  <settings id="panel"      title="Panel"              category="desktop"
+            target="panel_settings">
+    <keyword>height</keyword>
+    <keyword>widgets</keyword>
+    <keyword>position</keyword>
+    <keyword>multi-panel</keyword>
+  </settings>
+
+  <settings id="background" title="Background"         category="desktop"
+            target="background_settings">
+    <keyword>color</keyword>
+    <keyword>image</keyword>
+    <keyword>wallpaper</keyword>
+  </settings>
+
+  <settings id="theme"      title="Theme"              category="desktop"
+            target="theme_settings">
+    <keyword>palette</keyword>
+    <keyword>appearance</keyword>
+    <keyword>colors</keyword>
+  </settings>
+
+  <settings id="shortcuts"  title="Keyboard Shortcuts" category="system"
+            target="shortcuts_settings">
+    <keyword>keyboard</keyword>
+    <keyword>bindings</keyword>
+    <keyword>keys</keyword>
+  </settings>
+
+  <settings id="defaults"   title="Reset to Defaults"  category="system"
+            target="defaults_settings">
+    <keyword>reset</keyword>
+    <keyword>restore</keyword>
+    <keyword>factory</keyword>
+  </settings>
+
+  <settings id="display"    title="Display"            category="hardware"
+            target="display_settings">
+    <keyword>monitor</keyword>
+    <keyword>screen</keyword>
+  </settings>
+
+  <settings id="wm"         title="Window Management"  category="desktop"
+            target="wm_settings">
+    <keyword>window</keyword>
+    <keyword>layout</keyword>
+    <keyword>tiling</keyword>
+    <keyword>floating</keyword>
+  </settings>
+
+  <dependencies/>
+
+  <config>
+    <settings quick="yes"/>
+  </config>
+
+  <sessions>
+    <session name="Gui"    default-route="nitpicker"/>
+    <session name="Timer"  default-route="parent"/>
+    <session name="Report" default-route="report_rom"/>
+    <session name="ROM"    default-route="parent"/>
+  </sessions>
+</package>
