@@ -5,7 +5,10 @@
 # validates and applies the requested key/value change, and writes a
 # structured "config_result" report (relayed back to vct as a ROM). The
 # Report/ROM channel is the settled vct<->backend design
-# (docs/04-components.md §5) — there is no RPC stub or IDL.
+# (docs/04-components.md §5) — there is no RPC stub or IDL. Criterion
+# 18 adds one config_request ROM session per provider writer label with
+# per-label key-domain ACLs (key_domain_acl.cc); the host self-test
+# (self_test.cc) is deliberately absent from SRC_CC (see its header).
 #
 # A second Expanding_reporter ("config") broadcasts the entire store as a
 # ROM so future watchers (sponge_themed, sponge-de) can react to config
@@ -20,7 +23,7 @@
 # libc, no Qt, no exceptions.
 
 TARGET   := sponge_configd
-SRC_CC   := main.cc
+SRC_CC   := main.cc key_domain_acl.cc
 LIBS     := base vfs
 INC_DIR  := $(PRG_DIR)/include \
             $(REP_DIR)/include

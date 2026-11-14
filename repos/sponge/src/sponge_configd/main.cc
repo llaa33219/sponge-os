@@ -56,6 +56,22 @@
  *     one-key-per-setting rule (U16.4) and is documented as such in
  *     repos/sponge/src/sponge_configd/README.md.
  *
+ * Criterion 18 (D16.1) adds per-writer-label request channels with
+ * configd-enforced per-label key-domain ACLs (key_domain_acl.h).
+ * Each writer label — vct plus panel_settings, background_settings,
+ * theme_settings, shortcuts_settings, defaults_settings,
+ * display_settings, wm_settings, terminal_settings — owns exactly
+ * one `config_request` ROM session and its own result label. Every
+ * set is validated against the closed typed registry FIRST and the
+ * label's key-domain SECOND; an out-of-domain write returns the
+ * structured `key-outside-domain` error (the `reason` attribute and
+ * the error-text prefix) and leaves the store and the broadcast
+ * unchanged. vct keeps every-domain admin access (the admin/manual
+ * escape hatch, `vct config`); third-party packages get NO shared
+ * label at all. The D16.9 provider split removed the interim
+ * universal writer: every settings writer is a scoped provider
+ * label, and there is no shared channel.
+ *
  * Determinism: list, the broadcast, and the on-disk store all emit
  * keys in name-sorted order with a fixed attribute order and no
  * volatile fields, so a watcher's config-diff is stable across
@@ -75,6 +91,8 @@
 #include <vfs/root.h>
 #include <util/xml_generator.h>
 #include <util/xml_node.h>
+
+#include "key_domain_acl.h"
 
 namespace Sponge::Configd {
 
@@ -126,6 +144,9 @@ class Sponge::Configd::Main
 	public:
 
 		explicit Main(Genode::Env &env);
+
+		Main(Main const &) = delete;
+		Main &operator= (Main const &) = delete;
 
 	private:
 
@@ -182,31 +203,75 @@ class Sponge::Configd::Main
 		Genode::Env &_env;
 
 		/*
-		 * Request ROMs. Phase 16 W4 (D16.1): the long-lived sponge-de
-		 * needs its own dedicated `de_config_request` label distinct
-		 * from vct's `config_request` (report_rom is single-writer
-		 * per label slot, mirrors the Phase 14 launcher precedent).
-		 * Both labels feed the SAME `_handle_request` body — the
-		 * validator + registry answers are identical for both
-		 * writers (D16.9 validator parity). The `_request_rom`
-		 * (vct) is constructed unconditionally; the
-		 * `_de_request_rom` (DE-side) is constructed lazily so
-		 * scenarios without a sponge-de-side label route never
-		 * see a ROM-session-denied fatal.
+		 * Request ROM. vct's `config_request` is constructed
+		 * unconditionally; the per-provider request ROMs below are
+		 * opened only for explicitly configured writers. Every
+		 * channel feeds the SAME `_handle_request_impl` body — the
+		 * validator + registry answers are identical for all
+		 * writers (D16.9 validator parity).
 		 */
 		Genode::Attached_rom_dataspace _request_rom { _env, "config_request" };
-		Genode::Constructible<Genode::Attached_rom_dataspace> _de_request_rom { };
 
 		/*
-		 * Result reports. Same dual-label shape: vct's
-		 * `config_result` is emitted unconditionally; the
-		 * DE-side `de_config_result` reporter is constructed
-		 * lazily (only on first DE-side write) so scenarios
-		 * without an active sponge-de never reserve the label
-		 * slot for no reason.
+		 * Result reports. vct's `config_result` is emitted
+		 * unconditionally; each provider label's result reporter
+		 * is constructed lazily (only on that label's first
+		 * request) so scenarios without the label route never
+		 * reserve the slot for no reason.
 		 */
 		Genode::Expanding_reporter _result_reporter { _env, "result", "config_result" };
-		Genode::Constructible<Genode::Expanding_reporter> _de_result_reporter { };
+
+		/*
+		 * Result routing (Phase 16 W4 + Criterion 18). Each entry
+		 * point sets `_active_result` to the answering channel's
+		 * result reporter BEFORE dispatching a request, so the
+		 * shared _report_* helpers answer on the channel the
+		 * request arrived on (never cross-channel). The pointer is
+		 * null only when a provider label's result reporter could
+		 * not be constructed (route missing / no RAM / no caps) —
+		 * the result is then dropped with a warning instead of
+		 * leaking onto another label's channel.
+		 */
+		Genode::Expanding_reporter *_active_result { &_result_reporter };
+		char const *_active_writer_label { "vct" };
+
+		/*
+		 * Criterion 18 (D16.1): the per-writer-label request
+		 * channels. `_domains[i]` is the effective key-domain
+		 * allowlist of `Acl::writers()[i]` — the built-in default
+		 * unless this component's <config> declares
+		 * `<writer label="..." keys="..."/>` (explicit and
+		 * inspectable parent-to-child configuration, AGENTS.md
+		 * §1.2). Slot 0 is vct's (the historical `_request_rom`
+		 * channel above; vct is admin and its domain is unused);
+		 * slots 1..MAX_WRITERS-1 carry the provider labels.
+		 */
+		Acl::Key_domain _domains[Acl::MAX_WRITERS] { };
+
+		/* Provider ROMs are opened only for explicitly configured writers.
+		 * This keeps legacy topologies without provider routes bootable:
+		 * Genode denies an unrouted ROM session by stopping the requester,
+		 * so probing every built-in label at startup is not optional. */
+		bool _provider_enabled[Acl::MAX_WRITERS] { };
+
+		struct Provider_channel
+		{
+			Genode::Constructible<Genode::Attached_rom_dataspace> request_rom { };
+			Genode::Constructible<Genode::Expanding_reporter>    result_reporter { };
+			Genode::String<320> last_sig { };
+		};
+		Provider_channel _provider_channels[Acl::MAX_WRITERS] { };
+
+		/*
+		 * One signal handler serves every provider request ROM: on
+		 * any provider-channel signal the handler scans the label
+		 * slots and dispatches each valid, non-duplicate request
+		 * with its writer label as the ACL identity (the per-label
+		 * `last_sig` keeps the historical op|key|value de-dup
+		 * semantics per channel).
+		 */
+		Genode::Signal_handler<Main> _provider_request_handler {
+			_env.ep(), *this, &Main::_handle_provider_requests };
 
 		/*
 		 * Broadcast report: report_rom relays this as a "config" ROM so
@@ -221,25 +286,19 @@ class Sponge::Configd::Main
 			_env.ep(), *this, &Main::_handle_request };
 
 		/*
-		 * Phase 16 W4 (D16.1): second signal handler for the
-		 * DE-side `de_config_request` ROM. The handler is
-		 * identical to `_handle_request` but reuses the SAME
-		 * `_last_request_sig` + `_apply_validated_value` chain
-		 * (D16.9 validator parity). The DE-side result is
-		 * emitted on the DE-side `_de_result_reporter` so the
-		 * SettingsController's `de_config_result` ROM receives
-		 * it.
+		 * Criterion 18 (D16.1) wiring: _init_writer_acls parses the
+		 * <config> `<writer label keys/>` declarations;
+		 * _ensure_provider_channels opens one request ROM per
+		 * provider label declared by a <writer> node (undeclared
+		 * labels are never opened; each declared label requires its
+		 * route); _ensure_provider_result lazily opens a label's
+		 * result reporter so unrouted scenarios never reserve the
+		 * label slot (the lazy-result contract).
 		 */
-		Genode::Signal_handler<Main> _de_request_handler {
-			_env.ep(), *this, &Main::_handle_de_request };
-
-		/*
-		 * Lazy-construct the DE-side ROM + reporter + wire the
-		 * signal handler on first use. Called from
-		 * `_handle_de_request`'s first invocation. The check
-		 * is cheap (a constructed() flag) and idempotent.
-		 */
-		void _ensure_de_channel();
+		void _init_writer_acls();
+		void _ensure_provider_channels();
+		void _handle_provider_requests();
+		void _ensure_provider_result(unsigned idx);
 
 		/*
 		 * Phase 6c: lz_watch (inside the Leitzentrale subsystem) emits an
@@ -306,7 +365,10 @@ class Sponge::Configd::Main
 		 * identical signature is a no-op (the value is already stored).
 		 * Skipping it avoids regenerating an identical broadcast and
 		 * lets vct observe the already-correct result. The signature is
-		 * op|key|value.
+		 * op|key|value. The state is PER CHANNEL (Criterion 18:
+		 * `_last_request_sig` is vct's, each
+		 * `Provider_channel::last_sig` its label's) so the same
+		 * write on two labels is answered on both.
 		 */
 		Genode::String<320> _last_request_sig { };
 
@@ -333,10 +395,14 @@ class Sponge::Configd::Main
 
 		/* ---- request handling ---- */
 		void _handle_request();
-		void _handle_de_request();
-		void _handle_request_impl(Genode::Xml_node const &req);
+		void _handle_request_impl(Genode::Xml_node const &req,
+		                          char const *writer_label, bool admin,
+		                          Acl::Key_domain const &domain,
+		                          Genode::String<320> &sig_state);
 		void _do_get(char const *key);
-		void _do_set(char const *key, char const *value);
+		void _do_set(char const *key, char const *value,
+		             char const *writer_label, bool admin,
+		             Acl::Key_domain const &domain);
 		void _do_list();
 
 		/* ---- registry helpers ---- */
@@ -381,19 +447,17 @@ class Sponge::Configd::Main
 		void _report_get_ok(char const *key, char const *value);
 		void _report_set_ok(char const *key, char const *value);
 		void _report_list_ok();
-		void _report_error(char const *op, char const *key, char const *message);
+		void _report_error(char const *op, char const *key, char const *message,
+		                   char const *reason = "");
 
 		/*
-		 * Phase 16 W4 (D16.1) — dual-label result reporter
-		 * selector. The active channel (vct or DE-side) chooses
-		 * which `Expanding_reporter` carries the next result
-		 * (mirrors pkgd's `_result()` selector at
-		 * `sponge_pkgd/main.cc:441`). The member function is
-		 * referenced from `_report_*` and the entry-point
-		 * `_handle_request` / `_handle_de_request` set the
-		 * flag before dispatching.
+		 * Result-reporter accessor used by every _report_* helper.
+		 * Returns null when the active channel has no result
+		 * reporter (provider label whose result route failed to
+		 * construct) after warning once per dropped result — the
+		 * answer is dropped, never rerouted to another label.
 		 */
-		Genode::Expanding_reporter &_active_result_reporter();
+		Genode::Expanding_reporter *_result_or_warn();
 
 		/* ---- bake defaults (optional) ---- */
 		void _init_bake();
@@ -600,6 +664,28 @@ static bool _pattern_extract_id(char const *key, Genode::String<32> &id_out)
 
 
 /*
+ * Return the pattern-template index whose suffix `key` ends with
+ * (callers guarantee a shape match), or ~0U when none fits. The
+ * suffix scan guards on key length first, so a short key can never
+ * index before the start of the string. Used by both the read-only
+ * registry pass of _do_set and the mutating _instantiate_pattern.
+ */
+static unsigned _pattern_template_for(char const *key)
+{
+	char const *suffixes[] = { ".height", ".position", ".visible_widgets" };
+	Genode::size_t const key_len = Genode::strlen(key);
+	for (unsigned t = 0; t < 3; ++t) {
+		Genode::size_t const suffix_len = Genode::strlen(suffixes[t]);
+		if (key_len > suffix_len &&
+		    Genode::strcmp(key + key_len - suffix_len, suffixes[t],
+		                   suffix_len) == 0)
+			return t;
+	}
+	return ~0U;
+}
+
+
+/*
  * Flat-registry lookup. Walks the static Key_def array in
  * name-sorted order; returns the registry index on match, false
  * otherwise. Pattern templates are checked separately by
@@ -698,24 +784,7 @@ bool Sponge::Configd::Main::_instantiate_pattern(char const *key, unsigned &idx,
 	 * exactly one template fits) and clone its Key_def fields into
 	 * the instantiated slot.
 	 */
-	char const *suffix_match = nullptr;
-	unsigned    t_match      = 0;
-	for (unsigned t = 0; t < _num_pattern_templates; ++t) {
-		char const *suffix = nullptr;
-		switch (t) {
-		case 0: suffix = ".height";          break;
-		case 1: suffix = ".position";        break;
-		case 2: suffix = ".visible_widgets"; break;
-		}
-		Genode::size_t const suffix_len = Genode::strlen(suffix);
-		Genode::size_t const key_len    = Genode::strlen(key);
-		if (Genode::strcmp(key + key_len - suffix_len, suffix, suffix_len) == 0) {
-			suffix_match = suffix;
-			t_match = t;
-			break;
-		}
-	}
-	(void)suffix_match;
+	unsigned const t_match = _pattern_template_for(key);
 	Key_def const &tmpl = _pattern_registry[t_match];
 
 	Key_def clone { };
@@ -1333,47 +1402,21 @@ bool Sponge::Configd::Main::_apply_validated_value(char const *key,
 
 
 /*
- * Phase 16 W4 (D16.1): The active channel flag selects which
- * result reporter to use. vct's `_handle_request` sets it to
- * `Result_channel::vct`; the DE-side `_handle_de_request` sets it
- * to `Result_channel::de_side`. The shared _do_get / _do_set /
- * _do_list / _report_* helpers then route their <result> XML to
- * the matching reporter (mirrors the pkgd launcher pattern in
- * repos/sponge/src/sponge_pkgd/main.cc:441-445).
- *
- * This flag is entry-point thread-local state. Only one
- * signal-handler invocation runs at a time (Genode's entrypoint
- * dispatcher serialises them), so a plain member is safe.
+ * Phase 16 W4 (D16.1) + Criterion 18: every entry point selects the
+ * answering result reporter via `_active_result` BEFORE dispatching,
+ * so the shared _do_get / _do_set / _do_list / _report_* helpers
+ * route their <result> XML to the channel the request arrived on
+ * (vct's `config_result` or a provider label's own result). Only
+ * one signal-handler invocation
+ * runs at a time (Genode's entrypoint dispatcher serialises them), so
+ * plain members are safe.
  */
-enum class Result_channel { vct, de_side };
-
-Result_channel _active_channel { Result_channel::vct };
-
-Genode::Expanding_reporter &Sponge::Configd::Main::_active_result_reporter()
+Genode::Expanding_reporter *Sponge::Configd::Main::_result_or_warn()
 {
-	return _active_channel == Result_channel::de_side
-	     ? *_de_result_reporter : _result_reporter;
-}
-
-
-/*
- * Lazy-construct the DE-side channel (ROM + result reporter +
- * wire the signal handler). Called from `_handle_de_request` on
- * first invocation.
- */
-void Sponge::Configd::Main::_ensure_de_channel()
-{
-	if (_de_request_rom.constructed())
-		return;
-
-	_de_request_rom.construct(_env, "de_config_request");
-	_de_request_rom->sigh(_de_request_handler);
-	_de_request_rom->update();
-
-	_de_result_reporter.construct(_env, "result", "de_config_result");
-
-	Genode::log("sponge_configd: de_config_request / de_config_result "
-	            "channel live (D16.1 settings dialog writes)");
+	if (!_active_result)
+		Genode::warning("sponge_configd: no result channel for writer label '",
+		                _active_writer_label, "' — dropping result");
+	return _active_result;
 }
 
 
@@ -1384,32 +1427,182 @@ void Sponge::Configd::Main::_handle_request()
 	if (!_request_rom.valid())
 		return;
 
-	_active_channel = Result_channel::vct;
-	_handle_request_impl(_request_rom.xml());
-}
-
-
-void Sponge::Configd::Main::_handle_de_request()
-{
-	_ensure_de_channel();
-
-	_de_request_rom->update();
-
-	if (!_de_request_rom->valid())
-		return;
-
-	_active_channel = Result_channel::de_side;
-	_handle_request_impl(_de_request_rom->xml());
+	_active_result = &_result_reporter;
+	_active_writer_label = "vct";
+	_handle_request_impl(_request_rom.xml(), "vct", true,
+	                     _domains[0], _last_request_sig);
 }
 
 
 /*
- * Shared body of both channel handlers. Mirrors pkgd's
+ * Criterion 18 (D16.1): one config_request ROM session per provider
+ * writer label explicitly enabled by a <writer> declaration in the
+ * component config. Called once at startup (and on every provider ROM
+ * signal via _provider_request_handler). Labels without a declaration
+ * are never opened, preserving legacy topologies with no provider routes.
+ */
+void Sponge::Configd::Main::_ensure_provider_channels()
+{
+	auto warn_unavailable = [this] (Acl::Writer const &w) {
+		Genode::warning("sponge_configd: writer label '", w.label,
+		                "' request channel unavailable (",
+		                Genode::String<64>(w.request_rom),
+		                " not routed) — label writes disabled");
+	};
+
+	unsigned live { 0 };
+	for (unsigned i = 1; i < Acl::MAX_WRITERS; ++i) {
+		if (!_provider_enabled[i])
+			continue;
+
+		Acl::Writer const &w  = Acl::writers()[i];
+		Provider_channel  &ch = _provider_channels[i];
+		try {
+			ch.request_rom.construct(_env, w.request_rom);
+			ch.request_rom->sigh(_provider_request_handler);
+			ch.request_rom->update();
+			++live;
+		}
+		catch (Genode::Rom_connection::Rom_connection_failed) { warn_unavailable(w); }
+		catch (Genode::Service_denied)                        { warn_unavailable(w); }
+		catch (Genode::Out_of_ram)                            { warn_unavailable(w); }
+		catch (Genode::Out_of_caps)                           { warn_unavailable(w); }
+	}
+
+	if (live > 0)
+		Genode::log("sponge_configd: ", live, " provider request channel(s) live "
+		            "(Criterion 18 per-label key-domain ACL active)");
+}
+
+
+void Sponge::Configd::Main::_ensure_provider_result(unsigned idx)
+{
+	Provider_channel &ch = _provider_channels[idx];
+	if (ch.result_reporter.constructed())
+		return;
+
+	Acl::Writer const &w = Acl::writers()[idx];
+	try {
+		ch.result_reporter.construct(_env, "result", w.result_label);
+	}
+	catch (Genode::Service_denied) {
+		Genode::warning("sponge_configd: result channel for writer label '",
+		                w.label, "' unavailable — results dropped");
+	}
+	catch (Genode::Out_of_ram) {
+		Genode::warning("sponge_configd: no RAM for writer label '",
+		                w.label, "' result channel — results dropped");
+	}
+	catch (Genode::Out_of_caps) {
+		Genode::warning("sponge_configd: no caps for writer label '",
+		                w.label, "' result channel — results dropped");
+	}
+}
+
+
+void Sponge::Configd::Main::_handle_provider_requests()
+{
+	for (unsigned i = 1; i < Acl::MAX_WRITERS; ++i) {
+		Provider_channel &ch = _provider_channels[i];
+		if (!ch.request_rom.constructed())
+			continue;
+
+		ch.request_rom->update();
+		if (!ch.request_rom->valid())
+			continue;
+
+		Acl::Writer const &w = Acl::writers()[i];
+		_ensure_provider_result(i);
+		_active_result = ch.result_reporter.constructed()
+		               ? &*ch.result_reporter : nullptr;
+		_active_writer_label = w.label;
+		_handle_request_impl(ch.request_rom->xml(), w.label, false,
+		                     _domains[i], ch.last_sig);
+	}
+}
+
+
+/*
+ * Criterion 18 (D16.1): parse the per-label key-domain allowlist
+ * declarations from this component's <config>:
+ *
+ *   <writer label="panel_settings" keys="panel.*,clock.*"/>
+ *
+ * A declaration replaces the label's built-in default domain.
+ * Declarations for unknown labels (third-party labels have no shared
+ * channel by design) and for the admin `vct` label are ignored with a
+ * warning. Without any <writer> node the built-in Criterion 18
+ * mapping applies.
+ */
+void Sponge::Configd::Main::_init_writer_acls()
+{
+	for (unsigned i = 0; i < Acl::MAX_WRITERS; ++i)
+		if (!Acl::parse_domain(Acl::writers()[i].default_domain, _domains[i]))
+			Genode::warning("sponge_configd: built-in domain for '",
+			                Acl::writers()[i].label, "' does not parse");
+
+	_config_rom.update();
+	if (!_config_rom.valid())
+		return;
+
+	try {
+		_config_rom.node().for_each_sub_node("writer",
+			[&] (Genode::Node const &n) {
+				Genode::String<32> const label =
+					n.attribute_value("label", Genode::String<32>());
+				if (Genode::strcmp(label.string(), "") == 0) {
+					Genode::warning("sponge_configd: <writer> without label ignored");
+					return;
+				}
+
+				Acl::Writer const *w = Acl::find_writer(label.string());
+				if (!w) {
+					Genode::warning("sponge_configd: <writer label=", label,
+					                "> has no shared channel — ignored");
+					return;
+				}
+				if (w->admin) {
+					Genode::warning("sponge_configd: vct keeps every-domain admin "
+					                "access — <writer> override ignored");
+					return;
+				}
+
+				_provider_enabled[(unsigned)(w - Acl::writers())] = true;
+
+				if (!n.has_attribute("keys"))
+					return;
+
+				Genode::String<256> const keys =
+					n.attribute_value("keys", Genode::String<256>());
+				Acl::Key_domain parsed { };
+				if (!Acl::parse_domain(keys.string(), parsed)) {
+					Genode::warning("sponge_configd: bad keys= allowlist for label '",
+					                label, "' — keeping default domain");
+					return;
+				}
+				_domains[(unsigned)(w - Acl::writers())] = parsed;
+			});
+	} catch (Genode::Xml_node::Invalid_syntax) {
+		Genode::warning("sponge_configd: malformed <config> — writer ACLs at defaults");
+	}
+}
+
+
+/*
+ * Shared body of every channel handler. Mirrors pkgd's
  * `_handle_request_impl` (sponge_pkgd/main.cc). Validator parity is
  * enforced here (D16.9) — every channel's write goes through the
- * same `_apply_validated_value` chain.
+ * same `_apply_validated_value` chain. The `writer_label` / `admin` /
+ * `domain` triple is the Criterion 18 ACL identity: it selects the
+ * per-label key-domain gate on `set` and (via `_active_result`, set
+ * by the entry point) the answering result label. `sig_state` is the
+ * channel-local de-dup signature.
  */
-void Sponge::Configd::Main::_handle_request_impl(Genode::Xml_node const &req)
+void Sponge::Configd::Main::_handle_request_impl(Genode::Xml_node const &req,
+                                                 char const *writer_label,
+                                                 bool admin,
+                                                 Acl::Key_domain const &domain,
+                                                 Genode::String<320> &sig_state)
 {
 	try {
 		if (!req.has_type("request")) {
@@ -1425,9 +1618,9 @@ void Sponge::Configd::Main::_handle_request_impl(Genode::Xml_node const &req)
 		                                              Genode::String<128>());
 
 		Genode::String<320> const sig(op, "|", key, "|", value);
-		if (sig == _last_request_sig)
+		if (sig == sig_state)
 			return;
-		_last_request_sig = sig;
+		sig_state = sig;
 
 		if (Genode::strcmp(op.string(), "list") == 0) {
 			_do_list();
@@ -1444,7 +1637,7 @@ void Sponge::Configd::Main::_handle_request_impl(Genode::Xml_node const &req)
 			return;
 		}
 		if (Genode::strcmp(op.string(), "set") == 0) {
-			_do_set(key.string(), value.string());
+			_do_set(key.string(), value.string(), writer_label, admin, domain);
 			return;
 		}
 
@@ -1476,8 +1669,75 @@ void Sponge::Configd::Main::_do_get(char const *key)
 }
 
 
-void Sponge::Configd::Main::_do_set(char const *key, char const *value)
+void Sponge::Configd::Main::_do_set(char const *key, char const *value,
+                                    char const *writer_label, bool admin,
+                                    Acl::Key_domain const &domain)
 {
+	/*
+	 * Criterion 18 (D16.1) gate order — the closed typed registry
+	 * FIRST, the label's key-domain SECOND (the shared decision in
+	 * Acl::gate_set). The registry pass is read-only: pattern keys
+	 * are matched against the templates WITHOUT instantiating, so a
+	 * rejected write can never mutate the store, the instantiated
+	 * slot pool, or the broadcast. Three registry failure modes are
+	 * distinguished exactly as before:
+	 *   - charset violation (key shape matches a template but the
+	 *     <id> segment isn't [a-z0-9_-]{1,16}) → the charset error;
+	 *   - registry full (template matched but no instantiated slot)
+	 *     → the limit error;
+	 *   - genuinely unknown (no template shape matches) → the F15
+	 *     suggestion path (via gate_set's Unknown_key outcome).
+	 */
+	unsigned idx { 0 };
+	bool const flat = _find_key(key, idx);
+	bool const inst = !flat && _find_instantiated(key, idx);
+
+	unsigned tmpl { ~0U };
+	bool registry_known = flat || inst;
+	if (!registry_known && _pattern_shape_match(key)) {
+		Genode::String<32> id { };
+		if (!_pattern_extract_id(key, id)) {
+			Genode::String<256> msg { "invalid <id> in key '",
+			                          Genode::String<128>(key),
+			                          "' (expected charset [a-z0-9_-]{1,16})" };
+			_report_error("set", key, msg.string());
+			return;
+		}
+		if (_num_instantiated >= MAX_PATTERN_KEYS) {
+			Genode::String<256> msg { "pattern-key registry full for key '",
+			                          Genode::String<128>(key),
+			                          "' (MAX_PATTERN_KEYS=", MAX_PATTERN_KEYS, ")" };
+			_report_error("set", key, msg.string());
+			return;
+		}
+		tmpl = _pattern_template_for(key);
+		registry_known = true;
+	}
+
+	/* The label's key-domain gate (registry first, domain second). */
+	Acl::Set_outcome const gate = Acl::gate_set(admin, registry_known, domain, key);
+
+	if (gate == Acl::Set_outcome::Unknown_key) {
+		Genode::String<128> const suggest = _suggest_similar(key);
+		Genode::String<256> msg { "unknown key: ", Genode::String<128>(key) };
+		if (suggest.length() > 0)
+			msg = Genode::String<256>(msg, " (suggested: ", suggest, ")");
+		_report_error("set", key, msg.string());
+		return;
+	}
+
+	if (gate == Acl::Set_outcome::Key_outside_domain) {
+		char const *const allowed =
+			Genode::strlen(domain.text) > 0 ? domain.text : "<none>";
+		Genode::String<256> msg { Acl::KEY_OUTSIDE_DOMAIN, ": key '",
+		                          Genode::String<128>(key),
+		                          "' is outside the key domain of writer label '",
+		                          Genode::String<32>(writer_label),
+		                          "' (allowed: ", allowed, ")" };
+		_report_error("set", key, msg.string(), Acl::KEY_OUTSIDE_DOMAIN);
+		return;
+	}
+
 	if (Genode::strcmp(key, "bake.applied") == 0 &&
 	    Genode::strcmp(value, "no") == 0) {
 		if (!_apply_bake_defaults()) {
@@ -1498,46 +1758,9 @@ void Sponge::Configd::Main::_do_set(char const *key, char const *value)
 		return;
 	}
 
-	/*
-	 * Resolve the key to a concrete Key_def (flat or instantiated
-	 * pattern). The flat lookup runs first; on miss the pattern
-	 * template scan runs and, on match, instantiates the per-id
-	 * slot synchronously before the value validator runs. Three
-	 * failure modes are distinguished:
-	 *   - charset violation (key shape matches a template but the
-	 *     <id> segment isn't [a-z0-9_-]{1,16}) → the `why` from
-	 *     _instantiate_pattern already names the charset rule.
-	 *   - registry full (template matched but no instantiated slot)
-	 *     → the `why` names the limit.
-	 *   - genuinely unknown (no template shape matches) → F15
-	 *     suggestion path surfaces the closest known key.
-	 */
-	unsigned idx { 0 };
-	if (!_find_key(key, idx) && !_find_instantiated(key, idx)) {
-		Genode::String<256> why { };
-		if (!_instantiate_pattern(key, idx, why)) {
-			/*
-			 * Shape miss vs charset fail vs full registry: charset
-			 * failures and full-registry errors carry a structured
-			 * `why`; a shape miss (no template matched) falls
-			 * through to the F15 suggestion path.
-			 */
-			if (why.length() > 0) {
-				_report_error("set", key, why.string());
-				return;
-			}
-			Genode::String<128> const suggest = _suggest_similar(key);
-			Genode::String<256> msg { "unknown key: ", Genode::String<128>(key) };
-			if (suggest.length() > 0)
-				msg = Genode::String<256>(msg, " (suggested: ", suggest, ")");
-			_report_error("set", key, msg.string());
-			return;
-		}
-	}
-
-	Key_def const &d = (idx < _num_instantiated)
-	                  ? _instantiated[idx]
-	                  : _registry[idx];
+	Key_def const &d = flat ? _registry[idx]
+	                  : inst ? _instantiated[idx]
+	                  :        _pattern_registry[tmpl];
 
 	Genode::String<256> why { };
 	if (!_value_valid(d, value, why)) {
@@ -1545,10 +1768,19 @@ void Sponge::Configd::Main::_do_set(char const *key, char const *value)
 		return;
 	}
 
-	if (idx < _num_instantiated)
-		_instantiated_values[idx] = Genode::String<128>(value);
-	else
+	/* ---- apply: the first mutation in this flow ---- */
+	if (flat) {
 		_values[idx] = Genode::String<128>(value);
+	} else if (inst) {
+		_instantiated_values[idx] = Genode::String<128>(value);
+	} else {
+		unsigned pidx { 0 };
+		if (!_instantiate_pattern(key, pidx, why)) {
+			_report_error("set", key, why.string());
+			return;
+		}
+		_instantiated_values[pidx] = Genode::String<128>(value);
+	}
 
 	/*
 	 * Persist the new store BEFORE regenerating the broadcast. If the
@@ -2039,8 +2271,9 @@ void Sponge::Configd::Main::_save_store()
 
 void Sponge::Configd::Main::_report_get_ok(char const *key, char const *value)
 {
-	Genode::Expanding_reporter &reporter = _active_result_reporter();
-	reporter.generate_xml([&](Genode::Xml_generator &g) {
+	Genode::Expanding_reporter *reporter = _result_or_warn();
+	if (!reporter) return;
+	reporter->generate_xml([&](Genode::Xml_generator &g) {
 		g.attribute("status", "ok");
 		g.attribute("op",     "get");
 		g.attribute("key",    Genode::String<128>(key));
@@ -2051,8 +2284,9 @@ void Sponge::Configd::Main::_report_get_ok(char const *key, char const *value)
 
 void Sponge::Configd::Main::_report_set_ok(char const *key, char const *value)
 {
-	Genode::Expanding_reporter &reporter = _active_result_reporter();
-	reporter.generate_xml([&](Genode::Xml_generator &g) {
+	Genode::Expanding_reporter *reporter = _result_or_warn();
+	if (!reporter) return;
+	reporter->generate_xml([&](Genode::Xml_generator &g) {
 		g.attribute("status", "ok");
 		g.attribute("op",     "set");
 		g.attribute("key",    Genode::String<128>(key));
@@ -2069,9 +2303,10 @@ void Sponge::Configd::Main::_report_list_ok()
 	unsigned inst_order[MAX_PATTERN_KEYS] { };
 	_sorted_order_instantiated(inst_order);
 
-	Genode::Expanding_reporter &reporter = _active_result_reporter();
+	Genode::Expanding_reporter *reporter = _result_or_warn();
+	if (!reporter) return;
 
-	reporter.generate_xml([&](Genode::Xml_generator &g) {
+	reporter->generate_xml([&](Genode::Xml_generator &g) {
 		g.attribute("status", "ok");
 		g.attribute("op",     "list");
 		g.attribute("count",  _num_keys + _num_instantiated);
@@ -2097,13 +2332,17 @@ void Sponge::Configd::Main::_report_list_ok()
 
 
 void Sponge::Configd::Main::_report_error(char const *op, char const *key,
-                                          char const *message)
+                                          char const *message,
+                                          char const *reason)
 {
-	Genode::Expanding_reporter &reporter = _active_result_reporter();
-	reporter.generate_xml([&](Genode::Xml_generator &g) {
+	Genode::Expanding_reporter *reporter = _result_or_warn();
+	if (!reporter) return;
+	reporter->generate_xml([&](Genode::Xml_generator &g) {
 		g.attribute("status", "error");
 		g.attribute("op",     op);
 		g.attribute("key",    Genode::String<128>(key));
+		if (Genode::strlen(reason) > 0)
+			g.attribute("reason", reason);
 		g.attribute("error",  message);
 	});
 }
@@ -2159,32 +2398,9 @@ Sponge::Configd::Main::Main(Genode::Env &env) : _env(env)
 	_request_rom.sigh(_request_handler);
 	_request_rom.update();
 
-	/*
-	 * Phase 16 W4 (D16.1) — wire the DE-side `de_config_request` /
-	 * `de_config_result` channel ONLY when the configd config ROM
-	 * declares `<de_config/>`. The same config-gate pattern as
-	 * `<lz_model/>` and `<bake/>`: scenarios that don't need DE-
-	 * side writes (Phase 14 W6, Phase 15 W3, Phase 7 pkg-style
-	 * scenarios without sponge-de) don't wire it and the
-	 * underlying ROM session never opens. The phase-16 W4
-	 * topologies (`sponge-de-*`) opt in.
-	 *
-	 * Reading the config ROM checks for `<de_config>` (an empty
-	 * element, the same gate pattern as `<lz_model>`). When the
-	 * gate is present, the DE-side ROM is opened and the signal
-	 * handler is wired before any request is dispatched.
-	 */
-	_config_rom.update();
-	bool       enable_de_channel = false;
-	try {
-		_config_rom.node().with_optional_sub_node("de_config",
-			[&] (Genode::Node const &) { enable_de_channel = true; });
-	} catch (Genode::Xml_node::Invalid_syntax) {
-		/* malformed config ROM — leave the gate off */
-	}
-	if (enable_de_channel) {
-		_ensure_de_channel();
-	}
+	/* Criterion 18 (D16.1): per-label key-domain ACLs + one config_request ROM per provider label. */
+	_init_writer_acls();
+	_ensure_provider_channels();
 
 	/*
 	 * Enable lz_model watching only when the configd config ROM explicitly
@@ -2215,6 +2431,7 @@ Sponge::Configd::Main::Main(Genode::Env &env) : _env(env)
 
 	/* Process a request that arrived before the signal handler was wired. */
 	_handle_request();
+	_handle_provider_requests();
 }
 
 
