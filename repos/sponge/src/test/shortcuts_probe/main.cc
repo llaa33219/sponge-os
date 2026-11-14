@@ -8,8 +8,11 @@
  *
  *     Boots, waits for the configd broadcast. Writes the W7 initial
  *     binding list `launcher\tSuper\nfocus_next\tAlt-Tab\n
- *     dismiss\tEscape` via the dedicated `sponge-de ->
- *     de_config_request` channel (D16.1 / D16.9). The configd
+ *     dismiss\tEscape` via the `shortcuts_settings` provider ACL
+ *     channel (`shortcuts_settings_config_request` /
+ *     `shortcuts_settings_config_result`; Criterion 18 per-label
+ *     key-domain ACL — the `shortcuts_settings` writer label owns
+ *     `shortcuts.*`). The configd
  *     closed-registry validator (configd/main.cc:752 _shortcuts_valid)
  *     accepts the value (the W2 deliverable). The broadcast
  *     regenerates with the new value; the in-DE ShortcutController
@@ -51,8 +54,10 @@
  *     Final gate: "shortcuts-extend-probe: PASS".
  *
  * Capability surface:
- *   - Report("de_config_request") + ROM("de_config_result",
- *     "broadcast") for the write channel.
+ *   - Report("shortcuts_settings_config_request") +
+ *     ROM("shortcuts_settings_config_result", "broadcast") for the
+ *     shortcuts_settings provider write channel (the probe occupies
+ *     the DE-side writer slot of that label — no universal writer).
  *   - ROM("event_filter_config") for the dynamic event_filter config
  *     report (verifies the controller emitted the parsed <shortcut>
  *     children).
@@ -82,8 +87,8 @@ struct Probe
 
 	Timer::Connection _timer { _env };
 
-	Genode::Constructible<Genode::Expanding_reporter>     _de_request   { };
-	Genode::Constructible<Genode::Attached_rom_dataspace> _de_result    { };
+	Genode::Constructible<Genode::Expanding_reporter>     _settings_request { };
+	Genode::Constructible<Genode::Attached_rom_dataspace> _settings_result  { };
 	Genode::Attached_rom_dataspace _de_broadcast { _env, "broadcast" };
 
 	Genode::Constructible<Genode::Attached_rom_dataspace> _event_filter_config { };
@@ -114,22 +119,23 @@ struct Probe
 
 	bool _send_set(char const *key, char const *value)
 	{
-		if (!_de_request.constructed())
-			_de_request.construct(_env, "request", "de_config_request");
-		if (!_de_result.constructed())
-			_de_result.construct(_env, "de_config_result");
+		if (!_settings_request.constructed())
+			_settings_request.construct(_env, "request",
+			                           "shortcuts_settings_config_request");
+		if (!_settings_result.constructed())
+			_settings_result.construct(_env, "shortcuts_settings_config_result");
 
-		_de_request->generate_xml([&](Genode::Xml_generator &g) {
+		_settings_request->generate_xml([&](Genode::Xml_generator &g) {
 			g.attribute("op",    "set");
 			g.attribute("key",   key);
 			g.attribute("value", value);
 		});
 
 		for (unsigned i = 0; i < 80; ++i) {
-			_de_result->update();
-			if (_de_result->valid()) {
+			_settings_result->update();
+			if (_settings_result->valid()) {
 				try {
-					Genode::Xml_node const r = _de_result->xml();
+					Genode::Xml_node const r = _settings_result->xml();
 					Genode::String<32> const status =
 						r.attribute_value("status", Genode::String<32>());
 					Genode::String<32> const op =
