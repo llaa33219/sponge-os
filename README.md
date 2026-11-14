@@ -280,26 +280,63 @@ The repository currently contains:
   (`sponge-alpha.run` + the 5 desktop-disk variants) so first boot
   on shipped media lands on the baked values (W3 +
   `run/sponge-desktop-defaults-firstboot.run`). The
-  in-DE `settings/` module brings five tabs (Panel / Theme /
+  in-DE `settings/` module brought five tabs (Panel / Theme /
   Background / Shortcuts / Defaults) via the `SettingsController`
   (a dedicated `de_config_request` / `de_config_result` Report
   channel per D16.1 + `AGENTS.md` §1.2 single-writer rule).
-  **Interim note (2026-11-11):** the shipped five-tab dialog is
-  the interim implementation, not the final Settings
-  architecture. Base criterion 2 was reopened on 2026-11-10; the
-  final target is the provider-owned `sponge_settings` control
-  center in roadmap Criterion 18 (not implemented or tested).
-  The legacy dialog and universal `SettingsController` are
-  removed at the W4 provider split (D16.9).
-  Right-click on the panel opens a QMenu (Height spinbox 16..128,
-  Visible widgets checkboxes, Position radio group; panel.position
-  becomes live via dual nitpicker panel domains `panel_top` /
-  `panel_bottom` per U16.2 + D16.2 — closes the Phase 14 W11 row
-  #6 / #14 `Re-scoped → Phase 15+` items as `Resolved in 16`).
-  Right-click on the background opens a QMenu (Settings / Launch
-  / Show desktop) with the show-desktop toggle reusing the
-  Phase 14 W7 tasklist layouter-rule ROM overwrite (U16.3). The
-  keyboard-shortcut framework is extensible via
+  **Status note (2026-11-13):** that five-tab dialog was the
+  interim implementation and is now gone: the W4 provider split
+  (D16.9) removed the legacy dialog module and the universal
+  `SettingsController` writer and landed the provider-owned
+  `sponge_settings` control center of roadmap Criterion 18
+  (implemented and QEMU-verified on base-sel4; all six acceptance
+  scenarios pass after the three session opt-in gate fixes
+  `<quick_settings source="providers"/>`,
+  `<settings_launch source="pkgd"/>`, and the first-party
+  provider package config `<settings quick="yes"/>`, documented
+  in `docs/05-sponge-de.md` §5.4 and
+  `docs/12-package-format.md` §14.8; receipts in
+  `docs/evidence/criterion18-settings.md`). Criterion 18 remains
+  open: the physical-hardware matrix, one-reboot package-private
+  persistence, and the hardware control-center crash test are
+  not done.
+  **Addendum (2026-11-14): the real QMenu surface is BLOCKED.**
+  No regression is being hidden: all six settings acceptance
+  scenarios still pass (center, providers, thirdparty, failure,
+  vct, focus), along with the host suites, the changed-target
+  build, and product Alpha/BIOS-disk/UEFI-USB validation as
+  previously documented. The provider wire protocol and product
+  integration are verified, but real QMenu interaction is not.
+  That click-through, `run/sponge-settings-quickmenu.run`, stays a
+  red repro: panel QMenu open fails 3/3 with no menu pixels and no
+  quick lifecycle, the upstream-wm popup path dies on
+  invalid-view association (the direct-nitpicker Background
+  parent cannot be associated by wm), and the direct-nitpicker
+  path shows no menu. Corrected right-click delivery does reach
+  the real `PanelWidget::contextMenuEvent` (the original HMP
+  `mouse_button 1` was BTN_LEFT, now `mouse_button 2`), but the
+  mask fix alone does not make the UI work. The
+  PanelWidget/BackgroundWidget QMenu lifecycle is unproven and
+  blocked with no minimal justified fix left. Product
+  quick-settings/provider wiring exists, but the QMenu surface is
+  not accepted and remains non-functional, so this README does
+  not claim the quick-menu UX works. Criterion 18 stays open with
+  this structural blocker in addition to the hardware gates
+  above; full evidence in `docs/evidence/criterion18-settings.md`.
+  Right-click on the panel is wired to open a QMenu (Height
+  spinbox 16..128, Visible widgets checkboxes, Position radio
+  group; panel.position becomes live via dual nitpicker panel
+  domains `panel_top` / `panel_bottom` per U16.2 + D16.2. This
+  closes the Phase 14 W11 row #6 / #14 `Re-scoped → Phase 15+`
+  items as `Resolved in 16`).
+  Right-click on the background is wired to open a QMenu
+  (Settings / Launch / Show desktop) with the show-desktop toggle
+  reusing the Phase 14 W7 tasklist layouter-rule ROM overwrite
+  (U16.3). These two are Phase 16 W5/W6 wiring receipts; per the
+  2026-11-14 addendum above, the real PanelWidget/BackgroundWidget
+  QMenu open lifecycle is unproven and blocked, so they are not
+  proof of a working quick-menu UX. The keyboard-shortcut
+  framework is extensible via
   `shortcuts.bindings` (initial bindings: Super → launcher,
   Alt-Tab → focus next, Escape → dismiss topmost popover). Multi-
   panel is generalized: arbitrary panel count on arbitrary edges
