@@ -73,6 +73,10 @@ int CommandRouter::dispatch(Args const &args)
 		LaunchCommand c { _env };
 		return c.execute(args);
 	}
+	if (Genode::strcmp(cmd, "settings") == 0) {
+		SettingsCommand c { _env };
+		return c.execute(args);
+	}
 	if (Genode::strcmp(cmd, "shutdown") == 0 || Genode::strcmp(cmd, "reboot") == 0) {
 		PowerCommand c { _env, nf };
 		return c.execute(args);

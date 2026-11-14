@@ -122,6 +122,10 @@ void apply_token(Genode::String<128> const &token, Args &out)
 		out.positional2 = Genode::String<128>(token);
 		return;
 	}
+	if (Genode::strcmp(out.positional3.string(), "") == 0) {
+		out.positional3 = Genode::String<128>(token);
+		return;
+	}
 
 	Genode::warning("vct: ignoring extra positional token: ", token);
 }

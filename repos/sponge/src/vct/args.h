@@ -51,8 +51,8 @@ constexpr unsigned MAX_ARGS = 32;
 struct Args
 {
 	/* Recognized: status, help, version, install, remove, list, config,
-	 * component, leitzentrale. Defaults to "status" when no positional
-	 * <arg> is supplied. */
+	 * component, leitzentrale, settings, ... Defaults to "status" when
+	 * no positional <arg> is supplied. */
 	Genode::String<32>  subcommand  { "status" };
 
 	/* First positional (package name for install, config key, ...). */
@@ -60,6 +60,11 @@ struct Args
 
 	/* Second positional (e.g. config value for "config set"). */
 	Genode::String<128> positional2 { "" };
+
+	/* Third positional (e.g. settings-id for "settings open <pkg>
+	 * <settings-id>"). Extra tokens beyond this are reported and
+	 * dropped. */
+	Genode::String<128> positional3 { "" };
 
 	bool explain    { false };   /* --explain    : dry-run, no execution        */
 	bool manual     { false };   /* --manual     : step-by-step prompt          */
