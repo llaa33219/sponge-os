@@ -1,0 +1,402 @@
+#
+# \brief  Criterion 18 settings REAL-VCT acceptance scenario: the
+#        actual vct binary driven end-to-end on base-sel4 - settings
+#        list (human + --json), sequential settings open (started ->
+#        focused, no duplicate start), and an unknown settings id
+#        (not-installed) - over the real shell-less pkgd wire,
+#        serialized deterministically.
+# \author Sponge OS contributors
+# \date   2026
+#
+# WHAT THIS PROVES (fail-loud; every gate is bounded and named;
+# docs/06-vct.md §4.8 + docs/12-package-format.md §14 are the
+# contracts). Every result below comes from a REAL vct child process
+# with real argv - the settings_vct_probe only sequences and validates
+# the wire; the human and JSON outputs are vct's own:
+#
+#   1. INSTALL (real vct): `vct install settings_demo` over the
+#      primary request channel answers
+#        [init -> system -> vct_cmd] Installed package: settings_demo 1.0
+#      and the installed broadcast carries BOTH <settings> entries
+#      (greeting/applications, about/other) - the data source of
+#      `settings list`.
+#   2. LIST (human): `vct settings list` prints one row per entry
+#      grouped by category:
+#        Settings entries:
+#        applications:
+#        settings_demo  greeting  Greeting  applications
+#        other:
+#        settings_demo  about  About  other
+#   3. LIST (--json): `vct settings list --json` prints the structured
+#      twin carrying package/settings_id/title/category per entry.
+#   4. FIRST OPEN: `vct settings open settings_demo greeting` submits
+#      one target="settings" launch request and reports
+#        settings open: success (started): settings_demo greeting
+#      backed by the pkgd wire answer `-> ok started` and ONE provider
+#      start (settings_demo_greeting mounts its package-private store
+#      exactly once).
+#   5. SECOND SEQUENTIAL OPEN: the same command again answers
+#        settings open: success (focused): settings_demo greeting
+#      - the singleton claim is raised, never a second start (the
+#      post-gate counts pin '-> ok started' at 1 and the provider
+#      boot at 1).
+#   6. UNKNOWN ID: `vct settings open settings_demo nosuchid` reports
+#        settings open: settings_demo 'nosuchid' is not installed
+#      (exit 1; the §14.7 not-installed lexeme on the wire).
+#   7. OPEN --json (ok leg): `settings open settings_demo greeting
+#      --json` prints {"status":"ok","action":"focused"} - the JSON
+#      success rendering of the same live claim.
+#   8. OPEN --json (refusal leg): `settings open settings_demo
+#      nosuchid --json` prints {"status":"error","error":"not-installed"}
+#      (exit 1) - the JSON refusal rendering.
+#
+# SEQUENCING IS DETERMINISTIC (docs/12 §14.7 + AGENTS.md §1.2). The
+# settings_vct_probe owns the nested `system` init config (the
+# run/sponge-settings-failure.run / settings_failure_probe
+# publication pattern) and starts exactly ONE `vct_cmd` incarnation
+# at a time: each config version carries the next argv and a bumped
+# version attribute, and the next version is published only after the
+# previous vct child's `exited` attribute appears in the system state
+# report. The primary request label therefore never carries two
+# concurrent writers, and every vct command completes before the next
+# is configured. The probe validates sponge_pkgd's `result` document
+# (and the installed broadcast) per step and emits ONE terminal
+# `settings-vct-probe: PASS` marker - the run's single terminal gate.
+# Everything else is verified by post-output counts over the captured
+# serial stream (cleaned of seL4 kernel interleavings).
+#
+# WIRING (report_rom single-writer per label; pkgd's config opt-in
+# gates decide which channels exist - here only <settings_liveness/>,
+# so pkgd's claim release machinery watches pkg_runtime's state while
+# request/result/installed/runtime stay on their always-on channels):
+#
+#   vct_cmd -> request            -> system -> sponge_pkgd `request`
+#   system -> sponge_pkgd `result`           -> vct_cmd `result`
+#                                           -> settings_vct_probe `result` (validation)
+#   system -> sponge_pkgd `installed`        -> vct_cmd `installed` (settings list)
+#                                           -> settings_vct_probe `installed` (validation)
+#   system -> sponge_pkgd `runtime`          -> pkg_runtime `config`
+#   pkg_runtime `state`  -> system -> sponge_pkgd `runtime_state`   [<settings_liveness/>]
+#   system `state` (init's <report/>)        -> settings_vct_probe `system_state` (exit watch)
+#   settings_vct_probe -> system_config      -> system `config`
+#   Gui: the providers launched by pkgd into pkg_runtime get their
+#   Gui from the PROBE (pkg_runtime `Gui` -> settings_vct_probe) and
+#   their package-private File_system from vfs_store (metadata
+#   <sessions> subpath /app/settings_demo). No nitpicker, no drivers,
+#   no QMP: this scenario's claims are wire/CLI claims.
+#
+# base-sel4 only: the production kernel is the acceptance target for
+# the real vct binary (same rationale as run/sponge-settings-failure
+# .run; the topology itself is headless).
+#
+
+assert {[have_spec sel4]} \
+	"sponge-settings-vct requires KERNEL=sel4 (BOARD=pc) in build.conf. \
+	 This scenario proves the real vct binary on the production kernel."
+
+build { core lib/ld init timer server/report_rom server/vfs lib/vfs \
+        sponge_pkgd vct \
+        settings_demo/greeting settings_demo/about \
+        test/settings_vct_probe }
+
+create_boot_directory
+
+install_config {
+config
++ parent-provides
+  + service ROM
+  + service PD
+  + service RM
+  + service CPU
+  + service LOG
+  + service IRQ
+  + service IO_MEM
+  + service IO_PORT
+
++ default | caps: 200 | ram: 4M
++ default-route
+  + any-service
+    + parent
+    + any-child
+
++ start timer
+  + provides | + service Timer
+
+#
+# report_rom — the single relay. Full label chains, one writer per
+# label (AGENTS.md §1.2). sponge_pkgd runs inside the nested `system`
+# init (its config is the probe's system_config report), so its
+# session labels carry the `system -> sponge_pkgd -> ...` prefix (the
+# run/sponge-settings-failure.run shape). The request ROM mirrors the
+# probe-serialized `vct_cmd` writer; the result and installed reports
+# each fan out to two readers (vct_cmd + probe validation).
+#
++ start report_rom | caps: 300 | ram: 8M
+  + provides
+    + service Report
+    + service ROM
+  + config | verbose: no
+    + policy | label: system -> config                      | report: settings_vct_probe -> system_config
+    + policy | label: system -> sponge_pkgd -> request      | report: system -> vct_cmd -> request
+    + policy | label: system -> vct_cmd -> result           | report: system -> sponge_pkgd -> result
+    + policy | label: settings_vct_probe -> result          | report: system -> sponge_pkgd -> result
+    + policy | label: system -> vct_cmd -> installed        | report: system -> sponge_pkgd -> installed
+    + policy | label: settings_vct_probe -> installed       | report: system -> sponge_pkgd -> installed
+    + policy | label: pkg_runtime -> config                 | report: system -> sponge_pkgd -> runtime
+    + policy | label: system -> sponge_pkgd -> runtime_state | report: pkg_runtime -> state
+    + policy | label: settings_vct_probe -> system_state    | report: system -> state
+
+#
+# system — the nested sandbox hosting sponge_pkgd and the serialized
+# vct_cmd caller. Its whole config comes from the probe's
+# `system_config` report (the run/sponge-de-pkgd-failure.run relay
+# pattern), so the choreography can replace the vct_cmd start node
+# deterministically between commands. Pool covers init's own overhead
+# + pkgd's 800 caps + vct_cmd's 200.
+#
++ start system | caps: 1200 | ram: 64M
+  + binary init
+  + route
+    + service ROM | label: config | + child report_rom
+    + service Report | + child report_rom
+    + service Timer | + child timer
+    + service ROM | label_last: request   | + child report_rom
+    + service ROM | label_last: result    | + child report_rom
+    + service ROM | label_last: installed | + child report_rom
+    + service ROM | label_last: runtime_state | + child report_rom
+    + any-service
+      + parent
+
+#
+# pkg_runtime — nested init hosting the launched settings providers.
+# Its config is the pkgd `runtime` report (which carries the
+# <report/> node making THIS init publish its state report, the
+# settings_liveness input). Gui goes to the PROBE; File_system
+# resolves to the package-private vfs_store with the metadata subpath
+# materialized as the session label (docs/12 §13).
+#
++ start pkg_runtime | caps: 2000 | ram: 256M
+  + binary init
+  + route
+    + service ROM | label: config | + child report_rom
+    + service Gui | + child settings_vct_probe
+    + service File_system | + child vfs_store | label: /app/settings_demo/
+    + service Report | + child report_rom
+    + any-service
+      + parent
+      + any-child
+
+#
+# vfs_store — the providers' package-private store backend
+# (settings_demo <sessions> File_system subpath). Ram-backed: one
+# boot only.
+#
++ start vfs_store | caps: 150 | ram: 16M
+  + binary vfs
+  + provides | + service File_system
+  + config
+    + vfs
+      + dir app
+        + dir settings_demo
+          + ram
+    + policy | label_prefix: /app/settings_demo | root: / | writeable: yes
+  + route
+    + service ROM | label_last: ld.lib.so | + parent
+    + service ROM | label_last: vfs.lib.so | + parent
+    + any-service
+      + parent
+      + any-child
+
+#
+# settings_vct_probe — the focused harness (Gui service + system
+# config relay + sequential real-vct choreography with per-step wire
+# validation; see repos/sponge/src/test/settings_vct_probe/target.mk).
+#
++ start settings_vct_probe | caps: 400 | ram: 48M
+  + provides
+    + service Gui
+  + route
+    + service Timer | + child timer
+    + service ROM | label_last: system_state | + child report_rom
+    + service ROM | label_last: result       | + child report_rom
+    + service ROM | label_last: installed    | + child report_rom
+    + service Report | + child report_rom
+    + any-service
+      + parent
+      + any-child
+- }
+
+#
+# Stage the settings_demo package metadata + the derived index so
+# sponge_pkgd can resolve the two <settings> entries (the
+# run/sponge-settings-failure.run staging scheme).
+#
+exec mkdir -p bin
+
+set staged_pkgs { settings_demo }
+foreach pkg $staged_pkgs {
+	set src "${genode_dir}/../pkg/$pkg/metadata.xml"
+	if {![file exists $src]} {
+		error "package metadata not found: $src"
+	}
+	exec cp -L $src "bin/pkg_$pkg.xml"
+}
+
+set index_fh [open "bin/pkg_index.xml" w]
+puts $index_fh "<packages>"
+foreach pkg $staged_pkgs {
+	puts $index_fh "  <pkg name=\"$pkg\"/>"
+}
+puts $index_fh "</packages>"
+close $index_fh
+
+#
+# Stage every non-build-artifact boot module into bin/ BEFORE
+# build_boot_image: on base-sel4 the boot image is a single packed
+# image.elf, so modules added later never reach the guest.
+#
+set boot_modules [build_artifacts]
+foreach m { pkg_settings_demo.xml pkg_index.xml } {
+	lappend boot_modules $m
+}
+
+build_boot_image $boot_modules
+
+#
+# QEMU: seL4 needs >= 1 GiB; 2G matches the sponge-settings-failure
+# precedent. No usb-tablet/QMP: this scenario's commands are all
+# vct-driven. match_max raises expect's match window BEFORE the spawn
+# so the post-output counts keep the whole stream (the run tool's
+# 40000-byte default would drop early evidence like the install
+# line); the -i re-raise covers the concrete spawn id.
+#
+match_max -d 2000000
+
+append qemu_args " -nographic -m 2G "
+
+#
+# The ONE terminal gate: the probe's verdict marker. The alternation
+# makes a probe-side failure land here too (with its reason in the
+# captured stream) instead of dying as a blind timeout. On match the
+# run tool appends the whole stream to $output; every claim below is
+# then a post-output count over that stream.
+#
+run_genode_until {settings-vct-probe: (PASS|FAIL)} 900
+
+global qemu_spawn_id
+match_max -i $qemu_spawn_id 2000000
+
+global output
+
+#
+# Gate machinery (the run/sponge-settings-failure.run shape): the
+# seL4 kernel writes its <<seL4 ...>> invocation warnings straight to
+# the serial, OUTSIDE the log-session line discipline - a block can
+# land in the middle of a component log line and split its text.
+# clean_output rejoins such splits in the captured $output, and every
+# count below runs over the CLEANED stream.
+#
+proc clean_output { } {
+	global output
+	regsub -all {(?s)<<seL4.*?>>[ \t\r\n]*} $output "" output
+	regsub -all {\e\[[0-9;]*m} $output "" output
+	regsub -all {(?s)[ \t\r\n]*Warning: invalid signal-context capability[ \t\r\n]*} $output "" output
+	regsub -all {(?s)[ \t\r\n]*Warning: flush page table entries[^\r\n]*} $output "" output
+	# Genode's LOG packet chunks any long log line at ~256 bytes, so
+	# vct's one-line JSON output arrives as several prefixed lines;
+	# rejoin those chunk splits (boundary = the repeated vct_cmd log
+	# prefix) so substring gates see the logical line.
+	regsub -all {(?s)\r*\n\[init -> system -> vct_cmd\] } $output "" output
+}
+
+proc expect_count { pattern want what } {
+	global output
+	clean_output
+	set n [regexp -all -- $pattern $output]
+	if {$n != $want} {
+		puts stderr "FAIL: expected $want x $what, saw $n"
+		exit 1
+	}
+}
+
+clean_output
+
+if {[regexp {settings-vct-probe: FAIL[^\r\n]*} $output fail_line]} {
+	puts stderr "FAIL: probe reported failure:"
+	puts stderr "  $fail_line"
+	exit 1
+}
+
+#
+# Post-output counts over the accumulated run output (the
+# supervisor-control precedent: absences/counts cannot be expressed
+# as log-line gates). Patterns are the production strings pinned by
+# docs/06 §4.8 / docs/12 §14 and the passing
+# run/sponge-settings-failure.run gates.
+#
+expect_count {Installed package: settings_demo 1\.0} 1 \
+	"real vct install of settings_demo (human line)"
+expect_count {sponge_pkgd: settings result settings_demo 'greeting' -> ok started} 1 \
+	"pkgd wire '-> ok started' (exactly one fresh start)"
+expect_count {sponge_pkgd: settings result settings_demo 'greeting' -> ok focused} 2 \
+	"pkgd wire '-> ok focused' (2nd human open + JSON open)"
+expect_count {sponge_pkgd: settings result settings_demo 'nosuchid' -> not-installed} 2 \
+	"pkgd wire '-> not-installed' (human + JSON refusal legs)"
+expect_count {sponge_pkgd: settings open settings_demo 'greeting' -> started \(settings_demo\.greeting\)} 1 \
+	"pkgd open log with the provider start name (single start)"
+expect_count {settings_demo_greeting: package-private store enabled at /greeting\.xml} 1 \
+	"provider booted exactly once (no duplicate start)"
+expect_count {settings_demo_greeting: window closed, exiting} 0 \
+	"provider never closed (singleton stayed live)"
+expect_count {sponge_pkgd: settings provider settings_demo\.greeting exited} 0 \
+	"no claim release (focused came from the live singleton)"
+expect_count {-> claim released} 0 \
+	"claim releases (none: no provider ever exited)"
+expect_count {Settings entries:} 1 \
+	"vct settings list (human) header"
+expect_count {applications:} 1 \
+	"human list group header (applications)"
+expect_count {other:} 1 \
+	"human list group header (other)"
+expect_count {settings_demo  greeting  Greeting  applications} 1 \
+	"human list row: greeting with category + id"
+expect_count {settings_demo  about  About  other} 1 \
+	"human list row: about with category + id"
+expect_count {"command":"settings_list","status":"success","entries":\[} 1 \
+	"vct settings list --json envelope"
+expect_count {"settings_id":"greeting","title":"Greeting","category":"applications"} 1 \
+	"JSON list entry: greeting with category + id"
+expect_count {"settings_id":"about","title":"About","category":"other"} 1 \
+	"JSON list entry: about with category + id"
+expect_count {settings open: success \(started\): settings_demo greeting} 1 \
+	"vct human open -> started"
+expect_count {settings open: success \(focused\): settings_demo greeting} 1 \
+	"vct human open -> focused"
+expect_count {settings open: settings_demo 'nosuchid' is not installed} 1 \
+	"vct human open -> not-installed (unknown settings id)"
+expect_count {"command":"settings open","package":"settings_demo","settings_id":"greeting","status":"ok","action":"focused"} 1 \
+	"vct JSON open -> ok focused"
+expect_count {"command":"settings open","package":"settings_demo","settings_id":"nosuchid","status":"error","error":"not-installed"} 1 \
+	"vct JSON open -> error not-installed"
+expect_count {\[vct\] settings open: requesting settings_demo greeting} 3 \
+	"real vct audit lines for greeting (started + 2x focused)"
+expect_count {\[vct\] settings open: requesting settings_demo nosuchid} 2 \
+	"real vct audit lines for nosuchid (human + JSON)"
+expect_count {settings-vct-probe: gui session open: [^\r\n]*settings_demo\.greeting} 1 \
+	"exactly one provider Gui session (no duplicate window)"
+expect_count {settings-vct-probe: gui session closed: [^\r\n]*settings_demo\.greeting} 0 \
+	"provider Gui session never closed"
+expect_count {settings-vct-probe: installed entries present: greeting \(applications\), about \(other\)} 1 \
+	"installed broadcast carried both categorized entries"
+expect_count {sponge_pkgd: settings provider liveness enabled} 1 \
+	"liveness arming"
+expect_count {settings-vct-probe: FAIL} 0 \
+	"probe fail-loud markers"
+expect_count {settings-vct-probe: PASS} 1 \
+	"single terminal PASS marker"
+
+#
+# Final explicit PASS verdict (emitted only after the terminal gate
+# and every count above succeeded).
+#
+puts "settings-vct-scenario: PASS - real vct end-to-end on base-sel4: install answered; settings list (human + --json) carried greeting/about with categories and ids; settings open settings_demo greeting answered started once then focused twice with no duplicate provider start; unknown settings id nosuchid answered not-installed on both renderings; every result produced by a real vct child with real args under serialized single-writer sequencing"
