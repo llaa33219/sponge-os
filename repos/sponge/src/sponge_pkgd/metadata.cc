@@ -240,6 +240,7 @@ void Sponge::Pkgd::Main::_parse_package(Genode::Xml_node const &pkg,
 	bool has_version { false };
 	bool has_description { false };
 	bool has_runtime_class { false };
+	bool settings_rejected { false };
 
 	pkg.for_each_sub_node([&](Genode::Xml_node const &child) {
 		if (child.has_type("name")) {
@@ -427,6 +428,70 @@ void Sponge::Pkgd::Main::_parse_package(Genode::Xml_node const &pkg,
 			out.launcher_category = child.attribute_value("category",
 			                            Genode::String<32>());
 		}
+		else if (child.has_type("settings")) {
+			/*
+			 * Provider-owned Settings entries (docs/12-package-format.md
+			 * §14.2/§14.3). The parse/validation rules are the pure,
+			 * host-tested settings_rules module; this branch only
+			 * applies the outcome: a hard rejection invalidates the
+			 * PACKAGE with a clear English error naming the offending
+			 * entry (the same treatment a missing <name> gets below),
+			 * and the warn-and-ignore cases get one bounded warning
+			 * each.
+			 */
+			if (settings_rejected)
+				return;
+
+			if (out.num_settings >= Package::MAX_SETTINGS) {
+				Genode::warning("pkg: <settings> in ", name,
+				                " exceeds ", (unsigned)Package::MAX_SETTINGS,
+				                " entries — ignoring the rest");
+				return;
+			}
+
+			Settings_entry &entry = out.settings[out.num_settings];
+			Settings_parse const sp = parse_settings_entry(
+				child, entry, out.settings, out.num_settings);
+
+			if (sp.reject != Settings_reject::none) {
+				_error = Genode::String<256>(
+					"package '", Genode::String<64>(name),
+					"' has a rejected <settings> entry '",
+					entry.id.string()[0] != 0 ? entry.id.string()
+					                          : "<unnamed>",
+					"': ", settings_reject_reason(sp.reject));
+				out.valid = false;
+				settings_rejected = true;
+				return;
+			}
+
+			if (!settings_start_name_valid(name, entry.id.string())) {
+				_error = Genode::String<256>(
+					"package '", Genode::String<64>(name),
+					"' has a rejected <settings> entry '", entry.id,
+					"': package and settings id exceed the 63-character "
+					"start-name limit");
+				out.valid = false;
+				settings_rejected = true;
+				return;
+			}
+
+			if (entry.category_defaulted)
+				Genode::warning("pkg: <settings> category in ", name,
+				                " entry '", entry.id,
+				                "' must be desktop, hardware, system, "
+				                "applications or other — defaulting to other");
+			if (sp.unknown_attribute)
+				Genode::warning("pkg: <settings> entry '", entry.id, "' in ",
+				                name, " carries unknown attribute(s) — "
+				                "ignored");
+			if (sp.unknown_child)
+				Genode::warning("pkg: <settings> entry '", entry.id, "' in ",
+				                name, " carries unknown child element(s) — "
+				                "ignored");
+
+			++out.num_settings;
+		}
 		else if (child.has_type("dependencies")) {
 			child.for_each_sub_node("pkg", [&](Genode::Xml_node const &dep) {
 				if (out.num_deps < Package::MAX_DEPS) {
@@ -486,11 +551,19 @@ void Sponge::Pkgd::Main::_parse_package(Genode::Xml_node const &pkg,
 		char const *missing = !has_name        ? "name"
 		                    : !has_version     ? "version"
 		                    :                    "description";
-		_error = Genode::String<256>("package '", Genode::String<64>(name),
-		                            "' is missing required element <", missing, ">");
+		/* Keep an earlier §14.3 <settings> refusal (first error wins). */
+		if (_error.length() == 0)
+			_error = Genode::String<256>("package '", Genode::String<64>(name),
+			                            "' is missing required element <",
+			                            missing, ">");
 		out.valid = false;
 		return;
 	}
+
+	/* A §14.3 <settings> hard rejection already recorded its reason
+	 * in _error and invalidates the package — do not clear it here. */
+	if (settings_rejected)
+		return;
 
 	out.valid = true;
 }
