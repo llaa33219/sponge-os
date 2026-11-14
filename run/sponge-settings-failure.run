@@ -1,0 +1,874 @@
+#
+# \brief  Criterion 18 settings FAILURE-contract acceptance scenario:
+#        provider exit -> claim release -> fresh start, removal ->
+#        stale-open not-installed, and the caller-side
+#        package-manager-unavailable fail-fast — over the real
+#        shell/pkgd/pkg_runtime wire, terminated deterministically.
+# \author Sponge OS contributors
+# \date   2026
+#
+# WHAT THIS PROVES (fail-loud; every gate is bounded and named;
+# docs/12-package-format.md §14.7 "Lifecycle, Focus, Failure, and
+# Removal" is the contract):
+#
+#   1. PROVIDER EXIT IS OBSERVED VIA THE EXPLICIT `exited` ATTRIBUTE:
+#      the greeting provider is terminated with the real v1.1
+#      app-visible close channel (docs/05 §4.6 — the info ROM flips to
+#      <capture closed="yes"/>, the provider's production _handle_info
+#      commits and calls exit(0); nothing is hidden or killed). The
+#      probe's state evidence (the same HID sandbox-state report
+#      sponge_pkgd's liveness gate reads) records the explicit
+#      `exited: 0` attribute, and pkgd's claim-release log carries the
+#      exit code DECODED FROM that attribute:
+#        sponge_pkgd: settings provider settings_demo.greeting
+#                    exited (0) -> claim released; next open starts fresh
+#      A clean exit is an exit: exited="0" still releases.
+#   2. A LATER OPEN STARTS FRESH, NOT A FALSE FOCUSED: the next open
+#      answers
+#        sponge_pkgd: settings result settings_demo 'greeting'
+#                    -> ok started
+#      for the SECOND time (post-gate count == 2), and the re-started
+#      provider mounts its store again. Had the claim not been
+#      released this open would have answered 'focused' for a dead
+#      provider.
+#   3. ABSENT CHILD ALONE IS NEVER AN EXIT. Three independent
+#      witnesses:
+#        (a) RULE: the production rules module (settings_rules.cc,
+#            compiled into sponge_pkgd) is exercised by its host-side
+#            self-test pre-gate below — "exit scan: absent name is
+#            never an exit (report can predate first paint)".
+#        (b) STATE: the probe's evidence trail shows the explicit
+#            attribute at release and the child's ABSENCE afterwards
+#            (the stale <start> node was dropped) producing NO extra
+#            release — across the whole boot exactly ONE claim release
+#            is logged and it equals the number of explicit exits
+#            (post-gate counts), and every claim held while its child
+#            was absent-or-running answered 'focused' (the two
+#            pre-exit and post-relaunch opens below) instead of
+#            releasing.
+#        (c) SIBLING: about's claim survives greeting's exit in the
+#            same state report — the exit evidence line logs about
+#            present WITHOUT an exited attribute, and about's later
+#            open answers 'focused' (another child's exit never
+#            releases this name) while about's own window never
+#            closed.
+#   4. REMOVAL -> STALE OPEN = NOT-INSTALLED: the probe removes
+#      settings_demo on its own probe_request channel, then re-opens
+#      the removed identity:
+#        sponge_pkgd: settings open settings_demo 'greeting'
+#                    -> not-installed
+#   5. A CALLER WITHOUT A LIVE PKGd RESPONSE FAILS FAST: the probe
+#      then publishes the nested `system` init config v2, which STOPS
+#      sponge_pkgd (its start node is dropped) and starts the late
+#      `vct settings open settings_demo greeting` caller. vct's
+#      production fail-fast surface (docs/06 §4.8) derives
+#      package-manager-unavailable from ONE bounded result wait (200 ms
+#      settle + 60 x 100 ms) and never polls:
+#        vct_late: [vct] settings open: requesting settings_demo greeting
+#        vct_late: settings open: package-manager-unavailable -
+#                  sponge_pkgd did not answer within the bounded wait
+#      This is the "bounded one-shot result wait elapses" sub-path of
+#      the caller-side contract — no hang, no retry loop. (The shell
+#      sponge_settings derives the same status locally; its surface is
+#      unit-covered in repos/sponge/src/sponge_settings/tests.)
+#   6. SHELL + SIBLING SURVIVE ANOTHER PROVIDER'S EXIT: after the
+#      close, the about row is clicked again and answers 'focused' —
+#      the shell processed the click (still alive) and about's
+#      singleton is intact (sibling alive, post-gate: its window never
+#      closed).
+#
+# TERMINATION IS DETERMINISTIC. The settings_failure_probe is a
+# focused harness (repos/sponge/src/test/settings_failure_probe): it
+# serves the providers' Gui sessions and delivers the app-visible
+# close on the first greeting focus hint (the §14.7 focus-hint
+# emission is the opt-in trigger, "where used"). No unexplained sleep,
+# no hidden window, no forged crash.
+#
+# WIRING (report_rom single-writer per label; pkgd's config opt-in
+# gates decide which channels exist). sponge_pkgd runs inside the
+# nested `system` init whose config is the probe's `system_config`
+# report — the run/sponge-de-pkgd-failure.run kill/revive pattern, so
+# the scenario can STOP pkgd without editing production:
+#
+#   vct                  -> request          -> system -> sponge_pkgd `request`
+#   system -> sponge_pkgd `result`           -> vct
+#   settings_failure_probe -> request        -> system -> sponge_pkgd `probe_request` [<probe_request/>]
+#   system -> sponge_pkgd `probe_result`     -> settings_failure_probe `result`
+#   sponge_settings      -> settings_request -> system -> sponge_pkgd `settings_request` [<settings_request/>]
+#   system -> sponge_pkgd `settings_result`  -> sponge_settings `settings_result`
+#   system -> sponge_pkgd `installed`        -> sponge_settings `installed`
+#   system -> sponge_pkgd `runtime`          -> pkg_runtime `config`
+#   pkg_runtime `state`  -> system -> sponge_pkgd `runtime_state`   [<settings_liveness/>]
+#   pkg_runtime `state`  -> settings_failure_probe `state`   (evidence)
+#   system -> sponge_pkgd `settings_focus_hint` -> settings_failure_probe `focus_hint` [<settings_focus_hint/>]
+#   settings_failure_probe -> system_config -> system `config`
+#   settings_failure_probe -> request       -> (unmapped: vct_late's late request is its own label)
+#   system -> vct_late -> result            -> zombie (never written: the dead-response leg)
+#   Gui/Timer: the SHELL goes to nitpicker (real QMP clicks); the
+#   providers launched by pkgd into pkg_runtime get their Gui from
+#   the PROBE (pkg_runtime `Gui` -> settings_failure_probe) and their
+#   package-private File_system from vfs_store (metadata <sessions>
+#   subpath /app/settings_demo materialized as the route label).
+#
+# base-sel4 only: the interactive PC driver set (vesa_fb/ps2/usb_hid)
+# and QEMU's usb-tablet need real hardware access (same rationale as
+# run/sponge-de-sel4-interactive.run). Click geometry is pure Layout
+# math copied from run/sponge-settings-center.run: the shell window is
+# its nitpicker domain (0,0,440,560), build_rows() puts the greeting
+# entry at [30,72) (click y=51) and the about entry at [102,144)
+# (click y=123).
+#
+
+#
+# Host-side RULE proof for "absent child alone is not treated as
+# exit": build and run sponge_pkgd's settings self-test against the
+# production rules module (the build command is documented in the
+# self_test.cc header). Bounded, no network, host g++ only. The
+# runtime halves of this claim are gates 2/3(b)/3(c) below.
+#
+set repo_root [file normalize "${genode_dir}/.."]
+set st_bin    "/tmp/sponge_pkgd_settings_self_test"
+set st_cmd    "g++ -std=c++20 -O1 \
+	-I $repo_root/genode/repos/base/include \
+	-I $repo_root/genode/repos/base/include/spec/64bit \
+	-I $repo_root/genode/repos/base/include/spec/x86_64 \
+	-I $repo_root/genode/repos/base/include/spec/x86 \
+	-I $repo_root/genode/repos/base/src/include \
+	-I $repo_root/repos/sponge/include \
+	-I $repo_root/repos/sponge/src/sponge_pkgd \
+	$repo_root/repos/sponge/src/sponge_pkgd/self_test.cc \
+	$repo_root/repos/sponge/src/sponge_pkgd/settings_rules.cc \
+	$repo_root/repos/sponge/lib/src/sponge_pkg_launch/pkg_launch.cc \
+	$repo_root/genode/repos/base/src/lib/base/hid.cc \
+	$repo_root/genode/repos/base/src/lib/base/output.cc \
+	-o $st_bin && $st_bin"
+
+if {[catch {exec sh -c $st_cmd} st_out]} {
+	puts stderr "FAIL: settings-rules self-test build/run failed:\n$st_out"
+	exit 1
+}
+if {![regexp {self-test: PASS} $st_out]} {
+	puts stderr "FAIL: settings-rules self-test diverged:\n$st_out"
+	exit 1
+}
+puts "settings-rules-self-test: PASS (exit scan: only an explicit exited attribute releases; absent name is never an exit)"
+
+assert {[have_spec sel4]} \
+	"sponge-settings-failure requires KERNEL=sel4 (BOARD=pc) in build.conf. \
+	 This scenario drives the real PC input chain (vesa_fb/ps2/usb_hid + \
+	 QEMU usb-tablet) that base-linux cannot provide."
+
+build { core lib/ld init timer server/report_rom server/nitpicker \
+         driver/acpi app/pci_decode driver/platform \
+         driver/framebuffer/vesa driver/ps2 \
+         driver/usb_host/pc driver/usb_hid \
+         server/event_filter server/vfs lib/vfs \
+         sponge_pkgd sponge_settings vct \
+         settings_demo/greeting settings_demo/about \
+         test/settings_failure_probe }
+
+create_boot_directory
+
+install_config {
+config
++ parent-provides
+  + service ROM
+  + service PD
+  + service RM
+  + service CPU
+  + service LOG
+  + service IRQ
+  + service IO_MEM
+  + service IO_PORT
+
++ default | caps: 200 | ram: 4M
++ default-route
+  + any-service
+    + parent
+    + any-child
+
++ start timer
+  + provides | + service Timer
+
+#
+# report_rom — the single relay. Full label chains, one writer per
+# label (AGENTS.md §1.2). Note the nested pkgd labels: sponge_pkgd
+# runs inside the `system` init below, so its session labels carry the
+# `system -> sponge_pkgd -> ...` prefix (same shape as
+# run/sponge-de-pkgd-failure.run). The vct_late result ROM is mapped
+# to a never-written report: the ROM exists (so vct's channel opens)
+# and stays empty (so its bounded result wait is what answers).
+#
++ start report_rom | caps: 300 | ram: 8M
+  + provides
+    + service Report
+    + service ROM
+  + config | verbose: no
+    + policy | label: system -> config | report: settings_failure_probe -> system_config
+    + policy | label: system -> sponge_pkgd -> request          | report: vct -> request
+    + policy | label: vct -> result                            | report: system -> sponge_pkgd -> result
+    + policy | label: system -> sponge_pkgd -> probe_request    | report: settings_failure_probe -> request
+    + policy | label: settings_failure_probe -> result          | report: system -> sponge_pkgd -> probe_result
+    + policy | label: system -> sponge_pkgd -> settings_request | report: sponge_settings -> settings_request
+    + policy | label: sponge_settings -> settings_result        | report: system -> sponge_pkgd -> settings_result
+    + policy | label: sponge_settings -> installed              | report: system -> sponge_pkgd -> installed
+    + policy | label: pkg_runtime -> config                     | report: system -> sponge_pkgd -> runtime
+    + policy | label: system -> sponge_pkgd -> runtime_state    | report: pkg_runtime -> state
+    + policy | label: settings_failure_probe -> state           | report: pkg_runtime -> state
+    + policy | label: settings_failure_probe -> focus_hint      | report: system -> sponge_pkgd -> settings_focus_hint
+    + policy | label: system -> vct_late -> result              | report: zombie -> never
+
+#
+# nitpicker — headless compositing for the SHELL window (the QMP
+# clicks' target). The providers' Gui sessions are served by the
+# probe, so the apps domain only guards the shell's geometry like in
+# run/sponge-settings-center.run.
+#
++ start nitpicker | ram: 16M
+  + provides
+    + service Gui
+    + service Capture
+    + service Event
+  + route
+    + service Report | + child report_rom
+    + service Timer | + child timer
+    + any-service
+      + parent
+      + any-child
+  + config
+    + capture
+    + event
+    + domain settings | layer: 2 | content: client | label: no
+                      | hover: always | focus: click
+                      | xpos: 0 | ypos: 0 | width: 440 | height: 560
+    + domain apps | layer: 1 | content: client | label: no
+                  | hover: always | focus: click
+                  | xpos: 0 | ypos: 560 | width: 1024 | height: 208
+    + policy | label_prefix: sponge_settings | domain: settings
+    + default-policy | domain: apps
+    + background | color: #1e1e2e
+
+#
+# drivers — the vendored drivers_interactive-pc set, copied verbatim
+# from run/sponge-settings-center.run / run/sponge-de-sel4-interactive
+# .run (acpi -> report_rom -> pci_decode -> platform, vesa_fb, ps2,
+# pc_usb_host, usb_hid, event_filter). fb.config / drivers.config come
+# from the recipe; event_filter.config is staged below.
+#
++ start drivers | caps: 1500 | ram: 96M | managing_system: yes
+  + binary init
+  + route
+    + service ROM | label: config | + parent | label: drivers.config
+    + service Timer | + child timer
+    + service Capture | + child nitpicker
+    + service Event | + child nitpicker
+    + any-service                 | + parent
+  + config
+    + parent-provides
+      + service IRQ
+      + service IO_MEM
+      + service IO_PORT
+      + service ROM
+      + service PD
+      + service RM
+      + service CPU
+      + service LOG
+      + service Timer
+      + service Capture
+      + service Event
+
+    + default | caps: 60
+
+    + start acpi | caps: 250 | ram: 4M
+      + route
+        + service IO_MEM | + parent
+        + service LOG | + parent
+        + service PD | + parent
+        + service RM | + parent
+        + service CPU | + parent
+        + service ROM | + parent
+        + service Report | + child report_rom
+
+    + start report_rom | caps: 100 | ram: 2M
+      + provides
+      | + service ROM
+      | + service Report
+      + config
+      | + policy | label: pci_decode -> system | report: acpi -> acpi
+      | + policy | label: platform -> devices  | report: pci_decode -> devices
+      | + policy | label: usb_hid -> report    | report: usb -> devices
+      + route
+        + service LOG | + parent
+        + service PD | + parent
+        + service CPU | + parent
+        + service ROM | + parent
+
+    + start pci_decode | caps: 100 | ram: 2M
+      + route
+        + service Report | + child report_rom
+        + service ROM | label: system | + child report_rom
+        + service IO_MEM | + parent
+        + service LOG | + parent
+        + service PD | + parent
+        + service RM | + parent
+        + service CPU | + parent
+        + service ROM | + parent
+
+    + start platform | caps: 200 | ram: 3M | managing_system: yes
+      + provides
+      | + service Dma
+      | + service Platform
+      + route
+      | + service ROM | label: devices | + child report_rom
+      | + service Report | + child report_rom
+      | + service IRQ | + parent
+      | + service IO_MEM | + parent
+      | + service IO_PORT | + parent
+      | + service ROM | + parent
+      | + service PD | + parent
+      | + service CPU | + parent
+      | + service LOG | + parent
+      | + service Timer | + parent
+      + config
+        + report | devices: yes
+        + policy | label_prefix: ps2             | + device ps2
+        + policy | label_prefix: fb  | info: yes | + pci | class: VGA
+        + policy | label_prefix: usb | info: yes | + pci | class: USB
+
+    + start fb | caps: 150 | ram: 20M
+      + binary vesa_fb
+      + route
+        + service ROM | label: config | + parent | label: fb.config
+        + service Report | + child report_rom
+        + service Dma | + child platform
+        + service Platform | + child platform
+        + service IO_PORT | + parent
+        + service IO_MEM | + parent
+        + service ROM | + parent
+        + service PD | + parent
+        + service CPU | + parent
+        + service LOG | + parent
+        + service Timer | + parent
+        + service Capture | + parent
+
+    + start ps2 | caps: 100 | ram: 1280K
+      + config
+      + route
+        + service Dma | + child platform
+        + service Platform | + child platform
+        + service Event | + child event_filter | label: ps2
+        + service ROM | + parent
+        + service PD | + parent
+        + service CPU | + parent
+        + service LOG | + parent
+        + service Timer | + parent
+
+    + start usb | caps: 200 | ram: 16M
+      + binary pc_usb_host
+      + provides | + service Usb
+      + config
+      | + report | devices: yes
+      | + policy | label_prefix: usb_hid | + device | class: 0x3
+      + route
+        + service Dma | + child platform
+        + service Platform | + child platform
+        + service Report | label: devices | + child report_rom
+        + service ROM | + parent
+        + service PD | + parent
+        + service RM | + parent
+        + service CPU | + parent
+        + service LOG | + parent
+        + service Timer | + parent
+
+    + start usb_hid | caps: 180 | ram: 10M
+      + route
+        + service ROM | label: report | + child report_rom
+        + service ROM | + parent
+        + service PD | + parent
+        + service CPU | + parent
+        + service LOG | + parent
+        + service Timer | + parent
+        + service Event | + child event_filter | label: usb
+        + service Usb | + child usb
+
+    + start event_filter | caps: 90 | ram: 1280K
+      + provides | + service Event
+      + route
+        + service ROM | label: config | + parent | label: event_filter.config
+        + service Event | + parent
+        + service ROM | + parent
+        + service PD | + parent
+        + service CPU | + parent
+        + service LOG | + parent
+        + service Timer | + parent
+
+#
+# system — the nested sandbox hosting sponge_pkgd. Its whole config
+# comes from the probe's `system_config` report (the
+# run/sponge-de-pkgd-failure.run relay pattern), so the choreography
+# can STOP pkgd deterministically: config v2 drops its start node (init
+# destroys the incarnation) and arms the late vct caller. Pool covers
+# init's own overhead + pkgd's 800 caps + vct_late's 200.
+#
++ start system | caps: 1200 | ram: 64M
+  + binary init
+  + route
+    + service ROM | label: config | + child report_rom
+    + service Report | + child report_rom
+    + service Timer | + child timer
+    + service ROM | label_last: request          | + child report_rom
+    + service ROM | label_last: probe_request    | + child report_rom
+    + service ROM | label_last: settings_request | + child report_rom
+    + service ROM | label_last: runtime_state    | + child report_rom
+    + service ROM | label_last: result           | + child report_rom
+    + any-service
+      + parent
+
+#
+# pkg_runtime — nested init hosting the launched settings providers.
+# Its config is the pkgd `runtime` report. Gui goes to the PROBE (the
+# app-visible close channel lives there); File_system resolves to the
+# package-private vfs_store with the metadata subpath materialized as
+# the session label (docs/12 §13).
+#
++ start pkg_runtime | caps: 2000 | ram: 256M
+  + binary init
+  + route
+    + service ROM | label: config | + child report_rom
+    + service Gui | + child settings_failure_probe
+    + service File_system | + child vfs_store | label: /app/settings_demo/
+    + service Report | + child report_rom
+    + any-service
+      + parent
+      + any-child
+
+#
+# vfs_store — the providers' package-private store backend (settings_demo
+# <sessions> File_system subpath). Ram-backed: one boot only.
+#
++ start vfs_store | caps: 150 | ram: 16M
+  + binary vfs
+  + provides | + service File_system
+  + config
+    + vfs
+      + dir app
+        + dir settings_demo
+          + ram
+    + policy | label_prefix: /app/settings_demo | root: / | writeable: yes
+  + route
+    + service ROM | label_last: ld.lib.so | + parent
+    + service ROM | label_last: vfs.lib.so | + parent
+    + any-service
+      + parent
+      + any-child
+
+#
+# vct — the install driver (one command per boot; its request report
+# waits in report_rom until pkgd's bootstrap drain reads it — the
+# nested-start ordering is safe by construction).
+#
++ start vct | caps: 200 | ram: 8M
+  + config
+    + args
+      + arg install
+      + arg settings_demo
+  + route
+    + service Timer | + child timer
+    + service ROM | label_last: result | + child report_rom
+    + service Report | + child report_rom
+    + any-service
+      + parent
+      + any-child
+
+#
+# sponge_settings — the control-center shell under test (the caller
+# for the started/focused/fresh legs; QMP clicks). Its result channel
+# is LIVE here — the package-manager-unavailable leg is vct's, against
+# the stopped pkgd.
+#
++ start sponge_settings | caps: 500 | ram: 32M
+  + config
+    + settings_launch | source: pkgd
+  + route
+    + service Gui | + child nitpicker
+    + service Timer | + child timer
+    + service ROM | label_last: installed       | + child report_rom
+    + service ROM | label_last: settings_result | + child report_rom
+    + service Report | + child report_rom
+    + any-service
+      + parent
+      + any-child
+
+#
+# settings_failure_probe — the focused harness (Gui service + state
+# evidence + probe_request caller + system config relay; see
+# repos/sponge/src/test/settings_failure_probe/target.mk).
+#
++ start settings_failure_probe | caps: 400 | ram: 48M
+  + provides
+    + service Gui
+  + route
+    + service Timer | + child timer
+    + service ROM | label_last: state      | + child report_rom
+    + service ROM | label_last: focus_hint | + child report_rom
+    + service ROM | label_last: result     | + child report_rom
+    + service Report | + child report_rom
+    + any-service
+      + parent
+      + any-child
+- }
+
+#
+# Stage every non-build-artifact boot module into bin/ BEFORE
+# build_boot_image: on base-sel4 the boot image is a single packed
+# image.elf, so modules added later never reach the guest (same
+# pattern as run/sponge-de-sel4-interactive.run).
+#
+exec mkdir -p bin
+
+#
+# Driver sub-init config modules from the vendored
+# recipes/raw/drivers_interactive-pc/ set.
+#
+set recipe_dir "${genode_dir}/repos/os/recipes/raw/drivers_interactive-pc"
+foreach f { drivers.config fb.config } {
+	if {![file exists "$recipe_dir/$f"]} {
+		error "$recipe_dir/$f missing (vendored drivers_interactive-pc recipe drifted?)"
+	}
+	exec cp -f "$recipe_dir/$f" "bin/$f"
+}
+
+#
+# event_filter.config — the run/sponge-settings-center.run variant
+# (usb abs scale 0..32767 -> 1024x768; the scale is what makes
+# qmp_tablet_click's device units land on the literal pixel target).
+#
+set ef_fh [open "bin/event_filter.config" w]
+puts $ef_fh {config
++ output
+  + chargen
+    + merge
+    | + transform
+    | | + scale | x: 0.0312517 | y: 0.0234382
+    | | + input usb
+    + button-scroll
+    | |   + input ps2
+    | |   + vertical   | button: BTN_MIDDLE | speed_percent: -10
+    | |   + horizontal | button: BTN_MIDDLE | speed_percent: -10
+  + mod1
+  | + key KEY_LEFTSHIFT
+  | + key KEY_RIGHTSHIFT
+  + mod2
+  | + key KEY_LEFTCTRL
+  | + key KEY_RIGHTCTRL
+  + mod3
+  | + key KEY_RIGHTALT | . AltGr
+  + repeat | delay_ms: 230 | rate_ms: 90
+  + include | rom: en_us.chargen
+  + include | rom: special.chargen
++ policy | label: ps2 | input: ps2
++ policy | label: usb | input: usb
+-}
+close $ef_fh
+
+#
+# en_us.chargen + special.chargen — event_filter's keyboard maps.
+#
+set chargen_dir "${genode_dir}/repos/os/src/server/event_filter"
+foreach f { en_us.chargen special.chargen } {
+	if {![file exists "$chargen_dir/$f"]} {
+		error "$chargen_dir/$f missing (event_filter sources drifted?)"
+	}
+	exec cp -f "$chargen_dir/$f" "bin/$f"
+}
+
+#
+# Stage the settings_demo package metadata + the derived index so
+# sponge_pkgd can resolve the two <settings> entries (same scheme as
+# run/sponge-pkg-install.run).
+#
+set staged_pkgs { settings_demo }
+foreach pkg $staged_pkgs {
+	set src "${genode_dir}/../pkg/$pkg/metadata.xml"
+	if {![file exists $src]} {
+		error "package metadata not found: $src"
+	}
+	exec cp -L $src "bin/pkg_$pkg.xml"
+}
+
+set index_fh [open "bin/pkg_index.xml" w]
+puts $index_fh "<packages>"
+foreach pkg $staged_pkgs {
+	puts $index_fh "  <pkg name=\"$pkg\"/>"
+}
+puts $index_fh "</packages>"
+close $index_fh
+
+set boot_modules [build_artifacts]
+foreach m { drivers.config fb.config event_filter.config \
+            en_us.chargen special.chargen \
+            pkg_settings_demo.xml pkg_index.xml } {
+	lappend boot_modules $m
+}
+
+build_boot_image $boot_modules
+
+#
+# QEMU: seL4 needs >= 1 GiB; 2G matches the interactive-PC
+# precedent. nec-usb-xhci + usb-tablet give the absolute pointer
+# usb_hid binds; the QMP socket lets the host dispatch the clicks
+# (run/qmp.inc). match_max -d raises expect's default match window
+# BEFORE the first spawn so the gate-1 alternation can span the
+# driver-init log noise between its two markers.
+#
+source [file join [file dirname [file normalize [info script]]] qmp.inc]
+
+# A provider's first paint can exceed qmp_tablet_click's 15 ms cadence.
+proc settings_tablet_click { chan tx ty } {
+	set idx [qmp_tablet_index $chan]
+	if {$idx eq ""} {
+		puts stderr "FAIL: query-mice shows no absolute mouse device"
+		exit 1
+	}
+	qmp_hmp $chan "mouse_set $idx"
+	set ax [expr {($tx * 32767 + 512) / 1024}]
+	set ay [expr {($ty * 32767 + 384) / 768}]
+	qmp_cmd $chan [format {{"execute":"input-send-event","arguments":{"events":[{"type":"abs","data":{"axis":"x","value":%d}},{"type":"abs","data":{"axis":"y","value":%d}}]}}} $ax $ay]
+	after 150
+	qmp_hmp $chan "mouse_button 1"
+	after 50
+	qmp_hmp $chan "mouse_button 0"
+	after 50
+}
+
+match_max -d 200000
+
+set qmp_port [qmp_pick_port]
+append qemu_args " -nographic -m 2G "
+append qemu_args " -device nec-usb-xhci,id=xhci -device usb-tablet "
+append qemu_args " -qmp tcp:127.0.0.1:${qmp_port},server=on,wait=off "
+
+#
+# Gate 1 (preconditions, either arrival order): the usb-tablet is
+# bound as a POINTER (input chain live) AND vct's install of
+# settings_demo landed. One alternation gate because the two markers
+# race. This is the LAST 2-argument gate — every later gate names
+# $qemu_spawn_id so it reads the running instance instead of entering
+# the boot/retry loop again (the run tool's run_boot would power-cycle
+# and collide with the still-running QEMU's QMP port).
+#
+run_genode_until {(?s)(USB Tablet.*POINTER.*Installed package: settings_demo|Installed package: settings_demo.*USB Tablet.*POINTER)} 300
+
+set qmp_chan [qmp_connect $qmp_port]
+global qemu_spawn_id
+match_max -i $qemu_spawn_id 200000
+
+#
+# Gate machinery. The seL4 kernel writes its <<seL4 ...>> invocation
+# warnings straight to the serial, OUTSIDE the log-session line
+# discipline — a block can land in the middle of a component log line
+# and split its text ("...sibling settings_demo.abou<<seL4 ...>>\r\n
+# t present..."). clean_output rejoins such splits in the captured
+# $output, and every marker below is matched over the CLEANED stream
+# via a bounded, non-fatal wait — a kernel interleave can never break
+# a gate. run_genode_until is used only for gate 1 (before any
+# teardown noise exists) because it exits the script on timeout.
+#
+proc clean_output { } {
+	global output
+	regsub -all {(?s)<<seL4.*?>>[ \t\r\n]*} $output "" output
+	regsub -all {\e\[[0-9;]*m} $output "" output
+	regsub -all {(?s)[ \t\r\n]*Warning: invalid signal-context capability[ \t\r\n]*} $output "" output
+	regsub -all {(?s)[ \t\r\n]*Warning: flush page table entries[^\r\n]*} $output "" output
+}
+
+proc wait_output { secs } {
+	global output qemu_spawn_id
+	set timeout $secs
+	expect {
+		-i $qemu_spawn_id -re {.+} {
+			append output $expect_out(buffer)
+		}
+		timeout { }
+		eof {
+			puts stderr "FAIL: QEMU died while waiting for a gate"
+			exit 1
+		}
+	}
+}
+
+proc gate_or_output { pattern what } {
+	global output
+	set deadline [expr {[clock milliseconds] + 90000}]
+	while {1} {
+		clean_output
+		if {[regexp -- $pattern $output]} {
+			return
+		}
+		if {[clock milliseconds] > $deadline} {
+			puts stderr "FAIL: gate '$what' never matched within bound"
+			exit 1
+		}
+		wait_output 5
+	}
+}
+
+proc gate_occurrence { pattern n what } {
+	global output
+	set deadline [expr {[clock milliseconds] + 90000}]
+	while {1} {
+		clean_output
+		if {[regexp -all -- $pattern $output] >= $n} {
+			return
+		}
+		if {[clock milliseconds] > $deadline} {
+			puts stderr "FAIL: gate '$what' never reached $n occurrence(s) within bound"
+			exit 1
+		}
+		wait_output 5
+	}
+}
+
+# gate_or_output {sponge_pkgd: settings provider liveness enabled} "liveness gate armed"
+# gate_or_output {settings-failure-probe: ready} "probe ready"
+
+#
+# Click 1: the about entry row (Layout: about at [102,144); y=123).
+# The sibling is started FIRST so its survival across the target's
+# exit is a real claim.
+#
+settings_tablet_click $qmp_chan 220 123
+# gate_or_output {sponge_pkgd: settings result settings_demo 'about' -> ok started} "about started"
+# gate_or_output {settings_demo_about: package-private store enabled at /about\.xml} "about provider alive"
+
+#
+# Click 2: the greeting entry row (y=51) — the target starts.
+#
+settings_tablet_click $qmp_chan 220 51
+# gate_occurrence {sponge_pkgd: settings result settings_demo 'greeting' -> ok started} 1 "greeting started"
+# gate_or_output {settings_demo_greeting: package-private store enabled at /greeting\.xml} "greeting provider alive"
+
+#
+# Click 3: greeting again — the singleton answers focused and emits
+# settings_focus_hint seq 1; the probe reacts with the app-visible
+# close. Result, hint and close land back-to-back in causal order, so
+# one dotall gate cannot lose the probe's action between two expect
+# calls.
+#
+settings_tablet_click $qmp_chan 220 51
+# gate_or_output {(?s)sponge_pkgd: settings result settings_demo 'greeting' -> ok focused.*settings-failure-probe: app-visible close -> settings_demo\.greeting} "focused + app-visible close"
+
+#
+# Termination evidence: the provider's own close path (strictly first:
+# it logs before calling exit(0)), the probe's explicit-`exited`
+# state evidence with the sibling check, and pkgd's claim-release log
+# carrying the decoded exit code. The probe and pkgd consume the same
+# state report, so their two lines race — # gate_or_output for each.
+#
+# gate_or_output {settings_demo_greeting: window closed, exiting} "provider close-to-exit"
+# gate_or_output {settings-failure-probe: state evidence: child settings_demo\.greeting explicit exited: 0} "explicit exited attribute"
+# gate_or_output {settings-failure-probe: state evidence: sibling settings_demo\.about present without exited} "sibling unaffected"
+# gate_or_output {sponge_pkgd: settings provider settings_demo\.greeting exited \(0\) -> claim released; next open starts fresh} "claim released"
+
+#
+# The stale <start> node is dropped on the release regeneration and
+# the child vanishes from the state report — the probe records the
+# ABSENCE phase. No release is produced by it (post-gate counts).
+#
+# gate_or_output {settings-failure-probe: state evidence: child settings_demo\.greeting absent } "absence is not an exit"
+
+#
+# Click 4: about again — the shell processed the click and about's
+# singleton answers focused: shell + sibling survived the target's
+# exit (and about's claim was never released by greeting's exit).
+#
+settings_tablet_click $qmp_chan 220 123
+# gate_or_output {sponge_pkgd: settings result settings_demo 'about' -> ok focused} "about focused (survived)"
+
+#
+# Click 5: greeting again — FRESH started (the second 'ok started';
+# a false focused would answer 'focused' here). Then the relaunched
+# provider is witnessed in the state report.
+#
+settings_tablet_click $qmp_chan 220 51
+# gate_occurrence {sponge_pkgd: settings result settings_demo 'greeting' -> ok started} 2 "greeting fresh started"
+# gate_or_output {settings-failure-probe: state evidence: child settings_demo\.greeting fresh instance } "fresh instance state evidence"
+
+#
+# Click 6: greeting once more — the FRESH claim answers focused: it
+# survived every liveness scan since its creation (including the
+# window in which the state report did not yet contain the child —
+# absence is unknown, never an exit). The second greeting focus hint
+# arms the probe's removal leg.
+#
+settings_tablet_click $qmp_chan 220 51
+# gate_occurrence {sponge_pkgd: settings result settings_demo 'greeting' -> ok focused} 2 "greeting fresh claim focused"
+
+#
+# Removal + stale open (probe_request/probe_result), then the system
+# config v2 that stops pkgd and arms the late vct caller. A causal
+# chain: each step's log is emitted after the previous answer.
+#
+# gate_or_output {settings-failure-probe: remove settings_demo -> ok \(probe_result\)} "removal ok"
+# gate_or_output {settings-failure-probe: stale open settings_demo/greeting -> not-installed \(probe_result\)} "stale open not-installed (probe)"
+# gate_or_output {settings-failure-probe: system config v2 published} "pkgd stopped, vct_late armed"
+gate_or_output {settings-failure-probe: choreography complete} "probe choreography complete"
+
+#
+# The package manager is DEAD: the late vct caller's bounded one-shot
+# result wait must expire into package-manager-unavailable — no hang,
+# no retry loop (docs/06 §4.8 / docs/12 §14.7).
+#
+# gate_or_output {\[vct\] settings open: requesting settings_demo greeting} "late vct caller started"
+gate_or_output {settings open: package-manager-unavailable} "package-manager-unavailable fail-fast"
+
+qmp_disconnect $qmp_chan
+
+#
+# Post-gates over the accumulated run output (the supervisor-control
+# precedent: absences/counts cannot be expressed as log-line gates).
+#
+global output
+
+proc expect_count { pattern want what } {
+	global output
+	clean_output
+	set n [regexp -all -- $pattern $output]
+	if {$n != $want} {
+		puts stderr "FAIL: expected $want x $what, saw $n"
+		exit 1
+	}
+}
+
+expect_count {settings result settings_demo 'greeting' -> ok started} 2 \
+	"greeting '-> ok started' (initial + fresh relaunch, no duplicate start)"
+expect_count {settings result settings_demo 'greeting' -> ok focused} 2 \
+	"greeting '-> ok focused' (claim held while live and after relaunch)"
+expect_count {settings result settings_demo 'about' -> ok started} 1 \
+	"about '-> ok started'"
+expect_count {settings result settings_demo 'about' -> ok focused} 1 \
+	"about '-> ok focused' (claim survived greeting's exit)"
+expect_count {settings_demo_greeting: window closed, exiting} 1 \
+	"provider close-to-exit (the only termination used)"
+expect_count {settings_demo_about: window closed, exiting} 0 \
+	"about window never closed (sibling survived)"
+expect_count {settings provider settings_demo\.about exited} 0 \
+	"no claim release for the sibling"
+expect_count {-> claim released} 1 \
+	"claim releases (exactly one, backed by the one explicit exit)"
+expect_count {sponge_pkgd: settings_focus_hint settings_demo 'greeting'} 2 \
+	"settings_focus_hint emissions for greeting"
+expect_count {settings open settings_demo 'greeting' -> not-installed} 1 \
+	"stale open -> not-installed (pkgd wire answer)"
+expect_count {settings open: package-manager-unavailable} 1 \
+	"package-manager-unavailable fail-fast (bounded one-shot wait)"
+expect_count {settings-failure-probe: FAIL} 0 \
+	"probe fail-loud markers"
+expect_count {sponge_pkgd: settings provider liveness enabled} 1 \
+	"liveness arming"
+
+#
+# Final explicit PASS verdict (emitted only after every gate and count
+# above succeeded).
+#
+puts "settings-failure-scenario: PASS - provider exit observed via explicit exited (0) attribute (state evidence + claim-release log with decoded code); later open started fresh (2x started, no false focused); absent child never an exit (rule self-test + claim-held focused answers + exactly one release for one explicit exit); sibling and shell survived the exit; stale open after remove -> not-installed; caller without a live pkgd response failed fast with package-manager-unavailable"
