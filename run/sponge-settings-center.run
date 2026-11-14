@@ -1,0 +1,638 @@
+#
+# \brief  Criterion 18 settings-center acceptance scenario (W4):
+#        installed-settings discovery + launch/focus lifecycle over
+#        the real shell/pkgd wire, driven by QMP clicks into
+#        sponge_settings and witnessed by report/log markers.
+# \author Sponge OS contributors
+# \date   2026
+#
+# WHAT THIS PROVES (fail-loud; every gate is bounded and named):
+#
+#   1. INSTALLED-SETTINGS DISCOVERY: pkgd publishes the two
+#      settings_demo entries in its `installed` broadcast
+#      (docs/12-package-format.md §14.4), sponge_settings discovers
+#      and lists them (category-grouped), and a click on the greeting
+#      row activates the entry — the shell's
+#        sponge_settings: open settings_demo/greeting
+#      line can only appear if the model carried the entry and the
+#      Layout::hit_entry hit-test resolved it (model.cc).
+#   2. OPEN -> STARTED: the activation sends
+#      <request op="launch" target="settings" pkg="settings_demo"
+#      id="greeting"/> over the shell's own settings_request report
+#      (model.cc gen_settings_request); pkgd claims the (package,
+#      settings-id) singleton and answers:
+#        sponge_pkgd: settings result settings_demo 'greeting' -> ok started
+#   3. SECOND OPEN -> FOCUSED, NO DUPLICATE START: a second click on
+#      the same row re-sends the open; pkgd's claim set answers
+#        sponge_pkgd: settings result settings_demo 'greeting' -> ok focused
+#      and the post-gate regexp -all check requires EXACTLY ONE
+#      '-> ok started' for greeting in the whole boot (a duplicate
+#      start would show two started and no focused, failing both the
+#      focused gate and the count check).
+#   4. SETTINGS_FOCUS_HINT PATH: the focused branch emits the opt-in
+#      settings_focus_hint report (ops.cc _emit_settings_focus_hint,
+#      seq-stamped):
+#        sponge_pkgd: settings_focus_hint settings_demo 'greeting'
+#                    (settings_demo.greeting, seq 1)
+#      routed to report_rom as the TasklistController's future ROM
+#      (tasklist_controller.h consumes `settings_focus_hint`); the
+#      observable witness here is pkgd's own emission log (the
+#      consumer side needs sponge-de, not staged here — "where
+#      observable"). TasklistController remains the sole
+#      `focus_request` writer: this scenario wires NO focus_request
+#      report and stages no second writer.
+#
+# DRIVER (deterministic, no sleeps as proof): host-side QMP
+# usb-tablet clicks (run/qmp.inc qmp_tablet_click — the W4
+# tablet-abs recipe) are dispatched BETWEEN bounded gates, so every
+# click happens only after its precondition marker landed:
+#
+#   gate 1 (either order): usb-tablet POINTER bound + vct install done
+#   click greeting row  -> gate 2 shell activation
+#                        -> gate 3 pkgd "ok started"
+#                        -> gate 4 provider alive (store enabled)
+#   click about row     -> gate 5 pkgd "ok started" for about
+#   click greeting row  -> gate 6 pkgd "ok focused"
+#                        -> gate 7 settings_focus_hint seq 1
+#   post-gates: exactly one greeting '-> ok started'; exactly one
+#               settings_focus_hint; then the explicit PASS verdict.
+#
+# Click geometry is pure Layout math (model.h), not pixel guessing:
+# the shell window requests rect (0,0,440,560) and its nitpicker
+# domain is exactly that rect, so screen coords == window/list coords.
+# build_rows() puts the applications header at [0,30), the greeting
+# entry at [30,72), the other header at [72,102), the about entry at
+# [102,144) — clicks at y=51 and y=123 hit the two entry rows.
+#
+# WIRING (report_rom single-writer per label; pkgd opt-in gates in
+# its component config decide which channels exist — the routes
+# below exist because the config opts in):
+#
+#   vct                  -> request          -> sponge_pkgd `request`
+#   sponge_pkgd `result` -> vct
+#   sponge_settings      -> settings_request -> sponge_pkgd `settings_request`  [<settings_request/>]
+#   sponge_pkgd `settings_result`  -> sponge_settings `settings_result`
+#   sponge_pkgd `installed`        -> sponge_settings `installed`
+#   sponge_pkgd `runtime`          -> pkg_runtime `config`
+#   pkg_runtime `state`            -> sponge_pkgd `runtime_state`   [<settings_liveness/>]
+#   sponge_pkgd `settings_focus_hint` -> report_rom (TasklistController's ROM)
+#   Gui/Timer: shell + providers -> nitpicker/timer; provider payload
+#   (settings_demo_greeting/about) is launched by pkgd into pkg_runtime
+#   with the metadata <sessions> routes (Gui -> nitpicker via parent,
+#   File_system -> vfs via parent; the subpath "/app/settings_demo" is
+#   materialized as the session label by this topology's route).
+#
+# <settings_liveness/> is armed, so pkgd releases a claim when the
+# provider exits (main.cc _handle_settings_liveness) — the provider
+# must stay ALIVE for the focused claim; gate 4 (store enabled at
+# /greeting.xml) is the provider-liveness witness.
+#
+# base-sel4 only: the interactive PC driver set (vesa_fb/ps2/usb_hid)
+# and QEMU's usb-tablet need real hardware access (same rationale as
+# run/sponge-de-sel4-interactive.run).
+#
+
+assert {[have_spec sel4]} \
+	"sponge-settings-center requires KERNEL=sel4 (BOARD=pc) in build.conf. \
+	 This scenario drives the real PC input chain (vesa_fb/ps2/usb_hid + \
+	 QEMU usb-tablet) that base-linux cannot provide."
+
+build { core lib/ld init timer server/report_rom server/nitpicker \
+         driver/acpi app/pci_decode driver/platform \
+         driver/framebuffer/vesa driver/ps2 \
+         driver/usb_host/pc driver/usb_hid \
+         server/event_filter server/vfs lib/vfs \
+         sponge_pkgd sponge_settings vct \
+         settings_demo/greeting settings_demo/about }
+
+create_boot_directory
+
+install_config {
+config
++ parent-provides
+  + service ROM
+  + service PD
+  + service RM
+  + service CPU
+  + service LOG
+  + service IRQ
+  + service IO_MEM
+  + service IO_PORT
+
++ default | caps: 200 | ram: 4M
++ default-route
+  + any-service
+    + parent
+    + any-child
+
++ start timer
+  + provides | + service Timer
+
+#
+# report_rom — the single relay. Full label chains, one writer per
+# label (AGENTS.md §1.2). The settings_request / settings_result /
+# settings_focus_hint / runtime_state policies exist because pkgd's
+# config below opts into those channels; without the opt-in gates
+# pkgd never opens the ROMs and these policies would be dead weight.
+#
++ start report_rom | caps: 300 | ram: 8M
+  + provides
+    + service Report
+    + service ROM
+  + config | verbose: no
+    + policy | label: sponge_pkgd -> request                  | report: vct -> request
+    + policy | label: vct -> result                           | report: sponge_pkgd -> result
+    + policy | label: sponge_pkgd -> settings_request         | report: sponge_settings -> settings_request
+    + policy | label: sponge_settings -> settings_result      | report: sponge_pkgd -> settings_result
+    + policy | label: sponge_settings -> installed            | report: sponge_pkgd -> installed
+    + policy | label: sponge-de -> settings_focus_hint        | report: sponge_pkgd -> settings_focus_hint
+    + policy | label: pkg_runtime -> config                   | report: sponge_pkgd -> runtime
+    + policy | label: sponge_pkgd -> runtime_state            | report: pkg_runtime -> state
+
+#
+# nitpicker — headless compositing (no fb needed for the claims; the
+# drivers' vesa_fb consumes Capture below). Two domains so the shell
+# window and the provider windows can never overlap the click rows.
+#
++ start nitpicker | ram: 16M
+  + provides
+    + service Gui
+    + service Capture
+    + service Event
+  + route
+    + service Report | + child report_rom
+    + service Timer | + child timer
+    + any-service
+      + parent
+      + any-child
+  + config
+    + capture
+    + event
+    + domain settings | layer: 2 | content: client | label: no
+                      | hover: always | focus: click
+                      | xpos: 0 | ypos: 0 | width: 440 | height: 560
+    + domain apps | layer: 1 | content: client | label: no
+                  | hover: always | focus: click
+                  | xpos: 0 | ypos: 560 | width: 1024 | height: 208
+    + policy | label_prefix: sponge_settings | domain: settings
+    + default-policy | domain: apps
+    + background | color: #1e1e2e
+
+#
+# drivers — the vendored drivers_interactive-pc set, copied verbatim
+# from run/sponge-de-sel4-interactive.run (acpi -> report_rom ->
+# pci_decode -> platform, vesa_fb, ps2, pc_usb_host, usb_hid,
+# event_filter). fb.config / drivers.config come from the recipe;
+# event_filter.config is staged by this script below.
+#
++ start drivers | caps: 1500 | ram: 96M | managing_system: yes
+  + binary init
+  + route
+    + service ROM | label: config | + parent | label: drivers.config
+    + service Timer | + child timer
+    + service Capture | + child nitpicker
+    + service Event | + child nitpicker
+    + any-service                 | + parent
+  + config
+    + parent-provides
+      + service IRQ
+      + service IO_MEM
+      + service IO_PORT
+      + service ROM
+      + service PD
+      + service RM
+      + service CPU
+      + service LOG
+      + service Timer
+      + service Capture
+      + service Event
+
+    + default | caps: 60
+
+    + start acpi | caps: 250 | ram: 4M
+      + route
+        + service IO_MEM | + parent
+        + service LOG | + parent
+        + service PD | + parent
+        + service RM | + parent
+        + service CPU | + parent
+        + service ROM | + parent
+        + service Report | + child report_rom
+
+    + start report_rom | caps: 100 | ram: 2M
+      + provides
+      | + service ROM
+      | + service Report
+      + config
+      | + policy | label: pci_decode -> system | report: acpi -> acpi
+      | + policy | label: platform -> devices  | report: pci_decode -> devices
+      | + policy | label: usb_hid -> report    | report: usb -> devices
+      + route
+        + service LOG | + parent
+        + service PD | + parent
+        + service CPU | + parent
+        + service ROM | + parent
+
+    + start pci_decode | caps: 100 | ram: 2M
+      + route
+        + service Report | + child report_rom
+        + service ROM | label: system | + child report_rom
+        + service IO_MEM | + parent
+        + service LOG | + parent
+        + service PD | + parent
+        + service RM | + parent
+        + service CPU | + parent
+        + service ROM | + parent
+
+    + start platform | caps: 200 | ram: 3M | managing_system: yes
+      + provides
+      | + service Dma
+      | + service Platform
+      + route
+      | + service ROM | label: devices | + child report_rom
+      | + service Report | + child report_rom
+      | + service IRQ | + parent
+      | + service IO_MEM | + parent
+      | + service IO_PORT | + parent
+      | + service ROM | + parent
+      | + service PD | + parent
+      | + service CPU | + parent
+      | + service LOG | + parent
+      | + service Timer | + parent
+      + config
+        + report | devices: yes
+        + policy | label_prefix: ps2             | + device ps2
+        + policy | label_prefix: fb  | info: yes | + pci | class: VGA
+        + policy | label_prefix: usb | info: yes | + pci | class: USB
+
+    + start fb | caps: 150 | ram: 20M
+      + binary vesa_fb
+      + route
+        + service ROM | label: config | + parent | label: fb.config
+        + service Report | + child report_rom
+        + service Dma | + child platform
+        + service Platform | + child platform
+        + service IO_PORT | + parent
+        + service IO_MEM | + parent
+        + service ROM | + parent
+        + service PD | + parent
+        + service CPU | + parent
+        + service LOG | + parent
+        + service Timer | + parent
+        + service Capture | + parent
+
+    + start ps2 | caps: 100 | ram: 1280K
+      + config
+      + route
+        + service Dma | + child platform
+        + service Platform | + child platform
+        + service Event | + child event_filter | label: ps2
+        + service ROM | + parent
+        + service PD | + parent
+        + service CPU | + parent
+        + service LOG | + parent
+        + service Timer | + parent
+
+    + start usb | caps: 200 | ram: 16M
+      + binary pc_usb_host
+      + provides | + service Usb
+      + config
+      | + report | devices: yes
+      | + policy | label_prefix: usb_hid | + device | class: 0x3
+      + route
+        + service Dma | + child platform
+        + service Platform | + child platform
+        + service Report | label: devices | + child report_rom
+        + service ROM | + parent
+        + service PD | + parent
+        + service RM | + parent
+        + service CPU | + parent
+        + service LOG | + parent
+        + service Timer | + parent
+
+    + start usb_hid | caps: 180 | ram: 10M
+      + route
+        + service ROM | label: report | + child report_rom
+        + service ROM | + parent
+        + service PD | + parent
+        + service RM | + parent
+        + service CPU | + parent
+        + service LOG | + parent
+        + service Timer | + parent
+        + service Event | + child event_filter | label: usb
+        + service Usb | + child usb
+
+    + start event_filter | caps: 90 | ram: 1280K
+      + provides | + service Event
+      + route
+        + service ROM | label: config | + parent | label: event_filter.config
+        + service Event | + parent
+        + service ROM | + parent
+        + service PD | + parent
+        + service CPU | + parent
+        + service LOG | + parent
+        + service Timer | + parent
+
+#
+# sponge_pkgd — the settings metadata/open transport. The three
+# opt-in gates below ARE the component-config opt-ins the wiring
+# contract requires: <settings_request/> arms the shell's launch
+# channel, <settings_liveness/> arms claim release on provider exit
+# (watching pkg_runtime's `state` via runtime_state), and
+# <settings_focus_hint/> arms the focus-hint report. No <vfs> node —
+# no store, in-memory installed set (single-boot scenario).
+#
++ start sponge_pkgd | caps: 300 | ram: 32M
+  + config
+    + settings_request
+    + settings_liveness
+    + settings_focus_hint
+  + route
+    + service ROM | label_last: request           | + child report_rom
+    + service ROM | label_last: settings_request  | + child report_rom
+    + service ROM | label_last: runtime_state     | + child report_rom
+    + service Report | + child report_rom
+    + any-service
+      + parent
+      + any-child
+
+#
+# pkg_runtime — nested init hosting the launched settings providers.
+# Its config is the whole pkgd `runtime` report (start nodes are
+# emitted only for claimed settings targets; §14.7). The generated
+# provider start node routes Gui and File_system to <parent/> (the
+# OUTER set in pkg_config.cc is_parent_route), so both resolve here.
+# The metadata subpath "/app/settings_demo" is materialized as the
+# forwarded session label (the vfs server requires a path-like last
+# label element); TasklistController's focus_request channel is not
+# routed here — nothing in this topology writes focus_request.
+#
++ start pkg_runtime | caps: 2000 | ram: 256M
+  + binary init
+  + route
+    + service ROM | label: config | + child report_rom
+    + service Gui | + child nitpicker
+    + service File_system | + child vfs_store | label: /app/settings_demo/
+    + service Report | + child report_rom
+    + any-service
+      + parent
+      + any-child
+
+#
+# vfs_store — the provider's package-private store backend (docs/12
+# §13 / settings_demo <sessions> File_system subpath). Ram-backed:
+# one boot only, the persistence-across-reboot leg is the
+# sponge-settings-thirdparty scenario's claim. Gate 4 asserts the
+# provider mounts it ("package-private store enabled at
+# /greeting.xml").
+#
++ start vfs_store | caps: 150 | ram: 16M
+  + binary vfs
+  + provides | + service File_system
+  + config
+    + vfs
+      + dir app
+        + dir settings_demo
+          + ram
+    + policy | label_prefix: /app/settings_demo | root: / | writeable: yes
+  + route
+    + service ROM | label_last: ld.lib.so | + parent
+    + service ROM | label_last: vfs.lib.so | + parent
+    + any-service
+      + parent
+      + any-child
+
+#
+# vct — the install driver (one command per boot). Its install lands
+# BEFORE any click (gate 1 ordering), so the shell's model carries
+# the two entries before the first hit-test.
+#
++ start vct | caps: 200 | ram: 8M
+  + config
+    + args
+      + arg install
+      + arg settings_demo
+  + route
+    + service Timer | + child timer
+    + service ROM | label_last: result | + child report_rom
+    + service Report | + child report_rom
+    + any-service
+      + parent
+      + any-child
+
+#
+# sponge_settings — the control-center shell under test. Capability
+# surface: installed ROM + settings_request report + settings_result
+# ROM + Gui/Timer (plus the settings_focus_hint ROM route staged for
+# the TasklistController contract; the shell itself never reads it).
+#
++ start sponge_settings | caps: 500 | ram: 32M
+  + config
+    + settings_launch | source: pkgd
+  + route
+    + service Gui | + child nitpicker
+    + service Timer | + child timer
+    + service ROM | label_last: installed          | + child report_rom
+    + service ROM | label_last: settings_result    | + child report_rom
+    + service ROM | label_last: settings_focus_hint | + child report_rom
+    + service Report | + child report_rom
+    + any-service
+      + parent
+      + any-child
+- }
+
+#
+# Stage every non-build-artifact boot module into bin/ BEFORE
+# build_boot_image: on base-sel4 the boot image is a single packed
+# image.elf, so modules added later never reach the guest (same
+# pattern as run/sponge-de-sel4-interactive.run).
+#
+exec mkdir -p bin
+
+#
+# Driver sub-init config modules from the vendored
+# recipes/raw/drivers_interactive-pc/ set.
+#
+set recipe_dir "${genode_dir}/repos/os/recipes/raw/drivers_interactive-pc"
+foreach f { drivers.config fb.config } {
+	if {![file exists "$recipe_dir/$f"]} {
+		error "$recipe_dir/$f missing (vendored drivers_interactive-pc recipe drifted?)"
+	}
+	exec cp -f "$recipe_dir/$f" "bin/$f"
+}
+
+#
+# event_filter.config — the run/sponge-de-sel4-interactive.run
+# variant (no ps2 accelerate wrapper; usb abs scale 0..32767 ->
+# 1024x768). Copied verbatim; the scale is what makes
+# qmp_tablet_click's device units land on the literal pixel target.
+#
+set ef_fh [open "bin/event_filter.config" w]
+puts $ef_fh {config
++ output
+  + chargen
+    + merge
+    | + transform
+    | | + scale | x: 0.0312517 | y: 0.0234382
+    | | + input usb
+    | + button-scroll
+    | |   + input ps2
+    | |   + vertical   | button: BTN_MIDDLE | speed_percent: -10
+    | |   + horizontal | button: BTN_MIDDLE | speed_percent: -10
+  + mod1
+  | + key KEY_LEFTSHIFT
+  | + key KEY_RIGHTSHIFT
+  + mod2
+  | + key KEY_LEFTCTRL
+  | + key KEY_RIGHTCTRL
+  + mod3
+  | + key KEY_RIGHTALT | . AltGr
+  + repeat | delay_ms: 230 | rate_ms: 90
+  + include | rom: en_us.chargen
+  + include | rom: special.chargen
++ policy | label: ps2 | input: ps2
++ policy | label: usb | input: usb
+-}
+close $ef_fh
+
+#
+# en_us.chargen + special.chargen — event_filter's keyboard maps.
+#
+set chargen_dir "${genode_dir}/repos/os/src/server/event_filter"
+foreach f { en_us.chargen special.chargen } {
+	if {![file exists "$chargen_dir/$f"]} {
+		error "$chargen_dir/$f missing (event_filter sources drifted?)"
+	}
+	exec cp -f "$chargen_dir/$f" "bin/$f"
+}
+
+#
+# Stage the settings_demo package metadata + the derived index so
+# sponge_pkgd can resolve the two <settings> entries (same scheme as
+# run/sponge-pkg-install.run).
+#
+set staged_pkgs { settings_demo }
+foreach pkg $staged_pkgs {
+	set src "${genode_dir}/../pkg/$pkg/metadata.xml"
+	if {![file exists $src]} {
+		error "package metadata not found: $src"
+	}
+	exec cp -L $src "bin/pkg_$pkg.xml"
+}
+
+set index_fh [open "bin/pkg_index.xml" w]
+puts $index_fh "<packages>"
+foreach pkg $staged_pkgs {
+	puts $index_fh "  <pkg name=\"$pkg\"/>"
+}
+puts $index_fh "</packages>"
+close $index_fh
+
+set boot_modules [build_artifacts]
+foreach m { drivers.config fb.config event_filter.config \
+            en_us.chargen special.chargen \
+            pkg_settings_demo.xml pkg_index.xml } {
+	lappend boot_modules $m
+}
+
+build_boot_image $boot_modules
+
+#
+# QEMU: seL4 needs >= 1 GiB; 2G matches the interactive-PC
+# precedent. nec-usb-xhci + usb-tablet give the absolute pointer
+# usb_hid binds; the QMP socket lets the host dispatch the clicks
+# (run/qmp.inc). match_max -d raises expect's default match window
+# BEFORE the first spawn so the gate-1 alternation can span the
+# driver-init log noise between its two markers.
+#
+source [file join [file dirname [file normalize [info script]]] qmp.inc]
+
+# A provider's first paint can exceed qmp_tablet_click's 15 ms cadence.
+proc settings_tablet_click { chan tx ty } {
+	set idx [qmp_tablet_index $chan]
+	if {$idx eq ""} {
+		puts stderr "FAIL: query-mice shows no absolute mouse device"
+		exit 1
+	}
+	qmp_hmp $chan "mouse_set $idx"
+	set ax [expr {($tx * 32767 + 512) / 1024}]
+	set ay [expr {($ty * 32767 + 384) / 768}]
+	qmp_cmd $chan [format {{"execute":"input-send-event","arguments":{"events":[{"type":"abs","data":{"axis":"x","value":%d}},{"type":"abs","data":{"axis":"y","value":%d}}]}}} $ax $ay]
+	after 150
+	qmp_hmp $chan "mouse_button 1"
+	after 50
+	qmp_hmp $chan "mouse_button 0"
+	after 50
+}
+
+match_max -d 200000
+
+set qmp_port [qmp_pick_port]
+append qemu_args " -nographic -m 2G "
+append qemu_args " -device nec-usb-xhci,id=xhci -device usb-tablet "
+append qemu_args " -qmp tcp:127.0.0.1:${qmp_port},server=on,wait=off "
+
+#
+# Gate 1 (preconditions, either arrival order): the usb-tablet is
+# bound as a POINTER (input chain live) AND vct's install of
+# settings_demo landed ("Installed package: settings_demo 1.0" —
+# the two <settings> entries are in the installed broadcast from
+# this point). One alternation gate because the two markers race.
+#
+run_genode_until {(?s)(USB Tablet.*POINTER.*Installed package: settings_demo|Installed package: settings_demo.*USB Tablet.*POINTER)} 300
+
+set qmp_chan [qmp_connect $qmp_port]
+global qemu_spawn_id
+match_max -i $qemu_spawn_id 200000
+
+#
+# Click 1: the greeting entry row (Layout: applications header
+# [0,30), greeting [30,72); click y=51 hits greeting; window at
+# (0,0) so screen == list coords).
+#
+settings_tablet_click $qmp_chan 220 51
+
+run_genode_until {.*sponge_settings: open settings_demo/greeting\r*\n} 60 $qemu_spawn_id
+run_genode_until {.*sponge_pkgd: settings result settings_demo 'greeting' -> ok started.*} 60 $qemu_spawn_id
+run_genode_until {.*settings_demo_greeting: package-private store enabled at /greeting.xml.*} 60 $qemu_spawn_id
+
+# Click 2: the About entry row ([102,144); y=123).
+settings_tablet_click $qmp_chan 220 123
+run_genode_until {.*sponge_pkgd: settings result settings_demo 'about' -> ok started.*} 60 $qemu_spawn_id
+
+# Click 3: greeting again. Focus and its hint are emitted back-to-back,
+# so one dotall gate cannot lose the hint between two expect calls.
+settings_tablet_click $qmp_chan 220 51
+run_genode_until {(?s)sponge_pkgd: settings result settings_demo 'greeting' -> ok focused.*sponge_pkgd: settings_focus_hint settings_demo 'greeting' \(settings_demo\.greeting, seq 1\)} 60 $qemu_spawn_id
+
+qmp_disconnect $qmp_chan
+
+#
+# Post-gates over the accumulated run output (the supervisor-control
+# precedent: absences/counts cannot be expressed as log-line gates).
+#
+global output
+
+set n_started [regexp -all {settings result settings_demo 'greeting' -> ok started} $output]
+if {$n_started != 1} {
+	puts stderr "FAIL: expected exactly 1 greeting '-> ok started' (no duplicate start), saw $n_started"
+	exit 1
+}
+
+set n_focused [regexp -all {settings result settings_demo 'greeting' -> ok focused} $output]
+if {$n_focused != 1} {
+	puts stderr "FAIL: expected exactly 1 greeting '-> ok focused', saw $n_focused"
+	exit 1
+}
+
+set n_hint [regexp -all {sponge_pkgd: settings_focus_hint settings_demo 'greeting'} $output]
+if {$n_hint != 1} {
+	puts stderr "FAIL: expected exactly 1 settings_focus_hint emission for greeting, saw $n_hint"
+	exit 1
+}
+
+#
+# Final explicit PASS marker (verdict, emitted only after every gate
+# and count above succeeded).
+#
+puts "settings-center-scenario: PASS - discovery listed greeting+about, open started (1x) for greeting and about, second open focused (1x) with no duplicate start, settings_focus_hint seq 1 emitted"
