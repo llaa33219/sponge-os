@@ -80,6 +80,8 @@ int HelpCommand::execute(Args const &args)
 		Genode::log("  vct install <pkg>         패키지 설치 (--manual: 단계별 출력)");
 		Genode::log("  vct remove <pkg>          패키지 제거");
 		Genode::log("  vct launch <pkg>          설치된 패키지 시작");
+		Genode::log("  vct settings list         패키지 설정 항목 목록 (카테고리별)");
+		Genode::log("  vct settings open <pkg> <id>  패키지 설정 항목 열기");
 		Genode::log("  vct list                  설치된 패키지 목록");
 		Genode::log("  vct search <term>         이미지 내 패키지 저장소 검색");
 		Genode::log("  vct update [<pkg>]        설치된 패키지와 저장소 버전 비교");
@@ -106,6 +108,8 @@ int HelpCommand::execute(Args const &args)
 		Genode::log("  vct install <pkg>         Install a package (--manual: step-by-step)");
 		Genode::log("  vct remove <pkg>          Remove an installed package");
 		Genode::log("  vct launch <pkg>          Start an installed package");
+		Genode::log("  vct settings list         List package settings entries by category");
+		Genode::log("  vct settings open <pkg> <id>  Open a package settings entry");
 		Genode::log("  vct list                  List installed packages");
 		Genode::log("  vct search <term>         Search the on-image package repository");
 		Genode::log("  vct update [<pkg>]        Report version deltas vs the on-image repo");
@@ -123,7 +127,7 @@ int HelpCommand::execute(Args const &args)
 		Genode::log("Common flags: --explain, --manual, --json, --verbose, --lang ko");
 	}
 
-	Genode::warning("not implemented: full subcommand set (Phase 4+). status, version, help, component list, install (--explain/--manual/plain), remove, launch, list, search, update, config, theme apply, leitzentrale, shutdown, and reboot work today.");
+	Genode::warning("not implemented: full subcommand set (Phase 4+). status, version, help, component list, install (--explain/--manual/plain), remove, launch, settings list/open, list, search, update, config, theme apply, leitzentrale, shutdown, and reboot work today.");
 	return 0;
 }
 
@@ -2224,4 +2228,355 @@ int UpdateCommand::execute(Args const &args)
 		            ",\"results\":", Genode::String<1024>(json_buf), "}");
 	}
 	return 0;
+}
+
+
+/* ===================== SettingsCommand (docs/06-vct.md §4.8) ===================== */
+
+void SettingsCommand::_print_help(Args const &args)
+{
+	if (args.lang == "ko") {
+		Genode::log("사용법: vct settings list [--json] [--help] [--lang ko]");
+		Genode::log("       vct settings open <패키지> <설정-id> [--json] [--help] [--lang ko]");
+		Genode::log("패키지가 선언한 설정 항목을 목록으로 보거나 엽니다 (docs/12 §14).");
+		Genode::log("");
+		Genode::log("  vct settings list   설치된 설정 항목을 카테고리별로 출력");
+		Genode::log("  vct settings open   (패키지, 설정-id) 항목 열기");
+		Genode::log("");
+		Genode::log("list는 sponge_pkgd 설치 메타데이터를 읽어 항목마다 한 줄을 출력합니다:");
+		Genode::log("  package  settings-id  title  category");
+		Genode::log("desktop/hardware/system/applications/other 순으로 묶습니다. 항목이 없으면");
+		Genode::log("'No settings entries.' 를 출력하고 0 으로 종료합니다.");
+		Genode::log("open 은 target=\"settings\" 시작 요청 하나를 전송하고, ok (started|focused),");
+		Genode::log("not-installed, binary-missing, insufficient-resources (예산 수치 포함),");
+		Genode::log("package-manager-unavailable (제한된 대기 후 보고) 중 하나를 보고합니다.");
+		Genode::log("이미 열린 항목을 다시 열면 기존 창을 모아 올립니다 (focused).");
+		Genode::log("");
+		Genode::log("두 명령 모두 단일 단계입니다 (--manual 모드 없음, `vct launch` 와 동일).");
+		Genode::log("수동 경로: pkg/<이름>/metadata.xml (docs/12 §14.2) 을 확인한 뒤 Leitzentrale");
+		Genode::log("전문가 제어로 대상 바이너리를 시작하는 것입니다. vct settings 는 구성을");
+		Genode::log("절대 쓰지 않습니다. 구성 변경은 `vct config <키> [<값>]` 문을 사용하세요.");
+		return;
+	}
+
+	Genode::log("Usage: vct settings list [--json] [--help] [--lang ko]");
+	Genode::log("       vct settings open <package> <settings-id> [--json] [--help] [--lang ko]");
+	Genode::log("List or open the settings entries packages declare (docs/12 §14).");
+	Genode::log("");
+	Genode::log("  vct settings list   List installed settings entries, grouped by category");
+	Genode::log("  vct settings open   Open one entry by its (package, settings-id) identity");
+	Genode::log("");
+	Genode::log("list reads sponge_pkgd's installed metadata and prints one line per entry:");
+	Genode::log("  package  settings-id  title  category");
+	Genode::log("Grouped by desktop/hardware/system/applications/other. An empty set prints");
+	Genode::log("'No settings entries.' and exits 0. open submits one launch request");
+	Genode::log("(target=\"settings\") and reports ok (action started|focused), not-installed,");
+	Genode::log("binary-missing, insufficient-resources (with the four budget figures), or");
+	Genode::log("package-manager-unavailable (bounded wait, then report). A second open of a");
+	Genode::log("live entry raises and focuses it - never 'already-running', never a second");
+	Genode::log("window. Exit 0 on ok, non-zero on every refusal.");
+	Genode::log("");
+	Genode::log("Both commands are single-step: no --manual mode (like `vct launch`). The");
+	Genode::log("manual path is reading pkg/<name>/metadata.xml (docs/12 §14.2) and starting");
+	Genode::log("the entry's target through the Leitzentrale expert controls - `vct settings");
+	Genode::log("open` is the one-step automation of exactly that. vct settings never writes");
+	Genode::log("configuration: `vct config <key> [value]` stays the manual writer door.");
+}
+
+
+int SettingsCommand::execute(Args const &args)
+{
+	char const *const verb = args.positional.string();
+
+	if (args.help ||
+	    Genode::strcmp(verb, "--help") == 0 ||
+	    Genode::strcmp(verb, "-h") == 0) {
+		_print_help(args);
+		return 0;
+	}
+
+	if (Genode::strcmp(verb, "") == 0) {
+		Genode::warning("vct: settings requires a subcommand ('list' or 'open')");
+		_print_help(args);
+		return 1;
+	}
+	if (Genode::strcmp(verb, "list") == 0)
+		return _list(args);
+	if (Genode::strcmp(verb, "open") == 0)
+		return _open(args);
+
+	Genode::warning("vct: unknown settings subcommand '", verb,
+	                "' — expected 'list' or 'open'");
+	_print_help(args);
+	return 1;
+}
+
+
+int SettingsCommand::_list(Args const &args)
+{
+	/*
+	 * Discovery source is sponge_pkgd's `installed` broadcast — the
+	 * §14.4 installed metadata, opened directly (the same
+	 * minimum-privilege ROM read as `vct update`; no request
+	 * round-trip).
+	 */
+	Genode::Attached_rom_dataspace installed { _env, "installed" };
+	Timer::Connection timer { _env };
+	for (unsigned i = 0; i < 20; ++i) {
+		installed.update();
+		if (installed.valid()) break;
+		timer.msleep(100);
+	}
+	if (!installed.valid()) {
+		if (args.json)
+			Genode::log("{\"command\":\"settings_list\",\"status\":\"error\","
+			            "\"error\":\"installed broadcast unavailable (sponge_pkgd absent)\"}");
+		else
+			Genode::log("settings list: installed broadcast unavailable (sponge_pkgd absent)");
+		return 1;
+	}
+
+	Settings_wire::Entry entries[Settings_wire::MAX_ENTRIES] { };
+	unsigned count = 0;
+	try {
+		Genode::Xml_node const root(installed.local_addr<char>(), installed.size());
+		count = Settings_wire::collect_entries(root, entries,
+		                                       Settings_wire::MAX_ENTRIES);
+	}
+	catch (Genode::Xml_node::Invalid_syntax) {
+		if (args.json)
+			Genode::log("{\"command\":\"settings_list\",\"status\":\"error\","
+			            "\"error\":\"installed broadcast malformed\"}");
+		else
+			Genode::log("settings list: installed broadcast malformed");
+		return 1;
+	}
+
+	if (count == 0) {
+		if (args.json)
+			Genode::log("{\"command\":\"settings_list\",\"status\":\"success\","
+			            "\"entries\":[]}");
+		else
+			Genode::log("No settings entries.");
+		return 0;
+	}
+
+	unsigned order[Settings_wire::MAX_ENTRIES] { };
+	unsigned const n = Settings_wire::group_order(
+		entries, count, order, Settings_wire::MAX_ENTRIES);
+
+	if (args.json) {
+		char buf[2048] { };
+		Genode::size_t pos { 0 };
+		if (pos + 1 < sizeof(buf)) buf[pos++] = '[';
+		bool first = true;
+		for (unsigned i = 0; i < n; ++i) {
+			Settings_wire::Entry const &e = entries[order[i]];
+			if (!first && pos + 2 < sizeof(buf)) {
+				buf[pos++] = ','; buf[pos++] = ' ';
+			}
+			first = false;
+			Genode::String<320> const row(
+				"{\"package\":\"", e.pkg,
+				"\",\"settings_id\":\"", e.id,
+				"\",\"title\":\"", e.title,
+				"\",\"category\":\"",
+				Settings_wire::category_label(e.category), "\"}");
+			for (char const *s = row.string(); *s && pos + 1 < sizeof(buf); ++s)
+				buf[pos++] = *s;
+		}
+		if (pos + 1 < sizeof(buf)) buf[pos++] = ']';
+		buf[pos] = 0;
+		Genode::log("{\"command\":\"settings_list\",\"status\":\"success\","
+		            "\"entries\":", Genode::String<2048>(buf), "}");
+		return 0;
+	}
+
+	Genode::log("Settings entries:");
+	bool first_group = true;
+	Settings_wire::Category prev = Settings_wire::Category::DESKTOP;
+	for (unsigned i = 0; i < n; ++i) {
+		Settings_wire::Entry const &e = entries[order[i]];
+		if (first_group || e.category != prev) {
+			Genode::log(Settings_wire::category_label(e.category), ":");
+			prev = e.category;
+			first_group = false;
+		}
+		Genode::log(e.pkg, "  ", e.id, "  ", e.title, "  ",
+		            Settings_wire::category_label(e.category));
+	}
+	return 0;
+}
+
+
+int SettingsCommand::_open(Args const &args)
+{
+	char const *const pkg = args.positional2.string();
+	char const *const id  = args.positional3.string();
+
+	if (Genode::strcmp(pkg, "") == 0) {
+		Genode::warning("vct: settings open requires a package name");
+		_print_help(args);
+		return 1;
+	}
+	if (Genode::strcmp(id, "") == 0) {
+		Genode::warning("vct: settings open requires a settings id");
+		_print_help(args);
+		return 1;
+	}
+
+	/* Audit line before acting (docs/06-vct.md §4.8, control philosophy). */
+	Genode::log("[vct] settings open: requesting ", pkg, " ", id);
+
+	Settings_wire::Launch_result result { };
+	bool answered = false;
+
+	try {
+		/*
+		 * Smallest explicit adapter over vct's own single-writer
+		 * pkgd Report/ROM labels (settings_wire.h): the shared
+		 * ReportRomClient::request() cannot express the settings
+		 * request shape (op/target/pkg/id), so the request document
+		 * is generated here on the SAME "request" label with the
+		 * SAME bounded poll model as backend_client.cc (200ms settle
+		 * + 60 x 100ms = 6s budget). Result matching reuses
+		 * Result_match::pkg plus the settings identity parse
+		 * (id primary, settings-id alias).
+		 */
+		Genode::Expanding_reporter request { _env, "request", "request" };
+		Genode::Attached_rom_dataspace result_rom { _env, "result" };
+		Timer::Connection timer { _env };
+
+		request.generate_xml([&] (Genode::Xml_generator &g) {
+			Settings_wire::gen_settings_request(g, pkg, id);
+		});
+
+		timer.msleep(200);
+		for (unsigned i = 0; i < 60 && !answered; ++i) {
+			result_rom.update();
+			try {
+				if (result_rom.valid()) {
+					Genode::Xml_node const r = result_rom.xml();
+					answered = Backend::Result_match::pkg(r, "launch", pkg) &&
+					           Settings_wire::parse_settings_result(
+					               r, pkg, id, result);
+				}
+			}
+			catch (Genode::Xml_node::Invalid_syntax) { }
+			if (!answered)
+				timer.msleep(100);
+		}
+	}
+	catch (Genode::Exception &) {
+		/* The channel could not be opened at all. */
+	}
+
+	if (!answered) {
+		/*
+		 * §14.7: "package-manager-unavailable" never arrives on the
+		 * wire — vct derives it from a spent bounded wait or an
+		 * unopenable channel, and never keeps polling.
+		 */
+		result.status = Settings_wire::Launch_status::PACKAGE_MANAGER_UNAVAILABLE;
+	}
+
+	return args.json ? _render_open_json(result, pkg, id)
+	                 : _render_open_human(result, pkg, id);
+}
+
+
+int SettingsCommand::_render_open_human(Settings_wire::Launch_result const &result,
+                                        char const *pkg, char const *id)
+{
+	using Settings_wire::Launch_status;
+
+	switch (result.status) {
+	case Launch_status::OK_STARTED:
+		Genode::log("settings open: success (started): ", pkg, " ", id);
+		return 0;
+	case Launch_status::OK_FOCUSED:
+		Genode::log("settings open: success (focused): ", pkg, " ", id);
+		return 0;
+	case Launch_status::NOT_INSTALLED:
+		Genode::log("settings open: ", pkg, " '", id,
+		            "' is not installed (unknown package or settings-id, "
+		            "or stale after removal)");
+		return 1;
+	case Launch_status::BINARY_MISSING:
+		Genode::log("settings open: ", pkg, " '", id,
+		            "' failed — its target binary is not present in this image");
+		return 1;
+	case Launch_status::INSUFFICIENT_RESOURCES:
+		Genode::log("settings open: ", pkg, " '", id,
+		            "' failed — not enough memory or capabilities "
+		            "(needs ", result.need_ram, " bytes RAM and ",
+		            result.need_caps, " caps; ", result.avail_ram,
+		            " bytes RAM and ", result.avail_caps, " caps are free)");
+		return 1;
+	case Launch_status::PACKAGE_MANAGER_UNAVAILABLE:
+		Genode::log("settings open: package-manager-unavailable — sponge_pkgd "
+		            "did not answer within the bounded wait");
+		return 1;
+	case Launch_status::UNKNOWN:
+		if (result.error != Genode::String<256>())
+			Genode::log("settings open: error: ", result.error);
+		else
+			Genode::log("settings open: error: unexpected result from the "
+			            "package manager (status '", result.raw_status, "')");
+		return 1;
+	}
+	return 1;
+}
+
+
+int SettingsCommand::_render_open_json(Settings_wire::Launch_result const &result,
+                                       char const *pkg, char const *id)
+{
+	using Settings_wire::Launch_status;
+
+	switch (result.status) {
+	case Launch_status::OK_STARTED:
+	case Launch_status::OK_FOCUSED:
+		Genode::log("{\"command\":\"settings open\",\"package\":\"", pkg,
+		            "\",\"settings_id\":\"", id, "\",\"status\":\"ok\","
+		            "\"action\":\"",
+		            result.status == Launch_status::OK_STARTED
+		                ? "started" : "focused", "\"}");
+		return 0;
+	case Launch_status::NOT_INSTALLED:
+		Genode::log("{\"command\":\"settings open\",\"package\":\"", pkg,
+		            "\",\"settings_id\":\"", id,
+		            "\",\"status\":\"error\",\"error\":\"not-installed\"}");
+		return 1;
+	case Launch_status::BINARY_MISSING:
+		Genode::log("{\"command\":\"settings open\",\"package\":\"", pkg,
+		            "\",\"settings_id\":\"", id,
+		            "\",\"status\":\"error\",\"error\":\"binary-missing\"}");
+		return 1;
+	case Launch_status::INSUFFICIENT_RESOURCES:
+		Genode::log("{\"command\":\"settings open\",\"package\":\"", pkg,
+		            "\",\"settings_id\":\"", id,
+		            "\",\"status\":\"error\",\"error\":\"insufficient-resources\"",
+		            ",\"need_ram\":\"", result.need_ram,
+		            "\",\"avail_ram\":\"", result.avail_ram,
+		            "\",\"need_caps\":\"", result.need_caps,
+		            "\",\"avail_caps\":\"", result.avail_caps, "\"}");
+		return 1;
+	case Launch_status::PACKAGE_MANAGER_UNAVAILABLE:
+		Genode::log("{\"command\":\"settings open\",\"package\":\"", pkg,
+		            "\",\"settings_id\":\"", id,
+		            "\",\"status\":\"error\","
+		            "\"error\":\"package-manager-unavailable\"}");
+		return 1;
+	case Launch_status::UNKNOWN:
+		Genode::log("{\"command\":\"settings open\",\"package\":\"", pkg,
+		            "\",\"settings_id\":\"", id,
+		            "\",\"status\":\"error\",\"error\":\"",
+		            result.error != Genode::String<256>()
+		                ? result.error.string()
+		                : "unexpected result from the package manager",
+		            "\"}");
+		return 1;
+	}
+	return 1;
 }

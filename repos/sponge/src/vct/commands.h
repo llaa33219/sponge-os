@@ -21,6 +21,7 @@
 #include <base/component.h>
 
 #include "command.h"
+#include "settings_wire.h"
 
 namespace Sponge::Vct {
 
@@ -283,6 +284,50 @@ class LaunchCommand : public Command
 
 		int _render_human(Genode::Xml_node const &result);
 		int _render_json(Genode::Xml_node const &result);
+};
+
+/*
+ * settings — the vct half of the provider-owned Settings contract
+ * (docs/06-vct.md §4.8, docs/12-package-format.md §14):
+ *
+ *   vct settings list
+ *   vct settings open <package> <settings-id>
+ *
+ * list reads sponge_pkgd's installed metadata (the `installed`
+ * broadcast — the §14.4 discovery source) and presents the declared
+ * <settings> entries grouped by category (desktop / hardware /
+ * system / applications / other). open submits one launch request
+ * with the target="settings" discriminator for the (package,
+ * settings-id) identity pair on vct's own single-writer request /
+ * result labels — the same backend `vct list` / `vct launch` use
+ * (AGENTS.md §3.3 rule 5). A second open of a live entry answers ok
+ * with action="focused" (never "already-running"). The refusal
+ * statuses reuse the launch lexemes: not-installed, binary-missing,
+ * insufficient-resources; when sponge_pkgd does not answer within
+ * the bounded wait (or the channel cannot be opened) the derived
+ * status is package-manager-unavailable. No --manual mode (both
+ * commands are single-step ops, like `vct launch`): the manual path
+ * is documented in the help. `vct settings` never writes
+ * configuration (`vct config` stays the manual writer door).
+ */
+class SettingsCommand : public Command
+{
+	public:
+		explicit SettingsCommand(Genode::Env &env) : _env(env) {}
+		char const *name()    const override { return "settings"; }
+		char const *summary() const override { return "List or open package settings entries."; }
+		int execute(Args const &args) override;
+	private:
+		Genode::Env &_env;
+
+		void _print_help(Args const &args);
+		int  _list(Args const &args);
+		int  _open(Args const &args);
+
+		int _render_open_human(Settings_wire::Launch_result const &result,
+		                       char const *pkg, char const *id);
+		int _render_open_json(Settings_wire::Launch_result const &result,
+		                      char const *pkg, char const *id);
 };
 
 /*
