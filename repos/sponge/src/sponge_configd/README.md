@@ -3,7 +3,8 @@
 The configuration backend for Sponge OS. It is a long-lived,
 signal-driven Genode component that owns the flat dotted key-value
 store (`theme.active`, `panel.position`, ...) and answers `vct config`
-requests.
+requests plus the per-provider settings writes of the Criterion 18
+provider split (each writer label on its own ACL-scoped channel).
 
 ## Communication channel (settled design)
 
@@ -38,25 +39,148 @@ policy | label: <watcher> -> config | report: sponge_configd -> config
 The broadcast is regenerated on every successful set and emitted once
 at startup with the registry defaults.
 
-## What it does today (Phase 5a + Phase 11 + Phase 14 W6)
+## Per-writer-label request channels + key-domain ACLs (Criterion 18)
 
-- Watches the `config_request` ROM via `Attached_rom_dataspace` + `sigh`.
+Every settings writer label owns **exactly one** `config_request` ROM
+session and its own result label (D16.1). The writer label is the ACL
+identity: every `set` is validated against the closed typed registry
+**first** and the label's key-domain **second**. An out-of-domain
+write returns the structured `key-outside-domain` error and leaves the
+store and the broadcast unchanged (pattern keys included — the
+registry pass never instantiates, so a rejected write cannot allocate
+a slot either). `vct config` keeps every-domain admin access as the
+manual escape hatch. Third-party packages get **no** shared label at
+all and use package-private stores instead.
+
+| writer label | request ROM label | result label | default key domain |
+|---|---|---|---|
+| `vct` | `config_request` (historical) | `config_result` (historical) | `*` (admin) |
+| `panel_settings` | `panel_settings_config_request` | `panel_settings_config_result` | `panel.*` |
+| `background_settings` | `background_settings_config_request` | `background_settings_config_result` | `background.*` |
+| `theme_settings` | `theme_settings_config_request` | `theme_settings_config_result` | `theme.*` |
+| `shortcuts_settings` | `shortcuts_settings_config_request` | `shortcuts_settings_config_result` | `shortcuts.*` |
+| `defaults_settings` | `defaults_settings_config_request` | `defaults_settings_config_result` | `bake.applied` (the reset trigger) |
+| `display_settings` | `display_settings_config_request` | `display_settings_config_result` | `display.*` (reserved) |
+| `wm_settings` | `wm_settings_config_request` | `wm_settings_config_result` | `wm.*` (reserved for `wm.layout.mode`) |
+| `terminal_settings` | `terminal_settings_config_request` | `terminal_settings_config_result` | `terminal.*` (reserved) |
+
+Each provider reports its requests on its own `<label>_config_request`
+label, so the `report_rom` policies keep the single-writer rule
+(`AGENTS.md` §1.2). The vct admin channel keeps the historical
+`config_request` / `config_result` names. For example:
+
+```
+policy | label: sponge_configd -> panel_settings_config_request | report: panel_settings -> panel_settings_config_request
+policy | label: panel_settings -> panel_settings_config_result  | report: sponge_configd -> panel_settings_config_result
+```
+
+Provider request ROMs are opened only for labels explicitly declared
+with a `<writer>` node in configd's component config. With no `<writer>`
+nodes, no provider ROM sessions are opened and legacy scenarios without
+provider routes keep their previous behavior. A configured label whose
+route is absent is reported as unavailable; the scenario must route that
+label before using the provider. The per-label result reporter opens
+lazily on the label's first request.
+
+### Key-domain allowlists
+
+A domain is a comma/whitespace-separated allowlist of entries:
+
+- `*` — every key (the admin domain),
+- `prefix.*` — any key beginning with `prefix.` (so `panel.*` covers
+  `panel.height`, `panel.ids`, and the pattern keys `panel.<id>.*`
+  in one prefix domain),
+- `exact.key` — exactly that one key (e.g. `bake.applied`).
+
+The table above is the built-in Criterion 18 mapping; a deployment
+can override any label's domain with an explicit declaration in
+configd's own component config (parent-to-child configuration is
+explicit and inspectable, `AGENTS.md` §1.2):
+
+```xml
+<config>
+  <writer label="panel_settings" keys="panel.*,clock.*,launcher.*"/>
+</config>
+```
+
+A declaration replaces that label's default domain (an empty `keys=""`
+is a valid deny-all). Declarations for unknown labels and for the
+admin `vct` label are ignored with a warning — vct's every-domain
+access is unconditional, and third-party labels deliberately have no
+shared channel. Without any `<writer>` node the built-in mapping is
+retained for future configured writers, but no provider request ROMs
+are opened. Each configured writer must also have its request/result
+routes in the scenario. `clock.format`, `launcher.sort_by`, and
+`leitzentale.enabled` sit in **no** provider default domain for now
+(their key sets are a separate decision) and are therefore vct-only
+until a deployment declares otherwise.
+
+### Structured error shape
+
+An out-of-domain `set` answers on the requesting label's own result
+channel with the `reason` attribute carrying the code and the same
+token prefixing the human-readable text:
+
+```xml
+<result status="error" op="set" key="panel.height"
+        reason="key-outside-domain"
+        error="key-outside-domain: key 'panel.height' is outside the key
+               domain of writer label 'theme_settings' (allowed: theme.*)"/>
+```
+
+Unknown keys keep their existing structured error (with the F15
+suggestion) on every label: the registry gate runs first, so an
+unknown key is never reported as `key-outside-domain` and a known key
+outside the domain is never reported as an unknown key.
+
+### Migration caveat (universal writer removed)
+
+The W4 provider split (D16.9) removes the `de_config` universal
+writer rather than keeping it as a compatibility path: the legacy
+sponge-de settings dialog and its shared `de_config_request` /
+`de_config_result` writer are deleted, and no shipped component
+writes through that channel. Provider-owned settings windows write
+only through their own ACL-scoped labels (the table above), and
+`vct config` keeps every-domain access as the admin escape hatch.
+The universal writer was never a template: a new settings writer
+gets a scoped label with a key-domain ACL.
+
+### Deterministic ACL self-test
+
+The gate logic (`key_domain_acl.{h,cc}`) is the same code the set
+path consults, and the host self-test exercises it directly —
+in-domain success, out-of-domain rejection without mutation, vct
+admin success, unknown-key rejection, and the pattern-key panel
+domain behavior, plus the label table and allowlist parsing. Build
+and run it with host g++ only (no Genode tree build); the exact
+command is in `self_test.cc`'s header comment. Exit code 0 with a
+final `self-test: PASS (N checks)` line means every check matched.
+
+## What it does today (Phase 5a + Phase 11 + Phase 14 W6 + Criterion 18)
+
+- Watches the `config_request` ROM via `Attached_rom_dataspace` + `sigh`,
+  plus one request ROM per provider writer label (Criterion 18).
 - On change, parses `<request op="..." key="..." value="..."/>`.
 - `get`: returns one key's value (error if the key is unknown).
 - `set`: validates the value against the key's registered type (string,
   enum, uint range, enum-list, or structural format string), stores it,
   regenerates the broadcast, **persists the new store to a vfs-backed
   store.xml** (when `<vfs>` is present — see "Persistence" below),
-  answers ok. Unknown key or invalid value → structured error.
+  answers ok. Unknown key or invalid value → structured error. On a
+  provider label the key must also lie inside that label's key domain,
+  else → structured `key-outside-domain` with no mutation.
 - `list`: enumerates every known key/value, name-sorted.
-- De-duplicates identical requests by an `op|key|value` signature.
-- Emits a structured `<result>` (ok/error) per request.
+- De-duplicates identical requests by a per-channel `op|key|value`
+  signature.
+- Emits a structured `<result>` (ok/error) per request on the
+  requesting channel's own result label.
 
 ## Key registry (Phase 11 + Phase 16 W2 + Phase 16 W6)
 
 The store is a closed registry — an unknown key is a structured error,
 never a silent write. Registry entries and list/broadcast output are
-name-sorted:
+name-sorted (each key's writer-label domain follows the Criterion 18
+mapping above):
 
 | key                      | type          | allowed values / constraint                    | default         |
 |--------------------------|---------------|-----------------------------------------------|-----------------|
@@ -244,7 +368,10 @@ defaults rather than crashing.
 
 ## Minimum privilege
 
-The component requests `Report` and `ROM` sessions always, and an
+The component requests `Report` and `ROM` sessions always (the vct
+`config_request`/`config_result` pair plus one request ROM per
+provider writer label; a label's result report opens only on that
+label's first request), and an
 optional `File_system` session (via the Vfs library, gated by
 `<config>`'s `<vfs>` node) only when persistence is enabled — i.e.
 only when the deployment has explicitly turned it on. Everything it
