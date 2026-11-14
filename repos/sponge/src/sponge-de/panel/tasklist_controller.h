@@ -112,6 +112,47 @@ class TasklistController : public QObject
 		Genode::Constructible<Genode::Expanding_reporter>                 _focus_request { };
 		Genode::Constructible<Genode::Expanding_reporter>                 _rules_reporter { };
 
+		/*
+		 * Criterion 18 second-open focus handoff (docs/12-package-format.md
+		 * §14.7). sponge_pkgd answers a second settings open with
+		 * "ok action=focused", but the raise of the ALREADY-OPEN provider
+		 * window must land here: pkgd must never write `focus_request`
+		 * (sole writer: this class). When pkgd's own config carries
+		 * <settings_focus_hint/> it emits one `settings_focus_hint` report
+		 * per focused open:
+		 *
+		 *   <settings_focus_hint pkg="..." id="..." start_name="<pkg>.<id>"
+		 *                        seq="N"/>
+		 *
+		 * This consumer is opt-in on its side too: the ROM session is
+		 * opened only when THIS component's config carries
+		 * <settings_focus_hint/> (the config-gated ROM pattern of
+		 * NotifierController), and stays fully inert otherwise — a
+		 * topology that does not route the label must never see a session
+		 * request.
+		 *
+		 * THREAD MODEL (failure-point 2): the ROM signal handler runs on
+		 * the Genode entrypoint, NOT the Qt GUI thread. The handler only
+		 * queues applySettingsFocusHint() via QMetaObject::invokeMethod
+		 * (the _on_window_list_rom idiom); every ROM read, label match and
+		 * focus_request publication happens on the GUI thread. The 50 ms
+		 * poll timer drives the consumer as a dispatch safety net.
+		 *
+		 * MATCHING: the hint's start_name is matched against the tracked
+		 * window labels with the full-label/segment/prefix rules of
+		 * _label_matches_start_name (native window_list_find_prefix
+		 * semantics, boundary-checked); the raise carries the FULL tracked
+		 * label into focus_request (the native "match by prefix, use the
+		 * full label" rule). The raw document is the event identity (pkgd
+		 * stamps a fresh 'seq' per emission): a repeated emission
+		 * re-raises, a stale re-delivery of the same document is a no-op.
+		 */
+		Genode::Constructible<Genode::Attached_rom_dataspace>             _settings_focus_hint_rom { };
+		Genode::Constructible<Genode::Signal_handler<TasklistController>> _settings_focus_hint_sigh { };
+
+		QString _last_settings_focus_hint;
+		bool    _settings_focus_hint_checked { false };
+
 		QTimer *_poll_timer { nullptr };
 
 		Sponge::Sponge_DE::TasklistWidget *_widget { nullptr };
@@ -124,6 +165,16 @@ class TasklistController : public QObject
 		 * entrypoint thread) can reach it without a slot-moc
 		 * infrastructure. */
 		Q_INVOKABLE void applyUpdates();
+
+		/*
+		 * Criterion 18 second-open focus handoff: GUI-thread consumer of
+		 * the opt-in `settings_focus_hint` ROM (see the
+		 * _settings_focus_hint_* members below). Q_INVOKABLE for the same
+		 * reason as applyUpdates — the ROM signal handler reaches it from
+		 * the entrypoint thread via QMetaObject::invokeMethod with
+		 * Qt::QueuedConnection.
+		 */
+		Q_INVOKABLE void applySettingsFocusHint();
 
 		struct Window_state {
 			QString label;
@@ -167,6 +218,11 @@ class TasklistController : public QObject
 
 		void _on_window_list_rom();
 		void _on_window_layout_rom();
+		void _on_settings_focus_hint_rom();
+		void _lazy_open_settings_focus_hint();
+		bool _raise_hinted_window(QString const &start_name);
+		static bool _label_matches_start_name(QString const &label,
+		                                     QString const &start_name);
 		void _poll();
 		void _lazy_open();
 

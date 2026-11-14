@@ -43,6 +43,8 @@ void TasklistController::attach_widget(Sponge::Sponge_DE::TasklistWidget *widget
 		_poll_timer = new QTimer(this);
 		_poll_timer->setInterval(50);
 		connect(_poll_timer, &QTimer::timeout, this, &TasklistController::applyUpdates);
+		connect(_poll_timer, &QTimer::timeout,
+		        this, &TasklistController::applySettingsFocusHint);
 		_poll_timer->start();
 	}
 }
@@ -773,4 +775,228 @@ void TasklistController::set_all_minimized(bool minimize)
 	            " (", changed, " window", changed == 1 ? "" : "s", " affected)");
 
 	applyUpdates();
+}
+
+
+/*
+ * Criterion 18 second-open focus handoff (see the _settings_focus_hint_*
+ * member block in tasklist_controller.h for the wire contract).
+ *
+ * Entrypoint-thread ROM signal handler: queues the GUI-thread consumer
+ * via the _on_window_list_rom marshalling idiom (failure-point 2 — the
+ * handler must not touch controller state or the ROM from the Genode
+ * entrypoint).
+ */
+void TasklistController::_on_settings_focus_hint_rom()
+{
+	QMetaObject::invokeMethod(this, "applySettingsFocusHint",
+	                          Qt::QueuedConnection);
+}
+
+
+/*
+ * One-time, config-gated ROM arming. The `settings_focus_hint` ROM is
+ * opened only when THIS component's config carries
+ * <settings_focus_hint/> (the NotifierController config-gate pattern);
+ * without the marker no session is ever requested, so topologies that
+ * do not route the label are byte-identical to before. A failed open
+ * logs a bounded warning and leaves hint processing disabled.
+ */
+void TasklistController::_lazy_open_settings_focus_hint()
+{
+	if (_settings_focus_hint_checked)
+		return;
+	_settings_focus_hint_checked = true;
+
+	bool enabled { false };
+	try {
+		Genode::Attached_rom_dataspace const config(_env, "config");
+		config.node().with_optional_sub_node("settings_focus_hint",
+			[&] (Genode::Node const &) { enabled = true; });
+	} catch (...) {
+		Genode::warning("tasklist_controller: config unreadable — "
+		                "settings_focus_hint disabled");
+		return;
+	}
+
+	if (!enabled)
+		return;
+
+	try {
+		_settings_focus_hint_rom.construct(_env, "settings_focus_hint");
+		_settings_focus_hint_sigh.construct(
+			_env.ep(), *this, &TasklistController::_on_settings_focus_hint_rom);
+		_settings_focus_hint_rom->sigh(*_settings_focus_hint_sigh);
+		_settings_focus_hint_rom->update();
+		Genode::log("tasklist_controller: settings_focus_hint enabled");
+	} catch (...) {
+		Genode::log("tasklist_controller: settings_focus_hint ROM not "
+		            "available, hint disabled");
+	}
+}
+
+
+/*
+ * GUI-thread consumer. Pulls the hint document (report_rom keeps only
+ * the latest emission), de-duplicates on the raw document — pkgd stamps
+ * a fresh 'seq' per emission, so a repeated focused open is a new
+ * document while a stale re-delivery is a no-op — validates the
+ * pkg/id/start_name identity, and hands the start_name to the raise.
+ * Every failure mode (absent channel, malformed document, missing
+ * attributes) is a bounded one-shot warning per distinct document and
+ * never raises anything.
+ */
+void TasklistController::applySettingsFocusHint()
+{
+	_lazy_open_settings_focus_hint();
+	if (!_settings_focus_hint_rom.constructed())
+		return;
+
+	_settings_focus_hint_rom->update();
+	if (!_settings_focus_hint_rom->valid())
+		return;
+
+	char const *const base = _settings_focus_hint_rom->local_addr<char>();
+	Genode::size_t  const sz  = _settings_focus_hint_rom->size();
+
+	QString const payload = QString::fromUtf8(base, (int)sz);
+	if (payload == _last_settings_focus_hint)
+		return;
+
+	try {
+		Genode::Node const root = _settings_focus_hint_rom->node();
+
+		if (!root.has_type("settings_focus_hint")) {
+			Genode::warning("tasklist_controller: settings_focus_hint: "
+			                "unexpected document — ignored");
+			_last_settings_focus_hint = payload;
+			return;
+		}
+
+		/* Contract widths of the producer (pkgd's settings result
+		 * helpers / settings_start_name): a valid settings id is at
+		 * most 32 chars and fits Genode::String<33> untruncated. */
+		Genode::String<128> const pkg        = root.attribute_value("pkg",        Genode::String<128>());
+		Genode::String<33>  const id         = root.attribute_value("id",         Genode::String<33>());
+		Genode::String<64>  const start_name = root.attribute_value("start_name", Genode::String<64>());
+
+		if (pkg.length() == 0 || id.length() == 0 || start_name.length() == 0) {
+			Genode::warning("tasklist_controller: settings_focus_hint: "
+			                "missing pkg/id/start_name — ignored");
+			_last_settings_focus_hint = payload;
+			return;
+		}
+
+		Genode::String<64> const expected_start(pkg, ".", id);
+		if (start_name != expected_start) {
+			Genode::warning("tasklist_controller: settings_focus_hint: "
+			                "start_name does not match pkg/id — ignored");
+			_last_settings_focus_hint = payload;
+			return;
+		}
+
+		if (_raise_hinted_window(QString::fromUtf8(start_name.string())))
+			_last_settings_focus_hint = payload;
+	} catch (...) {
+		Genode::warning("tasklist_controller: settings_focus_hint: "
+		                "malformed document — ignored");
+		_last_settings_focus_hint = payload;
+	}
+}
+
+
+/*
+ * Raise + focus the provider window for a hint start_name. Mirrors the
+ * RESTORE half of on_task_clicked (including un-parking a minimized
+ * window) but never its minimize toggle, and reuses the same private
+ * publication paths: rules first so the window's own <assign> precedes
+ * the raise (the _recompute_tracked new-window ordering), then
+ * focus_request — whose sole writer stays this controller. Returns
+ * false only when the window is not tracked yet, so the next poll can
+ * retry after window_list catches up with the provider's first paint.
+ */
+bool TasklistController::_raise_hinted_window(QString const &start_name)
+{
+	QString matched;
+	int     num_matched { 0 };
+	for (auto const &st : _tracked) {
+		if (!_label_matches_start_name(st.label, start_name))
+			continue;
+		if (matched.isEmpty())
+			matched = st.label;
+		++num_matched;
+	}
+
+	if (matched.isEmpty())
+		return false;
+
+	if (num_matched != 1) {
+		Genode::warning("tasklist_controller: settings_focus_hint: ",
+		                num_matched, " tracked windows match '",
+		                start_name.toUtf8().constData(),
+		                "' — ambiguous target ignored");
+		return true;
+	}
+
+	for (auto &st : _tracked) {
+		if (st.label != matched) {
+			st.focused = false;
+			continue;
+		}
+		if (st.minimized) {
+			st.minimized = false;
+			Genode::log("tasklist_controller: settings_focus_hint restores '",
+			            matched.toUtf8().constData(), "'");
+		}
+		st.focused = true;
+	}
+	_focused_label = matched;
+
+	_publish_rules_for(matched);
+	_publish_focus_request(matched);
+
+	Genode::log("tasklist_controller: settings_focus_hint '",
+	            start_name.toUtf8().constData(), "' -> raise '",
+	            matched.toUtf8().constData(), "'");
+
+	applyUpdates();
+	return true;
+}
+
+
+/*
+ * Full-label / segment / prefix match of a settings <start> name
+ * ("<pkg>.<id>") against a tracked wm label. The tracked label is the
+ * " -> "-joined session-label chain (e.g. "pkg_runtime ->
+ * sponge-de.panel -> Sponge Settings"), so the start name is matched as
+ * a whole chain segment, or — with the native window_list_find_prefix
+ * strncmp semantics — as the label's leading segment. The boundary
+ * checks keep 'sponge-de.panel' from matching a 'sponge-de.panel2'
+ * label (the probe-side helper tolerates that only because its prefixes
+ * are multi-segment chains). No fuzzy matching: an unrelated window
+ * must never be raised by a lookalike name.
+ */
+bool TasklistController::_label_matches_start_name(QString const &label,
+                                                   QString const &start_name)
+{
+	if (label.isEmpty() || start_name.isEmpty())
+		return false;
+
+	if (label == start_name)
+		return true;
+
+	qsizetype const n = start_name.size();
+
+	if (label.startsWith(start_name)) {
+		if (label.size() == n)
+			return true;
+		if (label.mid(n, 4) == QStringLiteral(" -> "))
+			return true;
+	}
+
+	for (QString const &seg : label.split(QStringLiteral(" -> ")))
+		if (seg == start_name)
+			return true;
+
+	return false;
 }
