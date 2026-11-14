@@ -10,8 +10,8 @@
 
 #include <base/log.h>
 
-#include "config/settings_controller.h"
 #include "launcher/launcher_menu_view.h"
+#include "settings/quick_menu_controller.h"
 
 /*
  * Forward declare the global TasklistController here (rather
@@ -169,8 +169,13 @@ void BackgroundWidget::show_context_menu(QPoint const &global_pos)
 
 	auto *settings_action = menu.addAction(QStringLiteral("Settings..."));
 	QObject::connect(settings_action, &QAction::triggered, this, [this]() {
-		if (!_settings) return;
-		QMetaObject::invokeMethod(_settings, "open_settings_dialog",
+		if (!_quick) {
+			Genode::warning("sponge-de: background Settings action ignored: "
+			                "the quick menu controller is not attached; "
+			                "provider-backed quick settings are unavailable");
+			return;
+		}
+		QMetaObject::invokeMethod(_quick, "open_background_settings",
 		                          Qt::QueuedConnection);
 	});
 

@@ -14,8 +14,8 @@
  * returns (0,0) from QCursor::pos() — Phase 10+ lesson).
  *
  * Widget is constructed only when the component config carries
- * `<background source="controller"/>` (mirrors the W4 de_config
- * + W5 panel_bottom gates). Scenarios that do not opt in keep
+ * `<background source="controller"/>` (mirrors the W5 panel_bottom
+ * gate). Scenarios that do not opt in keep
  * the Phase 10/11/14 behavior unchanged — no widget, no extra
  * Gui session, no extra ROM session.
  *
@@ -53,7 +53,7 @@ class QMenu;
 namespace Sponge::Sponge_DE {
 
 class BackgroundController;
-class SettingsController;
+class QuickMenuController;
 class LauncherMenuView;
 
 }
@@ -71,7 +71,7 @@ class BackgroundWidget : public QWidget
 
 		void set_controller(BackgroundController *c) { _controller = c; }
 
-		void set_settings_controller(SettingsController *s) { _settings = s; }
+		void set_quick_menu_controller(QuickMenuController *q) { _quick = q; }
 		void set_launcher_view(LauncherMenuView *v) { _launcher_view = v; }
 		void set_tasklist_controller(void *t) { _tasklist = t; }
 
@@ -108,7 +108,7 @@ class BackgroundWidget : public QWidget
 	private:
 
 		BackgroundController *_controller  { nullptr };
-		SettingsController    *_settings    { nullptr };
+		QuickMenuController  *_quick       { nullptr };
 		LauncherMenuView      *_launcher_view { nullptr };
 		void                 *_tasklist    { nullptr };
 

@@ -12,8 +12,8 @@
  * on the GUI thread via QMetaObject::invokeMethod marshaling.
  *
  * Activation gate: `<background source="controller"/>` in the
- * component config (same shape as W4's `<de_config source="controller"/>`
- * and W5's `<panel_bottom source="dual"/>`). Absent the gate, the
+ * component config (same shape as W5's `<panel_bottom source=
+ * "dual"/>`). Absent the gate, the
  * controller falls back to no-op (no channels opened, no widgets
  * constructed, no errors raised). Scenarios without the gate boot
  * unchanged.
