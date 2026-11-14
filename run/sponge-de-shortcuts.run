@@ -38,8 +38,11 @@
 #     structural checks on the emitted `event_filter_config` report.
 #
 # Probe (shortcuts_probe phase="default-bindings"):
-#   - Writes the 3-binding initial value via de_config_request
-#     (validator + round-trip proof).
+#   - Writes the 3-binding initial value via the shortcuts_settings
+#     provider ACL channel (shortcuts_settings_config_request /
+#     shortcuts_settings_config_result; the `shortcuts_settings`
+#     writer label owns `shortcuts.*`, Criterion 18) —
+#     validator + round-trip proof.
 #   - Verifies the controller's emitted `event_filter_config` report
 #     carries the three parsed `<shortcut>` children (structural
 #     framework proof).
@@ -96,12 +99,14 @@ config
     + service ROM
   + config | verbose: no
     #
-    # configd <-> DE wire contract (D16.1 + W7 channel pair).
+    # configd wire contract (D16.1 + W7 channel pair + the
+    # Criterion 18 per-label provider channel): the probe is the
+    # DE-side writer of the `shortcuts_settings` label.
     #
     + policy | label: sponge_configd -> config_request   | report: shortcuts_probe -> config_request
     + policy | label: shortcuts_probe -> config_result  | report: sponge_configd -> config_result
-    + policy | label: sponge_configd -> de_config_request | report: shortcuts_probe -> de_config_request
-    + policy | label: shortcuts_probe -> de_config_result  | report: sponge_configd -> de_config_result
+    + policy | label: sponge_configd -> shortcuts_settings_config_request | report: shortcuts_probe -> shortcuts_settings_config_request
+    + policy | label: shortcuts_probe -> shortcuts_settings_config_result  | report: sponge_configd -> shortcuts_settings_config_result
     #
     # configd broadcast readers.
     #
@@ -364,28 +369,32 @@ config
   + route
     + service ROM | label_last: config_request      | + child report_rom
     + service ROM | label_last: config_result       | + child report_rom
-    + service ROM | label_last: de_config_request   | + child report_rom
-    + service ROM | label_last: de_config_result    | + child report_rom
+    + service ROM | label_last: shortcuts_settings_config_request | + child report_rom
+    + service ROM | label_last: shortcuts_settings_config_result  | + child report_rom
     + service Report | + child report_rom
     + any-service
       + parent
       + any-child
   + config
-    + de_config
+    #
+    # Criterion 18 key-domain ACL: the probe (as the DE-side
+    # `shortcuts_settings` writer) may only write `shortcuts.*`.
+    # No universal/de_config writer exists (D16.9).
+    #
+    + writer | label: shortcuts_settings | keys: shortcuts.*
 
 #
 # sponge-de: one Gui session for the singleton panel (no W5 dual
 # mode here — the shortcuts regression is orthogonal to the
 # position wiring). The activation gate `<shortcuts source=
 # "controller"/>` mirrors the W4 <config source="configd"/> +
-# W4 <de_config source="controller"/> + W5 <panel_bottom source=
-# "dual"/> gates — absent the gate, no ShortcutController, no
-# event_filter_config Report, no shortcut_hit_<action> Reports.
+# W5 <panel_bottom source="dual"/> gates — absent the gate, no
+# ShortcutController, no event_filter_config Report, no
+# shortcut_hit_<action> Reports.
 #
 + start sponge-de | caps: 1000 | ram: 256M
   + config
     + config     | source: configd
-    + de_config  | source: controller
     + shortcuts  | source: controller
     + launcher_state | source: report
     + vfs
@@ -400,14 +409,12 @@ config
     + service Gui | label_last: Sponge Panel         | + child nitpicker
     + service Gui | label_last: Sponge Launcher      | + child nitpicker
     + service Report | label: input                 | + child report_rom
-    + service Report | label: de_config_request     | + child report_rom
     + service Report | label: event_filter_config   | + child report_rom
     + service Report | label: shortcut_hit          | + child report_rom
     + service Report | label: launcher_state        | + child report_rom
     + service Report | label: shortcut_hit_launcher   | + child report_rom
     + service Report | label: shortcut_hit_focus_next | + child report_rom
     + service Report | label: shortcut_hit_dismiss    | + child report_rom
-    + service ROM   | label: de_config_result   | + child report_rom
     + service ROM   | label: configd             | + child report_rom
     + service ROM   | label: shortcut_launcher   | + child report_rom
     + service ROM   | label: shortcut_focus_next | + child report_rom
@@ -428,8 +435,8 @@ config
     + service Capture | + child nitpicker
     + service Report | + child report_rom
     + service ROM   | label_last: broadcast              | + child report_rom
-    + service ROM   | label_last: de_config_result       | + child report_rom
-    + service ROM   | label_last: de_config_request      | + child report_rom
+    + service ROM   | label_last: shortcuts_settings_config_result  | + child report_rom
+    + service ROM   | label_last: shortcuts_settings_config_request | + child report_rom
     + service ROM   | label_last: config_result          | + child report_rom
     + service ROM   | label_last: config_request         | + child report_rom
     + service ROM   | label_last: event_filter_config    | + child report_rom
