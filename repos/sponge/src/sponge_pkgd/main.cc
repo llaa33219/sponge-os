@@ -99,6 +99,8 @@ Genode::Expanding_reporter &Sponge::Pkgd::Main::_result()
 		return _tty_result_reporter;
 	if (_active_channel == Result_channel::probe)
 		return _probe_result_reporter;
+	if (_active_channel == Result_channel::settings)
+		return _settings_result_reporter;
 	return _result_reporter;
 }
 
@@ -194,6 +196,27 @@ void Sponge::Pkgd::Main::_handle_probe_request()
 }
 
 
+void Sponge::Pkgd::Main::_handle_settings_request()
+{
+	if (!_settings_request_rom.constructed())
+		return;
+
+	_active_channel = Result_channel::settings;
+
+	_settings_request_rom->update();
+	if (!_settings_request_rom->valid())
+		return;
+
+	try {
+		_handle_request_impl(_settings_request_rom->xml());
+	}
+	catch (Genode::Xml_node::Invalid_syntax) {
+		_report_error("explain", Genode::String<128>(),
+		              "malformed settings_request ROM");
+	}
+}
+
+
 void Sponge::Pkgd::Main::_handle_request_impl(Genode::Xml_node const &req)
 {
 	if (!req.has_type("request")) {
@@ -209,12 +232,34 @@ void Sponge::Pkgd::Main::_handle_request_impl(Genode::Xml_node const &req)
 	Genode::String<16>  const seq = req.attribute_value("seq",
 	                                         Genode::String<16>());
 
+	/*
+	 * Settings discriminator (docs/12-package-format.md §14.5): a
+	 * `launch` request may carry target="settings" and the
+	 * settings-id, naming the (package, settings-id) identity pair.
+	 * `id` is the primary attribute name (the metadata vocabulary);
+	 * `settings-id` is accepted as an alias for the prose form used
+	 * by the contract documents. A bare target="settings" without an
+	 * id is deliberately not addressable (§14.1) and is answered as
+	 * a structured error by _do_launch_settings.
+	 */
+	bool const settings_op =
+		Genode::strcmp(op.string(), "launch") == 0 &&
+		req.attribute_value("target", Genode::String<32>()) ==
+			Genode::String<32>("settings");
+
+	Genode::String<33> sid = req.attribute_value("id",
+	                                    Genode::String<33>());
+	if (settings_op && sid == Genode::String<33>())
+		sid = req.attribute_value("settings-id", Genode::String<33>());
+
 	Queued_request entry { };
 	entry.op      = op;
 	entry.pkg     = pkg;
 	entry.seq     = seq;
 	entry.sig     = Genode::String<160>(op, "|", pkg, "|", seq);
 	entry.channel = _active_channel;
+	entry.settings = settings_op;
+	entry.id      = sid;
 
 	_submit_request(entry);
 }
@@ -256,6 +301,23 @@ void Sponge::Pkgd::Main::_submit_request(Queued_request const &req)
 void Sponge::Pkgd::Main::_dispatch_request(Queued_request const &req)
 {
 	_active_channel = req.channel;
+
+	/*
+	 * Settings opens (target="settings") are processed FRESH on every
+	 * delivery and never enter the dedup/replay recipe: §14.7
+	 * requires every open to answer its TRUE singleton state
+	 * (started vs focused), which a byte-identical replay cannot
+	 * express, and re-processing is idempotent (the claim is
+	 * add-once; the focused path emits nothing). Settings opens
+	 * mutate only the claim set — never _plan/_installed/_running —
+	 * so the replay recipe's state guarantee for every OTHER
+	 * operation is preserved even though _last_request_sig is not
+	 * rewritten here. See settings_rules.h "SECOND-OPEN SEMANTICS".
+	 */
+	if (req.settings) {
+		_do_launch_settings(req.pkg, req.id);
+		return;
+	}
 
 	if (req.sig == _last_request_sig) {
 		/*
@@ -685,6 +747,82 @@ void Sponge::Pkgd::Main::_refresh_config_views()
 			sv.label    = c.sessions[s].label.string();
 		}
 	}
+
+	/*
+	 * Settings <start> views (docs/12-package-format.md §14.5): one
+	 * synthetic view per singleton claim. The name is the derived
+	 * (package, settings-id) start name — a distinct lifecycle
+	 * identity from the app's, even when both share one binary — the
+	 * binary is the entry's target (binary_prefix composes at
+	 * emission exactly like the app path), and quota/config/sessions
+	 * come from the host package (§14.2 adds no second vocabulary;
+	 * the distinct view name gives each entry its own session labels
+	 * and thus its own window identity).
+	 *
+	 * Appended AFTER the package views: the emission library's sort
+	 * index holds Pkg_config::MAX_PACKAGES entries and keeps the
+	 * first N in array order, so an extreme overflow (a full 32-
+	 * package installed set with live settings claims) drops settings
+	 * views and NEVER a package view — current package emission is
+	 * preserved byte-for-byte in every case. The bound logs once.
+	 */
+	for (unsigned k = 0; k < _num_settings_running; ++k) {
+		Settings_claim const &cl = _settings_running[k];
+
+		if (_num_config_views >= Sponge::Pkg_config::MAX_PACKAGES) {
+			if (!_settings_views_warned) {
+				_settings_views_warned = true;
+				Genode::warning("sponge_pkgd: settings <start> views "
+				                "exceed the emission bound (",
+				                (unsigned)Sponge::Pkg_config::MAX_PACKAGES,
+				                ") — ignoring the overflow");
+			}
+			break;
+		}
+
+		Package const       *host  { nullptr };
+		Settings_entry const *entry { nullptr };
+		for (unsigned i = 0; i < _num_installed; ++i) {
+			Package const &c = _installed[i];
+			if (Genode::strcmp(c.name.string(), cl.pkg.string()) != 0)
+				continue;
+			host = &c;
+			for (unsigned s = 0; s < c.num_settings; ++s)
+				if (Genode::strcmp(c.settings[s].id.string(),
+				                   cl.id.string()) == 0) {
+					entry = &c.settings[s];
+					break;
+				}
+			break;
+		}
+		if (!entry)
+			continue;   /* stale claim — _sync_settings_claims prunes */
+
+		Sponge::Pkg_config::Package_view &v =
+			_config_views[_num_config_views++];
+		v.name       = cl.start_name.string();
+		v.binary     = entry->target.string();
+		v.ram        = host->ram.string();
+		v.caps       = host->caps;
+		v.config_xml = host->config_xml.string();
+		if (host->is_driver())
+			v.runtime_class = "driver";
+		else if (_grouped_runtimes)
+			v.runtime_class = host->runtime_class.string();
+		else
+			v.runtime_class = "app";
+		v.running      = true;
+		v.num_sessions = 0;
+		for (unsigned s = 0; s < host->num_sessions &&
+		                s < Sponge::Pkg_config::MAX_SESSIONS; ++s) {
+			Sponge::Pkg_config::Session_view &sv =
+				v.sessions[v.num_sessions++];
+			sv.name     = host->sessions[s].name.string();
+			sv.route    = host->sessions[s].route.string();
+			sv.readonly = host->sessions[s].readonly;
+			sv.label    = host->sessions[s].label.string();
+		}
+	}
 }
 
 
@@ -1004,6 +1142,34 @@ void Sponge::Pkgd::Main::_publish_runtime_config(unsigned slot)
 
 /* ===================== installed broadcast (Phase 5c) ===================== */
 
+/*
+ * Settings discovery (docs/12-package-format.md §14.4): emit each
+ * entry's §14.2 fields as <settings> children of the <package> node,
+ * shared by the installed broadcast and the `list` result so the two
+ * views cannot drift. Attribute order is fixed (determinism
+ * contract); entries and keywords stay in declaration order.
+ */
+static void append_settings_nodes(Genode::Xml_generator &g,
+                                  Sponge::Pkgd::Package const &p)
+{
+	for (unsigned s = 0; s < p.num_settings; ++s) {
+		Sponge::Pkgd::Settings_entry const &e = p.settings[s];
+		g.node("settings", [&] {
+			g.attribute("id",       e.id);
+			g.attribute("title",    e.title);
+			g.attribute("category", e.category);
+			if (e.has_icon)
+				g.attribute("icon", e.icon);
+			g.attribute("target",   e.target);
+			for (unsigned k = 0; k < e.num_keywords; ++k)
+				g.node("keyword", [&] {
+					g.append_sanitized(e.keywords[k]);
+				});
+		});
+	}
+}
+
+
 void Sponge::Pkgd::Main::_generate_installed_report()
 {
 	/*
@@ -1054,6 +1220,8 @@ void Sponge::Pkgd::Main::_generate_installed_report()
 					if (p.has_launcher)
 						g.attribute("category", p.launcher_category);
 					g.attribute("description", p.description);
+
+					append_settings_nodes(g, p);
 				});
 			}
 		});
@@ -1139,6 +1307,11 @@ void Sponge::Pkgd::Main::_report_error(char const *op,
                                        Genode::String<128> const &pkg,
                                        char const *message)
 {
+	if (_active_channel == Result_channel::settings) {
+		_report_settings_error(pkg, Genode::String<33>(), message);
+		return;
+	}
+
 	_last_op      = Genode::String<32>(op);
 	_last_pkg     = pkg;
 	_last_status  = Genode::String<32>("error");
@@ -1232,12 +1405,80 @@ void Sponge::Pkgd::Main::_report_launch_ok(Genode::String<128> const &pkg,
 	            " (channel=",
 	            _active_channel == Result_channel::launcher ? "launcher"
             : _active_channel == Result_channel::tty ? "tty"
-            : _active_channel == Result_channel::probe ? "probe" : "primary",
+            : _active_channel == Result_channel::probe ? "probe"
+            : _active_channel == Result_channel::settings ? "settings" : "primary",
 	            ")");
 	_result().generate_xml([&](Genode::Xml_generator &g) {
 		g.attribute("status", outcome);
 		g.attribute("op",     "launch");
 		g.attribute("pkg",    pkg);
+	});
+}
+
+
+/*
+ * Settings-open results (docs/12-package-format.md §14.7). The §9.2.1
+ * result shape behind the target="settings" discriminator plus the
+ * settings-id — status="ok" carries action="started"|"focused", the
+ * refusal statuses ("not-installed", "binary-missing") ride the same
+ * status attribute as the app launch results. RECIPE-FREE (like
+ * _report_busy): settings opens bypass the dedup/replay machinery,
+ * so these helpers must never write the _last_* recipe state.
+ */
+void Sponge::Pkgd::Main::_report_settings_open(
+	Genode::String<128> const &pkg, Genode::String<33> const &id,
+	char const *status, char const *action)
+{
+	Genode::log("sponge_pkgd: settings result ", pkg, " '", id, "' -> ",
+	            status, action ? " " : "", action ? action : "");
+	_result().generate_xml([&](Genode::Xml_generator &g) {
+		g.attribute("status", status);
+		g.attribute("op",     "launch");
+		g.attribute("pkg",    pkg);
+		g.attribute("id",     id);
+		g.attribute("target", "settings");
+		if (action)
+			g.attribute("action", action);
+	});
+}
+
+
+void Sponge::Pkgd::Main::_report_settings_insufficient(
+	Genode::String<128> const &pkg, Genode::String<33> const &id,
+	Genode::size_t need_ram, Genode::size_t avail_ram,
+	unsigned need_caps, unsigned avail_caps)
+{
+	Genode::log("sponge_pkgd: settings open ", pkg, " '", id,
+	            "' -> insufficient-resources (need_ram=", need_ram,
+	            " avail_ram=", avail_ram, " need_caps=", need_caps,
+	            " avail_caps=", avail_caps, ")");
+	_result().generate_xml([&](Genode::Xml_generator &g) {
+		g.attribute("status", "insufficient-resources");
+		g.attribute("op",     "launch");
+		g.attribute("pkg",    pkg);
+		g.attribute("id",     id);
+		g.attribute("target", "settings");
+		g.attribute("need_ram",   need_ram);
+		g.attribute("avail_ram",  avail_ram);
+		g.attribute("need_caps",  need_caps);
+		g.attribute("avail_caps", avail_caps);
+	});
+}
+
+
+void Sponge::Pkgd::Main::_report_settings_error(
+	Genode::String<128> const &pkg, Genode::String<33> const &id,
+	char const *message)
+{
+	Genode::warning("sponge_pkgd: settings open ", pkg, " '", id,
+	                "' -> error: ", message);
+	_result().generate_xml([&](Genode::Xml_generator &g) {
+		g.attribute("status", "error");
+		g.attribute("op",     "launch");
+		g.attribute("pkg",    pkg);
+		g.attribute("id",     id);
+		g.attribute("target", "settings");
+		g.attribute("error",  message);
 	});
 }
 
@@ -1294,6 +1535,8 @@ void Sponge::Pkgd::Main::_report_list_ok()
 					if (p.has_launcher)
 						g.attribute("category", p.launcher_category);
 					g.attribute("description", p.description);
+
+					append_settings_nodes(g, p);
 				});
 			}
 		});
@@ -1443,9 +1686,9 @@ void Sponge::Pkgd::Main::_init_grouped_runtimes()
  *   the drain it sits unconsumed until a LATER write changes the
  *   module and the handler then processes only the newer content - the
  *   first request is lost. Draining with no handler armed anywhere
- *   means no launcher/tty/probe handler can run while any other
- *   optional channel is draining: every drain is single-threaded on
- *   the bootstrap thread.
+ *   means no launcher/tty/probe/settings handler can run while any
+ *   other optional channel is draining: every drain is
+ *   single-threaded on the bootstrap thread.
  *
  *   Phase 2 (_arm_launcher_channel) - only after ALL drains are done
  *   (the optional ones above AND the primary channel's _handle_request
@@ -1484,6 +1727,11 @@ void Sponge::Pkgd::Main::_init_launcher_channel()
 				_probe_request_rom.construct(_env, "probe_request");
 				_handle_probe_request();
 			});
+		_config_rom.node().with_optional_sub_node("settings_request",
+			[&](Genode::Node const &) {
+				_settings_request_rom.construct(_env, "settings_request");
+				_handle_settings_request();
+			});
 	} catch (Genode::Xml_node::Invalid_syntax) {
 		Genode::warning("sponge_pkgd: malformed <config> — launcher channel disabled");
 	}
@@ -1515,6 +1763,191 @@ void Sponge::Pkgd::Main::_arm_launcher_channel()
 		_probe_request_rom->update();
 		Genode::log("sponge_pkgd: probe_request channel enabled");
 	}
+	if (_settings_request_rom.constructed()) {
+		_settings_request_rom->sigh(_settings_request_handler);
+		_settings_request_rom->update();
+		Genode::log("sponge_pkgd: settings_request channel enabled");
+	}
+}
+
+
+/*
+ * Settings provider liveness (§14.7 "Removal and crash") — the
+ * <settings_liveness/> gate. Without the marker nothing here runs and
+ * no ROM session is opened (legacy scenarios stay byte-identical).
+ * With it, the ACTIVE MODE's app-side state report(s) are opened and
+ * watched (see _arm_settings_liveness): runtime_state in legacy mode,
+ * runtime_simple_state / runtime_terminal_state / runtime_browser_
+ * state in grouped mode. The marker is the routing declaration —
+ * the same contract <admission/> has (a denied ROM session is fatal
+ * under the base Env policy, hence "do not open unrouted ROMs").
+ *
+ * Runs AFTER _init_admission/_init_class_admission/_init_driver_
+ * admission so an admission-opened report is REUSED untouched:
+ * constructing a state ROM before _arm_class_admission would defeat
+ * its idempotence check and silently skip the admission arming. The
+ * constructions below never set _admission_armed or
+ * _class_admission_armed, so admission keeps its fail-open behavior.
+ */
+void Sponge::Pkgd::Main::_init_settings_liveness()
+{
+	try {
+		_config_rom.node().with_optional_sub_node("settings_liveness",
+			[&] (Genode::Node const &) {
+				_settings_liveness_armed = true;
+
+				if (_grouped_runtimes) {
+					for (unsigned s = 0; s < NUM_APP_CLASSES; ++s) {
+						if (_class_state_rom[s].constructed())
+							continue;
+						Genode::String<64> const rom_label(
+							_slot_state_label(s), "_state");
+						_class_state_rom[s].construct(
+							_env, rom_label.string());
+					}
+					Genode::log("sponge_pkgd: settings provider liveness "
+					            "armed (grouped class state reports)");
+				} else {
+					if (!_state_rom.constructed())
+						_state_rom.construct(_env, "runtime_state");
+					Genode::log("sponge_pkgd: settings provider liveness "
+					            "armed (runtime_state report)");
+				}
+			});
+	} catch (Genode::Xml_node::Invalid_syntax) {
+		Genode::warning("sponge_pkgd: malformed <config> — settings "
+		                "provider liveness disabled");
+	}
+}
+
+
+/*
+ * The state report that watches a claim hosted in 'slot', or nullptr
+ * when that report is not watched (the documented limitation: such a
+ * claim is left unchanged by an exit). One report per hosting sandbox
+ * — never another class's pool: SLOT_DRIVER maps to
+ * driver_runtime_state (opened by <driver_admission/>, the existing
+ * admission routing — this gate never opens it, so a deployment
+ * without a driver_runtime pays no denied ROM session); the app side
+ * maps to runtime_state in legacy mode and to the class's own
+ * runtime_<class>_state in grouped mode.
+ */
+Genode::Attached_rom_dataspace *
+Sponge::Pkgd::Main::_settings_state_report(unsigned slot)
+{
+	if (slot == SLOT_DRIVER)
+		return _driver_state_rom.constructed() ? &*_driver_state_rom : nullptr;
+
+	if (!_grouped_runtimes)
+		return (slot == SLOT_APP && _state_rom.constructed())
+		     ? &*_state_rom : nullptr;
+
+	return (slot < NUM_APP_CLASSES && _class_state_rom[slot].constructed())
+	     ? &*_class_state_rom[slot] : nullptr;
+}
+
+
+/*
+ * Phase 2 of the liveness wiring (same handoff point as
+ * _arm_launcher_channel, after every drain): arm one shared sigh per
+ * watched state report, then kick one scan THROUGH the entrypoint.
+ * Exits before this arming stay visible in the report — an exited
+ * child remains until its <start> node is abandoned, and only a claim
+ * release removes it — but their ROM signal predates the sigh, so the
+ * self-signal closes the gap without racing the bootstrap thread:
+ * from here on the handler owns every scan (serialized on env.ep()
+ * like all other handlers).
+ */
+void Sponge::Pkgd::Main::_arm_settings_liveness()
+{
+	if (!_settings_liveness_armed)
+		return;
+
+	unsigned watched { 0 };
+	for (unsigned slot = 0; slot < NUM_SLOTS; ++slot) {
+		Genode::Attached_rom_dataspace *rom = _settings_state_report(slot);
+		if (!rom)
+			continue;
+		rom->sigh(_settings_liveness_handler);
+		++watched;
+	}
+
+	Genode::Signal_transmitter(_settings_liveness_handler).submit();
+
+	Genode::log("sponge_pkgd: settings provider liveness enabled — ",
+	            watched, " state report(s) watched");
+}
+
+
+/*
+ * One scan per watched state report: release the claim of every
+ * provider whose <child> node carries an explicit `exited` attribute
+ * (never mere absence — settings_rules.h CRASH/RELAUNCH LIVENESS).
+ * Release = drop the claim (order-preserving compaction, the claim
+ * set is the emission driver so the stale <start> node vanishes on
+ * the next generation) and dirty the claim's slot (D16R.4: exactly
+ * the host's slot). One regeneration after the batch; a failed
+ * generation keeps the dirty marks for convergence (same seam as
+ * bootstrap — the claim is NOT rolled back: the provider is gone, so
+ * "focused" would be a lie).
+ */
+void Sponge::Pkgd::Main::_handle_settings_liveness()
+{
+	if (!_settings_liveness_armed)
+		return;
+
+	bool released_any { false };
+
+	for (unsigned slot = 0; slot < NUM_SLOTS; ++slot) {
+		Genode::Attached_rom_dataspace *rom = _settings_state_report(slot);
+		if (!rom)
+			continue;
+
+		rom->update();
+		if (!rom->valid() || rom->size() == 0)
+			continue;
+
+		char const *const buf = rom->local_addr<char const>();
+		Genode::size_t const len = rom->size();
+
+		unsigned w { 0 };
+		for (unsigned i = 0; i < _num_settings_running; ++i) {
+			Settings_claim const cl = _settings_running[i];
+			bool released { false };
+
+			if (cl.slot == slot) {
+				Sponge::Pkgd::Settings_provider_state const st =
+					Sponge::Pkgd::settings_provider_state(
+						buf, len, cl.start_name.string());
+				if (st.exited) {
+					Genode::log("sponge_pkgd: settings provider ",
+					            cl.start_name, " exited (", st.code,
+					            ") -> claim released; next open starts fresh");
+					_slot_dirty[slot] = true;
+					released_any = true;
+					released = true;
+				}
+			}
+
+			if (released)
+				continue;
+			if (w != i)
+				_settings_running[w] = _settings_running[i];
+			++w;
+		}
+		_num_settings_running = w;
+	}
+
+	if (!released_any)
+		return;
+
+	if (!_generate_runtime_config()) {
+		Genode::error("sponge_pkgd: settings claim release: runtime-config "
+		              "publication failed (", _emit_failure, ") — nothing "
+		              "published; dirty marks kept for convergence");
+		return;
+	}
+	_generate_installed_report();
 }
 
 
@@ -1660,6 +2093,16 @@ _init_binary_manifest();
 	_init_class_admission();
 	_init_driver_admission();
 
+	/*
+	 * Settings provider liveness (opt-in via <settings_liveness/>,
+	 * §14.7 crash/relaunch). MUST come after the admission inits
+	 * above: it reuses their state-report ROMs where they exist and
+	 * constructs the mode's app-side ones only when admission did
+	 * not (never touching the admission arming flags).
+	 */
+	_init_settings_liveness();
+	_init_settings_focus_hint();
+
 	/* Rebuild the full installed set from whatever roots we now have
 	 * (empty on a fresh start, possibly restored on a reboot). This is
 	 * the SAME path install/remove use, so the initial config and the
@@ -1709,13 +2152,14 @@ _init_binary_manifest();
 	/*
 	 * Hand over to env.ep().
 	 *
-	 * Order matters and is the whole point of the split. ALL FOUR
+	 * Order matters and is the whole point of the split. ALL FIVE
 	 * request channels are drained HERE, on the bootstrap thread,
 	 * before ANY sigh is armed:
 	 *
-	 *   - _init_launcher_channel drains the three optional channels
-	 *     (launcher_request, tty_request, probe_request) in its phase
-	 *     1, with NO sigh armed anywhere. The drain exists because a
+	 *   - _init_launcher_channel drains the four optional channels
+	 *     (launcher_request, tty_request, probe_request,
+	 *     settings_request) in its phase 1, with NO sigh armed
+	 *     anywhere. The drain exists because a
 	 *     request posted before the ROM session existed is never
 	 *     signalled on it (the session's signal context did not exist
 	 *     when the content was written) and would otherwise be lost
@@ -1739,7 +2183,8 @@ _init_binary_manifest();
 	 * The optional channels stay opt-in: _init_launcher_channel
 	 * constructs a ROM ONLY when this component's <config> carries the
 	 * matching element (<launcher_request/>, <tty_request/>,
-	 * <probe_request/>). Genode 26.05's session routing calls
+	 * <probe_request/>, <settings_request/>). Genode 26.05's session
+	 * routing calls
 	 * sleep_forever() on denial (not a catchable throw), so a ROM
 	 * session MUST NOT be opened in scenarios that do not route it -
 	 * the same opt-in pattern _init_store uses for <vfs>.
@@ -1767,6 +2212,15 @@ _init_binary_manifest();
 		_worker_live = true;
 
 	_arm_launcher_channel();
+
+	/*
+	 * Settings liveness sighs are armed at the same handoff point
+	 * (only ROM sigh registration + one self-signalled scan follow,
+	 * and the bootstrap thread touches no claim/emission state after
+	 * here). Without the <settings_liveness/> gate this is a no-op.
+	 */
+	_arm_settings_liveness();
+
 	_request_rom.sigh(_request_handler);
 	_request_rom.update();
 
