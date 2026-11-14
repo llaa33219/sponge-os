@@ -1080,8 +1080,14 @@ a compatibility writer.
     `docs/evidence/phase16-settings-hardware.md` and are
     UNCHECKED until actually performed.
 
-**Pass conditions** (target acceptance; none of these is claimed
-until the scenarios actually pass):
+**Pass conditions** (target acceptance; status 2026-11-13: every
+QEMU scenario row below passes after the three session opt-in gate
+fixes (`<quick_settings source="providers"/>` on sponge-de,
+`<settings_launch source="pkgd"/>` on `sponge_settings`, and the
+first-party provider package config `<settings quick="yes"/>` from
+`pkg/sponge-de/metadata.xml`), and are recorded in
+`docs/evidence/criterion18-settings.md`, while the
+physical-receipt rows remain unclaimed):
 
 - **Event-driven discovery without reboot**: adding/removing a
   settings entry shows up in an open control center via the
@@ -2272,25 +2278,33 @@ configd broadcast byte match; W6 Background provider image
 combobox → 3 clicks + image byte match; W8 multipanel → 4 clicks +
 new panel's widget visible at the right nitpicker domain; W7
 shortcut → 1 keystroke + launcher.open=yes). The receipts live in
-`docs/evidence/phase16-index.md` §"UX metrics"; the receipts that
-exist today measured the replaced dialog flow (the universal
+`docs/evidence/phase16-index.md` §"UX metrics"; the pre-W4
+receipts there measured the replaced dialog flow (the universal
 `SettingsController` writer) and are not proof of the provider
-architecture.
+architecture. The provider-architecture receipts live in
+`docs/evidence/criterion18-settings.md`.
 
-**Provider-flow measurements are TARGETS.** The provider-flow
-rows above (change panel height, change background image, add a
-second panel) are plan-time targets: their provider-architecture
-numbers are exercised only once the new W4 scenarios pass
+**Provider-flow measurements: QEMU-verified, acceptance open
+(2026-11-13).** The provider-flow rows above (change panel
+height, change background image, add a second panel) are
+exercised by the W4 scenarios, all passing on base-sel4/QEMU
+after the session opt-in gate fixes
 (`sponge-settings-center.run`, `sponge-settings-providers.run`
 including the cold-provider-start quick-menu change,
 `sponge-settings-failure.run` with the provider-start/validation
 failure cases, `sponge-settings-thirdparty.run`,
-`sponge-settings-vct.run`), on the quick-menu change lifecycle
-(`docs/05-sponge-de.md` §5.4). Until those scenarios pass, do
-not cite the existing `phase16-index.md` UX-metrics receipts as
+`sponge-settings-vct.run`, plus `sponge-settings-focus.run`),
+over the quick-menu change lifecycle (`docs/05-sponge-de.md`
+§5.4); receipts in `docs/evidence/criterion18-settings.md`. The
+providers probe drives the exact quick wire protocol; an
+independent click-through PanelWidget -> QuickMenuController ->
+provider UI runtime test has not been demonstrated. Still
+do not cite the pre-W4 `phase16-index.md` UX-metrics receipts as
 provider-architecture evidence: they measured the dialog flow
 the W4 provider split replaces. The evidence files themselves
 are left untouched; this note is the plan-side correction.
+Physical-hardware acceptance remains unclaimed, so Criterion 18
+stays open.
 
 **Forward-looking note** (per `AGENTS.md` §5.1, claims must be
 re-verified at delivery time, not at plan time): the table above
