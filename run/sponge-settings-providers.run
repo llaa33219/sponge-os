@@ -1,0 +1,425 @@
+#
+# \brief  Criterion 18 settings-provider acceptance scenario:
+#        (a) a COLD Panel quick-menu action ensure-starts panel_settings
+#        through the existing launcher pair and applies a closed height
+#        operation (target 40) through panel_settings_quick_request /
+#        panel_settings_quick_result, with the configd broadcast
+#        confirming panel.height=40; (b) configd enforces a
+#        provider-label out-of-domain rejection (theme_settings
+#        attempting panel.height) with reason="key-outside-domain" and
+#        no store mutation; plus an observable settings entry
+#        ensure-start.
+# \author Sponge OS contributors
+# \date   2026
+#
+# WHAT THIS PROVES (fail-loud; every gate is bounded and named):
+#
+#   1. PKG/Sponge-DE STAGING + DISCOVERY: the pkg/sponge-de metadata is
+#      staged (pkg_sponge-de.xml + pkg_index.xml), the probe installs
+#      the package over the vct `request` channel, and the `installed`
+#      broadcast carries the two exercised settings entries
+#      (panel -> panel_settings, theme -> theme_settings).
+#   2. (a) COLD QUICK-MENU ACTION, wire-identical to the production
+#      QuickMenuController lifecycle (docs/05-sponge-de.md §5.4):
+#        2a. ensure-start (sponge-de, panel) over the EXISTING
+#            launcher_request / launcher_result pair (the exact
+#            LauncherController::request_settings_open payload).
+#            The pkgd witnesses are
+#              sponge_pkgd: settings open sponge-de 'panel'
+#                           -> started (sponge-de.panel)
+#              sponge_pkgd: settings result sponge-de 'panel' -> ok started
+#            and the provider comes up:
+#              settings provider panel_settings ready (sponge-de/panel)
+#            The answer MUST be action="started" — the probe fails
+#            loud on "focused" (that would mean a stale claim and no
+#            cold start).
+#        2b. ONE closed <quick_request op="height" value="40"/> (the
+#            default panel uses the empty quick id — no id attribute)
+#            on panel_settings_quick_request, answered
+#            <quick_result status="ok" op="height" value="40"/> on
+#            panel_settings_quick_result (QuickMenuController echo
+#            acceptance: ok with op AND value equal to the request).
+#        2c. the configd broadcast carries panel.height=40 — the
+#            provider wrote the op through its own panel_settings
+#            configd label (Criterion 18 persistence path).
+#   3. SETTINGS ENTRY ENSURE-START (the shell wire): a second entry,
+#      (sponge-de, theme), is ensure-started through
+#      settings_request / settings_result and must answer
+#      action="started":
+#        sponge_pkgd: settings open sponge-de 'theme'
+#                     -> started (sponge-de.theme)
+#        settings provider theme_settings ready (sponge-de/theme)
+#   4. (b) PROVIDER-LABEL KEY-DOMAIN ACL: on the theme_settings writer
+#      label (the probe drives that channel — see WRITER SLOT below):
+#        - in-domain positive control theme.active=dark is accepted
+#          and broadcast (the label can write its own domain);
+#        - panel.height=99 is refused:
+#            <result status="error" op="set" key="panel.height"
+#                    reason="key-outside-domain"
+#                    error="key-outside-domain: key 'panel.height' is
+#                    outside the key domain of writer label
+#                    'theme_settings' (allowed: theme.*)"/>
+#          and the store is NOT mutated — the broadcast stays
+#          byte-identical to its pre-request snapshot and keeps
+#          panel.height=40.
+#
+# DRIVER (deterministic; no pixel guessing): the focused probe
+# (test/settings_providers_probe) drives the exact wire actions of
+# sponge-de's QuickMenuController + LauncherController and of the
+# theme_settings writer label — the panel-menu precedent of a probe as
+# the DE-side writer. There is NO QMP choreography in this scenario
+# (no input chain is staged): every witness is a configd broadcast
+# byte-snapshot, a quick-result document, a pkgd result document, or a
+# log line. report_rom has no delivery handshake, so the probe
+# redelivers the IDENTICAL closed quick_request at most every 2 s
+# while polling (idempotent: the provider re-serves height 40 and
+# configd de-dups the identical set); launcher/settings opens are
+# never redelivered.
+#
+# WRITER SLOT (report_rom keeps one writer per module): the
+# theme_settings configd request ROM carries the probe's report here,
+# so configd attributes those writes to the 'theme_settings' label —
+# the channel identity from the Criterion 18 writer table
+# (sponge_configd/key_domain_acl.cc) and exactly the provider-label
+# enforcement under test. The running theme provider's own writer slot
+# is deliberately not wired to configd in this scenario (its startup
+# is the settings-entry witness only). The probe writes ONLY the
+# per-provider labels exercised here — no universal/de_config writer
+# exists in this topology — and NOTHING writes focus_request:
+# sponge-de's TasklistController remains its sole writer.
+#
+# WIRING (report_rom single relay; label chains as composed by nested
+# init: pkg_runtime grandchildren carry the "pkg_runtime -> <child>"
+# prefix). The pkgd opt-in markers in its component config decide
+# which channels exist:
+#
+#   probe -> request                  -> sponge_pkgd `request`      (install)
+#   sponge_pkgd `result`              -> probe `result`
+#   probe -> launcher_request         -> sponge_pkgd `launcher_request` [<launcher_request/>]
+#   sponge_pkgd `launcher_result`     -> probe `launcher_result`
+#   probe -> settings_request         -> sponge_pkgd `settings_request` [<settings_request/>]
+#   sponge_pkgd `settings_result`     -> probe `settings_result`
+#   sponge_pkgd `installed`           -> probe `installed`
+#   sponge_pkgd `settings_focus_hint` -> report_rom (TasklistController's future ROM) [<settings_focus_hint/>]
+#   sponge_pkgd `runtime`             -> pkg_runtime `config`
+#   pkg_runtime `state`               -> sponge_pkgd `runtime_state` [<settings_liveness/>]
+#   probe -> config_request           -> sponge_configd `config_request` (vct-slot stub, kept empty)
+#   sponge_configd `config`           -> probe `broadcast` + both providers' `configd`
+#   panel_settings provider -> panel_settings_config_request  -> configd
+#   configd -> panel_settings_config_result -> panel_settings provider
+#   probe (theme label) -> theme_settings_config_request -> configd
+#   configd -> theme_settings_config_result -> probe + theme provider
+#   probe -> panel_settings_quick_request  -> panel_settings provider
+#   panel_settings provider -> panel_settings_quick_result -> probe
+#   probe -> theme_settings_quick_request  -> theme_settings provider
+#            (routed so the provider constructs; the slot stays idle —
+#            the theme provider's own write slot is parked here)
+#
+# base-sel4 only (same rationale family as run/sponge-de-sel4-interactive.run:
+# this scenario family is calibrated on KERNEL=sel4 BOARD=pc).
+#
+
+assert {[have_spec sel4]} \
+	"sponge-settings-providers requires KERNEL=sel4 (BOARD=pc) in build.conf. \
+	 This scenario is part of the base-sel4 acceptance family."
+
+build { core lib/ld init timer server/report_rom server/nitpicker \
+         lib/vfs \
+         sponge_configd sponge_pkgd \
+         settings_providers/panel settings_providers/theme \
+         test/settings_providers_probe }
+
+create_boot_directory
+
+install_config {
+config
++ parent-provides
+  + service ROM
+  + service PD
+  + service RM
+  + service CPU
+  + service LOG
+  + service IRQ
+  + service IO_MEM
+  + service IO_PORT
+
++ default | caps: 200 | ram: 4M
++ default-route
+  + any-service
+    + parent
+    + any-child
+
++ start timer
+  + provides | + service Timer
+
+#
+# report_rom — the single relay. Full label chains, one writer per
+# label (AGENTS.md §1.2). The launcher_request / settings_request /
+# settings_liveness / settings_focus_hint policies exist because
+# pkgd's config below opts into those channels.
+#
++ start report_rom | caps: 300 | ram: 8M
+  + provides
+    + service Report
+    + service ROM
+  + config | verbose: no
+    + policy | label: sponge_pkgd -> request                    | report: settings_providers_probe -> request
+    + policy | label: settings_providers_probe -> result        | report: sponge_pkgd -> result
+    + policy | label: sponge_pkgd -> launcher_request           | report: settings_providers_probe -> launcher_request
+    + policy | label: settings_providers_probe -> launcher_result | report: sponge_pkgd -> launcher_result
+    + policy | label: sponge_pkgd -> settings_request           | report: settings_providers_probe -> settings_request
+    + policy | label: settings_providers_probe -> settings_result | report: sponge_pkgd -> settings_result
+    + policy | label: settings_providers_probe -> installed     | report: sponge_pkgd -> installed
+    + policy | label: sponge-de -> settings_focus_hint          | report: sponge_pkgd -> settings_focus_hint
+    + policy | label: pkg_runtime -> config                     | report: sponge_pkgd -> runtime
+    + policy | label: sponge_pkgd -> runtime_state              | report: pkg_runtime -> state
+    + policy | label: sponge_configd -> config_request          | report: settings_providers_probe -> config_request
+    + policy | label: settings_providers_probe -> broadcast     | report: sponge_configd -> config
+    + policy | label: sponge_configd -> panel_settings_config_request | report: pkg_runtime -> sponge-de.panel -> panel_settings_config_request
+    + policy | label: sponge_configd -> theme_settings_config_request | report: settings_providers_probe -> theme_settings_config_request
+    + policy | label: pkg_runtime -> sponge-de.panel -> panel_settings_config_result | report: sponge_configd -> panel_settings_config_result
+    + policy | label: pkg_runtime -> sponge-de.theme -> theme_settings_config_result | report: sponge_configd -> theme_settings_config_result
+    + policy | label: settings_providers_probe -> theme_settings_config_result | report: sponge_configd -> theme_settings_config_result
+    + policy | label: pkg_runtime -> sponge-de.panel -> panel_settings_quick_request | report: settings_providers_probe -> panel_settings_quick_request
+    + policy | label: settings_providers_probe -> panel_settings_quick_result | report: pkg_runtime -> sponge-de.panel -> panel_settings_quick_result
+    + policy | label: pkg_runtime -> sponge-de.theme -> theme_settings_quick_request | report: settings_providers_probe -> theme_settings_quick_request
+    + policy | label: pkg_runtime -> sponge-de.panel -> configd | report: sponge_configd -> config
+    + policy | label: pkg_runtime -> sponge-de.theme -> configd | report: sponge_configd -> config
+
+#
+# nitpicker — headless compositing for the providers' windows (no fb
+# needed; no pixel witness is taken). One domain for all provider
+# windows.
+#
++ start nitpicker | ram: 16M
+  + provides
+    + service Gui
+    + service Capture
+    + service Event
+  + route
+    + service Report | + child report_rom
+    + service Timer | + child timer
+    + any-service
+      + parent
+      + any-child
+  + config
+    + capture
+    + event
+    + domain providers | layer: 2 | content: client | label: no
+                       | hover: always | focus: click
+                       | xpos: 0 | ypos: 0 | width: 1024 | height: 768
+    + default-policy | domain: providers
+    + background | color: #1e1e2e
+
+#
+# sponge_configd — the key-domain ACL under test. The two <writer>
+# declarations enable the panel_settings and theme_settings per-label
+# channels with their built-in Criterion 18 domains (panel.* /
+# theme.*). No de_config marker: there is deliberately no universal
+# writer in this topology.
+#
++ start sponge_configd | caps: 200 | ram: 16M
+  + config
+    + writer | label: panel_settings
+    + writer | label: theme_settings
+  + route
+    + service ROM | label_last: config_request                 | + child report_rom
+    + service ROM | label_last: panel_settings_config_request  | + child report_rom
+    + service ROM | label_last: theme_settings_config_request  | + child report_rom
+    + service Report | + child report_rom
+    + any-service
+      + parent
+      + any-child
+
+#
+# sponge_pkgd — the settings metadata/ensure-start transport. The
+# four opt-in markers below ARE the component-config opt-ins the
+# wiring contract requires: <launcher_request/> arms the
+# QuickMenuController channel, <settings_request/> arms the settings
+# shell channel, <settings_liveness/> arms claim release on provider
+# exit (watching pkg_runtime's `state` via runtime_state), and
+# <settings_focus_hint/> arms the focus-hint report. No <vfs> node —
+# in-memory installed set (single-boot scenario). No <admission/>:
+# opens admit against the unarmed budget path.
+#
++ start sponge_pkgd | caps: 300 | ram: 32M
+  + config
+    + launcher_request
+    + settings_request
+    + settings_liveness
+    + settings_focus_hint
+  + route
+    + service ROM | label_last: request          | + child report_rom
+    + service ROM | label_last: launcher_request | + child report_rom
+    + service ROM | label_last: settings_request | + child report_rom
+    + service ROM | label_last: runtime_state    | + child report_rom
+    + service Report | + child report_rom
+    + any-service
+      + parent
+      + any-child
+
+#
+# pkg_runtime — nested init hosting the launched settings providers.
+# Its config is the whole pkgd `runtime` report (a <start> node is
+# emitted per claimed settings entry; docs/12 §14.7). Provider
+# sessions route to <parent/> in the generated start nodes (the OUTER
+# set in pkg_config.cc is_parent_route: nitpicker/report_rom/timer),
+# so they resolve through the routes below. Provider "config" ROMs are
+# served by this init from each <start> node's (empty) <config>.
+#
++ start pkg_runtime | caps: 2000 | ram: 256M
+  + binary init
+  + route
+    + service ROM | label: config | + child report_rom
+    + service Gui | + child nitpicker
+    + service Report | + child report_rom
+    + service ROM | label_last: panel_settings_config_result | + child report_rom
+    + service ROM | label_last: panel_settings_quick_request | + child report_rom
+    + service ROM | label_last: theme_settings_config_result | + child report_rom
+    + service ROM | label_last: theme_settings_quick_request | + child report_rom
+    + service ROM | label_last: configd | + child report_rom
+    + any-service
+      + parent
+      + any-child
+
+#
+# settings_providers_probe — the deterministic driver (see the header
+# DRIVER note). It is the vct-equivalent writer for sponge_pkgd's
+# `request` channel and sponge_configd's `config_request` slot, the
+# DE-side writer of the launcher/settings/quick channels, and the
+# adversarial writer of the theme_settings label.
+#
++ start settings_providers_probe | caps: 300 | ram: 16M
+  + route
+    + service Timer | + child timer
+    + service Report | + child report_rom
+    + service ROM | label_last: broadcast                   | + child report_rom
+    + service ROM | label_last: result                      | + child report_rom
+    + service ROM | label_last: launcher_result             | + child report_rom
+    + service ROM | label_last: settings_result             | + child report_rom
+    + service ROM | label_last: installed                   | + child report_rom
+    + service ROM | label_last: panel_settings_quick_result | + child report_rom
+    + service ROM | label_last: theme_settings_config_result | + child report_rom
+    + any-service
+      + parent
+      + any-child
+- }
+
+#
+# Stage every non-build-artifact boot module into bin/ BEFORE
+# build_boot_image: on base-sel4 the boot image is a single packed
+# image.elf, so modules added later never reach the guest (same
+# pattern as run/sponge-settings-center.run).
+#
+exec mkdir -p bin
+
+#
+# Stage the pkg/sponge-de package metadata + the derived index so
+# sponge_pkgd can resolve the seven <settings> entries (the same
+# scheme as run/sponge-settings-center.run).
+#
+set staged_pkgs { sponge-de }
+foreach pkg $staged_pkgs {
+	set src "${genode_dir}/../pkg/$pkg/metadata.xml"
+	if {![file exists $src]} {
+		error "package metadata not found: $src"
+	}
+	exec cp -L $src "bin/pkg_$pkg.xml"
+}
+
+set index_fh [open "bin/pkg_index.xml" w]
+puts $index_fh "<packages>"
+foreach pkg $staged_pkgs {
+	puts $index_fh "  <pkg name=\"$pkg\"/>"
+}
+puts $index_fh "</packages>"
+close $index_fh
+
+set boot_modules [build_artifacts]
+foreach m { pkg_sponge-de.xml pkg_index.xml } {
+	lappend boot_modules $m
+}
+
+build_boot_image $boot_modules
+
+#
+# QEMU: seL4 needs >= 1 GiB; 2G matches the scenario-family precedent.
+# No QMP socket, no usb-tablet: this scenario is probe-driven over the
+# wire contract (header DRIVER note).
+#
+match_max -d 200000
+
+append qemu_args " -nographic -m 2G "
+
+#
+# Terminal gate: the probe validates each lifecycle and ACL phase
+# before emitting PASS. Do not gate on intermediate log lines: expect
+# consumes input in chunks, so an earlier gate can consume a later
+# marker and make the next gate wait forever for an event that already
+# happened. Exact per-phase evidence is asserted by the post-counts
+# below over the accumulated output.
+#
+run_genode_until {.*settings-providers-probe: PASS.*} 300
+
+global qemu_spawn_id
+match_max -i $qemu_spawn_id 200000
+
+#
+# Post-gates over the accumulated run output (the supervisor-control
+# precedent: absences/counts cannot be expressed as log-line gates).
+#
+global output
+
+set n_panel [regexp -all {settings open sponge-de 'panel' -> started} $output]
+if {$n_panel != 1} {
+	puts stderr "FAIL: expected exactly 1 cold 'panel -> started', saw $n_panel"
+	exit 1
+}
+
+set n_panel_focused [regexp -all {settings open sponge-de 'panel' -> focused} $output]
+if {$n_panel_focused != 0} {
+	puts stderr "FAIL: expected 0 'panel -> focused' (a duplicate open would break the cold evidence), saw $n_panel_focused"
+	exit 1
+}
+
+set n_theme [regexp -all {settings open sponge-de 'theme' -> started} $output]
+if {$n_theme != 1} {
+	puts stderr "FAIL: expected exactly 1 'theme -> started', saw $n_theme"
+	exit 1
+}
+
+set n_panel_ready [regexp -all {settings provider panel_settings ready} $output]
+if {$n_panel_ready != 1} {
+	puts stderr "FAIL: expected exactly 1 panel_settings ready witness, saw $n_panel_ready"
+	exit 1
+}
+
+set n_theme_ready [regexp -all {settings provider theme_settings ready} $output]
+if {$n_theme_ready != 1} {
+	puts stderr "FAIL: expected exactly 1 theme_settings ready witness, saw $n_theme_ready"
+	exit 1
+}
+
+set n_rejected [regexp -all {theme label panel.height=99 -> rejected} $output]
+if {$n_rejected != 1} {
+	puts stderr "FAIL: expected exactly 1 key-outside-domain rejection, saw $n_rejected"
+	exit 1
+}
+
+set n_store [regexp -all {settings-providers-probe: store unmutated} $output]
+if {$n_store != 1} {
+	puts stderr "FAIL: expected exactly 1 unmutated-store witness, saw $n_store"
+	exit 1
+}
+
+set n_pass [regexp -all {settings-providers-probe: PASS} $output]
+if {$n_pass != 1} {
+	puts stderr "FAIL: expected exactly 1 probe PASS marker, saw $n_pass"
+	exit 1
+}
+
+#
+# Final explicit PASS marker (verdict, emitted only after every gate
+# and count above succeeded).
+#
+puts "settings-providers-scenario: PASS - cold quick-menu action ensure-started panel_settings via the launcher pair (started (sponge-de.panel)), closed height-40 quick request answered ok with configd broadcast panel.height=40; settings entry (sponge-de/theme) ensure-started via settings_request; theme_settings label refused panel.height=99 with reason=key-outside-domain and the store stayed byte-identical"
