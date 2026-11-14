@@ -223,7 +223,8 @@ scenario-verified acceptance probe (per the Phase 16 plan,
   is the interim implementation, not the final Settings
   architecture. Base criterion 2 was reopened on 2026-11-10; the
   final target is the provider-owned `sponge_settings` control
-  center in roadmap Criterion 18 (not implemented or tested).
+  center in roadmap Criterion 18 (implemented and QEMU-verified;
+  receipts in `docs/evidence/criterion18-settings.md`).
   The legacy dialog and universal `SettingsController` are
   removed at the W4 provider split (D16.9).
 - **Panel context menu** (Phase 16 W5). Right-click anywhere on
