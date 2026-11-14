@@ -44,7 +44,6 @@
 #include "background/background_widget.h"
 #include "config/config_controller.h"
 #include "config/dismisser.h"
-#include "config/settings_controller.h"
 #include "config/shortcut_controller.h"
 #include "launcher/launcher_controller.h"
 #include "launcher/launcher_menu_view.h"
@@ -56,6 +55,7 @@
 #include "panel/tasklist_controller.h"
 #include "panel/tasklist_widget.h"
 #include "rom/optional_rom_dataspace.h"
+#include "settings/quick_menu_controller.h"
 #include "sponge_de_main.h"
 #include "theme/theme_controller.h"
 #include "theme/theme_loader.h"
@@ -103,23 +103,19 @@ void Libc::Component::construct(Libc::Env &env)
 		ConfigController config_ctrl(env);
 
 		/*
-		 * Phase 16 W4 (D16.1 / D16.9): SettingsController — the
-		 * DE-side write bridge to sponge_configd on the dedicated
-		 * `de_config_request` / `de_config_result` labels. Mirrors
-		 * the read-side ConfigController above (constructed BEFORE
-		 * the panel so the very first applyConfig() / first dialog
-		 * write can fan out to the widgets / configd). The
-		 * controller exposes `open_settings_dialog()` (D16.3),
-		 * lazy-loaded on the first *Settings* click from the panel
-		 * context menu (W5 wires the menu item; W4 only constructs
-		 * the controller so the menu slot has a target).
-		 *
-		 * The activation gate `<de_config source="controller"/>`
-		 * mirrors the read-side `<config source="configd"/>`; in
-		 * fallback mode the controller does not open Report / ROM
-		 * sessions and `open_settings_dialog()` is a no-op warning.
+		 * Criterion 18 (W4 provider split): QuickMenuController —
+		 * the reusable quick-settings bridge to the provider-owned
+		 * settings windows. The panel context menu's Height /
+		 * Visible widgets / Position controls call its closed
+		 * change_panel_* operations; the panel / background
+		 * Settings entries call open_panel_settings() /
+		 * open_background_settings() (ensure-start only). Every
+		 * lifecycle runs over the existing launcher pair
+		 * (request_settings_open) plus the owning provider's
+		 * quick-request / quick-result labels — there is no
+		 * universal writer and no in-DE settings dialog anymore.
 		 */
-		SettingsController settings_ctrl(env);
+		QuickMenuController quick_menu_ctrl(env);
 
 		/*
 		 * Phase 16 W7 (U16.4 / D16.5): ShortcutController — the
@@ -132,13 +128,12 @@ void Libc::Component::construct(Libc::Env &env)
 		 * GUI thread.
 		 *
 		 * The activation gate `<shortcuts source="controller"/>`
-		 * mirrors the W4 <de_config source="controller"/> + W5
-		 * <panel_bottom source="dual"/> + W6 <background source=
-		 * "controller"/> pattern — absent the gate, no Shortcut
-		 * Controller, no event_filter config writer, no shortcut
-		 * action dispatch. Scenarios that do not opt in (Phase 10
-		 * / Phase 11 / Phase 14 single-domain) keep their previous
-		 * behavior.
+		 * mirrors the W5 <panel_bottom source="dual"/> + W6
+		 * <background source="controller"/> pattern — absent the
+		 * gate, no Shortcut Controller, no event_filter config
+		 * writer, no shortcut action dispatch. Scenarios that do
+		 * not opt in (Phase 10 / Phase 11 / Phase 14
+		 * single-domain) keep their previous behavior.
 		 */
 		ShortcutController shortcut_ctrl(env);
 
@@ -160,9 +155,23 @@ void Libc::Component::construct(Libc::Env &env)
 		 * constructed with the initial theme so the popup renders
 		 * correctly even before the first pkgd poll completes.
 		 */
+		bool quick_settings_enabled { false };
+		{
+			Genode::Attached_rom_dataspace const config(env, "config");
+			config.node().with_optional_sub_node("quick_settings",
+				[&] (Genode::Node const &n) {
+					quick_settings_enabled =
+						n.attribute_value("source",
+						                  Genode::String<16>())
+						== "providers";
+				});
+		}
+
 		LauncherController launcher_ctrl(env);
 		LauncherMenuView   launcher_view(launcher_ctrl, theme_ctrl.initial());
 		launcher_ctrl.attach_view(&launcher_view);
+		if (quick_settings_enabled)
+			quick_menu_ctrl.attach_launcher_controller(&launcher_ctrl);
 
 		NotifierWidget notifier_popover(theme_ctrl.initial());
 		notifier_ctrl.attach_widget(&notifier_popover);
@@ -248,11 +257,11 @@ void Libc::Component::construct(Libc::Env &env)
 		 * second "Sponge Panel Bottom" session they do not
 		 * request, so constructing panel_bottom unconditionally
 		 * would fatal-deny at show() time. The activation gate
-		 * mirrors the existing `<config source="configd"/>` /
-		 * `<de_config source="controller"/>` pattern — absent the
-		 * gate, only the singleton panel_top widget is
-		 * constructed, the dual-domain topology is bypassed, and
-		 * the regression scenarios remain byte-compatible.
+		 * mirrors the existing `<config source="configd"/>`
+		 * pattern — absent the gate, only the singleton panel_top
+		 * widget is constructed, the dual-domain topology is
+		 * bypassed, and the regression scenarios remain
+		 * byte-compatible.
 		 *
 		 * Phase 16 W8 (U16.5 / D16.5): the new multi-panel
 		 * scenario opts in via `<panels source="collection"/>`
@@ -300,7 +309,8 @@ void Libc::Component::construct(Libc::Env &env)
 		if (panels_collection_enabled) {
 			panels_ptr = new (&panels_heap)
 				Sponge::Sponge_DE::PanelCollection(env, theme_ctrl.initial(),
-				                                    &settings_ctrl);
+				                   quick_settings_enabled ? &quick_menu_ctrl
+				                                          : nullptr);
 		}
 
 		Genode::Constructible<PanelWidget> panel_top_holder { };
@@ -323,24 +333,25 @@ void Libc::Component::construct(Libc::Env &env)
 		}
 
 		/*
-		 * In legacy mode, wire panel_top to the settings controller.
-		 * In collection mode, the collection already wired the
-		 * default panel to the settings controller in its
-		 * constructor.
+		 * In legacy mode, wire panel_top to the quick menu
+		 * controller. In collection mode, the collection already
+		 * wired the default panel to the quick menu controller in
+		 * its constructor.
 		 */
-		if (!panels_collection_enabled)
-			panel_top->set_settings_controller(&settings_ctrl);
-		if (!panels_collection_enabled && panel_bottom_enabled)
-			panel_bottom->set_settings_controller(&settings_ctrl);
+		if (!panels_collection_enabled && quick_settings_enabled)
+			panel_top->set_quick_menu_controller(&quick_menu_ctrl);
+		if (!panels_collection_enabled && panel_bottom_enabled && quick_settings_enabled)
+			panel_bottom->set_quick_menu_controller(&quick_menu_ctrl);
 
 		/*
 		 * Phase 16 W7 (U16.4 / D16.5): Dismisser — the priority-list
 		 * popover closer. Closes the topmost popover (launcher popup
-		 * → settings dialog → panel context menu → background context
-		 * menu) when the `dismiss` keyboard shortcut fires. The
-		 * pointers are wired after the widgets exist; the
-		 * ShortcutController only invokes the dismisser after its
-		 * own GUI-thread marshal so the dependency is safe.
+		 * → panel context menu → background context menu) when the
+		 * `dismiss` keyboard shortcut fires. Provider-owned settings
+		 * windows are not touched (Criterion 18). The pointers are
+		 * wired after the widgets exist; the ShortcutController only
+		 * invokes the dismisser after its own GUI-thread marshal so
+		 * the dependency is safe.
 		 *
 		 * Constructed unconditionally on the Genode::Heap because its
 		 * lifetime must outlive the lambda scope (the panel + bg +
@@ -739,7 +750,6 @@ if (health_watcher_enabled) {
 			QObject::connect(diag_timer, &QTimer::timeout, diag_refresh);
 			diag_timer->start(1000);
 		}
-		dismisser.set_settings_controller(&settings_ctrl);
 		if (panels_collection_enabled && panels_ptr)
 			dismisser.set_panel_widget(panels_ptr->panel_for_id(
 			    PanelWidget::default_id()));
@@ -933,7 +943,8 @@ if (health_watcher_enabled) {
 			static Sponge::Sponge_DE::BackgroundController bg_ctrl;
 			bg_widget.construct();
 			bg_widget->set_controller(&bg_ctrl);
-			bg_widget->set_settings_controller(&settings_ctrl);
+			if (quick_settings_enabled)
+				bg_widget->set_quick_menu_controller(&quick_menu_ctrl);
 			bg_widget->set_launcher_view(&launcher_view);
 			if (tasklist_enabled)
 				bg_widget->set_tasklist_controller(&tasklist_ctrl);
