@@ -1,0 +1,852 @@
+#
+# \brief  Criterion 18 click-through quick-menu acceptance scenario:
+#        the REAL PanelWidget / BackgroundWidget QMenus driven over
+#        QMP into the REAL QuickMenuController -> settings-provider
+#        chain (ensure-start, quick request/result, supersession,
+#        configd broadcast, background Settings open).
+# \author Sponge OS contributors
+# \date   2026
+#
+# WHAT THIS PROVES (fail-loud; every gate is bounded and named):
+#
+#   1. COLD PANEL ENSURE-START THROUGH THE REAL QMENU: a host
+#      right-click at (512,754) opens PanelWidget::contextMenuEvent's
+#      Height QSpinBox menu; a focus click on the spinbox body plus
+#      ONE QMP key up steps panel.height 28 -> 32. That single UI
+#      action is the production
+#      QuickMenuController change lifecycle (docs/05-sponge-de.md
+#      §5.4) and must produce, in order:
+#        sponge-de: settings ensure-start 'sponge-de' 'panel'
+#        sponge_pkgd: settings open sponge-de 'panel'
+#                     -> started (sponge-de.panel)
+#        settings provider panel_settings ready (sponge-de/panel)
+#        sponge-de: quick change 'panel height': provider started
+#        sponge-de: quick request 'panel height' -> 32
+#        sponge-de: panel height set to 32
+#      with the configd broadcast carrying panel.height=32 and the
+#      panel_settings_quick_result echoing ok/height/32. The provider
+#      "ready" witness is taken after repaint (sp_provider.h start()
+#      repaints before logging ready; the run also orders the witness
+#      after 'sponge-de: panel shown' and the probe pixel-verifies the
+#      provider window's repaint in its nitpicker domain).
+#
+#   2. SUPERSESSION: a rapid second PAIR of distinct height actions
+#      (32 -> 36, 36 -> 40) on the same open QMenu must produce
+#      EXACTLY ONE
+#        sponge-de: quick change failed: panel height:
+#                   superseded by a newer quick action
+#      and the final settled value must be 40 (broadcast + 'set to
+#      40'). The assertions are INVARIANT-based: they do not depend
+#      on whether the superseded 36 request was ever sent (both the
+#      ENSURING-swap and the POLLING timing shapes are accepted), and
+#      'panel height set to 36' must never appear (a superseded
+#      action never settles).
+#
+#   3. BACKGROUND SETTINGS THROUGH THE REAL QMENU: a host right-click
+#      at (300,300) (a clear region with the demo window disabled)
+#      opens BackgroundWidget's QMenu and one tablet click on
+#      Settings... produces:
+#        sponge-de: settings ensure-start 'sponge-de' 'background'
+#        sponge_pkgd: settings open sponge-de 'background'
+#                     -> started (sponge-de.background)
+#        settings provider background_settings ready
+#                     (sponge-de/background)
+#        sponge-de: background settings opened (provider started)
+#      corroborated by the launcher_result ROM (action=started). The
+#      W6 per-event right-click delivery flake is handled with bounded
+#      retries keyed on bgmenu_open open=yes, one QMP-TARGET marker
+#      per attempt, QMP-TARGET sync terminated (the host loops
+#      qmp_exec_target until the sync marker - one-marker-at-a-time
+#      preserved).
+#
+# WRITE ATTRIBUTION IS STRUCTURAL. sponge-de is the sole writer of
+# the launcher_request and *_quick_request labels; the provider
+# children (pkg_runtime grandchildren) are the sole writers of the
+# *_quick_result and *_config_request labels; sponge_configd is the
+# sole writer of the broadcast and *_config_result labels. The
+# quickmenu_probe has NO route to any of those channels - its only
+# Report session is the package-install `request` channel - and
+# report_rom's per-label `report:` policy clauses pin each module to
+# those writer identities, so no probe byte can ever reach a
+# settings/config/quick ROM.
+#
+# DRIVER: quickmenu_probe is observe-only for every settings/config/
+# quick channel (it may install the package and it reads ROMs and
+# Capture). Every click is a host QMP dispatch (run/qmp.inc):
+# qmp_right_click for menu opening (PS/2 relative, upstream
+# accelerate LUT), qmp_tablet_click for left clicks (usb-tablet abs +
+# the event_filter scale transform of themed-chrome/multipanel). No
+# existing QMenu item-click helper exists: the probe self-calibrates
+# every menu click from the real rendered QMenu via Capture scans
+# (menu bbox + Height spinbox box, logged as CAL evidence) relative
+# to the mandated anchors (512,754 panel / 300,300 background), and
+# the height steps ride bounded keyboard navigation (QMP key up)
+# through the same REAL QMenu after a focus click on the spinbox
+# body.
+#
+# Wiring merges the proven pieces of run/sponge-panel-menu.run (dual
+# panel domains + QMP right-click at 512,754), run/sponge-de-bgmenu.run
+# (BackgroundWidget + bgmenu_open + the background domain), and
+# run/sponge-settings-providers.run (sponge_pkgd / pkg_runtime /
+# settings providers / per-label configd channels), with the
+# quick_settings source=providers, launcher source=pkgd, background
+# source=controller and demo enabled=no session opt-in gates.
+#
+# base-sel4 only (the scenario-family calibration: KERNEL=sel4
+# BOARD=pc). AGENTS.md §4.2: builds lib/ld + core init and passes
+# [build_artifacts] to build_boot_image.
+#
+
+assert {[have_spec sel4]} \
+	"sponge-settings-quickmenu requires KERNEL=sel4 (BOARD=pc). \
+	 This scenario drives a Qt6 + softpipe sponge-de through real \
+	 QMP menus; base-linux lacks QEMU's QMP socket."
+
+build { core lib/ld init timer server/report_rom server/nitpicker \
+         lib/vfs \
+         driver/acpi app/pci_decode driver/platform \
+         driver/framebuffer/vesa driver/ps2 \
+         driver/usb_host/pc driver/usb_hid server/event_filter \
+         sponge_configd sponge-de sponge_pkgd \
+         settings_providers/panel settings_providers/background \
+         test/quickmenu_probe \
+         qt6/base lib/libc lib/libm lib/stdcxx lib/mesa \
+         lib/mesa_gpu-softpipe lib/egl lib/softpipe lib/libdrm lib/expat \
+         lib/qt6_component lib/vfs_pipe lib/vfs_gpu lib/rom_filter \
+         lib/zlib lib/libpng lib/blit }
+
+create_boot_directory
+
+install_config {
+config
++ parent-provides
+  + service ROM
+  + service PD
+  + service RM
+  + service CPU
+  + service LOG
+  + service IRQ
+  + service IO_MEM
+  + service IO_PORT
+
++ default | caps: 200 | ram: 4M
++ default-route
+  + any-service
+    + parent
+    + any-child
+
++ start timer
+  + provides | + service Timer
+
++ start report_rom | caps: 300 | ram: 8M
+  + provides
+    + service Report
+    + service ROM
+  + config | verbose: no
+    #
+    # Install channel: the quickmenu_probe's ONLY writer session
+    # (the probe may perform package install; nothing else).
+    #
+    + policy | label: sponge_pkgd -> request                    | report: quickmenu_probe -> request
+    + policy | label: quickmenu_probe -> result                 | report: sponge_pkgd -> result
+    + policy | label: quickmenu_probe -> installed              | report: sponge_pkgd -> installed
+    #
+    # Launcher pair: sponge-de (LauncherController) is the sole
+    # quick/settings-open request writer; pkgd answers.
+    #
+    + policy | label: sponge_pkgd -> launcher_request           | report: sponge-de -> launcher_request
+    + policy | label: sponge-de -> launcher_result              | report: sponge_pkgd -> launcher_result
+    + policy | label: quickmenu_probe -> launcher_result        | report: sponge_pkgd -> launcher_result
+    + policy | label: sponge-de -> installed                    | report: sponge_pkgd -> installed
+    #
+    # Settings shell slot: pkgd arms <settings_request/> so the
+    # channel exists, but no settings shell runs in this topology.
+    # The placeholder writer identity never opens a session, so the
+    # ROM stays empty - and the probe is structurally unable to
+    # write it (it is not the named writer and has no route).
+    #
+    + policy | label: sponge_pkgd -> settings_request           | report: settings_shell_absent -> settings_request
+    #
+    # Settings liveness relay: pkgd watches pkg_runtime's own init
+    # state report (<settings_liveness/> claim release).
+    #
+    + policy | label: pkg_runtime -> config                     | report: sponge_pkgd -> runtime
+    + policy | label: sponge_pkgd -> runtime_state              | report: pkg_runtime -> state
+    #
+    # configd vct-slot stub (configd opens config_request at
+    # construct time unconditionally; the placeholder writer keeps
+    # it empty) + the broadcast readers.
+    #
+    + policy | label: sponge_configd -> config_request          | report: vct_absent -> config_request
+    + policy | label: sponge-de -> configd                      | report: sponge_configd -> config
+    + policy | label: pkg_runtime -> sponge-de.panel -> configd      | report: sponge_configd -> config
+    + policy | label: pkg_runtime -> sponge-de.background -> configd | report: sponge_configd -> config
+    + policy | label: quickmenu_probe -> broadcast              | report: sponge_configd -> config
+    #
+    # panel_settings channels (Criterion 18 per-label ACL). The
+    # provider child is the sole config-request / quick-result
+    # writer; sponge-de is the sole quick-request writer.
+    #
+    + policy | label: sponge_configd -> panel_settings_config_request | report: pkg_runtime -> sponge-de.panel -> panel_settings_config_request
+    + policy | label: pkg_runtime -> sponge-de.panel -> panel_settings_config_result | report: sponge_configd -> panel_settings_config_result
+    + policy | label: pkg_runtime -> sponge-de.panel -> panel_settings_quick_request | report: sponge-de -> panel_settings_quick_request
+    + policy | label: sponge-de -> panel_settings_quick_result       | report: pkg_runtime -> sponge-de.panel -> panel_settings_quick_result
+    + policy | label: quickmenu_probe -> panel_settings_quick_result | report: pkg_runtime -> sponge-de.panel -> panel_settings_quick_result
+    #
+    # background_settings channels (same attribution split).
+    #
+    + policy | label: sponge_configd -> background_settings_config_request | report: pkg_runtime -> sponge-de.background -> background_settings_config_request
+    + policy | label: pkg_runtime -> sponge-de.background -> background_settings_config_result | report: sponge_configd -> background_settings_config_result
+    + policy | label: pkg_runtime -> sponge-de.background -> background_settings_quick_request | report: sponge-de -> background_settings_quick_request
+    + policy | label: sponge-de -> background_settings_quick_result       | report: pkg_runtime -> sponge-de.background -> background_settings_quick_result
+    + policy | label: quickmenu_probe -> background_settings_quick_result | report: pkg_runtime -> sponge-de.background -> background_settings_quick_result
+    #
+    # BackgroundWidget contextMenuEvent reporter (the W6 open key).
+    #
+    + policy | label: quickmenu_probe -> bgmenu_open             | report: sponge-de -> bgmenu_open
+    #
+    # nitpicker pointer/hover reports (placement diagnostics: the
+    # probe logs where host input actually lands and which view is
+    # under it).
+    #
+    + policy | label: quickmenu_probe -> nit_pointer             | report: nitpicker -> pointer
+    + policy | label: quickmenu_probe -> nit_hover               | report: nitpicker -> hover
+    + policy | label: quickmenu_probe -> nit_focus               | report: nitpicker -> focus
+
++ start nitpicker | ram: 16M
+  + provides
+    + service Gui
+    + service Capture
+    + service Event
+  + route
+    + service Report | + child report_rom
+    + service Timer | + child timer
+    + any-service
+      + parent
+      + any-child
+  + config
+    + capture
+    + event
+    + report | focus: yes | hover: yes
+    #
+    # Dual panel domains (panel-menu W5) + the background domain
+    # (bgmenu W6) + a small top-left providers box. The provider
+    # windows are plain-Gui 620x440 views at (0,0) (sp_window.h);
+    # clipping them into the 256x200 box keeps the mandated anchors
+    # (512,754) and (300,300) clear while their title band stays
+    # pixel-observable for the repaint witness.
+    #
+    + domain panel_bottom | layer: 2 | content: client | label: no
+                         | hover: always | focus: click | ypos: 0 | height: 28
+    + domain background | layer: 1 | content: client | label: no
+                        | hover: always | focus: always | ypos: 28 | height: 712
+    + domain providers | layer: 4 | content: client | label: no
+                       | hover: always | focus: click
+                       | xpos: 0 | ypos: 0 | width: 256 | height: 200
+    + domain default | layer: 3 | content: client | label: no
+                     | hover: always | focus: click | ypos: 28 | height: 712
+    #
+    # Longest-prefix routing: the panel QMenu popup (menu title
+    # "Sponge Panel default") must land in the generous default
+    # domain (NOT the 28px panel band matched by the shorter
+    # "Sponge Panel" prefix), and the provider windows (labels
+    # pkg_runtime -> sponge-de.panel -> ...) land in the providers
+    # box. session_policy picks the longest matching prefix.
+    #
+    + policy | label_prefix: sponge-de -> Sponge Panel default | domain: default
+    + policy | label_prefix: sponge-de -> Sponge Panel         | domain: panel_bottom
+    + policy | label_prefix: sponge-de -> Sponge Background    | domain: background
+    + policy | label_prefix: pkg_runtime -> sponge-de          | domain: providers
+    + default-policy | domain: default
+    + background | color: #1e1e2e
+
++ start drivers | caps: 1500 | ram: 96M | managing_system: yes
+  + binary init
+  + route
+    + service ROM | label: config | + parent | label: drivers.config
+    + service Timer | + child timer
+    + service Capture | + child nitpicker
+    + service Event | + child nitpicker
+    + service Report | + child report_rom
+    + any-service                 | + parent
+  + config
+    + parent-provides
+      + service IRQ
+      + service IO_MEM
+      + service IO_PORT
+      + service ROM
+      + service PD
+      + service RM
+      + service CPU
+      + service LOG
+      + service Timer
+      + service Capture
+      + service Event
+    + default | caps: 60
+    + start acpi | caps: 250 | ram: 4M
+      + route
+        + service IO_MEM | + parent
+        + service LOG | + parent
+        + service PD | + parent
+        + service RM | + parent
+        + service CPU | + parent
+        + service ROM | + parent
+        + service Report | + child report_rom
+    + start report_rom | caps: 100 | ram: 2M
+      + provides
+      | + service ROM
+      | + service Report
+      + config
+      | + policy | label: pci_decode -> system | report: acpi -> acpi
+      | + policy | label: platform -> devices  | report: pci_decode -> devices
+      | + policy | label: usb_hid -> report    | report: usb -> devices
+      + route
+        + service LOG | + parent
+        + service PD | + parent
+        + service CPU | + parent
+        + service ROM | + parent
+    + start pci_decode | caps: 100 | ram: 2M
+      + route
+        + service Report | + child report_rom
+        + service ROM | label: system | + child report_rom
+        + service IO_MEM | + parent
+        + service LOG | + parent
+        + service PD | + parent
+        + service RM | + parent
+        + service CPU | + parent
+        + service ROM | + parent
+    + start platform | caps: 200 | ram: 3M | managing_system: yes
+      + provides
+      | + service Dma
+      | + service Platform
+      + route
+      | + service ROM | label: devices | + child report_rom
+      | + service Report | + child report_rom
+      | + service IRQ | + parent
+      | + service IO_MEM | + parent
+      | + service IO_PORT | + parent
+      | + service ROM | + parent
+      | + service PD | + parent
+      | + service CPU | + parent
+      | + service LOG | + parent
+      | + service Timer | + parent
+      + config
+        + report | devices: yes
+        + policy | label_prefix: ps2 | + device ps2
+        + policy | label_prefix: fb  | info: yes | + pci | class: VGA
+        + policy | label_prefix: usb | info: yes | + pci | class: USB
+    + start fb | caps: 150 | ram: 20M
+      + binary vesa_fb
+      + route
+        + service ROM | label: config | + parent | label: fb.config
+        + service Report | + child report_rom
+        + service Dma | + child platform
+        + service Platform | + child platform
+        + service IO_PORT | + parent
+        + service IO_MEM | + parent
+        + service ROM | + parent
+        + service PD | + parent
+        + service CPU | + parent
+        + service LOG | + parent
+        + service Timer | + parent
+        + service Capture | + parent
+    + start ps2 | caps: 100 | ram: 1280K
+      + route
+        + service Dma | + child platform
+        + service Platform | + child platform
+        + service Event | + child event_filter | label: ps2
+        + service ROM | + parent
+        + service PD | + parent
+        + service CPU | + parent
+        + service LOG | + parent
+        + service Timer | + parent
+    + start usb | caps: 200 | ram: 16M
+      + binary pc_usb_host
+      + provides | + service Usb
+      + config
+      | + report | devices: yes
+      | + policy | label_prefix: usb_hid | + device | class: 0x3
+      + route
+        + service Dma | + child platform
+        + service Platform | + child platform
+        + service Report | label: devices | + child report_rom
+        + service ROM | + parent
+        + service PD | + parent
+        + service RM | + parent
+        + service CPU | + parent
+        + service LOG | + parent
+        + service Timer | + parent
+    + start usb_hid | caps: 180 | ram: 10M
+      + route
+        + service ROM | label: report | + child report_rom
+        + service ROM | + parent
+        + service PD | + parent
+        + service RM | + parent
+        + service CPU | + parent
+        + service LOG | + parent
+        + service Timer | + parent
+        + service Event | + child event_filter | label: usb
+        + service Usb | + child usb
+    + start event_filter | caps: 90 | ram: 1280K
+      + provides | + service Event
+      + route
+        + service ROM | label: config | + parent | label: event_filter.config
+        + service Event | + parent
+        + service ROM | + parent
+        + service PD | + parent
+        + service CPU | + parent
+        + service LOG | + parent
+        + service Timer | + parent
+
++ start sponge_configd | caps: 200 | ram: 16M
+  + config
+    + writer | label: panel_settings
+    + writer | label: background_settings
+    + bake
+  + route
+    + service ROM | label_last: config_request                 | + child report_rom
+    + service ROM | label_last: panel_settings_config_request  | + child report_rom
+    + service ROM | label_last: background_settings_config_request | + child report_rom
+    + service ROM | label_last: bake_config_defaults           | + parent
+    + service ROM | label_last: bake_manifest                  | + parent
+    + service Report | + child report_rom
+    + any-service
+      + parent
+      + any-child
+
++ start sponge_pkgd | caps: 300 | ram: 32M
+  + config
+    + launcher_request
+    + settings_request
+    + settings_liveness
+  + route
+    + service ROM | label_last: request          | + child report_rom
+    + service ROM | label_last: launcher_request | + child report_rom
+    + service ROM | label_last: settings_request | + child report_rom
+    + service ROM | label_last: runtime_state    | + child report_rom
+    + service Report | + child report_rom
+    + any-service
+      + parent
+      + any-child
+
++ start pkg_runtime | caps: 2000 | ram: 256M
+  + binary init
+  + route
+    + service ROM | label: config | + child report_rom
+    + service Gui | + child nitpicker
+    + service Report | + child report_rom
+    + service ROM | label_last: panel_settings_config_result | + child report_rom
+    + service ROM | label_last: panel_settings_quick_request | + child report_rom
+    + service ROM | label_last: background_settings_config_result | + child report_rom
+    + service ROM | label_last: background_settings_quick_request | + child report_rom
+    + service ROM | label_last: configd | + child report_rom
+    + any-service
+      + parent
+      + any-child
+
++ start sponge-de | caps: 1200 | ram: 320M
+  + config
+    + config        | source: configd
+    + launcher      | source: pkgd
+    + quick_settings | source: providers
+    + background    | source: controller
+    + panels        | source: collection
+    + demo          | enabled: no
+    + vfs
+      + dir dev
+        + log
+        + inline rtc | : 2018-01-01 00:01
+      + dir pipe | + pipe
+      + tar qt6_dejavusans.tar
+      + tar qt6_libqgenode.tar
+    + libc | stdout: /dev/log | stderr: /dev/log | pipe: /pipe | rtc: /dev/rtc
+  + route
+    + service Gui | label_last: Sponge Panel         | + child nitpicker
+    + service Gui | label_last: Sponge Background    | + child nitpicker
+    + service Report | label: input                        | + child report_rom
+    + service Report | label: bgmenu_open                  | + child report_rom
+    + service Report | label: launcher_request             | + child report_rom
+    + service Report | label: panel_settings_quick_request | + child report_rom
+    + service Report | label: background_settings_quick_request | + child report_rom
+    + service ROM | label: configd                        | + child report_rom
+    + service ROM | label: launcher_result                | + child report_rom
+    + service ROM | label: installed                      | + child report_rom
+    + service ROM | label: panel_settings_quick_result    | + child report_rom
+    + service ROM | label: background_settings_quick_result | + child report_rom
+    + service ROM | label: mesa_gpu.lib.so | + parent | label: mesa_gpu-softpipe.lib.so
+    + any-service
+      + parent
+      + any-child
+
++ start quickmenu_probe | caps: 300 | ram: 16M
+  + route
+    + service Timer | + child timer
+    + service Capture | + child nitpicker
+    + service Report | label: request | + child report_rom
+    + service ROM | label_last: broadcast       | + child report_rom
+    + service ROM | label_last: result           | + child report_rom
+    + service ROM | label_last: installed        | + child report_rom
+    + service ROM | label_last: launcher_result  | + child report_rom
+    + service ROM | label_last: panel_settings_quick_result | + child report_rom
+    + service ROM | label_last: background_settings_quick_result | + child report_rom
+    + service ROM | label_last: bgmenu_open      | + child report_rom
+    + service ROM | label_last: nit_pointer      | + child report_rom
+    + service ROM | label_last: nit_hover        | + child report_rom
+    + service ROM | label_last: nit_focus        | + child report_rom
+    + any-service
+      + parent
+      + any-child
+- }
+
+#
+# Stage every non-build-artifact boot module into bin/ BEFORE
+# build_boot_image (base-sel4 packs a single image.elf).
+#
+exec mkdir -p bin
+
+set dejavu_dst "bin/qt6_dejavusans.tar"
+if {![file exists $dejavu_dst]} {
+	set dejavu_src [glob -nocomplain "${genode_dir}/contrib/qt6_base-*/src/lib/qt6_base/src/3rdparty/wasm/DejaVuSans.ttf"]
+	if {[llength $dejavu_src] == 0} {
+		error "DejaVuSans.ttf not found in the qt6_base port sources"
+	}
+	set staging "[run_dir]/dejavusans-staging"
+	file mkdir "$staging/qt/lib/fonts"
+	file copy -force [lindex $dejavu_src 0] "$staging/qt/lib/fonts/DejaVuSans.ttf"
+	exec tar -cf $dejavu_dst -C $staging qt
+	file delete -force $staging
+}
+
+set recipe_dir "${genode_dir}/repos/os/recipes/raw/drivers_interactive-pc"
+foreach f { drivers.config fb.config } {
+	if {![file exists "$recipe_dir/$f"]} {
+		error "$recipe_dir/$f missing (vendored drivers_interactive-pc recipe drifted?)"
+	}
+	exec cp -f "$recipe_dir/$f" "bin/$f"
+}
+
+#
+# event_filter.config: upstream recipe with the scale transform of
+# run/sponge-de-themed-chrome.run / run/sponge-de-multipanel.run
+# wrapping ONLY the usb input (device units 0..32767 -> pixels), so
+# qmp_tablet_click lands on the literal target pixel. The PS/2 branch
+# keeps the upstream accelerate LUT so qmp_right_click's coarse
+# rel-50 ~= 100px recipe stays calibrated for the menu-opening
+# right-clicks.
+#
+set ef_src "$recipe_dir/event_filter.config"
+if {![file exists $ef_src]} {
+	error "$ef_src missing"
+}
+set ef_fh [open $ef_src r]
+set ef_content [read $ef_fh]
+close $ef_fh
+set ef_content [string map [list \
+    "    | + input usb" \
+    "    | + transform\n    | | + scale | x: 0.03125 | y: 0.02344\n    | | + input usb" \
+] $ef_content]
+set ef_fh [open "bin/event_filter.config" w]
+puts -nonewline $ef_fh $ef_content
+close $ef_fh
+
+set chargen_dir "${genode_dir}/repos/os/src/server/event_filter"
+foreach f { en_us.chargen special.chargen } {
+	if {![file exists "$chargen_dir/$f"]} { error "$chargen_dir/$f missing" }
+	exec cp -f "$chargen_dir/$f" "bin/$f"
+}
+
+foreach theme { default light dark compact } {
+	set theme_src "${genode_dir}/repos/sponge/src/sponge-de/themes/${theme}.theme"
+	if {![file exists $theme_src]} {
+		error "theme file missing: $theme_src"
+	}
+	exec cp -f $theme_src "bin/${theme}.theme"
+}
+
+#
+# Stage the pkg/sponge-de package metadata (with its <settings
+# quick="yes"/> provider config) + the derived index so sponge_pkgd
+# can resolve the panel/background settings entries (the same scheme
+# as run/sponge-settings-providers.run).
+#
+set staged_pkgs { sponge-de }
+foreach pkg $staged_pkgs {
+	set src "${genode_dir}/../pkg/$pkg/metadata.xml"
+	if {![file exists $src]} {
+		error "package metadata not found: $src"
+	}
+	exec cp -L $src "bin/pkg_$pkg.xml"
+}
+
+#
+# Bake seeding (configd's own bootstrap path, the same mechanism as
+# the product's pkg/bake firstboot profiles): instantiate the default
+# panel (panel.ids=default -> the empty-quick-id flat key semantics)
+# and pin its role to the bottom band (panel.default.position=bottom
+# -> PanelCollection::applyPositionFor sets Role::Bottom, moving the
+# widget to y=740 where the mandated (512,754) anchor lands).
+# panel.default.height=28 is load-bearing: applyPosition re-runs
+# _apply_geometry with a DEFAULT-CONSTRUCTED theme, so the widget's
+# _height must already be non-zero (the per-id applyHeightFor lands
+# first in the name-sorted broadcast, h < p) or the view is created
+# zero-height and disappears from hover and capture.
+#
+set bake_fh [open "bin/bake_config_defaults" w]
+puts $bake_fh "panel.ids=default"
+puts $bake_fh "panel.default.height=28"
+puts $bake_fh "panel.default.position=bottom"
+close $bake_fh
+
+set bake_fh [open "bin/bake_manifest" w]
+puts $bake_fh "{ \"schema_version\": 1, \"profile_config_version\": 1, \"profile\": \"quickmenu\" }"
+close $bake_fh
+
+set index_fh [open "bin/pkg_index.xml" w]
+puts $index_fh "<packages>"
+foreach pkg $staged_pkgs {
+	puts $index_fh "  <pkg name=\"$pkg\"/>"
+}
+puts $index_fh "</packages>"
+close $index_fh
+
+set boot_modules [build_artifacts]
+foreach m { libQt6Core.lib.so libQt6Gui.lib.so libQt6Widgets.lib.so \
+            libqgenode.lib.so qt6_libqgenode.tar qt6_dejavusans.tar \
+            en_us.chargen special.chargen \
+            drivers.config fb.config event_filter.config \
+            default.theme light.theme dark.theme compact.theme \
+            pkg_sponge-de.xml pkg_index.xml \
+            bake_config_defaults bake_manifest } {
+	lappend boot_modules $m
+}
+
+build_boot_image $boot_modules
+
+#
+# QMP plumbing: usb-tablet (left clicks) + PS/2 (right-clicks), per
+# the mandated dispatch split.
+#
+source [file join [file dirname [file normalize [info script]]] qmp.inc]
+
+set qmp_port [qmp_pick_port]
+append qemu_args " -qmp tcp:127.0.0.1:${qmp_port},server=on,wait=off -nographic -m 2G -device nec-usb-xhci,id=xhci -device usb-tablet "
+
+#
+# Bounded-marker loop with a sync terminator: the probe emits at most
+# one QMP-TARGET marker per attempt inside its retry loops and then
+# QMP-TARGET sync, so each qmp_exec_target still consumes exactly one
+# marker (one-marker-at-a-time preserved) and the loop exits on sync.
+#
+proc qmp_exec_target_until_sync { chan timeout_s } {
+	while {1} {
+		set r [qmp_exec_target $chan $timeout_s]
+		if {$r eq "sync"} { return }
+	}
+}
+
+#
+# Measured-input override (the W6 flake root cause): qmp.inc's
+# qmp_right_click PS/2 relative recipe does NOT land on its target
+# with this host + event_filter combination. Measured via nitpicker's
+# own hover report: a right-click "to (512,754)" deterministically
+# lands at (495,99) (the rel walk loses most of its y motion; the
+# same recipe's x walk lands ~12px short). The override keeps the
+# marker contract and the REAL BTN_RIGHT delivery but routes it
+# through the W4 usb-tablet absolute recipe (pixel-exact +/-1px,
+# the same chain qmp_tablet_click proves for left clicks):
+# mouse_set tablet -> abs motion (scale transform maps device units
+# to pixels) -> HMP mouse_button 2/0 (press/release).
+#
+# BTN_RIGHT mask proven 2026-11-14 (Criterion 18 quickmenu). The
+# previous mask 1 delivered BTN_LEFT - the QPA diagnostic showed the
+# press reaching the panel platform window (requestActivateWindow)
+# but PanelWidget::contextMenuEvent never firing (no QMenu window was
+# ever constructed), because QWidgetWindow's context-menu synthesis
+# requires Qt::RightButton. The exact input chain from QEMU source:
+#   - ui/ui-hmp-cmds.c hmp_mouse_button bmap: 1=L, 2=R, 4=M
+#     ("HMP mouse_button bitmask: 1=L, 2=R, 4=M"; the older
+#     hmp-commands.hx help text "1=L, 2=M, 4=R" was wrong and is
+#     being corrected upstream - R/M inverted).
+#   - hw/input/hid.c hid_pointer_event bmap: LEFT->0x01, RIGHT->0x02,
+#     MIDDLE->0x04, so INPUT_BUTTON_RIGHT lands as HID button bit 0x02
+#     (HID Button 2), which Linux hid-input maps to BTN_RIGHT.
+#   - run/qmp.inc's W4 note ("mouse_button 1/0 delivers BTN_LEFT")
+#     confirms mask 1 is the LEFT button.
+#
+proc qmp_tablet_right_click { chan tx ty } {
+	puts "\nqmp: tablet right-click -> ($tx,$ty) via usb-tablet abs + HMP BTN_RIGHT"
+	set idx [qmp_tablet_index $chan]
+	if {$idx eq ""} {
+		puts stderr "\nFAIL: query-mice shows no absolute mouse device"
+		exit 1
+	}
+	qmp_hmp $chan "mouse_set $idx"
+	set ax [expr {($tx * 32767 + 512) / 1024}]
+	set ay [expr {($ty * 32767 + 384) / 768}]
+	qmp_cmd $chan [format {{"execute":"input-send-event","arguments":{"events":[{"type":"abs","data":{"axis":"x","value":%d}},{"type":"abs","data":{"axis":"y","value":%d}}]}}} $ax $ay]
+	after 15
+	qmp_hmp $chan "mouse_button 2"
+	after 15
+	qmp_hmp $chan "mouse_button 0"
+}
+
+#
+# Right-click dispatch: the tablet-abs recipe only. qmp.inc's PS/2
+# rel recipe demonstrably drifts off-anchor on this host (measured:
+# a "512,754" right-click lands at (495,99) via nitpicker's pointer
+# report - the W6 delivery-flake root cause), so the retries all use
+# the pixel-exact tablet path.
+#
+proc qmp_right_click { chan x y } {
+	qmp_tablet_right_click $chan $x $y
+}
+
+
+#
+# Start handshake: the probe emits "quickmenu-probe: ready" only
+# after its pre-chore (install + settle + diagnostics) and BEFORE its
+# first QMP-TARGET marker, so this single gate can neither deadlock
+# on boot-order races (the install and panel-shown lines swap order
+# between boots) nor consume marker traffic. All evidence checks run
+# later over the full accumulated output.
+#
+run_genode_until {.*quickmenu-probe: ready.*} 300
+
+global qemu_spawn_id
+match_max -i $qemu_spawn_id 200000
+
+set qmp_chan [qmp_connect $qmp_port]
+
+#
+# Phase B: panel QMenu open - bounded right-click retries keyed on
+# the menu chrome appearing at the flipped-up anchor region.
+#
+qmp_exec_target_until_sync $qmp_chan 120
+
+
+#
+# Phase C: the settled height action (28 -> 32): a tablet click on
+# the Height spinbox body (focus only) plus one QMP key up (one 4px
+# singleStep). The cold panel ensure-start chain runs here.
+#
+qmp_exec_target $qmp_chan 120
+qmp_exec_target $qmp_chan 120
+run_genode_until {.*quickmenu-probe: height 32 settled.*} 300 $qemu_spawn_id
+
+#
+# Phase D: the rapid pair (32 -> 36, 36 -> 40) - two QMP key up
+# markers back to back; the second must supersede the in-flight
+# first (the ~10ms dispatch gap sits inside the in-flight window).
+#
+qmp_exec_target $qmp_chan 120
+qmp_exec_target $qmp_chan 120
+run_genode_until {.*quickmenu-probe: supersession settled 40.*} 180 $qemu_spawn_id
+
+#
+# Phase E: dismiss the panel QMenu (outside click, eaten by the menu).
+#
+qmp_exec_target $qmp_chan 60
+
+#
+# Phase F: background QMenu open - bounded retries keyed on
+# bgmenu_open open=yes (the W6 delivery flake).
+#
+qmp_exec_target_until_sync $qmp_chan 120
+
+#
+# Phase G: the background menu's Settings... entry - one tablet click.
+#
+qmp_exec_target $qmp_chan 120
+
+#
+# Phase H: the probe's terminal verdict (emitted only after every ROM
+# and pixel chain passed).
+#
+run_genode_until {.*quickmenu-probe: PASS.*} 300 $qemu_spawn_id
+qmp_disconnect $qmp_chan
+
+#
+# Post-counts over the accumulated run output (the supervisor-control
+# precedent: absences and exact counts cannot be expressed as
+# log-line gates). Every click's unique witness is counted, and the
+# supersession assertions are invariant-based.
+#
+global output
+
+proc count_or_fail { pattern expected what } {
+	global output
+	set n [regexp -all -- $pattern $output]
+	if {$n != $expected} {
+		puts stderr "FAIL: expected $expected x '$what', saw $n"
+		exit 1
+	}
+	return $n
+}
+
+# The three panel height actions + the one background open each
+# emit exactly one ensure-start line.
+count_or_fail {settings ensure-start 'sponge-de' 'panel'} 3 \
+	"panel ensure-start (one per height action)"
+count_or_fail {settings ensure-start 'sponge-de' 'background'} 1 \
+	"background ensure-start"
+
+# Cold starts: exactly one per provider (the rapid pair answers
+# focused on the already-open singleton).
+count_or_fail {settings open sponge-de 'panel' -> started \(sponge-de\.panel\)} 1 \
+	"cold panel provider start"
+count_or_fail {settings open sponge-de 'background' -> started \(sponge-de\.background\)} 1 \
+	"cold background provider start"
+
+# Provider ready witnesses.
+count_or_fail {settings provider panel_settings ready \(sponge-de/panel\)} 1 \
+	"panel_settings ready"
+count_or_fail {settings provider background_settings ready \(sponge-de/background\)} 1 \
+	"background_settings ready"
+
+# Settled chains: 32 and 40 each complete (request + set).
+count_or_fail {quick request 'panel height' -> 32} 1 \
+	"quick request height 32"
+count_or_fail {panel height set to 32} 1 \
+	"panel height set to 32"
+count_or_fail {quick request 'panel height' -> 40} 1 \
+	"quick request height 40"
+count_or_fail {panel height set to 40} 1 \
+	"panel height set to 40"
+
+# Supersession invariants: exactly one superseded message; the
+# superseded 36 action never settles; its request MAY or MAY NOT
+# have been sent (ENSURING-swap vs POLLING shapes) so its count is
+# bounded but not pinned.
+count_or_fail {quick change failed: panel height: superseded by a newer quick action} 1 \
+	"superseded quick change"
+if {[regexp -- {panel height set to 36} $output]} {
+	puts stderr "FAIL: the superseded action settled ('panel height set to 36' present)"
+	exit 1
+}
+set n36 [regexp -all -- {quick request 'panel height' -> 36} $output]
+if {$n36 > 1} {
+	puts stderr "FAIL: superseded action sent more than one quick request (saw $n36)"
+	exit 1
+}
+
+# Background Settings chain.
+count_or_fail {background settings opened \(provider started\)} 1 \
+	"background settings opened"
+
+# The probe's terminal verdict, exactly once.
+count_or_fail {quickmenu-probe: PASS} 1 "probe PASS marker"
+
+# "ready after repaint" ordering: the panel_settings ready witness
+# must come after sponge-de's first paint in the stream.
+set idx_paint [string first "sponge-de: panel shown" $output]
+set idx_ready [string first "settings provider panel_settings ready" $output]
+if {$idx_paint < 0 || $idx_ready < 0 || $idx_ready < $idx_paint} {
+	puts stderr "FAIL: panel_settings ready witness is not ordered after the panel repaint"
+	exit 1
+}
+
+#
+# Final explicit scenario PASS (emitted only after every gate, count
+# and ordering check above succeeded).
+#
+puts "quickmenu-probe-scenario: PASS - real QMenu click-through drove the production QuickMenuController chain: cold panel ensure-start (started (sponge-de.panel)) with panel_settings ready after repaint, height 32 settled via quick request/result and the configd broadcast, the rapid 36/40 pair superseded exactly once with the store settled at 40, and the background Settings menu produced the background ensure-start (started (sponge-de.background)) with 'background settings opened (provider started)'"
