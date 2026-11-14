@@ -1,0 +1,59 @@
+<!--
+  settings_demo — third-party demo package with TWO provider-owned
+  settings entries (docs/12-package-format.md §14, D16.10 tier (b)).
+
+  A settings-only package: no <binary>, no <launcher>, no <autostart>.
+  Each <settings> entry names its own package-payload provider binary,
+  so the two entries are independent (package, settings-id) identities
+  and never alias each other (§14.1/§14.4). The providers are plain
+  Genode components: they own their window, their input validation and
+  their persistence.
+
+  Persistence is package-private. Each provider writes its own small
+  value to its own file in this package's File_system store
+  (subpath /app/settings_demo — see <sessions> below):
+    settings_demo_greeting -> greeting.xml
+    settings_demo_about    -> about.xml
+  There is NO configd label, NO shared-DE key write, NO <exclusive>
+  claim on a settings entry, NO plugin, and NO interpreter anywhere in
+  this package (§14.3/§14.6).
+
+  The inline <config> carries the package-private store mount (<fs/>
+  inside <vfs>) and is emitted verbatim into each provider's <start>
+  node; dropping the <vfs> node is the documented persistence escape
+  hatch (docs/12 §13.4): the providers then run with in-memory state
+  only and warn once.
+-->
+<package>
+  <name>settings_demo</name>
+  <version>1.0</version>
+  <description>Third-party demo package with two provider-owned settings entries.</description>
+
+  <settings id="greeting" title="Greeting" category="applications"
+            icon="greeting.png" target="settings_demo_greeting">
+    <keyword>hello</keyword>
+    <keyword>text</keyword>
+    <keyword>demo</keyword>
+  </settings>
+
+  <settings id="about" title="About" category="other"
+            icon="about.png" target="settings_demo_about">
+    <keyword>info</keyword>
+    <keyword>note</keyword>
+    <keyword>demo</keyword>
+  </settings>
+
+  <dependencies/>
+
+  <config>
+    <vfs>
+      <fs/>
+    </vfs>
+  </config>
+
+  <sessions>
+    <session name="Gui" default-route="nitpicker"/>
+    <session name="File_system" default-route="vfs"
+             subpath="/app/settings_demo"/>
+  </sessions>
+</package>
