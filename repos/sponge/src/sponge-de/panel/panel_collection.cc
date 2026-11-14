@@ -25,10 +25,10 @@
 #include <util/xml_node.h>
 
 #include "config/config_controller.h"
-#include "config/settings_controller.h"
 #include "launcher/launcher_menu_view.h"
 #include "panel/panel_widget.h"
 #include "panel/tasklist_widget.h"
+#include "settings/quick_menu_controller.h"
 #include "theme/theme_loader.h"
 
 #include <utility>
@@ -43,9 +43,8 @@ namespace {
 
 /*
  * Parse the <panels source="..."/> gate from the child config.
- * Mirrors the HID+XML dual-parser pattern used by config_asks_for
- * _configd (config_controller.cc:37) and de_config_asks_for_
- * controller (settings_controller.cc:32).
+ * Mirrors the HID+XML dual-parser pattern used by config_asks_for_
+ * configd (config_controller.cc:37).
  */
 bool parse_panels_asks_for_collection(Genode::Attached_rom_dataspace &config)
 {
@@ -116,12 +115,12 @@ static bool _id_char_ok(QChar c)
 
 
 PanelCollection::PanelCollection(Genode::Env &env, Theme::Theme const &theme,
-                                 SettingsController *settings, QObject *parent)
+                                 QuickMenuController *quick, QObject *parent)
 :
 	QObject(parent),
 	_env(env),
 	_theme(theme),
-	_settings(settings)
+	_quick(quick)
 {
 	/*
 	 * The default panel is created lazily on the first applyPanelIds
@@ -292,7 +291,7 @@ void PanelCollection::_create_panel(QString const &id)
 
 	entry->widget.construct(_theme, id, title);
 	entry->widget->set_click_reporter(&*entry->reporter);
-	if (_settings) entry->widget->set_settings_controller(_settings);
+	if (_quick) entry->widget->set_quick_menu_controller(_quick);
 	if (_launcher_view) entry->widget->set_launcher_view(_launcher_view);
 
 	PanelWidget *widget_ptr = &*entry->widget;

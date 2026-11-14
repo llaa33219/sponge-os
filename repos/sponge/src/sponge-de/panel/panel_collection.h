@@ -53,13 +53,13 @@ namespace Sponge::Sponge_DE {
 namespace Theme { struct Theme; }
 class ConfigController;
 class LauncherMenuView;
-class SettingsController;
+class QuickMenuController;
 class TasklistWidget;
 
 /*
  * Read `<panels source="collection"/>` from the component config.
  * Mirrors the existing activation gates (config_asks_for_configd,
- * de_config_asks_for_controller, etc.). Absent the gate, the
+ * etc.). Absent the gate, the
  * PanelCollection stays in single-panel mode (one "default"
  * PanelWidget; no per-id apply slots; no per-panel reporters).
  *
@@ -86,10 +86,10 @@ class PanelCollection : public QObject
 		 * `theme` is the initial theme; it is captured by the
 		 * widgets at construction time and reused on every restyle.
 		 *
-		 * `settings` is the SettingsController used by the per-
-		 * panel context menu's Add panel / Remove panel entries.
-		 * May be nullptr in regression scenarios that wire no
-		 * DE-side writer.
+		 * `quick` is the QuickMenuController used by the per-
+		 * panel context menu's closed quick operations and the
+		 * Settings entry's ensure-start. May be nullptr in
+		 * regression scenarios that wire no DE-side writer.
 		 *
 		 * `legacy_panels` is the vector of pre-existing PanelWidget
 		 * pointers (Phase 14 / W5 regression scenarios construct
@@ -100,7 +100,7 @@ class PanelCollection : public QObject
 		 * never runs.
 		 */
 		PanelCollection(Genode::Env &env, Theme::Theme const &theme,
-		                SettingsController *settings,
+		                QuickMenuController *quick,
 		                QObject *parent = nullptr);
 		~PanelCollection() override;
 
@@ -152,9 +152,8 @@ class PanelCollection : public QObject
 
 		/*
 		 * The current set of panel ids. Always contains at least
-		 * "default" (the backward-compat path). The SettingsController
-		 * uses this to populate Add panel / Remove panel menu
-		 * entries.
+		 * "default" (the backward-compat path). main.cc uses this
+		 * to fan user-facing messages out to every panel.
 		 */
 		QStringList panel_ids() const;
 
@@ -181,7 +180,7 @@ class PanelCollection : public QObject
 		 * Emitted on the GUI thread when a panel is added (via
 		 * applyPanelIds). Carries the new widget pointer so
 		 * main.cc can wire additional context (launcher view,
-		 * settings controller, ...). The QObject::connect must
+		 * quick menu controller, ...). The QObject::connect must
 		 * use Qt::QueuedConnection because the slot may live on
 		 * a different QObject thread context.
 		 */
@@ -220,7 +219,7 @@ class PanelCollection : public QObject
 
 		Genode::Env &_env;
 		Theme::Theme const &_theme;
-		SettingsController *_settings { nullptr };
+		QuickMenuController *_quick { nullptr };
 		LauncherMenuView *_launcher_view { nullptr };
 
 		/*
