@@ -19,27 +19,34 @@
  *
  *   phase="bgimage"
  *     Boots, writes background.image=/system/background/default.png
- *     via de_config_request, asserts the round-trip status=ok
- *     AND the broadcast echoes the value. Pixel verification is
- *     informational (the softpipe Mesa QPA timing is non-
- *     deterministic for the dual-domain rendering path; the
- *     structural PASS marker is the binding acceptance).
+ *     via the background_settings provider ACL channel
+ *     (background_settings_config_request — the Criterion 18
+ *     per-writer-label channel, key domain background.*),
+ *     asserts the round-trip status=ok AND the broadcast echoes
+ *     the value. Pixel verification is informational (the
+ *     softpipe Mesa QPA timing is non-deterministic for the
+ *     dual-domain rendering path; the structural PASS marker is
+ *     the binding acceptance).
  *
  *     Final gate: "bgimage-probe: PASS".
  *
  *   phase="bgimage-badpath"
- *     Boots, writes background.image=../../etc/passwd via
- *     de_config_request, asserts the round-trip status=error
- *     with the allowlist rejection message AND that the
- *     broadcast STILL carries the pre-write default
- *     /system/background/default.png (atomic rejection — the
- *     bad path was not stored).
+ *     Boots, writes background.image=../../etc/passwd via the
+ *     background_settings provider ACL channel
+ *     (background_settings_config_request), asserts the
+ *     round-trip status=error with the allowlist rejection
+ *     message AND that the broadcast STILL carries the
+ *     pre-write default /system/background/default.png (atomic
+ *     rejection — the bad path was not stored).
  *
  *     Final gate: "bgimage-badpath-probe: PASS".
  *
- * Capability surface mirrors the existing settings_probe:
- *   - Report("de_config_request") + ROM("de_config_result",
- *     "broadcast") for the write channel.
+ * Capability surface:
+ *   - Report("background_settings_config_request") +
+ *     ROM("background_settings_config_result", "broadcast") for
+ *     the write channel (the probe acts as the scoped
+ *     background_settings writer label; no universal/de_config
+ *     writer exists anymore — D16.9).
  *   - bgmenu_open ROM for the bgmenu phase (the BackgroundWidget
  *     publishes a Report::generate_xml on contextMenuEvent with
  *     bgmenu.open=yes, cleared back to no after exec()).
@@ -65,10 +72,13 @@ struct Probe
 	Genode::Attached_rom_dataspace _config    { _env, "config" };
 
 	/*
-	 * de_config_request / de_config_result channel (D16.1). Constructed
+	 * background_settings provider ACL channel (Criterion 18 /
+	 * D16.1): the probe writes as the scoped background_settings
+	 * writer label (key domain background.*). Constructed
 	 * lazily on first use (Constructible) so scenarios that drive only
 	 * the right-click-marker phase (bgmenu) do not request a
-	 * `de_config_request` / `de_config_result` ROM session the
+	 * `background_settings_config_request` /
+	 * `background_settings_config_result` ROM session the
 	 * surrounding topology does not wire.
 	 */
 	Genode::Constructible<Genode::Expanding_reporter>     _de_request   { };
@@ -142,9 +152,10 @@ struct Probe
 	bool _send_set(char const *key, char const *value)
 	{
 		if (!_de_request.constructed())
-			_de_request.construct(_env, "request", "de_config_request");
+			_de_request.construct(_env, "request",
+			                     "background_settings_config_request");
 		if (!_de_result.constructed())
-			_de_result.construct(_env, "de_config_result");
+			_de_result.construct(_env, "background_settings_config_result");
 
 		_de_request->generate_xml([&](Genode::Xml_generator &g) {
 			g.attribute("op",    "set");
@@ -188,9 +199,10 @@ struct Probe
 	                         Genode::String<256> &out_error)
 	{
 		if (!_de_request.constructed())
-			_de_request.construct(_env, "request", "de_config_request");
+			_de_request.construct(_env, "request",
+			                     "background_settings_config_request");
 		if (!_de_result.constructed())
-			_de_result.construct(_env, "de_config_result");
+			_de_result.construct(_env, "background_settings_config_result");
 
 		_de_request->generate_xml([&](Genode::Xml_generator &g) {
 			g.attribute("op",    "set");
@@ -430,8 +442,10 @@ struct Probe
 
 		/*
 		 * STEP 1: write background.image=/system/background/default.png
-		 * via de_config_request (the same write SettingsDialog's
-		 * Background tab emits on Apply). configd validates against
+		 * via the background_settings_config_request channel (the
+		 * same write the provider-owned Background settings entry
+		 * emits on Apply — probe as the scoped background_settings
+		 * writer label). configd validates against
 		 * the closed allowlist (W2's Kind::Allowlist); the path is
 		 * in the singleton allowlist, so status=ok.
 		 */
@@ -439,7 +453,7 @@ struct Probe
 			_fail(PROBE, "set background.image=default.png not answered");
 			return;
 		}
-		Genode::log(PROBE, ": background.image=default.png round-tripped via de_config_request");
+		Genode::log(PROBE, ": background.image=default.png round-tripped via background_settings_config_request");
 
 		/*
 		 * STEP 2: assert the broadcast echoes the value.
