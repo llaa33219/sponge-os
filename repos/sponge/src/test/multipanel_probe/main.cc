@@ -16,12 +16,16 @@
  *
  * The probe drives the test in three coordinated modes:
  *
- *   1. de_config_request writer: writes `panel.ids=alpha,beta` and
- *      the per-id keys (`panel.alpha.position=top`, `panel.alpha.
+ *   1. panel_settings provider writer: writes `panel.ids=alpha,beta`
+ *      and the per-id keys (`panel.alpha.position=top`, `panel.alpha.
  *      height=40`, `panel.beta.position=bottom`, `panel.beta.height
- *      =28`) through the dedicated `sponge-de -> de_config_request`
- *      channel (D16.1). configd validates each write against the
- *      per-id pattern validator; the broadcast emits every key.
+ *      =28`) through the Criterion 18 provider ACL channel (writer
+ *      label `panel_settings`, key domain `panel.*`; request ROM
+ *      `panel_settings_config_request`, result ROM
+ *      `panel_settings_config_result`). There is NO universal
+ *      de_config writer in this topology. configd validates each
+ *      write against the per-id pattern validator; the broadcast
+ *      emits every key.
  *
  *   2. ROM consumer of `panel_alpha` + `panel_beta`: each PanelWidget
  *      instance owns an Expanding_reporter labeled `panel_<id>`
@@ -69,7 +73,7 @@ struct Probe
 	Genode::Attached_rom_dataspace _config          { _env, "config" };
 
 	/*
-	 * de_config_request / de_config_result channel (D16.1). Lazy-
+	 * panel_settings provider ACL channel (Criterion 18). Lazy-
 	 * constructed so scenarios that only observe do not request
 	 * unwired ROM sessions.
 	 */
@@ -112,9 +116,10 @@ struct Probe
 	bool _send_set(char const *key, char const *value)
 	{
 		if (!_de_request.constructed())
-			_de_request.construct(_env, "request", "de_config_request");
+			_de_request.construct(_env, "request",
+			                     "panel_settings_config_request");
 		if (!_de_result.constructed())
-			_de_result.construct(_env, "de_config_result");
+			_de_result.construct(_env, "panel_settings_config_result");
 
 		_de_request->generate_xml([&](Genode::Xml_generator &g) {
 			g.attribute("op",    "set");
