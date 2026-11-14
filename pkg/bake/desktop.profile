@@ -21,6 +21,12 @@ pdf_view = enabled
 falkon = enabled
 # SPONGE DEBUG: the on-desktop launch-chain monitor (bring-up tooling)
 debug = enabled
+# sponge-de: the first-party settings-provider package (Criterion 18,
+# docs/12-package-format.md §14). Settings-only — no <launcher> entry,
+# so it never takes one of the launcher popup's 8 calibrated entries;
+# its panel/background providers are ensure-started on demand over the
+# launcher pair (docs/05-sponge-de.md §5.4).
+sponge-de = enabled
 
 [config]
 panel.height = 28
