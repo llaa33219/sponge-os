@@ -1273,6 +1273,85 @@ Twelve new completion criteria:
     works; a control-center crash leaves the DE alive. Physical
     receipts record machine, parent commit, Genode pin,
     image/scenario, first paint, and an input-driven change.
+  - **Status (2026-11-13: implementation and QEMU verification,
+    not acceptance).** The provider-owned architecture is
+    implemented on top of parent `b8f46f848f` (the Criterion 16
+    baseline; the change set is uncommitted and no further commit
+    IDs are claimed here) and verified on base-sel4 under QEMU
+    after the session opt-in gate fixes: sponge-de's
+    `<quick_settings source="providers"/>`, `sponge_settings`'s
+    `<settings_launch source="pkgd"/>`, and the first-party
+    provider package config `<settings quick="yes"/>` supplied by
+    `pkg/sponge-de/metadata.xml` (explicit capability/routing
+    declarations, `docs/05-sponge-de.md` §5.4 +
+    `docs/12-package-format.md` §14.8). All six acceptance
+    scenarios pass after the fixes:
+    `run/sponge-settings-center.run`,
+    `run/sponge-settings-providers.run` (including the per-ID
+    `.visible_widgets` quick operation and the per-label ACL),
+    `run/sponge-settings-thirdparty.run`,
+    `run/sponge-settings-failure.run` (its verdict rides the
+    terminal gates and post-count assertions, not per-step
+    intermediate gates), `run/sponge-settings-vct.run`, and the
+    extra `run/sponge-settings-focus.run` (hint-driven second
+    `focus_request`), plus `run/sponge-wm-tasks.run` and
+    `run/sponge-configd-persist.run` PASS. Host self-tests green:
+    runtime validator 92, configd ACL 113, `sponge_settings` 75,
+    vct settings 63, provider logic 75 + structural PASS,
+    `settings_demo` all PASS, pkgd settings self-test PASS. Final
+    changed-target build PASS for `sponge-de`, `sponge_settings`,
+    `sponge_pkgd`, `sponge_configd`, `vct`, all eight providers,
+    both demo providers, and the five settings probes. The
+    migrated regressions (`sponge-panel-menu`, `sponge-de-multipanel`,
+    `sponge-de-shortcuts`, `sponge-de-shortcuts-extend`,
+    `sponge-de-bgmenu`, `sponge-de-bgimage`,
+    `sponge-de-bgimage-badpath`, `sponge-alpha`) all PASS. The legacy
+    dialog module and the universal `SettingsController` writer are
+    removed from the tree (D16.9). Coverage gap: the providers probe
+    verifies the exact quick wire protocol, but an independent
+    click-through PanelWidget -> QuickMenuController -> provider UI
+    runtime test has not been demonstrated (attempted 2026-11-14 and
+    blocked; see the addendum below). Receipts:
+    `docs/evidence/criterion18-settings.md`. **Acceptance is not
+    claimed:** physical-hardware acceptance and the complete physical
+    matrix above (including one-reboot persistence and the
+    control-center crash on hardware) have not run, so this criterion
+    remains open rather than accepted. Known seam: the Display and
+    Terminal providers ship with an explicit typed-key registration
+    seam (`display.*` / `terminal.*` typed keys pending configd
+    registration).
+  - **Addendum (2026-11-14: the real QMenu surface is BLOCKED).**
+    No regression is being hidden: all six settings acceptance
+    scenarios (center, providers, thirdparty, failure, vct, focus)
+    still pass, the host suites and the changed-target build pass,
+    and product Alpha/BIOS-disk/UEFI-USB validation passes as
+    previously documented. The provider wire protocol and product
+    integration are verified, but real QMenu interaction is not.
+    That click-through, `run/sponge-settings-quickmenu.run`, is a
+    red repro, not a passing acceptance test: Phase B (panel QMenu
+    open) fails 3/3 with no menu pixels and no quick lifecycle.
+    The corrected right-click does reach the real
+    `PanelWidget::contextMenuEvent` (the original HMP
+    `mouse_button 1` delivered BTN_LEFT; the correct BTN_RIGHT mask
+    is `mouse_button 2`), but the mask fix alone does not make the
+    UI work. With the upstream-wm path the forced direct-domain
+    resize is removed (final popup geometry `512,509 103x203`), yet
+    the run fails with `attempt to create ID for invalid view` and
+    `failed to create child view for invalid parent view`, because
+    the direct-nitpicker Background parent cannot be associated by
+    wm; the direct-nitpicker path shows no visible menu either.
+    Layer, parent, and Qt::Window identity trials failed and were
+    reverted, `qnpw_verbose` is restored, and no debug
+    instrumentation remains. The PanelWidget/BackgroundWidget QMenu
+    lifecycle is therefore unproven and blocked with no minimal
+    justified fix left: product quick-settings/provider wiring
+    exists, but the QMenu surface is not accepted and remains
+    non-functional, so nothing here should be read as the
+    quick-menu UX working. Criterion 18 remains open with this
+    structural blocker in addition to the physical-hardware matrix,
+    one-reboot package-private persistence, and the hardware
+    control-center crash check. Full evidence:
+    `docs/evidence/criterion18-settings.md`.
 - [ ] **Criterion 19: real-hardware panel context menu.** A
   physical right-click opens the panel menu and the detailed panel
   edits (height, visible widgets, position) take effect. Acceptance
