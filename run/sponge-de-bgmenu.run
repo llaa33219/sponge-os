@@ -109,16 +109,16 @@ config
     + service ROM
   + config | verbose: no
     #
-    # D16.1 channels: the DE-side SettingsController's
-    # de_config_request / de_config_result, mirrored for the
-    # bg_probe. The probe acts as a vct-equivalent config_request
-    # writer here so configd's constructor succeeds (it opens
-    # config_request at construct time unconditionally).
+    # Criterion 18 channels: the bg_probe writes as the scoped
+    # background_settings writer label (key domain background.*) on
+    # background_settings_config_request / _result — the D16.9
+    # provider split removed the universal de_config writer. The
+    # probe also acts as a vct-equivalent config_request writer here
+    # so configd's constructor succeeds (it opens config_request at
+    # construct time unconditionally).
     #
-    + policy | label: sponge_configd -> de_config_request | report: bg_probe -> de_config_request
-    + policy | label: bg_probe -> de_config_result       | report: sponge_configd -> de_config_result
-    + policy | label: sponge-de   -> de_config_result    | report: sponge_configd -> de_config_result
-    + policy | label: sponge-de   -> de_config_request   | report: sponge_configd -> de_config_request
+    + policy | label: sponge_configd -> background_settings_config_request | report: bg_probe -> background_settings_config_request
+    + policy | label: bg_probe -> background_settings_config_result | report: sponge_configd -> background_settings_config_result
     + policy | label: sponge_configd -> config_request   | report: bg_probe -> config_request
     + policy | label: bg_probe -> config_result          | report: sponge_configd -> config_result
     #
@@ -302,14 +302,13 @@ config
   + route
     + service ROM | label_last: config_request      | + child report_rom
     + service ROM | label_last: config_result       | + child report_rom
-    + service ROM | label_last: de_config_request   | + child report_rom
-    + service ROM | label_last: de_config_result    | + child report_rom
+    + service ROM | label_last: background_settings_config_request | + child report_rom
     + service Report | + child report_rom
     + any-service
       + parent
       + any-child
   + config
-    + de_config
+    + writer | label: background_settings | keys: background.*
 
 #
 # sponge-de: three Gui sessions — Sponge Panel (the panel),
@@ -321,14 +320,14 @@ config
 # activation contract (same as W4 settings regression).
 #
 # The activation gate for the background widget itself is
-# <background source="controller"/> — mirrors the W4 de_config +
-# W5 panel_bottom pattern. Absent the gate, the widget is not
+# <background source="controller"/> — mirrors the W5 panel_bottom
+# pattern (the W4 provider split removed the de_config gate and
+# the legacy dialog with it). Absent the gate, the widget is not
 # constructed (lazy), the no-wm topologies boot unchanged.
 #
 + start sponge-de | caps: 1000 | ram: 256M
   + config
     + config      | source: configd
-    + de_config   | source: controller
     + background  | source: controller
     + vfs
       + dir dev
@@ -343,9 +342,7 @@ config
     + service Gui | label_last: Sponge Panel Bottom  | + child nitpicker
     + service Gui | label_last: Sponge Background     | + child nitpicker
     + service Report | label: input              | + child report_rom
-    + service Report | label: de_config_request  | + child report_rom
     + service Report | label: bgmenu_open        | + child report_rom
-    + service ROM   | label: de_config_result   | + child report_rom
     + service ROM   | label: configd             | + child report_rom
     + service ROM   | label: mesa_gpu.lib.so | + parent | label: mesa_gpu-softpipe.lib.so
     + any-service
@@ -358,8 +355,8 @@ config
     + service Timer | + child timer
     + service Report | + child report_rom
     + service ROM   | label_last: broadcast         | + child report_rom
-    + service ROM   | label_last: de_config_result  | + child report_rom
-    + service ROM   | label_last: de_config_request | + child report_rom
+    + service ROM   | label_last: background_settings_config_result | + child report_rom
+    + service ROM   | label_last: background_settings_config_request | + child report_rom
     + service ROM   | label_last: config_result     | + child report_rom
     + service ROM   | label_last: config_request    | + child report_rom
     + service ROM   | label_last: bgmenu_open       | + child report_rom

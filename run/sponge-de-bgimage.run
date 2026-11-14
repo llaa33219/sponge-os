@@ -31,7 +31,10 @@
 #     broadcast (defaults: #1e1e2e + /system/background/default.png).
 #   - Writes background.image=/system/background/default.png
 #     (the only allowlisted path on the current singleton
-#     allowlist) via de_config_request — the round-trip must
+#     allowlist) via the background_settings provider ACL
+#     channel (background_settings_config_request — the probe
+#     writes as the scoped background_settings writer label,
+#     key domain background.*) — the round-trip must
 #     emit status="ok" and the broadcast must echo the value.
 #   - Pixel verification (informational, never gating): a
 #     Capture sample at the bg widget's center pixel (600, 400)
@@ -90,10 +93,8 @@ config
     + service Report
     + service ROM
   + config | verbose: no
-    + policy | label: sponge_configd -> de_config_request | report: bg_probe -> de_config_request
-    + policy | label: bg_probe -> de_config_result       | report: sponge_configd -> de_config_result
-    + policy | label: sponge-de   -> de_config_result    | report: sponge_configd -> de_config_result
-    + policy | label: sponge-de   -> de_config_request   | report: sponge_configd -> de_config_request
+    + policy | label: sponge_configd -> background_settings_config_request | report: bg_probe -> background_settings_config_request
+    + policy | label: bg_probe -> background_settings_config_result | report: sponge_configd -> background_settings_config_result
     + policy | label: sponge_configd -> config_request   | report: bg_probe -> config_request
     + policy | label: bg_probe -> config_result          | report: sponge_configd -> config_result
     + policy | label: sponge-de -> configd               | report: sponge_configd -> config
@@ -258,19 +259,17 @@ config
   + route
     + service ROM | label_last: config_request      | + child report_rom
     + service ROM | label_last: config_result       | + child report_rom
-    + service ROM | label_last: de_config_request   | + child report_rom
-    + service ROM | label_last: de_config_result    | + child report_rom
+    + service ROM | label_last: background_settings_config_request | + child report_rom
     + service Report | + child report_rom
     + any-service
       + parent
       + any-child
   + config
-    + de_config
+    + writer | label: background_settings | keys: background.*
 
 + start sponge-de | caps: 1000 | ram: 256M
   + config
     + config      | source: configd
-    + de_config   | source: controller
     + background  | source: controller
     + vfs
       + dir dev
@@ -285,8 +284,6 @@ config
     + service Gui | label_last: Sponge Panel Bottom  | + child nitpicker
     + service Gui | label_last: Sponge Background     | + child nitpicker
     + service Report | label: input              | + child report_rom
-    + service Report | label: de_config_request  | + child report_rom
-    + service ROM   | label: de_config_result   | + child report_rom
     + service ROM   | label: configd             | + child report_rom
     + service ROM   | label: default.png        | + parent
     + service ROM   | label: mesa_gpu.lib.so | + parent | label: mesa_gpu-softpipe.lib.so
@@ -300,8 +297,8 @@ config
     + service Timer | + child timer
     + service Report | + child report_rom
     + service ROM   | label_last: broadcast         | + child report_rom
-    + service ROM   | label_last: de_config_result  | + child report_rom
-    + service ROM   | label_last: de_config_request | + child report_rom
+    + service ROM   | label_last: background_settings_config_result | + child report_rom
+    + service ROM   | label_last: background_settings_config_request | + child report_rom
     + service ROM   | label_last: config_result     | + child report_rom
     + service ROM   | label_last: config_request    | + child report_rom
     + service Capture | + child nitpicker
