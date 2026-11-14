@@ -528,7 +528,7 @@ void ShortcutController::_open_hit_reporter(HitReporter &hr,
 		 * The run scenario does not route this report
 		 * (the topology doesn't enable the W7 framework).
 		 * Silently skip — the framework degrades to a no-op
-		 * for the missing action (the de_config channel is
+		 * for the missing action (the settings write path is
 		 * still functional for write validation).
 		 */
 		Genode::log("sponge-de: shortcut: hit report '",

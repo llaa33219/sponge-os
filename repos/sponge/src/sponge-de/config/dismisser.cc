@@ -5,8 +5,6 @@
 
 #include "dismisser.h"
 
-#include "dismisser.h"
-
 #include <base/log.h>
 
 #include <QApplication>
@@ -29,17 +27,17 @@ Dismisser::Dismisser(QObject *parent) : QObject(parent)
  *   1. launcher popup (LauncherMenuView) — most recently opened
  *      by the Super shortcut or by a panel-click; the dismisser
  *      closes it via hide().
- *   2. settings dialog (SettingsController) — opened via the
- *      panel context menu's Settings entry or via the bg context
- *      menu's Settings entry. Heap-allocated (W7 refactor) so
- *      close() can dismiss it from outside.
- *   3. panel context menu (QApplication::activePopupWidget via
+ *   2. panel context menu (QApplication::activePopupWidget via
  *      PanelWidget::close_active_menu) — Qt's built-in Escape
  *      already closes the menu; this slot is the defensive
  *      belt-and-braces path for races.
- *   4. background context menu (QApplication::activePopupWidget
+ *   3. background context menu (QApplication::activePopupWidget
  *      via BackgroundWidget::close_active_menu) — same defensive
  *      path as panel.
+ *
+ * Provider-owned settings windows are not touched (Criterion 18):
+ * they are the providers' own top-level windows, closed through
+ * their own chrome — the dismisser only closes sponge-de popovers.
  *
  * Returns after the first successful close (only one popover is
  * visible at a time in normal usage).
@@ -53,12 +51,6 @@ bool Dismisser::dismiss_topmost()
 			_launcher_ctrl->close_popup();
 		else
 			_launcher_view->hide();
-		return true;
-	}
-
-	if (_settings && _settings->dialog_is_open()) {
-		Genode::log("sponge-de: dismisser: closing settings dialog");
-		_settings->close_settings_dialog();
 		return true;
 	}
 

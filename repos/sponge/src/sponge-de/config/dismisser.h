@@ -9,16 +9,17 @@
  *
  *   - the launcher popup (`LauncherMenuView`) — owned by sponge-de,
  *     closed by `_view->hide()`
- *   - the Settings dialog (`SettingsDialog`) — opened via
- *     `SettingsController::open_settings_dialog()`; the dialog is
- *     exec'd modally, so closing is the controller's
- *     `close_settings_dialog()` slot (added in W7)
  *   - the panel context menu — transient QMenu, owned by the panel;
  *     the panel widget's `close_active_menu()` slot closes it
  *   - the background context menu — owned by BackgroundWidget;
  *     `close_active_menu()` closes it
  *
- * Priority order: launcher → settings → panel menu → bg menu
+ * Provider-owned settings windows are deliberately NOT in this
+ * list (Criterion 18): they are top-level windows owned by their
+ * settings providers, dismissed through their own window chrome,
+ * never through the DE's popover closer.
+ *
+ * Priority order: launcher → panel menu → bg menu
  * (the user-experienced Z-order: the most recently opened popover
  * is the topmost; the dismisser closes it in the order the user
  * would visually expect).
@@ -31,12 +32,12 @@
  *
  * Window-list ROM access: the Dismisser does NOT need direct
  * access to wm's `window_list` ROM — the priority list is fixed
- * (launcher → settings → panel → bg), and the user only has one
- * popover visible at a time in normal usage. If multiple popovers
- * are open simultaneously (a corner-case), the Dismisser closes
- * them in priority order from the front of the list. The plan
- * notes this is the Phase 16 boundary — full window-stack-aware
- * dismissal is a Phase 17+ scope item.
+ * (launcher → panel → bg), and the user only has one popover
+ * visible at a time in normal usage. If multiple popovers are open
+ * simultaneously (a corner-case), the Dismisser closes them in
+ * priority order from the front of the list. The plan notes this
+ * is the Phase 16 boundary — full window-stack-aware dismissal is
+ * a Phase 17+ scope item.
  */
 
 #pragma once
@@ -47,7 +48,6 @@
 #include "../launcher/launcher_controller.h"
 #include "../panel/panel_widget.h"
 #include "../background/background_widget.h"
-#include "settings_controller.h"
 
 namespace Sponge::Sponge_DE {
 
@@ -67,7 +67,6 @@ class Dismisser : public QObject
 		 */
 		void set_launcher_view(LauncherMenuView *v)        { _launcher_view = v; }
 		void set_launcher_controller(LauncherController *c) { _launcher_ctrl = c; }
-		void set_settings_controller(SettingsController *s) { _settings      = s; }
 		void set_panel_widget(PanelWidget *p)              { _panel         = p; }
 		void set_background_widget(BackgroundWidget *b)    { _bg_widget     = b; }
 
@@ -89,7 +88,6 @@ class Dismisser : public QObject
 
 		LauncherMenuView *_launcher_view { nullptr };
 		LauncherController *_launcher_ctrl { nullptr };
-		SettingsController *_settings      { nullptr };
 		PanelWidget      *_panel         { nullptr };
 		BackgroundWidget *_bg_widget     { nullptr };
 };

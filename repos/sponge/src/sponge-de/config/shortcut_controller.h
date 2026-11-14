@@ -42,7 +42,7 @@
  *     `dismiss`    -> Dismisser::dismiss_topmost
  *
  * The framework is extensible: writing a new
- * `shortcuts.bindings` value through de_config_request
+ * `shortcuts.bindings` value through the settings write path
  * re-emits the event_filter config without code change.
  *
  * === Single-listener (F9 defense) ===
@@ -59,9 +59,9 @@
  * === Activation gate ===
  *
  * The controller is constructed only when the component config
- * carries `<shortcuts source="controller"/>`. Mirrors the W4
- * <de_config source="controller"/> + W5 <panel_bottom source=
- * "dual"/> + W6 <background source="controller"/> gates.
+ * carries `<shortcuts source="controller"/>`. Mirrors the W5
+ * <panel_bottom source="dual"/> + W6 <background source=
+ * "controller"/> gates.
  *
  * === Threading contract (failure-point 2 enforcement) ===
  *
@@ -91,7 +91,6 @@ class QTimer;
 namespace Sponge::Sponge_DE {
 
 class LauncherController;
-class SettingsController;
 class BackgroundWidget;
 class PanelWidget;
 class Dismisser;
