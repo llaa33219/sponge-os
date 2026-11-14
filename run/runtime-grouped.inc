@@ -17,10 +17,14 @@
 #
 #   1. relay_policies        — the report_rom policies of the whole
 #                              grouped machinery (class configs, class
-#                              state reports, the debug feeds, and the
+#                              state reports, the debug feeds, the
 #                              sponge-de/cfg_probe consumers kept at
 #                              their existing ROM names but pointed at
-#                              the simple class);
+#                              the simple class, and the Criterion 18
+#                              provider quick/config channels + their
+#                              configd broadcast on
+#                              `pkg_runtime_simple -> sponge-de.panel/
+#                              background` labels);
 #   2. pkgd_admission_nodes  — the sponge_pkgd <config> markers
 #                              (<grouped_runtimes/> + the three
 #                              explicit per-class admission gates);
@@ -134,7 +138,8 @@ namespace eval runtime_grouped {
     # the `pkg_runtime -> debug -> {...}` feed trio, and the
     # sponge-de/cfg_probe consumer lines.
     #
-    # Four groups, in order:
+    # Four groups of legacy relays, in order, plus the fifth group of
+    # Criterion 18 provider channels:
     #
     #   1. class config relays: pkgd's per-class runtime configs
     #      (`sponge_pkgd -> runtime_simple|_terminal|_browser`) become
@@ -148,6 +153,19 @@ namespace eval runtime_grouped {
     #   4. consumers kept at their existing ROM names (so sponge-de and
     #      cfg_probe are untouched component-side) but pointed at the
     #      simple class: `runtime_state`, `runtime_mirror`, `config`.
+    #   5. Criterion 18 provider channels (quick settings): the
+    #      panel/background quick request/result pairs between sponge-de
+    #      and the settings providers, the providers' per-label configd
+    #      request/result channels, and the configd broadcast each
+    #      provider reads. The providers are simple-class children
+    #      (`sponge-de.panel` / `sponge-de.background`, the pkgd
+    #      settings start-node names), hence every provider-side label
+    #      is `${simple_node} -> sponge-de.<id> -> <label>`. These
+    #      policies are inert where no provider runs (e.g. the
+    #      hello-only nvme variant). The sponge-de `configd` consumer
+    #      and the `bgmenu_open` relay are deliberately NOT here: alpha
+    #      already carries them inline and shared copies would
+    #      duplicate its policies.
     #
     # NOTE: no leading indentation on the first line — the
     # @GROUPED_RELAY_POLICIES@ token sits at the indentation its
@@ -169,7 +187,17 @@ namespace eval runtime_grouped {
     + policy | label: ${simple_node} -> debug -> launcher_result | report: sponge_pkgd -> launcher_result
     + policy | label: cfg_probe -> config          | report: sponge_pkgd -> runtime_simple
     + policy | label: sponge-de -> runtime_state | report: ${simple_node} -> state
-    + policy | label: sponge-de -> runtime_mirror | report: sponge_pkgd -> runtime_simple"
+    + policy | label: sponge-de -> runtime_mirror | report: sponge_pkgd -> runtime_simple
+    + policy | label: ${simple_node} -> sponge-de.panel -> panel_settings_quick_request | report: sponge-de -> panel_settings_quick_request
+    + policy | label: sponge-de -> panel_settings_quick_result | report: ${simple_node} -> sponge-de.panel -> panel_settings_quick_result
+    + policy | label: ${simple_node} -> sponge-de.background -> background_settings_quick_request | report: sponge-de -> background_settings_quick_request
+    + policy | label: sponge-de -> background_settings_quick_result | report: ${simple_node} -> sponge-de.background -> background_settings_quick_result
+    + policy | label: sponge_configd -> panel_settings_config_request | report: ${simple_node} -> sponge-de.panel -> panel_settings_config_request
+    + policy | label: ${simple_node} -> sponge-de.panel -> panel_settings_config_result | report: sponge_configd -> panel_settings_config_result
+    + policy | label: sponge_configd -> background_settings_config_request | report: ${simple_node} -> sponge-de.background -> background_settings_config_request
+    + policy | label: ${simple_node} -> sponge-de.background -> background_settings_config_result | report: sponge_configd -> background_settings_config_result
+    + policy | label: ${simple_node} -> sponge-de.panel -> configd | report: sponge_configd -> config
+    + policy | label: ${simple_node} -> sponge-de.background -> configd | report: sponge_configd -> config"
     }
 
     #
@@ -387,7 +415,8 @@ namespace eval runtime_grouped {
         }
 
         puts "runtime_grouped: grouped runtime wiring verified \
-               (3 nodes with derived grants, 3 config + 3 state relays, \
+               (3 nodes with derived grants, 3 config + 3 state relays \
+                + provider quick/config relays, \
                 quota ordering ${simple_node} < ${terminal_node} < \
                 ${browser_node}-last)"
         return
