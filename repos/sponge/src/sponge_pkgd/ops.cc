@@ -538,6 +538,261 @@ void Sponge::Pkgd::Main::_do_launch(Genode::String<128> const &pkg)
 
 
 /*
+ * Settings open (docs/12-package-format.md §14.5/§14.7), reached from
+ * _dispatch_request behind the request's target="settings"
+ * discriminator. Resolves the (package, settings-id) pair against the
+ * INSTALLED metadata, then runs the §14.7 singleton decision (the
+ * pure settings_rules module): not-installed -> focused -> binary-
+ * missing -> insufficient-resources -> started. Settings targets are
+ * NEVER exclusive — this path deliberately has no exclusive gate and
+ * never joins the app running-set check (§14.3 last row) — and their
+ * lifecycle identity is distinct from the app's: the emitted <start>
+ * name derives from (package, settings-id) via settings_start_name,
+ * so it never aliases the app package's <start> node even when both
+ * share one binary.
+ *
+ * The result shapes reuse the §9.2.1 launch machinery behind the
+ * target="settings" discriminator plus the settings-id and (for ok)
+ * action="started"|"focused". The second-open contract is a SUCCESS
+ * ("ok", action="focused", no duplicate <start> node, no second
+ * window) — unlike the app's "already-running". The request is
+ * processed FRESH on every delivery (no dedup/replay; see
+ * settings_rules.h "SECOND-OPEN SEMANTICS"), and the report helpers
+ * are recipe-free accordingly.
+ *
+ * FOCUS-HINT INTEGRATION (the §14.7 "raise and focus the existing
+ * window" half): pkgd must not write focus_request — sponge-de's
+ * TasklistController is its sole writer (docs/05 §4.6). The
+ * raise-and-focus is delivered instead through the opt-in
+ * `settings_focus_hint` report channel (_init_settings_focus_hint /
+ * _emit_settings_focus_hint), which is armed only when this
+ * component's config carries <settings_focus_hint/> and is consumed
+ * by sponge-de's TasklistController. See the seam note on
+ * Main::_settings_running in pkgd.h.
+ */
+void Sponge::Pkgd::Main::_do_launch_settings(Genode::String<128> const &pkg,
+                                             Genode::String<33> const &id)
+{
+	char const *const name = pkg.string();
+
+	/* Request-shape gate: the (package, settings-id) pair is the
+	 * whole addressable identity (§14.1) — a bare target="settings"
+	 * with no id is deliberately not addressable and gets a
+	 * structured error, never a lifecycle answer. */
+	if (Genode::strcmp(name, "") == 0) {
+		_report_settings_error(pkg, id, "no package specified in request");
+		return;
+	}
+	if (Genode::strcmp(id.string(), "") == 0) {
+		_report_settings_error(pkg, id, "no settings id specified in request");
+		return;
+	}
+
+	/* Identity (package, settings-id) resolved against the installed
+	 * set: a not-installed package, an unknown settings-id, and a
+	 * stale entry after removal are the same not-installed answer
+	 * (§14.7). */
+	Package const *host  { nullptr };
+	Settings_entry const *entry { nullptr };
+	for (unsigned i = 0; i < _num_installed; ++i) {
+		Package const &c = _installed[i];
+		if (Genode::strcmp(c.name.string(), name) != 0)
+			continue;
+		host = &c;
+		for (unsigned s = 0; s < c.num_settings; ++s)
+			if (Genode::strcmp(c.settings[s].id.string(), id.string()) == 0) {
+				entry = &c.settings[s];
+				break;
+			}
+		break;
+	}
+
+	if (!entry) {
+		Genode::log("sponge_pkgd: settings open ", pkg, " '", id,
+		            "' -> not-installed");
+		_report_settings_open(pkg, id, "not-installed", nullptr);
+		return;
+	}
+
+	bool const claimed = _settings_claimed(name, id.string());
+
+	/* The staged-binary manifest gate, exactly the §9.2.1 pre-flight
+	 * (Pkg_launch::binary_available, fail-open without <binaries/>). */
+	Pkg_launch::Manifest_view manifest { };
+	manifest.loaded        = _binary_manifest_loaded;
+	manifest.binary_prefix = _binary_prefix.string();
+	for (unsigned i = 0; i < _num_staged_binaries; ++i)
+		manifest.staged[i] = _staged_binaries[i].string();
+	manifest.num_staged = _num_staged_binaries;
+
+	bool const binary_ok =
+		Pkg_launch::binary_available(manifest, entry->target.string());
+
+	/* Gates 1-3 first; the admission input is computed ONLY when the
+	 * resource gate is decisive (same laziness as _do_launch —
+	 * _admits logs and reads the state ROM). */
+	Settings_outcome o = settings_decide_pre_resource(true, binary_ok, claimed);
+
+	if (o == Settings_outcome::proceed) {
+		Pkg_launch::Resource_verdict rv =
+			Pkg_launch::Resource_verdict::admitted();
+
+		Genode::size_t need_ram { 0 };
+		if (!Sponge::Pkg_admission::quota_bytes(host->ram, need_ram)) {
+			Genode::warning("sponge_pkgd: package '", pkg,
+			                "' has an unparsable <quota ram=\"",
+			                host->ram, "\"> — refusing the settings open");
+			rv = Pkg_launch::Resource_verdict::quota_unparsable();
+		} else {
+			Genode::size_t avail_ram { 0 };
+			unsigned avail_caps { 0 };
+			if (_admits(*host, need_ram, avail_ram, host->caps, avail_caps))
+				rv = Pkg_launch::Resource_verdict::admitted();
+			else
+				rv = Pkg_launch::Resource_verdict::refused(
+					need_ram, avail_ram, host->caps, avail_caps);
+		}
+		o = settings_decide(true, binary_ok, rv, claimed);
+
+		if (o == Settings_outcome::insufficient_resources) {
+			_report_settings_insufficient(pkg, id, rv.need_ram, rv.avail_ram,
+			                             rv.need_caps, rv.avail_caps);
+			return;
+		}
+	}
+
+	switch (o) {
+	case Settings_outcome::not_installed:
+		_report_settings_open(pkg, id, "not-installed", nullptr);
+		return;
+	case Settings_outcome::binary_missing:
+		Genode::log("sponge_pkgd: settings open ", pkg, " '", id,
+		            "' -> binary-missing (", _binary_prefix,
+		            entry->target, " is not staged in this image)");
+		_report_settings_open(pkg, id, "binary-missing", nullptr);
+		return;
+	case Settings_outcome::insufficient_resources:
+		/* handled above (figures) */ return;
+	case Settings_outcome::focused:
+		/*
+		 * §14.7 second open: a SUCCESS — the singleton instance is
+		 * already asserted, so nothing is claimed, nothing is
+		 * regenerated, and no duplicate <start> node can appear. The
+		 * raise-and-focus of the existing window rides the opt-in
+		 * settings_focus_hint channel (see the integration note above).
+		 */
+		Genode::log("sponge_pkgd: settings open ", pkg, " '", id,
+		            "' -> focused (singleton already open)");
+		_report_settings_open(pkg, id, "ok", "focused");
+		_emit_settings_focus_hint(pkg, id);
+		return;
+	case Settings_outcome::started:
+		break;
+	case Settings_outcome::proceed:
+		return;
+	}
+
+	/*
+	 * First open: claim the identity (add-once), then assert the
+	 * <start> node through the ordinary emission path. The synthetic
+	 * view for the claim lands in the HOST package's emission slot,
+	 * so the dirty mark is the host's slot — never more (D16R.4).
+	 * The claim is the emission driver (one view per claim), so a
+	 * full claim set must refuse here rather than answer "started"
+	 * for a <start> node that would never be emitted.
+	 */
+	if (_num_config_views >= Sponge::Pkg_config::MAX_PACKAGES) {
+		_report_settings_error(pkg, id,
+		                       "settings start view limit reached");
+		return;
+	}
+
+	if (!_settings_claim_add(name, id.string(), _emission_slot(*host))) {
+		_report_settings_error(pkg, id,
+		                       "settings singleton claim set is full");
+		return;
+	}
+	_slot_dirty[_emission_slot(*host)] = true;
+
+	if (!_generate_runtime_config()) {
+		/* The claim was appended by this attempt. Roll it back so a
+		 * later open retries the start instead of reporting focused
+		 * for a provider that was never emitted. */
+		--_num_settings_running;
+		_settings_running[_num_settings_running] = Settings_claim { };
+		_report_settings_error(pkg, id, _emit_failure.string());
+		return;
+	}
+
+	/* §14.7 crash/relaunch limitation, made explicit at the moment
+	 * it bites: with liveness armed but this claim's runtime state
+	 * report not watched (the driver report is opened only by
+	 * <driver_admission/>), an exit will NOT release the claim. */
+	if (_settings_liveness_armed &&
+	    !_settings_state_report(_emission_slot(*host)))
+		Genode::warning("sponge_pkgd: settings provider ",
+		                Sponge::Pkgd::settings_start_name(name, id.string()),
+		                " runtime state is not watched — an exit will NOT "
+		                "release its claim (<settings_liveness/> limitation)");
+
+	Genode::log("sponge_pkgd: settings open ", pkg, " '", id,
+	            "' -> started (", settings_start_name(name, id.string()), ")");
+	_report_settings_open(pkg, id, "ok", "started");
+}
+
+
+/*
+ * Criterion 18 second-open focus handoff — channel arming (opt-in via
+ * <settings_focus_hint/>, see the _settings_focus_hint member note in
+ * pkgd.h). Runs on the Bootstrap thread before any request handler is
+ * armed, exactly like the other config-gated channels. Without the
+ * marker no Report session is opened at all: the label is routed only
+ * by deployments that opt in, and a denied Report session is fatal
+ * under the base Env policy.
+ */
+void Sponge::Pkgd::Main::_init_settings_focus_hint()
+{
+	try {
+		_config_rom.node().with_optional_sub_node("settings_focus_hint",
+			[&] (Genode::Node const &) {
+				_settings_focus_hint.construct(
+					_env, "settings_focus_hint", "settings_focus_hint");
+				Genode::log("sponge_pkgd: settings_focus_hint channel enabled");
+			});
+	} catch (Genode::Xml_node::Invalid_syntax) {
+		Genode::warning("sponge_pkgd: malformed <config> — "
+		                "settings_focus_hint disabled");
+	}
+}
+
+
+/*
+ * Criterion 18 second-open focus handoff — emission. Called only on the
+ * focused-open path of _do_launch_settings (never on "started": a new
+ * window raises itself via the tasklist's absent->present transition).
+ * No-op unless _init_settings_focus_hint armed the channel.
+ */
+void Sponge::Pkgd::Main::_emit_settings_focus_hint(
+	Genode::String<128> const &pkg, Genode::String<33> const &id)
+{
+	if (!_settings_focus_hint.constructed())
+		return;
+
+	Genode::String<64> const start_name =
+		settings_start_name(pkg.string(), id.string());
+
+	++_settings_focus_hint_seq;
+	_settings_focus_hint->generate_xml([&] (Genode::Xml_generator &g) {
+		g.attribute("pkg",        pkg);
+		g.attribute("id",         id);
+		g.attribute("start_name", start_name);
+		g.attribute("seq",        _settings_focus_hint_seq);
+	});
+	Genode::log("sponge_pkgd: settings_focus_hint ", pkg, " '", id,
+	            "' (", start_name, ", seq ", _settings_focus_hint_seq, ")");
+}
+
+/*
  * Load the staged-binary manifest — the same opt-in pattern as <bake/>
  * above: the "pkg_binaries" ROM route must be wired by the scenario, and
  * Genode's denial path sleeps forever rather than throwing, so an eager
