@@ -2,16 +2,17 @@
 #
 # Structural sanity check for a Sponge OS component.
 #
-# Verifies that a component directory under repos/sponge/src/ has the files
-# that Genode's build system expects (target.mk, main.cc), and prints its
-# contents for quick inspection. This is a developer fast-feedback tool.
+# Verifies that a component directory has the files Genode's build system
+# expects (target.mk, main.cc), and prints its contents for quick inspection.
+# Bare paths keep resolving under repos/sponge/; repository-qualified paths
+# (repos/sponge-de/src/sponge-de, for example) resolve from the repo root.
 #
 # The authoritative build is the Genode build (see docs/08-development.md).
 # This script does NOT compile anything; it only checks file presence.
 #
 # Usage:
 #   mojo tool/check_compile.mojo src/vct
-#   mojo tool/check_compile.mojo src/sponge-de
+#   mojo tool/check_compile.mojo repos/sponge-de/src/sponge-de
 
 from std.sys import argv
 from std.python import Python
@@ -28,7 +29,9 @@ def check(component_rel: String) raises:
     var os_path = Python.import_module("os.path")
     var os_py = Python.import_module("os")
 
-    var cdir = repo_root() + "/repos/sponge/" + component_rel
+    var cdir = repo_root() + "/" + component_rel
+    if not component_rel.startswith("repos/"):
+        cdir = repo_root() + "/repos/sponge/" + component_rel
     if not os_path.isdir(cdir):
         print("error: component directory not found: " + cdir)
         return
@@ -64,7 +67,7 @@ def check(component_rel: String) raises:
 def main() raises:
     var args = argv()
     if len(args) != 2:
-        print("usage: mojo tool/check_compile.mojo <component-path>   (e.g. src/vct)")
+        print("usage: mojo tool/check_compile.mojo <component-path>   (e.g. src/vct or repos/sponge-de/src/sponge-de)")
         return
 
     check(String(args[1]))

@@ -3,9 +3,9 @@
 # Sponge OS theme payload-size host gate (Phase 11 W5, risk-register #1).
 #
 # Asserts that every shipped `*.theme` file under
-# `repos/sponge/src/sponge-de/themes/` fits within the theme transport
+# `repos/sponge-de/src/sponge-de/themes/` fits within the theme transport
 # cap raised in Phase 11 W1 (`Genode::String<8192>` at
-# `repos/sponge/src/sponge-de/theme/theme_controller.cc:155`). The
+# `repos/sponge-de/src/sponge-de/theme/theme_controller.cc:155`). The
 # `_assert_transport_cap` check inside the daemon emits a
 # `Genode::warning("theme payload truncated at 8192 bytes")` when a
 # ROM sink is exactly at the cap (i.e. a real shipped theme would
@@ -28,7 +28,7 @@
 # === Manual escape hatch (AGENTS.md §3.5 control door) ===
 #
 # To shrink a theme that exceeds the cap:
-#   1. Edit `repos/sponge/src/sponge-de/themes/<name>.theme` to remove
+#   1. Edit `repos/sponge-de/src/sponge-de/themes/<name>.theme` to remove
 #      or shorten values (e.g. drop unused `[fonts]` rows, collapse
 #      multi-line `[colors]` to one row each).
 #   2. Re-run `./tool/test_theme_payload_size` to confirm.
@@ -41,7 +41,7 @@
 #
 #   mojo tool/test_theme_payload_size.mojo [<themes-dir>]
 #   ./tool/test_theme_payload_size              (default:
-#                                               repos/sponge/src/sponge-de/themes)
+#                                               repos/sponge-de/src/sponge-de/themes)
 #   ./tool/test_theme_payload_size help
 #
 # Exit codes:
@@ -60,7 +60,7 @@ from std.sys import argv, exit
 comptime MAX_PAYLOAD_BYTES: Int = 8192
 
 
-comptime DEFAULT_THEMES_DIR = "repos/sponge/src/sponge-de/themes"
+comptime DEFAULT_THEMES_DIR = "repos/sponge-de/src/sponge-de/themes"
 
 
 def themes_dir_from_argv() raises -> String:
@@ -94,7 +94,7 @@ def print_help() raises:
     print("     exceeds the cap")
     print()
     print("Manual escape hatch (AGENTS.md §3.5):")
-    print("  - To shrink a theme: edit repos/sponge/src/sponge-de/themes/")
+    print("  - To shrink a theme: edit repos/sponge-de/src/sponge-de/themes/")
     print("    <name>.theme and re-run.")
     print("  - To raise the cap: edit BOTH this constant AND")
     print("    theme_controller.cc:155 in lockstep.")
