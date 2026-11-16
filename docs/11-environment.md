@@ -73,15 +73,17 @@ sponge-os/
 │   ├── build/                  # NOT vendored; per-target build directories
 │   └── Makefile, etc/, ...     # upstream Genode 26.08 contents
 ├── repos/
-│   └── sponge/                 # Sponge OS repository (Genode repo convention)
-│       ├── src/                # Component sources
-│       │   ├── vct/            # System management CLI
-│       │   ├── sponge-de/      # Desktop environment
-│       │   └── sponge_launcher/# Launcher
-│       ├── lib/                # Shared libraries
-│       ├── include/sponge/     # Shared headers
-│       ├── tool/               # Sponge-owned compiler wrappers (Genode build hooks)
-│       └── run/                # Relative symlinks to ../../../run/ (one per scenario)
+│   ├── sponge/                 # Umbrella Sponge repository (Genode repo convention)
+│   │   ├── src/                # Component sources
+│   │   │   ├── vct/            # System management CLI
+│   │   │   └── sponge_launcher/# Launcher
+│   │   ├── lib/                # Shared libraries
+│   │   ├── include/sponge/     # Shared headers
+│   │   ├── tool/               # Sponge-owned compiler wrappers (Genode build hooks)
+│   │   └── run/                # Relative symlinks to ../../../run/ (one per scenario)
+│   ├── sponge-wm/              # WM trio, protocol, and native WM probes (submodule)
+│   ├── sponge-de/              # DE shell, settings/providers, and DE probes (submodule)
+│   └── sponge-compositor/      # Mojo-first compositor scaffold (submodule)
 ├── tool/                       # Sponge-owned tooling (Mojo: preferred language, host + component objects)
 ├── run/                        # Genode run scenarios (.run files)
 └── var/                        # Local caches (git-ignored): qt6 host tools, distfiles
@@ -91,10 +93,13 @@ Two layout facts deserve attention:
 
 - `genode/repos/sponge` is a **committed relative symlink** to
   `../../repos/sponge`. It is the bridge that lets Genode's build
-  system find Sponge OS components without a contributor ever having
-  to wire anything up by hand. Because the symlink is relative, the
-  whole tree is movable: cloning `sponge-os` to a path with any name
-  under any home directory just works.
+  system find the umbrella Sponge components without a contributor ever
+  having to wire anything up by hand. The three split repositories are
+  registered directly through `REPOSITORIES += $(SPONGE_ROOT)/repos/...`
+  in `tool/build.mojo`'s managed block, so no extra symlink or Genode
+  fork patch is needed. Because these paths are derived from the repo
+  root, the whole tree is movable: cloning `sponge-os` to a path with
+  any name under any home directory just works.
 - `genode/build/`, `genode/contrib/`, and `genode/depot/` are all
   excluded by `genode/.gitignore` (which covers `/build`, `/contrib`,
   and `/depot` already). `genode/var/` is added by the root
@@ -116,6 +121,9 @@ has a source. No exceptions.
 | **Genode toolchain** | 25.05 (GCC 14.2.0, binutils 2.44) | `/usr/local/genode/tool/25.05/`, with `/usr/local/genode/tool/current -> 25.05` | external; installed by `sudo tar xPf genode-toolchain-25.05.tar.xz` from <https://genode.org/download/tool-chain> (or `genode-toolchain-bin` AUR on Arch/CachyOS). **No 26.05 toolchain tarball was published**; 25.05 is the official pairing. Genode uses a 2-year toolchain cycle. |
 | **Qt6** | 6.8.3 | `qt6_base` port (`qt6_base.hash = 67348e71a70138daef52b157470f5796f758507f`) and `qt6_api` port (`qt6_api.hash = 55bfba5647db8f93f91a61a61ee0548de108348c`) | host tools produced by `make -f tool/tool_chain_qt6 build` + `install INSTALL_LOCATION=<repo>/var/qt6-host-tools SUDO=` (build tree ~6.0 GB under `genode/contrib/qt6-host-*`, installed tools ~80 MB at `var/qt6-host-tools`), referenced by `QT_TOOLS_DIR ?= $(abspath $(GENODE_DIR)/../var/qt6-host-tools)` in `genode/repos/libports/lib/import/import-qt6.inc` (Sponge patch #3) |
 | **QEMU** | 11.0.3 (Phase 12 verified against QEMU 11.0.3; W0 host QEMU was 11.0.3, not the 11.0.2 pin in earlier revisions) | host package | managed by the operating-system package manager; no Sponge-side pinning needed |
+| **sponge-wm** | `3d1de1b01e841db15270f05181b97043d1594053` | `repos/sponge-wm` git submodule (`./sponge-wm`) | WM trio, protocol, and native WM probes; split from umbrella with `git fast-export` history preserved |
+| **sponge-de** | `3ca3a94c2e42289d0bd1237b4f32a165c4af670c` | `repos/sponge-de` git submodule (`./sponge-de`) | DE shell, settings/providers, and DE probes; split from umbrella with history preserved |
+| **sponge-compositor** | `9e1943ca680059a641693a0c412c34adceb6ec03` | `repos/sponge-compositor` git submodule (`./sponge-compositor`) | G0 scaffold only; Mojo-first compositor implementation starts at G1 |
 | **GNU Make** | system package | n/a | managed by the operating-system package manager |
 | **Mojo SDK** | pinned by `uv.lock` (currently 1.0.0b2) | `pyproject.toml` + `uv.lock` (committed); `uv sync` materializes the project-local `.venv` | preferred language for Sponge-owned code (policy: `docs/plans/mojo-language-policy.md`): host tooling under `tool/` and the Mojo objects that Genode/seL4 components link via `SRC_O` (`docs/08-development.md` §1.5). The `uv.lock` pin is **load-bearing**: KGEN runtime symbols are version-sensitive (see `docs/evidence/mojo-ffi-probe.md` §5), so a bump is not complete until the `nm -u` re-check of emitted objects and a probe re-run pass. |
 | **Python modules (seL4 kernel build)** | as-needed | `future jinja2 ply six lxml pyfdt jsonschema pyyaml` | `uv pip install future jinja2 ply six lxml pyfdt jsonschema pyyaml` into the same `.venv`; only required when `KERNEL ?= sel4`. (`pyyaml` is imported by seL4's `tools/config_gen.py`.) |

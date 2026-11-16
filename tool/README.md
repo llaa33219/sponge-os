@@ -79,10 +79,13 @@ template lines in `genode/build/x86_64/etc/build.conf` to
 `ifdef` blocks read those variables before any appended content would
 take effect), then appends a marker-delimited block
 (`# >>> sponge-os managed block >>>` ... `# <<< sponge-os managed block <<<`)
-with the `REPOSITORIES +=` lines for `repos/sponge`, `repos/libports`,
-and `repos/gems`, and `MAKE += -j<N>` (N = host CPU count). Re-running
-`prepare` detects both edits and does not duplicate anything. Delete the
-block to undo the appended part.
+with the `REPOSITORIES +=` lines for the umbrella `repos/sponge`, the
+three split repositories `repos/sponge-{wm,de,compositor}`, and
+`repos/libports` / `repos/gems`, plus `MAKE += -j<N>` (N = host CPU
+count). The split paths are derived from `SPONGE_ROOT` rather than
+added as symlinks under `genode/`. Re-running `prepare` detects both
+edits and does not duplicate anything. Delete the block to undo the
+appended part.
 
 `ports` runs `genode/tool/ports/prepare_port` for: `libc stdcxx mesa zlib
 libpng expat libdrm x86emu qoost qt6_api qt6_base sel4 sel4_tools grub2`
@@ -96,7 +99,7 @@ propagates the make exit code.
 ### check-compile
 ```bash
 ./tool/check-compile src/vct
-./tool/check-compile src/sponge-de
+./tool/check-compile repos/sponge-de/src/sponge-de
 ```
 
 ### patches
@@ -414,7 +417,7 @@ contract and the manual escape hatch.
 
 Mojo is the preferred and default language for all Sponge-owned code,
 both the host tooling in this directory and the Genode/seL4 components
-under `repos/sponge/`. The binding decision record is
+in the Sponge-owned repositories. The binding decision record is
 [`docs/plans/mojo-language-policy.md`](../docs/plans/mojo-language-policy.md).
 One language across host and target removes the translation tax, and
 the Mojo-on-Genode path is proven rather than aspirational:
@@ -433,10 +436,10 @@ What stays C++ by design:
   plumbing is unproven.
 - **Upstream code.** Everything under `genode/` and upstream Qt code is
   not Sponge-owned and is not a migration target. The desktop today is
-  Qt widgets on the upstream `nitpicker`/`wm`/`decorator` stack, and
-  the native-line repository names `sponge-wm`, `sponge-de`, and
-  `sponge-compositor` are reserved only: no repository split and no
-  compositor rewrite is implemented.
+  Qt widgets on the upstream `nitpicker`/`wm`/`decorator` stack. G0 has
+  split the WM, DE, and compositor scaffold into `sponge-wm`,
+  `sponge-de`, and `sponge-compositor`; the scaffold is not a
+  compositor implementation and does not change the shipped default.
 
 Existing Sponge-owned C++ moves to Mojo incrementally, one unit at a
 time, with the run scenarios green at every step. There is no flag day

@@ -80,25 +80,31 @@ sponge-os/
 │   ├── repos/                 # Upstream Genode repositories (base, os, libports, ...)
 │   └── repos/sponge -> ../../repos/sponge  # Relative symlink wiring Sponge in
 ├── repos/
-│   └── sponge/                # The Sponge OS repository itself (Genode repo convention)
-│       ├── src/               # Component sources
-│       │   ├── vct/           # System management tool
-│       │   ├── sponge-de/     # Desktop environment
-│       │   └── sponge_launcher/ # Launcher
-│       ├── lib/               # Shared libraries
-│       ├── tool/              # Sponge-owned build helpers (compiler wrappers, ...)
-│       └── include/sponge/    # Shared headers
+│   ├── sponge/                # Umbrella Sponge repository (Genode repo convention)
+│   │   ├── src/               # Component sources
+│   │   │   ├── vct/           # System management tool
+│   │   │   └── sponge_launcher/ # Launcher
+│   │   ├── lib/               # Shared libraries
+│   │   ├── tool/              # Sponge-owned build helpers (compiler wrappers, ...)
+│   │   └── include/sponge/    # Shared headers
+│   ├── sponge-wm/             # WM trio, protocol, and native WM probes (submodule)
+│   ├── sponge-de/             # DE shell, settings/providers, and DE probes (submodule)
+│   └── sponge-compositor/     # Mojo-first compositor scaffold (submodule)
 ├── tool/                      # Build and development scripts
 ├── run/                       # Genode run scripts (scenario definitions)
 └── var/                       # Local caches (git-ignored): qt6 host tools, distfiles
 ```
 
-The Genode build system assumes a `repos/<name>/` layout. The submodule
-at `genode/` satisfies this via the committed relative symlink
-`genode/repos/sponge -> ../../repos/sponge`, so no external Genode
-checkout is ever required. Clone with `git clone --recursive` (or run
-`./tool/build prepare`, which initializes the submodule for you). See `docs/08-development.md` for the build
-flow and `docs/11-environment.md` for the full environment contract.
+The Genode build system assumes a `repos/<name>/` layout. The umbrella
+`repos/sponge` is wired through the committed relative symlink
+`genode/repos/sponge -> ../../repos/sponge`. The three split repositories
+are pinned as git submodules and registered directly through
+`REPOSITORIES += $(SPONGE_ROOT)/repos/sponge-{wm,de,compositor}` in
+`tool/build.mojo`'s managed `build.conf` block, so no new Genode fork
+patch or extra symlink is needed. Clone with `git clone --recursive`
+(or run `./tool/build prepare`, which initializes all submodules). See
+`docs/08-development.md` for the build flow and `docs/11-environment.md`
+for the full environment contract.
 
 ---
 
@@ -246,10 +252,11 @@ When adding a new feature (subcommand) to vct, you **must** follow these:
   against the proven subset in `docs/evidence/mojo-ffi-probe.md`, not
   against wishlists. A binding stays legitimate when the subset cannot
   express the work.
-- **New components default to native Mojo.** A new component under
-  `repos/sponge/` starts in Mojo unless a recorded reason says
-  otherwise (unsupported subset, a Genode framework surface that only
-  C++ can serve, or a dependency that is itself C++).
+- **New components default to native Mojo.** A new component in the
+  umbrella `repos/sponge/` or a split Sponge-owned repository starts in
+  Mojo unless a recorded reason says otherwise (unsupported subset, a
+  Genode framework surface that only C++ can serve, or a dependency
+  that is itself C++).
 - **Existing Sponge-owned C/C++ SHOULD migrate incrementally** to Mojo
   where the required subset is supportable, with run scenarios green at
   every step. Each migrated unit lands as its own logical change

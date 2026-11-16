@@ -33,8 +33,12 @@ cd build/x86_64
 sed -i 's/^#KERNEL ?= nova/KERNEL ?= linux/' etc/build.conf
 sed -i 's/^BOARD ?= pc/BOARD ?= linux/'    etc/build.conf
 
-# 3. Register Sponge OS as a repository.
+# 3. Register the umbrella and split Sponge OS repositories.
+echo 'SPONGE_ROOT := $(abspath $(GENODE_DIR)/..)' >> etc/build.conf
 echo 'REPOSITORIES += $(GENODE_DIR)/repos/sponge' >> etc/build.conf
+echo 'REPOSITORIES += $(SPONGE_ROOT)/repos/sponge-wm' >> etc/build.conf
+echo 'REPOSITORIES += $(SPONGE_ROOT)/repos/sponge-de' >> etc/build.conf
+echo 'REPOSITORIES += $(SPONGE_ROOT)/repos/sponge-compositor' >> etc/build.conf
 
 # 4. Enable parallel builds (the build system does not default to it).
 echo "MAKE += -j$(nproc)" >> etc/build.conf
@@ -86,7 +90,7 @@ To check whether a specific component's structure is complete
 
 ```bash
 ./tool/check-compile src/vct
-./tool/check-compile src/sponge-de
+./tool/check-compile repos/sponge-de/src/sponge-de
 ```
 
 This script only checks file presence; it does not compile anything.
