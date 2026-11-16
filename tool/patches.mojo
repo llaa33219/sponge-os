@@ -37,14 +37,14 @@ struct PatchRow(Copyable, Movable):
     """One row of the patch ledger table."""
 
     var number: Int
-    var sha_prefix: String
+    var shas: List[String]
     var subject: String
     var what_where: String
 
-    def __init__(out self, number: Int, sha_prefix: String, subject: String,
+    def __init__(out self, number: Int, var shas: List[String], subject: String,
                  what_where: String):
         self.number = number
-        self.sha_prefix = sha_prefix
+        self.shas = shas^
         self.subject = subject
         self.what_where = what_where
 
@@ -88,9 +88,43 @@ def read_text_file(path: String) raises -> String:
     return String(content)
 
 
-def strip_ticks(text: String) raises -> String:
+def split_shas(cell: String) raises -> List[String]:
+    """Split a ledger Commit cell into one or more git revision prefixes.
+
+    The documented cell syntax is one or more backtick-quoted prefixes
+    separated by commas (e.g. `1c2dd297aa`, `afb9d50980`); a bare
+    unquoted prefix is also accepted. Backticks and commas act as
+    separators, surrounding whitespace is ignored, and every resulting
+    token must be a hexadecimal revision prefix — anything else is a
+    loud parse error instead of a confusing downstream
+    'commit not found'."""
+    var shas: List[String] = []
     var builtins = Python.import_module("builtins")
-    return String(builtins.str(text).strip().strip("`"))
+    var re_mod = Python.import_module("re")
+    var cleaned = String(builtins.str(cell).replace("`", ","))
+    for piece in cleaned.split(","):
+        var tok = String(builtins.str(String(piece)).strip())
+        if tok.byte_length() == 0:
+            continue
+        if not Bool(py=re_mod.fullmatch("[0-9a-fA-F]+", tok)):
+            print("error: unexpected token '" + tok + "' in ledger Commit cell")
+            print("Expected backtick-quoted hex revision prefixes,")
+            print("separated by commas, e.g. `1c2dd297aa`, `afb9d50980`.")
+            exit(1)
+        shas.append(tok)
+    return shas^
+
+
+def join_shas(shas: List[String]) raises -> String:
+    """Render a row's commit prefixes for display: 'a, b'."""
+    var out = String("")
+    var first = True
+    for sha in shas:
+        if not first:
+            out += ", "
+        out += sha
+        first = False
+    return out
 
 
 def parse_ledger(root: String) raises -> List[PatchRow]:
@@ -142,9 +176,17 @@ def parse_ledger(root: String) raises -> List[PatchRow]:
             number = Int(py=Python.import_module("builtins").int(num_text))
         except:
             continue
+        # The Commit cell may name more than one commit (backtick/comma
+        # syntax); each prefix is resolved independently, but the row is
+        # still ONE ledger row.
+        var shas = split_shas(cells[2])
+        if len(shas) == 0:
+            print("error: ledger row #" + String(number)
+                  + " has no commit prefix in its Commit cell")
+            exit(1)
         rows.append(PatchRow(
             number,
-            strip_ticks(cells[2]),
+            shas^,
             cells[3],
             cells[4],
         ))
@@ -221,30 +263,33 @@ def cmd_list(rows: List[PatchRow], root: String) raises:
     print("[sponge-patches] patch ledger (docs/11-environment.md §4)")
     print()
     for row in rows:
-        print("#" + String(row.number) + " " + row.sha_prefix + " "
+        print("#" + String(row.number) + " " + join_shas(row.shas) + " "
               + row.subject)
     print()
     for row in rows:
-        var res = git_capture_both(["log", "-1", "--format=%H%n%s", row.sha_prefix], root)
-        var rc = Int(py=res.returncode)
-        if rc != 0:
-            print("#" + String(row.number) + " " + row.sha_prefix
-                  + ": MISSING (git cannot resolve this commit)")
-            continue
-        var full_out = String(res.stdout)
-        var lines = full_out.split("\n")
-        var full_sha = String(lines[0])
-        var git_subject = String(lines[1]) if len(lines) > 1 else String("")
-        var prefix_ok = full_sha.startswith(row.sha_prefix)
-        var status = String("ok: exists")
-        if not prefix_ok:
-            status = "MISMATCH: full SHA does not start with ledger prefix"
-        print("#" + String(row.number) + " " + row.sha_prefix + ": "
-              + status + " (" + full_sha + ")")
-        if git_subject != row.subject:
-            print("    note: git subject differs from ledger subject:")
-            print("      git:    " + git_subject)
-            print("      ledger: " + row.subject)
+        for sha in row.shas:
+            var res = git_capture_both(["log", "-1", "--format=%H%n%s", sha], root)
+            var rc = Int(py=res.returncode)
+            if rc != 0:
+                print("#" + String(row.number) + " " + sha
+                      + ": MISSING (git cannot resolve this commit)")
+                continue
+            var full_out = String(res.stdout)
+            var lines = full_out.split("\n")
+            var full_sha = String(lines[0])
+            var git_subject = String(lines[1]) if len(lines) > 1 else String("")
+            var prefix_ok = full_sha.startswith(sha)
+            var status = String("ok: exists")
+            if not prefix_ok:
+                status = "MISMATCH: full SHA does not start with ledger prefix"
+            print("#" + String(row.number) + " " + sha + ": "
+                  + status + " (" + full_sha + ")")
+            # The ledger subject describes the row as a whole, so the
+            # per-commit note only makes sense for single-commit rows.
+            if len(row.shas) == 1 and git_subject != row.subject:
+                print("    note: git subject differs from ledger subject:")
+                print("      git:    " + git_subject)
+                print("      ledger: " + row.subject)
 
 
 def cmd_verify(rows: List[PatchRow], root: String) raises:
@@ -252,54 +297,61 @@ def cmd_verify(rows: List[PatchRow], root: String) raises:
     print()
     var failures = 0
     for row in rows:
-        # (a) Does the commit exist at all?
-        var log_res = git_capture_both(["log", "-1", "--format=%H", row.sha_prefix], root)
-        if Int(py=log_res.returncode) != 0:
-            print("FAIL #" + String(row.number) + " " + row.sha_prefix
-                  + ": commit not found")
-            print("  " + row.subject)
+        # A row passes only if EVERY commit prefix it names passes; the
+        # summary counts failed ROWS so the total stays the ledger's row
+        # count (a multi-commit row is still one ledger row).
+        var row_ok = True
+        for sha in row.shas:
+            # (a) Does the commit exist at all?
+            var log_res = git_capture_both(["log", "-1", "--format=%H", sha], root)
+            if Int(py=log_res.returncode) != 0:
+                print("FAIL #" + String(row.number) + " " + sha
+                      + ": commit not found")
+                print("  " + row.subject)
+                row_ok = False
+                continue
+            var full_sha = String(String(log_res.stdout).split("\n")[0])
+            var prefix_ok = full_sha.startswith(sha)
+
+            # (b) Is it an ancestor of HEAD?
+            var anc_args: List[String] = ["merge-base", "--is-ancestor"]
+            anc_args.append(full_sha)
+            anc_args.append("HEAD")
+            var anc_res = git_capture_both(anc_args, root)
+            var is_ancestor = Int(py=anc_res.returncode) == 0
+
+            # (c) Which paths does it touch? Reported, not policed: patch #5
+            # legitimately adds repos/sponge/ files next to genode/ paths, so
+            # there is no genode/-only rule to enforce here.
+            var stat_args: List[String] = ["show", "--format=", "--name-only"]
+            stat_args.append(full_sha)
+            var stat_res = git_capture_both(stat_args, root)
+            var paths: List[String] = []
+            for p in String(stat_res.stdout).split("\n"):
+                var path = String(
+                    Python.import_module("builtins").str(String(p)).strip()
+                )
+                if path.byte_length() > 0:
+                    paths.append(path)
+
+            var ok = prefix_ok and is_ancestor
+            if ok:
+                print("OK   #" + String(row.number) + " " + sha
+                      + ": exists, ancestor of HEAD")
+            else:
+                row_ok = False
+                var why = String("")
+                if not prefix_ok:
+                    why = "full SHA " + full_sha + " does not match prefix"
+                elif not is_ancestor:
+                    why = "not an ancestor of HEAD"
+                print("FAIL #" + String(row.number) + " " + sha
+                      + ": " + why)
+            print("     touches:")
+            for path in paths:
+                print("       " + path)
+        if not row_ok:
             failures += 1
-            continue
-        var full_sha = String(String(log_res.stdout).split("\n")[0])
-        var prefix_ok = full_sha.startswith(row.sha_prefix)
-
-        # (b) Is it an ancestor of HEAD?
-        var anc_args: List[String] = ["merge-base", "--is-ancestor"]
-        anc_args.append(full_sha)
-        anc_args.append("HEAD")
-        var anc_res = git_capture_both(anc_args, root)
-        var is_ancestor = Int(py=anc_res.returncode) == 0
-
-        # (c) Which paths does it touch? Reported, not policed: patch #5
-        # legitimately adds repos/sponge/ files next to genode/ paths, so
-        # there is no genode/-only rule to enforce here.
-        var stat_args: List[String] = ["show", "--format=", "--name-only"]
-        stat_args.append(full_sha)
-        var stat_res = git_capture_both(stat_args, root)
-        var paths: List[String] = []
-        for p in String(stat_res.stdout).split("\n"):
-            var path = String(
-                Python.import_module("builtins").str(String(p)).strip()
-            )
-            if path.byte_length() > 0:
-                paths.append(path)
-
-        var ok = prefix_ok and is_ancestor
-        if ok:
-            print("OK   #" + String(row.number) + " " + row.sha_prefix
-                  + ": exists, ancestor of HEAD")
-        else:
-            failures += 1
-            var why = String("")
-            if not prefix_ok:
-                why = "full SHA " + full_sha + " does not match prefix"
-            elif not is_ancestor:
-                why = "not an ancestor of HEAD"
-            print("FAIL #" + String(row.number) + " " + row.sha_prefix
-                  + ": " + why)
-        print("     touches:")
-        for path in paths:
-            print("       " + path)
     print()
     if failures > 0:
         print("verify: FAIL (" + String(failures) + " of "
@@ -322,19 +374,26 @@ def cmd_export(rows: List[PatchRow], root: String, out_dir: String) raises:
     print()
     var failures = 0
     for row in rows:
-        var res = git_capture_both(["format-patch", "-1", row.sha_prefix, "--stdout"], root)
-        if Int(py=res.returncode) != 0:
-            print("FAIL #" + String(row.number) + " " + row.sha_prefix
-                  + ": git format-patch failed")
-            failures += 1
-            continue
-        var filename = zero_pad(row.number) + "-" + slugify(row.subject) + ".patch"
-        var full_path = out_dir + "/" + filename
-        var builtins = Python.import_module("builtins")
-        var f = builtins.open(full_path, "w")
-        f.write(res.stdout)
-        f.close()
-        print("  wrote " + full_path)
+        for sha in row.shas:
+            var res = git_capture_both(["format-patch", "-1", sha, "--stdout"], root)
+            if Int(py=res.returncode) != 0:
+                print("FAIL #" + String(row.number) + " " + sha
+                      + ": git format-patch failed")
+                failures += 1
+                continue
+            var filename = zero_pad(row.number) + "-" + slugify(row.subject)
+            # Multi-commit rows need one file per commit; disambiguate
+            # with the commit prefix. Single-commit rows keep the
+            # original <NN>-<slug>.patch name.
+            if len(row.shas) > 1:
+                filename += "-" + sha
+            filename += ".patch"
+            var full_path = out_dir + "/" + filename
+            var builtins = Python.import_module("builtins")
+            var f = builtins.open(full_path, "w")
+            f.write(res.stdout)
+            f.close()
+            print("  wrote " + full_path)
     print()
     if failures > 0:
         print("export: FAIL (" + String(failures) + " patch(es) not written)")
@@ -344,12 +403,13 @@ def cmd_export(rows: List[PatchRow], root: String, out_dir: String) raises:
 
 def cmd_drop(rows: List[PatchRow], root: String, number: Int) raises:
     var found = False
-    var sha = String("")
+    var shas: List[String] = []
     var subject = String("")
     for row in rows:
         if row.number == number:
             found = True
-            sha = row.sha_prefix
+            for sha in row.shas:
+                shas.append(sha)
             subject = row.subject
 
     if not found:
@@ -357,15 +417,18 @@ def cmd_drop(rows: List[PatchRow], root: String, number: Int) raises:
         print("Run 'mojo tool/patches.mojo list' to see the current rows.")
         exit(1)
 
-    # Resolve the full SHA so the printed command is unambiguous.
-    var full_sha = sha
-    var res = git_capture_both(["log", "-1", "--format=%H", sha], root)
-    if Int(py=res.returncode) == 0:
-        full_sha = String(String(res.stdout).split("\n")[0])
-    else:
-        print("warning: commit " + sha + " does not resolve in this clone;")
-        print("the instructions below use the ledger prefix as-is.")
-        print()
+    # Resolve each full SHA so the printed commands are unambiguous.
+    var full_shas: List[String] = []
+    for sha in shas:
+        var full_sha = sha
+        var res = git_capture_both(["log", "-1", "--format=%H", sha], root)
+        if Int(py=res.returncode) == 0:
+            full_sha = String(String(res.stdout).split("\n")[0])
+        else:
+            print("warning: commit " + sha + " does not resolve in this clone;")
+            print("the instructions below use the ledger prefix as-is.")
+            print()
+        full_shas.append(full_sha)
 
     print("[sponge-patches] drop patch #" + String(number) + ": " + subject)
     print()
@@ -373,7 +436,8 @@ def cmd_drop(rows: List[PatchRow], root: String, number: Int) raises:
     print("(AGENTS.md §5.2). Perform these steps by hand:")
     print()
     print("  1. Revert the patch commit IN THE FORK (the genode/ submodule):")
-    print("       cd genode && git revert " + full_sha)
+    for full_sha in full_shas:
+        print("       cd genode && git revert " + full_sha)
     print("       git push origin main   # github.com/llaa33219/sponge-os-genode")
     print("     (Contrib patch-file rows — the ones whose commit lives in")
     print("      this repo — are dropped by deleting the docs/patches file")
