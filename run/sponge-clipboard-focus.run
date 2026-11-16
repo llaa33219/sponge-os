@@ -88,7 +88,7 @@ foreach f { en_us.chargen special.chargen } {
 }
 
 foreach theme { default light } {
-	set theme_src "${genode_dir}/repos/sponge/src/sponge-de/themes/${theme}.theme"
+	set theme_src "${genode_dir}/../repos/sponge-de/src/sponge-de/themes/${theme}.theme"
 	set theme_dst "bin/${theme}.theme"
 	if {[file exists $theme_src] && ![file exists $theme_dst]} {
 		exec cp -fL $theme_src $theme_dst

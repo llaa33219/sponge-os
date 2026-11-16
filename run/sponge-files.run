@@ -260,7 +260,7 @@ if {![file exists $dejavu_dst]} {
 # run/sponge-launcher.run). The component's <theme source="default"/>
 # node is omitted; the loader falls through to default.theme.
 #
-set theme_src "${genode_dir}/repos/sponge/src/sponge-de/themes/default.theme"
+set theme_src "${genode_dir}/../repos/sponge-de/src/sponge-de/themes/default.theme"
 set theme_dst "bin/default.theme"
 if {[file exists $theme_src] && ![file exists $theme_dst]} {
 	exec cp -fL $theme_src $theme_dst

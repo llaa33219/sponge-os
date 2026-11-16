@@ -704,7 +704,7 @@ foreach lib [glob -nocomplain bin/*.lib.so] {
 
 # --- themes (flat — served by bare name) ---
 foreach theme { default light } {
-	set theme_src "${genode_dir}/repos/sponge/src/sponge-de/themes/${theme}.theme"
+	set theme_src "${genode_dir}/../repos/sponge-de/src/sponge-de/themes/${theme}.theme"
 	if {[file exists $theme_src]} {
 		exec cp -fL $theme_src "$sys_dir/${theme}.theme"
 	}
