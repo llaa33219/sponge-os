@@ -148,7 +148,7 @@ namespace eval supervisor {
 	# exited child in the state report until it is abandoned, so an
 	# unconditional "any exit is a fault" rule tears down a healthy
 	# desktop at every boot. Mirrors the exclusion in sponge-de's health
-	# watcher (repos/sponge/src/sponge-de/main.cc).
+	# watcher (repos/sponge-de/src/sponge-de/main.cc).
 	#
 	#
 	# A scenario that adds another clean-exiting boot probe appends it

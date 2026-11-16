@@ -132,7 +132,7 @@ state report until it is abandoned, so an unconditional "any exit is a
 fault" rule tears down a healthy desktop minutes after a successful
 boot. The `ignore_exited` policy carries the names that are allowed to
 exit; the same pair is excluded by sponge-de's health watcher
-(`repos/sponge/src/sponge-de/main.cc`), so the panel and the supervisor
+(`repos/sponge-de/src/sponge-de/main.cc`), so the panel and the supervisor
 cannot disagree about what a clean exit is.
 
 ## Detection

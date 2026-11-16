@@ -106,7 +106,7 @@
      unconditional "any exit is a fault" test tears down the desktop
      minutes after a successful boot. The `ignore_exited` policy carries
      the same pair sponge-de's health watcher excludes
-     (`repos/sponge/src/sponge-de/main.cc`), so panel and supervisor
+     (`repos/sponge-de/src/sponge-de/main.cc`), so panel and supervisor
      cannot disagree about what a clean exit is.
   3. **`settle_ms` is a product parameter, not a constant.** The lean
      proof runs the sandbox heartbeat at 500 ms; the product runs it at
