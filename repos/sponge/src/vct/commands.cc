@@ -13,8 +13,11 @@
 #include "notifier_reporter.h"
 
 #include <base/attached_rom_dataspace.h>
+#include <base/attached_dataspace.h>
 #include <base/log.h>
 #include <os/reporter.h>
+#include <rom_session/client.h>
+#include <rom_session/rom_session.h>
 #include <timer_session/connection.h>
 
 #include <sponge/backend_client.h>
@@ -33,25 +36,51 @@ namespace {
 bool read_config_key(Genode::Env &env, char const *name,
                      Genode::String<128> &value)
 {
-	try {
-		Genode::Attached_rom_dataspace config { env, "configd" };
-		config.update();
-		if (!config.valid()) return false;
-		bool found { false };
-		config.xml().for_each_sub_node("key", [&] (Genode::Xml_node const &key) {
-			if (!found && key.attribute_value("name", Genode::String<64>()) ==
-			              Genode::String<64>(name)) {
-				value = key.attribute_value("value", Genode::String<128>());
-				found = true;
+	Genode::Parent::Client parent_client { };
+	Genode::Id_space<Genode::Parent::Client>::Element const id_space_element {
+		parent_client, env.id_space() };
+
+	char argbuf[Genode::Parent::Session_args::MAX_SIZE];
+	Genode::copy_cstring(argbuf, "", sizeof(argbuf));
+	Genode::Arg_string::set_arg_string(argbuf, sizeof(argbuf), "label", "configd");
+	Genode::Arg_string::set_arg(argbuf, sizeof(argbuf), "ram_quota",
+	                            Genode::String<32>(Genode::Ram_quota {
+	                                Genode::Rom_session::RAM_QUOTA }).string());
+	Genode::Arg_string::set_arg(argbuf, sizeof(argbuf), "cap_quota",
+	                            Genode::String<32>(Genode::Cap_quota {
+	                                Genode::Rom_session::CAP_QUOTA }).string());
+
+	bool found { false };
+	Genode::Env::Session_result const result =
+		env.try_session(Genode::Rom_session::service_name(),
+		                id_space_element.id(),
+		                Genode::Parent::Session_args(argbuf),
+		                Genode::Affinity { });
+
+	result.with_result(
+		[&] (Genode::Session_capability cap) {
+			Genode::Rom_session_client rom {
+				Genode::static_cap_cast<Genode::Rom_session>(cap) };
+			Genode::Attached_dataspace config { env.rm(), rom.dataspace() };
+			if (config.size() == 0) {
+				env.close(id_space_element.id());
+				return;
 			}
-		});
-		return found;
-	}
-	catch (Genode::Rom_connection::Rom_connection_failed) { return false; }
-	catch (Genode::Service_denied) { return false; }
-	catch (Genode::Out_of_ram) { return false; }
-	catch (Genode::Out_of_caps) { return false; }
-	catch (Genode::Xml_node::Invalid_syntax) { return false; }
+			try {
+				Genode::Xml_node const xml { config.local_addr<char>(), config.size() };
+				xml.for_each_sub_node("key", [&] (Genode::Xml_node const &key) {
+					if (!found && key.attribute_value("name", Genode::String<64>()) ==
+					              Genode::String<64>(name)) {
+						value = key.attribute_value("value", Genode::String<128>());
+						found = true;
+					}
+				});
+			} catch (Genode::Xml_node::Invalid_syntax) { }
+			env.close(id_space_element.id());
+		},
+		[&] (Genode::Session_error) { });
+
+	return found;
 }
 
 }  /* namespace */

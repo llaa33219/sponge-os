@@ -69,7 +69,7 @@ config
       + config
         + args
           + arg status
-          + arg "--resources"
+          + arg --resources
   + route
     + service ROM | label_last: state | + child report_rom
     + service Report | + child report_rom
