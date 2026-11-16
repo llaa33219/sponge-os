@@ -531,7 +531,7 @@ foreach f { en_us.chargen special.chargen } {
 #
 # Default theme ROM module (sponge-de opens it as "default.theme").
 #
-exec cp -f "${genode_dir}/repos/sponge/src/sponge-de/themes/default.theme" \
+exec cp -f "${genode_dir}/../repos/sponge-de/src/sponge-de/themes/default.theme" \
            "bin/default.theme"
 
 #
