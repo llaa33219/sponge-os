@@ -194,7 +194,7 @@ if {![file exists $dejavu_dst]} {
 # Default theme staged so sponge-de's fallback path (no sponge_themed)
 # produces themed panel + launcher styling. Same as run/sponge-de-test.run.
 #
-set theme_src "${genode_dir}/repos/sponge/src/sponge-de/themes/default.theme"
+set theme_src "${genode_dir}/../repos/sponge-de/src/sponge-de/themes/default.theme"
 if {![file exists "bin/default.theme"] && [file exists $theme_src]} {
 	exec cp -L $theme_src "bin/default.theme"
 }

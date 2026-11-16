@@ -416,7 +416,7 @@ foreach f { en_us.chargen special.chargen } {
 	exec cp -f "$chargen_dir/$f" "bin/$f"
 }
 
-exec cp -f "${genode_dir}/repos/sponge/src/sponge-de/themes/default.theme" \
+exec cp -f "${genode_dir}/../repos/sponge-de/src/sponge-de/themes/default.theme" \
            "bin/default.theme"
 
 set staged_pkgs { pkg_gui_demo }

@@ -513,7 +513,7 @@ foreach f { en_us.chargen special.chargen } {
 }
 
 foreach theme { default light dark compact } {
-	set theme_src "${genode_dir}/repos/sponge/src/sponge-de/themes/${theme}.theme"
+	set theme_src "${genode_dir}/../repos/sponge-de/src/sponge-de/themes/${theme}.theme"
 	if {![file exists $theme_src]} {
 		error "theme file missing: $theme_src"
 	}

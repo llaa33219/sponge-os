@@ -4,7 +4,7 @@
 # \date   2026
 #
 # Acceptance boot for D14.1 — the Sponge-native notification daemon
-# `sponge_notifier` (repos/sponge/src/sponge_notifier), modeled on the
+# `sponge_notifier` (repos/sponge-de/src/sponge_notifier), modeled on the
 # established sponge_pkgd / sponge_configd / sponge_themed Report/ROM
 # bus pattern (docs/04-components.md §5; AGENTS.md §1.2). The scenario
 # is the cross-component proof: the daemon is one component, the
@@ -270,7 +270,7 @@ if {![file exists $dejavu_dst]} {
 }
 
 # Default theme for sponge-de.
-set theme_src "${genode_dir}/repos/sponge/src/sponge-de/themes/default.theme"
+set theme_src "${genode_dir}/../repos/sponge-de/src/sponge-de/themes/default.theme"
 if {![file exists "bin/default.theme"] && [file exists $theme_src]} {
 	exec cp -L $theme_src "bin/default.theme"
 }

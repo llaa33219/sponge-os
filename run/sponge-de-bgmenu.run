@@ -19,7 +19,7 @@
 #     sponge-de observer re-paints the desktop on changes.
 #
 # The W6 implementation commit:
-#   1. Adds repos/sponge/src/sponge-de/background/{background_widget,
+#   1. Adds repos/sponge-de/src/sponge-de/background/{background_widget,
 #      background_controller}.{h,cc} (D16.4) — a fullscreen frameless
 #      QWidget with WA_ShowWithoutActivating,
 #      painted from background.color (solid) or background.image
@@ -31,7 +31,7 @@
 #      background_image_changed signals following the W5
 #      panel_position_changed pattern (same 250 ms poll + ROM sigh
 #      funnel into applyConfig, de-duped per key).
-#   3. Adds repos/sponge/src/sponge-de/background/show_desktop.{h,cc}
+#   3. Adds repos/sponge-de/src/sponge-de/background/show_desktop.{h,cc}
 #      (U16.3) — the minimize-all/restore-all state machine reusing
 #      the Phase 14 W7 tasklist layouter-rule ROM overwrite from
 #      tasklist_controller.cc:500-516 (the off-screen (-32000,-32000)
@@ -402,7 +402,7 @@ foreach f { en_us.chargen special.chargen } {
 }
 
 foreach theme { default light dark compact } {
-	set theme_src "${genode_dir}/repos/sponge/src/sponge-de/themes/${theme}.theme"
+	set theme_src "${genode_dir}/../repos/sponge-de/src/sponge-de/themes/${theme}.theme"
 	if {![file exists $theme_src]} {
 		error "theme file missing: $theme_src"
 	}

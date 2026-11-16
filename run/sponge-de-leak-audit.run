@@ -274,7 +274,7 @@ config
 # needs them as parent-provided ROM modules.
 #
 foreach theme { default light dark compact } {
-	set theme_src "${genode_dir}/repos/sponge/src/sponge-de/themes/${theme}.theme"
+	set theme_src "${genode_dir}/../repos/sponge-de/src/sponge-de/themes/${theme}.theme"
 	set theme_dst "[run_dir]/genode/${theme}.theme"
 	if {[file exists $theme_src] && ![file exists $theme_dst]} {
 		exec cp -L $theme_src $theme_dst

@@ -70,7 +70,7 @@
 #      This is the "bounded one-shot result wait elapses" sub-path of
 #      the caller-side contract — no hang, no retry loop. (The shell
 #      sponge_settings derives the same status locally; its surface is
-#      unit-covered in repos/sponge/src/sponge_settings/tests.)
+#      unit-covered in repos/sponge-de/src/sponge_settings/tests.)
 #   6. SHELL + SIBLING SURVIVE ANOTHER PROVIDER'S EXIT: after the
 #      close, the about row is clicked again and answers 'focused' —
 #      the shell processed the click (still alive) and about's
