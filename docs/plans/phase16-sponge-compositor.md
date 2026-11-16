@@ -1,9 +1,10 @@
 # Phase 16, Sponge Compositor and Repository Split (Work Plan)
 
-> Status: design approved 2026-11-16, implementation NOT started. This
-> is the decision-complete spec for the Mojo-first Sponge compositor
-> and the repository split. It marks nothing complete and claims no
-> implementation, no repository split, and no seL4 compositor success.
+> Status: G0 repository split implemented 2026-11-16; close-out
+> verification is in progress. G1-G6 compositor implementation has not
+> started, and no seL4 compositor success is claimed. This remains the
+> decision-complete spec for the Mojo-first Sponge compositor and the
+> repository split.
 > Relationship: companion to the delivered Sponge WM plan
 > (`docs/plans/phase16-sponge-wm.md`, D16W.x), the Mojo language policy
 > (`docs/plans/mojo-language-policy.md`, DLP.x), and the runtime topology
@@ -88,11 +89,15 @@ do not re-litigate:
   coverage is subset-specific. Nothing beyond those two probe shapes
   is proven, and this plan claims no compositor success on seL4 or
   anywhere else.
-- **Repository state.** One Sponge repo at `repos/sponge/` plus the
-  pinned `genode/` submodule (AGENTS.md §5.2). The patch ledger
-  (`docs/11-environment.md` §4) currently has 38 rows and must not
-  grow. The Mojo SDK is pinned by `uv.lock` (currently 1.0.0b2); its
-  use inside OS components is governed by this plan and the probe subset.
+- **Repository state.** At plan registration there was one Sponge repo
+  at `repos/sponge/` plus the pinned `genode/` submodule. G0 has now
+  added the pinned `sponge-wm`, `sponge-de`, and `sponge-compositor`
+  submodules and moved their designated sources without changing the
+  desktop topology; `sponge-compositor` remains a warning-only
+  scaffold. The patch ledger (`docs/11-environment.md` §4) still has
+  38 rows and must not grow. The Mojo SDK is pinned by `uv.lock`
+  (currently 1.0.0b2); its use inside OS components is governed by
+  this plan and the probe subset.
 - **Build surface.** Genode's build consumes pre-compiled objects
   through `SRC_O` (`genode/repos/base/mk/generic.mk`), which is the
   link seam for emitted Mojo objects. No build-system patch is needed.

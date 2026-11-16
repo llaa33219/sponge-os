@@ -168,9 +168,12 @@ Sponge OS components follow this lifecycle.
 
 ## 4. Guide to Adding a New Component
 
-When adding a new component to the Sponge OS repository:
+When adding a new component to a Sponge OS repository:
 
-1. Create `repos/sponge/src/<component_name>/`.
+1. Create `src/<component_name>/` in its owning repository. The umbrella
+   uses `repos/sponge/src/<component_name>/`; WM, DE, and compositor
+   components belong in `repos/sponge-wm/src/`, `repos/sponge-de/src/`,
+   and `repos/sponge-compositor/src/` respectively.
 2. Write `target.mk`, the sources, and `README.md` (see `AGENTS.md` §3.2
    for the format). Mojo is the preferred source language for new
    Sponge-owned components (`AGENTS.md` §3.5/§3.6): keep the logic in
@@ -185,7 +188,8 @@ When adding a new component to the Sponge OS repository:
    surface, a dependency that is itself C++) may still place a new
    component in C++.
 3. If the component exposes a backend RPC, place its interface header
-   under `repos/sponge/include/sponge/`.
+   under the owning repository's `include/sponge/` directory
+   (`repos/sponge/include/sponge/` for umbrella-owned interfaces).
 4. Add the component to the inventory table in `docs/04-components.md`.
 5. If needed, write a dedicated design document (`docs/NN-<name>.md`)
    and link it from README and AGENTS.
@@ -203,13 +207,12 @@ Every new component must:
 - Log `Genode::warning("not implemented: ...")` for empty
   implementations (`AGENTS.md` §5.3).
 
-> **Reserved names, no split.** The Mojo policy record reserves the
-> repository names `sponge-wm`, `sponge-de`, and `sponge-compositor`
-> for a future native line
+> **G0 repository split.** `sponge-wm`, `sponge-de`, and
+> `sponge-compositor` are now pinned repositories containing the WM,
+> DE, and compositor scaffold respectively
 > ([`docs/plans/mojo-language-policy.md`](plans/mojo-language-policy.md)
-> DLP.8). Nothing is renamed or split today: the components run as
-> listed above, with the Qt-based Sponge DE on the upstream
-> `nitpicker` compositor.
+> DLP.8). The mechanical split does not change component topology: the
+> Qt-based Sponge DE still runs on the upstream `nitpicker` compositor.
 
 ---
 

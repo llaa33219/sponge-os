@@ -232,8 +232,10 @@ All Sponge OS code must obey the following:
 
 1. **Follow Genode conventions**: `target.mk`, `Component::construct_`,
    session-based communication.
-2. **Sponge OS-specific code lives only under `repos/sponge/`**: Genode
-   itself is not modified.
+2. **Sponge OS-specific code lives under the Sponge-owned repositories**:
+   the umbrella `repos/sponge/` plus `repos/sponge-wm/`,
+   `repos/sponge-de/`, and `repos/sponge-compositor/`; Genode itself is
+   not modified.
 3. **Separate user interface from backend**: vct and Sponge DE call
    backend services, and the backends do the real work. This keeps the
    two interfaces consistent.
@@ -244,7 +246,8 @@ All Sponge OS code must obey the following:
    inspectable through logs and `--explain`.
 6. **Implementation language: Mojo first.** Mojo is the preferred and
    default language for Sponge-owned code, both the host tooling under
-   `tool/` and the Genode/seL4 components under `repos/sponge/`. C++
+   `tool/` and the Genode/seL4 components in the Sponge-owned
+   repositories. C++
    is kept as a deliberate adapter tool, not as the default. Exceptions
    that stay C++ by design: thin glue at the Mojo/Genode boundary (the
    `Component::construct` entry glue and the `SRC_O` link seam), plus
@@ -258,10 +261,10 @@ All Sponge OS code must obey the following:
    receipts and support boundary:
    [`docs/evidence/mojo-ffi-probe.md`](evidence/mojo-ffi-probe.md).
    This principle changes no topology: the desktop still runs as
-   documented above, Qt on the upstream nitpicker stack, and the
-   reserved native-line repository names `sponge-wm`, `sponge-de`, and
-   `sponge-compositor` mark a planned direction, not an implemented
-   repository split.
+   documented above, Qt on the upstream nitpicker stack. The G0 split
+   now places the WM, DE, and compositor scaffold in `sponge-wm`,
+   `sponge-de`, and `sponge-compositor`; the scaffold does not replace
+   nitpicker or change the shipped default.
 
 Violations of the above fall under the "absolute prohibitions" in
 `AGENTS.md`.
