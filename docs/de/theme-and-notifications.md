@@ -18,11 +18,11 @@ files (see `AGENTS.md` §3.4). Initial design direction:
   may be reconsidered as complexity grows.
 - **Storage location**: two layers — the user settings directory
   (`~/.config/sponge/theme` or its Genode VFS counterpart) and the
-  system default (`repos/sponge/src/sponge-de/themes/default.theme`).
+  system default (`repos/sponge-de/src/sponge-de/themes/default.theme`).
 - **Application**: loaded at Sponge DE start. `vct theme apply` can
   reapply the theme at runtime (through the `sponge_themed` backend).
 - **Scope**: colors, fonts, spacing, icon set, panel position and size.
-- **Parser skeleton**: `repos/sponge/src/sponge-de/theme/theme_loader.{h,cc}`
+- **Parser skeleton**: `repos/sponge-de/src/sponge-de/theme/theme_loader.{h,cc}`
   implements the INI parser and data model for Phase 5. It is not yet
   wired into the build or applied to Qt widgets; integration is pending.
 

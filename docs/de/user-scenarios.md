@@ -62,7 +62,7 @@ channel, and the quick pair is not a config relay: its
 vocabulary is closed and owned by the provider.
 
 The menu is implemented in `PanelWidget::contextMenuEvent`
-(`repos/sponge/src/sponge-de/panel/panel_widget.cc`); the menu
+(`repos/sponge-de/src/sponge-de/panel/panel_widget.cc`); the menu
 is anchored to the `QContextMenuEvent`'s global position (the
 Genode QPA returns `(0,0)` from `QCursor::pos()` — known
 Phase 10+ lesson — so the event-local position is the only
@@ -342,7 +342,7 @@ The eight Phase 16 module / component changes:
    receipts (machine, parent commit, Genode pin, image/scenario,
    first paint + input-driven change) are still outstanding, so
    acceptance stays open (roadmap Criterion 18). The legacy dialog
-   module `repos/sponge/src/sponge-de/settings/` and the universal
+   module `repos/sponge-de/src/sponge-de/settings/` and the universal
    writer `config/settings_controller.*` are removed in the landed
    W4 provider split (D16.9).
 2. **`background/` module (W6).** A fullscreen frameless

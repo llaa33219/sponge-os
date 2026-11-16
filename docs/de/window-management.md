@@ -311,7 +311,7 @@ writer; only `op="launch"` is emitted.
 ### 4.7 Background Module (Phase 16 W6 — Implemented)
 
 The desktop background surface is owned by the in-DE
-`background/` module (`repos/sponge/src/sponge-de/background/`):
+`background/` module (`repos/sponge-de/src/sponge-de/background/`):
 
 - **`BackgroundWidget`** — a fullscreen frameless `QWidget`
   (`Qt::Window | Qt::FramelessWindowHint`, no `BypassWindowManagerHint`).

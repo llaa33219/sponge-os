@@ -236,7 +236,7 @@ How Sponge DE stays light under Genode's resource constraints:
   requirement; closing it reclaims its resources (resource quotas
   are measured and declared per component — shell and provider
   components do not inherit sponge-de's 128 MB Qt6 + Mesa quota
-  by default). The legacy `repos/sponge/src/sponge-de/settings/`
+  by default). The legacy `repos/sponge-de/src/sponge-de/settings/`
   module and the universal writer (`config/settings_controller.*`
   on `de_config_request`) are removed by the landed provider split
   (D16.9); they are not a second live design. Implementation and
