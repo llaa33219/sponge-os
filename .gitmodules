@@ -2,3 +2,12 @@
 	path = genode
 	url = https://github.com/llaa33219/sponge-os-genode.git
 	branch = main
+[submodule "repos/sponge-wm"]
+	path = repos/sponge-wm
+	url = ./sponge-wm
+[submodule "repos/sponge-de"]
+	path = repos/sponge-de
+	url = ./sponge-de
+[submodule "repos/sponge-compositor"]
+	path = repos/sponge-compositor
+	url = ./sponge-compositor

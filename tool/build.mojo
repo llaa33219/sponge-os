@@ -374,8 +374,31 @@ def ensure_build_conf(build_conf: String) raises -> Bool:
         out2.close()
         changed = True
 
-    # 2. Marker-delimited managed block (appended once).
+    var split_repositories = (
+        "SPONGE_ROOT := $(abspath $(GENODE_DIR)/..)\n"
+        + "REPOSITORIES += $(SPONGE_ROOT)/repos/sponge-wm\n"
+        + "REPOSITORIES += $(SPONGE_ROOT)/repos/sponge-de\n"
+        + "REPOSITORIES += $(SPONGE_ROOT)/repos/sponge-compositor\n"
+    )
+
+    # 2. Marker-delimited managed block (appended once). When the block
+    # already exists, still add newly split repositories idempotently.
     if Int(py=content.count(BLOCK_BEGIN)) > 0:
+        if Int(py=content.count(split_repositories)) == 0:
+            var sponge_anchor = (
+                "REPOSITORIES += $(GENODE_DIR)/repos/sponge\n"
+                + "REPOSITORIES += $(GENODE_DIR)/repos/libports\n"
+            )
+            content = content.replace(
+                sponge_anchor,
+                "REPOSITORIES += $(GENODE_DIR)/repos/sponge\n"
+                + split_repositories
+                + "REPOSITORIES += $(GENODE_DIR)/repos/libports\n"
+            )
+            var out_split = builtins.open(build_conf, "w")
+            out_split.write(content)
+            out_split.close()
+            changed = True
         return changed
 
     var cpu_count = Int(py=os_py.cpu_count())
@@ -387,6 +410,7 @@ def ensure_build_conf(build_conf: String) raises -> Bool:
         + "# KERNEL/BOARD live near the top of this file because the generated\n"
         + "# ifdef blocks below them read those variables early.\n"
         + "REPOSITORIES += $(GENODE_DIR)/repos/sponge\n"
+        + split_repositories
         + "REPOSITORIES += $(GENODE_DIR)/repos/libports\n"
         + "# ports: noux packages (bash-minimal, vim-minimal) for the terminal\n"
         + "# package (pkg/terminal). Depends on libports (ncurses). Source-built\n"
