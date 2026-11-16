@@ -161,6 +161,10 @@ def run_argv(cmd: List[String], cwd: String) raises -> Int:
     # verify gate above.
     env["VIRTUAL_ENV"] = repo_root() + "/.venv"
     env["PYTHONPATH"] = venv_site_packages(repo_root())
+    if "PYTHONEXECUTABLE" in env.keys():
+        env.pop("PYTHONEXECUTABLE")
+    if "PYTHONHOME" in env.keys():
+        env.pop("PYTHONHOME")
     var rc: PythonObject
     if cwd.byte_length() > 0:
         rc = subprocess.call(py_args, cwd=cwd, env=env)
