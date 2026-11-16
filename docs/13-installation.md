@@ -41,6 +41,16 @@ uv sync
 .venv/bin/mojo --version
 ```
 
+The repository-local Mojo SDK has two jobs, so it is a build
+requirement and not just a tooling convenience. It runs every `tool/`
+script, and it compiles Sponge-owned `.mojo` component sources into the
+objects the Genode build links through `SRC_O` (`mojo build --emit
+object`), so any build that includes Mojo component code needs it too.
+Inside the OS only the probe-proven subset may be used
+([`docs/evidence/mojo-ffi-probe.md`](evidence/mojo-ffi-probe.md);
+policy record:
+[`docs/plans/mojo-language-policy.md`](plans/mojo-language-policy.md)).
+
 ## 2. Build the Alpha media
 
 ### 2.1 One-command build

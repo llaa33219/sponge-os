@@ -25,6 +25,12 @@ use `Python.import_module("os")` and similar via `from std.python import
 Python, PythonObject` (see the `mojo-python-interop` skill). This is
 the idiomatic Mojo pattern for missing functionality.
 
+Python interop is **host-side only**. It is a CPython convenience for
+these tools and nothing more: the Mojo-on-Genode probe exercised no
+Python interop at all
+([`docs/evidence/mojo-ffi-probe.md`](../docs/evidence/mojo-ffi-probe.md)),
+so Mojo code that runs inside the OS must not use it.
+
 ## Tools
 
 | Launcher              | Mojo source              | Purpose                                                      | Status |
@@ -406,14 +412,35 @@ contract and the manual escape hatch.
 
 ## Why Mojo?
 
-Sponge OS is Genode-based, so OS components are C++ (Genode's only stable
-target). Host-side tooling is a different domain: we want a language with
-Python-flavored ergonomics, fast startup, and a modern type system. Mojo
-fits that role and is used consistently across all `tool/` scripts.
+Mojo is the preferred and default language for all Sponge-owned code,
+both the host tooling in this directory and the Genode/seL4 components
+under `repos/sponge/`. The binding decision record is
+[`docs/plans/mojo-language-policy.md`](../docs/plans/mojo-language-policy.md).
+One language across host and target removes the translation tax, and
+the Mojo-on-Genode path is proven rather than aspirational:
+[`docs/evidence/mojo-ffi-probe.md`](../docs/evidence/mojo-ffi-probe.md)
+records `mojo build --emit object` with `@export`/`abi("C")` entry
+points linked into a Genode component via `SRC_O`, backed by a
+libc-free `Genode::Heap` KGEN shim, with seL4 QEMU receipts. Inside the
+OS, only that probe-proven subset may be used until new probes widen it
+(no async, Python interop, POSIX I/O, or pure-Mojo session plumbing is
+claimed).
 
-Components that ship inside the OS image (`repos/sponge/src/...`) remain
-C++ and are NOT ported to Mojo. The hard boundary is "runs on the host
-developer machine" (Mojo) vs "runs inside Genode" (C++).
+What stays C++ by design:
+
+- **Thin Genode adapters.** The `Component::construct` entry glue and
+  the `SRC_O` link seam stay C++ while pure-Mojo Genode session
+  plumbing is unproven.
+- **Upstream code.** Everything under `genode/` and upstream Qt code is
+  not Sponge-owned and is not a migration target. The desktop today is
+  Qt widgets on the upstream `nitpicker`/`wm`/`decorator` stack, and
+  the native-line repository names `sponge-wm`, `sponge-de`, and
+  `sponge-compositor` are reserved only: no repository split and no
+  compositor rewrite is implemented.
+
+Existing Sponge-owned C++ moves to Mojo incrementally, one unit at a
+time, with the run scenarios green at every step. There is no flag day
+and no big-bang rewrite.
 
 ## Launcher fallback
 

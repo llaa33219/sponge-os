@@ -84,10 +84,15 @@ build; `qemu-system-x86` is needed for any non-base-linux run;
 `rpcgen` (from `rpcsvc-proto` / `libc-dev-bin`) is needed by the
 `libc` port's prepare step.
 
-### 1.4 Mojo SDK (host-side tooling only)
+### 1.4 Mojo SDK (preferred language for Sponge-owned code)
 
-The host-side tooling under `tool/` is written in Mojo
-([`tool/README.md`](../tool/README.md) for tool-by-tool usage).
+Mojo is the preferred and default language for Sponge-owned code
+(`docs/plans/mojo-language-policy.md` DLP.1): both the host tooling
+under `tool/` ([`tool/README.md`](../tool/README.md) for tool-by-tool
+usage) and the Genode/seL4 components under `repos/sponge/src/` use
+Mojo. C++ stays as a deliberate adapter tool: thin Genode boundary
+glue and existing components that have not been migrated yet.
+
 The dependency is declared in the committed `pyproject.toml` and
 pinned in `uv.lock`, so installing it is:
 
@@ -96,9 +101,69 @@ uv sync
 .venv/bin/mojo --version
 ```
 
-Mojo runs only on the host developer machine. Nothing under
-`repos/sponge/src/` ever links Mojo; the language boundary is
-"Mojo for the host, C++ for Genode".
+That one install covers both roles: the same `mojo` binary builds the
+`tool/*.mojo` helpers and emits the native objects that Genode
+components link (§1.5). The `uv.lock` pin is load-bearing, not
+cosmetic; §1.5 lists the SDK-bump checks it governs.
+
+### 1.5 Mojo objects in the Genode build
+
+Mojo reaches a Genode component as a native object plus a thin C++
+adapter, not as a linked Mojo runtime. The proven path (seL4 QEMU
+receipts in `docs/evidence/mojo-ffi-probe.md`):
+
+1. Emit a position-independent relocatable object:
+
+   ```bash
+   mojo build --emit object --relocation-model=pic -o probe.o probe.mojo
+   ```
+
+2. Export entry points under the C calling convention so the C++ side
+   can call them:
+
+   ```mojo
+   @export("mojo_sum")
+   def mojo_sum(a: Int64, b: Int64) abi("C") -> Int64:
+       return a + b
+   ```
+
+3. List the object in the component's `target.mk` with `SRC_O`.
+   Genode's `generic.mk` folds `SRC_O` into the link set alongside
+   `SRC_CC`:
+
+   ```makefile
+   SRC_CC := main.cc
+   SRC_O  := probe.o
+   ```
+
+4. Keep the Genode boundary in a thin C++ adapter: a
+   `Component::construct` glue calls the exported functions and owns
+   the parent-session plumbing. Pure-Mojo session plumbing is
+   unproven (see the limits), so the adapter is the honest seam.
+
+Limits, binding (from the probe evidence):
+
+- `--emit object` is **experimental**; the flag set can change
+  between Mojo releases.
+- **KGEN runtime symbols are version-sensitive.** An emitted object
+  references compiler-internal runtime symbols that move between
+  releases. The proven libc-free `Genode::Heap` shim covers
+  allocation and stdlib `List[Int64]`, and nothing more.
+- **No freestanding stdlib profile exists.** Async, Python interop,
+  POSIX I/O, and pure-Mojo Genode session plumbing are outside the
+  initial subset entirely: no Sponge code may rely on them until a
+  probe with its own receipts proves them.
+
+Verification requirements:
+
+- **On every Mojo SDK bump** (any `uv.lock` change): rebuild the
+  objects and run `nm -u` on each; every undefined KGEN symbol must
+  be covered by the shim before the bump lands.
+- **Runtime proof is seL4 QEMU.** The receipts are `mojo-ffi-probe:
+  PASS sum=42` and `mojo-ffi-probe: PASS add=42 list-sum=45` on
+  base-sel4, with `./tool/build run sponge-minimal` green as the
+  control gate. base-linux runs are fast development feedback only
+  and do not count as verification for Mojo-on-Genode work.
 
 ---
 
@@ -220,6 +285,11 @@ To check whether a specific component's structure is complete
 ```
 
 This script only checks file presence; it does not compile anything.
+It is **C++-layout-oriented**: it looks for `target.mk` and `main.cc`
+and knows nothing about Mojo component layouts. It must be extended
+when the first Mojo component lands; until then it does not validate
+Mojo sources and must not be read as Mojo-aware.
+
 For real compilation feedback, run the Genode build directly:
 
 ```bash
@@ -855,7 +925,16 @@ Summary of `AGENTS.md` §4:
 
 ## 7. Coding Rules Summary
 
-(Excerpt from `AGENTS.md` §3)
+Mojo is the preferred and default language for Sponge-owned code,
+host tools and Genode/seL4 components alike
+(`docs/plans/mojo-language-policy.md` DLP.1). New components start in
+Mojo within the proven subset of §1.5; existing C++ migrates
+opportunistically per unit, with run scenarios green at every step.
+The rules below are the C++ rules: they govern thin adapters (entry
+glue and `SRC_O` seams), existing C++ components not yet migrated,
+and anything under `genode/`.
+
+(Excerpt from `AGENTS.md` §3, applying to that C++ code)
 
 - **C++ standard**: follow the version Genode supports (C++17
   recommended).

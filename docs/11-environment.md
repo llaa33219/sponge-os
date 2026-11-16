@@ -82,7 +82,7 @@ sponge-os/
 │       ├── include/sponge/     # Shared headers
 │       ├── tool/               # Sponge-owned compiler wrappers (Genode build hooks)
 │       └── run/                # Relative symlinks to ../../../run/ (one per scenario)
-├── tool/                       # Sponge-owned host-side tooling (Mojo)
+├── tool/                       # Sponge-owned tooling (Mojo: preferred language, host + component objects)
 ├── run/                        # Genode run scenarios (.run files)
 └── var/                        # Local caches (git-ignored): qt6 host tools, distfiles
 ```
@@ -117,7 +117,7 @@ has a source. No exceptions.
 | **Qt6** | 6.8.3 | `qt6_base` port (`qt6_base.hash = 67348e71a70138daef52b157470f5796f758507f`) and `qt6_api` port (`qt6_api.hash = 55bfba5647db8f93f91a61a61ee0548de108348c`) | host tools produced by `make -f tool/tool_chain_qt6 build` + `install INSTALL_LOCATION=<repo>/var/qt6-host-tools SUDO=` (build tree ~6.0 GB under `genode/contrib/qt6-host-*`, installed tools ~80 MB at `var/qt6-host-tools`), referenced by `QT_TOOLS_DIR ?= $(abspath $(GENODE_DIR)/../var/qt6-host-tools)` in `genode/repos/libports/lib/import/import-qt6.inc` (Sponge patch #3) |
 | **QEMU** | 11.0.3 (Phase 12 verified against QEMU 11.0.3; W0 host QEMU was 11.0.3, not the 11.0.2 pin in earlier revisions) | host package | managed by the operating-system package manager; no Sponge-side pinning needed |
 | **GNU Make** | system package | n/a | managed by the operating-system package manager |
-| **Mojo SDK** | pinned by `uv.lock` (currently 1.0.0b2) | `pyproject.toml` + `uv.lock` (committed); `uv sync` materializes the project-local `.venv` | used by host-side tooling under `tool/`; not used at runtime inside Genode |
+| **Mojo SDK** | pinned by `uv.lock` (currently 1.0.0b2) | `pyproject.toml` + `uv.lock` (committed); `uv sync` materializes the project-local `.venv` | preferred language for Sponge-owned code (policy: `docs/plans/mojo-language-policy.md`): host tooling under `tool/` and the Mojo objects that Genode/seL4 components link via `SRC_O` (`docs/08-development.md` §1.5). The `uv.lock` pin is **load-bearing**: KGEN runtime symbols are version-sensitive (see `docs/evidence/mojo-ffi-probe.md` §5), so a bump is not complete until the `nm -u` re-check of emitted objects and a probe re-run pass. |
 | **Python modules (seL4 kernel build)** | as-needed | `future jinja2 ply six lxml pyfdt jsonschema pyyaml` | `uv pip install future jinja2 ply six lxml pyfdt jsonschema pyyaml` into the same `.venv`; only required when `KERNEL ?= sel4`. (`pyyaml` is imported by seL4's `tools/config_gen.py`.) |
 | **Python modules (Qt6 host-tools build)** | as-needed | (via `tool_chain_qt6`, system packages) | only required for the one-time Qt6 host-tools build (§7.1 step 7). |
 | **`bc`** | system package | n/a | required only when building the `drivers_interactive-pc` USB stack on base-sel4: `dde_linux`'s `usb_hid` / `pc_usb_host` build the Linux kernel, whose `include/generated/timeconst.h` is generated with `bc`. Install via the distro package manager, or drop a portable `busybox` on `PATH` with a `bc -> busybox` symlink. Not needed for base-linux runs. |
@@ -481,7 +481,7 @@ The git-ignore covers the three big non-source directories:
 
 ## 6. What is Deliberately NOT Vendored
 
-Three categories of artifact stay outside the repository on purpose.
+Four categories of artifact stay outside the repository on purpose.
 Each one is recoverable from a public source by SHA-256 (or by
 distribution package manager), so losing the local copy is recoverable
 but not free.
@@ -508,10 +508,16 @@ but not free.
    system package manager. Pinning host-package versions is the job of
    the developer's distro, not this repository.
 
-4. **The Mojo SDK** (`pyproject.toml` + `uv.lock`, `uv sync`). Mojo is a
-   host-only language used by `tool/*.mojo`. The exact release is pinned
-   by the committed `uv.lock` (currently 1.0.0b2) and materialized into
-   a project-local `.venv`; it never touches Genode.
+4. **The Mojo SDK** (`pyproject.toml` + `uv.lock`, `uv sync`). Mojo is
+   the preferred language for Sponge-owned code
+   (`docs/plans/mojo-language-policy.md`): it builds the `tool/*.mojo`
+   helpers and the Mojo objects that Genode/seL4 components link
+   (`docs/08-development.md` §1.5). The exact release is pinned by
+   the committed `uv.lock` (currently 1.0.0b2) and materialized into
+   a project-local `.venv`. The pin is load-bearing: KGEN runtime
+   symbols are version-sensitive (`docs/evidence/mojo-ffi-probe.md`
+   §5), so an SDK bump is not complete until the `nm -u` re-check of
+   the emitted objects and a probe re-run pass.
 
 ---
 
@@ -561,9 +567,13 @@ Every step is reproducible. The exact ordered sequence, in one place:
    The clone path can contain almost anything **except spaces** (see
    §8 / Phase 1 lessons in `docs/09-roadmap.md`).
 
-4. **Install the Mojo SDK** for the host-side tools under `tool/`.
-   The dependency is declared in the committed `pyproject.toml` and
-   pinned in `uv.lock`, so:
+4. **Install the Mojo SDK.** It serves both the host-side tools under
+   `tool/` and the Mojo object builds that Genode/seL4 components
+   link (`docs/08-development.md` §1.5), so this install covers
+   component builds too, not just host tooling. The dependency is
+   declared in the committed `pyproject.toml` and pinned in `uv.lock`
+   (the pin is load-bearing for KGEN symbol compatibility; see §3
+   and `docs/evidence/mojo-ffi-probe.md` §5), so:
    ```bash
    uv sync
    .venv/bin/mojo --version
