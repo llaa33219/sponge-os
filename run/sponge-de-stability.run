@@ -608,10 +608,8 @@ append qemu_args " -device nec-usb-xhci,id=xhci -device usb-tablet "
 #   3. wait for the first cycle PASS
 #   4. wait for the final PASS marker (1800s wall-clock budget)
 #
-# All gates use $qemu_spawn_id so a QEMU respawn (e.g. after the
-# documented seL4 "deadlock ahead, mutex=" cluster) doesn't collision
-# with a different run's port — see AGENTS.md / docs/08 §"Host-driven
-# QMP input" for the deadlock cluster + single-retry convention.
+# This is the scenario's only gate, so let run_genode_until perform the
+# initial power-on and spawn QEMU. Passing $qemu_spawn_id here would
+# capture its initial empty value and wait without ever spawning QEMU.
 #
-global qemu_spawn_id
-run_genode_until {.*stability-probe: PASS.*} 1800 $qemu_spawn_id
+run_genode_until {.*stability-probe: PASS.*} 1800

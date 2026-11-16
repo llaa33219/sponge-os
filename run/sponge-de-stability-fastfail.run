@@ -535,8 +535,8 @@ append qemu_args " -device nec-usb-xhci,id=xhci -device usb-tablet "
 
 #
 # Sequence: 3 successful cycles, then the deliberate FAIL marker.
-# All gates use $qemu_spawn_id for the documented seL4 deadlock-
-# cluster retry convention.
+# This is the scenario's only gate, so let run_genode_until perform the
+# initial power-on and spawn QEMU. Passing $qemu_spawn_id here would
+# capture its initial empty value and wait without ever spawning QEMU.
 #
-global qemu_spawn_id
-run_genode_until {.*stability-probe: FAIL.*} 600 $qemu_spawn_id
+run_genode_until {.*stability-probe: FAIL.*} 600
