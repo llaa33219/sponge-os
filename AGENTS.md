@@ -104,7 +104,12 @@ flow and `docs/11-environment.md` for the full environment contract.
 
 ## 3. Coding Rules
 
-### 3.1 C++ (Genode Components)
+### 3.1 C++ (Adapters and Existing Components)
+
+New Sponge-owned components default to Mojo (§3.5, §3.6). C++ stays
+first-class for existing components, for thin Genode adapters at the
+Mojo/Genode boundary, and wherever a recorded reason applies. All C++
+code in the repository follows these rules:
 
 - **C++ standard**: follow the version supported by Genode (currently C++17 recommended).
 - **Naming conventions**:
@@ -128,7 +133,12 @@ flow and `docs/11-environment.md` for the full environment contract.
 
 ### 3.2 Component Directory Layout
 
-Every component directory must contain the following files:
+Every component directory must contain the following files. Two
+layouts are valid: the C++ layout for existing components and any
+component with a recorded C++ reason, and the Mojo-first layout for
+new components (§3.6).
+
+C++ component (existing convention, still valid):
 
 ```
 src/<component>/
@@ -143,6 +153,31 @@ src/<component>/
 ```makefile
 TARGET   := <component_name>
 SRC_CC   := main.cc <other .cc files>
+LIBS     := base # additional libraries
+INC_DIR  := $(PRG_DIR)/include
+```
+
+Mojo-first component (`.mojo` sources plus a thin `main.cc` adapter):
+
+```
+src/<component>/
+├── target.mk              # Genode build target definition
+├── main.cc                # Thin C++ entry adapter (Component::construct glue)
+├── <name>.mojo            # Mojo sources (see §3.5 and §3.6)
+├── README.md              # Component description (optional)
+└── ...                    # Component-specific sources
+```
+
+`target.mk` keeps the adapter C++ on `SRC_CC` and links the
+Mojo-produced objects through `SRC_O` (Genode's `generic.mk` folds
+`SRC_O` into the link set alongside `SRC_CC`; the objects come from
+`mojo build --emit object`, whose experimental status is noted in
+§3.6):
+
+```makefile
+TARGET   := <component_name>
+SRC_CC   := main.cc          # thin C++ entry adapter only
+SRC_O    := <name>.o         # Mojo-produced objects
 LIBS     := base # additional libraries
 INC_DIR  := $(PRG_DIR)/include
 ```
@@ -173,14 +208,17 @@ When adding a new feature (subcommand) to vct, you **must** follow these:
   should be designable as a separate Genode component. Start with a
   single component, but keep boundaries loose.
 
-### 3.5 Host-Side Tooling (Mojo)
+### 3.5 Mojo (Preferred Default Language)
 
-- All scripts under `tool/` are written in **Mojo** (Modular's language).
-  Each tool ships as a `.mojo` source file with a thin bash launcher that
+- **Default language**: Mojo (Modular's language) is the preferred and
+  default language for Sponge-owned code, both host-side tooling and
+  Genode/seL4 components. Language choice defaults to Mojo; C++ in
+  Sponge-owned code is justified by §3.1 and §3.6 (adapters, existing
+  components, recorded reasons). The binding decision record is
+  `docs/plans/mojo-language-policy.md`.
+- All scripts under `tool/` are written in **Mojo**. Each tool ships as
+  a `.mojo` source file with a thin bash launcher that
   execs `mojo tool/<name>.mojo "$@"`.
-- The hard boundary is "runs on the host developer machine" (Mojo) vs
-  "runs inside Genode" (C++). Never write OS components in Mojo; Genode
-  only targets C++.
 - Tool scripts MAY automate setup steps against the **vendored** tree at
   `genode/` (creating build directories, writing `etc/build.conf`,
   running `prepare_port`) because that tree is part of this repository.
@@ -189,9 +227,64 @@ When adding a new feature (subcommand) to vct, you **must** follow these:
   another home-directory path). Every automated step must also be
   documented as a manual step in `docs/08-development.md` (control
   escape hatch).
-- Always follow the `mojo-syntax` skill (`modular/skills@mojo-syntax`)
-  for current syntax — Mojo evolves rapidly and pretrained patterns go
+- **Initial in-OS subset**: Mojo code that runs inside Genode stays
+  within the proven subset of `docs/evidence/mojo-ffi-probe.md`.
+  Python interop and POSIX I/O are **forbidden** in this subset because
+  neither is proven in the libc-free in-OS setting. Async and pure-Mojo
+  Genode session plumbing are equally unproven: designs that need them
+  probe them first or keep that seam in the thin C++ adapter (§3.6).
+- Before writing any Mojo, load the `mojo-syntax` skill
+  (`modular/skills@mojo-syntax`) and follow the current-document
+  workflow of §3.6. Mojo evolves rapidly and pretrained patterns go
   stale.
+
+### 3.6 Mojo Components and Migration
+
+- **Native Mojo over wrappers**: when a feature can be written natively
+  in Mojo or obtained by binding an existing C/C++ library, prefer the
+  native Mojo implementation where feasible. Feasibility is judged
+  against the proven subset in `docs/evidence/mojo-ffi-probe.md`, not
+  against wishlists. A binding stays legitimate when the subset cannot
+  express the work.
+- **New components default to native Mojo.** A new component under
+  `repos/sponge/` starts in Mojo unless a recorded reason says
+  otherwise (unsupported subset, a Genode framework surface that only
+  C++ can serve, or a dependency that is itself C++).
+- **Existing Sponge-owned C/C++ SHOULD migrate incrementally** to Mojo
+  where the required subset is supportable, with run scenarios green at
+  every step. Each migrated unit lands as its own logical change
+  (§4.2) and keeps the tree bootable. Migration is opportunistic and
+  per-unit, triggered by touching that unit or by a dedicated migration
+  task. The Qt-based Sponge DE carries **no** immediate migration
+  mandate.
+- **Exceptions, not migration targets**: thin C++ Genode adapters (the
+  `Component::construct` entry glue and the `SRC_O` link seam of §3.2)
+  and everything under `genode/` plus upstream Qt code stay as they
+  are. Pure-Mojo Genode session plumbing is unproven, so the C++
+  adapter is the honest seam until a probe receipt says otherwise.
+- **No big-bang rewrite.** There is no repository-wide C++-to-Mojo
+  conversion event, no freeze on C++ commits, and no deadline that
+  forces one. §3.5 and this section govern new and existing code so the
+  tree stays green throughout.
+- **Current-document workflow, mandatory before writing any Mojo**:
+  (1) load the `mojo-syntax` skill; (2) consult the current official
+  Mojo documentation (<https://mojolang.org/docs/>) for the constructs
+  in play; (3) write the code; (4) verify by build and by the relevant
+  run scenario (§4.2). Pretrained Mojo knowledge is treated as stale by
+  default.
+- **Honest caveats (binding)**: `mojo build --emit object` is
+  experimental; KGEN runtime symbols are version-sensitive (pin the
+  toolchain, re-probe on every bump); no freestanding stdlib profile
+  exists; async, Python interop, POSIX I/O, and pure-Mojo Genode
+  session plumbing are unproven and must not be claimed or relied on
+  without their own probe receipts.
+- Evidence and policy:
+  [`docs/evidence/mojo-ffi-probe.md`](docs/evidence/mojo-ffi-probe.md)
+  (what is proven on seL4 QEMU: `mojo-ffi-probe: PASS sum=42` and
+  `mojo-ffi-probe: PASS add=42 list-sum=45` behind a `Genode::Heap`
+  KGEN shim, not full Mojo runtime coverage) and
+  [`docs/plans/mojo-language-policy.md`](docs/plans/mojo-language-policy.md)
+  (binding decision record).
 
 ---
 

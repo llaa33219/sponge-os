@@ -242,6 +242,26 @@ All Sponge OS code must obey the following:
    later.
 5. **Automation must be transparent**: every automation action must be
    inspectable through logs and `--explain`.
+6. **Implementation language: Mojo first.** Mojo is the preferred and
+   default language for Sponge-owned code, both the host tooling under
+   `tool/` and the Genode/seL4 components under `repos/sponge/`. C++
+   is kept as a deliberate adapter tool, not as the default. Exceptions
+   that stay C++ by design: thin glue at the Mojo/Genode boundary (the
+   `Component::construct` entry glue and the `SRC_O` link seam), plus
+   everything upstream (the `genode/` tree and upstream Qt code).
+   Existing Sponge-owned C++ migrates to Mojo incrementally, one unit
+   at a time, with the run scenarios green at every step; there is no
+   big-bang rewrite. New components start in Mojo unless a recorded
+   reason says otherwise. Inside the OS, only the subset proven by the
+   FFI probe may be used until new probes widen it. Decision record:
+   [`docs/plans/mojo-language-policy.md`](plans/mojo-language-policy.md);
+   receipts and support boundary:
+   [`docs/evidence/mojo-ffi-probe.md`](evidence/mojo-ffi-probe.md).
+   This principle changes no topology: the desktop still runs as
+   documented above, Qt on the upstream nitpicker stack, and the
+   reserved native-line repository names `sponge-wm`, `sponge-de`, and
+   `sponge-compositor` mark a planned direction, not an implemented
+   repository split.
 
 Violations of the above fall under the "absolute prohibitions" in
 `AGENTS.md`.

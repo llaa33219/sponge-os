@@ -171,8 +171,19 @@ Sponge OS components follow this lifecycle.
 When adding a new component to the Sponge OS repository:
 
 1. Create `repos/sponge/src/<component_name>/`.
-2. Write `target.mk`, `main.cc`, and `README.md` (see `AGENTS.md` §3.2
-   for the format).
+2. Write `target.mk`, the sources, and `README.md` (see `AGENTS.md` §3.2
+   for the format). Mojo is the preferred source language for new
+   Sponge-owned components (`AGENTS.md` §3.5/§3.6): keep the logic in
+   `.mojo` sources compiled with `mojo build --emit object` and linked
+   through `SRC_O` in `target.mk`, behind a thin `main.cc` C++ adapter
+   that provides the `Component::construct` entry glue. Stay inside the
+   probe-proven subset of
+   [`docs/evidence/mojo-ffi-probe.md`](evidence/mojo-ffi-probe.md);
+   anything beyond it needs its own probe receipt first
+   ([`docs/plans/mojo-language-policy.md`](plans/mojo-language-policy.md)
+   §5). A recorded reason (unsupported subset, a C++-only Genode
+   surface, a dependency that is itself C++) may still place a new
+   component in C++.
 3. If the component exposes a backend RPC, place its interface header
    under `repos/sponge/include/sponge/`.
 4. Add the component to the inventory table in `docs/04-components.md`.
@@ -183,9 +194,22 @@ When adding a new component to the Sponge OS repository:
 Every new component must:
 
 - Request only the minimum privileges it needs (`AGENTS.md` §1.2).
-- Follow the language policy in `AGENTS.md` §1.3.
+- Follow the human-language policy in `AGENTS.md` §1.3 and the
+  programming-language policy in `AGENTS.md` §3.5/§3.6 (Mojo preferred
+  for Sponge-owned code; decision record
+  [`docs/plans/mojo-language-policy.md`](plans/mojo-language-policy.md),
+  in-OS boundary
+  [`docs/evidence/mojo-ffi-probe.md`](evidence/mojo-ffi-probe.md)).
 - Log `Genode::warning("not implemented: ...")` for empty
   implementations (`AGENTS.md` §5.3).
+
+> **Reserved names, no split.** The Mojo policy record reserves the
+> repository names `sponge-wm`, `sponge-de`, and `sponge-compositor`
+> for a future native line
+> ([`docs/plans/mojo-language-policy.md`](plans/mojo-language-policy.md)
+> DLP.8). Nothing is renamed or split today: the components run as
+> listed above, with the Qt-based Sponge DE on the upstream
+> `nitpicker` compositor.
 
 ---
 
