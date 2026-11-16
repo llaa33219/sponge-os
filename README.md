@@ -70,327 +70,38 @@ See [`docs/04-components.md`](docs/04-components.md) for the detailed design.
 
 ## Current Status
 
-🟢 **0.2.0, Archaeocyte** — the desktop boots and is fully
-interactive on real hardware (LG gram 17ZD90N-VX7BK: panel, window
-and in-window interaction, and mouse movement all working, at the
-panel's native 2560x1600). Phase 7 is done with caveats,
-Phase 10 (fully interactive desktop) is done, Phase 11 (DE
-customization: configd-driven panel, four shipped themes, themed
-window chrome) is done, and Phase 14 (Sponge DE as a
-daily-usable desktop) is closed-out with honest disposition notes
-in [`docs/09-roadmap.md`](docs/09-roadmap.md) §10 Phase 14 — three
-of four completion criteria delivered, the fourth (session
-stability wall-clock cycle) is partial because the 30-min scenario
-is a sustained workload that the close-out session skips by
-design; see
-[`docs/evidence/phase14-index.md`](docs/evidence/phase14-index.md).
-**Phase 15 (real-hardware boot): the desktop boots on hardware.**
-15-1 (bake profiles `minimal`/`desktop` via `run/bake.inc` + `tool/bake`
-+ first-boot configd seeding + `vct bake`; UEFI product media via
-`tool/dist --firmware uefi`) and 15-2 (usb-mouse envelope,
-hardware-matrix update with the D15.11 real-hardware admission
-policy, 9-scenario regression sweep all-PASS) are done; 15-3 reached
-its first-boot milestone on 2026-08-23 — the full desktop boots from
-USB on the LG gram 17ZD90N (`alpha_probe` exited 0 on the panel:
-compositor pixel checks passed on real hardware; interactive USB-mouse
-confirmation was still pending then), after a four-defect bring-up
-chain (kernel untyped coverage, core high-phys CNode, retype
-watermark, per-PD cap capacity) each layer found from the kernel
-early-FB console's on-panel boot log. Final interactive input
-confirmation (USB mouse) completed 2026-09-16 with the 0.2.0
-interaction acceptance (pointer/click, in-window interaction, mouse
-movement); trackpad/Wi-Fi remain pre-registered
-gaps — see
-[`docs/plans/phase15-real-hardware-boot.md`](docs/plans/phase15-real-hardware-boot.md)
-and [`docs/plans/phase15-hardware-boot-protocol.md`](docs/plans/phase15-hardware-boot-protocol.md).
-The verified release boots in QEMU on seL4. See
-[`docs/13-installation.md`](docs/13-installation.md) for prerequisites,
-media commands, the quick-start tour, and the complete limitations register.
+🟢 **0.2.0, Archaeocyte** (released 2026-09-16) — the desktop boots and
+is interactive on real hardware (LG gram 17ZD90N: panel at its native
+2560x1600, windows and in-window interaction, mouse input) and in QEMU
+on seL4. Phases 0–15 are complete; Phase 16 (daily-usable desktop
+defaults) is delivered with honest disclosures; Phase 17 (Sponge IME)
+and Phase 18 (GUI installer) are next. Shipped packages: terminal
+(bash/vim + UNIX toolset), Qt6 text editor, file manager, calculator,
+mupdf PDF viewer, and Falkon.
 
-The repository currently contains:
+Per-phase criteria, dispositions, and sweeps: [`docs/09-roadmap.md`](docs/09-roadmap.md)
+and [`docs/roadmap/`](docs/roadmap/); receipts: [`docs/evidence/`](docs/evidence/).
+Installation and the complete limitations register:
+[`docs/13-installation.md`](docs/13-installation.md).
 
-- ✅ Project philosophy and architectural principles defined
-- ✅ Genode-based directory structure and build system skeleton
-- ✅ vct boots as a real Genode component on base-linux (Genode 26.08)
-  and on base-sel4 in QEMU
-- ✅ vct day-to-day commands: `status`, `component list`, `config`,
-  `install`/`remove`/`list`, `theme`, `launch`, `update`, `search`,
-  `shutdown`/`reboot`, and `leitzentrale` — with `--json`, `--lang ko`,
-  and `--manual` escape hatches
-- ✅ 0.2.0 seL4 disk image and ISO boot in QEMU and on real hardware
-  (`run/sponge-alpha.run` and the media scenarios; LG gram 17ZD90N)
-- ✅ Alpha packages verified in QEMU: terminal with bash/vim and a UNIX
-  CLI toolset (coreutils, grep, sed, tar, less, findutils, diffutils,
-  which — Phase 13), Qt6 text editor, and Sponge file manager
-  (`run/sponge-terminal.run`, `run/sponge-textedit.run`,
-  `run/sponge-files.run`)
-- ✅ Phase 13 packages: Qt6 calculator (`run/sponge-calculator.run`)
-  and mupdf PDF viewer with bundled sample document
-  (`run/sponge-pdf-view.run`), both source-built and boot-verified on
-  base-sel4; authoring guide at `docs/16-package-authoring.md`
-- ✅ Falkon is packaged, boots from disk, AND reaches first paint on the Alpha seL4 media (Phase 9 closed the capability-chain blocker); see
-  [`docs/13-installation.md`](docs/13-installation.md#6-known-limitations)
-- ⚠️ Alpha installs enable pre-staged packages and do not persist across
-  reboots on seL4 media; networking is QEMU slirp only
-- ✅ Genode 26.08 vendored at `genode/` (pinned to upstream commit
-  `d18ee9e917`); one `git clone sponge-os` brings the whole build
-- ✅ Sponge DE (Qt6 6.8.3) renders a themed panel + window on nitpicker
-  with verified input, integrated with Genode's upstream
-  `wm` + `window_layouter` + `decorator` stack (window dragging verified)
-- ✅ Package management: `sponge_pkgd` backend, dependency resolution,
-  nested `pkg_runtime`, installed-set inspection, and launch lifecycle
-  (`run/sponge-pkg-install.run`, `run/sponge-pkg-list.run`,
-  `run/sponge-launch.run`)
-- ✅ Configuration and theme backends (`sponge_configd`, `sponge_themed`)
-  with live theme reload shared by vct and Sponge DE
-- ✅ Launcher menu fed by `sponge_pkgd`'s installed-set broadcast
-- ✅ PC drivers as **installable packages**: `vct install pc_nic` brings
-  the Ethernet driver up through the stock package flow in a dedicated
-  `driver_runtime` sandbox — a second nested `init` inside `system`,
-  sibling of `pkg_runtime`, whose config `sponge_pkgd` also owns. The
-  split is the minimum-privilege boundary: hardware capabilities
-  (`Platform`, `Dma`, `Irq`, `Io_mem`, `Io_port`) are granted by a
-  generated `<parent-provides>` list that no application package can
-  reach. `pc_nic` is verified end to end in QEMU (installed into
-  `driver_runtime`, binds the e1000, leases `10.0.2.15`);
-  `usb_net`, `pc_wifi`, `intel_gpu` and `pc_intel_fb` build and install
-  but are deliberately **not** autostarted — no QEMU model exists for
-  their hardware, so starting them silently would be a claim we cannot
-  back. **The display driver is a package too**: `fb_vesa` (BIOS/VESA)
-  and `fb_boot` (UEFI/GOP) are ordinary driver packages that the media's
-  bake manifest seeds, so the boot display arrives through
-  `driver_runtime` instead of a privileged Tier-0 node, and switching
-  display drivers is `vct remove <old> && vct install <new>` — verified
-  at runtime, with the composited screen coming back on the other
-  driver (`SPONGE_FB_SWITCH=on`). A second fb driver running at the
-  same time is refused by `sponge_pkgd` as `exclusive-conflict`.
-  Per-driver state and bring-up steps:
-  [`docs/15-hardware-compatibility.md` §8](docs/15-hardware-compatibility.md);
-  receipts: [`docs/evidence/driver-packages.md`](docs/evidence/driver-packages.md)
-  and [`docs/evidence/fb-driver-packages.md`](docs/evidence/fb-driver-packages.md).
-  Gates: `run/sponge-pkg-driver.run` (install + exclusivity),
-  `run/sponge-desktop-disk.run` and `run/sponge-desktop-disk-uefi.run`
-  (the display, and the runtime switch with `SPONGE_FB_SWITCH=on`).
-- ✅ Leitzentrale integration: Sculpt's expert interface boots as a
-  subsystem, shows as a Sponge DE window via `lz_viewer`, and model
-  changes are detected and resolved (`vct leitzentrale keep/revert`)
-- ✅ base-sel4 interactive driver stack: `run/sponge-de-sel4-interactive.run`
-  boots seL4 on QEMU with vesa_fb, ps2, and USB tablet input
-  (`drivers_interactive-pc`), and Sponge DE (Qt6/Mesa softpipe) renders
-  the themed desktop on seL4. Phase 10 strengthened every input action
-  to the real QMP-driven chain: a host-driven QEMU QMP click reaches
-  sponge-de through the real
-  `usb-tablet`/`ps2` → `pc_usb_host`/`usb_hid` → `event_filter` → `nitpicker`
-  → `sponge-de` driver path, the panel launcher toggle opens + closes
-  the launcher popup on host QMP clicks, and clicking a launcher entry
-  fires the full click-to-launch chain (`Qt` → `LauncherController`
-  → `sponge_pkgd` `_do_launch` → `pkg_gui_demo` first paint). The four
-  sister scenarios (`sponge-wm-qmp.run`, `sponge-terminal-qmp.run`,
-  `sponge-textedit-qmp.run`) prove window dragging + QMP `send-key`
-  keyboard input to a focused terminal + text editor respectively.
-  See `docs/evidence/phase10-index.md` and `docs/08-development.md`
-  §4.4 (root cause of the former EGL hang: capability exhaustion on
-  seL4, fixed by sizing `caps`; see `docs/09-roadmap.md` §11.1).
-- ✅ Phase 11 DE customization: `panel.height`, `panel.visible_widgets`,
-  `clock.format`, and `launcher.sort_by` are live `sponge_configd`
-  keys applied by Sponge DE's new `ConfigController`
-  (`run/sponge-panel-config{,-sel4}.run`); four shipped themes
-  (`default`/`light`/`dark`/`compact`) with live reload and a hardened
-  unknown-theme fallback (`run/sponge-theme.run`); and Sponge-themed
-  window chrome — upstream `themed_decorator` fed a Sponge-authored
-  theme tar (`./tool/decor_assets`) with the title-bar tint following
-  the active theme via the new `sponge_decorator_bridge`
-  (`run/sponge-de-themed-chrome.run`, drag-verified on seL4). See
-  `docs/evidence/phase11-index.md`.
-- ✅ Phase 14 W7 window management: the panel tasklist
-  (`repos/sponge/src/sponge-de/panel/tasklist/`) is the deterministic
-  minimize/restore/close path for the window stack (U3 — no
-  decorative-only minimize). The `TasklistController` subscribes to
-  wm's `window_list` and the layouter's `window_layout` reports;
-  per-window click writes the layouter's `rules` ROM (in
-  `rules="rom"` mode) and emits a `focus_request` report. The
-  `TasklistWidget` is rendered as a horizontal strip inside the
-  panel QHBoxLayout, with three visual states (Normal-Visible,
-  Normal-Visible-Focused, Minimized). The state machine
-  (`docs/plans/wm-state-table.md`) is exercised by the
-  `run/sponge-wm-tasks.run` acceptance scenario. See
-  `docs/05-sponge-de.md` §4.6.
-- 🚧 Phase 14 close-out (W12): four completion criteria are checked
-  with honest disposition notes in
-  `docs/09-roadmap.md` §10 Phase 14 — three delivered, one
-  partial. **Delivered:** notifications (`run/sponge-notify.run` →
-  `notify-probe: PASS`), clipboard (`run/sponge-clipboard-qtsettext.run` →
-  `clipboard-probe: PASS`, qtsettext: clipboard Qt -> server write
-  harness PASSED), window management minimize/restore/focus
-  (`run/sponge-wm-tasks.run` → `wm-tasks-probe: PASS`), and the
-  full 4-way paper-cut disposition matrix (50 rows: Resolved in 14
-  / Re-scoped / Blocked / Not-a-defect) per U5, with W11 closing
-  every Phase-14-relevant item. **Partial:** session stability —
-  the 200-cycle leak-audit probe and the 5-cycle fast-fail variant
-  are boot-verified; the 30-min wall-clock cycle is a sustained
-  workload that exceeds the W12 20-min/scenario skip rule by
-  design (re-verify in a dedicated Phase-15 close-out pass).
-  **Partial:** everyday-workflow scenario — `run/sponge-de-workflow.run`
-  steps 1-4 PASS (boot → terminal → textedit → cross-component
-  clipboard; U2 holds because the `clipboard_qtsettext` harness
-  and the workflow probe are separate address spaces); step 5
-  (tasklist click on the heavier workflow topology) is blocked by
-  a layouter hover-state timing race documented in
-  `docs/evidence/phase14-w8-workflow-scenario.md` (the W7 tasklist
-  recipe works on the standalone wm-tasks topology). **Falkon
-  browser is fully proven** via `run/sponge-falkon-rescue.run`
-  (D14.5 Attempt 1 PASS: booted from disk, window pixel-verified,
-  fixture page loaded over the `pc_nic`/slirp stack). Phase 15+
-  limitations register: every `Re-scoped` paper-cut row carries
-  its target phase in the plan appendix and the
-  `docs/evidence/phase14-index.md` §5 honest-limitations register.
-  W12 regression sweep (6 scenarios, serial `make -j1`):
-  `sponge-de-test`, `sponge-alpha`, `sponge-wm-tasks`,
-  `sponge-clipboard-qtsettext`, `sponge-notify`,
-  `sponge-configd-persist` — all PASS. Full receipts:
-  `docs/evidence/phase14-index.md` +
-  `docs/evidence/phase14-envelope-*.log`.
-- ✅ Phase 16 (practical daily-usable desktop defaults and
-  configuration): the shipped img/iso boots straight into a
-  usable, configurable desktop with every common desktop action
-  reachable through the DE itself, without hand-editing config
-  files. 10 of 12 completion criteria are **delivered** with
-  scenario-gated PASS markers on base-sel4 + QEMU (or base-linux
-  for the settings-dialog fast path); 2 of 12 are **delivered with
-  honest disclosure** (criteria 6 + 7 carry the D16.7 IMG-only
-  honest disclosure for ISO media; criterion 10 carries the W6
-  deviation 1 honest disclosure for the per-event right-click
-  delivery on the background widget). The four canonical Phase 16
-  everyday configurations now finish in 1 keystroke (open the
-  launcher via Super), 3 clicks (Settings → Panel tab → spin
-  height; Settings → Background tab → pick image; or panel menu
-  → Settings → Panel → spin), or 4 clicks (Settings → Panel tab
-  → enter id → Add a second panel) — measured in
-  `docs/evidence/phase16-index.md` §7 per `AGENTS.md` §5.1. The
-  Registry re-architecture lands: `sponge_configd`'s
-  `MAX_KEYS = 16 → 32`, a new `MAX_PATTERN_KEYS = 32` array of
-  per-id `Key_def` clones (the W2 pattern-key infrastructure;
-  chars `[a-z0-9_-]{1,16}`), four new flat keys
-  (`background.color` hex-validated, `background.image`
-  allowlist-validated, `panel.ids` comma-list, `shortcuts.bindings`
-  structured-callback-validated), and the `panel.visible_widgets`
-  enum-list extended from `{clock, launcher}` to
-  `{clock, launcher, tasklist}`. The phase wires the bake profile
-  (`pkg/bake/desktop.profile`) into all six product scenarios
-  (`sponge-alpha.run` + the 5 desktop-disk variants) so first boot
-  on shipped media lands on the baked values (W3 +
-  `run/sponge-desktop-defaults-firstboot.run`). The
-  in-DE `settings/` module brought five tabs (Panel / Theme /
-  Background / Shortcuts / Defaults) via the `SettingsController`
-  (a dedicated `de_config_request` / `de_config_result` Report
-  channel per D16.1 + `AGENTS.md` §1.2 single-writer rule).
-  **Status note (2026-11-13):** that five-tab dialog was the
-  interim implementation and is now gone: the W4 provider split
-  (D16.9) removed the legacy dialog module and the universal
-  `SettingsController` writer and landed the provider-owned
-  `sponge_settings` control center of roadmap Criterion 18
-  (implemented and QEMU-verified on base-sel4; all six acceptance
-  scenarios pass after the three session opt-in gate fixes
-  `<quick_settings source="providers"/>`,
-  `<settings_launch source="pkgd"/>`, and the first-party
-  provider package config `<settings quick="yes"/>`, documented
-  in `docs/05-sponge-de.md` §5.4 and
-  `docs/12-package-format.md` §14.8; receipts in
-  `docs/evidence/criterion18-settings.md`). Criterion 18 remains
-  open: the physical-hardware matrix, one-reboot package-private
-  persistence, and the hardware control-center crash test are
-  not done.
-  **Addendum (2026-11-14): the real QMenu surface is BLOCKED.**
-  No regression is being hidden: all six settings acceptance
-  scenarios still pass (center, providers, thirdparty, failure,
-  vct, focus), along with the host suites, the changed-target
-  build, and product Alpha/BIOS-disk/UEFI-USB validation as
-  previously documented. The provider wire protocol and product
-  integration are verified, but real QMenu interaction is not.
-  That click-through, `run/sponge-settings-quickmenu.run`, stays a
-  red repro: panel QMenu open fails 3/3 with no menu pixels and no
-  quick lifecycle, the upstream-wm popup path dies on
-  invalid-view association (the direct-nitpicker Background
-  parent cannot be associated by wm), and the direct-nitpicker
-  path shows no menu. Corrected right-click delivery does reach
-  the real `PanelWidget::contextMenuEvent` (the original HMP
-  `mouse_button 1` was BTN_LEFT, now `mouse_button 2`), but the
-  mask fix alone does not make the UI work. The
-  PanelWidget/BackgroundWidget QMenu lifecycle is unproven and
-  blocked with no minimal justified fix left. Product
-  quick-settings/provider wiring exists, but the QMenu surface is
-  not accepted and remains non-functional, so this README does
-  not claim the quick-menu UX works. Criterion 18 stays open with
-  this structural blocker in addition to the hardware gates
-  above; full evidence in `docs/evidence/criterion18-settings.md`.
-  Right-click on the panel is wired to open a QMenu (Height
-  spinbox 16..128, Visible widgets checkboxes, Position radio
-  group; panel.position becomes live via dual nitpicker panel
-  domains `panel_top` / `panel_bottom` per U16.2 + D16.2. This
-  closes the Phase 14 W11 row #6 / #14 `Re-scoped → Phase 15+`
-  items as `Resolved in 16`).
-  Right-click on the background is wired to open a QMenu
-  (Settings / Launch / Show desktop) with the show-desktop toggle
-  reusing the Phase 14 W7 tasklist layouter-rule ROM overwrite
-  (U16.3). These two are Phase 16 W5/W6 wiring receipts; per the
-  2026-11-14 addendum above, the real PanelWidget/BackgroundWidget
-  QMenu open lifecycle is unproven and blocked, so they are not
-  proof of a working quick-menu UX. The keyboard-shortcut
-  framework is extensible via
-  `shortcuts.bindings` (initial bindings: Super → launcher,
-  Alt-Tab → focus next, Escape → dismiss topmost popover). Multi-
-  panel is generalized: arbitrary panel count on arbitrary edges
-  with per-panel `panel.<id>.{height,position,visible_widgets}`
-  keys. Mouse window resize on the release-media topology
-  (motif decorator): `run/sponge-de-release-resize.run` —
-  criterion-9 headline PASS. The Phase 16 vendored budget lands
-  one new row in `docs/11-environment.md` §4 (row #17, themed
-  decorator sizer + minimizer; closes the Phase 14 D14.8(d)
-  follow-up; D16.8 forbids any further vendored patches). Honest
-  limitations registered (`docs/evidence/phase16-index.md` §6):
-  W6 deviation 1 (background contextMenuEvent right-click
-  delivery), W7 finding 1 + 2 (event_filter composition +
-  report_rom late-creation), W8 5d (cross-panel tasklist focus),
-  W9 sibling flakiness (themed-chrome full 8-zone sequence), and
-  the planned Phase 17+ carry-overs (`panel.position` left/right,
-  real-hardware multi-panel regression, falkon on seL4, user-
-  supplied background image upload). W12 regression sweep
-  (36 scenarios, serial `make -j1`):
-  `sponge-minimal`, `sponge-de-test`, `sponge-de-sel4-interactive`,
-  `sponge-wm-qmp`, `sponge-launch`, `sponge-wm-tasks`,
-  `sponge-clipboard-qtsettext`, `sponge-notify`,
-  `sponge-configd-persist`, `sponge-panel-config-sel4`,
-  `sponge-de-themed-chrome`, `sponge-bake-firstboot`,
-  `sponge-bake-reset`, `sponge-alpha`,
-  `sponge-desktop-defaults-firstboot`,
-  `sponge-configd-pattern-keys`, `sponge-configd-shortcuts`,
-  `sponge-configd-badkey`, `sponge-de-settings`,
-  `sponge-de-settings-regression`, `sponge-panel-menu`,
-  `sponge-de-bgmenu` (structural, W6 deviation 1),
-  `sponge-de-bgimage`, `sponge-de-bgimage-badpath`,
-  `sponge-de-shortcuts`, `sponge-de-shortcuts-extend`,
-  `sponge-de-multipanel`, `sponge-de-multipanel-idspace`,
-  `sponge-de-themed-chrome-resize` (each zone individually;
-  full sequence flaky — Phase 17+), `sponge-de-release-resize`,
-  `sponge-textedit`, `sponge-files`, `sponge-calculator`,
-  `sponge-terminal`, `sponge-hw-matrix` —
-  **34 of 36 fully PASS; 2 of 36 PARTIAL** (the W6 deviation 1
-  structural gate + the W9 sibling full-sequence flakiness); **0
-  FAIL.** Full receipts: `docs/evidence/phase16-index.md` +
-  `docs/evidence/phase16-envelope-*.log`.
+### Open limitations (honest list)
 
-Verified vct boot output (base-sel4 on QEMU):
-
-```
-Genode 26.08
-699 MiB RAM and 523288 caps assigned to init
-[init -> vct] vct (0.2.0 / Archaeocyte) starting
-[init -> vct] vct — Very Convenient Tool
-[init -> vct] version: 0.2.0 (Archaeocyte)
-Run script execution successful.
-```
-
-See the [`docs/09-roadmap.md`](docs/09-roadmap.md) for the plan.
+- **Criterion 18 (Settings control center)** stays open: the provider
+  wiring is QEMU-verified, but the real QMenu quick-settings surface is
+  **blocked** (red repro `run/sponge-settings-quickmenu.run`) and the
+  physical-hardware matrix, one-reboot package persistence, and the
+  hardware control-center crash test have not run
+  ([detail](docs/roadmap/phase16-scope-expansion.md),
+  [evidence](docs/evidence/criterion18-settings.md)).
+- **Package persistence and networking**: Alpha installs enable
+  pre-staged packages and do not persist across reboots on seL4 media;
+  networking is QEMU slirp only ([detail](docs/13-installation.md)).
+- **Real hardware**: trackpad and Wi-Fi remain pre-registered gaps ([detail](docs/roadmap/phase15-real-hardware-boot.md)).
+- **Phase 16 carry-overs** — background right-click delivery,
+  cross-panel tasklist focus, themed-chrome full-sequence flakiness,
+  `panel.position` left/right, real-hardware multi-panel regression,
+  falkon on seL4, user-supplied background image upload — are registered
+  in [`docs/evidence/phase16-index.md`](docs/evidence/phase16-index.md) §6.
 
 ---
 
@@ -409,13 +120,16 @@ All detailed documentation lives in [`docs/`](docs/).
 - [09 - Roadmap](docs/09-roadmap.md)
 - [10 - Theme Format](docs/10-theme-format.md)
 - [11 - Development Environment & Reproducibility](docs/11-environment.md)
+- [12 - Package Format](docs/12-package-format.md)
 - [13 - Installation and Alpha Quick Start](docs/13-installation.md)
 - [14 - Boot & Storage Architecture (Proposal)](docs/14-boot-storage-architecture.md)
 - [15 - Hardware Compatibility](docs/15-hardware-compatibility.md)
 - [16 - Package Authoring Guide](docs/16-package-authoring.md)
+- [17 - Runtime Component Topology](docs/17-runtime-component-topology.md)
 
-Phase evidence indexes live under `docs/evidence/` (e.g.
-`phase13-index.md`, `phase14-index.md`, `phase16-index.md`).
+Per-area detail lives in topic subdirectories: [`docs/roadmap/`](docs/roadmap/)
+(per-phase detail), [`docs/plans/`](docs/plans/) (work plans),
+[`docs/evidence/`](docs/evidence/) (evidence indexes and logs), [`docs/de/`](docs/de/), [`docs/vct/`](docs/vct/), [`docs/package-format/`](docs/package-format/), [`docs/package-authoring/`](docs/package-authoring/), [`docs/development/`](docs/development/), [`docs/environment/`](docs/environment/), [`docs/hardware/`](docs/hardware/), [`docs/boot-storage/`](docs/boot-storage/), [`docs/topology/`](docs/topology/), and [`docs/patches/`](docs/patches/) (vendored patch files).
 
 Contributors and AI agents must read [`AGENTS.md`](AGENTS.md) first.
 
