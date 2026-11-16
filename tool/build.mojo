@@ -110,6 +110,34 @@ def repo_root() raises -> String:
     return String(os_py.dirname(here))
 
 
+def venv_site_packages(root: String) raises -> String:
+    """Discover the repo-local venv's site-packages (purelib) directory.
+
+    The venv's Python minor version is NOT pinned by this tool (a venv
+    rebuild can move it, e.g. python3.13 -> python3.14), so the path must
+    not be hardcoded. Glob `<root>/.venv/lib/python*/site-packages` at
+    runtime and fail loudly unless exactly one directory matches."""
+    var glob_mod = Python.import_module("glob")
+    var os_py = Python.import_module("os.path")
+    var pattern = root + "/.venv/lib/python*/site-packages"
+    var found: List[String] = []
+    for m in glob_mod.glob(pattern):
+        var path = String(py=m)
+        if Bool(py=os_py.isdir(path)):
+            found.append(path)
+    if len(found) != 1:
+        print("error: cannot determine the venv site-packages directory")
+        print("  glob: " + pattern)
+        if len(found) == 0:
+            print("  no match — materialize the repo venv first (uv sync)")
+        else:
+            print("  ambiguous: " + String(len(found)) + " matches:")
+            for path in found:
+                print("    " + path)
+        exit(1)
+    return found[0]
+
+
 def run_argv(cmd: List[String], cwd: String) raises -> Int:
     """Run a command, streaming stdout/stderr to this terminal, and return
     the child exit code. Uses Python subprocess because the Mojo stdlib has
@@ -132,7 +160,7 @@ def run_argv(cmd: List[String], cwd: String) raises -> Int:
     # executable). Set PYTHONPATH explicitly — same contract as the
     # verify gate above.
     env["VIRTUAL_ENV"] = repo_root() + "/.venv"
-    env["PYTHONPATH"] = repo_root() + "/.venv/lib/python3.14/site-packages"
+    env["PYTHONPATH"] = venv_site_packages(repo_root())
     var rc: PythonObject
     if cwd.byte_length() > 0:
         rc = subprocess.call(py_args, cwd=cwd, env=env)
@@ -588,7 +616,7 @@ def verify_patches_or_exit(root: String) raises:
     for k in parent_env.keys():
         env[k] = String(parent_env[k])
     env["VIRTUAL_ENV"] = root + "/.venv"
-    env["PYTHONPATH"] = root + "/.venv/lib/python3.14/site-packages"
+    env["PYTHONPATH"] = venv_site_packages(root)
     # Clear PYTHONHOME so python uses sys.prefix, not a stale override.
     if "PYTHONHOME" in env.keys():
         env.pop("PYTHONHOME")
@@ -678,7 +706,7 @@ def cmd_verify() raises:
     for k in parent_env.keys():
         env[k] = String(parent_env[k])
     env["VIRTUAL_ENV"] = root + "/.venv"
-    env["PYTHONPATH"] = root + "/.venv/lib/python3.14/site-packages"
+    env["PYTHONPATH"] = venv_site_packages(root)
     if "PYTHONHOME" in env.keys():
         env.pop("PYTHONHOME")
 
