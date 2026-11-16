@@ -411,6 +411,26 @@ is no longer durable. Raw per-run logs (large transcripts under
 `.omo/evidence/`) are not promoted by default; only curated writeups that
 explain why a design decision was made.
 
+### 5.7 Living Document Structure
+
+- Living reference documents target **fewer than 500 lines**. When a file
+  exceeds that size or becomes difficult to maintain, split it into a
+  concise parent and topic-focused subdocuments.
+- Keep the original parent path and every original numbered `## N.`
+  heading as a short stub with a child link, so existing `docs/NN.md §N`
+  references remain meaningful. Children link back to their parent.
+  Preserve moved content verbatim unless a separate editorial change is
+  justified; do not duplicate full status narratives across files.
+- Historical plans and evidence are exempt from mechanical splitting:
+  their integrity as decision and receipt records comes first.
+- Machine-consumed documents keep their required content in the parent:
+  the `docs/11-environment.md` patch-ledger table, the
+  `docs/15-hardware-compatibility.md` cross-product ledger and summary,
+  and `docs/09-roadmap.md` §11.1. Run the relevant validators after any
+  restructuring.
+- Verify content preservation, relative links and anchors, file sizes,
+  and `./tool/build verify` before committing a document split.
+
 ---
 
 ## 6. Questions and Discussions
