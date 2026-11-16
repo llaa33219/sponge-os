@@ -19,8 +19,8 @@ express the v1 theme surface (colors, fonts, spacing, and a small set of
 enumerations). The format is parsed by `Sponge_DE::Theme::ThemeLoader`.
 
 See the parser skeleton at
-`repos/sponge/src/sponge-de/theme/theme_loader.{h,cc}` and the default
-theme at `repos/sponge/src/sponge-de/themes/default.theme`.
+`repos/sponge-de/src/sponge-de/theme/theme_loader.{h,cc}` and the default
+theme at `repos/sponge-de/src/sponge-de/themes/default.theme`.
 
 ---
 
@@ -324,7 +324,7 @@ The format version is stored in the `[meta]` section. The rules are:
 Sponge DE resolves themes in two layers:
 
 1. **System theme**: shipped with Sponge OS, typically
-   `repos/sponge/src/sponge-de/themes/default.theme`.
+   `repos/sponge-de/src/sponge-de/themes/default.theme`.
 2. **User theme**: stored in the user's configuration directory
    (`~/.config/sponge/theme/user.theme` or the Genode VFS equivalent).
 
@@ -382,8 +382,8 @@ parts that were not understood.
 ## 10. References
 
 - `docs/05-sponge-de.md` §4 — Theme System design direction.
-- `repos/sponge/src/sponge-de/theme/theme_loader.h` — C++ data model.
-- `repos/sponge/src/sponge-de/theme/theme_loader.cc` — Parser implementation.
-- `repos/sponge/src/sponge-de/themes/default.theme` — Default system theme.
-- `repos/sponge/src/sponge_decorator/theme.cc` — Native `[decor]` parser, aliases, validation, and fallback palette.
-- `repos/sponge/src/sponge_decorator/README.md` — Native chrome protocol, geometry, and runtime limitations.
+- `repos/sponge-de/src/sponge-de/theme/theme_loader.h` — C++ data model.
+- `repos/sponge-de/src/sponge-de/theme/theme_loader.cc` — Parser implementation.
+- `repos/sponge-de/src/sponge-de/themes/default.theme` — Default system theme.
+- `repos/sponge-wm/src/sponge_decorator/theme.cc` — Native `[decor]` parser, aliases, validation, and fallback palette.
+- `repos/sponge-wm/src/sponge_decorator/README.md` — Native chrome protocol, geometry, and runtime limitations.

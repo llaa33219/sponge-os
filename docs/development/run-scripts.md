@@ -409,7 +409,7 @@ the control escape hatch is the same channel (`vct config` per key)
 plus the theme files themselves.
 
 Themes: four shipped (`default`, `light`, `dark`, `compact` under
-`repos/sponge/src/sponge-de/themes/`); `vct theme apply <name>`
+`repos/sponge-de/src/sponge-de/themes/`); `vct theme apply <name>`
 switches live. The unknown-theme path is hardened: a
 `label_suffix=".theme"` catch-all route hands `sponge_themed` an
 empty ROM, so a typo keeps the previous theme and the daemon stays
