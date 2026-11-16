@@ -110,8 +110,8 @@ comptime MANIFEST_SCHEMA = "bake.config_version"
 comptime MANIFEST_VERSION = 1
 
 # Theme source: sponge-de themes live at
-# repos/sponge/src/sponge-de/themes/<name>.theme (matches bake.inc).
-comptime THEMES_DIR = "repos/sponge/src/sponge-de/themes"
+# repos/sponge-de/src/sponge-de/themes/<name>.theme (matches bake.inc).
+comptime THEMES_DIR = "repos/sponge-de/src/sponge-de/themes"
 comptime THEME_SUFFIX = ".theme"
 
 # P3 label (must match image/disk's setting + tool/mkdata's verify).
@@ -1226,7 +1226,7 @@ def cmd_inject(img: String, profile_name: String, dry_run: Bool) raises -> Int:
         return 1
     print("  staged /system/bake/config.defaults")
 
-    # theme.defaults is a copy of repos/sponge/src/sponge-de/themes/<name>.theme
+    # theme.defaults is a copy of repos/sponge-de/src/sponge-de/themes/<name>.theme
     var theme_src = root + "/" + THEMES_DIR + "/" + prof.theme_active + THEME_SUFFIX
     if not Bool(py=os_path.isfile(theme_src)):
         print("[sponge-bake] ERROR: theme file missing: " + theme_src)

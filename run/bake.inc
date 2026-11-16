@@ -547,7 +547,7 @@ namespace eval bake {
         puts $fh "  \"config\": [_json_string_dict $config_dict],"
         puts $fh "  \"theme\": [_json_string $theme_name],"
         puts $fh "  \"theme_source_path\": [_json_string \
-                  "repos/sponge/src/sponge-de/themes/${theme_name}.theme"],"
+                  "repos/sponge-de/src/sponge-de/themes/${theme_name}.theme"],"
         puts $fh "  \"generator\": [_json_string "run/bake.inc (Phase 15 W2)"],"
         puts $fh "  \"staged_at\": [_json_string [clock format [clock seconds] \
                   -format "%Y-%m-%dT%H:%M:%S"]]"
@@ -590,12 +590,12 @@ namespace eval bake {
         if {![info exists ::genode_dir]} {
             error "bake::_write_theme_defaults: genode_dir is not set"
         }
-        set theme_src "${::genode_dir}/../repos/sponge/src/sponge-de/themes/${theme_name}.theme"
+        set theme_src "${::genode_dir}/../repos/sponge-de/src/sponge-de/themes/${theme_name}.theme"
         if {![file exists $theme_src]} {
             error "bake: ${lbr}theme${rbr} active = '$theme_name' in the active \
                    profile, but ${theme_name}.theme not found at \
                    $theme_src. sponge-de themes live at \
-                   repos/sponge/src/sponge-de/themes/<name>.theme."
+                   repos/sponge-de/src/sponge-de/themes/<name>.theme."
         }
         set theme_dst "${destdir_bake_dir}/theme.defaults"
         exec cp -fL $theme_src $theme_dst
