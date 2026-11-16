@@ -228,4 +228,3 @@ summaries.
   external commands could never have run from the Alpha terminal.
   `pkg/terminal/metadata.xml` now uses the content form
   (`<env name="PATH">/bin</env>`); see docs/16 §5 pitfall 1.
-

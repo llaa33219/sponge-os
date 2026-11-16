@@ -210,4 +210,3 @@ can; and every `<service>` node sets `_specific_service`, so a denial
 inside the `rom_sys` catch-all STOPS the rule search instead of
 falling through to `any-service -> parent`. The failure mode is a
 silent `parent denied ROM-session` with no "no route to service" line.
-

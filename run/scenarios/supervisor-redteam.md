@@ -221,4 +221,3 @@ included); the parent index carries one-line summaries.
   `SPONGE_START_DELAY_MS` moves the construct time; the product's own
   heartbeat parameters (`rate_ms` 2000, `restart_after_skipped` 3,
   `restart_budget` 3) are used verbatim.
-

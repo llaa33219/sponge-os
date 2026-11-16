@@ -122,4 +122,3 @@ limitations included); the parent index carries one-line summaries.
   claim." BIOS handoff target ≤60 seconds; full Alpha corroboration
   is 600 s+ reality, bounded at 900 seconds. Evidence
   `docs/evidence/phase12-usb-boot.log`.
-

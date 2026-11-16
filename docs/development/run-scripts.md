@@ -429,4 +429,3 @@ color) through report_rom. Note that the tar *assets* are boot-time
 (static in upstream); only the policy color is live (roadmap §11.3).
 
 ---
-

@@ -108,4 +108,3 @@ limitations included); the parent index carries one-line summaries.
   (`startup took N ms - the heartbeat budget (M ms) would have killed
   it`). The gate timeout scales with the knob. Never shipped; receipts
   in `docs/evidence/startup-grace.md` §2.
-

@@ -84,4 +84,3 @@ Rules the validator enforces on gap cells (plan step 7 + Phase 15 D15.11):
 - The document is never modified by the validator. `tool/hw_compat.mojo`
   has no `generate`, `update`, or repository-writing path
   (plan step 6 / risk 23).
-

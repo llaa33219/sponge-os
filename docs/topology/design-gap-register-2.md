@@ -428,4 +428,3 @@
   within one device untyped the watermark is monotonic, so the same
   device window can be materialised only once (a driver that closes
   and re-opens the same BAR gets a clean refusal, not a second frame).
-

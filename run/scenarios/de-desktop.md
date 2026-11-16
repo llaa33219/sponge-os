@@ -73,4 +73,3 @@ included); the parent index carries one-line summaries.
   disk store), and assert the broadcast carries `panel.height=28` after
   restart. The W1 skeleton times out at the gated `configd-persist-
   probe: PASS` marker — that is the EXPECTED FAIL until W6 lands.
-

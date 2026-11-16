@@ -253,4 +253,3 @@ They exist because the previous host location (`/tmp/opencode/bin/`)
 was `tmpfiles`-swept.
 
 ---
-

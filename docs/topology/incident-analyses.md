@@ -117,4 +117,3 @@ observed engaging (800 submit attempts collapse to 82 frame submissions
 in 30 s) with storm throughput up 11 → 19 Hz and no liveness regression.
 What remains open is the real-hardware magnitude at 2560x1600, not the
 mechanism — see §5.
-

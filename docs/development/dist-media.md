@@ -186,4 +186,3 @@ output) is reachable by running the alpha scenario with `image/disk`:
 it is the developer regression shape, not the product. It lacks the
 SPONGE-DATA P4 (no persistence) and packs the whole desktop into boot
 modules (subject to the ~256 MiB ceiling, docs/14 §2).
-

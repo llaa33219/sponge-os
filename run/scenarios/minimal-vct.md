@@ -62,4 +62,3 @@ summaries.
   companion to `sponge-vct-search.run`. Same topology, vct config arg
   `search hello --json`; gates on the structured JSON match line
   (`"command":"search","status":"success","matches":[{"name":"hello",...}]`).
-

@@ -217,4 +217,3 @@ Scope: these are QEMU/base-sel4 receipts (D16R.12 labelling); the
 which is the D15.16 limitation, not a boot block (QEMU/OVMF boots
 reach Genode; `docs/11-environment.md` §4 ledger rows 10 + 11 retired
 the old W^X/bender-NOP cause).
-

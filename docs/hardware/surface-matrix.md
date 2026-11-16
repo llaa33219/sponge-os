@@ -327,4 +327,3 @@ bake-firstboot are observed to PASS in their respective
 scenarios (see `docs/evidence/phase15-index.md` §7). No fabricated
 PASS — every verified cell maps to a real QEMU boot + an
 evidence log.
-

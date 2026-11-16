@@ -126,4 +126,3 @@ summaries.
   manual escape hatch documented in `docs/08-development.md` §16.
   Known boundaries: XSAVE-less CPUs, `-vga cirrus`, the TCG boot
   race, `-no-hpet`. base-sel4 only.
-

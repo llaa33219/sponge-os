@@ -137,4 +137,3 @@ and limitations included); the parent index carries one-line summaries.
   `sponge-terminal-qmp.run`). 600 s+ seL4 desktop reality, bounded at
   900 seconds. Evidence `docs/evidence/phase12-usb-kbd.log`. No
   usb-mouse, no `i2c_hid`, no new USB controller class.
-

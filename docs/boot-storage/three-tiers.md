@@ -356,4 +356,3 @@ from "partition table unreadable" (rescue screen + offer to continue
 with Tier 2 on RAM, i.e. ISO-style live mode).
 
 ---
-

@@ -236,4 +236,3 @@ on minimal server images — it is only needed for the disk-image path,
 not the ISO path.
 
 ---
-

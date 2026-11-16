@@ -378,4 +378,3 @@ where applicable):
 - `run/sponge-de-bgimage-badpath.run` — `bgimage-badpath-probe:
   PASS` (allowlist rejection of `../../etc/passwd` is
   atomic — the broadcast still carries the default).
-

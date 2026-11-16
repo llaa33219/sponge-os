@@ -450,4 +450,3 @@ honest limitations register (Phase 17+ carry-overs) lives in
 > Nothing in the current UI has changed yet: the left/right entries
 > stay disabled with their "Phase 17+" tooltip until that criterion
 > is implemented.
-

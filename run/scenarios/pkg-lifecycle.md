@@ -174,4 +174,3 @@ summaries.
   docs/12 §9.2.2), (6) update nosuchpkg → "not installed" error
   (non-zero path). Gates on `pkg-meta-probe: PASS`. Kernel-agnostic
   (no GUI/drivers); runs on base-linux for speed.
-

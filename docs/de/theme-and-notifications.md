@@ -80,4 +80,3 @@ the main `run/sponge-notify.run` scenario on the same build.
 > config). No `PD`, no `RM`, no `GUI`. The `notifier_source` config
 > gate keeps scenarios without the daemon from being killed by the
 > parent when the Report session is denied.
-

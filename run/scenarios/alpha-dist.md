@@ -46,4 +46,3 @@ included); the parent index carries one-line summaries.
   known gaps. Validated by the read-only `tool/hw_compat.mojo
   assert` (no `generate` / `update` / repo write); reachable from
   `./tool/build verify`.
-

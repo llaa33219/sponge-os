@@ -180,4 +180,3 @@ healthy):
    information); regression gate `./tool/hwrepro --case acpi-dmar`.
 
 ---
-

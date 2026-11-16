@@ -71,4 +71,3 @@ the level of automation differs. That is how the principle "automation
 is the default, control is the door" is realized.
 
 ---
-

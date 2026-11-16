@@ -90,4 +90,3 @@ re-stated here as a single searchable block:
   but NOT QEMU-tested."
 - **UEFI footgun (risk 6):** "UEFI + NIC is a known footgun; the
   Phase 12 NIC verification is on BIOS path only."
-
