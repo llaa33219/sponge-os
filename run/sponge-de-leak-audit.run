@@ -130,21 +130,24 @@ config
     + service Report
     + service ROM
   + config | verbose: no
-    + policy | label: sponge_configd -> config_request   | report: leak_audit_probe -> config_request
-    + policy | label: leak_audit_probe -> config_result   | report: sponge_configd -> config_result
-    + policy | label: leak_audit_probe -> config          | report: sponge_configd -> config
-    + policy | label: sponge_themed    -> config          | report: sponge_configd -> config
-    + policy | label: sponge-de       -> theme            | report: sponge_themed    -> theme
-    + policy | label: leak_audit_probe -> theme           | report: sponge_themed    -> theme
-    + policy | label: sponge-de       -> configd          | report: sponge_configd   -> config
-    + policy | label: sponge-de       -> installed        | report: sponge_pkgd      -> installed
-    + policy | label: sponge-de       -> launcher_request | report: leak_audit_probe -> launcher_request
-    + policy | label: sponge-de       -> launcher_result  | report: leak_audit_probe -> launcher_result
+    + policy | label: sponge_configd -> config_request | report: leak_audit_probe -> config_request
+    + policy | label: leak_audit_probe -> config_result | report: sponge_configd -> config_result
+    + policy | label: leak_audit_probe -> config | report: sponge_configd -> config
+    + policy | label: sponge_themed -> config | report: sponge_configd -> config
+    + policy | label: sponge-de -> theme | report: sponge_themed -> theme
+    + policy | label: leak_audit_probe -> theme | report: sponge_themed -> theme
+    + policy | label: sponge-de -> configd | report: sponge_configd -> config
+    + policy | label: sponge-de -> installed | report: sponge_pkgd -> installed
+    + policy | label: sponge_pkgd -> request | report: leak_audit_probe -> request
+    + policy | label: leak_audit_probe -> result | report: sponge_pkgd -> result
+    + policy | label: pkg_runtime -> config | report: sponge_pkgd -> runtime
+    + policy | label: sponge_pkgd -> launcher_request | report: sponge-de -> launcher_request
+    + policy | label: sponge-de -> launcher_result | report: sponge_pkgd -> launcher_result
     # Catch-all .theme (mirrors sponge-theme.run) so an unstaged
     # name logs "ROM invalid" instead of freezing sponge_themed.
     + policy | label_suffix: .theme | report: themed-fallback-none
     # init state report for the probe's RAM snapshots.
-    + policy | label_suffix: state  | report: system        -> state
+    + policy | label_suffix: state | report: system -> state
 
 + start nitpicker | ram: 16M
   + provides
@@ -228,7 +231,7 @@ config
       + parent
       + any-child
 
-+ start sponge-de | caps: 300 | ram: 128M
++ start sponge-de | caps: 1000 | ram: 128M
   + config
     + theme | source: themed
     + config | source: configd
@@ -246,6 +249,7 @@ config
     + service Report | label: shape           | + child report_rom
     + service Report | label: input           | + child report_rom
     + service Report | label: applied_theme   | + child report_rom
+    + service Report | + child report_rom
     + service ROM | label: theme           | + child report_rom
     + service ROM | label: configd         | + child report_rom
     + service ROM | label: installed       | + child report_rom
@@ -298,13 +302,13 @@ set dejavu_dst "[run_dir]/genode/qt6_dejavusans.tar"
 if {![file exists $dejavu_dst]} {
 	set dejavu_src [glob -nocomplain \
      "${genode_dir}/contrib/qt6_base-*/src/lib/qt6_base/src/3rdparty/wasm/DejaVuSans.ttf"]
-	if {[llength $dejavavu_src] == 0} {
+	if {[llength $dejavu_src] == 0} {
 		error "DejaVuSans.ttf not found in the qt6_base port sources"
 	}
 	set staging "[run_dir]/dejavusans-staging"
 	file mkdir "$staging/qt/lib/fonts"
-	file copy -force [lindex $dejavavu_src 0] "$staging/qt/lib/fonts/DejaVuSans.ttf"
-	exec tar -cf $dejavavu_dst -C $staging qt
+	file copy -force [lindex $dejavu_src 0] "$staging/qt/lib/fonts/DejaVuSans.ttf"
+	exec tar -cf $dejavu_dst -C $staging qt
 	file delete -force $staging
 }
 
@@ -338,8 +342,8 @@ append qemu_args " -nographic -m 2G "
 #
 # Automated verification — fail-loud on timeout. The probe emits
 # `leak-audit: PASS` after the 200-cycle loop + the bounded-growth
-# assertion. The 120 s budget covers Qt6 first paint (slow on
-# softpipe Mesa + seL4) + 200 cycles × ~250 ms each + the final
-# state-report settle.
+# assertion. The 600 s budget covers Qt6 first paint (slow on
+# softpipe Mesa + seL4) plus the measured 200-cycle config/theme loop
+# and the final state-report settle; the RAM assertion is unchanged.
 #
-run_genode_until {.*leak-audit: PASS.*} 120
+run_genode_until {.*leak-audit: PASS.*} 600
