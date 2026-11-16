@@ -219,8 +219,6 @@ config
       + any-child
 - }
 
-build_boot_image [build_artifacts]
-
 #
 # Qt6 shared libraries and runtime tars are built by separate cmake targets.
 # Copy them into the boot directory (same staging as run/sponge-de-test.run).
@@ -256,7 +254,7 @@ if {![file exists $dejavu_dst]} {
 # The default theme is staged as a ROM module (sponge-de opens it as the
 # "default.theme" ROM routed to the parent above).
 #
-set theme_src "${genode_dir}/repos/sponge/src/sponge-de/themes/default.theme"
+set theme_src "${genode_dir}/../repos/sponge-de/src/sponge-de/themes/default.theme"
 set theme_dst "[run_dir]/genode/default.theme"
 if {[file exists $theme_src] && ![file exists $theme_dst]} {
 	exec cp -L $theme_src $theme_dst
@@ -273,6 +271,8 @@ if {[file exists $theme_src] && ![file exists $theme_dst]} {
 # Harmless on base-linux (core runs natively); required for base-sel4/
 # QEMU to avoid opening a graphical QEMU window.
 #
+build_boot_image [build_artifacts]
+
 append qemu_args " -nographic "
 
 #

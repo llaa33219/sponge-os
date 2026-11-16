@@ -41,8 +41,8 @@
 #
 # === STATUS (delivered, 2026-11-12) ===
 #
-# The three native components (repos/sponge/src/sponge_wm,
-# repos/sponge/src/sponge_layouter, repos/sponge/src/sponge_decorator)
+# The three native components (repos/sponge-wm/src/sponge_wm,
+# repos/sponge-wm/src/sponge_layouter, repos/sponge-wm/src/sponge_decorator)
 # are delivered and this scenario is the M1 acceptance gate: PASS on
 # base-linux at commit 191222130e, including the non-resizeable
 # fixture and the same-wid destroy/recreate sequence with a fresh
@@ -91,7 +91,7 @@
 #                     read by sponge_layouter (sole writer: tasklist)
 #
 # Native internal contract v1.1 (binding; docs/plans/phase16-sponge-wm.md
-# §11, shapes in repos/sponge/include/sponge/wm_protocol.h):
+# §11, shapes in repos/sponge-wm/include/sponge/wm_protocol.h):
 # sponge_wm reports "focus_state" (the focus truth behind
 # window_layout's consumed `focused` attribute) and "window_chrome"
 # (lifecycle/draw snapshot) ; sponge_layouter reports "focus"
@@ -258,7 +258,7 @@ config
       + parent
       + any-child
 
-+ start sponge-de | caps: 300 | ram: 128M
++ start sponge-de | caps: 1000 | ram: 128M
   + config
     + tasklist | source: wm
     + tasklist_static_rules
@@ -309,8 +309,6 @@ config
       + any-child
 - }
 
-build_boot_image [build_artifacts]
-
 #
 # Qt6 shared libraries and runtime tars are built by separate cmake
 # targets. Copy them into the boot directory (same staging as
@@ -347,9 +345,9 @@ if {![file exists $dejavu_dst]} {
 # The default theme is staged as a ROM module (sponge-de and the
 # native sponge_decorator open it as "default.theme").
 #
-set theme_src "${genode_dir}/repos/sponge/src/sponge-de/themes/default.theme"
+set theme_src "${genode_dir}/../repos/sponge-de/src/sponge-de/themes/default.theme"
 set theme_dst "[run_dir]/genode/default.theme"
-if {[file exists $theme_src] && ![file exists $theme_dst]} {
+if {![file exists $theme_dst]} {
 	exec cp -L $theme_src $theme_dst
 }
 
@@ -357,6 +355,8 @@ if {[file exists $theme_src] && ![file exists $theme_dst]} {
 # Harmless on base-linux (core runs natively); required for base-sel4 /
 # QEMU to avoid opening a graphical QEMU window.
 #
+build_boot_image [build_artifacts]
+
 append qemu_args " -nographic "
 
 #

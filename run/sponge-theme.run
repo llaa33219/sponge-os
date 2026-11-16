@@ -197,7 +197,7 @@ config
       + parent
       + any-child
 
-+ start sponge-de | caps: 300 | ram: 128M
++ start sponge-de | caps: 1000 | ram: 128M
   + config
     + theme | source: themed
     + config | source: configd
@@ -234,8 +234,6 @@ config
       + parent
       + any-child
 - }
-
-build_boot_image [build_artifacts]
 
 #
 # Qt6 shared libraries and runtime tars (built by separate cmake targets).
@@ -274,12 +272,14 @@ if {![file exists $dejavu_dst]} {
 # -> does-not-exist name-dedup fallback).
 #
 foreach theme { default light dark compact } {
-	set theme_src "${genode_dir}/repos/sponge/src/sponge-de/themes/${theme}.theme"
+	set theme_src "${genode_dir}/../repos/sponge-de/src/sponge-de/themes/${theme}.theme"
 	set theme_dst "[run_dir]/genode/${theme}.theme"
 	if {[file exists $theme_src] && ![file exists $theme_dst]} {
 		exec cp -L $theme_src $theme_dst
 	}
 }
+
+build_boot_image [build_artifacts]
 
 append qemu_args " -nographic "
 
