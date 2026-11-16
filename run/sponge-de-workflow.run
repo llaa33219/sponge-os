@@ -347,7 +347,7 @@ config
   + binary init
   + route
     + service ROM | label: config  | + parent | label: drivers.config
-    + service ROM | label: system  | + child report_rom
+    + service ROM | label_suffix: system | + child report_rom
     + service Timer | + child timer
     + service Capture | + child nitpicker
     + service Event | + child nitpicker
@@ -662,6 +662,7 @@ config
     + service Report | label: shape | + child report_rom
     + service Report | label: input | + child report_rom
     + service Report | label: applied_theme | + child report_rom
+    + service Report | + child report_rom
     + service Report | label: notif_request | + child report_rom
     + service Report | label: launcher | + child report_rom
     + service Report | label_last: clipboard | + child clipboard
@@ -958,20 +959,34 @@ if {[info procs qmp_disconnect] eq ""} {
 # probe's CLICK_TERM_X/Y and CLICK_EDIT_X/Y map directly to the guest
 # pixel coords (terminal at (210, 440), textedit at (512, 384)).
 #
+proc workflow_tablet_index { chan } {
+	global _workflow_tablet_idx
+	if {![info exists _workflow_tablet_idx]} {
+		set _workflow_tablet_idx ""
+		set result [qmp_cmd $chan {{"execute":"query-mice"}}]
+		if {[regexp {"index":\s*([0-9]+)[^\}]*"absolute":\s*true} $result dummy idx]} {
+			set _workflow_tablet_idx $idx
+		}
+		puts "\nqmp: workflow absolute tablet mouse index: '$_workflow_tablet_idx'"
+		flush stdout
+	}
+	return $_workflow_tablet_idx
+}
+
 proc focus_window { chan tx ty } {
-	for {set i 0} {$i < 15} {incr i} { qmp_move_rel $chan x -100; after 5 }
-	for {set i 0} {$i < 15} {incr i} { qmp_move_rel $chan y -100; after 5 }
-	after 200
-	for {set i 0} {$i < $tx} {incr i} { qmp_move_rel $chan x 1; after 5 }
-	for {set i 0} {$i < $ty} {incr i} { qmp_move_rel $chan y 1; after 5 }
-	after 200
-	qmp_move_rel $chan x 1
-	after 100
-	qmp_move_rel $chan x -1
-	after 100
-	qmp_ps2_button $chan true
-	after 200
-	qmp_ps2_button $chan false
+	set idx [workflow_tablet_index $chan]
+	if {$idx eq ""} {
+		puts stderr "\nFAIL: query-mice shows no absolute mouse device"
+		exit 1
+	}
+	qmp_cmd $chan [format {{"execute":"human-monitor-command","arguments":{"command-line":"mouse_set %s"}}} $idx]
+	set ax [expr {($tx * 32767 + 512) / 1024}]
+	set ay [expr {($ty * 32767 + 384) / 768}]
+	qmp_cmd $chan [format {{"execute":"input-send-event","arguments":{"events":[{"type":"abs","data":{"axis":"x","value":%d}},{"type":"abs","data":{"axis":"y","value":%d}}]}}} $ax $ay]
+	after 15
+	qmp_cmd $chan {{"execute":"human-monitor-command","arguments":{"command-line":"mouse_button 1"}}}
+	after 15
+	qmp_cmd $chan {{"execute":"human-monitor-command","arguments":{"command-line":"mouse_button 0"}}}
 	after 200
 }
 
@@ -1254,11 +1269,11 @@ proc rendezvous_key { chan allowed_keynames label } {
 			if {$k eq "ret"} {
 				qmp_send_key $chan "ret"
 			} elseif {$k eq "ctrl-v"} {
-				qmp_cmd $chan {{"execute":"input-send-event","arguments":{"events":[{"type":"btn","data":{"down":true,"button":"leftctrl"}}]}}}
-				after 50
-				qmp_send_key $chan "v"
-				after 100
-				qmp_cmd $chan {{"execute":"input-send-event","arguments":{"events":[{"type":"btn","data":{"down":false,"button":"leftctrl"}}]}}}
+                qmp_cmd $chan {{"execute":"input-send-event","arguments":{"events":[{"type":"key","data":{"down":true,"key":{"type":"qcode","data":"ctrl"}}}]}}}
+                after 50
+                qmp_send_key $chan "v"
+                after 100
+                qmp_cmd $chan {{"execute":"input-send-event","arguments":{"events":[{"type":"key","data":{"down":false,"key":{"type":"qcode","data":"ctrl"}}}]}}}
 				after 200
 			}
 		}
@@ -1271,23 +1286,42 @@ proc rendezvous_key { chan allowed_keynames label } {
 
 # step 2: terminal — wait for the probe to confirm window appeared,
 # then rendezvous for the click + type + ret markers (exactly 3).
-run_genode_until {.*workflow-probe: \[step 2\] terminal in window_list.*} 600 $qemu_spawn_id
+run_genode_until {workflow-probe: \[step 2\] terminal in window_list[^\r\n]*} 600 $qemu_spawn_id
 rendezvous_click   $qmp_chan "step 2"
 rendezvous_type    $qmp_chan "echo ok"           "step 2"
 rendezvous_key     $qmp_chan "ret"               "step 2"
-run_genode_until {.*workflow-probe: \[step 2\] terminal typed sentinel confirmed.*} 240 $qemu_spawn_id
+run_genode_until {workflow-probe: \[step 2\] terminal typed sentinel confirmed[^\r\n]*} 240 $qemu_spawn_id
 
 # step 3: textedit — exactly 2 markers (click + type).
-run_genode_until {.*workflow-probe: \[step 3\] textedit in window_list.*} 600 $qemu_spawn_id
+run_genode_until {workflow-probe: \[step 3\] textedit in window_list[^\r\n]*} 600 $qemu_spawn_id
 rendezvous_click   $qmp_chan "step 3"
 rendezvous_type    $qmp_chan "sponge phase 14 workflow clipboard sentinel" "step 3"
-run_genode_until {.*workflow-probe: \[step 3\] textedit typed sentinel confirmed.*} 240 $qemu_spawn_id
+run_genode_until {workflow-probe: \[step 3\] textedit typed sentinel confirmed[^\r\n]*} 240 $qemu_spawn_id
 
 # step 4: cross-component clipboard — focus + Ctrl-V (exactly 2).
-run_genode_until {.*workflow-probe: \[step 4\] clipboard bus carries sentinel.*} 600 $qemu_spawn_id
+run_genode_until {workflow-probe: \[step 4\] clipboard bus carries sentinel[^\r\n]*} 600 $qemu_spawn_id
 rendezvous_click   $qmp_chan "step 4"
 rendezvous_key     $qmp_chan "ctrl-v"            "step 4"
-run_genode_until {.*workflow-probe: \[step 4\] cross-component clipboard paste dispatched.*} 240 $qemu_spawn_id
+# Step 4 onward uses direct expects so an early QEMU EOF is reported
+# explicitly instead of being turned into a wrapper error.
+proc expect_workflow_marker { pattern seconds failure } {
+    global qemu_spawn_id
+    set timeout $seconds
+    expect {
+        -i $qemu_spawn_id
+        -re $pattern { }
+        eof {
+            puts stderr "\nsponge-de-workflow: FAIL - $failure (QEMU exited)"
+            exit 1
+        }
+        timeout {
+            puts stderr "\nsponge-de-workflow: FAIL - $failure (timeout)"
+            exit 1
+        }
+    }
+}
+
+expect_workflow_marker {workflow-probe: \[step 4\] cross-component clipboard paste dispatched[^\r\n]*} 240 "step 4 paste dispatch"
 
 # Step 5: tasklist minimize/restore is verified by the dedicated
 # W7 scenario (run/sponge-wm-tasks.run) which proves the full
@@ -1295,40 +1329,25 @@ run_genode_until {.*workflow-probe: \[step 4\] cross-component clipboard paste d
 # buffer on this heavier stack (later markers consumed by earlier
 # expects), so the workflow scenario documents the W7 proof and
 # proceeds to step 6. See docs/evidence/phase14-w8-workflow-scenario.md.
-run_genode_until {.*workflow-probe: \[step 5\].*verified by run/sponge-wm-tasks.*} 120 $qemu_spawn_id
+expect_workflow_marker {workflow-probe: \[step 5\][^\r\n]*verified by run/sponge-wm-tasks[^\r\n]*} 120 "step 5 marker"
 
 # step 6: calculator — wait for the probe to confirm rendered
-run_genode_until {.*workflow-probe: \[step 6\].*verified by run/sponge-calculator.*} 120 $qemu_spawn_id
+expect_workflow_marker {workflow-probe: \[step 6\][^\r\n]*verified by run/sponge-calculator[^\r\n]*} 120 "step 6 marker"
+
+# Final PASS comes before the shutdown audit and system Report.
+expect_workflow_marker {workflow-probe: PASS[^\r\n]*} 120 "workflow PASS"
 
 # step 7: shutdown via workflow_probe's <system state="poweroff"/>
-run_genode_until {.*vct: shutdown: requesting poweroff.*} 120 $qemu_spawn_id
-
-# Final PASS — the workflow_probe emits its PASS marker BEFORE
-# publishing the system Report, so this gate fires before the S5
-# effect tears QEMU down.
-run_genode_until {.*workflow-probe: PASS.*} 60 $qemu_spawn_id
+expect_workflow_marker {vct: shutdown: requesting poweroff[^\r\n]*} 60 "shutdown audit"
 
 #
 # After PASS + the shutdown audit line, the workflow_probe publishes
 # `<system state="poweroff"/>` over its labeled `system` Report
 # session. The outer init's report_rom relays it as the `system` ROM
 # (policy `label_suffix: system | report: workflow_probe -> system`).
-# In a fully-fixed setup the acpica (inside the drivers sub-init)
-# would forward its `system` ROM session up to the outer init's
-# report_rom via `<service ROM label_last="system" | + child
-# report_rom>`, observe the `poweroff` state, and call
-# `AcpiEnterSleepState(5)` (S5) to power QEMU off. Today the
-# acpica boot-time `system` ROM read races the probe's initial
-# publication (init starts children in config order; the acpica
-# ctor opens the ROM before the probe's report_rom has any data)
-# so the acpica's session is denied and the S5 path does not
-# actually fire inside this scenario — the upstream `system`
-# ROM bridge (a `<label_last="system" | + child report_rom>` route
-# on the drivers sub-init) is documented as a Phase-15+ hardening
-# item (see docs/evidence/phase14-w8-workflow-scenario.md §"Issue D").
-# The acpica S5 path itself is verified separately by
-# run/sponge-power.run (which boots a minimal acpica + vct
-# topology and observes QEMU exit).
+# The drivers route uses `label_suffix: system` so acpica's scoped
+# request reaches the outer report_rom. acpica observes the `poweroff`
+# state and calls `AcpiEnterSleepState(5)` (S5) to power QEMU off.
 #
 # Verification (fail-loud, mirror of run/sponge-power.run's final
 # gates — see that scenario's header for the full adversarial-class
@@ -1349,19 +1368,7 @@ expect {
         puts "\nsponge-de-workflow: PASS - workflow completed end-to-end; QEMU exited cleanly after acpica S5 (workflow-probe: PASS + vct: shutdown: requesting poweroff)"
     }
     timeout {
-        # Today's workflow does not actually fire acpica S5 — the
-        # boot-time ROM race documented above means the probe's
-        # shutdown intent is published, the audit line is logged,
-        # but the `system` ROM never reaches the acpica inside this
-        # scenario. Until the drivers sub-init's `system` ROM bridge
-        # (Issue D in phase14-w8-workflow-scenario.md) is fixed, the
-        # run script's `eof` branch never fires and this `timeout`
-        # branch is what the scenario lands on every run. We still
-        # report FAIL loudly (per docs/09-roadmap.md §11.1) — the
-        # probe reaching PASS proves the 7-step structural end-to-end
-        # is correct, the missing QEMU exit proves the S5 wiring is
-        # not actually exercised by this scenario.
-        puts stderr "\nsponge-de-workflow: FAIL - QEMU did not exit within 20s of the PASS marker (acpica S5 did not take effect; see phase14-w8-workflow-scenario.md §\"Issue D\")"
+        puts stderr "\nsponge-de-workflow: FAIL - QEMU did not exit within 20s of the shutdown audit (acpica S5 did not take effect)"
         exit 1
     }
 }
