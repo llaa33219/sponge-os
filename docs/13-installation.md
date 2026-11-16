@@ -24,7 +24,7 @@ for the supported envelope and the real-hardware bring-up record).
 
 Start with a checkout of this repository. The Genode 26.08 source tree is already vendored at `genode/`; no separate Genode checkout is needed.
 
-Install the host toolchain and base packages listed in [`docs/11-environment.md` §7](11-environment.md#7-host-bootstrap). The Alpha media builders additionally require:
+Install the host toolchain and base packages listed in [`docs/11-environment.md` §7](11-environment.md#7-bootstrap-from-a-clean-machine). The Alpha media builders additionally require:
 
 ```bash
 # Debian / Ubuntu
@@ -34,7 +34,7 @@ sudo apt install xorriso gptfdisk mtools e2tools dosfstools e2fsprogs coreutils
 sudo pacman -S libisoburn gptfdisk mtools e2tools dosfstools e2fsprogs
 ```
 
-The required executable names are `xorriso`, `sgdisk`, `mcopy`, `e2cp`, `e2mkdir`, `mkfs.ext2`, `mkfs.vfat`, `resize2fs`, and `truncate`. The seL4 build also needs the toolchain, CMake, Ninja, QEMU, Tcl, expect, and the Python modules listed in [`docs/11-environment.md` §7](11-environment.md#7-host-bootstrap). Set up the repository-local Mojo environment with:
+The required executable names are `xorriso`, `sgdisk`, `mcopy`, `e2cp`, `e2mkdir`, `mkfs.ext2`, `mkfs.vfat`, `resize2fs`, and `truncate`. The seL4 build also needs the toolchain, CMake, Ninja, QEMU, Tcl, expect, and the Python modules listed in [`docs/11-environment.md` §7](11-environment.md#7-bootstrap-from-a-clean-machine). Set up the repository-local Mojo environment with:
 
 ```bash
 uv sync
@@ -115,7 +115,7 @@ The automation is the default and a door is always open (AGENTS.md §1.1):
 
 ### 2.2 Manual build
 
-The automation has a documented control path. From the repository root, after the normal build preparation and port setup, the canonical manual sequence is in [`docs/08-development.md` §11.2](08-development.md#112-manual-flow-the-canonical-reference). The short form:
+The automation has a documented control path. From the repository root, after the normal build preparation and port setup, the canonical manual sequence is in [`docs/08-development.md` §11.2](development/dist-media.md#112-manual-flow-the-canonical-reference). The short form:
 
 ```bash
 # Product .img (the docs/14 §4.3 partition layout). Build the
