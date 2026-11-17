@@ -1,10 +1,11 @@
 # Phase 16, Sponge Compositor and Repository Split (Work Plan)
 
-> Status: G0 repository split implemented 2026-11-16; close-out
-> verification is in progress. G1-G6 compositor implementation has not
-> started, and no seL4 compositor success is claimed. This remains the
-> decision-complete spec for the Mojo-first Sponge compositor and the
-> repository split.
+> Status: G0 repository split and close-out completed 2026-11-18 with
+> receipts in [`../evidence/phase16-g0-closeout.md`](../evidence/phase16-g0-closeout.md).
+> G1-G6 compositor implementation has not started; G1 waits for the staged
+> approval in D16C.12, and no seL4 compositor success is claimed. This
+> remains the decision-complete spec for the Mojo-first Sponge compositor
+> and the repository split.
 > Relationship: companion to the delivered Sponge WM plan
 > (`docs/plans/phase16-sponge-wm.md`, D16W.x), the Mojo language policy
 > (`docs/plans/mojo-language-policy.md`, DLP.x), and the runtime topology
@@ -94,8 +95,9 @@ do not re-litigate:
   added the pinned `sponge-wm`, `sponge-de`, and `sponge-compositor`
   submodules and moved their designated sources without changing the
   desktop topology; `sponge-compositor` remains a warning-only
-  scaffold. The patch ledger (`docs/11-environment.md` §4) still has
-  38 rows and must not grow. The Mojo SDK is pinned by `uv.lock`
+  scaffold. The G0 terminal F7 repair added patch-ledger rows #39–#41
+  (`docs/11-environment.md` §4); the compositor itself adds no further
+  rows. The Mojo SDK is pinned by `uv.lock`
   (currently 1.0.0b2); its use inside OS components is governed by
   this plan and the probe subset.
 - **Build surface.** Genode's build consumes pre-compiled objects
@@ -112,7 +114,7 @@ do not re-litigate:
 | **D16C.4** | **Build seam.** Mojo units compile with the pinned toolchain as `mojo build --emit object --relocation-model=pic` and enter the Genode target through `SRC_O` (`genode/repos/base/mk/generic.mk`). Emitted objects are self-contained PIC objects with **no libc dependency**. A Sponge build helper pins the exact flags and fails loudly on drift. | The emit path is experimental and subset-specific (probe), so the seam is pinned instead of improvised. `SRC_O` is public Genode build surface, which keeps D16C.7 true. |
 | **D16C.5** | **KGEN runtime shim on `Genode::Heap`.** The KGEN shim is the sanctioned runtime bridge for Mojo objects on Genode. It is C++, implemented on `Genode::Heap`, and supplies the allocator/runtime entry points the emitted objects reference (the `List[Int64]` probe shape). Nothing else crosses into Mojo as a runtime service. | Proven in `../evidence/mojo-ffi-probe.md`. One declared bridge keeps `nm -u` auditable (§6) and keeps allocation inside Genode's quota model. |
 | **D16C.6** | **In-OS Mojo subset.** The initial in-OS subset excludes Python interop, async, and POSIX I/O (full contract in §6). All I/O and OS services cross the C++ adapter seam. Widening the subset is a later, separate decision with an `nm -u` re-baseline. | Runtime coverage is subset-specific (probe). A small subset keeps the no-libc claim true and the seam reviewable. |
-| **D16C.7** | **Public Genode APIs only.** Public Genode interfaces and public IPC surfaces only. No private gems headers, no new vendored patches to `genode/`, zero new `docs/11-environment.md` §4 ledger rows. If patching the fork tree becomes tempting, work stops and comes back to the user (D16.8 discipline). | AGENTS.md §5.2 and D16.8. Replacing nitpicker must not recreate the private-dependence problem the native WM exists to escape. |
+| **D16C.7** | **Public Genode APIs only.** Public Genode interfaces and public IPC surfaces only. No private gems headers and no compositor-specific vendored patches or new ledger rows. The pre-compositor G0 terminal F7 repair is recorded separately in rows #39–#41; those commits are not a compositor dependency or a precedent for adding compositor patches. If patching the fork tree for the compositor becomes tempting, work stops and comes back to the user (D16.8 discipline). | AGENTS.md §5.2 and D16.8. Replacing nitpicker must not recreate the private-dependence problem the native WM exists to escape. |
 | **D16C.8** | **Fallback and opt-in.** Upstream nitpicker stays the shipped compositor for every existing scenario and every shipped medium. The native compositor is selected only through the opt-in `SPONGE_COMPOSITOR=native`, which swaps the Tier-0 node in the run topology. While the native path exists, the nitpicker path stays reachable as an explicit override. | Recorded approval 6. The fallback is simultaneously the regression net and the always-open control door (AGENTS.md §1.1). |
 | **D16C.9** | **First vertical slice.** The first delivered compositor slice is two opaque views + clipping + Capture on seL4 QEMU (G1). Nothing beyond that slice is claimed before its gate receipts exist. | Recorded approval 7. Small honest slices beat a broad unproven claim (AGENTS.md §1.4). |
 | **D16C.10** | **Validation oracle.** Correctness is validated by golden images and by differential comparison against upstream nitpicker under identical scripted geometry, content, and input. A second scene model in C++ (or any other language) as a reference implementation is explicitly rejected. | Recorded approval 8. A second model drifts from the first and doubles the maintenance, while nitpicker is the behavior clients already expect. |
@@ -132,8 +134,8 @@ do not re-litigate:
 - **Python interop, async, POSIX I/O** in the in-OS Mojo subset
   (D16C.6).
 - **A libc dependency** in emitted Mojo objects (D16C.4).
-- **New vendored patches** or new `docs/11-environment.md` §4 ledger
-  rows (D16C.7).
+- **New compositor-specific vendored patches** or ledger rows beyond the
+  recorded G0 F7 repair (#39–#41, D16C.7).
 - **Flipping the default topology** to the native compositor. That is
   G6 and needs separate user approval (D16C.12).
 - **Translucent blending and visual effects.** Alpha and input masks
@@ -227,8 +229,9 @@ LIBS    := base
 Staged per D16C.12: every gate closes with curated receipts and user
 approval before the next gate begins. Nothing here starts before this
 plan is checked in. Every gate keeps the upstream anchors and the
-existing regression sweep green, and every gate keeps the
-no-new-ledger-row check true.
+existing regression sweep green. Every gate also keeps the
+no-new-compositor-specific-ledger-row check true; the G0 F7 rows #39–#41
+remain recorded separately.
 
 ### G0, Repository split
 
@@ -241,8 +244,12 @@ no-new-ledger-row check true.
   `sponge-compositor` (`target.mk`, `main.cc`, `README.md` per
   AGENTS.md §3.2). Each move commit changes no behavior and says so in
   its message.
-- Register the pins in `docs/11-environment.md`; the patch ledger row
-  count stays at 38.
+- Register the pins in `docs/11-environment.md`; the F7 terminal
+  lifecycle repair adds rows #39–#41, with no compositor-specific patch
+  or ledger row.
+- Close-out receipts: [`../evidence/phase16-g0-closeout.md`](../evidence/phase16-g0-closeout.md)
+  records the split pins, F7 commits, regression matrix, and remaining
+  non-compositor limitations.
 - Gate: the full existing regression sweep green after the moves;
   submodules pinned; `nm -u` baseline recorded for any Mojo objects
   that exist at that point (none are required yet). User approval,
