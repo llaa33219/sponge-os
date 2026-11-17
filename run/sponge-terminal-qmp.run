@@ -69,13 +69,20 @@ if {[catch {source $terminal_inc} term_inc_err]} {
 	exit 1
 }
 
-build { core lib/ld init timer server/report_rom server/nitpicker \
-        driver/acpi app/pci_decode driver/platform \
-        driver/framebuffer/vesa driver/ps2 \
-        driver/usb_host/pc driver/usb_hid server/event_filter \
-        sponge_pkgd \
-        {*}$terminal_runtime::extra_packages \
-        {*}$terminal_runtime::extra_libs }
+set runtime_terminal_inc [file join [file dirname [file normalize [info script]]] runtime-terminal.inc]
+if {[catch {source $runtime_terminal_inc} rt_inc_err]} {
+	puts stderr "\nFAIL: could not source $runtime_terminal_inc: $rt_inc_err"
+	exit 1
+}
+runtime_terminal::produce_vct_bin
+
+build [concat {core lib/ld init timer server/report_rom server/nitpicker \
+               driver/acpi app/pci_decode driver/platform \
+               driver/framebuffer/vesa driver/ps2 \
+               driver/usb_host/pc driver/usb_hid server/event_filter \
+               sponge_pkgd} \
+       $terminal_runtime::extra_packages \
+       $terminal_runtime::extra_libs]
 
 create_boot_directory
 
@@ -338,6 +345,7 @@ config
 # (Phase 14 W11 #33).
 #
 terminal_stage_vera_metadata "bin"
+runtime_terminal::strip_vct_bridge "bin"
 
 #
 # Driver sub-init config modules + event_filter keyboard layouts
@@ -416,6 +424,7 @@ set boot_modules [build_artifacts]
 # scenario's foreach loop.
 #
 terminal_append_boot_modules boot_modules
+lappend boot_modules vct-bin.tar
 foreach m { drivers.config fb.config event_filter.config \
             en_us.chargen special.chargen } {
 	lappend boot_modules $m
