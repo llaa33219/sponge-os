@@ -1450,9 +1450,13 @@ config
                       | xpos: 0 | ypos: 28 | width: 341 | height: 480
     + domain default | layer: 3 | content: client | label: no
                      | hover: always | focus: click | ypos: 28 | height: -28
+    # The DE background is not WM-managed. Keep it behind app views;
+    # sharing their domain can occlude all application content.
+    + domain backdrop | layer: 4 | content: client | label: no
+                      | hover: always | focus: click | ypos: 28 | height: -28
     + policy | label_prefix: pointer                  | domain: pointer
     + policy | label_prefix: system -> sponge-de -> Sponge Panel   | domain: panel
-    + policy | label_prefix: system -> sponge-de -> Sponge Background | domain: default
+    + policy | label_prefix: system -> sponge-de -> Sponge Background | domain: backdrop
     + policy | label_prefix: system -> sponge-de -> Sponge Launcher | domain: launcher
     + default-policy | domain: default
     + background | color: #1e1e2e
