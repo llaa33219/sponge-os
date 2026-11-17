@@ -48,7 +48,7 @@
 # driven click chain there.
 #
 # Thresholds (D14.4):
-#   - 30 min wall-clock           (run_genode_until timeout 1800s)
+#   - 30 min probe wall-clock     (host gate 2100s, including boot margin)
 #   - ≥100 cycles                 (probe's per-cycle PASS marker is
 #                                  the cycle count)
 #   - ΔRAM < 50 MB, Δcaps < 100   (the probe does NOT observe
@@ -70,7 +70,7 @@
 #   1. fb "using 1024x768"          90s
 #   2. pkgd bus ready               30s  (probe logs "stability-probe: starting W9")
 #   3. first-cycle PASS             60s
-#   4. stability-probe: PASS        1800s wall-clock (the budget)
+#   4. stability-probe: PASS        2100s host bound (1800s probe budget + boot margin)
 #
 # Final gate: "stability-probe: PASS" + "Run script execution
 # successful.".
@@ -606,10 +606,11 @@ append qemu_args " -device nec-usb-xhci,id=xhci -device usb-tablet "
 #   1. wait for fb (existing pattern)
 #   2. wait for the probe to log its startup marker
 #   3. wait for the first cycle PASS
-#   4. wait for the final PASS marker (1800s wall-clock budget)
+#   4. wait for the final PASS marker (2100s host bound for the
+#      probe's 1800s wall-clock budget plus boot/startup margin)
 #
 # This is the scenario's only gate, so let run_genode_until perform the
 # initial power-on and spawn QEMU. Passing $qemu_spawn_id here would
 # capture its initial empty value and wait without ever spawning QEMU.
 #
-run_genode_until {.*stability-probe: PASS.*} 1800
+run_genode_until {.*stability-probe: PASS.*} 2100
