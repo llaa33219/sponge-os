@@ -227,10 +227,11 @@
          TERM=screen makes bash emit the prompt + echo typed chars, which
          is what the terminal renders and the verification probe sees.
     -->
-    <start name="/bin/bash" caps="450" ram="64M">
+    <start name="/bin/bash" caps="512" ram="64M">
       <config>
         <libc stdin="/dev/terminal" stdout="/dev/terminal" stderr="/dev/terminal"
-              rtc="/dev/rtc" pipe="/pipe"/>
+              rtc="/dev/rtc" pipe="/pipe"
+              fork_ram="16777216" fork_caps="128"/>
         <vfs> <fs/> </vfs>
         <arg value="bash"/>
         <env name="TERM">screen</env>
@@ -242,6 +243,7 @@
         <service name="File_system"><child name="vfs"/></service>
         <service name="ROM" label_suffix=".lib.so"><parent/></service>
         <service name="ROM" label_last="/bin/bash"><child name="vfs_rom"/></service>
+        <service name="ROM" label_last="/bin/ls"><child name="vfs_rom"/></service>
         <service name="ROM" label_prefix="/bin"><child name="vfs_rom"/></service>
         <any-service><parent/><any-child/></any-service>
       </route>

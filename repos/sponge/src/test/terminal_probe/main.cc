@@ -577,21 +577,12 @@ struct Terminal_probe
 		}
 
 		/*
-		 * (6) Phase-13 CLI toolset assertion (synthetic mode only;
-		 * docs/plans/phase13-package-ecosystem.md D13.2). Type
-		 * "ls -l /bin" + '\n' through the same Press_char path
-		 * (KEY_UNKNOWN + codepoint, the touch_keyboard convention —
-		 * terminal's handle_press switches on the codepoint, so
-		 * '\n' executes the line, matching the chargen KEY_ENTER
-		 * mapping to ascii 10). With the toolset tars mounted,
-		 * coreutils `ls` prints a one-line-per-entry listing that
-		 * fills the scan band; without them bash prints a single
-		 * short "command not found" line. Requiring the post-command
-		 * glyph count to grow by at least 8x the echo increment
-		 * separates the two outcomes with a wide margin (the error
-		 * line is ~4x; a band-filling listing is ~20x). QMP mode
-		 * keeps its driver-chain contract unchanged — the toolset
-		 * is package content, verified on the synthetic path.
+		 * (6) CLI toolset assertion (synthetic mode only). The command chain
+		 * executes cat in a short fork loop and then grep, which, and vim;
+		 * any exec failure skips the final ls. Requiring the post-command
+		 * glyph count to grow by at least 8x the echo increment separates
+		 * the final listing from short exec errors. QMP mode keeps its
+		 * driver-chain contract unchanged.
 		 */
 		if (!_qmp_mode()) {
 			unsigned const echo_inc    = after_glyphs > baseline_glyphs
@@ -623,7 +614,10 @@ struct Terminal_probe
 			_capture.capture_at(Capture::Point(0, 0));
 			unsigned const tool_base = _count_glyphs(TOOLSET_SCAN_Y1);
 
-			char const *cmd = "ls -l /bin 2>/dev/log\n";
+			char const *cmd =
+				"for i in 1 2 3 4; do cat /bin/vct >/dev/null || exit 1; done && "
+				"grep usage /bin/vct >/dev/null && which ls >/dev/null && "
+				"vim --version >/dev/null && ls -l /bin 2>/dev/log\n";
 			for (char const *c = cmd; *c; ++c) {
 				_event.with_batch([&](Event::Session_client::Batch &batch) {
 					batch.submit(Input::Press_char { Input::KEY_UNKNOWN,
@@ -650,8 +644,7 @@ struct Terminal_probe
 				}
 			}
 			if (!listed) {
-				_fail("ls -l /bin did not render a listing "
-				      "(CLI toolset tars missing?)");
+				_fail("toolset exec chain did not render the final ls listing");
 				return;
 			}
 		}
