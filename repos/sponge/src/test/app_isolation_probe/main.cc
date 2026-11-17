@@ -33,46 +33,46 @@
  * nitpicker event. The ONLY pkgd calls are the sanctioned remove +
  * install RESET before the relaunch (wm_tasks_probe step-8 shape: a
  * plain re-launch after a closer-kill answers `already-running` and
- * never restarts the dead child); the launches themselves are always
- * real launcher entry clicks — never a pkgd-only launch substitute.
+ * never restarts the dead child); the launches themselves always use
+ * real launcher entry activation, never a pkgd-only launch substitute.
  *
  * Marker chain (guest -> host), in emission order:
  *
  *   app-isolation-probe: ready ...
- *   QMP-TARGET tablet <x> <y>       launcher toggle
- *   QMP-TARGET tablet <x> <y>       textedit entry (x3, bounded retry)
+ *   app-isolation-probe: wedge state t0 (...)
+ *   QMP-TARGET tablet <x> <y>       textedit popup toggle + focus pad
+ *   QMP-TARGET key tab (x3)         textedit entry
+ *   QMP-TARGET key space            activate textedit
+ *   QMP-TARGET tablet <x> <y>       calculator popup toggle + focus pad
+ *   QMP-TARGET key space            activate calculator
+ *   QMP-TARGET tablet <x> <y>       ep_wedge popup toggle + focus pad
+ *   QMP-TARGET key tab              ep_wedge entry
+ *   QMP-TARGET key space            activate ep_wedge
+ *   app-isolation-probe: wedge launched (...)
  *   app-isolation-probe: kill apps first paint (textedit + calculator)
- *   QMP-TARGET tablet <x> <y>       launcher toggle
- *   QMP-TARGET tablet <x> <y>       calculator entry (x3, bounded retry)
-
  *   app-isolation-probe: kill closer geometry (...)
- *   QMP-TARGET tablet <x> <y>       closer candidate A
- *   QMP-TARGET tablet <x> <y>       closer candidate B / re-hit winner
+ *   QMP-TARGET click <x> <y>        closer candidate A
+ *   QMP-TARGET click <x> <y>        closer candidate B / re-hit winner
  *   app-isolation-probe: kill victim-gone (...)
- *   QMP-TARGET tablet <x> <y>       launcher toggle (DE-input witness)
- *   QMP-TARGET tablet <x> <y>       launcher toggle (close)
+ *   QMP-TARGET click <x> <y>        launcher toggle (DE-input witness)
+ *   QMP-TARGET click <x> <y>        launcher toggle (close)
  *   app-isolation-probe: kill de-input ok (...)
- *   QMP-TARGET tablet <x> <y>       calculator spin focus click
+ *   QMP-TARGET click <x> <y>        calculator spin focus click
  *   QMP-TARGET type 17              sibling typed input
  *   app-isolation-probe: kill sibling typed delta (...)
  *   app-isolation-probe: kill reset ok (remove+install)
- *   QMP-TARGET tablet <x> <y>       launcher toggle
- *   QMP-TARGET tablet <x> <y>       textedit entry (relaunch, x3)
+ *   QMP-TARGET tablet <x> <y>       textedit popup toggle + focus pad
+ *   QMP-TARGET key tab (x3)         textedit relaunch entry
+ *   QMP-TARGET key space            activate textedit relaunch
  *   app-isolation-probe: kill relaunch first paint (... launch-result=ok)
- *   QMP-TARGET tablet <x> <y>       textedit focus click
+ *   QMP-TARGET click <x> <y>        textedit focus click
  *   QMP-TARGET type alive           relaunch typed input
  *   app-isolation-probe: kill relaunch typed delta (...)
- *   app-isolation-probe: wedge state t0 (...)
- *   QMP-TARGET tablet <x> <y>       launcher toggle
- *   QMP-TARGET tablet <x> <y>       ep_wedge entry (x3, bounded retry)
- *   app-isolation-probe: wedge launched (...)
- *   (30 s wait — ep_wedge parks its entrypoint wedge_after_ms in)
- *   QMP-TARGET tablet <x> <y>       launcher toggle (DE-input witness)
- *   QMP-TARGET tablet <x> <y>       launcher toggle (close)
+ *   QMP-TARGET click <x> <y>        launcher toggle (DE-input witness)
+ *   QMP-TARGET click <x> <y>        launcher toggle (close)
  *   app-isolation-probe: wedge de-input ok (...)
- *   QMP-TARGET tablet <x> <y>       calculator raise click (bottom strip)
- *   QMP-TARGET tablet <x> <y>       calculator spin focus click
- *   QMP-TARGET type 23              sibling typed input
+ *   QMP-TARGET click <x> <y>        textedit body focus click
+ *   QMP-TARGET type 45              sibling typed input after the wedge
  *   app-isolation-probe: wedge survivors (...)
  *   app-isolation-probe: wedge state ok (...)
  *   app-isolation-probe: PASS       (ONLY after both legs)
@@ -1200,37 +1200,65 @@ struct App_isolation_probe
 		band_h = CALC_BAND_DH * ch / 300;
 	}
 
+	bool _launch_with_keyboard(char const *name, unsigned tabs, bool wedge)
+	{
+		if (!_find_app(name)) {
+			_fail(name, " missing from the launcher feed");
+			return false;
+		}
+
+		_snapshot(DOMAIN_X, DOMAIN_Y, DOMAIN_W, DOMAIN_H, _snap);
+		bool const already_open = _popup_band_visible();
+		if (already_open) {
+			_emit_click(HEADING_X, HEADING_Y);
+		} else {
+			_emit_click(S_TOGGLE_X, S_TOGGLE_Y);
+			if (!_poll_popup_open()) {
+				_fail("launcher popup never opened (", name, ")");
+				return false;
+			}
+		}
+		if (!_wait_entry_bands()) {
+			_fail("launcher buttons never rendered for ", name);
+			return false;
+		}
+
+		char pad_before[32] = "";
+		_read_press(pad_before, sizeof(pad_before));
+		_emit_click(HEADING_X, HEADING_Y);
+		bool const pad_delivered = _wait_new_press(pad_before, 5000);
+		Genode::log("app-isolation-probe: keyboard focus ", name,
+		            " delivered=", (int)pad_delivered);
+		for (unsigned i = 0; i < tabs; ++i) {
+			_emit_key("tab");
+			_timer.msleep(500);
+		}
+		_emit_key("space");
+		if (wedge)
+			Genode::log("app-isolation-probe: wedge launched (entry=ep_wedge)");
+
+		if (!_poll_popup_closed()) {
+			_fail("launcher popup never closed after keyboard launch of ", name);
+			return false;
+		}
+		return true;
+	}
+
 	/* ---- KILL leg ---- */
 
 	void _run_kill_leg()
 	{
-		/*
-		 * (K1+K2+W1) textedit + calculator + ep_wedge from ONE
-		 * first-show popup session (the salvo contract): all three
-		 * entry clicks land on the working first-show view before
-		 * the launcher's hide-on-success (~1-2 s away) closes it;
-		 * later sessions cannot deliver entry clicks at all (the
-		 * stale-view receipts ai-cal2..10), so every launch in the
-		 * run rides this one session.
-		 */
 		App_entry const *te = _find_app("textedit");
 		if (!te) {
 			_fail("textedit missing from the launcher feed");
 			return;
 		}
-		if (!_open_popup())
+		if (!_launch_with_keyboard("textedit", 3, false))
 			return;
-
-		int te_a = 0, te_b = 0, ca_a = 0, ca_b = 0, we_a = 0, we_b = 0;
-		_click_y_candidates("textedit", te_a, te_b);
-		_click_y_candidates("calculator", ca_a, ca_b);
-		_click_y_candidates("ep_wedge", we_a, we_b);
-
-		int xs[3] = {
-			_entry_click_x(), _entry_click_x(), _entry_click_x() };
-		int ys[3] = { te_a, ca_a, we_a };
-		_salvo_clicks(xs, ys, 3, 1);
-		Genode::log("app-isolation-probe: wedge launched (entry=ep_wedge)");
+		if (!_launch_with_keyboard("calculator", 0, false))
+			return;
+		if (!_launch_with_keyboard("ep_wedge", 1, true))
+			return;
 
 		int rx = 0, ry = 0, rw = 0, rh = 0;
 		if (!_poll_first_paint("pkg_runtime_simple -> ", "textedit",
@@ -1387,14 +1415,9 @@ struct App_isolation_probe
 		}
 		Genode::log("app-isolation-probe: kill reset ok (remove+install)");
 
-				/* (K6) relaunch from the REAL launcher (solo salvo). */
-		if (!_open_popup())
+				/* (K6) relaunch from the REAL launcher (keyboard entry). */
+		if (!_launch_with_keyboard("textedit", 3, false))
 			return;
-		int rte_a = 0, rte_b = 0;
-		_click_y_candidates("textedit", rte_a, rte_b);
-		int rxs[1] = { _entry_click_x() };
-		int rys[1] = { rte_a };
-		_salvo_clicks(rxs, rys, 1, 2);
 		if (!_poll_first_paint("pkg_runtime_simple -> ", "textedit",
 		                       rx, ry, rw, rh)) {
 			_fail("no first paint for textedit after relaunch (kill leg)");
@@ -1530,9 +1553,8 @@ struct App_isolation_probe
 			bh = STACK_TOP - ty;
 		if (bh < 60)
 			bh = th / 2;
-		int const tcx = tx + tw / 2, tcy = ty + 100;
 		_snapshot(tx, ty, tw, bh, _snap);
-		_emit_click_ps2(tcx, tcy);
+		_emit_click_ps2(tx + tw / 2, ty + 100);
 		if (!_poll_focus(tid)) {
 			_log_window_list();
 			_fail("sibling textedit did not take focus (wedge leg)");

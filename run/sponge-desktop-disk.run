@@ -2950,7 +2950,7 @@ receipt: $m\n"
 	# QMP-TARGET instruction batches (fixed dispatch count per gate):
 	#
 	#   t0 (0) state baseline                 -> wedge state t0
-	#   K1+K2+W1 x6 open slots + 3-row salvo   -> wedge launched + wedge fired + kill apps first paint
+	#   K1+K2+W1 3 keyboard popup sessions  -> wedge launched + wedge fired + kill apps first paint
 	#   (0) closer geometry derivation       -> kill closer geometry
 	#   K3 x2 closer candidate A + B         -> kill victim-gone
 	#   K4 x2 toggle x2 (DE-input witness)   -> kill de-input ok
@@ -3013,17 +3013,20 @@ receipt: $m\n"
 
 		set qmp_chan [qmp_connect $qmp_port]
 
-		# class state t0 (no QMP) — the launch session below carries
-		# ALL three launches, so the state baseline precedes it
+		# class state t0 (no QMP) — the launch sessions below carry
+		# ALL three launches, so the state baseline precedes them
 		app_iso_gate {(app-isolation-probe: wedge state t0|app-isolation-probe: FAIL)} "wedge state t0"
 
-		# K1+K2+W1 (one first-show popup session): 3 open slots (see-
-		# then toggle / heading pads) + the 4-click entry SALVO (pad +
-		# textedit row + calculator row + ep_wedge row) — the fixed
-		# dispatch count of the probe's _open_popup + _salvo_clicks
-		# contract. All later popup sessions cannot deliver entry
-		# clicks (stale-view receipts ai-cal2..10), so every launch in
-		# the run rides this session.
+		# K1+K2+W1 (three keyboard-driven popup sessions): textedit
+		# toggle + focus pad + 3 Tab + Space (6), calculator toggle +
+		# focus pad + Space (3), ep_wedge toggle + focus pad + Tab +
+		# Space (4) — 13 slots total.
+		qmp_exec_target $qmp_chan 120
+		qmp_exec_target $qmp_chan 120
+		qmp_exec_target $qmp_chan 120
+		qmp_exec_target $qmp_chan 120
+		qmp_exec_target $qmp_chan 120
+		qmp_exec_target $qmp_chan 120
 		qmp_exec_target $qmp_chan 120
 		qmp_exec_target $qmp_chan 120
 		qmp_exec_target $qmp_chan 120
@@ -3068,10 +3071,8 @@ receipt: $m\n"
 
 
 
-		# K6: relaunch — 3 open slots + the 4-click solo SALVO (pad +
-		# textedit cand_a + cand_b + pad; the calculator is minimized
-		# so the popup clicks deliver)
-		qmp_exec_target $qmp_chan 120
+		# K6: relaunch — popup toggle + focus pad + 3 Tab + Space,
+		# matching the initial keyboard-driven textedit launch (6 slots).
 		qmp_exec_target $qmp_chan 120
 		qmp_exec_target $qmp_chan 120
 		qmp_exec_target $qmp_chan 120
@@ -3094,7 +3095,7 @@ receipt: $m\n"
 		app_iso_gate {(app-isolation-probe: wedge de-input ok|app-isolation-probe: FAIL)} "wedge de-input ok"
 
 		# W2b: sibling delta on the relaunched textedit (the K7
-		# clear-band shape — PS/2 focus click + typed digits) — 2 slots
+		# clear-band shape — PS/2 body focus click + typed digits) — 2 slots
 		qmp_exec_target $qmp_chan 120
 		qmp_exec_target $qmp_chan 120
 		app_iso_gate {(app-isolation-probe: wedge survivors|app-isolation-probe: FAIL)} "wedge survivors"
