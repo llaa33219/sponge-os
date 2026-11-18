@@ -232,6 +232,14 @@ IMG-only scope; criterion 10 carries the W6 deviation 1 right-click
 delivery finding). Full per-criterion evidence index in
 [`docs/evidence/phase16-index.md`](evidence/phase16-index.md).
 
+**Phase 16 compositor G1 completed 2026-11-18**: the public
+`sponge-compositor` repository now implements the Mojo-owned scene,
+view stack, reducer, clipping/damage, and opaque painter behind thin
+Genode adapters. Two opaque views and real Capture are byte-exact against
+upstream nitpicker on seL4 (`0x670d6b5d9fc0ed7b`). Native remains an
+explicit `SPONGE_COMPOSITOR=native` opt-in; G2 has not started
+([`docs/evidence/phase16-compositor-index.md`](evidence/phase16-compositor-index.md)).
+
 Deferred follow-ups (not blockers):
 
 1. **base-sel4 interactive GUI** ✅ driver stack delivered
