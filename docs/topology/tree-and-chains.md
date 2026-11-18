@@ -83,11 +83,19 @@ seL4 kernel
          │                        terminal class)
          └─ pkg_runtime_browser   (nested init #3c — caps 220000,
                                   RAM = the remainder: the browser
-                                  class (falkon). LAST `+ start` node
-                                  of the config — the clamp holder.)
+                                   class (falkon). LAST `+ start` node
+                                   of the config — the clamp holder.)
 ```
 
+G1 addition (2026-11-18): `sponge_compositor` is an alternative Tier-0
+only in the dedicated opaque/differential scenarios. It is selected solely
+by `SPONGE_COMPOSITOR=native`; the product tree above and every shipped
+medium continue to use `nitpicker`. WM and DE consume only the public
+Gui/Capture/Event surface and require no native-compositor dependency
+([`../evidence/phase16-compositor-index.md`](../evidence/phase16-compositor-index.md)).
+
 `driver_runtime` exists so that the capability boundary is structural
+
 rather than conventional
 ([`12-package-format.md`](../12-package-format.md) §4.5): `sponge_pkgd`
 generates per-target `<parent-provides>` lists from the package kinds

@@ -260,11 +260,13 @@ All Sponge OS code must obey the following:
    [`docs/plans/mojo-language-policy.md`](plans/mojo-language-policy.md);
    receipts and support boundary:
    [`docs/evidence/mojo-ffi-probe.md`](evidence/mojo-ffi-probe.md).
-   This principle changes no topology: the desktop still runs as
+   This principle changes no production topology: the desktop still runs as
    documented above, Qt on the upstream nitpicker stack. The G0 split
-   now places the WM, DE, and compositor scaffold in `sponge-wm`,
-   `sponge-de`, and `sponge-compositor`; the scaffold does not replace
-   nitpicker or change the shipped default.
+   places WM, DE, and compositor in separate public repositories. The G1
+   native compositor now proves the two-opaque-view/clipping/Capture slice
+   on seL4, but it remains an explicit `SPONGE_COMPOSITOR=native` opt-in
+   and does not replace nitpicker or change the shipped default
+   ([`docs/evidence/phase16-compositor-index.md`](evidence/phase16-compositor-index.md)).
 
 Violations of the above fall under the "absolute prohibitions" in
 `AGENTS.md`.
