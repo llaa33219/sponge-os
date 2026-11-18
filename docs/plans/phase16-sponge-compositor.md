@@ -2,10 +2,11 @@
 
 > Status: G0 repository split and close-out completed 2026-11-18 with
 > receipts in [`../evidence/phase16-g0-closeout.md`](../evidence/phase16-g0-closeout.md).
-> G1-G6 compositor implementation has not started; G1 waits for the staged
-> approval in D16C.12, and no seL4 compositor success is claimed. This
-> remains the decision-complete spec for the Mojo-first Sponge compositor
-> and the repository split.
+> G1 completed on 2026-11-18 with receipts in
+> [`../evidence/phase16-compositor-index.md`](../evidence/phase16-compositor-index.md).
+> G2-G6 have not started; no input-delivery, WM/DE integration, or default
+> flip is claimed. This remains the decision-complete spec for the Mojo-first
+> Sponge compositor and the repository split.
 > Relationship: companion to the delivered Sponge WM plan
 > (`docs/plans/phase16-sponge-wm.md`, D16W.x), the Mojo language policy
 > (`docs/plans/mojo-language-policy.md`, DLP.x), and the runtime topology
@@ -356,8 +357,9 @@ relabelled green (the Criterion-16 honesty rule applies unchanged).
    every gate.
 5. **Anchors and sweep.** The upstream anchors and the existing
    regression sweep stay green at every gate.
-6. **No-new-ledger-row check.** `docs/11-environment.md` §4 row count
-   unchanged (38).
+6. **No-new-compositor-ledger-row check.** `docs/11-environment.md` §4
+   stays at the post-F7 baseline of 41 rows; no compositor-specific row is
+   added (D16C.7).
 7. **seL4 QEMU is the receipt.** base-linux may serve as a fast dev
    path but never counts as proof. The probe basis and the gates are
    seL4.
@@ -384,8 +386,9 @@ relabelled green (the Criterion-16 honesty rule applies unchanged).
 - **Roadmap honesty.** `docs/09-roadmap.md` is untouched by this
   registration and gains text only in the same commit as real
   receipts.
-- **Ledger check** recorded per gate: zero new rows in
-  `docs/11-environment.md` §4 (D16C.7).
+- **Ledger check** recorded per gate: zero new compositor-specific rows in
+  `docs/11-environment.md` §4; the pre-compositor F7 rows #39–#41 remain a
+  separate baseline (D16C.7).
 
 ## 10. Commit and Execution Policy
 
