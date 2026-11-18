@@ -93,11 +93,25 @@ To check whether a specific component's structure is complete
 ./tool/check-compile repos/sponge-de/src/sponge-de
 ```
 
-This script only checks file presence; it does not compile anything.
-It is **C++-layout-oriented**: it looks for `target.mk` and `main.cc`
-and knows nothing about Mojo component layouts. It must be extended
-when the first Mojo component lands; until then it does not validate
-Mojo sources and must not be read as Mojo-aware.
+This script only checks file presence and build-seam shape; it does not
+compile anything. C++ layouts still require `target.mk` and `main.cc`.
+Mojo-first layouts are recognized and additionally checked for a non-empty
+`SRC_O` declaration and for each local `.mojo` source having a matching
+`.o` entry (stem match, including continuation lines). Entries using make
+expressions are reported but not expanded.
+
+Mojo objects are emitted through `tool/mojo_objects`, which resolves the
+pinned 1.0.0b2 compiler from the repository venv and always runs `nm -u`.
+The manual equivalent for a component object is:
+
+```bash
+./tool/mojo_objects --emit object --relocation-model=pic --target-cpu=x86-64 \
+  -o /tmp/scene.o repos/sponge-compositor/src/sponge_compositor/mojo/scene.mojo
+```
+
+The baseline CPU flag prevents host-CPU AVX instructions from entering the
+seL4 component. `nm -u` output is deliberately visible so a new runtime
+symbol cannot slip through unnoticed.
 
 For real compilation feedback, run the Genode build directly:
 

@@ -20,6 +20,7 @@ The knobs that affect a Sponge OS build, grouped by who sets them.
 | `QEMU_ARGS` | run scripts | per-scenario | Per-scenario QEMU args. The run scripts in `run/` append `-nographic -m 1G` for seL4 scenarios; `sponge-de.run` appends only `-nographic` because it needs the SDL framebuffer. |
 | `CONTRIB_DIR` | Genode build system | `genode/contrib/` | Where `prepare_port` drops fetched sources. |
 | `BUILD_DIR` | Genode build system | `genode/build/x86_64` | Build artifact output root. |
+| `SPONGE_COMPOSITOR` | run scripts / caller | `upstream` | Selects the Tier-0 compositor. Unset or `upstream` keeps upstream nitpicker; `native` explicitly selects `sponge_compositor`; any other value fails loudly. The G1 scenarios use this opt-in for native golden and differential runs. |
 
 ### 8.1 Order of repo shadowing
 
