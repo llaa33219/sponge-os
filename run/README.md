@@ -72,6 +72,9 @@ greppable from this index. Grouped documents:
 - `sponge-panel-config-sel4.run`: Phase 11 panel-config flow on base-sel4 with the interactive driver stack. ([full entry](scenarios/de-desktop.md))
 - `sponge-de-themed-chrome.run`: Phase 11 themed_decorator window chrome with live theme tint + QMP drag. ([full entry](scenarios/de-desktop.md))
 - `sponge-configd-persist.run`: Phase 14 W1 configd persistence skeleton (expected FAIL at the gated marker until W6). ([full entry](scenarios/de-desktop.md))
+- `run/compositor.inc`: shared Tcl include — the Tier-0 compositor selection seam (`SPONGE_COMPOSITOR` opt-in; upstream nitpicker is the default, invalid values fail loudly). ([full entry](scenarios/de-desktop.md))
+- `sponge-compositor-opaque.run`: Phase 16 G1 headless opaque golden smoke on the selected Tier-0 (`g1-capture: PASS`). ([full entry](scenarios/de-desktop.md))
+- `sponge-compositor-diff.run`: Phase 16 G1 native-vs-upstream Capture differential (`g1-diff: MATCH`; requires `SPONGE_COMPOSITOR=native`). ([full entry](scenarios/de-desktop.md))
 
 ### [Interactive drivers and QMP input](scenarios/interactive-qmp.md)
 

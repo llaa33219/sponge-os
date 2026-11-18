@@ -1,0 +1,123 @@
+#
+# \brief  G1 compositor opaque golden smoke (Phase 16)
+# \author Sponge OS contributors
+# \date   2026
+#
+# Headless boot of the SELECTED Tier-0 compositor with the two G1
+# opaque view clients and compositor-capture-probe in golden mode. The
+# probe reads the composited screen through a Capture session (no
+# framebuffer driver, no host display, like run/sponge-de-test.run),
+# verifies the fixed G1 scene, and logs the bounded marker
+# `g1-capture: PASS`.
+#
+# Scene (identical in run/sponge-compositor-diff.run):
+#   view A  (100,80,400,300)   fill #3366cc  white border  front
+#   view B  (300,200,400,300)  fill #cc3333  black border  back
+#   overlap x 300-500 / y 200-380 shows A (the clipping check);
+#   background #1e1e2e.
+#
+# Tier-0 selection (run/compositor.inc is the only seam):
+#   SPONGE_COMPOSITOR unset or 'upstream'  upstream nitpicker (default)
+#   SPONGE_COMPOSITOR=native               sponge_compositor (opt-in)
+#   any other value                        fails loudly at run start
+# The native path is never reached without the explicit opt-in, even
+# in this dedicated scenario (docs/plans/phase16-sponge-compositor.md,
+# D16C.8).
+#
+# Kernel-agnostic; seL4 QEMU is the receipt - base-linux is a fast dev
+# path that never counts as proof (same plan, section 8.7). No WM/DE
+# components. Component contract: repos/sponge-compositor provides
+# sponge_compositor, compositor-view-client, and
+# compositor-capture-probe (G1).
+#
+# Gate: bounded `run_genode_until {.*g1-capture: PASS.*} 180`; the
+# timeout (probe did not reach PASS) is the FAIL path.
+#
+
+source [file join [file dirname [file normalize [info script]]] compositor.inc]
+
+build { core lib/ld init timer server/nitpicker sponge_compositor \
+         test/view_client test/capture_probe }
+
+create_boot_directory
+
+set tier0 [compositor::tier0_start_node]
+
+# The Tier-0 child is named after its binary (compositor.inc vocabulary).
+set tier0_child nitpicker
+if {[compositor::enabled]} {
+	set tier0_child sponge_compositor
+}
+
+install_config "config
++ parent-provides
+  + service ROM
+  + service PD
+  + service CPU
+  + service LOG
+  + service IRQ
+  + service IO_MEM
+  + service IO_PORT
+
++ default | caps: 200 | ram: 4M
++ default-route
+  + any-service
+    + parent
+    + any-child
+
++ start timer
+  + provides | + service Timer
+
+$tier0
++ start view_a
+  + binary | name: compositor-view-client
+  + config
+    + client | x: 100 | y: 80 | width: 400 | height: 300
+           | color: 0x3366cc | border: 0xffffff | stack: front
+  + route
+    + service Gui | + child $tier0_child
+    + any-service
+      + parent
+      + any-child
+
++ start view_b
+  + binary | name: compositor-view-client
+  + config
+    + client | x: 300 | y: 200 | width: 400 | height: 300
+           | color: 0xcc3333 | border: 0x000000 | stack: back
+  + route
+    + service Gui | + child $tier0_child
+    + any-service
+      + parent
+      + any-child
+
++ start compositor-capture-probe | ram: 16M
+  + config
+    + probe | mode: golden | width: 1024 | height: 768 | expect_checksum: 0x670d6b5d9fc0ed7b
+  + route
+    + service Capture | + child $tier0_child
+    + service Timer | + child timer
+    + any-service
+      + parent
+      + any-child
+-
+"
+
+#
+# Every boot module comes from the build list above; [build_artifacts]
+# stages init.xsd, ld.lib.so, and all binaries (AGENTS.md section 4.2).
+#
+build_boot_image [build_artifacts]
+
+#
+# Harmless on base-linux (core runs natively); keeps the seL4 run
+# headless so no QEMU window opens.
+#
+append qemu_args " -nographic "
+
+#
+# Automated verification: the golden probe logs this marker once the
+# composed screen matches the G1 scene. On timeout the run tool errors
+# out - that is the FAIL path.
+#
+run_genode_until {.*g1-capture: PASS.*} 180

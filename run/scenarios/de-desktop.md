@@ -73,3 +73,49 @@ included); the parent index carries one-line summaries.
   disk store), and assert the broadcast carries `panel.height=28` after
   restart. The W1 skeleton times out at the gated `configd-persist-
   probe: PASS` marker — that is the EXPECTED FAIL until W6 lands.
+
+- `run/compositor.inc` — shared Tcl include: the Tier-0 selection seam
+  for the G1 compositor scenarios (reused by later G3/G4 product
+  integration). `compositor::enabled` maps `SPONGE_COMPOSITOR`
+  (unset/`upstream` → 0, `native` → 1; any other value fails loudly)
+  and `compositor::tier0_start_node` returns the Tier-0 start node:
+  upstream the full nitpicker node (capture + event, full-screen
+  client content, `label: no`, background `#1e1e2e`); native the
+  `sponge_compositor` node (width=1024 height=768, same background).
+  Upstream nitpicker is the default and the native node is never
+  emitted without the `SPONGE_COMPOSITOR=native` opt-in
+  (docs/plans/phase16-sponge-compositor.md, D16C.8).
+
+- `sponge-compositor-opaque.run` — **Phase 16 G1**: headless opaque
+  golden smoke (no framebuffer driver, no host display, like
+  `sponge-de-test.run`) booting the **selected** Tier-0 with the two G1
+  view clients (A (100,80,400,300) fill `#3366cc`, white border,
+  front; B (300,200,400,300) fill `#cc3333`, black border, back; the
+  overlap shows A — the clipping check) and `compositor-capture-probe`
+  in golden mode, which verifies the composed screen through a Capture
+  session and logs the bounded marker `g1-capture: PASS` (timeout is
+  the FAIL path). Tier-0 selection: unset/`SPONGE_COMPOSITOR=upstream`
+  runs upstream nitpicker (the default), `SPONGE_COMPOSITOR=native`
+  opts in to `sponge_compositor`, invalid values fail loudly. No WM/DE
+  components. **seL4 QEMU is the receipt** — base-linux is a dev path
+  only and never counts as proof
+  (docs/plans/phase16-sponge-compositor.md section 8.7). The build
+  list names the G1 component contract of `repos/sponge-compositor`
+  (`sponge_compositor`, `compositor-view-client`,
+  `compositor-capture-probe`). The probe asserts
+  `expect_checksum=0x670d6b5d9fc0ed7b` after a byte-exact comparison;
+  view configs use the `client` node's numeric `color`/`border` and
+  `stack="front|back"` attributes.
+
+- `sponge-compositor-diff.run` — **Phase 16 G1** differential oracle:
+  boots the native (`sponge_compositor`) and upstream (`nitpicker`)
+  Tier-0s side by side with identical A/B view clients on each (same
+  scene as `sponge-compositor-opaque.run`) and runs
+  `compositor-capture-probe` in diff mode with Capture labels `native`
+  and `upstream`; byte-exact equal captures log the bounded marker
+  `g1-diff: MATCH` (timeout is the FAIL path), with the same checksum
+  assertion `0x670d6b5d9fc0ed7b`. Requires
+  `SPONGE_COMPOSITOR=native` and fails loudly otherwise: the native
+  path is a mandatory explicit opt-in even here (D16C.8); the upstream
+  node is only the comparison reference. No WM/DE components. **seL4
+  QEMU is the receipt** (same plan, section 8.7).
