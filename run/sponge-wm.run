@@ -183,7 +183,7 @@ config
       + parent
       + any-child
 
-+ start sponge-de | caps: 300 | ram: 128M
++ start sponge-de | caps: 1000 | ram: 128M
   + config
     + tasklist | source: wm
     + vfs
