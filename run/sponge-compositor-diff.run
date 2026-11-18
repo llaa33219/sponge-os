@@ -1,0 +1,147 @@
+#
+# \brief  G1 compositor differential: native vs upstream nitpicker (Phase 16)
+# \author Sponge OS contributors
+# \date   2026
+#
+# Boots the native (sponge_compositor) and upstream (nitpicker) Tier-0
+# compositor side by side with identical G1 view clients on each, and
+# compositor-capture-probe in diff mode. The probe opens one Capture
+# session per Tier-0 (labels `native` and `upstream`) and compares the
+# two 1024x768 captures byte-exact; equality logs the bounded marker
+# `g1-diff: MATCH`. This differential is the validation oracle of
+# docs/plans/phase16-sponge-compositor.md section 8: opaque regions
+# match exactly, and there is no second scene model.
+#
+# Scene (identical A/B clients on each Tier-0, same as
+# run/sponge-compositor-opaque.run):
+#   view A  (100,80,400,300)   fill #3366cc  white border  front
+#   view B  (300,200,400,300)  fill #cc3333  black border  back
+#   overlap x 300-500 / y 200-380 shows A (the clipping check);
+#   background #1e1e2e.
+#
+# REQUIRES SPONGE_COMPOSITOR=native and fails loudly otherwise: the
+# native path is a mandatory explicit opt-in even in this dedicated
+# scenario (docs/plans/phase16-sponge-compositor.md, D16C.8). Upstream
+# nitpicker stays the shipped default everywhere else; the upstream
+# node here exists purely as the comparison reference.
+#
+# Headless (no framebuffer driver, no host display). Kernel-agnostic;
+# seL4 QEMU is the receipt - base-linux never counts as proof (same
+# plan, section 8.7). No WM/DE components. Component contract:
+# repos/sponge-compositor provides sponge_compositor,
+# compositor-view-client, and compositor-capture-probe (G1).
+#
+# Gate: bounded `run_genode_until {.*g1-diff: MATCH.*} 180`; the
+# timeout (probe did not reach MATCH) is the FAIL path.
+#
+
+source [file join [file dirname [file normalize [info script]]] compositor.inc]
+
+if {![compositor::enabled]} {
+	error "sponge-compositor-diff.run compares native vs upstream and requires SPONGE_COMPOSITOR=native"
+}
+
+build { core lib/ld init timer server/nitpicker sponge_compositor \
+         test/view_client test/capture_probe }
+
+create_boot_directory
+
+set native_tier0   [compositor::tier0_start_node native]
+set upstream_tier0 [compositor::tier0_start_node upstream]
+
+install_config "config
++ parent-provides
+  + service ROM
+  + service PD
+  + service CPU
+  + service LOG
+  + service IRQ
+  + service IO_MEM
+  + service IO_PORT
+
++ default | caps: 200 | ram: 4M
++ default-route
+  + any-service
+    + parent
+    + any-child
+
++ start timer
+  + provides | + service Timer
+
+$native_tier0
+$upstream_tier0
++ start view_a_native
+  + binary | name: compositor-view-client
+  + config
+    + client | x: 100 | y: 80 | width: 400 | height: 300
+           | color: 0x3366cc | border: 0xffffff | stack: front
+  + route
+    + service Gui | + child sponge_compositor
+    + any-service
+      + parent
+      + any-child
+
++ start view_b_native
+  + binary | name: compositor-view-client
+  + config
+    + client | x: 300 | y: 200 | width: 400 | height: 300
+           | color: 0xcc3333 | border: 0x000000 | stack: back
+  + route
+    + service Gui | + child sponge_compositor
+    + any-service
+      + parent
+      + any-child
+
++ start view_a_upstream
+  + binary | name: compositor-view-client
+  + config
+    + client | x: 100 | y: 80 | width: 400 | height: 300
+           | color: 0x3366cc | border: 0xffffff | stack: front
+  + route
+    + service Gui | + child nitpicker
+    + any-service
+      + parent
+      + any-child
+
++ start view_b_upstream
+  + binary | name: compositor-view-client
+  + config
+    + client | x: 300 | y: 200 | width: 400 | height: 300
+           | color: 0xcc3333 | border: 0x000000 | stack: back
+  + route
+    + service Gui | + child nitpicker
+    + any-service
+      + parent
+      + any-child
+
++ start compositor-capture-probe | ram: 16M
+  + config
+    + probe | mode: diff | width: 1024 | height: 768 | expect_checksum: 0x670d6b5d9fc0ed7b
+  + route
+    + service Capture | label_last: native   | + child sponge_compositor
+    + service Capture | label_last: upstream | + child nitpicker
+    + service Timer | + child timer
+    + any-service
+      + parent
+      + any-child
+-
+"
+
+#
+# Every boot module comes from the build list above; [build_artifacts]
+# stages init.xsd, ld.lib.so, and all binaries (AGENTS.md section 4.2).
+#
+build_boot_image [build_artifacts]
+
+#
+# Harmless on base-linux (core runs natively); keeps the seL4 run
+# headless so no QEMU window opens.
+#
+append qemu_args " -nographic "
+
+#
+# Automated verification: the diff probe logs this marker once the two
+# captures are byte-exact equal. On timeout the run tool errors out -
+# that is the FAIL path.
+#
+run_genode_until {.*g1-diff: MATCH.*} 180
