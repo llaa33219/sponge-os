@@ -4,9 +4,14 @@
 > receipts in [`../evidence/phase16-g0-closeout.md`](../evidence/phase16-g0-closeout.md).
 > G1 completed on 2026-11-18 with receipts in
 > [`../evidence/phase16-compositor-index.md`](../evidence/phase16-compositor-index.md).
-> G2-G6 have not started; no input-delivery, WM/DE integration, or default
-> flip is claimed. This remains the decision-complete spec for the Mojo-first
-> Sponge compositor and the repository split.
+> G2 input battery verified 2026-11-18 on seL4 QEMU: both Tier-0s pass all
+> five phases and the overall marker, the Event-injection differential
+> matches exactly, and the full-trace digest diverges only by the documented
+> attach-time hover-establishment records enumerated under section 8.2. The
+> user-approved native default is still a separate later commit after these
+> G2 documentation/commits; until it lands the upstream default is
+> unchanged. G3 has not started; no WM/DE integration, translucent blending,
+> physical hardware, or default flip is shipped here.
 > Relationship: companion to the delivered Sponge WM plan
 > (`docs/plans/phase16-sponge-wm.md`, D16W.x), the Mojo language policy
 > (`docs/plans/mojo-language-policy.md`, DLP.x), and the runtime topology
@@ -282,8 +287,10 @@ remain recorded separately.
   the correct of two overlapping views, mask holes fall through to the
   view below, and the pointer report stays sane.
 - Gate: the input battery green on seL4 QEMU, and scripted input
-  behavior matches upstream nitpicker in the differential. User
-  approval, then G3.
+  behavior matches upstream nitpicker in the differential. The section
+  8.2 clause allows an enumerated divergence; G2's is the attach-time
+  hover-establishment gap (exact on the Event-injection stream). Met
+  2026-11-18; user approval, then G3.
 
 ### G3, Full Criterion-16 battery
 
