@@ -87,11 +87,16 @@ seL4 kernel
                                    of the config — the clamp holder.)
 ```
 
-G1 addition (2026-11-18): `sponge_compositor` is an alternative Tier-0
-only in the dedicated opaque/differential scenarios. It is selected solely
-by `SPONGE_COMPOSITOR=native`; the product tree above and every shipped
-medium continue to use `nitpicker`. WM and DE consume only the public
-Gui/Capture/Event surface and require no native-compositor dependency
+G1/G2 addition (2026-11-18, selection updated 2026-11-19):
+`sponge_compositor` is the Tier-0 of the dedicated opaque/differential/
+input scenarios through the `run/compositor.inc` seam. Selection there is
+default-native (unset or `SPONGE_COMPOSITOR=native`), with
+`SPONGE_COMPOSITOR=upstream` as the explicit `nitpicker` fallback and
+invalid values failing loudly. The 0.2.0 product tree shown above is
+unchanged and still boots `nitpicker`; the selection change is not
+product-integration evidence (G3-G5 uncompleted). WM and DE consume only
+the public Gui/Capture/Event surface and require no native-compositor
+dependency
 ([`../evidence/phase16-compositor-index.md`](../evidence/phase16-compositor-index.md)).
 
 `driver_runtime` exists so that the capability boundary is structural

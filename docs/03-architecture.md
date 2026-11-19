@@ -263,9 +263,13 @@ All Sponge OS code must obey the following:
    This principle changes no production topology: the desktop still runs as
    documented above, Qt on the upstream nitpicker stack. The G0 split
    places WM, DE, and compositor in separate public repositories. The G1
-   native compositor now proves the two-opaque-view/clipping/Capture slice
-   on seL4, but it remains an explicit `SPONGE_COMPOSITOR=native` opt-in
-   and does not replace nitpicker or change the shipped default
+   and G2 compositor slices (opaque raster plus the input battery) are
+   verified on seL4, and Tier-0 selection in the run scenarios is
+   default-native since the 2026-11-19 user approval: unset or
+   `SPONGE_COMPOSITOR=native` selects `sponge_compositor`, and
+   `SPONGE_COMPOSITOR=upstream` is the explicit nitpicker fallback. That
+   selection change is not WM/DE integration or product integration, and
+   G3-G5 are uncompleted
    ([`docs/evidence/phase16-compositor-index.md`](evidence/phase16-compositor-index.md)).
 
 Violations of the above fall under the "absolute prohibitions" in
