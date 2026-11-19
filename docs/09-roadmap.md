@@ -240,8 +240,11 @@ are byte-exact against upstream nitpicker on seL4 (`0x670d6b5d9fc0ed7b`),
 and the G2 input battery (QMP clicks, alpha/mask fall-through, focus
 transitions, Event injection, pointer report) passes on both Tier-0s with
 an exact Event-injection match and a documented full-trace divergence.
-Native remains an explicit `SPONGE_COMPOSITOR=native` opt-in; the
-native-default flip is a separate later commit and G3+ is not claimed
+Tier-0 selection is default-native since 2026-11-19 (user approval after
+the green G2 receipts): unset or `SPONGE_COMPOSITOR=native` selects
+`sponge_compositor`, and `SPONGE_COMPOSITOR=upstream` is the explicit
+nitpicker fallback. G3+ is not claimed: no WM/DE integration, translucent
+blending, physical-hardware, or product-integration result comes from this
 ([`docs/evidence/phase16-compositor-index.md`](evidence/phase16-compositor-index.md)).
 
 Deferred follow-ups (not blockers):

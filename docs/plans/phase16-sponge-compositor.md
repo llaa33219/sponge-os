@@ -7,11 +7,15 @@
 > G2 input battery verified 2026-11-18 on seL4 QEMU: both Tier-0s pass all
 > five phases and the overall marker, the Event-injection differential
 > matches exactly, and the full-trace digest diverges only by the documented
-> attach-time hover-establishment records enumerated under section 8.2. The
-> user-approved native default is still a separate later commit after these
-> G2 documentation/commits; until it lands the upstream default is
-> unchanged. G3 has not started; no WM/DE integration, translucent blending,
-> physical hardware, or default flip is shipped here.
+> attach-time hover-establishment records enumerated under section 8.2. On
+> 2026-11-19 the user approved the native default, superseding the original
+> flip timing: native became the default after the green G2 receipts,
+> earlier than the original G6 sequence. `run/compositor.inc` now selects
+> `sponge_compositor` for unset or `SPONGE_COMPOSITOR=native` and the
+> nitpicker fallback for `SPONGE_COMPOSITOR=upstream`, with default and
+> fallback runs recorded in the evidence index. G3-G5 remain uncompleted;
+> no WM/DE integration, translucent blending, physical hardware, or
+> product integration is claimed.
 > Relationship: companion to the delivered Sponge WM plan
 > (`docs/plans/phase16-sponge-wm.md`, D16W.x), the Mojo language policy
 > (`docs/plans/mojo-language-policy.md`, DLP.x), and the runtime topology
@@ -36,8 +40,10 @@ recommended default, but correctness and security win every conflict
 and the upstream nitpicker fallback remains mandatory. The first
 vertical slice is deliberately small: two opaque views, clipping, and
 a Capture consumer on seL4 QEMU. Everything beyond that slice is
-gated, and the shipped default stays on upstream nitpicker until the
-user separately approves a flip.
+gated. The 2026-11-16 staging kept the shipped default on upstream
+nitpicker until a separate user-approved flip; that approval came on
+2026-11-19 after the green G2 receipts, so the default is now native
+(section 2).
 
 ## 2. Recorded User Approvals (2026-11-16, binding)
 
@@ -75,6 +81,16 @@ do not re-litigate:
     incrementally later, not as a big-bang rewrite.
 12. **Least privilege, single entrypoint.** Least-privilege
     capabilities and a single-entrypoint initial design.
+
+**Superseding approval (2026-11-19).** The user approved making the
+native compositor the default after the green G2 receipts, earlier than
+the original G6-after-G5 sequence. Unset or `SPONGE_COMPOSITOR=native`
+now selects `sponge_compositor`, and `SPONGE_COMPOSITOR=upstream`
+selects the nitpicker fallback, which stays reachable as an explicit
+override. Approvals 6 and 9 are superseded on that point only: the
+fallback shape survives, the staged flip timing does not. The gate
+structure is otherwise unchanged, G3-G5 remain uncompleted, and no gate
+result is rounded up.
 
 ## 3. Baseline (2026-11-16, plan-time truth)
 
@@ -121,11 +137,11 @@ do not re-litigate:
 | **D16C.5** | **KGEN runtime shim on `Genode::Heap`.** The KGEN shim is the sanctioned runtime bridge for Mojo objects on Genode. It is C++, implemented on `Genode::Heap`, and supplies the allocator/runtime entry points the emitted objects reference (the `List[Int64]` probe shape). Nothing else crosses into Mojo as a runtime service. | Proven in `../evidence/mojo-ffi-probe.md`. One declared bridge keeps `nm -u` auditable (§6) and keeps allocation inside Genode's quota model. |
 | **D16C.6** | **In-OS Mojo subset.** The initial in-OS subset excludes Python interop, async, and POSIX I/O (full contract in §6). All I/O and OS services cross the C++ adapter seam. Widening the subset is a later, separate decision with an `nm -u` re-baseline. | Runtime coverage is subset-specific (probe). A small subset keeps the no-libc claim true and the seam reviewable. |
 | **D16C.7** | **Public Genode APIs only.** Public Genode interfaces and public IPC surfaces only. No private gems headers and no compositor-specific vendored patches or new ledger rows. The pre-compositor G0 terminal F7 repair is recorded separately in rows #39–#41; those commits are not a compositor dependency or a precedent for adding compositor patches. If patching the fork tree for the compositor becomes tempting, work stops and comes back to the user (D16.8 discipline). | AGENTS.md §5.2 and D16.8. Replacing nitpicker must not recreate the private-dependence problem the native WM exists to escape. |
-| **D16C.8** | **Fallback and opt-in.** Upstream nitpicker stays the shipped compositor for every existing scenario and every shipped medium. The native compositor is selected only through the opt-in `SPONGE_COMPOSITOR=native`, which swaps the Tier-0 node in the run topology. While the native path exists, the nitpicker path stays reachable as an explicit override. | Recorded approval 6. The fallback is simultaneously the regression net and the always-open control door (AGENTS.md §1.1). |
+| **D16C.8** | **Fallback and selection.** Original 2026-11-16 shape: upstream nitpicker stays the shipped compositor for every existing scenario and every shipped medium, and the native compositor is selected only through the opt-in `SPONGE_COMPOSITOR=native`. Superseded 2026-11-19 (user approval): unset or `SPONGE_COMPOSITOR=native` selects the native compositor as the default, and `SPONGE_COMPOSITOR=upstream` selects the nitpicker fallback, which stays reachable as an explicit override (verified default/fallback receipts in the evidence index). Invalid values fail loudly. | Recorded approval 6, superseded on selection by the 2026-11-19 approval. The fallback is simultaneously the regression net and the always-open control door (AGENTS.md §1.1). |
 | **D16C.9** | **First vertical slice.** The first delivered compositor slice is two opaque views + clipping + Capture on seL4 QEMU (G1). Nothing beyond that slice is claimed before its gate receipts exist. | Recorded approval 7. Small honest slices beat a broad unproven claim (AGENTS.md §1.4). |
 | **D16C.10** | **Validation oracle.** Correctness is validated by golden images and by differential comparison against upstream nitpicker under identical scripted geometry, content, and input. A second scene model in C++ (or any other language) as a reference implementation is explicitly rejected. | Recorded approval 8. A second model drifts from the first and doubles the maintenance, while nitpicker is the behavior clients already expect. |
 | **D16C.11** | **Least privilege and single entrypoint.** Every session request is minimum-privilege (AGENTS.md §1.2): the compositor consumes only what it needs (Framebuffer, Input, Report, ROM, Timer as each gate requires) and provides only the Gui/Event/Capture session surface. The initial design is one component with one `Component::construct` entrypoint; internal modules (scene, input, painter) keep split boundaries loose the way AGENTS.md §3.4 requires for the DE, and a later component split is an open question, not a promise. | Recorded approval 12. A compositor core is one responsibility area, and premature component splits would complicate the first slices without a security gain. |
-| **D16C.12** | **Staged approval gates.** G0 through G5 proceed one gate at a time: a gate's work starts only after the previous gate's receipts are approved by the user. G6 (default flip) requires a separate, explicit user approval on top of a green G5. This plan cannot flip the default on its own. | Recorded approval 9. The flip changes what every user boots, so it gets its own decision. |
+| **D16C.12** | **Staged approval gates.** G0 through G5 proceed one gate at a time: a gate's work starts only after the previous gate's receipts are approved by the user. The original G6 sequencing put the default flip after G5 under a separate, explicit user approval; the 2026-11-19 approval superseded that timing, and the flip landed after the green G2 receipts instead. G3-G5 staging is unchanged, and this plan cannot flip a default on its own. | Recorded approval 9, flip timing superseded 2026-11-19. The flip changes what every user boots, so it gets its own decision; that decision arrived earlier than the G6 slot. |
 | **D16C.13** | **Incremental C++ migration later.** The existing C++ WM trio and the Qt6 DE migrate to Mojo later and incrementally, per component and per slice. This plan does not rewrite them, and no big-bang rewrite is scheduled. | Recorded approval 11. The delivered C++ stack is the proven baseline and the fallback; it is replaced piecewise only. |
 | **D16C.14** | **Scenario naming.** New scenarios use `run/sponge-compositor*.run` names. Pinned names: `run/sponge-compositor-opaque.run` (G1), `run/sponge-compositor-input.run` (G2), `run/sponge-compositor-c16.run` (G3 battery on native), `run/sponge-compositor-diff.run` (differential/golden), `run/sponge-compositor-fuzz.run` (G5). No existing `run/` scenario is renamed or repurposed; the upstream anchors keep their names. | Same name-separation discipline as D16W.8: the native gates and the fallback anchors must stay independently runnable. |
 
@@ -142,8 +158,10 @@ do not re-litigate:
 - **A libc dependency** in emitted Mojo objects (D16C.4).
 - **New compositor-specific vendored patches** or ledger rows beyond the
   recorded G0 F7 repair (#39–#41, D16C.7).
-- **Flipping the default topology** to the native compositor. That is
-  G6 and needs separate user approval (D16C.12).
+- **A default flip without separate user approval** (D16C.12). The user
+  gave that approval on 2026-11-19, earlier than the G6 slot; the flip
+  landed with the `SPONGE_COMPOSITOR=upstream` fallback intact and
+  carries no G3-G5 completion claim.
 - **Translucent blending and visual effects.** Alpha and input masks
   are consumed for hit testing from G2 on; blending translucent views
   is not designed here (§11).
@@ -237,7 +255,9 @@ approval before the next gate begins. Nothing here starts before this
 plan is checked in. Every gate keeps the upstream anchors and the
 existing regression sweep green. Every gate also keeps the
 no-new-compositor-specific-ledger-row check true; the G0 F7 rows #39–#41
-remain recorded separately.
+remain recorded separately. G0-G2 are complete; G3-G5 remain
+uncompleted, and the default flip recorded under G6 landed early per the
+2026-11-19 approval (section 2).
 
 ### G0, Repository split
 
@@ -292,13 +312,14 @@ remain recorded separately.
   hover-establishment gap (exact on the Event-injection stream). Met
   2026-11-18; user approval, then G3.
 
-### G3, Full Criterion-16 battery
+### G3, Full Criterion-16 battery (uncompleted)
 
 - The complete Criterion-16 acceptance battery
   (`docs/plans/phase16-sponge-wm.md` §7: move, 8-zone resize, focus,
   close, minimize/restore with focus, maximize/restore, tiling
   open/close/mode/reflow, and the >=20-cycle rules-drift soak) runs
-  green end to end with `SPONGE_COMPOSITOR=native`, the delivered
+  green end to end under default-native selection (unset, or
+  `SPONGE_COMPOSITOR=native` as the explicit equivalent), the delivered
   Sponge WM trio sitting above the native compositor.
 - The upstream anchors `run/sponge-wm{,-qmp,-tasks}.run` stay green on
   upstream nitpicker. Golden-image and differential coverage grows to
@@ -306,17 +327,20 @@ remain recorded separately.
 - Gate: the full battery green (any gap recorded as an honest partial,
   never relabeled) and the anchors green. User approval, then G4.
 
-### G4, Product integration
+### G4, Product integration (uncompleted)
 
-- Opt-in `SPONGE_COMPOSITOR=native` on the product scenarios (the
+- Native selection on the product scenarios (the
   `sponge-alpha` and desktop-disk family) boots the shipped DE and
   apps on the native compositor. Product-topology differential against
   upstream nitpicker, plus churn/soak in the product topology.
-- Shipped media and default runs keep nitpicker (D16C.8).
-- Gate: product scenarios green under the opt-in with receipts. User
-  approval, then G5.
+- The 2026-11-19 default flip is not evidence for this gate: it covers
+  the run-scenario selection seam only (D16C.8), and no product-topology
+  run has been executed or claimed on the native compositor.
+  `SPONGE_COMPOSITOR=upstream` keeps the comparison path explicit.
+- Gate: product scenarios green under default-native selection with
+  receipts. User approval, then G5.
 
-### G5, Security, fuzz, session isolation, quota, churn
+### G5, Security, fuzz, session isolation, quota, churn (uncompleted)
 
 - Capability least-privilege audit (D16C.11) against the real init
   configs of every gate topology.
@@ -327,21 +351,23 @@ remain recorded separately.
   views, buffers, or input, and input never leaks across sessions.
 - Quota enforcement: per-client dataspace/buffer caps hold under
   churn, and the existing churn-regression family stays green with the
-  native compositor in the opt-in.
+  native compositor (default selection since 2026-11-19).
 - Gate: no isolation breach, no unbounded quota growth, fuzz corpus
-  clean, churn regressions green. User approval, then G6
-  consideration.
+  clean, churn regressions green. User approval, then the G6 record
+  below (already superseded as a flip gate).
 
-### G6, Default flip (separate user approval)
+### G6, Default flip (sequencing superseded; flip landed 2026-11-19)
 
-- Even with G0-G5 green, the shipped default stays upstream nitpicker
-  until the user gives a separate, explicit approval to make the
-  native compositor the default.
-- If approved, the flip lands as its own commit with full receipts,
-  and the nitpicker path remains reachable through an explicit
-  override (AGENTS.md §1.1: automation is the default, control stays a
-  door that is always open).
-- This plan does not flip the default.
+- The original sequencing kept the default on upstream nitpicker until
+  a separate, explicit user approval on top of green G5. The user gave
+  that approval on 2026-11-19 after the green G2 receipts, so the flip
+  landed earlier than the G6 slot (section 2).
+- The flip is its own change with default/fallback receipts in the
+  evidence index, and the nitpicker path remains reachable through
+  `SPONGE_COMPOSITOR=upstream` (AGENTS.md §1.1: automation is the
+  default, control stays a door that is always open).
+- The flip is a selection change only. It proves no G3-G5 result and
+  no WM/DE or product integration.
 
 ## 8. Verification Contract
 
@@ -406,8 +432,10 @@ relabelled green (the Criterion-16 honesty rule applies unchanged).
   No code, no source moves, and no submodule pins ride along with it.
 - G0's mechanical moves are their own commits. Each states "no
   behavior change" and is verified by the sweep before the next lands.
-- Work order is G0 to G6, strictly staged (D16C.12). No gate starts
-  on unapproved receipts, and no gate's result is rounded up.
+- Work order is G0 to G6, strictly staged (D16C.12); the 2026-11-19
+  approval superseded only the default-flip timing (G6), and G3-G5
+  remain strictly staged. No gate starts on unapproved receipts, and
+  no gate's result is rounded up.
 - Build and scenario verification after every gate (AGENTS.md §4.2).
 
 ## 11. Open Questions (recorded, not blocking)

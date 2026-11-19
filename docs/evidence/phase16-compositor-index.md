@@ -1,14 +1,18 @@
 # Phase 16 compositor evidence index
 
-> Status, 2026-11-18: **G1 and G2 verified**. The native Mojo compositor
-> passes the two-opaque-view/clipping/Capture slice and the G2 input
-> battery on seL4 QEMU. G1 rasters match upstream nitpicker byte-for-byte.
-> G2 matches upstream exactly on the Event-injection stream. The full trace
-> remains diagnostic, with the attach-time hover-establishment divergence
-> documented in section 3. Upstream remains the shipped default and the native
-> `SPONGE_COMPOSITOR=native` opt-in is unchanged; no WM/DE integration,
-> translucent blending, physical hardware, or default flip is claimed. G3+
-> has not started.
+> Status, 2026-11-19: **G1 and G2 verified; Tier-0 selection is
+> default-native**. The native Mojo compositor passes the
+> two-opaque-view/clipping/Capture slice and the G2 input battery on seL4
+> QEMU. G1 rasters match upstream nitpicker byte-for-byte. G2 matches
+> upstream exactly on the Event-injection stream. The full trace remains
+> diagnostic, with the attach-time hover-establishment divergence
+> documented in section 3. Selection is default-native under the
+> 2026-11-19 user approval: unset or `SPONGE_COMPOSITOR=native` runs
+> `sponge_compositor`, `SPONGE_COMPOSITOR=upstream` is the explicit
+> nitpicker fallback, and invalid values fail loudly. Default-native and
+> upstream-fallback runs are receipts in section 3. No WM/DE integration,
+> translucent blending, physical hardware, or product integration is
+> claimed, and G3-G5 remain uncompleted.
 
 ## 1. Public repositories and independence
 
@@ -35,8 +39,10 @@ nitpicker header or WM/DE source is included by the compositor.
 - Two real opaque view clients and a real Capture probe. The expected
   raster is test-oracle data only, not a second scene model. A real input
   probe drives the G2 battery through public sessions only.
-- Opt-in selection through `SPONGE_COMPOSITOR=native`; unset/upstream keeps
-  upstream nitpicker. Invalid values fail loudly.
+- Default-native selection (user-approved 2026-11-19): unset or
+  `SPONGE_COMPOSITOR=native` selects `sponge_compositor`, and
+  `SPONGE_COMPOSITOR=upstream` selects the nitpicker fallback. Invalid
+  values fail loudly.
 - Golden, differential, and input scenarios:
   `run/sponge-compositor-opaque.run`, `run/sponge-compositor-diff.run`, and
   `run/sponge-compositor-input.run`.
@@ -58,7 +64,9 @@ bottom view, so a click inside the hole falls through to the lower session.
 | G1 native vs upstream differential | `g1-diff: MATCH`, same checksum and assertion; `/tmp/opencode/g1-diff-final.log` |
 | G2 input battery, upstream | all five phases and overall `g2-input: PASS`; `/tmp/opencode/g2-input-upstream-2.log` |
 | G2 input battery, native | all five phases and overall `g2-input: PASS`; `/tmp/opencode/g2-input-native-7.log` |
-| G2 Event-injection differential | `g2-input: trace-inject` exact match on both Tier-0s, `0xc50006d9e1676755` |
+| G2 input battery, default-native selection | all five phases, overall `g2-input: PASS`, `trace-inject` `0xc50006d9e1676755`; `/tmp/opencode/g2-input-native-default.log` |
+| G2 input battery, explicit upstream fallback | all five phases, overall `g2-input: PASS`, `trace-inject` `0xc50006d9e1676755`; `/tmp/opencode/g2-input-upstream-fallback.log` |
+| G2 Event-injection differential | `g2-input: trace-inject` exact match on both Tier-0s, `0xc50006d9e1676755` (including the default-native and upstream-fallback runs above) |
 | G2 full-trace digest (diagnostic) | not a stability gate; upstream values vary across runs, while the exact Event-injection digest above matches |
 | Mojo scene object | `nm -u build/scene.o`: empty; `/tmp/opencode/g1-scene.o` also empty |
 | Mojo painter object | `nm -u build/painter.o`: empty; `/tmp/opencode/g1-painter.o` also empty |
@@ -113,12 +121,14 @@ claimed:
   not proven; the battery is headless on seL4 QEMU only.
 - Capacity is fixed at 8 sessions, 32 views, and 3 merged damage rects;
   exhaustion returns protocol errors rather than growing without bound.
-- No existing production topology is switched. Upstream nitpicker stays the
-  default and the native `SPONGE_COMPOSITOR=native` opt-in is unchanged; the
-  native-default flip is a separate later commit. The `sponge-wm` anchor was
-  also corrected from 300 to the documented 1000 DE caps because the old
-  value blocked Qt session creation; this is a scenario-budget fix, not a
-  compositor dependency.
+- The run-scenario Tier-0 seam is default-native since 2026-11-19 (unset
+  or `SPONGE_COMPOSITOR=native`; `SPONGE_COMPOSITOR=upstream` is the
+  explicit fallback). That selection change rests on the G1/G2 receipts
+  plus the default/fallback runs above; it is not WM/DE integration and
+  not product-integration evidence. The `sponge-wm` anchor was also
+  corrected from 300 to the documented 1000 DE caps because the old
+  value blocked Qt session creation; this is a scenario-budget fix, not
+  a compositor dependency.
 
 Root causes fixed during G2 (curated, no raw logs promoted): full drivers
 inline config, the first-marker QMP rendezvous, the upstream focus/hover
