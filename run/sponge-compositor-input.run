@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 # G2 input battery for the Sponge compositor. The selected Tier-0 is
-# upstream nitpicker by default, or native with SPONGE_COMPOSITOR=native.
+# native by default, or upstream with SPONGE_COMPOSITOR=upstream.
 # The probe drives top-view clicks, alpha/input-mask fall-through, focus
 # transitions, real Event injection, and pointer-report validation through
 # the real ps2/event_filter chain. No WM/DE component is involved.

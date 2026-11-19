@@ -19,11 +19,10 @@
 #   overlap x 300-500 / y 200-380 shows A (the clipping check);
 #   background #1e1e2e.
 #
-# REQUIRES SPONGE_COMPOSITOR=native and fails loudly otherwise: the
-# native path is a mandatory explicit opt-in even in this dedicated
-# scenario (docs/plans/phase16-sponge-compositor.md, D16C.8). Upstream
-# nitpicker stays the shipped default everywhere else; the upstream
-# node here exists purely as the comparison reference.
+# REQUIRES native selection (the default or SPONGE_COMPOSITOR=native)
+# and fails loudly under SPONGE_COMPOSITOR=upstream: this dedicated
+# differential needs both Tier-0s (docs/plans/phase16-sponge-compositor.md,
+# D16C.8). The upstream node exists purely as the comparison reference.
 #
 # Headless (no framebuffer driver, no host display). Kernel-agnostic;
 # seL4 QEMU is the receipt - base-linux never counts as proof (same

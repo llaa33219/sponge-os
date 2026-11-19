@@ -17,11 +17,11 @@
 #   background #1e1e2e.
 #
 # Tier-0 selection (run/compositor.inc is the only seam):
-#   SPONGE_COMPOSITOR unset or 'upstream'  upstream nitpicker (default)
-#   SPONGE_COMPOSITOR=native               sponge_compositor (opt-in)
+#   SPONGE_COMPOSITOR unset or 'native'    sponge_compositor (default)
+#   SPONGE_COMPOSITOR=upstream             upstream nitpicker (fallback)
 #   any other value                        fails loudly at run start
-# The native path is never reached without the explicit opt-in, even
-# in this dedicated scenario (docs/plans/phase16-sponge-compositor.md,
+# The explicit native kind requires native selection, either the default
+# or the explicit override (docs/plans/phase16-sponge-compositor.md,
 # D16C.8).
 #
 # Kernel-agnostic; seL4 QEMU is the receipt - base-linux is a fast dev
