@@ -1,8 +1,8 @@
 # SPDX-License-Identifier: Apache-2.0
 #
-# Opt-in Tier-0 compositor selection for run scenarios. Upstream
-# nitpicker is the shipped default; SPONGE_COMPOSITOR=native selects
-# the sponge_compositor node. Any other value fails loudly. This
+# Default-native Tier-0 compositor selection for run scenarios. An unset
+# SPONGE_COMPOSITOR or 'native' selects sponge_compositor; 'upstream'
+# selects the nitpicker fallback. Any other value fails loudly. This
 # include is the only Tier-0 selection seam and is reused by later
 # G3/G4 product integration (docs/plans/phase16-sponge-compositor.md,
 # D16C.8/D16C.14).
@@ -13,16 +13,14 @@
 #   compositor::tier0_start_node ?kind?  -> start-node text for the
 #                                Tier-0; kind is 'selected' (default,
 #                                follow SPONGE_COMPOSITOR), 'native',
-#                                or 'upstream'. The native node is
-#                                never emitted without the
-#                                SPONGE_COMPOSITOR=native opt-in,
-#                                even when requested explicitly.
+#                                or 'upstream'. Explicit 'native' kind
+#                                requires native selection (the default
+#                                or an explicit native override).
 #
 # Node vocabulary (stable, used by scenario routes):
 #   upstream -> child 'nitpicker', native -> child 'sponge_compositor'
 #
-# Follows the run/wm_trio.inc opt-in discipline: the default path is
-# upstream, the native path is an explicit checked override.
+# Native is the default; upstream remains an explicit checked fallback.
 #
 
 namespace eval compositor {
@@ -31,7 +29,7 @@ namespace eval compositor {
 
 proc compositor::enabled { } {
 	if {![info exists ::env(SPONGE_COMPOSITOR)]} {
-		return 0
+		return 1
 	}
 	switch -- $::env(SPONGE_COMPOSITOR) {
 		upstream { return 0 }
@@ -105,7 +103,7 @@ proc compositor::tier0_start_node { {kind selected} } {
 		}
 		native {
 			if {!$native} {
-				error "the native Tier-0 requires SPONGE_COMPOSITOR=native"
+				error "the native Tier-0 requires native selection (default or SPONGE_COMPOSITOR=native)"
 			}
 			return [compositor::_native_start_node]
 		}
