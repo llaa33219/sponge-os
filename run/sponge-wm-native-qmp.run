@@ -70,7 +70,22 @@ assert {[have_spec sel4]} \
 	 This scenario drives real PC hardware (vesa_fb/ps2/usb_hid) which \
 	 base-linux cannot provide."
 
-build { core lib/ld init timer server/report_rom server/nitpicker \
+#
+# G3 WM-shaped Tier-0 selection seam (run/compositor.inc). tier0_kind
+# defaults to 'upstream' (this reference run keeps nitpicker); 'native'
+# selects sponge_compositor and rewrites every nitpicker child/report
+# label in the generated config.
+#
+source [file join [file dirname [file normalize [info script]]] compositor.inc]
+
+if {![info exists tier0_kind]} {
+	set tier0_kind upstream
+}
+set tier0_build [compositor::wm_tier0_build $tier0_kind]
+set tier0_child [compositor::wm_tier0_child $tier0_kind]
+set tier0 [compositor::wm_start_node $tier0_kind "focus: yes | hover: yes | pointer: yes | xray: yes"]
+
+build [string map [list server/nitpicker $tier0_build] { core lib/ld init timer server/report_rom server/nitpicker \
          driver/acpi app/pci_decode driver/platform \
          driver/framebuffer/vesa driver/ps2 \
          driver/usb_host/pc driver/usb_hid server/event_filter \
@@ -80,11 +95,11 @@ build { core lib/ld init timer server/report_rom server/nitpicker \
          qt6/base lib/libc lib/libm lib/stdcxx lib/mesa \
          lib/mesa_gpu-softpipe lib/egl lib/softpipe lib/libdrm lib/expat \
          lib/qt6_component lib/vfs lib/vfs_pipe lib/vfs_gpu lib/rom_filter \
-         lib/zlib lib/libpng lib/blit }
+         lib/zlib lib/libpng lib/blit }]
 
 create_boot_directory
 
-install_config {
+install_config [string map [list @TIER0@ $tier0 nitpicker $tier0_child] {
 config
 + parent-provides
   + service ROM
@@ -141,28 +156,7 @@ config
     + policy | label: native_wm_qmp_probe -> result   | report: sponge_pkgd -> result
     + policy | label: pkg_runtime -> config           | report: sponge_pkgd -> runtime
 
-+ start nitpicker | ram: 16M
-  + provides
-    + service Gui
-    + service Capture
-    + service Event
-  + route
-    + service Report | + child report_rom
-    + service Timer | + child timer
-    + any-service
-      + parent
-      + any-child
-  + config
-    + capture
-    + event
-    + report | focus: yes | hover: yes | pointer: yes | xray: yes
-    + domain panel | layer: 1 | content: client | label: no
-                   | hover: always | focus: click | ypos: 0 | height: 28
-    + domain default | layer: 2 | content: client | label: no
-                     | hover: always | focus: click
-    + policy | label_prefix: sponge-de -> Sponge Panel | domain: panel
-    + default-policy | domain: default
-    + background | color: #1e1e2e
+@TIER0@
 
 + start drivers | caps: 1800 | ram: 96M | managing_system: yes
   + binary init
@@ -436,7 +430,7 @@ config
     + any-service
       + parent
       + any-child
-- }
+- }]
 
 #
 # Stage every non-build-artifact boot module into bin/ BEFORE

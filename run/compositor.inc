@@ -22,6 +22,40 @@
 #
 # Native is the default; upstream remains an explicit checked fallback.
 #
+# WM-shaped seam (G3, docs/plans/phase16-sponge-compositor.md §7): the
+# Criterion-16 WM scenarios select their Tier-0 through a scenario-local
+# 'tier0_kind' that defaults to 'upstream' (the reference runs stay on
+# nitpicker); 'native' selects sponge_compositor. These helpers are
+# independent of SPONGE_COMPOSITOR: G1/G2 keep defaulting native through
+# compositor::enabled above, while the WM seam is driven only by
+# tier0_kind.
+#
+# Public procs (WM seam):
+#   compositor::wm_tier0_build kind  -> build target for the Tier-0:
+#                                'upstream' -> 'server/nitpicker',
+#                                'native'   -> 'sponge_compositor'
+#   compositor::wm_tier0_child kind  -> init child name used by routes
+#                                and report labels: 'nitpicker' or
+#                                'sponge_compositor'
+#   compositor::wm_start_node kind report_flags -> the WM-shaped Tier-0
+#                                start node (Gui/Capture/Event provides,
+#                                Report -> report_rom and Timer routes,
+#                                capture/event children, panel domain
+#                                layer 1 ypos 0 height 28, default domain
+#                                layer 2, panel policy, default-policy,
+#                                #1e1e2e). 'report_flags' is the exact
+#                                '+ report | ...' attribute text and is
+#                                scenario-specific. 'native' uses
+#                                'start sponge_compositor' with the same
+#                                body plus width/height 1024x768 on the
+#                                config node. No request_input: there is
+#                                no Input provider; Event push is the
+#                                proven path.
+#
+# WM node vocabulary (stable, used by the scenario string maps):
+#   upstream -> build 'server/nitpicker', child 'nitpicker'
+#   native   -> build 'sponge_compositor', child 'sponge_compositor'
+#
 
 namespace eval compositor {
 }
@@ -114,4 +148,70 @@ proc compositor::tier0_start_node { {kind selected} } {
 			error "compositor::tier0_start_node: kind must be 'selected', 'native', or 'upstream'"
 		}
 	}
+}
+
+
+#
+# WM-seam build target (see the header for the contract).
+#
+proc compositor::wm_tier0_build { kind } {
+	switch -- $kind {
+		upstream { return server/nitpicker }
+		native   { return sponge_compositor }
+		default  {
+			error "compositor::wm_tier0_build: kind must be 'upstream' or 'native'"
+		}
+	}
+}
+
+
+#
+# WM-seam init child name for routes and report labels (see the header).
+#
+proc compositor::wm_tier0_child { kind } {
+	switch -- $kind {
+		upstream { return nitpicker }
+		native   { return sponge_compositor }
+		default  {
+			error "compositor::wm_tier0_child: kind must be 'upstream' or 'native'"
+		}
+	}
+}
+
+
+#
+# The WM-shaped Tier-0 start node (see the header for the contract).
+# Upstream reproduces the existing WM scenario nitpicker node exactly;
+# native runs the same body as sponge_compositor with width/height
+# 1024x768 on the config node. The report flags are a parameter so each
+# scenario keeps its own '+ report | ...' attribute text.
+#
+proc compositor::wm_start_node { kind report_flags } {
+	set child [compositor::wm_tier0_child $kind]
+	set config_attrs ""
+	if {$kind eq "native"} {
+		set config_attrs " | width: 1024 | height: 768"
+	}
+	return "+ start $child | ram: 16M
+  + provides
+    + service Gui
+    + service Capture
+    + service Event
+  + route
+    + service Report | + child report_rom
+    + service Timer | + child timer
+    + any-service
+      + parent
+      + any-child
+  + config$config_attrs
+    + capture
+    + event
+    + report | $report_flags
+    + domain panel | layer: 1 | content: client | label: no
+                   | hover: always | focus: click | ypos: 0 | height: 28
+    + domain default | layer: 2 | content: client | label: no
+                     | hover: always | focus: click
+    + policy | label_prefix: sponge-de -> Sponge Panel | domain: panel
+    + default-policy | domain: default
+    + background | color: #1e1e2e"
 }
