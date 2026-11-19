@@ -60,7 +60,7 @@ proc compositor::_upstream_start_node { } {
   + config
     + capture
     + event
-    + domain default | layer: 1 | content: client | label: no
+    + domain default | layer: 1 | content: client | label: no | hover: always | focus: click
     + default-policy | domain: default
     + background | color: #1e1e2e
 "
