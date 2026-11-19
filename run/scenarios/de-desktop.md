@@ -119,3 +119,25 @@ included); the parent index carries one-line summaries.
   path is a mandatory explicit opt-in even here (D16C.8); the upstream
   node is only the comparison reference. No WM/DE components. **seL4
   QEMU is the receipt** (same plan, section 8.7).
+
+- `sponge-compositor-input.run` — **Phase 16 G2**: real QMP input battery
+  with `compositor-input-probe`. ps2/event_filter carries clicks through
+  the selected Tier-0, an alpha/input-mask hole falls through to the lower
+  view, focus changes preserve leave-before-enter order, deterministic
+  Event batches are delivered to the hit sessions, and the pointer report
+  is validated through `report_rom`. Final marker `g2-input: PASS`; each
+  phase has its own bounded failure marker. Native is enabled only with
+  `SPONGE_COMPOSITOR=native`; upstream nitpicker remains the fallback
+  comparison path. No WM/DE components. **seL4 QEMU is the receipt**
+  (D16C.8/D16C.14). Host clicks steer the pointer through closed-loop
+  `absmove`/`move` confirmed against the `pointer` ROM (framebuffer and
+  USB-tablet readiness rendezvous first), each ending in one `press`;
+  unscripted buttons or off-count totals fail loudly. The exact
+  Event-injection differential `g2-input: trace-inject` matches across
+  both Tier-0s; the full-trace digest `g2-input: trace` is diagnostic and
+  diverges by the documented attach-time hover-establishment records
+  (plan section 8.2). The optional `trace_dump="yes"` probe attribute is
+  off by default and disabled in normal scenario runs; enable it only to
+  log each canonical record as `g2-input: record ...` for a line-by-line
+  native-vs-upstream diff. It is bounded by the probe's MAX_RECORDS and
+  never affects the digests or the phase assertions.

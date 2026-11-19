@@ -75,6 +75,7 @@ greppable from this index. Grouped documents:
 - `run/compositor.inc`: shared Tcl include — the Tier-0 compositor selection seam (`SPONGE_COMPOSITOR` opt-in; upstream nitpicker is the default, invalid values fail loudly). ([full entry](scenarios/de-desktop.md))
 - `sponge-compositor-opaque.run`: Phase 16 G1 headless opaque golden smoke on the selected Tier-0 (`g1-capture: PASS`). ([full entry](scenarios/de-desktop.md))
 - `sponge-compositor-diff.run`: Phase 16 G1 native-vs-upstream Capture differential (`g1-diff: MATCH`; requires `SPONGE_COMPOSITOR=native`). ([full entry](scenarios/de-desktop.md))
+- `sponge-compositor-input.run`: Phase 16 G2 real-QMP input battery on the selected Tier-0 (alpha/mask fall-through, focus leave-before-enter, Event injection, pointer report; `g2-input: PASS` with an exact `trace-inject` match and a documented full-trace divergence). ([full entry](scenarios/de-desktop.md))
 
 ### [Interactive drivers and QMP input](scenarios/interactive-qmp.md)
 
