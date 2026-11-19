@@ -147,3 +147,26 @@ included); the parent index carries one-line summaries.
   log each canonical record as `g2-input: record ...` for a line-by-line
   native-vs-upstream diff. It is bounded by the probe's MAX_RECORDS and
   never affects the digests or the phase assertions.
+
+- `sponge-compositor-c16.run` — **Phase 16 C16** native-compositor
+  battery runner: three sequential QEMU boots in one run, sourcing
+  `sponge-wm-native-qmp.run`, `sponge-wm-native-tasks.run`, and
+  `sponge-wm-native-tiling.run` in that order (one arm per boot —
+  never a union boot) with `tier0_kind=native`, so every arm drives
+  the `sponge_compositor` Tier-0 seam of `run/compositor.inc`. Each
+  arm is the existing scenario sourced verbatim and keeps all of its
+  own assertions. Per-arm selector `SPONGE_C16_UNIT=qmp|tasks|tiling|all`
+  (default `all`) runs exactly one arm or the whole battery; any other
+  value fails loudly before the first boot. Strict per-arm isolation:
+  `qemu_args` is saved and restored around each arm, the
+  `_collected_build_artifacts` accumulator and the `output` expect
+  buffer are reset before each arm, and the arm's QEMU is explicitly
+  killed via `kill_spawned` on both success and error (QEMU power-off
+  is a no-op in the run tool), leaving at most one QEMU alive after
+  each arm. Fail-fast: a failed arm re-raises its original error
+  status, message, and options unchanged and stops the battery
+  immediately — assertion failures are never caught or hidden and
+  there are no silent retries. Run-directory receipts are wiped
+  between arms: every arm's `create_boot_directory` recreates the
+  shared run directory from scratch, so only the last executed arm's
+  receipts survive.

@@ -76,6 +76,7 @@ greppable from this index. Grouped documents:
 - `sponge-compositor-opaque.run`: Phase 16 G1 headless opaque golden smoke on the selected Tier-0 (`g1-capture: PASS`). ([full entry](scenarios/de-desktop.md))
 - `sponge-compositor-diff.run`: Phase 16 G1 native-vs-upstream Capture differential (`g1-diff: MATCH`; requires `SPONGE_COMPOSITOR=native`). ([full entry](scenarios/de-desktop.md))
 - `sponge-compositor-input.run`: Phase 16 G2 real-QMP input battery on the selected Tier-0 (alpha/mask fall-through, focus leave-before-enter, Event injection, pointer report; `g2-input: PASS` with an exact `trace-inject` match and a documented full-trace divergence). ([full entry](scenarios/de-desktop.md))
+- `sponge-compositor-c16.run`: Phase 16 C16 three-arm native-compositor battery — sources `sponge-wm-native-qmp.run`, `sponge-wm-native-tasks.run`, and `sponge-wm-native-tiling.run` in three sequential boots with `tier0_kind=native` (`SPONGE_C16_UNIT=qmp|tasks|tiling|all`, default all; strict per-arm QEMU/output/artifact isolation; fail-fast). ([full entry](scenarios/de-desktop.md))
 
 ### [Interactive drivers and QMP input](scenarios/interactive-qmp.md)
 

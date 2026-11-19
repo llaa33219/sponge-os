@@ -1,0 +1,117 @@
+
+# \brief  Criterion-16 native-compositor battery: three sequential
+#         native-WM scenario boots with strict per-arm isolation
+# \author Sponge OS contributors
+# \date   2026
+#
+# Sources the three Criterion-16 native-WM scenarios one after the
+# other, each as its own full QEMU boot driven with tier0_kind
+# 'native' (sponge_compositor as the Tier-0):
+#
+#   qmp    -> run/sponge-wm-native-qmp.run
+#   tasks  -> run/sponge-wm-native-tasks.run
+#   tiling -> run/sponge-wm-native-tiling.run
+#
+# The scenarios are sourced unmodified and keep every assertion of
+# their own; this battery adds no boot choreography of its own and
+# never merges the three topologies into a union boot.
+#
+# Unit selection (SPONGE_C16_UNIT): 'qmp', 'tasks', 'tiling', or
+# 'all' (the default) which runs qmp -> tasks -> tiling in that
+# order. Any other value fails loudly before the first boot.
+#
+# Per-arm isolation (the run tool keeps qemu_args, the build-artifact
+# accumulator, and the expect output buffer in process-global state
+# that survives across 'source' calls, and 'create_boot_directory'
+# wipes the shared run directory at the start of every arm):
+#
+#   - 'qemu_args' is saved before and restored after each arm, so no
+#     scenario's QEMU arguments leak into the next boot.
+#   - '_collected_build_artifacts' and 'output' are reset before each
+#     arm, so build-artifact collection and expect output cannot
+#     cross-contaminate between arms.
+#   - the arm's QEMU is killed via 'kill_spawned' on both success and
+#     error (QEMU power-off is a no-op in the run tool), and its
+#     'qemu_spawn_id' is dropped afterwards, so at most one QEMU is
+#     alive after each arm.
+#
+# Fail-fast: a failed arm re-raises its original error status,
+# message, and options unchanged (return -options) and stops the
+# battery immediately. Assertion failures are never caught or hidden
+# and there are no silent retries. Run-directory receipts survive
+# only for the last executed arm because every arm's
+# 'create_boot_directory' recreates the shared run directory from
+# scratch.
+#
+# Hard constraints are the arms' own: base-sel4 (BOARD=pc), the
+# drivers_interactive-pc event_filter recipe, and the shared qmp.inc
+# marker discipline.
+
+source [file join [file dirname [file normalize [info script]]] compositor.inc]
+
+# The battery always drives the native Tier-0.
+set tier0_kind native
+
+#
+# Unit selection: default 'all'; anything else must be one of the
+# three arm names or 'all' (validated loudly below).
+#
+if {![info exists ::env(SPONGE_C16_UNIT)]} {
+	set c16_unit all
+} else {
+	set c16_unit $::env(SPONGE_C16_UNIT)
+}
+
+switch -- $c16_unit {
+	qmp    { set c16_arms { qmp } }
+	tasks  { set c16_arms { tasks } }
+	tiling { set c16_arms { tiling } }
+	all    { set c16_arms { qmp tasks tiling } }
+	default {
+		error "sponge-compositor-c16: SPONGE_C16_UNIT must be 'qmp',\
+ 'tasks', 'tiling', or 'all' (got '$c16_unit')"
+	}
+}
+
+set c16_dir [file dirname [file normalize [info script]]]
+
+foreach c16_arm $c16_arms {
+
+	set c16_scenario [file join $c16_dir "sponge-wm-native-$c16_arm.run"]
+
+	#
+	# Per-arm isolation: snapshot 'qemu_args' and start the arm with
+	# fresh build-artifact and output accumulators. tier0_kind is
+	# re-asserted so every arm sources its scenario against the
+	# native Tier-0 seam.
+	#
+	set c16_saved_qemu_args $qemu_args
+	set _collected_build_artifacts {}
+	set output ""
+	set tier0_kind native
+
+	puts "\nsponge-compositor-c16: arm $c16_arm ($c16_scenario)"
+
+	set c16_code [catch { source $c16_scenario } c16_result c16_opts]
+
+	#
+	# Teardown on both success and error: QEMU power-off is a no-op,
+	# so the arm's QEMU is killed explicitly and its spawn id dropped
+	# before the next arm boots.
+	#
+	if {[info exists qemu_spawn_id]} {
+		catch { kill_spawned $qemu_spawn_id }
+		unset qemu_spawn_id
+	}
+	set qemu_args $c16_saved_qemu_args
+
+	if {$c16_code} {
+		puts stderr "\nsponge-compositor-c16: arm $c16_arm FAILED -\
+ re-raising the original error and stopping the battery"
+		return -options $c16_opts $c16_result
+	}
+
+	puts "sponge-compositor-c16: arm $c16_arm passed"
+}
+
+puts "\nsponge-compositor-c16: all arms passed (unit=$c16_unit)"
