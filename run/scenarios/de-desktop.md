@@ -74,17 +74,20 @@ included); the parent index carries one-line summaries.
   restart. The W1 skeleton times out at the gated `configd-persist-
   probe: PASS` marker — that is the EXPECTED FAIL until W6 lands.
 
-- `run/compositor.inc` — shared Tcl include: the Tier-0 selection seam
-  for the G1 compositor scenarios (reused by later G3/G4 product
-  integration). `compositor::enabled` maps `SPONGE_COMPOSITOR`
-  (unset/`upstream` → 0, `native` → 1; any other value fails loudly)
+- `run/compositor.inc`: shared Tcl include: the Tier-0 selection seam
+  for the G1/G2 compositor scenarios (G3-G5 are uncompleted, and the
+  selection change is not product-integration evidence).
+  `compositor::enabled` maps `SPONGE_COMPOSITOR`
+  (unset/`native` → 1, `upstream` → 0; any other value fails loudly)
   and `compositor::tier0_start_node` returns the Tier-0 start node:
   upstream the full nitpicker node (capture + event, full-screen
   client content, `label: no`, background `#1e1e2e`); native the
   `sponge_compositor` node (width=1024 height=768, same background).
-  Upstream nitpicker is the default and the native node is never
-  emitted without the `SPONGE_COMPOSITOR=native` opt-in
-  (docs/plans/phase16-sponge-compositor.md, D16C.8).
+  Native is the default: the native node is emitted for unset or
+  `SPONGE_COMPOSITOR=native`, while `SPONGE_COMPOSITOR=upstream`
+  selects the explicit nitpicker fallback
+  (docs/plans/phase16-sponge-compositor.md, D16C.8, updated by the
+  2026-11-19 user approval).
 
 - `sponge-compositor-opaque.run` — **Phase 16 G1**: headless opaque
   golden smoke (no framebuffer driver, no host display, like
@@ -94,9 +97,10 @@ included); the parent index carries one-line summaries.
   overlap shows A — the clipping check) and `compositor-capture-probe`
   in golden mode, which verifies the composed screen through a Capture
   session and logs the bounded marker `g1-capture: PASS` (timeout is
-  the FAIL path). Tier-0 selection: unset/`SPONGE_COMPOSITOR=upstream`
-  runs upstream nitpicker (the default), `SPONGE_COMPOSITOR=native`
-  opts in to `sponge_compositor`, invalid values fail loudly. No WM/DE
+  the FAIL path). Tier-0 selection: unset or `SPONGE_COMPOSITOR=native`
+  runs `sponge_compositor` (the default), `SPONGE_COMPOSITOR=upstream`
+  runs upstream nitpicker as the explicit fallback, invalid values fail
+  loudly. No WM/DE
   components. **seL4 QEMU is the receipt** — base-linux is a dev path
   only and never counts as proof
   (docs/plans/phase16-sponge-compositor.md section 8.7). The build
@@ -115,9 +119,10 @@ included); the parent index carries one-line summaries.
   and `upstream`; byte-exact equal captures log the bounded marker
   `g1-diff: MATCH` (timeout is the FAIL path), with the same checksum
   assertion `0x670d6b5d9fc0ed7b`. Requires
-  `SPONGE_COMPOSITOR=native` and fails loudly otherwise: the native
-  path is a mandatory explicit opt-in even here (D16C.8); the upstream
-  node is only the comparison reference. No WM/DE components. **seL4
+  `SPONGE_COMPOSITOR=native` and fails loudly otherwise (D16C.8): the
+  differential names its native arm with the explicit override even
+  though native is the default selection; the upstream node is only the
+  comparison reference. No WM/DE components. **seL4
   QEMU is the receipt** (same plan, section 8.7).
 
 - `sponge-compositor-input.run` — **Phase 16 G2**: real QMP input battery
@@ -126,9 +131,10 @@ included); the parent index carries one-line summaries.
   view, focus changes preserve leave-before-enter order, deterministic
   Event batches are delivered to the hit sessions, and the pointer report
   is validated through `report_rom`. Final marker `g2-input: PASS`; each
-  phase has its own bounded failure marker. Native is enabled only with
-  `SPONGE_COMPOSITOR=native`; upstream nitpicker remains the fallback
-  comparison path. No WM/DE components. **seL4 QEMU is the receipt**
+  phase has its own bounded failure marker. The default selection is
+  native (unset or `SPONGE_COMPOSITOR=native`);
+  `SPONGE_COMPOSITOR=upstream` runs the nitpicker fallback path. No
+  WM/DE components. **seL4 QEMU is the receipt**
   (D16C.8/D16C.14). Host clicks steer the pointer through closed-loop
   `absmove`/`move` confirmed against the `pointer` ROM (framebuffer and
   USB-tablet readiness rendezvous first), each ending in one `press`;

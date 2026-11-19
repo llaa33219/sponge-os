@@ -72,7 +72,7 @@ greppable from this index. Grouped documents:
 - `sponge-panel-config-sel4.run`: Phase 11 panel-config flow on base-sel4 with the interactive driver stack. ([full entry](scenarios/de-desktop.md))
 - `sponge-de-themed-chrome.run`: Phase 11 themed_decorator window chrome with live theme tint + QMP drag. ([full entry](scenarios/de-desktop.md))
 - `sponge-configd-persist.run`: Phase 14 W1 configd persistence skeleton (expected FAIL at the gated marker until W6). ([full entry](scenarios/de-desktop.md))
-- `run/compositor.inc`: shared Tcl include — the Tier-0 compositor selection seam (`SPONGE_COMPOSITOR` opt-in; upstream nitpicker is the default, invalid values fail loudly). ([full entry](scenarios/de-desktop.md))
+- `run/compositor.inc`: shared Tcl include: the Tier-0 compositor selection seam (default native: unset or `SPONGE_COMPOSITOR=native` selects `sponge_compositor`; `SPONGE_COMPOSITOR=upstream` is the explicit nitpicker fallback; invalid values fail loudly). ([full entry](scenarios/de-desktop.md))
 - `sponge-compositor-opaque.run`: Phase 16 G1 headless opaque golden smoke on the selected Tier-0 (`g1-capture: PASS`). ([full entry](scenarios/de-desktop.md))
 - `sponge-compositor-diff.run`: Phase 16 G1 native-vs-upstream Capture differential (`g1-diff: MATCH`; requires `SPONGE_COMPOSITOR=native`). ([full entry](scenarios/de-desktop.md))
 - `sponge-compositor-input.run`: Phase 16 G2 real-QMP input battery on the selected Tier-0 (alpha/mask fall-through, focus leave-before-enter, Event injection, pointer report; `g2-input: PASS` with an exact `trace-inject` match and a documented full-trace divergence). ([full entry](scenarios/de-desktop.md))
