@@ -336,31 +336,35 @@ perfect stability.
 - Receipts: native QMP full 16-step PASS
   (`/tmp/opencode/g3-c16-qmp-final4.log`); native tasks PASS
   (`/tmp/opencode/g3-c16-tasks-fixed.log`); native full 20-cycle tiling
-  PASS with close and reflow PASS
-  (`/tmp/opencode/g3-c16-tiling-final3.log`); upstream QMP and tasks
-  anchors PASS (`/tmp/opencode/g3-upstream-qmp.log`,
+  PASS with close and reflow PASS on the cleaned tree
+  (`/tmp/opencode/g3-c16-tiling-final-verified.log`); upstream QMP and
+  tasks anchors PASS (`/tmp/opencode/g3-upstream-qmp.log`,
   `/tmp/opencode/g3-upstream-tasks.log`), upstream tiling not claimed;
-  `./tool/build verify` all 41 patch-ledger rows and hardware gates
-  green; all three Mojo objects keep empty `nm -u`; host receiver and
-  guard-page repros pass. Alpha blending and WM/DE integration are
-  proven on seL4 QEMU. Capacities are 32 sessions, 64 views, and
-  3 damage rects; default native and explicit upstream fallback both
-  work.
+  final G1 differential MATCH and native/upstream G2 PASS
+  (`/tmp/opencode/g3-final-g1-diff.log`,
+  `/tmp/opencode/g3-final-g2-native.log`,
+  `/tmp/opencode/g3-final-g2-upstream.log`); `./tool/build verify` all
+  41 patch-ledger rows and hardware gates green; all three Mojo objects
+  keep empty `nm -u`; host receiver and guard-page repros pass. Alpha
+  blending and WM/DE integration are proven on seL4 QEMU. Capacities
+  are 32 sessions, 64 views, and 3 damage rects; default native and
+  explicit upstream fallback both work.
 - Intermittent close-time input failure (explicit, never relabeled):
   `/tmp/opencode/g3-c16-tiling-final2.log` failed at close (the master
-  close did not destroy its window), while
-  `/tmp/opencode/g3-c16-tiling-final3.log` and
-  `/tmp/opencode/g3-c16-tiling-restoretablet2.log` passed the same
-  close and reflow gates.
+  close did not destroy its window), while `final3`, `restoretablet2`,
+  `final-fixed3`, and `final-verified` logs passed the same close and
+  reflow gates.
 - The G3 functional changes are fixes, not changes to the acceptance
   assertions: per-session `pressed_session` preserves input across view
   recreation; bind-time texture extents with an in-extent fast path and
   safe tiling; per-session domain Info_rom (panel 1024x28 versus the
-  full-screen default); per-Capture-session damage distribution and
-  sync only on nonempty damage; DE static rules converted to
-  boundary-relative coordinates; and the tiling scenario's
-  absolute-tablet close path (W4 scale transform, one-marker host
-  dispatch) with conditional restore-before-close.
+  full-screen default); per-Capture-session damage distribution, sync
+  only on nonempty damage, and an idle composition fast return; DE
+  static rules converted to boundary-relative coordinates; and the
+  tiling scenario restores either parked window, focuses the master
+  title, enforces pointer barriers, recomputes close geometry after
+  focus, and dispatches four absolute-tablet markers through the W4
+  scale transform.
 - The upstream anchors `run/sponge-wm{,-qmp,-tasks}.run` stay a
   standing requirement; decorated-scene golden/differential growth is
   not claimed at this gate. Gate: the full battery green (any gap

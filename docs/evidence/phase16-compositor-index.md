@@ -82,9 +82,10 @@ bottom view, so a click inside the hole falls through to the lower session.
 | G2 full-trace digest (diagnostic) | not a stability gate; upstream values vary across runs, while the exact Event-injection digest above matches |
 | G3 native QMP battery (full 16-step) | all 16 steps and `native-wm-qmp-probe: PASS`; `/tmp/opencode/g3-c16-qmp-final4.log` |
 | G3 native tasks battery | `native-wm-tasks-probe: PASS`; `/tmp/opencode/g3-c16-tasks-fixed.log` |
-| G3 native tiling battery | full 20-cycle soak clean, plus close and reflow PASS; `/tmp/opencode/g3-c16-tiling-final3.log` |
+| G3 native tiling battery | full 20-cycle soak clean, plus close and reflow PASS on the cleaned tree; `/tmp/opencode/g3-c16-tiling-final-verified.log` |
 | G3 upstream QMP and tasks anchors | both PASS on the upstream nitpicker Tier-0; `/tmp/opencode/g3-upstream-qmp.log`, `/tmp/opencode/g3-upstream-tasks.log`. Upstream tiling is not claimed green |
-| G3 close-time intermittency (explicit) | `/tmp/opencode/g3-c16-tiling-final2.log` FAILED at close (`close of the master did not destroy its window`); `/tmp/opencode/g3-c16-tiling-final3.log` and `/tmp/opencode/g3-c16-tiling-restoretablet2.log` passed the same close and reflow gates. Recorded, never relabeled |
+| G3 close-time intermittency (explicit) | `/tmp/opencode/g3-c16-tiling-final2.log` FAILED at close (`close of the master did not destroy its window`); `final3`, `restoretablet2`, `final-fixed3`, and `final-verified` logs passed the same close and reflow gates. Recorded, never relabeled |
+| Final G1/G2 regression | `g1-diff: MATCH` with checksum `0x670d6b5d9fc0ed7b`; native and upstream `g2-input: PASS` with `trace-inject 0xc50006d9e1676755`; `/tmp/opencode/g3-final-g1-diff.log`, `/tmp/opencode/g3-final-g2-native.log`, `/tmp/opencode/g3-final-g2-upstream.log` |
 | Host receiver and guard-page repros | PASS (input receiver across view recreation; compose never reads past the bound buffer into the guard page) |
 | Mojo scene object | `nm -u build/scene.o`: empty; `/tmp/opencode/g1-scene.o` also empty |
 | Mojo painter object | `nm -u build/painter.o`: empty; `/tmp/opencode/g1-painter.o` also empty |
@@ -102,12 +103,14 @@ in-extent fast path and safe tiling, so a grown geometry tiles the
 frozen-size texture instead of reading past the bound buffer; the
 per-session domain Info_rom reports the session's own domain rect
 (panel 1024x28 versus the full-screen default) instead of one
-full-screen constant; damage is distributed per Capture session and
-the frame sync fires only on nonempty damage; DE static rules convert
+full-screen constant; damage is distributed per Capture session, the
+frame sync fires only on nonempty damage, and an idle fast return
+skips composition when no damage is pending; DE static rules convert
 from screen-absolute to boundary-relative coordinates exactly once;
-and the tiling scenario closes through the absolute-tablet path (W4
-usb-tablet scale transform, one-marker host dispatch) with a
-conditional restore-before-close before the final reflow gate.
+and the tiling scenario restores either parked window, focuses the
+master title, enforces pointer barriers, recomputes the close geometry
+after focus, and dispatches four absolute-tablet markers through the
+W4 scale transform before the final reflow gate.
 
 **G3 status wording.** G3 is recorded as G1-G3 verified with a
 documented intermittent close-time input failure, not "G3 complete"
