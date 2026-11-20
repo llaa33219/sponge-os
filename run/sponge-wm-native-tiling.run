@@ -81,8 +81,8 @@
 #   soak loop: 2 dispatches per cycle x soak_cycles (tasklist
 #                  minimize+restore inside the cycle), then gate
 #                  [step 11] soak clean and drain through QMP-TARGET sync
-#   dispatch/gate [step 12]  materialize the pointer, walk combined-axis
-#                  rel-1 steps to the closer, press, and require the
+#   dispatch/gate [step 12]  one QMP-TARGET tablet marker on the chrome
+#                  closer (W4 usb-tablet absolute path), and require the
 #                  remaining client at the exact master slot
 #   gate PASS
 #
@@ -92,9 +92,10 @@
 # marker serialization can never desync.
 #
 # Hard constraints (same as run/sponge-wm-native-tasks.run):
-# base-sel4 only; event_filter.config copied VERBATIM from the vendored
-# drivers_interactive-pc recipe (accelerate LUT kept for the shared
-# qmp.inc PS/2 helpers).
+# base-sel4 only; event_filter.config = the vendored
+# drivers_interactive-pc recipe content PLUS the W4 usb-tablet scale
+# transform wrapping <input usb> (see the staging comment below); the
+# accelerate LUT is kept for the shared qmp.inc PS/2 helpers.
 
 assert {[have_spec sel4]} \
 	"sponge-wm-native-tiling requires KERNEL=sel4 (BOARD=pc) in build.conf. \
@@ -529,8 +530,18 @@ if {![file exists $dejavu_dst]} {
 }
 
 #
-# Driver sub-init config modules copied VERBATIM (accelerate LUT kept
-# for the shared qmp.inc PS/2 helpers — see the header).
+# Driver sub-init config modules. drivers.config and fb.config are
+# copied VERBATIM from the vendored recipe; event_filter.config keeps
+# the recipe content (accelerate LUT for the shared qmp.inc PS/2
+# helpers, button-scroll / mod / repeat / policy blocks unchanged) and
+# adds ONE thing: the W4 usb-tablet scale transform wrapping
+# <input usb>. QEMU 11's usb-tablet reports absolute positions in
+# device units (0..32767 per axis) and nitpicker treats
+# Absolute_motion values as raw pixels, so unscaled tablet events clamp
+# to the screen corner (observed: (528,396) -> (1023,767)). The scale
+# maps device units to the 1024x768 framebuffer; with it,
+# `QMP-TARGET tablet <x> <y>` (step 12's master close) lands on the
+# target pixel (W4: +/-0-1 px).
 #
 set recipe_dir "${genode_dir}/repos/os/recipes/raw/drivers_interactive-pc"
 foreach f { drivers.config fb.config event_filter.config } {
@@ -539,6 +550,25 @@ foreach f { drivers.config fb.config event_filter.config } {
 	}
 	exec cp -f "$recipe_dir/$f" "bin/$f"
 }
+
+# Wrap ONLY the recipe's usb input line in the transform (same rewrite
+# as run/sponge-de-themed-chrome.run; the exact W4 scale values of
+# run/sponge-terminal-qmp.run). Everything else is preserved
+# byte-for-byte.
+set ef_src "$recipe_dir/event_filter.config"
+set ef_fh [open $ef_src r]
+set ef_content [read $ef_fh]
+close $ef_fh
+set ef_mapped [string map [list \
+	"    | + input usb" \
+	"    | + transform\n    | | + scale | x: 0.0312517 | y: 0.0234382\n    | | + input usb" \
+] $ef_content]
+if {$ef_mapped eq $ef_content} {
+	error "event_filter.config: '    | + input usb' line not found (recipe drifted?)"
+}
+set ef_fh [open "bin/event_filter.config" w]
+puts -nonewline $ef_fh $ef_mapped
+close $ef_fh
 
 set chargen_dir "${genode_dir}/repos/os/src/server/event_filter"
 foreach f { en_us.chargen special.chargen } {
@@ -639,19 +669,10 @@ if {!$step11_synced} {
 	error "step 11: sync marker was not dispatched after the soak"
 }
 
-# step 12: one pointer-materialization marker, at most 30 closed-loop
-# moves, then one press. qmp_exec_target identifies the terminal press;
-# all other callers retain its historical empty return value.
-set step12_pressed 0
-for {set i 0} {$i < 32} {incr i} {
-	if {[qmp_exec_target $qmp_chan 120] eq "press"} {
-		set step12_pressed 1
-		break
-	}
-}
-if {!$step12_pressed} {
-	error "step 12: chrome closer press was not dispatched within 32 markers"
-}
+# step 12: one click marker for the master close. The close assertion and
+# final reflow are the probe's own gates, so dispatch the marker once and
+# then wait for the probe's PASS rather than for a separate press return.
+qmp_exec_target $qmp_chan 120
 
 run_genode_until {native-wm-tiling-probe: PASS} 120 $qemu_spawn_id
 

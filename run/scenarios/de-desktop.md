@@ -75,7 +75,8 @@ included); the parent index carries one-line summaries.
   probe: PASS` marker — that is the EXPECTED FAIL until W6 lands.
 
 - `run/compositor.inc`: shared Tcl include: the Tier-0 selection seam
-  for the G1/G2 compositor scenarios (G3-G5 are uncompleted, and the
+  for the compositor scenarios (G3 is verified with a documented
+  intermittent close-time input failure, G4-G5 are uncompleted, and the
   selection change is not product-integration evidence).
   `compositor::enabled` maps `SPONGE_COMPOSITOR`
   (unset/`native` → 1, `upstream` → 0; any other value fails loudly)
@@ -140,7 +141,8 @@ included); the parent index carries one-line summaries.
   USB-tablet readiness rendezvous first), each ending in one `press`;
   unscripted buttons or off-count totals fail loudly. The exact
   Event-injection differential `g2-input: trace-inject` matches across
-  both Tier-0s; the full-trace digest `g2-input: trace` is diagnostic and
+  both Tier-0s (`0xc50006d9e1676755`); the full-trace digest
+  `g2-input: trace` is diagnostic and
   diverges by the documented attach-time hover-establishment records
   (plan section 8.2). The optional `trace_dump="yes"` probe attribute is
   off by default and disabled in normal scenario runs; enable it only to
@@ -148,8 +150,8 @@ included); the parent index carries one-line summaries.
   native-vs-upstream diff. It is bounded by the probe's MAX_RECORDS and
   never affects the digests or the phase assertions.
 
-- `sponge-compositor-c16.run` — **Phase 16 C16** native-compositor
-  battery runner: three sequential QEMU boots in one run, sourcing
+- `sponge-compositor-c16.run` (**Phase 16 G3 / C16**, native-compositor
+  battery runner): three sequential QEMU boots in one run, sourcing
   `sponge-wm-native-qmp.run`, `sponge-wm-native-tasks.run`, and
   `sponge-wm-native-tiling.run` in that order (one arm per boot —
   never a union boot) with `tier0_kind=native`, so every arm drives
@@ -169,4 +171,48 @@ included); the parent index carries one-line summaries.
   there are no silent retries. Run-directory receipts are wiped
   between arms: every arm's `create_boot_directory` recreates the
   shared run directory from scratch, so only the last executed arm's
-  receipts survive.
+  receipts survive. G3 receipts: the three native arms pass (full
+  16-step QMP `/tmp/opencode/g3-c16-qmp-final4.log`, tasks
+  `/tmp/opencode/g3-c16-tasks-fixed.log`, full 20-cycle tiling with
+  close and reflow `/tmp/opencode/g3-c16-tiling-final3.log`), and the
+  upstream QMP and tasks anchors pass
+  (`/tmp/opencode/g3-upstream-qmp.log`, `/tmp/opencode/g3-upstream-tasks.log`);
+  upstream tiling is not claimed green. Caution, intermittent close-time
+  input failure: one recorded tiling run failed at close
+  (`/tmp/opencode/g3-c16-tiling-final2.log`, the master close did not
+  destroy its window) while `/tmp/opencode/g3-c16-tiling-final3.log`
+  and `/tmp/opencode/g3-c16-tiling-restoretablet2.log` passed the same
+  close and reflow gates. The failure is documented and never
+  relabeled: G3 is G1-G3 verified with documented intermittent
+  close-time input failure, not a claim of perfect stability.
+
+- `sponge-wm-native-tiling.run` (**Phase 16 G3 tiling arm**, base-sel4
+  + QMP): the Criterion-16 tiling acceptance (D16W.5) against the
+  native Sponge WM trio: Master-Stack placement, every reflow trigger
+  (park, restore, maximize, and `wm.layout.mode` switches through the
+  `vct config` backend), mode-switch geometry retention, and the
+  >=20-cycle rules-drift soak (`SPONGE_TILING_SOAK` overrides the cycle
+  count as the control door). The non-resizeable fixture stays floating
+  at its static assign geometry (850,560,160x160) in every mode. The
+  Tier-0 seam is `run/compositor.inc`'s `tier0_kind`: the default
+  `upstream` keeps nitpicker for this reference run, `native` selects
+  `sponge_compositor` (what the c16 battery uses). Step 12 closes the
+  master through the **W4 usb-tablet absolute path with
+  single-dispatch close**: the staged event_filter
+  `<transform><scale x="0.0312517" y="0.0234382"/>` on `<input usb>`
+  maps usb-tablet device units onto the 1024x768 pixel screen so the
+  click lands on the chrome closer, and the host side dispatches
+  exactly one `QMP-TARGET tablet` marker through `run/qmp.inc`'s
+  shared `qmp_tablet_click`; the close assertion and the final reflow
+  gate (remaining client at the exact master slot) belong to the probe.
+  A conditional restore-before-close re-enables a parked remaining
+  window before the close, so the close and reflow assertions are
+  deterministic. Receipts and caution: the native 20-cycle run passes
+  close and reflow (`/tmp/opencode/g3-c16-tiling-final3.log`; also
+  green: `/tmp/opencode/g3-c16-tiling-restoretablet2.log`), but
+  `/tmp/opencode/g3-c16-tiling-final2.log` failed at close (`close of
+  the master did not destroy its window`), an intermittent close-time
+  input failure documented and never relabeled (G3 status: G1-G3
+  verified with documented intermittent close-time input failure).
+  Upstream tiling is not claimed green. Hard constraint: KERNEL=sel4
+  only.
