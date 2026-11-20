@@ -81,9 +81,10 @@
 #   soak loop: 2 dispatches per cycle x soak_cycles (tasklist
 #                  minimize+restore inside the cycle), then gate
 #                  [step 11] soak clean and drain through QMP-TARGET sync
-#   dispatch/gate [step 12]  one QMP-TARGET tablet marker on the chrome
-#                  closer (W4 usb-tablet absolute path), and require the
-#                  remaining client at the exact master slot
+#   dispatch/gate [step 12]  restore either parked window, focus the
+#                  master title, settle the pointer, recompute the current
+#                  closer geometry, and dispatch four W4 usb-tablet markers;
+#                  require the remaining client at the exact master slot
 #   gate PASS
 #
 # Soak length: >= 20 cycles (§7.2). SPONGE_TILING_SOAK overrides the
@@ -659,7 +660,7 @@ run_genode_until {native-wm-tiling-probe: \[step 11\] soak clean} 600 $qemu_spaw
 # The probe emits sync only after its final arrangement assertion, so
 # reaching it here proves every earlier real input action was dispatched.
 set step11_synced 0
-for {set i 0} {$i <= [expr {2 * $soak_cycles}]} {incr i} {
+for {set i 0} {$i <= [expr {2 * $soak_cycles + 4}]} {incr i} {
 	if {[qmp_exec_target $qmp_chan 120] eq "sync"} {
 		set step11_synced 1
 		break
@@ -669,9 +670,12 @@ if {!$step11_synced} {
 	error "step 11: sync marker was not dispatched after the soak"
 }
 
-# step 12: one click marker for the master close. The close assertion and
-# final reflow are the probe's own gates, so dispatch the marker once and
-# then wait for the probe's PASS rather than for a separate press return.
+# step 12: title focus, two absolute pointer barriers, and the close press.
+# The close assertion and final reflow are the probe's own gates, so dispatch
+# all four markers in order before waiting for the probe's PASS.
+qmp_exec_target $qmp_chan 120
+qmp_exec_target $qmp_chan 120
+qmp_exec_target $qmp_chan 120
 qmp_exec_target $qmp_chan 120
 
 run_genode_until {native-wm-tiling-probe: PASS} 120 $qemu_spawn_id

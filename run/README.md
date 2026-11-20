@@ -77,7 +77,7 @@ greppable from this index. Grouped documents:
 - `sponge-compositor-diff.run`: Phase 16 G1 native-vs-upstream Capture differential (`g1-diff: MATCH`; requires `SPONGE_COMPOSITOR=native`). ([full entry](scenarios/de-desktop.md))
 - `sponge-compositor-input.run`: Phase 16 G2 real-QMP input battery on the selected Tier-0 (alpha/mask fall-through, focus leave-before-enter, Event injection, pointer report; `g2-input: PASS` with an exact `trace-inject` match and a documented full-trace divergence). ([full entry](scenarios/de-desktop.md))
 - `sponge-compositor-c16.run`: Phase 16 G3 (C16) three-arm native-compositor battery, sourcing `sponge-wm-native-qmp.run`, `sponge-wm-native-tasks.run`, and `sponge-wm-native-tiling.run` in three sequential boots with `tier0_kind=native` (`SPONGE_C16_UNIT=qmp|tasks|tiling|all`, default all; strict per-arm isolation; fail-fast). G1-G3 verified with a documented intermittent close-time input failure; receipts and the caution live in the full entry. ([full entry](scenarios/de-desktop.md))
-- `sponge-wm-native-tiling.run`: Phase 16 G3 tiling acceptance on the native WM trio (W4 usb-tablet scale transform, single-dispatch close, conditional restore-before-close, >=20-cycle soak; the intermittent close-time failure is documented in the full entry). ([full entry](scenarios/de-desktop.md))
+- `sponge-wm-native-tiling.run`: Phase 16 G3 tiling acceptance on the native WM trio (W4 usb-tablet scale transform, title-focus/current-geometry close with pointer barriers and four-marker dispatch, conditional restore of both parked windows, >=20-cycle soak; the intermittent close-time failure is documented in the full entry). ([full entry](scenarios/de-desktop.md))
 
 ### [Interactive drivers and QMP input](scenarios/interactive-qmp.md)
 

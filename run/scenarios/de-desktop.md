@@ -197,19 +197,20 @@ included); the parent index carries one-line summaries.
   Tier-0 seam is `run/compositor.inc`'s `tier0_kind`: the default
   `upstream` keeps nitpicker for this reference run, `native` selects
   `sponge_compositor` (what the c16 battery uses). Step 12 closes the
-  master through the **W4 usb-tablet absolute path with
-  single-dispatch close**: the staged event_filter
+  master through the **W4 usb-tablet absolute path with a four-step
+  close sequence**: the staged event_filter
   `<transform><scale x="0.0312517" y="0.0234382"/>` on `<input usb>`
-  maps usb-tablet device units onto the 1024x768 pixel screen so the
-  click lands on the chrome closer, and the host side dispatches
-  exactly one `QMP-TARGET tablet` marker through `run/qmp.inc`'s
-  shared `qmp_tablet_click`; the close assertion and the final reflow
-  gate (remaining client at the exact master slot) belong to the probe.
-  A conditional restore-before-close re-enables a parked remaining
-  window before the close, so the close and reflow assertions are
-  deterministic. Receipts and caution: the native 20-cycle run passes
-  close and reflow (`/tmp/opencode/g3-c16-tiling-final3.log`; also
-  green: `/tmp/opencode/g3-c16-tiling-restoretablet2.log`), but
+  maps usb-tablet device units onto the 1024x768 pixel screen. Before
+  closing, the probe restores either parked window and synchronizes the
+  QMP stream. It then clicks the master title and waits for the
+  arrangement, moves to (512,384) and waits for the pointer report,
+  recomputes the current master geometry and closer coordinates, moves
+  to the closer and waits again, and finally presses. The host side
+  dispatches these four markers through `run/qmp.inc`'s shared helpers;
+  the close assertion and final reflow gate belong to the probe.
+  Receipts and caution: the cleaned-tree native 20-cycle run passes
+  close and reflow (`/tmp/opencode/g3-c16-tiling-final-verified.log`;
+  also green: `/tmp/opencode/g3-c16-tiling-final-fixed3.log`), but
   `/tmp/opencode/g3-c16-tiling-final2.log` failed at close (`close of
   the master did not destroy its window`), an intermittent close-time
   input failure documented and never relabeled (G3 status: G1-G3
