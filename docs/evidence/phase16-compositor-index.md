@@ -1,18 +1,24 @@
 # Phase 16 compositor evidence index
 
-> Status, 2026-11-19: **G1 and G2 verified; Tier-0 selection is
-> default-native**. The native Mojo compositor passes the
-> two-opaque-view/clipping/Capture slice and the G2 input battery on seL4
-> QEMU. G1 rasters match upstream nitpicker byte-for-byte. G2 matches
-> upstream exactly on the Event-injection stream. The full trace remains
-> diagnostic, with the attach-time hover-establishment divergence
-> documented in section 3. Selection is default-native under the
-> 2026-11-19 user approval: unset or `SPONGE_COMPOSITOR=native` runs
-> `sponge_compositor`, `SPONGE_COMPOSITOR=upstream` is the explicit
-> nitpicker fallback, and invalid values fail loudly. Default-native and
-> upstream-fallback runs are receipts in section 3. No WM/DE integration,
-> translucent blending, physical hardware, or product integration is
-> claimed, and G3-G5 remain uncompleted.
+> Status, 2026-11-20: **G1-G3 verified with documented intermittent
+> close-time input failure; Tier-0 selection is default-native**. The
+> native Mojo compositor passes the G1 two-opaque-view/clipping/Capture
+> slice, the G2 input battery, and the G3 Criterion-16 battery on seL4
+> QEMU: native QMP 16-step, tasks, and full 20-cycle tiling with close
+> and reflow all PASS, with the Sponge WM trio and DE tasklist running
+> above the native compositor. G1 rasters match upstream nitpicker
+> byte-for-byte. G2 matches upstream exactly on the Event-injection
+> stream; the full trace remains diagnostic (section 3). One recorded
+> tiling run failed at close while two later runs passed; that failure
+> is documented in section 3 and is never relabeled, so this is not a
+> claim of perfect stability. Alpha blending and WM/DE integration are
+> proven on seL4 QEMU; G4-G5, product integration, and physical
+> hardware remain uncompleted and unclaimed. Selection is
+> default-native under the 2026-11-19 user approval: unset or
+> `SPONGE_COMPOSITOR=native` runs `sponge_compositor`,
+> `SPONGE_COMPOSITOR=upstream` is the explicit nitpicker fallback, and
+> invalid values fail loudly. Default-native and upstream-fallback runs
+> are receipts in section 3.
 
 ## 1. Public repositories and independence
 
@@ -22,8 +28,9 @@ The implementation is public at:
 - <https://github.com/llaa33219/sponge-wm>
 - <https://github.com/llaa33219/sponge-de>
 
-The G1/G2 component lives in `sponge-compositor`. WM and DE are not present
-in the minimal scenario and are unchanged. They remain independent through
+The component lives in `sponge-compositor`. WM and DE are not present in
+the minimal G1/G2 scenarios; the G3 battery runs the Sponge WM trio and
+DE tasklist above the native compositor. They remain independent through
 public Genode `Gui`, `Capture`, `Event`, and `Input` interfaces; no private
 nitpicker header or WM/DE source is included by the compositor.
 
@@ -46,6 +53,11 @@ nitpicker header or WM/DE source is included by the compositor.
 - Golden, differential, and input scenarios:
   `run/sponge-compositor-opaque.run`, `run/sponge-compositor-diff.run`, and
   `run/sponge-compositor-input.run`.
+- G3 battery (`run/sponge-compositor-c16.run`): the full Criterion-16
+  acceptance battery and the >=20-cycle rules-drift soak run with the
+  Sponge WM trio and DE tasklist above the native compositor (WM/DE
+  integration proven on seL4 QEMU), including straight-alpha blending
+  (`blit_alpha`) for translucent views.
 
 Scene: screen 1024x768, background `#1e1e2e`; A `(100,80,400,300)` fill
 `#3366cc` with a white border and absolute Front; B `(300,200,400,300)`
@@ -68,12 +80,40 @@ bottom view, so a click inside the hole falls through to the lower session.
 | G2 input battery, explicit upstream fallback | all five phases, overall `g2-input: PASS`, `trace-inject` `0xc50006d9e1676755`; `/tmp/opencode/g2-input-upstream-fallback.log` |
 | G2 Event-injection differential | `g2-input: trace-inject` exact match on both Tier-0s, `0xc50006d9e1676755` (including the default-native and upstream-fallback runs above) |
 | G2 full-trace digest (diagnostic) | not a stability gate; upstream values vary across runs, while the exact Event-injection digest above matches |
+| G3 native QMP battery (full 16-step) | all 16 steps and `native-wm-qmp-probe: PASS`; `/tmp/opencode/g3-c16-qmp-final4.log` |
+| G3 native tasks battery | `native-wm-tasks-probe: PASS`; `/tmp/opencode/g3-c16-tasks-fixed.log` |
+| G3 native tiling battery | full 20-cycle soak clean, plus close and reflow PASS; `/tmp/opencode/g3-c16-tiling-final3.log` |
+| G3 upstream QMP and tasks anchors | both PASS on the upstream nitpicker Tier-0; `/tmp/opencode/g3-upstream-qmp.log`, `/tmp/opencode/g3-upstream-tasks.log`. Upstream tiling is not claimed green |
+| G3 close-time intermittency (explicit) | `/tmp/opencode/g3-c16-tiling-final2.log` FAILED at close (`close of the master did not destroy its window`); `/tmp/opencode/g3-c16-tiling-final3.log` and `/tmp/opencode/g3-c16-tiling-restoretablet2.log` passed the same close and reflow gates. Recorded, never relabeled |
+| Host receiver and guard-page repros | PASS (input receiver across view recreation; compose never reads past the bound buffer into the guard page) |
 | Mojo scene object | `nm -u build/scene.o`: empty; `/tmp/opencode/g1-scene.o` also empty |
 | Mojo painter object | `nm -u build/painter.o`: empty; `/tmp/opencode/g1-painter.o` also empty |
 | Mojo input object | `nm -u build/input.o`: empty |
 | `./tool/build verify` | all 41 patch-ledger rows and hardware-compatibility gates pass |
 | WM/DE independence anchor | `wm-probe: PASS` after setting the documented Qt DE budget to 1000 caps; `/tmp/opencode/g1-wm-anchor-caps1000.log` |
 | `git diff --check` | clean |
+
+**G3 functional changes (fixes, not acceptance changes).** The G3
+deliveries corrected implementation defects; none of them changed an
+acceptance assertion: per-session `pressed_session` preserves input
+across view recreation (a drag release is not lost when the pressed
+view is destroyed and recreated); bind-time texture extents add an
+in-extent fast path and safe tiling, so a grown geometry tiles the
+frozen-size texture instead of reading past the bound buffer; the
+per-session domain Info_rom reports the session's own domain rect
+(panel 1024x28 versus the full-screen default) instead of one
+full-screen constant; damage is distributed per Capture session and
+the frame sync fires only on nonempty damage; DE static rules convert
+from screen-absolute to boundary-relative coordinates exactly once;
+and the tiling scenario closes through the absolute-tablet path (W4
+usb-tablet scale transform, one-marker host dispatch) with a
+conditional restore-before-close before the final reflow gate.
+
+**G3 status wording.** G3 is recorded as G1-G3 verified with a
+documented intermittent close-time input failure, not "G3 complete"
+and not a claim of perfect stability: at close time the master close
+occasionally fails to destroy its window (the final2 failure above),
+and the reruns pass. The failure stays on record.
 
 **Full-stream divergence (explicit).** The full-trace digest is not a
 stability gate, and upstream's value varies across runs. A bounded diagnostic
@@ -102,30 +142,32 @@ can no longer consume the only refresh and leave later views unpainted.
 `docs/evidence/mojo-scene-probe.md` records the caller-provided 8192-byte
 state block and the independent object-emission receipts.
 
-## 4. G2 limits (explicit, not silent failures)
+## 4. G2/G3 limits (explicit, not silent failures)
 
 G2 delivers alpha/input-mask hit testing, click-driven focus transitions
 (leave-before-enter), real Event injection to the hit session, and
-pointer-report validation. The following stay outside G1/G2 and are not
-claimed:
+pointer-report validation. G3 delivers the Criterion-16 battery over the
+native Tier-0. The following stay outside G1-G3 and are not claimed:
 
 - `child_view`, `associate`, `view_capability`, `release_view_id`,
   title/background policy, blit/panning, mode/sync notifications, and other
-  G3-and-later protocol corners degrade to explicit warnings or documented
+  unimplemented protocol corners degrade to explicit warnings or documented
   safe results.
-- Keyboard and global-key sequences, touch, pointer-shape reporting, and
-  translucent blending are not exercised or implemented. Alpha input masks
-  are consumed for hit testing from G2 on, but blending translucent views
-  is not designed here.
-- WM/DE integration, GPU acceleration, and physical-hardware validation are
-  not proven; the battery is headless on seL4 QEMU only.
-- Capacity is fixed at 8 sessions, 32 views, and 3 merged damage rects;
+- Keyboard and global-key sequences, touch, and pointer-shape reporting are
+  not exercised or implemented.
+- Alpha blending (straight-alpha `blit_alpha`) and WM/DE integration are
+  proven on seL4 QEMU: the G3 battery runs the Sponge WM trio and DE
+  tasklist above the native compositor and composites translucent views.
+  GPU acceleration, physical-hardware validation, product integration, and
+  the G4-G5 gates remain uncompleted and unclaimed; the receipts are seL4
+  QEMU only.
+- Capacity is fixed at 32 sessions, 64 views, and 3 merged damage rects;
   exhaustion returns protocol errors rather than growing without bound.
 - The run-scenario Tier-0 seam is default-native since 2026-11-19 (unset
   or `SPONGE_COMPOSITOR=native`; `SPONGE_COMPOSITOR=upstream` is the
   explicit fallback). That selection change rests on the G1/G2 receipts
-  plus the default/fallback runs above; it is not WM/DE integration and
-  not product-integration evidence. The `sponge-wm` anchor was also
+  plus the default/fallback runs above; it is not product-integration
+  evidence. The `sponge-wm` anchor was also
   corrected from 300 to the documented 1000 DE caps because the old
   value blocked Qt session creation; this is a scenario-budget fix, not
   a compositor dependency.
